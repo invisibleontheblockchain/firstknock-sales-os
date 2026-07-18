@@ -4,6 +4,9 @@ import intersectPolygons from 'turf-intersect';
 
 const ALGORITHM_VERSION = 'canvas_street_workload_v2';
 const MAX_CANVAS_ZONE_COUNT = 250;
+const MAX_CANVAS_INTERACTIVE_WORK_UNITS = 2_000;
+const MAX_CANVAS_INTERACTIVE_COMPLEXITY = 180_000;
+const MAX_CANVAS_INTERACTIVE_SEGMENTS = 50_000;
 const ZONE_COLORS = ['#A855F7', '#2563EB', '#059669', '#D97706', '#DC2626', '#0891B2', '#7C3AED', '#DB2777'];
 const OPTIONAL_CANDIDATE_FAILURES = new Set([
   'INVALID_CANDIDATE_INPUT',
@@ -236,14 +239,18 @@ function decorateWorkUnits(workUnits, candidateById, candidateEquivalentMeters) 
 function unitComponents(units) {
   const byId = new Map(units.map((unit) => [unit.id, unit]));
   const unseen = new Set(byId.keys());
+  const orderedIds = [...byId.keys()].sort(compareIds);
+  let seedIndex = 0;
   const components = [];
   while (unseen.size) {
-    const seed = [...unseen].sort(compareIds)[0];
+    while (seedIndex < orderedIds.length && !unseen.has(orderedIds[seedIndex])) seedIndex += 1;
+    const seed = orderedIds[seedIndex];
+    seedIndex += 1;
     const queue = [seed];
     const ids = [];
     unseen.delete(seed);
-    while (queue.length) {
-      const unitId = queue.shift();
+    for (let queueIndex = 0; queueIndex < queue.length; queueIndex += 1) {
+      const unitId = queue[queueIndex];
       ids.push(unitId);
       (byId.get(unitId)?.neighborIds || []).forEach((neighborId) => {
         if (!unseen.has(neighborId)) return;
@@ -557,8 +564,7 @@ export function planCanvasTerritories(input = {}) {
   const candidateById = new Map(candidates.map((candidate) => [candidate.id, candidate]));
   const candidateEquivalentMeters = finitePositive(input.candidate_equivalent_meters, 35);
   const workUnits = decorateWorkUnits(topology.workUnits, candidateById, candidateEquivalentMeters);
-  const byId = new Map(workUnits.map((unit) => [unit.id, unit]));
-  const components = unitComponents(workUnits);
+  const segmentCount = workUnits.reduce((sum, unit) => sum + (unit.segments?.length || 0), 0);
   const reps = selectedRepIds(input);
   const totalStreetWorkloadMeters = workUnits.reduce((sum, unit) => sum + unit.workloadScore, 0);
   const totalClassWeightedLengthMeters = workUnits
@@ -566,6 +572,32 @@ export function planCanvasTerritories(input = {}) {
   const request = resolveZoneRequest(input, totalClassWeightedLengthMeters, reps);
   if (request.error) return request.error;
   const zoneCount = request.zoneCount;
+  if (zoneCount > MAX_CANVAS_ZONE_COUNT) {
+    return failure(
+      'infeasible',
+      'CANVAS_ZONE_LIMIT_EXCEEDED',
+      `Canvas supports at most ${MAX_CANVAS_ZONE_COUNT} areas in one campaign.`,
+      { requested_zone_count: zoneCount, maximum_zone_count: MAX_CANVAS_ZONE_COUNT, production_zone_limit: MAX_CANVAS_ZONE_COUNT },
+    );
+  }
+  if (workUnits.length > MAX_CANVAS_INTERACTIVE_WORK_UNITS || segmentCount > MAX_CANVAS_INTERACTIVE_SEGMENTS || zoneCount * workUnits.length > MAX_CANVAS_INTERACTIVE_COMPLEXITY) {
+    return failure(
+      'blocked',
+      'CANVAS_PLAN_TOO_COMPLEX',
+      'This street network is too complex to verify safely as one campaign. Draw a smaller work area or use fewer territories, then try again.',
+      {
+        zone_count: zoneCount,
+        work_unit_count: workUnits.length,
+        segment_count: segmentCount,
+        interactive_complexity: zoneCount * workUnits.length,
+        maximum_work_unit_count: MAX_CANVAS_INTERACTIVE_WORK_UNITS,
+        maximum_segment_count: MAX_CANVAS_INTERACTIVE_SEGMENTS,
+        maximum_interactive_complexity: MAX_CANVAS_INTERACTIVE_COMPLEXITY,
+      },
+    );
+  }
+  const byId = new Map(workUnits.map((unit) => [unit.id, unit]));
+  const components = unitComponents(workUnits);
   const minimumZoneCount = components.length;
   const maximumZoneCount = Math.min(workUnits.length, MAX_CANVAS_ZONE_COUNT);
   if (minimumZoneCount > MAX_CANVAS_ZONE_COUNT) {

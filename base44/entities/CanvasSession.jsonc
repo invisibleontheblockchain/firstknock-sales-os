@@ -71,7 +71,7 @@
     },
     "selected_team_member_ids": {
       "type": "array",
-      "description": "Manager-selected TeamMember IDs; selected-rep plans require one zone per rep.",
+      "description": "Manager-selected TeamMember IDs. Selected-rep and headcount plans require one zone per rep; workload-pack plans may assign multiple zones while still giving every selected rep work.",
       "items": { "type": "string" }
     },
     "zones": {

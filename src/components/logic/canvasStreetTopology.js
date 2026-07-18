@@ -309,14 +309,18 @@ function graphComponents(edgeIds, edgeMap, barrierNodeIds) {
   nodeEdges.forEach((ids, nodeId) => nodeEdges.set(nodeId, ids.sort(compareIds)));
 
   const unseen = new Set(edgeIds);
+  const orderedEdgeIds = [...edgeIds].sort(compareIds);
+  let seedIndex = 0;
   const components = [];
   while (unseen.size) {
-    const seed = [...unseen].sort(compareIds)[0];
+    while (seedIndex < orderedEdgeIds.length && !unseen.has(orderedEdgeIds[seedIndex])) seedIndex += 1;
+    const seed = orderedEdgeIds[seedIndex];
+    seedIndex += 1;
     const queue = [seed];
     const component = [];
     unseen.delete(seed);
-    while (queue.length) {
-      const edgeId = queue.shift();
+    for (let queueIndex = 0; queueIndex < queue.length; queueIndex += 1) {
+      const edgeId = queue[queueIndex];
       component.push(edgeId);
       const edge = edgeMap.get(edgeId);
       edge.nodeIds.forEach((nodeId) => {
@@ -369,14 +373,18 @@ function findTwoCoreEdges(edgeIds, edgeMap, barrierNodeIds) {
 function removedBranchComponents(removedEdgeIds, edgeMap, coreNodeIds, barrierNodeIds) {
   const nodeEdges = componentNodeEdges(removedEdgeIds, edgeMap);
   const unseen = new Set(removedEdgeIds);
+  const orderedEdgeIds = [...removedEdgeIds].sort(compareIds);
+  let seedIndex = 0;
   const groups = [];
   while (unseen.size) {
-    const seed = [...unseen].sort(compareIds)[0];
+    while (seedIndex < orderedEdgeIds.length && !unseen.has(orderedEdgeIds[seedIndex])) seedIndex += 1;
+    const seed = orderedEdgeIds[seedIndex];
+    seedIndex += 1;
     const queue = [seed];
     const group = [];
     unseen.delete(seed);
-    while (queue.length) {
-      const edgeId = queue.shift();
+    for (let queueIndex = 0; queueIndex < queue.length; queueIndex += 1) {
+      const edgeId = queue[queueIndex];
       group.push(edgeId);
       edgeMap.get(edgeId).nodeIds.forEach((nodeId) => {
         if (coreNodeIds.has(nodeId) || barrierNodeIds.has(nodeId)) return;
@@ -605,8 +613,12 @@ function decomposeRemainingChains(edgeIds, edgeMap, claimedEdgeIds, protectedNod
   [...anchors].sort(compareIds).forEach((nodeId) => {
     (nodeEdges.get(nodeId) || []).filter((edgeId) => unseen.has(edgeId)).sort(compareIds).forEach((edgeId) => trace(nodeId, edgeId));
   });
+  const orderedRemainingEdgeIds = [...remainingEdgeIds].sort(compareIds);
+  let remainingIndex = 0;
   while (unseen.size) {
-    const edgeId = [...unseen].sort(compareIds)[0];
+    while (remainingIndex < orderedRemainingEdgeIds.length && !unseen.has(orderedRemainingEdgeIds[remainingIndex])) remainingIndex += 1;
+    const edgeId = orderedRemainingEdgeIds[remainingIndex];
+    remainingIndex += 1;
     trace(edgeMap.get(edgeId).nodeIds[0], edgeId);
   }
   return groups.sort((left, right) => compareIds(left[0], right[0]));
@@ -667,14 +679,18 @@ function buildUnitNeighbors(units, barrierNodeIds) {
 function connectedUnitComponents(units) {
   const byId = new Map(units.map((unit) => [unit.id, unit]));
   const unseen = new Set(byId.keys());
+  const orderedUnitIds = [...byId.keys()].sort(compareIds);
+  let seedIndex = 0;
   const components = [];
   while (unseen.size) {
-    const seed = [...unseen].sort(compareIds)[0];
+    while (seedIndex < orderedUnitIds.length && !unseen.has(orderedUnitIds[seedIndex])) seedIndex += 1;
+    const seed = orderedUnitIds[seedIndex];
+    seedIndex += 1;
     const queue = [seed];
     const component = [];
     unseen.delete(seed);
-    while (queue.length) {
-      const unitId = queue.shift();
+    for (let queueIndex = 0; queueIndex < queue.length; queueIndex += 1) {
+      const unitId = queue[queueIndex];
       component.push(unitId);
       (byId.get(unitId)?.neighborIds || []).forEach((neighborId) => {
         if (!unseen.has(neighborId)) return;

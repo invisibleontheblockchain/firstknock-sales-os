@@ -80,7 +80,7 @@ test('Canvas has no house-analysis UI gate and Home owns the authorized mode', a
 
   assert.doesNotMatch(builder, /canvasAnalyzeTerritory|CanvasOpportunityReview|canvasAnalysisStore|stable home|homes per area/i);
   assert.match(builder, /workload_basis: 'street_length'/);
-  assert.match(builder, /Number of territories/);
+  assert.match(builder, /How many people are working this area/);
   assert.match(home, /routeMode=\{routeMode\}/);
   assert.match(home, /routeMode !== 'canvas' \|\| hasCanvasAccess\(user\)/);
   assert.doesNotMatch(managerLayers, /localStorage\.getItem\('fk_routeMode'\)/);

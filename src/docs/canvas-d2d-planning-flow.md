@@ -8,7 +8,7 @@ The canonical flow is:
 
 1. A manager draws one global working area.
 2. Canvas reads the street network inside that boundary.
-3. The manager chooses the reps working the area, an approximate street-workload size, or an advanced explicit territory count.
+3. The manager chooses the actual reps or enters the crew headcount; advanced users can instead choose a reusable street-workload size.
 4. Canvas divides the area into connected, street-aligned territories.
 5. Each rep receives only their assigned colored territory.
 6. Reps tap houses on the map as they work and record outcomes.
@@ -19,8 +19,8 @@ Precision is a separate product. Precision imports specific lead records and cre
 ## Core decisions
 
 - **One territory per selected rep** is the default workload mode.
-- **Workload size** derives the territory count from approximate class-weighted knockable street miles per territory, then allows one or more territories per rep.
-- **Number of territories** is the advanced mode. It creates the requested exact number of areas for later assignment.
+- **Crew headcount** creates the same number of territories and requires one distinct rep per territory before sending.
+- **Workload size (advanced)** derives the territory count from approximate class-weighted knockable street miles per territory, then allows one or more territories per rep while requiring every selected rep to receive work.
 - Street workload, not a preloaded door count, is the canonical balancing input. The planner uses connected street length and atomic road topology.
 - Optional building or address features may improve display, snapping, or workload estimates, but they are never required deployment inventory.
 - Cul-de-sacs, terminal branches, and other protected street units remain whole even when doing so creates workload imbalance.
@@ -53,11 +53,13 @@ Canvas then fetches the eligible road network for the boundary. If usable roads 
 
 ### 3. Choose workload
 
-Canvas provides two primary modes and one advanced mode:
+Canvas provides two primary ways to identify the crew and one advanced sizing mode:
 
 1. **Selected reps**: select active linked reps; territory count equals rep count.
-2. **Workload size**: choose approximate class-weighted street miles per territory; Canvas calculates the count after reading the road graph.
-3. **Number of territories (advanced)**: enter the exact number of areas to create, then assign each area to an active linked rep.
+2. **Crew headcount**: enter how many people are going out; territory count equals headcount, then select exactly that many active linked reps.
+3. **Standard-size work packs (advanced)**: choose approximate class-weighted street miles per territory; Canvas calculates the count after reading the road graph.
+
+The manager creates the first preview explicitly. After that, changing crew headcount debounces for 600 ms and refreshes the colored map preview automatically. A newer headcount cancels any obsolete calculation, and failed previews do not retry until the manager changes an input. Planning runs in a module worker so a large calculation does not freeze the map. A 2,000-work-unit ceiling, 50,000-segment ceiling, and work-unit × territory budget of 180,000 reject an unsafe monolithic campaign and ask the manager to split the boundary.
 
 Before generation the manager sees:
 
@@ -106,9 +108,12 @@ The quality panel requires:
 - every territory connected;
 - no split cul-de-sac or protected branch;
 - valid owned TeamMember assignment for every territory;
+- exact one-rep/one-territory assignment for selected-rep and crew-headcount plans;
+- every selected rep represented in standard-size work-pack assignments;
+- explicit manager acceptance when maximum weighted-workload deviation exceeds 25%;
 - matching client/server street-data version.
 
-**Draft Preview** saves without sending anything to reps. Saved drafts remain in the manager campaign index and can be reopened with the exact boundary, work units, assignments, QA evidence, algorithm/data versions, and optimistic-lock version. **Deploy to reps** is enabled only after all hard gates and assignments pass.
+**Finish later** saves without sending anything to reps. Saved drafts remain in the manager campaign index and can be reopened with the exact boundary, selected crew intent, work units, assignments, QA evidence, algorithm/data versions, and optimistic-lock version. **Send territories** is enabled only after all hard gates and assignments pass. Any accepted workload exception is authenticated by the save endpoint and included in the signed campaign evidence.
 
 ### 6. Manage the global campaign
 
@@ -179,6 +184,7 @@ The initial implementation may use Base44 entities and authenticated functions f
 | Invalid boundary | Planning blocked with exact reason | Redraw one simple boundary |
 | Road data unavailable | Deployment blocked | Retry street data or redraw |
 | Too many requested territories | Explain safe maximum | Reduce territory count |
+| Street-plan complexity exceeds the interactive budget | Planning stopped before save/deploy | Split the global boundary or reduce crew size |
 | Oversized protected branch | Safe workload warning | Accept or change count |
 | Missing/disconnected work unit | Deployment blocked | Regenerate |
 | Inactive/foreign rep | Deployment blocked | Choose an active linked rep |
@@ -203,8 +209,9 @@ The initial implementation may use Base44 entities and authenticated functions f
 - Every territory is connected.
 - Both sides of a cul-de-sac terminal-to-throat branch remain in one territory.
 - Selected-reps mode produces one territory per selected rep.
+- Crew-headcount mode produces one territory per person and cannot send repeated or omitted rep assignments.
 - Workload-size mode derives a reviewable count from the requested weighted street miles.
-- Area-count mode produces the requested safe territory count.
+- Changing crew headcount updates the colored preview after the debounce without freezing the main map UI.
 - Draft Preview sends nothing to reps.
 - Saved drafts reopen with the same plan, assignments, QA/version evidence, and expected server version.
 - Every rep sees only their signed assigned zone and its Canvas pins.

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import { planCanvasTerritories } from '../src/components/logic/canvasStreetTerritoryPlanner.js';
@@ -225,6 +226,39 @@ test('derives workload-size areas from class-weighted street meters and enforces
   );
   assert.equal(overLimit.details.production_zone_limit, 250);
   assert.ok(overLimit.details.requested_zone_count > 250);
+});
+
+test('rejects over-budget fragmented streets before expensive component partitioning', () => {
+  const elements = [];
+  for (let index = 0; index < 2_001; index += 1) {
+    const row = Math.floor(index / 50);
+    const column = index % 50;
+    const lat = 34.9995 + row * 0.00025;
+    const lng = -82.0105 + column * 0.0004;
+    const firstNodeId = 10_000 + index * 2;
+    elements.push(
+      node(firstNodeId, lat, lng),
+      node(firstNodeId + 1, lat, lng + 0.00005),
+      way(50_000 + index, [firstNodeId, firstNodeId + 1], `Isolated ${index}`),
+    );
+  }
+  const startedAt = performance.now();
+  const result = planCanvasTerritories({ polygon, roadNetwork: { elements }, requested_zone_count: 2 });
+  const elapsedMs = performance.now() - startedAt;
+  assert.deepEqual(
+    { ok: result.ok, status: result.status, code: result.code },
+    { ok: false, status: 'blocked', code: 'CANVAS_PLAN_TOO_COMPLEX' },
+  );
+  assert.equal(result.details.work_unit_count, 2_001);
+  assert.equal(result.details.maximum_work_unit_count, 2_000);
+  assert.ok(elapsedMs < 10_000, `complexity rejection took ${Math.round(elapsedMs)}ms`);
+
+  const plannerSource = readFileSync(new URL('../src/components/logic/canvasStreetTerritoryPlanner.js', import.meta.url), 'utf8');
+  const guardIndex = plannerSource.indexOf('workUnits.length > MAX_CANVAS_INTERACTIVE_WORK_UNITS');
+  const componentIndex = plannerSource.indexOf('const components = unitComponents(workUnits)', guardIndex);
+  assert.ok(guardIndex >= 0 && componentIndex > guardIndex);
+  const topologySource = readFileSync(new URL('../src/components/logic/canvasStreetTopology.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(topologySource, /\[\.\.\.unseen\]\.sort\(compareIds\)/);
 });
 
 test('reuses the palette only across nonadjacent territories when there are more than eight areas', () => {

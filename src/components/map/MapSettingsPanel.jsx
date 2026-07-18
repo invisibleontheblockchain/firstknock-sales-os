@@ -94,14 +94,15 @@ export default function MapSettingsPanel({
   const setLiveZip = (v) => { upd('showZipOverlay', v); setShowZipOverlay?.(v); };
   const setLiveRouteMode = (v) => {
     if (v === 'canvas' && !hasCanvasAccess(user)) return;
+    if (setRouteMode?.(v) === false) return;
     upd('routeMode', v);
-    setRouteMode?.(v);
     try { localStorage.setItem('fk_routeMode', v); } catch {}
     window.dispatchEvent(new CustomEvent('fk-route-mode-changed', { detail: { routeMode: v } }));
   };
 
   const handleSave = () => {
     const safeRouteMode = local.routeMode === 'canvas' && !hasCanvasAccess(user) ? 'precision' : local.routeMode;
+    if (safeRouteMode !== routeMode && setRouteMode?.(safeRouteMode) === false) return;
     setMapSettings?.(local.mapSettings);
     setPinSize?.(local.pinSize);
     setShowRouteLines?.(local.showRouteLines);
@@ -111,7 +112,7 @@ export default function MapSettingsPanel({
     setNavigationApp?.(local.navigationApp);
     setHighlightRecentlySold?.(local.highlightRecentlySold);
     setShowZipOverlay?.(local.showZipOverlay);
-    setRouteMode?.(safeRouteMode);
+    if (safeRouteMode === routeMode) setRouteMode?.(safeRouteMode);
     try { localStorage.setItem('fk_routeMode', safeRouteMode); } catch {}
     window.dispatchEvent(new CustomEvent('fk-route-mode-changed', { detail: { routeMode: safeRouteMode } }));
     try { localStorage.setItem('fk_navigation_app', local.navigationApp); } catch {}

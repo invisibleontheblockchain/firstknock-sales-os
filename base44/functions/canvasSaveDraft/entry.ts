@@ -6,6 +6,8 @@ const MAX_ZONES = 250;
 const MAX_WORK_UNITS = 10000;
 const MAX_SEGMENTS = 50000;
 const MAX_JSON_BYTES = 8_000_000;
+const MAX_CANVAS_INTERACTIVE_WORK_UNITS = 2_000;
+const MAX_CANVAS_INTERACTIVE_COMPLEXITY = 180_000;
 const PLANNING_METHODS = new Set(['street_workload', 'preview_only']);
 const ASSIGNMENT_BASES = new Set(['street_work_unit_ids', 'legacy_geometry']);
 const WORKLOAD_BASES = new Set(['street_length', 'street_length_plus_estimated_doors']);
@@ -220,6 +222,14 @@ function deriveQa(workUnits: any[], zones: any[], suppliedQa: any) {
   const connectedZones = clientQa.connected_zones === true;
   const atomicWorkUnits = clientQa.atomic_work_units === true && streetCoverageComplete && noDuplicateWorkUnits;
   const culDeSacSplits = Math.max(0, Number(clientQa.cul_de_sac_splits) || 0);
+  const workloadScores = zones.map((zone) => Number(zone.workload_score));
+  const averageWorkload = workloadScores.length
+    && workloadScores.every((score) => Number.isFinite(score) && score >= 0)
+    ? workloadScores.reduce((sum, score) => sum + score, 0) / workloadScores.length
+    : 0;
+  const maxWorkloadDeviationPercent = averageWorkload > 0
+    ? Math.round(Math.max(...workloadScores.map((score) => Math.abs(score - averageWorkload) / averageWorkload)) * 100)
+    : null;
   return {
     ...clientQa,
     territory_source: 'street_work_units',
@@ -235,6 +245,7 @@ function deriveQa(workUnits: any[], zones: any[], suppliedQa: any) {
     work_unit_count: workUnits.length,
     zone_count: zones.length,
     total_street_length_meters: Number(workUnits.reduce((sum, unit) => sum + unit.street_length_meters, 0).toFixed(2)),
+    max_workload_deviation_percent: maxWorkloadDeviationPercent,
     deployable: streetCoverageComplete
       && noDuplicateWorkUnits
       && connectedZones
@@ -308,30 +319,45 @@ Deno.serve(async (req: Request) => {
     }
     const workUnits = normalizeWorkUnits(body?.work_units);
     const zones = normalizeZones(body?.zones);
+    if (workUnits.length > MAX_CANVAS_INTERACTIVE_WORK_UNITS || zones.length * workUnits.length > MAX_CANVAS_INTERACTIVE_COMPLEXITY) {
+      throw new HttpError(413, 'plan_too_complex', 'This street plan is too complex to save as one Canvas campaign. Draw a smaller work area or use fewer territories.');
+    }
     const zoneAssigneeIds = zones.map((zone) => zone.assigned_team_member_id).filter(Boolean);
     const uniqueAssigneeIds = [...new Set(zoneAssigneeIds)];
     const suppliedTeamMemberIds = normalizeIdList(body?.selected_team_member_ids || [], 'selected_team_member_ids', MAX_ZONES);
     const selectedTeamMemberIds = suppliedTeamMemberIds.length ? suppliedTeamMemberIds : uniqueAssigneeIds;
     const everyZoneAssigned = zoneAssigneeIds.length === zones.length;
     const selectionMatches = everyZoneAssigned && sameIdSet(selectedTeamMemberIds, uniqueAssigneeIds);
-    const selectedRepsOneToOne = divisionMode !== 'selected_reps'
+    const oneToOneRequired = divisionMode === 'selected_reps' || divisionMode === 'area_count';
+    const selectedRepsOneToOne = !oneToOneRequired
       || (zones.length === selectedTeamMemberIds.length && uniqueAssigneeIds.length === zones.length && selectionMatches);
     const suppliedTargetWorkload = finiteNumber(body?.target_workload, 'target_workload', 0, true);
     if (divisionMode === 'street_workload_target' && !(Number(suppliedTargetWorkload) > 0)) {
       throw new HttpError(400, 'invalid_plan', 'target_workload must be positive class-weighted street meters for street_workload_target planning.');
     }
     const targetWorkload = divisionMode === 'street_workload_target' ? suppliedTargetWorkload : null;
+    const now = new Date().toISOString();
     const qa = {
       ...deriveQa(workUnits, zones, body?.qa),
       every_zone_assigned: everyZoneAssigned,
-      selected_reps_one_to_one: selectedRepsOneToOne
+      selected_reps_one_to_one: selectedRepsOneToOne,
     };
+    const workloadExceptionRequired = qa.max_workload_deviation_percent === null
+      || Number(qa.max_workload_deviation_percent) > 25;
+    const managerWorkloadExceptionAcknowledged = Number(qa.max_workload_deviation_percent) > 25
+      && body?.qa?.manager_workload_exception_acknowledged === true;
+    qa.manager_workload_exception_acknowledged = managerWorkloadExceptionAcknowledged;
+    qa.manager_workload_exception_deviation_percent = qa.max_workload_deviation_percent;
+    qa.manager_workload_exception_acknowledged_at = managerWorkloadExceptionAcknowledged ? now : null;
+    qa.manager_workload_exception_acknowledged_by_user_id = managerWorkloadExceptionAcknowledged ? user.id : null;
     qa.deployable = qa.deployable
       && planningMethod === 'street_workload'
       && assignmentBasis === 'street_work_unit_ids'
       && workloadBasis === 'street_length'
       && everyZoneAssigned
-      && selectedRepsOneToOne;
+      && selectionMatches
+      && selectedRepsOneToOne
+      && (!workloadExceptionRequired || managerWorkloadExceptionAcknowledged);
 
     const normalizedPlan = {
       session_name: optionalString(body?.session_name, 200) || 'Canvas Campaign',
@@ -353,7 +379,6 @@ Deno.serve(async (req: Request) => {
       version
     };
     const planHash = await sha256(normalizedPlan);
-    const now = new Date().toISOString();
     const record = {
       ...normalizedPlan,
       plan_hash: planHash,

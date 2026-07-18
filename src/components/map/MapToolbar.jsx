@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Navigation, Locate, List, X, Filter, MapPin, Zap, Eye, EyeOff, Save, Pencil, Check, Users, Rocket, RotateCcw, Download, MoreVertical, Scissors, Ghost } from 'lucide-react';
@@ -23,6 +23,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 export default function MapToolbar({
   // Mode & state
   mode, setMode,
+  onRequestRouteModeChange,
+  onConfirmCanvasDiscard,
   activeRoute, setActiveRoute,
   routesGenerating,
 
@@ -97,7 +99,12 @@ export default function MapToolbar({
     try {return localStorage.getItem('fk_showGhostAreas') === 'true';} catch {return false;}
   });
 
+  const allowCanvasDiscard = useCallback((action) => routeMode !== 'canvas'
+    || typeof onConfirmCanvasDiscard !== 'function'
+    || onConfirmCanvasDiscard(action), [onConfirmCanvasDiscard, routeMode]);
+
   const updateRouteMode = (nextMode) => {
+    if (typeof onRequestRouteModeChange === 'function' && onRequestRouteModeChange(nextMode) === false) return;
     setRouteMode(nextMode);
     try {localStorage.setItem('fk_routeMode', nextMode);} catch {}
     window.dispatchEvent(new CustomEvent('fk-route-mode-changed', { detail: { routeMode: nextMode } }));
@@ -136,13 +143,14 @@ export default function MapToolbar({
   // Bottom Map tab should return to plain map view and close Builder/Route Command.
   useEffect(() => {
     const handler = () => {
+      if (!allowCanvasDiscard('Opening the map view')) return;
       setMode('analyze');
       setShowCompare(false);
       setShowRoutePanel(false);
     };
     window.addEventListener('fk-map-tab-open', handler);
     return () => window.removeEventListener('fk-map-tab-open', handler);
-  }, [setMode, setShowCompare, setShowRoutePanel]);
+  }, [allowCanvasDiscard, setMode, setShowCompare, setShowRoutePanel]);
 
   useEffect(() => {
     if (!activeRoute?.id) return;
@@ -284,6 +292,7 @@ export default function MapToolbar({
                     <div className="pointer-events-auto absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-black/80 backdrop-blur-md rounded-xl p-1 border border-gray-800 flex gap-1 shadow-xl max-w-[42vw] sm:max-w-none">
                         <button
               onClick={() => {
+                if (!allowCanvasDiscard('Opening Routes')) return;
                 setMode('analyze');
                 setShowCompare(false);
                 setShowRoutePanel(false);
@@ -298,6 +307,7 @@ export default function MapToolbar({
                   toast.error("Close the active route first");
                   return;
                 }
+                if (!allowCanvasDiscard('Closing the Canvas planner')) return;
                 setMode('generate');
                 setShowRoutePanel(false);
                 setShowCompare(false);
@@ -640,7 +650,11 @@ export default function MapToolbar({
                                 <EyeOff className="w-4 h-4 mr-1" /> FOCUS MODE
                             </Button>
                             <Button
-              onClick={() => {setShowCompare(false);setShowRoutePanel(false);}}
+              onClick={() => {
+                if (!allowCanvasDiscard('Opening Live View')) return;
+                setShowCompare(false);
+                setShowRoutePanel(false);
+              }}
               className="rounded-full h-10 px-3 sm:px-4 text-[10px] sm:text-xs font-bold tracking-wide shadow-lg transition-all active:scale-95 whitespace-nowrap bg-black/90 text-[#2EEB57] border border-[#2EEB57]/40">
               
                                 <Locate className="w-4 h-4 mr-1" /> LIVE VIEW
@@ -650,7 +664,7 @@ export default function MapToolbar({
               className="rounded-full h-10 px-3 sm:px-4 text-[10px] sm:text-xs font-bold tracking-wide shadow-lg transition-all active:scale-95 whitespace-nowrap"
               style={{ background: 'linear-gradient(135deg, #2EEB57 0%, #39FF4A 100%)', color: BRAND.voidBlack }}>
               
-                                <Rocket className="w-4 h-4 mr-1" /> DEPLOY CAMPAIGN
+                                <Rocket className="w-4 h-4 mr-1" /> REVIEW & SEND
                             </Button>
                         </> :
 

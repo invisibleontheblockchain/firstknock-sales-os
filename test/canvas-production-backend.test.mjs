@@ -43,6 +43,15 @@ function roadNetwork() {
   };
 }
 
+function unevenRoadNetwork() {
+  return {
+    elements: [
+      node(1, 35, -82.01), node(2, 35, -82), node(3, 35, -81.99), node(4, 35.001, -82),
+      way(100, [1, 2, 3], 'Long Street'), way(200, [2, 4], 'Tiny Court')
+    ]
+  };
+}
+
 function managerUser() {
   return {
     id: 'manager_1', email: 'manager@example.com', role: 'admin', app_role: 'manager',
@@ -231,6 +240,75 @@ function productionPlan({ assigned = true, divisionMode = 'selected_reps', targe
   };
 }
 
+function unevenHeadcountPlan({ acknowledged = false } = {}) {
+  const generated = planCanvasTerritories({ polygon, roadNetwork: unevenRoadNetwork(), requested_zone_count: 3 });
+  assert.equal(generated.ok, true, JSON.stringify(generated));
+  assert.ok(generated.qa.max_workload_deviation_percent > 25);
+  return {
+    session_name: 'Uneven Canvas',
+    territory_model: 'street_territory_v1',
+    polygon,
+    planning_method: generated.planning_method,
+    assignment_basis: generated.assignment_basis,
+    workload_basis: generated.workload_basis,
+    division_mode: 'area_count',
+    selected_team_member_ids: ['tm_1', 'tm_2', 'tm_3'],
+    target_workload: null,
+    zones: generated.zones.map((zone, index) => ({ ...zone, assigned_team_member_id: `tm_${index + 1}` })),
+    work_units: generated.work_units,
+    qa: { ...generated.qa, manager_workload_exception_acknowledged: acknowledged },
+    algorithm_version: generated.algorithm_version,
+    data_version: generated.data_version
+  };
+}
+
+function syntheticHeadcountPlan({ repCount = 200, workUnitCount = 720 } = {}) {
+  const baseline = productionPlan({ divisionMode: 'area_count' });
+  const selectedTeamMemberIds = Array.from({ length: repCount }, (_, index) => `tm_${index + 1}`);
+  const workUnits = Array.from({ length: workUnitCount }, (_, index) => ({
+    ...structuredClone(baseline.work_units[index % baseline.work_units.length]),
+    id: `synthetic_unit_${index + 1}`,
+    protected: false,
+    neighbor_ids: [],
+    neighborIds: [],
+    street_length_meters: 100,
+    streetLengthMeters: 100,
+  }));
+  const unitIdsByZone = Array.from({ length: repCount }, () => []);
+  workUnits.forEach((unit, index) => unitIdsByZone[index % repCount].push(unit.id));
+  const zones = unitIdsByZone.map((workUnitIds, index) => ({
+    ...structuredClone(baseline.zones[index % baseline.zones.length]),
+    zone_id: `synthetic_zone_${index + 1}`,
+    zone_number: index + 1,
+    assigned_team_member_id: selectedTeamMemberIds[index],
+    work_unit_ids: workUnitIds,
+    street_work_unit_ids: workUnitIds,
+    street_length_meters: workUnitIds.length * 100,
+    workload_score: workUnitIds.length * 100,
+    workload_share: workUnitIds.length / workUnitCount,
+  }));
+  return {
+    ...baseline,
+    session_name: `${repCount}-rep Canvas`,
+    division_mode: 'area_count',
+    selected_team_member_ids: selectedTeamMemberIds,
+    target_workload: null,
+    zones,
+    work_units: workUnits,
+    qa: {
+      ...baseline.qa,
+      deployable: true,
+      street_coverage_complete: true,
+      no_duplicate_work_units: true,
+      no_missing_work_units: true,
+      connected_zones: true,
+      atomic_work_units: true,
+      protected_units_intact: true,
+      cul_de_sac_splits: 0,
+    },
+  };
+}
+
 async function savePlan(state, body = productionPlan()) {
   const base44 = makeBase44(managerUser(), state);
   const save = loadHandler('base44/functions/canvasSaveDraft/entry.ts', { base44 });
@@ -307,6 +385,160 @@ test('save accepts an unassigned area-count draft but marks it nondeployable', a
   assert.equal(state.sessions[0].territory_model, 'street_territory_v1');
   assert.equal(state.sessions[0].doors, undefined);
   assert.equal(state.sessions[0].work_units.length, 3);
+});
+
+test('headcount drafts require one distinct rep per territory', async () => {
+  const state = makeState();
+  const repeated = productionPlan({ divisionMode: 'area_count' });
+  repeated.zones = repeated.zones.map((zone) => ({ ...zone, assigned_team_member_id: 'tm_1' }));
+  repeated.selected_team_member_ids = ['tm_1'];
+  const { saved } = await savePlan(state, repeated);
+  assert.equal(saved.result.qa.every_zone_assigned, true);
+  assert.equal(saved.result.qa.selected_reps_one_to_one, false);
+  assert.equal(saved.result.qa.deployable, false);
+});
+
+test('save rejects plans above the interactive complexity boundary without mutating the draft', async () => {
+  const state = makeState();
+  const first = await savePlan(state);
+  const originalId = first.saved.result.session_id;
+  const originalVersion = state.sessions[0].version;
+  const originalHash = state.sessions[0].plan_hash;
+  const oversized = syntheticHeadcountPlan({ repCount: 250, workUnitCount: 721 });
+  const save = loadHandler('base44/functions/canvasSaveDraft/entry.ts', { base44: first.base44 });
+  const rejected = await invoke(save, {
+    ...oversized,
+    session_id: originalId,
+    expected_version: originalVersion,
+  });
+  assert.equal(rejected.response.status, 413, JSON.stringify(rejected.result));
+  assert.equal(rejected.result.error, 'plan_too_complex');
+  assert.equal(state.sessions.length, 1);
+  assert.equal(state.sessions[0].id, originalId);
+  assert.equal(state.sessions[0].version, originalVersion);
+  assert.equal(state.sessions[0].plan_hash, originalHash);
+});
+
+test('legacy oversized drafts fail deployment before roster reads or Overpass', async () => {
+  const state = makeState();
+  const base44 = makeBase44(managerUser(), state);
+  const oversized = syntheticHeadcountPlan({ repCount: 250, workUnitCount: 721 });
+  const save = loadHandler('base44/functions/canvasSaveDraft/entry.ts', {
+    base44,
+    sourceTransform: (source) => {
+      const guardStart = source.indexOf('    if (workUnits.length > MAX_CANVAS_INTERACTIVE_WORK_UNITS');
+      const nextStatement = source.indexOf('    const zoneAssigneeIds', guardStart);
+      assert.ok(guardStart >= 0 && nextStatement > guardStart);
+      return `${source.slice(0, guardStart)}${source.slice(nextStatement)}`;
+    },
+  });
+  const legacy = await invoke(save, oversized);
+  assert.equal(legacy.response.status, 200, JSON.stringify(legacy.result));
+
+  let teamFilterCalls = 0;
+  let userFilterCalls = 0;
+  let fetchCalls = 0;
+  const originalTeamFilter = base44.entities.TeamMember.filter;
+  const originalUserFilter = base44.asServiceRole.entities.User.filter;
+  base44.entities.TeamMember.filter = async (...args) => { teamFilterCalls += 1; return originalTeamFilter(...args); };
+  base44.asServiceRole.entities.User.filter = async (...args) => { userFilterCalls += 1; return originalUserFilter(...args); };
+  const deploy = loadHandler('base44/functions/canvasDeployCampaign/entry.ts', {
+    base44,
+    fetchImpl: async () => {
+      fetchCalls += 1;
+      return new Response(JSON.stringify(roadNetwork()), { status: 200 });
+    },
+  });
+  const rejected = await invoke(deploy, {
+    session_id: legacy.result.session_id,
+    expected_version: legacy.result.version,
+    idempotency_key: 'deploy:legacy-oversized',
+  });
+  assert.equal(rejected.response.status, 422, JSON.stringify(rejected.result));
+  assert.equal(rejected.result.error, 'plan_too_complex');
+  assert.equal(teamFilterCalls, 0);
+  assert.equal(userFilterCalls, 0);
+  assert.equal(fetchCalls, 0);
+});
+
+test('200-rep deployment validates roster identity in four bounded batch reads', async () => {
+  const state = makeState();
+  state.members = Array.from({ length: 200 }, (_, index) => ({
+    id: `tm_${index + 1}`,
+    name: `Rep ${index + 1}`,
+    email: `rep${index + 1}@example.com`,
+    user_id: `auth_rep_${index + 1}`,
+    role: 'rep',
+    status: 'active',
+    manager_id: 'manager_1',
+  }));
+  state.users = [managerUser(), ...state.members.map((member) => ({
+    id: member.user_id,
+    email: member.email,
+    role: 'user',
+    app_role: 'rep',
+    team_manager_id: 'manager_1',
+  }))];
+  const base44 = makeBase44(managerUser(), state);
+  let teamFilterCalls = 0;
+  let userFilterCalls = 0;
+  const originalTeamFilter = base44.entities.TeamMember.filter;
+  const originalUserFilter = base44.asServiceRole.entities.User.filter;
+  base44.entities.TeamMember.filter = async (...args) => { teamFilterCalls += 1; return originalTeamFilter(...args); };
+  base44.asServiceRole.entities.User.filter = async (...args) => { userFilterCalls += 1; return originalUserFilter(...args); };
+
+  const save = loadHandler('base44/functions/canvasSaveDraft/entry.ts', { base44 });
+  const saved = await invoke(save, syntheticHeadcountPlan());
+  assert.equal(saved.response.status, 200, JSON.stringify(saved.result));
+  assert.equal(saved.result.qa.deployable, true);
+  const deploy = loadHandler('base44/functions/canvasDeployCampaign/entry.ts', {
+    base44,
+    sourceTransform: (source) => source.replace(
+      'const topologyVerification = await verifyServerTopology(session);',
+      'const topologyVerification = { server_topology_verified: true, validator_version: 3 };',
+    ),
+  });
+  const deployed = await invoke(deploy, {
+    session_id: saved.result.session_id,
+    expected_version: saved.result.version,
+    idempotency_key: 'deploy:two-hundred-reps',
+  });
+  assert.equal(deployed.response.status, 200, JSON.stringify(deployed.result));
+  assert.equal(deployed.result.delivery_count, 200);
+  assert.equal(teamFilterCalls, 2);
+  assert.equal(userFilterCalls, 2);
+});
+
+test('uneven workload acceptance is manager-authenticated, stored, and signed', async () => {
+  const unacceptedState = makeState();
+  unacceptedState.members.push({ id: 'tm_3', name: 'Rep Three', email: 'rep3@example.com', user_id: 'auth_rep_3', role: 'rep', status: 'active', manager_id: 'manager_1' });
+  unacceptedState.users.push({ id: 'auth_rep_3', email: 'rep3@example.com', role: 'user', app_role: 'rep', team_manager_id: 'manager_1' });
+  const { saved: unaccepted } = await savePlan(unacceptedState, unevenHeadcountPlan());
+  assert.equal(unaccepted.result.qa.max_workload_deviation_percent, 83);
+  assert.equal(unaccepted.result.qa.manager_workload_exception_acknowledged, false);
+  assert.equal(unaccepted.result.qa.deployable, false);
+
+  const acceptedState = makeState();
+  acceptedState.members.push({ id: 'tm_3', name: 'Rep Three', email: 'rep3@example.com', user_id: 'auth_rep_3', role: 'rep', status: 'active', manager_id: 'manager_1' });
+  acceptedState.users.push({ id: 'auth_rep_3', email: 'rep3@example.com', role: 'user', app_role: 'rep', team_manager_id: 'manager_1' });
+  const base44 = makeBase44(managerUser(), acceptedState);
+  const save = loadHandler('base44/functions/canvasSaveDraft/entry.ts', { base44 });
+  const accepted = await invoke(save, unevenHeadcountPlan({ acknowledged: true }));
+  assert.equal(accepted.response.status, 200, JSON.stringify(accepted.result));
+  assert.equal(accepted.result.qa.deployable, true);
+  assert.equal(accepted.result.qa.manager_workload_exception_acknowledged, true);
+  assert.equal(accepted.result.qa.manager_workload_exception_acknowledged_by_user_id, 'manager_1');
+  assert.ok(Date.parse(accepted.result.qa.manager_workload_exception_acknowledged_at));
+
+  const deploy = loadHandler('base44/functions/canvasDeployCampaign/entry.ts', { base44, network: unevenRoadNetwork() });
+  const deployed = await invoke(deploy, {
+    session_id: accepted.result.session_id,
+    expected_version: accepted.result.version,
+    idempotency_key: 'deploy:uneven-accepted'
+  });
+  assert.equal(deployed.response.status, 200, JSON.stringify(deployed.result));
+  assert.equal(acceptedState.sessions[0].deployment_qa.manager_workload_exception_acknowledged, true);
+  assert.equal(await verifyCanvasLifecycleSession(SIGNING_SECRET, acceptedState.sessions[0], 'active'), true);
 });
 
 test('workload-size drafts store a positive street target and deploy by replaying that target', async () => {
@@ -536,6 +768,25 @@ test('manager can reopen a saved draft with its exact replay and assignment meta
   assert.deepEqual(result.result.campaign.selected_team_member_ids, ['tm_1', 'tm_2']);
   assert.equal(result.result.campaign.qa.deployable, true);
   assert.equal(result.result.campaign.plan_hash, saved.result.plan_hash);
+});
+
+test('replanned drafts update the same session with an incremented optimistic version', async () => {
+  const state = makeState();
+  const base44 = makeBase44(managerUser(), state);
+  const save = loadHandler('base44/functions/canvasSaveDraft/entry.ts', { base44 });
+  const first = await invoke(save, productionPlan());
+  assert.equal(first.response.status, 200, JSON.stringify(first.result));
+  const replanned = productionPlan({ divisionMode: 'area_count' });
+  const second = await invoke(save, {
+    ...replanned,
+    session_id: first.result.session_id,
+    expected_version: first.result.version,
+  });
+  assert.equal(second.response.status, 200, JSON.stringify(second.result));
+  assert.equal(second.result.session_id, first.result.session_id);
+  assert.equal(second.result.version, first.result.version + 1);
+  assert.equal(state.sessions.length, 1);
+  assert.equal(state.sessions[0].id, first.result.session_id);
 });
 
 test('manager map is global while rep map never exposes another rep zone or pin', async () => {

@@ -63,6 +63,7 @@ import KnockLimitSheet from '@/components/upgrade/KnockLimitSheet';
 import { getOutcomesLogged, isOutcomeBlocked, isProUser, needsCardOnFile } from '@/components/upgrade/knockGate';
 import { hasCanvasAccess } from '@/lib/canvasAccess';
 import { validateCanvasBoundary } from '@/components/canvas/canvasPlannerUtils';
+import { fetchAllCanvasTeamMembers } from '@/components/canvas/canvasRosterPagination';
 
 
 import { BRAND, DEFAULT_STATUS_COLORS, COLOR_SCHEME_MAP, LINE_DASH_MAP, ROUTE_COLORS } from '../components/map/homeMapConstants';
@@ -324,6 +325,23 @@ export default function Home() {
         try { return localStorage.getItem('fk_routeStatusView') || 'active'; } catch { return 'active'; }
     });
     const [routeMode, setRouteMode] = useState('precision');
+    const [canvasDraftDirty, setCanvasDraftDirty] = useState(false);
+    useEffect(() => {
+        window.dispatchEvent(new CustomEvent('fk-canvas-draft-dirty-changed', { detail: { dirty: canvasDraftDirty } }));
+    }, [canvasDraftDirty]);
+    useEffect(() => () => {
+        window.dispatchEvent(new CustomEvent('fk-canvas-draft-dirty-changed', { detail: { dirty: false } }));
+    }, []);
+    const confirmCanvasDiscard = useCallback((action = 'Leaving Canvas') => {
+        if (!canvasDraftDirty) return true;
+        return window.confirm(`You have unsaved Canvas territory changes. ${action} will discard them. Continue?`);
+    }, [canvasDraftDirty]);
+    const requestRouteModeChange = useCallback((nextMode) => {
+        if (routeMode === 'canvas' && nextMode !== 'canvas' && !confirmCanvasDiscard('Switching to Precision mode')) return false;
+        setRouteMode(nextMode);
+        if (nextMode !== 'canvas') setCanvasDraftDirty(false);
+        return true;
+    }, [confirmCanvasDiscard, routeMode]);
     const activeDrawnPolygon = routeMode === 'canvas' ? canvasDrawnPolygon : drawnPolygon;
     const activeDraftPolygon = routeMode === 'canvas' ? canvasDraftPolygon : draftPolygon;
     const setActiveDrawnPolygon = (value, persist = false) => {
@@ -566,6 +584,24 @@ export default function Home() {
         },
         enabled: !!user?.id
     });
+
+    const { data: canvasTeamMembers = [], isLoading: canvasTeamMembersLoading, refetch: refetchCanvasTeamMembers } = useQuery({
+        queryKey: ['canvasTeamMembers', user?.id],
+        staleTime: 1000 * 60 * 5,
+        queryFn: () => {
+            if (!user?.id) return [];
+            return fetchAllCanvasTeamMembers((limit, skip) => (
+                base44.entities.TeamMember.filter({ manager_id: user.id }, '-created_date', limit, skip)
+            ));
+        },
+        enabled: !!user?.id && routeMode === 'canvas'
+    });
+
+    const refreshCanvasTeamMembers = useCallback(async () => {
+        const result = await refetchCanvasTeamMembers();
+        if (result.error) throw result.error;
+        return result.data;
+    }, [refetchCanvasTeamMembers]);
 
     const preparePrecisionRouteBounds = useCallback((value) => {
         const normalized = normalizeRouteBoundsIntent(value);
@@ -2360,6 +2396,8 @@ export default function Home() {
             <MapToolbar
                 mode={mode}
                 setMode={setMode}
+                onRequestRouteModeChange={requestRouteModeChange}
+                onConfirmCanvasDiscard={confirmCanvasDiscard}
                 activeRoute={filteredActiveRoute}
                 setActiveRoute={setActiveRoute}
                 routesGenerating={routesGenerating}
@@ -2766,6 +2804,10 @@ export default function Home() {
                     user={user}
                     teamMembers={teamMembers}
                     teamMembersReady={!teamMembersLoading}
+                    canvasTeamMembers={canvasTeamMembers}
+                    canvasTeamMembersReady={!canvasTeamMembersLoading}
+                    onRefreshCanvasTeamMembers={refreshCanvasTeamMembers}
+                    onCanvasDraftDirtyChange={setCanvasDraftDirty}
                     drawnPolygon={activeDrawnPolygon}
                     hasDrawnArea={activeDrawnPolygon && activeDrawnPolygon.length > 2}
                     maxDataMonths={maxDataMonths}
@@ -2859,7 +2901,7 @@ export default function Home() {
                         showZipOverlay={showZipOverlay}
                         setShowZipOverlay={setShowZipOverlay}
                         routeMode={routeMode}
-                        setRouteMode={setRouteMode}
+                        setRouteMode={requestRouteModeChange}
                         user={user}
                     />
                 </React.Suspense>

@@ -268,14 +268,18 @@ function graphComponents(edgeIds, edgeMap, barrierNodeIds) {
   });
   nodeEdges.forEach((ids, nodeId) => nodeEdges.set(nodeId, ids.sort(compareIds)));
   const unseen = new Set(edgeIds);
+  const orderedEdgeIds = [...edgeIds].sort(compareIds);
+  let seedIndex = 0;
   const components = [];
   while (unseen.size) {
-    const seed = [...unseen].sort(compareIds)[0];
+    while (seedIndex < orderedEdgeIds.length && !unseen.has(orderedEdgeIds[seedIndex])) seedIndex += 1;
+    const seed = orderedEdgeIds[seedIndex];
+    seedIndex += 1;
     const queue = [seed];
     const component = [];
     unseen.delete(seed);
-    while (queue.length) {
-      const edgeId = queue.shift();
+    for (let queueIndex = 0; queueIndex < queue.length; queueIndex += 1) {
+      const edgeId = queue[queueIndex];
       component.push(edgeId);
       const edge = edgeMap.get(edgeId);
       edge.nodeIds.forEach((nodeId) => {
@@ -324,14 +328,18 @@ function findTwoCoreEdges(edgeIds, edgeMap, barrierNodeIds) {
 function removedBranchComponents(removedEdgeIds, edgeMap, coreNodeIds, barrierNodeIds) {
   const nodeEdges = componentNodeEdges(removedEdgeIds, edgeMap);
   const unseen = new Set(removedEdgeIds);
+  const orderedEdgeIds = [...removedEdgeIds].sort(compareIds);
+  let seedIndex = 0;
   const groups = [];
   while (unseen.size) {
-    const seed = [...unseen].sort(compareIds)[0];
+    while (seedIndex < orderedEdgeIds.length && !unseen.has(orderedEdgeIds[seedIndex])) seedIndex += 1;
+    const seed = orderedEdgeIds[seedIndex];
+    seedIndex += 1;
     const queue = [seed];
     const group = [];
     unseen.delete(seed);
-    while (queue.length) {
-      const edgeId = queue.shift();
+    for (let queueIndex = 0; queueIndex < queue.length; queueIndex += 1) {
+      const edgeId = queue[queueIndex];
       group.push(edgeId);
       edgeMap.get(edgeId).nodeIds.forEach((nodeId) => {
         if (coreNodeIds.has(nodeId) || barrierNodeIds.has(nodeId)) return;
@@ -533,8 +541,12 @@ function decomposeRemainingChains(edgeIds, edgeMap, claimedEdgeIds, protectedNod
   [...anchors].sort(compareIds).forEach((nodeId) => {
     (nodeEdges.get(nodeId) || []).filter((edgeId) => unseen.has(edgeId)).sort(compareIds).forEach((edgeId) => trace(nodeId, edgeId));
   });
+  const orderedRemainingEdgeIds = [...remainingEdgeIds].sort(compareIds);
+  let remainingIndex = 0;
   while (unseen.size) {
-    const edgeId = [...unseen].sort(compareIds)[0];
+    while (remainingIndex < orderedRemainingEdgeIds.length && !unseen.has(orderedRemainingEdgeIds[remainingIndex])) remainingIndex += 1;
+    const edgeId = orderedRemainingEdgeIds[remainingIndex];
+    remainingIndex += 1;
     trace(edgeMap.get(edgeId).nodeIds[0], edgeId);
   }
   return groups.sort((left, right) => compareIds(left[0], right[0]));
@@ -592,14 +604,18 @@ function buildUnitNeighbors(units, barrierNodeIds) {
 function connectedUnitComponents(units) {
   const byId = new Map(units.map((unit) => [unit.id, unit]));
   const unseen = new Set(byId.keys());
+  const orderedUnitIds = [...byId.keys()].sort(compareIds);
+  let seedIndex = 0;
   const components = [];
   while (unseen.size) {
-    const seed = [...unseen].sort(compareIds)[0];
+    while (seedIndex < orderedUnitIds.length && !unseen.has(orderedUnitIds[seedIndex])) seedIndex += 1;
+    const seed = orderedUnitIds[seedIndex];
+    seedIndex += 1;
     const queue = [seed];
     const component = [];
     unseen.delete(seed);
-    while (queue.length) {
-      const unitId = queue.shift();
+    for (let queueIndex = 0; queueIndex < queue.length; queueIndex += 1) {
+      const unitId = queue[queueIndex];
       component.push(unitId);
       (byId.get(unitId)?.neighborIds || []).forEach((neighborId) => {
         if (!unseen.has(neighborId)) return;
@@ -999,6 +1015,9 @@ import { polygon as geoJsonPolygon } from "npm:turf-helpers@3.0.12";
 import intersectPolygons from "npm:turf-intersect@3.0.12";
 var ALGORITHM_VERSION = "canvas_street_workload_v2";
 var MAX_CANVAS_ZONE_COUNT = 250;
+var MAX_CANVAS_INTERACTIVE_WORK_UNITS = 2e3;
+var MAX_CANVAS_INTERACTIVE_COMPLEXITY = 18e4;
+var MAX_CANVAS_INTERACTIVE_SEGMENTS = 5e4;
 var ZONE_COLORS = ["#A855F7", "#2563EB", "#059669", "#D97706", "#DC2626", "#0891B2", "#7C3AED", "#DB2777"];
 var OPTIONAL_CANDIDATE_FAILURES = /* @__PURE__ */ new Set([
   "INVALID_CANDIDATE_INPUT",
@@ -1194,14 +1213,18 @@ function decorateWorkUnits(workUnits, candidateById, candidateEquivalentMeters) 
 function unitComponents(units) {
   const byId = new Map(units.map((unit) => [unit.id, unit]));
   const unseen = new Set(byId.keys());
+  const orderedIds = [...byId.keys()].sort(compareIds2);
+  let seedIndex = 0;
   const components = [];
   while (unseen.size) {
-    const seed = [...unseen].sort(compareIds2)[0];
+    while (seedIndex < orderedIds.length && !unseen.has(orderedIds[seedIndex])) seedIndex += 1;
+    const seed = orderedIds[seedIndex];
+    seedIndex += 1;
     const queue = [seed];
     const ids = [];
     unseen.delete(seed);
-    while (queue.length) {
-      const unitId = queue.shift();
+    for (let queueIndex = 0; queueIndex < queue.length; queueIndex += 1) {
+      const unitId = queue[queueIndex];
       ids.push(unitId);
       (byId.get(unitId)?.neighborIds || []).forEach((neighborId) => {
         if (!unseen.has(neighborId)) return;
@@ -1469,14 +1492,39 @@ function planCanvasTerritories(input = {}) {
   const candidateById = new Map(candidates.map((candidate) => [candidate.id, candidate]));
   const candidateEquivalentMeters = finitePositive(input.candidate_equivalent_meters, 35);
   const workUnits = decorateWorkUnits(topology.workUnits, candidateById, candidateEquivalentMeters);
-  const byId = new Map(workUnits.map((unit) => [unit.id, unit]));
-  const components = unitComponents(workUnits);
+  const segmentCount = workUnits.reduce((sum, unit) => sum + (unit.segments?.length || 0), 0);
   const reps = selectedRepIds(input);
   const totalStreetWorkloadMeters = workUnits.reduce((sum, unit) => sum + unit.workloadScore, 0);
   const totalClassWeightedLengthMeters = workUnits.reduce((sum, unit) => sum + Number(unit.classWeightedLengthMeters || 0), 0);
   const request = resolveZoneRequest(input, totalClassWeightedLengthMeters, reps);
   if (request.error) return request.error;
   const zoneCount = request.zoneCount;
+  if (zoneCount > MAX_CANVAS_ZONE_COUNT) {
+    return failure(
+      "infeasible",
+      "CANVAS_ZONE_LIMIT_EXCEEDED",
+      `Canvas supports at most ${MAX_CANVAS_ZONE_COUNT} areas in one campaign.`,
+      { requested_zone_count: zoneCount, maximum_zone_count: MAX_CANVAS_ZONE_COUNT, production_zone_limit: MAX_CANVAS_ZONE_COUNT }
+    );
+  }
+  if (workUnits.length > MAX_CANVAS_INTERACTIVE_WORK_UNITS || segmentCount > MAX_CANVAS_INTERACTIVE_SEGMENTS || zoneCount * workUnits.length > MAX_CANVAS_INTERACTIVE_COMPLEXITY) {
+    return failure(
+      "blocked",
+      "CANVAS_PLAN_TOO_COMPLEX",
+      "This street network is too complex to verify safely as one campaign. Draw a smaller work area or use fewer territories, then try again.",
+      {
+        zone_count: zoneCount,
+        work_unit_count: workUnits.length,
+        segment_count: segmentCount,
+        interactive_complexity: zoneCount * workUnits.length,
+        maximum_work_unit_count: MAX_CANVAS_INTERACTIVE_WORK_UNITS,
+        maximum_segment_count: MAX_CANVAS_INTERACTIVE_SEGMENTS,
+        maximum_interactive_complexity: MAX_CANVAS_INTERACTIVE_COMPLEXITY
+      }
+    );
+  }
+  const byId = new Map(workUnits.map((unit) => [unit.id, unit]));
+  const components = unitComponents(workUnits);
   const minimumZoneCount = components.length;
   const maximumZoneCount = Math.min(workUnits.length, MAX_CANVAS_ZONE_COUNT);
   if (minimumZoneCount > MAX_CANVAS_ZONE_COUNT) {
@@ -1851,6 +1899,7 @@ var MAX_WORK_UNITS = 1e4;
 var MAX_CONFLICT_SCAN_SESSIONS = 1e3;
 var MAX_LIFECYCLE_SCAN_SESSIONS = 1e4;
 var LIFECYCLE_PAGE_SIZE = 500;
+var TEAM_VALIDATION_BATCH_SIZE = 100;
 var MAX_OSM_JSON_BYTES = 2e7;
 var MAX_OSM_ELEMENTS = 25e4;
 var OVERPASS_TIMEOUT_MS = 15e3;
@@ -2036,6 +2085,10 @@ function validatePlan(session) {
   if (zones.length < 1 || zones.length > MAX_ZONES || workUnits.length < 1 || workUnits.length > MAX_WORK_UNITS) {
     throw new HttpError(422, "invalid_plan_size", "Canvas deployment requires supported zones and street work units.");
   }
+  const segmentCount = workUnits.reduce((sum, unit) => sum + asArray2(unit?.segments).length, 0);
+  if (workUnits.length > MAX_CANVAS_INTERACTIVE_WORK_UNITS || segmentCount > MAX_CANVAS_INTERACTIVE_SEGMENTS || zones.length * workUnits.length > MAX_CANVAS_INTERACTIVE_COMPLEXITY) {
+    throw new HttpError(422, "plan_too_complex", "This street plan is too complex to deploy as one Canvas campaign. Draw a smaller work area or use fewer territories.");
+  }
   const expectedUnitIds = /* @__PURE__ */ new Set();
   for (const unit of workUnits) {
     const unitId = requiredString(unit?.id, "work_unit.id");
@@ -2075,12 +2128,26 @@ function validatePlan(session) {
   if (!selected.length || new Set(selected).size !== selected.length || !sameIdSet(selected, [...assignedRepIds])) {
     throw new HttpError(422, "selected_rep_contract_failed", "Every assigned rep must be in the manager-selected roster with no omitted or extra reps.");
   }
-  if (session.division_mode === "selected_reps" && (zones.length !== selected.length || new Set(zoneAssigneeIds).size !== zones.length)) {
-    throw new HttpError(422, "selected_rep_contract_failed", "Selected-reps planning requires exactly one area per selected rep.");
+  if (["selected_reps", "area_count"].includes(session.division_mode) && (zones.length !== selected.length || new Set(zoneAssigneeIds).size !== zones.length)) {
+    throw new HttpError(422, "selected_rep_contract_failed", "Rep-count planning requires exactly one area per selected rep.");
   }
   const qa = session.qa || {};
   if (qa.deployable !== true || qa.street_coverage_complete !== true || qa.no_duplicate_work_units !== true || qa.connected_zones !== true || qa.atomic_work_units !== true || qa.protected_units_intact !== true || Number(qa.cul_de_sac_splits || 0) !== 0) {
     throw new HttpError(422, "street_partition_qa_failed", "Canvas street coverage, connectivity, or protected cul-de-sac QA did not pass.");
+  }
+  const workloadScores = zones.map((zone) => Number(zone?.workload_score));
+  const averageWorkload = workloadScores.length && workloadScores.every((score) => Number.isFinite(score) && score >= 0)
+    ? workloadScores.reduce((sum, score) => sum + score, 0) / workloadScores.length
+    : 0;
+  if (!(averageWorkload > 0)) {
+    throw new HttpError(422, "workload_balance_unverified", "Canvas could not verify territory workload balance. Regenerate before deployment.");
+  }
+  const maxWorkloadDeviationPercent = Math.round(Math.max(...workloadScores.map((score) => Math.abs(score - averageWorkload) / averageWorkload)) * 100);
+  if (maxWorkloadDeviationPercent > 25 && (qa.manager_workload_exception_acknowledged !== true
+    || Number(qa.manager_workload_exception_deviation_percent) !== maxWorkloadDeviationPercent
+    || !String(qa.manager_workload_exception_acknowledged_at || "").trim()
+    || String(qa.manager_workload_exception_acknowledged_by_user_id || "") !== String(session.manager_id || ""))) {
+    throw new HttpError(422, "workload_exception_acknowledgement_required", "The manager must review and accept this uneven territory split before deployment.");
   }
   return {
     zones,
@@ -2090,25 +2157,55 @@ function validatePlan(session) {
       identity_validator_version: 2,
       territory_model: "street_territory_v1",
       street_work_units_complete_and_exclusive: true,
-      selected_reps_one_to_one: session.division_mode === "selected_reps" ? true : null,
+      selected_reps_one_to_one: ["selected_reps", "area_count"].includes(session.division_mode) ? true : null,
       zone_count: zones.length,
       work_unit_count: workUnits.length,
-      total_street_length_meters: Number(qa.total_street_length_meters || 0)
+      total_street_length_meters: Number(qa.total_street_length_meters || 0),
+      max_workload_deviation_percent: maxWorkloadDeviationPercent,
+      manager_workload_exception_acknowledged: maxWorkloadDeviationPercent > 25 ? true : null,
+      manager_workload_exception_acknowledged_at: maxWorkloadDeviationPercent > 25 ? qa.manager_workload_exception_acknowledged_at : null,
+      manager_workload_exception_acknowledged_by_user_id: maxWorkloadDeviationPercent > 25 ? qa.manager_workload_exception_acknowledged_by_user_id : null
     }
   };
 }
+async function filterRowsByIds(entity, ids, extraFilter) {
+  const rows = [];
+  for (let index = 0; index < ids.length; index += TEAM_VALIDATION_BATCH_SIZE) {
+    const chunk = ids.slice(index, index + TEAM_VALIDATION_BATCH_SIZE);
+    rows.push(...asArray2(await entity.filter({ ...extraFilter, id: { $in: chunk } }, null, chunk.length, 0)));
+  }
+  return rows;
+}
 async function validateTeamMembers(base44, managerId, memberIds) {
-  const members = [];
-  for (const memberId of memberIds) {
-    const member = await base44.entities.TeamMember.get(memberId).catch(() => null);
+  const requestedMemberIds = [...new Set(memberIds.map(String))];
+  if (requestedMemberIds.length !== memberIds.length) {
+    throw new HttpError(422, "invalid_team_assignment", "The selected Canvas roster contains duplicate team members.");
+  }
+  const memberRows = await filterRowsByIds(base44.entities.TeamMember, requestedMemberIds, { manager_id: managerId });
+  const membersById = new Map(memberRows.map((member) => [String(member?.id || ""), member]));
+  if (membersById.size !== requestedMemberIds.length || memberRows.length !== requestedMemberIds.length) {
+    throw new HttpError(422, "invalid_team_assignment", "One or more selected team members are missing or belong to another manager.");
+  }
+  const members = requestedMemberIds.map((memberId) => membersById.get(memberId));
+  for (const member of members) {
     if (!member || member.manager_id !== managerId || member.status !== "active" || !member.user_id || normalized(member.role) !== "rep") {
-      throw new HttpError(422, "invalid_team_assignment", `Team member ${memberId} is not an active linked rep owned by this manager.`);
+      throw new HttpError(422, "invalid_team_assignment", `Team member ${member?.id || "unknown"} is not an active linked rep owned by this manager.`);
     }
-    const repUser = await base44.asServiceRole.entities.User.get(member.user_id).catch(() => null);
+  }
+  const userIds = members.map((member) => String(member.user_id));
+  if (new Set(userIds).size !== userIds.length) {
+    throw new HttpError(422, "unverified_team_link", "Each selected Canvas rep must be linked to a distinct authenticated user.");
+  }
+  const userRows = await filterRowsByIds(base44.asServiceRole.entities.User, userIds, { team_manager_id: managerId });
+  const usersById = new Map(userRows.map((repUser) => [String(repUser?.id || ""), repUser]));
+  if (usersById.size !== userIds.length || userRows.length !== userIds.length) {
+    throw new HttpError(422, "unverified_team_link", "One or more selected reps are not linked to an authenticated user in this manager's tenant.");
+  }
+  for (const member of members) {
+    const repUser = usersById.get(String(member.user_id));
     if (!repUser || repUser.id !== member.user_id || repUser.team_manager_id !== managerId || normalized(repUser.email) !== normalized(member.email)) {
-      throw new HttpError(422, "unverified_team_link", `Team member ${memberId} is not linked to an authenticated user in this manager's tenant.`);
+      throw new HttpError(422, "unverified_team_link", `Team member ${member.id} is not linked to an authenticated user in this manager's tenant.`);
     }
-    members.push(member);
   }
   return members;
 }
@@ -2336,6 +2433,13 @@ async function verifyServerTopology(session) {
   if (JSON.stringify(submittedSignatures) !== JSON.stringify(expectedSignatures)) {
     throw new HttpError(422, "server_zone_topology_mismatch", "Submitted areas do not match the connected street partition recomputed by the server.");
   }
+  const workloadMismatches = asArray2(session.zones).filter((zone) => {
+    const expected = expectedBySignature.get(zoneSignature(zone));
+    return !expected || Math.abs(Number(zone?.workload_score) - Number(expected?.workload_score)) > 0.01;
+  }).map((zone) => zone.zone_id);
+  if (workloadMismatches.length) {
+    throw new HttpError(422, "server_zone_workload_mismatch", "Area workload scores do not match the server-recomputed street territory.", { mismatch_zone_ids: workloadMismatches });
+  }
   const displayMismatches = asArray2(session.zones).filter((zone) => {
     const expected = expectedBySignature.get(zoneSignature(zone));
     return !expected || JSON.stringify(canonicalZoneDisplay(zone)) !== JSON.stringify(canonicalZoneDisplay(expected));
@@ -2465,12 +2569,12 @@ Deno.serve(async (req) => {
       return Response.json({ success: true, idempotent: true, session_id: session.id, version: Number(session.version), status: "deployed", deployed_at: session.deployed_at, delivery_count: Number(session.rep_count || 0), rep_team_member_ids: canvasRepTeamMemberIds(session), superseded_session_ids: asArray2(session.deployment_qa?.superseded_session_ids) });
     }
     if (session.status === "completed" || session.status === "recalled") throw new HttpError(409, "campaign_closed", "This Canvas campaign is closed. Create a new draft.");
-    const entitlement = await resolveCanvasEntitlement(user);
     const expectedVersion = Number(body?.expected_version);
     if (!Number.isInteger(expectedVersion) || expectedVersion !== Number(session.version)) throw new HttpError(409, "version_conflict", "The Canvas draft changed. Reload it before deploying.");
     const expectedHash = await sha2562(canvasStoredPlanForHash(session));
     if (!session.plan_hash || session.plan_hash !== expectedHash) throw new HttpError(409, "plan_hash_mismatch", "The Canvas draft changed outside the trusted save flow. Save it again.");
     const validation = validatePlan(session);
+    const entitlement = await resolveCanvasEntitlement(user);
     const members = await validateTeamMembers(base44, user.id, validation.assignedRepIds);
     if (Number.isFinite(entitlement.seats) && members.length > entitlement.seats) throw new HttpError(403, "canvas_seat_limit_exceeded", `This deployment assigns ${members.length} reps, but the verified subscription has ${entitlement.seats} seats.`);
     const topologyVerification = await verifyServerTopology(session);
