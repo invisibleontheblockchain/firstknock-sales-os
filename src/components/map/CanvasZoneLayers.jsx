@@ -58,22 +58,16 @@ export default function CanvasZoneLayers({ zones = [], workUnits = [] }) {
   const [selectedZoneNumber, setSelectedZoneNumber] = useState(null);
   const [hoveredZoneNumber, setHoveredZoneNumber] = useState(null);
   const [filteredZoneNumbers, setFilteredZoneNumbers] = useState([]);
-  const [focusMode, setFocusMode] = useState(() => {
-    try { return localStorage.getItem('fk_canvasFocusMode') === 'true'; } catch { return false; }
-  });
   const hoverTimerRef = useRef(null);
 
   useEffect(() => {
     const handleSelected = (event) => setSelectedZoneNumber(event.detail?.zoneNumber || null);
     const handleFiltered = (event) => setFilteredZoneNumbers(Array.isArray(event.detail?.zoneNumbers) ? event.detail.zoneNumbers : []);
-    const handleFocus = (event) => setFocusMode(Boolean(event.detail?.focusMode));
     window.addEventListener('fk-canvas-zone-selected', handleSelected);
     window.addEventListener('fk-canvas-zone-filtered', handleFiltered);
-    window.addEventListener('fk-canvas-focus-mode-changed', handleFocus);
     return () => {
       window.removeEventListener('fk-canvas-zone-selected', handleSelected);
       window.removeEventListener('fk-canvas-zone-filtered', handleFiltered);
-      window.removeEventListener('fk-canvas-focus-mode-changed', handleFocus);
       if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
     };
   }, []);
@@ -88,10 +82,10 @@ export default function CanvasZoneLayers({ zones = [], workUnits = [] }) {
           || zone.assignments?.filter(Boolean).join(' + ')
           || 'Unassigned';
         const assigned = hasAssignment(zone);
-        const color = assigned ? (zone.color || ASSIGNED_COLOR) : UNASSIGNED_COLOR;
-        const selected = selectedZoneNumber === zone.zone_number && !focusMode;
-        const hovered = hoveredZoneNumber === zone.zone_number && !focusMode;
-        const shouldShowLabel = !focusMode && (selected || hovered || filteredZoneNumbers.includes(zone.zone_number));
+        const color = zone.color || (assigned ? ASSIGNED_COLOR : UNASSIGNED_COLOR);
+        const selected = selectedZoneNumber === zone.zone_number;
+        const hovered = hoveredZoneNumber === zone.zone_number;
+        const shouldShowLabel = selected || hovered || filteredZoneNumbers.includes(zone.zone_number);
         const initials = getRepInitials(label);
         const labelPoint = zone.drop_point || zone.center;
         const paths = segments.map((segment) => [segment.start, segment.end]);
@@ -101,12 +95,12 @@ export default function CanvasZoneLayers({ zones = [], workUnits = [] }) {
             <Polyline
               positions={paths}
               interactive={false}
-              pathOptions={{ color: selected ? '#FFFFFF' : '#050505', opacity: focusMode ? 0.65 : 0.95, weight: selected ? 11 : hovered ? 10 : 8, lineCap: 'round', lineJoin: 'round' }}
+              pathOptions={{ color: selected ? '#FFFFFF' : '#050505', opacity: 0.95, weight: selected ? 11 : hovered ? 10 : 8, lineCap: 'round', lineJoin: 'round' }}
             />
             <Polyline
               positions={paths}
               bubblingMouseEvents={false}
-              pathOptions={{ color, opacity: focusMode ? 0.55 : 0.96, weight: selected ? 7 : hovered ? 6 : 5, lineCap: 'round', lineJoin: 'round' }}
+              pathOptions={{ color, opacity: 0.96, weight: selected ? 7 : hovered ? 6 : 5, lineCap: 'round', lineJoin: 'round' }}
               eventHandlers={{
                 click: handleClick,
                 mouseover: () => {
@@ -121,9 +115,9 @@ export default function CanvasZoneLayers({ zones = [], workUnits = [] }) {
             >
               <Tooltip sticky>Area {zone.zone_number} · {label} · colored streets define ownership</Tooltip>
             </Polyline>
-            {!focusMode && assigned && initials && labelPoint && <Marker position={labelPoint} icon={avatarIcon(initials)} interactive={false} keyboard={false} />}
+            {assigned && initials && labelPoint && <Marker position={labelPoint} icon={avatarIcon(initials)} interactive={false} keyboard={false} />}
             {shouldShowLabel && labelPoint && <Marker position={labelPoint} icon={labelIcon(zone, label, color)} interactive={false} keyboard={false} />}
-            {!focusMode && zone.drop_point && (
+            {zone.drop_point && (
               <Marker position={zone.drop_point} icon={dropIcon(color)}>
                 <Tooltip direction="top">Area {zone.zone_number} street territory center</Tooltip>
               </Marker>

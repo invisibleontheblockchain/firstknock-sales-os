@@ -180,6 +180,8 @@ export default function TerritoryPrompt({
   const targetPctRef = useRef(0);
   const restoredCompletedJobRef = useRef(false);
   const pullIntentRef = useRef({});
+  const routeModeRef = useRef(routeMode);
+  routeModeRef.current = routeMode;
   const activePrecisionJobStorageKey = useMemo(() => {
     const email = String(user?.email || '').trim().toLowerCase();
     return email ? `fk_activePrecisionJob_${email}` : null;
@@ -221,6 +223,14 @@ export default function TerritoryPrompt({
       if (pollRef.current) clearInterval(pollRef.current);
     };
   }, []);
+
+  useEffect(() => {
+    if (routeMode === 'precision') return;
+    if (pollRef.current) clearInterval(pollRef.current);
+    pollRef.current = null;
+    activeJobIdRef.current = null;
+    setPulling(false);
+  }, [routeMode]);
 
   // Auto-resume: check for running/pending fetch jobs on mount
   useEffect(() => {
@@ -514,6 +524,7 @@ export default function TerritoryPrompt({
   const showInitialPrompt = hasPulledData && hasDefinedMarket && mode === 'generate' && !activeRoute && !routesGenerating && !showCompare && !showRoutePanel && !drawingMode && (!drawnPolygon || drawnPolygon.length === 0);
 
   const startPolling = (jobId) => {
+    if (routeModeRef.current !== 'precision') return;
     if (pollRef.current) clearInterval(pollRef.current);
     activeJobIdRef.current = jobId;
 
@@ -522,6 +533,7 @@ export default function TerritoryPrompt({
     const pollStartTime = Date.now();
 
     const doPoll = async () => {
+      if (routeModeRef.current !== 'precision') return;
       pollCount++;
       if (pollCount > MAX_POLLS) {
         clearInterval(pollRef.current);
@@ -539,6 +551,7 @@ export default function TerritoryPrompt({
 
       try {
         const res = await base44.functions.invoke('fetchJobStatus', { job_id: jobId });
+        if (routeModeRef.current !== 'precision') return;
         const d = res.data;
 
         if (!d) return;
@@ -652,11 +665,13 @@ export default function TerritoryPrompt({
             route_bounds: intent.routeBounds || diagnostics.route_bounds || { enabled: false }
           };
 
+          if (routeModeRef.current !== 'precision') return;
           if (onPullComplete) {
             setMode('generate');
             setShowRoutePanel(false);
             setShowCompare(false);
             await onPullComplete(completedSoldMonths, isPaid, completedJobStatus);
+            if (routeModeRef.current !== 'precision') return;
           } else {
             queryClient.invalidateQueries({ queryKey: ['masterProperties'] });
             queryClient.invalidateQueries({ queryKey: ['user'] });

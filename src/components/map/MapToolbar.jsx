@@ -1,7 +1,7 @@
 import React, { useCallback, useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Navigation, Locate, List, X, Filter, MapPin, Zap, Eye, EyeOff, Save, Pencil, Check, Users, Rocket, RotateCcw, Download, MoreVertical, Scissors, Ghost } from 'lucide-react';
+import { Loader2, Navigation, Locate, List, X, Filter, MapPin, Zap, Eye, EyeOff, Save, Pencil, Check, RotateCcw, Download, MoreVertical, Scissors, Ghost } from 'lucide-react';
 import { LayoutDashboard, Settings } from 'lucide-react';
 import { toast } from "sonner";
 import DataStatusIndicator from './DataStatusIndicator';
@@ -92,9 +92,6 @@ export default function MapToolbar({
   const [routeMode, setRouteMode] = useState(() => {
     try {return localStorage.getItem('fk_routeMode') || 'precision';} catch {return 'precision';}
   });
-  const [canvasFocusMode, setCanvasFocusMode] = useState(() => {
-    try {return localStorage.getItem('fk_canvasFocusMode') === 'true';} catch {return false;}
-  });
   const [showGhostAreas, setShowGhostAreas] = useState(() => {
     try {return localStorage.getItem('fk_showGhostAreas') === 'true';} catch {return false;}
   });
@@ -120,12 +117,16 @@ export default function MapToolbar({
     return () => window.removeEventListener('fk-route-mode-changed', handler);
   }, []);
 
-  const toggleCanvasFocusMode = () => {
-    const next = !canvasFocusMode;
-    setCanvasFocusMode(next);
-    try {localStorage.setItem('fk_canvasFocusMode', String(next));} catch {}
-    window.dispatchEvent(new CustomEvent('fk-canvas-focus-mode-changed', { detail: { focusMode: next } }));
-    toast.success(next ? 'Focus mode on' : 'Focus mode off');
+  const openCanvasPlannerView = (view) => {
+    setMode('generate');
+    setShowRoutePanel(false);
+    setShowCompare(true);
+    try { sessionStorage.setItem('fk_canvasPlannerView', view); } catch {}
+    window.setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('fk-canvas-planner-view-requested', {
+        detail: { view, startNew: view === 'new_area' },
+      }));
+    }, 0);
   };
 
   const toggleGhostAreas = () => {
@@ -638,33 +639,16 @@ export default function MapToolbar({
                     {routeMode === 'canvas' && mode === 'generate' && !activeRoute ? !drawingMode &&
           <>
                             <Button
-              onClick={() => setShowCompare(true)}
+              onClick={() => openCanvasPlannerView('new_area')}
               className="rounded-full h-10 px-3 sm:px-4 text-[10px] sm:text-xs font-bold tracking-wide shadow-[0_0_20px_rgba(46,235,87,0.25)] transition-all active:scale-95 whitespace-nowrap bg-[#2EEB57] hover:bg-[#39FF4A] text-black">
               
-                                <Users className="w-4 h-4 mr-1" /> CANVAS BUILDER
+                                <Pencil className="w-4 h-4 mr-1" /> NEW AREA
                             </Button>
                             <Button
-              onClick={toggleCanvasFocusMode}
-              className={`rounded-full h-10 px-3 sm:px-4 text-[10px] sm:text-xs font-bold tracking-wide shadow-lg transition-all active:scale-95 whitespace-nowrap ${canvasFocusMode ? 'bg-white text-black border border-white' : 'bg-black/90 text-[#2EEB57] border border-[#2EEB57]/40'}`}>
-              
-                                <EyeOff className="w-4 h-4 mr-1" /> FOCUS MODE
-                            </Button>
-                            <Button
-              onClick={() => {
-                if (!allowCanvasDiscard('Opening Live View')) return;
-                setShowCompare(false);
-                setShowRoutePanel(false);
-              }}
+              onClick={() => openCanvasPlannerView('areas')}
               className="rounded-full h-10 px-3 sm:px-4 text-[10px] sm:text-xs font-bold tracking-wide shadow-lg transition-all active:scale-95 whitespace-nowrap bg-black/90 text-[#2EEB57] border border-[#2EEB57]/40">
               
-                                <Locate className="w-4 h-4 mr-1" /> LIVE VIEW
-                            </Button>
-                            <Button
-              onClick={() => {setShowCompare(true);toast.info('Review assignments, then tap Deploy Campaign.');}}
-              className="rounded-full h-10 px-3 sm:px-4 text-[10px] sm:text-xs font-bold tracking-wide shadow-lg transition-all active:scale-95 whitespace-nowrap"
-              style={{ background: 'linear-gradient(135deg, #2EEB57 0%, #39FF4A 100%)', color: BRAND.voidBlack }}>
-              
-                                <Rocket className="w-4 h-4 mr-1" /> REVIEW & SEND
+                                <List className="w-4 h-4 mr-1" /> AREAS
                             </Button>
                         </> :
 

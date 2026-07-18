@@ -45,11 +45,13 @@ import {
   deployCanvasCampaign,
   getCanvasCampaignMap,
   listMyCanvasCampaigns,
+  quarantineInvalidCanvasCampaigns,
   saveCanvasDraft,
 } from '@/components/canvas/canvasProductionClient';
 import { canvasZoneLoggedCount, formatCanvasDistance, getCanvasOutcome } from '@/components/canvas/canvasOutcomeUtils';
 import { clearOverpassRoadNetworkCache, fetchOverpassRoadNetwork } from '@/components/logic/overpassRoadNetwork';
 import { planCanvasTerritoriesAsync } from '@/components/logic/canvasStreetTerritoryPlannerAsync';
+import CanvasPlannerWorkspace from './CanvasPlannerWorkspace.jsx';
 import { createPageUrl } from '@/utils';
 
 const UNASSIGNED_ZONE_COLOR = '#A855F7';
@@ -189,13 +191,18 @@ export default function CanvasBuilderSettings({
   const rosterMembersById = useMemo(() => new Map(teamMembers.map((member) => [String(member.id), member])), [teamMembers]);
   const eligibleTeamIds = useMemo(() => new Set(activeTeamMembers.map((member) => String(member.id))), [activeTeamMembers]);
   const [sessionName, setSessionName] = useState('Canvas Cold Area');
-  const [divisionBasis, setDivisionBasis] = useState('selected_reps');
+  const [divisionBasis, setDivisionBasis] = useState('area_count');
   const [selectedTeamMemberIds, setSelectedTeamMemberIds] = useState([]);
   const [requestedAreaCount, setRequestedAreaCount] = useState(1);
   const [targetStreetWorkloadMiles, setTargetStreetWorkloadMiles] = useState(1.5);
   const [roadNetwork, setRoadNetwork] = useState(null);
   const [roadFetchStatus, setRoadFetchStatus] = useState('idle');
+  const [roadFetchError, setRoadFetchError] = useState(null);
+  const [roadFetchProgress, setRoadFetchProgress] = useState(null);
   const [roadFetchNonce, setRoadFetchNonce] = useState(0);
+  const [workspaceView, setWorkspaceView] = useState(() => {
+    try { return sessionStorage.getItem('fk_canvasPlannerView') === 'areas' ? 'areas' : 'new_area'; } catch { return 'new_area'; }
+  });
   const [mobileCollapsed, setMobileCollapsed] = useState(false);
   const [plan, setPlan] = useState(null);
   const [planStaleReason, setPlanStaleReason] = useState('');
@@ -206,6 +213,8 @@ export default function CanvasBuilderSettings({
   const [campaignIndex, setCampaignIndex] = useState([]);
   const [campaignIndexLoading, setCampaignIndexLoading] = useState(false);
   const [campaignIndexError, setCampaignIndexError] = useState('');
+  const [quarantinableCampaignCount, setQuarantinableCampaignCount] = useState(0);
+  const [quarantiningCampaigns, setQuarantiningCampaigns] = useState(false);
   const [selectedIndexedCampaignId, setSelectedIndexedCampaignId] = useState('');
   const [selectedDraftId, setSelectedDraftId] = useState('');
   const [resumingDraft, setResumingDraft] = useState(false);
@@ -219,7 +228,8 @@ export default function CanvasBuilderSettings({
   const [teamRosterRefreshing, setTeamRosterRefreshing] = useState(false);
   const [livePreviewRevision, setLivePreviewRevision] = useState(0);
   const previousPolygonKey = useRef(polygonKey);
-  const initialRosterModeResolvedRef = useRef(false);
+  const roadFetchAbortRef = useRef(null);
+  const startAnotherAreaRef = useRef(null);
   const deploymentAttemptRef = useRef(null);
   const closeAttemptRef = useRef(null);
   const activeOperationRef = useRef('');
@@ -289,42 +299,55 @@ export default function CanvasBuilderSettings({
   const campaignSigningUnavailable = /lifecycle signing is not configured/i.test(campaignIndexError);
 
   useEffect(() => {
-    if (!teamMembersReady || initialRosterModeResolvedRef.current) return;
-    initialRosterModeResolvedRef.current = true;
-    if (!activeTeamMembers.length && divisionBasis === 'selected_reps' && !plan && !deployed) {
-      setDivisionBasis('area_count');
-    }
-  }, [activeTeamMembers.length, deployed, divisionBasis, plan, teamMembersReady]);
+    const onRequestedView = (event) => {
+      const nextView = event.detail?.view === 'areas' ? 'areas' : 'new_area';
+      if (nextView === 'new_area' && event.detail?.startNew === true) {
+        startAnotherAreaRef.current?.();
+        return;
+      }
+      setWorkspaceView(nextView);
+      try { sessionStorage.setItem('fk_canvasPlannerView', nextView); } catch {}
+    };
+    window.addEventListener('fk-canvas-planner-view-requested', onRequestedView);
+    return () => window.removeEventListener('fk-canvas-planner-view-requested', onRequestedView);
+  }, []);
+
+  const hasUnsavedCanvasWork = !deployed && (plan
+    ? draftDirty
+    : polygon.length > 0
+      || sessionName !== 'Canvas Cold Area'
+      || Number(requestedAreaCount) !== 1);
 
   useEffect(() => {
-    onDraftDirtyChange?.(Boolean(plan && draftDirty && !deployed));
-  }, [deployed, draftDirty, onDraftDirtyChange, plan]);
+    onDraftDirtyChange?.(hasUnsavedCanvasWork);
+  }, [hasUnsavedCanvasWork, onDraftDirtyChange]);
 
   useEffect(() => () => onDraftDirtyChange?.(false), [onDraftDirtyChange]);
 
   useEffect(() => {
-    if (!plan || !draftDirty || deployed) return undefined;
+    if (!hasUnsavedCanvasWork) return undefined;
     const warnBeforeUnload = (event) => {
       event.preventDefault();
       event.returnValue = '';
     };
     window.addEventListener('beforeunload', warnBeforeUnload);
     return () => window.removeEventListener('beforeunload', warnBeforeUnload);
-  }, [deployed, draftDirty, plan]);
+  }, [hasUnsavedCanvasWork]);
 
   const generationBlockers = useMemo(() => {
     const blockers = [];
     const boundary = validateCanvasBoundary(polygon);
     if (!boundary.valid) blockers.push(boundary.message);
     if (roadFetchStatus === 'loading') blockers.push('Wait for the street network to finish loading.');
-    if (roadFetchStatus === 'unavailable') blockers.push('Street data is unavailable. Retry before dividing this area.');
-    if (roadFetchStatus !== 'ready' && boundary.valid && roadFetchStatus !== 'loading' && roadFetchStatus !== 'unavailable') blockers.push('Street data loads after you draw the global area.');
+    if (roadFetchStatus === 'unavailable') blockers.push(roadFetchError?.message || 'Street data is unavailable. Retry before dividing this area.');
+    if (roadFetchStatus === 'empty') blockers.push(roadFetchError?.message || 'No eligible streets were found inside this boundary.');
+    if (roadFetchStatus !== 'ready' && boundary.valid && !['loading', 'unavailable', 'empty'].includes(roadFetchStatus)) blockers.push('Street data loads after you draw the global area.');
     if (divisionBasis === 'selected_reps' && requestedZoneCount < 1) blockers.push('Select at least one active rep. Canvas creates one territory per selected rep.');
     if (divisionBasis === 'selected_reps' && requestedZoneCount > 250) blockers.push('Canvas supports at most 250 territories in one campaign.');
     if (divisionBasis === 'area_count' && (requestedAreaCount < 1 || requestedAreaCount > 250)) blockers.push('Choose between 1 and 250 territories.');
     if (divisionBasis === 'street_workload_target' && (targetStreetWorkloadMiles < 0.1 || targetStreetWorkloadMiles > 25)) blockers.push('Choose an approximate street workload between 0.1 and 25 miles per territory.');
     return blockers;
-  }, [divisionBasis, polygon, requestedAreaCount, requestedZoneCount, roadFetchStatus, targetStreetWorkloadMiles]);
+  }, [divisionBasis, polygon, requestedAreaCount, requestedZoneCount, roadFetchError?.message, roadFetchStatus, targetStreetWorkloadMiles]);
 
   const refreshCampaignIndex = useCallback(async () => {
     if (!user?.id) return setCampaignIndex([]);
@@ -332,6 +355,7 @@ export default function CanvasBuilderSettings({
     try {
       const result = await listMyCanvasCampaigns();
       setCampaignIndex(result.campaigns);
+      setQuarantinableCampaignCount(Math.max(0, Number(result.quarantinable_campaigns) || 0));
       const warnings = [];
       if (Number(result.rejected_campaigns) > 0) warnings.push(`${result.rejected_campaigns} campaign record${result.rejected_campaigns === 1 ? '' : 's'} failed verification and were hidden.`);
       if (result.truncated) warnings.push('Only the newest 500 campaigns are shown.');
@@ -342,6 +366,25 @@ export default function CanvasBuilderSettings({
       setCampaignIndexLoading(false);
     }
   }, [user?.id]);
+
+  const quarantineRejectedCampaigns = async () => {
+    if (!quarantinableCampaignCount || quarantiningCampaigns || activeOperationRef.current) return;
+    const confirmed = window.confirm(`Quarantine ${quarantinableCampaignCount} unsigned legacy Canvas record${quarantinableCampaignCount === 1 ? '' : 's'}? They will remain preserved for audit, but can never be active or sent to reps. Signed records are never changed by this recovery action.`);
+    if (!confirmed) return;
+    activeOperationRef.current = 'quarantine';
+    setQuarantiningCampaigns(true);
+    const toastId = toast.loading('Quarantining invalid Canvas records...');
+    try {
+      const result = await quarantineInvalidCanvasCampaigns();
+      toast.success(`${result.quarantined_count || 0} unsigned legacy Canvas record${result.quarantined_count === 1 ? '' : 's'} quarantined.`, { id: toastId });
+      await refreshCampaignIndex();
+    } catch (error) {
+      toast.error(error.message || 'Invalid Canvas records could not be quarantined.', { id: toastId });
+    } finally {
+      setQuarantiningCampaigns(false);
+      if (activeOperationRef.current === 'quarantine') activeOperationRef.current = '';
+    }
+  };
 
   const loadCampaignMap = useCallback(async (campaign, { quiet = false } = {}) => {
     const id = campaignId(campaign);
@@ -440,32 +483,59 @@ export default function CanvasBuilderSettings({
   }, [plan?.data_version]);
 
   useEffect(() => {
+    roadFetchAbortRef.current?.abort();
     if (!polygon.length) {
       setRoadNetwork(null);
       setRoadFetchStatus('idle');
+      setRoadFetchError(null);
+      setRoadFetchProgress(null);
       return undefined;
     }
     const boundary = validateCanvasBoundary(polygon);
     if (!boundary.valid) {
       setRoadNetwork(null);
       setRoadFetchStatus('invalid');
+      setRoadFetchError({ code: boundary.code, message: boundary.message });
+      setRoadFetchProgress(null);
       return undefined;
     }
-    let cancelled = false;
+    const abortController = new AbortController();
+    roadFetchAbortRef.current = abortController;
     setRoadFetchStatus('loading');
+    setRoadFetchError(null);
+    setRoadFetchProgress(null);
     setRoadNetwork(null);
-    fetchOverpassRoadNetwork(polygon, { highwayFilter: CANVAS_HIGHWAY_FILTER })
+    fetchOverpassRoadNetwork(polygon, {
+      highwayFilter: CANVAS_HIGHWAY_FILTER,
+      signal: abortController.signal,
+      onProgress: (progress) => { if (!abortController.signal.aborted) setRoadFetchProgress(progress); },
+    })
       .then((network) => {
-        if (cancelled) return;
+        if (abortController.signal.aborted) return;
         if (network?.elements?.length) {
           setRoadNetwork(network);
           setRoadFetchStatus('ready');
+          setRoadFetchProgress(null);
         } else {
-          setRoadFetchStatus('unavailable');
+          setRoadNetwork(network);
+          setRoadFetchStatus('empty');
+          setRoadFetchError({
+            code: 'CANVAS_ROAD_NETWORK_EMPTY',
+            message: 'No eligible drivable streets were found inside this boundary. Redraw around a road-connected area or broaden the outline.',
+          });
+          setRoadFetchProgress(null);
         }
       })
-      .catch(() => { if (!cancelled) setRoadFetchStatus('unavailable'); });
-    return () => { cancelled = true; };
+      .catch((error) => {
+        if (abortController.signal.aborted || error?.code === 'CANVAS_ROAD_NETWORK_ABORTED') return;
+        setRoadFetchStatus('unavailable');
+        setRoadFetchError(error);
+        setRoadFetchProgress(null);
+      });
+    return () => {
+      abortController.abort();
+      if (roadFetchAbortRef.current === abortController) roadFetchAbortRef.current = null;
+    };
   }, [polygonKey, roadFetchNonce]);
 
   useEffect(() => {
@@ -492,11 +562,18 @@ export default function CanvasBuilderSettings({
     deploymentAttemptRef.current = null;
   };
 
-  const clearFlexibleAssignments = () => {
+  const reconcileFlexibleAssignments = (allowedTeamMemberIds) => {
     if (!plan || deployed || activeOperationRef.current || divisionBasis === 'selected_reps') return;
+    const allowed = new Set((allowedTeamMemberIds || []).map(String));
     setPlan((current) => withAssignmentGate({
       ...current,
-      zones: current.zones.map((zone) => updateCanvasZoneAssignment(zone, '', activeTeamMembers)),
+      selected_team_member_ids: [...allowed],
+      zones: current.zones.map((zone) => {
+        const assignedId = String(zone.assigned_team_member_id || '');
+        return assignedId && !allowed.has(assignedId)
+          ? updateCanvasZoneAssignment(zone, '', activeTeamMembers)
+          : zone;
+      }),
     }));
     setDraftDirty(true);
     deploymentAttemptRef.current = null;
@@ -505,12 +582,15 @@ export default function CanvasBuilderSettings({
   const toggleTeamMember = (teamMemberId) => {
     if (deployed || activeOperationRef.current) return;
     const id = String(teamMemberId);
-    setSelectedTeamMemberIds((current) => current.includes(id) ? current.filter((value) => value !== id) : [...current, id]);
+    const nextIds = selectedTeamMemberIds.includes(id)
+      ? selectedTeamMemberIds.filter((value) => value !== id)
+      : [...selectedTeamMemberIds, id];
+    setSelectedTeamMemberIds(nextIds);
     if (plan) setDraftDirty(true);
     if (divisionBasis === 'selected_reps') {
       markPlanStale('The selected reps changed; regenerate one territory per rep.');
     }
-    else clearFlexibleAssignments();
+    else reconcileFlexibleAssignments(nextIds);
   };
 
   const replaceTeamMemberSelection = (teamMemberIds) => {
@@ -523,7 +603,7 @@ export default function CanvasBuilderSettings({
     if (divisionBasis === 'selected_reps') {
       markPlanStale('The selected reps changed; regenerate one territory per rep.');
     }
-    else clearFlexibleAssignments();
+    else reconcileFlexibleAssignments(nextIds);
   };
 
   const changeDivisionBasis = (nextBasis) => {
@@ -549,7 +629,7 @@ export default function CanvasBuilderSettings({
     if (activeOperationRef.current === 'generate') plannerAbortRef.current?.abort();
     setRequestedAreaCount(value);
     setLivePreviewRevision((current) => current + 1);
-    markPlanStale('The crew size changed; create the territories again.');
+    markPlanStale('The number of areas changed; Canvas is updating the preview.');
   };
 
   const changeTargetStreetWorkloadMiles = (value) => {
@@ -600,7 +680,7 @@ export default function CanvasBuilderSettings({
     if (typeof generateStreetPlan !== 'function') return toast.error('The street territory planner is unavailable.');
     activeOperationRef.current = 'generate';
     setGenerating(true);
-    const toastId = quiet ? null : toast.loading('Dividing the global area along connected streets...');
+    const toastId = quiet ? null : toast.loading('Dividing the work area along connected streets...');
     const abortController = new AbortController();
     plannerAbortRef.current = abortController;
     const requestSnapshot = {
@@ -633,8 +713,8 @@ export default function CanvasBuilderSettings({
         teamMembers: requestSnapshot.activeTeamMembers,
         targetWorkloadMeters: requestSnapshot.targetWorkloadMeters,
       });
-      if (!nextPlan.zones.length) throw new Error('The planner did not produce any connected territories.');
-      if (nextPlan.zones.length > 250) throw new Error('This workload size creates more than 250 territories. Increase the approximate street miles per territory and generate again.');
+      if (!nextPlan.zones.length) throw new Error('The planner did not produce any connected areas.');
+      if (nextPlan.zones.length > 250) throw new Error('This plan creates more than 250 areas. Choose fewer subdivisions and generate again.');
       const complexityStatus = getCanvasPlanComplexityStatus(nextPlan);
       if (!complexityStatus.supported) throw new Error(complexityStatus.message);
       lastGeneratedPreviewRevisionRef.current = requestSnapshot.livePreviewRevision;
@@ -645,7 +725,7 @@ export default function CanvasBuilderSettings({
       setDraftDirty(true);
       deploymentAttemptRef.current = null;
       setSelectedZoneNumber(nextPlan.zones[0]?.zone_number || null);
-      if (!quiet) toast.success(`${nextPlan.zones.length} connected territories are ready to review.`, { id: toastId });
+      if (!quiet) toast.success(`${nextPlan.zones.length} connected areas are ready to review.`, { id: toastId });
     } catch (error) {
       if (error?.name === 'AbortError' || error?.code === 'CANVAS_PLANNER_ABORTED') {
         if (toastId) toast.dismiss(toastId);
@@ -682,23 +762,22 @@ export default function CanvasBuilderSettings({
     if (!plan || deployed || activeOperationRef.current) return;
     const assignmentPool = selectedTeamMemberIds;
     if (!assignmentPool.length) return toast.error('Choose the reps who should receive these territories first.');
-    if (divisionBasis === 'area_count' && assignmentPool.length !== zones.length) {
-      return toast.error(`Choose exactly ${zones.length} reps so every person receives one territory.`);
-    }
     if (assignmentPool.length > zones.length) return toast.error(`Choose at most ${zones.length} reps for ${zones.length} territories.`);
     setPlan((current) => planWithAssignments({ ...current, selected_team_member_ids: assignmentPool }, assignmentPool, activeTeamMembers));
     setDraftDirty(true);
     deploymentAttemptRef.current = null;
-    toast.success(divisionBasis === 'area_count'
-      ? `${zones.length} territories assigned one per rep.`
-      : `${zones.length} territories assigned across ${assignmentPool.length} selected rep${assignmentPool.length === 1 ? '' : 's'}.`);
+    toast.success(`${zones.length} areas assigned across ${assignmentPool.length} selected rep${assignmentPool.length === 1 ? '' : 's'}.`);
   };
 
   const updateZoneAssignment = (zoneNumber, teamMemberId) => {
     if (!plan || deployed || activeOperationRef.current) return;
+    const nextSelectedIds = teamMemberId
+      ? [...new Set([...selectedTeamMemberIds, String(teamMemberId)])]
+      : selectedTeamMemberIds;
+    if (teamMemberId) setSelectedTeamMemberIds(nextSelectedIds);
     setPlan((current) => withAssignmentGate({
       ...current,
-      selected_team_member_ids: selectedTeamMemberIds,
+      selected_team_member_ids: nextSelectedIds,
       zones: current.zones.map((zone) => Number(zone.zone_number) === Number(zoneNumber)
         ? updateCanvasZoneAssignment(zone, teamMemberId, activeTeamMembers)
         : zone),
@@ -708,12 +787,18 @@ export default function CanvasBuilderSettings({
   };
 
   const confirmDiscardUnsaved = useCallback((action) => {
-    if (!plan || !draftDirty || deployed) return true;
+    if (!hasUnsavedCanvasWork) return true;
     return window.confirm(`You have unsaved Canvas territory changes. ${action} will discard them. Continue?`);
-  }, [deployed, draftDirty, plan]);
+  }, [hasUnsavedCanvasWork]);
 
   const closePlanner = () => {
     if (confirmDiscardUnsaved('Closing the planner')) onClose?.();
+  };
+
+  const changeWorkspaceView = (nextView) => {
+    const normalizedView = nextView === 'areas' ? 'areas' : 'new_area';
+    setWorkspaceView(normalizedView);
+    try { sessionStorage.setItem('fk_canvasPlannerView', normalizedView); } catch {}
   };
 
   const redrawArea = () => {
@@ -737,7 +822,7 @@ export default function CanvasBuilderSettings({
     const ownsOperationLock = !withinDeploy;
     if (ownsOperationLock) activeOperationRef.current = 'save';
     setSaving(true);
-    const toastId = quiet ? null : toast.loading('Saving the territory draft...');
+    const toastId = quiet ? null : toast.loading('Saving the Canvas area plan...');
     try {
       const auditedPlan = {
         ...deploymentPlan,
@@ -767,7 +852,7 @@ export default function CanvasBuilderSettings({
       setPlan((current) => current ? { ...current, qa: { ...current.qa, ...(saved.qa || {}) } } : current);
       setDraftDirty(false);
       refreshCampaignIndex();
-      if (!quiet) toast.success(`Territory draft saved · version ${saved.version}`, { id: toastId });
+      if (!quiet) toast.success(`Area plan saved · version ${saved.version}`, { id: toastId });
       return saved;
     } catch (error) {
       toast.error(error.message, toastId ? { id: toastId } : undefined);
@@ -833,6 +918,8 @@ export default function CanvasBuilderSettings({
       setLiveCampaignMap(null);
       setLiveMapError('');
       deploymentAttemptRef.current = null;
+      setWorkspaceView('areas');
+      try { sessionStorage.setItem('fk_canvasPlannerView', 'areas'); } catch {}
       window.dispatchEvent(new CustomEvent('fk-canvas-campaign-map-updated', { detail: null }));
       toast.success(`Draft restored · server version ${campaign.version}`, { id: toastId });
     } catch (error) {
@@ -947,6 +1034,7 @@ export default function CanvasBuilderSettings({
 
   const startAnotherArea = () => {
     if (activeOperationRef.current) return;
+    if (!confirmDiscardUnsaved('Starting another area')) return;
     setPlan(null);
     setPlanStaleReason('');
     setServerSession(null);
@@ -954,6 +1042,8 @@ export default function CanvasBuilderSettings({
     setLiveCampaignMap(null);
     setLiveMapError('');
     setSessionName('Canvas Cold Area');
+    setDivisionBasis('area_count');
+    setSelectedTeamMemberIds([]);
     setWorkloadExceptionAccepted(false);
     setDraftDirty(false);
     setLivePreviewRevision(0);
@@ -961,15 +1051,18 @@ export default function CanvasBuilderSettings({
     lastAttemptedPreviewRevisionRef.current = -1;
     deploymentAttemptRef.current = null;
     closeAttemptRef.current = null;
+    setWorkspaceView('new_area');
+    try { sessionStorage.setItem('fk_canvasPlannerView', 'new_area'); } catch {}
     window.dispatchEvent(new CustomEvent('fk-canvas-zones-updated', { detail: { zones: [], workUnits: [], previewOnly: true } }));
     window.dispatchEvent(new CustomEvent('fk-canvas-campaign-map-updated', { detail: null }));
     onDraw();
   };
+  startAnotherAreaRef.current = startAnotherArea;
 
   const contentProps = {
     sessionName, changeSessionName, polygon, hasDrawnArea, onDraw: redrawArea, onClearPolygon: clearArea, onClose: closePlanner,
     divisionBasis, changeDivisionBasis, selectedTeamMemberIds, toggleTeamMember, replaceTeamMemberSelection, activeTeamMembers, teamMembersReady, teamExclusions: teamEligibility.excluded,
-    requestedAreaCount, changeRequestedAreaCount, targetStreetWorkloadMiles, changeTargetStreetWorkloadMiles, requestedZoneCount, roadFetchStatus, refreshRoadData,
+    requestedAreaCount, changeRequestedAreaCount, targetStreetWorkloadMiles, changeTargetStreetWorkloadMiles, requestedZoneCount, roadFetchStatus, roadFetchError, roadFetchProgress, refreshRoadData,
     generationBlockers, generatePlan, generating, plan, planStaleReason,
     zones, assignedZoneCount, selectedZone, selectedZoneNumber, setSelectedZoneNumber,
     autoAssign, updateZoneAssignment, membersById,
@@ -977,8 +1070,10 @@ export default function CanvasBuilderSettings({
     startAnotherArea,
     savedDrafts, selectedDraft, selectedDraftId, setSelectedDraftId, resumeDraft, resumingDraft,
     otherActiveCampaigns, selectedIndexedCampaign, selectedIndexedCampaignId, setSelectedIndexedCampaignId, campaignIndexLoading, campaignIndexError, campaignSigningUnavailable, refreshCampaignIndex,
+    quarantinableCampaignCount, quarantineRejectedCampaigns, quarantiningCampaigns,
     liveCampaignMap, liveMapLoading, liveMapError, loadCampaignMap,
     refreshTeamRoster, teamRosterRefreshing, canRefreshTeamRoster: typeof onRefreshTeamMembers === 'function',
+    workspaceView, changeWorkspaceView,
   };
 
   return (
@@ -995,6 +1090,13 @@ export default function CanvasBuilderSettings({
 }
 
 function BuilderContent(props) {
+  if (props.workspaceView === 'new_area' || props.workspaceView === 'areas') {
+    return <CanvasPlannerWorkspace {...props} />;
+  }
+  return <LegacyBuilderContent {...props} />;
+}
+
+function LegacyBuilderContent(props) {
   const {
     sessionName, changeSessionName, polygon, hasDrawnArea, onDraw, onClearPolygon, onClose,
     divisionBasis, changeDivisionBasis, selectedTeamMemberIds, toggleTeamMember, replaceTeamMemberSelection, activeTeamMembers, teamMembersReady, teamExclusions,

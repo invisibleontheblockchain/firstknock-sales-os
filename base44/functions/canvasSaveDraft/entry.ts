@@ -1,7 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 const MAX_POLYGON_POINTS = 800;
-const MAX_AREA_SQ_MI = 300;
+const MAX_AREA_SQ_MI = 1_000;
 const MAX_ZONES = 250;
 const MAX_WORK_UNITS = 10000;
 const MAX_SEGMENTS = 50000;
@@ -30,6 +30,56 @@ function normalized(value: unknown) {
   return String(value || '').trim().toLowerCase();
 }
 
+function isoInstant(value: unknown) {
+  if (typeof value !== 'string'
+    || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/.test(value)) return null;
+  const milliseconds = Date.parse(value);
+  return Number.isFinite(milliseconds) ? milliseconds : null;
+}
+
+function betaGrantResolution(user: any) {
+  const userId = String(user?.id || '');
+  if (!userId) return { present: false, grant: null };
+  const encoded = Deno.env.get('BETA_ACCESS_GRANTS');
+  if (!encoded) return { present: false, grant: null };
+  let document: any;
+  try {
+    document = JSON.parse(encoded);
+  } catch {
+    return { present: false, grant: null };
+  }
+  if (!document || Array.isArray(document) || document.version !== 1
+    || !document.grants || Array.isArray(document.grants) || typeof document.grants !== 'object') {
+    return { present: false, grant: null };
+  }
+  if (!Object.prototype.hasOwnProperty.call(document.grants, userId)) return { present: false, grant: null };
+  const candidate = document.grants[userId];
+  const startsAt = isoInstant(candidate?.starts_at);
+  const endsAt = isoInstant(candidate?.ends_at);
+  const precisionLimit = Number(candidate?.precision_limit);
+  const canvasSeats = Number(candidate?.canvas_seats);
+  if (!candidate || Array.isArray(candidate) || typeof candidate !== 'object'
+    || typeof candidate.grant_id !== 'string' || !candidate.grant_id.trim() || candidate.grant_id.length > 256
+    || candidate.status !== 'active'
+    || !Number.isInteger(precisionLimit) || precisionLimit < 1 || precisionLimit > 1_000
+    || !Number.isInteger(canvasSeats) || canvasSeats < 1 || canvasSeats > 100
+    || startsAt === null || endsAt === null || startsAt >= endsAt) {
+    return { present: true, grant: null };
+  }
+  const now = Date.now();
+  if (now < startsAt || now >= endsAt) return { present: true, grant: null };
+  return {
+    present: true,
+    grant: {
+      grant_id: candidate.grant_id,
+      precision_limit: precisionLimit,
+      canvas_seats: canvasSeats,
+      starts_at: candidate.starts_at,
+      ends_at: candidate.ends_at
+    }
+  };
+}
+
 function canManageCanvas(user: any) {
   const appRole = normalized(user?.app_role || user?.data?.app_role);
   const accountRole = normalized(user?.role || user?.data?.role);
@@ -39,6 +89,8 @@ function canManageCanvas(user: any) {
 function hasDraftCanvasEntitlement(user: any) {
   const accountRole = normalized(user?.role || user?.data?.role);
   if (accountRole === 'admin') return true;
+  const beta = betaGrantResolution(user);
+  if (beta.present) return Boolean(beta.grant);
   if (normalized(user?.subscription_tier) !== 'canvas') return false;
   const status = normalized(user?.subscription_status);
   if (status === 'active') return user?.subscription_paid_confirmed === true;
@@ -328,9 +380,11 @@ Deno.serve(async (req: Request) => {
     const selectedTeamMemberIds = suppliedTeamMemberIds.length ? suppliedTeamMemberIds : uniqueAssigneeIds;
     const everyZoneAssigned = zoneAssigneeIds.length === zones.length;
     const selectionMatches = everyZoneAssigned && sameIdSet(selectedTeamMemberIds, uniqueAssigneeIds);
-    const oneToOneRequired = divisionMode === 'selected_reps' || divisionMode === 'area_count';
-    const selectedRepsOneToOne = !oneToOneRequired
-      || (zones.length === selectedTeamMemberIds.length && uniqueAssigneeIds.length === zones.length && selectionMatches);
+    const oneToOneRequired = divisionMode === 'selected_reps';
+    const selectedRepsOneToOne = oneToOneRequired
+      ? zones.length === selectedTeamMemberIds.length && uniqueAssigneeIds.length === zones.length && selectionMatches
+      : null;
+    const assignmentContractSatisfied = oneToOneRequired ? selectedRepsOneToOne === true : selectionMatches;
     const suppliedTargetWorkload = finiteNumber(body?.target_workload, 'target_workload', 0, true);
     if (divisionMode === 'street_workload_target' && !(Number(suppliedTargetWorkload) > 0)) {
       throw new HttpError(400, 'invalid_plan', 'target_workload must be positive class-weighted street meters for street_workload_target planning.');
@@ -356,7 +410,7 @@ Deno.serve(async (req: Request) => {
       && workloadBasis === 'street_length'
       && everyZoneAssigned
       && selectionMatches
-      && selectedRepsOneToOne
+      && assignmentContractSatisfied
       && (!workloadExceptionRequired || managerWorkloadExceptionAcknowledged);
 
     const normalizedPlan = {

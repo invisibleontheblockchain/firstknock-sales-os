@@ -53,6 +53,35 @@ test('Canvas campaign index derives immutable superseded predecessors as non-act
   assert.doesNotMatch(list, /asServiceRole/);
 });
 
+test('invalid legacy lifecycle records have an explicit fail-closed quarantine path', () => {
+  const quarantine = readSource('base44/functions/canvasQuarantineInvalidCampaigns/entry.ts');
+  const list = readSource('base44/functions/canvasListCampaigns/entry.ts');
+  const session = JSON.parse(readSource('base44/entities/CanvasSession.jsonc'));
+  assert.match(quarantine, /QUARANTINE_INVALID_CANVAS_RECORDS/);
+  assert.match(quarantine, /if \(await verifyLifecycle\(secret, candidate\)\)/);
+  assert.match(quarantine, /if \(String\(candidate\?\.deployment_signature \|\| ''\)\.trim\(\)\)/);
+  assert.match(quarantine, /unresolved_signed_campaign_count/);
+  assert.match(quarantine, /manager_id: user\.id,[\s\S]*?status: candidate\.status,[\s\S]*?version: expectedVersion/);
+  assert.match(quarantine, /status: 'quarantined'/);
+  assert.match(quarantine, /quarantine_reason: 'legacy_lifecycle_verification_failed'/);
+  assert.doesNotMatch(quarantine, /CanvasSession\.delete|\.deleteMany/);
+  assert.match(list, /\["draft", "quarantined"\]\.includes\(session\.status\)/);
+  assert.match(list, /trustedSessions\.filter\(\(session\) => \["deployed", "completed", "recalled"\]\.includes\(session\.status\)\)/);
+  assert.match(list, /quarantinable_campaigns: quarantinableCampaigns/);
+  assert.ok(session.properties.status.enum.includes('quarantined'));
+});
+
+test('large Canvas road verification fails closed on cumulative size and time budgets', () => {
+  const deploy = readSource('base44/functions/canvasDeployCampaign/entry.ts');
+  assert.match(deploy, /MAX_OSM_TILE_JSON_BYTES/);
+  assert.match(deploy, /OVERPASS_TOTAL_TIMEOUT_MS/);
+  assert.match(deploy, /cumulativeBytes > MAX_OSM_JSON_BYTES \|\| byIdentity\.size > MAX_OSM_ELEMENTS/);
+  assert.match(deploy, /response\.body\.getReader\(\)/);
+  assert.match(deploy, /batchController\.abort\(\)/);
+  assert.match(deploy, /canvas_topology_source_timeout/);
+  assert.doesNotMatch(deploy, /const results = new Array\(tiles\.length\)/);
+});
+
 test('Canvas transient conflict codes stay aligned with deploy and field retry handling', () => {
   const deploy = readSource('base44/functions/canvasDeployCampaign/entry.ts');
   const builder = readSource('src/components/map/CanvasBuilderSettings.jsx');

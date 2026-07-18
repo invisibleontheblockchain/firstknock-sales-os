@@ -136,21 +136,28 @@ test('Canvas client sends the territory pin and shared campaign map contracts', 
   }
 });
 
-test('Canvas road cache is time-bounded, refreshable, and uses current Overpass fallbacks', async () => {
+test('Canvas road loading is identifiable, abortable, typed, cached, and uses current Overpass fallbacks', async () => {
   const source = readFileSync(new URL('../src/components/logic/overpassRoadNetwork.jsx', import.meta.url), 'utf8');
   assert.match(source, /overpass\.private\.coffee/);
+  assert.match(source, /maps\.mail\.ru/);
   assert.doesNotMatch(source, /overpass\.kumi\.systems/);
   const originalSessionStorage = globalThis.sessionStorage;
   const originalFetch = globalThis.fetch;
+  const originalLocation = globalThis.location;
+  const originalConsoleWarn = console.warn;
   const stored = new Map();
   let fetchCount = 0;
+  const requests = [];
   globalThis.sessionStorage = {
     getItem: (key) => stored.get(key) || null,
     setItem: (key, value) => stored.set(key, value),
     removeItem: (key) => stored.delete(key),
   };
-  globalThis.fetch = async () => {
+  globalThis.location = { origin: 'https://firstknock.online' };
+  console.warn = () => {};
+  globalThis.fetch = async (url, init) => {
     fetchCount += 1;
+    requests.push({ url, init });
     return { ok: true, json: async () => ({ elements: [{ type: 'node', id: fetchCount, lat: 33, lon: -112 }] }) };
   };
   try {
@@ -161,6 +168,133 @@ test('Canvas road cache is time-bounded, refreshable, and uses current Overpass 
     assert.equal(fetchCount, 1);
     await roads.fetchOverpassRoadNetwork(boundary, { bypassCache: true });
     assert.equal(fetchCount, 2);
+    assert.equal(requests[0].url, 'https://overpass-api.de/api/interpreter');
+    assert.equal(requests[0].init.referrer, 'https://firstknock.online/');
+    assert.equal(requests[0].init.referrerPolicy, 'strict-origin-when-cross-origin');
+    assert.equal(requests[0].init.credentials, 'omit');
+    assert.equal(requests[0].init.headers.Accept, 'application/json');
+
+    const emptyBoundary = [{ lat: 34, lng: -112 }, { lat: 34.01, lng: -112 }, { lat: 34, lng: -111.99 }];
+    const fallbackRequests = [];
+    globalThis.fetch = async (url, init) => {
+      fallbackRequests.push({ url, init });
+      if (url.includes('overpass-api.de')) return { ok: false, status: 503, json: async () => ({}) };
+      return { ok: true, status: 200, json: async () => ({ elements: [] }) };
+    };
+    const empty = await roads.fetchOverpassRoadNetwork(emptyBoundary);
+    assert.deepEqual(empty.elements, []);
+    assert.equal(empty._canvas.status, 'empty');
+    assert.equal(empty._canvas.source, 'maps.mail.ru');
+    assert.deepEqual(fallbackRequests.map(({ url }) => url), [
+      'https://overpass-api.de/api/interpreter',
+      'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
+    ]);
+    await roads.fetchOverpassRoadNetwork(emptyBoundary);
+    assert.equal(fallbackRequests.length, 2, 'a complete empty response should be cached rather than retried as a service failure');
+
+    const abortController = new AbortController();
+    abortController.abort();
+    await assert.rejects(
+      roads.fetchOverpassRoadNetwork([
+        { lat: 35, lng: -112 },
+        { lat: 35.01, lng: -112 },
+        { lat: 35, lng: -111.99 },
+      ], { signal: abortController.signal }),
+      (error) => error?.name === 'CanvasRoadNetworkError' && error?.code === 'CANVAS_ROAD_NETWORK_ABORTED',
+    );
+
+    const inFlightAbortController = new AbortController();
+    globalThis.fetch = async (_url, init) => new Promise((resolve, reject) => {
+      init.signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true });
+    });
+    const inFlightRequest = roads.fetchOverpassRoadNetwork([
+      { lat: 35.1, lng: -112 },
+      { lat: 35.11, lng: -112 },
+      { lat: 35.1, lng: -111.99 },
+    ], { signal: inFlightAbortController.signal });
+    inFlightAbortController.abort();
+    await assert.rejects(
+      inFlightRequest,
+      (error) => error?.name === 'CanvasRoadNetworkError' && error?.code === 'CANVAS_ROAD_NETWORK_ABORTED',
+    );
+
+    const failedEndpoints = [];
+    globalThis.fetch = async (url) => {
+      failedEndpoints.push(url);
+      return { ok: false, status: 503, json: async () => ({}) };
+    };
+    await assert.rejects(
+      roads.fetchOverpassRoadNetwork([
+        { lat: 36, lng: -112 },
+        { lat: 36.01, lng: -112 },
+        { lat: 36, lng: -111.99 },
+      ]),
+      (error) => error?.name === 'CanvasRoadNetworkError'
+        && error?.code === 'CANVAS_ROAD_NETWORK_UNAVAILABLE'
+        && error?.failures?.length === 3
+        && error.failures.every((failure) => failure.code === 'CANVAS_ROAD_NETWORK_SERVICE_BUSY'),
+    );
+    assert.equal(failedEndpoints.length, 3);
+  } finally {
+    globalThis.sessionStorage = originalSessionStorage;
+    globalThis.fetch = originalFetch;
+    console.warn = originalConsoleWarn;
+    if (originalLocation === undefined) delete globalThis.location;
+    else globalThis.location = originalLocation;
+  }
+});
+
+test('large Canvas boundaries load complete deduplicated street tiles with progress', async () => {
+  const source = readFileSync(new URL('../src/components/logic/overpassRoadNetwork.jsx', import.meta.url), 'utf8');
+  const originalSessionStorage = globalThis.sessionStorage;
+  const originalFetch = globalThis.fetch;
+  const stored = new Map();
+  const queries = [];
+  const progress = [];
+  let requestId = 0;
+  globalThis.sessionStorage = {
+    getItem: (key) => stored.get(key) || null,
+    setItem: (key, value) => stored.set(key, value),
+    removeItem: (key) => stored.delete(key),
+  };
+  globalThis.fetch = async (_url, request) => {
+    requestId += 1;
+    queries.push(String(request.body));
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        elements: [
+          { type: 'node', id: 1, lat: 33, lon: -112 },
+          { type: 'node', id: requestId + 1, lat: 33.01, lon: -111.99 },
+        ],
+      }),
+    };
+  };
+  try {
+    const roads = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}#tiled`);
+    const boundary = [
+      { lat: 33, lng: -112 },
+      { lat: 33, lng: -111.88 },
+      { lat: 33.12, lng: -111.88 },
+      { lat: 33.12, lng: -112 },
+    ];
+    const result = await roads.fetchOverpassRoadNetwork(boundary, { onProgress: (value) => progress.push(value) });
+    assert.ok(queries.length > 1);
+    assert.ok(queries.every((query) => query.includes('%28') && !query.includes('poly%3A')));
+    assert.equal(result._canvas.tiled, true);
+    assert.equal(result._canvas.tile_count, queries.length);
+    assert.equal(result.elements.filter((element) => element.id === 1).length, 1);
+    assert.equal(progress.at(-1).completed, progress.at(-1).total);
+    await assert.rejects(
+      roads.fetchOverpassRoadNetwork(boundary.map((point) => ({ ...point, lat: point.lat + 1 })), {
+        maxTotalBytes: 250,
+      }),
+      (error) => error?.code === 'CANVAS_ROAD_NETWORK_TOO_COMPLEX',
+    );
+    assert.match(source, /cumulativeBytes > maxTotalBytes/);
+    assert.match(source, /batchController\.abort\(\)/);
+    assert.match(source, /DEFAULT_OVERALL_TIMEOUT_MS/);
   } finally {
     globalThis.sessionStorage = originalSessionStorage;
     globalThis.fetch = originalFetch;
@@ -220,17 +354,27 @@ test('Canvas rejects more than 800 freehand points before topology work', () => 
   assert.match(result.message, /up to 800 points/);
 });
 
-test('Canvas rejects areas over 300 square miles before loading streets', () => {
-  const result = validateCanvasBoundary([
-    { lat: 33, lng: -112 },
-    { lat: 33, lng: -111.6 },
-    { lat: 33.4, lng: -111.6 },
-    { lat: 33.4, lng: -112 },
-  ]);
+test('Canvas accepts broad plans through 1,000 square miles and rejects larger boundaries', () => {
+  const boundaryForArea = (areaSqMiles) => {
+    const sideMiles = Math.sqrt(areaSqMiles);
+    const latitudeSpan = sideMiles / 69;
+    const longitudeSpan = sideMiles / (69 * Math.cos(33 * Math.PI / 180));
+    return [
+      { lat: 33, lng: -112 },
+      { lat: 33, lng: -112 + longitudeSpan },
+      { lat: 33 + latitudeSpan, lng: -112 + longitudeSpan },
+      { lat: 33 + latitudeSpan, lng: -112 },
+    ];
+  };
+  for (const area of [50, 200, 999]) {
+    const supported = validateCanvasBoundary(boundaryForArea(area));
+    assert.equal(supported.valid, true, `${area} sq mi should be accepted`);
+  }
+  const result = validateCanvasBoundary(boundaryForArea(1_100));
   assert.equal(result.valid, false);
   assert.equal(result.code, 'CANVAS_AREA_TOO_LARGE');
-  assert.ok(result.areaSqMiles > 300);
-  assert.match(result.message, /300 sq mi or less before loading streets/);
+  assert.ok(result.areaSqMiles > 1_000);
+  assert.match(result.message, /1,000 sq mi or less before loading streets/);
 });
 
 test('Canvas assignment stores TeamMember IDs and display labels separately', () => {
@@ -254,27 +398,43 @@ test('Canvas preserves one territory per selected rep at 2, 20, and 200 reps', (
   }
 });
 
-test('headcount assignment requires one distinct selected rep per territory', () => {
+test('area-count assignment may repeat reps but must cover the exact selected roster', () => {
   const zones = [
     { zone_id: 'zone_1', assigned_team_member_id: 'rep_1' },
     { zone_id: 'zone_2', assigned_team_member_id: 'rep_1' },
+    { zone_id: 'zone_3', assigned_team_member_id: 'rep_2' },
   ];
-  const duplicate = getCanvasCrewAssignmentStatus({ division_mode: 'area_count', zones }, ['rep_1', 'rep_2']);
-  assert.equal(duplicate.valid, false);
-  assert.match(duplicate.message, /exactly one territory/);
+  const repeated = getCanvasCrewAssignmentStatus({ division_mode: 'area_count', zones }, ['rep_1', 'rep_2']);
+  assert.equal(repeated.valid, true);
+  assert.equal(repeated.oneToOne, false);
+
+  const omittedSelection = getCanvasCrewAssignmentStatus({
+    division_mode: 'area_count',
+    zones: zones.map((zone) => ({ ...zone, assigned_team_member_id: 'rep_1' })),
+  }, ['rep_1', 'rep_2']);
+  assert.equal(omittedSelection.valid, false);
+  assert.match(omittedSelection.message, /Every selected rep must receive work/);
+});
+
+test('selected-rep assignment remains strictly one territory per selected rep', () => {
+  const repeated = getCanvasCrewAssignmentStatus({
+    division_mode: 'selected_reps',
+    zones: [
+      { zone_id: 'zone_1', assigned_team_member_id: 'rep_1' },
+      { zone_id: 'zone_2', assigned_team_member_id: 'rep_1' },
+    ],
+  }, ['rep_1']);
+  assert.equal(repeated.valid, false);
+  assert.match(repeated.message, /exactly 2 reps/);
 
   const oneEach = getCanvasCrewAssignmentStatus({
-    division_mode: 'area_count',
-    zones: [zones[0], { ...zones[1], assigned_team_member_id: 'rep_2' }],
+    division_mode: 'selected_reps',
+    zones: [
+      { zone_id: 'zone_1', assigned_team_member_id: 'rep_1' },
+      { zone_id: 'zone_2', assigned_team_member_id: 'rep_2' },
+    ],
   }, ['rep_1', 'rep_2']);
   assert.equal(oneEach.valid, true);
-
-  const extraSelection = getCanvasCrewAssignmentStatus({
-    division_mode: 'area_count',
-    zones: [zones[0], { ...zones[1], assigned_team_member_id: 'rep_2' }],
-  }, ['rep_1', 'rep_2', 'rep_3']);
-  assert.equal(extraSelection.valid, false);
-  assert.match(extraSelection.message, /exactly 2 reps/);
 });
 
 test('workload packs may repeat reps but cannot silently omit a selected rep', () => {
@@ -446,17 +606,18 @@ test('mobile Canvas collapses so managers can inspect the generated map', () => 
 test('manager has lifecycle controls and a polling shared outcome map', () => {
   const client = readFileSync(new URL('../src/components/canvas/canvasProductionClient.js', import.meta.url), 'utf8');
   const builder = readFileSync(new URL('../src/components/map/CanvasBuilderSettings.jsx', import.meta.url), 'utf8');
+  const workspace = readFileSync(new URL('../src/components/map/CanvasPlannerWorkspace.jsx', import.meta.url), 'utf8');
   const field = readFileSync(new URL('../src/components/rep/CanvasFieldView.jsx', import.meta.url), 'utf8');
   assert.match(client, /invokeProductionFunction\('canvasCloseCampaign'/);
   assert.match(client, /invokeProductionFunction\('canvasGetCampaignMap'/);
   assert.match(builder, /closeCampaign\('complete'\)/);
   assert.match(builder, /closeCampaign\('recall'\)/);
-  assert.match(builder, /Shared campaign map/);
+  assert.match(workspace, /Shared campaign map/);
   assert.match(builder, /CAMPAIGN_REFRESH_MS/);
   assert.match(builder, /last verified map remains visible/);
-  assert.match(builder, /Start another area/);
+  assert.match(workspace, /Create another area plan/);
   assert.match(builder, /startAnotherArea/);
-  assert.match(builder, /Saved Canvas drafts/);
+  assert.match(workspace, /Saved area plans/);
   assert.match(builder, /resumeDraft/);
   assert.match(builder, /onResumeBoundary\(boundary\.points\)/);
   assert.match(builder, /canvasZoneLoggedCount\(value\)/);
@@ -466,14 +627,17 @@ test('manager has lifecycle controls and a polling shared outcome map', () => {
   assert.match(field, /All do-not-knock pins are still loaded/);
 });
 
-test('Canvas leads with crew intent and keeps approximate street sizing advanced', () => {
+test('Canvas builder asks only for subdivision count and keeps assignment in the Areas workspace', () => {
   const builder = readFileSync(new URL('../src/components/map/CanvasBuilderSettings.jsx', import.meta.url), 'utf8');
-  assert.match(builder, /label="Choose who is working"/);
-  assert.match(builder, /title="Choose reps"/);
-  assert.match(builder, /title="Enter headcount"/);
-  assert.match(builder, /How many people are working this area\?/);
-  assert.match(builder, /one connected territory per person/);
-  assert.match(builder, /colored map preview updates automatically/);
+  const workspace = readFileSync(new URL('../src/components/map/CanvasPlannerWorkspace.jsx', import.meta.url), 'utf8');
+  assert.match(builder, /useState\('area_count'\)/);
+  assert.match(workspace, /Choose the number of areas/);
+  assert.match(workspace, /Number of areas/);
+  assert.match(workspace, /only the subdivision count/);
+  assert.match(workspace, /No rep is assigned and nothing is sent from the builder/);
+  assert.match(workspace, /AREAS & ASSIGNMENTS/);
+  assert.match(workspace, /One rep may hold more than one area/);
+  assert.doesNotMatch(workspace, /How many people are working this area|Enter headcount|Choose who is working|standard-size work packs/);
   assert.match(builder, /window\.setTimeout\(\(\) => \{[\s\S]*?generatePlan\(\{ quiet: true \}\)[\s\S]*?\}, 600\)/);
   assert.match(builder, /divisionBasis !== 'area_count'/);
   assert.match(builder, /!plan \|\| !planStaleReason/);
@@ -484,14 +648,22 @@ test('Canvas leads with crew intent and keeps approximate street sizing advanced
   assert.match(builder, /toast\.dismiss\(toastId\)/);
   assert.match(builder, /const sendable = deployable\s*&& !planStaleReason/);
   assert.match(builder, /if \(planStaleReason\) return toast\.error\('The territory preview is out of date\./);
-  assert.match(builder, /target_street_workload_meters_per_area: requestSnapshot\.targetWorkloadMeters/);
-  assert.match(builder, /create standard-size work packs/);
-  assert.match(builder, /Target street coverage per territory \(miles\)/);
-  assert.match(builder, /not a door count or promised walking time/);
-  assert.match(builder, /value="Balanced streets"/);
-  assert.match(builder, /Weighted range/);
-  assert.match(builder, /Maximum deviation/);
-  assert.match(builder, /Quality details/);
+  assert.match(workspace, /Equal land reference/);
+  assert.match(workspace, /balances eligible street workload/);
+  assert.match(workspace, /max workload deviation/);
+});
+
+test('Canvas exposes explicit quarantine recovery only in the Areas workspace', () => {
+  const builder = readFileSync(new URL('../src/components/map/CanvasBuilderSettings.jsx', import.meta.url), 'utf8');
+  const workspace = readFileSync(new URL('../src/components/map/CanvasPlannerWorkspace.jsx', import.meta.url), 'utf8');
+  const client = readFileSync(new URL('../src/components/canvas/canvasProductionClient.js', import.meta.url), 'utf8');
+  assert.match(client, /canvasQuarantineInvalidCampaigns/);
+  assert.match(client, /QUARANTINE_INVALID_CANVAS_RECORDS/);
+  assert.match(builder, /window\.confirm\(`Quarantine/);
+  assert.match(builder, /Signed records are never changed/);
+  assert.match(builder, /quarantinable_campaigns/);
+  assert.match(workspace, /Quarantine \{quarantinableCampaignCount\} unsigned legacy record/);
+  assert.match(workspace, /rotated signing key can never remove a previously valid campaign/);
 });
 
 test('Canvas touch and pen drawing commits on release without changing Precision confirmation behavior', () => {
@@ -509,21 +681,17 @@ test('Canvas touch and pen drawing commits on release without changing Precision
   assert.match(toolbar, /routeMode === 'canvas' && mode === 'generate' && !activeRoute \? !drawingMode &&/);
 });
 
-test('Canvas without linked reps defaults to a previewable headcount plan and explains deployment recovery', () => {
+test('Canvas planning never requires linked reps and the assignment workspace explains recovery', () => {
   const builder = readFileSync(new URL('../src/components/map/CanvasBuilderSettings.jsx', import.meta.url), 'utf8');
-  assert.match(builder, /initialRosterModeResolvedRef/);
-  assert.match(builder, /activeTeamMembers, teamMembersReady, teamExclusions/);
-  assert.match(builder, /campaignIndexError, campaignSigningUnavailable, refreshCampaignIndex/);
-  assert.match(builder, /!activeTeamMembers\.length && divisionBasis === 'selected_reps' && !plan && !deployed/);
-  assert.match(builder, /setDivisionBasis\('area_count'\)/);
-  assert.match(builder, /Plan now, assign reps later/);
-  assert.match(builder, /Enter your crew size and build the territory preview now/);
-  assert.match(builder, /have each rep sign in and redeem your invite code/);
-  assert.match(builder, /Manage reps/);
-  assert.match(builder, /Refresh roster/);
-  assert.match(builder, /to=\{createPageUrl\('AdminTeam'\)\} target="_blank" rel="noopener noreferrer"/);
-  assert.match(builder, /Canvas deployment security needs setup/);
-  assert.match(builder, /You can still draw, load streets, generate territories, and save a draft/);
+  const workspace = readFileSync(new URL('../src/components/map/CanvasPlannerWorkspace.jsx', import.meta.url), 'utf8');
+  assert.match(builder, /const \[divisionBasis, setDivisionBasis\] = useState\('area_count'\)/);
+  assert.match(builder, /selected_team_member_ids: divisionBasis === 'selected_reps'[\s\S]*?: \[\]/);
+  assert.match(workspace, /No eligible reps yet/);
+  assert.match(workspace, /area plan is safe to keep unassigned/);
+  assert.match(workspace, /Manage reps/);
+  assert.match(workspace, /to=\{createPageUrl\('AdminTeam'\)\} target="_blank" rel="noopener noreferrer"/);
+  assert.match(workspace, /Sending is temporarily disabled/);
+  assert.match(workspace, /Area planning and saving still work/);
 });
 
 test('Canvas complexity guard matches the exact save and deploy boundary', () => {
@@ -563,12 +731,24 @@ test('Canvas guards every visible unsaved-plan exit and keeps saved draft identi
   assert.match(builder, /confirmDiscardUnsaved\('Clearing the work area'\)/);
   assert.match(builder, /confirmDiscardUnsaved\('Opening this saved draft'\)/);
   assert.match(builder, /window\.addEventListener\('beforeunload'/);
-  assert.match(toolbar, /allowCanvasDiscard\('Opening Live View'\)/);
+  assert.match(builder, /const hasUnsavedCanvasWork = !deployed && \(plan/);
+  assert.match(builder, /polygon\.length > 0/);
+  assert.match(builder, /onDraftDirtyChange\?\.\(hasUnsavedCanvasWork\)/);
+  assert.doesNotMatch(toolbar, /Opening Live View|LIVE VIEW|FOCUS MODE|fk_canvasFocusMode|fk-canvas-focus-mode-changed/);
+  assert.match(toolbar, /fk-canvas-planner-view-requested/);
+  assert.match(toolbar, /detail: \{ view, startNew: view === 'new_area' \}/);
+  assert.match(toolbar, /openCanvasPlannerView\('new_area'\)/);
+  assert.match(toolbar, /openCanvasPlannerView\('areas'\)/);
+  assert.match(builder, /event\.detail\?\.startNew === true/);
+  assert.match(builder, /startAnotherAreaRef\.current\?\.\(\)/);
   assert.match(home, /requestRouteModeChange/);
   assert.match(home, /fk-canvas-draft-dirty-changed/);
   assert.match(settings, /setRouteMode\?\.\(v\) === false/);
   assert.match(layout, /window\.addEventListener\('fk-canvas-draft-dirty-changed'/);
   assert.match(layout, /onClickCapture=\{guardCanvasNavigationCapture\}/);
+  assert.match(layout, /window\.addEventListener\('popstate', guardCanvasHistoryNavigation, true\)/);
+  assert.match(layout, /window\.history\.go\(protectedEntry\.index - nextIndex\)/);
+  assert.match(layout, /event\.stopImmediatePropagation\(\)/);
   assert.match(layout, /targetUrl\.pathname === currentUrl\.pathname && targetUrl\.search === currentUrl\.search/);
   assert.match(layout, /event\.preventDefault\(\);\s*event\.stopPropagation\(\);/);
   assert.match(layout, /if \(!confirmCanvasNavigation\('Logging out'\)\) return/);
@@ -599,25 +779,28 @@ test('flexible drafts preserve the manager-selected crew instead of silently dro
 
 test('large Canvas rosters use explicit searchable bulk selection and never silently assign roster order', () => {
   const builder = readFileSync(new URL('../src/components/map/CanvasBuilderSettings.jsx', import.meta.url), 'utf8');
-  assert.match(builder, /placeholder="Search reps"/);
-  assert.match(builder, /Select all active/);
-  assert.match(builder, /replaceTeamMemberSelection/);
+  const workspace = readFileSync(new URL('../src/components/map/CanvasPlannerWorkspace.jsx', import.meta.url), 'utf8');
+  assert.match(workspace, /placeholder="Search reps"/);
+  assert.match(workspace, /Select shown/);
+  assert.match(workspace, /replaceSelection/);
   assert.match(builder, /const assignmentPool = selectedTeamMemberIds/);
   assert.doesNotMatch(builder, /const assignmentPool = divisionBasis === 'selected_reps' \? selectedTeamMemberIds : activeTeamMembers\.map/);
   assert.match(builder, /assignmentPool\.length > zones\.length/);
   assert.match(builder, /Choose at most \$\{zones\.length\} reps/);
-  assert.match(builder, /clearFlexibleAssignments/);
-  assert.match(builder, /map-first review for large teams/);
+  assert.match(builder, /reconcileFlexibleAssignments/);
+  assert.match(builder, /assignedId && !allowed\.has\(assignedId\)/);
+  assert.match(workspace, /overflow-y-auto/);
 });
 
 test('Canvas makes materially uneven but street-safe plans an explicit manager decision', () => {
   const builder = readFileSync(new URL('../src/components/map/CanvasBuilderSettings.jsx', import.meta.url), 'utf8');
+  const workspace = readFileSync(new URL('../src/components/map/CanvasPlannerWorkspace.jsx', import.meta.url), 'utf8');
   assert.match(builder, /workloadDeviationStatus\.verified[\s\S]*?workloadDeviationStatus\.value > 25[\s\S]*?!workloadExceptionAccepted/);
-  assert.match(builder, /I reviewed and accept this uneven split/);
-  assert.match(builder, /role="checkbox" aria-checked=\{workloadExceptionAccepted\}/);
+  assert.match(workspace, /I reviewed and accept this uneven split/);
+  assert.match(workspace, /role="checkbox" aria-checked=\{workloadExceptionAccepted\}/);
   assert.match(builder, /if \(workloadExceptionNeedsAcceptance\) return toast\.error/);
   assert.match(builder, /disabled=\{!sendable \|\| mutationsLocked\}/);
-  assert.match(builder, /natural street units intact instead of cutting a cul-de-sac/);
+  assert.match(workspace, /natural street units intact instead of cutting a cul-de-sac/);
 });
 
 test('Canvas renders authoritative street ownership instead of filled territory surfaces', () => {
@@ -626,6 +809,8 @@ test('Canvas renders authoritative street ownership instead of filled territory 
   assert.match(zones, /canvasZoneStreetSegments/);
   assert.match(zones, /<Polyline/);
   assert.doesNotMatch(zones, /<Polygon|fillOpacity/);
+  assert.match(zones, /const color = zone\.color \|\| \(assigned \? ASSIGNED_COLOR : UNASSIGNED_COLOR\)/);
+  assert.doesNotMatch(zones, /focusMode|fk_canvasFocusMode|fk-canvas-focus-mode-changed/);
   assert.match(field, /your colored street territory/);
   assert.match(field, /campaignBoundary/);
   assert.match(field, /attributionControl/);

@@ -64,7 +64,9 @@ test('Canvas toolbar labels the planner handoff honestly without changing Precis
   const precisionStart = toolbar.indexOf("{mode === 'generate' && !activeRoute", canvasStart);
   const canvasActions = toolbar.slice(canvasStart, precisionStart);
 
-  assert.match(canvasActions, /REVIEW & SEND/);
-  assert.doesNotMatch(canvasActions, /DEPLOY CAMPAIGN/);
+  assert.match(canvasActions, /NEW AREA/);
+  assert.match(canvasActions, /AREAS/);
+  assert.match(toolbar, /fk-canvas-planner-view-requested/);
+  assert.doesNotMatch(canvasActions, /FOCUS MODE|LIVE VIEW|REVIEW & SEND|DEPLOY CAMPAIGN/);
   assert.match(toolbar.slice(precisionStart), /fk-open-precision-pull/);
 });
