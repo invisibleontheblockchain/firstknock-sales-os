@@ -1,0 +1,47 @@
+{
+  "name": "CanvasHousePin",
+  "type": "object",
+  "properties": {
+    "campaign_id": { "type": "string" },
+    "zone_id": { "type": "string" },
+    "manager_id": { "type": "string" },
+    "lat": { "type": "number" },
+    "lng": { "type": "number" },
+    "address": { "type": "string", "maxLength": 500 },
+    "normalized_address": { "type": "string", "maxLength": 500 },
+    "building_feature_id": { "type": "string", "maxLength": 256 },
+    "unit_label": { "type": "string", "maxLength": 100 },
+    "normalized_unit_label": { "type": "string", "maxLength": 100 },
+    "latest_outcome": {
+      "type": "string",
+      "enum": ["no_answer", "not_interested", "callback", "appointment", "sale", "do_not_knock"]
+    },
+    "latest_note": { "type": "string", "maxLength": 1000 },
+    "latest_event_id": { "type": "string" },
+    "latest_client_recorded_at": { "type": "string", "format": "date-time" },
+    "last_event_at": { "type": "string", "format": "date-time" },
+    "last_actor_user_id": { "type": "string" },
+    "last_actor_team_member_id": { "type": "string" },
+    "version": { "type": "integer", "default": 1 }
+  },
+  "required": [
+    "campaign_id",
+    "zone_id",
+    "manager_id",
+    "lat",
+    "lng",
+    "latest_outcome",
+    "version"
+  ],
+  "rls": {
+    "create": { "user_condition": { "role": "admin" } },
+    "read": {
+      "$or": [
+        { "manager_id": "{{user.id}}" },
+        { "user_condition": { "role": "admin" } }
+      ]
+    },
+    "update": { "user_condition": { "role": "admin" } },
+    "delete": { "user_condition": { "role": "admin" } }
+  }
+}

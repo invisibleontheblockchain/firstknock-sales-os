@@ -507,6 +507,7 @@ function SavedRoutesLayer({
 const ManagerMapLayers = React.memo(function ManagerMapLayers({
     // Mode & state
     mode,
+    routeMode = 'precision',
     activeRoute,
     zoomLevel,
     viewMode,
@@ -564,16 +565,11 @@ const ManagerMapLayers = React.memo(function ManagerMapLayers({
     // darkRoom instance
     darkRoom,
 }) {
-    useEffect(() => {
-        if (typeof window === 'undefined') return;
-        window.__fkCanvasPropertyPoints = Array.isArray(effectiveProperties) ? effectiveProperties : [];
-        window.dispatchEvent(new CustomEvent('fk-canvas-property-points-updated'));
-    }, [effectiveProperties]);
-
     return (
         <>
-            <CanvasZoneOverlay />
+            <CanvasZoneOverlay routeMode={routeMode} />
 
+            {routeMode !== 'canvas' && <>
             {/* --- Existing Routes (Imperative for performance) --- */}
             <SavedRoutesLayer
                 mode={mode}
@@ -708,6 +704,7 @@ const ManagerMapLayers = React.memo(function ManagerMapLayers({
                     setSelectedProperty={setSelectedProperty}
                 />
             )}
+            </>}
         </>
     );
 });

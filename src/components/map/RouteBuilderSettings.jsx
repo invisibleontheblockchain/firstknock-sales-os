@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { toast } from "sonner";
 import CanvasBuilderSettings from './CanvasBuilderSettings.jsx';
+import { hasCanvasAccess } from '@/lib/canvasAccess';
 
 const BRAND = {
     voidBlack: '#0A0A0A',
@@ -55,13 +56,13 @@ export default function RouteBuilderSettings({
     onSelectRoute,
     onClose,
     // Sync functions
-    onForceSync, onClearPolygon,
+    onForceSync, onClearPolygon, onResumeBoundary,
     onDraw,
     // Reorder
     onReorder, hasFrozenData,
     // Data
     user,
-    propertyPoints = [],
+    teamMembers = [], teamMembersReady = true,
     drawnPolygon,
     hasDrawnArea,
     maxDataMonths,
@@ -94,6 +95,14 @@ export default function RouteBuilderSettings({
     }, []);
 
     useEffect(() => {
+        if (routeMode !== 'canvas' || hasCanvasAccess(user)) return;
+        setRouteMode('precision');
+        try { localStorage.setItem('fk_routeMode', 'precision'); } catch {}
+        window.dispatchEvent(new CustomEvent('fk-route-mode-changed', { detail: { routeMode: 'precision' } }));
+        toast.error('An active Canvas subscription with verified billing is required.');
+    }, [routeMode, user]);
+
+    useEffect(() => {
         const handler = (event) => setShowGhostAreas(!!event.detail?.visible);
         window.addEventListener('fk-ghost-areas-visibility', handler);
         return () => window.removeEventListener('fk-ghost-areas-visibility', handler);
@@ -111,16 +120,18 @@ export default function RouteBuilderSettings({
         toast.success(next ? 'Previous Precision areas visible' : 'Previous areas hidden');
     };
 
-    if (routeMode === 'canvas') {
+    if (routeMode === 'canvas' && hasCanvasAccess(user)) {
         return (
             <CanvasBuilderSettings
                 drawnPolygon={drawnPolygon}
                 hasDrawnArea={hasDrawnArea}
                 onDraw={onDraw}
                 onClearPolygon={onClearPolygon}
+                onResumeBoundary={onResumeBoundary}
                 onClose={onClose}
                 user={user}
-                propertyPoints={propertyPoints}
+                teamMembers={teamMembers}
+                teamMembersReady={teamMembersReady}
             />
         );
     };
@@ -190,10 +201,10 @@ export default function RouteBuilderSettings({
                     <div className="p-4 space-y-6">
                         <div className={`rounded-xl border p-3 ${routeMode === 'canvas' ? 'bg-purple-500/10 border-purple-500/30' : 'bg-yellow-500/10 border-yellow-500/30'}`}>
                             <p className={`text-xs font-bold ${routeMode === 'canvas' ? 'text-purple-300' : 'text-yellow-400'}`}>
-                                {routeMode === 'canvas' ? 'Canvas Mode: per-rep field execution for large door-knocking teams.' : 'Precision Mode: targeted property acquisition with usage limits.'}
+                                {routeMode === 'canvas' ? 'Canvas Mode: street-aligned territory assignments for door-knocking teams.' : 'Precision Mode: targeted property acquisition with usage limits.'}
                             </p>
                             <p className="text-[10px] text-gray-400 mt-1">
-                                {routeMode === 'canvas' ? 'Build and dispatch routes from existing territory doors without starting a paid property pull.' : 'Draw an area, preview allowed properties, then use Start Paid Pull when live credits are ready.'}
+                                {routeMode === 'canvas' ? 'Draw one global area, split connected streets, and dispatch exclusive territories.' : 'Draw an area, preview allowed properties, then use Start Paid Pull when live credits are ready.'}
                             </p>
                         </div>
 
@@ -227,7 +238,7 @@ export default function RouteBuilderSettings({
                                 </div>
                             ) : (
                                 <div className="w-full px-4 py-3 rounded-xl text-sm bg-[#1A1A1A] text-gray-400 border border-[#222] text-center">
-                                    {routeMode === 'canvas' ? 'Canvas uses existing territory doors and team assignments' : 'Draw an area on the map to target'}
+                                    {routeMode === 'canvas' ? 'Canvas divides the global area by connected street workload' : 'Draw an area on the map to target'}
                                 </div>
                             )}
                         </div>

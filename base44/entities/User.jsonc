@@ -10,6 +10,13 @@
         "admin"
       ]
     },
+    "team_manager_id": {
+      "type": "string",
+      "description": "Manager User ID for an invited rep; set by the trusted invite redemption flow and used for exact Canvas tenant binding",
+      "rls": {
+        "write": { "user_condition": { "role": "admin" } }
+      }
+    },
     "is_owner": {
       "type": "boolean",
       "default": false,
@@ -183,6 +190,30 @@
         "type": "string"
       },
       "description": "ZIP codes flagged by reconciliation as having drifted from upstream \u2014 forces full pull on next fetch"
+    },
+    "canvas_deployment_lock_token": {
+      "type": "string",
+      "description": "Short-lived service-owned token serializing Canvas deployments for this manager",
+      "rls": {
+        "read": { "user_condition": { "role": "admin" } },
+        "write": { "user_condition": { "role": "admin" } }
+      }
+    },
+    "canvas_deployment_lock_acquired_at": {
+      "type": "string",
+      "format": "date-time",
+      "rls": {
+        "read": { "user_condition": { "role": "admin" } },
+        "write": { "user_condition": { "role": "admin" } }
+      }
+    },
+    "canvas_deployment_lock_expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "rls": {
+        "read": { "user_condition": { "role": "admin" } },
+        "write": { "user_condition": { "role": "admin" } }
+      }
     }
   },
   "required": []

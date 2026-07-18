@@ -61,6 +61,8 @@ import ZipCodeOverlay from '../components/map/ZipCodeOverlay';
 import PolygonHistory from '../components/map/PolygonHistory';
 import KnockLimitSheet from '@/components/upgrade/KnockLimitSheet';
 import { getOutcomesLogged, isOutcomeBlocked, isProUser, needsCardOnFile } from '@/components/upgrade/knockGate';
+import { hasCanvasAccess } from '@/lib/canvasAccess';
+import { validateCanvasBoundary } from '@/components/canvas/canvasPlannerUtils';
 
 
 import { BRAND, DEFAULT_STATUS_COLORS, COLOR_SCHEME_MAP, LINE_DASH_MAP, ROUTE_COLORS } from '../components/map/homeMapConstants';
@@ -293,6 +295,8 @@ export default function Home() {
         } catch { }
     };
     const [draftPolygon, setDraftPolygon] = useState([]);
+    const [canvasDrawnPolygon, setCanvasDrawnPolygon] = useState(null);
+    const [canvasDraftPolygon, setCanvasDraftPolygon] = useState([]);
     const [drawShape, setDrawShape] = useState('circle');
     const [drawSizeMiles, setDrawSizeMiles] = useState(5);
     const [showTimingPanel, setShowTimingPanel] = useState(false);
@@ -319,6 +323,18 @@ export default function Home() {
     const [routeStatusView, setRouteStatusView] = useState(() => {
         try { return localStorage.getItem('fk_routeStatusView') || 'active'; } catch { return 'active'; }
     });
+    const [routeMode, setRouteMode] = useState('precision');
+    const activeDrawnPolygon = routeMode === 'canvas' ? canvasDrawnPolygon : drawnPolygon;
+    const activeDraftPolygon = routeMode === 'canvas' ? canvasDraftPolygon : draftPolygon;
+    const setActiveDrawnPolygon = (value, persist = false) => {
+        if (routeMode === 'canvas') setCanvasDrawnPolygon(value);
+        else setDrawnPolygon(value, persist);
+    };
+    const setActiveDraftPolygon = (value) => {
+        if (routeMode === 'canvas') setCanvasDraftPolygon(value);
+        else setDraftPolygon(value);
+    };
+    const routeModeHydratedUserRef = useRef(null);
     const [mapSettings, setMapSettings] = useState(() => {
         const saved = localStorage.getItem('fk_mapSettings_v3');
         return saved ? JSON.parse(saved) : {
@@ -378,6 +394,28 @@ export default function Home() {
     const mapRef = useRef(null);
     const appointmentMapFocusHandledRef = useRef(false);
     const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me(), staleTime: 1000 * 60 * 5 });
+    useEffect(() => {
+        if (!user?.id || routeModeHydratedUserRef.current === user.id) return;
+        routeModeHydratedUserRef.current = user.id;
+        let persisted = 'precision';
+        try { persisted = localStorage.getItem('fk_routeMode') || 'precision'; } catch {}
+        const safeMode = persisted === 'canvas' && hasCanvasAccess(user) ? 'canvas' : 'precision';
+        setRouteMode(safeMode);
+        if (safeMode !== persisted) {
+            try { localStorage.setItem('fk_routeMode', safeMode); } catch {}
+        }
+    }, [user]);
+    useEffect(() => {
+        const handleRouteModeChange = (event) => setRouteMode(event.detail?.routeMode || 'precision');
+        window.addEventListener('fk-route-mode-changed', handleRouteModeChange);
+        return () => window.removeEventListener('fk-route-mode-changed', handleRouteModeChange);
+    }, []);
+    useEffect(() => {
+        if (!user || routeMode !== 'canvas' || hasCanvasAccess(user)) return;
+        setRouteMode('precision');
+        try { localStorage.setItem('fk_routeMode', 'precision'); } catch {}
+        window.dispatchEvent(new CustomEvent('fk-route-mode-changed', { detail: { routeMode: 'precision' } }));
+    }, [routeMode, user]);
     useEffect(() => {
         if (!user?.email) return;
         const context = readPersistedPrecisionJobContext(user.email);
@@ -518,12 +556,12 @@ export default function Home() {
 
     // Update Rep Color logic...
     // Fetch Team Members for Analysis & Coloring (Filtered by Manager)
-    const { data: teamMembers = [] } = useQuery({
+    const { data: teamMembers = [], isLoading: teamMembersLoading } = useQuery({
         queryKey: ['teamMembers', user?.id],
         staleTime: 1000 * 60 * 5,
         queryFn: () => {
             if (!user?.id) return [];
-            return base44.entities.TeamMember.filter({ manager_id: user.id }, '-created_date', 100)
+            return base44.entities.TeamMember.filter({ manager_id: user.id }, '-created_date', 250)
                 .then(res => Array.isArray(res) ? res : (res?.items || []));
         },
         enabled: !!user?.id
@@ -2228,13 +2266,24 @@ export default function Home() {
 
                 <MapDrawTool
                     active={drawingMode}
-                    onPointsUpdate={setDraftPolygon}
+                    onPointsUpdate={setActiveDraftPolygon}
                     onConfirm={(polygon) => {
+                        const canvasBoundary = routeMode === 'canvas' ? validateCanvasBoundary(polygon) : null;
+                        if (canvasBoundary && !canvasBoundary.valid) {
+                            toast.error(canvasBoundary.message);
+                            return;
+                        }
+                        const confirmedPolygon = canvasBoundary?.points || polygon;
                         // One active builder shape at a time. Do not save to previous-area history until a preview/query succeeds.
-                        setDrawnPolygon(polygon); setDraftPolygon([]); setDrawingMode(false);
-                        toast.success("Freehand area selected! Choose property count and run Sandbox Preview.");
+                        setActiveDrawnPolygon(confirmedPolygon); setActiveDraftPolygon([]); setDrawingMode(false);
+                        if (routeMode === 'canvas') {
+                            setShowCompare(true);
+                            toast.success('Canvas global area selected. Choose reps or a territory count, then divide the streets.');
+                        } else {
+                            toast.success("Freehand area selected! Choose property count and run Sandbox Preview.");
+                        }
                     }}
-                    drawnPolygon={drawnPolygon}
+                    drawnPolygon={activeDrawnPolygon}
                     drawShape={drawShape}
                     drawSizeMiles={drawSizeMiles}
                 />
@@ -2242,6 +2291,7 @@ export default function Home() {
                 {/* All map data layers extracted to ManagerMapLayers */}
                 <ManagerMapLayers
                     mode={mode}
+                    routeMode={routeMode}
                     activeRoute={filteredActiveRoute}
                     zoomLevel={zoomLevel}
                     viewMode={viewMode}
@@ -2289,7 +2339,7 @@ export default function Home() {
                 )}
 
                 {/* Previous drawn area history */}
-                {!drawingMode && !showRoutePanel && !filteredActiveRoute && (
+                {routeMode === 'precision' && !drawingMode && !showRoutePanel && !filteredActiveRoute && (
                     <PolygonHistory
                         currentPolygon={drawnPolygon}
                         mode={mode}
@@ -2317,7 +2367,7 @@ export default function Home() {
                 setShowCompare={setShowCompare}
                 setShowRoutePanel={setShowRoutePanel}
                 setShowChecklist={setShowChecklist}
-                drawnPolygon={drawnPolygon}
+                drawnPolygon={activeDrawnPolygon}
                 teamMembers={teamMembers}
                 hydratedSavedRoutes={hydratedSavedRoutes}
                 routes={routes}
@@ -2349,6 +2399,7 @@ export default function Home() {
             {/* Territory Prompt - Drawing Controls + Initial Prompt */}
             <TerritoryPrompt
                 mode={mode}
+                routeMode={routeMode}
                 setMode={setMode}
                 activeRoute={filteredActiveRoute}
                 routesGenerating={routesGenerating}
@@ -2358,10 +2409,10 @@ export default function Home() {
                 setShowRoutePanel={setShowRoutePanel}
                 drawingMode={drawingMode}
                 setDrawingMode={setDrawingMode}
-                drawnPolygon={drawnPolygon}
-                setDrawnPolygon={setDrawnPolygon}
-                draftPolygon={draftPolygon}
-                setDraftPolygon={setDraftPolygon}
+                drawnPolygon={activeDrawnPolygon}
+                setDrawnPolygon={setActiveDrawnPolygon}
+                draftPolygon={activeDraftPolygon}
+                setDraftPolygon={setActiveDraftPolygon}
                 drawShape={drawShape}
                 setDrawShape={setDrawShape}
                 drawSizeMiles={drawSizeMiles}
@@ -2629,8 +2680,8 @@ export default function Home() {
                 <RouteBuilderSettings
                     onDraw={() => {
                         setShowCompare(false);
-                        setDrawnPolygon(null);
-                        setDraftPolygon([]);
+                        setActiveDrawnPolygon(null);
+                        setActiveDraftPolygon([]);
                         setDrawingMode(true);
                     }}
                     housesPerRoute={housesPerRoute} setHousesPerRoute={setHousesPerRoute}
@@ -2647,7 +2698,15 @@ export default function Home() {
                     onGenerate={generateRoutes} routesGenerating={routesGenerating}
                     onReorder={handleReorder}
                     hasFrozenData={!!frozenWorkingSet && frozenWorkingSet.length > 0}
-                    onClearPolygon={() => setDrawnPolygon(null)}
+                    onClearPolygon={() => setActiveDrawnPolygon(null)}
+                    onResumeBoundary={(savedBoundary) => {
+                        const validation = validateCanvasBoundary(savedBoundary);
+                        if (!validation.valid) throw new Error(validation.message);
+                        setCanvasDrawnPolygon(validation.points);
+                        setCanvasDraftPolygon([]);
+                        setDrawingMode(false);
+                        setShowCompare(true);
+                    }}
                     onReset={() => {
                         if (confirm("Reset all generated routes?")) {
                             setRoutes([]);
@@ -2703,8 +2762,10 @@ export default function Home() {
                         }
                     }}
                     user={user}
-                    drawnPolygon={drawnPolygon}
-                    hasDrawnArea={drawnPolygon && drawnPolygon.length > 2}
+                    teamMembers={teamMembers}
+                    teamMembersReady={!teamMembersLoading}
+                    drawnPolygon={activeDrawnPolygon}
+                    hasDrawnArea={activeDrawnPolygon && activeDrawnPolygon.length > 2}
                     maxDataMonths={maxDataMonths}
                     hasMlsData={hasMlsData}
                 />
@@ -2795,6 +2856,9 @@ export default function Home() {
                         setHighlightRecentlySold={setHighlightRecentlySold}
                         showZipOverlay={showZipOverlay}
                         setShowZipOverlay={setShowZipOverlay}
+                        routeMode={routeMode}
+                        setRouteMode={setRouteMode}
+                        user={user}
                     />
                 </React.Suspense>
             )}

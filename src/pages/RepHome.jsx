@@ -10,6 +10,7 @@ import { getKnockWindowLabel } from '@/components/logic/knockTimeOptimizer';
 import { determineEffectiveStatus } from '@/components/logic/territoryLogic';
 import RepMapView from '@/components/rep/RepMapView';
 import CanvasFieldView from '@/components/rep/CanvasFieldView';
+import { getMyCanvasAssignments } from '@/components/canvas/canvasProductionClient';
 import RepHeader from '@/components/rep/RepHeader';
 import PropertyCard from '@/components/rep/PropertyCard';
 import PropertyDetailSheet from '@/components/rep/PropertyDetailSheet';
@@ -21,6 +22,8 @@ import KnockLimitBanner from '@/components/upgrade/KnockLimitBanner';
 import { isProUser, isOutcomeBlocked, getOutcomesLogged, needsCardOnFile } from '@/components/upgrade/knockGate';
 import { geocodeAddress } from '@/lib/geocoding';
 import { calculateRouteDistanceMiles, isValidRoutePoint, optimizeRouteWithBounds } from '@/lib/routeBounds';
+
+const CANVAS_ASSIGNMENT_POLL_MS = 15_000;
 
 export default function RepHome() {
   const queryClient = useQueryClient();
@@ -46,6 +49,10 @@ export default function RepHome() {
   const [homeBaseError, setHomeBaseError] = useState('');
   const [homeRouteOptimizing, setHomeRouteOptimizing] = useState(false);
   const [homeRouteError, setHomeRouteError] = useState('');
+  const [canvasFieldDismissed, setCanvasFieldDismissed] = useState(false);
+  const [canvasFieldOpen, setCanvasFieldOpen] = useState(false);
+  const [canvasAssignmentNotice, setCanvasAssignmentNotice] = useState('');
+  const previousCanvasAssignmentIdentityRef = React.useRef('');
   const hydratedHomeBaseUserRef = React.useRef(null);
 
   // Offline Listener
@@ -150,9 +157,7 @@ export default function RepHome() {
         })();
 
         // Filter to only non-completed, non-archived routes
-        const activeRoutes = myRoutes.filter((r) =>
-        r.status !== 'COMPLETED' && r.status !== 'ARCHIVED'
-        );
+        const activeRoutes = myRoutes.filter((route) => !['completed', 'archived'].includes(String(route.status || '').toLowerCase()));
 
         console.log(`[RepHome] Found ${activeRoutes.length} active routes (${myRoutes.length} matched) for IDs: [${myIds.join(', ')}], selected=${selectedRouteId || 'none'}`);
 
@@ -160,7 +165,7 @@ export default function RepHome() {
         if (activeRoutes.length > 0) {
           localforage.setItem('cached_routes', activeRoutes);
         }
-        return activeRoutes.length > 0 ? activeRoutes : myRoutes;
+        return activeRoutes;
       } catch (e) {
         console.error("Error fetching routes", e);
         const cached = await localforage.getItem('cached_routes');
@@ -194,17 +199,43 @@ export default function RepHome() {
     )
   );
 
-  const localCanvasAssignment = useMemo(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem('fk_canvasCampaignSprint1') || 'null');
-      if (!saved?.locked || !Array.isArray(saved.zones)) return null;
-      const myName = (user?.full_name || '').toLowerCase();
-      const assignedZone = saved.zones.find((zone) => (zone.assignments || []).some((name) => name?.toLowerCase() === myName)) || saved.zones.find((zone) => (zone.assignments || []).length > 0) || saved.zones[0];
-      return assignedZone ? { campaign: saved, zone: assignedZone } : null;
-    } catch {
-      return null;
+  const {
+    data: canvasAssignmentPackage,
+    isLoading: canvasAssignmentsLoading,
+    isError: canvasAssignmentsUnavailable,
+    refetch: refetchCanvasAssignments,
+  } = useQuery({
+    queryKey: ['myCanvasAssignments', user?.id],
+    queryFn: () => getMyCanvasAssignments(),
+    enabled: !!user,
+    retry: false,
+    refetchOnWindowFocus: true,
+    refetchInterval: canvasFieldOpen || (!activeRoute && !canvasFieldDismissed) ? CANVAS_ASSIGNMENT_POLL_MS : false,
+  });
+  const canvasAssignments = canvasAssignmentPackage?.assignments || [];
+  const canvasAssignmentIdentity = useMemo(() => canvasAssignments
+    .map((assignment) => `${assignment.session_id}:${assignment.version}:${assignment.zone?.zone_id || assignment.zone?.zone_number || ''}`)
+    .sort()
+    .join('|'), [canvasAssignments]);
+
+  React.useEffect(() => {
+    const previousIdentity = previousCanvasAssignmentIdentityRef.current;
+    const canvasWasVisible = canvasFieldOpen || (!activeRoute?.id && !canvasFieldDismissed);
+    if (previousIdentity && previousIdentity !== canvasAssignmentIdentity && canvasWasVisible) {
+      if (canvasAssignmentIdentity) {
+        toast.info('Your manager updated your Canvas assignment. The map now shows the current deployed area.');
+        setCanvasAssignmentNotice('');
+      } else {
+        const notice = 'Your Canvas assignment was completed, recalled, or replaced. The old area has been removed from your map.';
+        toast.info(notice);
+        setCanvasAssignmentNotice(notice);
+        setCanvasFieldOpen(false);
+      }
+    } else if (canvasAssignmentIdentity) {
+      setCanvasAssignmentNotice('');
     }
-  }, [user?.full_name]);
+    previousCanvasAssignmentIdentityRef.current = canvasAssignmentIdentity;
+  }, [activeRoute?.id, canvasAssignmentIdentity, canvasFieldDismissed, canvasFieldOpen]);
 
   React.useEffect(() => {
     if (!activeRoute?.id) return;
@@ -567,7 +598,7 @@ export default function RepHome() {
 
   const knockWindow = getKnockWindowLabel(new Date());
 
-  if (routesLoading || propsLoading || logsLoading) {
+  if (routesLoading || propsLoading || logsLoading || (!activeRoute && canvasAssignmentsLoading)) {
     return (
       <div className="flex h-screen items-center justify-center bg-black text-white">
                 <div className="text-center">
@@ -578,8 +609,8 @@ export default function RepHome() {
 
   }
 
-  if (!activeRoute && localCanvasAssignment) {
-    return <CanvasFieldView campaign={localCanvasAssignment.campaign} zone={localCanvasAssignment.zone} user={user} onClose={() => localStorage.removeItem('fk_canvasCampaignSprint1')} />;
+  if (canvasAssignments.length > 0 && (canvasFieldOpen || (!activeRoute && !canvasFieldDismissed))) {
+    return <CanvasFieldView assignments={canvasAssignments} truncated={canvasAssignmentPackage?.truncated === true} rejectedDeployments={canvasAssignmentPackage?.rejected_deployments || 0} user={user} navigationApp={navigationApp} onClose={() => { setCanvasFieldOpen(false); setCanvasFieldDismissed(true); }} />;
   }
 
   if (!activeRoute) {
@@ -592,7 +623,26 @@ export default function RepHome() {
                 <p className="text-gray-400 mb-8 max-w-xs">
                     You don't have any routes assigned yet. Ask your manager to assign one, or check back later.
                 </p>
-                <Button onClick={() => window.location.reload()} variant="outline" className="border-gray-700 text-white">
+                {canvasAssignmentNotice && (
+                  <p className="mb-4 max-w-sm rounded-xl border border-purple-400/25 bg-purple-500/10 p-3 text-xs text-purple-100">
+                    {canvasAssignmentNotice}
+                  </p>
+                )}
+                {canvasAssignmentsUnavailable && (
+                  <p className="mb-4 max-w-sm rounded-xl border border-amber-400/20 bg-amber-400/10 p-3 text-xs text-amber-200">
+                    Canvas assignments are temporarily unavailable. No local or name-matched assignment was substituted.
+                  </p>
+                )}
+                {Number(canvasAssignmentPackage?.rejected_deployments) > 0 && (
+                  <p className="mb-4 max-w-sm rounded-xl border border-red-400/20 bg-red-400/10 p-3 text-xs text-red-200">
+                    The server rejected {canvasAssignmentPackage.rejected_deployments} Canvas deployment{canvasAssignmentPackage.rejected_deployments === 1 ? '' : 's'} because its signed plan snapshot failed verification. Ask your manager to deploy a fresh plan.
+                  </p>
+                )}
+                <Button onClick={() => {
+                  setCanvasFieldDismissed(false);
+                  refetchCanvasAssignments();
+                  queryClient.invalidateQueries({ queryKey: ['myRoutes'] });
+                }} variant="outline" className="border-gray-700 text-white">
                     Check Again
                 </Button>
             </div>);
@@ -1003,6 +1053,25 @@ export default function RepHome() {
                             <button onClick={() => setShowRouteList(false)}><X className="w-5 h-5 text-gray-500" /></button>
                         </div>
                         <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                            {canvasAssignments.length > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setCanvasFieldDismissed(false);
+                                  setCanvasFieldOpen(true);
+                                  setShowRouteList(false);
+                                }}
+                                className="w-full rounded-2xl border border-purple-400/35 bg-purple-500/10 p-3.5 text-left transition-colors hover:bg-purple-500/15"
+                              >
+                                <div className="flex items-center justify-between gap-3">
+                                  <div>
+                                    <p className="text-sm font-black text-white">Canvas assignments</p>
+                                    <p className="mt-0.5 text-[11px] text-purple-100/60">{canvasAssignments.length} deployed area{canvasAssignments.length === 1 ? '' : 's'} available</p>
+                                  </div>
+                                  <Navigation className="h-5 w-5 text-purple-300" />
+                                </div>
+                              </button>
+                            )}
                             <section className="rounded-2xl border border-[#2EEB57]/25 bg-[#2EEB57]/[0.06] p-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
                                 <div className="mb-3 flex items-start justify-between gap-3">
                                     <div>

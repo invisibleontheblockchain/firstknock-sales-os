@@ -8,11 +8,27 @@
     },
     "email": {
       "type": "string",
-      "description": "Email address (for login matching, normalized lowercase on write)"
+      "description": "Email address (for login matching, normalized lowercase on write)",
+      "rls": {
+        "write": {
+          "$or": [
+            { "data.manager_id": "{{user.id}}" },
+            { "user_condition": { "role": "admin" } }
+          ]
+        }
+      }
     },
     "user_id": {
       "type": "string",
-      "description": "Auth user ID linked at invite redemption \u2014 O(1) lookup, replaces fuzzy email/name matching"
+      "description": "Auth user ID linked at invite redemption \u2014 O(1) lookup, replaces fuzzy email/name matching",
+      "rls": {
+        "write": {
+          "$or": [
+            { "data.manager_id": "{{user.id}}" },
+            { "user_condition": { "role": "admin" } }
+          ]
+        }
+      }
     },
     "phone": {
       "type": "string",
@@ -30,7 +46,15 @@
         "admin"
       ],
       "default": "rep",
-      "description": "Role in the organization"
+      "description": "Role in the organization",
+      "rls": {
+        "write": {
+          "$or": [
+            { "data.manager_id": "{{user.id}}" },
+            { "user_condition": { "role": "admin" } }
+          ]
+        }
+      }
     },
     "status": {
       "type": "string",
@@ -38,7 +62,15 @@
         "active",
         "inactive"
       ],
-      "default": "active"
+      "default": "active",
+      "rls": {
+        "write": {
+          "$or": [
+            { "data.manager_id": "{{user.id}}" },
+            { "user_condition": { "role": "admin" } }
+          ]
+        }
+      }
     },
     "color": {
       "type": "string",
@@ -46,11 +78,27 @@
     },
     "manager_id": {
       "type": "string",
-      "description": "ID of the manager this rep belongs to"
+      "description": "ID of the manager this rep belongs to",
+      "rls": {
+        "write": {
+          "$or": [
+            { "data.manager_id": "{{user.id}}" },
+            { "user_condition": { "role": "admin" } }
+          ]
+        }
+      }
     },
     "invite_code": {
       "type": "string",
-      "description": "The specific invite code used to join the team"
+      "description": "The specific invite code used to join the team",
+      "rls": {
+        "write": {
+          "$or": [
+            { "data.manager_id": "{{user.id}}" },
+            { "user_condition": { "role": "admin" } }
+          ]
+        }
+      }
     },
     "assigned_zip_codes": {
       "type": "array",
