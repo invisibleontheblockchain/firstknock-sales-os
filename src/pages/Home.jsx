@@ -298,6 +298,7 @@ export default function Home() {
     const [draftPolygon, setDraftPolygon] = useState([]);
     const [canvasDrawnPolygon, setCanvasDrawnPolygon] = useState(null);
     const [canvasDraftPolygon, setCanvasDraftPolygon] = useState([]);
+    const [canvasZonePreview, setCanvasZonePreview] = useState({ zones: [], workUnits: [] });
     const [drawShape, setDrawShape] = useState('circle');
     const [drawSizeMiles, setDrawSizeMiles] = useState(5);
     const [showTimingPanel, setShowTimingPanel] = useState(false);
@@ -2331,6 +2332,7 @@ export default function Home() {
                 <ManagerMapLayers
                     mode={mode}
                     routeMode={routeMode}
+                    canvasZonePreview={canvasZonePreview}
                     activeRoute={filteredActiveRoute}
                     zoomLevel={zoomLevel}
                     viewMode={viewMode}
@@ -2813,6 +2815,7 @@ export default function Home() {
                     canvasTeamMembersReady={!canvasTeamMembersLoading}
                     onRefreshCanvasTeamMembers={refreshCanvasTeamMembers}
                     onCanvasDraftDirtyChange={setCanvasDraftDirty}
+                    onCanvasPreviewChange={setCanvasZonePreview}
                     drawnPolygon={activeDrawnPolygon}
                     hasDrawnArea={activeDrawnPolygon && activeDrawnPolygon.length > 2}
                     maxDataMonths={maxDataMonths}

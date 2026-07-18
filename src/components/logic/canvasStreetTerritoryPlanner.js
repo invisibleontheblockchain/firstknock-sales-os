@@ -2,11 +2,12 @@ import { buildCanvasStreetWorkUnits } from './canvasStreetTopology.js';
 import { polygon as geoJsonPolygon } from 'turf-helpers';
 import intersectPolygons from 'turf-intersect';
 
-const ALGORITHM_VERSION = 'canvas_street_workload_v2';
+const ALGORITHM_VERSION = 'canvas_street_workload_v3';
 const MAX_CANVAS_ZONE_COUNT = 250;
-const MAX_CANVAS_INTERACTIVE_WORK_UNITS = 2_000;
-const MAX_CANVAS_INTERACTIVE_COMPLEXITY = 180_000;
+const MAX_CANVAS_INTERACTIVE_WORK_UNITS = 20_000;
+const MAX_CANVAS_INTERACTIVE_COMPLEXITY = 2_000_000;
 const MAX_CANVAS_INTERACTIVE_SEGMENTS = 50_000;
+const MAX_DISPLAY_CORRIDOR_WORK_UNITS = 2_000;
 const ZONE_COLORS = ['#A855F7', '#2563EB', '#059669', '#D97706', '#DC2626', '#0891B2', '#7C3AED', '#DB2777'];
 const OPTIONAL_CANDIDATE_FAILURES = new Set([
   'INVALID_CANDIDATE_INPUT',
@@ -293,8 +294,8 @@ function shortestDistances(seedId, allowedIds, byId) {
   const allowed = new Set(allowedIds);
   const distances = new Map([[seedId, 0]]);
   const queue = [seedId];
-  while (queue.length) {
-    const unitId = queue.shift();
+  for (let queueIndex = 0; queueIndex < queue.length; queueIndex += 1) {
+    const unitId = queue[queueIndex];
     const distance = distances.get(unitId);
     (byId.get(unitId)?.neighborIds || []).filter((id) => allowed.has(id)).sort(compareIds).forEach((neighborId) => {
       if (distances.has(neighborId)) return;
@@ -311,69 +312,147 @@ function chooseSeeds(componentIds, count, byId) {
     Number(byId.get(right)?.workloadScore || 0) - Number(byId.get(left)?.workloadScore || 0)
       || compareIds(left, right))[0];
   const seeds = [first];
-  const distanceCache = new Map([[first, shortestDistances(first, componentIds, byId)]]);
+  const firstDistances = shortestDistances(first, componentIds, byId);
+  const nearestSeedDistance = new Map(candidates.map((id) => [id, firstDistances.get(id) ?? Number.MAX_SAFE_INTEGER]));
+  const seedSet = new Set(seeds);
   while (seeds.length < count) {
-    const ranked = candidates.filter((id) => !seeds.includes(id)).map((id) => ({
+    const ranked = candidates.filter((id) => !seedSet.has(id)).map((id) => ({
       id,
-      distance: Math.min(...seeds.map((seedId) => distanceCache.get(seedId).get(id) ?? Number.MAX_SAFE_INTEGER)),
+      distance: nearestSeedDistance.get(id) ?? Number.MAX_SAFE_INTEGER,
       workload: Number(byId.get(id)?.workloadScore || 0),
     })).sort((left, right) => right.distance - left.distance
       || right.workload - left.workload
       || compareIds(left.id, right.id));
     if (!ranked.length) break;
-    seeds.push(ranked[0].id);
-    distanceCache.set(ranked[0].id, shortestDistances(ranked[0].id, componentIds, byId));
+    const nextSeed = ranked[0].id;
+    seeds.push(nextSeed);
+    seedSet.add(nextSeed);
+    const distances = shortestDistances(nextSeed, componentIds, byId);
+    candidates.forEach((id) => {
+      nearestSeedDistance.set(id, Math.min(
+        nearestSeedDistance.get(id) ?? Number.MAX_SAFE_INTEGER,
+        distances.get(id) ?? Number.MAX_SAFE_INTEGER,
+      ));
+    });
   }
   return seeds;
 }
 
+function compareFrontierEntry(left, right) {
+  return left.distance - right.distance || compareIds(left.unitId, right.unitId);
+}
+
+function heapPush(heap, value) {
+  heap.push(value);
+  let index = heap.length - 1;
+  while (index > 0) {
+    const parent = Math.floor((index - 1) / 2);
+    if (compareFrontierEntry(heap[parent], value) <= 0) break;
+    heap[index] = heap[parent];
+    index = parent;
+  }
+  heap[index] = value;
+}
+
+function heapPop(heap) {
+  if (!heap.length) return null;
+  const first = heap[0];
+  const last = heap.pop();
+  if (heap.length && last) {
+    let index = 0;
+    while (true) {
+      const left = index * 2 + 1;
+      const right = left + 1;
+      if (left >= heap.length) break;
+      const child = right < heap.length && compareFrontierEntry(heap[right], heap[left]) < 0 ? right : left;
+      if (compareFrontierEntry(last, heap[child]) <= 0) break;
+      heap[index] = heap[child];
+      index = child;
+    }
+    heap[index] = last;
+  }
+  return first;
+}
+
+function discardAssignedFrontierEntries(zone, unassigned) {
+  while (zone.frontier.length && !unassigned.has(zone.frontier[0].unitId)) heapPop(zone.frontier);
+  return zone.frontier[0] || null;
+}
+
+function enqueueZoneFrontier(zone, unitId, unassigned, byId, seedDistances) {
+  (byId.get(unitId)?.neighborIds || []).forEach((neighborId) => {
+    if (!unassigned.has(neighborId) || zone.frontierQueued.has(neighborId)) return;
+    zone.frontierQueued.add(neighborId);
+    heapPush(zone.frontier, {
+      unitId: neighborId,
+      distance: seedDistances.get(neighborId) ?? Number.MAX_SAFE_INTEGER,
+    });
+  });
+}
+
+function takeBestFrontierEntry(zone, unassigned, byId, target) {
+  discardAssignedFrontierEntries(zone, unassigned);
+  const nearestDistance = zone.frontier[0]?.distance;
+  if (!Number.isFinite(nearestDistance)) return null;
+  const candidates = [];
+  while (zone.frontier.length && candidates.length < 24) {
+    const next = zone.frontier[0];
+    if (next.distance !== nearestDistance) break;
+    const candidate = heapPop(zone.frontier);
+    if (candidate && unassigned.has(candidate.unitId)) candidates.push(candidate);
+  }
+  if (!candidates.length) return takeBestFrontierEntry(zone, unassigned, byId, target);
+  candidates.sort((left, right) => {
+    const leftUnit = byId.get(left.unitId);
+    const rightUnit = byId.get(right.unitId);
+    const leftWorkload = Number(leftUnit?.workloadScore || 0);
+    const rightWorkload = Number(rightUnit?.workloadScore || 0);
+    const leftError = Math.abs(zone.workloadScore + leftWorkload - target);
+    const rightError = Math.abs(zone.workloadScore + rightWorkload - target);
+    const leftNeighbors = (leftUnit?.neighborIds || []).filter((id) => zone.unitIds.has(id)).length;
+    const rightNeighbors = (rightUnit?.neighborIds || []).filter((id) => zone.unitIds.has(id)).length;
+    return leftError - rightError
+      || rightNeighbors - leftNeighbors
+      || rightWorkload - leftWorkload
+      || compareIds(left.unitId, right.unitId);
+  });
+  const selected = candidates.shift();
+  candidates.forEach((candidate) => heapPush(zone.frontier, candidate));
+  return selected;
+}
+
 function partitionComponent(component, zoneCount, byId) {
   const seeds = chooseSeeds(component.ids, zoneCount, byId);
-  const componentSet = new Set(component.ids);
-  const unassigned = new Set(component.ids.filter((id) => !seeds.includes(id)));
+  const seedSet = new Set(seeds);
+  const unassigned = new Set(component.ids.filter((id) => !seedSet.has(id)));
   const target = component.workloadScore / zoneCount;
   const zones = seeds.map((seedId, index) => ({
     localIndex: index,
     seedId,
     unitIds: new Set([seedId]),
     workloadScore: Number(byId.get(seedId)?.workloadScore || 0),
+    frontier: [],
+    frontierQueued: new Set(),
+    seedDistances: shortestDistances(seedId, component.ids, byId),
   }));
-  const distanceBySeed = new Map(seeds.map((seedId) => [seedId, shortestDistances(seedId, component.ids, byId)]));
+  zones.forEach((zone) => enqueueZoneFrontier(zone, zone.seedId, unassigned, byId, zone.seedDistances));
 
   while (unassigned.size) {
-    const choices = [];
-    zones.forEach((zone) => {
-      const frontier = [...new Set([...zone.unitIds].flatMap((unitId) => byId.get(unitId)?.neighborIds || []))]
-        .filter((unitId) => componentSet.has(unitId) && unassigned.has(unitId));
-      frontier.forEach((unitId) => {
-        const unitWorkload = Number(byId.get(unitId)?.workloadScore || 0);
-        const sameZoneNeighbors = (byId.get(unitId)?.neighborIds || [])
-          .filter((neighborId) => zone.unitIds.has(neighborId)).length;
-        choices.push({
-          zone,
-          unitId,
-          loadRatio: zone.workloadScore / Math.max(1, target),
-          projectedError: Math.abs(zone.workloadScore + unitWorkload - target),
-          seedDistance: distanceBySeed.get(zone.seedId).get(unitId) ?? Number.MAX_SAFE_INTEGER,
-          sameZoneNeighbors,
-          unitWorkload,
-        });
-      });
-    });
-    if (!choices.length) return null;
-    choices.sort((left, right) => left.loadRatio - right.loadRatio
-      || left.projectedError - right.projectedError
-      || left.seedDistance - right.seedDistance
-      || right.sameZoneNeighbors - left.sameZoneNeighbors
-      || right.unitWorkload - left.unitWorkload
-      || left.zone.localIndex - right.zone.localIndex
-      || compareIds(left.unitId, right.unitId));
-    const selected = choices[0];
-    selected.zone.unitIds.add(selected.unitId);
-    selected.zone.workloadScore += selected.unitWorkload;
+    const availableZones = zones.filter((zone) => discardAssignedFrontierEntries(zone, unassigned))
+      .sort((left, right) => left.workloadScore / Math.max(1, target) - right.workloadScore / Math.max(1, target)
+        || left.workloadScore - right.workloadScore
+        || left.localIndex - right.localIndex);
+    if (!availableZones.length) return null;
+    const zone = availableZones[0];
+    const selected = takeBestFrontierEntry(zone, unassigned, byId, target);
+    if (!selected) return null;
+    const unitWorkload = Number(byId.get(selected.unitId)?.workloadScore || 0);
+    zone.unitIds.add(selected.unitId);
+    zone.workloadScore += unitWorkload;
     unassigned.delete(selected.unitId);
+    enqueueZoneFrontier(zone, selected.unitId, unassigned, byId, zone.seedDistances);
   }
-  return zones;
+  return zones.map(({ frontier, frontierQueued, seedDistances, ...zone }) => zone);
 }
 
 function convexHull(points = []) {
@@ -429,18 +508,34 @@ function unitDisplayCorridor(unit, corridorMeters = 16) {
 }
 
 function centerOfUnits(units, fallbackPoints = []) {
-  const points = units.flatMap((unit) => (unit.segments || []).flatMap((segment) => [segment.start, segment.end]));
-  const values = points.length ? points : fallbackPoints;
-  if (!values.length) return null;
+  let latitudeTotal = 0;
+  let longitudeTotal = 0;
+  let pointCount = 0;
+  units.forEach((unit) => (unit.segments || []).forEach((segment) => {
+    [segment.start, segment.end].forEach((point) => {
+      latitudeTotal += Number(point.lat);
+      longitudeTotal += Number(point.lng);
+      pointCount += 1;
+    });
+  }));
+  if (!pointCount) {
+    fallbackPoints.forEach((point) => {
+      latitudeTotal += Number(point.lat);
+      longitudeTotal += Number(point.lng);
+      pointCount += 1;
+    });
+  }
+  if (!pointCount) return null;
   return {
-    lat: values.reduce((sum, point) => sum + Number(point.lat), 0) / values.length,
-    lng: values.reduce((sum, point) => sum + Number(point.lng), 0) / values.length,
+    lat: latitudeTotal / pointCount,
+    lng: longitudeTotal / pointCount,
   };
 }
 
 function ownedStreetPointNearest(units, target) {
   if (!target) return null;
-  const candidates = units.flatMap((unit) => (unit.segments || []).map((segment) => {
+  let best = null;
+  units.forEach((unit) => (unit.segments || []).forEach((segment) => {
     const referenceLatitude = (Number(target.lat) + Number(segment.start.lat) + Number(segment.end.lat)) / 3;
     const longitudeScale = Math.max(1000, 111320 * Math.cos(referenceLatitude * Math.PI / 180));
     const latitudeScale = 110540;
@@ -458,16 +553,19 @@ function ownedStreetPointNearest(units, target) {
       lat: Number(segment.start.lat) + (Number(segment.end.lat) - Number(segment.start.lat)) * position,
       lng: Number(segment.start.lng) + (Number(segment.end.lng) - Number(segment.start.lng)) * position,
     };
-    return {
+    const candidate = {
       point,
       distanceSquared: (startX + position * deltaX) ** 2 + (startY + position * deltaY) ** 2,
       edgeId: segment.edgeId,
       unitId: unit.id,
     };
+    if (!best || candidate.distanceSquared < best.distanceSquared
+      || (candidate.distanceSquared === best.distanceSquared && compareIds(candidate.edgeId, best.edgeId) < 0)
+      || (candidate.distanceSquared === best.distanceSquared && compareIds(candidate.edgeId, best.edgeId) === 0 && compareIds(candidate.unitId, best.unitId) < 0)) {
+      best = candidate;
+    }
   }));
-  return candidates.sort((left, right) => left.distanceSquared - right.distanceSquared
-    || compareIds(left.edgeId, right.edgeId)
-    || compareIds(left.unitId, right.unitId))[0]?.point || null;
+  return best?.point || null;
 }
 
 function polygonArea(points = []) {
@@ -483,8 +581,8 @@ function isConnected(unitIds, byId) {
   const allowed = new Set(unitIds);
   const seen = new Set([unitIds[0]]);
   const queue = [unitIds[0]];
-  while (queue.length) {
-    const unitId = queue.shift();
+  for (let queueIndex = 0; queueIndex < queue.length; queueIndex += 1) {
+    const unitId = queue[queueIndex];
     (byId.get(unitId)?.neighborIds || []).forEach((neighborId) => {
       if (!allowed.has(neighborId) || seen.has(neighborId)) return;
       seen.add(neighborId);
@@ -584,7 +682,7 @@ export function planCanvasTerritories(input = {}) {
     return failure(
       'blocked',
       'CANVAS_PLAN_TOO_COMPLEX',
-      'This street network is too complex to verify safely as one campaign. Draw a smaller work area or use fewer territories, then try again.',
+      'This street network is too complex to verify safely as one campaign. Review the limits below, then reduce the boundary or area count that exceeded them.',
       {
         zone_count: zoneCount,
         work_unit_count: workUnits.length,
@@ -661,12 +759,15 @@ export function planCanvasTerritories(input = {}) {
   const walkingMetersPerMinute = finitePositive(input.walking_meters_per_minute, 75);
   const streetPassMultiplier = finitePositive(input.street_pass_multiplier, 2);
   const doorsPerHour = finitePositive(input.doors_per_hour, 20);
+  const includeDisplayCorridors = workUnits.length <= MAX_DISPLAY_CORRIDOR_WORK_UNITS;
   let zones = partitioned.map((group, index) => {
     const workUnitIds = [...group.unitIds].sort(compareIds);
     const units = workUnitIds.map((unitId) => byId.get(unitId));
     const zoneId = `canvas-zone:${stableHash(workUnitIds.join('|'))}`;
     workUnitIds.forEach((unitId) => workUnitZoneId.set(unitId, zoneId));
-    const parts = units.flatMap((unit) => clippedPolygonParts(unitDisplayCorridor(unit), boundary));
+    const parts = includeDisplayCorridors
+      ? units.flatMap((unit) => clippedPolygonParts(unitDisplayCorridor(unit), boundary))
+      : [];
     const geometry = [...parts].sort((left, right) => polygonArea(right) - polygonArea(left))[0] || [];
     const center = centerOfUnits(units, geometry);
     const dropPoint = ownedStreetPointNearest(units, center);
@@ -716,7 +817,9 @@ export function planCanvasTerritories(input = {}) {
   const displayGeometryComplete = zones.every((zone) => (
     Array.isArray(zone.geometry) && zone.geometry.length >= 3 && zone.parts.length > 0
   ));
-  if (!displayGeometryComplete) warnings.push('Some legacy display corridors could not be rendered; clipped street segments remain the authoritative territory view.');
+  if (!displayGeometryComplete) warnings.push(includeDisplayCorridors
+    ? 'Some legacy display corridors could not be rendered; clipped street segments remain the authoritative territory view.'
+    : 'Legacy display corridors were skipped for this large plan; colored street segments remain the authoritative territory view.');
 
   const workUnitZoneCounts = new Map();
   zones.forEach((zone) => zone.work_unit_ids.forEach((unitId) => {

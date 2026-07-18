@@ -3,8 +3,8 @@ const MAX_CANVAS_ZONES = 250;
 const MAX_CANVAS_POLYGON_POINTS = 800;
 const MAX_CANVAS_AREA_SQ_MI = 1_000;
 const CANVAS_COORDINATE_EPSILON = 1e-10;
-export const MAX_CANVAS_INTERACTIVE_COMPLEXITY = 180_000;
-export const MAX_CANVAS_INTERACTIVE_WORK_UNITS = 2_000;
+export const MAX_CANVAS_INTERACTIVE_COMPLEXITY = 2_000_000;
+export const MAX_CANVAS_INTERACTIVE_WORK_UNITS = 20_000;
 export const MAX_CANVAS_INTERACTIVE_SEGMENTS = 50_000;
 
 function sameCanvasPoint(left, right) {
@@ -279,7 +279,7 @@ export function getCanvasPlanComplexityStatus(plan = {}) {
     complexity,
     message: supported
       ? ''
-      : `This street plan is too complex to verify safely as one campaign. Redraw a smaller work area or use fewer territories, then create the preview again.`,
+      : `This street plan exceeds the supported street-unit, segment, or area-by-unit limit. Reduce the boundary or area count that exceeded its limit, then create the preview again.`,
   };
 }
 
@@ -403,7 +403,13 @@ export function normalizeCanvasPlannerResult(result, context = {}) {
     : null;
   const blockingIssues = [
     ...(zones.length ? [] : ['No usable territories were generated.']),
-    ...(zones.some((zone) => !Array.isArray(zone?.geometry) || zone.geometry.length < 3) ? ['At least one territory has invalid display geometry.'] : []),
+    ...(zones.some((zone) => {
+      const hasDisplayGeometry = Array.isArray(zone?.geometry) && zone.geometry.length >= 3;
+      const hasStreetOwnership = zone?.geometry_role === 'display_only'
+        && Array.isArray(zone?.work_unit_ids)
+        && zone.work_unit_ids.length > 0;
+      return !hasDisplayGeometry && !hasStreetOwnership;
+    }) ? ['At least one territory has neither display geometry nor street ownership.'] : []),
   ];
   const degradedIssues = [
     ...normalizeIssueList(diagnostics?.warnings || result?.warnings),
@@ -531,6 +537,7 @@ export function buildCanvasDraftPayload({ sessionId, expectedVersion, sessionNam
     color: zone.color || null,
     geometry: zone.geometry || null,
     parts: Array.isArray(zone.parts) ? zone.parts : undefined,
+    geometry_role: zone.geometry_role || 'display_only',
     center: zone.center || null,
     drop_point: zone.drop_point || null,
     assigned_team_member_id: zone.assigned_team_member_id || getCanvasZoneAssignmentIds(zone)[0] || null,

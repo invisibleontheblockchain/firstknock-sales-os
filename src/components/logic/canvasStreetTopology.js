@@ -353,8 +353,8 @@ function findTwoCoreEdges(edgeIds, edgeMap, barrierNodeIds) {
   const activeDegrees = new Map([...nodeEdges.entries()].map(([nodeId, ids]) => [nodeId, barrierNodeIds.has(nodeId) ? 0 : ids.length]));
   const queue = [...activeDegrees.entries()].filter(([, degree]) => degree <= 1).map(([nodeId]) => nodeId).sort(compareIds);
 
-  while (queue.length) {
-    const nodeId = queue.shift();
+  for (let queueIndex = 0; queueIndex < queue.length; queueIndex += 1) {
+    const nodeId = queue[queueIndex];
     (nodeEdges.get(nodeId) || []).forEach((edgeId) => {
       if (!activeEdges.has(edgeId)) return;
       activeEdges.delete(edgeId);
@@ -365,7 +365,6 @@ function findTwoCoreEdges(edgeIds, edgeMap, barrierNodeIds) {
         if (nextDegree === 1) queue.push(endpointId);
       });
     });
-    queue.sort(compareIds);
   }
   return activeEdges;
 }
@@ -416,106 +415,271 @@ function findBridgeEdgeIds(edgeIds, edgeMap, barrierNodeIds) {
   const bridgeEdgeIds = new Set();
   let clock = 0;
 
-  const visit = (nodeId, parentEdgeId = null) => {
+  [...nodeEdges.keys()].sort(compareIds).forEach((nodeId) => {
+    if (discovery.has(nodeId)) return;
     clock += 1;
     discovery.set(nodeId, clock);
     low.set(nodeId, clock);
     if (barrierNodeIds.has(nodeId)) return;
-    (nodeEdges.get(nodeId) || []).sort(compareIds).forEach((edgeId) => {
-      if (edgeId === parentEdgeId) return;
+    const stack = [{ nodeId, parentEdgeId: null, edgeIndex: 0, edges: nodeEdges.get(nodeId) || [] }];
+    while (stack.length) {
+      const frame = stack[stack.length - 1];
+      if (frame.edgeIndex >= frame.edges.length) {
+        stack.pop();
+        if (!stack.length || frame.parentEdgeId === null) continue;
+        const parent = stack[stack.length - 1];
+        low.set(parent.nodeId, Math.min(low.get(parent.nodeId), low.get(frame.nodeId)));
+        if (low.get(frame.nodeId) > discovery.get(parent.nodeId)) bridgeEdgeIds.add(frame.parentEdgeId);
+        continue;
+      }
+      const edgeId = frame.edges[frame.edgeIndex];
+      frame.edgeIndex += 1;
+      if (edgeId === frame.parentEdgeId) continue;
       const edge = edgeMap.get(edgeId);
-      const nextNodeId = edge.nodeIds[0] === nodeId ? edge.nodeIds[1] : edge.nodeIds[0];
+      const nextNodeId = edge.nodeIds[0] === frame.nodeId ? edge.nodeIds[1] : edge.nodeIds[0];
       if (barrierNodeIds.has(nextNodeId)) {
         bridgeEdgeIds.add(edgeId);
-        return;
+        continue;
       }
       if (!discovery.has(nextNodeId)) {
-        visit(nextNodeId, edgeId);
-        low.set(nodeId, Math.min(low.get(nodeId), low.get(nextNodeId)));
-        if (low.get(nextNodeId) > discovery.get(nodeId)) bridgeEdgeIds.add(edgeId);
-      } else {
-        low.set(nodeId, Math.min(low.get(nodeId), discovery.get(nextNodeId)));
+        clock += 1;
+        discovery.set(nextNodeId, clock);
+        low.set(nextNodeId, clock);
+        stack.push({
+          nodeId: nextNodeId,
+          parentEdgeId: edgeId,
+          edgeIndex: 0,
+          edges: nodeEdges.get(nextNodeId) || [],
+        });
+        continue;
       }
-    });
-  };
-
-  [...nodeEdges.keys()].sort(compareIds).forEach((nodeId) => {
-    if (!discovery.has(nodeId)) visit(nodeId);
+      low.set(frame.nodeId, Math.min(low.get(frame.nodeId), discovery.get(nextNodeId)));
+    }
   });
   return bridgeEdgeIds;
 }
 
-function sideBeyondBridge(startNodeId, bridgeEdgeId, componentEdgeIds, edgeMap, barrierNodeIds) {
-  const eligibleEdges = new Set(componentEdgeIds.filter((edgeId) => edgeId !== bridgeEdgeId));
-  const nodeEdges = componentNodeEdges([...eligibleEdges], edgeMap);
-  const nodeIds = new Set([startNodeId]);
-  const sideEdgeIds = new Set();
-  const queue = [startNodeId];
-  while (queue.length) {
-    const nodeId = queue.shift();
-    if (barrierNodeIds.has(nodeId)) continue;
-    (nodeEdges.get(nodeId) || []).sort(compareIds).forEach((edgeId) => {
-      if (!eligibleEdges.has(edgeId)) return;
-      sideEdgeIds.add(edgeId);
-      const edge = edgeMap.get(edgeId);
-      const nextNodeId = edge.nodeIds[0] === nodeId ? edge.nodeIds[1] : edge.nodeIds[0];
-      if (nodeIds.has(nextNodeId)) return;
-      nodeIds.add(nextNodeId);
-      queue.push(nextNodeId);
-    });
-  }
-  return { edgeIds: sideEdgeIds, nodeIds };
+function hasTerminalNodeSignal(nodeId, nodeMap) {
+  const tags = nodeMap.get(nodeId)?.tags || {};
+  return String(tags.noexit || '').toLowerCase() === 'yes'
+    || String(tags.highway || '').toLowerCase() === 'turning_circle'
+    || String(tags.highway || '').toLowerCase() === 'turning_loop';
 }
 
-function hasTerminalNodeSignal(nodeIds, nodeMap) {
-  return [...nodeIds].some((nodeId) => {
-    const tags = nodeMap.get(nodeId)?.tags || {};
-    return String(tags.noexit || '').toLowerCase() === 'yes'
-      || String(tags.highway || '').toLowerCase() === 'turning_circle'
-      || String(tags.highway || '').toLowerCase() === 'turning_loop';
-  });
+function terminalEnclaveCandidate(edgeIds, throatNodeId, edgeMap, nodeMap, boundaryNodeIds, nodeDegrees) {
+  const protectedEdgeIds = [...edgeIds].sort(compareIds);
+  const protectedNodeIds = new Set(protectedEdgeIds.flatMap((edgeId) => edgeMap.get(edgeId).nodeIds));
+  const terminalNodeIds = [...protectedNodeIds].filter((nodeId) => (
+    nodeDegrees.get(nodeId) === 1 && !boundaryNodeIds.has(nodeId)
+  ) || hasTerminalNodeSignal(nodeId, nodeMap));
+  return {
+    edgeIds: protectedEdgeIds,
+    terminalNodeIds: terminalNodeIds.sort(compareIds),
+    throatNodeIds: [throatNodeId],
+  };
 }
 
 function findTerminalEnclaveBranches(componentEdgeIds, edgeMap, nodeMap, boundaryNodeIds, barrierNodeIds, nodeDegrees) {
-  const candidates = [];
-  [...findBridgeEdgeIds(componentEdgeIds, edgeMap, barrierNodeIds)].sort(compareIds).forEach((bridgeEdgeId) => {
-    const bridge = edgeMap.get(bridgeEdgeId);
-    const firstSide = sideBeyondBridge(bridge.nodeIds[0], bridgeEdgeId, componentEdgeIds, edgeMap, barrierNodeIds);
-    const secondSide = sideBeyondBridge(bridge.nodeIds[1], bridgeEdgeId, componentEdgeIds, edgeMap, barrierNodeIds);
-    const firstHasBoundaryExit = [...firstSide.nodeIds].some((nodeId) => boundaryNodeIds.has(nodeId));
-    const secondHasBoundaryExit = [...secondSide.nodeIds].some((nodeId) => boundaryNodeIds.has(nodeId));
-    const firstHasTerminalSignal = hasTerminalNodeSignal(firstSide.nodeIds, nodeMap);
-    const secondHasTerminalSignal = hasTerminalNodeSignal(secondSide.nodeIds, nodeMap);
+  const bridgeEdgeIds = findBridgeEdgeIds(componentEdgeIds, edgeMap, barrierNodeIds);
+  if (!bridgeEdgeIds.size) return [];
 
-    let enclave = null;
-    let throatNodeId = null;
-    if (firstHasBoundaryExit !== secondHasBoundaryExit) {
-      enclave = firstHasBoundaryExit ? secondSide : firstSide;
-      throatNodeId = firstHasBoundaryExit ? bridge.nodeIds[0] : bridge.nodeIds[1];
-    } else if (!firstHasBoundaryExit && !secondHasBoundaryExit && firstHasTerminalSignal !== secondHasTerminalSignal) {
-      enclave = firstHasTerminalSignal ? firstSide : secondSide;
-      throatNodeId = firstHasTerminalSignal ? bridge.nodeIds[1] : bridge.nodeIds[0];
+  // Collapse every non-bridge region into one block. The remaining bridges form
+  // a tree, so each bridge side can be described by one subtree interval rather
+  // than rediscovered with a graph traversal for every bridge.
+  const componentNodeIds = [...new Set(componentEdgeIds.flatMap((edgeId) => edgeMap.get(edgeId).nodeIds))].sort(compareIds);
+  const disjointParent = new Map(componentNodeIds.map((nodeId) => [nodeId, nodeId]));
+  const findRoot = (nodeId) => {
+    let root = nodeId;
+    while (disjointParent.get(root) !== root) root = disjointParent.get(root);
+    let current = nodeId;
+    while (disjointParent.get(current) !== current) {
+      const next = disjointParent.get(current);
+      disjointParent.set(current, root);
+      current = next;
     }
-    if (!enclave) return;
+    return root;
+  };
+  const union = (leftNodeId, rightNodeId) => {
+    const leftRoot = findRoot(leftNodeId);
+    const rightRoot = findRoot(rightNodeId);
+    if (leftRoot === rightRoot) return;
+    const [first, second] = [leftRoot, rightRoot].sort(compareIds);
+    disjointParent.set(second, first);
+  };
+  componentEdgeIds.forEach((edgeId) => {
+    if (bridgeEdgeIds.has(edgeId)) return;
+    const edge = edgeMap.get(edgeId);
+    union(edge.nodeIds[0], edge.nodeIds[1]);
+  });
 
-    const protectedEdgeIds = [...enclave.edgeIds, bridgeEdgeId].sort(compareIds);
-    const protectedNodeIds = new Set(protectedEdgeIds.flatMap((edgeId) => edgeMap.get(edgeId).nodeIds));
-    const terminalNodeIds = [...protectedNodeIds].filter((nodeId) => (
-      nodeDegrees.get(nodeId) === 1 && !boundaryNodeIds.has(nodeId)
-    ) || hasTerminalNodeSignal(new Set([nodeId]), nodeMap));
-    candidates.push({
-      edgeIds: protectedEdgeIds,
-      terminalNodeIds: terminalNodeIds.sort(compareIds),
-      throatNodeIds: [throatNodeId],
+  const blocks = new Map();
+  componentNodeIds.forEach((nodeId) => {
+    const blockId = findRoot(nodeId);
+    if (!blocks.has(blockId)) {
+      blocks.set(blockId, {
+        id: blockId,
+        nodeIds: [],
+        internalEdgeIds: [],
+        bridges: [],
+        boundarySignalCount: 0,
+        terminalSignalCount: 0,
+      });
+    }
+    const block = blocks.get(blockId);
+    block.nodeIds.push(nodeId);
+    if (boundaryNodeIds.has(nodeId)) block.boundarySignalCount += 1;
+    if (hasTerminalNodeSignal(nodeId, nodeMap)) block.terminalSignalCount += 1;
+  });
+  componentEdgeIds.forEach((edgeId) => {
+    const edge = edgeMap.get(edgeId);
+    const firstBlockId = findRoot(edge.nodeIds[0]);
+    if (!bridgeEdgeIds.has(edgeId)) {
+      blocks.get(firstBlockId).internalEdgeIds.push(edgeId);
+      return;
+    }
+    const secondBlockId = findRoot(edge.nodeIds[1]);
+    if (firstBlockId === secondBlockId) return;
+    blocks.get(firstBlockId).bridges.push({
+      edgeId,
+      neighborBlockId: secondBlockId,
+      localNodeId: edge.nodeIds[0],
+      remoteNodeId: edge.nodeIds[1],
+    });
+    blocks.get(secondBlockId).bridges.push({
+      edgeId,
+      neighborBlockId: firstBlockId,
+      localNodeId: edge.nodeIds[1],
+      remoteNodeId: edge.nodeIds[0],
     });
   });
-
-  const accepted = [];
-  candidates.sort((left, right) => right.edgeIds.length - left.edgeIds.length || compareIds(left.edgeIds[0], right.edgeIds[0])).forEach((candidate) => {
-    if (accepted.some((existing) => candidate.edgeIds.some((edgeId) => existing.edgeIds.includes(edgeId)))) return;
-    accepted.push(candidate);
+  blocks.forEach((block) => {
+    block.internalEdgeIds.sort(compareIds);
+    block.bridges.sort((left, right) => compareIds(left.edgeId, right.edgeId));
   });
-  return accepted.sort((left, right) => compareIds(left.edgeIds[0], right.edgeIds[0]));
+
+  const orderedBlocks = [...blocks.values()].sort((left, right) => compareIds(left.id, right.id));
+  const totalBoundarySignals = orderedBlocks.reduce((sum, block) => sum + block.boundarySignalCount, 0);
+  const totalTerminalSignals = orderedBlocks.reduce((sum, block) => sum + block.terminalSignalCount, 0);
+  if (!totalBoundarySignals && !totalTerminalSignals) return [];
+  const rootBlock = orderedBlocks.find((block) => totalBoundarySignals
+    ? block.boundarySignalCount > 0
+    : block.terminalSignalCount > 0);
+
+  const parentBlockId = new Map([[rootBlock.id, null]]);
+  const childrenByBlockId = new Map(orderedBlocks.map((block) => [block.id, []]));
+  const traversalOrder = [];
+  const traversalStack = [rootBlock.id];
+  while (traversalStack.length) {
+    const blockId = traversalStack.pop();
+    traversalOrder.push(blockId);
+    const childConnections = blocks.get(blockId).bridges
+      .filter((bridge) => !parentBlockId.has(bridge.neighborBlockId));
+    childConnections.forEach((bridge) => {
+      parentBlockId.set(bridge.neighborBlockId, blockId);
+      childrenByBlockId.get(blockId).push({
+        edgeId: bridge.edgeId,
+        childBlockId: bridge.neighborBlockId,
+        parentNodeId: bridge.localNodeId,
+        childNodeId: bridge.remoteNodeId,
+      });
+    });
+    [...childConnections].reverse().forEach((bridge) => traversalStack.push(bridge.neighborBlockId));
+  }
+  childrenByBlockId.forEach((children) => children.sort((left, right) => compareIds(left.edgeId, right.edgeId)));
+
+  const subtreeBoundarySignals = new Map();
+  const subtreeTerminalSignals = new Map();
+  [...traversalOrder].reverse().forEach((blockId) => {
+    const block = blocks.get(blockId);
+    const children = childrenByBlockId.get(blockId);
+    subtreeBoundarySignals.set(blockId, block.boundarySignalCount + children.reduce(
+      (sum, child) => sum + subtreeBoundarySignals.get(child.childBlockId), 0,
+    ));
+    subtreeTerminalSignals.set(blockId, block.terminalSignalCount + children.reduce(
+      (sum, child) => sum + subtreeTerminalSignals.get(child.childBlockId), 0,
+    ));
+  });
+
+  // Each child block's interval contains exactly the edges on its side of the
+  // parent bridge, excluding that bridge. This makes both subtree and complement
+  // candidates materializable once after aggregate selection.
+  const edgeSequence = [];
+  const subtreeIntervals = new Map();
+  const intervalStack = [{ blockId: rootBlock.id, entered: false, childIndex: 0 }];
+  while (intervalStack.length) {
+    const frame = intervalStack[intervalStack.length - 1];
+    if (!frame.entered) {
+      frame.entered = true;
+      frame.start = edgeSequence.length;
+      blocks.get(frame.blockId).internalEdgeIds.forEach((edgeId) => edgeSequence.push(edgeId));
+    }
+    const children = childrenByBlockId.get(frame.blockId);
+    if (frame.childIndex < children.length) {
+      const child = children[frame.childIndex];
+      frame.childIndex += 1;
+      edgeSequence.push(child.edgeId);
+      intervalStack.push({ blockId: child.childBlockId, entered: false, childIndex: 0 });
+      continue;
+    }
+    subtreeIntervals.set(frame.blockId, { start: frame.start, end: edgeSequence.length });
+    intervalStack.pop();
+  }
+
+  if (totalBoundarySignals) {
+    const accepted = [];
+    const pendingBlockIds = [rootBlock.id];
+    while (pendingBlockIds.length) {
+      const blockId = pendingBlockIds.pop();
+      const children = childrenByBlockId.get(blockId);
+      [...children].reverse().forEach((child) => {
+        if (subtreeBoundarySignals.get(child.childBlockId) === 0) {
+          const interval = subtreeIntervals.get(child.childBlockId);
+          const protectedEdgeIds = [child.edgeId].concat(edgeSequence.slice(interval.start, interval.end));
+          accepted.push(terminalEnclaveCandidate(
+            protectedEdgeIds,
+            child.parentNodeId,
+            edgeMap,
+            nodeMap,
+            boundaryNodeIds,
+            nodeDegrees,
+          ));
+          return;
+        }
+        pendingBlockIds.push(child.childBlockId);
+      });
+    }
+    return accepted.sort((left, right) => compareIds(left.edgeIds[0], right.edgeIds[0]));
+  }
+
+  const terminalCandidates = traversalOrder.flatMap((blockId) => childrenByBlockId.get(blockId))
+    .filter((child) => subtreeTerminalSignals.get(child.childBlockId) === 0)
+    .map((child) => ({ ...child, interval: subtreeIntervals.get(child.childBlockId) }));
+  if (!terminalCandidates.length) return [];
+  const minimumSideEdgeCount = terminalCandidates.reduce((minimum, candidate) => (
+    Math.min(minimum, candidate.interval.end - candidate.interval.start)
+  ), Number.POSITIVE_INFINITY);
+  const sizeTies = terminalCandidates.filter((candidate) => (
+    candidate.interval.end - candidate.interval.start === minimumSideEdgeCount
+  ));
+  const globalMinimumEdgeId = [...componentEdgeIds].sort(compareIds)[0];
+  const globalMinimumPosition = edgeSequence.indexOf(globalMinimumEdgeId);
+  const minimumIdTies = sizeTies.filter((candidate) => (
+    globalMinimumPosition < candidate.interval.start || globalMinimumPosition >= candidate.interval.end
+  ));
+  const selected = [...(minimumIdTies.length ? minimumIdTies : sizeTies)]
+    .sort((left, right) => compareIds(left.edgeId, right.edgeId))[0];
+  const protectedEdgeIds = [
+    ...edgeSequence.slice(0, selected.interval.start),
+    ...edgeSequence.slice(selected.interval.end),
+  ];
+  return [terminalEnclaveCandidate(
+    protectedEdgeIds,
+    selected.childNodeId,
+    edgeMap,
+    nodeMap,
+    boundaryNodeIds,
+    nodeDegrees,
+  )];
 }
 
 function findProtectedTerminalBranches(edgeIds, edgeMap, nodeMap, boundaryNodeIds, barrierNodeIds) {

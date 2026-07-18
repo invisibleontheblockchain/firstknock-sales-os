@@ -5,6 +5,7 @@ function serializePlannerError(error) {
     name: String(error?.name || 'Error'),
     message: String(error?.message || 'Canvas territory planning failed in the background worker.'),
     code: error?.code === undefined || error?.code === null ? null : String(error.code),
+    details: error?.details && typeof error.details === 'object' ? error.details : null,
   };
 }
 

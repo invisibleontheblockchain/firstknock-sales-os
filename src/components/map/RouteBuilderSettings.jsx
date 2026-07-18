@@ -63,7 +63,7 @@ export default function RouteBuilderSettings({
     // Data
     user,
     teamMembers = [], teamMembersReady = true,
-    canvasTeamMembers = [], canvasTeamMembersReady = true, onRefreshCanvasTeamMembers, onCanvasDraftDirtyChange,
+    canvasTeamMembers = [], canvasTeamMembersReady = true, onRefreshCanvasTeamMembers, onCanvasDraftDirtyChange, onCanvasPreviewChange,
     drawnPolygon,
     hasDrawnArea,
     maxDataMonths,
@@ -135,6 +135,7 @@ export default function RouteBuilderSettings({
                 teamMembersReady={canvasTeamMembersReady}
                 onRefreshTeamMembers={onRefreshCanvasTeamMembers}
                 onDraftDirtyChange={onCanvasDraftDirtyChange}
+                onPreviewChange={onCanvasPreviewChange}
             />
         );
     };

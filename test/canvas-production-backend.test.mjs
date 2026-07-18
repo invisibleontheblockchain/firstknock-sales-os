@@ -52,6 +52,37 @@ function unevenRoadNetwork() {
   };
 }
 
+function largeConnectedRoadNetwork() {
+  const rows = 33;
+  const columns = 33;
+  const elements = [];
+  const gridNodeId = (row, column) => 1 + row * columns + column;
+  for (let row = 0; row < rows; row += 1) {
+    for (let column = 0; column < columns; column += 1) {
+      elements.push(node(
+        gridNodeId(row, column),
+        34.9992 + 0.0116 * (row + 0.5) / rows,
+        -82.0108 + 0.0216 * (column + 0.5) / columns,
+      ));
+    }
+  }
+  for (let row = 0; row < rows; row += 1) {
+    elements.push(way(
+      100_000 + row,
+      Array.from({ length: columns }, (_, column) => gridNodeId(row, column)),
+      `Large Row ${row}`,
+    ));
+  }
+  for (let column = 0; column < columns; column += 1) {
+    elements.push(way(
+      200_000 + column,
+      Array.from({ length: rows }, (_, row) => gridNodeId(row, column)),
+      `Large Column ${column}`,
+    ));
+  }
+  return { elements };
+}
+
 function managerUser() {
   return {
     id: 'manager_1', email: 'manager@example.com', role: 'admin', app_role: 'manager',
@@ -266,14 +297,21 @@ function unevenHeadcountPlan({ acknowledged = false } = {}) {
 function syntheticHeadcountPlan({ repCount = 200, workUnitCount = 720 } = {}) {
   const baseline = productionPlan({ divisionMode: 'area_count' });
   const selectedTeamMemberIds = Array.from({ length: repCount }, (_, index) => `tm_${index + 1}`);
+  const baselineSegment = baseline.work_units[0].segments[0];
   const workUnits = Array.from({ length: workUnitCount }, (_, index) => ({
-    ...structuredClone(baseline.work_units[index % baseline.work_units.length]),
     id: `synthetic_unit_${index + 1}`,
+    kind: 'street_segment',
     protected: false,
+    street_names: [],
     neighbor_ids: [],
-    neighborIds: [],
     street_length_meters: 100,
-    streetLengthMeters: 100,
+    segments: [{
+      edge_id: `synthetic_edge_${index + 1}`,
+      start: structuredClone(baselineSegment.start),
+      end: structuredClone(baselineSegment.end),
+      street_names: [],
+      length_meters: 100,
+    }],
   }));
   const unitIdsByZone = Array.from({ length: repCount }, () => []);
   workUnits.forEach((unit, index) => unitIdsByZone[index % repCount].push(unit.id));
@@ -388,6 +426,97 @@ test('save accepts an unassigned area-count draft but marks it nondeployable', a
   assert.equal(state.sessions[0].work_units.length, 3);
 });
 
+test('canvasSaveDraft enforces declared and normalized UTF-8 byte limits before plan acceptance', async () => {
+  const source = readSource('base44/functions/canvasSaveDraft/entry.ts');
+  const declaredSizeIndex = source.indexOf("const declaredBodyBytes = Number(req.headers.get('content-length'))");
+  const parseIndex = source.indexOf('const body = await req.json()', declaredSizeIndex);
+  const normalizedSizeIndex = source.indexOf('const normalizedBodyBytes = new TextEncoder().encode(JSON.stringify(body)).byteLength', parseIndex);
+  const planAcceptanceIndex = source.indexOf('const sessionId = optionalString(body?.session_id', normalizedSizeIndex);
+  assert.ok(declaredSizeIndex >= 0 && parseIndex > declaredSizeIndex);
+  assert.ok(normalizedSizeIndex > parseIndex && planAcceptanceIndex > normalizedSizeIndex);
+
+  const state = makeState();
+  const save = loadHandler('base44/functions/canvasSaveDraft/entry.ts', {
+    base44: makeBase44(managerUser(), state),
+  });
+  let declaredBodyParseCalls = 0;
+  const declaredResponse = await save({
+    headers: { get: (name) => String(name).toLowerCase() === 'content-length' ? '8000001' : null },
+    json: async () => {
+      declaredBodyParseCalls += 1;
+      return productionPlan();
+    },
+  });
+  const declaredResult = await declaredResponse.json();
+  assert.equal(declaredResponse.status, 413);
+  assert.equal(declaredResult.error, 'plan_too_large');
+  assert.equal(declaredBodyParseCalls, 0);
+
+  const multibyteBody = { marker: '界'.repeat(2_666_667) };
+  const serializedMultibyteBody = JSON.stringify(multibyteBody);
+  const serializedUtf8Bytes = new TextEncoder().encode(serializedMultibyteBody).byteLength;
+  assert.ok(serializedMultibyteBody.length < 8_000_000);
+  assert.ok(serializedUtf8Bytes > 8_000_000);
+  let normalizedBodyParseCalls = 0;
+  const normalizedResponse = await save({
+    headers: { get: () => null },
+    json: async () => {
+      normalizedBodyParseCalls += 1;
+      return multibyteBody;
+    },
+  });
+  const normalizedResult = await normalizedResponse.json();
+  assert.equal(normalizedResponse.status, 413);
+  assert.equal(normalizedResult.error, 'plan_too_large');
+  assert.equal(normalizedBodyParseCalls, 1);
+  assert.equal(state.sessions.length, 0);
+});
+
+test('save accepts a planner result above 2,000 work units without legacy display corridors', async () => {
+  const generated = planCanvasTerritories({
+    polygon,
+    roadNetwork: largeConnectedRoadNetwork(),
+    requested_zone_count: 10,
+  });
+  assert.equal(generated.ok, true, generated.message || generated.code);
+  assert.ok(generated.work_units.length > 2_000);
+  assert.equal(generated.qa.display_geometry_complete, false);
+  assert.ok(generated.zones.every((zone) => (
+    zone.geometry_role === 'display_only'
+      && zone.geometry.length === 0
+      && zone.parts.length === 0
+      && zone.work_unit_ids.length > 0
+  )));
+
+  const state = makeState();
+  const { saved } = await savePlan(state, {
+    session_name: 'Large street-owned Canvas',
+    territory_model: 'street_territory_v1',
+    polygon,
+    planning_method: generated.planning_method,
+    assignment_basis: generated.assignment_basis,
+    workload_basis: generated.workload_basis,
+    division_mode: 'area_count',
+    selected_team_member_ids: [],
+    target_workload: null,
+    zones: generated.zones,
+    work_units: generated.work_units,
+    qa: generated.qa,
+    algorithm_version: generated.algorithm_version,
+    data_version: generated.data_version,
+  });
+
+  assert.equal(saved.response.status, 200);
+  assert.equal(saved.result.qa.deployable, false);
+  assert.equal(state.sessions[0].work_units.length, generated.work_units.length);
+  assert.ok(state.sessions[0].zones.every((zone) => (
+    zone.geometry_role === 'display_only'
+      && zone.geometry.length === 0
+      && zone.parts.length === 0
+      && zone.work_unit_ids.length > 0
+  )));
+});
+
 test('area-count drafts may assign multiple areas per rep but require exact selected-roster coverage', async () => {
   const state = makeState();
   const repeated = productionPlan({ divisionMode: 'area_count' });
@@ -434,7 +563,7 @@ test('save rejects plans above the interactive complexity boundary without mutat
   const originalId = first.saved.result.session_id;
   const originalVersion = state.sessions[0].version;
   const originalHash = state.sessions[0].plan_hash;
-  const oversized = syntheticHeadcountPlan({ repCount: 250, workUnitCount: 721 });
+  const oversized = syntheticHeadcountPlan({ repCount: 250, workUnitCount: 8_001 });
   const save = loadHandler('base44/functions/canvasSaveDraft/entry.ts', { base44: first.base44 });
   const rejected = await invoke(save, {
     ...oversized,
@@ -452,7 +581,7 @@ test('save rejects plans above the interactive complexity boundary without mutat
 test('legacy oversized drafts fail deployment before roster reads or Overpass', async () => {
   const state = makeState();
   const base44 = makeBase44(managerUser(), state);
-  const oversized = syntheticHeadcountPlan({ repCount: 250, workUnitCount: 721 });
+  const oversized = syntheticHeadcountPlan({ repCount: 250, workUnitCount: 8_001 });
   const save = loadHandler('base44/functions/canvasSaveDraft/entry.ts', {
     base44,
     sourceTransform: (source) => {

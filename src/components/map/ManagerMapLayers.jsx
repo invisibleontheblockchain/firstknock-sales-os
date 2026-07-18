@@ -508,6 +508,7 @@ const ManagerMapLayers = React.memo(function ManagerMapLayers({
     // Mode & state
     mode,
     routeMode = 'precision',
+    canvasZonePreview,
     activeRoute,
     zoomLevel,
     viewMode,
@@ -567,7 +568,7 @@ const ManagerMapLayers = React.memo(function ManagerMapLayers({
 }) {
     return (
         <>
-            <CanvasZoneOverlay routeMode={routeMode} />
+            <CanvasZoneOverlay routeMode={routeMode} preview={canvasZonePreview} />
 
             {routeMode !== 'canvas' && <>
             {/* --- Existing Routes (Imperative for performance) --- */}
