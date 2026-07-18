@@ -2267,6 +2267,7 @@ export default function Home() {
                 <MapDrawTool
                     active={drawingMode}
                     onPointsUpdate={setActiveDraftPolygon}
+                    confirmOnRelease={routeMode === 'canvas'}
                     onConfirm={(polygon) => {
                         const canvasBoundary = routeMode === 'canvas' ? validateCanvasBoundary(polygon) : null;
                         if (canvasBoundary && !canvasBoundary.valid) {
@@ -2368,6 +2369,7 @@ export default function Home() {
                 setShowRoutePanel={setShowRoutePanel}
                 setShowChecklist={setShowChecklist}
                 drawnPolygon={activeDrawnPolygon}
+                drawingMode={drawingMode}
                 teamMembers={teamMembers}
                 hydratedSavedRoutes={hydratedSavedRoutes}
                 routes={routes}

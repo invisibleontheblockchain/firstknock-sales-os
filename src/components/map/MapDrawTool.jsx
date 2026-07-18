@@ -3,7 +3,7 @@ import { useMapEvents, useMap, Polygon, CircleMarker, Tooltip } from 'react-leaf
 import L from 'leaflet';
 import { calculatePolygonAreaSqMiles, formatSqMiles } from '@/components/logic/geoArea';
 
-export default function MapDrawTool({ active, onPointsUpdate, onConfirm, drawnPolygon }) {
+export default function MapDrawTool({ active, onPointsUpdate, onConfirm, drawnPolygon, confirmOnRelease = false }) {
     const [points, setPoints] = useState([]);
     const [isDrawing, setIsDrawing] = useState(false);
     const [builderMode, setBuilderMode] = useState(false);
@@ -134,6 +134,13 @@ export default function MapDrawTool({ active, onPointsUpdate, onConfirm, drawnPo
             if (!active || event.pointerType === 'mouse' || touchPointerIdRef.current !== event.pointerId) return;
             stopTouchMapGesture(event);
             container.releasePointerCapture?.(event.pointerId);
+            finishDrawing(confirmOnRelease);
+        };
+
+        const onPointerCancel = (event) => {
+            if (!active || event.pointerType === 'mouse' || touchPointerIdRef.current !== event.pointerId) return;
+            stopTouchMapGesture(event);
+            container.releasePointerCapture?.(event.pointerId);
             finishDrawing(false);
         };
 
@@ -152,29 +159,35 @@ export default function MapDrawTool({ active, onPointsUpdate, onConfirm, drawnPo
         const onTouchEnd = (event) => {
             if (!active || window.PointerEvent) return;
             stopTouchMapGesture(event);
+            finishDrawing(confirmOnRelease);
+        };
+
+        const onTouchCancel = (event) => {
+            if (!active || window.PointerEvent) return;
+            stopTouchMapGesture(event);
             finishDrawing(false);
         };
 
         container.addEventListener('pointerdown', onPointerDown, { passive: false });
         container.addEventListener('pointermove', onPointerMove, { passive: false });
         container.addEventListener('pointerup', onPointerUp, { passive: false });
-        container.addEventListener('pointercancel', onPointerUp, { passive: false });
+        container.addEventListener('pointercancel', onPointerCancel, { passive: false });
         container.addEventListener('touchstart', onTouchStart, { passive: false });
         container.addEventListener('touchmove', onTouchMove, { passive: false });
         container.addEventListener('touchend', onTouchEnd, { passive: false });
-        container.addEventListener('touchcancel', onTouchEnd, { passive: false });
+        container.addEventListener('touchcancel', onTouchCancel, { passive: false });
 
         return () => {
             container.removeEventListener('pointerdown', onPointerDown);
             container.removeEventListener('pointermove', onPointerMove);
             container.removeEventListener('pointerup', onPointerUp);
-            container.removeEventListener('pointercancel', onPointerUp);
+            container.removeEventListener('pointercancel', onPointerCancel);
             container.removeEventListener('touchstart', onTouchStart);
             container.removeEventListener('touchmove', onTouchMove);
             container.removeEventListener('touchend', onTouchEnd);
-            container.removeEventListener('touchcancel', onTouchEnd);
+            container.removeEventListener('touchcancel', onTouchCancel);
         };
-    }, [active, map]);
+    }, [active, confirmOnRelease, map]);
 
     useMapEvents({
         mousedown(e) { startDrawing(e.latlng); },

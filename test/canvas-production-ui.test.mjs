@@ -412,6 +412,36 @@ test('Canvas exposes rep-count, approximate workload-size, and advanced fixed-co
   assert.match(builder, /Max deviation/);
 });
 
+test('Canvas touch and pen drawing commits on release without changing Precision confirmation behavior', () => {
+  const drawTool = readFileSync(new URL('../src/components/map/MapDrawTool.jsx', import.meta.url), 'utf8');
+  const home = readFileSync(new URL('../src/pages/Home.jsx', import.meta.url), 'utf8');
+  const toolbar = readFileSync(new URL('../src/components/map/MapToolbar.jsx', import.meta.url), 'utf8');
+  assert.match(drawTool, /confirmOnRelease = false/);
+  assert.match(home, /confirmOnRelease=\{routeMode === 'canvas'\}/);
+  assert.match(drawTool, /const onPointerUp = [\s\S]*?finishDrawing\(confirmOnRelease\)/);
+  assert.match(drawTool, /const onPointerCancel = [\s\S]*?finishDrawing\(false\)/);
+  assert.match(drawTool, /const onTouchEnd = [\s\S]*?finishDrawing\(confirmOnRelease\)/);
+  assert.match(drawTool, /const onTouchCancel = [\s\S]*?finishDrawing\(false\)/);
+  assert.match(toolbar, /drawingMode = false/);
+  assert.match(toolbar, /!drawingMode && \([\s\S]*?onClick=\{\(\) => setShowCompare\(true\)\}/);
+  assert.match(toolbar, /routeMode === 'canvas' && mode === 'generate' && !activeRoute \? !drawingMode &&/);
+});
+
+test('Canvas without linked reps defaults to a previewable workload plan and explains deployment recovery', () => {
+  const builder = readFileSync(new URL('../src/components/map/CanvasBuilderSettings.jsx', import.meta.url), 'utf8');
+  assert.match(builder, /initialRosterModeResolvedRef/);
+  assert.match(builder, /activeTeamMembers, teamMembersReady, teamExclusions/);
+  assert.match(builder, /campaignIndexError, campaignSigningUnavailable, refreshCampaignIndex/);
+  assert.match(builder, /!activeTeamMembers\.length && divisionBasis === 'selected_reps' && !plan && !deployed/);
+  assert.match(builder, /setDivisionBasis\('street_workload_target'\)/);
+  assert.match(builder, /Plan now, assign reps later/);
+  assert.match(builder, /have each rep sign in and redeem your invite code/);
+  assert.match(builder, /Manage reps and invites/);
+  assert.match(builder, /to=\{createPageUrl\('AdminTeam'\)\} target="_blank" rel="noopener noreferrer"/);
+  assert.match(builder, /Canvas deployment security needs setup/);
+  assert.match(builder, /You can still draw, load streets, generate territories, and save a draft/);
+});
+
 test('Canvas renders authoritative street ownership instead of filled territory surfaces', () => {
   const zones = readFileSync(new URL('../src/components/map/CanvasZoneLayers.jsx', import.meta.url), 'utf8');
   const field = readFileSync(new URL('../src/components/rep/CanvasFieldView.jsx', import.meta.url), 'utf8');
