@@ -32,6 +32,7 @@ import {
 } from '@/api/fieldRoutes';
 import { createPageUrl } from '@/utils';
 import { isManagerAccount } from '@/lib/roles';
+import { fieldRoutesSetupAccess } from '@/components/fieldroutes/fieldRoutesManagerSetup';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
   AlertDialog,
@@ -330,7 +331,6 @@ export default function Integrations() {
   });
 
   const capability = capabilityQuery.data || {};
-  const integrationEnabled = capabilityQuery.isSuccess && capability.enabled !== false;
   const configured = capability.configured === true;
   const configuredServiceTypeId = capability.service_type_id ?? capability.default_service_type_id;
   const configReady = capability.config_ready === true
@@ -343,7 +343,7 @@ export default function Integrations() {
   const activityQuery = useQuery({
     queryKey: ['fieldRoutesActivity'],
     queryFn: () => listFieldRoutesActivity({ limit: ACTIVITY_LIMIT }),
-    enabled: managerAllowed && integrationEnabled && configured,
+    enabled: managerAllowed && capabilityQuery.isSuccess && capability.enabled !== false && configured,
     retry: false,
     staleTime: 15_000,
     refetchInterval: 30_000,
@@ -373,8 +373,6 @@ export default function Integrations() {
     setServiceTypeName(String(capability.service_type_name || capability.default_service_type_name || capability.name || '').trim());
     const length = Number(capability.default_length ?? capability.appointment_duration_minutes);
     setDefaultLength(Number.isFinite(length) && length > 0 ? String(Math.round(length)) : '');
-    setAuthenticationKey('');
-    setAuthenticationToken('');
   }, [capabilityQuery.data]);
 
   const refreshIntegrationQueries = React.useCallback(async () => {
@@ -459,6 +457,13 @@ export default function Integrations() {
     }, ...serviceTypes];
   }, [defaultLength, serviceTypeId, serviceTypeName, serviceTypes]);
 
+  const setupAccess = fieldRoutesSetupAccess({
+    capabilityLoading: capabilityQuery.isLoading,
+    capabilitySucceeded: capabilityQuery.isSuccess,
+    capabilityEnabled: capability.enabled,
+    savePending: saveMutation.isPending,
+  });
+
   const handleServiceTypeChange = (value) => {
     setServiceTypeId(value);
     const selected = serviceTypeOptions.find((item) => item.id === value);
@@ -469,7 +474,7 @@ export default function Integrations() {
 
   const handleSave = (event) => {
     event.preventDefault();
-    if (!integrationEnabled) return toast.error('FieldRoutes is not enabled for this account yet.');
+    if (setupAccess.explicitlyDisabled) return toast.error('FieldRoutes is not enabled for this account yet.');
 
     const normalizedSubdomain = subdomain.trim().toLowerCase();
     if (environment === 'production' && !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(normalizedSubdomain)) {
@@ -568,7 +573,7 @@ export default function Integrations() {
           </Alert>
         )}
 
-        {capabilityQuery.isSuccess && !integrationEnabled && (
+        {capabilityQuery.isSuccess && setupAccess.explicitlyDisabled && (
           <Alert className="border-amber-500/30 bg-amber-500/[0.08] text-amber-100">
             <ShieldAlert className="h-4 w-4" />
             <AlertTitle>FieldRoutes is not enabled for this account</AlertTitle>
@@ -613,7 +618,7 @@ export default function Integrations() {
                     <h2 className="text-sm font-bold">1. Choose the account environment</h2>
                     <p className="mt-1 text-xs text-white/45">Production uses the subdomain from your normal FieldRoutes sign-in URL. Staging uses the exact FieldRoutes demo host.</p>
                   </div>
-                  <Select value={environment} onValueChange={setEnvironment} disabled={!integrationEnabled || saveMutation.isPending}>
+                  <Select value={environment} onValueChange={setEnvironment} disabled={setupAccess.controlsDisabled}>
                     <SelectTrigger className="h-11 border-white/10 bg-black/40 text-white focus:ring-[#39FF4A]/40">
                       <SelectValue />
                     </SelectTrigger>
@@ -635,7 +640,7 @@ export default function Integrations() {
                           autoCapitalize="none"
                           autoCorrect="off"
                           spellCheck={false}
-                          disabled={!integrationEnabled || saveMutation.isPending}
+                          disabled={setupAccess.controlsDisabled}
                           className="h-11 border-0 bg-transparent text-white focus-visible:ring-0"
                         />
                         <span className="flex items-center border-l border-white/10 px-3 text-xs text-white/35">.{PRODUCTION_DOMAIN}</span>
@@ -660,6 +665,12 @@ export default function Integrations() {
                       Credentials are saved. Leave both fields blank to keep them, or enter both to rotate them.
                     </div>
                   )}
+                  {capabilityQuery.isError && (
+                    <div className="rounded-xl border border-amber-500/20 bg-amber-500/[0.06] px-4 py-3 text-xs leading-5 text-amber-100/75">
+                      <p className="font-bold text-amber-100">FirstKnock server status needs attention</p>
+                      <p className="mt-1">You can enter these details while status is unavailable. They stay on this page until you select Save, and a successful server response is still required before anything is stored.</p>
+                    </div>
+                  )}
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div className="space-y-2">
                       <Label htmlFor="fieldroutes-api-key" className="text-xs text-white/65">API key</Label>
@@ -672,7 +683,7 @@ export default function Integrations() {
                           onChange={(event) => setAuthenticationKey(event.target.value)}
                           placeholder={credentialsSaved ? 'Saved · enter to replace' : 'Enter API key'}
                           autoComplete="new-password"
-                          disabled={!integrationEnabled || saveMutation.isPending}
+                          disabled={setupAccess.controlsDisabled}
                           className="h-11 border-white/10 bg-black/40 pl-10 text-white placeholder:text-white/25 focus-visible:ring-[#39FF4A]/40"
                         />
                       </div>
@@ -688,7 +699,7 @@ export default function Integrations() {
                           onChange={(event) => setAuthenticationToken(event.target.value)}
                           placeholder={credentialsSaved ? 'Saved · enter to replace' : 'Enter authentication token'}
                           autoComplete="new-password"
-                          disabled={!integrationEnabled || saveMutation.isPending}
+                          disabled={setupAccess.controlsDisabled}
                           className="h-11 border-white/10 bg-black/40 pl-10 text-white placeholder:text-white/25 focus-visible:ring-[#39FF4A]/40"
                         />
                       </div>
@@ -709,21 +720,21 @@ export default function Integrations() {
                         autoCapitalize="none"
                         autoCorrect="off"
                         spellCheck={false}
-                        disabled={!integrationEnabled || saveMutation.isPending}
+                        disabled={setupAccess.controlsDisabled}
                         className="h-11 border-white/10 bg-black/40 text-white placeholder:text-white/25 focus-visible:ring-[#39FF4A]/40"
                       />
                       <p className="text-[11px] leading-4 text-white/30">Use the FirstKnock lead source configured in FieldRoutes, if your office has one.</p>
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    <Button type="submit" disabled={!integrationEnabled || saveMutation.isPending} className="bg-[#39FF4A] font-bold text-black hover:bg-[#2EEB57]">
+                    <Button type="submit" disabled={setupAccess.controlsDisabled} className="bg-[#39FF4A] font-bold text-black hover:bg-[#2EEB57]">
                       {saveMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ShieldCheck className="mr-2 h-4 w-4" />}
                       Save connection
                     </Button>
                     <Button
                       type="button"
                       variant="outline"
-                      disabled={!integrationEnabled || !credentialsSaved || testMutation.isPending}
+                      disabled={setupAccess.explicitlyDisabled || !credentialsSaved || testMutation.isPending}
                       onClick={() => testMutation.mutate()}
                       className="border-white/15 bg-transparent text-white hover:bg-white/10 hover:text-white"
                     >
