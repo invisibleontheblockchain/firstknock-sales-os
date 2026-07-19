@@ -1,0 +1,65 @@
+{
+  "name": "CanvasAnalysisTile",
+  "type": "object",
+  "properties": {
+    "job_id": { "type": "string" },
+    "manager_id": { "type": "string" },
+    "tile_id": { "type": "string" },
+    "tile_index": { "type": "integer", "minimum": 0 },
+    "tile_hash": { "type": "string" },
+    "status": {
+      "type": "string",
+      "enum": ["pending", "processing", "complete", "failed"],
+      "default": "pending"
+    },
+    "version": { "type": "integer", "minimum": 1, "default": 1 },
+    "attempt_count": { "type": "integer", "minimum": 0, "default": 0 },
+    "next_attempt_at": { "type": "string", "format": "date-time" },
+    "core_polygon": { "type": "array", "items": { "type": "object" } },
+    "query_polygon": {
+      "type": "array",
+      "description": "Buffered 5-25 square-mile provider query polygon.",
+      "items": { "type": "object" }
+    },
+    "query_area_sq_mi": { "type": "number", "minimum": 5, "maximum": 25 },
+    "provider": { "type": "string" },
+    "source_version": { "type": "string" },
+    "raw_evidence_id": { "type": "string" },
+    "raw_evidence_hash": { "type": "string" },
+    "raw_evidence_bytes": { "type": "integer", "minimum": 0 },
+    "analysis_result": { "type": "object" },
+    "analysis_result_hash": { "type": "string" },
+    "analysis_result_bytes": { "type": "integer", "minimum": 0 },
+    "response_bytes": { "type": "integer", "minimum": 0 },
+    "element_count": { "type": "integer", "minimum": 0 },
+    "completed_at": { "type": "string", "format": "date-time" },
+    "error_code": { "type": "string" },
+    "error_message": { "type": "string" },
+    "updated_at": { "type": "string", "format": "date-time" }
+  },
+  "required": [
+    "job_id",
+    "manager_id",
+    "tile_id",
+    "tile_index",
+    "tile_hash",
+    "status",
+    "version",
+    "attempt_count",
+    "core_polygon",
+    "query_polygon",
+    "query_area_sq_mi",
+    "updated_at"
+  ],
+  "rls": {
+    "create": { "user_condition": { "role": "admin" } },
+    "read": {
+      "$or": [
+        { "manager_id": "{{user.id}}" },
+        { "user_condition": { "role": "admin" } }
+      ]
+    },
+    "update": { "user_condition": { "role": "admin" } },
+    "delete": { "user_condition": { "role": "admin" } }
+  }
+}

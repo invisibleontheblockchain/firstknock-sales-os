@@ -1,5 +1,7 @@
 # Canvas D2D Territory Planning Flow
 
+> Historical v1 flow. The production residential-evidence contract and deployment checklist are now defined by [Canvas Residential Territory v1.1](./canvas-residential-territory-v1.1.md). Where this document discusses browser road loading, street-length-only balancing, assignment in the builder, or a 50-square-mile ceiling, v1.1 is authoritative.
+
 ## Product contract
 
 Canvas is an area-assignment system for open door-to-door territory. The manager-drawn territory is the source of truth. Canvas does not need an imported list of houses before it can create or deploy a campaign.
@@ -226,7 +228,4 @@ The initial implementation may use Base44 entities and authenticated functions f
 
 ## Deployment prerequisites
 
-1. Configure one stable `CANVAS_DEPLOYMENT_SIGNING_SECRET` per Base44 environment with at least 32 high-entropy characters.
-2. Confirm the Base44 runtime and supported browsers can reach the configured Overpass endpoints.
-3. Seed authenticated manager and rep test accounts with exact TeamMember bindings.
-4. Run the full territory, pin/outcome, lifecycle, overlap, authorization, offline retry, and Precision-isolation staging matrix before publishing.
+The production v1.1 entity, function, secret, provider, and authenticated staging checklist is maintained in [Canvas Residential Territory v1.1](./canvas-residential-territory-v1.1.md). Neon is not a Canvas launch prerequisite.

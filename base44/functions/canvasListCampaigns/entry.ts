@@ -38,6 +38,7 @@ function canvasStoredPlanForHash(session) {
     qa: session?.qa || {},
     algorithm_version: session?.algorithm_version || null,
     data_version: session?.data_version || null,
+    ...session?.territory_model === "residential_street_territory_v2" ? { evidence_id: session?.evidence_id, revision_id: session?.revision_id || null, snapshot_hash: session?.snapshot_hash, evidence_schema_version: Number(session?.evidence_schema_version), unresolved_unit_count: Number(session?.unresolved_unit_count || 0), assignment_version: Number(session?.assignment_version || 0) } : {},
     manager_id: session?.manager_id,
     version: planVersion
   };
@@ -146,10 +147,9 @@ Deno.serve(async (req) => {
       if (String(session?.manager_id || "") !== String(user.id || "")) continue;
       if (!["draft", "quarantined"].includes(session.status)) {
         if (!signingSecret) {
-          return Response.json({
-            error: "canvas_signing_unavailable",
-            message: "Canvas lifecycle signing is not configured. Active campaign records cannot be trusted."
-          }, { status: 503 });
+          rejectedCampaigns += 1;
+          if (!String(session?.deployment_signature || "").trim()) quarantinableCampaigns += 1;
+          continue;
         }
         const requiredState = session.status === "deployed" ? "active" : session.status;
         if (!await verifyCanvasLifecycleSession(signingSecret, session, requiredState)) {
@@ -179,6 +179,7 @@ Deno.serve(async (req) => {
       return {
         session_id: session.id,
         session_name: session.session_name || "Canvas Campaign",
+        territory_model: session.territory_model || "street_territory_v1",
         status: effectiveStatus,
         stored_status: session.status || "draft",
         lifecycle_state: supersededBySessionId ? "superseded" : session.lifecycle_state || (session.status === "deployed" ? "active" : null),
@@ -189,6 +190,11 @@ Deno.serve(async (req) => {
         division_mode: session.division_mode || null,
         workload_basis: session.workload_basis || null,
         target_workload: session.target_workload ?? null,
+        evidence_id: session.evidence_id || null,
+        revision_id: session.revision_id || null,
+        snapshot_hash: session.snapshot_hash || null,
+        unresolved_unit_count: Number(session.unresolved_unit_count || 0),
+        assignment_version: Number(session.assignment_version || 0),
         total_street_length_meters: Number(session.qa?.total_street_length_meters || 0),
         rep_count: Math.max(0, Number(session.rep_count) || 0),
         draft_saved_at: session.draft_saved_at || null,
@@ -205,6 +211,7 @@ Deno.serve(async (req) => {
       campaigns,
       rejected_campaigns: rejectedCampaigns,
       quarantinable_campaigns: quarantinableCampaigns,
+      signing_configured: Boolean(signingSecret),
       truncated: sessions.length >= MAX_CAMPAIGNS
     });
   } catch (error) {

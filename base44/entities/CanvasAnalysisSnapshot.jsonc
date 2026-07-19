@@ -1,0 +1,73 @@
+{
+  "name": "CanvasAnalysisSnapshot",
+  "type": "object",
+  "properties": {
+    "evidence_id": {
+      "type": "string",
+      "description": "Stable content-addressed identifier for this immutable Canvas analysis snapshot."
+    },
+    "snapshot_hash": {
+      "type": "string",
+      "description": "SHA-256 of the canonical server-owned evidence payload."
+    },
+    "schema_version": { "type": "integer", "default": 1 },
+    "manager_id": { "type": "string" },
+    "created_by_user_id": { "type": "string" },
+    "created_at": { "type": "string", "format": "date-time" },
+    "status": {
+      "type": "string",
+      "enum": ["complete", "failed"],
+      "default": "complete"
+    },
+    "provider": { "type": "string" },
+    "source_version": { "type": "string" },
+    "extraction_version": { "type": "string" },
+    "classifier_version": { "type": "string" },
+    "polygon": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "lat": { "type": "number" },
+          "lng": { "type": "number" }
+        }
+      }
+    },
+    "raw_evidence": {
+      "type": "object",
+      "description": "Bounded direct provider response, or the verified tile hash/provenance manifest retained after terminal large-job compaction."
+    },
+    "analysis_result": {
+      "type": "object",
+      "description": "Server-derived street evidence and classification output consumed by Canvas preview."
+    },
+    "source_attribution": { "type": "string" }
+  },
+  "required": [
+    "evidence_id",
+    "snapshot_hash",
+    "schema_version",
+    "manager_id",
+    "created_by_user_id",
+    "created_at",
+    "status",
+    "provider",
+    "source_version",
+    "extraction_version",
+    "classifier_version",
+    "polygon",
+    "raw_evidence",
+    "analysis_result"
+  ],
+  "rls": {
+    "create": { "user_condition": { "role": "admin" } },
+    "read": {
+      "$or": [
+        { "manager_id": "{{user.id}}" },
+        { "user_condition": { "role": "admin" } }
+      ]
+    },
+    "update": { "user_condition": { "id": "__immutable_canvas_analysis_snapshot__" } },
+    "delete": { "user_condition": { "id": "__immutable_canvas_analysis_snapshot__" } }
+  }
+}

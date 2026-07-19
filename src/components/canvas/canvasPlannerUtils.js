@@ -362,6 +362,11 @@ export function restoreCanvasDraftPlan(campaign, teamMembers = []) {
     selected_team_member_ids: selectedIds,
     algorithm_version: campaign.algorithm_version || '',
     data_version: campaign.data_version || '',
+    evidence_id: campaign.evidence_id || null,
+    revision_id: campaign.revision_id || null,
+    snapshot_hash: campaign.snapshot_hash || null,
+    evidence_schema_version: campaign.evidence_schema_version ?? null,
+    unresolved_unit_count: Math.max(0, Number(campaign.unresolved_unit_count) || 0),
     zones: restoredZones,
     work_units: workUnits,
     qa,
@@ -481,6 +486,8 @@ export function isCanvasPlanDeployable(plan = {}) {
   const qa = normalizedQa(plan.qa || plan.diagnostics?.qa);
   const workUnits = Array.isArray(plan.work_units) ? plan.work_units : [];
   const zones = Array.isArray(plan.zones) ? plan.zones : [];
+  const residentialV2 = plan.territory_model === 'residential_street_territory_v2';
+  const ownershipUnits = residentialV2 ? workUnits.filter((unit) => unit?.canvas_role === 'knock') : workUnits;
   const crewAssignment = getCanvasCrewAssignmentStatus(plan, plan.selected_team_member_ids || []);
   const ownedUnitIds = zones.flatMap((zone) => Array.isArray(zone?.work_unit_ids) ? zone.work_unit_ids : []);
   return plan.planning_method === 'street_workload'
@@ -490,8 +497,10 @@ export function isCanvasPlanDeployable(plan = {}) {
     && workUnits.length > 0
     && zones.length > 0
     && zones.every((zone) => zone?.assigned_team_member_id && Array.isArray(zone?.work_unit_ids) && zone.work_unit_ids.length > 0)
-    && ownedUnitIds.length === workUnits.length
-    && new Set(ownedUnitIds).size === workUnits.length
+    && ownershipUnits.length > 0
+    && ownedUnitIds.length === ownershipUnits.length
+    && new Set(ownedUnitIds).size === ownershipUnits.length
+    && (!residentialV2 || (plan.evidence_id && plan.snapshot_hash && Number(plan.unresolved_unit_count || 0) === 0))
     && crewAssignment.valid
     && qa.deployable
     && qa.street_coverage_complete
@@ -506,8 +515,17 @@ export function isCanvasPlanDeployable(plan = {}) {
 
 function normalizeWorkUnit(unit) {
   return {
-    id: String(unit?.id || unit?.work_unit_id || ''),
+    id: String(unit?.id || unit?.unit_id || unit?.work_unit_id || ''),
+    unit_id: String(unit?.unit_id || unit?.id || unit?.work_unit_id || ''),
     kind: unit?.kind || null,
+    canvas_role: unit?.canvas_role || null,
+    opportunity_classification: unit?.opportunity_classification || null,
+    access_classification: unit?.access_classification || null,
+    opportunity_low: Number.isFinite(Number(unit?.opportunity_low ?? unit?.opportunity?.low)) ? Number(unit?.opportunity_low ?? unit?.opportunity?.low) : null,
+    opportunity_expected: Number.isFinite(Number(unit?.opportunity_expected ?? unit?.opportunity?.expected)) ? Number(unit?.opportunity_expected ?? unit?.opportunity?.expected) : null,
+    opportunity_high: Number.isFinite(Number(unit?.opportunity_high ?? unit?.opportunity?.high)) ? Number(unit?.opportunity_high ?? unit?.opportunity?.high) : null,
+    opportunity_source: unit?.opportunity_source || null,
+    confidence: unit?.confidence || null,
     protected: unit?.protected === true,
     street_names: unit?.street_names || unit?.streetNames || [],
     neighbor_ids: unit?.neighbor_ids || unit?.neighborIds || [],
@@ -527,9 +545,12 @@ export function buildCanvasDraftPayload({ sessionId, expectedVersion, sessionNam
   const planningMethod = plan?.planning_method === 'street_workload' ? 'street_workload' : 'preview_only';
   const assignmentBasis = plan?.assignment_basis === 'street_work_unit_ids' ? 'street_work_unit_ids' : 'legacy_geometry';
   const divisionMode = plan?.division_mode || plan?.division_basis || 'selected_reps';
-  const workloadBasis = ['street_length', 'estimated_doors', 'street_length_plus_estimated_doors'].includes(plan?.workload_basis)
+  const territoryModel = plan?.territory_model === 'residential_street_territory_v2'
+    ? 'residential_street_territory_v2'
+    : 'street_territory_v1';
+  const workloadBasis = ['street_length', 'estimated_doors', 'street_length_plus_estimated_doors', 'residential_opportunity'].includes(plan?.workload_basis)
     ? plan.workload_basis
-    : 'street_length';
+    : territoryModel === 'residential_street_territory_v2' ? 'residential_opportunity' : 'street_length';
   const zones = (Array.isArray(plan?.zones) ? plan.zones : []).map((zone, index) => ({
     zone_id: String(zone.zone_id || zone.id || `canvas_zone_${Number(zone.zone_number) || index + 1}`),
     zone_number: Number(zone.zone_number) || index + 1,
@@ -557,7 +578,7 @@ export function buildCanvasDraftPayload({ sessionId, expectedVersion, sessionNam
     ...(sessionId ? { session_id: sessionId } : {}),
     ...(expectedVersion !== undefined && expectedVersion !== null ? { expected_version: expectedVersion } : {}),
     session_name: String(sessionName || 'Canvas Territory Draft').trim() || 'Canvas Territory Draft',
-    territory_model: 'street_territory_v1',
+    territory_model: territoryModel,
     polygon,
     planning_method: planningMethod,
     assignment_basis: assignmentBasis,
@@ -567,6 +588,11 @@ export function buildCanvasDraftPayload({ sessionId, expectedVersion, sessionNam
     target_workload: plan?.target_workload !== null && plan?.target_workload !== undefined && plan?.target_workload !== '' && Number.isFinite(Number(plan.target_workload)) ? Number(plan.target_workload) : null,
     ...(plan?.algorithm_version ? { algorithm_version: plan.algorithm_version } : {}),
     ...(plan?.data_version ? { data_version: plan.data_version } : {}),
+    ...(territoryModel === 'residential_street_territory_v2' ? {
+      evidence_id: plan?.evidence_id || undefined,
+      revision_id: plan?.revision_id || undefined,
+      snapshot_hash: plan?.snapshot_hash || undefined,
+    } : {}),
     zones,
     work_units: (Array.isArray(plan?.work_units) ? plan.work_units : []).map(normalizeWorkUnit),
     qa,

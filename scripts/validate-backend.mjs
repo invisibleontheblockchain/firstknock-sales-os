@@ -26,11 +26,14 @@ for (const file of functionFiles) {
 }
 assert.deepEqual(syntaxErrors, [], `Backend syntax errors:\n${syntaxErrors.join('\n')}`);
 
+const entityRoot = path.resolve('base44/entities');
 const jsonFiles = [
-  'base44/entities/FetchJob.jsonc',
-  'base44/entities/User.jsonc',
-  'base44/config.jsonc',
-  'package.json'
+  ...fs.readdirSync(entityRoot, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith('.jsonc'))
+    .map((entry) => path.join(entityRoot, entry.name))
+    .sort(),
+  path.resolve('base44/config.jsonc'),
+  path.resolve('package.json')
 ];
 for (const file of jsonFiles) JSON.parse(fs.readFileSync(file, 'utf8'));
 

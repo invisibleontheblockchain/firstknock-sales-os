@@ -64,6 +64,7 @@ import { getOutcomesLogged, isOutcomeBlocked, isProUser, needsCardOnFile } from 
 import { hasCanvasAccess } from '@/lib/canvasAccess';
 import { validateCanvasBoundary } from '@/components/canvas/canvasPlannerUtils';
 import { fetchAllCanvasTeamMembers } from '@/components/canvas/canvasRosterPagination';
+import { readPersistedCanvasAnalysisJob } from '@/components/canvas/canvasProductionClient';
 
 
 import { BRAND, DEFAULT_STATUS_COLORS, COLOR_SCHEME_MAP, LINE_DASH_MAP, ROUTE_COLORS } from '../components/map/homeMapConstants';
@@ -356,6 +357,7 @@ export default function Home() {
         else setDraftPolygon(value);
     };
     const routeModeHydratedUserRef = useRef(null);
+    const canvasAnalysisJobHydrationRef = useRef(null);
     const [mapSettings, setMapSettings] = useState(() => {
         const saved = localStorage.getItem('fk_mapSettings_v3');
         return saved ? JSON.parse(saved) : {
@@ -437,6 +439,21 @@ export default function Home() {
         try { localStorage.setItem('fk_routeMode', 'precision'); } catch {}
         window.dispatchEvent(new CustomEvent('fk-route-mode-changed', { detail: { routeMode: 'precision' } }));
     }, [routeMode, user]);
+    useEffect(() => {
+        if (!user?.id || routeMode !== 'canvas' || !hasCanvasAccess(user)) return;
+        const persisted = readPersistedCanvasAnalysisJob(user.id);
+        if (!persisted) return;
+        const hydrationKey = `${user.id}:${persisted.jobId}`;
+        if (canvasAnalysisJobHydrationRef.current === hydrationKey) return;
+        const validation = validateCanvasBoundary(persisted.polygon);
+        if (!validation.valid) return;
+        canvasAnalysisJobHydrationRef.current = hydrationKey;
+        setCanvasDrawnPolygon(validation.points);
+        setCanvasDraftPolygon([]);
+        setDrawingMode(false);
+        setModeRaw('generate');
+        setShowCompare(true);
+    }, [routeMode, user?.id]);
     useEffect(() => {
         if (!user?.email) return;
         const context = readPersistedPrecisionJobContext(user.email);

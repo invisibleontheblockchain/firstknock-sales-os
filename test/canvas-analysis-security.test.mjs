@@ -14,13 +14,14 @@ test('Canvas field decisions require exact active assignment and canonical road 
   assert.match(log, /member\.user_id === user\.id/);
   assert.doesNotMatch(log, /email_fallback/);
   assert.match(log, /verifyCanvasLifecycleSession\(secret, session, ["']active["']\)/);
-  assert.match(log, /ensureNotSuperseded\(base44, session, secret\)/);
+  assert.match(log, /loadDecisionCampaignState\(base44, session, secret\)/);
+  assert.doesNotMatch(log, /MAX_LIFECYCLE_SCAN_SESSIONS|ensureNotSuperseded/);
   assert.match(log, /resolveRoadOwnership\(session, point, zoneId\)/);
   assert.match(log, /ambiguous_pin_territory/);
   assert.match(log, /pin_outside_assigned_zone/);
 });
 
-test('Canvas pin writes are bounded, idempotent, append-only, and campaign-serialized', () => {
+test('Canvas pin writes are bounded, idempotent, append-only, and independently zone-serialized', () => {
   const log = readSource('base44/functions/canvasLogHouseDecision/entry.ts');
   assert.match(log, /MAX_TARGETED_PIN_MATCHES = 50/);
   assert.match(log, /lat: \{ \$gte:/);
@@ -29,7 +30,8 @@ test('Canvas pin writes are bounded, idempotent, append-only, and campaign-seria
   assert.match(log, /CanvasHouseEvent\.create/);
   assert.match(log, /write_status: ["']pending["']/);
   assert.match(log, /write_status: ["']committed["']/);
-  assert.match(log, /canvas_field_write_lock_token/);
+  assert.match(log, /CanvasDecisionZoneState\.updateMany/);
+  assert.match(log, /zone_decision_write_in_progress/);
   assert.match(log, /\$unset/);
   assert.doesNotMatch(log, /CanvasHouseEvent\.delete|CanvasHousePin\.delete/);
 });
@@ -90,7 +92,7 @@ test('Canvas transient conflict codes stay aligned with deploy and field retry h
   assert.match(deploy, /["']canvas_deployment_overlap["']/);
   assert.match(deploy, /["']canvas_deployment_in_progress["']/);
   assert.match(builder, /["']canvas_deployment_overlap["']/);
-  assert.match(log, /["']decision_write_in_progress["']/);
+  assert.match(log, /["']zone_decision_write_in_progress["']/);
   assert.match(log, /["']pin_version_conflict["']/);
   assert.match(field, /code\.includes\(["']write_in_progress["']\)/);
   assert.match(field, /code === ["']pin_version_conflict["']/);

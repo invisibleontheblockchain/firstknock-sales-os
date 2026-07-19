@@ -1,0 +1,149 @@
+{
+  "name": "CanvasAnalysisJob",
+  "type": "object",
+  "properties": {
+    "job_id": {
+      "type": "string",
+      "description": "Content-addressed logical identifier for a large Canvas residential analysis request."
+    },
+    "request_hash": { "type": "string" },
+    "cache_epoch": {
+      "type": "integer",
+      "description": "Bounded server cache epoch so new plans periodically refresh upstream OSM evidence."
+    },
+    "manager_id": { "type": "string" },
+    "created_by_user_id": { "type": "string" },
+    "created_at": { "type": "string", "format": "date-time" },
+    "updated_at": { "type": "string", "format": "date-time" },
+    "status": {
+      "type": "string",
+      "enum": ["queued", "running", "finalizing", "complete", "failed", "cancelled"],
+      "default": "queued"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 1,
+      "description": "Compare-and-swap version for processor progress and lease transitions."
+    },
+    "polygon": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "lat": { "type": "number" },
+          "lng": { "type": "number" }
+        }
+      }
+    },
+    "area_sq_mi": { "type": "number" },
+    "tile_plan_version": { "type": "string" },
+    "tile_manifest": {
+      "type": "array",
+      "description": "Immutable server-generated tile task descriptors used to recover partially initialized jobs.",
+      "items": { "type": "object" }
+    },
+    "tile_count": { "type": "integer", "minimum": 1 },
+    "completed_tile_count": { "type": "integer", "minimum": 0, "default": 0 },
+    "failed_tile_count": { "type": "integer", "minimum": 0, "default": 0 },
+    "progress_pct": { "type": "number", "minimum": 0, "maximum": 100, "default": 0 },
+    "provider": { "type": "string" },
+    "extraction_version": { "type": "string" },
+    "classifier_version": { "type": "string" },
+    "evidence_id": { "type": "string" },
+    "snapshot_hash": { "type": "string" },
+    "summary": { "type": "object" },
+    "raw_evidence_bytes": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 0,
+      "description": "Current bounded intermediate raw-evidence storage for this job."
+    },
+    "analysis_result_bytes": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 0,
+      "description": "Current bounded intermediate classified-result storage for this job."
+    },
+    "intermediate_storage_compacted_at": { "type": "string", "format": "date-time" },
+    "intermediate_storage_policy": { "type": "string" },
+    "error_code": { "type": "string" },
+    "error_message": { "type": "string" },
+    "retryable": { "type": "boolean", "default": true },
+    "cancelled_at": { "type": "string", "format": "date-time" },
+    "cancelled_by_user_id": { "type": "string" },
+    "last_processor_kick_at": { "type": "string", "format": "date-time" },
+    "processor_token": {
+      "type": "string",
+      "description": "Service-owned resumability capability. It is never readable or writable by a tenant.",
+      "rls": {
+        "read": { "user_condition": { "role": "admin" } },
+        "write": { "user_condition": { "role": "admin" } }
+      }
+    },
+    "processor_token_hash": {
+      "type": "string",
+      "rls": {
+        "read": { "user_condition": { "role": "admin" } },
+        "write": { "user_condition": { "role": "admin" } }
+      }
+    },
+    "lock_token": {
+      "type": "string",
+      "description": "Short-lived service-owned processor lease.",
+      "rls": {
+        "read": { "user_condition": { "role": "admin" } },
+        "write": { "user_condition": { "role": "admin" } }
+      }
+    },
+    "lock_acquired_at": {
+      "type": "string",
+      "format": "date-time",
+      "rls": {
+        "read": { "user_condition": { "role": "admin" } },
+        "write": { "user_condition": { "role": "admin" } }
+      }
+    },
+    "lock_expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "rls": {
+        "read": { "user_condition": { "role": "admin" } },
+        "write": { "user_condition": { "role": "admin" } }
+      }
+    }
+  },
+  "required": [
+    "job_id",
+    "request_hash",
+    "cache_epoch",
+    "manager_id",
+    "created_by_user_id",
+    "created_at",
+    "updated_at",
+    "status",
+    "version",
+    "polygon",
+    "area_sq_mi",
+    "tile_plan_version",
+    "tile_manifest",
+    "tile_count",
+    "completed_tile_count",
+    "failed_tile_count",
+    "progress_pct",
+    "provider",
+    "extraction_version",
+    "classifier_version"
+  ],
+  "rls": {
+    "create": { "user_condition": { "role": "admin" } },
+    "read": {
+      "$or": [
+        { "manager_id": "{{user.id}}" },
+        { "user_condition": { "role": "admin" } }
+      ]
+    },
+    "update": { "user_condition": { "role": "admin" } },
+    "delete": { "user_condition": { "role": "admin" } }
+  }
+}
