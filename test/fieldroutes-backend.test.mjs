@@ -22,7 +22,8 @@ function loadInternals({ fetchImpl = async () => Response.json({ success: true }
     'validateConfiguredServiceType', 'validateCanvasAddressWithBatchData',
     'fieldRoutesAddressLine', 'canvasVerificationDistanceOutcome', 'canvasAddressVerificationInputHash',
     'reusableCanvasAddressValidation', 'requestIntegrationSnapshot', 'assertRequestIntegrationSnapshot',
-    'fieldRoutesAppointmentNotes', 'canSupersedeCanvasAddressReview', 'retryAllowed', 'sha256'
+    'fieldRoutesAppointmentNotes', 'canSupersedeCanvasAddressReview', 'retryAllowed', 'sha256',
+    'fieldRoutesModes', 'assertFieldRoutesScheduleSourceEnabled'
   ];
   const transpiled = ts.transpileModule(readSource(integrationPath), {
     compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
@@ -390,6 +391,9 @@ test('only pre-provider Canvas address reviews can be superseded; outage exhaust
 test('capability and request responses are sanitized and durable response semantics are explicit', async () => {
   const { safeConnection, redactRecursive, scheduleResponse } = loadInternals();
   assert.equal(safeConnection(null).enabled, true);
+  assert.equal(safeConnection(null).precision_enabled, true);
+  assert.equal(safeConnection(null).canvas_enabled, false);
+  assert.deepEqual(JSON.parse(JSON.stringify(safeConnection(null).modes)), { precision: true, canvas: false });
   const connection = safeConnection({
     environment: 'production', subdomain: 'acme', credential_envelope: { ct: 'ciphertext' },
     default_service_type_id: '15', default_service_type_name: 'Initial inspection',
@@ -418,6 +422,54 @@ test('capability and request responses are sanitized and durable response semant
   assert.equal(failedBody.durable, true);
   assert.equal(failedBody.needs_attention, true);
   assert.equal(failedBody.request_id, 'request-2');
+});
+
+test('Canvas scheduling is disabled by default and enabled only by its explicit feature flag', () => {
+  const disabled = loadInternals();
+  assert.deepEqual(JSON.parse(JSON.stringify(disabled.fieldRoutesModes())), {
+    precision_enabled: true,
+    canvas_enabled: false,
+    modes: { precision: true, canvas: false }
+  });
+  for (const body of [
+    { source: { kind: 'canvas' } },
+    { source: { mode: 'CANVAS' } },
+    { source: { source_kind: ' canvas ' } },
+    { source: { source_mode: 'canvas' } },
+    { source_kind: 'canvas' },
+    { source_mode: 'canvas' },
+    { mode: 'canvas' },
+    { source: { kind: 'precision', source_mode: 'canvas' } }
+  ]) {
+    assert.throws(
+      () => disabled.assertFieldRoutesScheduleSourceEnabled(body),
+      (error) => error?.status === 409
+        && error?.code === 'canvas_fieldroutes_not_enabled'
+        && error?.message === 'Canvas FieldRoutes scheduling is not available yet. Precision FieldRoutes scheduling remains available.'
+    );
+  }
+  assert.doesNotThrow(() => disabled.assertFieldRoutesScheduleSourceEnabled({ source: { kind: 'precision' } }));
+
+  const enabled = loadInternals({ env: { FIELDROUTES_CANVAS_ENABLED: 'true' } });
+  assert.deepEqual(JSON.parse(JSON.stringify(enabled.fieldRoutesModes())), {
+    precision_enabled: true,
+    canvas_enabled: true,
+    modes: { precision: true, canvas: true }
+  });
+  assert.doesNotThrow(() => enabled.assertFieldRoutesScheduleSourceEnabled({ source: { kind: 'canvas' } }));
+  assert.equal(enabled.safeConnection(null).canvas_enabled, true);
+});
+
+test('Canvas feature gate runs before connection, authorization, or outbox work', () => {
+  const source = readSource(integrationPath);
+  const scheduleStart = source.indexOf('async function scheduleInspectionAction');
+  const scheduleEnd = source.indexOf('function sourceReferencesFromBody', scheduleStart);
+  const schedule = source.slice(scheduleStart, scheduleEnd);
+  const gate = schedule.indexOf('assertFieldRoutesScheduleSourceEnabled(body)');
+  assert.ok(gate >= 0);
+  assert.ok(gate < schedule.indexOf('requireUsableConnection'));
+  assert.ok(gate < schedule.indexOf('authorizeSource'));
+  assert.ok(gate < schedule.indexOf('INSERT INTO fieldroutes_inspection_requests'));
 });
 
 test('account rate budget warning begins only above 2500 writes', () => {

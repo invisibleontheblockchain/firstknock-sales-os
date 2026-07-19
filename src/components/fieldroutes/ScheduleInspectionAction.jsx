@@ -55,7 +55,7 @@ export default function ScheduleInspectionAction({
   onDiscardDeviceAttention,
   onSubmit,
 }) {
-  const ready = isFieldRoutesCapabilityReady(capability);
+  const ready = isFieldRoutesCapabilityReady(capability, mode);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(() => initialForm(initialValues));
   const [error, setError] = useState('');

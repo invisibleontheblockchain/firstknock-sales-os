@@ -1,6 +1,8 @@
 # FieldRoutes Phase 1 release runbook
 
-Phase 1 turns a rep-confirmed opportunity into an **unassigned initial inspection** in one office-scoped FieldRoutes account. It supports both Precision properties and server-synced Canvas house pins. It does not turn generic FirstKnock callback or appointment outcomes into provider writes, assign a route or technician, or import FieldRoutes customers into FirstKnock.
+Phase 1 turns a rep-confirmed opportunity into an **unassigned initial inspection** in one office-scoped FieldRoutes account. The initial production rollout enables Precision properties. The Canvas adapter and its security checks remain in the codebase, but Canvas scheduling is server-gated until the signed Canvas territory release and its address-verification service are deployed and tested. Phase 1 does not turn generic FirstKnock callback or appointment outcomes into provider writes, assign a route or technician, or import FieldRoutes customers into FirstKnock.
+
+Set `FIELDROUTES_CANVAS_ENABLED=false` for the initial rollout. The capability response then advertises `precision_enabled: true` and `canvas_enabled: false`; reps see scheduling only on Precision properties. A Canvas request sent directly to the backend is rejected before source authorization, outbox persistence, or any provider call.
 
 ## Production contract
 
@@ -8,10 +10,10 @@ Phase 1 turns a rep-confirmed opportunity into an **unassigned initial inspectio
 2. A rep taps **Schedule Inspection**, reviews the customer name, phone/email, property address, unit, and notes, and explicitly submits.
 3. FirstKnock validates source ownership and writes one encrypted, tenant-scoped outbox record. A new request normally returns `202 Accepted`; no FieldRoutes provider call occurs in the browser request.
 4. The scheduled worker finds or creates one exact customer and creates an unassigned appointment. Timeouts after writes enter reconciliation; they are never blindly replayed.
-5. Precision and Canvas poll the FirstKnock outbox every 15 seconds only while a visible request is non-terminal. A server row always replaces the temporary device/accepted status.
+5. Precision polls the FirstKnock outbox every 15 seconds only while a visible request is non-terminal. When Canvas is later enabled, it follows the same rule. A server row always replaces the temporary device/accepted status.
 6. FieldRoutes customer and appointment IDs stay in the tenant-scoped integration tables. They are never written to the globally deduplicated `properties` table.
 
-Canvas and Precision have different address trust boundaries:
+Canvas and Precision have different address trust boundaries. The Canvas rules below apply only after the separate Canvas enablement gate:
 
 - A Precision property is an already authorized route property. Any prefilled owner/contact/address value is convenience data only; the rep must review it with the resident before submitting.
 - A Canvas pin proves the rep owns that territory location. It is **not postal-address evidence**. Scheduling appears only after `CanvasHousePin` has been acknowledged by the server, and the rep must enter/review the full address and unit.
@@ -25,22 +27,27 @@ Configure these in the Base44 server environment only. None may use a `VITE_` pr
 - `FIELDROUTES_ENCRYPTION_KEY` — exactly 32 random bytes encoded as 64 hex characters or base64url.
 - `FIELDROUTES_MIGRATION_SECRET` — an independent high-entropy value of at least 32 characters.
 - `FIELDROUTES_WORKER_SECRET` — an independent high-entropy value of at least 32 characters.
-- `BATCH_DATA_API_KEY` — required for Canvas-origin FieldRoutes scheduling; Precision does not use it.
-- `CANVAS_DEPLOYMENT_SIGNING_SECRET` — required by the existing Canvas deployment and ownership checks.
+- `FIELDROUTES_CANVAS_ENABLED` — set to `false` for the Precision-first rollout.
+
+Canvas-only secrets, not required for Precision:
+
+- `BATCH_DATA_API_KEY` — required for Canvas-origin FieldRoutes scheduling.
+- `CANVAS_DEPLOYMENT_SIGNING_SECRET` — required by Canvas deployment and ownership checks.
 
 Keep all keys independent and store them in the production secret manager. Phase 1 envelopes use one fixed key identifier and do not implement a key ring. Replacing `FIELDROUTES_ENCRYPTION_KEY` makes both saved credentials and queued/historical request envelopes unreadable; reconnecting a manager repairs only that manager's credential envelope. Do not perform a routine live rotation. For an emergency rotation, first stop submissions and the worker, resolve or formally abandon every queued/reconciliation record, follow the data-retention policy for old encrypted records, rotate the key, reconnect each manager, and run the full staging gate again.
 
 ## Deployment order
 
-1. Deploy the required Canvas residential territory release and confirm Canvas pin sync/signature checks work.
-2. Add the server secrets above. Use a staging BatchData key for staging and the approved production key only in production.
-3. Deploy `setupFieldRoutesIntegration`.
-4. Invoke that function as a Base44 platform administrator with `x-fieldroutes-migration-secret: <FIELDROUTES_MIGRATION_SECRET>`. Retain only its sanitized success response. The operation is additive and idempotent, but it is still a production migration.
-5. Deploy `fieldRoutesIntegration`, then deploy the web app.
-6. Configure the scheduled worker exactly as described below.
-7. Connect a staging manager from **Integrations**, test the connection, load service types, select and save the intended initial service type, then test the connection again.
-8. Run the read-only contract smoke and all credentialed workflow checks.
-9. Enable one pilot team, monitor the outbox, reconciliation, rate counters, and duplicates, then expand deliberately.
+1. Add the core server secrets above with `FIELDROUTES_CANVAS_ENABLED=false`.
+2. Deploy `setupFieldRoutesIntegration`.
+3. Invoke that function as a Base44 platform administrator with `x-fieldroutes-migration-secret: <FIELDROUTES_MIGRATION_SECRET>`. Retain only its sanitized success response. The operation is additive and idempotent, but it is still a production migration.
+4. Deploy `fieldRoutesIntegration`, then deploy the web app.
+5. Configure the scheduled worker exactly as described below.
+6. Connect a staging manager from **Integrations**, test the connection, load service types, select and save the intended initial service type, then test the connection again.
+7. Run the read-only contract smoke and the Precision credentialed workflow checks.
+8. Enable one Precision pilot team, monitor the outbox, reconciliation, rate counters, and duplicates, then expand deliberately.
+
+Canvas enablement is a later, explicit production change: deploy the signed Canvas residential territory release; configure Canvas signing and BatchData; pass every Canvas case in the staging gate; then set `FIELDROUTES_CANVAS_ENABLED=true` and publish. Never use the flag to bypass the signed campaign, territory-ownership, synced-pin, or address-verification checks.
 
 ## Scheduled worker contract
 
@@ -76,19 +83,24 @@ Complete every item with the customer's actual account behavior before productio
 2. Load visible initial service types, select the intended type, verify its account-specific default duration, save the connection, then test it again. Confirm the credentials resolve to one office only and the readiness card says scheduling is enabled.
 3. Precision: open one assigned property, review/replace all prefilled identity and contact values, submit, and observe device/server-pending status change to synced without refreshing the page.
 4. Confirm exactly one customer and one unassigned appointment in FieldRoutes, with the expected service type, duration, lead source (if configured), office notes, and FirstKnock marker.
-5. Canvas: log a house outcome and wait until the pin is server-synced. Reopen the pin; confirm Schedule Inspection was unavailable before sync and is now below the outcome controls.
-6. Enter a resident-confirmed complete Canvas address, unit, name, and phone/email. Verify BatchData correlation, `DPV=Y`, normalized primary/state/ZIP/unit, and pin-distance checks pass before exactly one FieldRoutes customer and appointment appear.
-7. Repeat Canvas checks for missing unit, unexpected unit, undeliverable address, ambiguous result, address mismatch, more-than-30-meter mismatch, missing/invalid BatchData credentials, BatchData timeout, and rate limit. None may create a FieldRoutes write.
-8. Repeat the same FirstKnock idempotency key and business opportunity. Confirm no duplicate customer or appointment.
-9. Test an exact existing-customer match and multiple-customer ambiguity. Ambiguity must stop for review.
-10. Simulate customer-create and appointment-create response timeouts. Confirm reconciliation finds the provider record or stops at `review_required`; it must never blindly create another.
-11. Confirm `retry_wait` can be retried plainly, while review/ambiguous retries require explicit confirmation and say **Retry reconciliation**. Invalid immutable payloads require a new corrected request; Phase 1 has no in-place payload editor or provider-record chooser.
-12. Test invalid FieldRoutes credentials, invalid service type, provider validation, provider 429, provider 5xx, and worker interruption. Reps and managers must receive only sanitized action-oriented text.
-13. Test airplane mode. The rep must see that the request exists only on that device; reconnect and observe durable server ownership, then worker completion. Confirm automatic retry ends and the record becomes logically expired at 24 hours, then is physically purged by the next queue check.
-14. On a shared device, sign out and sign into another actor/manager scope. Confirm the prior scope's unsent contact data is gone. Repeat using Delete Account.
-15. Verify disconnected integration, expired Canvas session, cross-territory pin, rep/manager cross-tenant access, and forged Precision/Canvas sources are rejected.
+5. Repeat the same FirstKnock idempotency key and business opportunity. Confirm no duplicate customer or appointment.
+6. Test an exact existing-customer match and multiple-customer ambiguity. Ambiguity must stop for review.
+7. Simulate customer-create and appointment-create response timeouts. Confirm reconciliation finds the provider record or stops at `review_required`; it must never blindly create another.
+8. Confirm `retry_wait` can be retried plainly, while review/ambiguous retries require explicit confirmation and say **Retry reconciliation**. Invalid immutable payloads require a new corrected request; Phase 1 has no in-place payload editor or provider-record chooser.
+9. Test invalid FieldRoutes credentials, invalid service type, provider validation, provider 429, provider 5xx, and worker interruption. Reps and managers must receive only sanitized action-oriented text.
+10. Test airplane mode. The rep must see that the request exists only on that device; reconnect and observe durable server ownership, then worker completion. Confirm automatic retry ends and the record becomes logically expired at 24 hours, then is physically purged by the next queue check.
+11. On a shared device, sign out and sign into another actor/manager scope. Confirm the prior scope's unsent contact data is gone. Repeat using Delete Account.
+12. Verify disconnected integration, rep/manager cross-tenant access, and forged Precision sources are rejected.
 
-Production enablement is blocked until this entire gate passes. FieldRoutes does not expose an appointment idempotency key, so timeout reconciliation and duplicate checks are release-critical.
+Before enabling Canvas, complete this additional gate:
+
+1. With `FIELDROUTES_CANVAS_ENABLED=false`, confirm the Canvas action is hidden and a direct Canvas scheduling request returns `canvas_fieldroutes_not_enabled` without creating an outbox row.
+2. Deploy the signed Canvas territory backend, enable the flag in staging, log a house outcome, and wait until the pin is server-synced. Confirm Schedule Inspection was unavailable before sync and is now below the outcome controls.
+3. Enter a resident-confirmed complete Canvas address, unit, name, and phone/email. Verify BatchData correlation, `DPV=Y`, normalized primary/state/ZIP/unit, and pin-distance checks pass before exactly one FieldRoutes customer and appointment appear.
+4. Repeat Canvas checks for missing unit, unexpected unit, undeliverable address, ambiguous result, address mismatch, more-than-30-meter mismatch, missing/invalid BatchData credentials, BatchData timeout, and rate limit. None may create a FieldRoutes write.
+5. Verify expired Canvas sessions, cross-territory pins, forged Canvas sources, do-not-knock pins, unsigned campaigns, and superseded campaigns are rejected.
+
+Precision production enablement is blocked until the core gate passes. Canvas production enablement is independently blocked until both the core and additional Canvas gates pass. FieldRoutes does not expose an appointment idempotency key, so timeout reconciliation and duplicate checks are release-critical.
 
 ## Rep contact-data policy and device queue
 
@@ -129,4 +141,6 @@ Phase 1 status polling means polling FirstKnock's own durable outbox while work 
 
 ## Production go/no-go
 
-Do not enable production until all of the following are true: migration completed; secrets present and isolated; Canvas signing and BatchData verification pass; worker schedule and alerts are live; read-only provider smoke passes; both Precision and Canvas end-to-end staging cases pass; server status replaces local status without refresh; offline scope/retention/logout deletion is verified; reconciliation creates no duplicates; tenant/source authorization tests pass; and the customer has approved the service type, duration, lead-source behavior, and office workflow.
+Do not enable Precision production until all of the following are true: migration completed; core secrets present and isolated; `FIELDROUTES_CANVAS_ENABLED=false`; worker schedule and alerts are live; read-only provider smoke passes; Precision end-to-end staging passes; server status replaces local status without refresh; offline scope/retention/logout deletion is verified; reconciliation creates no duplicates; tenant/source authorization tests pass; and the customer has approved the service type, duration, lead-source behavior, and office workflow.
+
+Do not enable Canvas production until the Precision gate is still green, Canvas signing and BatchData verification pass, the signed Canvas territory release is live, every Canvas staging case above passes, and `FIELDROUTES_CANVAS_ENABLED=true` has been deliberately published.

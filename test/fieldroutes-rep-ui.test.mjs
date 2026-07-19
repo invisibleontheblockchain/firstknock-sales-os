@@ -33,6 +33,9 @@ test('rep presentation requires a durable request identity and uses the approved
   assert.equal(isFieldRoutesCapabilityReady({ configured: true, config_ready: true }), true);
   assert.equal(isFieldRoutesCapabilityReady({ capability: { configured: true, config_ready: true } }), true);
   assert.equal(isFieldRoutesCapabilityReady({ configured: true, config_ready: false }), false);
+  assert.equal(isFieldRoutesCapabilityReady({ configured: true, config_ready: true }, 'canvas'), false);
+  assert.equal(isFieldRoutesCapabilityReady({ configured: true, config_ready: true, canvas_enabled: true }, 'canvas'), true);
+  assert.equal(isFieldRoutesCapabilityReady({ configured: true, config_ready: true, modes: { canvas: true } }, 'canvas'), true);
   assert.equal(fieldRoutesStatusPresentation({ kind: 'device_pending' }).label, FIELDROUTES_COPY.devicePending);
   assert.equal(fieldRoutesStatusPresentation({ state: 'queued' }).label, FIELDROUTES_COPY.serverPending);
   assert.equal(fieldRoutesStatusPresentation({ state: 'synced' }).label, FIELDROUTES_COPY.synced);
@@ -88,7 +91,7 @@ test('Schedule Inspection is an explicit full-width action with confirmation and
   assert.match(action, /formIdentity[\s\S]*?eslint-disable-next-line react-hooks\/exhaustive-deps/);
 });
 
-test('Precision scheduling stays independent while Canvas scheduling appears only after a synced house outcome', () => {
+test('Precision scheduling stays independent while Canvas scheduling remains capability-gated after a synced house outcome', () => {
   const precision = read('src/components/rep/PropertyDetailSheet.jsx');
   const canvas = read('src/components/rep/CanvasFieldView.jsx');
   const precisionMap = read('src/components/rep/RepMapView.jsx');
@@ -102,6 +105,8 @@ test('Precision scheduling stays independent while Canvas scheduling appears onl
 
   assert.ok(canvas.indexOf('<ScheduleInspectionAction') > canvas.indexOf('>Log outcome<'));
   assert.match(canvas, /mode="canvas"/);
+  assert.match(canvas, /isFieldRoutesCapabilityReady\(fieldRoutesCapability, 'canvas'\)/);
+  assert.match(canvas, /fieldRoutesCanvasReady \|\| preferredPinDraftFieldRoutesStatus/);
   assert.match(canvas, /kind: 'canvas'/);
   assert.match(canvas, /!pinDraft\?\.pinId[\s\S]*?Sync this Canvas house decision before scheduling/);
   assert.match(canvas, /pin_id: pinDraft\.pinId/);

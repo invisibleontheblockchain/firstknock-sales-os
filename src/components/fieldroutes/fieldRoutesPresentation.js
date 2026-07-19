@@ -25,9 +25,13 @@ function normalized(value) {
   return String(value || '').trim().toLowerCase();
 }
 
-export function isFieldRoutesCapabilityReady(capability) {
+export function isFieldRoutesCapabilityReady(capability, mode = 'precision') {
   const value = capability?.capability || capability;
   if (!value || typeof value !== 'object') return false;
+  const requestedMode = normalized(mode);
+  const modeEnabled = requestedMode === 'canvas'
+    ? value.canvas_enabled === true || value.modes?.canvas === true
+    : value.precision_enabled !== false && value.modes?.precision !== false;
   const configured = value.configured === true
     || value.is_configured === true
     || value.connected === true
@@ -35,7 +39,7 @@ export function isFieldRoutesCapabilityReady(capability) {
   const configReady = value.config_ready === true
     || value.ready === true
     || value.status === 'connected';
-  return configured && configReady;
+  return configured && configReady && modeEnabled;
 }
 
 export function fieldRoutesRequestState(value) {

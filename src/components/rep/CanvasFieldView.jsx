@@ -204,9 +204,10 @@ export default function CanvasFieldView({
   }, [campaignBoundary, streetSegments]);
   const center = useMemo(() => mapCenter(mapPoints, pins), [mapPoints, pins]);
   const zoneColor = zone?.color || '#A855F7';
+  const fieldRoutesCanvasReady = isFieldRoutesCapabilityReady(fieldRoutesCapability, 'canvas');
 
   const refreshFieldRoutesStatuses = useCallback(async () => {
-    if (!isFieldRoutesCapabilityReady(fieldRoutesCapability)) {
+    if (!isFieldRoutesCapabilityReady(fieldRoutesCapability, 'canvas')) {
       setFieldRoutesStatuses(null);
       return;
     }
@@ -222,12 +223,12 @@ export default function CanvasFieldView({
       // FieldRoutes status is supplemental; Canvas safety and house decisions keep their own behavior.
     }
   }, [assignment?.campaign_id, fieldRoutesCapability, zone?.zone_id]);
-  const fieldRoutesPollingRequired = useMemo(() => shouldPollCanvasFieldRoutes(
+  const fieldRoutesPollingRequired = useMemo(() => fieldRoutesCanvasReady && shouldPollCanvasFieldRoutes(
     fieldRoutesStatuses,
     fieldRoutesLocalStatuses,
     assignment?.campaign_id,
     zone?.zone_id,
-  ), [assignment?.campaign_id, fieldRoutesLocalStatuses, fieldRoutesStatuses, zone?.zone_id]);
+  ), [assignment?.campaign_id, fieldRoutesCanvasReady, fieldRoutesLocalStatuses, fieldRoutesStatuses, zone?.zone_id]);
 
   useEffect(() => {
     if (normalizedAssignments.some((item) => item.__key === selectedAssignmentKey)) return;
@@ -812,7 +813,7 @@ export default function CanvasFieldView({
             </div>
           )}
 
-          {pinDraft.pinId && !pinDraft.pendingDecision && (
+          {pinDraft.pinId && !pinDraft.pendingDecision && (fieldRoutesCanvasReady || preferredPinDraftFieldRoutesStatus) && (
             <section className="mt-5 border-t border-white/10 pt-4">
               <p className="mb-2 text-[10px] font-black uppercase tracking-[0.18em] text-emerald-200/70">FieldRoutes inspection</p>
               <ScheduleInspectionAction

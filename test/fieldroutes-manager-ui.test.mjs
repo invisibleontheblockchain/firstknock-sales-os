@@ -78,7 +78,9 @@ test('manager Integrations setup is write-only, environment-safe, and capability
   assert.match(source, /default_length: defaultLength \? normalizedLength : null/);
   assert.match(source, /Load service types/);
   assert.match(source, /Initial service selected/);
-  assert.match(source, /Scheduling enabled for reps/);
+  assert.match(source, /Precision scheduling enabled for reps/);
+  assert.match(source, /Canvas scheduling stays hidden until the production Canvas territory and address-verification services are enabled/);
+  assert.match(source, /capability\.canvas_enabled === true \|\| capability\.modes\?\.canvas === true/);
   assert.match(source, /Save credentials, test, choose and save the service, then test once more/);
   assert.match(source, /rateBudgetWarning = readsToday > 2500 \|\| writesToday > 2500/);
   assert.match(source, /FieldRoutes API budget is running high/);

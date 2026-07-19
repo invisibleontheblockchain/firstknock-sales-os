@@ -62,6 +62,38 @@ const json = (body: unknown, status = 200) => Response.json(body, { status });
 const asArray = (value: any): any[] => Array.isArray(value) ? value : Array.isArray(value?.items) ? value.items : [];
 const normalized = (value: unknown) => String(value || "").trim().toLowerCase();
 
+function fieldRoutesModes() {
+  const canvasEnabled = normalized(Deno.env.get("FIELDROUTES_CANVAS_ENABLED")) === "true";
+  return {
+    precision_enabled: true,
+    canvas_enabled: canvasEnabled,
+    modes: {
+      precision: true,
+      canvas: canvasEnabled
+    }
+  };
+}
+
+function assertFieldRoutesScheduleSourceEnabled(body: any) {
+  const source = body?.source || {};
+  const requestedModes = [
+    source?.kind,
+    source?.mode,
+    source?.source_kind,
+    source?.source_mode,
+    body?.source_kind,
+    body?.source_mode,
+    body?.mode
+  ].map(normalized).filter(Boolean);
+  if (requestedModes.includes("canvas") && !fieldRoutesModes().canvas_enabled) {
+    throw new HttpError(
+      409,
+      "canvas_fieldroutes_not_enabled",
+      "Canvas FieldRoutes scheduling is not available yet. Precision FieldRoutes scheduling remains available."
+    );
+  }
+}
+
 function canonicalize(value: any): any {
   if (Array.isArray(value)) return value.map(canonicalize);
   if (!value || typeof value !== "object") return value;
@@ -912,8 +944,10 @@ function safeRateBudget(connection: any) {
 }
 
 function safeConnection(connection: any, includeRateBudget = false) {
+  const modeCapabilities = fieldRoutesModes();
   if (!connection) return {
     enabled: true,
+    ...modeCapabilities,
     configured: false,
     config_ready: false,
     connected: false,
@@ -932,6 +966,7 @@ function safeConnection(connection: any, includeRateBudget = false) {
   };
   return {
     enabled: true,
+    ...modeCapabilities,
     configured: true,
     config_ready: Boolean(connection.connection_status === "connected" && connection.default_service_type_id && connection.credential_envelope && !connection.disabled_at && !connection.office_id),
     connected: connection.connection_status === "connected" && !connection.disabled_at && !connection.office_id,
@@ -1875,6 +1910,7 @@ function canSupersedeCanvasAddressReview(row: any, nextRequestHash: string) {
 }
 
 async function scheduleInspectionAction(base44: any, sql: any, user: any, actor: any, body: any, req: Request) {
+  assertFieldRoutesScheduleSourceEnabled(body);
   const connection = await requireUsableConnection(sql, actor.managerId);
   const idempotencyKey = String(req.headers.get("idempotency-key") || body?.idempotency_key || "").trim();
   if (!/^[A-Za-z0-9._:-]{8,128}$/.test(idempotencyKey)) throw new HttpError(400, "idempotency_key_required", "Provide an 8-128 character idempotency key.");

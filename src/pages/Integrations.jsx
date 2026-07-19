@@ -335,6 +335,7 @@ export default function Integrations() {
   const configuredServiceTypeId = capability.service_type_id ?? capability.default_service_type_id;
   const configReady = capability.config_ready === true
     || (configured && capability.connected === true && Boolean(configuredServiceTypeId));
+  const canvasEnabled = capability.canvas_enabled === true || capability.modes?.canvas === true;
   const connectionStatus = normalizeStatus(capability.connection_status || capability.status);
   const connectionVerified = VERIFIED_CONNECTION_STATES.has(connectionStatus);
   const credentialsSaved = configured && connectionStatus !== 'disconnected';
@@ -838,7 +839,7 @@ export default function Integrations() {
                   <ReadinessItem ready={credentialsSaved}>Credentials saved</ReadinessItem>
                   <ReadinessItem ready={connectionVerified}>Connection verified</ReadinessItem>
                   <ReadinessItem ready={Boolean(configuredServiceTypeId)}>Initial service selected</ReadinessItem>
-                  <ReadinessItem ready={configReady}>Scheduling enabled for reps</ReadinessItem>
+                  <ReadinessItem ready={configReady}>Precision scheduling enabled for reps</ReadinessItem>
                 </ul>
                 <div className={`mt-5 rounded-xl border p-4 ${configReady ? 'border-emerald-500/20 bg-emerald-500/[0.06]' : 'border-white/10 bg-black/30'}`}>
                   <p className={`text-xs font-bold ${configReady ? 'text-emerald-200' : 'text-white/65'}`}>
@@ -846,10 +847,15 @@ export default function Integrations() {
                   </p>
                   <p className="mt-1 text-xs leading-5 text-white/40">
                     {configReady
-                      ? 'Reps can queue a FieldRoutes inspection from an eligible house. Office scheduling remains unassigned.'
+                      ? 'Reps can queue an unassigned FieldRoutes inspection from an eligible Precision property.'
                       : 'Save credentials, test, choose and save the service, then test once more.'}
                   </p>
                 </div>
+                {!canvasEnabled && (
+                  <div className="mt-3 rounded-xl border border-purple-300/15 bg-purple-500/[0.05] px-4 py-3 text-xs leading-5 text-purple-100/65">
+                    Canvas scheduling stays hidden until the production Canvas territory and address-verification services are enabled. Precision scheduling is independent.
+                  </div>
+                )}
               </CardContent>
             </Card>
 
