@@ -5,6 +5,7 @@ import { base44 } from '@/api/base44Client';
 import { AlertTriangle, Trash2, CheckCircle2 } from 'lucide-react';
 import { toast } from "sonner";
 import { useNavigate } from 'react-router-dom';
+import { clearFieldRoutesInspectionQueue } from '@/components/fieldroutes/fieldRoutesInspectionQueue';
 
 export default function DeleteAccount() {
     const navigate = useNavigate();
@@ -24,7 +25,10 @@ export default function DeleteAccount() {
             
             // Simulating deletion delay
             await new Promise(r => setTimeout(r, 1500));
-            
+
+            // Unacknowledged inspection requests contain resident contact data
+            // and must not survive account removal on a shared device.
+            await clearFieldRoutesInspectionQueue();
             await base44.auth.logout();
             setIsDeleted(true);
             toast.success("Account scheduled for deletion");

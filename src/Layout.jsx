@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
-import { Map, Upload, Navigation, LogIn, Users, HelpCircle, Sparkles, Smartphone, MoreVertical, LogOut, TrendingUp, Gift, Calendar, Mail } from 'lucide-react';
+import { Map, Upload, Navigation, LogIn, Users, HelpCircle, Sparkles, Smartphone, MoreVertical, LogOut, TrendingUp, Gift, Calendar, Mail, Plug } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -11,8 +11,9 @@ import {
 import AiAssistant from '@/components/help/AiAssistant';
 import OnboardingWizard from '@/components/onboarding/OnboardingWizard';
 import MarketOnboarding from '@/components/onboarding/MarketOnboarding';
-import { ThemeProvider, useTheme, contrastText } from '@/components/theme/ThemeProvider';
+import { ThemeProvider, useTheme } from '@/components/theme/ThemeProvider';
 import { getAppRole, isManagerAccount, isRepAccount } from '@/lib/roles';
+import { clearFieldRoutesInspectionQueue } from '@/components/fieldroutes/fieldRoutesInspectionQueue';
 
 class ErrorBoundary extends React.Component {
   constructor(props) {super(props);this.state = { hasError: false, error: null };}
@@ -36,7 +37,6 @@ class ErrorBoundary extends React.Component {
 
 function LayoutInner({ children }) {
   const { accent } = useTheme();
-  const accentText = contrastText(accent);
 
   const [isOnline, setIsOnline] = React.useState(navigator.onLine);
   const [canvasDraftDirty, setCanvasDraftDirty] = React.useState(false);
@@ -106,6 +106,9 @@ function LayoutInner({ children }) {
 
   const handleLogout = React.useCallback(async () => {
     if (!confirmCanvasNavigation('Logging out')) return;
+    // FieldRoutes offline requests contain resident contact details. They must
+    // never remain available to the next account using a shared device.
+    await clearFieldRoutesInspectionQueue().catch(() => {});
     try {await base44.auth.logout(window.location.origin);} catch {window.location.reload();}
     queryClient.clear();
   }, [confirmCanvasNavigation, queryClient]);
@@ -277,6 +280,7 @@ function LayoutInner({ children }) {
                         <Link to="/About" className="rounded-full px-3 py-1.5 text-[10px] font-bold tracking-[0.18em] text-white/60 transition-colors hover:text-white">ABOUT</Link>
                         <Link to="/Contact" className="rounded-full px-3 py-1.5 text-[10px] font-bold tracking-[0.18em] text-white/60 transition-colors hover:text-white">CONTACT</Link>
                         <Link to={createPageUrl('Setup')} className="rounded-full px-3 py-1.5 text-[10px] font-bold tracking-[0.18em] text-white/60 transition-colors hover:text-white">SETUP</Link>
+                        {hasManagerAccess && <Link to={createPageUrl('Integrations')} className={`rounded-full px-3 py-1.5 text-[10px] font-bold tracking-[0.18em] transition-colors ${isPageActive('Integrations') ? 'bg-white/10 text-[#39FF4A]' : 'text-white/60 hover:text-white'}`}>INTEGRATIONS</Link>}
                         <Link to={createPageUrl('Billing')} className={`rounded-full px-4 py-1.5 text-[10px] font-extrabold tracking-[0.18em] transition-all ${isPageActive('Billing') ? 'bg-white text-black hover:bg-[#39FF4A]' : 'text-white/60 hover:text-white hover:bg-white/10'}`}>PLANS</Link>
                         <div className="h-5 w-px bg-white/10" />
                         <Link to={createPageUrl('MobileApp')} className="flex h-8 w-8 items-center justify-center rounded-full text-white/70 transition-all hover:bg-white/10 hover:text-[#39FF4A]"><Smartphone className="w-4 h-4" /></Link>
@@ -295,6 +299,7 @@ function LayoutInner({ children }) {
                                 <DropdownMenuLabel>My Account</DropdownMenuLabel>
                                 <DropdownMenuSeparator className="bg-slate-800" />
                                 <DropdownMenuItem asChild className="focus:bg-slate-800 focus:text-white cursor-pointer"><Link to={createPageUrl('Setup')} className="flex items-center w-full"><Upload className="mr-2 h-4 w-4" /><span>Setup</span></Link></DropdownMenuItem>
+                                {hasManagerAccess && <DropdownMenuItem asChild className="focus:bg-slate-800 focus:text-white cursor-pointer"><Link to={createPageUrl('Integrations')} className="flex items-center w-full"><Plug className="mr-2 h-4 w-4" /><span>Integrations</span></Link></DropdownMenuItem>}
                                 <DropdownMenuItem asChild className="focus:bg-slate-800 focus:text-white cursor-pointer"><Link to={createPageUrl('Billing')} className="flex items-center w-full"><Sparkles className="mr-2 h-4 w-4" /><span>Plans</span></Link></DropdownMenuItem>
                                 <DropdownMenuItem asChild className="focus:bg-slate-800 focus:text-white cursor-pointer"><Link to={createPageUrl('MobileApp')} className="flex items-center w-full"><Smartphone className="mr-2 h-4 w-4" /><span>Get Mobile App</span></Link></DropdownMenuItem>
                                 <DropdownMenuItem asChild className="focus:bg-slate-800 focus:text-white cursor-pointer"><Link to="/About" className="flex items-center w-full"><HelpCircle className="mr-2 h-4 w-4" /><span>About</span></Link></DropdownMenuItem>
