@@ -77,12 +77,14 @@ test('manager Integrations setup is write-only, environment-safe, and capability
   assert.doesNotMatch(source, /id="fieldroutes-office-id"/);
   assert.match(source, /service_type_id: serviceTypeId \|\| null/);
   assert.match(source, /default_length: defaultLength \? normalizedLength : null/);
-  assert.match(source, /Load service types/);
+  assert.match(source, /Reload services/);
+  assert.match(source, /Save credentials & load services/);
+  assert.match(source, /Save service & verify/);
   assert.match(source, /Initial service selected/);
   assert.match(source, /Precision scheduling enabled for reps/);
   assert.match(source, /Canvas scheduling stays hidden until the production Canvas territory and address-verification services are enabled/);
   assert.match(source, /capability\.canvas_enabled === true \|\| capability\.modes\?\.canvas === true/);
-  assert.match(source, /Save credentials, test, choose and save the service, then test once more/);
+  assert.match(source, /Save credentials, choose the loaded service, then select Save service & verify/);
   assert.match(source, /rateBudgetWarning = readsToday > 2500 \|\| writesToday > 2500/);
   assert.match(source, /FieldRoutes API budget is running high/);
   assert.match(source, /<AlertDialog>/);
@@ -109,10 +111,36 @@ test('manager can enter credentials when capability status fails but not while l
   assert.equal(fieldRoutesSetupAccess({ savePending: true }).controlsDisabled, true);
 
   const page = read('src/pages/Integrations.jsx');
-  const hydrationEffect = page.match(/React\.useEffect\(\(\) => \{[\s\S]*?\}, \[capabilityQuery\.data\]\);/)?.[0] || '';
+  const hydrationEffect = page.match(/React\.useEffect\(\(\) => \{[\s\S]*?\}, \[capabilityQuery\.data, serviceSetupDirty\]\);/)?.[0] || '';
   assert.ok(hydrationEffect, 'capability hydration effect is missing');
   assert.doesNotMatch(hydrationEffect, /setAuthenticationKey|setAuthenticationToken/);
   assert.match(page, /You can enter these details while status is unavailable/);
+});
+
+test('manager service setup unlocks from the save receipt and keeps provider choices actionable', () => {
+  const page = read('src/pages/Integrations.jsx');
+  const api = read('src/api/fieldRoutes.js');
+
+  assert.match(page, /queryClient\.setQueryData\(\['fieldRoutesCapability'\]/);
+  assert.match(page, /mutationFn: \(\{ connection \}\) => saveFieldRoutesConnection\(connection\)/);
+  assert.match(page, /else loadServiceTypesMutation\.mutate\(\)/);
+  assert.match(page, /next\.length === 1 && !serviceTypeId/);
+  assert.match(page, /setServiceSetupDirty\(true\)/);
+  assert.match(page, /if \(!serviceSetupDirty\)/);
+  assert.match(page, /No visible initial inspection services were returned/);
+  assert.match(page, /Services could not be loaded/);
+  assert.match(page, /const integrationBusy = saveMutation\.isPending[\s\S]*?testMutation\.isPending[\s\S]*?loadServiceTypesMutation\.isPending/);
+  assert.match(page, /disabled=\{!credentialsSaved \|\| !serviceTypeId \|\| !defaultLengthValid \|\| integrationBusy\}/);
+  assert.match(page, /handleSave\(event, \{ finishSetup: true \}\)/);
+
+  for (const code of [
+    'fieldroutes_not_configured',
+    'fieldroutes_office_scope_required',
+    'provider_service_type_invalid',
+    'provider_multi_office_not_supported',
+  ]) {
+    assert.match(api, new RegExp(`${code}:`), `missing safe UI copy for ${code}`);
+  }
 });
 
 test('FirstKnock storage failures are sanitized and do not blame FieldRoutes', () => {

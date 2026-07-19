@@ -367,7 +367,20 @@ function parseCreatedId(payload: any, expectedField: "customerID" | "appointment
 }
 
 function providerRows(payload: any, singular: string, plural: string) {
-  const candidates = [payload?.[plural], payload?.[singular], payload?.result?.[plural], payload?.result?.[singular], payload?.result];
+  // FieldRoutes includeData responses use keyed maps such as customerData,
+  // appointmentData, and serviceTypeData. Older installations may return the
+  // singular/plural shapes, so keep both contracts explicit and fail closed
+  // when none of the documented records can be identified.
+  const dataField = `${singular}Data`;
+  const candidates = [
+    payload?.[dataField],
+    payload?.[plural],
+    payload?.[singular],
+    payload?.result?.[dataField],
+    payload?.result?.[plural],
+    payload?.result?.[singular],
+    payload?.result
+  ];
   const looksLikeRow = (row: any) => row && typeof row === "object" && !Array.isArray(row)
     && ["customerID", "customerId", "appointmentID", "appointmentId", "typeID", "serviceTypeID", "serviceID", "id"].some((key) => row[key] !== undefined);
   for (const candidate of candidates) {

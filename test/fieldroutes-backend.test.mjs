@@ -190,7 +190,7 @@ test('reviewed contact requires explicit first and last name plus a valid contac
 test('service type normalization handles includeData maps and preserves scheduling metadata', () => {
   const { serviceTypesFromPayload, validateConfiguredServiceType } = loadInternals();
   const result = serviceTypesFromPayload({
-    serviceTypes: {
+    serviceTypeData: {
       15: { typeID: 15, officeID: 2, description: 'Initial inspection', defaultLength: 45, initial: 1, visible: 1 },
       16: { typeID: 16, officeID: 2, description: 'Hidden', defaultLength: 30, initial: 1, visible: 0 },
       17: { typeID: 17, officeID: 2, description: 'Recurring', defaultLength: 60, initial: 0, visible: 1 }
@@ -200,6 +200,21 @@ test('service type normalization handles includeData maps and preserves scheduli
     id: '15', type_id: '15', name: 'Initial inspection', description: 'Initial inspection',
     visible: true, initial: true, default_length: 45, office_id: '2'
   }]);
+  assert.deepEqual(JSON.parse(JSON.stringify(serviceTypesFromPayload({
+    result: {
+      serviceTypeData: {
+        21: { typeID: 21, officeID: 2, description: 'Nested initial', defaultLength: 60, initial: true, visible: true }
+      }
+    }
+  }))), [{
+    id: '21', type_id: '21', name: 'Nested initial', description: 'Nested initial',
+    visible: true, initial: true, default_length: 60, office_id: '2'
+  }]);
+  assert.equal(serviceTypesFromPayload({
+    serviceTypes: {
+      22: { typeID: 22, officeID: 2, description: 'Legacy initial', defaultLength: 30, initial: 1, visible: 1 }
+    }
+  })[0].id, '22', 'legacy FieldRoutes response shapes remain supported');
   assert.equal(validateConfiguredServiceType({ default_service_type_id: '15', office_id: null }, result).id, '15');
   assert.throws(() => validateConfiguredServiceType({ default_service_type_id: '99', office_id: null }, result));
   assert.throws(() => validateConfiguredServiceType({ default_service_type_id: '15', office_id: null }, [
