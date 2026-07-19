@@ -38,6 +38,7 @@ function canvasStoredPlanForHash(session) {
     qa: session?.qa || {},
     algorithm_version: session?.algorithm_version || null,
     data_version: session?.data_version || null,
+    ...session?.territory_model === "residential_street_territory_v2" ? { evidence_id: session?.evidence_id, revision_id: session?.revision_id || null, snapshot_hash: session?.snapshot_hash, evidence_schema_version: Number(session?.evidence_schema_version), unresolved_unit_count: Number(session?.unresolved_unit_count || 0), assignment_version: Number(session?.assignment_version || 0) } : {},
     manager_id: session?.manager_id,
     version: planVersion
   };
@@ -104,13 +105,11 @@ async function verifyCanvasLifecycleSession(secret, session, requiredState = nul
 // base44/functions/canvasLogHouseDecision/entry.ts
 var OUTCOMES = /* @__PURE__ */ new Set(["no_answer", "not_interested", "callback", "appointment", "sale", "do_not_knock"]);
 var MAX_TARGETED_PIN_MATCHES = 50;
-var LIFECYCLE_PAGE_SIZE = 500;
-var MAX_LIFECYCLE_SCAN_SESSIONS = 1e4;
 var MAX_ROAD_SNAP_METERS = 150;
 var ROAD_AMBIGUITY_METERS = 12;
 var ROAD_AMBIGUITY_RATIO = 1.5;
 var PIN_MATCH_METERS = 12;
-var FIELD_LOCK_MS = 15e3;
+var ZONE_DECISION_LEASE_MS = 3e4;
 var HttpError = class extends Error {
   status;
   code;
@@ -169,32 +168,80 @@ function bindingMatches(session, member, user) {
   const binding = asArray2(session?.deployment_qa?.verified_team_member_bindings).find((candidate) => String(candidate?.team_member_id || "") === String(member?.id || ""));
   return binding && String(binding.user_id || "") === String(user.id || "") && normalized(binding.email) === normalized(user.email) && String(member.user_id || "") === String(user.id || "");
 }
-async function ensureNotSuperseded(base44, session, secret) {
-  const newerRows = [];
-  for (const status of ["deployed", "completed", "recalled"]) {
-    let skip = 0;
-    while (true) {
-      const page = asArray2(await base44.asServiceRole.entities.CanvasSession.filter({
-        manager_id: session.manager_id,
-        status
-      }, "-deployed_at", LIFECYCLE_PAGE_SIZE, skip));
-      newerRows.push(...page);
-      if (newerRows.length > MAX_LIFECYCLE_SCAN_SESSIONS) {
-        throw new HttpError(503, "canvas_lifecycle_scan_limit", "Canvas lifecycle history exceeds the safe decision-verification limit.");
-      }
-      if (page.length < LIFECYCLE_PAGE_SIZE) break;
-      skip += page.length;
-    }
+async function signDecisionPayload(secret, payload) {
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(JSON.stringify(canonicalize(payload))));
+  return [...new Uint8Array(signature)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+function campaignDecisionAnchorPayload(session) {
+  return {
+    purpose: "firstknock-canvas-decision-campaign-anchor-v1",
+    manager_id: String(session?.manager_id || ""),
+    campaign_id: String(session?.id || session?.campaign_id || ""),
+    deployment_plan_version: Number(session?.deployment_plan_version),
+    plan_hash: String(session?.plan_hash || "")
+  };
+}
+function campaignDecisionStatePayload(state) {
+  return {
+    purpose: "firstknock-canvas-decision-campaign-state-v1",
+    anchor_signature: String(state?.anchor_signature || ""),
+    manager_id: String(state?.manager_id || ""),
+    campaign_id: String(state?.campaign_id || ""),
+    deployment_plan_version: Number(state?.deployment_plan_version),
+    plan_hash: String(state?.plan_hash || ""),
+    state: String(state?.state || ""),
+    state_version: Number(state?.state_version),
+    transition_action: String(state?.transition_action || ""),
+    transition_idempotency_key: String(state?.transition_idempotency_key || ""),
+    transition_started_at: String(state?.transition_started_at || ""),
+    transition_completed_at: state?.transition_completed_at || null,
+    superseded_by_campaign_id: state?.superseded_by_campaign_id || null
+  };
+}
+function zoneDecisionAnchorPayload(session, zoneId) {
+  return {
+    purpose: "firstknock-canvas-decision-zone-anchor-v1",
+    manager_id: String(session?.manager_id || ""),
+    campaign_id: String(session?.id || session?.campaign_id || ""),
+    zone_id: String(zoneId || ""),
+    deployment_plan_version: Number(session?.deployment_plan_version),
+    plan_hash: String(session?.plan_hash || "")
+  };
+}
+async function verifyDecisionCampaignState(secret, session, state) {
+  if (!state || String(state.manager_id || "") !== String(session.manager_id || "") || String(state.campaign_id || "") !== String(session.id || "") || Number(state.deployment_plan_version) !== Number(session.deployment_plan_version) || String(state.plan_hash || "") !== String(session.plan_hash || "")) return false;
+  const expectedAnchor = await signDecisionPayload(secret, campaignDecisionAnchorPayload(session));
+  if (String(state.anchor_signature || "") !== expectedAnchor) return false;
+  return String(state.state_signature || "") === await signDecisionPayload(secret, campaignDecisionStatePayload(state));
+}
+async function loadDecisionCampaignState(base44, session, secret) {
+  const rows = asArray2(await base44.asServiceRole.entities.CanvasDecisionCampaignState.filter({
+    manager_id: session.manager_id,
+    campaign_id: session.id
+  }, "-updated_date", 2)).filter((row) => String(row.manager_id || "") === String(session.manager_id || "") && String(row.campaign_id || "") === String(session.id || ""));
+  if (rows.length !== 1 || !await verifyDecisionCampaignState(secret, session, rows[0])) {
+    throw new HttpError(409, "canvas_decision_state_integrity_failed", "The campaign decision gate failed tenant-scoped integrity verification.");
   }
-  for (const newer of newerRows) {
-    if (newer.id === session.id || !asArray2(newer.deployment_qa?.superseded_session_ids).includes(session.id)) continue;
-    if (!await verifyCanvasLifecycleSession(secret, newer)) {
-      throw new HttpError(409, "canvas_lifecycle_integrity_failed", "A replacing Canvas campaign failed integrity verification.");
-    }
-    if (Date.parse(newer.deployed_at || "") >= Date.parse(session.deployed_at || "")) {
-      throw new HttpError(409, "campaign_superseded", "This area was replaced by a newer Canvas campaign. Refresh assignments before logging.");
-    }
+  if (rows[0].state === "superseded") {
+    throw new HttpError(409, "campaign_superseded", "This area was replaced by a newer Canvas campaign. Refresh assignments before logging.", { superseded_by_campaign_id: rows[0].superseded_by_campaign_id || null });
   }
+  if (rows[0].state !== "active") throw new HttpError(409, "campaign_not_active", "This Canvas campaign is closing or closed. Refresh assignments.");
+  return rows[0];
+}
+async function loadDecisionZoneState(base44, session, zoneId, secret) {
+  const rows = asArray2(await base44.asServiceRole.entities.CanvasDecisionZoneState.filter({
+    manager_id: session.manager_id,
+    campaign_id: session.id,
+    zone_id: zoneId
+  }, "-updated_date", 2)).filter((row) => String(row.manager_id || "") === String(session.manager_id || "") && String(row.campaign_id || "") === String(session.id || "") && String(row.zone_id || "") === String(zoneId));
+  if (rows.length !== 1) throw new HttpError(409, "canvas_zone_state_integrity_failed", "The assigned area decision state is missing or duplicated.");
+  const expectedAnchor = await signDecisionPayload(secret, zoneDecisionAnchorPayload(session, zoneId));
+  const state = rows[0];
+  if (String(state.anchor_signature || "") !== expectedAnchor || Number(state.deployment_plan_version) !== Number(session.deployment_plan_version) || String(state.plan_hash || "") !== String(session.plan_hash || "")) {
+    throw new HttpError(409, "canvas_zone_state_integrity_failed", "The assigned area decision state failed integrity verification.");
+  }
+  return state;
 }
 function distanceMeters(left, right) {
   const latRadians = (Number(left.lat) + Number(right.lat)) / 2 * Math.PI / 180;
@@ -245,9 +292,12 @@ function resolveRoadOwnership(session, point, requestedZoneId) {
   }
   const candidates = asArray2(session.work_units).map((unit) => ({
     work_unit_id: String(unit?.id || ""),
+    canvas_role: unit?.canvas_role || null,
     zone_id: unitToZone.get(String(unit?.id || "")) || null,
     distance_meters: Math.min(...asArray2(unit?.segments).map((segment) => distanceToSegmentMeters(point, segment.start, segment.end)))
-  })).filter((candidate) => candidate.work_unit_id && candidate.zone_id && Number.isFinite(candidate.distance_meters)).sort((left, right) => left.distance_meters - right.distance_meters || left.work_unit_id.localeCompare(right.work_unit_id));
+  })).filter((candidate) => candidate.work_unit_id && candidate.zone_id
+    && (session.territory_model !== "residential_street_territory_v2" || candidate.canvas_role === "knock")
+    && Number.isFinite(candidate.distance_meters)).sort((left, right) => left.distance_meters - right.distance_meters || left.work_unit_id.localeCompare(right.work_unit_id));
   const nearest = candidates[0];
   if (!nearest || nearest.distance_meters > MAX_ROAD_SNAP_METERS) {
     throw new HttpError(422, "pin_too_far_from_street", `Tap a house within ${MAX_ROAD_SNAP_METERS} meters of a campaign street.`, {
@@ -272,7 +322,7 @@ function resolveRoadOwnership(session, point, requestedZoneId) {
       work_unit_id: nearest.work_unit_id
     });
   }
-  return { work_unit_id: nearest.work_unit_id, distance_meters: Number(nearest.distance_meters.toFixed(1)) };
+  return { work_unit_id: nearest.work_unit_id, street_unit_id: nearest.work_unit_id, distance_meters: Number(nearest.distance_meters.toFixed(1)) };
 }
 function normalizeAddress(value) {
   return normalized(value).replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
@@ -295,43 +345,70 @@ function token() {
   crypto.getRandomValues(bytes);
   return [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
-async function acquireFieldLock(base44, session) {
+async function acquireZoneDecisionLease(base44, session, zoneId, actorUserId, secret) {
+  const state = await loadDecisionZoneState(base44, session, zoneId, secret);
   const now = /* @__PURE__ */ new Date();
   const lockToken = token();
-  const expiresAt = new Date(now.getTime() + FIELD_LOCK_MS).toISOString();
-  const mutation = await base44.asServiceRole.entities.CanvasSession.updateMany({
-    id: session.id,
+  const expiresAt = new Date(now.getTime() + ZONE_DECISION_LEASE_MS).toISOString();
+  const generation = Math.max(0, Number(state.lease_generation || 0)) + 1;
+  const mutation = await base44.asServiceRole.entities.CanvasDecisionZoneState.updateMany({
+    id: state.id,
     manager_id: session.manager_id,
-    status: "deployed",
+    campaign_id: session.id,
+    zone_id: zoneId,
+    anchor_signature: state.anchor_signature,
+    lease_generation: Math.max(0, Number(state.lease_generation || 0)),
     $or: [
-      { canvas_field_write_lock_token: null },
-      { canvas_field_write_lock_token: { $exists: false } },
-      { canvas_field_write_lock_expires_at: { $lte: now.toISOString() } }
+      { lease_token: null },
+      { lease_token: { $exists: false } },
+      { lease_expires_at: { $lte: now.toISOString() } }
     ]
   }, { $set: {
-    canvas_field_write_lock_token: lockToken,
-    canvas_field_write_lock_acquired_at: now.toISOString(),
-    canvas_field_write_lock_expires_at: expiresAt
+    lease_token: lockToken,
+    lease_actor_user_id: actorUserId,
+    lease_acquired_at: now.toISOString(),
+    lease_expires_at: expiresAt,
+    lease_generation: generation
   } });
   if (mutation?.success !== true || Number(mutation?.updated) !== 1 || mutation?.has_more === true) {
-    throw new HttpError(409, "decision_write_in_progress", "Another house update is finishing for this campaign. Retry this saved decision.");
+    throw new HttpError(409, "zone_decision_write_in_progress", "Another house update is finishing in this area. Retry this saved decision with the same idempotency key.");
   }
-  const locked = await base44.asServiceRole.entities.CanvasSession.get(session.id).catch(() => null);
-  if (!locked || locked.canvas_field_write_lock_token !== lockToken) {
+  const locked = await base44.asServiceRole.entities.CanvasDecisionZoneState.get(state.id).catch(() => null);
+  if (!locked || locked.lease_token !== lockToken || Number(locked.lease_generation) !== generation || locked.lease_expires_at !== expiresAt) {
     throw new HttpError(503, "decision_lock_unverified", "Canvas could not verify the decision write lock. Retry safely with the same idempotency key.");
   }
-  return lockToken;
+  return { state_id: state.id, token: lockToken, generation, expires_at: expiresAt };
 }
-async function releaseFieldLock(base44, session, lockToken) {
-  if (!lockToken) return;
-  await base44.asServiceRole.entities.CanvasSession.updateMany({
-    id: session.id,
+async function renewZoneDecisionLease(base44, session, zoneId, lease) {
+  const expiresAt = new Date(Date.now() + ZONE_DECISION_LEASE_MS).toISOString();
+  const mutation = await base44.asServiceRole.entities.CanvasDecisionZoneState.updateMany({
+    id: lease.state_id,
     manager_id: session.manager_id,
-    canvas_field_write_lock_token: lockToken
+    campaign_id: session.id,
+    zone_id: zoneId,
+    lease_token: lease.token,
+    lease_generation: lease.generation,
+    lease_expires_at: { $gte: new Date().toISOString() }
+  }, { $set: { lease_expires_at: expiresAt } });
+  if (mutation?.success !== true || Number(mutation?.updated) !== 1 || mutation?.has_more === true) {
+    throw new HttpError(409, "decision_lease_lost", "The area write lease expired before the house decision committed. Retry with the same idempotency key.");
+  }
+  lease.expires_at = expiresAt;
+}
+async function releaseZoneDecisionLease(base44, session, zoneId, lease) {
+  if (!lease) return;
+  await base44.asServiceRole.entities.CanvasDecisionZoneState.updateMany({
+    id: lease.state_id,
+    manager_id: session.manager_id,
+    campaign_id: session.id,
+    zone_id: zoneId,
+    lease_token: lease.token,
+    lease_generation: lease.generation
   }, { $unset: {
-    canvas_field_write_lock_token: "",
-    canvas_field_write_lock_acquired_at: "",
-    canvas_field_write_lock_expires_at: ""
+    lease_token: "",
+    lease_actor_user_id: "",
+    lease_acquired_at: "",
+    lease_expires_at: ""
   } }).catch(() => null);
 }
 function ownedPins(value, managerId, campaignId) {
@@ -386,6 +463,9 @@ function publicPin(pin) {
     pin_id: pin.id,
     campaign_id: pin.campaign_id,
     zone_id: pin.zone_id,
+    street_unit_id: pin.street_unit_id || null,
+    evidence_id: pin.evidence_id || null,
+    revision_id: pin.revision_id || null,
     lat: pin.lat,
     lng: pin.lng,
     address: pin.address || null,
@@ -402,14 +482,15 @@ function publicPin(pin) {
 Deno.serve(async (req) => {
   let base44 = null;
   let session = null;
-  let fieldLock = null;
+  let zoneId = null;
+  let zoneLease = null;
   try {
     base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
     const body = await req.json().catch(() => ({}));
     const campaignId = requiredString(body?.campaign_id ?? body?.session_id, "campaign_id");
-    const zoneId = requiredString(body?.zone_id, "zone_id", 512);
+    zoneId = requiredString(body?.zone_id, "zone_id", 512);
     const idempotencyKey = requiredString(body?.idempotency_key, "idempotency_key", 128);
     if (idempotencyKey.length < 8 || !/^[A-Za-z0-9:_-]+$/.test(idempotencyKey)) {
       throw new HttpError(400, "invalid_decision", "idempotency_key must be 8-128 letters, numbers, colons, underscores, or hyphens.");
@@ -424,6 +505,7 @@ Deno.serve(async (req) => {
     const unitLabel = optionalString(unitLabelInput ? unitLabelInput.normalize("NFKC").replace(/\s+/g, " ").trim() : null, "unit_label", 100);
     const normalizedUnitLabel = normalizeUnitLabel(unitLabel);
     const suppliedPinId = optionalString(body?.pin_id, "pin_id", 256);
+    const suppliedStreetUnitId = optionalString(body?.street_unit_id ?? body?.work_unit_id, "street_unit_id", 512);
     const clientRecordedAt = body?.client_recorded_at ? new Date(body.client_recorded_at) : /* @__PURE__ */ new Date();
     if (!Number.isFinite(clientRecordedAt.getTime()) || clientRecordedAt.getTime() > Date.now() + 5 * 6e4 || clientRecordedAt.getTime() < Date.now() - 366 * 24 * 60 * 6e4) {
       throw new HttpError(400, "invalid_decision_time", "client_recorded_at is outside the supported offline window.");
@@ -437,17 +519,21 @@ Deno.serve(async (req) => {
     if (String(session.manager_id || "") !== String(expectedManagerId || "")) throw new HttpError(403, "forbidden", "This Canvas campaign belongs to another team.");
     const secret = deploymentSigningSecret();
     if (!await verifyCanvasLifecycleSession(secret, session, "active")) throw new HttpError(409, "campaign_not_active", "This Canvas campaign is not an active signed deployment.");
-    await ensureNotSuperseded(base44, session, secret);
+    await loadDecisionCampaignState(base44, session, secret);
     const zone = asArray2(session.zones).find((candidate) => String(candidate?.zone_id || "") === zoneId);
     if (!zone) throw new HttpError(404, "zone_not_found", "Canvas area not found in this campaign.");
     if (!manager && (String(zone.assigned_team_member_id || "") !== String(member.id) || !bindingMatches(session, member, user))) {
       throw new HttpError(403, "zone_not_assigned", "This area is not assigned to the authenticated rep.");
     }
     const roadOwnership = resolveRoadOwnership(session, point, zoneId);
+    if (suppliedStreetUnitId && suppliedStreetUnitId !== roadOwnership.street_unit_id) throw new HttpError(409, "street_unit_mismatch", "The selected street unit does not own this pin location.");
     const normalizedAddress = normalizeAddress(address);
     const requestHash = await sha2562({
       campaign_id: campaignId,
       zone_id: zoneId,
+      street_unit_id: roadOwnership.street_unit_id,
+      evidence_id: session.evidence_id || null,
+      revision_id: session.revision_id || null,
       actor_user_id: user.id,
       point: { lat: Number(point.lat.toFixed(7)), lng: Number(point.lng.toFixed(7)) },
       outcome,
@@ -458,12 +544,12 @@ Deno.serve(async (req) => {
       pin_id: suppliedPinId,
       client_recorded_at: clientRecordedAt.toISOString()
     });
-    fieldLock = await acquireFieldLock(base44, session);
+    zoneLease = await acquireZoneDecisionLease(base44, session, zoneId, user.id, secret);
     session = await base44.asServiceRole.entities.CanvasSession.get(session.id).catch(() => null);
     if (!session || !await verifyCanvasLifecycleSession(secret, session, "active")) {
       throw new HttpError(409, "campaign_not_active", "This Canvas campaign closed while the decision was queued. Refresh assignments.");
     }
-    await ensureNotSuperseded(base44, session, secret);
+    await loadDecisionCampaignState(base44, session, secret);
     const existingEvents = asArray2(await base44.asServiceRole.entities.CanvasHouseEvent.filter({
       manager_id: session.manager_id,
       actor_user_id: user.id,
@@ -489,13 +575,13 @@ Deno.serve(async (req) => {
       point
     });
     if (suppliedPinId && pin) {
-      if (pin.zone_id !== zoneId || distanceMeters(pin, point) > 25) throw new HttpError(409, "pin_zone_mismatch", "The selected pin does not match this house location and area.");
+      if (pin.zone_id !== zoneId || distanceMeters(pin, point) > 25 || session.territory_model === "residential_street_territory_v2" && pin.street_unit_id !== roadOwnership.street_unit_id) throw new HttpError(409, "pin_zone_mismatch", "The selected pin does not match this house location, street unit, and area.");
       const existingUnitLabel = normalizeUnitLabel(pin.normalized_unit_label || pin.unit_label);
       if (existingUnitLabel && normalizedUnitLabel && existingUnitLabel !== normalizedUnitLabel) {
         throw new HttpError(409, "pin_unit_mismatch", "The selected pin belongs to a different unit at this building.");
       }
     }
-    if (pin && pin.zone_id !== zoneId) throw new HttpError(409, "pin_zone_mismatch", "An existing house pin at this location belongs to another area.");
+    if (pin && (pin.zone_id !== zoneId || session.territory_model === "residential_street_territory_v2" && pin.street_unit_id !== roadOwnership.street_unit_id)) throw new HttpError(409, "pin_zone_mismatch", "An existing house pin at this location belongs to another street unit or area.");
     const serverRecordedAt = (/* @__PURE__ */ new Date()).toISOString();
     let event = existingEvent;
     if (!event) {
@@ -504,6 +590,9 @@ Deno.serve(async (req) => {
         pin_id: pin?.id || null,
         zone_id: zoneId,
         manager_id: session.manager_id,
+        street_unit_id: roadOwnership.street_unit_id,
+        evidence_id: session.evidence_id || null,
+        revision_id: session.revision_id || null,
         actor_user_id: user.id,
         actor_team_member_id: member?.id || null,
         idempotency_key: idempotencyKey,
@@ -526,11 +615,15 @@ Deno.serve(async (req) => {
     const eventAlreadyApplied = Boolean(existingEvent && pin && String(pin.latest_event_id || "") === String(event.id || ""));
     const latestAt = pin?.latest_client_recorded_at ? Date.parse(pin.latest_client_recorded_at) : Number.NEGATIVE_INFINITY;
     const appliesToLatest = eventAlreadyApplied || !pin || clientRecordedAt.getTime() >= latestAt;
+    await renewZoneDecisionLease(base44, session, zoneId, zoneLease);
     if (!pin) {
       pin = await base44.asServiceRole.entities.CanvasHousePin.create({
         campaign_id: campaignId,
         zone_id: zoneId,
         manager_id: session.manager_id,
+        street_unit_id: roadOwnership.street_unit_id,
+        evidence_id: session.evidence_id || null,
+        revision_id: session.revision_id || null,
         lat: point.lat,
         lng: point.lng,
         address,
@@ -575,6 +668,7 @@ Deno.serve(async (req) => {
       }
       pin = await base44.asServiceRole.entities.CanvasHousePin.get(pin.id);
     }
+    await renewZoneDecisionLease(base44, session, zoneId, zoneLease);
     const eventMutation = await base44.asServiceRole.entities.CanvasHouseEvent.updateMany({
       id: event.id,
       manager_id: session.manager_id,
@@ -613,6 +707,6 @@ Deno.serve(async (req) => {
     console.error("[canvasLogHouseDecision]", error?.message || error);
     return Response.json({ error: "canvas_decision_failed", message: "The house decision could not be saved. Retry safely with the same idempotency key." }, { status: 503 });
   } finally {
-    if (base44 && session && fieldLock) await releaseFieldLock(base44, session, fieldLock);
+    if (base44 && session && zoneId && zoneLease) await releaseZoneDecisionLease(base44, session, zoneId, zoneLease);
   }
 });

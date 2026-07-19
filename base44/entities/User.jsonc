@@ -214,6 +214,30 @@
         "read": { "user_condition": { "role": "admin" } },
         "write": { "user_condition": { "role": "admin" } }
       }
+    },
+    "canvas_analysis_identity_lock_token": {
+      "type": "string",
+      "description": "Short-lived service-owned tenant lease serializing content-addressed Canvas analysis identities.",
+      "rls": {
+        "read": { "user_condition": { "role": "admin" } },
+        "write": { "user_condition": { "role": "admin" } }
+      }
+    },
+    "canvas_analysis_identity_lock_acquired_at": {
+      "type": "string",
+      "format": "date-time",
+      "rls": {
+        "read": { "user_condition": { "role": "admin" } },
+        "write": { "user_condition": { "role": "admin" } }
+      }
+    },
+    "canvas_analysis_identity_lock_expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "rls": {
+        "read": { "user_condition": { "role": "admin" } },
+        "write": { "user_condition": { "role": "admin" } }
+      }
     }
   },
   "required": []

@@ -41,16 +41,32 @@ import {
   validateCanvasBoundary,
 } from '@/components/canvas/canvasPlannerUtils';
 import {
+  analyzeCanvasBoundary,
+  applyCanvasClassificationOverride,
+  cancelCanvasAnalysis,
+  clearPersistedCanvasAnalysisJob,
   closeCanvasCampaign,
   deployCanvasCampaign,
+  getCanvasAnalysis,
   getCanvasCampaignMap,
   listMyCanvasCampaigns,
+  MAX_CANVAS_CLASSIFICATION_GROUP_UNITS,
+  persistCanvasAnalysisJob,
   quarantineInvalidCanvasCampaigns,
+  readPersistedCanvasAnalysisJob,
   saveCanvasDraft,
 } from '@/components/canvas/canvasProductionClient';
 import { canvasZoneLoggedCount, formatCanvasDistance, getCanvasOutcome } from '@/components/canvas/canvasOutcomeUtils';
+import {
+  getCanvasClassifiedStreetUnits,
+  getCanvasResidentialRoleCounts,
+} from '@/components/canvas/canvasResidentialPresentation';
 import { clearOverpassRoadNetworkCache, fetchOverpassRoadNetwork } from '@/components/logic/overpassRoadNetwork';
-import { planCanvasTerritoriesAsync } from '@/components/logic/canvasStreetTerritoryPlannerAsync';
+import {
+  analyzeCanvasResidentialTerritory,
+  partitionCanvasResidentialTerritories,
+} from '@/components/logic/canvasResidentialTerritoryAnalysis';
+import { partitionCanvasResidentialTerritoriesAsync } from '@/components/logic/canvasResidentialTerritoryPlannerAsync';
 import CanvasPlannerWorkspace from './CanvasPlannerWorkspace.jsx';
 import { createPageUrl } from '@/utils';
 
@@ -62,6 +78,7 @@ const CAMPAIGN_REFRESH_MS = 15_000;
 const MAX_CANVAS_DRAFT_JSON_BYTES = 8_000_000;
 const CANVAS_DRAFT_METADATA_RESERVE_BYTES = 200_000;
 const MAX_CANVAS_PREVIEW_JSON_BYTES = MAX_CANVAS_DRAFT_JSON_BYTES - CANVAS_DRAFT_METADATA_RESERVE_BYTES;
+const LOCAL_RESIDENTIAL_FALLBACK_ENABLED = import.meta.env?.DEV === true;
 
 const polygonKeyFor = (polygon = []) => polygon
   .map((point) => `${Number(point?.lat).toFixed(7)},${Number(point?.lng).toFixed(7)}`)
@@ -71,6 +88,7 @@ const initialQa = (warnings = []) => ({
   deployable: false,
   street_coverage_complete: false,
   no_duplicate_work_units: false,
+  no_missing_work_units: false,
   connected_zones: false,
   atomic_work_units: false,
   protected_units_intact: false,
@@ -88,6 +106,7 @@ function normalizeQa(qa = {}, warnings = []) {
     ...qa,
     street_coverage_complete: qa.street_coverage_complete === true || qa.coverage_complete === true,
     no_duplicate_work_units: qa.no_duplicate_work_units === true || qa.no_duplicate_units === true,
+    no_missing_work_units: qa.no_missing_work_units === true || qa.exclusive_work_unit_coverage === true,
     connected_zones: qa.connected_zones === true,
     atomic_work_units: qa.atomic_work_units === true,
     protected_units_intact: qa.protected_units_intact === true && protectedUnitSplits === 0,
@@ -106,6 +125,7 @@ function withAssignmentGate(plan) {
     && plan.assignment_basis === 'street_work_unit_ids'
     && qa.street_coverage_complete
     && qa.no_duplicate_work_units
+    && qa.no_missing_work_units
     && qa.connected_zones
     && qa.atomic_work_units
     && qa.protected_units_intact;
@@ -135,12 +155,116 @@ function normalizeGeneratedPlan(result, { divisionBasis, selectedTeamMemberIds, 
       zone_id: zone.zone_id || zone.id || `canvas_area_${index + 1}`,
       zone_number: Number(zone.zone_number) || index + 1,
       street_length_meters: Number(zone.street_length_meters ?? zone.workload_meters ?? 0),
+      geometry_role: zone.geometry_role || 'display_only',
       color: zone.color || TERRITORY_COLORS[index % TERRITORY_COLORS.length],
     })),
     qa,
   };
   const assignmentPool = divisionBasis === 'selected_reps' ? selectedTeamMemberIds : [];
   return assignmentPool.length ? planWithAssignments(plan, assignmentPool, teamMembers) : withAssignmentGate(plan);
+}
+
+function residentialPartitionFailure(partition) {
+  const details = partition?.details || {};
+  if (partition?.code === 'NO_KNOCK_OPPORTUNITY') {
+    return 'Canvas did not find any positively verified residential street work in this boundary. Review amber streets or redraw around a neighborhood.';
+  }
+  if (partition?.code === 'TOO_MANY_ZONES_FOR_WORK_UNITS') {
+    return `Canvas found ${Number(details.maximum_zone_count || 0).toLocaleString()} indivisible residential street units. Choose that many areas or fewer.`;
+  }
+  if (partition?.code === 'TOO_FEW_ZONES_FOR_COMPONENTS') {
+    return `The residential work has ${Number(details.minimum_zone_count || 0).toLocaleString()} disconnected street clusters. Choose at least that many areas or draw a more connected boundary.`;
+  }
+  if (partition?.code === 'CONNECTED_PARTITION_FAILED') {
+    return 'Canvas could not keep every requested area connected with this street graph. Change the area count and try again.';
+  }
+  return getCanvasPlannerFailureMessage(partition);
+}
+
+function planResidentialStreetUnits(analysis) {
+  return getCanvasClassifiedStreetUnits(analysis).map((unit) => {
+    const id = String(unit?.id || unit?.unit_id || unit?.street_unit_id || '').trim();
+    const opportunity = unit?.opportunity || {};
+    return {
+      ...unit,
+      id,
+      unit_id: id,
+      canvas_role: unit?.canvas_role || 'uncertain',
+      opportunity_low: Number(unit?.opportunity_low ?? opportunity.low ?? 0),
+      opportunity_expected: Number(unit?.opportunity_expected ?? opportunity.expected ?? 0),
+      opportunity_high: Number(unit?.opportunity_high ?? opportunity.high ?? 0),
+      street_names: unit?.street_names || unit?.streetNames || [],
+      neighbor_ids: unit?.neighbor_ids || unit?.neighborIds || [],
+      street_length_meters: Number(unit?.street_length_meters ?? unit?.streetLengthMeters ?? 0),
+    };
+  }).filter((unit) => unit.id);
+}
+
+function buildResidentialTerritoryPlan(analysis, areaCount, source, suppliedPartition = null) {
+  const classifiedStreetUnits = planResidentialStreetUnits(analysis);
+  const partition = suppliedPartition || partitionCanvasResidentialTerritories({
+      street_units: classifiedStreetUnits,
+      area_count: areaCount,
+    });
+  if (!partition?.ok) {
+    return { ...partition, message: residentialPartitionFailure(partition) };
+  }
+  const byId = new Map(classifiedStreetUnits.map((unit) => [unit.id, unit]));
+  const zones = (partition.zones || []).map((zone) => {
+    const ownedUnits = (zone.work_unit_ids || []).map((id) => byId.get(String(id))).filter(Boolean);
+    const streetLengthMeters = ownedUnits.reduce((sum, unit) => sum + Number(unit.street_length_meters || 0), 0);
+    const opportunityExpected = ownedUnits.reduce((sum, unit) => sum + Number(unit.opportunity_expected || 0), 0);
+    return {
+      ...zone,
+      geometry_role: 'display_only',
+      street_length_meters: Number(streetLengthMeters.toFixed(2)),
+      estimated_doors: opportunityExpected,
+      opportunity_expected: opportunityExpected,
+      workload_score: opportunityExpected,
+    };
+  });
+  const unresolvedUnitCount = classifiedStreetUnits.filter((unit) => unit.canvas_role === 'uncertain').length;
+  const evidenceId = String(analysis?.evidence_id || '').trim();
+  const sourceVersion = String(analysis?.source_version || analysis?.data_version || evidenceId || 'local-development-evidence').trim();
+  const algorithmVersion = [analysis?.classifier_version, partition.algorithm_version].filter(Boolean).join('+')
+    || 'canvas-residential-territory-v2';
+  return {
+    ...partition,
+    ok: true,
+    status: unresolvedUnitCount ? 'needs_review' : 'ready',
+    deployable: partition.deployable === true && unresolvedUnitCount === 0 && Boolean(evidenceId),
+    territory_model: 'residential_street_territory_v2',
+    planning_method: 'street_workload',
+    assignment_basis: 'street_work_unit_ids',
+    workload_basis: 'residential_opportunity',
+    road_aligned: true,
+    algorithm_version: algorithmVersion.slice(0, 128),
+    data_version: sourceVersion.slice(0, 256),
+    evidence_id: evidenceId || null,
+    snapshot_hash: analysis?.snapshot_hash || null,
+    revision_id: analysis?.revision_id || null,
+    evidence_schema_version: Number(analysis?.evidence_schema_version || 1),
+    unresolved_unit_count: unresolvedUnitCount,
+    zones,
+    territories: zones,
+    work_units: classifiedStreetUnits,
+    context_street_units: classifiedStreetUnits.filter((unit) => unit.canvas_role !== 'knock'),
+    qa: {
+      ...(partition.qa || {}),
+      deployable: partition.deployable === true && unresolvedUnitCount === 0 && Boolean(evidenceId),
+      street_coverage_complete: partition.qa?.exclusive_work_unit_coverage === true,
+      no_duplicate_work_units: partition.qa?.exclusive_work_unit_coverage === true,
+      no_missing_work_units: partition.qa?.exclusive_work_unit_coverage === true,
+      connected_zones: partition.qa?.connected_zones === true,
+      atomic_work_units: true,
+      protected_units_intact: partition.qa?.protected_units_intact === true,
+      protected_unit_splits: partition.qa?.protected_units_intact === true ? 0 : 1,
+      cul_de_sac_splits: partition.qa?.protected_units_intact === true ? 0 : 1,
+      data_quality_status: source === 'server' ? 'verified' : 'development_preview',
+      unresolved_unit_count: unresolvedUnitCount,
+      max_workload_deviation_percent: partition.qa?.max_opportunity_deviation_percent ?? null,
+    },
+  };
 }
 
 function canvasPlannerError(value, fallbackMessage = 'Canvas planning failed.') {
@@ -167,20 +291,35 @@ function campaignZones(campaignMap) {
 }
 
 function isTerritoryPlanDeployable(plan, eligibleTeamIds) {
-  if (!plan || plan.planning_method !== 'street_workload' || plan.assignment_basis !== 'street_work_unit_ids' || plan.workload_basis !== 'street_length') return false;
+  if (!plan || plan.planning_method !== 'street_workload' || plan.assignment_basis !== 'street_work_unit_ids') return false;
+  const residentialV2 = plan.territory_model === 'residential_street_territory_v2';
+  const expectedWorkloadBasis = residentialV2 ? 'residential_opportunity' : 'street_length';
+  if (plan.workload_basis !== expectedWorkloadBasis) return false;
   if (!String(plan.algorithm_version || '').trim() || !String(plan.data_version || '').trim()) return false;
   const qa = normalizeQa(plan.qa);
   const coreGatesPass = qa.street_coverage_complete
     && qa.no_duplicate_work_units
+    && qa.no_missing_work_units
     && qa.connected_zones
     && qa.atomic_work_units
     && qa.protected_units_intact
     && Number(qa.protected_unit_splits || qa.cul_de_sac_splits || 0) === 0;
   const workUnits = Array.isArray(plan.work_units) ? plan.work_units : [];
+  const ownershipUnits = residentialV2
+    ? workUnits.filter((unit) => unit?.canvas_role === 'knock')
+    : workUnits;
+  const ownershipUnitIds = new Set(ownershipUnits.map((unit) => String(unit?.id || unit?.unit_id || '')));
   const zones = Array.isArray(plan.zones) ? plan.zones : [];
+  const ownedUnitIds = zones.flatMap((zone) => Array.isArray(zone?.work_unit_ids) ? zone.work_unit_ids : []);
   return coreGatesPass
     && workUnits.length > 0
+    && ownershipUnits.length > 0
     && zones.length > 0
+    && ownedUnitIds.length === ownershipUnits.length
+    && new Set(ownedUnitIds).size === ownershipUnits.length
+    && ownedUnitIds.every((id) => ownershipUnitIds.has(String(id)))
+    && (!residentialV2 || (Boolean(plan.evidence_id) && Boolean(plan.snapshot_hash) && Number(plan.unresolved_unit_count || 0) === 0))
+    && (!residentialV2 || qa.data_quality_status === 'verified')
     && zones.every((zone) => eligibleTeamIds.has(String(zone.assigned_team_member_id || '')));
 }
 
@@ -197,7 +336,6 @@ export default function CanvasBuilderSettings({
   onRefreshTeamMembers,
   onDraftDirtyChange,
   onPreviewChange,
-  generateStreetPlan = planCanvasTerritoriesAsync,
 }) {
   const polygon = useMemo(() => hasDrawnArea && drawnPolygon?.length > 2 ? drawnPolygon : [], [drawnPolygon, hasDrawnArea]);
   const polygonKey = useMemo(() => polygonKeyFor(polygon), [polygon]);
@@ -216,6 +354,17 @@ export default function CanvasBuilderSettings({
   const [roadFetchError, setRoadFetchError] = useState(null);
   const [roadFetchProgress, setRoadFetchProgress] = useState(null);
   const [roadFetchNonce, setRoadFetchNonce] = useState(0);
+  const [serverResidentialAnalysis, setServerResidentialAnalysis] = useState(null);
+  const [serverResidentialStatus, setServerResidentialStatus] = useState('idle');
+  const [serverResidentialError, setServerResidentialError] = useState('');
+  const [serverAnalysisProgress, setServerAnalysisProgress] = useState(null);
+  const [serverAnalysisJobId, setServerAnalysisJobId] = useState('');
+  const [cancellingServerAnalysis, setCancellingServerAnalysis] = useState(false);
+  const [localResidentialAnalysis, setLocalResidentialAnalysis] = useState(null);
+  const [localResidentialStatus, setLocalResidentialStatus] = useState('idle');
+  const [localResidentialError, setLocalResidentialError] = useState('');
+  const [applyingClassificationOverride, setApplyingClassificationOverride] = useState(false);
+  const [classificationOverrideError, setClassificationOverrideError] = useState('');
   const [workspaceView, setWorkspaceView] = useState(() => {
     try { return sessionStorage.getItem('fk_canvasPlannerView') === 'areas' ? 'areas' : 'new_area'; } catch { return 'new_area'; }
   });
@@ -246,6 +395,7 @@ export default function CanvasBuilderSettings({
   const [livePreviewRevision, setLivePreviewRevision] = useState(0);
   const previousPolygonKey = useRef(polygonKey);
   const roadFetchAbortRef = useRef(null);
+  const serverAnalysisAbortRef = useRef(null);
   const startAnotherAreaRef = useRef(null);
   const deploymentAttemptRef = useRef(null);
   const closeAttemptRef = useRef(null);
@@ -255,6 +405,21 @@ export default function CanvasBuilderSettings({
   const lastAttemptedPreviewRevisionRef = useRef(-1);
   const livePreviewTimerRef = useRef(null);
   const fitNextPreviewRef = useRef(false);
+  const resumedEvidenceRef = useRef(null);
+  const resumedJobContextRef = useRef('');
+
+  useEffect(() => {
+    if (!user?.id || typeof onResumeBoundary !== 'function') return;
+    const persisted = readPersistedCanvasAnalysisJob(user.id);
+    if (!persisted) return;
+    const persistedPolygonKey = polygonKeyFor(persisted.polygon);
+    if (polygon.length && polygonKey !== persistedPolygonKey) return;
+    const contextKey = `${persisted.jobId}:${persistedPolygonKey}`;
+    if (resumedJobContextRef.current === contextKey) return;
+    resumedJobContextRef.current = contextKey;
+    setRequestedAreaCount(persisted.areaCount);
+    if (!polygon.length) onResumeBoundary(persisted.polygon);
+  }, [onResumeBoundary, polygon.length, polygonKey, user?.id]);
 
   const targetWorkloadMeters = Math.max(0, Number(targetStreetWorkloadMiles) || 0) * 1609.344;
   const requestedZoneCount = divisionBasis === 'selected_reps'
@@ -262,6 +427,27 @@ export default function CanvasBuilderSettings({
     : divisionBasis === 'area_count'
       ? Math.max(1, Math.min(250, Number(requestedAreaCount) || 1))
       : plan?.division_basis === 'street_workload_target' ? plan.zones?.length || 0 : 0;
+  const residentialAnalysis = serverResidentialAnalysis || localResidentialAnalysis;
+  const serverUsesDevelopmentFallback = serverResidentialAnalysis?.summary?.development_fallback === true
+    || /development-fallback/i.test(String(serverResidentialAnalysis?.provider || ''));
+  const residentialAnalysisSource = serverResidentialAnalysis
+    ? serverUsesDevelopmentFallback ? 'server_development' : 'server'
+    : localResidentialAnalysis ? 'local' : '';
+  const residentialAnalysisStatus = residentialAnalysis
+    ? 'ready'
+    : serverResidentialStatus === 'loading' || localResidentialStatus === 'loading'
+      ? 'loading'
+      : serverResidentialStatus === 'unavailable' || localResidentialStatus === 'unavailable'
+        ? 'unavailable'
+        : 'idle';
+  const residentialAnalysisError = residentialAnalysisSource === 'local'
+    ? serverResidentialError
+    : serverResidentialError || localResidentialError;
+  const unresolvedAmberCount = getCanvasResidentialRoleCounts(residentialAnalysis).uncertain;
+  const residentialActivationReady = residentialAnalysisStatus === 'ready'
+    && residentialAnalysisSource === 'server'
+    && unresolvedAmberCount === 0;
+  const amberActivationBlocked = Boolean(plan) && !residentialActivationReady;
   const zones = useMemo(() => plan?.zones || [], [plan?.zones]);
   const selectedZone = zones.find((zone) => Number(zone.zone_number) === Number(selectedZoneNumber)) || null;
   const deploymentPlan = useMemo(() => {
@@ -276,7 +462,7 @@ export default function CanvasBuilderSettings({
   const activeDeployment = serverSession?.status === 'deployed';
   const closedDeployment = ['completed', 'recalled'].includes(serverSession?.status);
   const deployed = activeDeployment || closedDeployment;
-  const mutationsLocked = deployed || generating || saving || deploying || closing || resumingDraft;
+  const mutationsLocked = deployed || generating || saving || deploying || closing || resumingDraft || applyingClassificationOverride;
   const crewAssignmentStatus = useMemo(
     () => getCanvasCrewAssignmentStatus(deploymentPlan || {}, selectedTeamMemberIds),
     [deploymentPlan, selectedTeamMemberIds],
@@ -294,6 +480,7 @@ export default function CanvasBuilderSettings({
   );
   const sendable = deployable
     && !planStaleReason
+    && residentialActivationReady
     && crewAssignmentStatus.valid
     && !workloadDeviationUnavailable
     && !workloadExceptionNeedsAcceptance
@@ -356,16 +543,16 @@ export default function CanvasBuilderSettings({
     const blockers = [];
     const boundary = validateCanvasBoundary(polygon);
     if (!boundary.valid) blockers.push(boundary.message);
-    if (roadFetchStatus === 'loading') blockers.push('Wait for the street network to finish loading.');
-    if (roadFetchStatus === 'unavailable') blockers.push(roadFetchError?.message || 'Street data is unavailable. Retry before dividing this area.');
-    if (roadFetchStatus === 'empty') blockers.push(roadFetchError?.message || 'No eligible streets were found inside this boundary.');
-    if (roadFetchStatus !== 'ready' && boundary.valid && !['loading', 'unavailable', 'empty'].includes(roadFetchStatus)) blockers.push('Street data loads after you draw the global area.');
+    if (residentialAnalysisStatus === 'loading') blockers.push('Wait for the residential street analysis to finish.');
+    if (residentialAnalysisStatus === 'unavailable') blockers.push(residentialAnalysisError || 'Residential street evidence is unavailable. Retry before dividing this area.');
+    if (boundary.valid && residentialAnalysisStatus === 'idle') blockers.push('Residential street analysis starts after you draw the global area.');
+    if (residentialAnalysisStatus === 'ready' && getCanvasClassifiedStreetUnits(residentialAnalysis).length === 0) blockers.push('No eligible streets were found inside this boundary. Redraw around a street-connected neighborhood.');
     if (divisionBasis === 'selected_reps' && requestedZoneCount < 1) blockers.push('Select at least one active rep. Canvas creates one territory per selected rep.');
     if (divisionBasis === 'selected_reps' && requestedZoneCount > 250) blockers.push('Canvas supports at most 250 territories in one campaign.');
     if (divisionBasis === 'area_count' && (requestedAreaCount < 1 || requestedAreaCount > 250)) blockers.push('Choose between 1 and 250 territories.');
     if (divisionBasis === 'street_workload_target' && (targetStreetWorkloadMiles < 0.1 || targetStreetWorkloadMiles > 25)) blockers.push('Choose an approximate street workload between 0.1 and 25 miles per territory.');
     return blockers;
-  }, [divisionBasis, polygon, requestedAreaCount, requestedZoneCount, roadFetchError?.message, roadFetchStatus, targetStreetWorkloadMiles]);
+  }, [divisionBasis, polygon, requestedAreaCount, requestedZoneCount, residentialAnalysis, residentialAnalysisError, residentialAnalysisStatus, targetStreetWorkloadMiles]);
 
   const refreshCampaignIndex = useCallback(async () => {
     if (!user?.id) return setCampaignIndex([]);
@@ -375,6 +562,7 @@ export default function CanvasBuilderSettings({
       setCampaignIndex(result.campaigns);
       setQuarantinableCampaignCount(Math.max(0, Number(result.quarantinable_campaigns) || 0));
       const warnings = [];
+      if (result.signing_configured === false) warnings.push('Canvas lifecycle signing is not configured. Saved plans remain available, but active records cannot be trusted or sent.');
       if (Number(result.rejected_campaigns) > 0) warnings.push(`${result.rejected_campaigns} campaign record${result.rejected_campaigns === 1 ? '' : 's'} failed verification and were hidden.`);
       if (result.truncated) warnings.push('Only the newest 500 campaigns are shown.');
       setCampaignIndexError(warnings.join(' '));
@@ -511,6 +699,163 @@ export default function CanvasBuilderSettings({
   }, [plan?.data_version]);
 
   useEffect(() => {
+    serverAnalysisAbortRef.current?.abort();
+    const boundary = validateCanvasBoundary(polygon);
+    if (!boundary.valid) {
+      setServerResidentialAnalysis(null);
+      setServerResidentialStatus('idle');
+      setServerResidentialError('');
+      setServerAnalysisProgress(null);
+      return undefined;
+    }
+    const resumedEvidence = resumedEvidenceRef.current;
+    if (resumedEvidence?.polygonKey === polygonKey && resumedEvidence.analysis) {
+      resumedEvidenceRef.current = null;
+      setServerResidentialAnalysis(resumedEvidence.analysis);
+      setServerResidentialStatus('ready');
+      setServerResidentialError('');
+      setServerAnalysisProgress(null);
+      return undefined;
+    }
+    let cancelled = false;
+    const abortController = new AbortController();
+    serverAnalysisAbortRef.current = abortController;
+    const persistedJob = roadFetchNonce === 0 && user?.id ? readPersistedCanvasAnalysisJob(user.id) : null;
+    const resumeJobId = persistedJob && polygonKeyFor(persistedJob.polygon) === polygonKey
+      ? persistedJob.jobId
+      : '';
+    setServerAnalysisJobId(resumeJobId);
+    setServerResidentialAnalysis(null);
+    setServerResidentialStatus('loading');
+    setServerResidentialError('');
+    setServerAnalysisProgress(null);
+    Promise.resolve()
+      .then(async () => {
+        const started = await analyzeCanvasBoundary({
+          polygon: boundary.points,
+          areaCount: requestedZoneCount,
+          ...(resumeJobId ? { resumeJobId } : {}),
+          retryFailedJob: roadFetchNonce > 0,
+          signal: abortController.signal,
+          onProgress: (progress) => {
+            if (cancelled || abortController.signal.aborted) return;
+            const progressJobId = String(progress?.job_id || resumeJobId || '');
+            if (progressJobId) {
+              setServerAnalysisJobId(progressJobId);
+              persistCanvasAnalysisJob({
+                managerId: user?.id,
+                jobId: progressJobId,
+                polygon: boundary.points,
+                areaCount: requestedZoneCount,
+              });
+            }
+            setServerAnalysisProgress({
+              completed: Number(progress?.completed_tile_count || 0),
+              total: Number(progress?.tile_count || 0),
+              progressPct: Number(progress?.progress_pct || 0),
+              status: progress?.status || 'running',
+            });
+          },
+        });
+        let loaded = null;
+        if (started?.evidence_id) {
+          try {
+            loaded = await getCanvasAnalysis({ evidenceId: started.evidence_id });
+          } catch (error) {
+            const embeddedAnalysis = started?.analysis_result || started?.analysis;
+            const embeddedStreetUnits = embeddedAnalysis?.street_units
+              || embeddedAnalysis?.classified_street_units
+              || embeddedAnalysis?.work_units;
+            // A job summary is not deployable evidence. Keep the resumable job
+            // context when the completed evidence body could not be loaded.
+            if (!Array.isArray(embeddedStreetUnits)) throw error;
+          }
+        }
+        const completedAnalysis = residentialAnalysisFromServer(started, loaded);
+        const completedStreetUnits = completedAnalysis?.street_units
+          || completedAnalysis?.classified_street_units
+          || completedAnalysis?.work_units;
+        if (!Array.isArray(completedStreetUnits)) {
+          throw new Error('Canvas analysis completed without retrievable street evidence. Retry to resume the saved analysis job.');
+        }
+        clearPersistedCanvasAnalysisJob(user?.id, started?.job_id || resumeJobId || null);
+        setServerAnalysisJobId('');
+        return completedAnalysis;
+      })
+      .then((analysis) => {
+        if (cancelled) return;
+        setServerResidentialAnalysis(analysis);
+        setServerResidentialStatus('ready');
+        setServerAnalysisProgress(null);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setServerResidentialAnalysis(null);
+        setServerResidentialStatus('unavailable');
+        setServerResidentialError(error?.message || 'Server residential analysis is unavailable.');
+        setServerAnalysisProgress(null);
+      });
+    return () => {
+      cancelled = true;
+      abortController.abort();
+      if (serverAnalysisAbortRef.current === abortController) serverAnalysisAbortRef.current = null;
+    };
+  }, [polygonKey, roadFetchNonce, user?.id]);
+
+  useEffect(() => {
+    if (!LOCAL_RESIDENTIAL_FALLBACK_ENABLED) {
+      setLocalResidentialAnalysis(null);
+      setLocalResidentialStatus('idle');
+      setLocalResidentialError('');
+      return undefined;
+    }
+    if (!polygon.length || roadFetchStatus !== 'ready' || !roadNetwork) {
+      setLocalResidentialAnalysis(null);
+      setLocalResidentialStatus(roadFetchStatus === 'loading' ? 'loading' : 'idle');
+      setLocalResidentialError('');
+      return undefined;
+    }
+    let cancelled = false;
+    setLocalResidentialStatus('loading');
+    setLocalResidentialError('');
+    Promise.resolve()
+      .then(() => analyzeCanvasResidentialTerritory({
+        polygon,
+        roadNetwork,
+        area_count: requestedZoneCount,
+      }))
+      .then((analysis) => {
+        if (cancelled) return;
+        if (!analysis || analysis.ok === false) {
+          const warning = analysis?.warnings?.[0];
+          throw new Error(typeof warning === 'string' ? warning : warning?.message || 'Residential preview could not be classified.');
+        }
+        setLocalResidentialAnalysis(analysis);
+        setLocalResidentialStatus('ready');
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setLocalResidentialAnalysis(null);
+        setLocalResidentialStatus('unavailable');
+        setLocalResidentialError(error?.message || 'Local residential preview is unavailable.');
+      });
+    return () => { cancelled = true; };
+  }, [polygonKey, requestedZoneCount, roadFetchStatus, roadNetwork]);
+
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('fk-canvas-residential-analysis-updated', {
+      detail: { analysis: residentialAnalysis },
+    }));
+  }, [residentialAnalysis]);
+
+  useEffect(() => () => {
+    serverAnalysisAbortRef.current?.abort();
+    window.dispatchEvent(new CustomEvent('fk-canvas-residential-analysis-updated', {
+      detail: { analysis: null },
+    }));
+  }, []);
+
+  useEffect(() => {
     roadFetchAbortRef.current?.abort();
     if (!polygon.length) {
       setRoadNetwork(null);
@@ -527,6 +872,28 @@ export default function CanvasBuilderSettings({
       setRoadFetchProgress(null);
       return undefined;
     }
+    if (!LOCAL_RESIDENTIAL_FALLBACK_ENABLED) {
+      setRoadNetwork(null);
+      setRoadFetchProgress(null);
+      if (serverResidentialStatus === 'loading' || serverResidentialStatus === 'idle') {
+        setRoadFetchStatus('loading');
+        setRoadFetchError(null);
+      } else if (serverResidentialStatus === 'ready') {
+        const unitCount = getCanvasClassifiedStreetUnits(serverResidentialAnalysis).length;
+        setRoadFetchStatus(unitCount ? 'ready' : 'empty');
+        setRoadFetchError(unitCount ? null : {
+          code: 'CANVAS_ROAD_NETWORK_EMPTY',
+          message: 'No eligible streets were found inside this boundary. Redraw around a street-connected neighborhood.',
+        });
+      } else {
+        setRoadFetchStatus('unavailable');
+        setRoadFetchError({
+          code: 'CANVAS_RESIDENTIAL_ANALYSIS_UNAVAILABLE',
+          message: serverResidentialError || 'Residential street evidence is unavailable.',
+        });
+      }
+      return undefined;
+    }
     const abortController = new AbortController();
     roadFetchAbortRef.current = abortController;
     setRoadFetchStatus('loading');
@@ -535,6 +902,7 @@ export default function CanvasBuilderSettings({
     setRoadNetwork(null);
     fetchOverpassRoadNetwork(polygon, {
       highwayFilter: CANVAS_HIGHWAY_FILTER,
+      includeResidentialEvidence: LOCAL_RESIDENTIAL_FALLBACK_ENABLED,
       signal: abortController.signal,
       onProgress: (progress) => { if (!abortController.signal.aborted) setRoadFetchProgress(progress); },
     })
@@ -564,7 +932,7 @@ export default function CanvasBuilderSettings({
       abortController.abort();
       if (roadFetchAbortRef.current === abortController) roadFetchAbortRef.current = null;
     };
-  }, [polygonKey, roadFetchNonce]);
+  }, [polygonKey, roadFetchNonce, serverResidentialAnalysis, serverResidentialError, serverResidentialStatus]);
 
   useEffect(() => {
     const fitPreview = fitNextPreviewRef.current && zones.length > 0;
@@ -658,6 +1026,11 @@ export default function CanvasBuilderSettings({
     if (deployed || (activeOperationRef.current && activeOperationRef.current !== 'generate')) return;
     if (activeOperationRef.current === 'generate') plannerAbortRef.current?.abort();
     setRequestedAreaCount(value);
+    const persistedJob = user?.id ? readPersistedCanvasAnalysisJob(user.id) : null;
+    const activeJobId = serverAnalysisJobId || persistedJob?.jobId || '';
+    if (activeJobId && polygon.length > 2) {
+      persistCanvasAnalysisJob({ managerId: user.id, jobId: activeJobId, polygon, areaCount: value });
+    }
     setPlanGenerationError(null);
     setLivePreviewRevision((current) => current + 1);
     markPlanStale('The number of areas changed; Canvas is updating the preview.');
@@ -683,9 +1056,32 @@ export default function CanvasBuilderSettings({
       setDraftDirty(true);
       deploymentAttemptRef.current = null;
     }
-    clearOverpassRoadNetworkCache(polygon, CANVAS_HIGHWAY_FILTER);
+    clearOverpassRoadNetworkCache(polygon, CANVAS_HIGHWAY_FILTER, LOCAL_RESIDENTIAL_FALLBACK_ENABLED);
     setPlanGenerationError(null);
     setRoadFetchNonce((value) => value + 1);
+  };
+
+  const cancelResidentialAnalysis = async ({ quiet = false } = {}) => {
+    const jobId = serverAnalysisJobId || readPersistedCanvasAnalysisJob(user?.id)?.jobId || '';
+    if (!jobId) return true;
+    setCancellingServerAnalysis(true);
+    try {
+      await cancelCanvasAnalysis({ jobId });
+      serverAnalysisAbortRef.current?.abort();
+      clearPersistedCanvasAnalysisJob(user?.id, jobId);
+      setServerAnalysisJobId('');
+      setServerAnalysisProgress(null);
+      setServerResidentialAnalysis(null);
+      setServerResidentialStatus('unavailable');
+      setServerResidentialError('Residential analysis was cancelled. Retry when you are ready.');
+      if (!quiet) toast.success('Large-area analysis cancelled.');
+      return true;
+    } catch (error) {
+      if (!quiet) toast.error(error?.message || 'Canvas could not cancel the analysis.');
+      return false;
+    } finally {
+      setCancellingServerAnalysis(false);
+    }
   };
 
   const refreshTeamRoster = async () => {
@@ -709,7 +1105,6 @@ export default function CanvasBuilderSettings({
     }
     if (activeOperationRef.current) return toast.error('Wait for the current Canvas action to finish.');
     if (generationBlockers.length) return toast.error(generationBlockers[0]);
-    if (typeof generateStreetPlan !== 'function') return toast.error('The street territory planner is unavailable.');
     activeOperationRef.current = 'generate';
     setGenerating(true);
     setPlanGenerationError(null);
@@ -719,6 +1114,8 @@ export default function CanvasBuilderSettings({
     const requestSnapshot = {
       polygon,
       roadNetwork,
+      residentialAnalysis,
+      residentialAnalysisSource,
       divisionBasis,
       selectedTeamMemberIds: [...selectedTeamMemberIds],
       requestedZoneCount,
@@ -731,16 +1128,26 @@ export default function CanvasBuilderSettings({
     };
     lastAttemptedPreviewRevisionRef.current = requestSnapshot.livePreviewRevision;
     try {
-      const result = await generateStreetPlan({
-        polygon: requestSnapshot.polygon,
-        roadNetwork: requestSnapshot.roadNetwork,
-        workload_basis: 'street_length',
-        ...(requestSnapshot.divisionBasis === 'selected_reps'
-          ? { selected_team_member_ids: requestSnapshot.selectedTeamMemberIds }
-          : requestSnapshot.divisionBasis === 'area_count'
-            ? { requested_zone_count: requestSnapshot.requestedZoneCount }
-            : { target_street_workload_meters_per_area: requestSnapshot.targetWorkloadMeters }),
-      }, { signal: abortController.signal });
+      if (abortController.signal.aborted) throw new DOMException('Canvas planning was aborted.', 'AbortError');
+      const classifiedStreetUnits = planResidentialStreetUnits(requestSnapshot.residentialAnalysis);
+      const preflightComplexity = getCanvasPlanComplexityStatus({
+        zones: Array.from({ length: requestSnapshot.requestedZoneCount }, () => ({})),
+        work_units: classifiedStreetUnits,
+      });
+      if (!preflightComplexity.supported) throw new Error(preflightComplexity.message);
+      const partition = await partitionCanvasResidentialTerritoriesAsync({
+        street_units: classifiedStreetUnits,
+        area_count: requestSnapshot.requestedZoneCount,
+      }, {
+        signal: abortController.signal,
+        timeoutMs: 120_000,
+      });
+      const result = buildResidentialTerritoryPlan(
+        requestSnapshot.residentialAnalysis,
+        requestSnapshot.requestedZoneCount,
+        requestSnapshot.residentialAnalysisSource,
+        partition,
+      );
       const failure = getCanvasPlannerFailureMessage(result);
       if (failure) throw canvasPlannerError(result, failure);
       const nextPlan = normalizeGeneratedPlan(result, {
@@ -801,7 +1208,7 @@ export default function CanvasBuilderSettings({
   };
 
   useEffect(() => {
-    if (divisionBasis !== 'area_count' || roadFetchStatus !== 'ready' || generationBlockers.length || deployed || generating) return undefined;
+    if (divisionBasis !== 'area_count' || residentialAnalysisStatus !== 'ready' || generationBlockers.length || deployed || generating) return undefined;
     if (!plan || !planStaleReason || livePreviewRevision <= lastAttemptedPreviewRevisionRef.current) return undefined;
     const timer = window.setTimeout(() => {
       if (livePreviewTimerRef.current === timer) livePreviewTimerRef.current = null;
@@ -812,7 +1219,7 @@ export default function CanvasBuilderSettings({
       window.clearTimeout(timer);
       if (livePreviewTimerRef.current === timer) livePreviewTimerRef.current = null;
     };
-  }, [divisionBasis, generating, livePreviewRevision, plan, planStaleReason, polygonKey, roadFetchStatus, roadNetwork, generationBlockers, deployed]);
+  }, [divisionBasis, generating, livePreviewRevision, plan, planStaleReason, polygonKey, residentialAnalysis, residentialAnalysisStatus, generationBlockers, deployed]);
 
   useEffect(() => () => {
     if (livePreviewTimerRef.current) window.clearTimeout(livePreviewTimerRef.current);
@@ -847,6 +1254,133 @@ export default function CanvasBuilderSettings({
     deploymentAttemptRef.current = null;
   };
 
+  const applyClassificationRevision = async ({ streetUnitId, streetUnitIds, choice, reason, opportunityCount }) => {
+    if (activeOperationRef.current) {
+      setClassificationOverrideError('Wait for the current Canvas action to finish.');
+      return false;
+    }
+    if (!serverResidentialAnalysis?.evidence_id) {
+      setClassificationOverrideError('Server evidence is required to save an amber decision. Preview and draft saving remain available, but activation stays blocked.');
+      return false;
+    }
+    const normalizedReason = String(reason || '').trim();
+    const requestedUnitIds = [...new Set((Array.isArray(streetUnitIds) && streetUnitIds.length
+      ? streetUnitIds
+      : [streetUnitId]).map((id) => String(id || '').trim()).filter(Boolean))];
+    if (!requestedUnitIds.length || !normalizedReason) {
+      setClassificationOverrideError('Choose an amber street and enter a reason.');
+      return false;
+    }
+    const override = choice === 'residential'
+      ? { canvasRole: 'knock', opportunityClassification: 'likely', accessClassification: 'permitted' }
+      : choice === 'transit'
+        ? { canvasRole: 'transit_only', opportunityClassification: 'none', accessClassification: 'permitted' }
+        : choice === 'exclude'
+          ? { canvasRole: 'excluded', opportunityClassification: 'none', accessClassification: 'permitted' }
+          : null;
+    if (!override) {
+      setClassificationOverrideError('Choose Residential, Transit, or Exclude.');
+      return false;
+    }
+    const explicitOpportunityCount = String(opportunityCount ?? '').trim() === '' ? null : Number(opportunityCount);
+    if (choice === 'residential' && (!Number.isSafeInteger(explicitOpportunityCount) || explicitOpportunityCount < 1)) {
+      setClassificationOverrideError('Residential overrides require a positive whole-number home count.');
+      return false;
+    }
+    if (choice === 'residential' && requestedUnitIds.length > 1) {
+      setClassificationOverrideError('Residential streets must be reviewed one at a time so each receives an explicit home count.');
+      return false;
+    }
+    if (requestedUnitIds.length > MAX_CANVAS_CLASSIFICATION_GROUP_UNITS) {
+      setClassificationOverrideError(`An audited group may contain at most ${MAX_CANVAS_CLASSIFICATION_GROUP_UNITS} street units. Choose a smaller review group.`);
+      return false;
+    }
+    activeOperationRef.current = 'classification_override';
+    setApplyingClassificationOverride(true);
+    setClassificationOverrideError('');
+    const toastId = toast.loading(requestedUnitIds.length > 1
+      ? `Saving ${requestedUnitIds.length} audited amber decisions...`
+      : 'Saving the amber classification revision...');
+    const appliedUnitIds = requestedUnitIds;
+    let finalRevisionId = serverResidentialAnalysis.revision_id || null;
+    const patchAnalysis = (current) => current ? {
+      ...current,
+      revision_id: finalRevisionId || current.revision_id,
+      classified_street_units: getCanvasClassifiedStreetUnits(current).map((unit) => (
+        appliedUnitIds.includes(String(unit?.id || unit?.street_unit_id || ''))
+          ? {
+            ...unit,
+            canvas_role: override.canvasRole,
+            opportunity_classification: override.opportunityClassification,
+            access_classification: override.accessClassification,
+            ...(choice === 'residential'
+              ? {
+                opportunity_low: explicitOpportunityCount,
+                opportunity_expected: explicitOpportunityCount,
+                opportunity_high: explicitOpportunityCount,
+                opportunity: { low: explicitOpportunityCount, expected: explicitOpportunityCount, high: explicitOpportunityCount },
+              }
+              : {}),
+          }
+          : unit
+      )),
+    } : current;
+    const reloadAppliedRevision = async () => {
+      setServerResidentialAnalysis(patchAnalysis);
+      if (!finalRevisionId) return;
+      try {
+        const loaded = await getCanvasAnalysis({
+          evidenceId: serverResidentialAnalysis.evidence_id,
+          revisionId: finalRevisionId,
+        });
+        setServerResidentialAnalysis(residentialAnalysisFromServer({
+          ...serverResidentialAnalysis,
+          revision_id: finalRevisionId,
+        }, loaded));
+      } catch {
+        // The persisted revision chain remains authoritative; the local view is patched until refresh succeeds.
+      }
+    };
+    const markClassificationChanged = () => {
+      setLivePreviewRevision((current) => current + 1);
+      if (plan) {
+        setPlanStaleReason('Residential evidence changed; Canvas is updating the area preview.');
+        setDraftDirty(true);
+        deploymentAttemptRef.current = null;
+      }
+    };
+    try {
+      const revision = await applyCanvasClassificationOverride({
+        evidenceId: serverResidentialAnalysis.evidence_id,
+        parentRevisionId: finalRevisionId,
+        streetUnitId: requestedUnitIds[0],
+        streetUnitIds: requestedUnitIds,
+        ...override,
+        opportunityCount: choice === 'residential'
+          ? explicitOpportunityCount
+          : undefined,
+        reason: requestedUnitIds.length > 1
+          ? `Audited named-street group (${requestedUnitIds.length} units): ${normalizedReason}`
+          : normalizedReason,
+      });
+      finalRevisionId = revision.revision_id || finalRevisionId;
+      await reloadAppliedRevision();
+      markClassificationChanged();
+      toast.success(requestedUnitIds.length > 1
+        ? `${requestedUnitIds.length} amber street units revised atomically. The area preview can now rebalance.`
+        : 'Amber street revised. The area preview can now rebalance.', { id: toastId });
+      return true;
+    } catch (error) {
+      const message = error?.message || 'The amber classification could not be revised. Activation remains blocked.';
+      setClassificationOverrideError(message);
+      toast.error(message, { id: toastId });
+      return false;
+    } finally {
+      setApplyingClassificationOverride(false);
+      if (activeOperationRef.current === 'classification_override') activeOperationRef.current = '';
+    }
+  };
+
   const confirmDiscardUnsaved = useCallback((action) => {
     if (!hasUnsavedCanvasWork) return true;
     return window.confirm(`You have unsaved Canvas territory changes. ${action} will discard them. Continue?`);
@@ -862,12 +1396,17 @@ export default function CanvasBuilderSettings({
     try { sessionStorage.setItem('fk_canvasPlannerView', normalizedView); } catch {}
   };
 
-  const redrawArea = () => {
-    if (confirmDiscardUnsaved('Redrawing the work area')) onDraw?.();
+  const redrawArea = async () => {
+    if (!confirmDiscardUnsaved('Redrawing the work area')) return;
+    if (!await cancelResidentialAnalysis({ quiet: true })) return;
+    onDraw?.();
   };
 
-  const clearArea = () => {
-    if (confirmDiscardUnsaved('Clearing the work area')) onClearPolygon?.();
+  const clearArea = async () => {
+    if (!confirmDiscardUnsaved('Clearing the work area')) return;
+    if (!await cancelResidentialAnalysis({ quiet: true })) return;
+    clearPersistedCanvasAnalysisJob(user?.id);
+    onClearPolygon?.();
   };
 
   const persistDraft = async ({ quiet = false, withinDeploy = false } = {}) => {
@@ -943,8 +1482,26 @@ export default function CanvasBuilderSettings({
       const restored = restoreCanvasDraftPlan(campaign, teamMembers);
       const reconciliation = reconcileCanvasPlanWithEligibleTeam(restored, activeTeamMembers);
       const restoredPlan = withAssignmentGate(reconciliation.plan);
+      let restoredResidentialAnalysis = null;
+      if (restoredPlan.territory_model === 'residential_street_territory_v2') {
+        if (!restoredPlan.evidence_id || !restoredPlan.snapshot_hash) throw new Error('This residential Canvas draft is missing its pinned evidence identity.');
+        const loadedAnalysis = await getCanvasAnalysis({
+          evidenceId: restoredPlan.evidence_id,
+          revisionId: restoredPlan.revision_id,
+          useRevisionHead: false,
+        });
+        restoredResidentialAnalysis = residentialAnalysisFromServer({
+          evidence_id: restoredPlan.evidence_id,
+          snapshot_hash: restoredPlan.snapshot_hash,
+          revision_id: restoredPlan.revision_id,
+        }, loadedAnalysis);
+      }
       const divisionMode = restoredPlan.division_mode || 'area_count';
       if (typeof onResumeBoundary !== 'function') throw new Error('Canvas cannot restore this boundary in the current map session.');
+      resumedEvidenceRef.current = restoredResidentialAnalysis ? {
+        polygonKey: polygonKeyFor(boundary.points),
+        analysis: restoredResidentialAnalysis,
+      } : null;
       onResumeBoundary(boundary.points);
       previousPolygonKey.current = polygonKeyFor(boundary.points);
       setSessionName(campaign.session_name || draft?.session_name || 'Canvas Cold Area');
@@ -960,6 +1517,9 @@ export default function CanvasBuilderSettings({
         setTargetStreetWorkloadMiles(Number((Number(restoredPlan.target_workload) / 1609.344).toFixed(2)));
       }
       setPlan(restoredPlan);
+      setServerResidentialAnalysis(restoredResidentialAnalysis);
+      setServerResidentialStatus(restoredResidentialAnalysis ? 'ready' : 'idle');
+      setServerResidentialError('');
       lastGeneratedPreviewRevisionRef.current = livePreviewRevision;
       lastAttemptedPreviewRevisionRef.current = livePreviewRevision;
       setWorkloadExceptionAccepted(restoredPlan.qa?.manager_workload_exception_acknowledged === true);
@@ -997,6 +1557,9 @@ export default function CanvasBuilderSettings({
     if (planTooComplex) return toast.error(planComplexityStatus.message);
     if (workloadDeviationUnavailable) return toast.error('Canvas could not verify the workload balance. Regenerate the territories before sending.');
     if (workloadExceptionNeedsAcceptance) return toast.error('Review and accept the uneven workload before sending territories.');
+    if (amberActivationBlocked) return toast.error(unresolvedAmberCount > 0
+      ? `Resolve ${unresolvedAmberCount} amber street${unresolvedAmberCount === 1 ? '' : 's'} before sending.`
+      : 'Server residential evidence is required before sending. The saved plan remains available.');
     if (!crewAssignmentStatus.valid) return toast.error(crewAssignmentStatus.message || 'Match every selected rep to the territory assignments before sending.');
     if (!deployable || deployed) return toast.error('Assign every territory and clear all street QA blockers before deployment.');
     activeOperationRef.current = 'deploy';
@@ -1046,7 +1609,7 @@ export default function CanvasBuilderSettings({
     } catch (error) {
       const streetDataChanged = error?.code === 'topology_data_version_mismatch';
       if (streetDataChanged) {
-        clearOverpassRoadNetworkCache(polygon, CANVAS_HIGHWAY_FILTER);
+        clearOverpassRoadNetworkCache(polygon, CANVAS_HIGHWAY_FILTER, LOCAL_RESIDENTIAL_FALLBACK_ENABLED);
         deploymentAttemptRef.current = null;
         setPlanStaleReason('Street data changed on the server. Wait for fresh streets, then regenerate.');
         setRoadFetchNonce((value) => value + 1);
@@ -1093,9 +1656,11 @@ export default function CanvasBuilderSettings({
     }
   };
 
-  const startAnotherArea = () => {
+  const startAnotherArea = async () => {
     if (activeOperationRef.current) return;
     if (!confirmDiscardUnsaved('Starting another area')) return;
+    if (!await cancelResidentialAnalysis({ quiet: true })) return;
+    clearPersistedCanvasAnalysisJob(user?.id);
     setPlan(null);
     setPlanStaleReason('');
     setPlanGenerationError(null);
@@ -1109,6 +1674,7 @@ export default function CanvasBuilderSettings({
     setWorkloadExceptionAccepted(false);
     setDraftDirty(false);
     setLivePreviewRevision(0);
+    resumedEvidenceRef.current = null;
     lastGeneratedPreviewRevisionRef.current = -1;
     lastAttemptedPreviewRevisionRef.current = -1;
     deploymentAttemptRef.current = null;
@@ -1124,7 +1690,10 @@ export default function CanvasBuilderSettings({
   const contentProps = {
     sessionName, changeSessionName, polygon, hasDrawnArea, onDraw: redrawArea, onClearPolygon: clearArea, onClose: closePlanner,
     divisionBasis, changeDivisionBasis, selectedTeamMemberIds, toggleTeamMember, replaceTeamMemberSelection, activeTeamMembers, teamMembersReady, teamExclusions: teamEligibility.excluded,
-    requestedAreaCount, changeRequestedAreaCount, targetStreetWorkloadMiles, changeTargetStreetWorkloadMiles, requestedZoneCount, roadFetchStatus, roadFetchError, roadFetchProgress, refreshRoadData,
+    requestedAreaCount, changeRequestedAreaCount, targetStreetWorkloadMiles, changeTargetStreetWorkloadMiles, requestedZoneCount, roadFetchStatus, roadFetchError, roadFetchProgress: serverAnalysisProgress || roadFetchProgress, refreshRoadData,
+    serverAnalysisJobId, cancelResidentialAnalysis, cancellingServerAnalysis,
+    residentialAnalysis, residentialAnalysisStatus, residentialAnalysisSource, residentialAnalysisError,
+    unresolvedAmberCount, amberActivationBlocked, applyingClassificationOverride, classificationOverrideError, applyClassificationRevision,
     generationBlockers, generatePlan, generating, plan, planStaleReason, planGenerationError,
     zones, assignedZoneCount, selectedZone, selectedZoneNumber, setSelectedZoneNumber,
     autoAssign, updateZoneAssignment, membersById,
@@ -1156,6 +1725,28 @@ function BuilderContent(props) {
     return <CanvasPlannerWorkspace {...props} />;
   }
   return <LegacyBuilderContent {...props} />;
+}
+
+function residentialAnalysisFromServer(startResult, loadedResult) {
+  const evidence = loadedResult?.evidence || startResult?.evidence || {};
+  const analysis = evidence.analysis_result
+    || loadedResult?.analysis_result
+    || loadedResult?.analysis
+    || startResult?.analysis_result
+    || startResult?.analysis
+    || {};
+  return {
+    ...analysis,
+    summary: analysis.summary || startResult?.summary || evidence.summary || {},
+    evidence_id: evidence.evidence_id || startResult?.evidence_id || loadedResult?.evidence_id || '',
+    snapshot_hash: evidence.snapshot_hash || startResult?.snapshot_hash || loadedResult?.snapshot_hash || '',
+    revision_id: loadedResult?.revision_id || evidence.revision_id || '',
+    evidence_schema_version: Number(evidence.schema_version || startResult?.evidence_schema_version || 1),
+    provider: evidence.provider || startResult?.provider || analysis.provider || '',
+    source_version: evidence.source_version || startResult?.source_version || analysis.source_version || '',
+    extraction_version: evidence.extraction_version || startResult?.extraction_version || analysis.extraction_version || '',
+    classifier_version: evidence.classifier_version || startResult?.classifier_version || analysis.classifier_version || '',
+  };
 }
 
 function LegacyBuilderContent(props) {

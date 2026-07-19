@@ -47,6 +47,14 @@ export function canvasStoredPlanForHash(session) {
     qa: session?.qa || {},
     algorithm_version: session?.algorithm_version || null,
     data_version: session?.data_version || null,
+    ...(session?.territory_model === 'residential_street_territory_v2' ? {
+      evidence_id: session?.evidence_id,
+      revision_id: session?.revision_id || null,
+      snapshot_hash: session?.snapshot_hash,
+      evidence_schema_version: Number(session?.evidence_schema_version),
+      unresolved_unit_count: Number(session?.unresolved_unit_count || 0),
+      assignment_version: Number(session?.assignment_version || 0),
+    } : {}),
     manager_id: session?.manager_id,
     version: planVersion
   };

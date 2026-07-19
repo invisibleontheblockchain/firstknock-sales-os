@@ -1,5 +1,9 @@
 import { base44 } from '@/api/base44Client';
 
+const CANVAS_ANALYSIS_JOB_STORAGE_PREFIX = 'fk_canvasAnalysisJob_v1';
+
+export const MAX_CANVAS_CLASSIFICATION_GROUP_UNITS = 250;
+
 export class CanvasProductionError extends Error {
   constructor(message, { code = 'CANVAS_SERVICE_UNAVAILABLE', status = null, details = null } = {}) {
     super(message);
@@ -52,6 +56,254 @@ async function invokeProductionFunction(functionName, payload, fallbackMessage) 
 
 export function saveCanvasDraft(payload) {
   return invokeProductionFunction('canvasSaveDraft', payload, 'Canvas Draft Preview could not be saved. Nothing was deployed.');
+}
+
+function analysisStorageKey(managerId) {
+  const id = String(managerId || '').trim();
+  return id ? `${CANVAS_ANALYSIS_JOB_STORAGE_PREFIX}:${id}` : null;
+}
+
+function normalizedStoredPolygon(value) {
+  if (!Array.isArray(value)) return [];
+  return value.map((point) => {
+    const lat = Number(point?.lat ?? point?.latitude);
+    const lng = Number(point?.lng ?? point?.lon ?? point?.longitude);
+    return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+  }).filter(Boolean);
+}
+
+export function readPersistedCanvasAnalysisJob(managerId) {
+  const key = analysisStorageKey(managerId);
+  if (!key || typeof localStorage === 'undefined') return null;
+  try {
+    const parsed = JSON.parse(localStorage.getItem(key) || 'null');
+    const polygon = normalizedStoredPolygon(parsed?.polygon);
+    const jobId = String(parsed?.jobId || '').trim();
+    if (String(parsed?.managerId || '') !== String(managerId)
+      || !/^canvas_analysis_job_[a-f0-9]{64}$/.test(jobId)
+      || polygon.length < 3) return null;
+    return {
+      managerId: String(managerId),
+      jobId,
+      polygon,
+      areaCount: Math.max(1, Math.min(250, Number(parsed?.areaCount) || 1)),
+      updatedAt: String(parsed?.updatedAt || ''),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function persistCanvasAnalysisJob({ managerId, jobId, polygon, areaCount } = {}) {
+  const key = analysisStorageKey(managerId);
+  const points = normalizedStoredPolygon(polygon);
+  if (!key || typeof localStorage === 'undefined'
+    || !/^canvas_analysis_job_[a-f0-9]{64}$/.test(String(jobId || ''))
+    || points.length < 3) return false;
+  try {
+    localStorage.setItem(key, JSON.stringify({
+      managerId: String(managerId),
+      jobId: String(jobId),
+      polygon: points,
+      areaCount: Math.max(1, Math.min(250, Number(areaCount) || 1)),
+      updatedAt: new Date().toISOString(),
+    }));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function clearPersistedCanvasAnalysisJob(managerId, expectedJobId = null) {
+  const key = analysisStorageKey(managerId);
+  if (!key || typeof localStorage === 'undefined') return false;
+  try {
+    if (expectedJobId) {
+      const current = readPersistedCanvasAnalysisJob(managerId);
+      if (current && current.jobId !== String(expectedJobId)) return false;
+    }
+    localStorage.removeItem(key);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function startCanvasAnalysis({ polygon, areaCount, retryFailedJob = false } = {}) {
+  return invokeProductionFunction('canvasStartAnalysis', {
+    polygon,
+    area_count: Math.max(1, Number(areaCount) || 1),
+    ...(retryFailedJob ? { retry_failed_job: true } : {}),
+  }, 'Server residential analysis is unavailable. Canvas can continue with a local preview in development.');
+}
+
+export function getCanvasAnalysisStatus({ jobId } = {}) {
+  if (!jobId) {
+    throw new CanvasProductionError('A Canvas analysis job is required before progress can be loaded.', {
+      code: 'CANVAS_ANALYSIS_JOB_REQUIRED',
+    });
+  }
+  return invokeProductionFunction('canvasGetAnalysisStatus', {
+    job_id: jobId,
+  }, 'Canvas residential analysis progress could not be loaded.');
+}
+
+export function cancelCanvasAnalysis({ jobId } = {}) {
+  if (!jobId) {
+    throw new CanvasProductionError('A Canvas analysis job is required before it can be cancelled.', {
+      code: 'CANVAS_ANALYSIS_JOB_REQUIRED',
+    });
+  }
+  return invokeProductionFunction('canvasCancelAnalysis', {
+    job_id: jobId,
+  }, 'Canvas residential analysis could not be cancelled.');
+}
+
+function abortableDelay(milliseconds, signal) {
+  if (signal?.aborted) return Promise.reject(new CanvasProductionError('Canvas analysis polling was cancelled.', { code: 'CANVAS_ANALYSIS_CANCELLED' }));
+  return new Promise((resolve, reject) => {
+    const handleAbort = () => {
+      clearTimeout(timeout);
+      reject(new CanvasProductionError('Canvas analysis polling was cancelled.', { code: 'CANVAS_ANALYSIS_CANCELLED' }));
+    };
+    const timeout = setTimeout(() => {
+      signal?.removeEventListener('abort', handleAbort);
+      resolve();
+    }, milliseconds);
+    signal?.addEventListener('abort', handleAbort, { once: true });
+  });
+}
+
+export async function waitForCanvasAnalysis({
+  jobId,
+  initialStatus = null,
+  onProgress,
+  signal,
+  pollIntervalMs = 1_500,
+  maxWaitMs = 30 * 60 * 1_000,
+} = {}) {
+  if (!jobId) {
+    throw new CanvasProductionError('A Canvas analysis job is required before progress can be loaded.', {
+      code: 'CANVAS_ANALYSIS_JOB_REQUIRED',
+    });
+  }
+  const startedAt = Date.now();
+  let status = initialStatus?.job_id === jobId ? initialStatus : null;
+  while (true) {
+    if (!status) status = await getCanvasAnalysisStatus({ jobId });
+    if (typeof onProgress === 'function') onProgress(status);
+    if (status.status === 'complete') return status;
+    if (status.status === 'failed') {
+      throw new CanvasProductionError(status.message || 'Large Canvas residential analysis failed.', {
+        code: status.error || 'CANVAS_LARGE_ANALYSIS_FAILED',
+        details: status,
+      });
+    }
+    if (status.status === 'cancelled') {
+      throw new CanvasProductionError(status.message || 'Large Canvas residential analysis was cancelled.', {
+        code: 'CANVAS_ANALYSIS_CANCELLED',
+        details: status,
+      });
+    }
+    if (!['queued', 'running', 'finalizing'].includes(status.status)) {
+      throw new CanvasProductionError('Canvas returned an unknown analysis state.', {
+        code: 'CANVAS_ANALYSIS_INVALID_STATUS',
+        details: status,
+      });
+    }
+    if (Date.now() - startedAt >= maxWaitMs) {
+      throw new CanvasProductionError('Canvas analysis is still running. You can safely return to this plan and continue polling.', {
+        code: 'CANVAS_ANALYSIS_WAIT_TIMEOUT',
+        details: status,
+      });
+    }
+    const serverDelay = Number(status.poll_after_ms);
+    const delay = Math.max(750, Math.min(10_000, Number.isFinite(serverDelay) ? serverDelay : Number(pollIntervalMs) || 1_500));
+    await abortableDelay(delay, signal);
+    status = null;
+  }
+}
+
+export async function analyzeCanvasBoundary(options = {}) {
+  const started = options.resumeJobId
+    ? await getCanvasAnalysisStatus({ jobId: options.resumeJobId })
+    : await startCanvasAnalysis(options);
+  if (started.status === 'complete') return started;
+  if (started.status === 'cancelled') {
+    throw new CanvasProductionError('Large Canvas residential analysis was cancelled. Retry to start it again.', {
+      code: 'CANVAS_ANALYSIS_CANCELLED',
+      details: started,
+    });
+  }
+  if (!started.job_id) {
+    throw new CanvasProductionError('Canvas did not return a resumable analysis job.', {
+      code: 'CANVAS_ANALYSIS_JOB_MISSING',
+      details: started,
+    });
+  }
+  return waitForCanvasAnalysis({
+    jobId: started.job_id,
+    initialStatus: started,
+    onProgress: options.onProgress,
+    signal: options.signal,
+    pollIntervalMs: options.pollIntervalMs,
+    maxWaitMs: options.maxWaitMs,
+  });
+}
+
+export function getCanvasAnalysis({ evidenceId, revisionId, useRevisionHead = true } = {}) {
+  if (!evidenceId) {
+    throw new CanvasProductionError('Residential evidence is required before analysis can be loaded.', {
+      code: 'CANVAS_EVIDENCE_REQUIRED',
+    });
+  }
+  return invokeProductionFunction('canvasGetAnalysis', {
+    evidence_id: evidenceId,
+    ...(revisionId ? { revision_id: revisionId } : {}),
+    use_revision_head: useRevisionHead === true,
+  }, 'Canvas residential evidence could not be loaded.');
+}
+
+export function applyCanvasClassificationOverride({
+  evidenceId,
+  parentRevisionId,
+  streetUnitId,
+  streetUnitIds,
+  canvasRole,
+  opportunityClassification,
+  accessClassification,
+  opportunityCount,
+  reason,
+} = {}) {
+  const targetUnitIds = [...new Set((Array.isArray(streetUnitIds) && streetUnitIds.length
+    ? streetUnitIds
+    : [streetUnitId]).map((value) => String(value || '').trim()).filter(Boolean))].sort();
+  if (!evidenceId || !targetUnitIds.length || !String(reason || '').trim()) {
+    throw new CanvasProductionError('Choose an amber street and enter a reason before applying an override.', {
+      code: 'CANVAS_OVERRIDE_INPUT_REQUIRED',
+    });
+  }
+  if (targetUnitIds.length > MAX_CANVAS_CLASSIFICATION_GROUP_UNITS) {
+    throw new CanvasProductionError(`An audited group may contain at most ${MAX_CANVAS_CLASSIFICATION_GROUP_UNITS} street units.`, {
+      code: 'CANVAS_OVERRIDE_GROUP_TOO_LARGE',
+    });
+  }
+  if (targetUnitIds.length > 1 && !['transit_only', 'excluded'].includes(canvasRole)) {
+    throw new CanvasProductionError('Only Transit or Exclude decisions may be saved as an audited group.', {
+      code: 'CANVAS_OVERRIDE_GROUP_ROLE_INVALID',
+    });
+  }
+  return invokeProductionFunction('canvasApplyClassificationOverride', {
+    evidence_id: evidenceId,
+    ...(parentRevisionId ? { parent_revision_id: parentRevisionId } : {}),
+    street_unit_id: targetUnitIds[0],
+    ...(targetUnitIds.length > 1 ? { street_unit_ids: targetUnitIds } : {}),
+    override_canvas_role: canvasRole,
+    ...(opportunityClassification ? { override_opportunity_classification: opportunityClassification } : {}),
+    ...(accessClassification ? { override_access_classification: accessClassification } : {}),
+    ...(Number.isFinite(Number(opportunityCount)) ? { opportunity_count: Number(opportunityCount) } : {}),
+    override_reason: String(reason).trim(),
+  }, 'The amber classification could not be revised. Activation remains blocked.');
 }
 
 export function deployCanvasCampaign({ sessionId, expectedVersion, idempotencyKey, supersedeSessionIds = [] }) {

@@ -1,0 +1,82 @@
+{
+  "name": "CanvasClassificationRevision",
+  "type": "object",
+  "properties": {
+    "revision_id": {
+      "type": "string",
+      "description": "Stable content-addressed identifier for this append-only manager override."
+    },
+    "revision_hash": {
+      "type": "string",
+      "description": "SHA-256 of the canonical revision payload."
+    },
+    "schema_version": { "type": "integer", "default": 1 },
+    "manager_id": { "type": "string" },
+    "evidence_id": { "type": "string" },
+    "parent_revision_id": { "type": "string" },
+    "street_unit_id": { "type": "string" },
+    "street_unit_ids": {
+      "type": "array",
+      "description": "Canonical sorted target set for an atomic audited transit/exclusion group. Omitted by schema v1 single-unit revisions.",
+      "items": { "type": "string" },
+      "minItems": 2,
+      "maxItems": 250,
+      "uniqueItems": true
+    },
+    "original_opportunity_classification": { "type": "string" },
+    "original_access_classification": { "type": "string" },
+    "original_classifications": {
+      "type": "array",
+      "description": "Per-unit classifications observed immediately before an atomic group revision was committed.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "street_unit_id": { "type": "string" },
+          "opportunity_classification": { "type": "string" },
+          "access_classification": { "type": "string" },
+          "canvas_role": { "type": "string" }
+        },
+        "required": ["street_unit_id"]
+      },
+      "minItems": 2,
+      "maxItems": 250
+    },
+    "override_opportunity_classification": { "type": "string" },
+    "override_access_classification": { "type": "string" },
+    "override_canvas_role": {
+      "type": "string",
+      "enum": ["knock", "transit_only", "excluded", "uncertain"]
+    },
+    "opportunity_low": { "type": "number", "minimum": 0 },
+    "opportunity_expected": { "type": "number", "minimum": 0 },
+    "opportunity_high": { "type": "number", "minimum": 0 },
+    "opportunity_source": { "type": "string" },
+    "confidence": { "type": "string" },
+    "override_reason": { "type": "string", "maxLength": 1000 },
+    "created_by_user_id": { "type": "string" },
+    "created_at": { "type": "string", "format": "date-time" }
+  },
+  "required": [
+    "revision_id",
+    "revision_hash",
+    "schema_version",
+    "manager_id",
+    "evidence_id",
+    "street_unit_id",
+    "override_canvas_role",
+    "override_reason",
+    "created_by_user_id",
+    "created_at"
+  ],
+  "rls": {
+    "create": { "user_condition": { "role": "admin" } },
+    "read": {
+      "$or": [
+        { "manager_id": "{{user.id}}" },
+        { "user_condition": { "role": "admin" } }
+      ]
+    },
+    "update": { "user_condition": { "id": "__append_only_canvas_classification_revision__" } },
+    "delete": { "user_condition": { "id": "__append_only_canvas_classification_revision__" } }
+  }
+}

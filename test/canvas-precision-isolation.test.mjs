@@ -7,19 +7,23 @@ const source = (relativePath) => readFile(new URL(`../${relativePath}`, import.m
 test('Canvas uses a separate planner and production API lane', async () => {
   const [builder, planner, client] = await Promise.all([
     source('src/components/map/CanvasBuilderSettings.jsx'),
-    source('src/components/logic/canvasStreetTerritoryPlanner.js'),
+    source('src/components/logic/canvasResidentialTerritoryAnalysis.js'),
     source('src/components/canvas/canvasProductionClient.js'),
   ]);
 
-  assert.match(builder, /generateStreetPlan = planCanvasTerritories/);
+  assert.match(builder, /partitionCanvasResidentialTerritories/);
+  assert.match(builder, /buildResidentialTerritoryPlan/);
   assert.doesNotMatch(builder, /generateCanvasZones|BatchData|FetchJob/);
   assert.doesNotMatch(planner, /generateCanvasZones|h3-js|BatchData|FetchJob|precision/i);
+  assert.match(client, /canvasStartAnalysis/);
+  assert.match(client, /canvasGetAnalysis/);
   assert.match(client, /canvasSaveDraft/);
   assert.match(client, /canvasDeployCampaign/);
   assert.match(client, /canvasGetMyAssignments/);
   assert.match(client, /canvasLogHouseDecision/);
   assert.match(client, /canvasGetCampaignMap/);
-  assert.doesNotMatch(client, /localStorage|SavedRoute|Property/);
+  assert.match(client, /CANVAS_ANALYSIS_JOB_STORAGE_PREFIX = 'fk_canvasAnalysisJob_v1'/);
+  assert.doesNotMatch(client, /fk_drawnPolygon|fk_precision|SavedRoute|Property|BatchData|FetchJob/i);
 });
 
 test('Canvas branches before the existing Precision builder without replacing it', async () => {
@@ -70,7 +74,7 @@ test('rep Canvas handoff is server-authorized and has no name or local deploymen
   assert.match(repHome, /return activeRoutes;/);
 });
 
-test('Canvas has no house-analysis UI gate and Home owns the authorized mode', async () => {
+test('Canvas uses residential street evidence without becoming a preloaded-house workflow and Home owns the authorized mode', async () => {
   const [builder, workspace, home, managerLayers, territoryPrompt] = await Promise.all([
     source('src/components/map/CanvasBuilderSettings.jsx'),
     source('src/components/map/CanvasPlannerWorkspace.jsx'),
@@ -80,7 +84,9 @@ test('Canvas has no house-analysis UI gate and Home owns the authorized mode', a
   ]);
 
   assert.doesNotMatch(builder, /canvasAnalyzeTerritory|CanvasOpportunityReview|canvasAnalysisStore|stable home|homes per area/i);
-  assert.match(builder, /workload_basis: 'street_length'/);
+  assert.match(builder, /workload_basis: 'residential_opportunity'/);
+  assert.match(builder, /residentialAnalysisStatus/);
+  assert.doesNotMatch(builder, /Property|BatchData|FetchJob/);
   assert.match(workspace, /Number of areas/);
   assert.doesNotMatch(workspace, /How many people are working this area/);
   assert.match(home, /routeMode=\{routeMode\}/);

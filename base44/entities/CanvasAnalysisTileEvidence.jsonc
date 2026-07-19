@@ -1,0 +1,49 @@
+{
+  "name": "CanvasAnalysisTileEvidence",
+  "type": "object",
+  "properties": {
+    "tile_evidence_id": {
+      "type": "string",
+      "description": "Content-addressed immutable tile evidence identifier."
+    },
+    "tile_evidence_hash": { "type": "string" },
+    "schema_version": { "type": "integer", "default": 1 },
+    "manager_id": { "type": "string" },
+    "job_id": { "type": "string" },
+    "tile_id": { "type": "string" },
+    "tile_index": { "type": "integer" },
+    "provider": { "type": "string" },
+    "source_version": { "type": "string" },
+    "extraction_version": { "type": "string" },
+    "query_polygon": { "type": "array", "items": { "type": "object" } },
+    "raw_evidence": { "type": "object" },
+    "evidence_bytes": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Canonical byte size counted against the per-job intermediate storage cap."
+    },
+    "created_at": { "type": "string", "format": "date-time" }
+  },
+  "required": [
+    "tile_evidence_id",
+    "tile_evidence_hash",
+    "schema_version",
+    "manager_id",
+    "job_id",
+    "tile_id",
+    "tile_index",
+    "provider",
+    "source_version",
+    "extraction_version",
+    "query_polygon",
+    "raw_evidence",
+    "evidence_bytes",
+    "created_at"
+  ],
+  "rls": {
+    "create": { "user_condition": { "role": "admin" } },
+    "read": { "user_condition": { "role": "admin" } },
+    "update": { "user_condition": { "id": "__immutable_canvas_tile_evidence__" } },
+    "delete": { "user_condition": { "id": "__immutable_canvas_tile_evidence__" } }
+  }
+}

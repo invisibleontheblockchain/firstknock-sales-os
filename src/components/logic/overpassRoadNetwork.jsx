@@ -76,12 +76,33 @@ function polygonToOverpassPoly(polygon = []) {
     .join(' ');
 }
 
-function buildOverpassQuery(polygon, highwayFilter = DEFAULT_HIGHWAY_FILTER) {
+function residentialEvidenceQueries(spatialFilter) {
+  return `
+  nwr["building"]${spatialFilter};
+  nwr["addr:housenumber"]${spatialFilter};
+  nwr["addr:street"]${spatialFilter};
+  nwr["addr:unit"]${spatialFilter};
+  nwr["building:units"]${spatialFilter};
+  nwr["building:flats"]${spatialFilter};
+  node["entrance"]${spatialFilter};
+  relation["type"="associatedStreet"]${spatialFilter};
+  nwr["landuse"]${spatialFilter};
+  nwr["residential"]${spatialFilter};
+  nwr["building:use"]${spatialFilter};
+  nwr["shop"]${spatialFilter};
+  nwr["amenity"]${spatialFilter};
+  nwr["barrier"]${spatialFilter};
+  nwr["access"]${spatialFilter};
+  nwr["foot"]${spatialFilter};`;
+}
+
+function buildOverpassQuery(polygon, highwayFilter = DEFAULT_HIGHWAY_FILTER, includeResidentialEvidence = false) {
   const poly = polygonToOverpassPoly(polygon);
   const safeFilter = String(highwayFilter || DEFAULT_HIGHWAY_FILTER).replace(/[^a-z_|]/gi, '') || DEFAULT_HIGHWAY_FILTER;
+  const spatialFilter = `(poly:"${poly}")`;
   return `[out:json][timeout:25];
 (
-  way["highway"~"^(${safeFilter})$"]["bridge"!="yes"]["tunnel"!="yes"](poly:"${poly}");
+  way["highway"~"^(${safeFilter})$"]["bridge"!="yes"]["tunnel"!="yes"]${spatialFilter};${includeResidentialEvidence ? residentialEvidenceQueries(spatialFilter) : ''}
 );
 out body;
 >;
@@ -134,12 +155,13 @@ function tiledBoundsForPolygon(polygon) {
   return tiles;
 }
 
-function buildBoundingBoxQuery(bounds, highwayFilter = DEFAULT_HIGHWAY_FILTER) {
+function buildBoundingBoxQuery(bounds, highwayFilter = DEFAULT_HIGHWAY_FILTER, includeResidentialEvidence = false) {
   const safeFilter = String(highwayFilter || DEFAULT_HIGHWAY_FILTER).replace(/[^a-z_|]/gi, '') || DEFAULT_HIGHWAY_FILTER;
   const bbox = [bounds.south, bounds.west, bounds.north, bounds.east].map((value) => Number(value).toFixed(7)).join(',');
+  const spatialFilter = `(${bbox})`;
   return `[out:json][timeout:25];
 (
-  way["highway"~"^(${safeFilter})$"]["bridge"!="yes"]["tunnel"!="yes"](${bbox});
+  way["highway"~"^(${safeFilter})$"]["bridge"!="yes"]["tunnel"!="yes"]${spatialFilter};${includeResidentialEvidence ? residentialEvidenceQueries(spatialFilter) : ''}
 );
 out body;
 >;
@@ -341,7 +363,11 @@ async function fetchTiledRoadNetwork(tiles, highwayFilter, options) {
     while (cursor < tiles.length && !fatalError) {
       const index = cursor;
       cursor += 1;
-      const fetched = await fetchQueryWithFallback(buildBoundingBoxQuery(tiles[index], highwayFilter), {
+      const fetched = await fetchQueryWithFallback(buildBoundingBoxQuery(
+        tiles[index],
+        highwayFilter,
+        options.includeResidentialEvidence === true,
+      ), {
         ...options,
         signal: batchController.signal,
         maxResponseBytes: Math.min(MAX_BROWSER_TILE_JSON_BYTES, maxTotalBytes),
@@ -385,27 +411,29 @@ async function fetchTiledRoadNetwork(tiles, highwayFilter, options) {
       fetched_at: new Date().toISOString(),
       tiled: true,
       tile_count: tiles.length,
+      residential_evidence: options.includeResidentialEvidence === true,
     },
   };
 }
 
-export function getRoadNetworkCacheKey(polygon, highwayFilter = DEFAULT_HIGHWAY_FILTER) {
-  return `fk_overpass_${highwayFilter}_${stablePolygonKey(polygon)}`;
+export function getRoadNetworkCacheKey(polygon, highwayFilter = DEFAULT_HIGHWAY_FILTER, includeResidentialEvidence = false) {
+  return `fk_overpass_${includeResidentialEvidence ? 'residential_' : ''}${highwayFilter}_${stablePolygonKey(polygon)}`;
 }
 
-export function clearOverpassRoadNetworkCache(polygon, highwayFilter = DEFAULT_HIGHWAY_FILTER) {
+export function clearOverpassRoadNetworkCache(polygon, highwayFilter = DEFAULT_HIGHWAY_FILTER, includeResidentialEvidence = false) {
   try {
-    sessionStorage.removeItem(getRoadNetworkCacheKey(polygon, highwayFilter));
+    sessionStorage.removeItem(getRoadNetworkCacheKey(polygon, highwayFilter, includeResidentialEvidence));
   } catch {}
 }
 
 export async function fetchOverpassRoadNetwork(polygon, options = {}) {
   const highwayFilter = options.highwayFilter || DEFAULT_HIGHWAY_FILTER;
+  const includeResidentialEvidence = options.includeResidentialEvidence === true;
   const timeoutMs = Math.max(5000, Number(options.timeoutMs) || 25000);
   const cacheMaxAgeMs = Math.max(0, Number(options.cacheMaxAgeMs) || DEFAULT_CACHE_MAX_AGE_MS);
-  const cacheKey = getRoadNetworkCacheKey(polygon, highwayFilter);
+  const cacheKey = getRoadNetworkCacheKey(polygon, highwayFilter, includeResidentialEvidence);
 
-  if (options.bypassCache === true) clearOverpassRoadNetworkCache(polygon, highwayFilter);
+  if (options.bypassCache === true) clearOverpassRoadNetworkCache(polygon, highwayFilter, includeResidentialEvidence);
   else {
     try {
       const cached = sessionStorage.getItem(cacheKey);
@@ -425,13 +453,17 @@ export async function fetchOverpassRoadNetwork(polygon, options = {}) {
   const tiles = tiledBoundsForPolygon(polygon);
   const result = tiles.length
     ? await fetchTiledRoadNetwork(tiles, highwayFilter, { ...options, timeoutMs })
-    : (() => fetchQueryWithFallback(buildOverpassQuery(polygon, highwayFilter), {
+    : (() => fetchQueryWithFallback(buildOverpassQuery(polygon, highwayFilter, includeResidentialEvidence), {
       timeoutMs,
       signal: options.signal,
       maxResponseBytes: Math.min(MAX_BROWSER_OSM_JSON_BYTES, Math.max(1, Number(options.maxTotalBytes) || MAX_BROWSER_OSM_JSON_BYTES)),
       maxElements: Math.min(MAX_BROWSER_OSM_ELEMENTS, Math.max(1, Number(options.maxElements) || MAX_BROWSER_OSM_ELEMENTS)),
     })
-      .then(({ data, url }) => roadNetworkResult(data, url)))();
+      .then(({ data, url }) => {
+        const network = roadNetworkResult(data, url);
+        network._canvas.residential_evidence = includeResidentialEvidence;
+        return network;
+      }))();
   const resolved = await result;
   try {
     const serialized = JSON.stringify({ cached_at: Date.now(), data: resolved });

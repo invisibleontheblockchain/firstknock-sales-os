@@ -2068,6 +2068,7 @@ function canvasStoredPlanForHash(session) {
     qa: session?.qa || {},
     algorithm_version: session?.algorithm_version || null,
     data_version: session?.data_version || null,
+    ...session?.territory_model === "residential_street_territory_v2" ? { evidence_id: session?.evidence_id, revision_id: session?.revision_id || null, snapshot_hash: session?.snapshot_hash, evidence_schema_version: Number(session?.evidence_schema_version), unresolved_unit_count: Number(session?.unresolved_unit_count || 0), assignment_version: Number(session?.assignment_version || 0) } : {},
     manager_id: session?.manager_id,
     version: planVersion
   };
@@ -2135,6 +2136,10 @@ async function verifyCanvasLifecycleSession(secret, session, requiredState = nul
 var CANVAS_PRICE_FLOOR_CENTS = 1900;
 var MAX_ZONES = 250;
 var MAX_WORK_UNITS = 2e4;
+var MAX_RESIDENTIAL_CANVAS_AREA_SQ_MI = 1e3;
+var TRUSTED_RESIDENTIAL_EVIDENCE_PROVIDERS = /* @__PURE__ */ new Set(["openstreetmap-contracted-or-self-hosted"]);
+var MAX_GROUP_OVERRIDE_UNITS = 250;
+var GROUP_OVERRIDE_ROLES = /* @__PURE__ */ new Set(["transit_only", "excluded"]);
 var MAX_CONFLICT_SCAN_SESSIONS = 1e3;
 var MAX_LIFECYCLE_SCAN_SESSIONS = 1e4;
 var LIFECYCLE_PAGE_SIZE = 500;
@@ -2150,10 +2155,9 @@ var OVERPASS_TILE_SIDE_MILES = 5;
 var MAX_OVERPASS_TILES = 144;
 var OVERPASS_TILE_CONCURRENCY = 2;
 var CANVAS_HIGHWAY_FILTER = "primary|secondary|tertiary|unclassified|residential|living_street";
-var WORKLOAD_BASES = /* @__PURE__ */ new Set(["street_length", "street_length_plus_estimated_doors"]);
+var WORKLOAD_BASES = /* @__PURE__ */ new Set(["street_length", "street_length_plus_estimated_doors", "residential_opportunity"]);
 var DIVISION_MODES = /* @__PURE__ */ new Set(["selected_reps", "area_count", "street_workload_target"]);
 var LEASE_DURATION_MS = 12e4;
-var CAMPAIGN_TRANSITION_LOCK_MS = 3e4;
 var HttpError = class extends Error {
   status;
   code;
@@ -2355,6 +2359,235 @@ async function sha2562(value) {
   const digest = await crypto.subtle.digest("SHA-256", data);
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
+function residentialPolygonAreaSqMi(points) {
+  if (!Array.isArray(points) || points.length < 3) return 0;
+  const averageLat = points.reduce((sum, point) => sum + Number(point?.lat || 0), 0) / points.length;
+  const origin = points[0];
+  const latScale = 69;
+  const lngScale = 69 * Math.cos(averageLat * Math.PI / 180);
+  const projected = points.map((point) => ({ x: (Number(point?.lng) - Number(origin?.lng)) * lngScale, y: (Number(point?.lat) - Number(origin?.lat)) * latScale }));
+  let twiceArea = 0;
+  for (let index = 0; index < projected.length; index += 1) {
+    const next = projected[(index + 1) % projected.length];
+    twiceArea += projected[index].x * next.y - next.x * projected[index].y;
+  }
+  return Math.abs(twiceArea) / 2;
+}
+function residentialSnapshotContent(snapshot) {
+  return {
+    schema_version: Number(snapshot?.schema_version), manager_id: snapshot?.manager_id, provider: snapshot?.provider,
+    source_version: snapshot?.source_version, extraction_version: snapshot?.extraction_version, classifier_version: snapshot?.classifier_version,
+    polygon: asArray2(snapshot?.polygon), raw_evidence: snapshot?.raw_evidence || {}, analysis_result: snapshot?.analysis_result || {},
+    source_attribution: snapshot?.source_attribution || "© OpenStreetMap contributors"
+  };
+}
+function canonicalResidentialRevisionTargetIds(revision) {
+  const source = Number(revision?.schema_version) >= 2 ? asArray2(revision?.street_unit_ids) : [revision?.street_unit_id];
+  return [...new Set(source.map((value) => String(value || "").trim()).filter(Boolean))].sort();
+}
+function canonicalResidentialOriginalClassifications(revision) {
+  return asArray2(revision?.original_classifications).map((entry) => ({
+    street_unit_id: String(entry?.street_unit_id || "").trim(),
+    opportunity_classification: entry?.opportunity_classification || null,
+    access_classification: entry?.access_classification || null,
+    canvas_role: entry?.canvas_role || null
+  })).filter((entry) => entry.street_unit_id).sort((left, right) => left.street_unit_id === right.street_unit_id ? 0 : left.street_unit_id < right.street_unit_id ? -1 : 1);
+}
+function residentialRevisionContent(revision) {
+  const content = {
+    schema_version: Number(revision?.schema_version), manager_id: revision?.manager_id, evidence_id: revision?.evidence_id,
+    parent_revision_id: revision?.parent_revision_id || null, street_unit_id: revision?.street_unit_id,
+    original_opportunity_classification: revision?.original_opportunity_classification || null,
+    original_access_classification: revision?.original_access_classification || null,
+    override_opportunity_classification: revision?.override_opportunity_classification || null,
+    override_access_classification: revision?.override_access_classification || null, override_canvas_role: revision?.override_canvas_role,
+    opportunity_low: Number(revision?.opportunity_low || 0), opportunity_expected: Number(revision?.opportunity_expected || 0), opportunity_high: Number(revision?.opportunity_high || 0),
+    opportunity_source: revision?.opportunity_source || null, confidence: revision?.confidence || null,
+    override_reason: revision?.override_reason, created_by_user_id: revision?.created_by_user_id
+  };
+  if (Number(revision?.schema_version) >= 2) {
+    content.street_unit_ids = canonicalResidentialRevisionTargetIds(revision);
+    content.original_classifications = canonicalResidentialOriginalClassifications(revision);
+  }
+  return content;
+}
+function residentialRevisionTargetUnitIds(revision) {
+  const ids = canonicalResidentialRevisionTargetIds(revision);
+  if (Number(revision?.schema_version) < 2) {
+    if (ids.length !== 1 || ids[0] !== String(revision?.street_unit_id || "")) throw new HttpError(409, "revision_targets_invalid", "A single-unit classification revision has an invalid target.");
+    return ids;
+  }
+  const originals = canonicalResidentialOriginalClassifications(revision);
+  if (ids.length < 2 || ids.length > MAX_GROUP_OVERRIDE_UNITS || revision?.street_unit_id !== ids[0]
+    || !GROUP_OVERRIDE_ROLES.has(String(revision?.override_canvas_role || ""))
+    || originals.length !== ids.length
+    || originals.some((entry, index) => entry.street_unit_id !== ids[index])) {
+    throw new HttpError(409, "revision_targets_invalid", "An atomic classification group revision has invalid targets or audit metadata.");
+  }
+  return ids;
+}
+function canonicalResidentialUnit(unit) {
+  return {
+    id: String(unit?.unit_id || unit?.id || ""),
+    kind: unit?.kind || null,
+    canvas_role: unit?.canvas_role,
+    opportunity_classification: unit?.opportunity_classification,
+    access_classification: unit?.access_classification,
+    opportunity_low: Number(unit?.opportunity_low || 0),
+    opportunity_expected: Number(unit?.opportunity_expected || 0),
+    opportunity_high: Number(unit?.opportunity_high || 0),
+    protected: unit?.protected === true,
+    protected_group_id: unit?.protected_group_id || null,
+    protected_group_ids: asArray2(unit?.protected_group_ids).map(String).sort(),
+    street_names: asArray2(unit?.street_names).map(String).sort(),
+    neighbor_ids: asArray2(unit?.neighbor_ids).map(String).sort(),
+    segments: asArray2(unit?.segments).map((segment) => ({
+      edge_id: segment?.edge_id || null,
+      start: { lat: Number(segment?.start?.lat), lng: Number(segment?.start?.lng) },
+      end: { lat: Number(segment?.end?.lat), lng: Number(segment?.end?.lng) },
+      street_names: asArray2(segment?.street_names).map(String).sort(),
+      length_meters: Number(segment?.length_meters || 0)
+    }))
+  };
+}
+function residentialKnockNeighborMapForDeployment(units) {
+  const byId = new Map(asArray2(units).map((unit) => [String(unit?.unit_id || unit?.id || ""), unit]).filter(([id]) => id));
+  const base = new Map([...byId.keys()].map((id) => [id, /* @__PURE__ */ new Set()]));
+  for (const [id, unit] of byId) {
+    for (const rawNeighborId of asArray2(unit?.neighbor_ids ?? unit?.neighborIds)) {
+      const neighborId = String(rawNeighborId || "");
+      if (!neighborId || !byId.has(neighborId) || neighborId === id) continue;
+      base.get(id).add(neighborId);
+      base.get(neighborId).add(id);
+    }
+  }
+  const knockIds = new Set([...byId].filter(([, unit]) => unit?.canvas_role === "knock").map(([id]) => id));
+  const effective = new Map([...knockIds].map((id) => [id, /* @__PURE__ */ new Set()]));
+  for (const id of knockIds) {
+    for (const neighborId of base.get(id) || []) if (knockIds.has(neighborId)) effective.get(id).add(neighborId);
+  }
+  const transitIds = new Set([...byId].filter(([, unit]) => unit?.canvas_role === "transit_only").map(([id]) => id));
+  const unseen = new Set(transitIds);
+  while (unseen.size) {
+    const seed = [...unseen].sort()[0];
+    const queue = [seed];
+    const borderingKnockIds = /* @__PURE__ */ new Set();
+    unseen.delete(seed);
+    for (let index = 0; index < queue.length; index += 1) {
+      for (const neighborId of base.get(queue[index]) || []) {
+        if (transitIds.has(neighborId) && unseen.has(neighborId)) {
+          unseen.delete(neighborId);
+          queue.push(neighborId);
+        } else if (knockIds.has(neighborId)) borderingKnockIds.add(neighborId);
+      }
+    }
+    const borders = [...borderingKnockIds];
+    for (const id of borders) for (const neighborId of borders) if (id !== neighborId) effective.get(id).add(neighborId);
+  }
+  return effective;
+}
+function verifyResidentialZoneTopology(units, zones) {
+  const neighbors = residentialKnockNeighborMapForDeployment(units);
+  const byId = new Map(asArray2(units).map((unit) => [String(unit?.unit_id || unit?.id || ""), unit]));
+  const zoneByUnitId = new Map(asArray2(zones).flatMap((zone) => asArray2(zone?.work_unit_ids).map((id) => [String(id), String(zone?.zone_id || "")])));
+  const zonesByProtectedGroup = /* @__PURE__ */ new Map();
+  for (const unit of asArray2(units).filter((candidate) => candidate?.canvas_role === "knock")) {
+    const groupIds = [...new Set([...asArray2(unit?.protected_group_ids), unit?.protected_group_id].map((id) => String(id || "").trim()).filter(Boolean))];
+    for (const groupId of groupIds) {
+      if (!zonesByProtectedGroup.has(groupId)) zonesByProtectedGroup.set(groupId, /* @__PURE__ */ new Set());
+      zonesByProtectedGroup.get(groupId).add(zoneByUnitId.get(String(unit?.unit_id || unit?.id || "")) || "");
+    }
+  }
+  for (const [groupId, zoneIds] of zonesByProtectedGroup) {
+    if (zoneIds.size !== 1 || zoneIds.has("")) throw new HttpError(422, "protected_cul_de_sac_split", `Protected cul-de-sac group ${groupId} is split across territories.`);
+  }
+  for (const zone of asArray2(zones)) {
+    const zoneId = String(zone?.zone_id || "unknown");
+    const ids = asArray2(zone?.work_unit_ids).map(String);
+    if (!ids.length || ids.some((id) => !neighbors.has(id))) {
+      throw new HttpError(422, "residential_zone_topology_failed", `Zone ${zoneId} contains a non-knock or missing residential street unit.`);
+    }
+    const allowed = new Set(ids);
+    const visited = new Set([ids[0]]);
+    const queue = [ids[0]];
+    for (let index = 0; index < queue.length; index += 1) {
+      for (const neighborId of neighbors.get(queue[index]) || []) {
+        if (!allowed.has(neighborId) || visited.has(neighborId)) continue;
+        visited.add(neighborId);
+        queue.push(neighborId);
+      }
+    }
+    if (visited.size !== allowed.size) {
+      throw new HttpError(422, "residential_zone_disconnected", `Zone ${zoneId} is not connected through owned knock streets and permitted shared transit.`);
+    }
+    const expectedWorkload = ids.reduce((sum, id) => sum + Number(byId.get(id)?.opportunity_expected || 0), 0);
+    if (Math.abs(Number(zone?.workload_score) - expectedWorkload) > 1e-6) {
+      throw new HttpError(422, "residential_zone_workload_mismatch", `Zone ${zoneId} workload does not match the pinned residential evidence.`);
+    }
+  }
+  return { server_zone_connectivity_verified: true, server_zone_workload_verified: true, protected_cul_de_sac_groups_verified: true };
+}
+async function verifyResidentialEvidence(base44, session) {
+  const snapshots = asArray2(await base44.asServiceRole.entities.CanvasAnalysisSnapshot.filter({ evidence_id: session.evidence_id, manager_id: session.manager_id }, null, 2, 0));
+  if (snapshots.length !== 1 || snapshots[0].manager_id !== session.manager_id || snapshots[0].status !== "complete") throw new HttpError(409, "evidence_not_found", "The pinned residential evidence snapshot was not found in this manager tenant.");
+  const snapshot = snapshots[0];
+  const snapshotHash = await sha2562(residentialSnapshotContent(snapshot));
+  if (snapshot.snapshot_hash !== snapshotHash || session.snapshot_hash !== snapshotHash || session.evidence_id !== `canvas_evidence_${snapshotHash}`) throw new HttpError(409, "evidence_integrity_failed", "The residential evidence snapshot failed canonical content verification.");
+  if (!TRUSTED_RESIDENTIAL_EVIDENCE_PROVIDERS.has(String(snapshot.provider || ""))) {
+    throw new HttpError(422, "development_evidence_not_activatable", "Residential evidence not collected by the configured production OSM provider cannot be activated. Re-analyze with trusted production evidence.");
+  }
+  if (JSON.stringify(canonicalize3(snapshot.polygon)) !== JSON.stringify(canonicalize3(session.polygon))) throw new HttpError(409, "evidence_polygon_mismatch", "The deployment boundary differs from its immutable evidence snapshot.");
+  const chain = [];
+  const seen = /* @__PURE__ */ new Set();
+  let cursor = session.revision_id ? String(session.revision_id) : null;
+  while (cursor) {
+    if (seen.has(cursor) || chain.length >= 500) throw new HttpError(409, "revision_chain_invalid", "The pinned classification revision chain is cyclic or exceeds its safe limit.");
+    seen.add(cursor);
+    const rows = asArray2(await base44.asServiceRole.entities.CanvasClassificationRevision.filter({ revision_id: cursor, manager_id: session.manager_id, evidence_id: session.evidence_id }, null, 2, 0));
+    if (rows.length !== 1) throw new HttpError(409, "revision_not_found", "A pinned classification revision was not found in this manager tenant.");
+    const revision = rows[0];
+    const revisionHash = await sha2562(residentialRevisionContent(revision));
+    if (revision.revision_hash !== revisionHash || revision.revision_id !== `canvas_revision_${revisionHash}` || revision.manager_id !== session.manager_id || revision.evidence_id !== session.evidence_id) throw new HttpError(409, "revision_integrity_failed", "A pinned classification revision failed canonical content verification.");
+    residentialRevisionTargetUnitIds(revision);
+    chain.push(revision);
+    cursor = revision.parent_revision_id ? String(revision.parent_revision_id) : null;
+  }
+  const effectiveUnits = asArray2(snapshot?.analysis_result?.street_units).map((unit) => ({ ...unit }));
+  const byId = new Map(effectiveUnits.map((unit) => [String(unit?.unit_id || unit?.id || ""), unit]));
+  for (const revision of chain.reverse()) {
+    for (const streetUnitId of residentialRevisionTargetUnitIds(revision)) {
+      const unit = byId.get(streetUnitId);
+      if (!unit) throw new HttpError(409, "revision_unit_missing", "A pinned classification revision references a street unit outside its evidence snapshot.");
+      unit.opportunity_classification = revision.override_opportunity_classification || unit.opportunity_classification;
+      unit.access_classification = revision.override_access_classification || unit.access_classification;
+      unit.canvas_role = revision.override_canvas_role;
+      unit.opportunity_low = Number(revision.opportunity_low || 0);
+      unit.opportunity_expected = Number(revision.opportunity_expected || 0);
+      unit.opportunity_high = Number(revision.opportunity_high || 0);
+    }
+  }
+  const submitted = asArray2(session.work_units).map(canonicalResidentialUnit).sort((left, right) => left.id.localeCompare(right.id));
+  const replayed = effectiveUnits.map(canonicalResidentialUnit).sort((left, right) => left.id.localeCompare(right.id));
+  if (submitted.length !== replayed.length || await sha2562(submitted) !== await sha2562(replayed)) throw new HttpError(409, "evidence_replay_mismatch", "The saved street units do not replay exactly from the pinned evidence and revision chain.");
+  const unresolvedUnitCount = effectiveUnits.filter((unit) => unit.canvas_role === "uncertain").length;
+  if (unresolvedUnitCount !== 0 || Number(session.unresolved_unit_count || 0) !== unresolvedUnitCount) throw new HttpError(422, "unresolved_canvas_units", "All uncertain street units must be resolved before activation.");
+  const zoneTopology = verifyResidentialZoneTopology(effectiveUnits, session.zones);
+  return {
+    topology_validator: "residential_evidence_replay_v1",
+    validator_version: 3,
+    server_algorithm_version: snapshot.classifier_version,
+    server_data_version: snapshot.source_version,
+    evidence_id: snapshot.evidence_id,
+    revision_id: session.revision_id || null,
+    snapshot_hash: snapshot.snapshot_hash,
+    revision_count: chain.length,
+    evidence_replay_verified: true,
+    evidence_provider: snapshot.provider,
+    trusted_evidence_verified: true,
+    ...zoneTopology,
+    public_overpass_used_during_deploy: false
+  };
+}
 function deploymentSigningSecret() {
   const secret = Deno.env.get("CANVAS_DEPLOYMENT_SIGNING_SECRET") || "";
   if (secret.length < 32) throw new HttpError(503, "canvas_signing_unavailable", "Canvas deployment signing is not configured. Deployment was not changed.");
@@ -2362,15 +2595,22 @@ function deploymentSigningSecret() {
 }
 function validatePlan(session) {
   if (session.status !== "draft") throw new HttpError(409, "invalid_plan_status", "Only a draft Canvas plan can be deployed.");
-  if (session.territory_model !== "street_territory_v1" || session.planning_method !== "street_workload" || session.assignment_basis !== "street_work_unit_ids") {
+  const residentialV2 = session.territory_model === "residential_street_territory_v2";
+  if (residentialV2) {
+    const areaSqMi = residentialPolygonAreaSqMi(asArray2(session.polygon));
+    if (!(areaSqMi > 0) || areaSqMi > MAX_RESIDENTIAL_CANVAS_AREA_SQ_MI) throw new HttpError(422, "invalid_residential_canvas_area", `Residential Canvas v2 supports completed evidence boundaries up to ${MAX_RESIDENTIAL_CANVAS_AREA_SQ_MI} square miles.`);
+  }
+  if (!["street_territory_v1", "residential_street_territory_v2"].includes(session.territory_model) || session.planning_method !== "street_workload" || session.assignment_basis !== "street_work_unit_ids") {
     throw new HttpError(422, "territory_plan_required", "Canvas deployment requires a territory-first street-workload plan.");
   }
+  if (residentialV2 && session.lifecycle_state !== "ready_to_send") throw new HttpError(422, "canvas_not_ready_to_send", "Residential Canvas v2 must be fully assigned with all uncertain streets resolved before activation.");
+  if (residentialV2 && (session.qa?.evidence_trust !== "trusted" || session.qa?.trusted_evidence !== true)) throw new HttpError(422, "untrusted_residential_evidence", "Residential Canvas activation requires server-derived trusted evidence QA and a trusted immutable provider snapshot.");
   if (!WORKLOAD_BASES.has(session.workload_basis)) throw new HttpError(422, "invalid_workload_basis", "Canvas workload basis is missing or invalid.");
   if (!DIVISION_MODES.has(session.division_mode)) throw new HttpError(422, "invalid_division_mode", "Canvas division mode is missing or invalid.");
   if (session.division_mode === "street_workload_target" && !(Number(session.target_workload) > 0)) {
     throw new HttpError(422, "invalid_workload_target", "Workload-sized Canvas plans require positive class-weighted street meters per area.");
   }
-  if (session.workload_basis !== "street_length") {
+  if (session.workload_basis !== (residentialV2 ? "residential_opportunity" : "street_length")) {
     throw new HttpError(422, "estimated_workload_preview_only", "Optional door estimates are preview-only in this release. Regenerate using street-length workload before deployment.");
   }
   if (!String(session.algorithm_version || "").trim() || !String(session.data_version || "").trim()) {
@@ -2390,7 +2630,13 @@ function validatePlan(session) {
     const unitId = requiredString(unit?.id, "work_unit.id");
     if (expectedUnitIds.has(unitId)) throw new HttpError(422, "duplicate_work_unit", `Work unit ${unitId} is duplicated.`);
     if (!asArray2(unit?.segments).length) throw new HttpError(422, "invalid_work_unit", `Work unit ${unitId} has no canonical road segments.`);
-    expectedUnitIds.add(unitId);
+    if (residentialV2) {
+      if (!["knock", "transit_only", "excluded", "uncertain"].includes(String(unit?.canvas_role || ""))) throw new HttpError(422, "invalid_canvas_role", `Work unit ${unitId} has an invalid Canvas role.`);
+      if (unit.canvas_role === "uncertain") throw new HttpError(422, "unresolved_canvas_units", "All uncertain Canvas street units must be resolved before activation.");
+      if (unit.canvas_role === "knock") expectedUnitIds.add(unitId);
+    } else {
+      expectedUnitIds.add(unitId);
+    }
   }
   const counts = /* @__PURE__ */ new Map();
   const zoneIds = /* @__PURE__ */ new Set();
@@ -2451,12 +2697,18 @@ function validatePlan(session) {
     assignedRepIds: [...assignedRepIds],
     deploymentQa: {
       identity_validator_version: 2,
-      territory_model: "street_territory_v1",
+      territory_model: session.territory_model,
       street_work_units_complete_and_exclusive: true,
       selected_reps_one_to_one: session.division_mode === "selected_reps" ? true : null,
       zone_count: zones.length,
       work_unit_count: workUnits.length,
       total_street_length_meters: Number(qa.total_street_length_meters || 0),
+      total_residential_opportunity: residentialV2 ? Number(qa.total_residential_opportunity || 0) : null,
+      evidence_id: residentialV2 ? session.evidence_id : null,
+      revision_id: residentialV2 ? session.revision_id || null : null,
+      snapshot_hash: residentialV2 ? session.snapshot_hash : null,
+      evidence_trust: residentialV2 ? session.qa?.evidence_trust || null : null,
+      trusted_evidence: residentialV2 ? session.qa?.trusted_evidence === true : null,
       max_workload_deviation_percent: maxWorkloadDeviationPercent,
       manager_workload_exception_acknowledged: maxWorkloadDeviationPercent > 25 ? true : null,
       manager_workload_exception_acknowledged_at: maxWorkloadDeviationPercent > 25 ? qa.manager_workload_exception_acknowledged_at : null,
@@ -2841,7 +3093,8 @@ function canonicalZoneDisplay(zone) {
     drop_point: zone?.drop_point ? canonicalPoint(zone.drop_point) : null
   };
 }
-async function verifyServerTopology(session) {
+async function verifyServerTopology(session, base44) {
+  if (session.territory_model === "residential_street_territory_v2") return verifyResidentialEvidence(base44, session);
   const { roadNetwork, endpoint } = await fetchServerRoadNetwork(session.polygon);
   const serverPlan = planCanvasTerritories({
     polygon: session.polygon,
@@ -2952,48 +3205,284 @@ async function releaseManagerLease(base44, managerId, lease) {
     canvas_deployment_lock_expires_at: ""
   } }).catch(() => null);
 }
-async function acquireCampaignTransitionLock(base44, session) {
-  const now = /* @__PURE__ */ new Date();
-  const lockToken = leaseToken();
-  const mutation = await base44.asServiceRole.entities.CanvasSession.updateMany({
-    id: session.id,
-    manager_id: session.manager_id,
-    status: "deployed",
-    $or: [
-      { canvas_field_write_lock_token: null },
-      { canvas_field_write_lock_token: { $exists: false } },
-      { canvas_field_write_lock_expires_at: { $lte: now.toISOString() } }
-    ]
-  }, { $set: {
-    canvas_field_write_lock_token: lockToken,
-    canvas_field_write_lock_acquired_at: now.toISOString(),
-    canvas_field_write_lock_expires_at: new Date(now.getTime() + CAMPAIGN_TRANSITION_LOCK_MS).toISOString()
-  } });
-  if (mutation?.success !== true || Number(mutation?.updated) !== 1 || mutation?.has_more === true) {
-    throw new HttpError(409, "campaign_field_write_in_progress", `Campaign ${session.session_name || session.id} is saving a house decision or another lifecycle transition. Retry deployment.`);
-  }
-  const locked = await base44.asServiceRole.entities.CanvasSession.get(session.id).catch(() => null);
-  if (!locked || locked.canvas_field_write_lock_token !== lockToken) {
-    throw new HttpError(503, "campaign_transition_lock_unverified", "Canvas could not verify a replacement lock. Nothing was deployed.");
-  }
-  return { session_id: session.id, manager_id: session.manager_id, token: lockToken };
+async function signDecisionPayload(secret, payload) {
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(JSON.stringify(canonicalize(payload))));
+  return [...new Uint8Array(signature)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
-async function releaseCampaignTransitionLock(base44, lock) {
-  await base44.asServiceRole.entities.CanvasSession.updateMany({
-    id: lock.session_id,
-    manager_id: lock.manager_id,
-    canvas_field_write_lock_token: lock.token
-  }, { $unset: {
-    canvas_field_write_lock_token: "",
-    canvas_field_write_lock_acquired_at: "",
-    canvas_field_write_lock_expires_at: ""
-  } }).catch(() => null);
+function campaignDecisionAnchorPayload(session) {
+  return {
+    purpose: "firstknock-canvas-decision-campaign-anchor-v1",
+    manager_id: String(session?.manager_id || ""),
+    campaign_id: String(session?.id || session?.campaign_id || ""),
+    deployment_plan_version: Number(session?.deployment_plan_version),
+    plan_hash: String(session?.plan_hash || "")
+  };
+}
+function campaignDecisionStatePayload(state) {
+  return {
+    purpose: "firstknock-canvas-decision-campaign-state-v1",
+    anchor_signature: String(state?.anchor_signature || ""),
+    manager_id: String(state?.manager_id || ""),
+    campaign_id: String(state?.campaign_id || ""),
+    deployment_plan_version: Number(state?.deployment_plan_version),
+    plan_hash: String(state?.plan_hash || ""),
+    state: String(state?.state || ""),
+    state_version: Number(state?.state_version),
+    transition_action: String(state?.transition_action || ""),
+    transition_idempotency_key: String(state?.transition_idempotency_key || ""),
+    transition_started_at: String(state?.transition_started_at || ""),
+    transition_completed_at: state?.transition_completed_at || null,
+    superseded_by_campaign_id: state?.superseded_by_campaign_id || null
+  };
+}
+function zoneDecisionAnchorPayload(session, zoneId) {
+  return {
+    purpose: "firstknock-canvas-decision-zone-anchor-v1",
+    manager_id: String(session?.manager_id || ""),
+    campaign_id: String(session?.id || session?.campaign_id || ""),
+    zone_id: String(zoneId || ""),
+    deployment_plan_version: Number(session?.deployment_plan_version),
+    plan_hash: String(session?.plan_hash || "")
+  };
+}
+async function verifyDecisionCampaignState(secret, session, state) {
+  if (!state || String(state.manager_id || "") !== String(session.manager_id || "") || String(state.campaign_id || "") !== String(session.id || "") || Number(state.deployment_plan_version) !== Number(session.deployment_plan_version) || String(state.plan_hash || "") !== String(session.plan_hash || "")) return false;
+  const expectedAnchor = await signDecisionPayload(secret, campaignDecisionAnchorPayload(session));
+  if (String(state.anchor_signature || "") !== expectedAnchor) return false;
+  return String(state.state_signature || "") === await signDecisionPayload(secret, campaignDecisionStatePayload(state));
+}
+function decisionStateMatchesActiveDeployment(session, state) {
+  return state?.state === "active"
+    && state?.transition_action === "deploy"
+    && String(state?.transition_idempotency_key || "") === String(session?.deployment_idempotency_key || "")
+    && String(state?.transition_started_at || "") === String(session?.deployed_at || "")
+    && String(state?.transition_completed_at || "") === String(session?.deployed_at || "")
+    && !state?.superseded_by_campaign_id;
+}
+async function loadDecisionCampaignState(base44, session, secret, { allowMissing = false } = {}) {
+  const rows = asArray2(await base44.asServiceRole.entities.CanvasDecisionCampaignState.filter({ manager_id: session.manager_id, campaign_id: session.id }, "-updated_date", 2)).filter((row) => String(row.manager_id || "") === String(session.manager_id || "") && String(row.campaign_id || "") === String(session.id || ""));
+  if (allowMissing && rows.length === 0) return null;
+  if (rows.length !== 1 || !await verifyDecisionCampaignState(secret, session, rows[0])) throw new HttpError(409, "canvas_decision_state_integrity_failed", `Campaign ${session.session_name || session.id} has an invalid or duplicate decision gate.`);
+  return rows[0];
+}
+async function prepareDecisionWriteStates(base44, draftSession, preparedSession, secret) {
+  const campaignRows = asArray2(await base44.asServiceRole.entities.CanvasDecisionCampaignState.filter({ manager_id: draftSession.manager_id, campaign_id: draftSession.id }, "-updated_date", 2)).filter((row) => String(row.manager_id || "") === String(draftSession.manager_id || "") && String(row.campaign_id || "") === String(draftSession.id || ""));
+  if (campaignRows.length === 1 && await verifyDecisionCampaignState(secret, preparedSession, campaignRows[0]) && decisionStateMatchesActiveDeployment(preparedSession, campaignRows[0])) {
+    return ensureDecisionWriteStates(base44, preparedSession, secret);
+  }
+  const zoneRows = asArray2(await base44.asServiceRole.entities.CanvasDecisionZoneState.filter({ manager_id: draftSession.manager_id, campaign_id: draftSession.id }, "zone_id", MAX_ZONES + 1)).filter((row) => String(row.manager_id || "") === String(draftSession.manager_id || "") && String(row.campaign_id || "") === String(draftSession.id || ""));
+  if (campaignRows.length === 0) {
+    if (zoneRows.length) throw new HttpError(409, "canvas_prepared_state_integrity_failed", "Canvas found area decision states without their signed campaign anchor.");
+    return ensureDecisionWriteStates(base44, preparedSession, secret);
+  }
+  if (campaignRows.length !== 1) throw new HttpError(409, "canvas_prepared_state_integrity_failed", "Canvas found duplicate prepared campaign decision states.");
+  if (zoneRows.length > MAX_ZONES) throw new HttpError(409, "canvas_prepared_state_integrity_failed", "A stale preparation contains more area decision states than Canvas can safely reconcile.");
+  const staleState = campaignRows[0];
+  const staleAnchorSession = {
+    id: draftSession.id,
+    manager_id: draftSession.manager_id,
+    deployment_plan_version: Number(staleState.deployment_plan_version),
+    plan_hash: String(staleState.plan_hash || "")
+  };
+  if (!await verifyDecisionCampaignState(secret, staleAnchorSession, staleState)
+    || staleState.state !== "active"
+    || staleState.transition_action !== "deploy"
+    || !staleState.transition_completed_at
+    || staleState.superseded_by_campaign_id) {
+    throw new HttpError(409, "canvas_prepared_state_integrity_failed", "A stale prepared campaign state failed signed deployment-state verification.");
+  }
+  const seenZoneIds = /* @__PURE__ */ new Set();
+  for (const zoneState of zoneRows) {
+    const zoneId = String(zoneState.zone_id || "");
+    const expectedAnchor = await signDecisionPayload(secret, zoneDecisionAnchorPayload(staleAnchorSession, zoneId));
+    if (!zoneId || seenZoneIds.has(zoneId)
+      || String(zoneState.anchor_signature || "") !== expectedAnchor
+      || Number(zoneState.deployment_plan_version) !== Number(staleState.deployment_plan_version)
+      || String(zoneState.plan_hash || "") !== String(staleState.plan_hash || "")
+      || zoneState.lease_token) {
+      throw new HttpError(409, "canvas_prepared_state_integrity_failed", "A stale prepared area state failed its signed anchor or unexpectedly contains an active writer lease.");
+    }
+    seenZoneIds.add(zoneId);
+  }
+  const currentDraft = await base44.asServiceRole.entities.CanvasSession.get(draftSession.id).catch(() => null);
+  if (!currentDraft
+    || String(currentDraft.manager_id || "") !== String(draftSession.manager_id || "")
+    || currentDraft.status !== "draft"
+    || Number(currentDraft.version) !== Number(draftSession.version)
+    || String(currentDraft.plan_hash || "") !== String(draftSession.plan_hash || "")) {
+    throw new HttpError(409, "canvas_prepared_state_reconciliation_conflict", "The Canvas draft changed before stale prepared decision states could be reconciled.");
+  }
+  for (const zoneState of zoneRows) await base44.asServiceRole.entities.CanvasDecisionZoneState.delete(zoneState.id);
+  const remainingZones = asArray2(await base44.asServiceRole.entities.CanvasDecisionZoneState.filter({ manager_id: draftSession.manager_id, campaign_id: draftSession.id }, "zone_id", 1));
+  if (remainingZones.length) throw new HttpError(503, "canvas_prepared_state_reconciliation_failed", "Canvas could not clear every stale prepared area state. The draft remains inactive.");
+  await base44.asServiceRole.entities.CanvasDecisionCampaignState.delete(staleState.id);
+  const remainingCampaigns = asArray2(await base44.asServiceRole.entities.CanvasDecisionCampaignState.filter({ manager_id: draftSession.manager_id, campaign_id: draftSession.id }, null, 1));
+  if (remainingCampaigns.length) throw new HttpError(503, "canvas_prepared_state_reconciliation_failed", "Canvas could not clear the stale prepared campaign state. The draft remains inactive.");
+  return ensureDecisionWriteStates(base44, preparedSession, secret);
+}
+async function ensureDecisionWriteStates(base44, session, secret, { allowedCampaignStates = ["active"] } = {}) {
+  const expectedZoneIds = [...new Set(asArray2(session.zones).map((zone) => String(zone?.zone_id || "").trim()).filter(Boolean))].sort();
+  if (expectedZoneIds.length !== asArray2(session.zones).length || expectedZoneIds.length < 1 || expectedZoneIds.length > MAX_ZONES) throw new HttpError(503, "canvas_decision_state_init_failed", "Canvas could not initialize an exact decision state for every area.");
+  let campaignState = await loadDecisionCampaignState(base44, session, secret, { allowMissing: true });
+  if (!campaignState) {
+    const anchorSignature = await signDecisionPayload(secret, campaignDecisionAnchorPayload(session));
+    const activeState = {
+      manager_id: session.manager_id,
+      campaign_id: session.id,
+      deployment_plan_version: Number(session.deployment_plan_version),
+      plan_hash: session.plan_hash,
+      state: "active",
+      state_version: 1,
+      transition_action: "deploy",
+      transition_idempotency_key: session.deployment_idempotency_key,
+      transition_started_at: session.deployed_at,
+      transition_completed_at: session.deployed_at,
+      superseded_by_campaign_id: null,
+      anchor_signature: anchorSignature
+    };
+    activeState.state_signature = await signDecisionPayload(secret, campaignDecisionStatePayload(activeState));
+    await base44.asServiceRole.entities.CanvasDecisionCampaignState.create(activeState);
+    campaignState = await loadDecisionCampaignState(base44, session, secret);
+  }
+  if (!allowedCampaignStates.includes(String(campaignState.state || ""))) throw new HttpError(409, "canvas_decision_state_integrity_failed", "The Canvas campaign decision gate is not in an allowed signed lifecycle state.");
+  if (campaignState.state === "active" && !decisionStateMatchesActiveDeployment(session, campaignState)) throw new HttpError(409, "canvas_decision_state_integrity_failed", "The active campaign decision gate does not match its signed deployment transition.");
+  let zoneStates = asArray2(await base44.asServiceRole.entities.CanvasDecisionZoneState.filter({ manager_id: session.manager_id, campaign_id: session.id }, "zone_id", MAX_ZONES + 1)).filter((row) => String(row.manager_id || "") === String(session.manager_id || "") && String(row.campaign_id || "") === String(session.id || ""));
+  const existingByZone = new Map();
+  for (const state of zoneStates) {
+    const zoneId = String(state.zone_id || "");
+    if (!expectedZoneIds.includes(zoneId) || existingByZone.has(zoneId)) throw new HttpError(409, "canvas_zone_state_integrity_failed", "Canvas found an unexpected or duplicate area decision state.");
+    existingByZone.set(zoneId, state);
+  }
+  for (const zoneId of expectedZoneIds) {
+    if (existingByZone.has(zoneId)) continue;
+    const anchorSignature = await signDecisionPayload(secret, zoneDecisionAnchorPayload(session, zoneId));
+    await base44.asServiceRole.entities.CanvasDecisionZoneState.create({
+      manager_id: session.manager_id,
+      campaign_id: session.id,
+      zone_id: zoneId,
+      deployment_plan_version: Number(session.deployment_plan_version),
+      plan_hash: session.plan_hash,
+      anchor_signature: anchorSignature,
+      lease_generation: 0
+    });
+  }
+  zoneStates = asArray2(await base44.asServiceRole.entities.CanvasDecisionZoneState.filter({ manager_id: session.manager_id, campaign_id: session.id }, "zone_id", MAX_ZONES + 1)).filter((row) => String(row.manager_id || "") === String(session.manager_id || "") && String(row.campaign_id || "") === String(session.id || ""));
+  if (zoneStates.length !== expectedZoneIds.length) throw new HttpError(503, "canvas_decision_state_init_failed", "Canvas could not verify one durable decision state per area.");
+  for (const state of zoneStates) {
+    const expectedAnchor = await signDecisionPayload(secret, zoneDecisionAnchorPayload(session, state.zone_id));
+    if (!expectedZoneIds.includes(String(state.zone_id || "")) || String(state.anchor_signature || "") !== expectedAnchor || Number(state.deployment_plan_version) !== Number(session.deployment_plan_version) || String(state.plan_hash || "") !== String(session.plan_hash || "")) {
+      throw new HttpError(409, "canvas_zone_state_integrity_failed", "An area decision state failed its signed deployment-plan check.");
+    }
+  }
+  return { campaign_state: campaignState, zone_states: zoneStates };
+}
+async function supersessionTransitionKey(predecessor, successor) {
+  const digest = await sha2562({
+    purpose: "firstknock-canvas-supersession-transition-v1",
+    manager_id: String(successor?.manager_id || ""),
+    predecessor_campaign_id: String(predecessor?.id || ""),
+    successor_campaign_id: String(successor?.id || ""),
+    successor_plan_hash: String(successor?.plan_hash || ""),
+    successor_plan_version: Number(successor?.version)
+  });
+  return `supersede:${String(successor?.id || "")}:${digest}`;
+}
+function legacyTransitionTargetsSuccessor(transitionKey, successorId) {
+  return String(transitionKey || "").startsWith(`${String(successorId || "")}:`);
+}
+function persistedSupersessionTransitionMap(session) {
+  const predecessorIds = [...new Set(asArray2(session?.deployment_qa?.superseded_session_ids).map((id) => String(id || "").trim()).filter(Boolean))].sort();
+  const rows = asArray2(session?.deployment_qa?.supersession_transitions);
+  if (!rows.length) return null;
+  if (rows.length !== predecessorIds.length) throw new HttpError(409, "canvas_supersession_recovery_invalid", "The signed deployment does not contain one exact transition key per predecessor campaign.");
+  const result = /* @__PURE__ */ new Map();
+  for (const row of rows) {
+    const predecessorId = String(row?.predecessor_session_id || "").trim();
+    const transitionKey = String(row?.transition_idempotency_key || "").trim();
+    if (!predecessorIds.includes(predecessorId) || result.has(predecessorId) || !transitionKey || transitionKey.length > 512) {
+      throw new HttpError(409, "canvas_supersession_recovery_invalid", "A signed predecessor transition record is missing, duplicated, or invalid.");
+    }
+    result.set(predecessorId, transitionKey);
+  }
+  return result;
+}
+async function deploymentRecoveryTransitionKey(session, predecessor, persistedTransitions) {
+  const stableKey = await supersessionTransitionKey(predecessor, session);
+  if (!persistedTransitions) {
+    const legacyKey = `${String(session?.id || "")}:${String(session?.deployment_idempotency_key || "")}`;
+    if (!String(session?.deployment_idempotency_key || "")) throw new HttpError(409, "canvas_supersession_recovery_invalid", "The signed deployment is missing its predecessor recovery key.");
+    return legacyKey;
+  }
+  const transitionKey = persistedTransitions.get(String(predecessor?.id || ""));
+  if (!transitionKey || transitionKey !== stableKey && !legacyTransitionTargetsSuccessor(transitionKey, session?.id)) {
+    throw new HttpError(409, "canvas_supersession_recovery_invalid", "A signed predecessor transition key is not bound to this successor deployment.");
+  }
+  return transitionKey;
+}
+async function beginDecisionDrain(base44, session, secret, transitionKey, successorId) {
+  let state = await loadDecisionCampaignState(base44, session, secret);
+  if (state.state === "draining" && state.transition_action === "supersede") {
+    if (state.transition_idempotency_key === transitionKey || legacyTransitionTargetsSuccessor(state.transition_idempotency_key, successorId)) return state;
+    throw new HttpError(409, "canvas_campaign_transition_conflict", `Campaign ${session.session_name || session.id} is already being replaced by another draft.`);
+  }
+  if (state.state !== "active") throw new HttpError(409, "canvas_campaign_transition_conflict", `Campaign ${session.session_name || session.id} is already closing or superseded.`);
+  const update = {
+    state: "draining",
+    state_version: Number(state.state_version) + 1,
+    transition_action: "supersede",
+    transition_idempotency_key: transitionKey,
+    transition_started_at: (/* @__PURE__ */ new Date()).toISOString(),
+    transition_completed_at: null,
+    superseded_by_campaign_id: null
+  };
+  update.state_signature = await signDecisionPayload(secret, campaignDecisionStatePayload({ ...state, ...update }));
+  const mutation = await base44.asServiceRole.entities.CanvasDecisionCampaignState.updateMany({ id: state.id, manager_id: session.manager_id, campaign_id: session.id, state: "active", state_version: Number(state.state_version), state_signature: state.state_signature }, { $set: update });
+  if (mutation?.success !== true || Number(mutation?.updated) !== 1 || mutation?.has_more === true) throw new HttpError(409, "canvas_campaign_transition_conflict", "A campaign decision gate changed before replacement could fence new writes.");
+  state = await loadDecisionCampaignState(base44, session, secret);
+  return state;
+}
+async function waitForDecisionLeases(base44, session, secret) {
+  const expectedZoneIds = new Set(asArray2(session.zones).map((zone) => String(zone?.zone_id || "")).filter(Boolean));
+  for (let attempt = 0; attempt < 11; attempt += 1) {
+    const states = asArray2(await base44.asServiceRole.entities.CanvasDecisionZoneState.filter({ manager_id: session.manager_id, campaign_id: session.id }, "zone_id", MAX_ZONES + 1)).filter((row) => String(row.manager_id || "") === String(session.manager_id || "") && String(row.campaign_id || "") === String(session.id || ""));
+    if (states.length !== expectedZoneIds.size) throw new HttpError(409, "canvas_zone_state_integrity_failed", "Replacement could not verify every fenced area decision state.");
+    let active = 0;
+    for (const state of states) {
+      const expectedAnchor = await signDecisionPayload(secret, zoneDecisionAnchorPayload(session, state.zone_id));
+      if (!expectedZoneIds.has(String(state.zone_id || "")) || String(state.anchor_signature || "") !== expectedAnchor) throw new HttpError(409, "canvas_zone_state_integrity_failed", "Replacement found an invalid area decision state.");
+      if (state.lease_token && Date.parse(state.lease_expires_at || "") > Date.now()) active += 1;
+    }
+    if (!active) return;
+    if (attempt < 10) await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new HttpError(409, "campaign_field_write_in_progress", `Campaign ${session.session_name || session.id} is finishing house decisions. Retry replacement with the same confirmation.`);
+}
+async function finalizeDecisionSupersession(base44, predecessor, successor, secret, transitionKey) {
+  let state = await loadDecisionCampaignState(base44, predecessor, secret);
+  if (state.state === "superseded") {
+    if (String(state.superseded_by_campaign_id || "") !== String(successor.id || "")) throw new HttpError(409, "canvas_campaign_transition_conflict", "The predecessor was superseded by a different campaign.");
+    return state;
+  }
+  if (state.state !== "draining" || state.transition_action !== "supersede" || state.transition_idempotency_key !== transitionKey) throw new HttpError(409, "canvas_campaign_transition_conflict", "The predecessor decision fence changed before replacement finalized.");
+  const update = {
+    state: "superseded",
+    state_version: Number(state.state_version) + 1,
+    transition_completed_at: successor.deployed_at,
+    superseded_by_campaign_id: successor.id
+  };
+  update.state_signature = await signDecisionPayload(secret, campaignDecisionStatePayload({ ...state, ...update }));
+  const mutation = await base44.asServiceRole.entities.CanvasDecisionCampaignState.updateMany({ id: state.id, manager_id: predecessor.manager_id, campaign_id: predecessor.id, state: "draining", state_version: Number(state.state_version), state_signature: state.state_signature }, { $set: update });
+  if (mutation?.success !== true || Number(mutation?.updated) !== 1 || mutation?.has_more === true) throw new HttpError(409, "canvas_campaign_transition_conflict", "The predecessor decision gate changed before supersession finalized.");
+  state = await loadDecisionCampaignState(base44, predecessor, secret);
+  if (state.state !== "superseded" || state.superseded_by_campaign_id !== successor.id) throw new HttpError(503, "canvas_supersession_unverified", "The predecessor supersession marker could not be verified.");
+  return state;
 }
 Deno.serve(async (req) => {
   let lease = null;
   let leaseBase44 = null;
   let leaseManagerId = null;
-  const transitionLocks = [];
+  const decisionDrains = [];
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
@@ -3010,8 +3499,22 @@ Deno.serve(async (req) => {
     if (session.manager_id !== user.id) throw new HttpError(403, "forbidden", "This Canvas session belongs to another manager.");
     const signingSecret = deploymentSigningSecret();
     if (session.status === "deployed") {
-      if (session.deployment_idempotency_key !== idempotencyKey) throw new HttpError(409, "already_deployed", "This Canvas campaign is already deployed.");
       if (!await verifyCanvasLifecycleSession(signingSecret, session, "active")) throw new HttpError(409, "deployment_signature_invalid", "The deployed Canvas snapshot failed integrity verification.");
+      lease = await acquireManagerLease(base44, user.id);
+      leaseBase44 = base44;
+      leaseManagerId = user.id;
+      await ensureDecisionWriteStates(base44, session, signingSecret);
+      const persistedTransitions = persistedSupersessionTransitionMap(session);
+      for (const predecessorId of asArray2(session.deployment_qa?.superseded_session_ids)) {
+        const predecessor = await base44.asServiceRole.entities.CanvasSession.get(predecessorId).catch(() => null);
+        if (!predecessor || predecessor.manager_id !== user.id || !await verifyCanvasLifecycleSession(signingSecret, predecessor, "active")) throw new HttpError(409, "canvas_lifecycle_integrity_failed", "A predecessor campaign failed signed lifecycle verification during deployment recovery.");
+        await ensureDecisionWriteStates(base44, predecessor, signingSecret, { allowedCampaignStates: ["active", "draining", "superseded"] });
+        const transitionKey = await deploymentRecoveryTransitionKey(session, predecessor, persistedTransitions);
+        const predecessorState = await loadDecisionCampaignState(base44, predecessor, signingSecret);
+        if (predecessorState.state === "active") await beginDecisionDrain(base44, predecessor, signingSecret, transitionKey, session.id);
+        await waitForDecisionLeases(base44, predecessor, signingSecret);
+        await finalizeDecisionSupersession(base44, predecessor, session, signingSecret, transitionKey);
+      }
       return Response.json({ success: true, idempotent: true, session_id: session.id, version: Number(session.version), status: "deployed", deployed_at: session.deployed_at, delivery_count: Number(session.rep_count || 0), rep_team_member_ids: canvasRepTeamMemberIds(session), superseded_session_ids: asArray2(session.deployment_qa?.superseded_session_ids) });
     }
     if (session.status === "completed" || session.status === "recalled") throw new HttpError(409, "campaign_closed", "This Canvas campaign is closed. Create a new draft.");
@@ -3023,7 +3526,7 @@ Deno.serve(async (req) => {
     const entitlement = await resolveCanvasEntitlement(user);
     const members = await validateTeamMembers(base44, user.id, validation.assignedRepIds);
     if (Number.isFinite(entitlement.seats) && members.length > entitlement.seats) throw new HttpError(403, "canvas_seat_limit_exceeded", `This deployment assigns ${members.length} reps, but the verified subscription has ${entitlement.seats} seats.`);
-    const topologyVerification = await verifyServerTopology(session);
+    const topologyVerification = await verifyServerTopology(session, base44);
     const providedSupersedeIds = optionalUniqueIdList(body?.supersede_session_ids, "supersede_session_ids");
     lease = await acquireManagerLease(base44, user.id);
     leaseBase44 = base44;
@@ -3033,13 +3536,20 @@ Deno.serve(async (req) => {
     if (!lockedSession || lockedSession.manager_id !== user.id || lockedSession.status !== "draft" || Number(lockedSession.version) !== expectedVersion || lockedSession.plan_hash !== session.plan_hash || lockedSession.plan_hash !== lockedHash) {
       throw new HttpError(409, "version_conflict", "The Canvas draft changed before deployment committed. Reload before retrying.");
     }
+    const commitTopologyVerification = lockedSession.territory_model === "residential_street_territory_v2"
+      ? await verifyServerTopology(lockedSession, base44)
+      : topologyVerification;
     const activeDeployments = await loadActiveValidDeployments(base44, user.id, signingSecret);
     const conflicts = deploymentOverlapConflicts(lockedSession, activeDeployments);
     const supersededSessionIds = requireExactSupersedeConfirmation(providedSupersedeIds, conflicts);
     for (const supersededId of supersededSessionIds) {
       const predecessor = activeDeployments.find((candidate) => candidate.id === supersededId);
       if (!predecessor) throw new HttpError(409, "canvas_deployment_overlap_changed", "An overlapping campaign changed before replacement. Reload and confirm again.");
-      transitionLocks.push(await acquireCampaignTransitionLock(base44, predecessor));
+      await ensureDecisionWriteStates(base44, predecessor, signingSecret, { allowedCampaignStates: ["active", "draining"] });
+      const requestedTransitionKey = await supersessionTransitionKey(predecessor, lockedSession);
+      const drainingState = await beginDecisionDrain(base44, predecessor, signingSecret, requestedTransitionKey, lockedSession.id);
+      decisionDrains.push({ predecessor, transition_key: String(drainingState.transition_idempotency_key || "") });
+      await waitForDecisionLeases(base44, predecessor, signingSecret);
       const lockedPredecessor = await base44.asServiceRole.entities.CanvasSession.get(predecessor.id).catch(() => null);
       if (!lockedPredecessor || !await verifyCanvasLifecycleSession(signingSecret, lockedPredecessor, "active")) {
         throw new HttpError(409, "canvas_deployment_overlap_changed", "An overlapping campaign closed or changed before replacement. Reload and confirm again.");
@@ -3059,7 +3569,7 @@ Deno.serve(async (req) => {
     };
     const deploymentQa = {
       ...validation.deploymentQa,
-      ...topologyVerification,
+      ...commitTopologyVerification,
       verified_team_member_ids: members.map((member) => member.id),
       verified_team_member_bindings: members.map((member) => ({ team_member_id: String(member.id), user_id: String(member.user_id), email: normalized(member.email) })).sort((a, b) => a.team_member_id.localeCompare(b.team_member_id)),
       entitlement_kind: entitlement.kind,
@@ -3067,6 +3577,10 @@ Deno.serve(async (req) => {
       entitlement_canvas_seats: Number.isFinite(entitlement.canvas_seats) ? entitlement.canvas_seats : null,
       entitlement_grant_id: entitlement.grant_id || null,
       superseded_session_ids: supersededSessionIds,
+      supersession_transitions: decisionDrains.map((drain) => ({
+        predecessor_session_id: String(drain.predecessor.id),
+        transition_idempotency_key: String(drain.transition_key)
+      })).sort((left, right) => left.predecessor_session_id.localeCompare(right.predecessor_session_id)),
       overlap_conflict_count: conflicts.length,
       verified_at: deployedAt,
       lifecycle_state: "active",
@@ -3089,6 +3603,8 @@ Deno.serve(async (req) => {
       close_idempotency_key: null
     };
     const signature = await signCanvasLifecycle(signingSecret, { ...lockedSession, ...lifecycleUpdate }, members.map((member) => member.id));
+    const preparedSession = { ...lockedSession, ...lifecycleUpdate, deployment_signature: signature };
+    await prepareDecisionWriteStates(base44, lockedSession, preparedSession, signingSecret);
     const mutation = await base44.asServiceRole.entities.CanvasSession.updateMany({
       id: lockedSession.id,
       manager_id: user.id,
@@ -3099,15 +3615,14 @@ Deno.serve(async (req) => {
     if (mutation?.success !== true || Number(mutation?.updated) !== 1 || mutation?.has_more === true) throw new HttpError(409, "version_conflict", "The Canvas draft changed before deployment committed.");
     const updated = await base44.entities.CanvasSession.get(lockedSession.id).catch(() => null);
     if (!updated || !await verifyCanvasLifecycleSession(signingSecret, updated, "active")) throw new HttpError(503, "canvas_deploy_commit_unverified", "The Canvas deployment commit could not be verified.");
+    await ensureDecisionWriteStates(base44, updated, signingSecret);
+    for (const drain of decisionDrains) await finalizeDecisionSupersession(base44, drain.predecessor, updated, signingSecret, drain.transition_key);
     return Response.json({ success: true, idempotent: false, session_id: updated.id, version: Number(updated.version), status: "deployed", deployed_at: deployedAt, delivery_count: members.length, rep_team_member_ids: members.map((member) => member.id), superseded_session_ids: supersededSessionIds, deployment_qa: updated.deployment_qa });
   } catch (error) {
     if (error instanceof HttpError) return Response.json({ error: error.code, message: error.message, ...error.details ? { details: error.details } : {} }, { status: error.status });
     console.error("[canvasDeployCampaign]", error?.message || error);
-    return Response.json({ error: "canvas_deploy_failed", message: "Canvas deployment could not be verified. The draft was not changed." }, { status: 503 });
+    return Response.json({ error: "canvas_deploy_failed", message: "Canvas deployment could not be fully verified. Retry with the same idempotency key; unverified decision state remains fail-closed." }, { status: 503 });
   } finally {
-    if (leaseBase44) {
-      for (const lock of [...transitionLocks].reverse()) await releaseCampaignTransitionLock(leaseBase44, lock);
-    }
     if (lease && leaseBase44 && leaseManagerId) await releaseManagerLease(leaseBase44, leaseManagerId, lease);
   }
 });

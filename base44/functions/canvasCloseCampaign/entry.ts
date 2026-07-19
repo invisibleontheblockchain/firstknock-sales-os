@@ -38,6 +38,7 @@ function canvasStoredPlanForHash(session) {
     qa: session?.qa || {},
     algorithm_version: session?.algorithm_version || null,
     data_version: session?.data_version || null,
+    ...session?.territory_model === "residential_street_territory_v2" ? { evidence_id: session?.evidence_id, revision_id: session?.revision_id || null, snapshot_hash: session?.snapshot_hash, evidence_schema_version: Number(session?.evidence_schema_version), unresolved_unit_count: Number(session?.unresolved_unit_count || 0), assignment_version: Number(session?.assignment_version || 0) } : {},
     manager_id: session?.manager_id,
     version: planVersion
   };
@@ -103,7 +104,7 @@ async function verifyCanvasLifecycleSession(secret, session, requiredState = nul
 
 // base44/functions/canvasCloseCampaign/entry.ts
 var CLOSE_ACTIONS = /* @__PURE__ */ new Set(["complete", "recall"]);
-var CAMPAIGN_TRANSITION_LOCK_MS = 3e4;
+var MAX_DECISION_ZONES = 250;
 var HttpError = class extends Error {
   status;
   code;
@@ -160,53 +161,121 @@ function closeResponse(session, idempotent) {
     closed_by_user_id: session.closed_by_user_id
   };
 }
-function lockToken() {
-  const bytes = new Uint8Array(24);
-  crypto.getRandomValues(bytes);
-  return [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+async function signDecisionPayload(secret, payload) {
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(JSON.stringify(canonicalize(payload))));
+  return [...new Uint8Array(signature)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
-async function acquireCampaignTransitionLock(base44, session) {
-  const now = /* @__PURE__ */ new Date();
-  const token = lockToken();
-  const mutation = await base44.asServiceRole.entities.CanvasSession.updateMany({
-    id: session.id,
-    manager_id: session.manager_id,
-    status: "deployed",
-    $or: [
-      { canvas_field_write_lock_token: null },
-      { canvas_field_write_lock_token: { $exists: false } },
-      { canvas_field_write_lock_expires_at: { $lte: now.toISOString() } }
-    ]
-  }, { $set: {
-    canvas_field_write_lock_token: token,
-    canvas_field_write_lock_acquired_at: now.toISOString(),
-    canvas_field_write_lock_expires_at: new Date(now.getTime() + CAMPAIGN_TRANSITION_LOCK_MS).toISOString()
-  } });
-  if (mutation?.success !== true || Number(mutation?.updated) !== 1 || mutation?.has_more === true) {
-    throw new HttpError(409, "campaign_field_write_in_progress", "A house decision or another campaign transition is finishing. Retry close in a moment.");
-  }
-  const locked = await base44.asServiceRole.entities.CanvasSession.get(session.id).catch(() => null);
-  if (!locked || locked.canvas_field_write_lock_token !== token) {
-    throw new HttpError(503, "campaign_transition_lock_unverified", "Canvas could not verify the campaign close lock. Nothing was changed.");
-  }
-  return token;
+function campaignDecisionAnchorPayload(session) {
+  return {
+    purpose: "firstknock-canvas-decision-campaign-anchor-v1",
+    manager_id: String(session?.manager_id || ""),
+    campaign_id: String(session?.id || session?.campaign_id || ""),
+    deployment_plan_version: Number(session?.deployment_plan_version),
+    plan_hash: String(session?.plan_hash || "")
+  };
 }
-async function releaseCampaignTransitionLock(base44, session, token) {
-  if (!token) return;
-  await base44.asServiceRole.entities.CanvasSession.updateMany({
-    id: session.id,
-    manager_id: session.manager_id,
-    canvas_field_write_lock_token: token
-  }, { $unset: {
-    canvas_field_write_lock_token: "",
-    canvas_field_write_lock_acquired_at: "",
-    canvas_field_write_lock_expires_at: ""
-  } }).catch(() => null);
+function campaignDecisionStatePayload(state) {
+  return {
+    purpose: "firstknock-canvas-decision-campaign-state-v1",
+    anchor_signature: String(state?.anchor_signature || ""),
+    manager_id: String(state?.manager_id || ""),
+    campaign_id: String(state?.campaign_id || ""),
+    deployment_plan_version: Number(state?.deployment_plan_version),
+    plan_hash: String(state?.plan_hash || ""),
+    state: String(state?.state || ""),
+    state_version: Number(state?.state_version),
+    transition_action: String(state?.transition_action || ""),
+    transition_idempotency_key: String(state?.transition_idempotency_key || ""),
+    transition_started_at: String(state?.transition_started_at || ""),
+    transition_completed_at: state?.transition_completed_at || null,
+    superseded_by_campaign_id: state?.superseded_by_campaign_id || null
+  };
+}
+function zoneDecisionAnchorPayload(session, zoneId) {
+  return {
+    purpose: "firstknock-canvas-decision-zone-anchor-v1",
+    manager_id: String(session?.manager_id || ""),
+    campaign_id: String(session?.id || session?.campaign_id || ""),
+    zone_id: String(zoneId || ""),
+    deployment_plan_version: Number(session?.deployment_plan_version),
+    plan_hash: String(session?.plan_hash || "")
+  };
+}
+async function verifyDecisionCampaignState(secret, session, state) {
+  if (!state || String(state.manager_id || "") !== String(session.manager_id || "") || String(state.campaign_id || "") !== String(session.id || "") || Number(state.deployment_plan_version) !== Number(session.deployment_plan_version) || String(state.plan_hash || "") !== String(session.plan_hash || "")) return false;
+  const expectedAnchor = await signDecisionPayload(secret, campaignDecisionAnchorPayload(session));
+  if (String(state.anchor_signature || "") !== expectedAnchor) return false;
+  return String(state.state_signature || "") === await signDecisionPayload(secret, campaignDecisionStatePayload(state));
+}
+async function loadDecisionCampaignState(base44, session, secret) {
+  const rows = asArray(await base44.asServiceRole.entities.CanvasDecisionCampaignState.filter({ manager_id: session.manager_id, campaign_id: session.id }, "-updated_date", 2)).filter((row) => String(row.manager_id || "") === String(session.manager_id || "") && String(row.campaign_id || "") === String(session.id || ""));
+  if (rows.length !== 1 || !await verifyDecisionCampaignState(secret, session, rows[0])) throw new HttpError(409, "canvas_decision_state_integrity_failed", "The campaign decision gate failed tenant-scoped integrity verification.");
+  return rows[0];
+}
+async function beginCloseDecisionDrain(base44, session, secret, action, idempotencyKey) {
+  let state = await loadDecisionCampaignState(base44, session, secret);
+  if (state.state === "draining") {
+    if (state.transition_action !== action) throw new HttpError(409, "campaign_transition_in_progress", "This campaign is already completing another lifecycle transition.");
+    return state;
+  }
+  if (state.state !== "active") throw new HttpError(409, "campaign_not_active", "This Canvas campaign is no longer accepting decisions.");
+  const update = {
+    state: "draining",
+    state_version: Number(state.state_version) + 1,
+    transition_action: action,
+    transition_idempotency_key: idempotencyKey,
+    transition_started_at: (/* @__PURE__ */ new Date()).toISOString(),
+    transition_completed_at: null,
+    superseded_by_campaign_id: null
+  };
+  update.state_signature = await signDecisionPayload(secret, campaignDecisionStatePayload({ ...state, ...update }));
+  const mutation = await base44.asServiceRole.entities.CanvasDecisionCampaignState.updateMany({ id: state.id, manager_id: session.manager_id, campaign_id: session.id, state: "active", state_version: Number(state.state_version), state_signature: state.state_signature }, { $set: update });
+  if (mutation?.success !== true || Number(mutation?.updated) !== 1 || mutation?.has_more === true) throw new HttpError(409, "campaign_transition_in_progress", "The campaign decision gate changed before close could fence new writes.");
+  state = await loadDecisionCampaignState(base44, session, secret);
+  return state;
+}
+async function waitForDecisionLeases(base44, session, secret) {
+  const expectedZoneIds = new Set(asArray(session.zones).map((zone) => String(zone?.zone_id || "")).filter(Boolean));
+  if (!expectedZoneIds.size || expectedZoneIds.size > MAX_DECISION_ZONES) throw new HttpError(409, "canvas_zone_state_integrity_failed", "The campaign has an invalid area set for decision fencing.");
+  for (let attempt = 0; attempt < 11; attempt += 1) {
+    const states = asArray(await base44.asServiceRole.entities.CanvasDecisionZoneState.filter({ manager_id: session.manager_id, campaign_id: session.id }, "zone_id", MAX_DECISION_ZONES + 1)).filter((row) => String(row.manager_id || "") === String(session.manager_id || "") && String(row.campaign_id || "") === String(session.id || ""));
+    if (states.length !== expectedZoneIds.size) throw new HttpError(409, "canvas_zone_state_integrity_failed", "Close could not verify one durable decision state per campaign area.");
+    let active = 0;
+    for (const state of states) {
+      const expectedAnchor = await signDecisionPayload(secret, zoneDecisionAnchorPayload(session, state.zone_id));
+      if (!expectedZoneIds.has(String(state.zone_id || "")) || String(state.anchor_signature || "") !== expectedAnchor || Number(state.deployment_plan_version) !== Number(session.deployment_plan_version) || String(state.plan_hash || "") !== String(session.plan_hash || "")) throw new HttpError(409, "canvas_zone_state_integrity_failed", "An area decision state failed its signed deployment-plan check.");
+      if (state.lease_token && Date.parse(state.lease_expires_at || "") > Date.now()) active += 1;
+    }
+    if (!active) return;
+    if (attempt < 10) await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new HttpError(409, "campaign_decisions_draining", "Active house decisions are still committing. Retry this same close action to resume its signed drain.");
+}
+async function finalizeClosedDecisionState(base44, session, secret, action, idempotencyKey) {
+  let state = await loadDecisionCampaignState(base44, session, secret);
+  const targetState = targetStateFor(action);
+  if (state.state === targetState) {
+    if (state.transition_action !== action || state.transition_idempotency_key !== idempotencyKey || String(state.transition_completed_at || "") !== String(session.closed_at || "")) throw new HttpError(409, "canvas_decision_state_integrity_failed", "The closed campaign decision gate does not match its signed lifecycle.");
+    return state;
+  }
+  if (state.state !== "draining" || state.transition_action !== action || state.transition_idempotency_key !== idempotencyKey) throw new HttpError(409, "campaign_transition_in_progress", "The campaign decision gate changed before close finalized.");
+  const update = {
+    state: targetState,
+    state_version: Number(state.state_version) + 1,
+    transition_completed_at: session.closed_at,
+    superseded_by_campaign_id: null
+  };
+  update.state_signature = await signDecisionPayload(secret, campaignDecisionStatePayload({ ...state, ...update }));
+  const mutation = await base44.asServiceRole.entities.CanvasDecisionCampaignState.updateMany({ id: state.id, manager_id: session.manager_id, campaign_id: session.id, state: "draining", state_version: Number(state.state_version), state_signature: state.state_signature }, { $set: update });
+  if (mutation?.success !== true || Number(mutation?.updated) !== 1 || mutation?.has_more === true) throw new HttpError(409, "campaign_transition_in_progress", "The campaign decision gate changed before close finalized.");
+  state = await loadDecisionCampaignState(base44, session, secret);
+  if (state.state !== targetState) throw new HttpError(503, "canvas_close_fence_unverified", "The closed campaign decision fence could not be verified.");
+  return state;
 }
 Deno.serve(async (req) => {
   let base44 = null;
   let session = null;
-  let transitionLock = null;
   try {
     base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
@@ -235,13 +304,14 @@ Deno.serve(async (req) => {
       if (!validClosedSignature) {
         throw new HttpError(409, "lifecycle_signature_invalid", "The closed Canvas campaign failed lifecycle signature verification.");
       }
-      if (session.status !== targetState || session.close_action !== action || session.close_idempotency_key !== idempotencyKey) {
+      if (session.status !== targetState || session.close_action !== action) {
         throw new HttpError(409, "campaign_already_closed", `This Canvas campaign is already ${session.status}.`);
       }
       const originalVersion = Number(session.lifecycle_evidence?.from_version);
       if (expectedVersion !== originalVersion && expectedVersion !== Number(session.version)) {
         throw new HttpError(409, "version_conflict", "The Canvas campaign changed before this close retry.");
       }
+      await finalizeClosedDecisionState(base44, session, signingSecret, action, String(session.close_idempotency_key || ""));
       return Response.json(closeResponse(session, true));
     }
     if (session.status !== "deployed") {
@@ -253,7 +323,10 @@ Deno.serve(async (req) => {
     if (!await verifyCanvasLifecycleSession(signingSecret, session, "active")) {
       throw new HttpError(409, "lifecycle_signature_invalid", "The active Canvas campaign failed lifecycle signature verification.");
     }
-    transitionLock = await acquireCampaignTransitionLock(base44, session);
+    const drainingState = await beginCloseDecisionDrain(base44, session, signingSecret, action, idempotencyKey);
+    const transitionIdempotencyKey = String(drainingState.transition_idempotency_key || "");
+    if (!transitionIdempotencyKey) throw new HttpError(409, "canvas_decision_state_integrity_failed", "The signed close drain is missing its durable transition key.");
+    await waitForDecisionLeases(base44, session, signingSecret);
     session = await base44.entities.CanvasSession.get(sessionId).catch(() => null);
     if (!session || session.manager_id !== user.id || session.status !== "deployed" || session.lifecycle_state !== "active" || Number(session.version) !== expectedVersion || !await verifyCanvasLifecycleSession(signingSecret, session, "active")) {
       throw new HttpError(409, "version_conflict", "The Canvas campaign changed before the close lock was acquired. Reload before retrying.");
@@ -266,7 +339,7 @@ Deno.serve(async (req) => {
       transition: action,
       transitioned_at: closedAt,
       transitioned_by_user_id: user.id,
-      idempotency_key: idempotencyKey,
+      idempotency_key: transitionIdempotencyKey,
       from_version: Number(session.version),
       to_version: nextVersion,
       previous_signature: session.deployment_signature
@@ -290,7 +363,7 @@ Deno.serve(async (req) => {
       closed_at: closedAt,
       closed_by_user_id: user.id,
       close_action: action,
-      close_idempotency_key: idempotencyKey
+      close_idempotency_key: transitionIdempotencyKey
     };
     const signedSession = { ...session, ...lifecycleUpdate };
     const lifecycleSignature = await signCanvasLifecycle(
@@ -312,7 +385,8 @@ Deno.serve(async (req) => {
     } });
     if (mutation?.success !== true || Number(mutation?.updated) !== 1 || mutation?.has_more === true) {
       const latest = await base44.entities.CanvasSession.get(session.id).catch(() => null);
-      if (latest?.manager_id === user.id && latest?.status === targetState && latest?.close_action === action && latest?.close_idempotency_key === idempotencyKey && await verifyCanvasLifecycleSession(signingSecret, latest, targetState)) {
+      if (latest?.manager_id === user.id && latest?.status === targetState && latest?.close_action === action && await verifyCanvasLifecycleSession(signingSecret, latest, targetState)) {
+        await finalizeClosedDecisionState(base44, latest, signingSecret, action, String(latest.close_idempotency_key || ""));
         return Response.json(closeResponse(latest, true));
       }
       throw new HttpError(409, "version_conflict", "The Canvas campaign changed before the close committed. Reload before retrying.");
@@ -321,6 +395,7 @@ Deno.serve(async (req) => {
     if (!updated || !await verifyCanvasLifecycleSession(signingSecret, updated, targetState)) {
       throw new HttpError(503, "canvas_close_commit_unverified", "The Canvas lifecycle commit could not be verified. Reload before retrying.");
     }
+    await finalizeClosedDecisionState(base44, updated, signingSecret, action, transitionIdempotencyKey);
     return Response.json(closeResponse(updated, false));
   } catch (error) {
     if (error instanceof HttpError) {
@@ -335,7 +410,5 @@ Deno.serve(async (req) => {
       error: "canvas_close_failed",
       message: "Canvas campaign could not be closed. No trusted lifecycle transition was confirmed."
     }, { status: 503 });
-  } finally {
-    if (base44 && session && transitionLock) await releaseCampaignTransitionLock(base44, session, transitionLock);
   }
 });

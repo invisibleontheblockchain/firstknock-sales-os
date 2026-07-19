@@ -44,6 +44,24 @@ const roadNetwork = {
   ],
 };
 
+test('large Canvas analysis survives reload and exposes explicit server cancellation', () => {
+  const home = readFileSync(new URL('../src/pages/Home.jsx', import.meta.url), 'utf8');
+  const builder = readFileSync(new URL('../src/components/map/CanvasBuilderSettings.jsx', import.meta.url), 'utf8');
+  const workspace = readFileSync(new URL('../src/components/map/CanvasPlannerWorkspace.jsx', import.meta.url), 'utf8');
+  const client = readFileSync(new URL('../src/components/canvas/canvasProductionClient.js', import.meta.url), 'utf8');
+
+  assert.match(home, /readPersistedCanvasAnalysisJob\(user\.id\)/);
+  assert.match(home, /canvasAnalysisJobHydrationRef\.current === hydrationKey/);
+  assert.match(home, /setCanvasDrawnPolygon\(validation\.points\)[\s\S]*?setModeRaw\('generate'\)[\s\S]*?setShowCompare\(true\)/);
+  assert.match(builder, /resumedJobContextRef\.current === contextKey[\s\S]*?setRequestedAreaCount\(persisted\.areaCount\)/);
+  assert.match(builder, /resumeJobId[\s\S]*?persistCanvasAnalysisJob\(/);
+  assert.match(builder, /A job summary is not deployable evidence/);
+  assert.match(builder, /await cancelCanvasAnalysis\(\{ jobId \}\)/);
+  assert.match(workspace, /Cancel analysis/);
+  assert.match(client, /canvasCancelAnalysis/);
+  assert.match(client, /CANVAS_ANALYSIS_JOB_STORAGE_PREFIX/);
+});
+
 function assignedPlan({ divisionMode = 'selected_reps' } = {}) {
   const result = planCanvasTerritories({
     polygon,
@@ -131,6 +149,52 @@ test('Canvas client sends the territory pin and shared campaign map contracts', 
     assert.equal(calls[1].payload.outcome, 'appointment');
     assert.equal(calls[1].payload.note, 'Call tomorrow');
     assert.equal(calls[1].payload.unit_label, '4B');
+  } finally {
+    delete globalThis.__canvasBase44Test;
+  }
+});
+
+test('Canvas client sends audited amber groups as one bounded atomic override request', async () => {
+  const calls = [];
+  const source = readFileSync(new URL('../src/components/canvas/canvasProductionClient.js', import.meta.url), 'utf8')
+    .replace(/^import \{ base44 \} from ['"]@\/api\/base44Client['"];?$/m, 'const base44 = globalThis.__canvasBase44Test;');
+  globalThis.__canvasBase44Test = {
+    functions: {
+      invoke: async (name, payload) => {
+        calls.push({ name, payload });
+        return { data: { success: true, revision_id: 'canvas_revision_group', street_unit_ids: payload.street_unit_ids, target_count: payload.street_unit_ids?.length || 1 } };
+      },
+    },
+  };
+  const builderSource = readFileSync(new URL('../src/components/map/CanvasBuilderSettings.jsx', import.meta.url), 'utf8');
+  assert.match(builderSource, /streetUnitIds: requestedUnitIds/);
+  assert.doesNotMatch(builderSource, /for \(const unitId of requestedUnitIds\)/,
+    'the manager UI must not split one audited group into partially committed requests');
+
+  try {
+    const client = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}#atomic-group`);
+    await client.applyCanvasClassificationOverride({
+      evidenceId: 'canvas_evidence_1',
+      parentRevisionId: 'canvas_revision_parent',
+      streetUnitIds: ['unit_c', 'unit_a', 'unit_b'],
+      canvasRole: 'transit_only',
+      opportunityClassification: 'none',
+      accessClassification: 'permitted',
+      reason: 'Audited named-street group.',
+    });
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].name, 'canvasApplyClassificationOverride');
+    assert.equal(calls[0].payload.street_unit_id, 'unit_a');
+    assert.deepEqual(calls[0].payload.street_unit_ids, ['unit_a', 'unit_b', 'unit_c']);
+
+    assert.throws(() => client.applyCanvasClassificationOverride({
+      evidenceId: 'canvas_evidence_1',
+      streetUnitIds: ['unit_a', 'unit_b'],
+      canvasRole: 'knock',
+      opportunityCount: 10,
+      reason: 'Grouped residential decision.',
+    }), (error) => error?.code === 'CANVAS_OVERRIDE_GROUP_ROLE_INVALID');
+    assert.equal(calls.length, 1, 'invalid grouped residential decisions never reach the server');
   } finally {
     delete globalThis.__canvasBase44Test;
   }
@@ -591,6 +655,84 @@ test('draft payload carries canonical territory geometry and no house-analysis d
   assert.equal('target_homes' in payload, false);
 });
 
+test('residential Canvas drafts preserve pinned evidence and assign only verified knock units', () => {
+  const knockUnit = {
+    id: 'street_knock_1',
+    unit_id: 'street_knock_1',
+    kind: 'residential',
+    canvas_role: 'knock',
+    opportunity_classification: 'likely',
+    access_classification: 'permitted',
+    opportunity_low: 8,
+    opportunity_expected: 10,
+    opportunity_high: 12,
+    opportunity_source: 'deduplicated_addresses',
+    confidence: 'high',
+    protected: true,
+    street_names: ['Oak Court'],
+    neighbor_ids: ['street_context_1'],
+    street_length_meters: 120,
+    segments: [{ edge_id: 'edge_1', start: polygon[0], end: polygon[1], street_names: ['Oak Court'], length_meters: 120 }],
+  };
+  const contextUnit = {
+    ...knockUnit,
+    id: 'street_context_1',
+    unit_id: 'street_context_1',
+    canvas_role: 'excluded',
+    opportunity_classification: 'none',
+    opportunity_low: 0,
+    opportunity_expected: 0,
+    opportunity_high: 0,
+    opportunity_source: 'commercial_landuse',
+    protected: false,
+    neighbor_ids: ['street_knock_1'],
+  };
+  const plan = {
+    territory_model: 'residential_street_territory_v2',
+    planning_method: 'street_workload',
+    assignment_basis: 'street_work_unit_ids',
+    division_basis: 'area_count',
+    workload_basis: 'residential_opportunity',
+    algorithm_version: 'residential-v2.1+partition-v1',
+    data_version: '2026-07-18T00:00:00Z',
+    evidence_id: `canvas_evidence_${'a'.repeat(64)}`,
+    snapshot_hash: 'a'.repeat(64),
+    revision_id: null,
+    unresolved_unit_count: 0,
+    selected_team_member_ids: ['rep_1'],
+    work_units: [knockUnit, contextUnit],
+    zones: [{
+      zone_id: 'area_1',
+      zone_number: 1,
+      geometry_role: 'display_only',
+      assigned_team_member_id: 'rep_1',
+      work_unit_ids: ['street_knock_1'],
+      street_length_meters: 120,
+      workload_score: 10,
+    }],
+    qa: {
+      deployable: true,
+      street_coverage_complete: true,
+      no_duplicate_work_units: true,
+      no_missing_work_units: true,
+      connected_zones: true,
+      atomic_work_units: true,
+      cul_de_sac_splits: 0,
+      protected_units_intact: true,
+      data_quality_status: 'verified',
+    },
+  };
+  assert.equal(isCanvasPlanDeployable(plan), true);
+  assert.equal(isCanvasPlanDeployable({ ...plan, unresolved_unit_count: 1 }), false);
+  const payload = buildCanvasDraftPayload({ sessionName: 'Residential North', polygon, plan });
+  assert.equal(payload.territory_model, 'residential_street_territory_v2');
+  assert.equal(payload.workload_basis, 'residential_opportunity');
+  assert.equal(payload.evidence_id, plan.evidence_id);
+  assert.equal(payload.snapshot_hash, plan.snapshot_hash);
+  assert.deepEqual(payload.work_units.map((unit) => unit.id), ['street_knock_1', 'street_context_1']);
+  assert.deepEqual(payload.zones[0].work_unit_ids, ['street_knock_1']);
+});
+
 test('renaming a Canvas draft clears a pending deployment retry', () => {
   const source = readFileSync(new URL('../src/components/map/CanvasBuilderSettings.jsx', import.meta.url), 'utf8');
   assert.match(source, /const changeSessionName = \(value\) => \{[\s\S]*?setSessionName\(value\);[\s\S]*?deploymentAttemptRef\.current = null;/);
@@ -774,6 +916,12 @@ test('Canvas complexity guard matches the exact save and deploy boundary', () =>
   assert.equal(rejectedUnits.supported, false);
   assert.equal(rejectedSegments.segmentCount, 50_001);
   assert.equal(rejectedSegments.supported, false);
+
+  const builder = readFileSync(new URL('../src/components/map/CanvasBuilderSettings.jsx', import.meta.url), 'utf8');
+  const preflightOffset = builder.indexOf('const preflightComplexity = getCanvasPlanComplexityStatus');
+  const workerOffset = builder.indexOf('const partition = await partitionCanvasResidentialTerritoriesAsync');
+  assert.ok(preflightOffset > 0, 'the preview must compute its complexity before starting the worker');
+  assert.ok(workerOffset > preflightOffset, 'unsupported plans must be rejected before worker execution');
 });
 
 test('Canvas guards every visible unsaved-plan exit and keeps saved draft identity across replanning', () => {

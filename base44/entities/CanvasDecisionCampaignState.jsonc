@@ -1,0 +1,50 @@
+{
+  "name": "CanvasDecisionCampaignState",
+  "type": "object",
+  "properties": {
+    "manager_id": { "type": "string" },
+    "campaign_id": { "type": "string" },
+    "deployment_plan_version": { "type": "integer", "minimum": 1 },
+    "plan_hash": { "type": "string" },
+    "state": {
+      "type": "string",
+      "enum": ["active", "draining", "completed", "recalled", "superseded"]
+    },
+    "state_version": { "type": "integer", "minimum": 1 },
+    "transition_action": {
+      "type": "string",
+      "enum": ["deploy", "complete", "recall", "supersede"]
+    },
+    "transition_idempotency_key": { "type": "string", "maxLength": 512 },
+    "transition_started_at": { "type": "string", "format": "date-time" },
+    "transition_completed_at": { "type": "string", "format": "date-time" },
+    "superseded_by_campaign_id": { "type": "string" },
+    "anchor_signature": {
+      "type": "string",
+      "description": "HMAC over immutable campaign/tenant/deployment-plan identity."
+    },
+    "state_signature": {
+      "type": "string",
+      "description": "HMAC over the complete mutable decision-gate state and immutable anchor."
+    }
+  },
+  "required": [
+    "manager_id",
+    "campaign_id",
+    "deployment_plan_version",
+    "plan_hash",
+    "state",
+    "state_version",
+    "transition_action",
+    "transition_idempotency_key",
+    "transition_started_at",
+    "anchor_signature",
+    "state_signature"
+  ],
+  "rls": {
+    "create": { "user_condition": { "role": "admin" } },
+    "read": { "user_condition": { "role": "admin" } },
+    "update": { "user_condition": { "role": "admin" } },
+    "delete": { "user_condition": { "role": "admin" } }
+  }
+}

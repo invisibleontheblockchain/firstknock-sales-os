@@ -38,6 +38,7 @@ function canvasStoredPlanForHash(session) {
     qa: session?.qa || {},
     algorithm_version: session?.algorithm_version || null,
     data_version: session?.data_version || null,
+    ...session?.territory_model === "residential_street_territory_v2" ? { evidence_id: session?.evidence_id, revision_id: session?.revision_id || null, snapshot_hash: session?.snapshot_hash, evidence_schema_version: Number(session?.evidence_schema_version), unresolved_unit_count: Number(session?.unresolved_unit_count || 0), assignment_version: Number(session?.assignment_version || 0) } : {},
     manager_id: session?.manager_id,
     version: planVersion
   };
@@ -106,7 +107,6 @@ var PAGE_SIZE = 500;
 var MAX_PINS = 1e4;
 var MAX_EVENTS = 2e4;
 var MAX_DNC_PINS = 2e4;
-var MAX_LIFECYCLE_ROWS = 1e4;
 var HttpError = class extends Error {
   status;
   code;
@@ -144,37 +144,48 @@ function bindingMatches(session, member, user) {
   const binding = asArray2(session?.deployment_qa?.verified_team_member_bindings).find((candidate) => String(candidate?.team_member_id || "") === String(member?.id || ""));
   return binding && String(binding.user_id || "") === String(user.id || "") && normalized(binding.email) === normalized(user.email) && String(member.user_id || "") === String(user.id || "");
 }
-async function loadLifecycle(base44, managerId, secret) {
-  const rows = [];
-  for (const status of ["deployed", "completed", "recalled"]) {
-    let offset = 0;
-    while (true) {
-      const page = asArray2(await base44.asServiceRole.entities.CanvasSession.filter({ manager_id: managerId, status }, "-deployed_at", PAGE_SIZE, offset));
-      rows.push(...page);
-      if (rows.length > MAX_LIFECYCLE_ROWS) throw new HttpError(503, "canvas_lifecycle_scan_limit", "Canvas lifecycle history exceeds the safe map verification limit.");
-      if (page.length < PAGE_SIZE) break;
-      offset += page.length;
-    }
-  }
-  const valid = [];
-  for (const row of [...new Map(rows.map((item) => [item.id, item])).values()]) {
-    if (!await verifyCanvasLifecycleSession(secret, row)) throw new HttpError(409, "canvas_lifecycle_integrity_failed", "Canvas lifecycle history failed integrity verification.");
-    valid.push(row);
-  }
-  return valid;
+async function signDecisionPayload(secret, payload) {
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(JSON.stringify(canonicalize(payload))));
+  return [...new Uint8Array(signature)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
-function supersededByMap(sessions) {
-  const byId = new Map(sessions.map((session) => [session.id, session]));
-  const result = /* @__PURE__ */ new Map();
-  for (const newer of sessions) {
-    const newerAt = Date.parse(newer.deployed_at || "");
-    for (const olderId of asArray2(newer.deployment_qa?.superseded_session_ids)) {
-      const older = byId.get(olderId);
-      if (!older || older.manager_id !== newer.manager_id || newer.id === older.id) continue;
-      if (newerAt >= Date.parse(older.deployed_at || "")) result.set(older.id, newer.id);
-    }
-  }
-  return result;
+function campaignDecisionAnchorPayload(session) {
+  return {
+    purpose: "firstknock-canvas-decision-campaign-anchor-v1",
+    manager_id: String(session?.manager_id || ""),
+    campaign_id: String(session?.id || session?.campaign_id || ""),
+    deployment_plan_version: Number(session?.deployment_plan_version),
+    plan_hash: String(session?.plan_hash || "")
+  };
+}
+function campaignDecisionStatePayload(state) {
+  return {
+    purpose: "firstknock-canvas-decision-campaign-state-v1",
+    anchor_signature: String(state?.anchor_signature || ""),
+    manager_id: String(state?.manager_id || ""),
+    campaign_id: String(state?.campaign_id || ""),
+    deployment_plan_version: Number(state?.deployment_plan_version),
+    plan_hash: String(state?.plan_hash || ""),
+    state: String(state?.state || ""),
+    state_version: Number(state?.state_version),
+    transition_action: String(state?.transition_action || ""),
+    transition_idempotency_key: String(state?.transition_idempotency_key || ""),
+    transition_started_at: String(state?.transition_started_at || ""),
+    transition_completed_at: state?.transition_completed_at || null,
+    superseded_by_campaign_id: state?.superseded_by_campaign_id || null
+  };
+}
+async function loadDecisionCampaignState(base44, session, secret) {
+  const rows = asArray2(await base44.asServiceRole.entities.CanvasDecisionCampaignState.filter({ manager_id: session.manager_id, campaign_id: session.id }, "-updated_date", 2)).filter((row) => String(row.manager_id || "") === String(session.manager_id || "") && String(row.campaign_id || "") === String(session.id || ""));
+  if (rows.length !== 1) throw new HttpError(409, "canvas_decision_state_integrity_failed", "The campaign decision gate is missing or duplicated.");
+  const state = rows[0];
+  const expectedAnchor = await signDecisionPayload(secret, campaignDecisionAnchorPayload(session));
+  const valid = String(state.anchor_signature || "") === expectedAnchor
+    && Number(state.deployment_plan_version) === Number(session.deployment_plan_version)
+    && String(state.plan_hash || "") === String(session.plan_hash || "")
+    && String(state.state_signature || "") === await signDecisionPayload(secret, campaignDecisionStatePayload(state));
+  if (!valid) throw new HttpError(409, "canvas_decision_state_integrity_failed", "The campaign decision gate failed signed tenant-scoped verification.");
+  return state;
 }
 async function pagedFilter(entity, filter, sort, maximum) {
   const rows = [];
@@ -247,6 +258,9 @@ function publicPin(pin) {
     pin_id: pin.id,
     campaign_id: pin.campaign_id,
     zone_id: pin.zone_id,
+    street_unit_id: pin.street_unit_id || null,
+    evidence_id: pin.evidence_id || null,
+    revision_id: pin.revision_id || null,
     lat: pin.lat,
     lng: pin.lng,
     address: pin.address || null,
@@ -266,6 +280,9 @@ function publicEvent(event) {
     pin_id: event.pin_id,
     campaign_id: event.campaign_id,
     zone_id: event.zone_id,
+    street_unit_id: event.street_unit_id || null,
+    evidence_id: event.evidence_id || null,
+    revision_id: event.revision_id || null,
     actor_team_member_id: event.actor_team_member_id || null,
     outcome: event.outcome,
     note: event.note || null,
@@ -297,15 +314,26 @@ Deno.serve(async (req) => {
     if (String(session.manager_id || "") !== String(managerId || "")) throw new HttpError(403, "forbidden", "This Canvas campaign belongs to another team.");
     let effectiveStatus = session.status || "draft";
     let supersededBySessionId = null;
+    if (session.status === "draft" && session.plan_hash !== await sha256(canvasStoredPlanForHash(session))) {
+      throw new HttpError(409, "plan_hash_mismatch", "The Canvas draft failed canonical plan verification.");
+    }
     if (session.status !== "draft") {
       const secret = deploymentSigningSecret();
-      const lifecycle = await loadLifecycle(base44, managerId, secret);
-      const superseded = supersededByMap(lifecycle);
-      supersededBySessionId = superseded.get(session.id) || null;
-      if (supersededBySessionId) effectiveStatus = "superseded";
+      if (!await verifyCanvasLifecycleSession(secret, session)) throw new HttpError(409, "canvas_lifecycle_integrity_failed", "This Canvas campaign failed signed lifecycle verification.");
+      const decisionState = await loadDecisionCampaignState(base44, session, secret);
+      if (decisionState.state === "superseded") {
+        supersededBySessionId = decisionState.superseded_by_campaign_id || null;
+        if (!supersededBySessionId) throw new HttpError(409, "canvas_decision_state_integrity_failed", "The superseded campaign is missing its direct successor marker.");
+        effectiveStatus = "superseded";
+      } else if (decisionState.state === "draining") {
+        effectiveStatus = "transitioning";
+      } else if (decisionState.state !== session.lifecycle_state) {
+        throw new HttpError(409, "canvas_decision_state_integrity_failed", "The campaign decision gate does not match its signed lifecycle state.");
+      }
       if (!manager && (session.status !== "deployed" || session.lifecycle_state !== "active" || supersededBySessionId)) {
         throw new HttpError(409, "campaign_not_active", "This Canvas assignment is no longer active. Refresh assignments.");
       }
+      if (!manager && decisionState.state !== "active") throw new HttpError(409, "campaign_not_active", "This Canvas assignment is closing or no longer active. Refresh assignments.");
     } else if (!manager) {
       throw new HttpError(403, "draft_not_visible", "Canvas drafts are manager-only.");
     }
@@ -348,7 +376,9 @@ Deno.serve(async (req) => {
       }
     }
     const visibleWorkUnitIds = new Set(visibleZones.flatMap((zone) => asArray2(zone.work_unit_ids).map(String)));
-    const workUnits = asArray2(session.work_units).filter((unit) => visibleWorkUnitIds.has(String(unit.id)));
+    const workUnits = manager && session.territory_model === "residential_street_territory_v2"
+      ? asArray2(session.work_units)
+      : asArray2(session.work_units).filter((unit) => visibleWorkUnitIds.has(String(unit.id)));
     return Response.json({
       success: true,
       access_scope: manager ? "manager_global" : "rep_assigned_zones",
@@ -364,6 +394,11 @@ Deno.serve(async (req) => {
         plan_hash: manager ? session.plan_hash || null : void 0,
         algorithm_version: manager ? session.algorithm_version || null : void 0,
         data_version: manager ? session.data_version || null : void 0,
+        evidence_id: manager ? session.evidence_id || null : void 0,
+        revision_id: manager ? session.revision_id || null : void 0,
+        snapshot_hash: manager ? session.snapshot_hash || null : void 0,
+        unresolved_unit_count: manager ? Number(session.unresolved_unit_count || 0) : void 0,
+        assignment_version: manager ? Number(session.assignment_version || 0) : void 0,
         area_count: manager ? allZones.length : void 0,
         rep_count: manager ? Number(session.rep_count || 0) : void 0,
         selected_team_member_ids: manager ? asArray2(session.selected_team_member_ids).map(String) : void 0,
