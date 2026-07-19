@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import { pathToFileURL } from 'node:url';
+import { fieldRoutesSetupAccess } from '../src/components/fieldroutes/fieldRoutesManagerSetup.js';
 
 const root = process.cwd();
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8');
@@ -86,6 +87,39 @@ test('manager Integrations setup is write-only, environment-safe, and capability
   assert.match(source, /FieldRoutes API budget is running high/);
   assert.match(source, /<AlertDialog>/);
   assert.match(source, /Disconnect FieldRoutes\?/);
+});
+
+test('manager can enter credentials when capability status fails but not while loading or explicitly disabled', () => {
+  assert.deepEqual(fieldRoutesSetupAccess({ capabilityLoading: true }), {
+    explicitlyDisabled: false,
+    controlsDisabled: true,
+  });
+  assert.deepEqual(fieldRoutesSetupAccess({ capabilitySucceeded: true, capabilityEnabled: false }), {
+    explicitlyDisabled: true,
+    controlsDisabled: true,
+  });
+  assert.deepEqual(fieldRoutesSetupAccess({ capabilitySucceeded: true, capabilityEnabled: true }), {
+    explicitlyDisabled: false,
+    controlsDisabled: false,
+  });
+  assert.deepEqual(fieldRoutesSetupAccess({ capabilitySucceeded: false, capabilityEnabled: undefined }), {
+    explicitlyDisabled: false,
+    controlsDisabled: false,
+  });
+  assert.equal(fieldRoutesSetupAccess({ savePending: true }).controlsDisabled, true);
+
+  const page = read('src/pages/Integrations.jsx');
+  const hydrationEffect = page.match(/React\.useEffect\(\(\) => \{[\s\S]*?\}, \[capabilityQuery\.data\]\);/)?.[0] || '';
+  assert.ok(hydrationEffect, 'capability hydration effect is missing');
+  assert.doesNotMatch(hydrationEffect, /setAuthenticationKey|setAuthenticationToken/);
+  assert.match(page, /You can enter these details while status is unavailable/);
+});
+
+test('FirstKnock storage failures are sanitized and do not blame FieldRoutes', () => {
+  const source = read('src/api/fieldRoutes.js');
+
+  assert.match(source, /database_unavailable: ['"]FirstKnock FieldRoutes storage is not configured yet\. No credentials were sent\./);
+  assert.match(source, /fieldroutes_unavailable: ['"]FirstKnock FieldRoutes server setup is unavailable\. No credentials were sent\./);
 });
 
 test('manager activity presents backend queue states without exposing raw provider records', () => {

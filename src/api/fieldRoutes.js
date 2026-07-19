@@ -70,6 +70,8 @@ const SAFE_ERROR_MESSAGES = Object.freeze({
   invalid_canvas_location: 'Choose a verified house location inside the active Canvas area.',
   invalid_source: 'FirstKnock could not verify the route or Canvas source for this inspection.',
   invalid_request: 'Review the required inspection details and try again.',
+  database_unavailable: 'FirstKnock FieldRoutes storage is not configured yet. No credentials were sent. Contact FirstKnock support.',
+  fieldroutes_unavailable: 'FirstKnock FieldRoutes server setup is unavailable. No credentials were sent. Try again or contact FirstKnock support.',
   encryption_unavailable: 'Secure FieldRoutes credential storage is not configured. Contact FirstKnock support.',
   encrypted_record_invalid: 'The saved FieldRoutes connection must be reconnected by a manager.',
 });
