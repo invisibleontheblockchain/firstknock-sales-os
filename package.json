@@ -15,6 +15,8 @@
     "test:precision-usage": "node --test test/billing-upgrade.test.mjs test/precision-property-usage.test.mjs test/precision-pull-cap.test.mjs test/precision-cancellation.test.mjs",
     "test:custom-range": "node --test test/custom-ownership-range.test.mjs",
     "test:route-bounds": "node --test test/route-bounds.test.mjs test/route-bounds-integration.test.mjs",
+    "test:fieldroutes": "node --test test/fieldroutes-backend.test.mjs test/fieldroutes-manager-ui.test.mjs test/fieldroutes-rep-ui.test.mjs",
+    "smoke:fieldroutes:readonly": "node scripts/fieldroutes-readonly-smoke.mjs",
     "typecheck": "tsc -p ./jsconfig.validation.json",
     "validate:dependencies": "npm audit --audit-level=high",
     "validate:backend": "node scripts/validate-backend.mjs",

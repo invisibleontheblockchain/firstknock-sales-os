@@ -9,6 +9,16 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { getCanvasCampaignMap, logCanvasHouseDecision } from '@/components/canvas/canvasProductionClient';
+import { getFieldRoutesStatuses } from '@/api/fieldRoutes';
+import ScheduleInspectionAction from '@/components/fieldroutes/ScheduleInspectionAction';
+import {
+  fieldRoutesStatusRows,
+  fieldRoutesStatusPresentation,
+  findFieldRoutesStatus,
+  isFieldRoutesCapabilityReady,
+  isFieldRoutesTerminalStatus,
+  preferFieldRoutesStatus,
+} from '@/components/fieldroutes/fieldRoutesPresentation';
 import {
   acknowledgeCanvasDecision,
   listQueuedCanvasDecisions,
@@ -23,8 +33,39 @@ import {
   normalizeCanvasRing,
 } from '@/components/canvas/canvasOutcomeUtils';
 
+function fieldRoutesOverlayStyle(status) {
+  const tone = status?.tone;
+  if (tone === 'synced') return { color: '#38BDF8', label: 'FieldRoutes sent' };
+  if (tone === 'attention') return { color: '#FB7185', label: 'FieldRoutes needs review' };
+  if (tone === 'device') return { color: '#FBBF24', label: 'FieldRoutes saved on device', dashArray: '3 3' };
+  if (tone === 'pending') return { color: '#F59E0B', label: 'FieldRoutes sync pending', dashArray: '4 3' };
+  return null;
+}
+
 const PIN_REFRESH_MS = 15_000;
+const FIELDROUTES_STATUS_POLL_MS = 15_000;
 const DNC_SAFETY_ERROR_CODES = new Set(['dnc_safety_limit_exceeded', 'dnc_safety_integrity_failed']);
+
+function canvasFieldRoutesStatus(response, sourceKey, pinId = '') {
+  return findFieldRoutesStatus(response, (row) => (
+    String(row?.source_key || row?.source_reference || '') === sourceKey
+    || pinId && String(row?.pin_id || '') === String(pinId)
+  ));
+}
+
+function shouldPollCanvasFieldRoutes(response, localStatuses, campaignId, zoneId) {
+  const sourcePrefix = campaignId && zoneId ? `canvas:${campaignId}:${zoneId}:` : '';
+  const serverRows = fieldRoutesStatusRows(response).filter((row) => (
+    (!campaignId || String(row?.campaign_id || '') === String(campaignId))
+    && (!zoneId || String(row?.zone_id || '') === String(zoneId))
+  ));
+  if (serverRows.some((row) => !isFieldRoutesTerminalStatus(row))) return true;
+  return Object.entries(localStatuses || {}).some(([sourceKey, localStatus]) => {
+    if (!sourcePrefix || !sourceKey.startsWith(sourcePrefix)) return false;
+    const serverStatus = canvasFieldRoutesStatus(response, sourceKey);
+    return !isFieldRoutesTerminalStatus(preferFieldRoutesStatus(localStatus, serverStatus));
+  });
+}
 
 function makeIdempotencyKey() {
   try { return crypto.randomUUID(); } catch { return `canvas_pin_${Date.now()}_${Math.random().toString(36).slice(2)}`; }
@@ -127,6 +168,11 @@ export default function CanvasFieldView({
   rejectedDeployments = 0,
   user,
   navigationApp = 'google',
+  fieldRoutesCapability,
+  fieldRoutesPendingBySource = {},
+  fieldRoutesPendingDeviceCount = 0,
+  onDiscardFieldRoutesDeviceAttention,
+  onScheduleFieldRoutesInspection,
   onClose,
 }) {
   const normalizedAssignments = useMemo(() => normalizeAssignments(assignments), [assignments]);
@@ -141,6 +187,8 @@ export default function CanvasFieldView({
   const [replacementTemplate, setReplacementTemplate] = useState(null);
   const [saving, setSaving] = useState(false);
   const [satellite, setSatellite] = useState(true);
+  const [fieldRoutesStatuses, setFieldRoutesStatuses] = useState(null);
+  const [fieldRoutesLocalStatuses, setFieldRoutesLocalStatuses] = useState({});
   const activeRequestRef = useRef(0);
   const dncSafetyCompleteRef = useRef(false);
   const assignment = normalizedAssignments.find((item) => item.__key === selectedAssignmentKey) || normalizedAssignments[0] || null;
@@ -156,6 +204,31 @@ export default function CanvasFieldView({
   }, [campaignBoundary, streetSegments]);
   const center = useMemo(() => mapCenter(mapPoints, pins), [mapPoints, pins]);
   const zoneColor = zone?.color || '#A855F7';
+  const fieldRoutesCanvasReady = isFieldRoutesCapabilityReady(fieldRoutesCapability, 'canvas');
+
+  const refreshFieldRoutesStatuses = useCallback(async () => {
+    if (!isFieldRoutesCapabilityReady(fieldRoutesCapability, 'canvas')) {
+      setFieldRoutesStatuses(null);
+      return;
+    }
+    if (!assignment?.campaign_id || !zone?.zone_id) return;
+    try {
+      const result = await getFieldRoutesStatuses({
+        source_mode: 'canvas',
+        campaign_id: assignment.campaign_id,
+        zone_id: zone.zone_id,
+      });
+      setFieldRoutesStatuses(result);
+    } catch {
+      // FieldRoutes status is supplemental; Canvas safety and house decisions keep their own behavior.
+    }
+  }, [assignment?.campaign_id, fieldRoutesCapability, zone?.zone_id]);
+  const fieldRoutesPollingRequired = useMemo(() => fieldRoutesCanvasReady && shouldPollCanvasFieldRoutes(
+    fieldRoutesStatuses,
+    fieldRoutesLocalStatuses,
+    assignment?.campaign_id,
+    zone?.zone_id,
+  ), [assignment?.campaign_id, fieldRoutesCanvasReady, fieldRoutesLocalStatuses, fieldRoutesStatuses, zone?.zone_id]);
 
   useEffect(() => {
     if (normalizedAssignments.some((item) => item.__key === selectedAssignmentKey)) return;
@@ -264,6 +337,23 @@ export default function CanvasFieldView({
     };
   }, [assignment?.__key, refreshPendingDecisions, refreshPins, retryPendingDecisions]);
 
+  useEffect(() => {
+    refreshFieldRoutesStatuses();
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') refreshFieldRoutesStatuses();
+    };
+    window.addEventListener('focus', refreshFieldRoutesStatuses);
+    document.addEventListener('visibilitychange', onVisible);
+    const interval = fieldRoutesPollingRequired
+      ? window.setInterval(refreshFieldRoutesStatuses, FIELDROUTES_STATUS_POLL_MS)
+      : null;
+    return () => {
+      if (interval) window.clearInterval(interval);
+      window.removeEventListener('focus', refreshFieldRoutesStatuses);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [fieldRoutesPollingRequired, refreshFieldRoutesStatuses]);
+
   if (!assignment) {
     return (
       <div className="flex h-screen flex-col items-center justify-center bg-black p-6 text-center text-white">
@@ -285,6 +375,7 @@ export default function CanvasFieldView({
       address: template?.address || '',
       unitLabel: template?.unitLabel || '',
       pinId: null,
+      streetUnitId: null,
       idempotencyKey: makeIdempotencyKey(),
       clientRecordedAt: null,
       pendingDecision: null,
@@ -301,6 +392,7 @@ export default function CanvasFieldView({
       address: pin.address || '',
       unitLabel: pin.unit_label || queuedDecision?.unitLabel || '',
       pinId: queuedDecision?.pinId || (pin.pending ? null : pin.pin_id || null),
+      streetUnitId: pin.street_unit_id || queuedDecision?.streetUnitId || null,
       idempotencyKey: queuedDecision?.idempotencyKey || makeIdempotencyKey(),
       clientRecordedAt: queuedDecision?.clientRecordedAt || null,
       pendingDecision: queuedDecision || null,
@@ -425,6 +517,75 @@ export default function CanvasFieldView({
     window.open(url, '_blank', 'noopener,noreferrer');
   };
 
+  const fieldRoutesSourceKey = pinDraft?.point && assignment?.campaign_id && zone?.zone_id
+    ? `canvas:${assignment.campaign_id}:${zone.zone_id}:${Number(pinDraft.point.lat).toFixed(6)}:${Number(pinDraft.point.lng).toFixed(6)}`
+    : '';
+  const pinDraftFieldRoutesStatus = fieldRoutesLocalStatuses[fieldRoutesSourceKey]
+    || fieldRoutesPendingBySource[fieldRoutesSourceKey];
+  const pinDraftServerFieldRoutesStatus = canvasFieldRoutesStatus(
+    fieldRoutesStatuses,
+    fieldRoutesSourceKey,
+    pinDraft?.pinId,
+  );
+  const preferredPinDraftFieldRoutesStatus = preferFieldRoutesStatus(
+    pinDraftFieldRoutesStatus,
+    pinDraftServerFieldRoutesStatus,
+  );
+
+  const fieldRoutesStyleForPin = (pin) => {
+    if (!pin || !assignment?.campaign_id || !zone?.zone_id) return null;
+    const sourceKey = `canvas:${assignment.campaign_id}:${zone.zone_id}:${Number(pin.lat).toFixed(6)}:${Number(pin.lng).toFixed(6)}`;
+    const localStatus = fieldRoutesLocalStatuses[sourceKey] || fieldRoutesPendingBySource[sourceKey];
+    const serverStatus = canvasFieldRoutesStatus(fieldRoutesStatuses, sourceKey, pin?.pin_id);
+    const status = preferFieldRoutesStatus(localStatus, serverStatus);
+    return status ? fieldRoutesOverlayStyle(fieldRoutesStatusPresentation(status)) : null;
+  };
+
+  const scheduleCanvasInspection = async ({ contact, property, notes }) => {
+    if (!pinDraft?.point || !pinDraft?.pinId || !assignment?.campaign_id || !zone?.zone_id || !fieldRoutesSourceKey) {
+      throw new Error('Sync this Canvas house decision before scheduling an inspection.');
+    }
+    if (typeof onScheduleFieldRoutesInspection !== 'function') {
+      throw new Error('FieldRoutes scheduling is still loading. Try again in a moment.');
+    }
+    const delivery = await onScheduleFieldRoutesInspection({
+      source: {
+        kind: 'canvas',
+        source_key: fieldRoutesSourceKey,
+        campaign_id: assignment.campaign_id,
+        zone_id: zone.zone_id,
+        pin_id: pinDraft.pinId,
+        street_unit_id: pinDraft.streetUnitId || null,
+        point: { lat: Number(pinDraft.point.lat), lng: Number(pinDraft.point.lng) },
+        unit: property.unit || null,
+        address: {
+          ...property,
+          lat: Number(pinDraft.point.lat),
+          lng: Number(pinDraft.point.lng),
+        },
+      },
+      contact,
+      property: {
+        ...property,
+        lat: Number(pinDraft.point.lat),
+        lng: Number(pinDraft.point.lng),
+      },
+      notes,
+    });
+    setFieldRoutesLocalStatuses((current) => ({ ...current, [fieldRoutesSourceKey]: delivery }));
+    setPinDraft((current) => current ? {
+      ...current,
+      address: property.street_address,
+      unitLabel: property.unit || current.unitLabel,
+    } : current);
+    if (delivery.kind === 'synced') toast.success(delivery.copy);
+    else if (delivery.kind === 'attention') toast.error(delivery.copy);
+    else if (delivery.kind === 'device_pending') toast.warning(delivery.copy, { duration: 7000 });
+    else toast.info(delivery.copy);
+    if (delivery.kind !== 'device_pending') refreshFieldRoutesStatuses();
+    return delivery;
+  };
+
   const outcomeCounts = pins.reduce((counts, pin) => {
     counts[pin.latest_outcome] = (counts[pin.latest_outcome] || 0) + 1;
     return counts;
@@ -443,6 +604,28 @@ export default function CanvasFieldView({
     needs_attention: decision.syncState === 'needs_attention',
     queued_decision: decision,
   })).filter(Boolean);
+  const fieldRoutesOnlyMarkers = (() => {
+    const prefix = `canvas:${assignment.campaign_id}:${zone.zone_id}:`;
+    const knownPoints = new Set([...pins, ...pendingPins].map((pin) => `${Number(pin.lat).toFixed(6)}:${Number(pin.lng).toFixed(6)}`));
+    const bySource = new Map();
+    for (const row of fieldRoutesStatusRows(fieldRoutesStatuses)) {
+      const sourceKey = String(row?.source_key || row?.source_reference || '');
+      if (sourceKey.startsWith(prefix)) bySource.set(sourceKey, row);
+    }
+    for (const [sourceKey, status] of Object.entries(fieldRoutesPendingBySource || {})) {
+      if (sourceKey.startsWith(prefix)) bySource.set(sourceKey, status);
+    }
+    for (const [sourceKey, status] of Object.entries(fieldRoutesLocalStatuses || {})) {
+      if (sourceKey.startsWith(prefix)) bySource.set(sourceKey, status);
+    }
+    return [...bySource.entries()].map(([sourceKey, status]) => {
+      const [latText, lngText] = sourceKey.slice(prefix.length).split(':');
+      const lat = Number(latText);
+      const lng = Number(lngText);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng) || knownPoints.has(`${lat.toFixed(6)}:${lng.toFixed(6)}`)) return null;
+      return { sourceKey, lat, lng, style: fieldRoutesOverlayStyle(fieldRoutesStatusPresentation(status)) };
+    }).filter((marker) => marker?.style);
+  })();
 
   return (
     <div className="h-full flex flex-col bg-black text-white">
@@ -492,27 +675,62 @@ export default function CanvasFieldView({
           {streetPaths.length > 0 && <Polyline positions={streetPaths} interactive={false} pathOptions={{ color: zoneColor, opacity: 0.98, weight: 6, lineCap: 'round', lineJoin: 'round' }}><Tooltip sticky>Area {zone.zone_number} · your colored street territory</Tooltip></Polyline>}
           {pins.map((pin, index) => {
             const outcome = getCanvasOutcome(pin.latest_outcome);
+            const fieldRoutes = fieldRoutesStyleForPin(pin);
+            const markerKey = pin.pin_id || `${pin.lat}:${pin.lng}:${index}`;
             return (
-              <CircleMarker
-                key={pin.pin_id || `${pin.lat}:${pin.lng}:${index}`}
-                center={[pin.lat, pin.lng]}
-                radius={8}
-                bubblingMouseEvents={false}
-                eventHandlers={{ click: () => editPin(pin) }}
-                pathOptions={{ color: '#FFFFFF', fillColor: outcome.color, fillOpacity: 1, weight: 2 }}
-              >
-                <Tooltip direction="top">{outcome.label}{pin.address ? ` · ${pin.address}` : ''}{pin.unit_label ? ` · ${pin.unit_label}` : ''}</Tooltip>
-              </CircleMarker>
+              <React.Fragment key={markerKey}>
+                {fieldRoutes && (
+                  <CircleMarker
+                    center={[pin.lat, pin.lng]}
+                    radius={12}
+                    interactive={false}
+                    pathOptions={{ color: fieldRoutes.color, fillOpacity: 0, weight: 3, dashArray: fieldRoutes.dashArray }}
+                  />
+                )}
+                <CircleMarker
+                  center={[pin.lat, pin.lng]}
+                  radius={8}
+                  bubblingMouseEvents={false}
+                  eventHandlers={{ click: () => editPin(pin) }}
+                  pathOptions={{ color: '#FFFFFF', fillColor: outcome.color, fillOpacity: 1, weight: 2 }}
+                >
+                  <Tooltip direction="top">{outcome.label}{pin.address ? ` · ${pin.address}` : ''}{pin.unit_label ? ` · ${pin.unit_label}` : ''}{fieldRoutes ? ` · ${fieldRoutes.label}` : ''}</Tooltip>
+                </CircleMarker>
+              </React.Fragment>
             );
           })}
           {pendingPins.map((pin) => {
             const outcome = getCanvasOutcome(pin.latest_outcome);
+            const fieldRoutes = fieldRoutesStyleForPin(pin);
             return (
-              <CircleMarker key={pin.pin_id} center={[pin.lat, pin.lng]} radius={10} bubblingMouseEvents={false} eventHandlers={{ click: () => editPin(pin) }} pathOptions={{ color: pin.needs_attention ? '#F87171' : '#FDE68A', fillColor: outcome.color, fillOpacity: 0.75, weight: 3, dashArray: '4 3' }}>
-                <Tooltip direction="top">{pin.needs_attention ? 'Needs review' : 'Pending sync'} · {outcome.label}{pin.unit_label ? ` · ${pin.unit_label}` : ''}</Tooltip>
-              </CircleMarker>
+              <React.Fragment key={pin.pin_id}>
+                {fieldRoutes && (
+                  <CircleMarker center={[pin.lat, pin.lng]} radius={14} interactive={false} pathOptions={{ color: fieldRoutes.color, fillOpacity: 0, weight: 3, dashArray: fieldRoutes.dashArray }} />
+                )}
+                <CircleMarker center={[pin.lat, pin.lng]} radius={10} bubblingMouseEvents={false} eventHandlers={{ click: () => editPin(pin) }} pathOptions={{ color: pin.needs_attention ? '#F87171' : '#FDE68A', fillColor: outcome.color, fillOpacity: 0.75, weight: 3, dashArray: '4 3' }}>
+                  <Tooltip direction="top">{pin.needs_attention ? 'Needs review' : 'Pending sync'} · {outcome.label}{pin.unit_label ? ` · ${pin.unit_label}` : ''}{fieldRoutes ? ` · ${fieldRoutes.label}` : ''}</Tooltip>
+                </CircleMarker>
+              </React.Fragment>
             );
           })}
+          {fieldRoutesOnlyMarkers.map((marker) => (
+            <CircleMarker
+              key={marker.sourceKey}
+              center={[marker.lat, marker.lng]}
+              radius={9}
+              bubblingMouseEvents={false}
+              eventHandlers={{ click: () => choosePinLocation({ lat: marker.lat, lng: marker.lng }) }}
+              pathOptions={{
+                color: marker.style.color,
+                fillColor: '#08090B',
+                fillOpacity: 0.9,
+                weight: 4,
+                dashArray: marker.style.dashArray,
+              }}
+            >
+              <Tooltip direction="top">{marker.style.label} · tap to log the Canvas house outcome</Tooltip>
+            </CircleMarker>
+          ))}
           {zone.drop_point && normalizeCanvasPoint(zone.drop_point) && (
             <CircleMarker center={[normalizeCanvasPoint(zone.drop_point).lat, normalizeCanvasPoint(zone.drop_point).lng]} radius={9} pathOptions={{ color: '#fff', fillColor: zoneColor, fillOpacity: 1, weight: 2 }}>
               <Tooltip direction="top">Area center</Tooltip>
@@ -548,7 +766,8 @@ export default function CanvasFieldView({
 
           {pinDraft.pendingDecision?.syncState === 'needs_attention' && <p className="mt-3 rounded-xl border border-red-400/25 bg-red-500/10 p-3 text-xs text-red-100">{pinDraft.pendingDecision.lastErrorMessage || 'The server rejected this location. Retry the exact decision, choose a replacement location, or discard it.'}</p>}
 
-          <div className="mt-4 grid grid-cols-2 gap-2">
+          <p className="mt-4 text-[10px] font-black uppercase tracking-[0.18em] text-white/45">Log outcome</p>
+          <div className="mt-2 grid grid-cols-2 gap-2">
             {CANVAS_OUTCOMES.map((outcome) => (
               <button
                 type="button"
@@ -568,6 +787,12 @@ export default function CanvasFieldView({
             <Textarea disabled={saving || !dncSafetyComplete || Boolean(pinDraft.pendingDecision)} value={pinDraft.note} onChange={(event) => setPinDraft((current) => ({ ...current, note: event.target.value }))} placeholder="Note or callback detail (optional)" maxLength={1000} className="min-h-20 border-white/10 bg-white/5 text-white" />
           </div>
 
+          {!pinDraft.pinId && !pinDraft.pendingDecision && (
+            <p className="mt-3 rounded-xl border border-amber-300/20 bg-amber-500/10 px-3 py-2 text-[11px] leading-relaxed text-amber-100">
+              Log and sync this house first; then you can schedule an inspection.
+            </p>
+          )}
+
           {pinDraft.pendingDecision ? (
             <div className="mt-4 space-y-2">
               <div className="grid grid-cols-[auto_1fr] gap-2">
@@ -586,6 +811,28 @@ export default function CanvasFieldView({
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />} Sync house decision
               </Button>
             </div>
+          )}
+
+          {pinDraft.pinId && !pinDraft.pendingDecision && (fieldRoutesCanvasReady || preferredPinDraftFieldRoutesStatus) && (
+            <section className="mt-5 border-t border-white/10 pt-4">
+              <p className="mb-2 text-[10px] font-black uppercase tracking-[0.18em] text-emerald-200/70">FieldRoutes inspection</p>
+              <ScheduleInspectionAction
+                capability={fieldRoutesCapability}
+                mode="canvas"
+                status={preferredPinDraftFieldRoutesStatus}
+                disabled={saving || !dncSafetyComplete}
+                pendingDeviceCount={fieldRoutesPendingDeviceCount}
+                onDiscardDeviceAttention={typeof onDiscardFieldRoutesDeviceAttention === 'function'
+                  ? () => onDiscardFieldRoutesDeviceAttention(fieldRoutesSourceKey)
+                  : undefined}
+                onSubmit={scheduleCanvasInspection}
+                initialValues={{
+                  streetAddress: pinDraft.address || '',
+                  unit: pinDraft.unitLabel || '',
+                  notes: pinDraft.note || '',
+                }}
+              />
+            </section>
           )}
         </div>
       )}
