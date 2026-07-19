@@ -59,7 +59,9 @@ const ASSIGNED_ZONE_COLOR = '#64748B';
 const TERRITORY_COLORS = ['#A855F7', '#2563EB', '#059669', '#EA580C', '#DB2777', '#0891B2', '#CA8A04', '#7C3AED'];
 const CANVAS_HIGHWAY_FILTER = 'primary|secondary|tertiary|unclassified|residential|living_street';
 const CAMPAIGN_REFRESH_MS = 15_000;
-const MAX_CANVAS_DRAFT_JSON_CHARACTERS = 8_000_000;
+const MAX_CANVAS_DRAFT_JSON_BYTES = 8_000_000;
+const CANVAS_DRAFT_METADATA_RESERVE_BYTES = 200_000;
+const MAX_CANVAS_PREVIEW_JSON_BYTES = MAX_CANVAS_DRAFT_JSON_BYTES - CANVAS_DRAFT_METADATA_RESERVE_BYTES;
 
 const polygonKeyFor = (polygon = []) => polygon
   .map((point) => `${Number(point?.lat).toFixed(7)},${Number(point?.lng).toFixed(7)}`)
@@ -141,6 +143,19 @@ function normalizeGeneratedPlan(result, { divisionBasis, selectedTeamMemberIds, 
   return assignmentPool.length ? planWithAssignments(plan, assignmentPool, teamMembers) : withAssignmentGate(plan);
 }
 
+function canvasPlannerError(value, fallbackMessage = 'Canvas planning failed.') {
+  const error = value instanceof Error
+    ? value
+    : new Error(getCanvasPlannerFailureMessage(value) || fallbackMessage);
+  if (value?.code !== undefined && value?.code !== null) error.code = String(value.code);
+  if (value?.details && typeof value.details === 'object') error.details = value.details;
+  return error;
+}
+
+function canvasDraftPayloadBytes(payload) {
+  return new TextEncoder().encode(JSON.stringify(payload)).byteLength;
+}
+
 function campaignId(campaign) {
   return String(campaign?.campaign_id || campaign?.session_id || campaign?.id || '');
 }
@@ -181,6 +196,7 @@ export default function CanvasBuilderSettings({
   teamMembersReady = true,
   onRefreshTeamMembers,
   onDraftDirtyChange,
+  onPreviewChange,
   generateStreetPlan = planCanvasTerritoriesAsync,
 }) {
   const polygon = useMemo(() => hasDrawnArea && drawnPolygon?.length > 2 ? drawnPolygon : [], [drawnPolygon, hasDrawnArea]);
@@ -206,6 +222,7 @@ export default function CanvasBuilderSettings({
   const [mobileCollapsed, setMobileCollapsed] = useState(false);
   const [plan, setPlan] = useState(null);
   const [planStaleReason, setPlanStaleReason] = useState('');
+  const [planGenerationError, setPlanGenerationError] = useState(null);
   const [generating, setGenerating] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deploying, setDeploying] = useState(false);
@@ -237,6 +254,7 @@ export default function CanvasBuilderSettings({
   const lastGeneratedPreviewRevisionRef = useRef(-1);
   const lastAttemptedPreviewRevisionRef = useRef(-1);
   const livePreviewTimerRef = useRef(null);
+  const fitNextPreviewRef = useRef(false);
 
   const targetWorkloadMeters = Math.max(0, Number(targetStreetWorkloadMiles) || 0) * 1609.344;
   const requestedZoneCount = divisionBasis === 'selected_reps'
@@ -244,7 +262,7 @@ export default function CanvasBuilderSettings({
     : divisionBasis === 'area_count'
       ? Math.max(1, Math.min(250, Number(requestedAreaCount) || 1))
       : plan?.division_basis === 'street_workload_target' ? plan.zones?.length || 0 : 0;
-  const zones = plan?.zones || [];
+  const zones = useMemo(() => plan?.zones || [], [plan?.zones]);
   const selectedZone = zones.find((zone) => Number(zone.zone_number) === Number(selectedZoneNumber)) || null;
   const deploymentPlan = useMemo(() => {
     if (!plan) return null;
@@ -386,6 +404,15 @@ export default function CanvasBuilderSettings({
     }
   };
 
+  const publishZonePreview = useCallback((nextZones = [], nextWorkUnits = [], detail = {}) => {
+    const preview = {
+      zones: Array.isArray(nextZones) ? nextZones : [],
+      workUnits: Array.isArray(nextWorkUnits) ? nextWorkUnits : [],
+    };
+    onPreviewChange?.(preview);
+    window.dispatchEvent(new CustomEvent('fk-canvas-zones-updated', { detail: { ...preview, ...detail } }));
+  }, [onPreviewChange]);
+
   const loadCampaignMap = useCallback(async (campaign, { quiet = false } = {}) => {
     const id = campaignId(campaign);
     if (!id) return;
@@ -413,7 +440,7 @@ export default function CanvasBuilderSettings({
       };
       setLiveCampaignMap(visibleResult);
       setLiveMapError('');
-      window.dispatchEvent(new CustomEvent('fk-canvas-zones-updated', { detail: { zones: resultZones, workUnits: result.campaign?.work_units || [], previewOnly: false } }));
+      publishZonePreview(resultZones, result.campaign?.work_units || [], { previewOnly: false });
       window.dispatchEvent(new CustomEvent('fk-canvas-campaign-map-updated', { detail: visibleResult }));
       if (!quiet) toast.success('Shared campaign map loaded.');
     } catch (error) {
@@ -422,7 +449,7 @@ export default function CanvasBuilderSettings({
     } finally {
       if (!quiet) setLiveMapLoading(false);
     }
-  }, [rosterMembersById]);
+  }, [publishZonePreview, rosterMembersById]);
 
   useEffect(() => { refreshCampaignIndex(); }, [refreshCampaignIndex]);
 
@@ -469,6 +496,7 @@ export default function CanvasBuilderSettings({
     plannerAbortRef.current?.abort();
     previousPolygonKey.current = polygonKey;
     setPlan(null);
+    setPlanGenerationError(null);
     setServerSession(null);
     setSelectedZoneNumber(null);
     setLiveCampaignMap(null);
@@ -539,8 +567,10 @@ export default function CanvasBuilderSettings({
   }, [polygonKey, roadFetchNonce]);
 
   useEffect(() => {
-    window.dispatchEvent(new CustomEvent('fk-canvas-zones-updated', { detail: { zones, workUnits: plan?.work_units || [], previewOnly: !deployed } }));
-  }, [deployed, plan?.work_units, zones]);
+    const fitPreview = fitNextPreviewRef.current && zones.length > 0;
+    fitNextPreviewRef.current = false;
+    publishZonePreview(zones, plan?.work_units || [], { previewOnly: !deployed, fitPreview });
+  }, [deployed, plan?.work_units, publishZonePreview, zones]);
 
   useEffect(() => {
     window.dispatchEvent(new CustomEvent('fk-canvas-zone-selected', { detail: { zoneNumber: selectedZoneNumber } }));
@@ -628,6 +658,7 @@ export default function CanvasBuilderSettings({
     if (deployed || (activeOperationRef.current && activeOperationRef.current !== 'generate')) return;
     if (activeOperationRef.current === 'generate') plannerAbortRef.current?.abort();
     setRequestedAreaCount(value);
+    setPlanGenerationError(null);
     setLivePreviewRevision((current) => current + 1);
     markPlanStale('The number of areas changed; Canvas is updating the preview.');
   };
@@ -653,6 +684,7 @@ export default function CanvasBuilderSettings({
       deploymentAttemptRef.current = null;
     }
     clearOverpassRoadNetworkCache(polygon, CANVAS_HIGHWAY_FILTER);
+    setPlanGenerationError(null);
     setRoadFetchNonce((value) => value + 1);
   };
 
@@ -680,6 +712,7 @@ export default function CanvasBuilderSettings({
     if (typeof generateStreetPlan !== 'function') return toast.error('The street territory planner is unavailable.');
     activeOperationRef.current = 'generate';
     setGenerating(true);
+    setPlanGenerationError(null);
     const toastId = quiet ? null : toast.loading('Dividing the work area along connected streets...');
     const abortController = new AbortController();
     plannerAbortRef.current = abortController;
@@ -692,6 +725,9 @@ export default function CanvasBuilderSettings({
       targetWorkloadMeters,
       activeTeamMembers: [...activeTeamMembers],
       livePreviewRevision,
+      sessionName,
+      sessionId: serverSession?.session_id,
+      expectedVersion: serverSession?.version,
     };
     lastAttemptedPreviewRevisionRef.current = requestSnapshot.livePreviewRevision;
     try {
@@ -706,7 +742,7 @@ export default function CanvasBuilderSettings({
             : { target_street_workload_meters_per_area: requestSnapshot.targetWorkloadMeters }),
       }, { signal: abortController.signal });
       const failure = getCanvasPlannerFailureMessage(result);
-      if (failure) throw new Error(failure);
+      if (failure) throw canvasPlannerError(result, failure);
       const nextPlan = normalizeGeneratedPlan(result, {
         divisionBasis: requestSnapshot.divisionBasis,
         selectedTeamMemberIds: requestSnapshot.selectedTeamMemberIds,
@@ -717,8 +753,27 @@ export default function CanvasBuilderSettings({
       if (nextPlan.zones.length > 250) throw new Error('This plan creates more than 250 areas. Choose fewer subdivisions and generate again.');
       const complexityStatus = getCanvasPlanComplexityStatus(nextPlan);
       if (!complexityStatus.supported) throw new Error(complexityStatus.message);
+      const previewPayloadBytes = canvasDraftPayloadBytes(buildCanvasDraftPayload({
+        sessionId: requestSnapshot.sessionId,
+        expectedVersion: requestSnapshot.expectedVersion,
+        sessionName: requestSnapshot.sessionName,
+        polygon: requestSnapshot.polygon,
+        plan: nextPlan,
+      }));
+      if (previewPayloadBytes > MAX_CANVAS_PREVIEW_JSON_BYTES) {
+        const error = new Error('This street plan is larger than the secure Canvas draft limit. Reduce the drawn boundary, then create the preview again.');
+        error.code = 'CANVAS_DRAFT_TOO_LARGE';
+        error.details = {
+          serialized_byte_count: previewPayloadBytes,
+          maximum_serialized_byte_count: MAX_CANVAS_PREVIEW_JSON_BYTES,
+        };
+        throw error;
+      }
       lastGeneratedPreviewRevisionRef.current = requestSnapshot.livePreviewRevision;
+      fitNextPreviewRef.current = true;
       setPlan(nextPlan);
+      setPlanGenerationError(null);
+      if (typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 1023px)').matches) setMobileCollapsed(true);
       setWorkloadExceptionAccepted(false);
       setPlanStaleReason('');
       setLiveCampaignMap(null);
@@ -730,7 +785,13 @@ export default function CanvasBuilderSettings({
       if (error?.name === 'AbortError' || error?.code === 'CANVAS_PLANNER_ABORTED') {
         if (toastId) toast.dismiss(toastId);
       } else {
-        toast.error(error.message || 'Canvas planning failed.', toastId ? { id: toastId } : undefined);
+        const plannerError = canvasPlannerError(error);
+        setPlanGenerationError({
+          code: String(plannerError.code || 'CANVAS_PLANNER_FAILED'),
+          message: plannerError.message || 'Canvas planning failed.',
+          details: plannerError.details && typeof plannerError.details === 'object' ? plannerError.details : {},
+        });
+        toast.error(plannerError.message || 'Canvas planning failed.', toastId ? { id: toastId } : undefined);
       }
     } finally {
       setGenerating(false);
@@ -844,7 +905,7 @@ export default function CanvasBuilderSettings({
         polygon,
         plan: auditedPlan,
       });
-      if (JSON.stringify(payload).length > MAX_CANVAS_DRAFT_JSON_CHARACTERS) {
+      if (canvasDraftPayloadBytes(payload) > MAX_CANVAS_DRAFT_JSON_BYTES) {
         throw new Error('This Canvas draft is too large to save as one campaign. Draw a smaller work area and create the territories again.');
       }
       const saved = await saveCanvasDraft(payload);
@@ -1037,6 +1098,7 @@ export default function CanvasBuilderSettings({
     if (!confirmDiscardUnsaved('Starting another area')) return;
     setPlan(null);
     setPlanStaleReason('');
+    setPlanGenerationError(null);
     setServerSession(null);
     setSelectedZoneNumber(null);
     setLiveCampaignMap(null);
@@ -1053,7 +1115,7 @@ export default function CanvasBuilderSettings({
     closeAttemptRef.current = null;
     setWorkspaceView('new_area');
     try { sessionStorage.setItem('fk_canvasPlannerView', 'new_area'); } catch {}
-    window.dispatchEvent(new CustomEvent('fk-canvas-zones-updated', { detail: { zones: [], workUnits: [], previewOnly: true } }));
+    publishZonePreview([], [], { previewOnly: true });
     window.dispatchEvent(new CustomEvent('fk-canvas-campaign-map-updated', { detail: null }));
     onDraw();
   };
@@ -1063,7 +1125,7 @@ export default function CanvasBuilderSettings({
     sessionName, changeSessionName, polygon, hasDrawnArea, onDraw: redrawArea, onClearPolygon: clearArea, onClose: closePlanner,
     divisionBasis, changeDivisionBasis, selectedTeamMemberIds, toggleTeamMember, replaceTeamMemberSelection, activeTeamMembers, teamMembersReady, teamExclusions: teamEligibility.excluded,
     requestedAreaCount, changeRequestedAreaCount, targetStreetWorkloadMiles, changeTargetStreetWorkloadMiles, requestedZoneCount, roadFetchStatus, roadFetchError, roadFetchProgress, refreshRoadData,
-    generationBlockers, generatePlan, generating, plan, planStaleReason,
+    generationBlockers, generatePlan, generating, plan, planStaleReason, planGenerationError,
     zones, assignedZoneCount, selectedZone, selectedZoneNumber, setSelectedZoneNumber,
     autoAssign, updateZoneAssignment, membersById,
     persistDraft, deployPlan, closeCampaign, saving, deploying, closing, deployable, sendable, crewAssignmentStatus, workloadDeviationUnavailable, workloadExceptionNeedsAcceptance, workloadExceptionAccepted, changeWorkloadExceptionAcceptance, planTooComplex, planComplexityStatus, serverSession, deployed, activeDeployment, closedDeployment, mutationsLocked, draftDirty,

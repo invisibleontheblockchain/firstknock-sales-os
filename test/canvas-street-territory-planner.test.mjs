@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
+import { getCanvasBoundaryAreaSqMiles } from '../src/components/canvas/canvasPlannerUtils.js';
 import { planCanvasTerritories } from '../src/components/logic/canvasStreetTerritoryPlanner.js';
 
 const polygon = [
@@ -81,6 +82,72 @@ function disconnectedFixture(areaCount) {
   };
 }
 
+function largeConnectedGridFixture() {
+  const rows = 47;
+  const columns = 47;
+  const south = 35;
+  const north = south + 16.06 / 69;
+  const west = -82;
+  const east = west + 16.06 / (69 * Math.cos(south * Math.PI / 180));
+  const boundary = [
+    { lat: south, lng: west },
+    { lat: south, lng: east },
+    { lat: north, lng: east },
+    { lat: north, lng: west },
+  ];
+  const elements = [];
+  const gridNodeId = (row, column) => 1 + row * columns + column;
+
+  for (let row = 0; row < rows; row += 1) {
+    for (let column = 0; column < columns; column += 1) {
+      elements.push(node(
+        gridNodeId(row, column),
+        south + (north - south) * (row + 0.5) / rows,
+        west + (east - west) * (column + 0.5) / columns,
+      ));
+    }
+  }
+  for (let row = 0; row < rows; row += 1) {
+    elements.push(way(
+      100_000 + row,
+      Array.from({ length: columns }, (_, column) => gridNodeId(row, column)),
+      `Grid Row ${row}`,
+    ));
+  }
+  for (let column = 0; column < columns; column += 1) {
+    elements.push(way(
+      200_000 + column,
+      Array.from({ length: rows }, (_, row) => gridNodeId(row, column)),
+      `Grid Column ${column}`,
+    ));
+  }
+
+  return {
+    polygon: boundary,
+    roadNetwork: { elements },
+    area_count: 10,
+  };
+}
+
+function longTerminalBranchFixture(edgeCount = 2_100) {
+  const elements = Array.from({ length: edgeCount + 1 }, (_, index) => node(
+    index + 1,
+    35.001 + 0.008 * index / edgeCount,
+    -82,
+    index === edgeCount ? { highway: 'turning_circle' } : {},
+  ));
+  elements.push(way(
+    900_000,
+    Array.from({ length: edgeCount + 1 }, (_, index) => index + 1),
+    'Long Terminal Court',
+  ));
+  return {
+    polygon,
+    roadNetwork: { elements },
+    requested_zone_count: 1,
+  };
+}
+
 test('creates road-only connected territories with exact exclusive street-unit coverage', () => {
   const result = planCanvasTerritories(fixture());
 
@@ -121,6 +188,25 @@ test('keeps every lollipop cul-de-sac edge in one protected atomic work unit and
   assert.equal(protectedUnit.edgeIds.length, 5);
   assert.equal(owner.street_segments.filter((segment) => segment.work_unit_id === protectedUnit.id).length, 5);
   assert.equal(result.qa.cul_de_sac_splits, 0);
+});
+
+test('protects a 2,100-edge terminal branch in one linear-time topology pass', () => {
+  const startedAt = performance.now();
+  const result = planCanvasTerritories(longTerminalBranchFixture());
+  const elapsedMs = performance.now() - startedAt;
+  const protectedUnits = result.work_units?.filter((unit) => unit.protected) || [];
+
+  assert.equal(result.ok, true, result.message || result.code);
+  assert.equal(result.deployable, true);
+  assert.equal(protectedUnits.length, 1);
+  assert.equal(protectedUnits[0].edgeIds.length, 2_100);
+  assert.deepEqual(protectedUnits[0].terminalNodeIds, ['1', '2101']);
+  assert.deepEqual(protectedUnits[0].throatNodeIds, ['1']);
+  assert.equal(result.zones.length, 1);
+  assert.deepEqual(result.zones[0].work_unit_ids, [protectedUnits[0].id]);
+  assert.equal(result.qa.protected_units_intact, true);
+  assert.equal(result.qa.cul_de_sac_splits, 0);
+  assert.ok(elapsedMs < 5_000, `2,100-edge terminal branch planning took ${Math.round(elapsedMs)}ms`);
 });
 
 test('uses one area per selected rep and rejects a conflicting explicit count', () => {
@@ -228,29 +314,55 @@ test('derives workload-size areas from class-weighted street meters and enforces
   assert.ok(overLimit.details.requested_zone_count > 250);
 });
 
-test('rejects over-budget fragmented streets before expensive component partitioning', () => {
+test('plans ten connected territories across roughly 258 square miles above the legacy work-unit ceiling', () => {
+  const input = largeConnectedGridFixture();
+  const result = planCanvasTerritories(input);
+  const ownedUnitIds = result.zones?.flatMap((zone) => zone.work_unit_ids) || [];
+  const plannedUnitIds = (result.work_units || []).map((unit) => unit.id);
+
+  assert.ok(getCanvasBoundaryAreaSqMiles(input.polygon) > 257);
+  assert.ok(getCanvasBoundaryAreaSqMiles(input.polygon) < 259);
+  assert.equal(result.ok, true);
+  assert.equal(result.deployable, true);
+  assert.equal(result.zones.length, 10);
+  assert.ok(result.work_units.length > 2_000);
+  assert.ok(result.zones.every((zone) => zone.work_unit_ids.length > 0));
+  assert.equal(result.qa.connected_zones, true);
+  assert.equal(result.qa.exclusive_work_unit_coverage, true);
+  assert.equal(result.qa.no_duplicate_work_units, true);
+  assert.equal(ownedUnitIds.length, result.work_units.length);
+  assert.equal(new Set(ownedUnitIds).size, result.work_units.length);
+  assert.deepEqual(new Set(ownedUnitIds), new Set(plannedUnitIds));
+});
+
+test('rejects above the expanded complexity budget before expensive component partitioning', () => {
   const elements = [];
-  for (let index = 0; index < 2_001; index += 1) {
-    const row = Math.floor(index / 50);
-    const column = index % 50;
-    const lat = 34.9995 + row * 0.00025;
-    const lng = -82.0105 + column * 0.0004;
+  const workUnitCount = 8_001;
+  const columns = 90;
+  const rows = Math.ceil(workUnitCount / columns);
+  for (let index = 0; index < workUnitCount; index += 1) {
+    const row = Math.floor(index / columns);
+    const column = index % columns;
+    const lat = 34.9991 + (row + 0.5) * (0.0118 / rows);
+    const lng = -82.0109 + (column + 0.2) * (0.0218 / columns);
     const firstNodeId = 10_000 + index * 2;
     elements.push(
       node(firstNodeId, lat, lng),
-      node(firstNodeId + 1, lat, lng + 0.00005),
+      node(firstNodeId + 1, lat, lng + 0.00002),
       way(50_000 + index, [firstNodeId, firstNodeId + 1], `Isolated ${index}`),
     );
   }
   const startedAt = performance.now();
-  const result = planCanvasTerritories({ polygon, roadNetwork: { elements }, requested_zone_count: 2 });
+  const result = planCanvasTerritories({ polygon, roadNetwork: { elements }, requested_zone_count: 250 });
   const elapsedMs = performance.now() - startedAt;
   assert.deepEqual(
     { ok: result.ok, status: result.status, code: result.code },
     { ok: false, status: 'blocked', code: 'CANVAS_PLAN_TOO_COMPLEX' },
   );
-  assert.equal(result.details.work_unit_count, 2_001);
-  assert.equal(result.details.maximum_work_unit_count, 2_000);
+  assert.equal(result.details.work_unit_count, 8_001);
+  assert.equal(result.details.maximum_work_unit_count, 20_000);
+  assert.equal(result.details.interactive_complexity, 2_000_250);
+  assert.equal(result.details.maximum_interactive_complexity, 2_000_000);
   assert.ok(elapsedMs < 10_000, `complexity rejection took ${Math.round(elapsedMs)}ms`);
 
   const plannerSource = readFileSync(new URL('../src/components/logic/canvasStreetTerritoryPlanner.js', import.meta.url), 'utf8');

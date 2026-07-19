@@ -1,6 +1,6 @@
 import { planCanvasTerritories } from './canvasStreetTerritoryPlanner.js';
 
-const DEFAULT_TIMEOUT_MS = 45_000;
+const DEFAULT_TIMEOUT_MS = 120_000;
 const MIN_TIMEOUT_MS = 100;
 const MAX_TIMEOUT_MS = 120_000;
 
@@ -22,6 +22,7 @@ function plannerError(payload = {}) {
   const error = new Error(String(payload.message || 'Canvas territory planning failed in the background worker.'));
   error.name = String(payload.name || 'Error');
   if (payload.code !== undefined && payload.code !== null && payload.code !== '') error.code = String(payload.code);
+  if (payload.details && typeof payload.details === 'object') error.details = payload.details;
   return error;
 }
 

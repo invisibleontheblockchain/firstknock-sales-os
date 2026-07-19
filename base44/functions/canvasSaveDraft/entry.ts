@@ -3,11 +3,11 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 const MAX_POLYGON_POINTS = 800;
 const MAX_AREA_SQ_MI = 1_000;
 const MAX_ZONES = 250;
-const MAX_WORK_UNITS = 10000;
+const MAX_WORK_UNITS = 20000;
 const MAX_SEGMENTS = 50000;
 const MAX_JSON_BYTES = 8_000_000;
-const MAX_CANVAS_INTERACTIVE_WORK_UNITS = 2_000;
-const MAX_CANVAS_INTERACTIVE_COMPLEXITY = 180_000;
+const MAX_CANVAS_INTERACTIVE_WORK_UNITS = 20_000;
+const MAX_CANVAS_INTERACTIVE_COMPLEXITY = 2_000_000;
 const PLANNING_METHODS = new Set(['street_workload', 'preview_only']);
 const ASSIGNMENT_BASES = new Set(['street_work_unit_ids', 'legacy_geometry']);
 const WORKLOAD_BASES = new Set(['street_length', 'street_length_plus_estimated_doors']);
@@ -210,6 +210,13 @@ function normalizeWorkUnits(input: any) {
 }
 
 function normalizeZoneParts(zone: any, index: number) {
+  const rawWorkUnitIds = zone?.work_unit_ids ?? zone?.street_work_unit_ids;
+  const streetOwnedDisplay = zone?.geometry_role === 'display_only'
+    && Array.isArray(rawWorkUnitIds)
+    && rawWorkUnitIds.length > 0;
+  const hasGeometry = Array.isArray(zone?.geometry) && zone.geometry.length >= 3;
+  const hasParts = Array.isArray(zone?.parts) && zone.parts.some((part: any) => Array.isArray(part) && part.length >= 3);
+  if (streetOwnedDisplay && !hasGeometry && !hasParts) return { geometry: [], parts: [] };
   const rawParts = Array.isArray(zone?.parts) && zone.parts.length ? zone.parts : [zone?.geometry];
   const parts = rawParts.map((part, partIndex) => normalizePolygon(part, `zones[${index}].parts[${partIndex}]`, 5000));
   const geometry = normalizePolygon(zone?.geometry || parts[0], `zones[${index}].geometry`, 5000);
@@ -239,6 +246,7 @@ function normalizeZones(input: any) {
       color: optionalString(zone?.color, 64),
       geometry,
       parts,
+      geometry_role: optionalString(zone?.geometry_role, 64) || 'display_only',
       center: zone?.center ? normalizePoint(zone.center, `zones[${index}].center`) : null,
       drop_point: zone?.drop_point ? normalizePoint(zone.drop_point, `zones[${index}].drop_point`) : null,
       assigned_team_member_id: optionalString(zone?.assigned_team_member_id, 256),
@@ -331,8 +339,13 @@ Deno.serve(async (req: Request) => {
       return Response.json({ error: 'canvas_entitlement_required', message: 'An active or card-backed trial Canvas plan is required.' }, { status: 403 });
     }
 
+    const declaredBodyBytes = Number(req.headers.get('content-length'));
+    if (Number.isFinite(declaredBodyBytes) && declaredBodyBytes > MAX_JSON_BYTES) {
+      throw new HttpError(413, 'plan_too_large', 'Canvas draft payload is too large.');
+    }
     const body = await req.json().catch(() => ({}));
-    if (JSON.stringify(body).length > MAX_JSON_BYTES) throw new HttpError(413, 'plan_too_large', 'Canvas draft payload is too large.');
+    const normalizedBodyBytes = new TextEncoder().encode(JSON.stringify(body)).byteLength;
+    if (normalizedBodyBytes > MAX_JSON_BYTES) throw new HttpError(413, 'plan_too_large', 'Canvas draft payload is too large.');
 
     const sessionId = optionalString(body?.session_id, 256);
     let existing = null;
@@ -372,7 +385,7 @@ Deno.serve(async (req: Request) => {
     const workUnits = normalizeWorkUnits(body?.work_units);
     const zones = normalizeZones(body?.zones);
     if (workUnits.length > MAX_CANVAS_INTERACTIVE_WORK_UNITS || zones.length * workUnits.length > MAX_CANVAS_INTERACTIVE_COMPLEXITY) {
-      throw new HttpError(413, 'plan_too_complex', 'This street plan is too complex to save as one Canvas campaign. Draw a smaller work area or use fewer territories.');
+      throw new HttpError(413, 'plan_too_complex', 'This street plan exceeds the supported street-unit or area-by-unit limit. Reduce the boundary or area count that exceeded its limit.');
     }
     const zoneAssigneeIds = zones.map((zone) => zone.assigned_team_member_id).filter(Boolean);
     const uniqueAssigneeIds = [...new Set(zoneAssigneeIds)];

@@ -653,6 +653,62 @@ test('Canvas builder asks only for subdivision count and keeps assignment in the
   assert.match(workspace, /max workload deviation/);
 });
 
+test('Canvas keeps owner-scoped previews safe, shows planner feedback, and fits successful plans', () => {
+  const app = readFileSync(new URL('../src/App.jsx', import.meta.url), 'utf8');
+  const builder = readFileSync(new URL('../src/components/map/CanvasBuilderSettings.jsx', import.meta.url), 'utf8');
+  const home = readFileSync(new URL('../src/pages/Home.jsx', import.meta.url), 'utf8');
+  const managerLayers = readFileSync(new URL('../src/components/map/ManagerMapLayers.jsx', import.meta.url), 'utf8');
+  const workspace = readFileSync(new URL('../src/components/map/CanvasPlannerWorkspace.jsx', import.meta.url), 'utf8');
+  const overlay = readFileSync(new URL('../src/components/map/CanvasZoneOverlay.jsx', import.meta.url), 'utf8');
+  assert.match(app, /Toaster as SonnerToaster/);
+  assert.match(app, /<SonnerToaster richColors closeButton \/>/);
+  assert.match(builder, /setPlanGenerationError\(\{[\s\S]*?code:[\s\S]*?message:[\s\S]*?details:/);
+  assert.match(workspace, /function PlannerFailureNotice/);
+  assert.match(workspace, /role="alert"/);
+  assert.match(workspace, /PlannerFailureNotice failure=\{planGenerationError\}/);
+  assert.match(builder, /fitNextPreviewRef\.current = true;\s*setPlan\(nextPlan\)/);
+  assert.match(builder, /const fitPreview = fitNextPreviewRef\.current && zones\.length > 0;[\s\S]*?publishZonePreview\(zones,[\s\S]*?fitPreview/);
+  assert.doesNotMatch(builder, /publishZonePreview\(nextPlan\.zones/);
+  assert.match(home, /const \[canvasZonePreview, setCanvasZonePreview\] = useState\(\{ zones: \[\], workUnits: \[\] \}\)/);
+  assert.match(home, /canvasZonePreview=\{canvasZonePreview\}/);
+  assert.match(home, /onCanvasPreviewChange=\{setCanvasZonePreview\}/);
+  assert.match(managerLayers, /<CanvasZoneOverlay routeMode=\{routeMode\} preview=\{canvasZonePreview\} \/>/);
+  assert.match(overlay, /CanvasZoneOverlay\(\{ routeMode = 'precision', preview = \{\} \}\)/);
+  assert.doesNotMatch(overlay, /latestCanvasSnapshot/);
+  assert.match(overlay, /event\.detail\?\.fitPreview !== true/);
+  assert.match(overlay, /if \(fitFrameRef\.current !== null\) \{\s*window\.cancelAnimationFrame\(fitFrameRef\.current\);\s*fitFrameRef\.current = null/);
+  assert.match(overlay, /return \(\) => \{[\s\S]*?removeEventListener\('fk-canvas-zones-updated'[\s\S]*?window\.cancelAnimationFrame\(fitFrameRef\.current\)[\s\S]*?fitFrameRef\.current = null/);
+  assert.match(overlay, /if \(routeModeRef\.current !== 'canvas'\) return/);
+  assert.match(overlay, /routeMode === 'canvas' && routeModeRef\.current !== 'canvas'\) map\.stop\(\)/);
+  assert.match(overlay, /map\.fitBounds\(points/);
+});
+
+test('Canvas preview gates the exact UTF-8 draft payload before accepting or publishing it', () => {
+  const builder = readFileSync(new URL('../src/components/map/CanvasBuilderSettings.jsx', import.meta.url), 'utf8');
+  const workspace = readFileSync(new URL('../src/components/map/CanvasPlannerWorkspace.jsx', import.meta.url), 'utf8');
+  const helperMatch = builder.match(/function canvasDraftPayloadBytes\(payload\) \{\s*return new TextEncoder\(\)\.encode\(JSON\.stringify\(payload\)\)\.byteLength;\s*\}/);
+  assert.ok(helperMatch);
+  const measureDraftBytes = Function('TextEncoder', `${helperMatch[0]}; return canvasDraftPayloadBytes;`)(TextEncoder);
+  const multibytePayload = { session_name: 'Puertas 🚪 · 漢字 · café' };
+  const serializedPayload = JSON.stringify(multibytePayload);
+  const expectedUtf8Bytes = new TextEncoder().encode(serializedPayload).byteLength;
+  assert.equal(measureDraftBytes(multibytePayload), expectedUtf8Bytes);
+  assert.ok(expectedUtf8Bytes > serializedPayload.length);
+
+  const generationStart = builder.indexOf('const generatePlan = async');
+  const payloadSizeIndex = builder.indexOf('const previewPayloadBytes = canvasDraftPayloadBytes(buildCanvasDraftPayload({', generationStart);
+  const sizeGateIndex = builder.indexOf('if (previewPayloadBytes > MAX_CANVAS_PREVIEW_JSON_BYTES)', payloadSizeIndex);
+  const typedErrorIndex = builder.indexOf("error.code = 'CANVAS_DRAFT_TOO_LARGE'", sizeGateIndex);
+  const acceptPlanIndex = builder.indexOf('setPlan(nextPlan)', typedErrorIndex);
+  assert.ok(generationStart >= 0 && payloadSizeIndex > generationStart);
+  assert.ok(sizeGateIndex > payloadSizeIndex && typedErrorIndex > sizeGateIndex);
+  assert.ok(acceptPlanIndex > typedErrorIndex);
+  assert.match(builder.slice(sizeGateIndex, acceptPlanIndex), /serialized_byte_count: previewPayloadBytes/);
+  assert.match(builder.slice(sizeGateIndex, acceptPlanIndex), /maximum_serialized_byte_count: MAX_CANVAS_PREVIEW_JSON_BYTES/);
+  assert.match(builder, /CANVAS_DRAFT_METADATA_RESERVE_BYTES = 200_000/);
+  assert.match(workspace, /maxLength=\{200\}/);
+});
+
 test('Canvas exposes explicit quarantine recovery only in the Areas workspace', () => {
   const builder = readFileSync(new URL('../src/components/map/CanvasBuilderSettings.jsx', import.meta.url), 'utf8');
   const workspace = readFileSync(new URL('../src/components/map/CanvasPlannerWorkspace.jsx', import.meta.url), 'utf8');
@@ -697,23 +753,23 @@ test('Canvas planning never requires linked reps and the assignment workspace ex
 test('Canvas complexity guard matches the exact save and deploy boundary', () => {
   const allowed = getCanvasPlanComplexityStatus({
     zones: Array.from({ length: 250 }, () => ({})),
-    work_units: Array.from({ length: 720 }, () => ({})),
+    work_units: Array.from({ length: 8_000 }, () => ({})),
   });
   const rejectedProduct = getCanvasPlanComplexityStatus({
     zones: Array.from({ length: 250 }, () => ({})),
-    work_units: Array.from({ length: 721 }, () => ({})),
+    work_units: Array.from({ length: 8_001 }, () => ({})),
   });
   const rejectedUnits = getCanvasPlanComplexityStatus({
     zones: [{}],
-    work_units: Array.from({ length: 2_001 }, () => ({})),
+    work_units: Array.from({ length: 20_001 }, () => ({})),
   });
   const rejectedSegments = getCanvasPlanComplexityStatus({
     zones: [{}],
     work_units: [{ segments: Array.from({ length: 50_001 }, () => ({})) }],
   });
-  assert.equal(allowed.complexity, 180_000);
+  assert.equal(allowed.complexity, 2_000_000);
   assert.equal(allowed.supported, true);
-  assert.equal(rejectedProduct.complexity, 180_250);
+  assert.equal(rejectedProduct.complexity, 2_000_250);
   assert.equal(rejectedProduct.supported, false);
   assert.equal(rejectedUnits.supported, false);
   assert.equal(rejectedSegments.segmentCount, 50_001);
