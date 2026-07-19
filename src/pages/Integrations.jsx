@@ -314,6 +314,7 @@ export default function Integrations() {
   const [serviceTypeName, setServiceTypeName] = React.useState('');
   const [defaultLength, setDefaultLength] = React.useState('');
   const [serviceTypes, setServiceTypes] = React.useState([]);
+  const [serviceSetupDirty, setServiceSetupDirty] = React.useState(false);
 
   const userQuery = useQuery({
     queryKey: ['user'],
@@ -369,11 +370,13 @@ export default function Integrations() {
     setEnvironment(nextEnvironment);
     setSubdomain(capabilityHostSubdomain(capability));
     setSourceId(normalizeIdentifier(capability.source_id));
-    setServiceTypeId(normalizeIdentifier(configuredServiceTypeId));
-    setServiceTypeName(String(capability.service_type_name || capability.default_service_type_name || capability.name || '').trim());
-    const length = Number(capability.default_length ?? capability.appointment_duration_minutes);
-    setDefaultLength(Number.isFinite(length) && length > 0 ? String(Math.round(length)) : '');
-  }, [capabilityQuery.data]);
+    if (!serviceSetupDirty) {
+      setServiceTypeId(normalizeIdentifier(configuredServiceTypeId));
+      setServiceTypeName(String(capability.service_type_name || capability.default_service_type_name || capability.name || '').trim());
+      const length = Number(capability.default_length ?? capability.appointment_duration_minutes);
+      setDefaultLength(Number.isFinite(length) && length > 0 ? String(Math.round(length)) : '');
+    }
+  }, [capabilityQuery.data, serviceSetupDirty]);
 
   const refreshIntegrationQueries = React.useCallback(async () => {
     await Promise.all([
@@ -382,27 +385,28 @@ export default function Integrations() {
     ]);
   }, [queryClient]);
 
+  const cacheCapability = React.useCallback((result) => {
+    const next = result?.capability || result;
+    if (!next || typeof next !== 'object') return;
+    queryClient.setQueryData(['fieldRoutesCapability'], (current = {}) => ({ ...current, ...next }));
+  }, [queryClient]);
+
   const loadServiceTypesMutation = useMutation({
     mutationFn: () => listFieldRoutesServiceTypes({ visible_only: true, initial_first: true }),
     onSuccess: (result) => {
       const next = extractServiceTypes(result);
       setServiceTypes(next);
-      if (next.length === 0) {
-        toast.info('No visible FieldRoutes service types were returned for this office.');
-      } else {
-        toast.success(`${next.length} visible service type${next.length === 1 ? '' : 's'} loaded.`);
+      if (next.length === 1 && !serviceTypeId) {
+        setServiceTypeId(next[0].id);
+        setServiceTypeName(next[0].name);
+        setDefaultLength(String(next[0].defaultLength || 60));
+        setServiceSetupDirty(true);
       }
-    },
-    onError: (error) => toast.error(error.message),
-  });
-
-  const saveMutation = useMutation({
-    mutationFn: saveFieldRoutesConnection,
-    onSuccess: async () => {
-      setAuthenticationKey('');
-      setAuthenticationToken('');
-      toast.success('FieldRoutes connection saved. Credentials are now hidden.');
-      await refreshIntegrationQueries();
+      if (next.length === 0) {
+        toast.info('No visible initial inspection services were returned for this office.');
+      } else {
+        toast.success(`${next.length} eligible inspection service${next.length === 1 ? '' : 's'} loaded.`);
+      }
     },
     onError: (error) => toast.error(error.message),
   });
@@ -410,11 +414,33 @@ export default function Integrations() {
   const testMutation = useMutation({
     mutationFn: testFieldRoutesConnection,
     onSuccess: async (result) => {
+      cacheCapability(result);
       toast.success('FieldRoutes accepted the saved connection.');
       const embeddedTypes = extractServiceTypes(result);
       if (embeddedTypes.length > 0) setServiceTypes(embeddedTypes);
       await refreshIntegrationQueries();
       if (embeddedTypes.length === 0) loadServiceTypesMutation.mutate();
+    },
+    onError: async (error) => {
+      toast.error(error.message);
+      await refreshIntegrationQueries();
+    },
+  });
+
+  const saveMutation = useMutation({
+    mutationFn: ({ connection }) => saveFieldRoutesConnection(connection),
+    onSuccess: async (result, variables) => {
+      cacheCapability(result);
+      setServiceSetupDirty(false);
+      setAuthenticationKey('');
+      setAuthenticationToken('');
+      const finishSetup = variables?.finishSetup === true && Boolean(variables?.connection?.service_type_id);
+      toast.success(finishSetup
+        ? 'Inspection service saved. Verifying the completed connection…'
+        : 'Credentials saved securely. Loading eligible inspection services…');
+      if (finishSetup) testMutation.mutate();
+      else loadServiceTypesMutation.mutate();
+      await refreshIntegrationQueries();
     },
     onError: (error) => toast.error(error.message),
   });
@@ -429,6 +455,10 @@ export default function Integrations() {
       setServiceTypeName('');
       setDefaultLength('');
       setServiceTypes([]);
+      setServiceSetupDirty(false);
+      saveMutation.reset();
+      testMutation.reset();
+      loadServiceTypesMutation.reset();
       toast.success('FieldRoutes disconnected. Saved credentials were removed.');
       await refreshIntegrationQueries();
     },
@@ -457,14 +487,23 @@ export default function Integrations() {
     }, ...serviceTypes];
   }, [defaultLength, serviceTypeId, serviceTypeName, serviceTypes]);
 
+  const integrationBusy = saveMutation.isPending
+    || testMutation.isPending
+    || loadServiceTypesMutation.isPending;
+  const normalizedDefaultLength = Number(defaultLength);
+  const defaultLengthValid = Number.isInteger(normalizedDefaultLength)
+    && normalizedDefaultLength >= 5
+    && normalizedDefaultLength <= 480;
+
   const setupAccess = fieldRoutesSetupAccess({
     capabilityLoading: capabilityQuery.isLoading,
     capabilitySucceeded: capabilityQuery.isSuccess,
     capabilityEnabled: capability.enabled,
-    savePending: saveMutation.isPending,
+    savePending: integrationBusy,
   });
 
   const handleServiceTypeChange = (value) => {
+    setServiceSetupDirty(true);
     setServiceTypeId(value);
     const selected = serviceTypeOptions.find((item) => item.id === value);
     if (!selected) return;
@@ -472,7 +511,7 @@ export default function Integrations() {
     if (selected.defaultLength) setDefaultLength(String(selected.defaultLength));
   };
 
-  const handleSave = (event) => {
+  const handleSave = (event, { finishSetup = false } = {}) => {
     event.preventDefault();
     if (setupAccess.explicitlyDisabled) return toast.error('FieldRoutes is not enabled for this account yet.');
 
@@ -490,6 +529,8 @@ export default function Integrations() {
     if (defaultLength && (!Number.isInteger(normalizedLength) || normalizedLength < 5 || normalizedLength > 480)) {
       return toast.error('Default appointment length must be between 5 and 480 minutes.');
     }
+    if (finishSetup && !serviceTypeId) return toast.error('Choose an eligible initial inspection service first.');
+    if (finishSetup && !defaultLengthValid) return toast.error('Enter a default appointment length between 5 and 480 minutes.');
 
     const selected = serviceTypeOptions.find((item) => item.id === serviceTypeId);
     const payload = {
@@ -505,7 +546,7 @@ export default function Integrations() {
         authentication_token: authenticationToken.trim(),
       } : {}),
     };
-    saveMutation.mutate(payload);
+    saveMutation.mutate({ connection: payload, finishSetup });
   };
 
   if (userQuery.isLoading) return <LoadingPage />;
@@ -657,7 +698,7 @@ export default function Integrations() {
                 <section className="space-y-3 border-t border-white/8 pt-6">
                   <div>
                     <h2 className="text-sm font-bold">2. Save write-only credentials</h2>
-                    <p className="mt-1 text-xs text-white/45">Credentials go directly to the FirstKnock server. They are never stored in this browser or displayed again.</p>
+                    <p className="mt-1 text-xs text-white/45">Save once and FirstKnock will securely load the eligible initial services from this office. Credentials are never stored in this browser or displayed again.</p>
                   </div>
                   {credentialsSaved && (
                     <div className="flex flex-wrap items-center gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/[0.06] px-4 py-3 text-xs text-emerald-100/80">
@@ -729,12 +770,12 @@ export default function Integrations() {
                   <div className="flex flex-wrap gap-2">
                     <Button type="submit" disabled={setupAccess.controlsDisabled} className="bg-[#39FF4A] font-bold text-black hover:bg-[#2EEB57]">
                       {saveMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ShieldCheck className="mr-2 h-4 w-4" />}
-                      Save connection
+                      {credentialsSaved ? 'Save connection changes' : 'Save credentials & load services'}
                     </Button>
                     <Button
                       type="button"
                       variant="outline"
-                      disabled={setupAccess.explicitlyDisabled || !credentialsSaved || testMutation.isPending}
+                      disabled={setupAccess.explicitlyDisabled || !credentialsSaved || integrationBusy}
                       onClick={() => testMutation.mutate()}
                       className="border-white/15 bg-transparent text-white hover:bg-white/10 hover:text-white"
                     >
@@ -748,26 +789,55 @@ export default function Integrations() {
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div>
                       <h2 className="text-sm font-bold">3. Choose the initial inspection service</h2>
-                      <p className="mt-1 text-xs text-white/45">Load the company’s visible service types, then choose the initial service the office expects.</p>
+                      <p className="mt-1 text-xs text-white/45">Choose from the visible services that FieldRoutes allows for an initial inspection.</p>
                     </div>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      disabled={!credentialsSaved || loadServiceTypesMutation.isPending}
-                      onClick={() => loadServiceTypesMutation.mutate()}
-                      className="shrink-0 border-white/15 bg-transparent text-white hover:bg-white/10 hover:text-white"
-                    >
-                      {loadServiceTypesMutation.isPending ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-1.5 h-3.5 w-3.5" />}
-                      Load service types
-                    </Button>
+                    {credentialsSaved ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={integrationBusy}
+                        onClick={() => loadServiceTypesMutation.mutate()}
+                        className="shrink-0 border-white/15 bg-transparent text-white hover:bg-white/10 hover:text-white"
+                      >
+                        {loadServiceTypesMutation.isPending ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-1.5 h-3.5 w-3.5" />}
+                        Reload services
+                      </Button>
+                    ) : (
+                      <Badge className="shrink-0 border-sky-500/25 bg-sky-500/10 text-sky-200">Save step 2 first</Badge>
+                    )}
                   </div>
+                  {!credentialsSaved && (
+                    <div className="rounded-xl border border-sky-500/20 bg-sky-500/[0.06] px-4 py-3 text-xs leading-5 text-sky-100/75">
+                      Save the account subdomain and both credentials in step 2. This section will unlock and load automatically.
+                    </div>
+                  )}
+                  {credentialsSaved && loadServiceTypesMutation.isPending && (
+                    <div className="flex items-center gap-2 rounded-xl border border-sky-500/20 bg-sky-500/[0.06] px-4 py-3 text-xs text-sky-100/75" role="status" aria-live="polite">
+                      <Loader2 className="h-4 w-4 animate-spin" /> Loading eligible services from FieldRoutes…
+                    </div>
+                  )}
+                  {credentialsSaved && loadServiceTypesMutation.isError && (
+                    <div className="rounded-xl border border-amber-500/20 bg-amber-500/[0.06] px-4 py-3 text-xs leading-5 text-amber-100/75" role="alert">
+                      <p className="font-bold text-amber-100">Services could not be loaded</p>
+                      <p className="mt-1">{loadServiceTypesMutation.error?.message}</p>
+                    </div>
+                  )}
+                  {credentialsSaved && loadServiceTypesMutation.isSuccess && serviceTypes.length === 0 && !serviceTypeId && (
+                    <div className="rounded-xl border border-amber-500/20 bg-amber-500/[0.06] px-4 py-3 text-xs leading-5 text-amber-100/75" role="status">
+                      No visible initial inspection services were returned. In FieldRoutes, make the intended service visible and eligible for initial appointments, then select Reload services.
+                    </div>
+                  )}
                   <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_180px]">
                     <div className="space-y-2">
                       <Label className="text-xs text-white/65">Service type</Label>
-                      <Select value={serviceTypeId || undefined} onValueChange={handleServiceTypeChange} disabled={!credentialsSaved || serviceTypeOptions.length === 0}>
+                      <Select value={serviceTypeId || undefined} onValueChange={handleServiceTypeChange} disabled={!credentialsSaved || integrationBusy || serviceTypeOptions.length === 0}>
                         <SelectTrigger className="h-11 border-white/10 bg-black/40 text-white focus:ring-[#39FF4A]/40">
-                          <SelectValue placeholder="Load service types first" />
+                          <SelectValue placeholder={loadServiceTypesMutation.isPending
+                            ? 'Loading services…'
+                            : credentialsSaved
+                              ? 'Choose an initial service'
+                              : 'Save credentials first'} />
                         </SelectTrigger>
                         <SelectContent className="border-white/10 bg-[#111] text-white">
                           {serviceTypeOptions.map((item) => (
@@ -788,16 +858,31 @@ export default function Integrations() {
                           max="480"
                           step="1"
                           value={defaultLength}
-                          onChange={(event) => setDefaultLength(event.target.value)}
+                          onChange={(event) => {
+                            setServiceSetupDirty(true);
+                            setDefaultLength(event.target.value);
+                          }}
                           placeholder="60"
-                          disabled={!credentialsSaved}
+                          disabled={setupAccess.controlsDisabled}
                           className="h-11 border-white/10 bg-black/40 pr-16 text-white placeholder:text-white/25 focus-visible:ring-[#39FF4A]/40"
                         />
                         <span className="pointer-events-none absolute right-3 top-3.5 text-xs text-white/30">minutes</span>
                       </div>
                     </div>
                   </div>
-                  <p className="text-[11px] leading-5 text-white/35">After choosing the service, save the connection, then test it once more. FirstKnock will create an unassigned inspection; office staff still controls the route, technician, and time.</p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      type="button"
+                      disabled={!credentialsSaved || !serviceTypeId || !defaultLengthValid || integrationBusy}
+                      onClick={(event) => handleSave(event, { finishSetup: true })}
+                      className="bg-[#39FF4A] font-bold text-black hover:bg-[#2EEB57]"
+                    >
+                      {(saveMutation.isPending || testMutation.isPending) ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
+                      Save service & verify
+                    </Button>
+                    <p className="text-[11px] leading-5 text-white/35">FirstKnock reuses the saved credentials and verifies this selection automatically.</p>
+                  </div>
+                  <p className="text-[11px] leading-5 text-white/35">FirstKnock creates an unassigned inspection; office staff still controls the route, technician, and time.</p>
                 </section>
 
                 {credentialsSaved && (
@@ -859,7 +944,7 @@ export default function Integrations() {
                   <p className="mt-1 text-xs leading-5 text-white/40">
                     {configReady
                       ? 'Reps can queue an unassigned FieldRoutes inspection from an eligible Precision property.'
-                      : 'Save credentials, test, choose and save the service, then test once more.'}
+                      : 'Save credentials, choose the loaded service, then select Save service & verify.'}
                   </p>
                 </div>
                 {!canvasEnabled && (
