@@ -3,6 +3,7 @@ import { Navigation, Camera, Loader2, Phone, Clock, ChevronUp, ChevronLeft, Chec
 import { format } from 'date-fns';
 import PropertyHistory from './PropertyHistory';
 import { buildFullAddress, openInMaps } from '@/components/logic/navigation';
+import ScheduleInspectionAction from '@/components/fieldroutes/ScheduleInspectionAction';
 
 const STATUS_OPTIONS = [
     { id: 'SOLD', label: 'Sold', icon: Check, color: '#39FF4A' },
@@ -13,7 +14,26 @@ const STATUS_OPTIONS = [
     { id: 'DM_NOT_HOME', label: 'DM Not Home', icon: UserX, color: '#D1D5DB' },
 ];
 
-export default function PropertyDetailSheet({ property, logs, onLog, outcomeDisabled = false, onBlockedAttempt, onClearDecision, onPhotoUpload, uploading, onClose, onViewOnMap, routePosition, totalStops, navigationApp = 'apple' }) {
+export default function PropertyDetailSheet({
+    property,
+    logs,
+    onLog,
+    outcomeDisabled = false,
+    onBlockedAttempt,
+    onClearDecision,
+    onPhotoUpload,
+    uploading,
+    onClose,
+    onViewOnMap,
+    routePosition,
+    totalStops,
+    navigationApp = 'apple',
+    fieldRoutesCapability,
+    fieldRoutesStatus,
+    fieldRoutesPendingDeviceCount = 0,
+    onDiscardFieldRoutesDeviceAttention,
+    onScheduleInspection,
+}) {
     const [showMore, setShowMore] = useState(false);
     const [logNote, setLogNote] = useState('');
     const [callbackTime, setCallbackTime] = useState('');
@@ -123,7 +143,31 @@ export default function PropertyDetailSheet({ property, logs, onLog, outcomeDisa
                     </div>
                 </header>
 
-                {/* Quick Outcome - 4 column grid matching checklist style */}
+                <div className="flex-1 overflow-y-auto">
+
+                {/* FieldRoutes is an explicit external action, separate from every ordinary outcome. */}
+                <div className="px-5 pb-3">
+                    <ScheduleInspectionAction
+                        capability={fieldRoutesCapability}
+                        mode="precision"
+                        status={fieldRoutesStatus}
+                        pendingDeviceCount={fieldRoutesPendingDeviceCount}
+                        onDiscardDeviceAttention={onDiscardFieldRoutesDeviceAttention}
+                        onSubmit={onScheduleInspection}
+                        initialValues={{
+                            ownerName: property.owner_full_name || property.ownerFullName || property.owner_name || '',
+                            phone: property.phone || property.phone1 || '',
+                            email: property.email || '',
+                            streetAddress: property.full_address || property.address || `${property.house_number || ''} ${property.street_name || ''}`.trim(),
+                            unit: property.unit || property.unit_number || '',
+                            city: property.city || '',
+                            state: property.state || '',
+                            zip: property.zip_code || property.zip || '',
+                        }}
+                    />
+                </div>
+
+                {/* Quick Outcome - unchanged local decision grid */}
                 <div className="px-5 pb-3">
                     <div className="flex items-center justify-between mb-2">
                         <span className="text-[10px] font-black uppercase text-white/45 tracking-[0.2em]">Log outcome</span>
@@ -281,8 +325,8 @@ export default function PropertyDetailSheet({ property, logs, onLog, outcomeDisa
                     </button>
                 </div>
 
-                {/* Scrollable extras */}
-                <div className="flex-1 overflow-y-auto px-5 pb-8 space-y-3">
+                {/* Property extras */}
+                <div className="px-5 pb-8 space-y-3">
                     {/* Property intel chips */}
                     {(property.price || property.sqft || property.year_built) && (
                         <div className="flex gap-2 flex-wrap">
@@ -316,6 +360,7 @@ export default function PropertyDetailSheet({ property, logs, onLog, outcomeDisa
                             <PropertyHistory logs={logs} onClearDecision={onClearDecision} />
                         </div>
                     )}
+                </div>
                 </div>
             </div>
         </div>

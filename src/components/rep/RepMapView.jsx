@@ -61,6 +61,15 @@ function getOutcomeDotColor(property) {
     return '#8888A0';
 }
 
+function getFieldRoutesPinStyle(property) {
+    const tone = property?.fieldroutes_status?.tone;
+    if (tone === 'synced') return { color: '#38BDF8', label: 'FieldRoutes sent' };
+    if (tone === 'attention') return { color: '#FB7185', label: 'FieldRoutes needs review' };
+    if (tone === 'device') return { color: '#FBBF24', label: 'FieldRoutes saved on device', dashArray: '3 3' };
+    if (tone === 'pending') return { color: '#F59E0B', label: 'FieldRoutes sync pending', dashArray: '4 3' };
+    return null;
+}
+
 function haversine(lat1, lng1, lat2, lng2) {
     const R = 3959;
     const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -128,6 +137,7 @@ function PropertyPinLayer({ properties, nearbyHashes, onSelectProperty }) {
     return properties?.map((p, idx) => {
         const isNearby = nearbyHashes.has(p.address_hash);
         const color = getOutcomeDotColor(p);
+        const fieldRoutes = getFieldRoutesPinStyle(p);
         return (
             <LayerGroup key={p.address_hash}>
                 <Marker
@@ -137,6 +147,20 @@ function PropertyPinLayer({ properties, nearbyHashes, onSelectProperty }) {
                     eventHandlers={{ click: () => onSelectProperty(p) }}
                     bubblingMouseEvents={false}
                 />
+                {fieldRoutes && (
+                    <CircleMarker
+                        center={[p.lat, p.lng]}
+                        radius={isNearby ? 12 : 10}
+                        renderer={CANVAS_RENDERER}
+                        interactive={false}
+                        pathOptions={{
+                            fillOpacity: 0,
+                            color: fieldRoutes.color,
+                            weight: 3,
+                            dashArray: fieldRoutes.dashArray,
+                        }}
+                    />
+                )}
                 <CircleMarker
                     center={[p.lat, p.lng]}
                     radius={isNearby ? 8 : 6}
@@ -158,6 +182,7 @@ function PropertyPinLayer({ properties, nearbyHashes, onSelectProperty }) {
                             textShadow: '0 1px 3px #000, 0 0 5px #000'
                         }}>
                             {p.house_number || idx + 1}
+                            {fieldRoutes && <span style={{ display: 'block', color: fieldRoutes.color, fontSize: '8px' }}>{fieldRoutes.label}</span>}
                         </span>
                     </Tooltip>
                 </CircleMarker>

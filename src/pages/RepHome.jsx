@@ -22,8 +22,41 @@ import KnockLimitBanner from '@/components/upgrade/KnockLimitBanner';
 import { isProUser, isOutcomeBlocked, getOutcomesLogged, needsCardOnFile } from '@/components/upgrade/knockGate';
 import { geocodeAddress } from '@/lib/geocoding';
 import { calculateRouteDistanceMiles, isValidRoutePoint, optimizeRouteWithBounds } from '@/lib/routeBounds';
+import { getFieldRoutesCapability, getFieldRoutesStatuses } from '@/api/fieldRoutes';
+import { useFieldRoutesInspectionQueue } from '@/components/fieldroutes/useFieldRoutesInspectionQueue';
+import {
+  fieldRoutesStatusPresentation,
+  fieldRoutesStatusRows,
+  findFieldRoutesStatus,
+  isFieldRoutesCapabilityReady,
+  isFieldRoutesTerminalStatus,
+  preferFieldRoutesStatus,
+} from '@/components/fieldroutes/fieldRoutesPresentation';
 
 const CANVAS_ASSIGNMENT_POLL_MS = 15_000;
+const FIELDROUTES_STATUS_POLL_MS = 15_000;
+
+function precisionFieldRoutesStatus(response, sourceKey, addressHash) {
+  return findFieldRoutesStatus(response, (row) => (
+    String(row?.source_key || '') === sourceKey
+    || String(row?.source_reference || '') === sourceKey
+    || String(row?.address_hash || row?.property_key || '') === String(addressHash || '')
+  ));
+}
+
+function shouldPollPrecisionFieldRoutes(response, localStatuses, routeId) {
+  const routePrefix = routeId ? `precision:${routeId}:` : '';
+  const serverRows = fieldRoutesStatusRows(response).filter((row) => (
+    !routeId || String(row?.route_id || '') === String(routeId)
+      || String(row?.source_key || row?.source_reference || '').startsWith(routePrefix)
+  ));
+  if (serverRows.some((row) => !isFieldRoutesTerminalStatus(row))) return true;
+  return Object.entries(localStatuses || {}).some(([sourceKey, localStatus]) => {
+    if (!routePrefix || !sourceKey.startsWith(routePrefix)) return false;
+    const serverStatus = precisionFieldRoutesStatus(response, sourceKey, sourceKey.slice(routePrefix.length));
+    return !isFieldRoutesTerminalStatus(preferFieldRoutesStatus(localStatus, serverStatus));
+  });
+}
 
 export default function RepHome() {
   const queryClient = useQueryClient();
@@ -125,6 +158,33 @@ export default function RepHome() {
 
   const teamMember = teamMemberData?.primary || null;
   const allTeamMemberIds = teamMemberData?.allIds || [];
+  const repManagerId = teamMember?.manager_id || user?.team_manager_id || (user?.app_role === 'manager' ? user?.id : null);
+  const [fieldRoutesLocalStatuses, setFieldRoutesLocalStatuses] = useState({});
+
+  const { data: fieldRoutesCapability = null } = useQuery({
+    queryKey: ['fieldRoutesCapability', user?.id, repManagerId],
+    queryFn: () => getFieldRoutesCapability(),
+    enabled: !!user?.id && !!repManagerId,
+    retry: false,
+    staleTime: 60_000,
+  });
+
+  const handleFieldRoutesServerAcknowledged = React.useCallback((result, intent) => {
+    const sourceKey = String(intent?.source?.source_key || intent?.source?.address_hash || '');
+    if (sourceKey) setFieldRoutesLocalStatuses((current) => ({ ...current, [sourceKey]: result }));
+    queryClient.invalidateQueries({ queryKey: ['fieldRoutesStatuses'] });
+  }, [queryClient]);
+
+  const {
+    discardAttentionBySource: discardFieldRoutesDeviceAttention,
+    pendingBySource: fieldRoutesPendingBySource,
+    pendingCount: fieldRoutesPendingDeviceCount,
+    submitInspection: submitFieldRoutesInspection,
+  } = useFieldRoutesInspectionQueue({
+    actorUserId: user?.id,
+    managerId: repManagerId,
+    onServerAcknowledged: handleFieldRoutesServerAcknowledged,
+  });
 
   // 1. Fetch Assigned Routes - search across ALL possible team member IDs for this rep
   const { data: routes = [], isLoading: routesLoading } = useQuery({
@@ -378,9 +438,6 @@ export default function RepHome() {
     enabled: !!selectedProperty?.address_hash
   });
 
-  // Tenant key stamped on every log so RLS can scope team reads
-  const repManagerId = teamMember?.manager_id || user?.team_manager_id || (user?.app_role === 'manager' ? user?.id : null);
-
   // Log Result Mutation
   const createLogMutation = useMutation({
     mutationFn: (logData) => {
@@ -514,6 +571,55 @@ export default function RepHome() {
     return orderedProps;
   }, [activeRoute, properties, logs]);
 
+  const fieldRoutesPropertyKeys = useMemo(
+    () => routeProperties.map((property) => property.address_hash).filter(Boolean),
+    [routeProperties],
+  );
+  const fieldRoutesPropertyKeysSignature = fieldRoutesPropertyKeys.join('|');
+  const { data: fieldRoutesStatuses = null } = useQuery({
+    queryKey: ['fieldRoutesStatuses', 'precision', repManagerId, activeRoute?.id, fieldRoutesPropertyKeysSignature],
+    queryFn: () => getFieldRoutesStatuses({
+      source_mode: 'precision',
+      route_id: activeRoute?.id,
+      property_keys: fieldRoutesPropertyKeys,
+    }),
+    enabled: isFieldRoutesCapabilityReady(fieldRoutesCapability) && !!activeRoute?.id && fieldRoutesPropertyKeys.length > 0,
+    retry: false,
+    refetchOnWindowFocus: true,
+    refetchInterval: (query) => shouldPollPrecisionFieldRoutes(
+      query.state.data,
+      fieldRoutesLocalStatuses,
+      activeRoute?.id,
+    ) ? FIELDROUTES_STATUS_POLL_MS : false,
+  });
+  const selectedFieldRoutesSourceKey = selectedProperty?.address_hash && activeRoute?.id
+    ? `precision:${activeRoute.id}:${selectedProperty.address_hash}`
+    : '';
+  const selectedFieldRoutesStatus = useMemo(() => {
+    if (!selectedProperty?.address_hash) return null;
+    const localStatus = fieldRoutesLocalStatuses[selectedFieldRoutesSourceKey]
+      || fieldRoutesPendingBySource[selectedFieldRoutesSourceKey];
+    const serverStatus = precisionFieldRoutesStatus(
+      fieldRoutesStatuses,
+      selectedFieldRoutesSourceKey,
+      selectedProperty.address_hash,
+    );
+    return preferFieldRoutesStatus(localStatus, serverStatus);
+  }, [fieldRoutesLocalStatuses, fieldRoutesPendingBySource, fieldRoutesStatuses, selectedFieldRoutesSourceKey, selectedProperty?.address_hash]);
+
+  const mapRouteProperties = useMemo(() => routeProperties.map((property) => {
+    const sourceKey = activeRoute?.id && property?.address_hash
+      ? `precision:${activeRoute.id}:${property.address_hash}`
+      : '';
+    if (!sourceKey) return property;
+    const localStatus = fieldRoutesLocalStatuses[sourceKey] || fieldRoutesPendingBySource[sourceKey];
+    const serverStatus = precisionFieldRoutesStatus(fieldRoutesStatuses, sourceKey, property.address_hash);
+    const fieldRoutesStatus = preferFieldRoutesStatus(localStatus, serverStatus);
+    return fieldRoutesStatus
+      ? { ...property, fieldroutes_status: fieldRoutesStatusPresentation(fieldRoutesStatus) }
+      : property;
+  }), [activeRoute?.id, fieldRoutesLocalStatuses, fieldRoutesPendingBySource, fieldRoutesStatuses, routeProperties]);
+
   React.useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const focusHash = params.get('focus');
@@ -610,7 +716,19 @@ export default function RepHome() {
   }
 
   if (canvasAssignments.length > 0 && (canvasFieldOpen || (!activeRoute && !canvasFieldDismissed))) {
-    return <CanvasFieldView assignments={canvasAssignments} truncated={canvasAssignmentPackage?.truncated === true} rejectedDeployments={canvasAssignmentPackage?.rejected_deployments || 0} user={user} navigationApp={navigationApp} onClose={() => { setCanvasFieldOpen(false); setCanvasFieldDismissed(true); }} />;
+    return <CanvasFieldView
+      assignments={canvasAssignments}
+      truncated={canvasAssignmentPackage?.truncated === true}
+      rejectedDeployments={canvasAssignmentPackage?.rejected_deployments || 0}
+      user={user}
+      navigationApp={navigationApp}
+      fieldRoutesCapability={fieldRoutesCapability}
+      fieldRoutesPendingBySource={fieldRoutesPendingBySource}
+      fieldRoutesPendingDeviceCount={fieldRoutesPendingDeviceCount}
+      onDiscardFieldRoutesDeviceAttention={discardFieldRoutesDeviceAttention}
+      onScheduleFieldRoutesInspection={submitFieldRoutesInspection}
+      onClose={() => { setCanvasFieldOpen(false); setCanvasFieldDismissed(true); }}
+    />;
   }
 
   if (!activeRoute) {
@@ -729,6 +847,34 @@ export default function RepHome() {
         gps_accuracy: 0
       });
     }
+  };
+
+  const handleScheduleInspection = async ({ contact, property, notes }) => {
+    const target = selectedProperty;
+    if (!target?.address_hash || !activeRoute?.id) throw new Error('This route property is not ready for FieldRoutes yet.');
+    const sourceKey = `precision:${activeRoute.id}:${target.address_hash}`;
+    const delivery = await submitFieldRoutesInspection({
+      source: {
+        kind: 'precision',
+        source_key: sourceKey,
+        route_id: activeRoute.id,
+        address_hash: target.address_hash,
+        property_id: target.id ? String(target.id) : null,
+      },
+      contact,
+      property: {
+        ...property,
+        lat: Number.isFinite(Number(target.lat)) ? Number(target.lat) : null,
+        lng: Number.isFinite(Number(target.lng)) ? Number(target.lng) : null,
+      },
+      notes,
+    });
+    setFieldRoutesLocalStatuses((current) => ({ ...current, [sourceKey]: delivery }));
+    if (delivery.kind === 'synced') toast.success(delivery.copy);
+    else if (delivery.kind === 'attention') toast.error(delivery.copy);
+    else if (delivery.kind === 'device_pending') toast.warning(delivery.copy, { duration: 7000 });
+    else toast.info(delivery.copy);
+    return delivery;
   };
 
   const handlePhotoUpload = async (e) => {
@@ -1166,7 +1312,7 @@ export default function RepHome() {
             {/* Map View */}
             {showMap &&
       <RepMapView
-        properties={routeProperties}
+        properties={mapRouteProperties}
         onSelectProperty={(p) => setSelectedProperty(p)}
         onClose={() => {setShowMap(false);setFocusProperty(null);}}
         focusProperty={focusProperty}
@@ -1190,6 +1336,11 @@ export default function RepHome() {
         routePosition={selectedPropertyIndex !== null ? selectedPropertyIndex + 1 : null}
         totalStops={filteredProperties.length}
         navigationApp={navigationApp}
+        fieldRoutesCapability={fieldRoutesCapability}
+        fieldRoutesStatus={selectedFieldRoutesStatus}
+        fieldRoutesPendingDeviceCount={fieldRoutesPendingDeviceCount}
+        onDiscardFieldRoutesDeviceAttention={() => discardFieldRoutesDeviceAttention(selectedFieldRoutesSourceKey)}
+        onScheduleInspection={handleScheduleInspection}
         onViewOnMap={() => {
           const prop = selectedProperty;
           setSelectedProperty(null);
