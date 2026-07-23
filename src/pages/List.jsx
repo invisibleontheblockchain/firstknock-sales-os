@@ -465,36 +465,61 @@ export default function ListPage() {
         if (isSalesTab) refetchSalesLogs();
     };
 
-    const tabs = [
+    const primaryTabs = [
         { id: 'performance', label: 'Performance', icon: BarChart3 },
         { id: 'advanced', label: 'Advanced', icon: Sparkles },
         { id: 'sales', label: 'Sales', icon: DollarSign },
-        { id: 'routes', label: 'Routes', icon: Navigation },
     ];
+    const routesTab = { id: 'routes', label: 'Routes', icon: Navigation };
+    const tabs = [...primaryTabs, routesTab];
 
     return (
         <div className="h-full flex flex-col bg-[#09090b]">
             {/* Tab bar */}
             <div className="px-4 md:px-6 pt-3 pb-2 border-b border-white/[0.04] sticky top-0 z-20 backdrop-blur-xl bg-[#09090b]/80">
-                <div className="max-w-7xl mx-auto flex p-1 bg-white/[0.03] rounded-xl border border-white/[0.05] overflow-x-auto no-scrollbar">
-                    {tabs.map((tab) => {
-                        const Icon = tab.icon;
-                        const isActive = activeTab === tab.id;
-                        return (
-                            <button
-                                key={tab.id}
-                                onClick={() => setActiveTab(tab.id)}
-                                className={`flex-1 min-w-[100px] py-2 px-3 rounded-lg text-xs font-bold transition-all duration-200 flex items-center justify-center gap-2 ${
-                                    isActive
-                                        ? 'bg-white text-black shadow-lg shadow-white/10'
-                                        : 'text-gray-500 hover:text-white hover:bg-white/5'
-                                }`}
-                            >
-                                <Icon className="w-3.5 h-3.5" />
-                                {tab.label}
-                            </button>
-                        );
-                    })}
+                <div className="max-w-7xl mx-auto">
+                    <div
+                        role="group"
+                        aria-label="Primary analytics views"
+                        className="grid grid-cols-3 md:flex p-1 bg-white/[0.03] rounded-xl border border-white/[0.05]"
+                    >
+                        {tabs.map((tab) => {
+                            const Icon = tab.icon;
+                            const isActive = activeTab === tab.id;
+                            return (
+                                <button
+                                    type="button"
+                                    key={tab.id}
+                                    onClick={() => setActiveTab(tab.id)}
+                                    aria-pressed={isActive}
+                                    aria-controls="analytics-results"
+                                    className={`${tab.id === routesTab.id ? 'hidden md:flex' : 'flex'} flex-1 min-w-0 md:min-w-[100px] py-2 px-1.5 sm:px-3 rounded-lg text-[11px] sm:text-xs font-bold transition-all duration-200 items-center justify-center gap-1 sm:gap-2 ${
+                                        isActive
+                                            ? 'bg-white text-black shadow-lg shadow-white/10'
+                                            : 'text-gray-500 hover:text-white hover:bg-white/5'
+                                    }`}
+                                >
+                                    <Icon className="w-3.5 h-3.5 shrink-0" />
+                                    {tab.label}
+                                </button>
+                            );
+                        })}
+                    </div>
+
+                    <button
+                        type="button"
+                        onClick={() => setActiveTab(routesTab.id)}
+                        aria-pressed={activeTab === routesTab.id}
+                        aria-controls="analytics-results"
+                        className={`mt-1.5 ml-auto min-h-9 px-3 rounded-lg md:hidden flex items-center gap-1.5 text-[11px] font-bold transition-colors ${
+                            activeTab === routesTab.id
+                                ? 'bg-white text-black shadow-lg shadow-white/10'
+                                : 'border border-white/[0.07] bg-white/[0.03] text-gray-400 hover:text-white hover:bg-white/[0.06]'
+                        }`}
+                    >
+                        <Navigation className="w-3.5 h-3.5" />
+                        Route analytics
+                    </button>
                 </div>
             </div>
 
@@ -510,7 +535,7 @@ export default function ListPage() {
                     />
                 )}
 
-                <div role="region" aria-label="Analytics results" aria-busy={isLoading}>
+                <div id="analytics-results" role="region" aria-label="Analytics results" aria-busy={isLoading}>
                     {isLoading ? (
                         <div className="flex flex-col justify-center items-center py-24 gap-3">
                             <Loader2 className="w-6 h-6 animate-spin text-white/40" />

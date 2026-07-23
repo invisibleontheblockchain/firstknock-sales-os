@@ -67,7 +67,7 @@ test('rep Canvas handoff is server-authorized and has no name or local deploymen
   assert.match(repHome, /refetchInterval: canvasFieldOpen \|\| \(!activeRoute && !canvasFieldDismissed\) \? CANVAS_ASSIGNMENT_POLL_MS : false/);
   assert.match(repHome, /completed, recalled, or replaced/);
   assert.match(fieldView, /normalizedAssignments\.some\(\(item\) => item\.__key === selectedAssignmentKey\)/);
-  assert.match(repHome, /return activeRoutes;/);
+  assert.match(repHome, /return accountRoutes;/);
 });
 
 test('Canvas has no house-analysis UI gate and Home owns the authorized mode', async () => {

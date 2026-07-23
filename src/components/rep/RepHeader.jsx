@@ -8,9 +8,10 @@ export default function RepHeader({
   activeRoute,
   stats,
   knockWindow,
-  routes,
+  routes = [],
   onShowMap,
   onShowRouteList,
+  routeListOpen = false,
   routeProperties,
   onStartNavigation,
   navigationDisabled = false,
@@ -41,9 +42,17 @@ export default function RepHeader({
                 <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
                         <h2 className="font-extrabold text-[15px] text-white truncate tracking-tight">{activeRoute.name}</h2>
-                        {routes.length > 1 &&
-            <button onClick={onShowRouteList} className="shrink-0">
-                                <ChevronDown className="w-3.5 h-3.5 text-gray-600" />
+                        {routes.length > 0 &&
+            <button
+              type="button"
+              onClick={onShowRouteList}
+              aria-label={`Switch route. ${routes.length} route${routes.length === 1 ? '' : 's'} available`}
+              aria-expanded={routeListOpen}
+              aria-controls="rep-route-switcher"
+              className="flex min-h-10 shrink-0 items-center gap-1 rounded-lg border border-white/10 bg-white/[0.05] px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.08em] text-white/55 transition hover:border-white/20 hover:text-white"
+            >
+                                <span>{routes.length} route{routes.length === 1 ? '' : 's'}</span>
+                                <ChevronDown className={`h-3 w-3 transition-transform ${routeListOpen ? 'rotate-180' : ''}`} />
                             </button>
             }
                     </div>

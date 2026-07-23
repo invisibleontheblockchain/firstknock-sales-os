@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Navigation, CheckCircle2, Search, X, TrendingUp, MessageCircle, CalendarDays, Sparkles } from 'lucide-react';
+import { Loader2, Navigation, CheckCircle2, Search, X, TrendingUp, MessageCircle, CalendarDays, Sparkles, ChevronDown } from 'lucide-react';
 import localforage from 'localforage';
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -31,6 +31,14 @@ import { getMyCanvasAssignments } from '@/components/canvas/canvasProductionClie
 import RepHeader from '@/components/rep/RepHeader';
 import PropertyCard from '@/components/rep/PropertyCard';
 import PropertyDetailSheet from '@/components/rep/PropertyDetailSheet';
+import {
+  buildRepRouteScope,
+  collectKnockRoutes,
+  fetchAllSavedRoutePages,
+  getKnockRouteCacheKey,
+  routeIsVisibleInKnock,
+  selectKnockRoute,
+} from '@/components/rep/repRouteCollection';
 import PullToRefresh from '@/components/mobile/PullToRefresh';
 import RepAnalytics from '@/components/rep/RepAnalytics';
 import TeamChat from '@/components/rep/TeamChat';
@@ -102,11 +110,15 @@ export default function RepHome() {
   const [homeBaseError, setHomeBaseError] = useState('');
   const [homeRouteOptimizing, setHomeRouteOptimizing] = useState(false);
   const [homeRouteError, setHomeRouteError] = useState('');
+  const [homeBasePanelOpen, setHomeBasePanelOpen] = useState(false);
   const [canvasFieldDismissed, setCanvasFieldDismissed] = useState(false);
   const [canvasFieldOpen, setCanvasFieldOpen] = useState(false);
   const [canvasAssignmentNotice, setCanvasAssignmentNotice] = useState('');
   const previousCanvasAssignmentIdentityRef = React.useRef('');
   const hydratedHomeBaseUserRef = React.useRef(null);
+  const routeSwitcherRef = React.useRef(null);
+  const routeSwitcherCloseButtonRef = React.useRef(null);
+  const routeSwitcherReturnFocusRef = React.useRef(null);
 
   // Offline Listener
   React.useEffect(() => {
@@ -147,38 +159,39 @@ export default function RepHome() {
   }, []);
 
   // 0. Fetch Team Member Profile (to link Auth User -> Team Member ID)
-  // Server-side scoped lookup by email (no full-table scan); duplicates across managers still handled.
-  const { data: teamMemberData } = useQuery({
-    queryKey: ['myTeamMember', user?.email],
+  const teamTenantIdentity = user?.team_manager_id || user?.data?.team_manager_id || user?.id || '';
+  const userEmail = user?.email || user?.data?.email || '';
+  const {
+    data: teamMemberMatches = [],
+    isLoading: teamMembersLoading,
+    isError: teamMemberLookupFailed,
+  } = useQuery({
+    queryKey: ['myTeamMember', user?.id, userEmail, teamTenantIdentity],
     queryFn: async () => {
-      if (!user?.email) return null;
+      if (!userEmail) return [];
       try {
-        const emailLower = user.email.trim().toLowerCase();
+        const emailLower = userEmail.trim().toLowerCase();
         const res = await base44.entities.TeamMember.filter({ email: emailLower }, '-created_date', 50);
         const allMatches = Array.isArray(res) ? res : res?.items || [];
-
-        // The "primary" record is the one whose manager_id matches user.team_manager_id (from invite code),
-        // or the most recently created one
-        const primary = allMatches.find((m) => user.team_manager_id && m.manager_id === user.team_manager_id) ||
-        allMatches[0] ||
-        null;
-
-        const allIds = [...new Set(allMatches.map((m) => m.id))];
-
-        console.log(`[RepHome] TeamMember lookup: primary=${primary?.id}, allIds=${allIds.join(',')}, matches=${allMatches.length}`);
-
-        return { primary, allIds, allMatches };
+        console.log(`[RepHome] TeamMember lookup returned ${allMatches.length} email match${allMatches.length === 1 ? '' : 'es'} before tenant scoping`);
+        return allMatches;
       } catch (e) {
         console.error("Error fetching team member profile", e);
-        return null;
+        throw e;
       }
     },
-    enabled: !!user?.email
+    enabled: !!userEmail,
+    retry: 2,
   });
 
-  const teamMember = teamMemberData?.primary || null;
-  const allTeamMemberIds = teamMemberData?.allIds || [];
-  const repManagerId = teamMember?.manager_id || user?.team_manager_id || (user?.app_role === 'manager' ? user?.id : null);
+  const routeScope = useMemo(
+    () => buildRepRouteScope(user, teamMemberMatches),
+    [teamMemberMatches, user],
+  );
+  const teamMember = routeScope.primaryTeamMember;
+  const allTeamMemberIds = routeScope.teamMemberIds;
+  const repManagerId = routeScope.managerId;
+  const routeCacheKey = getKnockRouteCacheKey(routeScope);
   const [fieldRoutesLocalStatuses, setFieldRoutesLocalStatuses] = useState({});
 
   const { data: fieldRoutesCapability = null } = useQuery({
@@ -206,53 +219,77 @@ export default function RepHome() {
     onServerAcknowledged: handleFieldRoutesServerAcknowledged,
   });
 
-  // 1. Fetch Assigned Routes - search across ALL possible team member IDs for this rep
+  // 1. Fetch the complete route collection visible to this account/viewer.
+  // Managers see every tenant route (including past and empty shell routes);
+  // reps remain limited to routes assigned to their tenant-scoped identities.
+  const myRoutesQueryKey = [
+    'myRoutes',
+    routeScope.userId,
+    routeScope.managerId,
+    routeScope.managerAccount ? 'manager' : 'rep',
+    routeScope.assigneeIds.join(','),
+    teamMemberLookupFailed ? 'identity-error' : 'identity-ok',
+  ];
   const { data: routes = [], isLoading: routesLoading } = useQuery({
-    queryKey: ['myRoutes', user?.id, allTeamMemberIds.join(',')],
+    queryKey: myRoutesQueryKey,
     refetchOnWindowFocus: true,
     queryFn: async () => {
       if (!user) return [];
+      if (teamMemberLookupFailed && !routeScope.managerAccount) {
+        // A failed identity lookup is not proof that this viewer has no routes.
+        // Use only the already-scoped cache and do not replace it with an empty
+        // network result built from incomplete TeamMember identities.
+        try {
+          const cached = await localforage.getItem(routeCacheKey);
+          return Array.isArray(cached) ? cached : [];
+        } catch (cacheError) {
+          console.warn('[RepHome] Could not read the offline route cache after identity lookup failed', cacheError);
+          return [];
+        }
+      }
       try {
         // Server-side scoped queries: assigned-to-me + (managers) owned-by-me.
         // Name-based fallback removed — backfillRouteAssignments resolves legacy name-only assignments to IDs.
-        const myIds = [...new Set([user.id, ...(allTeamMemberIds || [])])];
-        const isManager = user.app_role === 'manager';
+        const fetchRouteGroup = (filter) => fetchAllSavedRoutePages((limit, skip) => (
+          base44.entities.SavedRoute.filter(filter, '-created_date', limit, skip)
+        ));
+        const routeQueries = routeScope.assigneeIds.map((assignedTo) => (
+          fetchRouteGroup({ assigned_to: assignedTo })
+        ));
 
-        const toArr = (r) => Array.isArray(r) ? r : r?.items || [];
-        const [assignedRes, ownedRes, createdRes] = await Promise.all([
-        myIds.length > 0 ? base44.entities.SavedRoute.filter({ assigned_to: myIds }, '-created_date', 200) : [],
-        isManager ? base44.entities.SavedRoute.filter({ manager_id: user.id }, '-created_date', 200) : [],
-        isManager ? base44.entities.SavedRoute.filter({ created_by: user.email }, '-created_date', 200) : []]
-        );
+        if (routeScope.managerAccount && routeScope.managerId) {
+          routeQueries.push(fetchRouteGroup({ manager_id: routeScope.managerId }));
+        }
+        if (routeScope.managerAccount && routeScope.userEmail) {
+          // Legacy routes may predate manager_id. collectKnockRoutes accepts
+          // them only when created by this exact signed-in manager.
+          routeQueries.push(fetchRouteGroup({ created_by: routeScope.userEmail }));
+        }
 
-        const seen = new Set();
-        const myRoutes = [...toArr(assignedRes), ...toArr(ownedRes), ...toArr(createdRes)].filter((r) => {
-          if (seen.has(r.id)) return false;
-          seen.add(r.id);
-          return true;
-        });
+        const routeGroups = await Promise.all(routeQueries);
+        const accountRoutes = collectKnockRoutes(routeGroups, routeScope);
 
         const selectedRouteId = (() => {
           try {return localStorage.getItem('fk_selectedKnockRouteId');} catch {return null;}
         })();
 
-        // Filter to only non-completed, non-archived routes
-        const activeRoutes = myRoutes.filter((route) => !['completed', 'archived'].includes(String(route.status || '').toLowerCase()));
+        console.log(`[RepHome] Found ${accountRoutes.length} scoped routes for assignees [${routeScope.assigneeIds.join(', ')}], selected=${selectedRouteId || 'none'}`);
 
-        console.log(`[RepHome] Found ${activeRoutes.length} active routes (${myRoutes.length} matched) for IDs: [${myIds.join(', ')}], selected=${selectedRouteId || 'none'}`);
-
-        // Cache routes for offline
-        if (activeRoutes.length > 0) {
-          localforage.setItem('cached_routes', activeRoutes);
+        try {
+          // Write empty results too so a valid empty account does not revive a
+          // stale route list the next time this viewer is offline.
+          await localforage.setItem(routeCacheKey, accountRoutes);
+        } catch (cacheError) {
+          console.warn('[RepHome] Could not refresh the offline route cache', cacheError);
         }
-        return activeRoutes;
+        return accountRoutes;
       } catch (e) {
         console.error("Error fetching routes", e);
-        const cached = await localforage.getItem('cached_routes');
-        return cached || [];
+        const cached = await localforage.getItem(routeCacheKey);
+        return collectKnockRoutes([cached || []], routeScope);
       }
     },
-    enabled: !!user
+    enabled: !!user && !teamMembersLoading
   });
 
   // --- Derived State ---
@@ -263,16 +300,61 @@ export default function RepHome() {
     return params.get('route') || (() => {try {return localStorage.getItem('fk_selectedKnockRouteId');} catch {return null;}})();
   });
   const [showRouteList, setShowRouteList] = useState(false);
+  const openRouteSwitcher = React.useCallback((event) => {
+    routeSwitcherReturnFocusRef.current = event?.currentTarget || document.activeElement;
+    setShowRouteList(true);
+  }, []);
+  const closeRouteSwitcher = React.useCallback(() => setShowRouteList(false), []);
+  const handleRouteSwitcherKeyDown = React.useCallback((event) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeRouteSwitcher();
+      return;
+    }
+    if (event.key !== 'Tab') return;
+
+    const dialog = routeSwitcherRef.current;
+    if (!dialog) return;
+    const focusableElements = [...dialog.querySelectorAll(
+      'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])'
+    )].filter((element) => element.getAttribute('aria-hidden') !== 'true');
+    if (!focusableElements.length) {
+      event.preventDefault();
+      return;
+    }
+
+    const firstElement = focusableElements[0];
+    const lastElement = focusableElements[focusableElements.length - 1];
+    const focusOutsideDialog = !dialog.contains(document.activeElement);
+    if (event.shiftKey && (document.activeElement === firstElement || focusOutsideDialog)) {
+      event.preventDefault();
+      lastElement.focus();
+    } else if (!event.shiftKey && (document.activeElement === lastElement || focusOutsideDialog)) {
+      event.preventDefault();
+      firstElement.focus();
+    }
+  }, [closeRouteSwitcher]);
+
+  React.useEffect(() => {
+    if (!showRouteList) return undefined;
+    const returnFocusTarget = routeSwitcherReturnFocusRef.current;
+    const focusFrame = window.requestAnimationFrame(() => routeSwitcherCloseButtonRef.current?.focus());
+
+    return () => {
+      window.cancelAnimationFrame(focusFrame);
+      if (returnFocusTarget && document.contains(returnFocusTarget)) returnFocusTarget.focus();
+      routeSwitcherReturnFocusRef.current = null;
+    };
+  }, [showRouteList]);
 
   const activeRoute = useMemo(() => {
-    if (!routes.length) return null;
-    if (manualRouteId) {
-      const manual = routes.find((r) => r.id === manualRouteId);
-      if (manual) return manual;
-    }
-    // Prioritize 'IN_PROGRESS' then 'ACTIVE'
-    return routes.find((r) => r.status === 'IN_PROGRESS') || routes.find((r) => r.status === 'ACTIVE') || routes[0];
+    return selectKnockRoute(routes, manualRouteId);
   }, [routes, manualRouteId]);
+  const activeRouteStatus = String(activeRoute?.status || 'PENDING').toUpperCase();
+  const activeRouteArchived = activeRouteStatus === 'ARCHIVED';
+  const activeRouteCompleted = activeRouteStatus === 'COMPLETED';
+  const activeRouteCanComplete = !activeRouteArchived && !activeRouteCompleted;
+  const routeIdentityUnavailable = teamMemberLookupFailed && !routeScope.managerAccount;
   const activeRouteBelongsToCurrentUser = Boolean(
     activeRoute?.assigned_to && (
       activeRoute.assigned_to === user?.id || allTeamMemberIds.includes(activeRoute.assigned_to)
@@ -319,25 +401,24 @@ export default function RepHome() {
 
   React.useEffect(() => {
     if (!activeRoute?.id) return;
-    try {localStorage.setItem('fk_selectedKnockRouteId', activeRoute.id);} catch {}
-  }, [activeRoute?.id]);
+    const readyForWork = ['IN_PROGRESS', 'ACTIVE', 'PENDING'].includes(activeRouteStatus);
+    const explicitlySelected = manualRouteId === activeRoute.id;
+    try {
+      if (readyForWork || explicitlySelected) localStorage.setItem('fk_selectedKnockRouteId', activeRoute.id);
+      else localStorage.removeItem('fk_selectedKnockRouteId');
+    } catch {}
+  }, [activeRoute?.id, activeRouteStatus, manualRouteId]);
 
   const teamMemberIdsKey = allTeamMemberIds.join(',');
   React.useEffect(() => {
     if (!user) return;
-    const myIds = new Set([user.id, ...allTeamMemberIds]);
     const unsubscribe = base44.entities.SavedRoute.subscribe((event) => {
       if (!event?.id) return;
       const isSelectedRoute = event.id === activeRoute?.id || event.id === manualRouteId;
       // Tenant guard: only react to create events that belong to this user/team.
       // Unscoped 'create' invalidation caused thundering-herd refetches at scale.
       const d = event.data;
-      const isMine = !!d && (
-        d.created_by === user.email ||
-        d.manager_id === user.id ||
-        (user.team_manager_id && d.manager_id === user.team_manager_id) ||
-        myIds.has(d.assigned_to)
-      );
+      const isMine = !!d && routeIsVisibleInKnock({ ...d, id: event.id }, routeScope);
       if (isSelectedRoute) {
         queryClient.invalidateQueries({ queryKey: ['myRoutes'] });
         queryClient.invalidateQueries({ queryKey: ['routeProperties'] });
@@ -426,7 +507,8 @@ export default function RepHome() {
 
   // Knock Mode freemium gate: disabled once the limit sheet has been dismissed
   // this session, OR if the user is already at/over the limit on load.
-  const outcomeLoggingDisabled = !isProUser(user) && (limitDismissed || needsCardOnFile(user) || isOutcomeBlocked(user));
+  const outcomeLoggingDisabled = activeRouteArchived
+    || (!isProUser(user) && (limitDismissed || needsCardOnFile(user) || isOutcomeBlocked(user)));
   const showLimitBanner = limitDismissed && !isProUser(user);
 
   // REAL-TIME UPDATES: Prevent double-knocking (Team Mode)
@@ -532,7 +614,9 @@ export default function RepHome() {
   });
 
   const clearDecisionMutation = useMutation({
-    mutationFn: (log) => base44.entities.InteractionLog.create({
+    mutationFn: (log) => {
+      if (activeRouteArchived) throw new Error('Archived routes are read-only.');
+      return base44.entities.InteractionLog.create({
       address_hash: log.address_hash,
       raw_input_text: 'Decision cleared — moved back to Todo',
       parsed_status: 'ELIGIBLE',
@@ -541,7 +625,8 @@ export default function RepHome() {
       workflow_bucket: 'TODO',
       route_id: activeRoute?.id || null,
       manager_id: repManagerId
-    }),
+      });
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['routeLogs'] });
       queryClient.invalidateQueries({ queryKey: ['allMyLogs'] });
@@ -552,14 +637,55 @@ export default function RepHome() {
 
   // Complete Route Mutation
   const completeRouteMutation = useMutation({
-    mutationFn: () => base44.entities.SavedRoute.update(activeRoute.id, {
+    mutationFn: (routeId) => base44.entities.SavedRoute.update(routeId, {
       status: 'COMPLETED'
-      // optional: completed_date: new Date().toISOString()
     }),
-    onSuccess: () => {
+    onMutate: async (routeId) => {
+      await queryClient.cancelQueries({ queryKey: myRoutesQueryKey });
+      const cachedRoutes = queryClient.getQueryData(myRoutesQueryKey);
+      const previousRoutes = Array.isArray(cachedRoutes) ? cachedRoutes : routes;
+      const previousManualRouteId = manualRouteId;
+      const previousUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+      let previousStoredRouteId = null;
+      try { previousStoredRouteId = localStorage.getItem('fk_selectedKnockRouteId'); } catch {}
+
+      queryClient.setQueryData(myRoutesQueryKey, previousRoutes.map((route) => (
+        route.id === routeId ? { ...route, status: 'COMPLETED' } : route
+      )));
+      setManualRouteId(null);
+      try { localStorage.removeItem('fk_selectedKnockRouteId'); } catch {}
+      const nextUrl = new URL(window.location.href);
+      nextUrl.searchParams.delete('route');
+      window.history.replaceState({}, '', `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`);
+
+      return { previousRoutes, previousManualRouteId, previousStoredRouteId, previousUrl };
+    },
+    onError: (error, _routeId, context) => {
+      if (context?.previousRoutes) queryClient.setQueryData(myRoutesQueryKey, context.previousRoutes);
+      setManualRouteId(context?.previousManualRouteId || null);
+      try {
+        if (context?.previousStoredRouteId) {
+          localStorage.setItem('fk_selectedKnockRouteId', context.previousStoredRouteId);
+        } else {
+          localStorage.removeItem('fk_selectedKnockRouteId');
+        }
+      } catch {}
+      if (context?.previousUrl) window.history.replaceState({}, '', context.previousUrl);
+      toast.error(error?.message || 'The route could not be completed. Please try again.');
+    },
+    onSuccess: async () => {
+      try {
+        const completedRoutes = queryClient.getQueryData(myRoutesQueryKey);
+        if (Array.isArray(completedRoutes)) {
+          await localforage.setItem(routeCacheKey, completedRoutes);
+        }
+      } catch (cacheError) {
+        console.warn('[RepHome] Could not update the offline route cache after completion', cacheError);
+      }
+      toast.success('Route completed.');
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['myRoutes'] });
-      // Show celebration or something?
-      // The route will disappear from "Active" list, so activeRoute might become null or switch to next
     }
   });
 
@@ -782,6 +908,7 @@ export default function RepHome() {
   const bulkActionMutation = useMutation({
     mutationFn: async ({ action, properties: targetProperties }) => {
       if (!activeRoute?.id) throw new Error('No active route is available.');
+      if (activeRouteArchived) throw new Error('Archived routes are read-only.');
       if (!targetProperties?.length) throw new Error('Select at least one route stop.');
 
       if (action === ROUTE_BULK_ACTIONS.DELETE) {
@@ -905,6 +1032,10 @@ export default function RepHome() {
 
   const handleStartRouteNavigation = () => {
     setNavigationError('');
+    if (activeRouteArchived) {
+      setNavigationError('Archived routes are read-only and cannot be started.');
+      return;
+    }
     try {
       if (canResumeNavigationBatch) {
         const resumePlan = getRouteNavigationPlan(navigationProgress.remainingStops, navigationApp, {
@@ -935,7 +1066,7 @@ export default function RepHome() {
     }
   };
 
-  if (routesLoading || propsLoading || logsLoading || (!activeRoute && canvasAssignmentsLoading)) {
+  if (teamMembersLoading || routesLoading || propsLoading || logsLoading || (!activeRoute && canvasAssignmentsLoading)) {
     return (
       <div className="flex h-screen items-center justify-center bg-black text-white">
                 <div className="text-center">
@@ -968,9 +1099,13 @@ export default function RepHome() {
                 <div className="w-20 h-20 bg-white/[0.04] border border-white/10 rounded-3xl flex items-center justify-center mb-6 shadow-[0_0_40px_rgba(46,235,87,0.12)]">
                     <Navigation className="w-10 h-10 text-[#2EEB57]" />
                 </div>
-                <h1 className="text-2xl font-bold mb-2">No Active Routes</h1>
+                <h1 className="text-2xl font-bold mb-2">
+                    {routeIdentityUnavailable ? 'Routes Temporarily Unavailable' : 'No Active Routes'}
+                </h1>
                 <p className="text-gray-400 mb-8 max-w-xs">
-                    You don't have any routes assigned yet. Ask your manager to assign one, or check back later.
+                    {routeIdentityUnavailable
+                      ? 'We could not verify your team profile. Your saved route cache was preserved; try again when your connection is stable.'
+                      : "You don't have any routes assigned yet. Ask your manager to assign one, or check back later."}
                 </p>
                 {canvasAssignmentNotice && (
                   <p className="mb-4 max-w-sm rounded-xl border border-purple-400/25 bg-purple-500/10 p-3 text-xs text-purple-100">
@@ -990,9 +1125,10 @@ export default function RepHome() {
                 <Button onClick={() => {
                   setCanvasFieldDismissed(false);
                   refetchCanvasAssignments();
+                  queryClient.invalidateQueries({ queryKey: ['myTeamMember'] });
                   queryClient.invalidateQueries({ queryKey: ['myRoutes'] });
                 }} variant="outline" className="border-gray-700 text-white">
-                    Check Again
+                    {routeIdentityUnavailable ? 'Try Again' : 'Check Again'}
                 </Button>
             </div>);
 
@@ -1001,6 +1137,10 @@ export default function RepHome() {
   // --- RENDER HELPERS ---
 
   const handleClearDecision = (log) => {
+    if (activeRouteArchived) {
+      toast.error('Archived routes are read-only.');
+      return;
+    }
     if (!log?.address_hash) return;
     if (confirm('Clear this decision and move the home back to Todo?')) {
       clearDecisionMutation.mutate(log);
@@ -1008,16 +1148,20 @@ export default function RepHome() {
   };
 
   const handleTogglePropertySelection = (property) => {
-    if (bulkActionMutation.isPending) return;
+    if (activeRouteArchived || bulkActionMutation.isPending) return;
     setSelectedPropertyKeys((previous) => togglePropertySelection(previous, property));
   };
 
   const handleToggleVisibleSelection = () => {
-    if (bulkActionMutation.isPending || filteredProperties.length === 0) return;
+    if (activeRouteArchived || bulkActionMutation.isPending || filteredProperties.length === 0) return;
     setSelectedPropertyKeys((previous) => toggleVisiblePropertySelection(previous, filteredProperties));
   };
 
   const handleBulkAction = (action) => {
+    if (activeRouteArchived) {
+      toast.error('Archived routes are read-only.');
+      return;
+    }
     if (bulkActionMutation.isPending) return;
     if (!selectedProperties.length) {
       toast.error('Select at least one completed stop.');
@@ -1056,6 +1200,10 @@ export default function RepHome() {
   };
 
   const handleLog = async (logData) => {
+    if (activeRouteArchived) {
+      toast.error('Archived routes are read-only.');
+      return false;
+    }
     if (!selectedProperty && !logData.address_hash) return false;
     const prop = selectedProperty || {};
 
@@ -1107,6 +1255,7 @@ export default function RepHome() {
   };
 
   const handleScheduleInspection = async ({ contact, property, notes }) => {
+    if (activeRouteArchived) throw new Error('Archived routes are read-only.');
     const target = selectedProperty;
     if (!target?.address_hash || !activeRoute?.id) throw new Error('This route property is not ready for FieldRoutes yet.');
     const sourceKey = `precision:${activeRoute.id}:${target.address_hash}`;
@@ -1135,6 +1284,7 @@ export default function RepHome() {
   };
 
   const handlePhotoUpload = async (e) => {
+    if (activeRouteArchived) return;
     const file = e.target.files[0];
     if (!file || !selectedProperty) return;
     setUploading(true);
@@ -1197,6 +1347,12 @@ export default function RepHome() {
 
   const handleOptimizeSelectedRouteFromHome = async () => {
     if (homeRouteOptimizing || homeBaseSaving) return;
+    if (activeRouteArchived) {
+      const message = 'Archived routes are read-only and cannot be optimized.';
+      setHomeRouteError(message);
+      toast.error(message, { id: 'rep-home-route' });
+      return;
+    }
     if (!activeRoute?.id) {
       const message = 'Select a route before optimizing from home.';
       setHomeRouteError(message);
@@ -1271,7 +1427,7 @@ export default function RepHome() {
       };
 
       await base44.entities.SavedRoute.update(routeToOptimize.id, routeUpdate);
-      queryClient.setQueryData(['myRoutes', user?.id, allTeamMemberIds.join(',')], (currentRoutes) =>
+      queryClient.setQueryData(myRoutesQueryKey, (currentRoutes) =>
         Array.isArray(currentRoutes)
           ? currentRoutes.map((route) => route.id === routeToOptimize.id ? { ...route, ...routeUpdate } : route)
           : currentRoutes
@@ -1307,10 +1463,11 @@ export default function RepHome() {
         knockWindow={knockWindow}
         routes={routes}
         onShowMap={() => setShowMap(true)}
-        onShowRouteList={() => setShowRouteList(true)}
+        onShowRouteList={openRouteSwitcher}
+        routeListOpen={showRouteList}
         routeProperties={routeProperties}
         onStartNavigation={handleStartRouteNavigation}
-        navigationDisabled={!hasNextNavigationBatch && remainingNavigationStops.length === 0}
+        navigationDisabled={activeRouteArchived || (!hasNextNavigationBatch && remainingNavigationStops.length === 0)}
         navigationButtonLabel={hasNextNavigationBatch ? 'Next Batch' : canResumeNavigationBatch ? 'Resume' : 'Start'}
         navigationBatchLabel={hasNextNavigationBatch
           ? `${navigationProgress.continuationStops.length} left`
@@ -1410,7 +1567,7 @@ export default function RepHome() {
                           checked={allVisibleSelected}
                           aria-checked={!allVisibleSelected && selectedProperties.length > 0 ? 'mixed' : allVisibleSelected}
                           aria-label={`Select all ${filteredProperties.length} visible completed stops`}
-                          disabled={bulkActionMutation.isPending || filteredProperties.length === 0}
+                          disabled={activeRouteArchived || bulkActionMutation.isPending || filteredProperties.length === 0}
                           onChange={handleToggleVisibleSelection}
                           className="h-4 w-4 shrink-0 cursor-pointer accent-[#39FF4A] disabled:cursor-not-allowed disabled:opacity-40"
                         />
@@ -1425,7 +1582,7 @@ export default function RepHome() {
                 <div className="grid grid-cols-4 gap-1.5">
                     <button
                       type="button"
-                      disabled={bulkActionMutation.isPending || selectedProperties.length === 0}
+                      disabled={activeRouteArchived || bulkActionMutation.isPending || selectedProperties.length === 0}
                       onClick={() => handleBulkAction(ROUTE_BULK_ACTIONS.TODO)}
                       className="h-9 rounded-xl border border-white/15 bg-white/[0.07] px-1 text-[9px] font-black text-white transition-colors hover:bg-white/[0.12] disabled:cursor-not-allowed disabled:opacity-35"
                     >
@@ -1433,7 +1590,7 @@ export default function RepHome() {
                     </button>
                     <button
                       type="button"
-                      disabled={bulkActionMutation.isPending || selectedProperties.length === 0}
+                      disabled={activeRouteArchived || bulkActionMutation.isPending || selectedProperties.length === 0}
                       onClick={() => handleBulkAction(ROUTE_BULK_ACTIONS.CALLBACK)}
                       className="h-9 rounded-xl border border-sky-400/25 bg-sky-400/10 px-1 text-[9px] font-black text-sky-300 transition-colors hover:bg-sky-400/15 disabled:cursor-not-allowed disabled:opacity-35"
                     >
@@ -1441,7 +1598,7 @@ export default function RepHome() {
                     </button>
                     <button
                       type="button"
-                      disabled={bulkActionMutation.isPending || selectedProperties.length === 0}
+                      disabled={activeRouteArchived || bulkActionMutation.isPending || selectedProperties.length === 0}
                       onClick={() => handleBulkAction(ROUTE_BULK_ACTIONS.RE_KNOCK)}
                       className="h-9 rounded-xl border border-amber-400/25 bg-amber-400/10 px-1 text-[9px] font-black text-amber-300 transition-colors hover:bg-amber-400/15 disabled:cursor-not-allowed disabled:opacity-35"
                     >
@@ -1449,7 +1606,7 @@ export default function RepHome() {
                     </button>
                     <button
                       type="button"
-                      disabled={bulkActionMutation.isPending || selectedProperties.length === 0}
+                      disabled={activeRouteArchived || bulkActionMutation.isPending || selectedProperties.length === 0}
                       onClick={() => handleBulkAction(ROUTE_BULK_ACTIONS.DELETE)}
                       className="h-9 rounded-xl border border-red-400/25 bg-red-400/10 px-1 text-[9px] font-black text-red-300 transition-colors hover:bg-red-400/15 disabled:cursor-not-allowed disabled:opacity-35"
                     >
@@ -1478,7 +1635,7 @@ export default function RepHome() {
             property={prop}
             index={idx}
             navigationApp={navigationApp}
-            selectable={filterStatus === 'done'}
+            selectable={filterStatus === 'done' && !activeRouteArchived}
             selected={selectedPropertyKeys.has(getPropertySelectionKey(prop))}
             onToggleSelect={handleTogglePropertySelection}
             onSelect={(p, i) => {setSelectedProperty(p);setSelectedPropertyIndex(i);}} />
@@ -1490,11 +1647,12 @@ export default function RepHome() {
 
             {/* Floating action buttons */}
             <div className="fixed bottom-20 left-4 right-4 z-30 flex items-center gap-2 rounded-[28px] border border-white/10 bg-black/55 p-2 shadow-[0_22px_70px_rgba(0,0,0,0.65)] backdrop-blur-2xl">
-                {stats.percent >= 100 &&
+                {stats.percent >= 100 && activeRouteCanComplete &&
         <Button
           onClick={() => {
-            if (confirm("Mark route as complete?")) completeRouteMutation.mutate();
+            if (confirm("Mark route as complete?")) completeRouteMutation.mutate(activeRoute.id);
           }}
+          disabled={completeRouteMutation.isPending}
           className="flex-1 h-12 rounded-[20px] border border-[#B6FF5C]/40 bg-gradient-to-r from-[#2EEB57] via-[#39FF4A] to-[#B6FF5C] text-black font-black text-xs tracking-[0.16em] shadow-[0_14px_34px_rgba(46,235,87,0.35)] transition-all hover:scale-[1.01] hover:shadow-[0_18px_46px_rgba(57,255,74,0.45)] active:scale-[0.98]">
           
                         ✅ Complete Route
@@ -1520,20 +1678,25 @@ export default function RepHome() {
 
             {/* Route Switching Drawer */}
             {showRouteList &&
-      <div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/60 backdrop-blur-sm" onClick={() => setShowRouteList(false)}>
-                    <div className="bg-[#050505]/95 backdrop-blur-2xl rounded-t-3xl border-t border-white/10 max-h-[85dvh] flex flex-col shadow-[0_-20px_70px_rgba(0,0,0,0.7)]" onClick={(e) => e.stopPropagation()}>
+      <div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/60 backdrop-blur-sm" onClick={closeRouteSwitcher}>
+                    <div ref={routeSwitcherRef} id="rep-route-switcher" role="dialog" aria-modal="true" aria-labelledby="rep-route-switcher-title" onKeyDown={handleRouteSwitcherKeyDown} className="bg-[#050505]/95 backdrop-blur-2xl rounded-t-3xl border-t border-white/10 max-h-[85dvh] flex flex-col shadow-[0_-20px_70px_rgba(0,0,0,0.7)]" onClick={(e) => e.stopPropagation()}>
                         <div className="p-4 border-b border-white/10 flex justify-between items-center">
-                            <h3 className="font-bold text-white">Switch Route</h3>
-                            <button onClick={() => setShowRouteList(false)}><X className="w-5 h-5 text-gray-500" /></button>
+                            <div>
+                                <h3 id="rep-route-switcher-title" className="font-bold text-white">Switch Route</h3>
+                                <p className="mt-0.5 text-[10px] text-white/45">
+                                    {routes.length} {routeScope.managerAccount ? 'account' : 'assigned'} route{routes.length === 1 ? '' : 's'}
+                                </p>
+                            </div>
+                            <button ref={routeSwitcherCloseButtonRef} type="button" aria-label="Close route switcher" onClick={closeRouteSwitcher} className="-mr-2 flex h-10 w-10 items-center justify-center rounded-xl text-gray-500 transition hover:bg-white/[0.06] hover:text-white"><X className="w-5 h-5" /></button>
                         </div>
-                        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                        <div className="flex-1 overflow-y-auto p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] space-y-4">
                             {canvasAssignments.length > 0 && (
                               <button
                                 type="button"
                                 onClick={() => {
                                   setCanvasFieldDismissed(false);
                                   setCanvasFieldOpen(true);
-                                  setShowRouteList(false);
+                                  closeRouteSwitcher();
                                 }}
                                 className="w-full rounded-2xl border border-purple-400/35 bg-purple-500/10 p-3.5 text-left transition-colors hover:bg-purple-500/15"
                               >
@@ -1546,21 +1709,36 @@ export default function RepHome() {
                                 </div>
                               </button>
                             )}
-                            <section className="rounded-2xl border border-[#2EEB57]/25 bg-[#2EEB57]/[0.06] p-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-                                <div className="mb-3 flex items-start justify-between gap-3">
-                                    <div>
-                                        <p className="text-sm font-black text-white">Home Base</p>
-                                        <p className="mt-0.5 text-[11px] leading-relaxed text-white/55">
-                                            Set your private start and finish, then optimize the selected route.
+                            <section className="overflow-hidden rounded-2xl border border-[#2EEB57]/25 bg-[#2EEB57]/[0.06] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+                                <button
+                                  id="rep-home-base-toggle"
+                                  type="button"
+                                  aria-expanded={homeBasePanelOpen}
+                                  aria-controls="rep-home-base-controls"
+                                  onClick={() => setHomeBasePanelOpen((open) => !open)}
+                                  className="flex w-full items-center justify-between gap-3 p-3 text-left transition hover:bg-white/[0.035]"
+                                >
+                                    <div className="min-w-0">
+                                        <p className="text-xs font-black text-white">Home Base &amp; optimization</p>
+                                        <p className="mt-0.5 truncate text-[10px] text-white/45">
+                                            {user?.home_base ? 'Saved privately' : 'Not set'} · {activeRoute?.name || 'No route selected'}
                                         </p>
                                     </div>
-                                    {user?.home_base &&
-                    <span className="shrink-0 rounded-full border border-[#39FF4A]/30 bg-[#39FF4A]/10 px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-[#39FF4A]">
+                                    <div className="flex shrink-0 items-center gap-2">
+                                        {user?.home_base &&
+                    <span className="rounded-full border border-[#39FF4A]/30 bg-[#39FF4A]/10 px-2 py-1 text-[8px] font-black uppercase tracking-[0.12em] text-[#39FF4A]">
                                             Saved
                                         </span>
                     }
-                                </div>
+                                        <ChevronDown className={`h-4 w-4 text-white/45 transition-transform ${homeBasePanelOpen ? 'rotate-180' : ''}`} />
+                                    </div>
+                                </button>
 
+                                {homeBasePanelOpen &&
+                  <div id="rep-home-base-controls" role="region" aria-labelledby="rep-home-base-toggle" className="border-t border-white/10 p-3">
+                                <p className="mb-3 text-[11px] leading-relaxed text-white/55">
+                                    Set your private start and finish, then optimize the selected route.
+                                </p>
                                 <form onSubmit={handleSaveRepHomeBase} className="space-y-2.5">
                                     <label htmlFor="rep-home-base-address" className="block text-[10px] font-black uppercase tracking-[0.14em] text-white/50">
                                         Home address
@@ -1590,7 +1768,7 @@ export default function RepHome() {
                                         <Button
                       type="button"
                       onClick={handleOptimizeSelectedRouteFromHome}
-                      disabled={!activeRouteBelongsToCurrentUser || !routeProperties.length || homeRouteOptimizing || homeBaseSaving}
+                      disabled={activeRouteArchived || !activeRouteBelongsToCurrentUser || !routeProperties.length || homeRouteOptimizing || homeBaseSaving}
                       className="h-11 w-full rounded-xl bg-gradient-to-r from-[#2EEB57] to-[#B6FF5C] px-3 text-[11px] font-black text-black hover:brightness-110 disabled:opacity-45">
                                             {homeRouteOptimizing ?
                         <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Optimizing...</> :
@@ -1608,26 +1786,40 @@ export default function RepHome() {
                                 <p className="mt-3 text-[10px] leading-relaxed text-white/40">
                                     Address lookup uses OpenStreetMap. Your exact address stays private; your manager can request only an approximate point for a route assigned to you. Mileage is a straight-line estimate, so road travel may differ.
                                 </p>
+                  </div>
+                  }
                             </section>
 
-                            <div className="space-y-2">
+                            <div className="space-y-2" aria-label={`${routes.length} routes available`}>
+                            <div className="flex items-center justify-between px-1">
+                                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/45">Routes</p>
+                                <p className="text-[10px] text-white/35">Active and past routes</p>
+                            </div>
                             {routes.map((route) =>
             <button
+              type="button"
               key={route.id}
+              aria-current={activeRoute?.id === route.id ? 'true' : undefined}
               onClick={() => {
                 setManualRouteId(route.id);
                 try {localStorage.setItem('fk_selectedKnockRouteId', route.id);} catch {}
                 window.history.replaceState({}, '', `${window.location.pathname}?route=${route.id}`);
-                setShowRouteList(false);
+                closeRouteSwitcher();
               }}
               className={`w-full p-3 rounded-2xl border text-left transition-all ${activeRoute?.id === route.id ? 'bg-[#2EEB57]/10 border-[#2EEB57]/60 shadow-[0_0_24px_rgba(46,235,87,0.12)]' : 'bg-white/[0.04] border-white/10 hover:border-white/20'}`
               }>
               
-                                    <div className="flex justify-between items-center">
-                                        <span className={`font-bold text-sm ${activeRoute?.id === route.id ? 'text-[#39FF4A]' : 'text-white'}`}>
+                                    <div className="flex items-start justify-between gap-3">
+                                        <span className={`min-w-0 truncate font-bold text-sm ${activeRoute?.id === route.id ? 'text-[#39FF4A]' : 'text-white'}`}>
                                             {route.name}
                                         </span>
-                                        <span className="text-xs text-gray-500">{route.metrics?.house_count || 0} doors</span>
+                                        <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.1em] ${['COMPLETED', 'ARCHIVED'].includes(String(route.status || '').toUpperCase()) ? 'border-white/10 bg-white/[0.05] text-white/40' : 'border-[#2EEB57]/25 bg-[#2EEB57]/10 text-[#39FF4A]'}`}>
+                                            {String(route.status || 'PENDING').replaceAll('_', ' ')}
+                                        </span>
+                                    </div>
+                                    <div className="mt-1.5 flex items-center justify-between gap-3 text-[10px] text-white/40">
+                                        <span>{route.assigned_to_name || (routeScope.managerAccount ? 'Unassigned' : 'Assigned to you')}</span>
+                                        <span>{route.metrics?.house_count || route.property_hashes?.length || 0} doors</span>
                                     </div>
                                 </button>
             )}
@@ -1656,9 +1848,16 @@ export default function RepHome() {
         logs={selectedPropertyLogs}
         onLog={handleLog}
         outcomeDisabled={outcomeLoggingDisabled}
-        onBlockedAttempt={() => { setGateMode(needsCardOnFile(user) ? 'card' : 'limit'); setShowLimitSheet(true); }}
-        onClearDecision={handleClearDecision}
-        onPhotoUpload={handlePhotoUpload}
+        onBlockedAttempt={() => {
+          if (activeRouteArchived) {
+            toast.error('Archived routes are read-only.');
+            return;
+          }
+          setGateMode(needsCardOnFile(user) ? 'card' : 'limit');
+          setShowLimitSheet(true);
+        }}
+        onClearDecision={activeRouteArchived ? undefined : handleClearDecision}
+        onPhotoUpload={activeRouteArchived ? undefined : handlePhotoUpload}
         uploading={uploading}
         onClose={() => {setSelectedProperty(null);setSelectedPropertyIndex(null);}}
         routePosition={selectedPropertyIndex !== null ? selectedPropertyIndex + 1 : null}
@@ -1668,7 +1867,7 @@ export default function RepHome() {
         fieldRoutesStatus={selectedFieldRoutesStatus}
         fieldRoutesPendingDeviceCount={fieldRoutesPendingDeviceCount}
         onDiscardFieldRoutesDeviceAttention={() => discardFieldRoutesDeviceAttention(selectedFieldRoutesSourceKey)}
-        onScheduleInspection={handleScheduleInspection}
+        onScheduleInspection={activeRouteArchived ? undefined : handleScheduleInspection}
         onViewOnMap={() => {
           const prop = selectedProperty;
           setSelectedProperty(null);
