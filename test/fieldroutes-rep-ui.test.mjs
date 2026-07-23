@@ -187,7 +187,7 @@ test('RepHome wires one scoped queue into both Precision and Canvas without chan
   assert.match(home, /route_id: activeRoute\.id/);
   assert.match(home, /address_hash: target\.address_hash/);
   assert.match(home, /onScheduleFieldRoutesInspection=\{submitFieldRoutesInspection\}/);
-  assert.match(home, /onScheduleInspection=\{handleScheduleInspection\}/);
+  assert.match(home, /onScheduleInspection=\{activeRouteArchived \? undefined : handleScheduleInspection\}/);
   assert.match(home, /refetchInterval: \(query\) => shouldPollPrecisionFieldRoutes/);
   assert.match(home, /preferFieldRoutesStatus\(localStatus, serverStatus\)/);
   assert.match(home, /await createLogMutation\.mutateAsync\(\{/);
