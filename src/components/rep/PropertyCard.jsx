@@ -26,7 +26,15 @@ const formatNumber = (value) => {
   return Number.isFinite(n) && n > 0 ? n.toLocaleString() : null;
 };
 
-export default function PropertyCard({ property, index, onSelect, navigationApp = 'apple' }) {
+export default function PropertyCard({
+  property,
+  index,
+  onSelect,
+  navigationApp = 'apple',
+  selectable = false,
+  selected = false,
+  onToggleSelect,
+}) {
   const isDone = property.effective_status !== 'ELIGIBLE';
   const statusColor = STATUS_COLORS[property.effective_status] || '#555';
   const age = formatPropertyAge(property.sold_date);
@@ -34,25 +42,39 @@ export default function PropertyCard({ property, index, onSelect, navigationApp 
   const valueLabel = formatMoney(property.price || property.estimated_value || property.estimatedValue);
   const sqftLabel = formatNumber(property.sqft || property.squareFootage);
   const yearBuilt = Number(property.year_built || property.yearBuilt) || null;
+  const addressLabel = `${property.house_number || ''} ${property.street_name || ''}`.trim() || 'route stop';
+  const isReKnock = property.workflow_bucket === 'RE_KNOCK' && !isDone;
 
   return (
     <div
-      onClick={() => onSelect(property, index)}
-      role="button"
-      tabIndex={0}
-      onKeyDown={(e) => {if (e.key === 'Enter' || e.key === ' ') onSelect(property, index);}}
-      className={`relative w-full overflow-hidden rounded-xl border px-2.5 py-2 text-left transition-all duration-300 active:scale-[0.985] group cursor-pointer ${!isDone ? 'hover:-translate-y-0.5 hover:border-[#2EEB57]/45 hover:shadow-[0_14px_42px_rgba(0,0,0,0.46)]' : 'opacity-80'}`}
+      className={`relative w-full overflow-hidden rounded-xl border px-2.5 py-2 text-left transition-all duration-300 active:scale-[0.985] group cursor-pointer ${selected ? 'border-[#39FF4A]/60 bg-[#2EEB57]/10 shadow-[0_0_0_1px_rgba(57,255,74,0.16)]' : ''} ${!isDone ? 'hover:-translate-y-0.5 hover:border-[#2EEB57]/45 hover:shadow-[0_14px_42px_rgba(0,0,0,0.46)]' : 'opacity-80'}`}
       style={{
-        background: isDone ?
+        background: selected ?
+        'linear-gradient(135deg, rgba(46,235,87,0.16), rgba(255,255,255,0.035))' : isDone ?
         'linear-gradient(135deg, rgba(255,255,255,0.035), rgba(255,255,255,0.012))' :
         'linear-gradient(135deg, rgba(255,255,255,0.095), rgba(46,235,87,0.045), rgba(255,255,255,0.025))',
-        borderColor: isDone ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.13)',
+        borderColor: selected ? 'rgba(57,255,74,0.6)' : isDone ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.13)',
         boxShadow: isDone ? 'none' : 'inset 0 1px 0 rgba(255,255,255,0.08), 0 12px 35px rgba(0,0,0,0.28)'
       }}>
       
-            <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
+            <div className="pointer-events-none absolute inset-x-0 top-0 z-20 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
+            <button
+              type="button"
+              onClick={() => onSelect(property, index)}
+              aria-label={`Open details for ${addressLabel}`}
+              className="absolute inset-0 z-0 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#39FF4A]"
+            />
 
-            <div className="flex items-start gap-2">
+            <div className="pointer-events-none relative z-10 flex items-start gap-2">
+                {selectable &&
+                <input
+                  type="checkbox"
+                  checked={selected}
+                  onChange={() => onToggleSelect?.(property)}
+                  aria-label={`Select ${addressLabel}`}
+                  className="pointer-events-auto mt-1 h-4 w-4 shrink-0 cursor-pointer accent-[#39FF4A]"
+                />
+                }
                 {/* Number / Check */}
                 <div
                     className="flex h-7 w-7 shrink-0 items-center justify-center gap-1 transition-all duration-300"
@@ -99,11 +121,12 @@ export default function PropertyCard({ property, index, onSelect, navigationApp 
                         {/* Navigate shortcut */}
                         {!isDone &&
             <button
-              onClick={(e) => {
-                e.stopPropagation();
+              type="button"
+              aria-label={`Navigate to ${addressLabel}`}
+              onClick={() => {
                 openInMaps(property.lat, property.lng, buildFullAddress(property), navigationApp);
               }}
-              className="group/nav w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-all active:scale-95 bg-[#2EEB57]/12 border border-[#2EEB57]/25 hover:bg-[#2EEB57] hover:shadow-[0_0_18px_rgba(46,235,87,0.32)]">
+              className="pointer-events-auto group/nav w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-all active:scale-95 bg-[#2EEB57]/12 border border-[#2EEB57]/25 hover:bg-[#2EEB57] hover:shadow-[0_0_18px_rgba(46,235,87,0.32)]">
               
                                 <Navigation className="w-3 h-3 text-[#39FF4A] transition-colors group-hover/nav:text-black" />
                             </button>
@@ -120,6 +143,11 @@ export default function PropertyCard({ property, index, onSelect, navigationApp 
             <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full shrink-0 tracking-wide border"
             style={{ background: statusColor + '18', color: statusColor, borderColor: statusColor + '30' }}>
                                 {property.effective_status === 'NO_ANSWER' ? 'N/A' : property.effective_status === 'HARD_NO' ? 'NO' : property.effective_status === 'NOT_MOVED_IN' ? 'NMI' : property.effective_status === 'DM_NOT_HOME' ? 'DM' : property.effective_status}
+                            </span>
+            }
+                        {isReKnock &&
+            <span className="shrink-0 rounded-full border border-amber-400/30 bg-amber-400/10 px-1.5 py-0.5 text-[9px] font-black tracking-wide text-amber-300">
+                                RE-KNOCK
                             </span>
             }
                     </div>

@@ -64,6 +64,8 @@ import { getOutcomesLogged, isOutcomeBlocked, isProUser, needsCardOnFile } from 
 import { hasCanvasAccess } from '@/lib/canvasAccess';
 import { validateCanvasBoundary } from '@/components/canvas/canvasPlannerUtils';
 import { fetchAllCanvasTeamMembers } from '@/components/canvas/canvasRosterPagination';
+import { buildFullAddress } from '@/components/logic/navigation';
+import { isKnockActivityLog } from '@/lib/interactionLogs';
 
 
 import { BRAND, DEFAULT_STATUS_COLORS, COLOR_SCHEME_MAP, LINE_DASH_MAP, ROUTE_COLORS } from '../components/map/homeMapConstants';
@@ -1093,7 +1095,7 @@ export default function Home() {
         // 2. Determine Rep Location (Last Log)
         const repLocations = {};
         teamMembers.forEach(rep => {
-            const repLogs = logs.filter(l => l.created_by === rep.email).sort((a, b) => new Date(b.created_date) - new Date(a.created_date));
+            const repLogs = logs.filter(l => isKnockActivityLog(l) && l.created_by === rep.email).sort((a, b) => new Date(b.created_date) - new Date(a.created_date));
             if (repLogs.length > 0) {
                 repLocations[rep.id] = { lat: repLogs[0].gps_proof_lat, lng: repLogs[0].gps_proof_lng, lastActive: repLogs[0].created_date };
             }
@@ -1114,7 +1116,7 @@ export default function Home() {
             const distanceScore = Math.max(0, 100 - (distance * 5));
 
             // C. Performance Score (40%) - From Logs
-            const repLogs = logs.filter(l => l.created_by === rep.email);
+            const repLogs = logs.filter(l => isKnockActivityLog(l) && l.created_by === rep.email);
             const sales = repLogs.filter(l => ['SOLD', 'QUALIFIED'].includes(l.parsed_status)).length;
             const knocks = Math.max(repLogs.length, 1);
             const conversionRate = (sales / knocks) * 100; // 0-100 theoretically, likely 0-20
@@ -2186,15 +2188,32 @@ export default function Home() {
                 parsed_status: statusOrLogData,
             };
 
-        createLogMutation.mutate({
-            ...logData,
-            address_hash: property.address_hash,
-            gps_proof_lat: property.lat,
-            gps_proof_lng: property.lng,
-            route_id: logData.route_id || activeRoute?.id || null
-        });
-        return true;
-    }, [activeRoute, checkAndHandleOutcomeGate, createLogMutation]);
+        const saleSnapshot = logData.parsed_status === 'SOLD'
+            ? {
+                sale_date: logData.sale_date || new Date().toISOString(),
+                property_address: buildFullAddress(property),
+                homeowner_name: property.owner_full_name || property.owner_name || property.ownerFullName || null,
+                rep_id: user?.id || null,
+                rep_name: user?.full_name || user?.name || user?.email || null,
+                route_name: activeRoute?.name || null,
+            }
+            : {};
+
+        try {
+            await createLogMutation.mutateAsync({
+                ...logData,
+                ...saleSnapshot,
+                address_hash: property.address_hash,
+                gps_proof_lat: property.lat,
+                gps_proof_lng: property.lng,
+                route_id: logData.route_id || activeRoute?.id || null
+            });
+            return true;
+        } catch (error) {
+            toast.error(error?.message || 'The outcome could not be saved. Please try again.');
+            return false;
+        }
+    }, [activeRoute, checkAndHandleOutcomeGate, createLogMutation, user]);
 
     const handleDeleteInteraction = useCallback(async (log) => {
         if (!log?.id) return;

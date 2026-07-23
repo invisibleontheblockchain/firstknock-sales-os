@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import { isKnockActivityLog } from '@/lib/interactionLogs';
 
 const LABELS = {
   SOLD: { label: 'Sold', color: '#22c55e' },
@@ -10,7 +11,7 @@ const LABELS = {
 
 export default function TeamOutcomeBreakdown({ logs }) {
   const items = useMemo(() => {
-    const counts = logs.reduce((acc, log) => {
+    const counts = logs.filter(isKnockActivityLog).reduce((acc, log) => {
       acc[log.parsed_status] = (acc[log.parsed_status] || 0) + 1;
       return acc;
     }, {});

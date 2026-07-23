@@ -2,7 +2,22 @@ import React from 'react';
 import { WifiOff, Navigation, ChevronDown, CheckCircle2, RefreshCw } from 'lucide-react';
 import { useIsMutating } from '@tanstack/react-query';
 
-export default function RepHeader({ user, isOffline, activeRoute, stats, knockWindow, routes, onShowMap, onShowRouteList, routeProperties }) {
+export default function RepHeader({
+  user,
+  isOffline,
+  activeRoute,
+  stats,
+  knockWindow,
+  routes,
+  onShowMap,
+  onShowRouteList,
+  routeProperties,
+  onStartNavigation,
+  navigationDisabled = false,
+  navigationButtonLabel = 'Start',
+  navigationBatchLabel = '',
+  navigationError = '',
+}) {
   const progressPct = stats.total > 0 ? stats.done / stats.total * 100 : 0;
   const isMutating = useIsMutating();
 
@@ -42,7 +57,17 @@ export default function RepHeader({ user, isOffline, activeRoute, stats, knockWi
                     </div>
                 </div>
 
-                {/* Action buttons removed as requested */}
+                <button
+                    type="button"
+                    onClick={onStartNavigation}
+                    disabled={navigationDisabled}
+                    aria-label={`${navigationButtonLabel} route navigation${navigationBatchLabel ? `, ${navigationBatchLabel}` : ''}`}
+                    className="flex min-h-10 shrink-0 items-center gap-1.5 rounded-xl border border-[#2EEB57]/35 bg-[#2EEB57] px-3 text-[10px] font-black uppercase tracking-[0.08em] text-black shadow-[0_0_18px_rgba(46,235,87,0.2)] transition active:scale-95 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/5 disabled:text-white/30 disabled:shadow-none"
+                >
+                    <Navigation className="h-3.5 w-3.5" />
+                    <span>{navigationButtonLabel}</span>
+                    {navigationBatchLabel && <span className="text-[8px] opacity-60">{navigationBatchLabel}</span>}
+                </button>
             </div>
 
             {/* Progress */}
@@ -52,6 +77,7 @@ export default function RepHeader({ user, isOffline, activeRoute, stats, knockWi
                 </div>
                 <span className="text-[10px] font-mono font-black text-white shrink-0">{stats.done}<span className="text-white/35">/{stats.total}</span></span>
             </div>
+            {navigationError && <p role="alert" className="text-[10px] font-semibold text-red-300">{navigationError}</p>}
             </div>
         </div>);
 

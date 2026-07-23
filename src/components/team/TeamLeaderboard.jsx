@@ -4,6 +4,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Trophy, Flame, Target, Clock } from 'lucide-react';
 import { AreaChart, Area, ResponsiveContainer } from 'recharts';
+import { isKnockActivityLog } from '@/lib/interactionLogs';
 
 export default function TeamLeaderboard({ members, logs, routes }) {
     const [period, setPeriod] = useState('all'); // 'week', 'month', 'all'
@@ -13,6 +14,7 @@ export default function TeamLeaderboard({ members, logs, routes }) {
         // 1. Filter logs by period
         const now = new Date();
         const filteredLogs = logs.filter(log => {
+            if (!isKnockActivityLog(log)) return false;
             if (period === 'all') return true;
             const logDate = new Date(log.created_date);
             const diffDays = (now - logDate) / (1000 * 60 * 60 * 24);

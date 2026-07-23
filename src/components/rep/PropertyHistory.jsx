@@ -33,7 +33,9 @@ export default function PropertyHistory({ logs, onClearDecision, allowDeleteAll 
 
                 // Parse note from raw_input_text
                 const noteMatch = log.raw_input_text?.match(/Note:\s*(.+?)(\s*\||$)/);
-                const note = noteMatch?.[1]?.trim();
+                const note = Object.prototype.hasOwnProperty.call(log, 'description')
+                    ? log.description?.trim()
+                    : noteMatch?.[1]?.trim();
                 const phoneMatch = log.raw_input_text?.match(/Phone:\s*(.+?)(\s*\||$)/);
                 const phone = phoneMatch?.[1]?.trim();
                 const timeMatch = log.raw_input_text?.match(/(?:Time|Callback):\s*(.+?)(\s*\||$)/);

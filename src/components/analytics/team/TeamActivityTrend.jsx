@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from 'recharts';
 import { ActivitySquare } from 'lucide-react';
 import { format, subDays } from 'date-fns';
+import { isKnockActivityLog } from '@/lib/interactionLogs';
 
 const SALES = ['SOLD', 'QUALIFIED'];
 
@@ -10,7 +11,7 @@ export default function TeamActivityTrend({ logs }) {
     return Array.from({ length: 14 }, (_, index) => {
       const day = subDays(new Date(), 13 - index);
       const key = format(day, 'yyyy-MM-dd');
-      const dayLogs = logs.filter((log) => log.created_date?.startsWith(key));
+      const dayLogs = logs.filter((log) => isKnockActivityLog(log) && log.created_date?.startsWith(key));
       return {
         date: format(day, 'MMM d'),
         knocks: dayLogs.length,

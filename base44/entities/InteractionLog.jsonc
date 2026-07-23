@@ -29,7 +29,37 @@
     },
     "sale_amount": {
       "type": "number",
+      "minimum": 0,
       "description": "Dollar amount of the sale if status is SOLD"
+    },
+    "sale_date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Client-recorded sale timestamp; created_date remains the server audit timestamp"
+    },
+    "property_address": {
+      "type": "string",
+      "maxLength": 500,
+      "description": "Address snapshot retained for historical sales reporting"
+    },
+    "homeowner_name": {
+      "type": "string",
+      "maxLength": 250,
+      "description": "Homeowner snapshot retained for historical sales reporting"
+    },
+    "rep_id": {
+      "type": "string",
+      "description": "TeamMember or user ID of the rep who recorded the interaction"
+    },
+    "rep_name": {
+      "type": "string",
+      "maxLength": 250,
+      "description": "Rep name snapshot retained for historical sales reporting"
+    },
+    "route_name": {
+      "type": "string",
+      "maxLength": 250,
+      "description": "Route name snapshot retained for historical sales reporting"
     },
     "route_id": {
       "type": "string",
@@ -60,6 +90,30 @@
       "type": "string",
       "maxLength": 1000,
       "description": "Optional description or notes for this record"
+    },
+    "counts_as_knock": {
+      "type": "boolean",
+      "default": true,
+      "description": "False for administrative workflow transitions that must not inflate activity analytics"
+    },
+    "workflow_action": {
+      "type": "string",
+      "enum": [
+        "BULK_MOVE_TO_TODO",
+        "BULK_MOVE_TO_CALLBACK",
+        "BULK_MOVE_TO_RE_KNOCK",
+        "CLEAR_TO_TODO"
+      ],
+      "description": "Administrative transition applied outside a door knock"
+    },
+    "workflow_bucket": {
+      "type": "string",
+      "enum": [
+        "TODO",
+        "CALLBACK",
+        "RE_KNOCK"
+      ],
+      "description": "Optional workflow queue assigned by an administrative transition"
     }
   },
   "required": [

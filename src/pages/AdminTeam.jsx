@@ -21,6 +21,7 @@ import TeamActivityTrend from '@/components/analytics/team/TeamActivityTrend';
 import TeamOutcomeBreakdown from '@/components/analytics/team/TeamOutcomeBreakdown';
 import SalesEditor from '@/components/analytics/SalesEditor';
 import { getManagerIdForAccount, isManagerAccount, isRepAccount } from '@/lib/roles';
+import { isKnockActivityLog } from '@/lib/interactionLogs';
 
 
 const BRAND = {
@@ -328,6 +329,7 @@ export default function AdminTeam() {
             metrics[m.email] = { doorsKnocked: 0, talkedTo: 0, sales: 0 };
         });
         logs.forEach(log => {
+            if (!isKnockActivityLog(log)) return;
             const email = log.created_by;
             if (!metrics[email]) return; // Skip logs for filtered-out reps
             metrics[email].doorsKnocked++;
@@ -815,7 +817,14 @@ export default function AdminTeam() {
                             <TeamOutcomeBreakdown logs={logs} />
                         </div>
                         <TeamLeaderboard members={analyticsMembers} logs={logs} routes={routes} />
-                        <SalesEditor logs={logs} members={filteredTeamMembers} />
+                        {canManageTeam && (
+                            <SalesEditor
+                                logs={logs}
+                                members={filteredTeamMembers}
+                                routes={routes}
+                                currentUser={user}
+                            />
+                        )}
                     </TabsContent>
 
                     {/* ROSTER TAB */}

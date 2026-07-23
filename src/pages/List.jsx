@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
-import { AlertTriangle, BarChart3, Loader2, Navigation, Sparkles } from 'lucide-react';
+import { AlertTriangle, BarChart3, DollarSign, Loader2, Navigation, Sparkles } from 'lucide-react';
 import { format, startOfDay, subDays } from 'date-fns';
 import { determineEffectiveStatus } from '../components/logic/territoryLogic';
 import { hydrateRoutesForMap } from '@/components/logic/routeHydration';
@@ -34,6 +34,9 @@ import RepAnalyticsKpis from '@/components/analytics/rep/RepAnalyticsKpis';
 import RepAnalyticsPipeline from '@/components/analytics/rep/RepAnalyticsPipeline';
 import RepAdvancedAnalytics from '@/components/analytics/rep/RepAdvancedAnalytics';
 import RevenueMetrics from '@/components/analytics/rep/RevenueMetrics';
+import SalesEditor from '@/components/analytics/SalesEditor';
+import { normalizeSaleEmail, salesLogBelongsToScope } from '@/components/analytics/salesManagement';
+import { filterKnockActivityLogs } from '@/lib/interactionLogs';
 
 const SALES_STATUSES = ['SOLD', 'QUALIFIED'];
 const NON_CONTACT_STATUSES = ['NO_ANSWER', 'ELIGIBLE'];
@@ -111,6 +114,25 @@ export default function ListPage() {
     const currentTeamMemberIds = teamMemberData.allIds || [];
     const myRepIds = [...new Set([user?.id, ...currentTeamMemberIds].filter(Boolean))];
     const myRepIdsKey = myRepIds.join(',');
+    const managerAnalytics = isManagerAccount(user);
+    const { data: salesTeamMembersRaw = [], isLoading: salesMembersLoading } = useQuery({
+        queryKey: ['teamMembers', 'salesManager', tenantManagerId, userEmail],
+        queryFn: async () => {
+            if (!tenantManagerId || !managerAnalytics) return [];
+            const response = await base44.entities.TeamMember.filter({ manager_id: tenantManagerId }, '-created_date', 5000);
+            return toEntityArray(response).filter((member) => member.manager_id === tenantManagerId);
+        },
+        enabled: userReady && managerAnalytics && !!tenantManagerId,
+    });
+    const salesTeamMembers = managerAnalytics
+        ? toEntityArray(salesTeamMembersRaw)
+        : [currentTeamMember].filter(Boolean);
+    const salesCreatorEmails = [...new Set([
+        user?.email,
+        userEmail,
+        ...(managerAnalytics ? salesTeamMembers.map((member) => member.email) : []),
+    ].filter(Boolean))];
+    const salesCreatorEmailsKey = salesCreatorEmails.map(normalizeSaleEmail).sort().join(',');
     const analyticsZipCodes = [...new Set(
         (currentTeamMember?.assigned_zip_codes?.length
             ? currentTeamMember.assigned_zip_codes
@@ -201,6 +223,49 @@ export default function ListPage() {
         enabled: userReady && !!userEmail,
     });
     const logs = toEntityArray(logsRaw);
+    const activityLogs = useMemo(() => filterKnockActivityLogs(logs), [logs]);
+
+    const {
+        data: salesLogsRaw = [],
+        isLoading: salesLogsLoading,
+        isError: salesLogsError,
+        refetch: refetchSalesLogs,
+    } = useQuery({
+        queryKey: ['salesManagerLogs', managerAnalytics ? 'team' : 'personal', tenantManagerId, userEmail, salesCreatorEmailsKey],
+        staleTime: 1000 * 60 * 2,
+        queryFn: async () => {
+            if (!userEmail) return [];
+            const queries = [];
+
+            if (managerAnalytics && tenantManagerId) {
+                queries.push(fetchAllAnalyticsPages(
+                    (limit, skip) => base44.entities.InteractionLog.filter({
+                        manager_id: tenantManagerId,
+                        parsed_status: 'SOLD',
+                    }, '-created_date', limit, skip)
+                ));
+            }
+
+            salesCreatorEmails.forEach((email) => {
+                queries.push(fetchAllAnalyticsPages(
+                    (limit, skip) => base44.entities.InteractionLog.filter({
+                        created_by: email,
+                        parsed_status: 'SOLD',
+                    }, '-created_date', limit, skip)
+                ));
+            });
+
+            const results = await Promise.all(queries);
+            return dedupeEntities(results.flatMap(toEntityArray)).filter((log) => salesLogBelongsToScope(log, {
+                userEmail,
+                tenantManagerId,
+                manager: managerAnalytics,
+                memberEmails: salesTeamMembers.map((member) => member.email),
+            }));
+        },
+        enabled: userReady && !!userEmail && activeTab === 'sales' && (!managerAnalytics || !salesMembersLoading),
+    });
+    const salesLogs = toEntityArray(salesLogsRaw);
 
     const {
         data: appointmentsRaw = [],
@@ -302,8 +367,8 @@ export default function ListPage() {
     }, [hydratedRoutes, effectiveProperties]);
 
     const filteredLogs = useMemo(() => {
-        return filterAnalyticsRecords(logs, 'created_date', dateWindow);
-    }, [logs, dateWindow]);
+        return filterAnalyticsRecords(activityLogs, 'created_date', dateWindow);
+    }, [activityLogs, dateWindow]);
 
     const filteredAppointments = useMemo(() => {
         return filterAnalyticsRecords(personalAppointments, 'scheduled_date', dateWindow);
@@ -330,8 +395,8 @@ export default function ListPage() {
     const analytics = useMemo(() => {
         const todayWindow = getAnalyticsDateWindow({ dateDays: 1 });
         const weekWindow = getAnalyticsDateWindow({ dateDays: 7 });
-        const todayLogs = logs.filter((log) => isWithinAnalyticsDateWindow(log.created_date, todayWindow));
-        const weekLogs = logs.filter((log) => isWithinAnalyticsDateWindow(log.created_date, weekWindow));
+        const todayLogs = activityLogs.filter((log) => isWithinAnalyticsDateWindow(log.created_date, todayWindow));
+        const weekLogs = activityLogs.filter((log) => isWithinAnalyticsDateWindow(log.created_date, weekWindow));
         const sales = filteredLogs.filter((log) => SALES_STATUSES.includes(log.parsed_status)).length;
         const contacts = filteredLogs.filter((log) => !NON_CONTACT_STATUSES.includes(log.parsed_status)).length;
         const callbacks = filteredLogs.filter((log) => log.parsed_status === 'CALLBACK').length;
@@ -339,7 +404,7 @@ export default function ListPage() {
             selectedDay: !!selectedDate,
         });
         const analyticsHashes = new Set(analyticsProperties.map((property) => property.address_hash || property.id).filter(Boolean));
-        const coverageLogs = selectedDate ? filteredLogs : logs;
+        const coverageLogs = selectedDate ? filteredLogs : activityLogs;
         const workedDoors = new Set(coverageLogs.map((log) => log.address_hash).filter(hash => hash && (!analyticsHashes.size || analyticsHashes.has(hash)))).size;
         const totalDoors = analyticsProperties.length;
         const activeRoutes = savedRoutes.filter((route) => ['ACTIVE', 'IN_PROGRESS'].includes(route.status)).length;
@@ -358,7 +423,7 @@ export default function ListPage() {
             ? new Date(0, 0, 0, bestHour.hour, 0).toLocaleTimeString('en-US', { hour: 'numeric' })
             : 'N/A';
 
-        const activeDays = new Set(logs.map((log) => startOfDay(new Date(log.created_date)).getTime()));
+        const activeDays = new Set(activityLogs.map((log) => startOfDay(new Date(log.created_date)).getTime()));
         let streak = 0;
         for (let i = 0; i < 60; i++) {
             const day = startOfDay(subDays(new Date(), i)).getTime();
@@ -387,20 +452,23 @@ export default function ListPage() {
             streak,
             totalRevenue,
         };
-    }, [logs, filteredLogs, filteredAppointments, analyticsProperties, savedRoutes, selectedDate]);
+    }, [activityLogs, filteredLogs, filteredAppointments, analyticsProperties, savedRoutes, selectedDate]);
 
     const isAnalyticsTab = activeTab === 'performance' || activeTab === 'advanced';
-    const isLoading = userLoading || userFetching || propsLoading || logsLoading || routesLoading || hydratedRoutesLoading || (isAnalyticsTab && apptsLoading);
-    const hasAnalyticsError = logsError || (isAnalyticsTab && apptsError);
+    const isSalesTab = activeTab === 'sales';
+    const isLoading = userLoading || userFetching || propsLoading || logsLoading || routesLoading || hydratedRoutesLoading || (isAnalyticsTab && apptsLoading) || (isSalesTab && (salesMembersLoading || salesLogsLoading));
+    const hasAnalyticsError = (isSalesTab ? salesLogsError : logsError) || (isAnalyticsTab && apptsError);
 
     const retryAnalytics = () => {
         refetchLogs();
         if (isAnalyticsTab) refetchAppointments();
+        if (isSalesTab) refetchSalesLogs();
     };
 
     const tabs = [
         { id: 'performance', label: 'Performance', icon: BarChart3 },
         { id: 'advanced', label: 'Advanced', icon: Sparkles },
+        { id: 'sales', label: 'Sales', icon: DollarSign },
         { id: 'routes', label: 'Routes', icon: Navigation },
     ];
 
@@ -480,7 +548,7 @@ export default function ListPage() {
                         {activeTab === 'advanced' && (
                             <div className="p-2.5 md:p-5 space-y-2 md:space-y-3 max-w-7xl mx-auto pb-24">
                                 <RepAdvancedAnalytics
-                                    logs={logs}
+                                    logs={activityLogs}
                                     filteredLogs={filteredLogs}
                                     properties={analyticsProperties}
                                     appointments={filteredAppointments}
@@ -491,6 +559,18 @@ export default function ListPage() {
                                     <TimeOfDayEffectiveness logs={filteredLogs} />
                                     <AppointmentTimeline appointments={filteredAppointments} days={dateDays} selectedDate={selectedDate} />
                                 </div>
+                            </div>
+                        )}
+
+                        {activeTab === 'sales' && (
+                            <div className="p-2.5 md:p-5 max-w-7xl mx-auto pb-24">
+                                <SalesEditor
+                                    logs={salesLogs}
+                                    members={salesTeamMembers}
+                                    routes={hydratedRoutes.length > 0 ? hydratedRoutes : savedRoutes}
+                                    properties={analyticsProperties}
+                                    currentUser={user}
+                                />
                             </div>
                         )}
 

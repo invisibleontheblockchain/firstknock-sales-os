@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell } from 'recharts';
 import { MapPin } from 'lucide-react';
+import { isKnockActivityLog } from '@/lib/interactionLogs';
 
 const COLORS = ['#FFD700', '#3b82f6', '#22c55e', '#8b5cf6', '#ec4899', '#f97316', '#06b6d4', '#ef4444'];
 
@@ -20,7 +21,7 @@ export default function RouteEfficiency({ routes, appointments, logs }) {
 
                 // Count knocks from logs matching route properties
                 const routeHashes = new Set(route.property_hashes || []);
-                const routeKnocks = logs.filter(l => routeHashes.has(l.address_hash)).length;
+                const routeKnocks = logs.filter(l => isKnockActivityLog(l) && routeHashes.has(l.address_hash)).length;
 
                 const efficiencyScore = houseCount > 0
                     ? Math.round(((routeKnocks + routeAppts.length) / houseCount) * 100)
