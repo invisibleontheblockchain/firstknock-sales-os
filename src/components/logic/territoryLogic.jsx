@@ -13,6 +13,16 @@ export const COOLDOWN_CONFIG = {
  * Master data stays ELIGIBLE - this determines routing/display priority
  */
 export const determineEffectiveStatus = (masterProp, logs) => {
+    const latestWorkflowLog = Array.isArray(logs) && logs.length > 0
+        ? [...logs].sort((a, b) => new Date(b.created_date).getTime() - new Date(a.created_date).getTime())[0]
+        : null;
+    if (latestWorkflowLog?.counts_as_knock === false) {
+        if (latestWorkflowLog.workflow_action === 'BULK_MOVE_TO_CALLBACK') return 'CALLBACK';
+        if (['BULK_MOVE_TO_TODO', 'BULK_MOVE_TO_RE_KNOCK', 'CLEAR_TO_TODO'].includes(latestWorkflowLog.workflow_action)) {
+            return 'ELIGIBLE';
+        }
+    }
+
     // Check CSV Property Cooldown
     if (masterProp.next_eligible_date) {
         const nextEligible = new Date(masterProp.next_eligible_date);

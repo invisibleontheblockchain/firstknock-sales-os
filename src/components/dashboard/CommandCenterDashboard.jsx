@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip as RechartsTooltip } from 'recharts';
 import { Users, MapPin, TrendingUp, Target, X, Globe, Zap, Clock, Trophy, Medal, PieChart as PieChartIcon } from 'lucide-react';
 import { subDays, parseISO, startOfDay, isAfter, isToday } from 'date-fns';
+import { isKnockActivityLog } from '@/lib/interactionLogs';
 
 const COLORS = { gold: '#FFD700', green: '#22c55e', blue: '#3b82f6', purple: '#8b5cf6', red: '#ef4444', orange: '#f97316' };
 const CHART_COLORS = [COLORS.blue, COLORS.green, COLORS.gold, COLORS.orange, COLORS.purple, COLORS.red];
@@ -25,6 +26,7 @@ export default function CommandCenterDashboard({ properties, logs, routes, teamM
 
         // Filter Logs based on time Filter
         const filteredLogs = logs.filter(log => {
+            if (!isKnockActivityLog(log)) return false;
             if (!log.created_date) return false;
             const logDate = parseISO(log.created_date);
             if (timeFilter === 'today') return isToday(logDate);

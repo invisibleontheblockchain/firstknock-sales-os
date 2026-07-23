@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { Activity, Phone, Route, TrendingUp, Users, DollarSign } from 'lucide-react';
 import { subDays } from 'date-fns';
+import { isKnockActivityLog } from '@/lib/interactionLogs';
 
 const SALES = ['SOLD', 'QUALIFIED'];
 const NON_CONTACT = ['NO_ANSWER', 'ELIGIBLE'];
@@ -8,7 +9,7 @@ const NON_CONTACT = ['NO_ANSWER', 'ELIGIBLE'];
 export default function TeamAnalyticsSummary({ members, logs, routes }) {
   const stats = useMemo(() => {
     const cutoff = subDays(new Date(), 7);
-    const recentLogs = logs.filter((log) => new Date(log.created_date) >= cutoff);
+    const recentLogs = logs.filter((log) => isKnockActivityLog(log) && new Date(log.created_date) >= cutoff);
     const sales = recentLogs.filter((log) => SALES.includes(log.parsed_status)).length;
     const contacts = recentLogs.filter((log) => !NON_CONTACT.includes(log.parsed_status)).length;
     const callbacks = recentLogs.filter((log) => log.parsed_status === 'CALLBACK').length;

@@ -1,16 +1,18 @@
 import React, { useMemo } from 'react';
 import { X, TrendingUp, DoorOpen, Trophy, Clock, Flame, DollarSign, Target, Phone, Award, Zap } from 'lucide-react';
 import { startOfDay, subDays, isToday } from 'date-fns';
+import { filterKnockActivityLogs } from '@/lib/interactionLogs';
 
 const SALES_STATUSES = ['SOLD', 'QUALIFIED'];
 const CONTACT_EXCLUDE = ['NO_ANSWER', 'ELIGIBLE'];
 
 export default function RepAnalytics({ logs, routeProperties, activeRoute, onClose }) {
     const stats = useMemo(() => {
-        if (!logs?.length) return null;
+        const activityLogs = filterKnockActivityLogs(logs);
+        if (!activityLogs.length) return null;
         const today = startOfDay(new Date());
 
-        const todayLogs = logs.filter(l => isToday(new Date(l.created_date)));
+        const todayLogs = activityLogs.filter(l => isToday(new Date(l.created_date)));
         const countStatus = (arr, statuses) => arr.filter(l => statuses.includes(l.parsed_status)).length;
         const contacts = todayLogs.filter(l => !CONTACT_EXCLUDE.includes(l.parsed_status)).length;
 
@@ -27,7 +29,7 @@ export default function RepAnalytics({ logs, routeProperties, activeRoute, onClo
         let streak = 0;
         for (let i = 0; i < 365; i++) {
             const day = subDays(today, i);
-            if (logs.some(l => startOfDay(new Date(l.created_date)).getTime() === day.getTime())) streak++;
+            if (activityLogs.some(l => startOfDay(new Date(l.created_date)).getTime() === day.getTime())) streak++;
             else break;
         }
 

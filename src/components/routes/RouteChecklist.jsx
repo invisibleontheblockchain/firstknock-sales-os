@@ -3,7 +3,9 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Check, X, Phone, Ban, Home, Navigation, Mic, MapPin, UserX, Clock, User, DollarSign, Ruler } from 'lucide-react';
 import { getPropertyResultSummary } from '../logic/territoryLogic';
-import { buildFullAddress, openInMaps } from '../logic/navigation';
+import { buildFullAddress, getRouteNavigationPlan, openInMaps, openNavigationBatch } from '../logic/navigation';
+import { getNavigationSessionProgress, selectRemainingTodoStops } from '../logic/routeNavigation';
+import { parseOptionalSaleAmount } from '../analytics/salesManagement';
 import { formatPropertyAge } from '@/utils';
 import { base44 } from '@/api/base44Client';
 
@@ -54,10 +56,19 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose, navi
     const [callbackPhone, setCallbackPhone] = useState('');
     const [selectedAction, setSelectedAction] = useState(null);
     const [isListening, setIsListening] = useState(false);
+    const [saleAmount, setSaleAmount] = useState('');
+    const [saleAmountError, setSaleAmountError] = useState('');
+    const [navigationSession, setNavigationSession] = useState(null);
+    const [navigationError, setNavigationError] = useState('');
 
     useEffect(() => {
         setLatestRoute(route);
     }, [route]);
+
+    useEffect(() => {
+        setNavigationSession(null);
+        setNavigationError('');
+    }, [route?.id]);
 
     useEffect(() => {
         if (!route?.id) return;
@@ -132,12 +143,93 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose, navi
         return { pending, done, total: displayRoute.properties.length };
     }, [displayRoute.properties, propertyStatuses]);
 
+    const remainingProperties = useMemo(
+        () => selectRemainingTodoStops(displayRoute.properties, propertyStatuses),
+        [displayRoute.properties, propertyStatuses]
+    );
+
+    const navigationProgress = getNavigationSessionProgress(
+        navigationSession?.routeId === displayRoute.id ? navigationSession : null,
+        remainingProperties
+    );
+    const hasNextNavigationBatch = navigationProgress.canAdvance;
+    const canResumeNavigationBatch = navigationProgress.canResume;
+
     const handleNavigate = (prop) => {
         openInMaps(prop.lat, prop.lng, buildFullAddress(prop), navigationApp);
     };
 
+    const handleRouteNavigation = () => {
+        if (remainingProperties.length === 0 && !hasNextNavigationBatch) return;
+        setNavigationError('');
+
+        try {
+            if (canResumeNavigationBatch) {
+                const resumePlan = getRouteNavigationPlan(navigationProgress.remainingStops, navigationApp, {
+                    startDelaySeconds: 0
+                });
+                openNavigationBatch(resumePlan, 0);
+                return;
+            }
+
+            if (hasNextNavigationBatch) {
+                const continuationPlan = getRouteNavigationPlan(navigationProgress.continuationStops, navigationApp, {
+                    startDelaySeconds: 0
+                });
+                if (!continuationPlan.batches.length) return;
+                const nextSession = { routeId: displayRoute.id, plan: continuationPlan, batchIndex: 0 };
+                setNavigationSession(nextSession);
+                openNavigationBatch(continuationPlan, 0);
+                return;
+            }
+
+            const plan = getRouteNavigationPlan(remainingProperties, navigationApp, { startDelaySeconds: 0 });
+            if (plan.batches.length === 0) return;
+            const nextSession = { routeId: displayRoute.id, plan, batchIndex: 0 };
+            setNavigationSession(nextSession);
+            openNavigationBatch(plan, 0);
+        } catch (error) {
+            setNavigationError(error?.message || 'This route could not be opened in maps.');
+        }
+    };
+
+    const resetSalePrompt = () => {
+        setSaleAmount('');
+        setSaleAmountError('');
+        setSelectedAction(null);
+    };
+
+    const saveSold = async (property, rawAmount = saleAmount) => {
+        const parsedAmount = parseOptionalSaleAmount(rawAmount);
+        if (parsedAmount.error) {
+            setSaleAmountError(parsedAmount.error);
+            return;
+        }
+        const numericAmount = parsedAmount.value;
+
+        const logData = {
+            parsed_status: 'SOLD',
+            raw_input_text: numericAmount === null ? 'SOLD' : `SOLD | Sale: $${numericAmount.toFixed(2)}`
+        };
+        if (numericAmount !== null) logData.sale_amount = numericAmount;
+
+        const saved = await onLogResult(property, logData);
+        if (saved === false) return;
+        resetSalePrompt();
+        setExpandedId(null);
+    };
+
     const handleSelectStatus = (property, statusId) => {
+        if (statusId === 'SOLD') {
+            setSaleAmount('');
+            setSaleAmountError('');
+            setCallbackPhone('');
+            setSelectedAction({ propertyId: property.address_hash, statusId });
+            return;
+        }
         if (statusId === 'CALLBACK') {
+            setSaleAmount('');
+            setSaleAmountError('');
             setSelectedAction({ propertyId: property.address_hash, statusId });
             return;
         }
@@ -177,8 +269,14 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose, navi
             else if (lower.includes('decision maker') || lower.includes('dm not home') || lower.includes('husband') || lower.includes('wife')) status = 'DM_NOT_HOME';
             else if (lower.includes('yes') || lower.includes('interested')) status = 'QUALIFIED';
             if (confirm(`Heard: "${text}"\nStatus: ${status}\n\nSave?`)) {
-                onLogResult(property, status, text);
-                setExpandedId(null);
+                if (status === 'SOLD') {
+                    setSaleAmount('');
+                    setSaleAmountError('');
+                    setSelectedAction({ propertyId: property.address_hash, statusId: 'SOLD' });
+                } else {
+                    onLogResult(property, status, text);
+                    setExpandedId(null);
+                }
             }
         };
         recognition.onerror = () => setIsListening(false);
@@ -222,8 +320,8 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose, navi
                 </div>
 
                 {/* Filters + Start Route */}
-                <div className="flex items-center gap-2">
-                    <div className="flex gap-1 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex min-w-[190px] flex-1 gap-1">
                         {[
                             { id: 'all', label: 'All' },
                             { id: 'pending', label: `Todo ${stats.pending}` },
@@ -274,20 +372,26 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose, navi
                         </select>
                     )}
                     <button
-                        onClick={() => {
-                            const nextProp = filteredProperties.find(p => {
-                                const status = propertyStatuses[p.address_hash];
-                                return !status || status === 'ELIGIBLE';
-                            }) || filteredProperties[0];
-                            if (nextProp) handleNavigate(nextProp);
-                        }}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold tracking-wide"
+                        onClick={handleRouteNavigation}
+                        disabled={remainingProperties.length === 0 && !hasNextNavigationBatch}
+                        className="ml-auto flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[10px] font-bold tracking-wide disabled:cursor-not-allowed disabled:opacity-40"
                         style={{ background: BRAND.gold, color: BRAND.voidBlack }}
                     >
                         <Navigation className="w-3 h-3" />
-                        START
+                        {hasNextNavigationBatch ? 'NEXT BATCH' : canResumeNavigationBatch ? 'RESUME' : 'START'}
+                        {hasNextNavigationBatch && (
+                            <span className="opacity-60">
+                                {navigationProgress.continuationStops.length} left
+                            </span>
+                        )}
+                        {canResumeNavigationBatch && (
+                            <span className="opacity-60">{navigationProgress.remainingStops.length}</span>
+                        )}
                     </button>
                 </div>
+                {navigationError && (
+                    <p className="text-[10px] font-semibold text-red-400" role="alert">{navigationError}</p>
+                )}
             </div>
 
             {/* Divider */}
@@ -402,7 +506,39 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose, navi
                                         </div>
 
                                         {/* Status Buttons */}
-                                        {selectedAction?.propertyId === prop.address_hash && selectedAction?.statusId === 'CALLBACK' ? (
+                                        {selectedAction?.propertyId === prop.address_hash && selectedAction?.statusId === 'SOLD' ? (
+                                            <div className="space-y-2 rounded-xl border border-green-500/25 bg-green-500/5 p-2.5">
+                                                <label className="block text-[10px] font-bold uppercase tracking-wide text-green-400" htmlFor={`sale-amount-${prop.address_hash}`}>
+                                                    Sale amount (optional)
+                                                </label>
+                                                <div className="relative">
+                                                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold text-gray-500">$</span>
+                                                    <input
+                                                        id={`sale-amount-${prop.address_hash}`}
+                                                        type="text"
+                                                        inputMode="decimal"
+                                                        autoComplete="off"
+                                                        placeholder="0.00"
+                                                        value={saleAmount}
+                                                        onChange={(e) => { setSaleAmount(e.target.value); setSaleAmountError(''); }}
+                                                        className="w-full rounded-lg border border-gray-700 bg-black py-2 pl-7 pr-3 text-sm text-white outline-none focus:border-green-500"
+                                                        autoFocus
+                                                    />
+                                                </div>
+                                                {saleAmountError && <p className="text-[10px] font-semibold text-red-400" role="alert">{saleAmountError}</p>}
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    <Button onClick={() => saveSold(prop)} className="h-9 text-xs font-bold bg-green-600 text-white hover:bg-green-500">
+                                                        Save Sale
+                                                    </Button>
+                                                    <Button onClick={() => saveSold(prop, '')} variant="outline" className="h-9 border-gray-700 text-xs text-gray-300">
+                                                        Skip Amount
+                                                    </Button>
+                                                </div>
+                                                <Button onClick={resetSalePrompt} variant="ghost" className="h-8 w-full text-xs text-gray-500">
+                                                    Cancel
+                                                </Button>
+                                            </div>
+                                        ) : selectedAction?.propertyId === prop.address_hash && selectedAction?.statusId === 'CALLBACK' ? (
                                             <div className="space-y-2">
                                                 <input
                                                     type="tel"

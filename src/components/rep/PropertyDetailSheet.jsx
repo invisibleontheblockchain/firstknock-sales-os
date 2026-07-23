@@ -4,6 +4,7 @@ import { format } from 'date-fns';
 import PropertyHistory from './PropertyHistory';
 import { buildFullAddress, openInMaps } from '@/components/logic/navigation';
 import ScheduleInspectionAction from '@/components/fieldroutes/ScheduleInspectionAction';
+import { parseOptionalSaleAmount } from '@/components/analytics/salesManagement';
 
 const STATUS_OPTIONS = [
     { id: 'SOLD', label: 'Sold', icon: Check, color: '#39FF4A' },
@@ -43,8 +44,11 @@ export default function PropertyDetailSheet({
     const [showCallbackPrompt, setShowCallbackPrompt] = useState(false);
     const [showSaleAmount, setShowSaleAmount] = useState(false);
     const [saleAmount, setSaleAmount] = useState('');
+    const [saleAmountError, setSaleAmountError] = useState('');
+    const [isSavingOutcome, setIsSavingOutcome] = useState(false);
 
-    const handleMark = (status) => {
+    const handleMark = async (status, { skipSaleAmount = false } = {}) => {
+        if (isSavingOutcome) return;
         // Free-limit gate: when disabled, every tap re-fires the upgrade prompt
         // and never saves an outcome.
         if (outcomeDisabled) {
@@ -52,10 +56,24 @@ export default function PropertyDetailSheet({
             return;
         }
 
-        if (status === 'SOLD' && !showSaleAmount) {
-            setShowSaleAmount(true);
-            setShowCallbackPrompt(false);
-            return;
+        let parsedSaleAmount = null;
+        if (status === 'SOLD') {
+            if (!showSaleAmount && !skipSaleAmount) {
+                setShowSaleAmount(true);
+                setShowCallbackPrompt(false);
+                setSaleAmountError('');
+                return;
+            }
+            const parsed = parseOptionalSaleAmount(skipSaleAmount ? '' : saleAmount);
+            if (parsed.error) {
+                setSaleAmountError(parsed.error);
+                return;
+            }
+            parsedSaleAmount = parsed.value;
+        } else {
+            setShowSaleAmount(false);
+            setSaleAmount('');
+            setSaleAmountError('');
         }
 
         if (status === 'CALLBACK') {
@@ -72,11 +90,11 @@ export default function PropertyDetailSheet({
         }
 
         let noteText = `Marked as ${status}`;
-        if (logNote) noteText += ` | Note: ${logNote}`;
+        if (logNote.trim()) noteText += ` | Note: ${logNote.trim()}`;
         if (status === 'CALLBACK' && callbackName.trim()) noteText += ` | Contact: ${callbackName.trim()}`;
-        if (callbackPhone) noteText += ` | Phone: ${callbackPhone}`;
-        if (callbackTime) noteText += ` | Callback: ${callbackTime}`;
-        if (saleAmount) noteText += ` | Sale: $${saleAmount}`;
+        if (status === 'CALLBACK' && callbackPhone) noteText += ` | Phone: ${callbackPhone}`;
+        if (status === 'CALLBACK' && callbackTime) noteText += ` | Callback: ${callbackTime}`;
+        if (status === 'SOLD' && parsedSaleAmount !== null) noteText += ` | Sale: $${parsedSaleAmount}`;
 
         let nextDate = null;
         if (status === 'CALLBACK' && callbackTime) {
@@ -93,6 +111,7 @@ export default function PropertyDetailSheet({
         const logData = {
             address_hash: property.address_hash,
             raw_input_text: noteText,
+            description: logNote.trim() || null,
             parsed_status: status,
             next_eligible_date: nextDate,
             callback_contact_name: status === 'CALLBACK' ? callbackName.trim() : null,
@@ -100,13 +119,21 @@ export default function PropertyDetailSheet({
             callback_time: status === 'CALLBACK' ? callbackTime : null
         };
 
-        if (status === 'SOLD' && saleAmount) {
-            logData.sale_amount = parseFloat(saleAmount);
+        if (status === 'SOLD' && parsedSaleAmount !== null) {
+            logData.sale_amount = parsedSaleAmount;
         }
 
-        onLog(logData);
+        setIsSavingOutcome(true);
+        let saved = false;
+        try {
+            saved = await onLog(logData);
+        } finally {
+            setIsSavingOutcome(false);
+        }
+        if (saved === false) return;
         setShowSaleAmount(false);
         setSaleAmount('');
+        setSaleAmountError('');
         if (status === 'CALLBACK') {
             setShowCallbackPrompt(false);
             setCallbackName('');
@@ -177,6 +204,7 @@ export default function PropertyDetailSheet({
                             <button
                                 key={opt.id}
                                 onClick={() => handleMark(opt.id)}
+                                disabled={isSavingOutcome}
                                 className={`flex flex-col items-center gap-1 py-3.5 rounded-2xl text-center transition-all ${outcomeDisabled ? 'opacity-40 cursor-not-allowed' : 'active:scale-95'} ${showSaleAmount && opt.id === 'SOLD' ? 'ring-2 ring-[#2EEB57]' : ''}`}
                                 style={{ background: opt.color === '#FFFFFF' ? 'rgba(255,255,255,0.055)' : opt.color + '14', border: `1px solid ${opt.color === '#FFFFFF' ? 'rgba(255,255,255,0.14)' : opt.color + '2e'}`, boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)' }}
                             >
@@ -224,30 +252,38 @@ export default function PropertyDetailSheet({
                     )}
 
                     {showSaleAmount && (
-                        <div className="mt-2 flex gap-2 items-center animate-in slide-in-from-top-2 duration-200">
-                            <div className="flex-1 relative">
+                        <div className="mt-2 flex flex-wrap gap-2 items-center animate-in slide-in-from-top-2 duration-200">
+                            <div className="min-w-[150px] flex-1 relative">
                                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-green-400 text-sm font-bold">$</span>
                                 <input
                                     type="number"
+                                    inputMode="decimal"
+                                    min="0"
+                                    step="0.01"
                                     value={saleAmount}
-                                    onChange={(e) => setSaleAmount(e.target.value)}
+                                    onChange={(e) => { setSaleAmount(e.target.value); setSaleAmountError(''); }}
                                     placeholder="Sale amount"
                                     autoFocus
+                                    aria-label="Sale amount (optional)"
+                                    aria-describedby={saleAmountError ? 'sale-amount-error' : undefined}
                                     className="w-full bg-black/70 border border-[#2EEB57]/30 rounded-xl pl-7 pr-3 py-2.5 text-sm text-white focus:border-[#39FF4A] focus:outline-none"
                                 />
                             </div>
                             <button
                                 onClick={() => handleMark('SOLD')}
+                                disabled={isSavingOutcome}
                                 className="px-4 py-2.5 rounded-xl bg-[#2EEB57] text-black font-black text-xs active:scale-95 transition-all"
                             >
-                                Confirm
+                                Save
                             </button>
                             <button
-                                onClick={() => { setShowSaleAmount(false); setSaleAmount(''); }}
+                                onClick={() => handleMark('SOLD', { skipSaleAmount: true })}
+                                disabled={isSavingOutcome}
                                 className="px-3 py-2.5 rounded-lg bg-white/5 text-gray-400 font-bold text-xs"
                             >
                                 Skip
                             </button>
+                            {saleAmountError && <p id="sale-amount-error" role="alert" className="w-full text-[10px] font-bold text-red-300">{saleAmountError}</p>}
                         </div>
                     )}
                 </div>

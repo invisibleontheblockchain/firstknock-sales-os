@@ -8,6 +8,23 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getKnockWindowLabel } from '@/components/logic/knockTimeOptimizer';
 import { determineEffectiveStatus } from '@/components/logic/territoryLogic';
+import { buildFullAddress, getRouteNavigationPlan, openNavigationBatch } from '@/components/logic/navigation';
+import { getNavigationSessionProgress, selectRemainingTodoStops } from '@/components/logic/routeNavigation';
+import {
+  ROUTE_BULK_ACTIONS,
+  buildWorkflowTransitionLogs,
+  getLatestInteractionLog,
+  getPropertySelectionKey,
+  getVisiblePropertyKeys,
+  getWorkflowBucketFromLogs,
+  orderRoutePropertiesByHashes,
+  pruneSelectionToProperties,
+  removeSelectedRouteStops,
+  resolveWorkflowEffectiveStatus,
+  selectionsEqual,
+  togglePropertySelection,
+  toggleVisiblePropertySelection,
+} from '@/components/logic/routeBulkActions';
 import RepMapView from '@/components/rep/RepMapView';
 import CanvasFieldView from '@/components/rep/CanvasFieldView';
 import { getMyCanvasAssignments } from '@/components/canvas/canvasProductionClient';
@@ -77,6 +94,9 @@ export default function RepHome() {
   const appointmentRunFocusHandledRef = React.useRef(false);
   const [soldDateFilter, setSoldDateFilter] = useState('all');
   const [decisionFilter, setDecisionFilter] = useState('all');
+  const [selectedPropertyKeys, setSelectedPropertyKeys] = useState(() => new Set());
+  const [navigationSession, setNavigationSession] = useState(null);
+  const [navigationError, setNavigationError] = useState('');
   const [homeBaseAddress, setHomeBaseAddress] = useState('');
   const [homeBaseSaving, setHomeBaseSaving] = useState(false);
   const [homeBaseError, setHomeBaseError] = useState('');
@@ -454,7 +474,6 @@ export default function RepHome() {
       queryClient.setQueryData(['routeLogs', activeRoute?.id], (old) => {
         return [...(old || []), { ...newLog, created_date: new Date().toISOString() }];
       });
-      setSelectedProperty(null);
       return { previousLogs };
     },
     onError: (err, newLog, context) => {
@@ -467,29 +486,35 @@ export default function RepHome() {
       queryClient.invalidateQueries({ queryKey: ['propertyHistory'] });
     },
     onSuccess: async (createdLog, logData) => {
+      setSelectedProperty(null);
       if (logData?.parsed_status === 'CALLBACK' && logData?.next_eligible_date) {
-        const p = logData.property_snapshot || {};
-        const fullAddress = p.full_address || p.address || `${p.house_number || ''} ${p.street_name || ''}`.trim();
-        if (fullAddress) {
-          await base44.entities.Appointment.create({
-            address_hash: logData.address_hash,
-            manager_id: repManagerId,
-            full_address: fullAddress,
-            homeowner_name: logData.callback_contact_name || null,
-            phone: logData.callback_contact_phone || null,
-            scheduled_date: logData.next_eligible_date,
-            industry: 'other',
-            status: 'scheduled',
-            outcome: 'follow_up',
-            route_id: activeRoute?.id || null,
-            assigned_rep: teamMember?.id || user?.id || null,
-            assigned_rep_name: teamMember?.name || user?.full_name || null,
-            zip_code: p.zip_code || p.zip || null,
-            lat: p.lat || null,
-            lng: p.lng || null,
-            notes: logData.raw_input_text || 'Callback scheduled from Knock Mode'
-          });
-          queryClient.invalidateQueries({ queryKey: ['appointments'] });
+        try {
+          const p = logData.property_snapshot || {};
+          const fullAddress = p.full_address || p.address || `${p.house_number || ''} ${p.street_name || ''}`.trim();
+          if (fullAddress) {
+            await base44.entities.Appointment.create({
+              address_hash: logData.address_hash,
+              manager_id: repManagerId,
+              full_address: fullAddress,
+              homeowner_name: logData.callback_contact_name || null,
+              phone: logData.callback_contact_phone || null,
+              scheduled_date: logData.next_eligible_date,
+              industry: 'other',
+              status: 'scheduled',
+              outcome: 'follow_up',
+              route_id: activeRoute?.id || null,
+              assigned_rep: teamMember?.id || user?.id || null,
+              assigned_rep_name: teamMember?.name || user?.full_name || null,
+              zip_code: p.zip_code || p.zip || null,
+              lat: p.lat || null,
+              lng: p.lng || null,
+              notes: logData.raw_input_text || 'Callback scheduled from Knock Mode'
+            });
+            queryClient.invalidateQueries({ queryKey: ['appointments'] });
+          }
+        } catch (error) {
+          console.error('Interaction saved, but callback appointment creation failed', error);
+          toast.warning('Outcome saved, but the callback could not be added to Appointments.');
         }
       }
 
@@ -511,11 +536,11 @@ export default function RepHome() {
       address_hash: log.address_hash,
       raw_input_text: 'Decision cleared — moved back to Todo',
       parsed_status: 'ELIGIBLE',
+      counts_as_knock: false,
+      workflow_action: 'CLEAR_TO_TODO',
+      workflow_bucket: 'TODO',
       route_id: activeRoute?.id || null,
-      manager_id: repManagerId,
-      gps_proof_lat: selectedProperty?.lat,
-      gps_proof_lng: selectedProperty?.lng,
-      gps_accuracy: 0
+      manager_id: repManagerId
     }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['routeLogs'] });
@@ -562,8 +587,15 @@ export default function RepHome() {
         const logTime = new Date(l.created_date || 0).getTime();
         return !Number.isNaN(logTime) && logTime >= rerunCreatedAt;
       });
-      const status = determineEffectiveStatus(p, pLogs);
-      return { ...p, effective_status: status };
+      const derivedStatus = determineEffectiveStatus(p, pLogs);
+      const latestLog = getLatestInteractionLog(pLogs);
+      const status = resolveWorkflowEffectiveStatus(derivedStatus, pLogs);
+      return {
+        ...p,
+        effective_status: status,
+        workflow_bucket: getWorkflowBucketFromLogs(pLogs),
+        workflow_action: latestLog?.workflow_action || null,
+      };
     });
 
     // SavedRoute.property_hashes is the source of truth. Checklist/Optimize writes this order,
@@ -652,11 +684,14 @@ export default function RepHome() {
 
   // Stats
   const stats = useMemo(() => {
-    if (!routeProperties.length) return { total: 0, done: 0, percent: 0 };
+    if (!routeProperties.length) return { total: 0, done: 0, todo: 0, reKnock: 0, percent: 0 };
     const done = routeProperties.filter((p) => p.effective_status !== 'ELIGIBLE').length;
+    const reKnock = routeProperties.filter((p) => p.effective_status === 'ELIGIBLE' && p.workflow_bucket === 'RE_KNOCK').length;
     return {
       total: routeProperties.length,
       done,
+      todo: routeProperties.length - done - reKnock,
+      reKnock,
       percent: Math.round(done / routeProperties.length * 100)
     };
   }, [routeProperties]);
@@ -693,16 +728,212 @@ export default function RepHome() {
       // Status filter
       const isDone = p.effective_status !== 'ELIGIBLE';
 
-      if (filterStatus === 'todo') return !isDone;
+      if (filterStatus === 'todo') return !isDone && p.workflow_bucket !== 'RE_KNOCK';
       if (filterStatus === 'done') {
         if (!isDone) return false;
         return decisionFilter === 'all' || p.effective_status === decisionFilter;
+      }
+      if (filterStatus === 're_knock') {
+        return !isDone && p.workflow_bucket === 'RE_KNOCK';
       }
       return true;
     });
   }, [routeProperties, filterStatus, searchQuery, soldDateFilter, decisionFilter]);
 
+  const visiblePropertyKeys = useMemo(
+    () => getVisiblePropertyKeys(filteredProperties),
+    [filteredProperties]
+  );
+  const selectedProperties = useMemo(
+    () => routeProperties.filter((property) => selectedPropertyKeys.has(getPropertySelectionKey(property))),
+    [routeProperties, selectedPropertyKeys]
+  );
+  const allVisibleSelected = visiblePropertyKeys.length > 0
+    && visiblePropertyKeys.every((key) => selectedPropertyKeys.has(key));
+
+  React.useEffect(() => {
+    setSelectedPropertyKeys(new Set());
+    setNavigationSession(null);
+    setNavigationError('');
+  }, [activeRoute?.id]);
+
+  React.useEffect(() => {
+    setSelectedPropertyKeys((previous) => {
+      const next = filterStatus === 'done'
+        ? pruneSelectionToProperties(previous, filteredProperties)
+        : new Set();
+      return selectionsEqual(previous, next) ? previous : next;
+    });
+  }, [filterStatus, filteredProperties]);
+
+  const invalidateBulkWorkflowQueries = () => Promise.all([
+    queryClient.invalidateQueries({ queryKey: ['myRoutes'] }),
+    queryClient.invalidateQueries({ queryKey: ['savedRoutes'] }),
+    queryClient.invalidateQueries({ queryKey: ['routeProperties'] }),
+    queryClient.invalidateQueries({ queryKey: ['routeLogs'] }),
+    queryClient.invalidateQueries({ queryKey: ['allMyLogs'] }),
+    queryClient.invalidateQueries({ queryKey: ['myLogs'] }),
+    queryClient.invalidateQueries({ queryKey: ['propertyHistory'] }),
+    queryClient.invalidateQueries({ queryKey: ['interactionLogs'] }),
+    queryClient.invalidateQueries({ queryKey: ['teamLogs'] }),
+    queryClient.invalidateQueries({ queryKey: ['appointments'] }),
+  ]);
+
+  const bulkActionMutation = useMutation({
+    mutationFn: async ({ action, properties: targetProperties }) => {
+      if (!activeRoute?.id) throw new Error('No active route is available.');
+      if (!targetProperties?.length) throw new Error('Select at least one route stop.');
+
+      if (action === ROUTE_BULK_ACTIONS.DELETE) {
+        const latestRouteResult = await base44.entities.SavedRoute.filter({ id: activeRoute.id }, '-updated_date', 1);
+        const latestRoute = Array.isArray(latestRouteResult) ? latestRouteResult[0] : latestRouteResult?.items?.[0];
+        if (!latestRoute) throw new Error('This saved route could not be refreshed before deletion.');
+
+        const { remainingHashes, removedHashes, unmatchedSelectionKeys } = removeSelectedRouteStops(
+          latestRoute.property_hashes || [],
+          targetProperties
+        );
+        if (unmatchedSelectionKeys.length > 0) {
+          throw new Error('The route changed before every selected stop could be matched. Refresh and try again.');
+        }
+        if (!removedHashes.length) throw new Error('The selected stops were not found on this saved route.');
+
+        const nextMetrics = {
+          ...(latestRoute.metrics || {}),
+          house_count: remainingHashes.length,
+        };
+        const { orderedProperties: remainingRouteProperties, unmatchedHashes } = orderRoutePropertiesByHashes(
+          remainingHashes,
+          routeProperties
+        );
+        const allRemainingCoordinatesAvailable = unmatchedHashes.length === 0
+          && remainingRouteProperties.every(isValidRoutePoint);
+        if (remainingHashes.length === 0) {
+          nextMetrics.distance = 0;
+        } else if (allRemainingCoordinatesAvailable) {
+          const originMode = String(latestRoute.route_origin_mode || 'none').toLowerCase();
+          const savedStart = isValidRoutePoint(latestRoute.start_location) ? latestRoute.start_location : null;
+          const savedEnd = isValidRoutePoint(latestRoute.end_location) ? latestRoute.end_location : null;
+          const homeBase = isValidRoutePoint(user?.home_base) ? user.home_base : null;
+          let distanceBounds = null;
+
+          if (originMode === 'home_round_trip' && homeBase) {
+            distanceBounds = { startLocation: homeBase, endLocation: homeBase };
+          } else if (originMode === 'current_to_home') {
+            const endLocation = savedEnd || homeBase;
+            if (savedStart && endLocation) distanceBounds = { startLocation: savedStart, endLocation };
+          } else if (savedStart && savedEnd) {
+            distanceBounds = { startLocation: savedStart, endLocation: savedEnd };
+          } else {
+            distanceBounds = {};
+          }
+
+          if (distanceBounds) {
+            nextMetrics.distance = Math.round(calculateRouteDistanceMiles(
+              remainingRouteProperties,
+              distanceBounds
+            ) * 100) / 100;
+          }
+        }
+
+        await base44.entities.SavedRoute.update(activeRoute.id, {
+          property_hashes: remainingHashes,
+          metrics: nextMetrics,
+        });
+        return { action, count: removedHashes.length };
+      }
+
+      const transitionLogs = buildWorkflowTransitionLogs(targetProperties, action, {
+        routeId: activeRoute.id,
+        managerId: repManagerId,
+      });
+      const batchSize = 500;
+      let completedCount = 0;
+      for (let index = 0; index < transitionLogs.length; index += batchSize) {
+        const batch = transitionLogs.slice(index, index + batchSize);
+        try {
+          await base44.entities.InteractionLog.bulkCreate(batch);
+          completedCount += batch.length;
+        } catch (error) {
+          const wrappedError = new Error(error?.message || 'The workflow update could not be saved.');
+          wrappedError.completedCount = completedCount;
+          throw wrappedError;
+        }
+      }
+      return { action, count: completedCount };
+    },
+    onSuccess: async ({ action, count }) => {
+      setSelectedPropertyKeys(new Set());
+      await invalidateBulkWorkflowQueries();
+
+      if (action === ROUTE_BULK_ACTIONS.TODO) {
+        setFilterStatus('todo');
+        toast.success(`${count} stop${count === 1 ? '' : 's'} moved to Todo`);
+      } else if (action === ROUTE_BULK_ACTIONS.CALLBACK) {
+        setFilterStatus('done');
+        setDecisionFilter('CALLBACK');
+        toast.success(`${count} stop${count === 1 ? '' : 's'} moved to Callback`);
+      } else if (action === ROUTE_BULK_ACTIONS.RE_KNOCK) {
+        setFilterStatus('re_knock');
+        toast.success(`${count} stop${count === 1 ? '' : 's'} queued for Re-Knock`);
+      } else if (action === ROUTE_BULK_ACTIONS.DELETE) {
+        toast.success(`${count} stop${count === 1 ? '' : 's'} removed from this route. History was preserved.`);
+      }
+    },
+    onError: async (error) => {
+      if (error?.completedCount > 0) {
+        await invalidateBulkWorkflowQueries();
+        toast.error(`${error.completedCount} stop${error.completedCount === 1 ? '' : 's'} updated before the request failed. The route was refreshed.`);
+        return;
+      }
+      toast.error(error?.message || 'The selected stops could not be updated.');
+    },
+  });
+
   const knockWindow = getKnockWindowLabel(new Date());
+
+  const remainingNavigationStops = selectRemainingTodoStops(
+    routeProperties,
+    (property) => property.effective_status
+  );
+  const navigationProgress = getNavigationSessionProgress(
+    navigationSession?.routeId === activeRoute?.id ? navigationSession : null,
+    remainingNavigationStops
+  );
+  const hasNextNavigationBatch = navigationProgress.canAdvance;
+  const canResumeNavigationBatch = navigationProgress.canResume;
+
+  const handleStartRouteNavigation = () => {
+    setNavigationError('');
+    try {
+      if (canResumeNavigationBatch) {
+        const resumePlan = getRouteNavigationPlan(navigationProgress.remainingStops, navigationApp, {
+          startDelaySeconds: 0,
+        });
+        openNavigationBatch(resumePlan, 0);
+        return;
+      }
+
+      if (hasNextNavigationBatch) {
+        const continuationPlan = getRouteNavigationPlan(navigationProgress.continuationStops, navigationApp, {
+          startDelaySeconds: 0,
+        });
+        if (!continuationPlan.batches.length) return;
+        const nextSession = { routeId: activeRoute?.id, plan: continuationPlan, batchIndex: 0 };
+        setNavigationSession(nextSession);
+        openNavigationBatch(continuationPlan, 0);
+        return;
+      }
+
+      const plan = getRouteNavigationPlan(remainingNavigationStops, navigationApp, { startDelaySeconds: 0 });
+      if (!plan.batches.length) return;
+      const nextSession = { routeId: activeRoute?.id, plan, batchIndex: 0 };
+      setNavigationSession(nextSession);
+      openNavigationBatch(plan, 0);
+    } catch (error) {
+      setNavigationError(error?.message || 'This route could not be opened in maps.');
+    }
+  };
 
   if (routesLoading || propsLoading || logsLoading || (!activeRoute && canvasAssignmentsLoading)) {
     return (
@@ -776,6 +1007,31 @@ export default function RepHome() {
     }
   };
 
+  const handleTogglePropertySelection = (property) => {
+    if (bulkActionMutation.isPending) return;
+    setSelectedPropertyKeys((previous) => togglePropertySelection(previous, property));
+  };
+
+  const handleToggleVisibleSelection = () => {
+    if (bulkActionMutation.isPending || filteredProperties.length === 0) return;
+    setSelectedPropertyKeys((previous) => toggleVisiblePropertySelection(previous, filteredProperties));
+  };
+
+  const handleBulkAction = (action) => {
+    if (bulkActionMutation.isPending) return;
+    if (!selectedProperties.length) {
+      toast.error('Select at least one completed stop.');
+      return;
+    }
+    if (action === ROUTE_BULK_ACTIONS.DELETE) {
+      const confirmed = confirm(
+        `Remove ${selectedProperties.length} selected stop${selectedProperties.length === 1 ? '' : 's'} from this route? Global properties and interaction history will be preserved.`
+      );
+      if (!confirmed) return;
+    }
+    bulkActionMutation.mutate({ action, properties: selectedProperties });
+  };
+
   // Re-fetch the user fresh on each tap so a mid-session upgrade (in another tab)
   // lifts the gate without a full reload. Returns true if the gate fired.
   const checkAndHandleGate = async () => {
@@ -800,52 +1056,53 @@ export default function RepHome() {
   };
 
   const handleLog = async (logData) => {
-    if (!selectedProperty && !logData.address_hash) return;
+    if (!selectedProperty && !logData.address_hash) return false;
     const prop = selectedProperty || {};
 
     // Atomic guard: block re-entrancy from rapid double-taps at the boundary.
-    if (loggingInFlightRef.current) return;
+    if (loggingInFlightRef.current) return false;
     loggingInFlightRef.current = true;
     try {
       const blocked = await checkAndHandleGate();
-      if (blocked) return; // No outcome saved, no stop marked, no state change.
+      if (blocked) return false; // No outcome saved, no stop marked, no state change.
+
+      const saleSnapshot = logData.parsed_status === 'SOLD'
+        ? {
+            sale_date: logData.sale_date || new Date().toISOString(),
+            property_address: buildFullAddress(prop),
+            homeowner_name: prop.owner_full_name || prop.owner_name || prop.ownerFullName || null,
+            rep_id: teamMember?.id || user?.id || null,
+            rep_name: teamMember?.name || user?.full_name || user?.name || user?.email || null,
+            route_name: activeRoute?.name || null,
+          }
+        : {};
+      const enrichedLogData = { ...logData, ...saleSnapshot, property_snapshot: prop };
+
+      // Haptic feedback
+      if (navigator.vibrate) navigator.vibrate(50);
+
+      const gpsProof = navigator.geolocation
+        ? await new Promise((resolve) => navigator.geolocation.getCurrentPosition(
+            (position) => resolve({
+              gps_proof_lat: position.coords.latitude,
+              gps_proof_lng: position.coords.longitude,
+              gps_accuracy: position.coords.accuracy,
+            }),
+            () => resolve({ gps_proof_lat: prop.lat, gps_proof_lng: prop.lng, gps_accuracy: 0 }),
+            { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+          ))
+        : { gps_proof_lat: prop.lat, gps_proof_lng: prop.lng, gps_accuracy: 0 };
+
+      await createLogMutation.mutateAsync({
+        ...enrichedLogData,
+        ...gpsProof,
+      });
+      return true;
+    } catch (error) {
+      toast.error(error?.message || 'The outcome could not be saved. Please try again.');
+      return false;
     } finally {
       loggingInFlightRef.current = false;
-    }
-
-    const enrichedLogData = { ...logData, property_snapshot: prop };
-
-    // Haptic feedback
-    if (navigator.vibrate) navigator.vibrate(50);
-
-    // Get Real GPS
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          createLogMutation.mutate({
-            ...enrichedLogData,
-            gps_proof_lat: position.coords.latitude,
-            gps_proof_lng: position.coords.longitude,
-            gps_accuracy: position.coords.accuracy
-          });
-        },
-        () => {
-          createLogMutation.mutate({
-            ...enrichedLogData,
-            gps_proof_lat: prop.lat,
-            gps_proof_lng: prop.lng,
-            gps_accuracy: 0
-          });
-        },
-        { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
-      );
-    } else {
-      createLogMutation.mutate({
-        ...logData,
-        gps_proof_lat: prop.lat,
-        gps_proof_lng: prop.lng,
-        gps_accuracy: 0
-      });
     }
   };
 
@@ -1051,7 +1308,16 @@ export default function RepHome() {
         routes={routes}
         onShowMap={() => setShowMap(true)}
         onShowRouteList={() => setShowRouteList(true)}
-        routeProperties={routeProperties} />
+        routeProperties={routeProperties}
+        onStartNavigation={handleStartRouteNavigation}
+        navigationDisabled={!hasNextNavigationBatch && remainingNavigationStops.length === 0}
+        navigationButtonLabel={hasNextNavigationBatch ? 'Next Batch' : canResumeNavigationBatch ? 'Resume' : 'Start'}
+        navigationBatchLabel={hasNextNavigationBatch
+          ? `${navigationProgress.continuationStops.length} left`
+          : canResumeNavigationBatch
+            ? `${navigationProgress.remainingStops.length} left`
+            : remainingNavigationStops.length > 0 ? `${remainingNavigationStops.length} stops` : ''}
+        navigationError={navigationError} />
 
             {showLimitBanner && <KnockLimitBanner mode={gateMode} />}
 
@@ -1060,8 +1326,9 @@ export default function RepHome() {
                 {/* Top Row: Segmented Control */}
                 <div className="flex bg-white/[0.04] p-0.5 rounded-xl border border-white/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
                     {[
-          { id: 'todo', label: `Todo ${routeProperties.length - stats.done}` },
+          { id: 'todo', label: `Todo ${stats.todo}` },
           { id: 'done', label: `Done ${stats.done}` },
+          { id: 're_knock', label: `Re-Knock ${stats.reKnock}` },
           { id: 'all', label: 'All' }].
           map((tab) =>
           <button
@@ -1134,6 +1401,64 @@ export default function RepHome() {
                 </div>
             </div>
 
+            {filterStatus === 'done' &&
+            <div className="border-b border-white/10 bg-black/85 px-3 py-2 shadow-[0_10px_30px_rgba(0,0,0,0.28)] backdrop-blur-xl">
+                <div className="mb-2 flex items-center justify-between gap-3">
+                    <label className="flex min-w-0 cursor-pointer items-center gap-2 text-[10px] font-black uppercase tracking-[0.12em] text-white/75">
+                        <input
+                          type="checkbox"
+                          checked={allVisibleSelected}
+                          aria-checked={!allVisibleSelected && selectedProperties.length > 0 ? 'mixed' : allVisibleSelected}
+                          aria-label={`Select all ${filteredProperties.length} visible completed stops`}
+                          disabled={bulkActionMutation.isPending || filteredProperties.length === 0}
+                          onChange={handleToggleVisibleSelection}
+                          className="h-4 w-4 shrink-0 cursor-pointer accent-[#39FF4A] disabled:cursor-not-allowed disabled:opacity-40"
+                        />
+                        <span className="truncate">{allVisibleSelected ? 'Clear All' : 'Select All'} ({filteredProperties.length})</span>
+                    </label>
+                    <span className="shrink-0 text-[10px] font-bold text-[#39FF4A]" aria-live="polite">
+                        {bulkActionMutation.isPending
+                          ? <span className="inline-flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> Updating</span>
+                          : `${selectedProperties.length} selected`}
+                    </span>
+                </div>
+                <div className="grid grid-cols-4 gap-1.5">
+                    <button
+                      type="button"
+                      disabled={bulkActionMutation.isPending || selectedProperties.length === 0}
+                      onClick={() => handleBulkAction(ROUTE_BULK_ACTIONS.TODO)}
+                      className="h-9 rounded-xl border border-white/15 bg-white/[0.07] px-1 text-[9px] font-black text-white transition-colors hover:bg-white/[0.12] disabled:cursor-not-allowed disabled:opacity-35"
+                    >
+                        To Todo
+                    </button>
+                    <button
+                      type="button"
+                      disabled={bulkActionMutation.isPending || selectedProperties.length === 0}
+                      onClick={() => handleBulkAction(ROUTE_BULK_ACTIONS.CALLBACK)}
+                      className="h-9 rounded-xl border border-sky-400/25 bg-sky-400/10 px-1 text-[9px] font-black text-sky-300 transition-colors hover:bg-sky-400/15 disabled:cursor-not-allowed disabled:opacity-35"
+                    >
+                        Callback
+                    </button>
+                    <button
+                      type="button"
+                      disabled={bulkActionMutation.isPending || selectedProperties.length === 0}
+                      onClick={() => handleBulkAction(ROUTE_BULK_ACTIONS.RE_KNOCK)}
+                      className="h-9 rounded-xl border border-amber-400/25 bg-amber-400/10 px-1 text-[9px] font-black text-amber-300 transition-colors hover:bg-amber-400/15 disabled:cursor-not-allowed disabled:opacity-35"
+                    >
+                        Re-Knock
+                    </button>
+                    <button
+                      type="button"
+                      disabled={bulkActionMutation.isPending || selectedProperties.length === 0}
+                      onClick={() => handleBulkAction(ROUTE_BULK_ACTIONS.DELETE)}
+                      className="h-9 rounded-xl border border-red-400/25 bg-red-400/10 px-1 text-[9px] font-black text-red-300 transition-colors hover:bg-red-400/15 disabled:cursor-not-allowed disabled:opacity-35"
+                    >
+                        Delete
+                    </button>
+                </div>
+            </div>
+            }
+
             {/* Property List */}
             <PullToRefresh onRefresh={handleRouteRefresh} className="flex-1 overflow-y-auto px-2.5 py-2 pb-20 bg-transparent">
                 {filteredProperties.length === 0 ?
@@ -1142,17 +1467,20 @@ export default function RepHome() {
                             {filterStatus === 'done' ? <CheckCircle2 className="w-7 h-7 text-green-500" /> : <Navigation className="w-7 h-7 text-gray-600" />}
                         </div>
                         <p className="text-gray-500 text-sm font-medium">
-                            {searchQuery ? 'No matches' : filterStatus === 'done' ? 'None completed yet' : 'All done! 🎉'}
+                            {searchQuery ? 'No matches' : filterStatus === 'done' ? 'None completed yet' : filterStatus === 're_knock' ? 'No Re-Knock stops queued' : 'All done! 🎉'}
                         </p>
                     </div> :
 
         <div className="space-y-1.5">
                         {filteredProperties.map((prop, idx) =>
           <PropertyCard
-            key={prop.address_hash}
+            key={getPropertySelectionKey(prop)}
             property={prop}
             index={idx}
             navigationApp={navigationApp}
+            selectable={filterStatus === 'done'}
+            selected={selectedPropertyKeys.has(getPropertySelectionKey(prop))}
+            onToggleSelect={handleTogglePropertySelection}
             onSelect={(p, i) => {setSelectedProperty(p);setSelectedPropertyIndex(i);}} />
 
           )}

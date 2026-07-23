@@ -15,6 +15,7 @@
 import { filterByStreetCooldown, COOLDOWN_CONFIG } from './territoryLogic';
 import { latLngToCell, gridDisk } from 'h3-js';
 import { batchScoreProperties } from './leadScoring';
+import { isKnockActivityLog } from '@/lib/interactionLogs';
 import {
     calculateRouteDistanceMiles,
     isValidRoutePoint,
@@ -158,7 +159,7 @@ export function scoreProperty(property, logs = [], neighborhoodStats = {}, learn
     if (logs && logs.length > 0) {
         const propHash = property.address_hash || property.id;
         const legacyHash = property.legacy_hash;
-        const myLogs = logs.filter(l => l.address_hash === propHash || (legacyHash && l.address_hash === legacyHash));
+        const myLogs = logs.filter(l => isKnockActivityLog(l) && (l.address_hash === propHash || (legacyHash && l.address_hash === legacyHash)));
 
         // Optimize for feedback from finished routes
         if (myLogs.length > 3) {

@@ -234,7 +234,7 @@ Deno.serve(async (req) => {
         const globalObservations = [];
 
         // Sort logs by created_date ascending (oldest first) for ADWIN time ordering
-        const sortedLogs = [...logs].sort((a, b) =>
+        const sortedLogs = logs.filter((log) => log?.counts_as_knock !== false).sort((a, b) =>
             new Date(a.created_date).getTime() - new Date(b.created_date).getTime()
         );
 

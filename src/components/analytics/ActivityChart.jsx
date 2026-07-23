@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { format, subDays, startOfDay } from 'date-fns';
 import { useTheme } from '@/components/theme/ThemeProvider';
+import { isKnockActivityLog } from '@/lib/interactionLogs';
 
 const RANGE_OPTIONS = [
     { label: '7d', days: 7 },
@@ -20,6 +21,7 @@ export default function ActivityChart({ logs }) {
             const day = startOfDay(subDays(now, i));
             const nextDay = new Date(day.getTime() + 86400000);
             const dayLogs = logs.filter(l => {
+                if (!isKnockActivityLog(l)) return false;
                 const d = new Date(l.created_date);
                 return d >= day && d < nextDay;
             });

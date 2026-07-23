@@ -3,6 +3,7 @@ import { Navigation, MapPin } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { useTheme } from '@/components/theme/ThemeProvider';
+import { isKnockActivityLog } from '@/lib/interactionLogs';
 
 const STATUS_STYLES = {
     IN_PROGRESS: { bg: '#3b82f620', border: '#3b82f640', color: '#3b82f6', label: 'In Progress' },
@@ -21,7 +22,7 @@ export default function RouteProgress({ routes, logs }) {
                 const hashes = route.property_hashes || [];
                 const hydratedCount = Array.isArray(route.allProperties) ? route.allProperties.length : Array.isArray(route.properties) ? route.properties.length : 0;
                 const metricCount = route.metrics?.house_count || route.houseCount || 0;
-                const routeLogs = logs.filter(l => hashes.includes(l.address_hash));
+                const routeLogs = logs.filter(l => isKnockActivityLog(l) && hashes.includes(l.address_hash));
                 const uniqueKnocked = new Set(routeLogs.map(l => l.address_hash)).size;
                 const total = Math.max(hydratedCount, metricCount, hashes.length);
                 const percent = total > 0 ? Math.round((uniqueKnocked / total) * 100) : 0;

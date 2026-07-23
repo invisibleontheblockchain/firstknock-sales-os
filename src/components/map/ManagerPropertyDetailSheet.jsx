@@ -9,6 +9,7 @@ import PropertyHistory from '@/components/rep/PropertyHistory';
 import QuickMarkButtons from '@/components/rep/QuickMarkButtons';
 import { buildFullAddress, openInMaps } from '@/components/logic/navigation';
 import ConfidenceBadge from '@/components/map/ConfidenceBadge';
+import { parseOptionalSaleAmount } from '@/components/analytics/salesManagement';
 
 function numberValue(...values) {
     for (const value of values) {
@@ -53,6 +54,20 @@ export default function ManagerPropertyDetailSheet({
     const [callbackPhone, setCallbackPhone] = React.useState('');
     const [callbackTime, setCallbackTime] = React.useState('');
     const [callbackError, setCallbackError] = React.useState('');
+    const [showSaleAmount, setShowSaleAmount] = React.useState(false);
+    const [saleAmount, setSaleAmount] = React.useState('');
+    const [saleAmountError, setSaleAmountError] = React.useState('');
+
+    React.useEffect(() => {
+        setShowCallbackPrompt(false);
+        setCallbackName('');
+        setCallbackPhone('');
+        setCallbackTime('');
+        setCallbackError('');
+        setShowSaleAmount(false);
+        setSaleAmount('');
+        setSaleAmountError('');
+    }, [selectedProperty?.address_hash]);
 
     if (!selectedProperty) return null;
 
@@ -72,7 +87,41 @@ export default function ManagerPropertyDetailSheet({
         setCallbackError('');
     };
 
-    const handleQuickMark = async (status) => {
+    const resetSaleForm = () => {
+        setShowSaleAmount(false);
+        setSaleAmount('');
+        setSaleAmountError('');
+    };
+
+    const handleQuickMark = async (status, { skipSaleAmount = false } = {}) => {
+        if (status === 'SOLD') {
+            if (!showSaleAmount && !skipSaleAmount) {
+                setShowSaleAmount(true);
+                setShowCallbackPrompt(false);
+                setSaleAmountError('');
+                return;
+            }
+
+            const parsed = parseOptionalSaleAmount(skipSaleAmount ? '' : saleAmount);
+            if (parsed.error) {
+                setSaleAmountError(parsed.error);
+                return;
+            }
+            const logData = {
+                address_hash: selectedProperty.address_hash,
+                raw_input_text: parsed.value === null ? 'Marked as SOLD' : `Marked as SOLD | Sale: $${parsed.value}`,
+                parsed_status: 'SOLD'
+            };
+            if (parsed.value !== null) logData.sale_amount = parsed.value;
+            const saved = await handleLogResult(selectedProperty, logData);
+            if (saved === false) return;
+            resetSaleForm();
+            setSelectedProperty(null);
+            toast.success('Sale saved');
+            return;
+        }
+
+        resetSaleForm();
         if (status === 'CALLBACK') {
             setShowCallbackPrompt(true);
             if (!callbackName.trim() || !callbackPhone.trim() || !callbackTime) {
@@ -254,6 +303,41 @@ export default function ManagerPropertyDetailSheet({
                             size="large"
                             onMark={handleQuickMark}
                         />
+                        {showSaleAmount && (
+                            <div className="mt-3 flex flex-wrap items-center gap-2 rounded-2xl border border-[#2EEB57]/30 bg-[#2EEB57]/[0.08] p-3">
+                                <div className="relative min-w-[150px] flex-1">
+                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold text-green-400">$</span>
+                                    <input
+                                        type="number"
+                                        inputMode="decimal"
+                                        min="0"
+                                        step="0.01"
+                                        value={saleAmount}
+                                        onChange={(event) => { setSaleAmount(event.target.value); setSaleAmountError(''); }}
+                                        placeholder="Sale amount (optional)"
+                                        autoFocus
+                                        aria-label="Sale amount (optional)"
+                                        aria-describedby={saleAmountError ? 'manager-sale-amount-error' : undefined}
+                                        className="w-full rounded-xl border border-[#2EEB57]/30 bg-black/70 py-2.5 pl-7 pr-3 text-sm text-white focus:border-[#39FF4A] focus:outline-none"
+                                    />
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => handleQuickMark('SOLD')}
+                                    className="rounded-xl bg-[#2EEB57] px-4 py-2.5 text-xs font-black text-black active:scale-95"
+                                >
+                                    Save
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => handleQuickMark('SOLD', { skipSaleAmount: true })}
+                                    className="rounded-xl bg-white/5 px-3 py-2.5 text-xs font-bold text-gray-400"
+                                >
+                                    Skip
+                                </button>
+                                {saleAmountError && <p id="manager-sale-amount-error" role="alert" className="w-full text-[10px] font-bold text-red-300">{saleAmountError}</p>}
+                            </div>
+                        )}
                         {showCallbackPrompt && (
                             <div className="mt-3 rounded-2xl border border-[#2EEB57]/30 bg-[#2EEB57]/[0.08] p-3">
                                 <p className="mb-2 text-[10px] font-black uppercase tracking-[0.18em] text-[#39FF4A]">Callback contact</p>

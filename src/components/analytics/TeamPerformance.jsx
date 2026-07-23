@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { Trophy } from 'lucide-react';
 import { useTheme } from '@/components/theme/ThemeProvider';
+import { isKnockActivityLog } from '@/lib/interactionLogs';
 
 const MEDAL_STYLES = [
     'bg-yellow-500 text-black',
@@ -17,7 +18,7 @@ export default function TeamPerformance({ teamMembers, logs, routes }) {
         const weekAgo = new Date(today.getTime() - 7 * 86400000);
 
         return teamMembers.map(member => {
-            const memberLogs = logs.filter(l => l.created_by === member.email);
+            const memberLogs = logs.filter(l => isKnockActivityLog(l) && l.created_by === member.email);
             const weekLogs = memberLogs.filter(l => new Date(l.created_date) >= weekAgo);
             const todayLogs = memberLogs.filter(l => new Date(l.created_date) >= today);
             const sales = memberLogs.filter(l => ['SOLD', 'QUALIFIED'].includes(l.parsed_status));

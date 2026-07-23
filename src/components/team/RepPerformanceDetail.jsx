@@ -10,6 +10,7 @@ import { base44 } from '@/api/base44Client';
 import { Loader2, Lightbulb, TrendingUp, Target, Award, ChevronDown } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '../../utils';
+import { isKnockActivityLog } from '@/lib/interactionLogs';
 
 const BRAND = {
     gold: '#FFD700',
@@ -57,7 +58,7 @@ export default function RepPerformanceDetail({ member, logs, teamAverage, onClos
 
     // 3. Stats vs Team Average
     const myStats = useMemo(() => {
-        const myLogs = logs.filter(l => l.created_by === member.email);
+        const myLogs = logs.filter(l => isKnockActivityLog(l) && l.created_by === member.email);
         const total = myLogs.length;
         const sales = myLogs.filter(l => ['SOLD', 'QUALIFIED'].includes(l.parsed_status)).length;
         return {

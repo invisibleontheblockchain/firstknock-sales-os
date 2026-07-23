@@ -190,6 +190,6 @@ test('RepHome wires one scoped queue into both Precision and Canvas without chan
   assert.match(home, /onScheduleInspection=\{handleScheduleInspection\}/);
   assert.match(home, /refetchInterval: \(query\) => shouldPollPrecisionFieldRoutes/);
   assert.match(home, /preferFieldRoutesStatus\(localStatus, serverStatus\)/);
-  assert.match(home, /createLogMutation\.mutate\(\{/);
+  assert.match(home, /await createLogMutation\.mutateAsync\(\{/);
   assert.match(home, /onLog=\{handleLog\}/);
 });

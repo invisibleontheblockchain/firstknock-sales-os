@@ -7,15 +7,16 @@ Deno.serve(async (req) => {
 
         // 1. Fetch Rep's Logs
         const logs = await base44.entities.InteractionLog.filter({ created_by: repEmail }, '-created_date', 100);
+        const activityLogs = (Array.isArray(logs) ? logs : []).filter((log) => log?.counts_as_knock !== false);
         
-        if (!logs || logs.length === 0) {
+        if (activityLogs.length === 0) {
              return Response.json({ tips: ["No data available yet to generate tips. Start knocking!"] });
         }
 
         // 2. Calculate Stats
-        const total = logs.length;
-        const sales = logs.filter(l => ['SOLD', 'QUALIFIED'].includes(l.parsed_status)).length;
-        const hardNos = logs.filter(l => l.parsed_status === 'HARD_NO').length;
+        const total = activityLogs.length;
+        const sales = activityLogs.filter(l => ['SOLD', 'QUALIFIED'].includes(l.parsed_status)).length;
+        const hardNos = activityLogs.filter(l => l.parsed_status === 'HARD_NO').length;
         const conversionRate = (sales / total * 100).toFixed(1);
 
         // 3. Generate Prompt
@@ -26,7 +27,7 @@ Deno.serve(async (req) => {
             - Sales/Leads: ${sales}
             - Hard Nos: ${hardNos}
             - Conversion Rate: ${conversionRate}%
-            - Recent Outcomes: ${logs.slice(0, 10).map(l => l.parsed_status).join(', ')}
+            - Recent Outcomes: ${activityLogs.slice(0, 10).map(l => l.parsed_status).join(', ')}
 
             Provide 3 specific, actionable, and encouraging coaching tips to improve their performance. 
             Focus on ${conversionRate < 5 ? 'closing techniques' : 'upselling and efficiency'}.
