@@ -160,6 +160,22 @@ test('Knock UI uses the complete scoped collection and compact accessible Home B
   assert.match(header, /aria-controls="rep-route-switcher"/);
 });
 
+test('Knock mobile header keeps long route names separate from route actions', () => {
+  const header = readSource('src/components/rep/RepHeader.jsx');
+  const identityStart = header.indexOf('className="flex min-w-0 items-center gap-2.5 sm:flex-1"');
+  const actionRowStart = header.indexOf('className={`grid gap-2 sm:flex sm:shrink-0');
+  const progressStart = header.indexOf('{/* Progress */}');
+
+  assert.ok(identityStart >= 0, 'route identity uses its own shrinking-safe row');
+  assert.ok(actionRowStart > identityStart, 'route controls render after the route identity');
+  assert.ok(progressStart > actionRowStart, 'route controls remain above progress');
+  assert.match(header, /<h2 className="break-words [^"]* sm:truncate">\{activeRoute\.name\}<\/h2>/);
+  assert.match(header, /grid-cols-\[minmax\(0,1fr\)_auto\]/);
+  assert.match(header, /className="flex min-h-10 min-w-0 items-center justify-between/);
+  assert.match(header, /className="flex min-h-10 shrink-0 items-center justify-center/);
+  assert.match(header, /aria-expanded=\{routeListOpen\}/);
+});
+
 test('route completion is optimistic, advances selection, and keeps only archived routes read-only', () => {
   const repHome = readSource('src/pages/RepHome.jsx');
 
