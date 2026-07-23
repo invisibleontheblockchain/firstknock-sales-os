@@ -506,34 +506,21 @@ export default function ListPage() {
                         })}
                     </div>
 
-                    <button
-                        type="button"
-                        onClick={() => setActiveTab(routesTab.id)}
-                        aria-pressed={activeTab === routesTab.id}
-                        aria-controls="analytics-results"
-                        className={`mt-1.5 ml-auto min-h-9 px-3 rounded-lg md:hidden flex items-center gap-1.5 text-[11px] font-bold transition-colors ${
-                            activeTab === routesTab.id
-                                ? 'bg-white text-black shadow-lg shadow-white/10'
-                                : 'border border-white/[0.07] bg-white/[0.03] text-gray-400 hover:text-white hover:bg-white/[0.06]'
-                        }`}
-                    >
-                        <Navigation className="w-3.5 h-3.5" />
-                        Route analytics
-                    </button>
                 </div>
             </div>
 
             <div className="flex-1 overflow-auto">
                 {/* Keep the date controls mounted while a new day loads so focus and scroll position stay put. */}
-                {isAnalyticsTab && (
-                    <RepAnalyticsHeader
-                        dateDays={dateDays}
-                        selectedDate={selectedDate}
-                        onChangeDays={handleChangeDays}
-                        onSelectDate={handleSelectDate}
-                        streak={analytics.streak}
-                    />
-                )}
+                <RepAnalyticsHeader
+                    dateDays={dateDays}
+                    selectedDate={selectedDate}
+                    onChangeDays={handleChangeDays}
+                    onSelectDate={handleSelectDate}
+                    streak={analytics.streak}
+                    showDateControls={isAnalyticsTab}
+                    onOpenRouteAnalytics={() => setActiveTab(routesTab.id)}
+                    routeAnalyticsActive={activeTab === routesTab.id}
+                />
 
                 <div id="analytics-results" role="region" aria-label="Analytics results" aria-busy={isLoading}>
                     {isLoading ? (
