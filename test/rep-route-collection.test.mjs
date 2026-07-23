@@ -240,6 +240,17 @@ test('route switcher traps keyboard focus, restores its trigger, and clears the 
   assert.match(header, /className="flex min-h-10 shrink-0/);
 });
 
+test('route switcher modal clears the persistent bottom navigation stacking layer', () => {
+  const repHome = readSource('src/pages/RepHome.jsx');
+  const layout = readSource('src/Layout.jsx');
+
+  assert.match(repHome, /import \{ createPortal \} from 'react-dom';/);
+  assert.match(repHome, /\{showRouteList && createPortal\(/);
+  assert.match(repHome, /document\.body\s*\)\}/);
+  assert.match(repHome, /className="fixed inset-0 z-50 flex flex-col justify-end/);
+  assert.match(layout, /<nav className="bg-black border-t border-slate-800 z-20 shrink-0">/);
+});
+
 test('identity outages are not presented as an empty assignment list', () => {
   const repHome = readSource('src/pages/RepHome.jsx');
 

@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Loader2, Navigation, CheckCircle2, Search, X, TrendingUp, MessageCircle, CalendarDays, Sparkles, ChevronDown } from 'lucide-react';
@@ -1677,7 +1678,7 @@ export default function RepHome() {
             </div>
 
             {/* Route Switching Drawer */}
-            {showRouteList &&
+            {showRouteList && createPortal(
       <div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/60 backdrop-blur-sm" onClick={closeRouteSwitcher}>
                     <div ref={routeSwitcherRef} id="rep-route-switcher" role="dialog" aria-modal="true" aria-labelledby="rep-route-switcher-title" onKeyDown={handleRouteSwitcherKeyDown} className="min-h-0 max-h-[85dvh] overflow-hidden bg-[#050505]/95 backdrop-blur-2xl rounded-t-3xl border-t border-white/10 flex flex-col shadow-[0_-20px_70px_rgba(0,0,0,0.7)]" onClick={(e) => e.stopPropagation()}>
                         <div className="shrink-0 p-4 border-b border-white/10 flex justify-between items-center">
@@ -1831,8 +1832,9 @@ export default function RepHome() {
                             </div>
                         </div>
                     </div>
-                </div>
-      }
+                </div>,
+      document.body
+      )}
 
             {/* Map View */}
             {showMap &&
