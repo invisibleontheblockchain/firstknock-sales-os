@@ -1679,8 +1679,8 @@ export default function RepHome() {
             {/* Route Switching Drawer */}
             {showRouteList &&
       <div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/60 backdrop-blur-sm" onClick={closeRouteSwitcher}>
-                    <div ref={routeSwitcherRef} id="rep-route-switcher" role="dialog" aria-modal="true" aria-labelledby="rep-route-switcher-title" onKeyDown={handleRouteSwitcherKeyDown} className="bg-[#050505]/95 backdrop-blur-2xl rounded-t-3xl border-t border-white/10 max-h-[85dvh] flex flex-col shadow-[0_-20px_70px_rgba(0,0,0,0.7)]" onClick={(e) => e.stopPropagation()}>
-                        <div className="p-4 border-b border-white/10 flex justify-between items-center">
+                    <div ref={routeSwitcherRef} id="rep-route-switcher" role="dialog" aria-modal="true" aria-labelledby="rep-route-switcher-title" onKeyDown={handleRouteSwitcherKeyDown} className="min-h-0 max-h-[85dvh] overflow-hidden bg-[#050505]/95 backdrop-blur-2xl rounded-t-3xl border-t border-white/10 flex flex-col shadow-[0_-20px_70px_rgba(0,0,0,0.7)]" onClick={(e) => e.stopPropagation()}>
+                        <div className="shrink-0 p-4 border-b border-white/10 flex justify-between items-center">
                             <div>
                                 <h3 id="rep-route-switcher-title" className="font-bold text-white">Switch Route</h3>
                                 <p className="mt-0.5 text-[10px] text-white/45">
@@ -1689,7 +1689,12 @@ export default function RepHome() {
                             </div>
                             <button ref={routeSwitcherCloseButtonRef} type="button" aria-label="Close route switcher" onClick={closeRouteSwitcher} className="-mr-2 flex h-10 w-10 items-center justify-center rounded-xl text-gray-500 transition hover:bg-white/[0.06] hover:text-white"><X className="w-5 h-5" /></button>
                         </div>
-                        <div className="flex-1 overflow-y-auto p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] space-y-4">
+                        <div
+                          id="rep-route-switcher-scroll-region"
+                          tabIndex={0}
+                          aria-label="Scrollable route switcher content"
+                          className="min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain p-4 pb-[calc(2rem+env(safe-area-inset-bottom))] scroll-pb-[calc(2rem+env(safe-area-inset-bottom))] space-y-4 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[#39FF4A]/45"
+                        >
                             {canvasAssignments.length > 0 && (
                               <button
                                 type="button"

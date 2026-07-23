@@ -227,7 +227,13 @@ test('route switcher traps keyboard focus, restores its trigger, and clears the 
   assert.match(repHome, /routeSwitcherCloseButtonRef\.current\?\.focus\(\)/);
   assert.match(repHome, /returnFocusTarget\.focus\(\)/);
   assert.match(repHome, /onKeyDown=\{handleRouteSwitcherKeyDown\}/);
-  assert.match(repHome, /pb-\[calc\(1rem\+env\(safe-area-inset-bottom\)\)\]/);
+  assert.match(repHome, /min-h-0 max-h-\[85dvh\] overflow-hidden/);
+  assert.match(repHome, /id="rep-route-switcher-scroll-region"/);
+  assert.match(repHome, /tabIndex=\{0\}/);
+  assert.match(repHome, /aria-label="Scrollable route switcher content"/);
+  assert.match(repHome, /min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain/);
+  assert.match(repHome, /pb-\[calc\(2rem\+env\(safe-area-inset-bottom\)\)\]/);
+  assert.match(repHome, /scroll-pb-\[calc\(2rem\+env\(safe-area-inset-bottom\)\)\]/);
   assert.match(repHome, /aria-label="Close route switcher"[^>]*className="[^"]*h-10 w-10/);
 
   const header = readSource('src/components/rep/RepHeader.jsx');
