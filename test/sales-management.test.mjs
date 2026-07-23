@@ -195,3 +195,20 @@ test('Analytics exposes an all-pages Sales Manager with update, correction, and 
   assert.match(adminTeam, /currentUser=\{user\}/);
   assert.match(adminTeam, /\{canManageTeam && \(/);
 });
+
+test('Sales Manager uses the Knock visual language across phone, tablet, and desktop layouts', () => {
+  const editor = readSource('src/components/analytics/SalesEditor.jsx');
+
+  assert.match(editor, /Recorded revenue/);
+  assert.match(editor, /revenueCoverage/);
+  assert.match(editor, /min-w-0[\s\S]*break-all text-\[clamp\(1\.65rem,8vw,2\.65rem\)\]/);
+  assert.match(editor, /valuedSales > 0 \? formatMoney\(averageDeal\) : '—'/);
+  assert.match(editor, /radial-gradient\(circle_at_16%_-6%,rgba\(46,235,87,0\.18\)/);
+  assert.match(editor, /grid grid-cols-1 gap-2\.5 md:grid-cols-2/);
+  assert.match(editor, /break-words text-\[15px\] font-extrabold/);
+  assert.match(editor, /min-h-10 shrink-0 items-center/);
+  assert.match(editor, /bottom-0 left-0 top-auto[\s\S]*sm:bottom-auto sm:left-\[50%\] sm:top-\[50%\]/);
+  assert.match(editor, /pb-\[calc\(1rem\+env\(safe-area-inset-bottom\)\)\]/);
+  assert.match(editor, /flex-1 overflow-y-auto/);
+  assert.match(editor, /min-h-12 rounded-xl bg-\[#2EEB57\]/);
+});
