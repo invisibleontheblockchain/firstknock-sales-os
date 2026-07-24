@@ -1349,7 +1349,9 @@ export default function Home() {
                     id: route.id,
                     properties: routeProps,
                     allProperties: allRouteProps,
-                    houseCount: routeProps.length || route.metrics?.house_count || routeHashes.length,
+                    // Keep the saved manifest count stable during a transient
+                    // partial hydration; map pins repair independently.
+                    houseCount: routeHashes.length || route.metrics?.house_count || routeProps.length,
                     totalDistance: route.metrics?.distance || 0,
                     competitivenessScore: route.metrics?.score || 0,
                     isSaved: true,
