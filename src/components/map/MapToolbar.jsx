@@ -344,7 +344,11 @@ export default function MapToolbar({
                         {mode !== 'generate' && (
                           <Button
                             onClick={() => {
-                              const next = routeStatusView === 'completed' ? 'active' : 'completed';
+                              const next = routeStatusView === 'all'
+                                ? 'active'
+                                : routeStatusView === 'active'
+                                  ? 'completed'
+                                  : 'all';
                               setRouteStatusView?.(next);
                               setMode('analyze');
                               setActiveRoute(null);
@@ -352,10 +356,16 @@ export default function MapToolbar({
                               setShowRoutePanel(false);
                               setShowRouteDetails(true);
                               setShowRouteLines(true);
-                              toast.success(next === 'completed' ? 'Completed routes visible' : 'Active routes visible');
+                              toast.success(
+                                next === 'completed'
+                                  ? 'Completed routes visible'
+                                  : next === 'active'
+                                    ? 'Active routes visible'
+                                    : 'All routes visible'
+                              );
                             }}
-                            className={`inline-flex bg-black/80 hover:bg-black backdrop-blur-md border shadow-xl h-8 sm:h-11 rounded-lg sm:rounded-xl px-2 sm:px-3 text-[9px] sm:text-[10px] font-black transition-all ${routeStatusView === 'completed' ? 'border-[#2EEB57]/50 text-[#39FF4A]' : 'border-gray-800 text-white/70'}`}>
-                            {routeStatusView === 'completed' ? 'DONE' : 'ACTIVE'}
+                            className={`inline-flex bg-black/80 hover:bg-black backdrop-blur-md border shadow-xl h-8 sm:h-11 rounded-lg sm:rounded-xl px-2 sm:px-3 text-[9px] sm:text-[10px] font-black transition-all ${routeStatusView === 'all' ? 'border-[#2EEB57]/50 text-[#39FF4A]' : 'border-gray-800 text-white/70'}`}>
+                            {routeStatusView === 'completed' ? 'DONE' : routeStatusView === 'active' ? 'ACTIVE' : 'ALL'}
                           </Button>
                         )}
                         {mode === 'generate' && routeMode === 'precision' && !activeRoute && (

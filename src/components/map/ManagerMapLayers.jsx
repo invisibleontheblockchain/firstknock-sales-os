@@ -6,6 +6,11 @@ import { CONFIDENCE_COLORS } from '@/components/map/ConfidenceLegend';
 import CanvasZoneOverlay from './CanvasZoneOverlay';
 import { getCompletedPinColor } from '@/components/routes/routeRerunUtils';
 import { isSoldDateInCustomOwnershipRange, normalizeOwnershipRangeDays } from '@/components/logic/soldDateRange';
+import {
+    filterRoutesByStatus,
+    isRenderableMapPoint,
+    shouldRenderPrecisionMapLayers,
+} from './mapLayerVisibility.js';
 
 /**
  * ActiveRouteLayer — High-performance active route renderer.
@@ -20,21 +25,17 @@ const getRouteColor = (route, routeNumber = 1) => {
     return DEFAULT_ROUTE_COLORS[(Math.max(1, routeNumber) - 1) % DEFAULT_ROUTE_COLORS.length];
 };
 
-const isRoutePoint = (point) => Boolean(
-    point
-    && point.lat !== null && point.lat !== undefined && point.lat !== ''
-    && point.lng !== null && point.lng !== undefined && point.lng !== ''
-    && Number.isFinite(Number(point.lat))
-    && Number.isFinite(Number(point.lng))
-);
-
 const getRouteLinePoints = (route, properties) => {
-    const doors = (properties || []).filter(isRoutePoint);
+    const doors = (properties || []).filter(isRenderableMapPoint);
     const mode = route?.routeOriginMode || route?.route_origin_mode || route?.metadata?.route_bounds?.mode || 'none';
     if (!['home_round_trip', 'current_to_home'].includes(mode)) return doors;
     const start = route?.startLocation || route?.start_location;
     const end = route?.endLocation || route?.end_location;
-    return [isRoutePoint(start) ? start : null, ...doors, isRoutePoint(end) ? end : null].filter(Boolean);
+    return [
+        isRenderableMapPoint(start) ? start : null,
+        ...doors,
+        isRenderableMapPoint(end) ? end : null,
+    ].filter(Boolean);
 };
 
 function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, lineDashArray, setSelectedProperty }) {
@@ -45,10 +46,10 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, lineDashArray, setS
     useEffect(() => {
         if (!map || !activeRoute?.properties?.length) return;
 
-        const routePoints = activeRoute.properties.filter(p => p && p.lat && p.lng);
+        const routePoints = activeRoute.properties.filter(isRenderableMapPoint);
         const routeLinePoints = getRouteLinePoints(activeRoute, routePoints);
         if (routeLinePoints.length > 0 && fittedRouteIdRef.current !== activeRoute.id) {
-            const bounds = L.latLngBounds(routeLinePoints.map(p => [p.lat, p.lng]));
+            const bounds = L.latLngBounds(routeLinePoints.map(p => [Number(p.lat), Number(p.lng)]));
             map.fitBounds(bounds, { padding: [40, 40], maxZoom: 16, animate: true });
             fittedRouteIdRef.current = activeRoute.id;
         }
@@ -67,7 +68,7 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, lineDashArray, setS
         // 1. Route line
         if (routeLinePoints.length > 1) {
             const line = L.polyline(
-                routeLinePoints.map(p => [p.lat, p.lng]),
+                routeLinePoints.map(p => [Number(p.lat), Number(p.lng)]),
                 {
                     color: routeColor,
                     weight: mapSettings.lineWidth ? mapSettings.lineWidth + 2 : 4,
@@ -84,7 +85,8 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, lineDashArray, setS
             const num = idx + 1;
 
             // Transparent hitbox for mobile tapping
-            const hitbox = L.circleMarker([p.lat, p.lng], {
+            const point = [Number(p.lat), Number(p.lng)];
+            const hitbox = L.circleMarker(point, {
                 radius: 20,
                 color: 'transparent',
                 fillColor: 'transparent',
@@ -102,7 +104,7 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, lineDashArray, setS
                 : routeColor;
 
             // Circle pin (canvas-rendered, fast)
-            const circle = L.circleMarker([p.lat, p.lng], {
+            const circle = L.circleMarker(point, {
                 radius: activeRoute.status === 'COMPLETED' && (p.effective_status === 'SOLD' || p.effective_status === 'QUALIFIED') ? 7 : 5,
                 fillColor: isFirst && activeRoute.status !== 'COMPLETED' ? '#22c55e' : completedColor,
                 fillOpacity: 1,
@@ -116,7 +118,7 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, lineDashArray, setS
             group.addLayer(circle);
 
             // Number label (lightweight DivIcon marker)
-            const label = L.marker([p.lat, p.lng], {
+            const label = L.marker(point, {
                 icon: L.divIcon({
                     className: '',
                     html: `<div style="color:#fff;font-weight:bold;font-size:11px;text-shadow:0 1px 3px #000,0 0 5px #000;pointer-events:none;transform:translate(-50%,-100%);white-space:nowrap">${num}</div>`,
@@ -380,14 +382,12 @@ function SavedRoutesLayer({
 
         // Only show saved route overlays in Routes mode. Builder/draw mode stays visually clean,
         // while selecting an individual route still shows it through ActiveRouteLayer.
-        if (activeRoute || mode !== 'analyze' || zoomLevel < 8) return;
+        const activeRouteHasMapPoints = activeRoute?.properties?.some(isRenderableMapPoint);
+        if (activeRouteHasMapPoints || mode !== 'analyze' || zoomLevel < 8) return;
 
         const group = L.layerGroup();
 
-        const filteredRoutes = hydratedSavedRoutes.filter(route => {
-            const isCompleted = route.status === 'COMPLETED';
-            if (routeStatusView === 'completed' && !isCompleted) return false;
-            if (routeStatusView !== 'completed' && isCompleted) return false;
+        const filteredRoutes = filterRoutesByStatus(hydratedSavedRoutes, routeStatusView).filter(route => {
             if (mode === 'generate') return true;
             if (analyzeZipFilter === 'all') return true;
             return route.properties.some(p => p.zip_code === analyzeZipFilter);
@@ -404,14 +404,15 @@ function SavedRoutesLayer({
             const centerProp = route.properties[Math.floor(route.properties.length / 2)];
 
             // Center marker with route number
-            if (centerProp && centerProp.lat && centerProp.lng) {
-                const centerCircle = L.circleMarker([centerProp.lat, centerProp.lng], {
+            if (isRenderableMapPoint(centerProp)) {
+                const centerPoint = [Number(centerProp.lat), Number(centerProp.lng)];
+                const centerCircle = L.circleMarker(centerPoint, {
                     radius: 14, fillColor: 'black', fillOpacity: 0.7, color: repColor, weight: 2
                 });
                 centerCircle.on('click', (e) => { L.DomEvent.stopPropagation(e); setActiveRoute({ ...route, route_number: globalNumber, display_color: repColor }); });
                 group.addLayer(centerCircle);
 
-                const label = L.marker([centerProp.lat, centerProp.lng], {
+                const label = L.marker(centerPoint, {
                     icon: L.divIcon({
                         className: '',
                         html: `<div style="color:${repColor};font-weight:900;font-size:10px;text-shadow:0 0 3px #000;pointer-events:none;transform:translate(-50%,-50%);white-space:nowrap">#${globalNumber}</div>`,
@@ -425,7 +426,7 @@ function SavedRoutesLayer({
             // Detail pins
             if (showRouteDetails) {
                 route.properties.forEach(p => {
-                    if (!p || p.lat === undefined || p.lng === undefined) return;
+                    if (!isRenderableMapPoint(p)) return;
                     if (quickFilter !== 'all') {
                         if (quickFilter === 'eligible' && p.effective_status !== 'ELIGIBLE' && p.effective_status !== 'NO_ANSWER') return;
                         if (quickFilter === 'sold' && p.effective_status !== 'SOLD' && p.effective_status !== 'QUALIFIED') return;
@@ -433,14 +434,15 @@ function SavedRoutesLayer({
                     }
 
                     // Transparent hitbox for tapping
-                    const hitbox = L.circleMarker([p.lat, p.lng], {
+                    const point = [Number(p.lat), Number(p.lng)];
+                    const hitbox = L.circleMarker(point, {
                         radius: 20, color: 'transparent', fillColor: 'transparent', interactive: true, stroke: false
                     });
                     hitbox.on('click', (e) => { L.DomEvent.stopPropagation(e); setActiveRoute({ ...route, route_number: globalNumber, display_color: repColor }); });
                     group.addLayer(hitbox);
 
                     // Visible pin
-                    const circle = L.circleMarker([p.lat, p.lng], {
+                    const circle = L.circleMarker(point, {
                         radius: pinSize,
                         fillColor: repColor,
                         fillOpacity: (isUnassigned ? 0.6 : 0.8) * (mapSettings.pinOpacity || 1),
@@ -455,7 +457,7 @@ function SavedRoutesLayer({
                         const labelText = mapSettings.labelType === 'number' ? p.house_number
                             : mapSettings.labelType === 'status' ? (p.effective_status || '').slice(0, 1)
                             : (p.street_name || '').split(' ')[0];
-                        const pinLabel = L.marker([p.lat, p.lng], {
+                        const pinLabel = L.marker(point, {
                             icon: L.divIcon({
                                 className: '',
                                 html: `<div style="color:#fff;font-weight:bold;font-size:8px;text-shadow:0 0 3px #000;pointer-events:none;transform:translate(-50%,-50%);white-space:nowrap">${labelText}</div>`,
@@ -469,10 +471,10 @@ function SavedRoutesLayer({
             }
 
             // Route line
-            if (showRouteLines && route.properties.length > 1) {
-                const routeLinePoints = getRouteLinePoints(route, route.properties);
+            const routeLinePoints = getRouteLinePoints(route, route.properties);
+            if (showRouteLines && routeLinePoints.length > 1) {
                 const line = L.polyline(
-                    routeLinePoints.map(p => [p.lat, p.lng]),
+                    routeLinePoints.map(p => [Number(p.lat), Number(p.lng)]),
                     {
                         color: repColor,
                         weight: mapSettings.lineWidth || 3,
@@ -566,11 +568,13 @@ const ManagerMapLayers = React.memo(function ManagerMapLayers({
     // darkRoom instance
     darkRoom,
 }) {
+    const renderPrecisionLayers = shouldRenderPrecisionMapLayers({ mode, routeMode, activeRoute });
+
     return (
         <>
             <CanvasZoneOverlay routeMode={routeMode} preview={canvasZonePreview} />
 
-            {routeMode !== 'canvas' && <>
+            {renderPrecisionLayers && <>
             {/* --- Existing Routes (Imperative for performance) --- */}
             <SavedRoutesLayer
                 mode={mode}
@@ -690,7 +694,9 @@ const ManagerMapLayers = React.memo(function ManagerMapLayers({
             {/* Preview Route (hover/tap from list) */}
             {previewRoute && !activeRoute && (
                 <Polyline
-                    positions={previewRoute.properties.filter(p => p && p.lat && p.lng).map(p => [p.lat, p.lng])}
+                    positions={previewRoute.properties
+                        .filter(isRenderableMapPoint)
+                        .map(p => [Number(p.lat), Number(p.lng)])}
                     pathOptions={{ color: BRAND.gold, weight: 3, opacity: 0.6, dashArray: '5,10' }}
                 />
             )}

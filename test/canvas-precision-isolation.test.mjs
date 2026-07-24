@@ -33,15 +33,17 @@ test('Canvas branches before the existing Precision builder without replacing it
   assert.match(routeBuilder, /Start Paid Pull/);
 });
 
-test('Canvas territory and outcome overlays render once and legacy map layers remain Precision-only', async () => {
-  const [managerLayers, drawTool, overlay] = await Promise.all([
+test('Canvas territory overlays render once while saved routes remain visible outside the Canvas builder', async () => {
+  const [managerLayers, drawTool, overlay, visibility] = await Promise.all([
     source('src/components/map/ManagerMapLayers.jsx'),
     source('src/components/map/MapDrawTool.jsx'),
     source('src/components/map/CanvasZoneOverlay.jsx'),
+    source('src/components/map/mapLayerVisibility.js'),
   ]);
 
   assert.equal((managerLayers.match(/<CanvasZoneOverlay\b[^>]*\/>/g) || []).length, 1);
-  assert.match(managerLayers, /routeMode !== 'canvas'/);
+  assert.match(managerLayers, /shouldRenderPrecisionMapLayers/);
+  assert.match(visibility, /routeMode !== 'canvas' \|\| mode === 'analyze' \|\| Boolean\(activeRoute\)/);
   assert.doesNotMatch(drawTool, /CanvasZoneOverlay/);
   assert.doesNotMatch(overlay, /localStorage|sessionStorage/);
   assert.match(overlay, /CanvasCampaignMapLayers/);

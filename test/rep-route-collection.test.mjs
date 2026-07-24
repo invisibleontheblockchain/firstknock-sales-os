@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 import {
   buildRepRouteScope,
+  buildSavedRouteQueryFilters,
   collectKnockRoutes,
   fetchAllSavedRoutePages,
   getKnockRouteCacheKey,
@@ -47,6 +48,30 @@ test('manager roles include nested/admin/owner access instead of a flat app_role
   assert.equal(nestedAdmin.managerId, 'manager-1');
   assert.equal(owner.managerAccount, true);
   assert.equal(owner.managerId, 'owner-1');
+});
+
+test('shared route queries cover manager ownership, exact legacy creator, and assignments', () => {
+  const managerScope = buildRepRouteScope({
+    id: 'manager-1',
+    email: 'Manager@Example.com',
+    role: 'manager',
+  });
+  const repScope = buildRepRouteScope({
+    id: 'user-1',
+    email: 'rep@example.com',
+    app_role: 'rep',
+    team_manager_id: 'manager-1',
+  }, [{ id: 'member-1', email: 'rep@example.com', manager_id: 'manager-1' }]);
+
+  assert.deepEqual(buildSavedRouteQueryFilters(managerScope), [
+    { assigned_to: 'manager-1' },
+    { manager_id: 'manager-1' },
+    { created_by: 'manager@example.com' },
+  ]);
+  assert.deepEqual(buildSavedRouteQueryFilters(repScope), [
+    { assigned_to: 'user-1' },
+    { assigned_to: 'member-1' },
+  ]);
 });
 
 test('manager collection keeps every tenant status and empty route shell while rejecting other tenants', () => {
@@ -146,8 +171,10 @@ test('offline cache keys are account/viewer specific', () => {
 
 test('Knock UI uses the complete scoped collection and compact accessible Home Base controls', () => {
   const repHome = readSource('src/pages/RepHome.jsx');
+  const home = readSource('src/pages/Home.jsx');
   const header = readSource('src/components/rep/RepHeader.jsx');
 
+  assert.match(repHome, /buildSavedRouteQueryFilters\(routeScope\)\.map\(fetchRouteGroup\)/);
   assert.match(repHome, /collectKnockRoutes\(routeGroups, routeScope\)/);
   assert.doesNotMatch(repHome, /\['completed', 'archived'\].*filter/i);
   assert.match(repHome, /await localforage\.setItem\(routeCacheKey, accountRoutes\)/);
@@ -158,6 +185,9 @@ test('Knock UI uses the complete scoped collection and compact accessible Home B
   assert.match(repHome, /\['COMPLETED', 'ARCHIVED'\]/);
   assert.match(header, /\{routes\.length\} route/);
   assert.match(header, /aria-controls="rep-route-switcher"/);
+  assert.match(home, /buildSavedRouteQueryFilters\(savedRouteScope\)\.map\(fetchRouteGroup\)/);
+  assert.match(home, /collectKnockRoutes\(routeGroups, savedRouteScope\)/);
+  assert.match(home, /fetchAllSavedRoutePages/);
 });
 
 test('Knock mobile header keeps long route names separate from route actions', () => {

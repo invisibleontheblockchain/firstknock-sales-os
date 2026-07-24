@@ -68,6 +68,28 @@ export function buildRepRouteScope(user, teamMemberMatches = []) {
   };
 }
 
+export function buildSavedRouteQueryFilters(scope) {
+  if (!scope) return [];
+
+  const filters = [];
+  const seen = new Set();
+  const addFilter = (filter) => {
+    const entries = Object.entries(filter || {}).filter(([, value]) => normalizeId(value));
+    if (!entries.length) return;
+    const normalized = Object.fromEntries(entries);
+    const key = JSON.stringify(normalized);
+    if (seen.has(key)) return;
+    seen.add(key);
+    filters.push(normalized);
+  };
+
+  (scope.assigneeIds || []).forEach((assignedTo) => addFilter({ assigned_to: assignedTo }));
+  if (scope.managerAccount && scope.managerId) addFilter({ manager_id: scope.managerId });
+  if (scope.managerAccount && scope.userEmail) addFilter({ created_by: scope.userEmail });
+
+  return filters;
+}
+
 export async function fetchAllSavedRoutePages(
   fetchPage,
   { pageSize = DEFAULT_ROUTE_PAGE_SIZE, maxPages = DEFAULT_ROUTE_MAX_PAGES } = {},

@@ -56,6 +56,7 @@ import { GpsMapLayer as GpsTrackerMapLayers, GpsHud as GpsTrackerHud } from '../
 import ManagerPropertyDetailSheet from '../components/map/ManagerPropertyDetailSheet';
 import MapDrawTool from '../components/map/MapDrawTool';
 import ManagerMapLayers from '../components/map/ManagerMapLayers';
+import { isRenderableMapPoint } from '../components/map/mapLayerVisibility.js';
 import MapToolbar from '../components/map/MapToolbar';
 import ZipCodeOverlay from '../components/map/ZipCodeOverlay';
 import PolygonHistory from '../components/map/PolygonHistory';
@@ -66,6 +67,12 @@ import { validateCanvasBoundary } from '@/components/canvas/canvasPlannerUtils';
 import { fetchAllCanvasTeamMembers } from '@/components/canvas/canvasRosterPagination';
 import { buildFullAddress } from '@/components/logic/navigation';
 import { isKnockActivityLog } from '@/lib/interactionLogs';
+import {
+    buildRepRouteScope,
+    buildSavedRouteQueryFilters,
+    collectKnockRoutes,
+    fetchAllSavedRoutePages,
+} from '@/components/rep/repRouteCollection';
 
 
 import { BRAND, DEFAULT_STATUS_COLORS, COLOR_SCHEME_MAP, LINE_DASH_MAP, ROUTE_COLORS } from '../components/map/homeMapConstants';
@@ -325,7 +332,7 @@ export default function Home() {
         return saved ? JSON.parse(saved) : true;
     });
     const [routeStatusView, setRouteStatusView] = useState(() => {
-        try { return localStorage.getItem('fk_routeStatusView') || 'active'; } catch { return 'active'; }
+        try { return localStorage.getItem('fk_routeStatusView') || 'all'; } catch { return 'all'; }
     });
     const [routeMode, setRouteMode] = useState('precision');
     const routeModeRef = useRef(routeMode);
@@ -733,12 +740,26 @@ export default function Home() {
         });
     }, [userProperties, viewportProperties, localProperties, darkRoomProperties, fetchedProperties]);
 
+    const savedRouteScope = useMemo(() => buildRepRouteScope(user), [user]);
     const { data: savedRoutesRaw = [] } = useQuery({
-        queryKey: ['savedRoutes', user?.id],
+        queryKey: [
+            'savedRoutes',
+            savedRouteScope.userId,
+            savedRouteScope.managerId,
+            savedRouteScope.managerAccount ? 'manager' : 'rep',
+            savedRouteScope.userEmail,
+        ],
         staleTime: 1000 * 60 * 2,
-        queryFn: () => {
+        refetchOnWindowFocus: true,
+        queryFn: async () => {
             if (!user?.id) return [];
-            return base44.entities.SavedRoute.filter({ manager_id: user.id }, '-created_date', 500);
+            const fetchRouteGroup = (filter) => fetchAllSavedRoutePages((limit, skip) => (
+                base44.entities.SavedRoute.filter(filter, '-created_date', limit, skip)
+            ));
+            const routeGroups = await Promise.all(
+                buildSavedRouteQueryFilters(savedRouteScope).map(fetchRouteGroup)
+            );
+            return collectKnockRoutes(routeGroups, savedRouteScope);
         },
         enabled: !!user?.id
     });
@@ -1320,7 +1341,10 @@ export default function Home() {
     // Hydrate Saved Routes for Map Display
     const hydratedSavedRoutes = useMemo(() => {
         const propsByHash = new Map();
-        effectiveProperties.forEach(p => propsByHash.set(p.address_hash, p));
+        effectiveProperties.forEach(p => {
+            if (p.address_hash) propsByHash.set(p.address_hash, p);
+            if (p.legacy_hash) propsByHash.set(p.legacy_hash, p);
+        });
 
         const routesForDisplay = serverHydratedSavedRoutes.length > 0 ? serverHydratedSavedRoutes : savedRoutes;
 
@@ -1328,7 +1352,9 @@ export default function Home() {
             .filter(r => repFilter === 'all' || (r.assigned_to_name && r.assigned_to_name.includes(repFilter)))
             .map(route => {
                 const routeHashes = Array.isArray(route.property_hashes) ? route.property_hashes : [];
-                const hydratedProps = Array.isArray(route.properties) ? route.properties.filter(p => p?.lat && p?.lng) : [];
+                const hydratedProps = Array.isArray(route.properties)
+                    ? route.properties.filter(isRenderableMapPoint)
+                    : [];
                 const allRouteProps = hydratedProps.length > 0 ? hydratedProps : routeHashes
                     .map(hash => propsByHash.get(hash))
                     .filter(Boolean);
@@ -1360,6 +1386,56 @@ export default function Home() {
             }).filter(r => r.houseCount > 0)
             .sort((a, b) => (b.competitivenessScore || 0) - (a.competitivenessScore || 0));
     }, [savedRoutes, serverHydratedSavedRoutes, effectiveProperties, repFilter]);
+
+    useEffect(() => {
+        if (!hydratedSavedRoutes.length || routeStatusView === 'all') return;
+        const hasCompletedRoutes = hydratedSavedRoutes.some(route => route.status === 'COMPLETED');
+        const hasActiveRoutes = hydratedSavedRoutes.some(route => route.status !== 'COMPLETED');
+        const selectedBucketHasRoutes = routeStatusView === 'completed'
+            ? hasCompletedRoutes
+            : hasActiveRoutes;
+        if (!selectedBucketHasRoutes) setRouteStatusView('all');
+    }, [hydratedSavedRoutes, routeStatusView]);
+
+    const savedRouteOverviewPoints = useMemo(() => {
+        const points = [];
+        for (const route of hydratedSavedRoutes) {
+            for (const property of route.properties || []) {
+                if (!isRenderableMapPoint(property)) continue;
+                points.push([Number(property.lat), Number(property.lng)]);
+                if (points.length >= 2000) return points;
+            }
+        }
+        return points;
+    }, [hydratedSavedRoutes]);
+
+    const savedRouteOverviewKey = useMemo(() => (
+        hydratedSavedRoutes
+            .map(route => `${route.id || ''}:${route.updated_date || ''}:${(route.properties || []).length}`)
+            .join('|')
+    ), [hydratedSavedRoutes]);
+    const fittedSavedRouteOverviewRef = useRef(null);
+    useEffect(() => {
+        const activeRouteHasMapPoints = activeRoute?.properties?.some(isRenderableMapPoint);
+        if (
+            mode !== 'analyze'
+            || activeRouteHasMapPoints
+            || !savedRouteOverviewPoints.length
+            || !mapRef.current
+            || fittedSavedRouteOverviewRef.current === savedRouteOverviewKey
+        ) return;
+        if (window.__fkSuppressMapFitUntil && Date.now() < window.__fkSuppressMapFitUntil) return;
+
+        const bounds = L.latLngBounds(savedRouteOverviewPoints);
+        if (!bounds.isValid()) return;
+        try {
+            if (!mapRef.current._mapPane) return;
+            mapRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 16, animate: false });
+            fittedSavedRouteOverviewRef.current = savedRouteOverviewKey;
+        } catch (error) {
+            console.warn('[Home] Could not fit the saved-route overview', error);
+        }
+    }, [activeRoute, mode, savedRouteOverviewKey, savedRouteOverviewPoints]);
 
     // Extract unique reps from saved routes for filter
     const uniqueReps = useMemo(() => {
@@ -2118,14 +2194,20 @@ export default function Home() {
     // Initial Fit Effect
     const hasCenteredRef = useRef(false);
     useEffect(() => {
+        if (mode === 'analyze' && savedRouteOverviewPoints.length > 0) return;
         if (availableProperties.length > 0 && !hasCenteredRef.current && mapRef.current) {
-            const bounds = L.latLngBounds(availableProperties.slice(0, 1000).map(p => [p.lat, p.lng]));
+            const bounds = L.latLngBounds(
+                availableProperties
+                    .filter(isRenderableMapPoint)
+                    .slice(0, 1000)
+                    .map(p => [Number(p.lat), Number(p.lng)])
+            );
             if (bounds.isValid()) {
                 try { if (mapRef.current._mapPane) mapRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 16, animate: false }); } catch (e) { }
                 hasCenteredRef.current = true;
             }
         }
-    }, [availableProperties]);
+    }, [availableProperties, mode, savedRouteOverviewPoints.length]);
 
     // Determine Map Center
     const [mapCenter, setMapCenter] = useState([34.0522, -118.2437]); // Default LA

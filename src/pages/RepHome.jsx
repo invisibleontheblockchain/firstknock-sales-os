@@ -41,6 +41,7 @@ import PropertyCard from '@/components/rep/PropertyCard';
 import PropertyDetailSheet from '@/components/rep/PropertyDetailSheet';
 import {
   buildRepRouteScope,
+  buildSavedRouteQueryFilters,
   collectKnockRoutes,
   fetchAllSavedRoutePages,
   getKnockRouteCacheKey,
@@ -262,18 +263,10 @@ export default function RepHome() {
         const fetchRouteGroup = (filter) => fetchAllSavedRoutePages((limit, skip) => (
           base44.entities.SavedRoute.filter(filter, '-created_date', limit, skip)
         ));
-        const routeQueries = routeScope.assigneeIds.map((assignedTo) => (
-          fetchRouteGroup({ assigned_to: assignedTo })
-        ));
-
-        if (routeScope.managerAccount && routeScope.managerId) {
-          routeQueries.push(fetchRouteGroup({ manager_id: routeScope.managerId }));
-        }
-        if (routeScope.managerAccount && routeScope.userEmail) {
-          // Legacy routes may predate manager_id. collectKnockRoutes accepts
-          // them only when created by this exact signed-in manager.
-          routeQueries.push(fetchRouteGroup({ created_by: routeScope.userEmail }));
-        }
+        // Legacy routes may predate manager_id. The shared query plan includes
+        // exact creator fallback for managers, then collectKnockRoutes applies
+        // the final tenant boundary before anything reaches the UI or cache.
+        const routeQueries = buildSavedRouteQueryFilters(routeScope).map(fetchRouteGroup);
 
         const routeGroups = await Promise.all(routeQueries);
         const accountRoutes = collectKnockRoutes(routeGroups, routeScope);
