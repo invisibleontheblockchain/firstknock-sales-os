@@ -934,6 +934,7 @@ test('Canvas makes materially uneven but street-safe plans an explicit manager d
 test('Canvas renders authoritative street ownership instead of filled territory surfaces', () => {
   const zones = readFileSync(new URL('../src/components/map/CanvasZoneLayers.jsx', import.meta.url), 'utf8');
   const field = readFileSync(new URL('../src/components/rep/CanvasFieldView.jsx', import.meta.url), 'utf8');
+  const attribution = readFileSync(new URL('../src/components/map/mapAttribution.js', import.meta.url), 'utf8');
   assert.match(zones, /canvasZoneStreetSegments/);
   assert.match(zones, /<Polyline/);
   assert.doesNotMatch(zones, /<Polygon|fillOpacity/);
@@ -942,8 +943,10 @@ test('Canvas renders authoritative street ownership instead of filled territory 
   assert.match(field, /your colored street territory/);
   assert.match(field, /campaignBoundary/);
   assert.match(field, /attributionControl/);
-  assert.match(field, /OpenStreetMap contributors/);
-  assert.match(field, /Tiles &copy; Esri/);
+  assert.match(field, /OPENSTREETMAP_ATTRIBUTION/);
+  assert.match(field, /ESRI_IMAGERY_ATTRIBUTION/);
+  assert.match(attribution, /OpenStreetMap contributors/);
+  assert.match(attribution, /Powered by <a href="https:\/\/www\.esri\.com">Esri<\/a>/);
 });
 
 test('Canvas field decisions use an isolated durable queue and never report a failed write as synced', () => {

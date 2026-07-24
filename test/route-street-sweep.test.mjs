@@ -345,7 +345,12 @@ test('initial, manager, and rep optimization keep whole streets contiguous', asy
     assert.doesNotMatch(homeSource, /optimizeRouteByDistance/);
     assert.match(
         homeSource,
-        /const routingContext = await createRouteRoadContext\(routeProperties,[\s\S]*const optimized = optimizeRouteByStreetSweep\(routeProperties, start, end, routingContext\);/,
+        /const routingContext = createRouteContinuityContext\(routeProperties\);[\s\S]*const optimized = optimizeRouteByStreetSweep\(routeProperties, start, end, routingContext\);/,
+    );
+    assert.doesNotMatch(
+        homeSource,
+        /\bcreateRouteRoadContext\b/,
+        'manager optimization must not wait on live road loading',
     );
     assert.match(
         homeSource,
@@ -361,40 +366,24 @@ test('initial, manager, and rep optimization keep whole streets contiguous', asy
         /Road-aware ordering is unavailable/,
         'temporary road-source failures must never disable route optimization',
     );
-    assert.match(
+    assert.doesNotMatch(
         homeSource,
-        /function discloseRouteContinuityFallback[\s\S]*street\/neighborhood continuity optimizer[\s\S]*Every eligible home was preserved/,
+        /discloseRouteContinuityFallback|Live (?:street|road) data was unavailable|Every eligible home was preserved/,
+        'intentional manager continuity must not show an unavailable-live-road warning',
     );
-    assert.equal(
-        (homeSource.match(/discloseRouteContinuityFallback\(\s*'(?:generateRoutes|handleReorder|handleReoptimizeRoute)'/g) || []).length,
-        3,
-        'every manager optimization path must disclose continuity fallback without blocking',
-    );
-    assert.match(
+    assert.doesNotMatch(
         homeSource,
-        /function discloseLargeRouteContinuityFallback[\s\S]*Street\/subdivision continuity was used for this very large route\.[\s\S]*Live road-network ordering is unavailable at this size\./,
+        /discloseLargeRouteContinuityFallback|Live road-network ordering is unavailable at this size/,
+        'large-route synchronous continuity must not be presented as an unavailable-live-road warning',
     );
-    assert.equal(
-        (homeSource.match(/discloseLargeRouteContinuityFallback\(\s*'(?:generateRoutes|handleReorder)'/g) || []).length,
-        2,
-        'initial generation and reorder must both disclose the >5000 continuity fallback',
+    assert.doesNotMatch(
+        homeSource,
+        /discloseRoadCostFallback|discloseExternalBoundRoadFallback|live road connections were incomplete/,
+        'offline manager routing must not retain dormant live-road warning paths',
     );
     assert.match(
         homeSource,
-        /function discloseRoadCostFallback\(scope, routingContext\)[\s\S]*blockToBlockRoadCostFallbackCount[\s\S]*doorToDoorRoadCostFallbackCount[\s\S]*street and neighborhood continuity/,
-    );
-    assert.equal(
-        (homeSource.match(/discloseRoadCostFallback\(\s*'(?:generateRoutes|handleReorder|handleReoptimizeRoute)'/g) || []).length,
-        3,
-        'initial generation, reorder, and manager Optimize must disclose incomplete road comparisons without blocking',
-    );
-    assert.match(
-        homeSource,
-        /function discloseExternalBoundRoadFallback[\s\S]*externalBoundRoadCostFallbackCount[\s\S]*Door-to-door ordering is road-aware/,
-    );
-    assert.match(
-        homeSource,
-        /const roadGeometry = buildRoadRouteGeometry\(optimized, routingContext\);[\s\S]*discloseRoadCostFallback\('handleReoptimizeRoute', routingContext\);[\s\S]*SavedRoute\.update\(route\.id, routeUpdate\)/,
+        /buildPersistedRoadRoutingMetadata\(\s*routingContext,\s*null,\s*optimizedHashes\s*\)[\s\S]*SavedRoute\.update\(route\.id, routeUpdate\)/,
     );
     assert.match(
         homeSource,
@@ -402,7 +391,7 @@ test('initial, manager, and rep optimization keep whole streets contiguous', asy
     );
     assert.match(
         homeSource,
-        /routingContext\.costOnly[\s\S]*straight-line mileage; road-aware street ordering[\s\S]*street-continuity estimate/,
+        /Route optimized[\s\S]*street-continuity estimate/,
     );
     assert.match(
         homeSource,
@@ -417,19 +406,30 @@ test('initial, manager, and rep optimization keep whole streets contiguous', asy
     assert.match(repSource, /import \{ optimizeRouteByStreetSweep \} from '@\/components\/logic\/routeOptimizer'/);
     assert.match(
         repSource,
-        /const routingContext = await createRouteRoadContext\(routeProperties,[\s\S]*const optimized = optimizeRouteByStreetSweep\([\s\S]*routeProperties,[\s\S]*exactHomeBase,[\s\S]*exactHomeBase,[\s\S]*routingContext/,
+        /const routingContext = createRouteContinuityContext\(routeProperties\);[\s\S]*const optimized = optimizeRouteByStreetSweep\([\s\S]*routeProperties,[\s\S]*exactHomeBase,[\s\S]*exactHomeBase,[\s\S]*routingContext/,
+    );
+    assert.doesNotMatch(
+        repSource,
+        /\bcreateRouteRoadContext\b/,
+        'rep optimization must not wait on live road loading',
+    );
+    assert.doesNotMatch(
+        repSource,
+        /discloseRouteContinuityFallback|Live (?:street|road) data was unavailable|Every eligible home was preserved/,
+        'intentional rep continuity must not show an unavailable-live-road warning',
     );
     assert.match(
         repSource,
-        /routingContext\.costOnly[\s\S]*straight-line mileage; road-aware street ordering[\s\S]*street-continuity estimate/,
+        /Home round trip optimized[\s\S]*street-continuity estimate/,
     );
     assert.match(
         repSource,
-        /requireUsableRouteContext\(routingContext\);[\s\S]*const roadGeometry = buildRoadRouteGeometry\(optimized, routingContext\);[\s\S]*discloseRoadCostFallback\(routingContext\);[\s\S]*discloseRouteContinuityFallback\(routingContext\);[\s\S]*SavedRoute\.update\(routeToOptimize\.id, routeUpdate\)/,
+        /requireUsableRouteContext\(routingContext\);[\s\S]*buildPersistedRoadRoutingMetadata\(routingContext, null, propertyHashes\)[\s\S]*SavedRoute\.update\(routeToOptimize\.id, routeUpdate\)/,
     );
-    assert.match(
+    assert.doesNotMatch(
         repSource,
-        /externalBoundRoadCostFallbackCount[\s\S]*Home Base fell outside the local street graph/,
+        /discloseRoadCostFallback|discloseExternalBoundRoadFallback|live road connections were incomplete/,
+        'offline rep routing must not retain dormant live-road warning paths',
     );
     assert.doesNotMatch(repSource, /optimizeRouteWithBounds/);
 });

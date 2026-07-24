@@ -17,9 +17,7 @@ import {
 import { optimizeRouteByStreetSweep } from '@/components/logic/routeOptimizer';
 import {
   buildPersistedRoadRoutingMetadata,
-  buildRoadRouteGeometry,
-  calculateRoadAwareRouteMiles,
-  createRouteRoadContext,
+  createRouteContinuityContext,
 } from '@/components/logic/routeRoadContext';
 import { buildFullAddress, getRouteNavigationPlan, openNavigationBatch } from '@/components/logic/navigation';
 import { getNavigationSessionProgress, selectRemainingTodoStops } from '@/components/logic/routeNavigation';
@@ -105,61 +103,6 @@ function requireUsableRouteContext(routingContext) {
     && typeof routingContext.accessGroupKey === 'function'
   ) return;
   throw new Error('The route optimizer could not initialize safely. The existing route was left unchanged.');
-}
-
-function discloseRoadCostFallback(routingContext) {
-  const diagnostics = routingContext?.diagnostics || {};
-  const costOnly = routingContext?.mode === 'cost-only';
-  const fallbackCount = Number(
-    costOnly
-      ? diagnostics.blockToBlockRoadCostFallbackCount
-      : diagnostics.doorToDoorRoadCostFallbackCount
-  ) || 0;
-  if (fallbackCount === 0) return false;
-  const reasons = Object.keys(
-    costOnly
-      ? diagnostics.blockToBlockRoadCostFallbackReasons || {}
-      : diagnostics.doorToDoorRoadCostFallbackReasons || {}
-  );
-  const reasonText = reasons.length > 0 ? ` (${reasons.join(', ')})` : '';
-  const comparisonType = costOnly ? 'street-block' : 'door-to-door';
-  console.warn(
-    `[RepHome] ${fallbackCount} ${comparisonType} comparisons used geographic continuity${reasonText}.`,
-    diagnostics
-  );
-  toast.warning(
-    'The route was optimized with street and neighborhood continuity where live road connections were incomplete.',
-    { id: 'rep-home-road-cost-fallback', duration: 7000 }
-  );
-  return true;
-}
-
-function discloseRouteContinuityFallback(routingContext) {
-  if (!routingContext || routingContext.roadAware === true) return false;
-  console.warn(
-    '[RepHome] Live road data was unavailable; the size-independent street/neighborhood continuity optimizer was used.',
-    routingContext.diagnostics || {}
-  );
-  toast.warning(
-    'Live street data was unavailable, so FirstKnock used street and neighborhood continuity. Every eligible home was preserved.',
-    { id: 'rep-home-route-continuity-fallback', duration: 7000 }
-  );
-  return true;
-}
-
-function discloseExternalBoundRoadFallback(routingContext) {
-  const fallbackCount = Number(
-    routingContext?.diagnostics?.externalBoundRoadCostFallbackCount
-  ) || 0;
-  if (fallbackCount === 0) return;
-  console.warn(
-    `[RepHome] ${fallbackCount} home-bound road comparisons used a geographic estimate.`,
-    routingContext.diagnostics.externalBoundRoadCostFallbackReasons || {}
-  );
-  toast.warning(
-    'Door-to-door ordering is road-aware, but Home Base fell outside the local street graph and used a geographic estimate. This is recorded on the saved route.',
-    { id: 'rep-home-bound-road-fallback', duration: 9000 }
-  );
 }
 
 export default function RepHome() {
@@ -1525,10 +1468,7 @@ export default function RepHome() {
       const invalidProperty = routeProperties.find((property) => !isValidRoutePoint(property));
       if (invalidProperty) throw new Error('A route property is missing map coordinates. Ask your manager to repair this route.');
 
-      const routingContext = await createRouteRoadContext(routeProperties, {
-        startLocation: exactHomeBase,
-        endLocation: exactHomeBase,
-      });
+      const routingContext = createRouteContinuityContext(routeProperties);
       requireUsableRouteContext(routingContext);
       const optimized = optimizeRouteByStreetSweep(
         routeProperties,
@@ -1554,20 +1494,10 @@ export default function RepHome() {
         throw new Error('Route integrity verification failed, so the existing route was left unchanged.');
       }
 
-      const roadDistance = calculateRoadAwareRouteMiles(optimized, routingContext, {
+      const distance = Math.round(calculateRouteDistanceMiles(optimized, {
         startLocation: exactHomeBase,
         endLocation: exactHomeBase,
-      });
-      const distance = Math.round((
-        roadDistance ?? calculateRouteDistanceMiles(optimized, {
-          startLocation: exactHomeBase,
-          endLocation: exactHomeBase
-        })
-      ) * 100) / 100;
-      const roadGeometry = buildRoadRouteGeometry(optimized, routingContext);
-      discloseRoadCostFallback(routingContext);
-      discloseRouteContinuityFallback(routingContext);
-      discloseExternalBoundRoadFallback(routingContext);
+      }) * 100) / 100;
       const existingMetadata = { ...(routeToOptimize.metadata || {}) };
       delete existingMetadata.road_geometry;
       const routeUpdate = {
@@ -1582,7 +1512,7 @@ export default function RepHome() {
         route_origin_mode: 'home_round_trip',
         metadata: {
           ...existingMetadata,
-          ...buildPersistedRoadRoutingMetadata(routingContext, roadGeometry, propertyHashes),
+          ...buildPersistedRoadRoutingMetadata(routingContext, null, propertyHashes),
           route_bounds: { enabled: true, mode: 'home_round_trip' }
         }
       };
@@ -1597,12 +1527,7 @@ export default function RepHome() {
         queryClient.invalidateQueries({ queryKey: ['myRoutes'] }),
         queryClient.invalidateQueries({ queryKey: ['routeProperties'] })
       ]);
-      const estimateType = routingContext.costOnly
-        ? 'straight-line mileage; road-aware street ordering'
-        : routingContext.roadAware
-          ? 'road-network estimate'
-          : 'street-continuity estimate';
-      toast.success(`Home round trip optimized (${distance} mi ${estimateType}).`, {
+      toast.success(`Home round trip optimized (${distance} mi street-continuity estimate).`, {
         id: 'rep-home-route',
         duration: 5000
       });
@@ -1964,7 +1889,7 @@ export default function RepHome() {
                                 </p>
                   }
                                 <p className="mt-3 text-[10px] leading-relaxed text-white/40">
-                                    Address lookup uses OpenStreetMap. Your exact address stays private; your manager can request only an approximate point for a route assigned to you. Optimization uses local road-network estimates when available, and estimates may still differ from live navigation.
+                                    Address lookup uses OpenStreetMap. Your exact address stays private; your manager can request only an approximate point for a route assigned to you. Optimization keeps streets and subdivisions together using local route data, and estimated mileage may differ from live navigation.
                                 </p>
                   </div>
                   }
