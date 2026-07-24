@@ -18,6 +18,11 @@
       "type": "string",
       "description": "Street name for grouping"
     },
+    "subdivision_name": {
+      "type": "string",
+      "maxLength": 160,
+      "description": "Provider-reported subdivision or neighborhood name for route continuity"
+    },
     "full_address": {
       "type": "string",
       "description": "Display address"

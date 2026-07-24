@@ -261,7 +261,34 @@ async function writeProperties(sql, properties, jobId, userEmail) {
                         sqft = COALESCE(${p.sqft || null}, sqft), lot_size = COALESCE(${p.lot_size || null}, lot_size), year_built = COALESCE(${p.year_built || null}, year_built),
                         price = COALESCE(${p.price || null}, price), sold_date = COALESCE(${soldDate}, sold_date), sale_type = COALESCE(${p.sale_type}, sale_type),
                         property_type = COALESCE(${p.property_type}, property_type), data_source = COALESCE(${p.data_source}, data_source), sale_confidence = ${p.sale_confidence},
-                        original_status = ${p.original_status}, raw_payload = ${p.raw_payload}, updated_at = NOW()
+                        original_status = ${p.original_status},
+                        raw_payload = CASE
+                            WHEN COALESCE(
+                                (${p.raw_payload}::jsonb) -> 'property' ->> 'subdivision_name',
+                                (${p.raw_payload}::jsonb) ->> 'subdivision_name',
+                                (${p.raw_payload}::jsonb) ->> 'subdivisionName'
+                            ) IS NOT NULL THEN ${p.raw_payload}::jsonb
+                            WHEN COALESCE(
+                                properties.raw_payload -> 'property' ->> 'subdivision_name',
+                                properties.raw_payload ->> 'subdivision_name',
+                                properties.raw_payload ->> 'subdivisionName',
+                                to_jsonb(properties) ->> 'subdivision_name'
+                            ) IS NULL THEN ${p.raw_payload}::jsonb
+                            ELSE COALESCE(${p.raw_payload}::jsonb, '{}'::jsonb) || jsonb_build_object(
+                                'property',
+                                COALESCE((${p.raw_payload}::jsonb) -> 'property', '{}'::jsonb)
+                                    || jsonb_build_object(
+                                        'subdivision_name',
+                                        COALESCE(
+                                            properties.raw_payload -> 'property' ->> 'subdivision_name',
+                                            properties.raw_payload ->> 'subdivision_name',
+                                            properties.raw_payload ->> 'subdivisionName',
+                                            to_jsonb(properties) ->> 'subdivision_name'
+                                        )
+                                    )
+                            )
+                        END,
+                        updated_at = NOW()
                     WHERE id = ${propertyId}
                 `;
                 updated++;

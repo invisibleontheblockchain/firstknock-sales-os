@@ -165,6 +165,12 @@ Deno.serve(async (req) => {
                     p.sold_date,
                     p.sale_confidence,
                     p.original_status,
+                    COALESCE(
+                        p.raw_payload -> 'property' ->> 'subdivision_name',
+                        p.raw_payload ->> 'subdivision_name',
+                        p.raw_payload ->> 'subdivisionName',
+                        to_jsonb(p) ->> 'subdivision_name'
+                    ) AS subdivision_name,
                     p.property_type,
                     p.data_source,
                     p.raw_payload,
@@ -219,6 +225,12 @@ Deno.serve(async (req) => {
                 p.full_address,
                 p.house_number,
                 p.street_name,
+                COALESCE(
+                    p.raw_payload -> 'property' ->> 'subdivision_name',
+                    p.raw_payload ->> 'subdivision_name',
+                    p.raw_payload ->> 'subdivisionName',
+                    to_jsonb(p) ->> 'subdivision_name'
+                ) AS subdivision_name,
                 p.city,
                 p.state,
                 p.zip_code,
@@ -289,7 +301,7 @@ Deno.serve(async (req) => {
         if (body.fields === 'map') {
             const MAP_FIELDS = [
                 'id', 'address_hash', 'legacy_hash', 'full_address', 'house_number', 'street_name',
-                'city', 'state', 'zip_code', 'lat', 'lng', 'owner_full_name', 'owner_occupied',
+                'subdivision_name', 'city', 'state', 'zip_code', 'lat', 'lng', 'owner_full_name', 'owner_occupied',
                 'corporate_owned', 'investor_owned', 'beds', 'baths', 'sqft',
                 'lot_size', 'year_built', 'price', 'sold_date', 'sale_type', 'property_type', 'mls_id',
                 'data_source', 'sale_confidence', 'original_status', 'route_active', 'status'

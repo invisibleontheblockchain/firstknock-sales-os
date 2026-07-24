@@ -797,7 +797,7 @@ export default function PrecisionPullPanel({
                   <div>
                     <p className="text-[10px] font-black uppercase tracking-wider text-gray-500">Finish</p>
                     <p className="text-xs font-bold text-white">Home Base</p>
-                    <p className="mt-0.5 text-[9px] leading-snug text-gray-600">The trip to and from Home Base is included in a straight-line mileage estimate; road travel may differ.</p>
+                    <p className="mt-0.5 text-[9px] leading-snug text-gray-600">The trip to and from Home Base is included. Local road-network mileage is used when available, and estimates may still differ from live navigation.</p>
                   </div>
                 </div>
 

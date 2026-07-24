@@ -6,6 +6,7 @@ import { CONFIDENCE_COLORS } from '@/components/map/ConfidenceLegend';
 import CanvasZoneOverlay from './CanvasZoneOverlay';
 import { getCompletedPinColor } from '@/components/routes/routeRerunUtils';
 import { isSoldDateInCustomOwnershipRange, normalizeOwnershipRangeDays } from '@/components/logic/soldDateRange';
+import { routePropertyOrderFingerprint } from '@/components/logic/routeRoadContext';
 import {
     filterRoutesByStatus,
     isRenderableMapPoint,
@@ -25,7 +26,31 @@ const getRouteColor = (route, routeNumber = 1) => {
     return DEFAULT_ROUTE_COLORS[(Math.max(1, routeNumber) - 1) % DEFAULT_ROUTE_COLORS.length];
 };
 
+const getPersistedRoadGeometry = (route, properties) => {
+    const geometry = route?.metadata?.road_geometry;
+    if (!Array.isArray(geometry) || geometry.length < 2 || geometry.length > 12000) return null;
+    const expectedFingerprint = route?.metadata?.routing?.property_order_fingerprint;
+    const manifestFingerprint = routePropertyOrderFingerprint(
+        route?.property_hashes?.length ? route.property_hashes : properties
+    );
+    const hydratedFingerprint = routePropertyOrderFingerprint(properties);
+    if (
+        !expectedFingerprint
+        || manifestFingerprint !== expectedFingerprint
+        || (Array.isArray(properties) && properties.length > 0 && hydratedFingerprint !== expectedFingerprint)
+    ) return null;
+    const points = geometry
+        .map(point => ({
+            lat: Number(point?.lat ?? point?.latitude),
+            lng: Number(point?.lng ?? point?.lon ?? point?.longitude)
+        }))
+        .filter(isRenderableMapPoint);
+    return points.length === geometry.length ? points : null;
+};
+
 const getRouteLinePoints = (route, properties) => {
+    const roadGeometry = getPersistedRoadGeometry(route, properties);
+    if (roadGeometry) return roadGeometry;
     const doors = (properties || []).filter(isRenderableMapPoint);
     const mode = route?.routeOriginMode || route?.route_origin_mode || route?.metadata?.route_bounds?.mode || 'none';
     if (!['home_round_trip', 'current_to_home'].includes(mode)) return doors;
@@ -694,8 +719,7 @@ const ManagerMapLayers = React.memo(function ManagerMapLayers({
             {/* Preview Route (hover/tap from list) */}
             {previewRoute && !activeRoute && (
                 <Polyline
-                    positions={previewRoute.properties
-                        .filter(isRenderableMapPoint)
+                    positions={getRouteLinePoints(previewRoute, previewRoute.properties)
                         .map(p => [Number(p.lat), Number(p.lng)])}
                     pathOptions={{ color: BRAND.gold, weight: 3, opacity: 0.6, dashArray: '5,10' }}
                 />
