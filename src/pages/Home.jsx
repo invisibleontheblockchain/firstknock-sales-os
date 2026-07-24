@@ -1501,33 +1501,8 @@ export default function Home() {
             .map(route => `${route.id || ''}:${route.updated_date || ''}:${(route.properties || []).length}`)
             .join('|')
     ), [hydratedSavedRoutes]);
-    const fittedSavedRouteOverviewRef = useRef(null);
-    useEffect(() => {
-        if (
-            mode !== 'analyze'
-            || !savedRouteOverviewPoints.length
-            || !mapRef.current
-            || fittedSavedRouteOverviewRef.current === savedRouteOverviewKey
-        ) return;
-
-        // Mark as fitted so closing a soloed route or changing filters never re-fits all saved routes
-        fittedSavedRouteOverviewRef.current = savedRouteOverviewKey;
-
-        // Only do initial fit if no route is currently soloed
-        const activeRouteHasMapPoints = activeRoute?.properties?.some(isRenderableMapPoint);
-        if (activeRouteHasMapPoints) return;
-
-        if (window.__fkSuppressMapFitUntil && Date.now() < window.__fkSuppressMapFitUntil) return;
-
-        const bounds = L.latLngBounds(savedRouteOverviewPoints);
-        if (!bounds.isValid()) return;
-        try {
-            if (!mapRef.current._mapPane) return;
-            mapRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 16, animate: false });
-        } catch (error) {
-            console.warn('[Home] Could not fit the saved-route overview', error);
-        }
-    }, [mode, savedRouteOverviewKey, savedRouteOverviewPoints]);
+    // Note: Initial map positioning is managed authoritatively by computeAccountWorkingArea effect.
+    // We do not fit bounds on savedRouteOverviewKey here to prevent asynchronous saved route hydration from overriding the working area.
 
     // Extract unique reps from saved routes for filter
     const uniqueReps = useMemo(() => {
@@ -2412,10 +2387,10 @@ export default function Home() {
         if (canvasZonePreview?.zones?.length > 0) {
             const pts = [];
             for (const zone of canvasZonePreview.zones) {
-                if (zone.drop_point && Number.isFinite(zone.drop_point.lat) && Number.isFinite(zone.drop_point.lng)) {
+                if (zone.drop_point && Number.isFinite(zone.drop_point.lat) && Number.isFinite(zone.drop_point.lng) && (zone.drop_point.lat !== 0 || zone.drop_point.lng !== 0)) {
                     pts.push([Number(zone.drop_point.lat), Number(zone.drop_point.lng)]);
                 }
-                if (zone.center && Number.isFinite(zone.center.lat) && Number.isFinite(zone.center.lng)) {
+                if (zone.center && Number.isFinite(zone.center.lat) && Number.isFinite(zone.center.lng) && (zone.center.lat !== 0 || zone.center.lng !== 0)) {
                     pts.push([Number(zone.center.lat), Number(zone.center.lng)]);
                 }
             }
@@ -2430,13 +2405,28 @@ export default function Home() {
             if (pts.length >= 3) return { type: 'bounds', bounds: L.latLngBounds(pts) };
         }
 
-        // 3. Saved routes / territories
-        if (Array.isArray(savedRouteOverviewPoints) && savedRouteOverviewPoints.length > 0) {
-            const pts = savedRouteOverviewPoints.filter(p => Number.isFinite(p[0]) && Number.isFinite(p[1]) && (p[0] !== 0 || p[1] !== 0));
-            if (pts.length > 0) return { type: 'bounds', bounds: L.latLngBounds(pts) };
+        // 3. Loaded properties (primary operational area)
+        if (Array.isArray(availableProperties) && availableProperties.length > 0) {
+            const pts = availableProperties
+                .filter(isRenderableMapPoint)
+                .map(p => [Number(p.lat), Number(p.lng)])
+                .filter(p => Number.isFinite(p[0]) && Number.isFinite(p[1]) && (p[0] !== 0 || p[1] !== 0));
+            if (pts.length > 0) return { type: 'bounds', bounds: L.latLngBounds(pts.slice(0, 1000)) };
         }
 
-        // 4. Precision fetch jobs
+        // 4. Active or most recent saved route
+        if (Array.isArray(savedRoutes) && savedRoutes.length > 0) {
+            const activeOrRecent = savedRoutes.find(r => r.status !== 'COMPLETED') || savedRoutes[0];
+            if (activeOrRecent?.properties?.length > 0) {
+                const pts = activeOrRecent.properties
+                    .filter(isRenderableMapPoint)
+                    .map(p => [Number(p.lat), Number(p.lng)])
+                    .filter(p => Number.isFinite(p[0]) && Number.isFinite(p[1]) && (p[0] !== 0 || p[1] !== 0));
+                if (pts.length > 0) return { type: 'bounds', bounds: L.latLngBounds(pts) };
+            }
+        }
+
+        // 5. Precision fetch jobs
         if (Array.isArray(precisionFetchJobs) && precisionFetchJobs.length > 0) {
             const pts = [];
             for (const job of precisionFetchJobs) {
@@ -2451,16 +2441,13 @@ export default function Home() {
             if (pts.length > 0) return { type: 'bounds', bounds: L.latLngBounds(pts.slice(0, 1000)) };
         }
 
-        // 5. Loaded properties
-        if (Array.isArray(availableProperties) && availableProperties.length > 0) {
-            const pts = availableProperties
-                .filter(isRenderableMapPoint)
-                .map(p => [Number(p.lat), Number(p.lng)])
-                .filter(p => Number.isFinite(p[0]) && Number.isFinite(p[1]) && (p[0] !== 0 || p[1] !== 0));
-            if (pts.length > 0) return { type: 'bounds', bounds: L.latLngBounds(pts.slice(0, 1000)) };
+        // 6. Overall saved routes overview
+        if (Array.isArray(savedRouteOverviewPoints) && savedRouteOverviewPoints.length > 0) {
+            const pts = savedRouteOverviewPoints.filter(p => Number.isFinite(p[0]) && Number.isFinite(p[1]) && (p[0] !== 0 || p[1] !== 0));
+            if (pts.length > 0) return { type: 'bounds', bounds: L.latLngBounds(pts) };
         }
 
-        // 6. Account's stored map position from localStorage
+        // 7. Account's stored map position from localStorage
         const storageKey = (user?.id || user?.email) ? `fk_last_map_position_${user.id || user.email}` : null;
         if (storageKey && typeof localStorage !== 'undefined') {
             try {
@@ -2472,7 +2459,7 @@ export default function Home() {
         }
 
         return null;
-    }, [canvasDrawnPolygon, canvasZonePreview, drawnPolygon, savedRouteOverviewPoints, precisionFetchJobs, availableProperties, user?.id, user?.email]);
+    }, [canvasDrawnPolygon, canvasZonePreview, drawnPolygon, availableProperties, savedRoutes, precisionFetchJobs, savedRouteOverviewPoints, user?.id, user?.email]);
 
     // Initial Account Working Area Map Load Effect
     const hasCenteredAccountWorkingAreaRef = useRef(false);
@@ -2485,9 +2472,10 @@ export default function Home() {
         hasCenteredAccountWorkingAreaRef.current = true;
 
         if (workingArea.type === 'bounds' && workingArea.bounds.isValid()) {
+            const bounds = workingArea.bounds;
             try {
                 if (mapRef.current._mapPane) {
-                    mapRef.current.fitBounds(workingArea.bounds, { padding: [50, 50], maxZoom: 16, animate: false });
+                    mapRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 16, animate: false });
                 }
             } catch (e) {}
         } else if (workingArea.type === 'center') {
@@ -2697,7 +2685,7 @@ export default function Home() {
                         zIndex={100}
                     />
                 )}
-                <LocationMarker autoCenter={availableProperties.length === 0} userLocation={userLocation} />
+                <LocationMarker autoCenter={false} userLocation={userLocation} />
                 <DarkRoomManager />
 
 
