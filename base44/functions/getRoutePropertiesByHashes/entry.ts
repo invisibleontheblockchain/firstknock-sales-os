@@ -19,10 +19,14 @@ function normalized(value) {
     return String(value || '').trim().toLowerCase();
 }
 
+function normalizedHashes(value) {
+    return (Array.isArray(value) ? value : [])
+        .map(hash => String(hash || '').trim())
+        .filter(Boolean);
+}
+
 function hasExactHashManifest(route, requestedHashes) {
-    const routeHashes = Array.isArray(route?.property_hashes)
-        ? route.property_hashes.map(String)
-        : [];
+    const routeHashes = normalizedHashes(route?.property_hashes);
     if (routeHashes.length !== requestedHashes.length) return false;
 
     const requestedCounts = new Map();
@@ -38,6 +42,236 @@ function hasExactHashManifest(route, requestedHashes) {
 function isLegacyCanonicalRecoveryRoute(route) {
     const createdAt = Date.parse(String(route?.created_date || ''));
     return Number.isFinite(createdAt) && createdAt <= LEGACY_CANONICAL_RECOVERY_CUTOFF;
+}
+
+function hasFrozenLegacyManifest(route) {
+    if (!isLegacyCanonicalRecoveryRoute(route)) return false;
+    const updatedAt = Date.parse(String(route?.updated_date || route?.created_date || ''));
+    return Number.isFinite(updatedAt) && updatedAt <= LEGACY_CANONICAL_RECOVERY_CUTOFF;
+}
+
+function pinSafeCanonicalProperty(property) {
+    return {
+        id: property.id,
+        address_hash: property.address_hash,
+        legacy_hash: property.legacy_hash,
+        full_address: property.full_address,
+        house_number: property.house_number,
+        street_name: property.street_name,
+        city: property.city,
+        state: property.state,
+        zip_code: property.zip_code,
+        lat: property.lat,
+        lng: property.lng,
+        h3_index: property.h3_index,
+        original_status: property.original_status,
+        created_at: property.created_at,
+        updated_at: property.updated_at,
+        recovery_limited: true
+    };
+}
+
+function hasCoordinates(property) {
+    if (
+        property?.lat === null
+        || property?.lat === undefined
+        || property?.lat === ''
+        || property?.lng === null
+        || property?.lng === undefined
+        || property?.lng === ''
+    ) {
+        return false;
+    }
+    const latitude = Number(property?.lat);
+    const longitude = Number(property?.lng);
+    return Number.isFinite(latitude)
+        && latitude >= -90
+        && latitude <= 90
+        && Number.isFinite(longitude)
+        && longitude >= -180
+        && longitude <= 180
+        && !(Math.abs(latitude) < 0.0001 && Math.abs(longitude) < 0.0001);
+}
+
+function chooseExactVisibleRoute(rows, hashes, requestedOwner = '') {
+    const exactRoutes = rows.filter(route => hasExactHashManifest(route, hashes));
+    if (exactRoutes.length === 0) return null;
+
+    const frozenLegacyRoutes = exactRoutes.filter(hasFrozenLegacyManifest);
+    const legacyRoutes = exactRoutes.filter(isLegacyCanonicalRecoveryRoute);
+    const candidates = frozenLegacyRoutes.length > 0
+        ? frozenLegacyRoutes
+        : (legacyRoutes.length > 0 ? legacyRoutes : exactRoutes);
+    const ownerEmail = normalized(requestedOwner);
+    return candidates.find(route => (
+        ownerEmail && normalized(route?.created_by) === ownerEmail
+    )) || candidates[0];
+}
+
+async function findExactVisibleRoute(entity, query, hashes, requestedOwner = '') {
+    const rows = asArray(await entity.filter(query, '-updated_date', 5000));
+    return chooseExactVisibleRoute(rows, hashes, requestedOwner);
+}
+
+async function findLegacyVisibleRoute(base44, user, requestedOwner, hashes) {
+    const routes = base44.entities.SavedRoute;
+
+    // Keep the indexed array query as a fast path, but never assume an empty
+    // result means there is no route. Older Base44 runtimes can silently ignore
+    // or return no rows for $all instead of throwing.
+    if (requestedOwner) {
+        try {
+            const fastRows = asArray(await routes.filter({
+                created_by: requestedOwner,
+                property_hashes: { $all: [...new Set(hashes)] }
+            }, '-updated_date', 100));
+            const exact = chooseExactVisibleRoute(fastRows, hashes, requestedOwner);
+            if (exact) return exact;
+        } catch {
+            // Continue into RLS-scoped exact-manifest scans below.
+        }
+    }
+
+    const scopedQueries = [];
+    const seenQueries = new Set();
+    const rememberQuery = (query) => {
+        const key = JSON.stringify(query);
+        if (seenQueries.has(key)) return;
+        seenQueries.add(key);
+        scopedQueries.push(query);
+    };
+
+    if (user?.id) rememberQuery({ manager_id: String(user.id) });
+    const teamManagerId = user?.data?.team_manager_id || user?.team_manager_id;
+    if (teamManagerId) {
+        rememberQuery({ manager_id: String(teamManagerId) });
+    }
+    if (requestedOwner) rememberQuery({ created_by: requestedOwner });
+
+    for (const query of scopedQueries) {
+        try {
+            const fastRows = asArray(await routes.filter({
+                ...query,
+                property_hashes: { $all: [...new Set(hashes)] }
+            }, '-updated_date', 100));
+            const fastExact = chooseExactVisibleRoute(
+                fastRows,
+                hashes,
+                requestedOwner
+            );
+            if (fastExact) return fastExact;
+        } catch {
+            // Continue to the bounded exact-manifest scan for runtimes without
+            // reliable array-operator support.
+        }
+        try {
+            const exact = await findExactVisibleRoute(
+                routes,
+                query,
+                hashes,
+                requestedOwner
+            );
+            if (exact) return exact;
+        } catch {
+            // A narrower legacy index may not exist. Continue with the other
+            // tenant-scoped queries; never fall back to an unbounded scan.
+        }
+    }
+    return null;
+}
+
+async function resolveRouteTenantEmail(base44, user, route, requestedOwner) {
+    const userEmail = String(user?.email || '').trim();
+    const userId = String(user?.id || '').trim();
+    const teamManagerId = String(
+        user?.data?.team_manager_id || user?.team_manager_id || ''
+    ).trim();
+    const managerId = String(route?.manager_id || '').trim();
+
+    // manager_id is the SavedRoute tenant key. created_by is audit metadata
+    // and may name a rep, importer, old email, or service account.
+    if (
+        managerId
+        && userEmail
+        && (managerId === userId || normalized(managerId) === normalized(userEmail))
+    ) {
+        return { email: userEmail, repairEmail: userEmail };
+    }
+
+    if (managerId && managerId === teamManagerId) {
+        const managerEntity = base44.asServiceRole?.entities?.User;
+        const manager = managerEntity?.get
+            ? await managerEntity.get(managerId).catch(() => null)
+            : null;
+        if (manager?.email) {
+            const managerEmail = String(manager.email).trim();
+            return { email: managerEmail, repairEmail: managerEmail };
+        }
+    }
+
+    const creatorEmail = String(route?.created_by || '').trim();
+    if (creatorEmail) {
+        return {
+            email: creatorEmail,
+            repairEmail: normalized(creatorEmail) === normalized(userEmail)
+                ? userEmail
+                : null
+        };
+    }
+
+    if (requestedOwner && normalized(requestedOwner) === normalized(userEmail)) {
+        return { email: userEmail, repairEmail: null };
+    }
+    return { email: userEmail, repairEmail: null };
+}
+
+async function filterMasterProperties(entity, field, hashes) {
+    const collected = [];
+    const seen = new Set();
+    const collect = (result) => {
+        for (const property of asArray(result)) {
+            const id = String(property?.id || `${property?.address_hash || ''}:${property?.legacy_hash || ''}`);
+            if (!id || seen.has(id)) continue;
+            seen.add(id);
+            collected.push(property);
+        }
+    };
+
+    try {
+        collect(await entity.filter({ [field]: hashes }, null, hashes.length));
+    } catch {
+        // Retry with the explicit operator below.
+    }
+    try {
+        collect(await entity.filter({ [field]: { $in: hashes } }, null, hashes.length));
+    } catch {
+        // The caller will continue with the other canonical source.
+    }
+    return collected;
+}
+
+async function loadVisibleInteractionOwners(base44, hashes) {
+    const requestedHashes = new Set(hashes);
+    const ownersByHash = new Map();
+    let visibleLogs;
+    try {
+        visibleLogs = asArray(await base44.entities.InteractionLog.filter({
+            address_hash: hashes
+        }, '-created_date', Math.min(5000, Math.max(hashes.length * 5, 100))));
+    } catch (error) {
+        // Route/workspace hydration must remain available during an independent
+        // interaction-log outage. No interaction-based authority is granted.
+        console.warn('Interaction route hydration unavailable:', error.message);
+        return ownersByHash;
+    }
+    for (const log of visibleLogs) {
+        const hash = String(log?.address_hash || '');
+        const ownerEmail = normalized(log?.created_by);
+        if (!requestedHashes.has(hash) || !ownerEmail) continue;
+        if (!ownersByHash.has(hash)) ownersByHash.set(hash, new Set());
+        ownersByHash.get(hash).add(ownerEmail);
+    }
+    return ownersByHash;
 }
 
 Deno.serve(async (req) => {
@@ -66,149 +300,95 @@ Deno.serve(async (req) => {
         const limit = Math.min(Math.max(Number(body.limit || hashes.length), 1), 5000);
         const routeId = body.route_id ? String(body.route_id).trim() : null;
         let authorizedRoute = null;
+        let repairEmail = null;
+        let interactionOwnersByHash = new Map();
+        if (!routeId && !body.user_email) {
+            // Appointments/callbacks intentionally carry no route identity.
+            // Load their caller-visible owners before workspace hydration; exact
+            // route discovery below remains independent authorization.
+            interactionOwnersByHash = await loadVisibleInteractionOwners(base44, hashes);
+            const missingProofHashes = hashes.filter(hash => (
+                !interactionOwnersByHash.has(hash)
+            ));
+            if (
+                interactionOwnersByHash.size > 0
+                && missingProofHashes.length > 0
+            ) {
+                const additionalOwners = await loadVisibleInteractionOwners(
+                    base44,
+                    missingProofHashes
+                );
+                for (const [hash, owners] of additionalOwners) {
+                    if (!interactionOwnersByHash.has(hash)) {
+                        interactionOwnersByHash.set(hash, new Set());
+                    }
+                    owners.forEach(owner => interactionOwnersByHash.get(hash).add(owner));
+                }
+            }
+        }
         if (routeId) {
             authorizedRoute = await base44.entities.SavedRoute.get(routeId).catch(() => null);
             if (!authorizedRoute) {
                 throw new HttpError(403, 'route_access_denied', 'This route is not visible to the authenticated account.');
             }
-            const routeHashes = new Set((authorizedRoute.property_hashes || []).map(String));
+            const routeHashes = new Set(normalizedHashes(authorizedRoute.property_hashes));
             if (hashes.some(hash => !routeHashes.has(hash))) {
                 throw new HttpError(403, 'route_hash_mismatch', 'The request contains a property that is not on this route.');
             }
-            targetEmail = String(authorizedRoute.created_by || '').trim();
-            if (!targetEmail) {
-                throw new HttpError(409, 'route_owner_missing', 'This legacy route has no verifiable workspace owner.');
-            }
-        } else if (body.user_email) {
+            const tenant = await resolveRouteTenantEmail(
+                base44,
+                user,
+                authorizedRoute,
+                body.user_email
+            );
+            targetEmail = tenant.email;
+            repairEmail = tenant.repairEmail;
+        } else {
             // Compatibility for web/native clients released before route_id was
             // added to this request. RLS still limits the search to routes that
             // this caller may see, and the entire ordered manifest must match;
             // a partial or arbitrary hash request is never promoted to a route.
-            const requestedOwner = String(body.user_email).trim();
-            let visibleOwnerRoutes;
-            try {
-                visibleOwnerRoutes = asArray(await base44.entities.SavedRoute.filter({
-                    created_by: requestedOwner,
-                    property_hashes: { $all: [...new Set(hashes)] }
-                }, '-updated_date', 100));
-            } catch {
-                // Older entity runtimes may not support $all on array fields.
-                // Keep a bounded RLS-scoped fallback for already-installed apps.
-                visibleOwnerRoutes = asArray(await base44.entities.SavedRoute.filter(
-                    { created_by: requestedOwner },
-                    '-updated_date',
-                    5000
-                ));
-            }
-            authorizedRoute = visibleOwnerRoutes.find(route => hasExactHashManifest(route, hashes)) || null;
+            // Manager-scoped discovery also covers old rep clients whose
+            // service-created route has no created_by email to send.
+            const requestedOwner = String(body.user_email || '').trim();
+            authorizedRoute = await findLegacyVisibleRoute(
+                base44,
+                user,
+                requestedOwner,
+                hashes
+            );
             if (authorizedRoute) {
-                targetEmail = String(authorizedRoute.created_by || '').trim();
-                if (!targetEmail) {
-                    throw new HttpError(409, 'route_owner_missing', 'This legacy route has no verifiable workspace owner.');
-                }
-            } else if (normalized(user.role) === 'admin') {
+                const tenant = await resolveRouteTenantEmail(
+                    base44,
+                    user,
+                    authorizedRoute,
+                    requestedOwner
+                );
+                targetEmail = tenant.email;
+                repairEmail = tenant.repairEmail;
+            } else if (normalized(user.role) === 'admin' && requestedOwner) {
                 targetEmail = requestedOwner;
             }
-        } else if (normalized(user.role) === 'admin' && body.user_email) {
-            targetEmail = String(body.user_email).trim();
         }
         if (!targetEmail) {
             throw new HttpError(403, 'workspace_owner_missing', 'No verifiable workspace owner is available for this lookup.');
         }
 
-        const rows = await sql`
-            SELECT
-                p.id,
-                p.address_hash,
-                p.legacy_hash,
-                p.full_address,
-                p.house_number,
-                p.street_name,
-                p.city,
-                p.state,
-                p.zip_code,
-                p.lat,
-                p.lng,
-                p.h3_index,
-                p.owner_full_name,
-                NULLIF(to_jsonb(p) ->> 'owner_occupied', '')::BOOLEAN AS owner_occupied,
-                NULLIF(to_jsonb(p) ->> 'corporate_owned', '')::BOOLEAN AS corporate_owned,
-                NULLIF(to_jsonb(p) ->> 'investor_owned', '')::BOOLEAN AS investor_owned,
-                p.beds,
-                p.baths,
-                p.sqft,
-                p.lot_size,
-                p.year_built,
-                p.price,
-                p.sold_date,
-                p.sale_type,
-                p.property_type,
-                p.mls_id,
-                p.url,
-                p.data_source,
-                p.sale_confidence,
-                p.original_status,
-                wp.route_active,
-                wp.status,
-                wp.assigned_route_id,
-                p.created_at,
-                p.updated_at
-            FROM workspace_properties wp
-            JOIN properties p ON p.id = wp.property_id
-            WHERE wp.user_email = ${targetEmail}
-              AND p.lat IS NOT NULL
-              AND p.lng IS NOT NULL
-              AND (p.address_hash = ANY(${hashes}) OR p.legacy_hash = ANY(${hashes}))
-            LIMIT ${limit}
-        `;
-
-        const byHash = new Map();
-        rows.forEach(row => {
-            const property = {
-                ...row,
-                id: String(row.id),
-                address_hash: row.address_hash || String(row.id),
-                created_date: row.created_at,
-                updated_date: row.updated_at
-            };
-            byHash.set(property.address_hash, property);
-            if (property.legacy_hash) byHash.set(property.legacy_hash, property);
-        });
-
-        const missingWorkspaceHashes = hashes.filter(hash => !byHash.has(hash));
-        const allowedOwnersByHash = new Map();
-        if (authorizedRoute) {
-            const ownerEmail = normalized(targetEmail);
-            missingWorkspaceHashes.forEach(hash => allowedOwnersByHash.set(hash, new Set([ownerEmail])));
-        } else if (missingWorkspaceHashes.length > 0) {
-            // Callback/appointment lookups do not carry a route. A caller-visible
-            // interaction is the durable tenant-scoped proof for those hashes.
-            const visibleLogs = asArray(await base44.entities.InteractionLog.filter({
-                address_hash: missingWorkspaceHashes
-            }, '-created_date', Math.min(5000, Math.max(missingWorkspaceHashes.length * 5, 100))));
-            for (const log of visibleLogs) {
-                const hash = String(log?.address_hash || '');
-                const ownerEmail = normalized(log?.created_by);
-                if (!missingWorkspaceHashes.includes(hash) || !ownerEmail) continue;
-                if (!allowedOwnersByHash.has(hash)) allowedOwnersByHash.set(hash, new Set());
-                allowedOwnersByHash.get(hash).add(ownerEmail);
-            }
+        const interactionWorkspaceEmails = [];
+        for (const owners of interactionOwnersByHash.values()) {
+            interactionWorkspaceEmails.push(...owners);
         }
-
-        // Historical routes can outlive their workspace_properties link. Only
-        // hashes on a caller-visible route created before the hardened link
-        // contract, or hashes proven by caller-visible interaction history, may
-        // use the canonical recovery copy. New client-created route manifests
-        // cannot authorize global property reads.
-        const routeMayRecoverCanonical = authorizedRoute && isLegacyCanonicalRecoveryRoute(authorizedRoute);
-        const canonicalAuthorizedHashes = missingWorkspaceHashes.filter(hash =>
-            routeMayRecoverCanonical
-                ? allowedOwnersByHash.has(hash)
-                : !authorizedRoute && allowedOwnersByHash.has(hash)
-        );
-        if (canonicalAuthorizedHashes.length > 0) {
-            const routeRows = await sql`
-                SELECT
+        const workspaceEmails = [...new Set([
+            targetEmail,
+            authorizedRoute?.created_by,
+            user.email,
+            ...interactionWorkspaceEmails
+        ].map(value => String(value || '').trim()).filter(Boolean))];
+        const rowsById = new Map();
+        for (const workspaceEmail of workspaceEmails) {
+            try {
+                const workspaceRows = await sql`
+                SELECT DISTINCT ON (p.id)
                     p.id,
                     p.address_hash,
                     p.legacy_hash,
@@ -239,22 +419,157 @@ Deno.serve(async (req) => {
                     p.data_source,
                     p.sale_confidence,
                     p.original_status,
+                    wp.route_active,
+                    wp.status,
+                    wp.assigned_route_id,
                     p.created_at,
                     p.updated_at
-                FROM properties p
-                WHERE p.lat IS NOT NULL
+                FROM workspace_properties wp
+                JOIN properties p ON p.id = wp.property_id
+                WHERE wp.user_email = ${workspaceEmail}
+                  AND p.lat IS NOT NULL
                   AND p.lng IS NOT NULL
-                  AND (p.address_hash = ANY(${canonicalAuthorizedHashes}) OR p.legacy_hash = ANY(${canonicalAuthorizedHashes}))
-                LIMIT ${Math.min(limit, canonicalAuthorizedHashes.length)}
+                  AND (p.address_hash = ANY(${hashes}) OR p.legacy_hash = ANY(${hashes}))
+                ORDER BY p.id, wp.updated_at DESC
+                LIMIT ${limit}
             `;
+                for (const row of workspaceRows) {
+                    rowsById.set(String(row.id), row);
+                }
+                const coveredHashes = new Set();
+                for (const row of rowsById.values()) {
+                    if (row.address_hash) coveredHashes.add(String(row.address_hash));
+                    if (row.legacy_hash) coveredHashes.add(String(row.legacy_hash));
+                }
+                if (hashes.every(hash => coveredHashes.has(hash))) break;
+            } catch (error) {
+                // A missing or lagging workspace link table must not prevent a
+                // caller-visible historical route from using its recovery copies.
+                console.warn('Workspace route hydration unavailable:', error.message);
+                break;
+            }
+        }
+        const rows = [...rowsById.values()];
+
+        const byHash = new Map();
+        rows.forEach(row => {
+            const property = {
+                ...row,
+                id: String(row.id),
+                address_hash: row.address_hash || String(row.id),
+                created_date: row.created_at,
+                updated_date: row.updated_at
+            };
+            byHash.set(property.address_hash, property);
+            if (property.legacy_hash) byHash.set(property.legacy_hash, property);
+        });
+
+        const missingWorkspaceHashes = hashes.filter(hash => !byHash.has(hash));
+        const allowedOwnersByHash = new Map();
+        if (authorizedRoute) {
+            const ownerEmails = [
+                targetEmail,
+                authorizedRoute.created_by,
+                user.email
+            ].map(normalized).filter(Boolean);
+            missingWorkspaceHashes.forEach(hash => (
+                allowedOwnersByHash.set(hash, new Set(ownerEmails))
+            ));
+        }
+        const hashesMissingInteractionProof = missingWorkspaceHashes.filter(hash => (
+            !interactionOwnersByHash.has(hash)
+        ));
+        if (hashesMissingInteractionProof.length > 0 && !authorizedRoute) {
+            // Compatibility clients that supply an owner hint can still be
+            // callback lookups when no exact visible route exists. Query only
+            // proof gaps so a skewed capped first page cannot hide a callback.
+            const additionalOwners = await loadVisibleInteractionOwners(
+                base44,
+                hashesMissingInteractionProof
+            );
+            for (const [hash, owners] of additionalOwners) {
+                if (!interactionOwnersByHash.has(hash)) {
+                    interactionOwnersByHash.set(hash, new Set());
+                }
+                owners.forEach(owner => interactionOwnersByHash.get(hash).add(owner));
+            }
+        }
+        const missingWorkspaceHashSet = new Set(missingWorkspaceHashes);
+        for (const [hash, owners] of interactionOwnersByHash) {
+            if (!missingWorkspaceHashSet.has(hash)) continue;
+            if (!allowedOwnersByHash.has(hash)) allowedOwnersByHash.set(hash, new Set());
+            owners.forEach(owner => allowedOwnersByHash.get(hash).add(owner));
+        }
+
+        // Historical routes can outlive their workspace_properties link. Only
+        // hashes on an exact caller-visible route created before the hardened
+        // link contract may use the global canonical recovery copy. Interaction
+        // hashes are client-selectable and therefore never grant canonical
+        // access; they remain useful only for scoped workspace and creator-owned
+        // Base44 recovery below.
+        const routeMayRecoverCanonical = authorizedRoute && isLegacyCanonicalRecoveryRoute(authorizedRoute);
+        const canonicalAuthorizedHashes = missingWorkspaceHashes.filter(hash =>
+            routeMayRecoverCanonical && allowedOwnersByHash.has(hash)
+        );
+        if (canonicalAuthorizedHashes.length > 0) {
+            let routeRows = [];
+            try {
+                routeRows = await sql`
+                    SELECT
+                        p.id,
+                        p.address_hash,
+                        p.legacy_hash,
+                        p.full_address,
+                        p.house_number,
+                        p.street_name,
+                        p.city,
+                        p.state,
+                        p.zip_code,
+                        p.lat,
+                        p.lng,
+                        p.h3_index,
+                        p.owner_full_name,
+                        NULLIF(to_jsonb(p) ->> 'owner_occupied', '')::BOOLEAN AS owner_occupied,
+                        NULLIF(to_jsonb(p) ->> 'corporate_owned', '')::BOOLEAN AS corporate_owned,
+                        NULLIF(to_jsonb(p) ->> 'investor_owned', '')::BOOLEAN AS investor_owned,
+                        p.beds,
+                        p.baths,
+                        p.sqft,
+                        p.lot_size,
+                        p.year_built,
+                        p.price,
+                        p.sold_date,
+                        p.sale_type,
+                        p.property_type,
+                        p.mls_id,
+                        p.url,
+                        p.data_source,
+                        p.sale_confidence,
+                        p.original_status,
+                        p.created_at,
+                        p.updated_at
+                    FROM properties p
+                    WHERE p.lat IS NOT NULL
+                      AND p.lng IS NOT NULL
+                      AND (p.address_hash = ANY(${canonicalAuthorizedHashes}) OR p.legacy_hash = ANY(${canonicalAuthorizedHashes}))
+                    LIMIT ${Math.min(limit, canonicalAuthorizedHashes.length)}
+                `;
+            } catch (error) {
+                // Base44 MasterProperty remains a tenant-checked recovery copy
+                // when the canonical Neon schema is unavailable or mid-migration.
+                console.warn('Canonical route hydration unavailable:', error.message);
+            }
 
             for (const row of routeRows) {
+                const recoveredRow = authorizedRoute && !hasFrozenLegacyManifest(authorizedRoute)
+                    ? pinSafeCanonicalProperty(row)
+                    : row;
                 const property = {
-                    ...row,
-                    id: String(row.id),
-                    address_hash: row.address_hash || String(row.id),
-                    created_date: row.created_at,
-                    updated_date: row.updated_at
+                    ...recoveredRow,
+                    id: String(recoveredRow.id),
+                    address_hash: recoveredRow.address_hash || String(recoveredRow.id),
+                    created_date: recoveredRow.created_at,
+                    updated_date: recoveredRow.updated_at
                 };
                 if (property.address_hash) byHash.set(property.address_hash, property);
                 if (property.legacy_hash) byHash.set(property.legacy_hash, property);
@@ -262,7 +577,11 @@ Deno.serve(async (req) => {
 
             // Read-repair the missing tenant links after successful legacy
             // recovery. This is additive and preserves any existing status.
-            if (routeMayRecoverCanonical && routeRows.length > 0) {
+            if (
+                hasFrozenLegacyManifest(authorizedRoute)
+                && routeRows.length > 0
+                && repairEmail
+            ) {
                 await sql`
                     INSERT INTO workspace_properties (
                         property_id,
@@ -274,7 +593,7 @@ Deno.serve(async (req) => {
                     )
                     SELECT
                         p.id,
-                        ${targetEmail},
+                        ${repairEmail},
                         TRUE,
                         COALESCE(p.original_status, 'ELIGIBLE'),
                         ${String(authorizedRoute.id)},
@@ -297,19 +616,28 @@ Deno.serve(async (req) => {
             for (let i = 0; i < authorizedHashes.length; i += BATCH) {
                 const slice = authorizedHashes.slice(i, i + BATCH);
                 const [primaryResult, legacyResult] = await Promise.all([
-                    base44.asServiceRole.entities.MasterProperty.filter({ address_hash: slice }, null, slice.length),
-                    base44.asServiceRole.entities.MasterProperty.filter({ legacy_hash: slice }, null, slice.length)
+                    filterMasterProperties(
+                        base44.asServiceRole.entities.MasterProperty,
+                        'address_hash',
+                        slice
+                    ),
+                    filterMasterProperties(
+                        base44.asServiceRole.entities.MasterProperty,
+                        'legacy_hash',
+                        slice
+                    )
                 ]);
                 for (const property of [...asArray(primaryResult), ...asArray(legacyResult)]) {
-                    if (!property?.lat || !property?.lng) continue;
-                    const requestedHash = slice.find(hash =>
+                    if (!hasCoordinates(property)) continue;
+                    const requestedMatches = slice.filter(hash =>
                         hash === String(property.address_hash || '')
                         || hash === String(property.legacy_hash || '')
                     );
-                    if (!requestedHash) continue;
-                    const allowedOwners = allowedOwnersByHash.get(requestedHash);
-                    if (!allowedOwners?.has(normalized(property.created_by))) continue;
-                    byHash.set(requestedHash, property);
+                    for (const requestedHash of requestedMatches) {
+                        const allowedOwners = allowedOwnersByHash.get(requestedHash);
+                        if (!allowedOwners?.has(normalized(property.created_by))) continue;
+                        byHash.set(requestedHash, property);
+                    }
                 }
             }
         }

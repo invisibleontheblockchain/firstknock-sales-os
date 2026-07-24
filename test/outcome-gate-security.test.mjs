@@ -806,22 +806,14 @@ test('outcome and identity fields are service-owned and legacy bypass endpoints 
   assert.match(lookup, /const canonicalAuthorizedHashes = missingWorkspaceHashes\.filter[\s\S]*FROM properties p/);
 });
 
-test('assigned-route hydration uses the authorized route owner and guards canonical fallback by route membership', () => {
+test('assigned-route hydration uses the verified tenant manager and guards canonical fallback by route membership', () => {
   const lookup = readSource('base44/functions/getRoutePropertiesByHashes/entry.ts');
 
-  assert.match(
-    lookup,
-    /authorizedRoute\s*=\s*await base44\.entities\.SavedRoute\.get\(routeId\)[\s\S]*targetEmail\s*=\s*String\(authorizedRoute\.created_by\s*\|\|\s*''\)\.trim\(\)/
-  );
-  assert.match(
-    lookup,
-    /if\s*\(!targetEmail\)\s*\{\s*throw new HttpError\(409,\s*'route_owner_missing'/
-  );
-  assert.match(
-    lookup,
-    /\}\s*else if\s*\(normalized\(user\.role\)\s*===\s*'admin'\s*&&\s*body\.user_email\)\s*\{\s*targetEmail\s*=\s*String\(body\.user_email\)\.trim\(\)/
-  );
-  assert.match(lookup, /WHERE wp\.user_email = \$\{targetEmail\}/);
+  assert.match(lookup, /authorizedRoute\s*=\s*await base44\.entities\.SavedRoute\.get\(routeId\)/);
+  assert.match(lookup, /manager_id is the SavedRoute tenant key/);
+  assert.match(lookup, /resolveRouteTenantEmail\(/);
+  assert.match(lookup, /findLegacyVisibleRoute\(/);
+  assert.match(lookup, /WHERE wp\.user_email = \$\{workspaceEmail\}/);
   assert.match(
     lookup,
     /const canonicalAuthorizedHashes = missingWorkspaceHashes\.filter[\s\S]*FROM properties p/
