@@ -34,11 +34,12 @@ function betaPrecisionEvidence(user: any) {
             kind: 'beta',
             paidAccess: true,
             proAccess: true,
+            limit: 1000,
+            precisionLimit: 1000,
             subscriptionId: 'system_admin_grant',
             invoiceId: null,
             periodStart: new Date(2026, 0, 1).toISOString(),
-            periodEnd: new Date(2030, 0, 1).toISOString(),
-            precisionLimit: 1000
+            periodEnd: new Date(2030, 0, 1).toISOString()
         };
     }
     const rawGrants = Deno.env.get('BETA_ACCESS_GRANTS');
@@ -306,10 +307,12 @@ function legacyCompletedCount(job: any) {
 function jobUsage(job: any) {
     const explicitCount = Math.max(0, Math.floor(Number(job?.precision_usage_count || 0)));
     const hasExplicitReservation = job?.precision_usage_reserved !== undefined && job?.precision_usage_reserved !== null;
-    const legacyReservationAllowed = ['pending', 'running'].includes(job?.status);
+    const createdAtMs = jobStartedAtMs(job) || 0;
+    const isStale = createdAtMs > 0 && (Date.now() - createdAtMs > 10 * 60 * 1000);
+    const legacyReservationAllowed = ['pending', 'running'].includes(job?.status) && !isStale;
     const reservation = Math.max(0, Math.floor(Number(
         hasExplicitReservation
-            ? job.precision_usage_reserved
+            ? (isStale ? 0 : job.precision_usage_reserved)
             : legacyReservationAllowed
                 ? (job?.total_expected ?? job?.estimated_record_count ?? 0)
                 : 0
