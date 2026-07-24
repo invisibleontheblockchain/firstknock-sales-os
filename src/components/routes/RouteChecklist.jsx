@@ -436,9 +436,25 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose, navi
                         const isExpanded = expandedId === prop.address_hash;
                         const isDone = currentStatus && currentStatus !== 'ELIGIBLE';
                         const ownerName = prop.owner_full_name || prop.owner_name || prop.ownerFullName;
-                        const valueLabel = formatMoney(prop.price || prop.estimated_value || prop.estimatedValue);
+                        const valueLabel = formatMoney(
+                            prop.price ??
+                            prop.estimated_value ??
+                            prop.estimatedValue ??
+                            prop.sale_price ??
+                            prop.last_sale_price ??
+                            prop.lastSoldPrice ??
+                            prop.last_sold_price ??
+                            prop.sale_amount ??
+                            prop.saleAmount ??
+                            prop.assessed_value ??
+                            prop.assessedValue ??
+                            prop.market_value ??
+                            prop.marketValue
+                        );
                         const sqftLabel = formatNumber(prop.sqft || prop.squareFootage);
                         const yearBuilt = Number(prop.year_built || prop.yearBuilt) || null;
+                        const soldDate = prop.sold_date || prop.soldDate || prop.lastSoldDate || prop.last_sold_date || prop.saleDate || prop.sale_date;
+                        const ageLabel = formatPropertyAge(soldDate);
 
                         return (
                             <div
@@ -470,9 +486,9 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose, navi
                                             <p className={`text-[13px] font-semibold truncate leading-tight transition-all duration-300 ${isDone ? 'line-through opacity-40' : 'group-hover:drop-shadow-[0_0_8px_rgba(255,215,0,0.5)]'}`} style={{ color: BRAND.offWhite }}>
                                                 {prop.house_number} {prop.street_name}
                                             </p>
-                                            {prop.sold_date && (
+                                            {ageLabel && (
                                                 <span className="text-[9px] font-bold text-yellow-500/80 shrink-0">
-                                                    {formatPropertyAge(prop.sold_date)}
+                                                    {ageLabel}
                                                 </span>
                                             )}
                                         </div>

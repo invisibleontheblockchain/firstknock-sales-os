@@ -518,7 +518,17 @@ function mapBatchDataProperty(record, job) {
     const listingStatus = firstValue(listing.status, listing.statusCategory);
     const listingStatusLower = String(listingStatus || '').toLowerCase();
     const customOwnershipRange = getCustomOwnershipRange(job);
-    const providerOwnershipDate = dateValue(intel.lastSoldDate);
+    const providerOwnershipDate = dateValue(
+        intel.lastSoldDate,
+        intel.lastSaleDate,
+        intel.lastTransferDate,
+        sale?.lastSoldDate,
+        sale?.lastSaleDate,
+        sale?.saleDate,
+        p.lastSoldDate,
+        p.soldDate,
+        p.sold_date
+    );
     const defaultSaleDate = dateValue(
         p.listing?.soldDate,
         p.deedHistory?.[0]?.saleDate,
@@ -532,7 +542,9 @@ function mapBatchDataProperty(record, job) {
         lastSale?.recordingDate,
         lastSale?.saleDate,
         lastSale?.date,
-        p.lastSaleDate
+        p.lastSaleDate,
+        p.sold_date,
+        p.soldDate
     );
     // BatchData applies the custom acquisition filter to intel.lastSoldDate.
     // Use that same field for inclusion, persistence, and downstream SQL so a
@@ -554,6 +566,7 @@ function mapBatchDataProperty(record, job) {
     const ownerOccupied = booleanValue(quickLists.ownerOccupied, quickLists.owner_occupied, owner.ownerOccupied);
     const corporateOwned = booleanValue(quickLists.corporateOwned, quickLists.corporate_owned, owner.corporateOwned);
     const investorOwned = booleanValue(quickLists.investorOwned, quickLists.investor_owned, owner.investorOwned);
+    const assessment = p.assessment || p.assessor || p.tax || {};
     const saleAmount = numberValue(
         intel.lastSoldPrice,
         intel.lastSalePrice,
@@ -564,13 +577,17 @@ function mapBatchDataProperty(record, job) {
         lastSale?.amount,
         lastSale?.price,
         lastSale?.salePrice,
-        p.lastSalePrice
+        p.lastSalePrice,
+        p.lastSoldPrice,
+        p.salePrice,
+        p.price
     );
     const estimatedValue = numberValue(
         intel.estimatedValue, intel.estimatedMarketValue, intel.totalMarketValue, intel.propertyValue, intel.estValue,
         intel.avm, intel.avmValue, intel.value, intel.amount,
         valuation.estimatedValue, valuation.value, valuation.avm, valuation.avmValue, valuation.amount,
-        p.estimatedValue, p.estimated_value, p.avm, p.avmValue, p.assessedValue,
+        assessment.totalValue, assessment.marketValue, assessment.assessedValue, assessment.totalMarketValue, assessment.market,
+        p.estimatedValue, p.estimated_value, p.avm, p.avmValue, p.assessedValue, p.price,
         listing.price, listing.listPrice
     );
     const price = estimatedValue ?? saleAmount;
