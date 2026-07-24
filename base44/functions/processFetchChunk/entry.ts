@@ -403,9 +403,10 @@ function buildBatchDataRequest(job, skip = 0, take = 500, mode = 'strict_polygon
     const filters = job.dry_run_metadata?.filters || {};
     const minPriceRaw = Number(filters.min_price);
     const maxPriceRaw = Number(filters.max_price);
-    const minPrice = Number.isFinite(minPriceRaw) && minPriceRaw > 0 ? minPriceRaw : 100000;
+    const minPrice = Number.isFinite(minPriceRaw) && minPriceRaw > 0 ? minPriceRaw : null;
     const maxPrice = Number.isFinite(maxPriceRaw) && maxPriceRaw > 0 ? maxPriceRaw : null;
-    const estimatedValue = { min: minPrice };
+    const estimatedValue = {};
+    if (minPrice) estimatedValue.min = minPrice;
     if (maxPrice) estimatedValue.max = maxPrice;
 
     // Always compute the oldest allowed sold date. For custom ranges, BatchData
@@ -453,8 +454,9 @@ function buildBatchDataRequest(job, skip = 0, take = 500, mode = 'strict_polygon
 
     // Home value range applies in ALL polygon modes. Previously it was only attached in
     // strict_polygon — but the live pull uses broad_polygon, so user price filters were
-    // silently dropped and never reached BatchData.
-    searchCriteria.valuation = { estimatedValue };
+    if (Object.keys(estimatedValue).length > 0) {
+        searchCriteria.valuation = { estimatedValue };
+    }
 
     return { searchCriteria, options };
 }
@@ -535,7 +537,7 @@ function mapBatchDataProperty(record, job) {
     // BatchData applies the custom acquisition filter to intel.lastSoldDate.
     // Use that same field for inclusion, persistence, and downstream SQL so a
     // stale listing date cannot change the requested ownership-age window.
-    const saleDate = customOwnershipRange ? providerOwnershipDate : defaultSaleDate;
+    const saleDate = providerOwnershipDate || defaultSaleDate;
     const saleDateMs = saleDate ? new Date(saleDate).getTime() : 0;
     const hasValidSaleDate = saleDateMs > 0 && !Number.isNaN(saleDateMs);
     const saleDateOnly = isoDateOnly(saleDate);

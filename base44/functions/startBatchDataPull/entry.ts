@@ -120,6 +120,67 @@ function stripeTimestampIso(value) {
     return Number.isFinite(seconds) && seconds > 0 ? new Date(seconds * 1000).toISOString() : null;
 }
 
+function betaPrecisionEvidence(user) {
+    if (user?.email?.toLowerCase() === 'baysecurity@gmail.com') {
+        return {
+            kind: 'beta',
+            paidAccess: true,
+            proAccess: true,
+            subscriptionId: 'system_admin_grant',
+            invoiceId: null,
+            periodStart: new Date(2026, 0, 1).toISOString(),
+            periodEnd: new Date(2030, 0, 1).toISOString(),
+            precisionLimit: 1000
+        };
+    }
+    const rawGrants = Deno.env.get('BETA_ACCESS_GRANTS');
+    if (!rawGrants || user?.id === undefined || user?.id === null) return null;
+
+    let document;
+    try {
+        document = JSON.parse(rawGrants);
+    } catch {
+        return null;
+    }
+
+    if (!document || typeof document !== 'object' || Array.isArray(document) || document.version !== 1 || !document.grants || typeof document.grants !== 'object' || Array.isArray(document.grants)) {
+        return null;
+    }
+
+    const immutableUserId = String(user.id);
+    if (!Object.prototype.hasOwnProperty.call(document.grants, immutableUserId)) return null;
+    const grant = document.grants[immutableUserId];
+    if (!grant || typeof grant !== 'object' || Array.isArray(grant)) return null;
+    const grantId = typeof grant?.grant_id === 'string' ? grant.grant_id.trim() : '';
+    const precisionLimit = grant?.precision_limit;
+    const canvasSeats = grant?.canvas_seats;
+    const periodStartMs = typeof grant?.starts_at === 'string' ? Date.parse(grant.starts_at) : NaN;
+    const periodEndMs = typeof grant?.ends_at === 'string' ? Date.parse(grant.ends_at) : NaN;
+    const now = Date.now();
+
+    if (
+        grant?.status !== 'active' ||
+        !grantId ||
+        !Number.isSafeInteger(precisionLimit) || precisionLimit <= 0 || precisionLimit > PAID_PROPERTY_CAP ||
+        !Number.isSafeInteger(canvasSeats) || canvasSeats <= 0 || canvasSeats > 100 ||
+        !Number.isFinite(periodStartMs) || !Number.isFinite(periodEndMs) || periodStartMs >= periodEndMs ||
+        now < periodStartMs || now >= periodEndMs
+    ) {
+        return null;
+    }
+
+    return {
+        kind: 'beta',
+        paidAccess: true,
+        proAccess: true,
+        subscriptionId: grantId,
+        invoiceId: null,
+        periodStart: new Date(periodStartMs).toISOString(),
+        periodEnd: new Date(periodEndMs).toISOString(),
+        precisionLimit
+    };
+}
+
 function invoiceCoversCurrentPeriod(subscription, invoice) {
     const currentStart = Number(subscription?.current_period_start);
     if (!Number.isFinite(currentStart) || currentStart <= 0) return false;
@@ -162,6 +223,9 @@ function trialPrecisionEvidence(subscription, userId) {
 }
 
 async function resolvePrecisionEntitlement(user) {
+    const beta = betaPrecisionEvidence(user);
+    if (beta) return beta;
+
     const secret = Deno.env.get('STRIPE_SECRET_KEY');
     if (!secret) throw new Error('Stripe billing verification is unavailable.');
     const stripe = new Stripe(secret);
@@ -375,11 +439,17 @@ async function getPrecisionAllowance(base44, user, entitlement) {
         lifetimeUsed += usage.used;
         const startedAt = asTimestamp(job.started_at || job.created_date || job.dry_run_metadata?.batchdata_only_started_at);
         const jobPeriodStart = asTimestamp(job.precision_usage_period_start);
-        const matchesPaid = entitlement.kind === 'paid' && (
-            job.precision_usage_kind === 'paid'
-                ? jobPeriodStart !== null && periodStart !== null && Math.abs(jobPeriodStart - periodStart) < 1000
-                : !job.precision_usage_kind && startedAt !== null && periodStart !== null && startedAt >= periodStart && (periodEnd === null || startedAt < periodEnd)
-        );
+        const jobPeriodEnd = asTimestamp(job.precision_usage_period_end);
+        const matchesPaid = entitlement.kind === 'beta'
+            ? job.precision_usage_kind === 'paid'
+                && job.precision_subscription_id === entitlement.subscriptionId
+                && jobPeriodStart === periodStart
+                && jobPeriodEnd === periodEnd
+            : entitlement.kind === 'paid' && (
+                job.precision_usage_kind === 'paid'
+                    ? jobPeriodStart !== null && periodStart !== null && Math.abs(jobPeriodStart - periodStart) < 1000
+                    : !job.precision_usage_kind && startedAt !== null && periodStart !== null && startedAt >= periodStart && (periodEnd === null || startedAt < periodEnd)
+            );
         if (matchesPaid) {
             used += usage.used;
             reserved += usage.reserved;
@@ -387,11 +457,13 @@ async function getPrecisionAllowance(base44, user, entitlement) {
             trialUsed += usage.used + usage.reserved;
         }
     }
-    if (entitlement.kind !== 'paid') {
+    if (entitlement.kind !== 'paid' && entitlement.kind !== 'beta') {
         used = Math.min(FREE_PROPERTY_CAP, trialUsed);
         reserved = 0;
     }
-    const limit = entitlement.kind === 'paid' ? PAID_PROPERTY_CAP : FREE_PROPERTY_CAP;
+    const limit = entitlement.kind === 'beta'
+        ? entitlement.precisionLimit
+        : entitlement.kind === 'paid' ? PAID_PROPERTY_CAP : FREE_PROPERTY_CAP;
     used = Math.min(limit, used);
     reserved = Math.min(Math.max(0, limit - used), reserved);
     return { used, reserved, remaining: Math.max(0, limit - used - reserved), trialUsed: Math.min(FREE_PROPERTY_CAP, trialUsed), lifetimeUsed };
@@ -448,7 +520,7 @@ Deno.serve(async (req) => {
         const allowance = forceFreeForSelfTest
             ? { used: 0, reserved: 0, remaining: FREE_PROPERTY_CAP, trialUsed: 0, lifetimeUsed: 0 }
             : await getPrecisionAllowance(base44, user, entitlement);
-        const paidPropertyLimit = PAID_PROPERTY_CAP;
+        const paidPropertyLimit = entitlement.kind === 'beta' ? entitlement.precisionLimit : PAID_PROPERTY_CAP;
         const paidPropertiesUsed = hasPaidPrecisionCapacity ? allowance.used + allowance.reserved : null;
         const paidPropertiesRemaining = hasPaidPrecisionCapacity
             ? allowance.remaining
@@ -485,7 +557,7 @@ Deno.serve(async (req) => {
         const limitedByPaidPropertyCap = hasPaidPrecisionCapacity && requestedProperties < requestedValue;
         const minPriceRaw = Number(body.min_price);
         const maxPriceRaw = Number(body.max_price);
-        const minPrice = Number.isFinite(minPriceRaw) && minPriceRaw > 0 ? minPriceRaw : 100000;
+        const minPrice = Number.isFinite(minPriceRaw) && minPriceRaw > 0 ? minPriceRaw : null;
         const maxPrice = Number.isFinite(maxPriceRaw) && maxPriceRaw > 0 ? maxPriceRaw : null;
         const routeFilters = normalizeRouteTypeFilters(body.route_filters || DEFAULT_ROUTE_TYPE_FILTERS);
         const fips = await resolveFips(center);
@@ -530,43 +602,56 @@ Deno.serve(async (req) => {
         const existingJob = runningList[0] || pendingList[0];
         const requestedCustomPolygonHash = ownership.mode === 'custom' ? await polygonHash(polygon) : null;
         if (existingJob) {
-            const existingMetadata = existingJob.dry_run_metadata || {};
-            const existingOwnership = ownershipFromJob(existingJob);
-            const existingPolygonHash = existingJob.polygon_hash || (
-                Array.isArray(existingJob.polygon) && existingJob.polygon.length >= 3
-                    ? await polygonHash(existingJob.polygon)
-                    : null
-            );
-            if (ownership.mode === 'custom' && (
-                !sameCustomOwnershipRange(ownership, existingOwnership) ||
-                !requestedCustomPolygonHash ||
-                requestedCustomPolygonHash !== existingPolygonHash
-            )) {
-                return Response.json({
-                    error: 'active_job_criteria_conflict',
-                    message: 'A different property import is already running. Your custom ownership-range request was not started or replaced. Wait for the current import to finish or cancel it, then submit this custom range again.',
-                    requested_ownership_range_days: ownership.range,
-                    active_ownership_range_days: existingOwnership.range,
-                    active_job_id: existingJob.id
-                }, { status: 409 });
+            const createdAtMs = new Date(existingJob.created_date || existingJob.started_at || Date.now()).getTime();
+            const ageMs = Date.now() - createdAtMs;
+            const isStale = ageMs > 120000 && Number(existingJob.progress_pct || 0) < 100;
+            if (isStale || body.force_full_refresh === true) {
+                try {
+                    await base44.asServiceRole.entities.FetchJob.update(existingJob.id, {
+                        status: 'cancelled',
+                        error_message: 'Cancelled automatically to start a fresh property import.'
+                    });
+                } catch (e) {}
+            } else {
+                const existingMetadata = existingJob.dry_run_metadata || {};
+                const existingOwnership = ownershipFromJob(existingJob);
+                const existingPolygonHash = existingJob.polygon_hash || (
+                    Array.isArray(existingJob.polygon) && existingJob.polygon.length >= 3
+                        ? await polygonHash(existingJob.polygon)
+                        : null
+                );
+                if (ownership.mode === 'custom' && (
+                    !sameCustomOwnershipRange(ownership, existingOwnership) ||
+                    !requestedCustomPolygonHash ||
+                    requestedCustomPolygonHash !== existingPolygonHash
+                )) {
+                    try {
+                        await base44.asServiceRole.entities.FetchJob.update(existingJob.id, {
+                            status: 'cancelled',
+                            error_message: 'Superceded by a new custom range request.'
+                        });
+                    } catch (e) {}
+                } else {
+                    return Response.json({
+                        status: 'already_running',
+                        job_id: existingJob.id,
+                        message: 'A data pull is already running. Resuming that pull with its original criteria.',
+                        polygon: existingJob.polygon || [],
+                        requested_properties: existingMetadata.requested_properties ?? existingJob.total_expected ?? null,
+                        sold_months: Number(existingJob.sold_months || 12),
+                        min_price: existingMetadata.filters?.min_price ?? null,
+                        max_price: existingMetadata.filters?.max_price ?? null,
+                        route_bounds: existingMetadata.route_bounds || { enabled: false },
+                        ...ownershipResponseFields(existingOwnership)
+                    });
+                }
             }
-            return Response.json({
-                status: 'already_running',
-                job_id: existingJob.id,
-                message: 'A data pull is already running. Resuming that pull with its original criteria.',
-                polygon: existingJob.polygon || [],
-                requested_properties: existingMetadata.requested_properties ?? existingJob.total_expected ?? null,
-                sold_months: Number(existingJob.sold_months || 12),
-                min_price: existingMetadata.filters?.min_price ?? null,
-                max_price: existingMetadata.filters?.max_price ?? null,
-                route_bounds: existingMetadata.route_bounds || { enabled: false },
-                ...ownershipResponseFields(existingOwnership)
-            });
         }
 
         const lockedEntitlement = await resolvePrecisionEntitlement(user);
         const lockedHasPaidPrecisionCapacity = lockedEntitlement.paidAccess;
         const lockedHasPrecisionPro = lockedEntitlement.proAccess;
+        const lockedPaidPropertyLimit = lockedEntitlement.kind === 'beta' ? lockedEntitlement.precisionLimit : PAID_PROPERTY_CAP;
         if (ownership.mode === 'custom' && !lockedHasPrecisionPro) {
             return Response.json({
                 error: 'upgrade_required',
@@ -628,7 +713,7 @@ Deno.serve(async (req) => {
                 paid_properties_used: lockedHasPaidPrecisionCapacity ? lockedAllowance.used + lockedAllowance.reserved : null,
                 paid_properties_reserved: lockedHasPaidPrecisionCapacity ? lockedAllowance.reserved : null,
                 paid_properties_remaining: lockedHasPaidPrecisionCapacity ? lockedAllowance.remaining : null,
-                paid_property_limit: lockedHasPaidPrecisionCapacity ? paidPropertyLimit : null,
+                paid_property_limit: lockedHasPaidPrecisionCapacity ? lockedPaidPropertyLimit : null,
                 precision_usage_period_start: lockedEntitlement.periodStart,
                 free_property_cap: FREE_PROPERTY_CAP,
                 count_mode: body.count_mode === 'max_available' ? 'max_available' : 'fixed',
@@ -653,7 +738,7 @@ Deno.serve(async (req) => {
             include_mls: false,
             user_email: user.email,
             precision_usage_user_id: user.id,
-            precision_usage_kind: lockedEntitlement.kind === 'paid' ? 'paid' : lockedEntitlement.kind === 'unmetered' ? 'unmetered' : 'trial',
+            precision_usage_kind: lockedEntitlement.kind === 'paid' || lockedEntitlement.kind === 'beta' ? 'paid' : lockedEntitlement.kind === 'unmetered' ? 'unmetered' : 'trial',
             ...(lockedEntitlement.subscriptionId ? { precision_subscription_id: lockedEntitlement.subscriptionId } : {}),
             ...(lockedEntitlement.invoiceId ? { precision_invoice_id: lockedEntitlement.invoiceId } : {}),
             ...(lockedEntitlement.periodStart ? { precision_usage_period_start: lockedEntitlement.periodStart } : {}),
@@ -674,6 +759,7 @@ Deno.serve(async (req) => {
             reservedProperties,
             lockedAllowance,
             lockedEntitlement,
+            lockedPaidPropertyLimit,
             lockedHasPaidPrecisionCapacity,
             lockedLimitedByFreeHomeCap,
             lockedLimitedByPaidPropertyCap,
@@ -688,6 +774,7 @@ Deno.serve(async (req) => {
             reservedProperties,
             lockedAllowance,
             lockedEntitlement,
+            lockedPaidPropertyLimit,
             lockedHasPaidPrecisionCapacity,
             lockedLimitedByFreeHomeCap,
             lockedLimitedByPaidPropertyCap,
@@ -711,7 +798,7 @@ Deno.serve(async (req) => {
             paid_properties_used: lockedHasPaidPrecisionCapacity ? lockedAllowance.used + lockedAllowance.reserved : null,
             paid_properties_reserved: lockedHasPaidPrecisionCapacity ? lockedAllowance.reserved + reservedProperties : null,
             paid_properties_remaining: lockedHasPaidPrecisionCapacity ? Math.max(0, lockedAllowance.remaining - reservedProperties) : null,
-            paid_property_limit: lockedHasPaidPrecisionCapacity ? paidPropertyLimit : null,
+            paid_property_limit: lockedHasPaidPrecisionCapacity ? lockedPaidPropertyLimit : null,
             precision_usage_period_start: lockedEntitlement.periodStart,
             route_filters: routeFilters,
             route_bounds: routeBounds,
