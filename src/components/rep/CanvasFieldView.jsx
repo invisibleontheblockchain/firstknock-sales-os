@@ -91,9 +91,10 @@ function normalizeAssignments(assignments) {
 
 function mapCenter(mapPoints, pins) {
   const points = mapPoints.length ? mapPoints : pins;
-  if (!points.length) return [0, 0];
-  return points.reduce(
-    (sum, point) => [sum[0] + point.lat / points.length, sum[1] + point.lng / points.length],
+  const validPoints = points.filter((p) => Number.isFinite(p?.lat) && Number.isFinite(p?.lng) && (p.lat !== 0 || p.lng !== 0));
+  if (!validPoints.length) return [34.0522, -118.2437];
+  return validPoints.reduce(
+    (sum, point) => [sum[0] + point.lat / validPoints.length, sum[1] + point.lng / validPoints.length],
     [0, 0]
   );
 }
@@ -660,7 +661,7 @@ export default function CanvasFieldView({
       </div>
 
       <div className="relative flex-1">
-        <MapContainer key={assignment.__key} center={center} zoom={streetSegments.length ? 16 : 2} style={{ height: '100%', width: '100%' }} zoomControl={false} attributionControl={false} preferCanvas>
+        <MapContainer key={assignment.__key} center={center} zoom={15} style={{ height: '100%', width: '100%' }} zoomControl={false} attributionControl={false} preferCanvas>
           <FitAssignmentBounds mapPoints={mapPoints} pins={pins} />
           {dncSafetyComplete && <MapTapCapture onPinLocation={choosePinLocation} />}
           <LocateControl />

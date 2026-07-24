@@ -2399,59 +2399,151 @@ export default function Home() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeRouteId]);
 
-    // Initial Fit Effect
-    const hasCenteredRef = useRef(false);
-    useEffect(() => {
-        if (hasCenteredRef.current) return;
-        if (savedRouteOverviewPoints.length > 0) {
-            hasCenteredRef.current = true;
-            return;
+    // Account Active Working Area Resolver
+    const computeAccountWorkingArea = useCallback(() => {
+        // 1. Active campaign or deployed polygon
+        if (Array.isArray(canvasDrawnPolygon) && canvasDrawnPolygon.length >= 3) {
+            const pts = canvasDrawnPolygon
+                .map(p => Array.isArray(p) ? [Number(p[0]), Number(p[1])] : [Number(p?.lat), Number(p?.lng)])
+                .filter(p => Number.isFinite(p[0]) && Number.isFinite(p[1]) && (p[0] !== 0 || p[1] !== 0));
+            if (pts.length >= 3) return { type: 'bounds', bounds: L.latLngBounds(pts) };
         }
-        if (availableProperties.length > 0 && mapRef.current) {
-            hasCenteredRef.current = true;
-            const bounds = L.latLngBounds(
-                availableProperties
-                    .filter(isRenderableMapPoint)
-                    .slice(0, 1000)
-                    .map(p => [Number(p.lat), Number(p.lng)])
-            );
-            if (bounds.isValid()) {
-                try { if (mapRef.current._mapPane) mapRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 16, animate: false }); } catch (e) { }
+
+        if (canvasZonePreview?.zones?.length > 0) {
+            const pts = [];
+            for (const zone of canvasZonePreview.zones) {
+                if (zone.drop_point && Number.isFinite(zone.drop_point.lat) && Number.isFinite(zone.drop_point.lng)) {
+                    pts.push([Number(zone.drop_point.lat), Number(zone.drop_point.lng)]);
+                }
+                if (zone.center && Number.isFinite(zone.center.lat) && Number.isFinite(zone.center.lng)) {
+                    pts.push([Number(zone.center.lat), Number(zone.center.lng)]);
+                }
             }
+            if (pts.length > 0) return { type: 'bounds', bounds: L.latLngBounds(pts) };
         }
-    }, [availableProperties, savedRouteOverviewPoints.length]);
 
-    // Determine Map Center
-    const [mapCenter, setMapCenter] = useState([34.0522, -118.2437]); // Default LA
+        // 2. Drawn polygon in precision mode
+        if (Array.isArray(drawnPolygon) && drawnPolygon.length >= 3) {
+            const pts = drawnPolygon
+                .map(p => Array.isArray(p) ? [Number(p[0]), Number(p[1])] : [Number(p?.lat), Number(p?.lng)])
+                .filter(p => Number.isFinite(p[0]) && Number.isFinite(p[1]) && (p[0] !== 0 || p[1] !== 0));
+            if (pts.length >= 3) return { type: 'bounds', bounds: L.latLngBounds(pts) };
+        }
 
-    // On first load, get user's GPS location as the initial map center
+        // 3. Saved routes / territories
+        if (Array.isArray(savedRouteOverviewPoints) && savedRouteOverviewPoints.length > 0) {
+            const pts = savedRouteOverviewPoints.filter(p => Number.isFinite(p[0]) && Number.isFinite(p[1]) && (p[0] !== 0 || p[1] !== 0));
+            if (pts.length > 0) return { type: 'bounds', bounds: L.latLngBounds(pts) };
+        }
+
+        // 4. Precision fetch jobs
+        if (Array.isArray(precisionFetchJobs) && precisionFetchJobs.length > 0) {
+            const pts = [];
+            for (const job of precisionFetchJobs) {
+                if (Array.isArray(job.polygon) && job.polygon.length >= 3) {
+                    job.polygon.forEach(pt => {
+                        const lat = Number(pt?.lat ?? pt?.[0]);
+                        const lng = Number(pt?.lng ?? pt?.[1]);
+                        if (Number.isFinite(lat) && Number.isFinite(lng) && (lat !== 0 || lng !== 0)) pts.push([lat, lng]);
+                    });
+                }
+            }
+            if (pts.length > 0) return { type: 'bounds', bounds: L.latLngBounds(pts.slice(0, 1000)) };
+        }
+
+        // 5. Loaded properties
+        if (Array.isArray(availableProperties) && availableProperties.length > 0) {
+            const pts = availableProperties
+                .filter(isRenderableMapPoint)
+                .map(p => [Number(p.lat), Number(p.lng)])
+                .filter(p => Number.isFinite(p[0]) && Number.isFinite(p[1]) && (p[0] !== 0 || p[1] !== 0));
+            if (pts.length > 0) return { type: 'bounds', bounds: L.latLngBounds(pts.slice(0, 1000)) };
+        }
+
+        // 6. Account's stored map position from localStorage
+        const storageKey = (user?.id || user?.email) ? `fk_last_map_position_${user.id || user.email}` : null;
+        if (storageKey && typeof localStorage !== 'undefined') {
+            try {
+                const stored = JSON.parse(localStorage.getItem(storageKey));
+                if (stored && Number.isFinite(stored.lat) && Number.isFinite(stored.lng) && (stored.lat !== 0 || stored.lng !== 0)) {
+                    return { type: 'center', center: [stored.lat, stored.lng], zoom: stored.zoom || 15 };
+                }
+            } catch (e) {}
+        }
+
+        return null;
+    }, [canvasDrawnPolygon, canvasZonePreview, drawnPolygon, savedRouteOverviewPoints, precisionFetchJobs, availableProperties, user?.id, user?.email]);
+
+    // Initial Account Working Area Map Load Effect
+    const hasCenteredAccountWorkingAreaRef = useRef(false);
+    useEffect(() => {
+        if (hasCenteredAccountWorkingAreaRef.current || !mapRef.current) return;
+
+        const workingArea = computeAccountWorkingArea();
+        if (!workingArea) return;
+
+        hasCenteredAccountWorkingAreaRef.current = true;
+
+        if (workingArea.type === 'bounds' && workingArea.bounds.isValid()) {
+            try {
+                if (mapRef.current._mapPane) {
+                    mapRef.current.fitBounds(workingArea.bounds, { padding: [50, 50], maxZoom: 16, animate: false });
+                }
+            } catch (e) {}
+        } else if (workingArea.type === 'center') {
+            try {
+                if (mapRef.current._mapPane) {
+                    mapRef.current.setView(workingArea.center, workingArea.zoom, { animate: false });
+                }
+            } catch (e) {}
+        }
+    }, [computeAccountWorkingArea]);
+
+    // Determine Initial Map Center
+    const [mapCenter, setMapCenter] = useState(() => {
+        const storageKey = (user?.id || user?.email) ? `fk_last_map_position_${user?.id || user?.email}` : null;
+        if (storageKey && typeof localStorage !== 'undefined') {
+            try {
+                const stored = JSON.parse(localStorage.getItem(storageKey));
+                if (stored && Number.isFinite(stored.lat) && Number.isFinite(stored.lng) && (stored.lat !== 0 || stored.lng !== 0)) {
+                    return [stored.lat, stored.lng];
+                }
+            } catch (e) {}
+        }
+        return [34.0522, -118.2437];
+    });
+
+    // On first load, get user's GPS location if no explicit account working area is stored
     useEffect(() => {
         if (!navigator.geolocation) return;
         navigator.geolocation.getCurrentPosition(
             (pos) => {
                 const loc = [pos.coords.latitude, pos.coords.longitude];
                 setGpsInitialLocation(loc);
-                setMapCenter(loc);
                 setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+                if (!hasCenteredAccountWorkingAreaRef.current) {
+                    setMapCenter(loc);
+                }
             },
             () => { /* GPS denied/unavailable, keep default */ },
             { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
         );
     }, []);
 
-    useEffect(() => {
-        const updateCenter = async () => {
-            if (filteredActiveRoute?.properties?.length > 0) {
-                // Active route takes priority
-                return;
+    const handleMapMoveEnd = useCallback((bounds) => {
+        onMapMoveEnd(bounds);
+        if (!mapRef.current) return;
+        try {
+            const c = mapRef.current.getCenter();
+            const z = mapRef.current.getZoom();
+            if (c && Number.isFinite(c.lat) && Number.isFinite(c.lng) && (c.lat !== 0 || c.lng !== 0)) {
+                const storageKey = (user?.id || user?.email) ? `fk_last_map_position_${user.id || user.email}` : null;
+                if (storageKey && typeof localStorage !== 'undefined') {
+                    localStorage.setItem(storageKey, JSON.stringify({ lat: c.lat, lng: c.lng, zoom: z }));
+                }
             }
-
-            if (availableProperties[0] && availableProperties[0].lat) {
-                setMapCenter([availableProperties[0].lat, availableProperties[0].lng]);
-            }
-        };
-        updateCenter();
-    }, [filteredActiveRoute, availableProperties, user?.working_area]);
+        } catch (e) {}
+    }, [onMapMoveEnd, user?.id, user?.email]);
 
     const center = availableProperties[0] && availableProperties[0].lat
         ? [availableProperties[0].lat, availableProperties[0].lng]
@@ -2614,7 +2706,7 @@ export default function Home() {
                 <MapController
                     fitBounds={fitBounds}
                     onZoomChange={setZoomLevel}
-                    onMoveEnd={onMapMoveEnd}
+                    onMoveEnd={handleMapMoveEnd}
                 />
 
                 <MapDrawTool

@@ -52,7 +52,7 @@ export default function AdminTeam() {
     const [newRep, setNewRep] = useState({ name: '', email: '', phone: '', role: 'rep' });
     const [newCode, setNewCode] = useState({ code: '', role: 'manager', label: '' });
     const [selectedRep, setSelectedRep] = useState(null); 
-    const [activeTab, setActiveTab] = useState("roster");
+    const [activeTab, setActiveTab] = useState("analytics");
     const [createdCode, setCreatedCode] = useState(null); // For popup
     const [activeTeamCode, setActiveTeamCode] = useState('all'); // 'all' or specific code
     const [editingZips, setEditingZips] = useState(null); // { memberId, zips: string }
