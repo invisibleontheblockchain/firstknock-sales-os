@@ -9,6 +9,7 @@ const OUTCOME_LEASE_WAIT_MS = 5_000;
 const DUPLICATE_TAP_WINDOW_MS = 10_000;
 const OUTCOMES = new Set([
     'SOLD',
+    'QUALIFIED',
     'HARD_NO',
     'CALLBACK',
     'NO_ANSWER',

@@ -1,6 +1,8 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import { neon } from 'npm:@neondatabase/serverless@0.9.0';
 
+const LEGACY_CANONICAL_RECOVERY_CUTOFF = Date.parse('2026-07-24T01:52:18.000Z');
+
 class HttpError extends Error {
     constructor(status, code, message) {
         super(message);
@@ -15,6 +17,27 @@ function asArray(value) {
 
 function normalized(value) {
     return String(value || '').trim().toLowerCase();
+}
+
+function hasExactHashManifest(route, requestedHashes) {
+    const routeHashes = Array.isArray(route?.property_hashes)
+        ? route.property_hashes.map(String)
+        : [];
+    if (routeHashes.length !== requestedHashes.length) return false;
+
+    const requestedCounts = new Map();
+    requestedHashes.forEach(hash => requestedCounts.set(hash, (requestedCounts.get(hash) || 0) + 1));
+    for (const hash of routeHashes) {
+        const remaining = requestedCounts.get(hash) || 0;
+        if (remaining === 0) return false;
+        requestedCounts.set(hash, remaining - 1);
+    }
+    return true;
+}
+
+function isLegacyCanonicalRecoveryRoute(route) {
+    const createdAt = Date.parse(String(route?.created_date || ''));
+    return Number.isFinite(createdAt) && createdAt <= LEGACY_CANONICAL_RECOVERY_CUTOFF;
 }
 
 Deno.serve(async (req) => {
@@ -55,6 +78,36 @@ Deno.serve(async (req) => {
             targetEmail = String(authorizedRoute.created_by || '').trim();
             if (!targetEmail) {
                 throw new HttpError(409, 'route_owner_missing', 'This legacy route has no verifiable workspace owner.');
+            }
+        } else if (body.user_email) {
+            // Compatibility for web/native clients released before route_id was
+            // added to this request. RLS still limits the search to routes that
+            // this caller may see, and the entire ordered manifest must match;
+            // a partial or arbitrary hash request is never promoted to a route.
+            const requestedOwner = String(body.user_email).trim();
+            let visibleOwnerRoutes;
+            try {
+                visibleOwnerRoutes = asArray(await base44.entities.SavedRoute.filter({
+                    created_by: requestedOwner,
+                    property_hashes: { $all: [...new Set(hashes)] }
+                }, '-updated_date', 100));
+            } catch {
+                // Older entity runtimes may not support $all on array fields.
+                // Keep a bounded RLS-scoped fallback for already-installed apps.
+                visibleOwnerRoutes = asArray(await base44.entities.SavedRoute.filter(
+                    { created_by: requestedOwner },
+                    '-updated_date',
+                    5000
+                ));
+            }
+            authorizedRoute = visibleOwnerRoutes.find(route => hasExactHashManifest(route, hashes)) || null;
+            if (authorizedRoute) {
+                targetEmail = String(authorizedRoute.created_by || '').trim();
+                if (!targetEmail) {
+                    throw new HttpError(409, 'route_owner_missing', 'This legacy route has no verifiable workspace owner.');
+                }
+            } else if (normalized(user.role) === 'admin') {
+                targetEmail = requestedOwner;
             }
         } else if (normalized(user.role) === 'admin' && body.user_email) {
             targetEmail = String(body.user_email).trim();
@@ -122,13 +175,38 @@ Deno.serve(async (req) => {
             if (property.legacy_hash) byHash.set(property.legacy_hash, property);
         });
 
-        // Historical routes can outlive their workspace_properties link. Once
-        // SavedRoute RLS has proved that this caller can see the route and the
-        // hash-membership check above has proved every requested hash belongs
-        // to it, hydrating those exact hashes from the canonical property table
-        // is tenant-safe. Never run this fallback for an arbitrary hash lookup.
         const missingWorkspaceHashes = hashes.filter(hash => !byHash.has(hash));
-        if (authorizedRoute && missingWorkspaceHashes.length > 0) {
+        const allowedOwnersByHash = new Map();
+        if (authorizedRoute) {
+            const ownerEmail = normalized(targetEmail);
+            missingWorkspaceHashes.forEach(hash => allowedOwnersByHash.set(hash, new Set([ownerEmail])));
+        } else if (missingWorkspaceHashes.length > 0) {
+            // Callback/appointment lookups do not carry a route. A caller-visible
+            // interaction is the durable tenant-scoped proof for those hashes.
+            const visibleLogs = asArray(await base44.entities.InteractionLog.filter({
+                address_hash: missingWorkspaceHashes
+            }, '-created_date', Math.min(5000, Math.max(missingWorkspaceHashes.length * 5, 100))));
+            for (const log of visibleLogs) {
+                const hash = String(log?.address_hash || '');
+                const ownerEmail = normalized(log?.created_by);
+                if (!missingWorkspaceHashes.includes(hash) || !ownerEmail) continue;
+                if (!allowedOwnersByHash.has(hash)) allowedOwnersByHash.set(hash, new Set());
+                allowedOwnersByHash.get(hash).add(ownerEmail);
+            }
+        }
+
+        // Historical routes can outlive their workspace_properties link. Only
+        // hashes on a caller-visible route created before the hardened link
+        // contract, or hashes proven by caller-visible interaction history, may
+        // use the canonical recovery copy. New client-created route manifests
+        // cannot authorize global property reads.
+        const routeMayRecoverCanonical = authorizedRoute && isLegacyCanonicalRecoveryRoute(authorizedRoute);
+        const canonicalAuthorizedHashes = missingWorkspaceHashes.filter(hash =>
+            routeMayRecoverCanonical
+                ? allowedOwnersByHash.has(hash)
+                : !authorizedRoute && allowedOwnersByHash.has(hash)
+        );
+        if (canonicalAuthorizedHashes.length > 0) {
             const routeRows = await sql`
                 SELECT
                     p.id,
@@ -166,8 +244,8 @@ Deno.serve(async (req) => {
                 FROM properties p
                 WHERE p.lat IS NOT NULL
                   AND p.lng IS NOT NULL
-                  AND (p.address_hash = ANY(${missingWorkspaceHashes}) OR p.legacy_hash = ANY(${missingWorkspaceHashes}))
-                LIMIT ${Math.min(limit, missingWorkspaceHashes.length)}
+                  AND (p.address_hash = ANY(${canonicalAuthorizedHashes}) OR p.legacy_hash = ANY(${canonicalAuthorizedHashes}))
+                LIMIT ${Math.min(limit, canonicalAuthorizedHashes.length)}
             `;
 
             for (const row of routeRows) {
@@ -181,6 +259,32 @@ Deno.serve(async (req) => {
                 if (property.address_hash) byHash.set(property.address_hash, property);
                 if (property.legacy_hash) byHash.set(property.legacy_hash, property);
             }
+
+            // Read-repair the missing tenant links after successful legacy
+            // recovery. This is additive and preserves any existing status.
+            if (routeMayRecoverCanonical && routeRows.length > 0) {
+                await sql`
+                    INSERT INTO workspace_properties (
+                        property_id,
+                        user_email,
+                        route_active,
+                        status,
+                        assigned_route_id,
+                        updated_at
+                    )
+                    SELECT
+                        p.id,
+                        ${targetEmail},
+                        TRUE,
+                        COALESCE(p.original_status, 'ELIGIBLE'),
+                        ${String(authorizedRoute.id)},
+                        NOW()
+                    FROM properties p
+                    WHERE p.address_hash = ANY(${canonicalAuthorizedHashes})
+                       OR p.legacy_hash = ANY(${canonicalAuthorizedHashes})
+                    ON CONFLICT (property_id, user_email) DO NOTHING
+                `.catch(error => console.warn('Legacy route link read-repair skipped:', error.message));
+            }
         }
 
         // CSV-imported properties may exist only in Base44. Their fallback is
@@ -188,23 +292,6 @@ Deno.serve(async (req) => {
         // the requested hash and the original creator/workspace owner.
         const missingHashes = hashes.filter(hash => !byHash.has(hash));
         if (missingHashes.length > 0) {
-            const allowedOwnersByHash = new Map();
-            if (authorizedRoute) {
-                const ownerEmail = normalized(targetEmail);
-                missingHashes.forEach(hash => allowedOwnersByHash.set(hash, new Set([ownerEmail])));
-            } else {
-                const visibleLogs = asArray(await base44.entities.InteractionLog.filter({
-                    address_hash: missingHashes
-                }, '-created_date', Math.min(5000, Math.max(missingHashes.length * 5, 100))));
-                for (const log of visibleLogs) {
-                    const hash = String(log?.address_hash || '');
-                    const ownerEmail = normalized(log?.created_by);
-                    if (!missingHashes.includes(hash) || !ownerEmail) continue;
-                    if (!allowedOwnersByHash.has(hash)) allowedOwnersByHash.set(hash, new Set());
-                    allowedOwnersByHash.get(hash).add(ownerEmail);
-                }
-            }
-
             const authorizedHashes = missingHashes.filter(hash => allowedOwnersByHash.has(hash));
             const BATCH = 100;
             for (let i = 0; i < authorizedHashes.length; i += BATCH) {

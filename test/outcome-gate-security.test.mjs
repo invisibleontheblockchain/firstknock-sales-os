@@ -375,6 +375,19 @@ test('same-key retries are idempotent and changed payloads are rejected', async 
   assert.equal(state.usersById.get('user_1').outcomes_logged, 1);
 });
 
+test('qualified voice and CSV outcomes remain valid through the protected service', async () => {
+  const { base44, state } = makeBase44();
+  const { response, result } = await invoke(loadHandler({ base44, stripeApi: {} }), requestBody({
+    idempotency_key: 'knock:qualified-action-0001',
+    interaction: { parsed_status: 'QUALIFIED', raw_input_text: 'Interested' }
+  }));
+
+  assert.equal(response.status, 200);
+  assert.equal(result.outcomes_logged, 1);
+  assert.equal(state.logs.length, 1);
+  assert.equal(state.logs[0].parsed_status, 'QUALIFIED');
+});
+
 test('team reps inherit only an exactly verified manager billing account', async () => {
   const actor = {
     id: 'rep_1',
@@ -773,6 +786,7 @@ test('outcome and identity fields are service-owned and legacy bypass endpoints 
 
   assert.equal(interaction.rls.create.user_condition.id, '__service_role_only__');
   assert.equal(interaction.rls.update.user_condition.id, '__service_role_only__');
+  assert.ok(interaction.properties.parsed_status.enum.includes('QUALIFIED'));
   for (const field of [
     'app_role',
     'is_owner',
@@ -789,7 +803,7 @@ test('outcome and identity fields are service-owned and legacy bypass endpoints 
   assert.match(elevated, /status:\s*410/);
   assert.doesNotMatch(elevated, /asServiceRole/);
   assert.match(offline, /status:\s*410/);
-  assert.match(lookup, /if \(authorizedRoute && missingWorkspaceHashes\.length > 0\)[\s\S]*FROM properties p/);
+  assert.match(lookup, /const canonicalAuthorizedHashes = missingWorkspaceHashes\.filter[\s\S]*FROM properties p/);
 });
 
 test('assigned-route hydration uses the authorized route owner and guards canonical fallback by route membership', () => {
@@ -810,7 +824,7 @@ test('assigned-route hydration uses the authorized route owner and guards canoni
   assert.match(lookup, /WHERE wp\.user_email = \$\{targetEmail\}/);
   assert.match(
     lookup,
-    /if \(authorizedRoute && missingWorkspaceHashes\.length > 0\)[\s\S]*FROM properties p/
+    /const canonicalAuthorizedHashes = missingWorkspaceHashes\.filter[\s\S]*FROM properties p/
   );
   assert.doesNotMatch(
     lookup,

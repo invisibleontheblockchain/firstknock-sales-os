@@ -50,6 +50,7 @@
       "type": "string",
       "enum": [
         "SOLD",
+        "QUALIFIED",
         "HARD_NO",
         "CALLBACK",
         "NO_ANSWER",

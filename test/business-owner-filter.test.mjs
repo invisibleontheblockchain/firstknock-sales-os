@@ -76,7 +76,7 @@ test('wires provider flags through persistence, route generation, and generated-
     assert.match(ingestion, /INSERT INTO properties[\s\S]*corporate_owned/);
     assert.match(candidates, /p\.corporate_owned/);
     assert.ok((hydration.match(/to_jsonb\(p\) ->> 'corporate_owned'/g) || []).length >= 2);
-    assert.match(hydration, /if \(authorizedRoute && missingWorkspaceHashes\.length > 0\)[\s\S]*FROM properties p/);
+    assert.match(hydration, /const canonicalAuthorizedHashes = missingWorkspaceHashes\.filter[\s\S]*FROM properties p/);
     assert.match(routePipeline, /routeConfig\.excludeBusinessOwned/);
     assert.match(routePipeline, /!isBusinessOwnedProperty\(p\)/);
     assert.match(builder, /Exclude LLC \/ Business-Owned/);
