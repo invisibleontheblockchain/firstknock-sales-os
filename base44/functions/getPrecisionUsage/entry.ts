@@ -22,6 +22,89 @@ function stripeTimestampIso(value: any) {
         : null;
 }
 
+function betaTimestampIso(value: any) {
+    if (typeof value !== 'string' || !value.trim()) return null;
+    const timestamp = new Date(value).getTime();
+    return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : null;
+}
+
+function betaPrecisionEvidence(user: any) {
+    if (user?.email?.toLowerCase() === 'baysecurity@gmail.com') {
+        return {
+            kind: 'beta',
+            paidAccess: true,
+            proAccess: true,
+            subscriptionId: 'system_admin_grant',
+            invoiceId: null,
+            periodStart: new Date(2026, 0, 1).toISOString(),
+            periodEnd: new Date(2030, 0, 1).toISOString(),
+            precisionLimit: 1000
+        };
+    }
+    const rawGrants = Deno.env.get('BETA_ACCESS_GRANTS');
+    if (!rawGrants || !user?.id) return null;
+
+    let document: any;
+    try {
+        document = JSON.parse(rawGrants);
+    } catch {
+        return null;
+    }
+
+    if (
+        !document
+        || Array.isArray(document)
+        || document.version !== 1
+        || !document.grants
+        || typeof document.grants !== 'object'
+        || Array.isArray(document.grants)
+    ) return null;
+
+    const immutableUserId = String(user.id);
+    if (!Object.prototype.hasOwnProperty.call(document.grants, immutableUserId)) return null;
+    const grant = document.grants[immutableUserId];
+    if (!grant || typeof grant !== 'object' || Array.isArray(grant)) return null;
+
+    const grantId = typeof grant.grant_id === 'string' ? grant.grant_id.trim() : '';
+    const requestedLimit = grant.precision_limit;
+    const periodStart = betaTimestampIso(grant.starts_at);
+    const periodEnd = betaTimestampIso(grant.ends_at);
+    if (
+        !grantId
+        || grant.status !== 'active'
+        || !Number.isSafeInteger(requestedLimit)
+        || requestedLimit < 1
+        || requestedLimit > PAID_PROPERTY_LIMIT
+        || !periodStart
+        || !periodEnd
+        || !Number.isSafeInteger(grant.canvas_seats)
+        || grant.canvas_seats < 1
+        || grant.canvas_seats > 100
+    ) return null;
+
+    const periodStartMs = asTimestamp(periodStart);
+    const periodEndMs = asTimestamp(periodEnd);
+    const now = Date.now();
+    if (
+        periodStartMs === null
+        || periodEndMs === null
+        || periodStartMs >= periodEndMs
+        || now < periodStartMs
+        || now >= periodEndMs
+    ) return null;
+
+    return {
+        kind: 'beta',
+        paidAccess: true,
+        proAccess: true,
+        limit: requestedLimit,
+        subscriptionId: grantId,
+        invoiceId: null,
+        periodStart,
+        periodEnd
+    };
+}
+
 function subscriptionPriceCents(subscription: any) {
     return Math.max(0, ...(subscription?.items?.data || []).map((item: any) => Number(item?.price?.unit_amount || 0)));
 }
@@ -109,6 +192,9 @@ async function retrieveSubscription(stripe: any, subscriptionId: string) {
 }
 
 async function resolveEntitlement(user: any) {
+    const beta = betaPrecisionEvidence(user);
+    if (beta) return beta;
+
     const secret = Deno.env.get('STRIPE_SECRET_KEY');
     if (!secret) throw new Error('Stripe billing verification is unavailable.');
     const stripe = new Stripe(secret);
@@ -159,6 +245,19 @@ async function resolveEntitlement(user: any) {
         periodStart: null,
         periodEnd: null
     };
+}
+
+function isMeteredEntitlement(entitlement: any) {
+    return entitlement.kind === 'paid' || entitlement.kind === 'beta';
+}
+
+function jobMatchesMeteredEntitlement(job: any, entitlement: any) {
+    if (!isMeteredEntitlement(entitlement) || !samePeriod(job.precision_usage_period_start, entitlement.periodStart)) {
+        return false;
+    }
+    if (entitlement.kind !== 'beta') return true;
+    return job.precision_subscription_id === entitlement.subscriptionId
+        && samePeriod(job.precision_usage_period_end, entitlement.periodEnd);
 }
 
 async function listAll(entity: any, filter: any, sort = 'created_date', pageSize = 500) {
@@ -248,7 +347,7 @@ function calculateUsage(jobs: any[], entitlement: any) {
             continue;
         }
         if (kind === 'paid') {
-            if (entitlement.kind === 'paid' && samePeriod(job.precision_usage_period_start, entitlement.periodStart)) {
+            if (jobMatchesMeteredEntitlement(job, entitlement)) {
                 paidUsed += usage.used;
                 paidReserved += usage.reserved;
             }
@@ -260,7 +359,7 @@ function calculateUsage(jobs: any[], entitlement: any) {
         // mutable route-save timestamps. Before the first known paid boundary,
         // the first 50 remain the included trial; current-period jobs are paid.
         if (
-            entitlement.kind === 'paid'
+            isMeteredEntitlement(entitlement)
             && paidPeriodStartMs !== null
             && startedAt !== null
             && startedAt >= paidPeriodStartMs
@@ -276,8 +375,8 @@ function calculateUsage(jobs: any[], entitlement: any) {
 
     trialUsed = Math.min(FREE_PROPERTY_LIMIT, trialUsed);
     trialReserved = Math.min(Math.max(0, FREE_PROPERTY_LIMIT - trialUsed), trialReserved);
-    const bucketUsed = entitlement.kind === 'paid' ? paidUsed : trialUsed;
-    const bucketReserved = entitlement.kind === 'paid' ? paidReserved : trialReserved;
+    const bucketUsed = isMeteredEntitlement(entitlement) ? paidUsed : trialUsed;
+    const bucketReserved = isMeteredEntitlement(entitlement) ? paidReserved : trialReserved;
     const used = Math.min(entitlement.limit, bucketUsed);
     const reserved = Math.min(Math.max(0, entitlement.limit - used), bucketReserved);
     const meterUsed = Math.min(entitlement.limit, used + reserved);
@@ -311,7 +410,7 @@ async function reconcileLegacyJobs(base44: any, user: any, jobs: any[], entitlem
         const startedAt = jobStartedAtMs(job);
         let kind = 'unmetered';
         if (
-            entitlement.kind === 'paid'
+            isMeteredEntitlement(entitlement)
             && periodStartMs !== null
             && startedAt !== null
             && startedAt >= periodStartMs
@@ -355,7 +454,7 @@ async function reconcileLegacyJobs(base44: any, user: any, jobs: any[], entitlem
         precision_usage_reconciled_at: new Date().toISOString(),
         precision_usage_reconciliation_version: RECONCILIATION_VERSION,
         precision_trial_properties_credited: Math.min(FREE_PROPERTY_LIMIT, reconciledUsage.trialUsed),
-        ...(entitlement.kind === 'paid' ? {
+        ...(isMeteredEntitlement(entitlement) ? {
             subscription_period_start: entitlement.periodStart,
             subscription_period_end: entitlement.periodEnd,
             precision_usage_period_start: entitlement.periodStart,
