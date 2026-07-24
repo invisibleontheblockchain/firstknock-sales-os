@@ -2374,47 +2374,41 @@ export default function Home() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeRouteId]);
 
-    // Account Active Working Area Resolver
+    // Account Active Working Area Resolver (Corrected 6-Tier Priority Hierarchy)
     const computeAccountWorkingArea = useCallback(() => {
-        // 1. Active campaign or deployed polygon
-        if (Array.isArray(canvasDrawnPolygon) && canvasDrawnPolygon.length >= 3) {
-            const pts = canvasDrawnPolygon
+        // Priority 1: Precision drawn boundary (fk_drawnPolygon localStorage or active drawnPolygon state)
+        let polygonToUse = drawnPolygon;
+        if (!Array.isArray(polygonToUse) || polygonToUse.length < 3) {
+            try {
+                const storedDrawn = typeof localStorage !== 'undefined' ? localStorage.getItem('fk_drawnPolygon') : null;
+                if (storedDrawn) {
+                    const parsed = JSON.parse(storedDrawn);
+                    if (Array.isArray(parsed) && parsed.length >= 3) polygonToUse = parsed;
+                }
+            } catch (e) {}
+        }
+        if (Array.isArray(polygonToUse) && polygonToUse.length >= 3) {
+            const pts = polygonToUse
                 .map(p => Array.isArray(p) ? [Number(p[0]), Number(p[1])] : [Number(p?.lat), Number(p?.lng)])
                 .filter(p => Number.isFinite(p[0]) && Number.isFinite(p[1]) && (p[0] !== 0 || p[1] !== 0));
             if (pts.length >= 3) return { type: 'bounds', bounds: L.latLngBounds(pts) };
         }
 
-        if (canvasZonePreview?.zones?.length > 0) {
-            const pts = [];
-            for (const zone of canvasZonePreview.zones) {
-                if (zone.drop_point && Number.isFinite(zone.drop_point.lat) && Number.isFinite(zone.drop_point.lng) && (zone.drop_point.lat !== 0 || zone.drop_point.lng !== 0)) {
-                    pts.push([Number(zone.drop_point.lat), Number(zone.drop_point.lng)]);
+        // Priority 2: localStorage last map position (fk_last_map_position_${userId})
+        const storageKey = (user?.id || user?.email) ? `fk_last_map_position_${user.id || user.email}` : 'fk_last_map_position';
+        if (typeof localStorage !== 'undefined') {
+            try {
+                const rawStored = localStorage.getItem(storageKey) || localStorage.getItem('fk_last_map_position');
+                if (rawStored) {
+                    const stored = JSON.parse(rawStored);
+                    if (stored && Number.isFinite(stored.lat) && Number.isFinite(stored.lng) && (stored.lat !== 0 || stored.lng !== 0)) {
+                        return { type: 'center', center: [stored.lat, stored.lng], zoom: stored.zoom || 15 };
+                    }
                 }
-                if (zone.center && Number.isFinite(zone.center.lat) && Number.isFinite(zone.center.lng) && (zone.center.lat !== 0 || zone.center.lng !== 0)) {
-                    pts.push([Number(zone.center.lat), Number(zone.center.lng)]);
-                }
-            }
-            if (pts.length > 0) return { type: 'bounds', bounds: L.latLngBounds(pts) };
+            } catch (e) {}
         }
 
-        // 2. Drawn polygon in precision mode
-        if (Array.isArray(drawnPolygon) && drawnPolygon.length >= 3) {
-            const pts = drawnPolygon
-                .map(p => Array.isArray(p) ? [Number(p[0]), Number(p[1])] : [Number(p?.lat), Number(p?.lng)])
-                .filter(p => Number.isFinite(p[0]) && Number.isFinite(p[1]) && (p[0] !== 0 || p[1] !== 0));
-            if (pts.length >= 3) return { type: 'bounds', bounds: L.latLngBounds(pts) };
-        }
-
-        // 3. Loaded properties (primary operational area)
-        if (Array.isArray(availableProperties) && availableProperties.length > 0) {
-            const pts = availableProperties
-                .filter(isRenderableMapPoint)
-                .map(p => [Number(p.lat), Number(p.lng)])
-                .filter(p => Number.isFinite(p[0]) && Number.isFinite(p[1]) && (p[0] !== 0 || p[1] !== 0));
-            if (pts.length > 0) return { type: 'bounds', bounds: L.latLngBounds(pts.slice(0, 1000)) };
-        }
-
-        // 4. Active or most recent saved route
+        // Priority 3: Active or most recent single saved route (single route context, not all routes)
         if (Array.isArray(savedRoutes) && savedRoutes.length > 0) {
             const activeOrRecent = savedRoutes.find(r => r.status !== 'COMPLETED') || savedRoutes[0];
             if (activeOrRecent?.properties?.length > 0) {
@@ -2426,40 +2420,35 @@ export default function Home() {
             }
         }
 
-        // 5. Precision fetch jobs
+        // Priority 4: Most recent Precision fetch job boundary
         if (Array.isArray(precisionFetchJobs) && precisionFetchJobs.length > 0) {
-            const pts = [];
-            for (const job of precisionFetchJobs) {
-                if (Array.isArray(job.polygon) && job.polygon.length >= 3) {
-                    job.polygon.forEach(pt => {
-                        const lat = Number(pt?.lat ?? pt?.[0]);
-                        const lng = Number(pt?.lng ?? pt?.[1]);
-                        if (Number.isFinite(lat) && Number.isFinite(lng) && (lat !== 0 || lng !== 0)) pts.push([lat, lng]);
-                    });
-                }
+            const mostRecentJob = precisionFetchJobs[0];
+            if (Array.isArray(mostRecentJob?.polygon) && mostRecentJob.polygon.length >= 3) {
+                const pts = mostRecentJob.polygon
+                    .map(pt => [Number(pt?.lat ?? pt?.[0]), Number(pt?.lng ?? pt?.[1])])
+                    .filter(p => Number.isFinite(p[0]) && Number.isFinite(p[1]) && (p[0] !== 0 || p[1] !== 0));
+                if (pts.length >= 3) return { type: 'bounds', bounds: L.latLngBounds(pts) };
             }
-            if (pts.length > 0) return { type: 'bounds', bounds: L.latLngBounds(pts.slice(0, 1000)) };
         }
 
-        // 6. Overall saved routes overview
-        if (Array.isArray(savedRouteOverviewPoints) && savedRouteOverviewPoints.length > 0) {
-            const pts = savedRouteOverviewPoints.filter(p => Number.isFinite(p[0]) && Number.isFinite(p[1]) && (p[0] !== 0 || p[1] !== 0));
-            if (pts.length > 0) return { type: 'bounds', bounds: L.latLngBounds(pts) };
+        // Priority 5: availableProperties filtered to most recently active ZIP code only
+        if (Array.isArray(availableProperties) && availableProperties.length > 0) {
+            const renderableProps = availableProperties.filter(isRenderableMapPoint);
+            if (renderableProps.length > 0) {
+                const mostRecentZip = renderableProps.find(p => p.zip_code)?.zip_code;
+                const zipFilteredProps = mostRecentZip
+                    ? renderableProps.filter(p => p.zip_code === mostRecentZip)
+                    : renderableProps;
+                const pts = zipFilteredProps
+                    .map(p => [Number(p.lat), Number(p.lng)])
+                    .filter(p => Number.isFinite(p[0]) && Number.isFinite(p[1]) && (p[0] !== 0 || p[1] !== 0));
+                if (pts.length > 0) return { type: 'bounds', bounds: L.latLngBounds(pts.slice(0, 1000)) };
+            }
         }
 
-        // 7. Account's stored map position from localStorage
-        const storageKey = (user?.id || user?.email) ? `fk_last_map_position_${user.id || user.email}` : null;
-        if (storageKey && typeof localStorage !== 'undefined') {
-            try {
-                const stored = JSON.parse(localStorage.getItem(storageKey));
-                if (stored && Number.isFinite(stored.lat) && Number.isFinite(stored.lng) && (stored.lat !== 0 || stored.lng !== 0)) {
-                    return { type: 'center', center: [stored.lat, stored.lng], zoom: stored.zoom || 15 };
-                }
-            } catch (e) {}
-        }
-
+        // Priority 6: Default fallback (continental US center)
         return null;
-    }, [canvasDrawnPolygon, canvasZonePreview, drawnPolygon, availableProperties, savedRoutes, precisionFetchJobs, savedRouteOverviewPoints, user?.id, user?.email]);
+    }, [drawnPolygon, user?.id, user?.email, savedRoutes, precisionFetchJobs, availableProperties]);
 
     // Initial Account Working Area Map Load Effect
     const hasCenteredAccountWorkingAreaRef = useRef(false);
