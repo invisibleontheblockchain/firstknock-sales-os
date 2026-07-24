@@ -1503,14 +1503,20 @@ export default function Home() {
     ), [hydratedSavedRoutes]);
     const fittedSavedRouteOverviewRef = useRef(null);
     useEffect(() => {
-        const activeRouteHasMapPoints = activeRoute?.properties?.some(isRenderableMapPoint);
         if (
             mode !== 'analyze'
-            || activeRouteHasMapPoints
             || !savedRouteOverviewPoints.length
             || !mapRef.current
             || fittedSavedRouteOverviewRef.current === savedRouteOverviewKey
         ) return;
+
+        // Mark as fitted so closing a soloed route or changing filters never re-fits all saved routes
+        fittedSavedRouteOverviewRef.current = savedRouteOverviewKey;
+
+        // Only do initial fit if no route is currently soloed
+        const activeRouteHasMapPoints = activeRoute?.properties?.some(isRenderableMapPoint);
+        if (activeRouteHasMapPoints) return;
+
         if (window.__fkSuppressMapFitUntil && Date.now() < window.__fkSuppressMapFitUntil) return;
 
         const bounds = L.latLngBounds(savedRouteOverviewPoints);
@@ -1518,11 +1524,10 @@ export default function Home() {
         try {
             if (!mapRef.current._mapPane) return;
             mapRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 16, animate: false });
-            fittedSavedRouteOverviewRef.current = savedRouteOverviewKey;
         } catch (error) {
             console.warn('[Home] Could not fit the saved-route overview', error);
         }
-    }, [activeRoute, mode, savedRouteOverviewKey, savedRouteOverviewPoints]);
+    }, [mode, savedRouteOverviewKey, savedRouteOverviewPoints]);
 
     // Extract unique reps from saved routes for filter
     const uniqueReps = useMemo(() => {
@@ -2397,8 +2402,13 @@ export default function Home() {
     // Initial Fit Effect
     const hasCenteredRef = useRef(false);
     useEffect(() => {
-        if (mode === 'analyze' && savedRouteOverviewPoints.length > 0) return;
-        if (availableProperties.length > 0 && !hasCenteredRef.current && mapRef.current) {
+        if (hasCenteredRef.current) return;
+        if (savedRouteOverviewPoints.length > 0) {
+            hasCenteredRef.current = true;
+            return;
+        }
+        if (availableProperties.length > 0 && mapRef.current) {
+            hasCenteredRef.current = true;
             const bounds = L.latLngBounds(
                 availableProperties
                     .filter(isRenderableMapPoint)
@@ -2407,10 +2417,9 @@ export default function Home() {
             );
             if (bounds.isValid()) {
                 try { if (mapRef.current._mapPane) mapRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 16, animate: false }); } catch (e) { }
-                hasCenteredRef.current = true;
             }
         }
-    }, [availableProperties, mode, savedRouteOverviewPoints.length]);
+    }, [availableProperties, savedRouteOverviewPoints.length]);
 
     // Determine Map Center
     const [mapCenter, setMapCenter] = useState([34.0522, -118.2437]); // Default LA
