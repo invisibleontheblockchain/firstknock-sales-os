@@ -9,6 +9,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getKnockWindowLabel } from '@/components/logic/knockTimeOptimizer';
 import { determineEffectiveStatus } from '@/components/logic/territoryLogic';
+import {
+  hasCompleteRouteMapPoints,
+  hydrateRouteWithLookup,
+  orderRouteProperties,
+} from '@/components/logic/routeHydrationCore';
 import { buildFullAddress, getRouteNavigationPlan, openNavigationBatch } from '@/components/logic/navigation';
 import { getNavigationSessionProgress, selectRemainingTodoStops } from '@/components/logic/routeNavigation';
 import {
@@ -449,17 +454,31 @@ export default function RepHome() {
       try {
         console.log(`[RepHome] Fetching ${hashes.length} route properties from route lookup`);
 
-        const response = await base44.functions.invoke('getRoutePropertiesByHashes', {
-          address_hashes: hashes,
-          route_id: activeRoute.id,
-          user_email: activeRoute.created_by,
-          limit: hashes.length
+        const hydratedRoute = await hydrateRouteWithLookup(activeRoute, async ({ hashes: requestedHashes, routeId }) => {
+          const response = await base44.functions.invoke('getRoutePropertiesByHashes', {
+            address_hashes: requestedHashes,
+            ...(routeId ? { route_id: routeId } : {}),
+            user_email: activeRoute.created_by,
+            limit: requestedHashes.length
+          });
+          return Array.isArray(response.data?.properties) ? response.data.properties : [];
         });
+        let bestRoute = hydratedRoute;
+        let loaded = Array.isArray(hydratedRoute?.properties) ? hydratedRoute.properties : [];
 
-        const loaded = Array.isArray(response.data?.properties) ? response.data.properties : [];
+        // A previously complete offline snapshot is safer than replacing the
+        // route with a transient partial response. It only fills hashes that
+        // are already present on this exact active route.
+        if (!hasCompleteRouteMapPoints(hydratedRoute)) {
+          const cached = await localforage.getItem(`cached_props_${activeRoute.id}`);
+          if (Array.isArray(cached) && cached.length > 0) {
+            bestRoute = orderRouteProperties(hydratedRoute, cached);
+            loaded = Array.isArray(bestRoute?.properties) ? bestRoute.properties : loaded;
+          }
+        }
         console.log(`[RepHome] Found ${loaded.length}/${hashes.length} properties`);
 
-        if (loaded.length > 0) {
+        if (hasCompleteRouteMapPoints(bestRoute)) {
           localforage.setItem(`cached_props_${activeRoute.id}`, loaded);
         }
         return loaded;
