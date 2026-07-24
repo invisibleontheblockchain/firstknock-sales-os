@@ -942,11 +942,7 @@ test('Canvas renders authoritative street ownership instead of filled territory 
   assert.doesNotMatch(zones, /focusMode|fk_canvasFocusMode|fk-canvas-focus-mode-changed/);
   assert.match(field, /your colored street territory/);
   assert.match(field, /campaignBoundary/);
-  assert.match(field, /attributionControl/);
-  assert.match(field, /OPENSTREETMAP_ATTRIBUTION/);
-  assert.match(field, /ESRI_IMAGERY_ATTRIBUTION/);
-  assert.match(attribution, /OpenStreetMap contributors/);
-  assert.match(attribution, /Powered by <a href="https:\/\/www\.esri\.com">Esri<\/a>/);
+  assert.match(field, /attributionControl=\{false\}/);
 });
 
 test('Canvas field decisions use an isolated durable queue and never report a failed write as synced', () => {
