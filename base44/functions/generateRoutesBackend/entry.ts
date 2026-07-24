@@ -20,35 +20,309 @@ function isValidPoint(point) {
     return Number.isFinite(lat) && Number.isFinite(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
 }
 
-function nearestNeighbor(properties, startLocation, endLocation = null) {
-    const remaining = [...properties];
-    const ordered = [];
-    let current = startLocation || remaining[0];
-    let finalStop = null;
+const STREET_SUFFIX_ALIASES = new Map([
+    ['STREET', 'ST'], ['ST', 'ST'],
+    ['AVENUE', 'AVE'], ['AVE', 'AVE'],
+    ['BOULEVARD', 'BLVD'], ['BLVD', 'BLVD'],
+    ['DRIVE', 'DR'], ['DR', 'DR'],
+    ['LANE', 'LN'], ['LN', 'LN'],
+    ['COURT', 'CT'], ['CT', 'CT'],
+    ['PLACE', 'PL'], ['PL', 'PL'],
+    ['ROAD', 'RD'], ['RD', 'RD'],
+    ['CIRCLE', 'CIR'], ['CIR', 'CIR'],
+    ['TRAIL', 'TRL'], ['TRL', 'TRL'],
+    ['PARKWAY', 'PKWY'], ['PKWY', 'PKWY'],
+    ['HIGHWAY', 'HWY'], ['HWY', 'HWY'],
+    ['TERRACE', 'TER'], ['TER', 'TER'],
+    ['PLAZA', 'PLZ'], ['PLZ', 'PLZ'],
+    ['SQUARE', 'SQ'], ['SQ', 'SQ'],
+    ['TURNPIKE', 'TPKE'], ['TPKE', 'TPKE'],
+    ['WAY', 'WAY']
+]);
 
-    // Keep one door close to the fixed endpoint for the final leg. This avoids a
-    // nearest-neighbor route ending on the far side of the territory from home.
-    if (isValidPoint(endLocation) && remaining.length > 1) {
-        let finalIndex = 0;
-        let finalDistance = Infinity;
-        for (let i = 0; i < remaining.length; i++) {
-            const d = distanceMiles(remaining[i], endLocation);
-            if (d < finalDistance) {
-                finalDistance = d;
-                finalIndex = i;
+const EMPTY_AREA_LABELS = new Set([
+    '', 'N A', 'NA', 'NONE', 'NULL', 'UNKNOWN', 'NO SUBDIVISION', 'UNINCORPORATED'
+]);
+
+const FALLBACK_ROUTING_METADATA = Object.freeze({
+    strategy: 'canonical_street_subdivision_continuity',
+    fallback: true,
+    fallback_reason: 'road_network_unavailable_in_large_route_backend',
+    road_network_used: false,
+    street_key: 'canonical_street_with_suffix',
+    access_key: 'subdivision_name_when_available',
+    chunk_boundary_priority: ['subdivision_access', 'street', 'door']
+});
+
+function normalizeKeyPart(value) {
+    if (value === undefined || value === null) return '';
+    return String(value)
+        .normalize('NFKD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toUpperCase()
+        .replace(/[^A-Z0-9]+/g, ' ')
+        .trim()
+        .replace(/\s+/g, ' ');
+}
+
+function firstMeaningfulValue(values) {
+    for (const value of values) {
+        if (value !== undefined && value !== null && String(value).trim()) return value;
+    }
+    return '';
+}
+
+function canonicalStreetName(property) {
+    const rawStreet = firstMeaningfulValue([
+        property?.street_name,
+        property?.streetName,
+        property?.raw_metadata?.street_name,
+        property?.raw_metadata?.streetName,
+        property?.raw_metadata?.STREET_NAME,
+        property?.raw_metadata?.street
+    ]);
+    const tokens = normalizeKeyPart(rawStreet).split(' ').filter(Boolean);
+    if (tokens.length === 0) return '';
+    const finalToken = tokens[tokens.length - 1];
+    if (STREET_SUFFIX_ALIASES.has(finalToken)) {
+        // Canonicalize equivalent spellings, but retain the suffix category.
+        // MAIN ST and MAIN RD must never collapse into the same street block.
+        tokens[tokens.length - 1] = STREET_SUFFIX_ALIASES.get(finalToken);
+    }
+    return tokens.join(' ');
+}
+
+function canonicalSubdivisionName(property) {
+    const value = normalizeKeyPart(firstMeaningfulValue([
+        property?.subdivision_name,
+        property?.subdivisionName,
+        typeof property?.subdivision === 'string' ? property.subdivision : null,
+        property?.subdivision?.name,
+        property?.raw_metadata?.subdivision_name,
+        property?.raw_metadata?.subdivisionName,
+        property?.raw_metadata?.SUBDIVISION_NAME,
+        typeof property?.raw_metadata?.subdivision === 'string'
+            ? property.raw_metadata.subdivision
+            : null,
+        property?.raw_metadata?.subdivision?.name
+    ]));
+    return EMPTY_AREA_LABELS.has(value) ? '' : value;
+}
+
+function canonicalAreaScope(property) {
+    const city = normalizeKeyPart(firstMeaningfulValue([
+        property?.city,
+        property?.raw_metadata?.city,
+        property?.raw_metadata?.CITY
+    ]));
+    const state = normalizeKeyPart(firstMeaningfulValue([
+        property?.state,
+        property?.raw_metadata?.state,
+        property?.raw_metadata?.STATE
+    ]));
+    const zip = normalizeKeyPart(firstMeaningfulValue([
+        property?.zip_code,
+        property?.zip,
+        property?.raw_metadata?.zip,
+        property?.raw_metadata?.ZIP
+    ])).slice(0, 5);
+    return `${city}|${state}|${zip}`;
+}
+
+function stableDoorIdentity(property, inputIndex) {
+    return normalizeKeyPart(firstMeaningfulValue([
+        property?.address_hash,
+        property?.legacy_hash,
+        property?.id,
+        property?.full_address,
+        property?.address
+    ])) || `INPUT ${String(inputIndex).padStart(6, '0')}`;
+}
+
+function numericHouseNumber(property) {
+    const raw = firstMeaningfulValue([
+        property?.house_number,
+        property?.houseNumber,
+        String(property?.full_address || property?.address || '').match(/^\s*(\d+)/)?.[1]
+    ]);
+    const match = String(raw || '').match(/\d+/);
+    return match ? Number(match[0]) : null;
+}
+
+function compareText(left, right) {
+    return left < right ? -1 : left > right ? 1 : 0;
+}
+
+function compareDoors(left, right) {
+    const leftNumber = numericHouseNumber(left.property);
+    const rightNumber = numericHouseNumber(right.property);
+    const leftSide = leftNumber === null ? 2 : Math.abs(leftNumber % 2) === 1 ? 0 : 1;
+    const rightSide = rightNumber === null ? 2 : Math.abs(rightNumber % 2) === 1 ? 0 : 1;
+    if (leftSide !== rightSide) return leftSide - rightSide;
+    if (leftNumber !== null && rightNumber !== null && leftNumber !== rightNumber) {
+        return leftSide === 1 ? rightNumber - leftNumber : leftNumber - rightNumber;
+    }
+    const identityResult = compareText(left.identity, right.identity);
+    if (identityResult !== 0) return identityResult;
+    const latResult = Number(left.lat || 0) - Number(right.lat || 0);
+    if (latResult !== 0) return latResult;
+    const lngResult = Number(left.lng || 0) - Number(right.lng || 0);
+    return lngResult !== 0 ? lngResult : left.inputIndex - right.inputIndex;
+}
+
+function centroidOfDoors(doors) {
+    const validDoors = doors.filter(isValidPoint);
+    if (validDoors.length === 0) return { lat: null, lng: null };
+    return {
+        lat: validDoors.reduce((sum, door) => sum + Number(door.lat), 0) / validDoors.length,
+        lng: validDoors.reduce((sum, door) => sum + Number(door.lng), 0) / validDoors.length
+    };
+}
+
+function buildCanonicalStreetBlocks(properties) {
+    const grouped = new Map();
+    properties.forEach((property, inputIndex) => {
+        const door = {
+            property,
+            inputIndex,
+            identity: stableDoorIdentity(property, inputIndex),
+            lat: property?.lat,
+            lng: property?.lng
+        };
+        const scope = canonicalAreaScope(property);
+        const subdivisionName = canonicalSubdivisionName(property);
+        const streetName = canonicalStreetName(property);
+        const safeStreetName = streetName || `UNKNOWN ${door.identity}`;
+        const accessKey = subdivisionName
+            ? `SUBDIVISION|${scope}|${subdivisionName}`
+            : `STREET|${scope}|${safeStreetName}`;
+        const streetKey = `${accessKey}|STREET|${safeStreetName}`;
+        door.accessKey = accessKey;
+        door.streetKey = streetKey;
+        if (!grouped.has(streetKey)) {
+            grouped.set(streetKey, {
+                key: streetKey,
+                streetKey,
+                accessKey,
+                subdivisionName,
+                streetName: safeStreetName,
+                doors: []
+            });
+        }
+        grouped.get(streetKey).doors.push(door);
+    });
+
+    return [...grouped.values()]
+        .sort((left, right) => compareText(left.key, right.key))
+        .map((block) => {
+            const forward = [...block.doors].sort(compareDoors);
+            const centroid = centroidOfDoors(forward);
+            return {
+                ...block,
+                ...centroid,
+                variants: [forward, [...forward].reverse()]
+            };
+        });
+}
+
+function blockPathCost(blocks, startLocation = null, endLocation = null, includePath = false) {
+    if (blocks.length === 0) {
+        return includePath ? { cost: 0, orientations: [] } : 0;
+    }
+    const costs = blocks.map(() => [Infinity, Infinity]);
+    const previous = blocks.map(() => [-1, -1]);
+
+    for (let orientation = 0; orientation < 2; orientation++) {
+        const firstDoor = blocks[0].variants[orientation][0];
+        costs[0][orientation] = isValidPoint(startLocation)
+            ? distanceMiles(startLocation, firstDoor)
+            : 0;
+    }
+
+    for (let blockIndex = 1; blockIndex < blocks.length; blockIndex++) {
+        for (let orientation = 0; orientation < 2; orientation++) {
+            const firstDoor = blocks[blockIndex].variants[orientation][0];
+            for (let previousOrientation = 0; previousOrientation < 2; previousOrientation++) {
+                const previousDoors = blocks[blockIndex - 1].variants[previousOrientation];
+                const previousLastDoor = previousDoors[previousDoors.length - 1];
+                const candidateCost = costs[blockIndex - 1][previousOrientation]
+                    + distanceMiles(previousLastDoor, firstDoor);
+                if (candidateCost + 0.0000001 < costs[blockIndex][orientation]) {
+                    costs[blockIndex][orientation] = candidateCost;
+                    previous[blockIndex][orientation] = previousOrientation;
+                }
             }
         }
-        [finalStop] = remaining.splice(finalIndex, 1);
     }
+
+    let finalOrientation = 0;
+    let finalCost = Infinity;
+    for (let orientation = 0; orientation < 2; orientation++) {
+        const finalDoors = blocks[blocks.length - 1].variants[orientation];
+        const finalDoor = finalDoors[finalDoors.length - 1];
+        const candidateCost = costs[blocks.length - 1][orientation]
+            + (isValidPoint(endLocation) ? distanceMiles(finalDoor, endLocation) : 0);
+        if (candidateCost + 0.0000001 < finalCost) {
+            finalCost = candidateCost;
+            finalOrientation = orientation;
+        }
+    }
+    if (!includePath) return finalCost;
+
+    const orientations = new Array(blocks.length);
+    orientations[blocks.length - 1] = finalOrientation;
+    for (let blockIndex = blocks.length - 1; blockIndex > 0; blockIndex--) {
+        orientations[blockIndex - 1] = previous[blockIndex][orientations[blockIndex]];
+    }
+    return { cost: finalCost, orientations };
+}
+
+function compareBlockPosition(left, right) {
+    const leftValid = isValidPoint(left);
+    const rightValid = isValidPoint(right);
+    if (leftValid !== rightValid) return leftValid ? -1 : 1;
+    if (leftValid && Number(left.lat) !== Number(right.lat)) return Number(left.lat) - Number(right.lat);
+    if (leftValid && Number(left.lng) !== Number(right.lng)) return Number(left.lng) - Number(right.lng);
+    return compareText(left.key, right.key);
+}
+
+function optimizeBlockOrder(blocks, startLocation = null, endLocation = null) {
+    if (blocks.length <= 1) return [...blocks];
+    if (blocks.length > 500) {
+        const cellSize = 0.01;
+        const spatiallySorted = [...blocks].sort((left, right) => {
+            const leftValid = isValidPoint(left);
+            const rightValid = isValidPoint(right);
+            if (leftValid !== rightValid) return leftValid ? -1 : 1;
+            if (!leftValid) return compareText(left.key, right.key);
+            const leftRow = Math.floor(Number(left.lat) / cellSize);
+            const rightRow = Math.floor(Number(right.lat) / cellSize);
+            if (leftRow !== rightRow) return leftRow - rightRow;
+            if (Number(left.lng) !== Number(right.lng)) {
+                return leftRow % 2 === 0
+                    ? Number(left.lng) - Number(right.lng)
+                    : Number(right.lng) - Number(left.lng);
+            }
+            return compareText(left.key, right.key);
+        });
+        const reversed = [...spatiallySorted].reverse();
+        return blockPathCost(reversed, startLocation, endLocation) + 0.000001
+            < blockPathCost(spatiallySorted, startLocation, endLocation)
+            ? reversed
+            : spatiallySorted;
+    }
+    const remaining = [...blocks].sort(compareBlockPosition);
+    const ordered = [];
+    let current = isValidPoint(startLocation) ? startLocation : remaining[0];
 
     while (remaining.length > 0) {
         let bestIndex = 0;
         let bestDistance = Infinity;
-        for (let i = 0; i < remaining.length; i++) {
-            const d = distanceMiles(current, remaining[i]);
-            if (d < bestDistance) {
-                bestDistance = d;
-                bestIndex = i;
+        for (let index = 0; index < remaining.length; index++) {
+            const candidateDistance = distanceMiles(current, remaining[index]);
+            if (candidateDistance + 0.0000001 < bestDistance) {
+                bestDistance = candidateDistance;
+                bestIndex = index;
             }
         }
         const [next] = remaining.splice(bestIndex, 1);
@@ -56,38 +330,162 @@ function nearestNeighbor(properties, startLocation, endLocation = null) {
         current = next;
     }
 
-    if (finalStop) ordered.push(finalStop);
-
+    // Refine only the relatively small block graph. Door-level optimization is
+    // intentionally forbidden here because it can split a street or subdivision.
+    if (ordered.length <= 80) {
+        let currentCost = blockPathCost(ordered, startLocation, endLocation);
+        for (let pass = 0; pass < 3; pass++) {
+            let bestCost = currentCost;
+            let bestOrder = null;
+            for (let start = 0; start < ordered.length - 1; start++) {
+                for (let finish = start + 1; finish < ordered.length; finish++) {
+                    const candidate = [
+                        ...ordered.slice(0, start),
+                        ...ordered.slice(start, finish + 1).reverse(),
+                        ...ordered.slice(finish + 1)
+                    ];
+                    const candidateCost = blockPathCost(candidate, startLocation, endLocation);
+                    if (candidateCost + 0.000001 < bestCost) {
+                        bestCost = candidateCost;
+                        bestOrder = candidate;
+                    }
+                }
+            }
+            if (!bestOrder) break;
+            ordered.splice(0, ordered.length, ...bestOrder);
+            currentCost = bestCost;
+        }
+    }
     return ordered;
 }
 
-function applyBoundedTwoOpt(properties, startLocation, endLocation) {
-    if (properties.length < 3 || properties.length > 750) return properties;
-    const route = [...properties];
-    let improved = true;
-    let passes = 0;
+function orientBlockSequence(blocks, startLocation = null, endLocation = null) {
+    const { cost, orientations } = blockPathCost(blocks, startLocation, endLocation, true);
+    return {
+        cost,
+        blocks: blocks.map((block, index) => ({
+            ...block,
+            selectedDoors: block.variants[orientations[index]]
+        }))
+    };
+}
 
-    while (improved && passes < 5) {
-        improved = false;
-        passes += 1;
-        for (let i = 0; i < route.length - 1; i++) {
-            const before = i === 0 ? startLocation : route[i - 1];
-            if (!isValidPoint(before)) continue;
-            for (let j = i + 1; j < route.length; j++) {
-                const after = j === route.length - 1 ? endLocation : route[j + 1];
-                if (!isValidPoint(after)) continue;
-                const current = distanceMiles(before, route[i]) + distanceMiles(route[j], after);
-                const swapped = distanceMiles(before, route[j]) + distanceMiles(route[i], after);
-                if (swapped + 0.000001 < current) {
-                    const reversed = route.slice(i, j + 1).reverse();
-                    route.splice(i, reversed.length, ...reversed);
-                    improved = true;
-                }
-            }
+function buildSubdivisionAccessBlocks(streetBlocks) {
+    const grouped = new Map();
+    streetBlocks.forEach((streetBlock) => {
+        if (!grouped.has(streetBlock.accessKey)) grouped.set(streetBlock.accessKey, []);
+        grouped.get(streetBlock.accessKey).push(streetBlock);
+    });
+
+    return [...grouped.entries()]
+        .sort(([leftKey], [rightKey]) => compareText(leftKey, rightKey))
+        .map(([accessKey, accessStreetBlocks]) => {
+            const orderedStreets = optimizeBlockOrder(accessStreetBlocks);
+            const forward = orientBlockSequence(orderedStreets).blocks;
+            const forwardDoors = forward.flatMap((block) => block.selectedDoors);
+            const reverse = [...forward]
+                .reverse()
+                .map((block) => ({ ...block, selectedDoors: [...block.selectedDoors].reverse() }));
+            const centroid = centroidOfDoors(forwardDoors);
+            return {
+                key: accessKey,
+                accessKey,
+                ...centroid,
+                variants: [forwardDoors, [...forwardDoors].reverse()],
+                streetVariants: [forward, reverse]
+            };
+        });
+}
+
+function orderStreetBlocksThroughAccesses(accessBlocks, startLocation, endLocation) {
+    const orderedAccesses = optimizeBlockOrder(accessBlocks, startLocation, endLocation);
+    const { orientations } = blockPathCost(
+        orderedAccesses,
+        startLocation,
+        endLocation,
+        true
+    );
+    return orderedAccesses.flatMap((accessBlock, index) =>
+        accessBlock.streetVariants[orientations[index]]
+    );
+}
+
+function splitOversizedStreetBlocks(streetBlocks, housesPerRoute) {
+    const maximumPreferredSize = Math.max(housesPerRoute, Math.floor(housesPerRoute * 1.25));
+    const result = [];
+    streetBlocks.forEach((streetBlock) => {
+        const doors = streetBlock.selectedDoors;
+        if (doors.length <= maximumPreferredSize) {
+            result.push({
+                ...streetBlock,
+                variants: [doors, [...doors].reverse()]
+            });
+            return;
         }
+
+        const pieceCount = Math.ceil(doors.length / housesPerRoute);
+        const baseSize = Math.floor(doors.length / pieceCount);
+        const remainder = doors.length % pieceCount;
+        let cursor = 0;
+        for (let pieceIndex = 0; pieceIndex < pieceCount; pieceIndex++) {
+            const pieceSize = baseSize + (pieceIndex < remainder ? 1 : 0);
+            const pieceDoors = doors.slice(cursor, cursor + pieceSize);
+            cursor += pieceSize;
+            const centroid = centroidOfDoors(pieceDoors);
+            result.push({
+                ...streetBlock,
+                key: `${streetBlock.key}|PIECE|${String(pieceIndex + 1).padStart(4, '0')}`,
+                ...centroid,
+                selectedDoors: pieceDoors,
+                variants: [pieceDoors, [...pieceDoors].reverse()]
+            });
+        }
+    });
+    return result;
+}
+
+function chunkStreetBlocks(streetBlocks, housesPerRoute) {
+    const chunks = [];
+    const totalRemainingFrom = new Array(streetBlocks.length + 1).fill(0);
+    for (let index = streetBlocks.length - 1; index >= 0; index--) {
+        totalRemainingFrom[index] = totalRemainingFrom[index + 1] + streetBlocks[index].selectedDoors.length;
     }
 
-    return route;
+    let cursor = 0;
+    while (cursor < streetBlocks.length) {
+        let runningCount = 0;
+        let best = null;
+        for (let end = cursor; end < streetBlocks.length; end++) {
+            runningCount += streetBlocks[end].selectedDoors.length;
+            const next = streetBlocks[end + 1] || null;
+            const sameAccess = Boolean(next && next.accessKey === streetBlocks[end].accessKey);
+            const sameStreet = Boolean(next && next.streetKey === streetBlocks[end].streetKey);
+            const remainder = totalRemainingFrom[end + 1];
+            let score = Math.abs(runningCount - housesPerRoute);
+            if (sameAccess) score += housesPerRoute * 0.18;
+            if (sameStreet) score += housesPerRoute * 0.45;
+            if (remainder > 0 && remainder < housesPerRoute * 0.35) score += housesPerRoute * 0.25;
+            const boundaryRank = sameStreet ? 2 : sameAccess ? 1 : 0;
+
+            if (!best
+                || score + 0.000001 < best.score
+                || (Math.abs(score - best.score) <= 0.000001 && boundaryRank < best.boundaryRank)) {
+                best = { end, score, boundaryRank };
+            }
+            if (runningCount >= housesPerRoute * 1.5) break;
+        }
+        const selectedEnd = best?.end ?? cursor;
+        chunks.push(streetBlocks.slice(cursor, selectedEnd + 1));
+        cursor = selectedEnd + 1;
+    }
+    return chunks;
+}
+
+function orientRouteChunk(streetBlocks, startLocation, endLocation) {
+    const forward = orientBlockSequence(streetBlocks, startLocation, endLocation);
+    const reversed = orientBlockSequence([...streetBlocks].reverse(), startLocation, endLocation);
+    const selected = reversed.cost + 0.000001 < forward.cost ? reversed : forward;
+    return selected.blocks.flatMap((block) => block.selectedDoors);
 }
 
 function routeDistance(properties, startLocation, endLocation = null) {
@@ -143,7 +541,10 @@ Deno.serve(async (req) => {
 
         const body = await req.json().catch(() => ({}));
         const properties = Array.isArray(body.properties) ? body.properties : [];
-        const housesPerRoute = Math.min(Math.max(Number(body.houses_per_route || 100), 1), 10000);
+        const requestedHousesPerRoute = Number(body.houses_per_route);
+        const housesPerRoute = Number.isFinite(requestedHousesPerRoute)
+            ? Math.min(Math.max(Math.floor(requestedHousesPerRoute), 1), 10000)
+            : 100;
         const requestedStartLocation = isValidPoint(body.start_location) ? body.start_location : null;
         const requestedEndLocation = isValidPoint(body.end_location) ? body.end_location : null;
         const requestedRouteOriginMode = ['home_round_trip', 'current_to_home'].includes(body.route_origin_mode)
@@ -159,24 +560,88 @@ Deno.serve(async (req) => {
         const routeOriginMode = hasFixedRouteBounds ? requestedRouteOriginMode : 'none';
         const routeMode = body.route_mode === 'canvas' ? 'canvas' : 'precision';
 
-        if (properties.length === 0) return Response.json({ success: true, routes: [] });
+        if (properties.length === 0) {
+            return Response.json({
+                success: true,
+                count: 0,
+                routes: [],
+                routing_metadata: {
+                    ...FALLBACK_ROUTING_METADATA,
+                    input_property_count: 0,
+                    output_property_count: 0,
+                    route_count: 0,
+                    canonical_street_block_count: 0,
+                    subdivision_access_block_count: 0,
+                    exact_once_verified: true
+                }
+            });
+        }
         if (properties.length > 10000) return Response.json({ error: 'Too many properties for one backend route generation request. Limit is 10,000.' }, { status: 400 });
 
-        const ordered = nearestNeighbor(properties, startLocation);
+        const streetBlocks = buildCanonicalStreetBlocks(properties);
+        const accessBlocks = buildSubdivisionAccessBlocks(streetBlocks);
+        const orderedStreetBlocks = orderStreetBlocksThroughAccesses(
+            accessBlocks,
+            startLocation,
+            endLocation
+        );
+        const splittableStreetBlocks = splitOversizedStreetBlocks(
+            orderedStreetBlocks,
+            housesPerRoute
+        );
+        const rawRouteChunks = chunkStreetBlocks(splittableStreetBlocks, housesPerRoute);
+        const routedDoorChunks = rawRouteChunks.map((chunk) =>
+            orientRouteChunk(chunk, startLocation, endLocation)
+        );
+
+        const routedInputIndexes = routedDoorChunks.flatMap((chunk) =>
+            chunk.map((door) => door.inputIndex)
+        );
+        const uniqueRoutedInputIndexes = new Set(routedInputIndexes);
+        const exactOnceVerified = routedInputIndexes.length === properties.length
+            && uniqueRoutedInputIndexes.size === properties.length
+            && routedInputIndexes.every((inputIndex) =>
+                Number.isInteger(inputIndex) && inputIndex >= 0 && inputIndex < properties.length
+            );
+        if (!exactOnceVerified) {
+            throw new Error('Route continuity fallback failed its exact-once property invariant.');
+        }
+
+        const responseRoutingMetadata = {
+            ...FALLBACK_ROUTING_METADATA,
+            input_property_count: properties.length,
+            output_property_count: routedInputIndexes.length,
+            route_count: routedDoorChunks.length,
+            canonical_street_block_count: streetBlocks.length,
+            subdivision_access_block_count: accessBlocks.length,
+            exact_once_verified: true
+        };
+
         const routes = [];
-        for (let i = 0; i < ordered.length; i += housesPerRoute) {
-            const rawChunk = ordered.slice(i, i + housesPerRoute);
-            const chunk = endLocation
-                ? applyBoundedTwoOpt(nearestNeighbor(rawChunk, startLocation, endLocation), startLocation, endLocation)
-                : rawChunk;
+        const requestId = Date.now();
+        for (let index = 0; index < routedDoorChunks.length; index++) {
+            const routedDoors = routedDoorChunks[index];
+            const chunk = routedDoors.map((door) => door.property);
+            const chunkStreetCount = new Set(routedDoors.map((door) => door.streetKey)).size;
+            const chunkAccessCount = new Set(routedDoors.map((door) => door.accessKey)).size;
+            const routeRoutingMetadata = {
+                ...FALLBACK_ROUTING_METADATA,
+                exact_once_verified: true,
+                route_property_count: chunk.length,
+                route_street_block_count: chunkStreetCount,
+                route_access_block_count: chunkAccessCount
+            };
             routes.push({
-                id: `backend-route-${Date.now()}-${routes.length + 1}`,
-                name: buildRouteName(chunk, routeMode, routes.length + 1),
+                id: `backend-route-${requestId}-${index + 1}`,
+                name: buildRouteName(chunk, routeMode, index + 1),
                 route_mode: routeMode,
                 properties: chunk,
                 houseCount: chunk.length,
                 totalDistance: routeDistance(chunk, startLocation, endLocation),
                 competitivenessScore: Math.round(chunk.length * 10),
+                metadata: {
+                    routing: routeRoutingMetadata
+                },
                 ...(hasFixedRouteBounds ? {
                     startLocation,
                     endLocation,
@@ -187,7 +652,12 @@ Deno.serve(async (req) => {
             });
         }
 
-        return Response.json({ success: true, count: routes.length, routes });
+        return Response.json({
+            success: true,
+            count: routes.length,
+            routes,
+            routing_metadata: responseRoutingMetadata
+        });
     } catch (error) {
         return Response.json({ error: error.message }, { status: 500 });
     }

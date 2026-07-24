@@ -21,6 +21,10 @@ const PROPERTY_TYPE_ALIASES = {
 const COMMERCIAL_TYPE_KEYWORDS = ['commercial', 'industrial', 'retail', 'office', 'warehouse', 'business', 'shopping', 'hotel', 'motel', 'restaurant', 'medical', 'hospital'];
 const CONDO_MULTI_TYPE_KEYWORDS = ['condo', 'condominium', 'apartment', 'co op', 'coop', 'cooperative', 'multifamily', 'multi family', 'multi-family', 'duplex', 'triplex', 'fourplex', 'townhouse', 'townhome', 'row house', 'rowhouse'];
 const LAND_TYPE_KEYWORDS = ['land', 'lot', 'vacant', 'acreage', 'farm', 'agricultural'];
+const INVALID_SUBDIVISION_NAMES = new Set([
+    '-', '0', 'n/a', 'na', 'none', 'null', 'unknown',
+    'not available', 'not provided', 'no subdivision', 'unnamed'
+]);
 
 function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 
@@ -209,6 +213,17 @@ function addressHash(addressLine, zipCode) {
 
 function firstValue(...values) {
     return values.find(value => value !== undefined && value !== null && value !== '');
+}
+
+function normalizeSubdivisionName(...values) {
+    for (const value of values) {
+        if (typeof value !== 'string') continue;
+        const normalized = value.replace(/\s+/g, ' ').trim();
+        if (!normalized || normalized.length > 160) continue;
+        const comparison = normalized.toLowerCase().replace(/[._-]+/g, ' ').replace(/\s+/g, ' ').trim();
+        if (!INVALID_SUBDIVISION_NAMES.has(comparison)) return normalized;
+    }
+    return null;
 }
 
 function numberValue(...values) {
@@ -484,6 +499,20 @@ function mapBatchDataProperty(record, job) {
     const valuation = p.valuation || p.avm || p.estimatedValue || p.assessment?.valuation || p.assessor?.valuation || {};
     const general = p.general || p.property || p.propertyInfo || {};
     const ids = p.ids || p.identifiers || {};
+    const subdivisionName = normalizeSubdivisionName(
+        p.subdivisionName,
+        p.subdivision_name,
+        typeof p.subdivision === 'string' ? p.subdivision : null,
+        p.subdivision?.name,
+        general.subdivisionName,
+        general.subdivision_name,
+        typeof general.subdivision === 'string' ? general.subdivision : null,
+        general.subdivision?.name,
+        record !== p ? record.subdivisionName : null,
+        record !== p ? record.subdivision_name : null,
+        record !== p && typeof record.subdivision === 'string' ? record.subdivision : null,
+        record !== p ? record.subdivision?.name : null
+    );
     const listingStatus = firstValue(listing.status, listing.statusCategory);
     const listingStatusLower = String(listingStatus || '').toLowerCase();
     const customOwnershipRange = getCustomOwnershipRange(job);
@@ -573,6 +602,7 @@ function mapBatchDataProperty(record, job) {
         legacy_hash: firstValue(ids.propertyId, ids.id, p.id, p.propertyId) || null,
         house_number: houseNumber,
         street_name: streetName,
+        subdivision_name: subdivisionName,
         full_address: [address.street, address.city, address.state, address.zip].filter(Boolean).join(', '),
         city: address.city,
         state: address.state,
@@ -624,6 +654,7 @@ function mapBatchDataProperty(record, job) {
             },
             property: {
                 property_type: propertyType,
+                subdivision_name: subdivisionName,
                 standardized_land_use_code: landUseCode || null,
                 beds: numberValue(building.bedroomCount, building.bedrooms, building.beds, building.rooms?.beds, p.bedrooms, p.beds),
                 baths: numberValue(building.bathroomCount, building.bathrooms, building.baths, building.rooms?.baths, p.bathrooms, p.baths),
@@ -644,6 +675,28 @@ function toNullableDate(value) {
     return isNaN(date.getTime()) ? null : date.toISOString();
 }
 
+function withSubdivisionInRawPayload(rawPayload, subdivisionName) {
+    const normalized = normalizeSubdivisionName(subdivisionName);
+    if (!normalized) return rawPayload;
+
+    try {
+        const parsed = typeof rawPayload === 'string' ? JSON.parse(rawPayload) : rawPayload;
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return rawPayload;
+        const property = parsed.property && typeof parsed.property === 'object' && !Array.isArray(parsed.property)
+            ? parsed.property
+            : {};
+        return JSON.stringify({
+            ...parsed,
+            property: {
+                ...property,
+                subdivision_name: normalized
+            }
+        });
+    } catch {
+        return rawPayload;
+    }
+}
+
 async function writePropertiesToNeon(sql, properties, job, excludedRouteHashes = new Set()) {
     let inserted = 0, existed = 0, updated = 0;
     const customOwnershipRange = getCustomOwnershipRange(job);
@@ -651,9 +704,29 @@ async function writePropertiesToNeon(sql, properties, job, excludedRouteHashes =
     for (const p of properties) {
         const isInSavedRoute = excludedRouteHashes.has(p.address_hash);
         const existingRows = await sql`
-            SELECT id, sold_date, sale_confidence, original_status, owner_full_name, owner_occupied, corporate_owned, investor_owned, beds, baths, sqft, lot_size, year_built, price
-            FROM properties
-            WHERE address_hash = ${p.address_hash}
+            SELECT
+                p.id,
+                p.sold_date,
+                p.sale_confidence,
+                p.original_status,
+                COALESCE(
+                    p.raw_payload -> 'property' ->> 'subdivision_name',
+                    p.raw_payload ->> 'subdivision_name',
+                    p.raw_payload ->> 'subdivisionName',
+                    to_jsonb(p) ->> 'subdivision_name'
+                ) AS existing_subdivision_name,
+                p.owner_full_name,
+                p.owner_occupied,
+                p.corporate_owned,
+                p.investor_owned,
+                p.beds,
+                p.baths,
+                p.sqft,
+                p.lot_size,
+                p.year_built,
+                p.price
+            FROM properties p
+            WHERE p.address_hash = ${p.address_hash}
             LIMIT 1
         `;
         const soldDate = toNullableDate(p.sold_date);
@@ -692,8 +765,14 @@ async function writePropertiesToNeon(sql, properties, job, excludedRouteHashes =
         existed++;
         const existingDate = existing.sold_date ? new Date(existing.sold_date).getTime() : 0;
         const incomingDate = soldDate ? new Date(soldDate).getTime() : 0;
+        const existingSubdivisionName = normalizeSubdivisionName(existing.existing_subdivision_name);
+        const updateRawPayload = withSubdivisionInRawPayload(
+            rawPayload,
+            p.subdivision_name || existingSubdivisionName
+        );
         const mustPersistCustomSoldDate = !!customOwnershipRange && incomingDate > 0 && incomingDate !== existingDate;
         const hasNewMetadata =
+            (!existingSubdivisionName && p.subdivision_name) ||
             (!existing.owner_full_name && p.owner_full_name) ||
             (p.owner_occupied !== null && p.owner_occupied !== existing.owner_occupied) ||
             (p.corporate_owned !== null && p.corporate_owned !== existing.corporate_owned) ||
@@ -718,7 +797,7 @@ async function writePropertiesToNeon(sql, properties, job, excludedRouteHashes =
                     beds = COALESCE(${p.beds || null}, beds), baths = COALESCE(${p.baths || null}, baths), sqft = COALESCE(${p.sqft || null}, sqft),
                     lot_size = COALESCE(${p.lot_size || null}, lot_size), year_built = COALESCE(${p.year_built || null}, year_built), price = COALESCE(${p.price || null}, price),
                     sold_date = COALESCE(${soldDate}, sold_date), sale_type = COALESCE(${p.sale_type}, sale_type), property_type = COALESCE(${p.property_type}, property_type),
-                    data_source = ${p.data_source}, sale_confidence = ${p.sale_confidence}, original_status = ${p.original_status}, raw_payload = ${rawPayload}, updated_at = NOW()
+                    data_source = ${p.data_source}, sale_confidence = ${p.sale_confidence}, original_status = ${p.original_status}, raw_payload = ${updateRawPayload}, updated_at = NOW()
                 WHERE id = ${existing.id}
             `;
             updated++;

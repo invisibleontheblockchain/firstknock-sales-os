@@ -59,7 +59,32 @@ async function writeZipPropertiesToNeon(sql, properties, userEmail) {
         price = COALESCE(EXCLUDED.price, properties.price),
         sale_confidence = COALESCE(EXCLUDED.sale_confidence, properties.sale_confidence),
         original_status = COALESCE(EXCLUDED.original_status, properties.original_status),
-        raw_payload = EXCLUDED.raw_payload,
+        raw_payload = CASE
+          WHEN COALESCE(
+            EXCLUDED.raw_payload -> 'property' ->> 'subdivision_name',
+            EXCLUDED.raw_payload ->> 'subdivision_name',
+            EXCLUDED.raw_payload ->> 'subdivisionName'
+          ) IS NOT NULL THEN EXCLUDED.raw_payload
+          WHEN COALESCE(
+            properties.raw_payload -> 'property' ->> 'subdivision_name',
+            properties.raw_payload ->> 'subdivision_name',
+            properties.raw_payload ->> 'subdivisionName',
+            to_jsonb(properties) ->> 'subdivision_name'
+          ) IS NULL THEN EXCLUDED.raw_payload
+          ELSE COALESCE(EXCLUDED.raw_payload, '{}'::jsonb) || jsonb_build_object(
+            'property',
+            COALESCE(EXCLUDED.raw_payload -> 'property', '{}'::jsonb)
+              || jsonb_build_object(
+                'subdivision_name',
+                COALESCE(
+                  properties.raw_payload -> 'property' ->> 'subdivision_name',
+                  properties.raw_payload ->> 'subdivision_name',
+                  properties.raw_payload ->> 'subdivisionName',
+                  to_jsonb(properties) ->> 'subdivision_name'
+                )
+              )
+          )
+        END,
         updated_at = NOW()
       RETURNING id
     `;

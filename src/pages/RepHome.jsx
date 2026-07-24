@@ -15,6 +15,12 @@ import {
   orderRouteProperties,
 } from '@/components/logic/routeHydrationCore';
 import { optimizeRouteByStreetSweep } from '@/components/logic/routeOptimizer';
+import {
+  buildPersistedRoadRoutingMetadata,
+  buildRoadRouteGeometry,
+  calculateRoadAwareRouteMiles,
+  createRouteRoadContext,
+} from '@/components/logic/routeRoadContext';
 import { buildFullAddress, getRouteNavigationPlan, openNavigationBatch } from '@/components/logic/navigation';
 import { getNavigationSessionProgress, selectRemainingTodoStops } from '@/components/logic/routeNavigation';
 import {
@@ -90,6 +96,54 @@ function shouldPollPrecisionFieldRoutes(response, localStatuses, routeId) {
     const serverStatus = precisionFieldRoutesStatus(response, sourceKey, sourceKey.slice(routePrefix.length));
     return !isFieldRoutesTerminalStatus(preferFieldRoutesStatus(localStatus, serverStatus));
   });
+}
+
+function requireRoadAwareRouteContext(routingContext) {
+  if (routingContext?.roadAware === true) return;
+  if (
+    routingContext?.diagnostics?.reason === 'TOO_FEW_POINTS'
+    && Number(routingContext?.diagnostics?.suppliedPointCount) === 1
+  ) return;
+  const reason = routingContext?.diagnostics?.reason || 'ROAD_NETWORK_UNAVAILABLE';
+  throw new Error(
+    `Road-aware ordering is unavailable (${reason}). The existing route was left unchanged; retry when street data is available.`
+  );
+}
+
+function requireCompleteRoadCosts(routingContext) {
+  const diagnostics = routingContext?.diagnostics || {};
+  const costOnly = routingContext?.mode === 'cost-only';
+  const fallbackCount = Number(
+    costOnly
+      ? diagnostics.blockToBlockRoadCostFallbackCount
+      : diagnostics.doorToDoorRoadCostFallbackCount
+  ) || 0;
+  if (fallbackCount === 0) return;
+  const reasons = Object.keys(
+    costOnly
+      ? diagnostics.blockToBlockRoadCostFallbackReasons || {}
+      : diagnostics.doorToDoorRoadCostFallbackReasons || {}
+  );
+  const reasonText = reasons.length > 0 ? ` (${reasons.join(', ')})` : '';
+  const comparisonType = costOnly ? 'street-block' : 'door-to-door';
+  throw new Error(
+    `The street graph could not connect every ${comparisonType} comparison${reasonText}. The existing route was left unchanged; retry when complete road data is available.`
+  );
+}
+
+function discloseExternalBoundRoadFallback(routingContext) {
+  const fallbackCount = Number(
+    routingContext?.diagnostics?.externalBoundRoadCostFallbackCount
+  ) || 0;
+  if (fallbackCount === 0) return;
+  console.warn(
+    `[RepHome] ${fallbackCount} home-bound road comparisons used a geographic estimate.`,
+    routingContext.diagnostics.externalBoundRoadCostFallbackReasons || {}
+  );
+  toast.warning(
+    'Door-to-door ordering is road-aware, but Home Base fell outside the local street graph and used a geographic estimate. This is recorded on the saved route.',
+    { id: 'rep-home-bound-road-fallback', duration: 9000 }
+  );
 }
 
 export default function RepHome() {
@@ -1455,7 +1509,17 @@ export default function RepHome() {
       const invalidProperty = routeProperties.find((property) => !isValidRoutePoint(property));
       if (invalidProperty) throw new Error('A route property is missing map coordinates. Ask your manager to repair this route.');
 
-      const optimized = optimizeRouteByStreetSweep(routeProperties, exactHomeBase, exactHomeBase);
+      const routingContext = await createRouteRoadContext(routeProperties, {
+        startLocation: exactHomeBase,
+        endLocation: exactHomeBase,
+      });
+      requireRoadAwareRouteContext(routingContext);
+      const optimized = optimizeRouteByStreetSweep(
+        routeProperties,
+        exactHomeBase,
+        exactHomeBase,
+        routingContext,
+      );
       if (optimized.length !== routeProperties.length) {
         throw new Error('The optimizer could not preserve every property in this route.');
       }
@@ -1464,11 +1528,31 @@ export default function RepHome() {
       if (propertyHashes.some((hash) => !hash)) {
         throw new Error('A route property is missing its address identifier. Ask your manager to repair this route.');
       }
+      const expectedHashes = new Set(routeProperties.map(
+        (property) => property.address_hash || property.legacy_hash || property.id,
+      ));
+      if (
+        new Set(propertyHashes).size !== expectedHashes.size
+        || propertyHashes.some((hash) => !expectedHashes.has(hash))
+      ) {
+        throw new Error('Route integrity verification failed, so the existing route was left unchanged.');
+      }
 
-      const distance = Math.round(calculateRouteDistanceMiles(optimized, {
+      const roadDistance = calculateRoadAwareRouteMiles(optimized, routingContext, {
         startLocation: exactHomeBase,
-        endLocation: exactHomeBase
-      }) * 100) / 100;
+        endLocation: exactHomeBase,
+      });
+      const distance = Math.round((
+        roadDistance ?? calculateRouteDistanceMiles(optimized, {
+          startLocation: exactHomeBase,
+          endLocation: exactHomeBase
+        })
+      ) * 100) / 100;
+      const roadGeometry = buildRoadRouteGeometry(optimized, routingContext);
+      requireCompleteRoadCosts(routingContext);
+      discloseExternalBoundRoadFallback(routingContext);
+      const existingMetadata = { ...(routeToOptimize.metadata || {}) };
+      delete existingMetadata.road_geometry;
       const routeUpdate = {
         property_hashes: propertyHashes,
         metrics: {
@@ -1480,7 +1564,8 @@ export default function RepHome() {
         end_location: null,
         route_origin_mode: 'home_round_trip',
         metadata: {
-          ...(routeToOptimize.metadata || {}),
+          ...existingMetadata,
+          ...buildPersistedRoadRoutingMetadata(routingContext, roadGeometry, propertyHashes),
           route_bounds: { enabled: true, mode: 'home_round_trip' }
         }
       };
@@ -1495,7 +1580,12 @@ export default function RepHome() {
         queryClient.invalidateQueries({ queryKey: ['myRoutes'] }),
         queryClient.invalidateQueries({ queryKey: ['routeProperties'] })
       ]);
-      toast.success(`Home round trip optimized (${distance} mi straight-line estimate).`, {
+      const estimateType = routingContext.costOnly
+        ? 'straight-line mileage; road-aware street ordering'
+        : routingContext.roadAware
+          ? 'road-network estimate'
+          : 'route estimate';
+      toast.success(`Home round trip optimized (${distance} mi ${estimateType}).`, {
         id: 'rep-home-route',
         duration: 5000
       });
@@ -1854,10 +1944,10 @@ export default function RepHome() {
                                 {(homeBaseError || homeRouteError) &&
                   <p aria-live="polite" className="mt-2.5 rounded-xl border border-red-500/25 bg-red-500/10 px-3 py-2 text-[11px] leading-relaxed text-red-200">
                                         {homeBaseError || homeRouteError}
-                                    </p>
+                                </p>
                   }
                                 <p className="mt-3 text-[10px] leading-relaxed text-white/40">
-                                    Address lookup uses OpenStreetMap. Your exact address stays private; your manager can request only an approximate point for a route assigned to you. Mileage is a straight-line estimate, so road travel may differ.
+                                    Address lookup uses OpenStreetMap. Your exact address stays private; your manager can request only an approximate point for a route assigned to you. Optimization uses local road-network estimates when available, and estimates may still differ from live navigation.
                                 </p>
                   </div>
                   }
@@ -1910,6 +2000,8 @@ export default function RepHome() {
         onSelectProperty={(p) => setSelectedProperty(p)}
         onClose={() => {setShowMap(false);setFocusProperty(null);}}
         focusProperty={focusProperty}
+        roadGeometry={activeRoute?.metadata?.road_geometry}
+        roadGeometryFingerprint={activeRoute?.metadata?.routing?.property_order_fingerprint}
         startLocation={activeRoute?.route_origin_mode === 'home_round_trip' ? user?.home_base : null}
         endLocation={['home_round_trip', 'current_to_home'].includes(activeRoute?.route_origin_mode) ? user?.home_base : null} />
 

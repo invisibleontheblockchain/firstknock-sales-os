@@ -173,6 +173,14 @@ test('Canvas road loading is identifiable, abortable, typed, cached, and uses cu
     assert.equal(requests[0].init.referrerPolicy, 'strict-origin-when-cross-origin');
     assert.equal(requests[0].init.credentials, 'omit');
     assert.equal(requests[0].init.headers.Accept, 'application/json');
+    const surfaceOnlyQuery = new URLSearchParams(requests[0].init.body).get('data');
+    assert.match(surfaceOnlyQuery, /\["bridge"!="yes"\]\["tunnel"!="yes"\]/);
+
+    await roads.fetchOverpassRoadNetwork(boundary, { includeGradeSeparated: true });
+    await roads.fetchOverpassRoadNetwork(boundary, { includeGradeSeparated: true });
+    assert.equal(fetchCount, 3, 'grade-aware routing must use its own cache entry');
+    const allGradesQuery = new URLSearchParams(requests[2].init.body).get('data');
+    assert.doesNotMatch(allGradesQuery, /\["bridge"!="yes"\]|\["tunnel"!="yes"\]/);
 
     const emptyBoundary = [{ lat: 34, lng: -112 }, { lat: 34.01, lng: -112 }, { lat: 34, lng: -111.99 }];
     const fallbackRequests = [];
@@ -191,6 +199,15 @@ test('Canvas road loading is identifiable, abortable, typed, cached, and uses cu
     ]);
     await roads.fetchOverpassRoadNetwork(emptyBoundary);
     assert.equal(fallbackRequests.length, 2, 'a complete empty response should be cached rather than retried as a service failure');
+
+    const retryEmptyBoundary = [{ lat: 34.1, lng: -112 }, { lat: 34.11, lng: -112 }, { lat: 34.1, lng: -111.99 }];
+    await roads.fetchOverpassRoadNetwork(retryEmptyBoundary, { cacheEmptyResults: false });
+    await roads.fetchOverpassRoadNetwork(retryEmptyBoundary, { cacheEmptyResults: false });
+    assert.equal(
+      fallbackRequests.length,
+      6,
+      'route callers must be able to retry a transient empty road response',
+    );
 
     const abortController = new AbortController();
     abortController.abort();

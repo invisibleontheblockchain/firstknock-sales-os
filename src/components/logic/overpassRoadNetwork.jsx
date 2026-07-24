@@ -76,12 +76,17 @@ function polygonToOverpassPoly(polygon = []) {
     .join(' ');
 }
 
-function buildOverpassQuery(polygon, highwayFilter = DEFAULT_HIGHWAY_FILTER) {
+function buildOverpassQuery(
+  polygon,
+  highwayFilter = DEFAULT_HIGHWAY_FILTER,
+  { includeGradeSeparated = false } = {},
+) {
   const poly = polygonToOverpassPoly(polygon);
   const safeFilter = String(highwayFilter || DEFAULT_HIGHWAY_FILTER).replace(/[^a-z_|]/gi, '') || DEFAULT_HIGHWAY_FILTER;
+  const gradeFilter = includeGradeSeparated ? '' : '["bridge"!="yes"]["tunnel"!="yes"]';
   return `[out:json][timeout:25];
 (
-  way["highway"~"^(${safeFilter})$"]["bridge"!="yes"]["tunnel"!="yes"](poly:"${poly}");
+  way["highway"~"^(${safeFilter})$"]${gradeFilter}(poly:"${poly}");
 );
 out body;
 >;
@@ -134,12 +139,17 @@ function tiledBoundsForPolygon(polygon) {
   return tiles;
 }
 
-function buildBoundingBoxQuery(bounds, highwayFilter = DEFAULT_HIGHWAY_FILTER) {
+function buildBoundingBoxQuery(
+  bounds,
+  highwayFilter = DEFAULT_HIGHWAY_FILTER,
+  { includeGradeSeparated = false } = {},
+) {
   const safeFilter = String(highwayFilter || DEFAULT_HIGHWAY_FILTER).replace(/[^a-z_|]/gi, '') || DEFAULT_HIGHWAY_FILTER;
   const bbox = [bounds.south, bounds.west, bounds.north, bounds.east].map((value) => Number(value).toFixed(7)).join(',');
+  const gradeFilter = includeGradeSeparated ? '' : '["bridge"!="yes"]["tunnel"!="yes"]';
   return `[out:json][timeout:25];
 (
-  way["highway"~"^(${safeFilter})$"]["bridge"!="yes"]["tunnel"!="yes"](${bbox});
+  way["highway"~"^(${safeFilter})$"]${gradeFilter}(${bbox});
 );
 out body;
 >;
@@ -341,7 +351,7 @@ async function fetchTiledRoadNetwork(tiles, highwayFilter, options) {
     while (cursor < tiles.length && !fatalError) {
       const index = cursor;
       cursor += 1;
-      const fetched = await fetchQueryWithFallback(buildBoundingBoxQuery(tiles[index], highwayFilter), {
+      const fetched = await fetchQueryWithFallback(buildBoundingBoxQuery(tiles[index], highwayFilter, options), {
         ...options,
         signal: batchController.signal,
         maxResponseBytes: Math.min(MAX_BROWSER_TILE_JSON_BYTES, maxTotalBytes),
@@ -389,13 +399,14 @@ async function fetchTiledRoadNetwork(tiles, highwayFilter, options) {
   };
 }
 
-export function getRoadNetworkCacheKey(polygon, highwayFilter = DEFAULT_HIGHWAY_FILTER) {
-  return `fk_overpass_${highwayFilter}_${stablePolygonKey(polygon)}`;
+export function getRoadNetworkCacheKey(polygon, highwayFilter = DEFAULT_HIGHWAY_FILTER, options = {}) {
+  const gradeMode = options.includeGradeSeparated === true ? 'all-grades' : 'surface-only';
+  return `fk_overpass_${gradeMode}_${highwayFilter}_${stablePolygonKey(polygon)}`;
 }
 
-export function clearOverpassRoadNetworkCache(polygon, highwayFilter = DEFAULT_HIGHWAY_FILTER) {
+export function clearOverpassRoadNetworkCache(polygon, highwayFilter = DEFAULT_HIGHWAY_FILTER, options = {}) {
   try {
-    sessionStorage.removeItem(getRoadNetworkCacheKey(polygon, highwayFilter));
+    sessionStorage.removeItem(getRoadNetworkCacheKey(polygon, highwayFilter, options));
   } catch {}
 }
 
@@ -403,9 +414,10 @@ export async function fetchOverpassRoadNetwork(polygon, options = {}) {
   const highwayFilter = options.highwayFilter || DEFAULT_HIGHWAY_FILTER;
   const timeoutMs = Math.max(5000, Number(options.timeoutMs) || 25000);
   const cacheMaxAgeMs = Math.max(0, Number(options.cacheMaxAgeMs) || DEFAULT_CACHE_MAX_AGE_MS);
-  const cacheKey = getRoadNetworkCacheKey(polygon, highwayFilter);
+  const cacheEmptyResults = options.cacheEmptyResults !== false;
+  const cacheKey = getRoadNetworkCacheKey(polygon, highwayFilter, options);
 
-  if (options.bypassCache === true) clearOverpassRoadNetworkCache(polygon, highwayFilter);
+  if (options.bypassCache === true) clearOverpassRoadNetworkCache(polygon, highwayFilter, options);
   else {
     try {
       const cached = sessionStorage.getItem(cacheKey);
@@ -413,7 +425,12 @@ export async function fetchOverpassRoadNetwork(polygon, options = {}) {
         const record = JSON.parse(cached);
         const cachedAt = Number(record?.cached_at);
         const data = record?.data;
-        if (Number.isFinite(cachedAt) && Date.now() - cachedAt <= cacheMaxAgeMs && Array.isArray(data?.elements)) {
+        if (
+          Number.isFinite(cachedAt)
+          && Date.now() - cachedAt <= cacheMaxAgeMs
+          && Array.isArray(data?.elements)
+          && (cacheEmptyResults || data.elements.length > 0)
+        ) {
           console.info(`[FK] Canvas road network cache hit: ${data.elements.length} OSM elements`);
           return data;
         }
@@ -425,7 +442,7 @@ export async function fetchOverpassRoadNetwork(polygon, options = {}) {
   const tiles = tiledBoundsForPolygon(polygon);
   const result = tiles.length
     ? await fetchTiledRoadNetwork(tiles, highwayFilter, { ...options, timeoutMs })
-    : (() => fetchQueryWithFallback(buildOverpassQuery(polygon, highwayFilter), {
+    : (() => fetchQueryWithFallback(buildOverpassQuery(polygon, highwayFilter, options), {
       timeoutMs,
       signal: options.signal,
       maxResponseBytes: Math.min(MAX_BROWSER_OSM_JSON_BYTES, Math.max(1, Number(options.maxTotalBytes) || MAX_BROWSER_OSM_JSON_BYTES)),
@@ -435,7 +452,10 @@ export async function fetchOverpassRoadNetwork(polygon, options = {}) {
   const resolved = await result;
   try {
     const serialized = JSON.stringify({ cached_at: Date.now(), data: resolved });
-    if (serialized.length < 4_500_000) sessionStorage.setItem(cacheKey, serialized);
+    if (
+      (cacheEmptyResults || resolved.elements.length > 0)
+      && serialized.length < 4_500_000
+    ) sessionStorage.setItem(cacheKey, serialized);
   } catch {}
   console.info(`[FK] Canvas road network fetched: ${resolved.elements.length} OSM elements${tiles.length ? ` across ${tiles.length} tiles` : ''}`);
   return resolved;

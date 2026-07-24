@@ -37,6 +37,13 @@ import { toast } from "sonner";
 import { determineEffectiveStatus, isPointInPolygon } from '../components/logic/territoryLogic';
 import { subMonths, subDays, isAfter, parseISO } from 'date-fns';
 import { generateOptimizedRoutes, optimizeRouteByStreetSweep } from '../components/logic/routeOptimizer';
+import {
+    buildPersistedRoadRoutingMetadata,
+    buildRoadRouteGeometry,
+    calculateRoadAwareRouteMiles,
+    createRouteRoadContext,
+    routePropertyOrderFingerprint,
+} from '../components/logic/routeRoadContext';
 import { calculateRouteDistanceMiles, isValidRoutePoint } from '@/lib/routeBounds';
 import { applyRouteFilters, formatStageCounts } from '../components/logic/routeFilterPipeline';
 import { normalizeOwnershipRangeDays as normalizeStrictOwnershipRangeDays } from '../components/logic/soldDateRange';
@@ -227,6 +234,65 @@ function buildPrecisionRouteShortfallMessage({ requested, routed, filtered }) {
     const missing = requested - routed;
     const filterText = filtered > 0 ? ` ${filtered.toLocaleString()} were removed by saved-route or route filters.` : '';
     return `Built ${routed.toLocaleString()} of ${requested.toLocaleString()} requested homes from this exact area. FirstKnock only routes unique single-family homes that survive the current filters.${filterText} Draw a wider nearby area or loosen value/date filters to fill the remaining ${missing.toLocaleString()}.`;
+}
+
+function requireRoadAwareRouteContext(routingContext) {
+    if (routingContext?.roadAware === true) return;
+    if (
+        routingContext?.diagnostics?.reason === 'TOO_FEW_POINTS'
+        && Number(routingContext?.diagnostics?.suppliedPointCount) === 1
+    ) return;
+    const reason = routingContext?.diagnostics?.reason || 'ROAD_NETWORK_UNAVAILABLE';
+    throw new Error(
+        `Road-aware ordering is unavailable (${reason}). No routes were changed; retry when street data is available or generate a smaller area.`
+    );
+}
+
+function requireCompleteRoadCosts(routingContext) {
+    const diagnostics = routingContext?.diagnostics || {};
+    const costOnly = routingContext?.mode === 'cost-only';
+    const fallbackCount = Number(
+        costOnly
+            ? diagnostics.blockToBlockRoadCostFallbackCount
+            : diagnostics.doorToDoorRoadCostFallbackCount
+    ) || 0;
+    if (fallbackCount === 0) return;
+    const reasons = Object.keys(
+        costOnly
+            ? diagnostics.blockToBlockRoadCostFallbackReasons || {}
+            : diagnostics.doorToDoorRoadCostFallbackReasons || {}
+    );
+    const reasonText = reasons.length > 0 ? ` (${reasons.join(', ')})` : '';
+    const comparisonType = costOnly ? 'street-block' : 'door-to-door';
+    throw new Error(
+        `The street graph could not connect every ${comparisonType} comparison${reasonText}. No routes were changed; retry when complete road data is available or generate a smaller area.`
+    );
+}
+
+function discloseExternalBoundRoadFallback(scope, routingContext) {
+    const fallbackCount = Number(
+        routingContext?.diagnostics?.externalBoundRoadCostFallbackCount
+    ) || 0;
+    if (fallbackCount === 0) return;
+    console.warn(
+        `[${scope}] ${fallbackCount} external start/home/end road comparisons used a geographic estimate.`,
+        routingContext.diagnostics.externalBoundRoadCostFallbackReasons || {}
+    );
+    toast.warning(
+        'Door-to-door ordering is road-aware, but a start, home, or end point fell outside the local street graph and used a geographic estimate. This is recorded on the saved route.',
+        { id: 'external-bound-road-fallback', duration: 9000 }
+    );
+}
+
+function discloseLargeRouteContinuityFallback(scope, routingMetadata = null) {
+    console.warn(
+        `[${scope}] Large-route continuity fallback used; no live road network was used.`,
+        routingMetadata || {}
+    );
+    toast.warning(
+        'Street/subdivision continuity was used for this very large route. Live road-network ordering is unavailable at this size.',
+        { id: 'large-route-continuity-fallback', duration: 9000 }
+    );
 }
 
 
@@ -988,11 +1054,23 @@ export default function Home() {
         const routeEndLocation = canPreserveRequestedBounds && isValidRoutePoint(route?.endLocation || route?.end_location)
             ? (route.endLocation || route.end_location)
             : null;
-        const savedProperties = requestedRouteOriginMode !== 'none' && !canPreserveRequestedBounds
-            ? optimizeRouteByStreetSweep(route.properties || [], null, null)
-            : route.properties;
+        // Removing another user's private route bounds must not replace a
+        // road-aware order with the old aerial-only optimizer. The door order
+        // and its non-personal road geometry remain valid without the bounds.
+        const savedProperties = route.properties;
+        const savedPropertyOrderFingerprint = routePropertyOrderFingerprint(savedProperties);
+        const sourceGeometryMatchesSavedOrder =
+            route?.metadata?.routing?.property_order_fingerprint === savedPropertyOrderFingerprint;
+        const roadGeometry = sourceGeometryMatchesSavedOrder
+            && Array.isArray(route?.metadata?.road_geometry)
+            && route.metadata.road_geometry.length > 1
+            ? route.metadata.road_geometry
+            : null;
+        const doorOnlyDistance = roadGeometry
+            ? calculateRouteDistanceMiles(roadGeometry)
+            : calculateRouteDistanceMiles(savedProperties);
         const savedDistance = requestedRouteOriginMode !== 'none' && !canPreserveRequestedBounds
-            ? Math.round(calculateRouteDistanceMiles(savedProperties) * 100) / 100
+            ? Math.round(doorOnlyDistance * 100) / 100
             : route.totalDistance;
         const savedRouteStartLocation = routeOriginMode === 'none'
             ? routeStartLocation
@@ -1003,8 +1081,18 @@ export default function Home() {
 
         const safeRouteMetadata = { ...(route.metadata || {}) };
         if (!canPreserveRequestedBounds) delete safeRouteMetadata.route_bounds;
+        if (!sourceGeometryMatchesSavedOrder) {
+            delete safeRouteMetadata.road_geometry;
+            delete safeRouteMetadata.routing;
+        }
 
         const savedPropertyHashes = savedProperties.map(p => p.address_hash || p.id).filter(Boolean);
+        if (sourceGeometryMatchesSavedOrder && safeRouteMetadata.road_geometry && safeRouteMetadata.routing) {
+            safeRouteMetadata.routing = {
+                ...safeRouteMetadata.routing,
+                property_order_fingerprint: routePropertyOrderFingerprint(savedPropertyHashes)
+            };
+        }
         const precisionJobId = precisionAreaMetadata.precision_area?.job_id;
 
         // A completed FetchJob can be recovered after a reload. If the browser
@@ -1870,15 +1958,50 @@ export default function Home() {
             setGenerationStage(`Optimizing ${finalCount.toLocaleString()} doors — ~${Math.max(2, Math.round(finalCount / 1500))}s`);
             toast.loading(`Optimizing ${finalCount.toLocaleString()} properties${filteredOut > 0 ? ` (${filteredOut.toLocaleString()} filtered)` : ''}... ~${Math.max(2, Math.round(finalCount / 1500))}s`, { id: 'build-routes' });
             console.log(`[generateRoutes] Opt start | n=${finalCount} | 2opt=${effectiveUse2Opt}`);
-            const generated = finalCount > 5000
-                ? (await base44.functions.invoke('generateRoutesBackend', {
+            const routingContext = finalCount <= 5000
+                ? await createRouteRoadContext(workingSet, {
+                    startLocation: start,
+                    endLocation: end,
+                })
+                : null;
+            if (finalCount <= 5000) requireRoadAwareRouteContext(routingContext);
+            const largeRouteResponse = finalCount > 5000
+                ? await base44.functions.invoke('generateRoutesBackend', {
                     properties: workingSet,
                     houses_per_route: housesPerRoute,
                     start_location: start,
                     end_location: end,
                     route_origin_mode: routeOriginMode
-                })).data.routes
-                : await new Promise(resolve => setTimeout(() => resolve(generateOptimizedRoutes(workingSet, housesPerRoute, start, logs, { streetCooldownDays, useStreetSweep: routeConfig.walkingPattern === 'street_sweep', minimizeTurns: routeConfig.minimizeTurns, use2Opt: effectiveUse2Opt, walkingPattern: routeConfig.walkingPattern, returnToStart: !preparedRouteBounds.enabled && routeConfig.returnToStart, endLocation: end, routeOriginMode, excludeTerminal: routeConfig.excludeTerminal }, learnedWeights)), 50));
+                })
+                : null;
+            if (largeRouteResponse) {
+                discloseLargeRouteContinuityFallback(
+                    'generateRoutes',
+                    largeRouteResponse.data?.routing_metadata
+                );
+            }
+            const rawGenerated = largeRouteResponse
+                ? largeRouteResponse.data?.routes
+                : await new Promise(resolve => setTimeout(() => resolve(generateOptimizedRoutes(workingSet, housesPerRoute, start, logs, { streetCooldownDays, useStreetSweep: routeConfig.walkingPattern === 'street_sweep', minimizeTurns: routeConfig.minimizeTurns, use2Opt: effectiveUse2Opt, walkingPattern: routeConfig.walkingPattern, returnToStart: !preparedRouteBounds.enabled && routeConfig.returnToStart, endLocation: end, routeOriginMode, excludeTerminal: routeConfig.excludeTerminal, routingContext }, learnedWeights)), 50));
+            const generated = Array.isArray(rawGenerated)
+                ? rawGenerated.map(route => {
+                    if (!routingContext) return route;
+                    const roadGeometry = buildRoadRouteGeometry(route.properties, routingContext);
+                    return {
+                        ...route,
+                        metadata: {
+                            ...(route.metadata || {}),
+                            ...buildPersistedRoadRoutingMetadata(
+                                routingContext,
+                                roadGeometry,
+                                route.properties
+                            )
+                        }
+                    };
+                })
+                : rawGenerated;
+            requireCompleteRoadCosts(routingContext);
+            discloseExternalBoundRoadFallback('generateRoutes', routingContext);
             const generatedDoorCount = Array.isArray(generated) ? generated.reduce((sum, route) => sum + (route.properties?.length || route.houseCount || 0), 0) : 0;
             console.log(`[RoutePipeline] after_route_command routes=${generated?.length || 0} doors=${generatedDoorCount} elapsed_ms=${Math.round(performance.now() - optStart)}`);
             if (!generated || generated.length === 0) { toast.dismiss('build-routes'); setGenerationError(`Optimizer returned 0 routes from ${finalCount.toLocaleString()} properties. Try relaxing filters or pulling fresh data.`); return false; }
@@ -1981,15 +2104,50 @@ export default function Home() {
                 ? reorderBounds.endLocation
                 : routeConfig.returnToStart && isValidRoutePoint(start) ? start : null;
             const routeOriginMode = reorderBounds.enabled ? reorderBounds.mode : 'none';
-            const generated = workingSet.length > 5000
-                ? (await base44.functions.invoke('generateRoutesBackend', {
+            const routingContext = workingSet.length <= 5000
+                ? await createRouteRoadContext(workingSet, {
+                    startLocation: start,
+                    endLocation: end,
+                })
+                : null;
+            if (workingSet.length <= 5000) requireRoadAwareRouteContext(routingContext);
+            const largeRouteResponse = workingSet.length > 5000
+                ? await base44.functions.invoke('generateRoutesBackend', {
                     properties: workingSet,
                     houses_per_route: housesPerRoute,
                     start_location: start,
                     end_location: end,
                     route_origin_mode: routeOriginMode
-                })).data.routes
-                : generateOptimizedRoutes(workingSet, housesPerRoute, start, logs, { streetCooldownDays, useStreetSweep: routeConfig.walkingPattern === 'street_sweep', minimizeTurns: routeConfig.minimizeTurns, use2Opt: effectiveUse2Opt, walkingPattern: routeConfig.walkingPattern, returnToStart: !reorderBounds.enabled && routeConfig.returnToStart, endLocation: end, routeOriginMode, excludeTerminal: routeConfig.excludeTerminal }, learnedWeights);
+                })
+                : null;
+            if (largeRouteResponse) {
+                discloseLargeRouteContinuityFallback(
+                    'handleReorder',
+                    largeRouteResponse.data?.routing_metadata
+                );
+            }
+            const rawGenerated = largeRouteResponse
+                ? largeRouteResponse.data?.routes
+                : generateOptimizedRoutes(workingSet, housesPerRoute, start, logs, { streetCooldownDays, useStreetSweep: routeConfig.walkingPattern === 'street_sweep', minimizeTurns: routeConfig.minimizeTurns, use2Opt: effectiveUse2Opt, walkingPattern: routeConfig.walkingPattern, returnToStart: !reorderBounds.enabled && routeConfig.returnToStart, endLocation: end, routeOriginMode, excludeTerminal: routeConfig.excludeTerminal, routingContext }, learnedWeights);
+            const generated = Array.isArray(rawGenerated)
+                ? rawGenerated.map(route => {
+                    if (!routingContext) return route;
+                    const roadGeometry = buildRoadRouteGeometry(route.properties, routingContext);
+                    return {
+                        ...route,
+                        metadata: {
+                            ...(route.metadata || {}),
+                            ...buildPersistedRoadRoutingMetadata(
+                                routingContext,
+                                roadGeometry,
+                                route.properties
+                            )
+                        }
+                    };
+                })
+                : rawGenerated;
+            requireCompleteRoadCosts(routingContext);
+            discloseExternalBoundRoadFallback('handleReorder', routingContext);
             setRoutes(generated);
             let savedRecords = [];
             if (generated.length > 0) {
@@ -2005,7 +2163,14 @@ export default function Home() {
             setShowRoutePanel(false); setShowCompare(false);
             toast.success(`Reordered! ${generated.length} route(s)`, { id: 'reorder-routes', duration: 5000 });
             return true;
-        } catch (e) { console.error('Reorder error:', e); toast.error('Reorder failed.', { id: 'reorder-routes' }); return false; }
+        } catch (e) {
+            console.error('Reorder error:', e);
+            toast.error(
+                e?.message || 'Reorder failed. No routes were changed.',
+                { id: 'reorder-routes', duration: 6000 }
+            );
+            return false;
+        }
         finally { setRoutesGenerating(false); }
     }, [frozenWorkingSet, housesPerRoute, startLocation, logs, streetCooldownDays, zipCodeFilter, routeConfig, soldDateFilter, drawnPolygon, lastPullMode, learnedWeights, user?.territory_zip_codes, assignedHashes]);
 
@@ -2071,36 +2236,70 @@ export default function Home() {
                 : isValidRoutePoint(end) && existingRouteOriginMode !== 'none'
                     ? existingRouteOriginMode
                     : 'none';
-            const optimized = optimizeRouteByStreetSweep(routeProperties, start, end);
+            const routingContext = await createRouteRoadContext(routeProperties, {
+                startLocation: start,
+                endLocation: end,
+            });
+            requireRoadAwareRouteContext(routingContext);
+            const optimized = optimizeRouteByStreetSweep(routeProperties, start, end, routingContext);
             if (!optimized || optimized.length === 0) { toast.error('Optimization produced no results.', { id: 'reoptimize-route' }); return; }
-            const newDistance = Math.round(calculateRouteDistanceMiles(
+            const optimizedHashes = optimized.map(p => p.address_hash || p.id).filter(Boolean);
+            const expectedHashes = new Set(hashes);
+            if (
+                optimizedHashes.length !== hashes.length
+                || new Set(optimizedHashes).size !== expectedHashes.size
+                || optimizedHashes.some(hash => !expectedHashes.has(hash))
+            ) {
+                throw new Error('Route integrity verification failed, so the existing route was left unchanged.');
+            }
+            const roadDistance = calculateRoadAwareRouteMiles(
                 optimized,
+                routingContext,
                 isValidRoutePoint(end) ? { startLocation: start, endLocation: end } : {}
+            );
+            const newDistance = Math.round((
+                roadDistance ?? calculateRouteDistanceMiles(
+                    optimized,
+                    isValidRoutePoint(end) ? { startLocation: start, endLocation: end } : {}
+                )
             ) * 100) / 100;
             const oldDistance = route.metrics?.distance || route.totalDistance || 0;
-            const newOrder = optimized.map(p => p.address_hash || p.id).filter(Boolean);
+            const newOrder = optimizedHashes;
             const routeBoundsMetadata = isValidRoutePoint(end)
                 ? { route_bounds: { enabled: true, mode: routeOriginMode } }
                 : {};
             const savedBoundStart = routeOriginMode === 'none' ? start : null;
             const savedBoundEnd = routeOriginMode === 'none' ? end : null;
             const clearedUnavailableBounds = !optimizeFromHome && existingRouteOriginMode !== 'none' && !isValidRoutePoint(end);
+            const roadGeometry = buildRoadRouteGeometry(optimized, routingContext);
+            requireCompleteRoadCosts(routingContext);
+            discloseExternalBoundRoadFallback('handleReoptimizeRoute', routingContext);
+            const existingMetadata = { ...(route.metadata || {}) };
+            delete existingMetadata.road_geometry;
+            const routingMetadata = buildPersistedRoadRoutingMetadata(
+                routingContext,
+                roadGeometry,
+                optimizedHashes
+            );
             const routeUpdate = {
                 property_hashes: newOrder,
                 metrics: { ...route.metrics, distance: newDistance, house_count: optimized.length },
+                metadata: {
+                    ...existingMetadata,
+                    ...routingMetadata,
+                    ...routeBoundsMetadata,
+                    ...(clearedUnavailableBounds
+                        ? { route_bounds: { enabled: false, cleared_reason: 'reoptimized_without_home' } }
+                        : {})
+                },
                 ...(isValidRoutePoint(end) ? {
                     start_location: savedBoundStart,
                     end_location: savedBoundEnd,
-                    route_origin_mode: routeOriginMode,
-                    metadata: { ...(route.metadata || {}), ...routeBoundsMetadata }
+                    route_origin_mode: routeOriginMode
                 } : clearedUnavailableBounds ? {
                     start_location: null,
                     end_location: null,
-                    route_origin_mode: 'none',
-                    metadata: {
-                        ...(route.metadata || {}),
-                        route_bounds: { enabled: false, cleared_reason: 'reoptimized_without_home' }
-                    }
+                    route_origin_mode: 'none'
                 } : {})
             };
             await base44.entities.SavedRoute.update(route.id, routeUpdate);
@@ -2123,12 +2322,23 @@ export default function Home() {
             if (savedView && mapRef.current) { try { mapRef.current.setView(savedView.center, savedView.zoom, { animate: false }); } catch (e) { } }
             const savedMiles = Math.round((oldDistance - newDistance) * 100) / 100;
             const prefix = optimizeFromHome ? 'Home round trip optimized' : 'Route optimized';
-            const msg = savedMiles > 0 ? `${prefix}! Saved ~${savedMiles} estimated miles (${newDistance} mi straight-line estimate)` : `${prefix} (${newDistance} mi straight-line estimate)`;
+            const estimateType = routingContext.costOnly
+                ? 'straight-line mileage; road-aware street ordering'
+                : routingContext.roadAware
+                    ? 'road-network estimate'
+                    : 'route estimate';
+            const msg = savedMiles > 0 ? `${prefix}! Saved ~${savedMiles} estimated miles (${newDistance} mi ${estimateType})` : `${prefix} (${newDistance} mi ${estimateType})`;
             toast.success(msg, { id: 'reoptimize-route', duration: 4000 });
             if (clearedUnavailableBounds) {
                 toast.info('Home Base mode was removed. Use “Optimize from Home Base” to keep a home round trip.', { duration: 6000 });
             }
-        } catch (e) { console.error('Re-optimize error:', e); toast.error('Failed to re-optimize route.', { id: 'reoptimize-route' }); }
+        } catch (e) {
+            console.error('Re-optimize error:', e);
+            toast.error(
+                e?.message || 'Failed to re-optimize route. The existing route was left unchanged.',
+                { id: 'reoptimize-route', duration: 6000 }
+            );
+        }
     }, [activeRoute, effectiveProperties, startLocation, teamMembers, user?.email, user?.home_base, user?.id]);
 
     // Filter and sort routes
@@ -2363,7 +2573,7 @@ export default function Home() {
                 zoom={15}
                 style={{ height: '100%', width: '100%' }}
                 zoomControl={false}
-                attributionControl={false}
+                attributionControl
                 preferCanvas={true}
                 wheelPxPerZoomLevel={120}
                 wheelDebounceTime={150}
@@ -2383,7 +2593,9 @@ export default function Home() {
                                     ? "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
                                     : "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
                     }
-                    attribution={mapTheme === 'satellite' || mapTheme === 'hybrid' ? '&copy; Esri' : '&copy; CARTO'}
+                    attribution={mapTheme === 'satellite' || mapTheme === 'hybrid'
+                        ? '&copy; Esri | Road data &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>'
+                        : '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a> &copy; CARTO'}
                 />
                 {(mapTheme === 'hybrid' || mapTheme === 'satellite') && (
                     <TileLayer

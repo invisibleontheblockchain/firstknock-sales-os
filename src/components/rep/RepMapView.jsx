@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { MapContainer, TileLayer, CircleMarker, Circle, Polyline, Tooltip, useMap, Marker, LayerGroup } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import { routePropertyOrderFingerprint } from '@/components/logic/routeRoadContext';
 
 // Fix Leaflet unmount error during scroll wheel zoom
 const originalGetMapPanePos = L.Map.prototype._getMapPanePos;
@@ -193,7 +194,16 @@ function PropertyPinLayer({ properties, nearbyHashes, onSelectProperty }) {
 
 const MemoizedPropertyPinLayer = React.memo(PropertyPinLayer);
 
-export default function RepMapView({ properties, onSelectProperty, onClose, focusProperty, startLocation = null, endLocation = null }) {
+export default function RepMapView({
+    properties,
+    onSelectProperty,
+    onClose,
+    focusProperty,
+    startLocation = null,
+    endLocation = null,
+    roadGeometry = null,
+    roadGeometryFingerprint = '',
+}) {
     const mapRef = useRef(null);
     const [position, setPosition] = useState(null);
     const [accuracy, setAccuracy] = useState(50);
@@ -263,6 +273,19 @@ export default function RepMapView({ properties, onSelectProperty, onClose, focu
 
     const nearbyHashes = useMemo(() => new Set(nearbyProps.map(p => p.address_hash)), [nearbyProps]);
     const routePathPositions = useMemo(() => {
+        const currentFingerprint = routePropertyOrderFingerprint(properties);
+        if (
+            roadGeometryFingerprint
+            && currentFingerprint === roadGeometryFingerprint
+            && Array.isArray(roadGeometry)
+            && roadGeometry.length > 1
+            && roadGeometry.length <= 12000
+        ) {
+            const persisted = roadGeometry
+                .filter(isRoutePoint)
+                .map(point => [Number(point.lat), Number(point.lng)]);
+            if (persisted.length === roadGeometry.length) return persisted;
+        }
         const positions = (properties || []).filter(isRoutePoint).map(p => [Number(p.lat), Number(p.lng)]);
         const effectiveStart = isRoutePoint(startLocation)
             ? startLocation
@@ -272,7 +295,7 @@ export default function RepMapView({ properties, onSelectProperty, onClose, focu
         if (effectiveStart) positions.unshift([Number(effectiveStart.lat), Number(effectiveStart.lng)]);
         if (isRoutePoint(endLocation)) positions.push([Number(endLocation.lat), Number(endLocation.lng)]);
         return positions;
-    }, [endLocation, position, properties, startLocation]);
+    }, [endLocation, position, properties, roadGeometry, roadGeometryFingerprint, startLocation]);
     const endpointsMatch = isRoutePoint(startLocation) && isRoutePoint(endLocation)
         && Number(startLocation.lat) === Number(endLocation.lat)
         && Number(startLocation.lng) === Number(endLocation.lng);
@@ -338,7 +361,7 @@ export default function RepMapView({ properties, onSelectProperty, onClose, focu
                     wheelDebounceTime={35}
                     style={{ height: '100%', width: '100%', touchAction: 'pan-x pan-y pinch-zoom' }}
                     zoomControl={false}
-                    attributionControl={false}
+                    attributionControl
                     preferCanvas={true}
                     zoomAnimation={true}
                     fadeAnimation={true}
@@ -353,7 +376,7 @@ export default function RepMapView({ properties, onSelectProperty, onClose, focu
                     {focusProperty && <FlyToProperty focusProperty={focusProperty} />}
                     <TileLayer
                         url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-                        attribution="&copy; Esri"
+                        attribution='&copy; Esri | Road data &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>'
                         maxNativeZoom={19}
                         maxZoom={22}
                         updateWhenZooming={true}
