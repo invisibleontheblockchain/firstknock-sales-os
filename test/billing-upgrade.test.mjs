@@ -96,7 +96,7 @@ function makeBase44(user, { updateMe, getUser, updateUser, teamMembers = [], sav
       entities: {
         User: {
           get: getUser || (async () => user),
-          update: updateUser || (async () => {})
+          update: updateUser || (async (_id, updates) => updateMe?.(updates))
         },
         SavedRoute: {
           filter: async () => savedRoutes,

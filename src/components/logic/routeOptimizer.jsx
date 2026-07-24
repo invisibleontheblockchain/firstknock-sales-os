@@ -455,71 +455,6 @@ function applyLinkSwap(route) {
 }
 
 /**
- * Fatigue-Aware Front-Loading (§2.3)
- * Moves top propensity stops into the first 22 positions.
- * Constraint: max 12% distance increase.
- */
-const FATIGUE_FRONT_LOAD_STOPS = 22;
-const FRONT_LOAD_PROPENSITY_PERCENTILE = 0.30;
-const DEFAULT_MAX_DISTANCE_INCREASE = 0.12;
-
-function fatigueAwareFrontLoad(route) {
-    if (!route || route.length === 0) return route || [];
-    if (route.length <= FATIGUE_FRONT_LOAD_STOPS) return route;
-
-    // Calculate baseline distance
-    const routeDist = (r) => {
-        let d = 0;
-        for (let i = 0; i < r.length - 1; i++) {
-            d += calculateDistanceFast(r[i].lat, r[i].lng, r[i + 1].lat, r[i + 1].lng);
-        }
-        return d;
-    };
-    const baselineDist = routeDist(route);
-
-    // Find top propensity stops
-    const scored = route.map((p, idx) => ({ idx, propensity: p.propensity || p.score || 0 }));
-    scored.sort((a, b) => b.propensity - a.propensity);
-    const topCount = Math.ceil(route.length * FRONT_LOAD_PROPENSITY_PERCENTILE);
-    const topIndices = new Set(scored.slice(0, topCount).map(s => s.idx));
-
-    // Identify high-propensity stops currently outside the front window
-    const toMove = [];
-    for (let i = FATIGUE_FRONT_LOAD_STOPS; i < route.length; i++) {
-        if (topIndices.has(i)) toMove.push(i);
-    }
-
-    if (toMove.length === 0) return route;
-
-    // Move them into the front section, respecting distance constraint
-    const result = [...route];
-    let insertPos = 1; // Keep index 0 (start) locked
-
-    for (const fromIdx of toMove) {
-        // Find current position of this element in result
-        const currentIdx = result.indexOf(route[fromIdx]);
-        if (currentIdx < 0 || currentIdx <= insertPos) continue;
-        if (insertPos >= FATIGUE_FRONT_LOAD_STOPS) break;
-
-        const item = result.splice(currentIdx, 1)[0];
-        result.splice(insertPos, 0, item);
-        insertPos++;
-
-        // Check distance constraint
-        const newDist = routeDist(result);
-        if ((newDist - baselineDist) / baselineDist > DEFAULT_MAX_DISTANCE_INCREASE) {
-            // Undo
-            result.splice(insertPos - 1, 1);
-            result.splice(currentIdx, 0, item);
-            insertPos--;
-            break;
-        }
-    }
-
-    return result;
-}
-
-/**
  * Nearest Neighbor TSP approximation for route ordering
  * Enhanced with weighted heuristics
  */
@@ -607,7 +542,6 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
         streetCooldownDays = COOLDOWN_CONFIG.STREET_COOLDOWN_DAYS,
         useStreetSweep = true,
         minimizeTurns = false,
-        use2Opt = true,
         returnToStart = false,
         endLocation = null,
         routeOriginMode = 'none',
@@ -747,24 +681,16 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
         // MAIL CARRIER ORDERING
         console.log(`[routeOptimizer] Mail carrier ordering ${clusterProps.length} properties...`);
         const t1 = Date.now();
-        let orderedProps = mailCarrierOrder(clusterProps, startLocation);
+        const orderedProps = mailCarrierOrder(
+            clusterProps,
+            startLocation,
+            hasFixedRouteBounds ? effectiveEndLocation : null
+        );
         console.log(`[routeOptimizer] Mail carrier done in ${Date.now() - t1}ms (${orderedProps.length} ordered)`);
 
-        // Fatigue-aware front-loading (skip for very large routes)
-        if (orderedProps.length <= 5000) {
-            orderedProps = fatigueAwareFrontLoad(orderedProps);
-        }
-
-        // Fixed external endpoints are an explicit opt-in. They are optimization
-        // anchors, never fake door records in the saved property list.
-        if (hasFixedRouteBounds && orderedProps.length > 1) {
-            orderedProps = optimizeRouteWithBounds(orderedProps, {
-                startLocation,
-                endLocation: effectiveEndLocation,
-                max2OptPasses: use2Opt ? 25 : 0,
-                max2OptStops: use2Opt ? 300 : 0
-            });
-        }
+        // Street Sweep treats each street as an atomic walking block. Point-level
+        // front-loading or endpoint optimization here can pull one door out of
+        // its street and create A Street -> B Street -> A Street backtracking.
 
         // Metrics — use fast distance for large routes
         let totalDistance = 0;
@@ -924,8 +850,14 @@ function normalizeStreetName(raw) {
 /** Group properties by normalized street name. Unknown streets go to '_unknown'. */
 function groupByStreet(properties) {
     const groups = new Map();
-    properties.forEach(p => {
-        const key = normalizeStreetName(p.street_name) || '_unknown';
+    properties.forEach((p, index) => {
+        const normalizedStreet = normalizeStreetName(p.street_name);
+        const zip = String(p.zip_code || p.zip || '').trim().slice(0, 5);
+        const city = String(p.city || '').trim().toUpperCase();
+        const unknownIdentity = p.address_hash || p.legacy_hash || p.id || index;
+        const key = normalizedStreet === '__UNKNOWN__'
+            ? `__UNKNOWN__|${unknownIdentity}`
+            : `${normalizedStreet}|${city}|${zip}`;
         if (!groups.has(key)) groups.set(key, []);
         groups.get(key).push(p);
     });
@@ -1062,6 +994,133 @@ function applyIntraStreet2Opt(props) {
     return props;
 }
 
+function buildStreetSweepBlocks(properties) {
+    return [...groupByStreet(properties).entries()].map(([key, props]) => {
+        const forward = applyIntraStreet2Opt(
+            boustrophedonStreet([...props], false)
+        );
+        return {
+            key,
+            lat: props.reduce((sum, property) => sum + property.lat, 0) / props.length,
+            lng: props.reduce((sum, property) => sum + property.lng, 0) / props.length,
+            variants: [forward, [...forward].reverse()]
+        };
+    });
+}
+
+function streetBlockOrderCost(blocks, startLocation = null, endLocation = null, includePath = false) {
+    if (blocks.length === 0) {
+        return includePath ? { cost: 0, orientations: [] } : 0;
+    }
+
+    const costs = blocks.map(() => [Infinity, Infinity]);
+    const previous = blocks.map(() => [-1, -1]);
+
+    for (let orientation = 0; orientation < 2; orientation++) {
+        const firstDoor = blocks[0].variants[orientation][0];
+        costs[0][orientation] = isValidRoutePoint(startLocation)
+            ? calculateDistanceFast(startLocation.lat, startLocation.lng, firstDoor.lat, firstDoor.lng)
+            : 0;
+    }
+
+    for (let blockIndex = 1; blockIndex < blocks.length; blockIndex++) {
+        for (let orientation = 0; orientation < 2; orientation++) {
+            const firstDoor = blocks[blockIndex].variants[orientation][0];
+            for (let previousOrientation = 0; previousOrientation < 2; previousOrientation++) {
+                const previousDoors = blocks[blockIndex - 1].variants[previousOrientation];
+                const previousLastDoor = previousDoors[previousDoors.length - 1];
+                const candidateCost = costs[blockIndex - 1][previousOrientation]
+                    + calculateDistanceFast(
+                        previousLastDoor.lat,
+                        previousLastDoor.lng,
+                        firstDoor.lat,
+                        firstDoor.lng
+                    );
+                if (candidateCost < costs[blockIndex][orientation]) {
+                    costs[blockIndex][orientation] = candidateCost;
+                    previous[blockIndex][orientation] = previousOrientation;
+                }
+            }
+        }
+    }
+
+    let finalOrientation = 0;
+    let finalCost = Infinity;
+    for (let orientation = 0; orientation < 2; orientation++) {
+        const finalDoors = blocks[blocks.length - 1].variants[orientation];
+        const finalDoor = finalDoors[finalDoors.length - 1];
+        const candidateCost = costs[blocks.length - 1][orientation]
+            + (isValidRoutePoint(endLocation)
+                ? calculateDistanceFast(finalDoor.lat, finalDoor.lng, endLocation.lat, endLocation.lng)
+                : 0);
+        if (candidateCost < finalCost) {
+            finalCost = candidateCost;
+            finalOrientation = orientation;
+        }
+    }
+
+    if (!includePath) return finalCost;
+
+    const orientations = new Array(blocks.length);
+    orientations[blocks.length - 1] = finalOrientation;
+    for (let blockIndex = blocks.length - 1; blockIndex > 0; blockIndex--) {
+        orientations[blockIndex - 1] = previous[blockIndex][orientations[blockIndex]];
+    }
+    return { cost: finalCost, orientations };
+}
+
+function optimizeStreetBlockOrder(blocks, startLocation = null, endLocation = null) {
+    if (blocks.length <= 1) return [...blocks];
+
+    // Point optimization is safe at this level because each point represents a
+    // complete street sweep. No property can be detached from its street block.
+    let ordered = optimizeRouteWithBounds(blocks, {
+        startLocation: isValidRoutePoint(startLocation) ? startLocation : null,
+        endLocation: isValidRoutePoint(endLocation) ? endLocation : null,
+        max2OptPasses: 20,
+        max2OptStops: 300
+    });
+
+    // Refine smaller routes using the true entry and exit doors of each whole
+    // sweep. A centroid alone is not enough when a fixed finish is requested.
+    if (ordered.length <= 120) {
+        let currentCost = streetBlockOrderCost(ordered, startLocation, endLocation);
+        for (let pass = 0; pass < 5; pass++) {
+            let bestCost = currentCost;
+            let bestOrder = null;
+            for (let start = 0; start < ordered.length - 1; start++) {
+                for (let finish = start + 1; finish < ordered.length; finish++) {
+                    const candidate = [
+                        ...ordered.slice(0, start),
+                        ...ordered.slice(start, finish + 1).reverse(),
+                        ...ordered.slice(finish + 1)
+                    ];
+                    const candidateCost = streetBlockOrderCost(candidate, startLocation, endLocation);
+                    if (candidateCost + 0.000001 < bestCost) {
+                        bestCost = candidateCost;
+                        bestOrder = candidate;
+                    }
+                }
+            }
+            if (!bestOrder) break;
+            ordered = bestOrder;
+            currentCost = bestCost;
+        }
+    }
+
+    return ordered;
+}
+
+function flattenOrientedStreetBlocks(blocks, startLocation = null, endLocation = null) {
+    const { orientations } = streetBlockOrderCost(
+        blocks,
+        startLocation,
+        endLocation,
+        true
+    );
+    return blocks.flatMap((block, index) => block.variants[orientations[index]]);
+}
+
 /** Compute centroid for a property list. */
 function computeCentroid(properties) {
     return {
@@ -1184,8 +1243,8 @@ function orderClustersByNN(centroids, startLat, startLng) {
     return order;
 }
 
-/** Internal single-cluster mail-carrier ordering: group by street, order streets, boustrophedon walk. */
-function mailCarrierOrderSingleCluster(properties, startLocation) {
+/** Internal mail-carrier ordering: optimize complete street sweeps as atomic blocks. */
+function mailCarrierOrderSingleCluster(properties, startLocation, endLocation = null) {
     if (!properties || properties.length === 0) return [];
 
     // Filter out properties with missing/NaN coordinates
@@ -1195,40 +1254,13 @@ function mailCarrierOrderSingleCluster(properties, startLocation) {
     );
     if (validProperties.length === 0) return [];
 
-    const streetGroups = groupByStreet(validProperties);
-    const orderedStreetNames = orderStreetsByNearestNeighbor(streetGroups, startLocation);
-
-    const result = [];
-    let exitPoint = startLocation || null;
-    let reverseNext = false;
-
-    for (const streetName of orderedStreetNames) {
-        let streetProps = streetGroups.get(streetName);
-        if (!streetProps || streetProps.length === 0) continue;
-
-        // Boustrophedon walk within the street
-        streetProps = boustrophedonStreet(streetProps, reverseNext);
-        streetProps = applyIntraStreet2Opt(streetProps);
-
-        // If we have an exit point, check if we should reverse this street
-        if (exitPoint && streetProps.length >= 2) {
-            const distToFirst = calculateDistanceFast(exitPoint.lat, exitPoint.lng, streetProps[0].lat, streetProps[0].lng);
-            const distToLast = calculateDistanceFast(exitPoint.lat, exitPoint.lng, streetProps[streetProps.length - 1].lat, streetProps[streetProps.length - 1].lng);
-            if (distToLast < distToFirst) {
-                streetProps.reverse();
-            }
-        }
-
-        result.push(...streetProps);
-        exitPoint = streetProps[streetProps.length - 1];
-        reverseNext = !reverseNext;
-    }
-
-    return result;
+    const blocks = buildStreetSweepBlocks(validProperties);
+    const orderedBlocks = optimizeStreetBlockOrder(blocks, startLocation, endLocation);
+    return flattenOrientedStreetBlocks(orderedBlocks, startLocation, endLocation);
 }
 
-/** Full mail-carrier ordering: cluster geographically, then route each cluster by street. */
-export function mailCarrierOrder(properties, startLocation) {
+/** Full mail-carrier ordering with every normalized street kept contiguous. */
+export function mailCarrierOrder(properties, startLocation = null, endLocation = null) {
     if (!properties || properties.length === 0) return [];
     if (properties.length === 1) return [...properties];
 
@@ -1239,45 +1271,11 @@ export function mailCarrierOrder(properties, startLocation) {
     );
     if (validProperties.length === 0) return [];
 
-    // Detect geographic clusters for spread-out routes.
-    // Returns all 0s (no-op) when spread <= 3 miles — compact routes unaffected.
-    const clusterAssignments = detectGeoClusters(validProperties);
-    const numClusters = Math.max(...clusterAssignments) + 1;
+    return mailCarrierOrderSingleCluster(validProperties, startLocation, endLocation);
+}
 
-    if (numClusters === 1) {
-        return mailCarrierOrderSingleCluster(validProperties, startLocation);
-    }
-
-    // Multi-cluster path: route within each cluster, connect clusters via NN
-    const clusters = Array.from({ length: numClusters }, () => []);
-    validProperties.forEach((p, i) => clusters[clusterAssignments[i]].push(p));
-
-    // Determine start point
-    const allCentroid = computeCentroid(validProperties);
-    const startLat = startLocation?.lat ?? allCentroid.lat;
-    const startLng = startLocation?.lng ?? allCentroid.lng;
-
-    // Order clusters by nearest-neighbor from start position
-    const clusterCentroids = clusters.map(computeCentroid);
-    const clusterOrder = orderClustersByNN(clusterCentroids, startLat, startLng);
-
-    // Route within each cluster and concatenate
-    const result = [];
-    let arrivalLat = startLat;
-    let arrivalLng = startLng;
-
-    for (const ci of clusterOrder) {
-        const clusterResult = mailCarrierOrderSingleCluster(
-            clusters[ci],
-            { lat: arrivalLat, lng: arrivalLng },
-        );
-        result.push(...clusterResult);
-        if (clusterResult.length > 0) {
-            arrivalLat = clusterResult[clusterResult.length - 1].lat;
-            arrivalLng = clusterResult[clusterResult.length - 1].lng;
-        }
-    }
-    return result;
+export function optimizeRouteByStreetSweep(properties, startLocation = null, endLocation = null) {
+    return mailCarrierOrder(properties, startLocation, endLocation);
 }
 
 // Re-export lead scoring for external consumers

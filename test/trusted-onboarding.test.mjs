@@ -257,15 +257,20 @@ test('invite redemption rejects legacy manager or admin role codes', async () =>
   }
 });
 
-test('RoleSelect delegates returning-rep claims while preserving manager role selection', () => {
+test('RoleSelect delegates both rep claims and manager workspace role writes to trusted functions', () => {
   const source = readSource('src/pages/RoleSelect.jsx');
   const backend = readSource('base44/functions/redeemInviteCode/entry.ts');
+  const managerBackend = readSource('base44/functions/createManagerWorkspace/entry.ts');
+  const userSchema = JSON.parse(readSource('base44/entities/User.jsonc'));
 
   assert.match(source, /functions\.invoke\(['"]redeemInviteCode['"], \{ action: ['"]claim_existing['"] \}\)/);
+  assert.match(source, /functions\.invoke\(['"]createManagerWorkspace['"], \{\}\)/);
   assert.doesNotMatch(source, /team_manager_id/);
-  assert.match(source, /updateUserMutation\.mutateAsync\(\{ app_role: role \}\)/);
+  assert.doesNotMatch(source, /auth\.updateMe\(\{\s*app_role/);
   assert.match(backend, /service\.entities\.User\.update\(user\.id/);
   assert.doesNotMatch(backend, /auth\.updateMe/);
+  assert.match(managerBackend, /asServiceRole\.entities\.User\.update\(user\.id/);
+  assert.deepEqual(userSchema.properties.app_role.rls.write, { user_condition: { role: 'admin' } });
 });
 
 test('invite-code identity fields are manager-owned and role escalation is service-only', () => {

@@ -134,7 +134,7 @@ async function createStripeCustomer(base44: any, user: any) {
         name: user.full_name,
         metadata: { base44_user_id: user.id }
     });
-    await base44.auth.updateMe({ stripe_customer_id: customer.id });
+    await base44.asServiceRole.entities.User.update(user.id, { stripe_customer_id: customer.id });
     return customer.id;
 }
 
@@ -187,7 +187,7 @@ async function activateTrialSubscription({
     const ownedStoredSubscription = subscriptionBelongsToUser(storedSubscription, user) ? storedSubscription : null;
     let customerId = await resolveOwnedCustomerId(user, [ownedStoredSubscription, ...discoveredSubscriptions].filter(Boolean));
     if (!customerId) {
-        await base44.auth.updateMe({
+        await base44.asServiceRole.entities.User.update(user.id, {
             subscription_status: 'canceled',
             subscription_paid_confirmed: false
         });
@@ -197,7 +197,7 @@ async function activateTrialSubscription({
         }, { status: 409 });
     }
     if (customerId !== user.stripe_customer_id) {
-        await base44.auth.updateMe({ stripe_customer_id: customerId });
+        await base44.asServiceRole.entities.User.update(user.id, { stripe_customer_id: customerId });
     }
     const billingUser = { ...user, stripe_customer_id: customerId };
 
@@ -218,7 +218,7 @@ async function activateTrialSubscription({
         const reconciledStatus = storedSubscription && subscriptionBelongsToUser(storedSubscription, billingUser)
             ? storedSubscription.status
             : 'canceled';
-        await base44.auth.updateMe({
+        await base44.asServiceRole.entities.User.update(user.id, {
             subscription_status: reconciledStatus,
             subscription_paid_confirmed: false
         });
@@ -234,7 +234,7 @@ async function activateTrialSubscription({
         : trialSubscription.latest_invoice;
 
     if (trialSubscription.status !== 'trialing') {
-        await base44.auth.updateMe({
+        await base44.asServiceRole.entities.User.update(user.id, {
             subscription_id: trialSubscription.id,
             subscription_status: trialSubscription.status,
             stripe_customer_id: customerId
@@ -281,7 +281,7 @@ async function activateTrialSubscription({
     // Reconcile Base44 before charging so the webhook accepts events for the
     // exact subscription that is being converted.
     if (user.subscription_id !== trialSubscription.id) {
-        await base44.auth.updateMe({
+        await base44.asServiceRole.entities.User.update(user.id, {
             subscription_id: trialSubscription.id,
             subscription_status: 'trialing',
             stripe_customer_id: customerId

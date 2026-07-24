@@ -57,6 +57,7 @@ export async function hydrateRouteForMap(route, userEmail = null) {
 
     const request = base44.functions.invoke('getRoutePropertiesByHashes', {
         address_hashes: hashes,
+        route_id: route.id || null,
         user_email: userEmail,
         limit: hashes.length
     }).then(res => {

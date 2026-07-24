@@ -80,13 +80,21 @@ export default function SalesEditor({
   const [formError, setFormError] = useState('');
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
-  const sales = useMemo(() => buildSalesRows({
-    logs,
-    members,
-    routes,
-    properties,
-    currentUser,
-  }), [currentUser, logs, members, properties, routes]);
+  const sales = useMemo(() => {
+    const correctedLogs = (Array.isArray(logs) ? logs : []).map((log) => {
+      if (!/^Outcome corrected to\b/i.test(String(log?.raw_input_text || ''))) return log;
+      const correctedLog = { ...log };
+      delete correctedLog.description;
+      return correctedLog;
+    });
+    return buildSalesRows({
+      logs: correctedLogs,
+      members,
+      routes,
+      properties,
+      currentUser,
+    });
+  }, [currentUser, logs, members, properties, routes]);
   const selectedSale = sales.find((sale) => sale.id === selectedSaleId) || null;
   const totalRevenue = sales.reduce((sum, sale) => sum + (sale.amountRecorded ? sale.amount : 0), 0);
   const valuedSales = sales.filter((sale) => sale.amountRecorded).length;
@@ -106,14 +114,27 @@ export default function SalesEditor({
   }, [queryClient]);
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, payload }) => base44.entities.InteractionLog.update(id, payload),
+    mutationFn: async ({ id, payload }) => {
+      const response = await base44.functions.invoke('recordKnockOutcome', {
+        action: 'edit_sale',
+        interaction_id: id,
+        parsed_status: payload.parsed_status,
+        raw_input_text: payload.raw_input_text,
+        sale_amount: payload.sale_amount,
+      });
+      return response.data;
+    },
     onSuccess: async () => {
       await invalidateSalesData();
       setSelectedSaleId(null);
       setConfirmingDelete(false);
       toast.success('Sale updated');
     },
-    onError: (error) => setFormError(error?.message || 'The sale could not be updated.'),
+    onError: (error) => setFormError(
+      error?.response?.data?.error
+      || error?.message
+      || 'The sale could not be updated.'
+    ),
   });
 
   const deleteMutation = useMutation({

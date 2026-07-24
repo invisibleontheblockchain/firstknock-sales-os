@@ -8,7 +8,10 @@
         "rep",
         "manager",
         "admin"
-      ]
+      ],
+      "rls": {
+        "write": { "user_condition": { "role": "admin" } }
+      }
     },
     "team_manager_id": {
       "type": "string",
@@ -20,77 +23,131 @@
     "is_owner": {
       "type": "boolean",
       "default": false,
-      "description": "Owner level tier with unlimited caps and elevated permissions"
+      "description": "Owner level tier with unlimited caps and elevated permissions",
+      "rls": {
+        "write": { "user_condition": { "role": "admin" } }
+      }
     },
     "subscription_status": {
-      "type": "string"
+      "type": "string",
+      "rls": {
+        "write": { "user_condition": { "role": "admin" } }
+      }
     },
     "subscription_tier": {
-      "type": "string"
+      "type": "string",
+      "rls": {
+        "write": { "user_condition": { "role": "admin" } }
+      }
     },
     "subscription_id": {
       "type": "string",
-      "description": "Client-visible Stripe subscription locator cache. Server access still requires affirmative Stripe metadata ownership."
+      "description": "Client-visible Stripe subscription locator cache. Server access still requires affirmative Stripe metadata ownership.",
+      "rls": {
+        "write": { "user_condition": { "role": "admin" } }
+      }
     },
     "subscription_paid_confirmed": {
       "type": "boolean",
       "default": false,
-      "description": "Client-visible webhook cache only. Paid entitlement is re-verified from live Stripe state by server functions."
+      "description": "Client-visible webhook cache only. Paid entitlement is re-verified from live Stripe state by server functions.",
+      "rls": {
+        "write": { "user_condition": { "role": "admin" } }
+      }
     },
     "subscription_paid_confirmed_at": {
       "type": "string",
-      "format": "date-time"
+      "format": "date-time",
+      "rls": {
+        "write": { "user_condition": { "role": "admin" } }
+      }
     },
     "subscription_period_start": {
       "type": "string",
       "format": "date-time",
-      "description": "Client-visible Stripe period cache; never authoritative for allowance enforcement"
+      "description": "Client-visible Stripe period cache; never authoritative for allowance enforcement",
+      "rls": {
+        "write": { "user_condition": { "role": "admin" } }
+      }
     },
     "subscription_period_end": {
       "type": "string",
       "format": "date-time",
-      "description": "Current Stripe subscription period end, updated only from verified Stripe state"
+      "description": "Current Stripe subscription period end, updated only from verified Stripe state",
+      "rls": {
+        "write": { "user_condition": { "role": "admin" } }
+      }
     },
     "subscription_plan_id": {
-      "type": "string"
+      "type": "string",
+      "rls": {
+        "write": { "user_condition": { "role": "admin" } }
+      }
     },
     "precision_usage_period_start": {
       "type": "string",
       "format": "date-time",
-      "description": "Client-visible audit cache. Service-owned FetchJob usage and live Stripe state are authoritative."
+      "description": "Client-visible audit cache. Service-owned FetchJob usage and live Stripe state are authoritative.",
+      "rls": {
+        "write": { "user_condition": { "role": "admin" } }
+      }
     },
     "precision_usage_period_end": {
       "type": "string",
-      "format": "date-time"
+      "format": "date-time",
+      "rls": {
+        "write": { "user_condition": { "role": "admin" } }
+      }
     },
     "precision_usage_reconciled_at": {
       "type": "string",
       "format": "date-time",
-      "description": "Set once when an existing paid account receives its included-trial reconciliation"
+      "description": "Set once when an existing paid account receives its included-trial reconciliation",
+      "rls": {
+        "write": { "user_condition": { "role": "admin" } }
+      }
     },
     "precision_usage_reconciliation_version": {
       "type": "integer",
-      "default": 0
+      "default": 0,
+      "rls": {
+        "write": { "user_condition": { "role": "admin" } }
+      }
     },
     "precision_trial_properties_credited": {
       "type": "integer",
       "default": 0,
-      "description": "Audit value for the one-time included trial-property credit, capped at 50"
+      "description": "Audit value for the one-time included trial-property credit, capped at 50",
+      "rls": {
+        "write": { "user_condition": { "role": "admin" } }
+      }
     },
     "total_seats": {
-      "type": "integer"
+      "type": "integer",
+      "rls": {
+        "write": { "user_condition": { "role": "admin" } }
+      }
     },
     "stripe_customer_id": {
-      "type": "string"
+      "type": "string",
+      "rls": {
+        "write": { "user_condition": { "role": "admin" } }
+      }
     },
     "stripe_card_on_file_confirmed": {
       "type": "boolean",
       "default": false,
-      "description": "True once Stripe confirms a payment method/card on file through Checkout or an active/trialing subscription."
+      "description": "Display cache only. Outcome enforcement verifies attached cards live with Stripe.",
+      "rls": {
+        "write": { "user_condition": { "role": "admin" } }
+      }
     },
     "stripe_card_confirmed_at": {
       "type": "string",
-      "format": "date-time"
+      "format": "date-time",
+      "rls": {
+        "write": { "user_condition": { "role": "admin" } }
+      }
     },
     "has_seen_onboarding": {
       "type": "boolean"
@@ -131,7 +188,43 @@
     "outcomes_logged": {
       "type": "integer",
       "default": 0,
-      "description": "Lifetime count of Knock Mode outcomes logged by this user (free plan gate at 50). Never decrements."
+      "description": "Service-owned lifetime count of Knock Mode outcomes logged by this user. Never decrements.",
+      "rls": {
+        "write": { "user_condition": { "role": "admin" } }
+      }
+    },
+    "outcomes_reconciled_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When legacy outcomes were reconciled into the protected lifetime counter",
+      "rls": {
+        "read": { "user_condition": { "role": "admin" } },
+        "write": { "user_condition": { "role": "admin" } }
+      }
+    },
+    "knock_outcome_lock_token": {
+      "type": "string",
+      "description": "Short-lived service-owned lease serializing outcome writes for this actor",
+      "rls": {
+        "read": { "user_condition": { "role": "admin" } },
+        "write": { "user_condition": { "role": "admin" } }
+      }
+    },
+    "knock_outcome_lock_acquired_at": {
+      "type": "string",
+      "format": "date-time",
+      "rls": {
+        "read": { "user_condition": { "role": "admin" } },
+        "write": { "user_condition": { "role": "admin" } }
+      }
+    },
+    "knock_outcome_lock_expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "rls": {
+        "read": { "user_condition": { "role": "admin" } },
+        "write": { "user_condition": { "role": "admin" } }
+      }
     },
     "working_area": {
       "type": "string",

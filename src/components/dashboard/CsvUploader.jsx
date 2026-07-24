@@ -10,6 +10,7 @@ import { createPageUrl } from '@/utils';
 import RedfinImportSummary from '@/components/import/RedfinImportSummary';
 import { createRouteFromRedfinImport, prepareRedfinCsvImport } from '@/components/import/redfinCsvImport';
 import { optimizeRouteByDistance } from '@/components/logic/routeOptimizer';
+import { createOutcomeIdempotencyKey } from '@/components/upgrade/knockGate';
 
 export default function CsvUploader() {
     const navigate = useNavigate();
@@ -340,8 +341,12 @@ export default function CsvUploader() {
             for (let i = 0; i < logs.length; i += BATCH_SIZE) {
                 const batch = logs.slice(i, i + BATCH_SIZE);
                 setUploadStatus({ success: null, message: `Updating history batch ${Math.floor(i/BATCH_SIZE)+1}/${totalBatches}...` });
-                await base44.entities.InteractionLog.bulkCreate(batch);
-                importedCount += batch.length;
+                const response = await base44.functions.invoke('recordKnockOutcome', {
+                    action: 'import_history',
+                    idempotency_key: createOutcomeIdempotencyKey('csv-history'),
+                    interactions: batch
+                });
+                importedCount += Number(response.data?.imported || 0) + Number(response.data?.reused || 0);
             }
 
             await queryClient.invalidateQueries({ queryKey: ['interactionLogs'] });

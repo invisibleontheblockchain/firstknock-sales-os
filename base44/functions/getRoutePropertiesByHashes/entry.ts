@@ -1,11 +1,20 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import { neon } from 'npm:@neondatabase/serverless@0.9.0';
 
-function extractZipFromHash(hash) {
-    const piped = String(hash || '').match(/\|(\d{5})(?:-\d{4})?$/);
-    if (piped) return piped[1];
-    const trailing = String(hash || '').match(/(?:-|,|\s)(\d{5})(?:-\d{4})?$/);
-    return trailing ? trailing[1] : null;
+class HttpError extends Error {
+    constructor(status, code, message) {
+        super(message);
+        this.status = status;
+        this.code = code;
+    }
+}
+
+function asArray(value) {
+    return Array.isArray(value) ? value : (value?.items || []);
+}
+
+function normalized(value) {
+    return String(value || '').trim().toLowerCase();
 }
 
 Deno.serve(async (req) => {
@@ -21,14 +30,38 @@ Deno.serve(async (req) => {
         const hashes = Array.isArray(body.address_hashes)
             ? body.address_hashes.map(String).map(h => h.trim()).filter(Boolean)
             : [];
+        if (hashes.length > 5000 || hashes.some(hash => hash.length > 256)) {
+            throw new HttpError(400, 'invalid_property_lookup', 'Property lookup accepts at most 5,000 valid address hashes.');
+        }
 
         if (hashes.length === 0) {
             return Response.json({ success: true, count: 0, properties: [] });
         }
 
         const sql = neon(databaseUrl);
-        const targetEmail = user.role === 'admin' && body.user_email ? body.user_email : user.email;
+        let targetEmail = String(user.email || '').trim();
         const limit = Math.min(Math.max(Number(body.limit || hashes.length), 1), 5000);
+        const routeId = body.route_id ? String(body.route_id).trim() : null;
+        let authorizedRoute = null;
+        if (routeId) {
+            authorizedRoute = await base44.entities.SavedRoute.get(routeId).catch(() => null);
+            if (!authorizedRoute) {
+                throw new HttpError(403, 'route_access_denied', 'This route is not visible to the authenticated account.');
+            }
+            const routeHashes = new Set((authorizedRoute.property_hashes || []).map(String));
+            if (hashes.some(hash => !routeHashes.has(hash))) {
+                throw new HttpError(403, 'route_hash_mismatch', 'The request contains a property that is not on this route.');
+            }
+            targetEmail = String(authorizedRoute.created_by || '').trim();
+            if (!targetEmail) {
+                throw new HttpError(409, 'route_owner_missing', 'This legacy route has no verifiable workspace owner.');
+            }
+        } else if (normalized(user.role) === 'admin' && body.user_email) {
+            targetEmail = String(body.user_email).trim();
+        }
+        if (!targetEmail) {
+            throw new HttpError(403, 'workspace_owner_missing', 'No verifiable workspace owner is available for this lookup.');
+        }
 
         const rows = await sql`
             SELECT
@@ -45,6 +78,9 @@ Deno.serve(async (req) => {
                 p.lng,
                 p.h3_index,
                 p.owner_full_name,
+                p.owner_occupied,
+                p.corporate_owned,
+                p.investor_owned,
                 p.beds,
                 p.baths,
                 p.sqft,
@@ -86,113 +122,47 @@ Deno.serve(async (req) => {
             if (property.legacy_hash) byHash.set(property.legacy_hash, property);
         });
 
-        const missingAfterWorkspace = hashes.filter(hash => !byHash.has(hash));
-        if (missingAfterWorkspace.length > 0) {
-            const directRows = await sql`
-                SELECT
-                    p.id,
-                    p.address_hash,
-                    p.legacy_hash,
-                    p.full_address,
-                    p.house_number,
-                    p.street_name,
-                    p.city,
-                    p.state,
-                    p.zip_code,
-                    p.lat,
-                    p.lng,
-                    p.h3_index,
-                    p.owner_full_name,
-                    p.beds,
-                    p.baths,
-                    p.sqft,
-                    p.lot_size,
-                    p.year_built,
-                    p.price,
-                    p.sold_date,
-                    p.sale_type,
-                    p.property_type,
-                    p.mls_id,
-                    p.url,
-                    p.data_source,
-                    p.sale_confidence,
-                    p.original_status,
-                    p.created_at,
-                    p.updated_at
-                FROM properties p
-                WHERE p.lat IS NOT NULL
-                  AND p.lng IS NOT NULL
-                  AND (p.address_hash = ANY(${missingAfterWorkspace}) OR p.legacy_hash = ANY(${missingAfterWorkspace}))
-                LIMIT ${limit}
-            `;
-
-            directRows.forEach(row => {
-                const property = {
-                    ...row,
-                    id: String(row.id),
-                    address_hash: row.address_hash || String(row.id),
-                    created_date: row.created_at,
-                    updated_date: row.updated_at
-                };
-                byHash.set(property.address_hash, property);
-                if (property.legacy_hash) byHash.set(property.legacy_hash, property);
-            });
-        }
-
+        // CSV-imported properties may exist only in Base44. Their fallback is
+        // allowed only when a caller-visible route or interaction proves both
+        // the requested hash and the original creator/workspace owner.
         const missingHashes = hashes.filter(hash => !byHash.has(hash));
         if (missingHashes.length > 0) {
-            try {
-                const missingSet = new Set(missingHashes);
-                const zipCodes = [...new Set(missingHashes.map(extractZipFromHash).filter(Boolean))];
-                const addressMatches = [];
-
-                for (const zip of zipCodes) {
-                    const zipRows = await base44.asServiceRole.entities.MasterProperty.filter({ zip_code: zip }, null, 5000);
-                    const zipArr = Array.isArray(zipRows) ? zipRows : (zipRows?.items || []);
-                    zipArr.forEach(property => {
-                        if (missingSet.has(property.address_hash) || (property.legacy_hash && missingSet.has(property.legacy_hash))) {
-                            addressMatches.push(property);
-                        }
-                    });
+            const allowedOwnersByHash = new Map();
+            if (authorizedRoute) {
+                const ownerEmail = normalized(targetEmail);
+                missingHashes.forEach(hash => allowedOwnersByHash.set(hash, new Set([ownerEmail])));
+            } else {
+                const visibleLogs = asArray(await base44.entities.InteractionLog.filter({
+                    address_hash: missingHashes
+                }, '-created_date', Math.min(5000, Math.max(missingHashes.length * 5, 100))));
+                for (const log of visibleLogs) {
+                    const hash = String(log?.address_hash || '');
+                    const ownerEmail = normalized(log?.created_by);
+                    if (!missingHashes.includes(hash) || !ownerEmail) continue;
+                    if (!allowedOwnersByHash.has(hash)) allowedOwnersByHash.set(hash, new Set());
+                    allowedOwnersByHash.get(hash).add(ownerEmail);
                 }
-
-                const stillMissing = missingHashes.filter(hash => !addressMatches.some(p => p.address_hash === hash || p.legacy_hash === hash));
-                const legacyMatches = stillMissing.length > 0
-                    ? await base44.asServiceRole.entities.MasterProperty.filter({ legacy_hash: stillMissing }, null, limit)
-                    : [];
-
-                [...addressMatches, ...legacyMatches].forEach(property => {
-                    if (property?.lat && property?.lng) {
-                        byHash.set(property.address_hash, property);
-                        if (property.legacy_hash) byHash.set(property.legacy_hash, property);
-                    }
-                });
-            } catch (fallbackError) {
-                console.warn('MasterProperty fallback skipped:', fallbackError.message);
             }
-        }
 
-        // Final fallback: direct address_hash lookup in MasterProperty.
-        // CSV-imported routes generate hashes with no ZIP embedded and no
-        // legacy_hash, so the ZIP/legacy fallbacks above can't find them.
-        // address_hash is the canonical key and always matches imported rows.
-        const stillMissingFinal = hashes.filter(hash => !byHash.has(hash));
-        if (stillMissingFinal.length > 0) {
-            try {
-                const BATCH = 100;
-                for (let i = 0; i < stillMissingFinal.length; i += BATCH) {
-                    const slice = stillMissingFinal.slice(i, i + BATCH);
-                    const matches = await base44.asServiceRole.entities.MasterProperty.filter({ address_hash: slice }, null, slice.length);
-                    const arr = Array.isArray(matches) ? matches : (matches?.items || []);
-                    arr.forEach(property => {
-                        if (property?.lat && property?.lng) {
-                            byHash.set(property.address_hash, property);
-                            if (property.legacy_hash) byHash.set(property.legacy_hash, property);
-                        }
-                    });
+            const authorizedHashes = missingHashes.filter(hash => allowedOwnersByHash.has(hash));
+            const BATCH = 100;
+            for (let i = 0; i < authorizedHashes.length; i += BATCH) {
+                const slice = authorizedHashes.slice(i, i + BATCH);
+                const [primaryResult, legacyResult] = await Promise.all([
+                    base44.asServiceRole.entities.MasterProperty.filter({ address_hash: slice }, null, slice.length),
+                    base44.asServiceRole.entities.MasterProperty.filter({ legacy_hash: slice }, null, slice.length)
+                ]);
+                for (const property of [...asArray(primaryResult), ...asArray(legacyResult)]) {
+                    if (!property?.lat || !property?.lng) continue;
+                    const requestedHash = slice.find(hash =>
+                        hash === String(property.address_hash || '')
+                        || hash === String(property.legacy_hash || '')
+                    );
+                    if (!requestedHash) continue;
+                    const allowedOwners = allowedOwnersByHash.get(requestedHash);
+                    if (!allowedOwners?.has(normalized(property.created_by))) continue;
+                    byHash.set(requestedHash, property);
                 }
-            } catch (directError) {
-                console.warn('MasterProperty direct address_hash fallback skipped:', directError.message);
             }
         }
 
@@ -206,6 +176,9 @@ Deno.serve(async (req) => {
             properties
         });
     } catch (error) {
-        return Response.json({ error: error.message }, { status: 500 });
+        return Response.json({
+            error: error.message,
+            code: error.code || 'route_property_lookup_failed'
+        }, { status: Number(error.status || 500) });
     }
 });

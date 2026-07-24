@@ -319,7 +319,7 @@ export default function PrecisionPullPanel({
       if (!hasShownFallbackToast.current) {
         hasShownFallbackToast.current = true;
         toast.info(isCustomRange
-          ? 'Custom ownership ranges require Pro. Your date range has been updated to 3 months.'
+          ? 'Custom recorded-sale ranges require Pro. Your date range has been updated to 3 months.'
           : 'Your date range has been updated to 3 months. Upgrade to Pro for shorter ranges.');
       }
     }
@@ -498,7 +498,7 @@ export default function PrecisionPullPanel({
               {selectedHistoryArea && repullMode === 'max_since_last'
                 ? 'Sold-date window'
                 : isCustomRange
-                  ? 'Ownership age'
+                  ? 'Recorded sale / ownership age'
                   : 'Homes sold in the last'}
             </label>
             {selectedHistoryArea && repullMode === 'max_since_last' ? (
@@ -598,7 +598,7 @@ export default function PrecisionPullPanel({
                   >
                     <div className="flex items-center justify-between gap-3">
                       <div>
-                        <p id="custom-ownership-range-heading" className="text-xs font-black uppercase tracking-wider text-white">Ownership Age</p>
+                        <p id="custom-ownership-range-heading" className="text-xs font-black uppercase tracking-wider text-white">Recorded Sale / Ownership Age</p>
                         <p className="mt-0.5 text-[10px] text-gray-400">Choose the exact age window to target.</p>
                       </div>
                       <span className="rounded-full border border-white/10 bg-black/30 px-2 py-1 text-[9px] font-bold text-gray-400">1–365 days</span>
@@ -625,7 +625,7 @@ export default function PrecisionPullPanel({
                         max={OWNERSHIP_RANGE_MAX_DAYS}
                         step={1}
                         minStepsBetweenThumbs={1}
-                        thumbLabels={['Minimum ownership age in days', 'Maximum ownership age in days']}
+                        thumbLabels={['Minimum days since recorded sale', 'Maximum days since recorded sale']}
                         className="py-4 sm:py-3 [&_[role=slider]]:h-7 [&_[role=slider]]:w-7 sm:[&_[role=slider]]:h-5 sm:[&_[role=slider]]:w-5 [&_[role=slider]]:border-[#2EEB57]"
                       />
                       <div className="mt-1 flex items-center justify-between text-[9px] font-bold text-gray-500">
@@ -635,7 +635,7 @@ export default function PrecisionPullPanel({
                     </div>
 
                     <p className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-[10px] leading-snug text-gray-300">
-                      Inclusive range: homes exactly {formatDays(ownershipMinDays)} through {formatDays(ownershipMaxDays)} old are included.
+                      Includes homes whose recorded sale/transfer date is {formatDays(ownershipMinDays)} through {formatDays(ownershipMaxDays)} ago. This estimates ownership age; it does not confirm when an occupant moved in.
                     </p>
                   </div>
                 )}
@@ -836,7 +836,7 @@ export default function PrecisionPullPanel({
           >
             {generating ? 'GENERATING...' : <><Zap className="w-4 h-4 mr-2" /> {selectedHistoryArea ? 'REFRESH AREA' : 'GENERATE'}</>}
           </Button>
-          <p className="text-[10px] text-gray-500 text-center mt-2">Pulls newly sold homes in your selected range, then prepares them for optimized routing.</p>
+          <p className="text-[10px] text-gray-500 text-center mt-2">Pulls homes by recorded sale/transfer date in your selected range, then prepares them for optimized routing.</p>
         </div>
       </div>
     </div>

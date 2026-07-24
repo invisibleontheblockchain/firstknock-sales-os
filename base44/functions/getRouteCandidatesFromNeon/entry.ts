@@ -226,6 +226,9 @@ Deno.serve(async (req) => {
                 p.lng,
                 p.h3_index,
                 p.owner_full_name,
+                p.owner_occupied,
+                p.corporate_owned,
+                p.investor_owned,
                 p.beds,
                 p.baths,
                 p.sqft,
@@ -286,7 +289,8 @@ Deno.serve(async (req) => {
         if (body.fields === 'map') {
             const MAP_FIELDS = [
                 'id', 'address_hash', 'legacy_hash', 'full_address', 'house_number', 'street_name',
-                'city', 'state', 'zip_code', 'lat', 'lng', 'owner_full_name', 'beds', 'baths', 'sqft',
+                'city', 'state', 'zip_code', 'lat', 'lng', 'owner_full_name', 'owner_occupied',
+                'corporate_owned', 'investor_owned', 'beds', 'baths', 'sqft',
                 'lot_size', 'year_built', 'price', 'sold_date', 'sale_type', 'property_type', 'mls_id',
                 'data_source', 'sale_confidence', 'original_status', 'route_active', 'status'
             ];

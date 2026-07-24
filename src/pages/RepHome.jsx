@@ -15,6 +15,7 @@ import {
   ROUTE_BULK_ACTIONS,
   buildWorkflowTransitionLogs,
   getLatestInteractionLog,
+  getPropertyAliases,
   getPropertySelectionKey,
   getVisiblePropertyKeys,
   getWorkflowBucketFromLogs,
@@ -45,7 +46,7 @@ import RepAnalytics from '@/components/rep/RepAnalytics';
 import TeamChat from '@/components/rep/TeamChat';
 import KnockLimitSheet from '@/components/upgrade/KnockLimitSheet';
 import KnockLimitBanner from '@/components/upgrade/KnockLimitBanner';
-import { isProUser, isOutcomeBlocked, getOutcomesLogged, needsCardOnFile } from '@/components/upgrade/knockGate';
+import { createOutcomeIdempotencyKey, getOutcomeGateFromError } from '@/components/upgrade/knockGate';
 import { geocodeAddress } from '@/lib/geocoding';
 import { calculateRouteDistanceMiles, isValidRoutePoint, optimizeRouteWithBounds } from '@/lib/routeBounds';
 import { getFieldRoutesCapability, getFieldRoutesStatuses } from '@/api/fieldRoutes';
@@ -100,6 +101,7 @@ export default function RepHome() {
   const [limitDismissed, setLimitDismissed] = useState(false);
   const [gateMode, setGateMode] = useState('limit');
   const loggingInFlightRef = React.useRef(false);
+  const bulkWorkflowRetryRef = React.useRef(null);
   const appointmentRunFocusHandledRef = React.useRef(false);
   const [soldDateFilter, setSoldDateFilter] = useState('all');
   const [decisionFilter, setDecisionFilter] = useState('all');
@@ -449,6 +451,7 @@ export default function RepHome() {
 
         const response = await base44.functions.invoke('getRoutePropertiesByHashes', {
           address_hashes: hashes,
+          route_id: activeRoute.id,
           user_email: activeRoute.created_by,
           limit: hashes.length
         });
@@ -506,11 +509,11 @@ export default function RepHome() {
     enabled: !!user?.email
   });
 
-  // Knock Mode freemium gate: disabled once the limit sheet has been dismissed
-  // this session, OR if the user is already at/over the limit on load.
-  const outcomeLoggingDisabled = activeRouteArchived
-    || (!isProUser(user) && (limitDismissed || needsCardOnFile(user) || isOutcomeBlocked(user)));
-  const showLimitBanner = limitDismissed && !isProUser(user);
+  // The server mutation is authoritative; cached browser billing flags never
+  // prevent live Stripe verification from running. Archived routes remain
+  // read-only regardless of billing state.
+  const outcomeLoggingDisabled = activeRouteArchived;
+  const showLimitBanner = limitDismissed;
 
   // REAL-TIME UPDATES: Prevent double-knocking (Team Mode)
   React.useEffect(() => {
@@ -543,13 +546,17 @@ export default function RepHome() {
 
   // Log Result Mutation
   const createLogMutation = useMutation({
-    mutationFn: (logData) => {
+    mutationFn: async (logData) => {
       const { property_snapshot, callback_contact_name, callback_contact_phone, callback_time, ...persistedLog } = logData;
-      return base44.entities.InteractionLog.create({
-        ...persistedLog,
-        route_id: activeRoute?.id || null,
-        manager_id: repManagerId
+      const response = await base44.functions.invoke('recordKnockOutcome', {
+        action: 'record',
+        idempotency_key: createOutcomeIdempotencyKey('rep-knock'),
+        interaction: {
+          ...persistedLog,
+          route_id: persistedLog.route_id || activeRoute?.id || null
+        }
       });
+      return response.data;
     },
     onMutate: async (newLog) => {
       await queryClient.cancelQueries({ queryKey: ['routeLogs', activeRoute?.id] });
@@ -561,6 +568,18 @@ export default function RepHome() {
     },
     onError: (err, newLog, context) => {
       queryClient.setQueryData(['routeLogs', activeRoute?.id], context?.previousLogs);
+      const gate = getOutcomeGateFromError(err);
+      if (gate) {
+        setGateMode(gate);
+        setShowLimitSheet(true);
+        if (gate === 'limit') setLimitDismissed(true);
+        return;
+      }
+      toast.error(
+        err?.response?.data?.error
+        || err?.message
+        || 'Outcome could not be saved. Please try again.'
+      );
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['myLogs'] });
@@ -568,7 +587,7 @@ export default function RepHome() {
       queryClient.invalidateQueries({ queryKey: ['allMyLogs'] });
       queryClient.invalidateQueries({ queryKey: ['propertyHistory'] });
     },
-    onSuccess: async (createdLog, logData) => {
+    onSuccess: async (result, logData) => {
       setSelectedProperty(null);
       if (logData?.parsed_status === 'CALLBACK' && logData?.next_eligible_date) {
         try {
@@ -585,7 +604,7 @@ export default function RepHome() {
               industry: 'other',
               status: 'scheduled',
               outcome: 'follow_up',
-              route_id: activeRoute?.id || null,
+              route_id: result?.interaction?.route_id || logData.route_id || activeRoute?.id || null,
               assigned_rep: teamMember?.id || user?.id || null,
               assigned_rep_name: teamMember?.name || user?.full_name || null,
               zip_code: p.zip_code || p.zip || null,
@@ -601,32 +620,35 @@ export default function RepHome() {
         }
       }
 
-      // Free users: increment the persisted lifetime counter. The counter only
-      // ever increases and is never checked/incremented for Pro users.
-      if (!isProUser(user)) {
-        try {
-          await base44.auth.updateMe({ outcomes_logged: getOutcomesLogged(user) + 1 });
-          queryClient.invalidateQueries({ queryKey: ['user'] });
-        } catch (e) {
-          console.error('Failed to increment outcomes_logged', e);
-        }
+      if (Number.isFinite(result?.outcomes_logged)) {
+        queryClient.setQueryData(['user'], (current) => ({
+          ...(current || user || {}),
+          outcomes_logged: result.outcomes_logged
+        }));
       }
     }
   });
 
   const clearDecisionMutation = useMutation({
-    mutationFn: (log) => {
+    mutationFn: async (log) => {
       if (activeRouteArchived) throw new Error('Archived routes are read-only.');
-      return base44.entities.InteractionLog.create({
-      address_hash: log.address_hash,
-      raw_input_text: 'Decision cleared — moved back to Todo',
-      parsed_status: 'ELIGIBLE',
-      counts_as_knock: false,
-      workflow_action: 'CLEAR_TO_TODO',
-      workflow_bucket: 'TODO',
-      route_id: activeRoute?.id || null,
-      manager_id: repManagerId
+      const response = await base44.functions.invoke('recordKnockOutcome', {
+        action: 'clear_decision',
+        idempotency_key: createOutcomeIdempotencyKey('clear-decision'),
+        interaction: {
+          address_hash: log.address_hash,
+          raw_input_text: 'Decision cleared — moved back to Todo',
+          parsed_status: 'ELIGIBLE',
+          counts_as_knock: false,
+          workflow_action: 'CLEAR_TO_TODO',
+          workflow_bucket: 'TODO',
+          route_id: log.route_id || activeRoute?.id || null,
+          gps_proof_lat: selectedProperty?.lat,
+          gps_proof_lng: selectedProperty?.lng,
+          gps_accuracy: 0
+        }
       });
+      return response.data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['routeLogs'] });
@@ -907,7 +929,7 @@ export default function RepHome() {
   ]);
 
   const bulkActionMutation = useMutation({
-    mutationFn: async ({ action, properties: targetProperties }) => {
+    mutationFn: async ({ action, properties: targetProperties, idempotencyKey }) => {
       if (!activeRoute?.id) throw new Error('No active route is available.');
       if (activeRouteArchived) throw new Error('Archived routes are read-only.');
       if (!targetProperties?.length) throw new Error('Select at least one route stop.');
@@ -971,19 +993,39 @@ export default function RepHome() {
         return { action, count: removedHashes.length };
       }
 
-      const transitionLogs = buildWorkflowTransitionLogs(targetProperties, action, {
+      const routeHashSet = new Set((activeRoute.property_hashes || []).map(String));
+      const requestedTransitions = buildWorkflowTransitionLogs(targetProperties, action, {
         routeId: activeRoute.id,
-        managerId: repManagerId,
-      });
+      }).map((transition, index) => ({
+        ...transition,
+        address_hash: getPropertyAliases(targetProperties[index])
+          .find((alias) => routeHashSet.has(alias))
+          || transition.address_hash,
+      }));
+      const transitionLogs = [...new Map(
+        requestedTransitions.map((transition) => [transition.address_hash, transition])
+      ).values()];
+      if (!idempotencyKey) throw new Error('This workflow update is missing its retry key.');
       const batchSize = 500;
       let completedCount = 0;
       for (let index = 0; index < transitionLogs.length; index += batchSize) {
         const batch = transitionLogs.slice(index, index + batchSize);
         try {
-          await base44.entities.InteractionLog.bulkCreate(batch);
-          completedCount += batch.length;
+          const response = await base44.functions.invoke('recordKnockOutcome', {
+            action: 'workflow_transition',
+            route_id: activeRoute.id,
+            address_hashes: batch.map((transition) => transition.address_hash),
+            workflow_action: batch[0].workflow_action,
+            idempotency_key: `${idempotencyKey}:${Math.floor(index / batchSize)}`,
+          });
+          const updatedCount = Number(response?.data?.updated_count);
+          completedCount += Number.isFinite(updatedCount) ? updatedCount : batch.length;
         } catch (error) {
-          const wrappedError = new Error(error?.message || 'The workflow update could not be saved.');
+          const wrappedError = new Error(
+            error?.response?.data?.error
+            || error?.message
+            || 'The workflow update could not be saved.'
+          );
           wrappedError.completedCount = completedCount;
           throw wrappedError;
         }
@@ -991,6 +1033,7 @@ export default function RepHome() {
       return { action, count: completedCount };
     },
     onSuccess: async ({ action, count }) => {
+      bulkWorkflowRetryRef.current = null;
       setSelectedPropertyKeys(new Set());
       await invalidateBulkWorkflowQueries();
 
@@ -1174,30 +1217,23 @@ export default function RepHome() {
       );
       if (!confirmed) return;
     }
-    bulkActionMutation.mutate({ action, properties: selectedProperties });
-  };
+    const selectionFingerprint = selectedProperties
+      .map(getPropertySelectionKey)
+      .filter(Boolean)
+      .sort()
+      .join('|');
+    const retryFingerprint = `${activeRoute?.id || ''}:${action}:${selectionFingerprint}`;
+    const retryState = bulkWorkflowRetryRef.current;
+    const idempotencyKey = action === ROUTE_BULK_ACTIONS.DELETE
+      ? null
+      : retryState?.fingerprint === retryFingerprint
+        ? retryState.idempotencyKey
+        : createOutcomeIdempotencyKey('rep-workflow');
 
-  // Re-fetch the user fresh on each tap so a mid-session upgrade (in another tab)
-  // lifts the gate without a full reload. Returns true if the gate fired.
-  const checkAndHandleGate = async () => {
-    let freshUser = user;
-    try {
-      freshUser = await base44.auth.me();
-      if (freshUser) queryClient.setQueryData(['user'], freshUser);
-    } catch { /* keep cached user */ }
-
-    if (isProUser(freshUser)) return false;
-    if (needsCardOnFile(freshUser)) {
-      setGateMode('card');
-      setShowLimitSheet(true);
-      return true;
+    if (action !== ROUTE_BULK_ACTIONS.DELETE) {
+      bulkWorkflowRetryRef.current = { fingerprint: retryFingerprint, idempotencyKey };
     }
-    if (limitDismissed || isOutcomeBlocked(freshUser)) {
-      setGateMode('limit');
-      setShowLimitSheet(true);
-      return true;
-    }
-    return false;
+    bulkActionMutation.mutate({ action, properties: selectedProperties, idempotencyKey });
   };
 
   const handleLog = async (logData) => {
@@ -1208,13 +1244,10 @@ export default function RepHome() {
     if (!selectedProperty && !logData.address_hash) return false;
     const prop = selectedProperty || {};
 
-    // Atomic guard: block re-entrancy from rapid double-taps at the boundary.
+    // Keep the guard through GPS resolution and the authoritative server write.
     if (loggingInFlightRef.current) return false;
     loggingInFlightRef.current = true;
     try {
-      const blocked = await checkAndHandleGate();
-      if (blocked) return false; // No outcome saved, no stop marked, no state change.
-
       const saleSnapshot = logData.parsed_status === 'SOLD'
         ? {
             sale_date: logData.sale_date || new Date().toISOString(),
@@ -1245,10 +1278,11 @@ export default function RepHome() {
       await createLogMutation.mutateAsync({
         ...enrichedLogData,
         ...gpsProof,
+        route_id: logData.route_id || activeRoute?.id || null,
       });
       return true;
-    } catch (error) {
-      toast.error(error?.message || 'The outcome could not be saved. Please try again.');
+    } catch {
+      // Mutation callbacks display live billing gates and write errors.
       return false;
     } finally {
       loggingInFlightRef.current = false;
@@ -1858,10 +1892,7 @@ export default function RepHome() {
         onBlockedAttempt={() => {
           if (activeRouteArchived) {
             toast.error('Archived routes are read-only.');
-            return;
           }
-          setGateMode(needsCardOnFile(user) ? 'card' : 'limit');
-          setShowLimitSheet(true);
         }}
         onClearDecision={activeRouteArchived ? undefined : handleClearDecision}
         onPhotoUpload={activeRouteArchived ? undefined : handlePhotoUpload}
@@ -1898,7 +1929,7 @@ export default function RepHome() {
             <KnockLimitSheet
         open={showLimitSheet}
         mode={gateMode}
-        onClose={() => {setShowLimitSheet(false);setLimitDismissed(true);}} />
+        onClose={() => {setShowLimitSheet(false);}} />
       
             </div>
 

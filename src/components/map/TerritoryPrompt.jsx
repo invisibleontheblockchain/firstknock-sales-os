@@ -78,7 +78,7 @@ function buildPrecisionShortfallMessage({
   const customRange = normalizeOwnershipRangeDays(ownershipRangeDays ?? diagnostics?.ownership_range_days);
   const usesCustomRange = (ownershipRangeMode ?? diagnostics?.ownership_range_mode) === 'custom' && customRange;
   const soldWindow = usesCustomRange
-    ? `${customRange[0]}\u2013${customRange[1]} day ownership window`
+    ? `${customRange[0]}\u2013${customRange[1]} days since recorded sale`
     : formatSoldWindow(soldMonths ?? diagnostics?.sold_months);
   if (soldWindow) filters.push(soldWindow);
 
@@ -97,7 +97,7 @@ function buildPrecisionShortfallMessage({
   const skippedText = skippedExisting > 0 ? ` We skipped ${formatWholeNumber(skippedExisting)} homes already in saved routes.` : '';
   const routeTypeText = skippedRouteType > 0 ? ` ${formatWholeNumber(skippedRouteType)} provider records were not single-family residential homes.` : '';
   const nextStep = summary.scan_limit_reached === true
-    ? 'We reached the provider scan safety limit before filling the request. Try a fixed count, a smaller area, or a wider ownership window.'
+    ? 'We reached the provider scan safety limit before filling the request. Try a fixed count, a smaller area, or a wider recorded-sale window.'
     : skippedRouteType > 0
     ? 'Precision routes only use single-family residential homes, so draw a larger residential area to find more eligible homes.'
     : skippedExisting > 0
@@ -903,7 +903,7 @@ export default function TerritoryPrompt({
       : null;
     const effectiveOwnershipRangeMode = effectiveOwnershipRangeDays ? 'custom' : 'quick';
     if (!isMaxSinceLast && ownershipRangeMode === 'custom' && !effectiveOwnershipRangeDays) {
-      setPullError({ message: 'Choose a valid ownership window between 1 and 365 days.', upgrade: false });
+      setPullError({ message: 'Choose a valid recorded-sale window between 1 and 365 days.', upgrade: false });
       return;
     }
     const effectiveSoldMonths = isMaxSinceLast
@@ -955,7 +955,7 @@ export default function TerritoryPrompt({
     }
 
     if (effectiveOwnershipRangeMode === 'custom' && !hasPrecisionPro) {
-      const message = 'Custom ownership ranges require a Precision Pro plan. Upgrade to target an exact ownership window.';
+      const message = 'Custom recorded-sale ranges require a Precision Pro plan. Upgrade to target an exact recorded-sale window.';
       toast.info(message);
       setPullError({ message, upgrade: true });
       return;
@@ -1048,7 +1048,7 @@ export default function TerritoryPrompt({
           confirmedRange[1] !== effectiveOwnershipRangeDays[1]
         ) {
           setPullError({
-            message: 'The property import did not confirm the selected custom ownership range. Automatic route generation was stopped so newer or older sales cannot be mixed into this route.',
+            message: 'The property import did not confirm the selected custom recorded-sale range. Automatic route generation was stopped so newer or older sales cannot be mixed into this route.',
             upgrade: false
           });
           return;

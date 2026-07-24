@@ -36,7 +36,7 @@ import { Loader2, X, BarChart3, Filter } from 'lucide-react';
 import { toast } from "sonner";
 import { determineEffectiveStatus, isPointInPolygon } from '../components/logic/territoryLogic';
 import { subMonths, subDays, isAfter, parseISO } from 'date-fns';
-import { generateOptimizedRoutes, optimizeRouteByDistance } from '../components/logic/routeOptimizer';
+import { generateOptimizedRoutes, optimizeRouteByStreetSweep } from '../components/logic/routeOptimizer';
 import { calculateRouteDistanceMiles, isValidRoutePoint } from '@/lib/routeBounds';
 import { applyRouteFilters, formatStageCounts } from '../components/logic/routeFilterPipeline';
 import { normalizeOwnershipRangeDays as normalizeStrictOwnershipRangeDays } from '../components/logic/soldDateRange';
@@ -60,7 +60,7 @@ import MapToolbar from '../components/map/MapToolbar';
 import ZipCodeOverlay from '../components/map/ZipCodeOverlay';
 import PolygonHistory from '../components/map/PolygonHistory';
 import KnockLimitSheet from '@/components/upgrade/KnockLimitSheet';
-import { getOutcomesLogged, isOutcomeBlocked, isProUser, needsCardOnFile } from '@/components/upgrade/knockGate';
+import { createOutcomeIdempotencyKey, getOutcomeGateFromError } from '@/components/upgrade/knockGate';
 import { hasCanvasAccess } from '@/lib/canvasAccess';
 import { validateCanvasBoundary } from '@/components/canvas/canvasPlannerUtils';
 import { fetchAllCanvasTeamMembers } from '@/components/canvas/canvasRosterPagination';
@@ -407,6 +407,7 @@ export default function Home() {
         excludeCondos: true,
         excludePreviouslyKnocked: true,
         excludeLand: true,
+        excludeBusinessOwned: false,
         propertyTypes: ['Single Family'],
         minPrice: null,
         maxPrice: null,
@@ -416,6 +417,7 @@ export default function Home() {
     });
     const mapRef = useRef(null);
     const appointmentMapFocusHandledRef = useRef(false);
+    const managerOutcomeInFlightRef = useRef(false);
     const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me(), staleTime: 1000 * 60 * 5 });
     useEffect(() => {
         if (!user?.id || routeModeHydratedUserRef.current === user.id) return;
@@ -496,7 +498,7 @@ export default function Home() {
                 confirmedRange[0] !== customOwnershipRange[0] ||
                 confirmedRange[1] !== customOwnershipRange[1]
             ) {
-                throw new Error('The route-candidate service did not confirm the selected custom ownership range. Route generation stopped so properties outside that range cannot be used.');
+                throw new Error('The route-candidate service did not confirm the selected custom recorded-sale range. Route generation stopped so properties outside that range cannot be used.');
             }
         }
         return Array.isArray(data.properties) ? data.properties : [];
@@ -557,6 +559,7 @@ export default function Home() {
             excludeCondos: true,
             excludeLand: true,
             excludePreviouslyKnocked: template.config.excludePreviouslyKnocked ?? true,
+            excludeBusinessOwned: template.config.excludeBusinessOwned ?? false,
             propertyTypes: ['Single Family'],
             minPrice: template.config.minPrice || null,
             maxPrice: template.config.maxPrice || null
@@ -965,7 +968,7 @@ export default function Home() {
             ? (route.endLocation || route.end_location)
             : null;
         const savedProperties = requestedRouteOriginMode !== 'none' && !canPreserveRequestedBounds
-            ? optimizeRouteByDistance(route.properties || [], null)
+            ? optimizeRouteByStreetSweep(route.properties || [], null, null)
             : route.properties;
         const savedDistance = requestedRouteOriginMode !== 'none' && !canPreserveRequestedBounds
             ? Math.round(calculateRouteDistanceMiles(savedProperties) * 100) / 100
@@ -1164,24 +1167,40 @@ export default function Home() {
     };
 
     const createLogMutation = useMutation({
-        mutationFn: (logData) => base44.entities.InteractionLog.create({
-            ...logData,
-            route_id: activeRoute?.id || null,
-            manager_id: user?.id || null,
-        }),
-        onSuccess: async () => {
+        mutationFn: async (logData) => {
+            const response = await base44.functions.invoke('recordKnockOutcome', {
+                action: 'record',
+                idempotency_key: createOutcomeIdempotencyKey('manager-knock'),
+                interaction: {
+                    ...logData,
+                    route_id: logData.route_id || activeRoute?.id || null
+                }
+            });
+            return response.data;
+        },
+        onSuccess: (result) => {
             queryClient.invalidateQueries({ queryKey: ['interactionLogs'] });
             queryClient.invalidateQueries({ queryKey: ['selectedPropertyHistory'] });
-            if (!isProUser(user)) {
-                try {
-                    const freshUser = await base44.auth.me().catch(() => user);
-                    await base44.auth.updateMe({ outcomes_logged: getOutcomesLogged(freshUser) + 1 });
-                    queryClient.invalidateQueries({ queryKey: ['user'] });
-                } catch (error) {
-                    console.error('Failed to increment outcomes_logged', error);
-                }
+            if (Number.isFinite(result?.outcomes_logged)) {
+                queryClient.setQueryData(['user'], (current) => ({
+                    ...(current || user || {}),
+                    outcomes_logged: result.outcomes_logged
+                }));
             }
         },
+        onError: (error) => {
+            const gate = getOutcomeGateFromError(error);
+            if (gate) {
+                setKnockGateMode(gate);
+                setShowKnockLimitSheet(true);
+                return;
+            }
+            toast.error(
+                error?.response?.data?.error
+                || error?.message
+                || 'Outcome could not be saved. Please try again.'
+            );
+        }
     });
 
     // Process ALL properties with territory filter
@@ -1912,10 +1931,10 @@ export default function Home() {
         finally { setRoutesGenerating(false); }
     }, [frozenWorkingSet, housesPerRoute, startLocation, logs, streetCooldownDays, zipCodeFilter, routeConfig, soldDateFilter, drawnPolygon, lastPullMode, learnedWeights, user?.territory_zip_codes, assignedHashes]);
 
-    // Re-optimize a single saved route's order in-place — pure distance minimization (NN + 2-Opt + Or-Opt)
+    // Re-optimize a single saved route while keeping each street sweep contiguous.
     const handleReoptimizeRoute = useCallback(async (route, options = {}) => {
         const optimizeFromHome = options?.fromHome === true;
-        toast.loading(optimizeFromHome ? 'Optimizing from home base...' : 'Optimizing for shortest distance...', { id: 'reoptimize-route' });
+        toast.loading(optimizeFromHome ? 'Optimizing from home base...' : 'Optimizing street-by-street...', { id: 'reoptimize-route' });
         const savedView = mapRef.current ? { center: mapRef.current.getCenter(), zoom: mapRef.current.getZoom() } : null;
         try {
             const hashes = (route.property_hashes || (route.properties || []).map(p => p.address_hash || p.id)).filter(Boolean);
@@ -1974,7 +1993,7 @@ export default function Home() {
                 : isValidRoutePoint(end) && existingRouteOriginMode !== 'none'
                     ? existingRouteOriginMode
                     : 'none';
-            const optimized = optimizeRouteByDistance(routeProperties, start, end);
+            const optimized = optimizeRouteByStreetSweep(routeProperties, start, end);
             if (!optimized || optimized.length === 0) { toast.error('Optimization produced no results.', { id: 'reoptimize-route' }); return; }
             const newDistance = Math.round(calculateRouteDistanceMiles(
                 optimized,
@@ -2156,30 +2175,9 @@ export default function Home() {
         enabled: !!selectedProperty?.address_hash
     });
 
-    const checkAndHandleOutcomeGate = useCallback(async () => {
-        let freshUser = user;
-        try {
-            freshUser = await base44.auth.me();
-            if (freshUser) queryClient.setQueryData(['user'], freshUser);
-        } catch { /* keep cached user */ }
-
-        if (isProUser(freshUser)) return false;
-        if (needsCardOnFile(freshUser)) {
-            setKnockGateMode('card');
-            setShowKnockLimitSheet(true);
-            return true;
-        }
-        if (isOutcomeBlocked(freshUser)) {
-            setKnockGateMode('limit');
-            setShowKnockLimitSheet(true);
-            return true;
-        }
-        return false;
-    }, [queryClient, user]);
-
     const handleLogResult = useCallback(async (property, statusOrLogData, note = null) => {
-        const blocked = await checkAndHandleOutcomeGate();
-        if (blocked) return false;
+        if (managerOutcomeInFlightRef.current) return false;
+        managerOutcomeInFlightRef.current = true;
 
         const logData = typeof statusOrLogData === 'object'
             ? statusOrLogData
@@ -2209,11 +2207,12 @@ export default function Home() {
                 route_id: logData.route_id || activeRoute?.id || null
             });
             return true;
-        } catch (error) {
-            toast.error(error?.message || 'The outcome could not be saved. Please try again.');
+        } catch {
             return false;
+        } finally {
+            managerOutcomeInFlightRef.current = false;
         }
-    }, [activeRoute, checkAndHandleOutcomeGate, createLogMutation, user]);
+    }, [activeRoute, createLogMutation, user]);
 
     const handleDeleteInteraction = useCallback(async (log) => {
         if (!log?.id) return;

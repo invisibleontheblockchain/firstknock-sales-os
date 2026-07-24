@@ -185,7 +185,14 @@ test('Analytics exposes an all-pages Sales Manager with update, correction, and 
   assert.match(list, /manager: managerAnalytics/);
   assert.match(list, /<SalesEditor/);
   assert.doesNotMatch(editor, /\.slice\(0, 50\)/);
-  assert.match(editor, /InteractionLog\.update/);
+  assert.doesNotMatch(editor, /InteractionLog\.update/);
+  assert.match(editor, /functions\.invoke\('recordKnockOutcome'/);
+  assert.match(editor, /action: 'edit_sale'/);
+  assert.match(editor, /interaction_id: id/);
+  assert.match(editor, /parsed_status: payload\.parsed_status/);
+  assert.match(editor, /raw_input_text: payload\.raw_input_text/);
+  assert.match(editor, /sale_amount: payload\.sale_amount/);
+  assert.doesNotMatch(editor, /description: payload\.description/);
   assert.match(editor, /InteractionLog\.delete/);
   assert.match(editor, /Confirm delete/);
   assert.match(editor, /salesManagerLogs/);

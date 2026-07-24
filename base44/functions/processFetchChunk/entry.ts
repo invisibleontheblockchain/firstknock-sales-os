@@ -225,6 +225,18 @@ function numberValue(...values) {
     return null;
 }
 
+function booleanValue(...values) {
+    for (const value of values) {
+        if (value === true || value === false) return value;
+        if (value === 1 || value === '1') return true;
+        if (value === 0 || value === '0') return false;
+        const normalized = String(value ?? '').trim().toLowerCase();
+        if (['true', 'yes', 'y'].includes(normalized)) return true;
+        if (['false', 'no', 'n'].includes(normalized)) return false;
+    }
+    return null;
+}
+
 function dateValue(...values) {
     for (const value of values) {
         if (value === undefined || value === null || value === '') continue;
@@ -393,7 +405,11 @@ function buildBatchDataRequest(job, skip = 0, take = 500, mode = 'strict_polygon
 
     const options = {
         skip,
-        take: Math.min(Math.max(Number(take) || BATCHDATA_MAX_TAKE, 1), BATCHDATA_MAX_TAKE)
+        take: Math.min(Math.max(Number(take) || BATCHDATA_MAX_TAKE, 1), BATCHDATA_MAX_TAKE),
+        // Request only the property, deed, and owner datasets used by the
+        // Precision route product. Do not implicitly ingest contact,
+        // demographic, mortgage, lien, or financial add-ons.
+        datasets: ['basic', 'deed', 'owner']
     };
 
     if (mode === 'centroid_fallback') {
@@ -459,6 +475,7 @@ function mapBatchDataProperty(record, job) {
     if (!isPointInPolygon({ lat: address.lat, lng: address.lng }, job.polygon || [])) return null;
 
     const owner = p.owner || {};
+    const quickLists = p.quickLists || p.quick_lists || {};
     const listing = p.listing || {};
     const intel = p.intel || {};
     const building = p.building || p.structure || p.propertyInfo || p.assessment?.building || p.assessor?.building || {};
@@ -503,6 +520,9 @@ function mapBatchDataProperty(record, job) {
         saleDateOnly <= customOwnershipBounds.newestDate
     );
     const ownerName = firstValue(owner.fullName, owner.name, owner.ownerName, owner.names?.[0]?.full, owner.names?.[0]?.name, owner.names?.[0]);
+    const ownerOccupied = booleanValue(quickLists.ownerOccupied, quickLists.owner_occupied, owner.ownerOccupied);
+    const corporateOwned = booleanValue(quickLists.corporateOwned, quickLists.corporate_owned, owner.corporateOwned);
+    const investorOwned = booleanValue(quickLists.investorOwned, quickLists.investor_owned, owner.investorOwned);
     const saleAmount = numberValue(
         intel.lastSoldPrice,
         intel.lastSalePrice,
@@ -560,6 +580,9 @@ function mapBatchDataProperty(record, job) {
         lat: address.lat,
         lng: address.lng,
         owner_full_name: ownerName || null,
+        owner_occupied: ownerOccupied,
+        corporate_owned: corporateOwned,
+        investor_owned: investorOwned,
         beds: numberValue(building.bedroomCount, building.bedrooms, building.beds, building.rooms?.beds, p.bedrooms, p.beds),
         baths: numberValue(building.bathroomCount, building.bathrooms, building.baths, building.rooms?.baths, p.bathrooms, p.baths),
         sqft: numberValue(
@@ -579,7 +602,39 @@ function mapBatchDataProperty(record, job) {
         sale_confidence: rejected ? 'REJECTED' : 'verified',
         original_status: rejected ? 'REJECTED' : 'BATCHDATA_CONFIRMED',
         route_active: routeActive,
-        raw_payload: JSON.stringify(p)
+        // Retain a deliberately minimized audit snapshot instead of the full
+        // provider object, which can grow to include sensitive add-on fields.
+        raw_payload: JSON.stringify({
+            schema_version: 1,
+            provider: 'batchdata',
+            property_id: firstValue(ids.propertyId, ids.id, p.id, p.propertyId) || null,
+            address: {
+                street: address.street,
+                city: address.city,
+                state: address.state,
+                zip: address.zip,
+                lat: address.lat,
+                lng: address.lng
+            },
+            owner: {
+                full_name: ownerName || null,
+                owner_occupied: ownerOccupied,
+                corporate_owned: corporateOwned,
+                investor_owned: investorOwned
+            },
+            property: {
+                property_type: propertyType,
+                standardized_land_use_code: landUseCode || null,
+                beds: numberValue(building.bedroomCount, building.bedrooms, building.beds, building.rooms?.beds, p.bedrooms, p.beds),
+                baths: numberValue(building.bathroomCount, building.bathrooms, building.baths, building.rooms?.baths, p.bathrooms, p.baths),
+                estimated_value: price ?? null,
+                year_built: numberValue(intel.yearBuilt, intel.effectiveYearBuilt, intel.buildYear, intel.year_built, building.yearBuilt, building.effectiveYearBuilt, p.yearBuilt, p.year_built)
+            },
+            sale: {
+                date: saleDate || null,
+                amount: saleAmount ?? null
+            }
+        })
     };
 }
 
@@ -596,7 +651,7 @@ async function writePropertiesToNeon(sql, properties, job, excludedRouteHashes =
     for (const p of properties) {
         const isInSavedRoute = excludedRouteHashes.has(p.address_hash);
         const existingRows = await sql`
-            SELECT id, sold_date, sale_confidence, original_status, owner_full_name, beds, baths, sqft, lot_size, year_built, price
+            SELECT id, sold_date, sale_confidence, original_status, owner_full_name, owner_occupied, corporate_owned, investor_owned, beds, baths, sqft, lot_size, year_built, price
             FROM properties
             WHERE address_hash = ${p.address_hash}
             LIMIT 1
@@ -608,11 +663,12 @@ async function writePropertiesToNeon(sql, properties, job, excludedRouteHashes =
             const created = await sql`
                 INSERT INTO properties (
                     address_hash, legacy_hash, full_address, house_number, street_name, city, state, zip_code,
-                    lat, lng, owner_full_name, beds, baths, sqft, lot_size, year_built, price,
+                    lat, lng, owner_full_name, owner_occupied, corporate_owned, investor_owned, beds, baths, sqft, lot_size, year_built, price,
                     sold_date, sale_type, property_type, data_source, sale_confidence, original_status, raw_payload, updated_at
                 ) VALUES (
                     ${p.address_hash}, ${p.legacy_hash}, ${p.full_address}, ${p.house_number || null}, ${p.street_name || null},
                     ${p.city || null}, ${p.state || null}, ${p.zip_code || null}, ${p.lat}, ${p.lng}, ${p.owner_full_name || null},
+                    ${p.owner_occupied}, ${p.corporate_owned}, ${p.investor_owned},
                     ${p.beds || null}, ${p.baths || null}, ${p.sqft || null}, ${p.lot_size || null}, ${p.year_built || null},
                     ${p.price || null}, ${soldDate}, ${p.sale_type}, ${p.property_type}, ${p.data_source}, ${p.sale_confidence},
                     ${p.original_status}, ${rawPayload}, NOW()
@@ -639,6 +695,9 @@ async function writePropertiesToNeon(sql, properties, job, excludedRouteHashes =
         const mustPersistCustomSoldDate = !!customOwnershipRange && incomingDate > 0 && incomingDate !== existingDate;
         const hasNewMetadata =
             (!existing.owner_full_name && p.owner_full_name) ||
+            (p.owner_occupied !== null && p.owner_occupied !== existing.owner_occupied) ||
+            (p.corporate_owned !== null && p.corporate_owned !== existing.corporate_owned) ||
+            (p.investor_owned !== null && p.investor_owned !== existing.investor_owned) ||
             (!existing.beds && p.beds) ||
             (!existing.baths && p.baths) ||
             (!existing.sqft && p.sqft) ||
@@ -654,6 +713,8 @@ async function writePropertiesToNeon(sql, properties, job, excludedRouteHashes =
                     house_number = COALESCE(${p.house_number || null}, house_number), street_name = COALESCE(${p.street_name || null}, street_name),
                     city = COALESCE(${p.city || null}, city), state = COALESCE(${p.state || null}, state), zip_code = COALESCE(${p.zip_code || null}, zip_code),
                     lat = COALESCE(${p.lat}, lat), lng = COALESCE(${p.lng}, lng), owner_full_name = COALESCE(${p.owner_full_name || null}, owner_full_name),
+                    owner_occupied = COALESCE(${p.owner_occupied}, owner_occupied), corporate_owned = COALESCE(${p.corporate_owned}, corporate_owned),
+                    investor_owned = COALESCE(${p.investor_owned}, investor_owned),
                     beds = COALESCE(${p.beds || null}, beds), baths = COALESCE(${p.baths || null}, baths), sqft = COALESCE(${p.sqft || null}, sqft),
                     lot_size = COALESCE(${p.lot_size || null}, lot_size), year_built = COALESCE(${p.year_built || null}, year_built), price = COALESCE(${p.price || null}, price),
                     sold_date = COALESCE(${soldDate}, sold_date), sale_type = COALESCE(${p.sale_type}, sale_type), property_type = COALESCE(${p.property_type}, property_type),

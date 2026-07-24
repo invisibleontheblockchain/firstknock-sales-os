@@ -1,11 +1,12 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Check, X, Phone, Ban, Home, Navigation, Mic, MapPin, UserX, Clock, User, DollarSign, Ruler } from 'lucide-react';
+import { Check, X, Phone, Ban, Home, Navigation, Mic, MapPin, UserX, Clock, User, DollarSign, Ruler, Building2 } from 'lucide-react';
 import { getPropertyResultSummary } from '../logic/territoryLogic';
 import { buildFullAddress, getRouteNavigationPlan, openInMaps, openNavigationBatch } from '../logic/navigation';
 import { getNavigationSessionProgress, selectRemainingTodoStops } from '../logic/routeNavigation';
 import { parseOptionalSaleAmount } from '../analytics/salesManagement';
+import { isBusinessOwnedProperty } from '../logic/ownerType';
 import { formatPropertyAge } from '@/utils';
 import { base44 } from '@/api/base44Client';
 
@@ -60,6 +61,7 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose, navi
     const [saleAmountError, setSaleAmountError] = useState('');
     const [navigationSession, setNavigationSession] = useState(null);
     const [navigationError, setNavigationError] = useState('');
+    const [hideBusinessOwned, setHideBusinessOwned] = useState(false);
 
     useEffect(() => {
         setLatestRoute(route);
@@ -103,6 +105,16 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose, navi
     }, [route]);
 
     const displayRoute = latestRoute || route;
+    const businessOwnedCount = useMemo(
+        () => displayRoute.properties.filter(isBusinessOwnedProperty).length,
+        [displayRoute.properties]
+    );
+    const visibleRouteProperties = useMemo(
+        () => hideBusinessOwned
+            ? displayRoute.properties.filter(p => !isBusinessOwnedProperty(p))
+            : displayRoute.properties,
+        [displayRoute.properties, hideBusinessOwned]
+    );
 
     const propertyData = useMemo(() => {
         const dataMap = {};
@@ -122,7 +134,7 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose, navi
     }, [propertyData]);
 
     const filteredProperties = useMemo(() => {
-        return displayRoute.properties.filter(p => {
+        return visibleRouteProperties.filter(p => {
             const status = propertyStatuses[p.address_hash];
             if (filter === 'pending') return !status || status === 'ELIGIBLE';
             if (filter === 'done') {
@@ -131,21 +143,21 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose, navi
             }
             return true;
         });
-    }, [displayRoute.properties, propertyStatuses, filter, decisionFilter]);
+    }, [visibleRouteProperties, propertyStatuses, filter, decisionFilter]);
 
     const stats = useMemo(() => {
         let pending = 0, done = 0;
-        displayRoute.properties.forEach(p => {
+        visibleRouteProperties.forEach(p => {
             const status = propertyStatuses[p.address_hash];
             if (!status || status === 'ELIGIBLE') pending++;
             else done++;
         });
-        return { pending, done, total: displayRoute.properties.length };
-    }, [displayRoute.properties, propertyStatuses]);
+        return { pending, done, total: visibleRouteProperties.length };
+    }, [visibleRouteProperties, propertyStatuses]);
 
     const remainingProperties = useMemo(
-        () => selectRemainingTodoStops(displayRoute.properties, propertyStatuses),
-        [displayRoute.properties, propertyStatuses]
+        () => selectRemainingTodoStops(visibleRouteProperties, propertyStatuses),
+        [visibleRouteProperties, propertyStatuses]
     );
 
     const navigationProgress = getNavigationSessionProgress(
@@ -391,6 +403,24 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose, navi
                 </div>
                 {navigationError && (
                     <p className="text-[10px] font-semibold text-red-400" role="alert">{navigationError}</p>
+                )}
+                {businessOwnedCount > 0 && (
+                    <button
+                        type="button"
+                        aria-pressed={hideBusinessOwned}
+                        onClick={() => setHideBusinessOwned(current => !current)}
+                        className="w-full flex items-center justify-center gap-1.5 rounded-lg border px-3 py-1.5 text-[10px] font-bold tracking-wide transition-colors"
+                        style={{
+                            background: hideBusinessOwned ? 'rgba(6,182,212,0.12)' : '#151515',
+                            borderColor: hideBusinessOwned ? 'rgba(6,182,212,0.45)' : '#262626',
+                            color: hideBusinessOwned ? '#67e8f9' : '#888'
+                        }}
+                    >
+                        <Building2 className="w-3 h-3" />
+                        {hideBusinessOwned
+                            ? `${businessOwnedCount} LLC / business-owned stops hidden`
+                            : `Hide LLC / business-owned (${businessOwnedCount})`}
+                    </button>
                 )}
             </div>
 

@@ -9,6 +9,7 @@ import {
     isSoldDateInCustomOwnershipRange,
     normalizeOwnershipRangeDays,
 } from './soldDateRange';
+import { isBusinessOwnedProperty } from './ownerType';
 
 const PROPERTY_TYPE_ALIASES = {
     'Single Family': ['single family', 'single family residential', 'single-family', 'sfr', 'sfh', 'detached', 'one family', '1 family']
@@ -259,6 +260,14 @@ export function applyRouteFilters({
             diagnostic: { propertyTypeExamples: examples, propertyTypeDropReasons }
         };
     }
+
+    // --- Recorded Owner Type Filter ---
+    // Prefer BatchData's corporate-owned flag, with a narrow legal-entity suffix
+    // fallback for older records that only retained the recorded owner name.
+    if (routeConfig.excludeBusinessOwned) {
+        workingSet = workingSet.filter(p => !isBusinessOwnedProperty(p));
+    }
+    track('businessOwner');
 
     // --- Confidence / Rejection Filters ---
     const isBatchDataCandidate = (p) => String(p.data_source || '').toLowerCase() === 'batchdata' || p.original_status === 'BATCHDATA_CONFIRMED';

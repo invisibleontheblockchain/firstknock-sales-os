@@ -146,7 +146,14 @@ test('RepHome wires accessible Done selection, bulk persistence, and the Re-Knoc
   const propertyCard = readSource('src/components/rep/PropertyCard.jsx');
 
   assert.match(repHome, /filterStatus === 'done'/);
-  assert.match(repHome, /InteractionLog\.bulkCreate\(batch\)/);
+  assert.doesNotMatch(repHome, /InteractionLog\.bulkCreate\(batch\)/);
+  assert.match(repHome, /action: 'workflow_transition'/);
+  assert.match(repHome, /route_id: activeRoute\.id/);
+  assert.match(repHome, /new Map\([\s\S]*transition\.address_hash/);
+  assert.match(repHome, /address_hashes: batch\.map/);
+  assert.match(repHome, /workflow_action: batch\[0\]\.workflow_action/);
+  assert.match(repHome, /idempotency_key: `\$\{idempotencyKey\}:\$\{Math\.floor\(index \/ batchSize\)\}`/);
+  assert.match(repHome, /bulkWorkflowRetryRef/);
   assert.match(repHome, /SavedRoute\.update\(activeRoute\.id/);
   assert.match(repHome, /workflow_action: 'CLEAR_TO_TODO'/);
   assert.match(repHome, /Re-Knock \$\{stats\.reKnock\}/);

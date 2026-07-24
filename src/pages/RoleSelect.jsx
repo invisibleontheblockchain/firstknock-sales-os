@@ -54,7 +54,7 @@ export default function RoleSelect() {
     });
 
     const updateUserMutation = useMutation({
-        mutationFn: (data) => base44.auth.updateMe(data),
+        mutationFn: () => base44.functions.invoke('createManagerWorkspace', {}),
         onSuccess: () => queryClient.invalidateQueries({ queryKey: ['user'] })
     });
 
@@ -82,7 +82,8 @@ export default function RoleSelect() {
         // Manager flow
         setIsLoading(true);
         try {
-            await updateUserMutation.mutateAsync({ app_role: role });
+            if (role !== 'manager') throw new Error('Rep access requires a verified team membership.');
+            await updateUserMutation.mutateAsync();
             navigate(createPageUrl('Home'));
         } catch (error) {
             console.error(error);

@@ -104,6 +104,52 @@ async function buildSubscriptionPeriodUpdates(_base44: any, _userId: string, sub
     };
 }
 
+function stripeResourceId(resource: any) {
+    if (!resource) return null;
+    return typeof resource === 'string' ? resource : resource.id || null;
+}
+
+async function attachedCardUpdates(userId: string, customerResource: any) {
+    const customerId = stripeResourceId(customerResource);
+    if (
+        !customerId
+        || typeof stripe.customers?.retrieve !== 'function'
+        || typeof stripe.paymentMethods?.list !== 'function'
+    ) {
+        return {
+            stripe_card_on_file_confirmed: false,
+            stripe_card_confirmed_at: null
+        };
+    }
+
+    const customer = await stripe.customers.retrieve(customerId);
+    if (
+        customer?.deleted
+        || String(customer?.metadata?.base44_user_id || '') !== String(userId)
+    ) {
+        throw new Error(`Stripe customer ${customerId} ownership metadata does not match user ${userId}`);
+    }
+    const methods = await stripe.paymentMethods.list({
+        customer: customerId,
+        type: 'card',
+        limit: 1
+    });
+    const hasCard = (methods.data || []).length > 0;
+    return {
+        stripe_customer_id: customerId,
+        stripe_card_on_file_confirmed: hasCard,
+        ...(hasCard
+            ? { stripe_card_confirmed_at: new Date().toISOString() }
+            : { stripe_card_confirmed_at: null })
+    };
+}
+
+async function refreshAttachedCard(base44: any, userId: string, customerResource: any) {
+    const updates = await attachedCardUpdates(userId, customerResource);
+    await base44.asServiceRole.entities.User.update(userId, updates);
+    return updates;
+}
+
 // Helper to manage invite codes
 async function syncInviteCode(base44: any, userId: string, totalSeats: number) {
     try {
@@ -166,6 +212,18 @@ Deno.serve(async (req: Request) => {
                     const userId = session.metadata?.base44_user_id;
 
                     if (userId) {
+                        if (session.mode === 'setup') {
+                            if (session.metadata?.checkout_intent !== 'knock_card_gate') {
+                                throw new Error(`Checkout Setup Session ${session.id} has an unsupported intent`);
+                            }
+                            const cardUpdates = await refreshAttachedCard(base44, userId, session.customer);
+                            if (cardUpdates.stripe_card_on_file_confirmed !== true) {
+                                throw new Error(`Checkout Setup Session ${session.id} completed without an attached card`);
+                            }
+                            console.log(`Confirmed card-only Checkout for user ${userId}`);
+                            break;
+                        }
+
                         let quantity = 1;
                         const subscriptionId = session.subscription ? (typeof session.subscription === 'string' ? session.subscription : session.subscription.id) : null;
                         if (!subscriptionId) {
@@ -191,6 +249,7 @@ Deno.serve(async (req: Request) => {
                             ? subscriptionHasPaidInvoice(sub, latestInvoice)
                             : false;
                         const customerId = typeof session.customer === 'string' ? session.customer : session.customer?.id;
+                        const cardUpdates = await attachedCardUpdates(userId, customerId);
                         const periodUpdates = await buildSubscriptionPeriodUpdates(
                             base44,
                             userId,
@@ -200,9 +259,7 @@ Deno.serve(async (req: Request) => {
                         );
 
                         await base44.asServiceRole.entities.User.update(userId, {
-                            stripe_customer_id: customerId,
-                            stripe_card_on_file_confirmed: true,
-                            stripe_card_confirmed_at: new Date().toISOString(),
+                            ...cardUpdates,
                             subscription_id: subscriptionId,
                             subscription_status: subscriptionStatus,
                             subscription_tier: subscriptionTier,
@@ -243,6 +300,7 @@ Deno.serve(async (req: Request) => {
                             console.warn(`Ignoring update for stale subscription ${subscription.id}`);
                             break;
                         }
+                        const cardUpdates = await attachedCardUpdates(userId, subscription.customer);
                         const subscriptionTier = inferTierFromSubscription(subscription, 'custom');
                         const periodUpdates = await buildSubscriptionPeriodUpdates(
                             base44,
@@ -254,8 +312,7 @@ Deno.serve(async (req: Request) => {
                          await base44.asServiceRole.entities.User.update(userId, {
                            subscription_id: subscription.id,
                            subscription_status: status,
-                           stripe_card_on_file_confirmed: status === 'active' || status === 'trialing',
-                           ...(status === 'active' || status === 'trialing' ? { stripe_card_confirmed_at: new Date().toISOString() } : {}),
+                           ...cardUpdates,
                            ...(paidConfirmed
                                ? { subscription_paid_confirmed: true, subscription_paid_confirmed_at: new Date().toISOString() }
                                : { subscription_paid_confirmed: false }),
@@ -294,6 +351,7 @@ Deno.serve(async (req: Request) => {
                             break;
                         }
                         const paidConfirmed = subscriptionHasPaidInvoice(subscription, currentInvoice);
+                        const cardUpdates = await attachedCardUpdates(userId, subscription.customer);
                         const subscriptionTier = inferTierFromSubscription(subscription, 'custom');
                         const periodUpdates = await buildSubscriptionPeriodUpdates(
                             base44,
@@ -309,8 +367,7 @@ Deno.serve(async (req: Request) => {
                             ...(paidConfirmed
                                 ? { subscription_paid_confirmed: true, subscription_paid_confirmed_at: new Date().toISOString() }
                                 : { subscription_paid_confirmed: false }),
-                            stripe_card_on_file_confirmed: subscription.status === 'active' || subscription.status === 'trialing',
-                            ...(subscription.status === 'active' || subscription.status === 'trialing' ? { stripe_card_confirmed_at: new Date().toISOString() } : {}),
+                            ...cardUpdates,
                             ...periodUpdates,
                             total_seats: quantity
                         });
@@ -366,7 +423,8 @@ Deno.serve(async (req: Request) => {
                         }
                         await base44.asServiceRole.entities.User.update(userId, {
                             subscription_status: 'canceled',
-                            subscription_paid_confirmed: false
+                            subscription_paid_confirmed: false,
+                            ...await attachedCardUpdates(userId, subscription.customer)
                         });
                         
                         try {
@@ -379,6 +437,40 @@ Deno.serve(async (req: Request) => {
                             console.error(`Error deactivating invite code for ${userId}:`, codeErr.message);
                         }
                         console.log(`Successfully canceled subscription for user ${userId}`);
+                    }
+                    break;
+                }
+                case 'payment_method.attached':
+                case 'payment_method.detached': {
+                    const paymentMethod = event.data.object;
+                    const customerId = stripeResourceId(paymentMethod.customer)
+                        || stripeResourceId(event.data.previous_attributes?.customer);
+                    if (!customerId) break;
+                    const customer = await stripe.customers.retrieve(customerId);
+                    const userId = !customer?.deleted ? customer?.metadata?.base44_user_id : null;
+                    if (userId) {
+                        await refreshAttachedCard(base44, userId, customerId);
+                        console.log(`Reconciled attached cards for user ${userId} after ${event.type}`);
+                    }
+                    break;
+                }
+                case 'customer.updated': {
+                    const eventCustomer = event.data.object;
+                    const customer = await stripe.customers.retrieve(eventCustomer.id);
+                    const userId = !customer?.deleted ? customer?.metadata?.base44_user_id : null;
+                    if (userId) {
+                        await refreshAttachedCard(base44, userId, customer.id);
+                    }
+                    break;
+                }
+                case 'setup_intent.succeeded': {
+                    const setupIntent = event.data.object;
+                    const customerId = stripeResourceId(setupIntent.customer);
+                    if (!customerId) break;
+                    const customer = await stripe.customers.retrieve(customerId);
+                    const userId = !customer?.deleted ? customer?.metadata?.base44_user_id : null;
+                    if (userId) {
+                        await refreshAttachedCard(base44, userId, customer.id);
                     }
                     break;
                 }

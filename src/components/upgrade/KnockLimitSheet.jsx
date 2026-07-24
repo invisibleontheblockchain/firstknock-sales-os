@@ -3,14 +3,39 @@ import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { Lock } from 'lucide-react';
+import { base44 } from '@/api/base44Client';
 
 // Mobile bottom sheet shown when a free user needs a card or plan upgrade to keep logging.
 export default function KnockLimitSheet({ open, onClose, mode = 'limit' }) {
   const navigate = useNavigate();
+  const [isStartingCardSetup, setIsStartingCardSetup] = React.useState(false);
+  const [cardSetupError, setCardSetupError] = React.useState('');
   if (!open) return null;
 
   const isCardGate = mode === 'card';
-  const goToPlans = () => {
+  const goToPlans = async () => {
+    if (isCardGate) {
+      if (isStartingCardSetup) return;
+      setIsStartingCardSetup(true);
+      setCardSetupError('');
+      try {
+        const currentPath = `${window.location.pathname}${window.location.search}`;
+        const response = await base44.functions.invoke('createCardSetupSession', {
+          successUrl: `${window.location.origin}${currentPath}${currentPath.includes('?') ? '&' : '?'}card_setup=success`,
+          cancelUrl: `${window.location.origin}${currentPath}${currentPath.includes('?') ? '&' : '?'}card_setup=canceled`
+        });
+        if (!response.data?.url) throw new Error('Stripe did not return a card setup link.');
+        window.location.assign(response.data.url);
+      } catch (error) {
+        setCardSetupError(
+          error?.response?.data?.error
+          || error?.message
+          || 'Could not start secure card setup. Please try again.'
+        );
+        setIsStartingCardSetup(false);
+      }
+      return;
+    }
     onClose?.();
     navigate(createPageUrl('Billing'));
   };
@@ -41,10 +66,17 @@ export default function KnockLimitSheet({ open, onClose, mode = 'limit' }) {
 
         <button
           onClick={goToPlans}
+          disabled={isStartingCardSetup}
           className="w-full h-13 py-3.5 rounded-2xl bg-[#2EEB57] hover:bg-[#39FF4A] text-black font-black tracking-wide shadow-[0_12px_35px_rgba(46,235,87,0.28)] active:scale-95 transition-all"
         >
-          {isCardGate ? 'Add Card on File' : 'Upgrade to Pro'}
+          {isCardGate
+            ? (isStartingCardSetup ? 'Opening secure card setup…' : 'Add Card on File')
+            : 'Upgrade to Pro'}
         </button>
+
+        {cardSetupError && (
+          <p className="mt-3 text-center text-xs text-red-300">{cardSetupError}</p>
+        )}
 
         <button
           onClick={onClose}

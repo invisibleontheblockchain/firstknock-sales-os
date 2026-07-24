@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import {
     Navigation, Loader2, RefreshCw, X, ChevronDown, ChevronUp,
     Zap, Route, Footprints, Clock, Shield, Target,
-    Shuffle, Compass, Pencil, Lock, ScanLine, Ghost
+    Shuffle, Compass, Pencil, Lock, ScanLine, Ghost, Building2
 } from 'lucide-react';
 import { toast } from "sonner";
 import CanvasBuilderSettings from './CanvasBuilderSettings.jsx';
@@ -154,6 +154,7 @@ export default function RouteBuilderSettings({
             excludeCondos: true,
             excludePreviouslyKnocked: true,
             excludeLand: true,
+            excludeBusinessOwned: false,
             propertyTypes: ['Single Family'],
             minPrice: null,
             maxPrice: null,
@@ -250,7 +251,7 @@ export default function RouteBuilderSettings({
                         {/* ═══ 2. RECENTLY SOLD ═══ */}
                         <div className="space-y-3">
                             <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">
-                                2. {fixedOwnershipRangeDays ? 'Ownership Window' : 'Recently Sold'}
+                                2. {fixedOwnershipRangeDays ? 'Recorded Sale Window' : 'Recently Sold'}
                             </label>
                             {fixedOwnershipRangeDays ? (
                                 <>
@@ -259,7 +260,7 @@ export default function RouteBuilderSettings({
                                     </div>
                                     <div className="flex items-center gap-1.5 rounded-lg border border-cyan-500/20 bg-cyan-500/10 px-2 py-1.5 text-[9px] text-cyan-400">
                                         <Lock className="w-3 h-3 shrink-0" />
-                                        <span>Fixed to the ownership window used for this Precision pull</span>
+                                        <span>Based on the recorded sale/transfer date, not a confirmed occupant move-in date</span>
                                     </div>
                                 </>
                             ) : lastPullMode === '300mi' ? (
@@ -356,7 +357,7 @@ export default function RouteBuilderSettings({
                             icon={<Shield className="w-4 h-4" />}
                             expanded={expandedSection === 'filters'}
                             onToggle={() => toggleSection('filters')}
-                            badge={routeConfig.propertyTypes?.length > 0 || routeConfig.minPrice || routeConfig.maxPrice ? 'Active' : null}
+                            badge={routeConfig.propertyTypes?.length > 0 || routeConfig.minPrice || routeConfig.maxPrice || routeConfig.excludeBusinessOwned ? 'Active' : null}
                         >
                             {/* Property Type — pick what to include */}
                             <div className="space-y-2">
@@ -447,6 +448,13 @@ export default function RouteBuilderSettings({
                                     icon={<Footprints className="w-4 h-4 text-green-400" />}
                                     checked={routeConfig.excludePreviouslyKnocked}
                                     onChange={(v) => setRouteConfig(prev => ({ ...prev, excludePreviouslyKnocked: v }))}
+                                />
+                                <ToggleOption
+                                    label="Exclude LLC / Business-Owned"
+                                    description="Skip homes whose recorded owner is a business entity"
+                                    icon={<Building2 className="w-4 h-4 text-cyan-400" />}
+                                    checked={routeConfig.excludeBusinessOwned}
+                                    onChange={(v) => setRouteConfig(prev => ({ ...prev, excludeBusinessOwned: v }))}
                                 />
                                 {hasMlsData && (
                                     <ToggleOption
