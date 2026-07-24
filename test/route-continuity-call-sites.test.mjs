@@ -84,6 +84,7 @@ test('synchronous continuity keeps 43 doors grouped by subdivision and street se
   assert.equal(typeof routingContext?.then, 'undefined');
   assert.equal(routingContext.mode, 'fallback');
   assert.equal(routingContext.roadAware, false);
+  assert.equal(routingContext.diagnostics.reason, 'SYNCHRONOUS_CONTINUITY');
   assert.notEqual(
     routingContext.streetSegmentKey(doors.find(({ id }) => id === 'a-shared-0')),
     routingContext.streetSegmentKey(doors.find(({ id }) => id === 'b-shared-0')),
@@ -216,5 +217,102 @@ test('every non-Home route generator supplies synchronous continuity context', a
     (routeCommand.match(/preserveInputMembership:\s*true/g) || []).length,
     2,
     'MERGE ALL and split must fail closed instead of deduplicating saved members',
+  );
+});
+
+test('Home and RepHome interactive optimizers never depend on live road loading', async () => {
+  const auditedPages = [
+    ['../src/pages/Home.jsx', 3],
+    ['../src/pages/RepHome.jsx', 1],
+  ];
+
+  for (const [relativePath, expectedCalls] of auditedPages) {
+    const source = await readFile(new URL(relativePath, import.meta.url), 'utf8');
+
+    assert.doesNotMatch(
+      source,
+      /\bcreateRouteRoadContext\b/,
+      `${relativePath} must not call the live-road/Overpass context from an interactive optimizer`,
+    );
+    assert.doesNotMatch(
+      source,
+      /\b(?:fetchOverpassRoadNetwork|loadRouteRoadNetwork)\b/,
+      `${relativePath} must not call a live street-network loader directly`,
+    );
+    assert.match(
+      source,
+      /import\s*\{[\s\S]*?\bcreateRouteContinuityContext\b[\s\S]*?\}\s*from\s*['"][^'"]*routeRoadContext['"]/,
+      `${relativePath} must import the local synchronous continuity context`,
+    );
+    assert.equal(
+      (source.match(/\bcreateRouteContinuityContext\(/g) || []).length,
+      expectedCalls,
+      `${relativePath} interactive optimizer call sites must all construct local continuity context`,
+    );
+    assert.doesNotMatch(
+      source,
+      /await\s+createRouteContinuityContext\(/,
+      `${relativePath} local continuity construction must stay synchronous`,
+    );
+  }
+
+  const homeSource = await readFile(
+    new URL('../src/pages/Home.jsx', import.meta.url),
+    'utf8',
+  );
+  assert.match(
+    homeSource,
+    /const routingContext = finalCount <= 5000\s*\?\s*createRouteContinuityContext\(workingSet\)/,
+    'initial generation must construct local continuity before routing',
+  );
+  assert.match(
+    homeSource,
+    /const routingContext = workingSet\.length <= 5000\s*\?\s*createRouteContinuityContext\(workingSet\)/,
+    'manager reorder must construct local continuity before routing',
+  );
+  assert.match(
+    homeSource,
+    /const routingContext = createRouteContinuityContext\(routeProperties\);[\s\S]*?optimizeRouteByStreetSweep\(routeProperties, start, end, routingContext\)/,
+    'manager Optimize must pass local continuity to the street sweep',
+  );
+
+  const largeRouteSource = await readFile(
+    new URL('../src/components/logic/largeRouteOptimizer.js', import.meta.url),
+    'utf8',
+  );
+  assert.doesNotMatch(
+    largeRouteSource,
+    /\b(?:createRouteRoadContext|fetchOverpassRoadNetwork|loadRouteRoadNetwork)\b/,
+    'the large-route worker path must also remain independent from live street loading',
+  );
+  assert.match(
+    largeRouteSource,
+    /const continuityContext = createRouteContinuityContext\(indexedProperties\);[\s\S]*?routingContext:\s*continuityContext/,
+    'the large-route worker must pass local continuity into route generation',
+  );
+});
+
+test('intentional synchronous continuity is silent instead of reporting unavailable live streets', async () => {
+  const homeSource = await readFile(
+    new URL('../src/pages/Home.jsx', import.meta.url),
+    'utf8',
+  );
+  const repSource = await readFile(
+    new URL('../src/pages/RepHome.jsx', import.meta.url),
+    'utf8',
+  );
+
+  for (const [pageName, source] of [['Home', homeSource], ['RepHome', repSource]]) {
+    assert.doesNotMatch(
+      source,
+      /discloseRouteContinuityFallback|Live (?:street|road) data was unavailable|Every eligible home was preserved/,
+      `${pageName} must not emit an unavailable-live-street warning for its intentional continuity path`,
+    );
+  }
+
+  assert.doesNotMatch(
+    homeSource,
+    /discloseLargeRouteContinuityFallback|Live road-network ordering is unavailable at this size|Large-route continuity fallback used; no live road network was used/,
+    'the intentional large-route continuity path must not claim that live streets are unavailable',
   );
 });

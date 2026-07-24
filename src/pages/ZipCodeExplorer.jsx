@@ -14,6 +14,8 @@ import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { generateOptimizedRoutes } from '../components/logic/routeOptimizer';
 import { createRouteContinuityContext } from '../components/logic/routeRoadContext';
+import MapAttributionControl from '../components/map/MapAttributionControl';
+import { OPENSTREETMAP_ATTRIBUTION } from '../components/map/mapAttribution';
 import { toast } from "sonner";
 
 // Fix leaflet marker icons
@@ -784,8 +786,9 @@ export default function ZipCodeExplorer() {
             markerZoomAnimation={true}
             fadeAnimation={true}
           >
+            <MapAttributionControl />
             <TileLayer
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+              attribution={OPENSTREETMAP_ATTRIBUTION}
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             />
             <MapMover center={mapCenter} zoom={mapZoom} searchId={searchId} />

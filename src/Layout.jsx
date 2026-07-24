@@ -257,6 +257,42 @@ function LayoutInner({ children }) {
                 ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.2); }
 
                 .leaflet-container { background: #000000 !important; }
+                .leaflet-control-attribution.fk-map-attribution {
+                    max-width: min(72vw, 420px);
+                    margin: 0 4px 4px 0 !important;
+                    padding: 2px 5px !important;
+                    border: 1px solid rgba(255, 255, 255, 0.08);
+                    border-radius: 5px !important;
+                    background: rgba(0, 0, 0, 0.82) !important;
+                    color: rgba(255, 255, 255, 0.92) !important;
+                    font-family: 'Inter', sans-serif !important;
+                    font-size: 12px !important;
+                    font-weight: 500 !important;
+                    line-height: 1.2 !important;
+                    box-shadow: none !important;
+                    backdrop-filter: blur(6px);
+                    -webkit-backdrop-filter: blur(6px);
+                    transition: opacity 150ms ease;
+                }
+                .leaflet-control-attribution.fk-map-attribution a {
+                    color: #ffffff !important;
+                    text-decoration: none !important;
+                    pointer-events: auto;
+                }
+                .leaflet-control-attribution.fk-map-attribution:hover,
+                .leaflet-control-attribution.fk-map-attribution:focus-within {
+                    color: rgba(255, 255, 255, 0.9) !important;
+                }
+                .leaflet-control-attribution.fk-map-attribution:hover a,
+                .leaflet-control-attribution.fk-map-attribution:focus-within a {
+                    color: #ffffff !important;
+                    text-decoration: underline !important;
+                }
+                @media (max-width: 640px) {
+                    .leaflet-control-attribution.fk-map-attribution {
+                        max-width: 78vw;
+                    }
+                }
                 .route-number-tooltip { background: transparent !important; border: none !important; box-shadow: none !important; padding: 0 !important; }
                 .route-number-tooltip::before { display: none !important; }
                 .zip-label-tooltip { background: rgba(0,0,0,0.75) !important; border: 1px solid rgba(255,255,255,0.15) !important; box-shadow: 0 2px 12px rgba(0,0,0,0.5) !important; padding: 4px 8px !important; border-radius: 6px !important; text-align: center !important; }

@@ -4,6 +4,8 @@ import { MapContainer, TileLayer, CircleMarker, Circle, Polyline, Tooltip, useMa
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { routePropertyOrderFingerprint } from '@/components/logic/routeRoadContext';
+import MapAttributionControl from '@/components/map/MapAttributionControl';
+import { ESRI_IMAGERY_ATTRIBUTION } from '@/components/map/mapAttribution';
 
 // Fix Leaflet unmount error during scroll wheel zoom
 const originalGetMapPanePos = L.Map.prototype._getMapPanePos;
@@ -372,11 +374,12 @@ export default function RepMapView({
                     inertiaDeceleration={3000}
                     tapTolerance={24}
                 >
+                    <MapAttributionControl bottomOffset={hudExpanded ? 280 : 76} />
                     <MapRefCapture mapRef={mapRef} />
                     {focusProperty && <FlyToProperty focusProperty={focusProperty} />}
                     <TileLayer
                         url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-                        attribution='&copy; Esri | Road data &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>'
+                        attribution={ESRI_IMAGERY_ATTRIBUTION}
                         maxNativeZoom={19}
                         maxZoom={22}
                         updateWhenZooming={true}
