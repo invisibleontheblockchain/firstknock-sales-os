@@ -14,6 +14,7 @@ import {
   hydrateRouteWithLookup,
   orderRouteProperties,
 } from '@/components/logic/routeHydrationCore';
+import { optimizeRouteByStreetSweep } from '@/components/logic/routeOptimizer';
 import { buildFullAddress, getRouteNavigationPlan, openNavigationBatch } from '@/components/logic/navigation';
 import { getNavigationSessionProgress, selectRemainingTodoStops } from '@/components/logic/routeNavigation';
 import {
@@ -53,7 +54,7 @@ import KnockLimitSheet from '@/components/upgrade/KnockLimitSheet';
 import KnockLimitBanner from '@/components/upgrade/KnockLimitBanner';
 import { createOutcomeIdempotencyKey, getOutcomeGateFromError } from '@/components/upgrade/knockGate';
 import { geocodeAddress } from '@/lib/geocoding';
-import { calculateRouteDistanceMiles, isValidRoutePoint, optimizeRouteWithBounds } from '@/lib/routeBounds';
+import { calculateRouteDistanceMiles, isValidRoutePoint } from '@/lib/routeBounds';
 import { getFieldRoutesCapability, getFieldRoutesStatuses } from '@/api/fieldRoutes';
 import { useFieldRoutesInspectionQueue } from '@/components/fieldroutes/useFieldRoutesInspectionQueue';
 import {
@@ -771,6 +772,12 @@ export default function RepHome() {
     return orderedProps;
   }, [activeRoute, properties, logs]);
 
+  const expectedRoutePropertyCount = activeRoute?.property_hashes?.length || 0;
+  const routeHydrationComplete = expectedRoutePropertyCount === 0 || (
+    routeProperties.length === expectedRoutePropertyCount
+    && routeProperties.every(isValidRoutePoint)
+  );
+
   const fieldRoutesPropertyKeys = useMemo(
     () => routeProperties.map((property) => property.address_hash).filter(Boolean),
     [routeProperties],
@@ -852,17 +859,18 @@ export default function RepHome() {
 
   // Stats
   const stats = useMemo(() => {
-    if (!routeProperties.length) return { total: 0, done: 0, todo: 0, reKnock: 0, percent: 0 };
+    const total = expectedRoutePropertyCount || routeProperties.length;
+    if (!total) return { total: 0, done: 0, todo: 0, reKnock: 0, percent: 0 };
     const done = routeProperties.filter((p) => p.effective_status !== 'ELIGIBLE').length;
     const reKnock = routeProperties.filter((p) => p.effective_status === 'ELIGIBLE' && p.workflow_bucket === 'RE_KNOCK').length;
     return {
-      total: routeProperties.length,
+      total,
       done,
-      todo: routeProperties.length - done - reKnock,
+      todo: Math.max(total - done - reKnock, 0),
       reKnock,
-      percent: Math.round(done / routeProperties.length * 100)
+      percent: Math.round(done / total * 100)
     };
-  }, [routeProperties]);
+  }, [expectedRoutePropertyCount, routeProperties]);
 
   const filteredProperties = useMemo(() => {
     return routeProperties.filter((p) => {
@@ -951,6 +959,9 @@ export default function RepHome() {
     mutationFn: async ({ action, properties: targetProperties, idempotencyKey }) => {
       if (!activeRoute?.id) throw new Error('No active route is available.');
       if (activeRouteArchived) throw new Error('Archived routes are read-only.');
+      if (!routeHydrationComplete) {
+        throw new Error(`Route recovery is incomplete (${routeProperties.length}/${expectedRoutePropertyCount} homes loaded). Refresh before changing this route.`);
+      }
       if (!targetProperties?.length) throw new Error('Select at least one route stop.');
 
       if (action === ROUTE_BULK_ACTIONS.DELETE) {
@@ -1097,6 +1108,10 @@ export default function RepHome() {
     setNavigationError('');
     if (activeRouteArchived) {
       setNavigationError('Archived routes are read-only and cannot be started.');
+      return;
+    }
+    if (!routeHydrationComplete) {
+      setNavigationError(`Route recovery is incomplete (${routeProperties.length}/${expectedRoutePropertyCount} homes loaded). Refresh before starting navigation.`);
       return;
     }
     try {
@@ -1447,10 +1462,7 @@ export default function RepHome() {
       const invalidProperty = routeProperties.find((property) => !isValidRoutePoint(property));
       if (invalidProperty) throw new Error('A route property is missing map coordinates. Ask your manager to repair this route.');
 
-      const optimized = optimizeRouteWithBounds(routeProperties, {
-        startLocation: exactHomeBase,
-        endLocation: exactHomeBase
-      });
+      const optimized = optimizeRouteByStreetSweep(routeProperties, exactHomeBase, exactHomeBase);
       if (optimized.length !== routeProperties.length) {
         throw new Error('The optimizer could not preserve every property in this route.');
       }
@@ -1521,7 +1533,7 @@ export default function RepHome() {
         routeListOpen={showRouteList}
         routeProperties={routeProperties}
         onStartNavigation={handleStartRouteNavigation}
-        navigationDisabled={activeRouteArchived || (!hasNextNavigationBatch && remainingNavigationStops.length === 0)}
+        navigationDisabled={activeRouteArchived || !routeHydrationComplete || (!hasNextNavigationBatch && remainingNavigationStops.length === 0)}
         navigationButtonLabel={hasNextNavigationBatch ? 'Next Batch' : canResumeNavigationBatch ? 'Resume' : 'Start'}
         navigationBatchLabel={hasNextNavigationBatch
           ? `${navigationProgress.continuationStops.length} left`
@@ -1531,6 +1543,15 @@ export default function RepHome() {
         navigationError={navigationError} />
 
             {showLimitBanner && <KnockLimitBanner mode={gateMode} />}
+
+            {!routeHydrationComplete &&
+      <div className="mx-3 mt-2 rounded-xl border border-amber-400/35 bg-amber-400/10 px-3 py-2 text-[11px] leading-relaxed text-amber-100" role="alert">
+                    Recovering this saved route: {routeProperties.length}/{expectedRoutePropertyCount} homes loaded. Pins already recovered remain visible, but navigation, bulk changes, optimization, and completion stay locked until every home is restored.
+                    <button type="button" onClick={handleRouteRefresh} className="ml-2 font-black underline underline-offset-2">
+                        Retry now
+                    </button>
+                </div>
+      }
 
             {/* Filter tabs + search */}
             <div className="px-3 pt-2 pb-2 space-y-2 border-b border-white/10 bg-black/70 backdrop-blur-xl shadow-[0_12px_36px_rgba(0,0,0,0.32)]">
@@ -1701,7 +1722,7 @@ export default function RepHome() {
 
             {/* Floating action buttons */}
             <div className="fixed bottom-20 left-4 right-4 z-30 flex items-center gap-2 rounded-[28px] border border-white/10 bg-black/55 p-2 shadow-[0_22px_70px_rgba(0,0,0,0.65)] backdrop-blur-2xl">
-                {stats.percent >= 100 && activeRouteCanComplete &&
+                {routeHydrationComplete && stats.percent >= 100 && activeRouteCanComplete &&
         <Button
           onClick={() => {
             if (confirm("Mark route as complete?")) completeRouteMutation.mutate(activeRoute.id);
@@ -1827,7 +1848,7 @@ export default function RepHome() {
                                         <Button
                       type="button"
                       onClick={handleOptimizeSelectedRouteFromHome}
-                      disabled={activeRouteArchived || !activeRouteBelongsToCurrentUser || !routeProperties.length || homeRouteOptimizing || homeBaseSaving}
+                      disabled={activeRouteArchived || !activeRouteBelongsToCurrentUser || !routeHydrationComplete || !routeProperties.length || homeRouteOptimizing || homeBaseSaving}
                       className="h-11 w-full rounded-xl bg-gradient-to-r from-[#2EEB57] to-[#B6FF5C] px-3 text-[11px] font-black text-black hover:brightness-110 disabled:opacity-45">
                                             {homeRouteOptimizing ?
                         <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Optimizing...</> :

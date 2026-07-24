@@ -154,6 +154,7 @@ test('RepHome wires accessible Done selection, bulk persistence, and the Re-Knoc
   assert.match(repHome, /workflow_action: batch\[0\]\.workflow_action/);
   assert.match(repHome, /idempotency_key: `\$\{idempotencyKey\}:\$\{Math\.floor\(index \/ batchSize\)\}`/);
   assert.match(repHome, /bulkWorkflowRetryRef/);
+  assert.match(repHome, /if \(!routeHydrationComplete\) \{[\s\S]*Refresh before changing this route/);
   assert.match(repHome, /SavedRoute\.update\(activeRoute\.id/);
   assert.match(repHome, /workflow_action: 'CLEAR_TO_TODO'/);
   assert.match(repHome, /Re-Knock \$\{stats\.reKnock\}/);

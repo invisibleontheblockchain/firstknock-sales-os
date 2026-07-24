@@ -1,7 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
-const KEVIN_USER_ID = '69763f1a301722430a232206';
-
+// RETIRED: account-specific route mutations must never be exposed as a
+// user-callable service-role function.
 Deno.serve(async (req) => {
     try {
         const base44 = createClientFromRequest(req);
@@ -10,31 +10,14 @@ Deno.serve(async (req) => {
         if (!user) {
             return Response.json({ error: 'Unauthorized' }, { status: 401 });
         }
-
-        const routes = await base44.asServiceRole.entities.SavedRoute.filter({
-            manager_id: KEVIN_USER_ID
-        }, '-updated_date', 200);
-
-        const restored = [];
-        for (const route of routes) {
-            const updates = {
-                status: 'ACTIVE',
-                manager_id: KEVIN_USER_ID
-            };
-
-            await base44.asServiceRole.entities.SavedRoute.update(route.id, updates);
-            restored.push({
-                id: route.id,
-                name: route.name,
-                previous_status: route.status,
-                property_count: Array.isArray(route.property_hashes) ? route.property_hashes.length : 0
-            });
+        if (String(user.role || user?.data?.role || '').toLowerCase() !== 'admin') {
+            return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
         }
 
         return Response.json({
-            restored_count: restored.length,
-            restored
-        });
+            error: 'account_route_restore_retired',
+            message: 'Account-specific route restoration is retired. No records were changed.'
+        }, { status: 410 });
     } catch (error) {
         return Response.json({ error: error.message }, { status: 500 });
     }

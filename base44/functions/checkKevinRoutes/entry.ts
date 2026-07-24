@@ -3,7 +3,14 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.20';
 Deno.serve(async (req) => {
     try {
         const base44 = createClientFromRequest(req);
-        
+        const user = await base44.auth.me();
+        if (!user) {
+            return Response.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+        if (String(user.role || user?.data?.role || '').toLowerCase() !== 'admin') {
+            return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
+        }
+
         // Kevin's manager ID is 69763f1a301722430a232206
         const managerId = '69763f1a301722430a232206';
         

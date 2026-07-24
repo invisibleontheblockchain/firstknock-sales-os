@@ -150,23 +150,33 @@ test('a geographically wide street remains one block instead of being split by c
     assert.equal(streetRuns(optimized).filter((street) => street === 'Longview Ave').length, 1);
 });
 
-test('Home uses street-sweep optimization for saved and re-optimized routes', async () => {
-    const source = await readFile(
+test('initial, manager, and rep optimization keep whole streets contiguous', async () => {
+    const homeSource = await readFile(
         new URL('../src/pages/Home.jsx', import.meta.url),
+        'utf8',
+    );
+    const repSource = await readFile(
+        new URL('../src/pages/RepHome.jsx', import.meta.url),
         'utf8',
     );
 
     assert.match(
-        source,
+        homeSource,
         /import\s*\{\s*generateOptimizedRoutes,\s*optimizeRouteByStreetSweep\s*\}/,
     );
-    assert.doesNotMatch(source, /optimizeRouteByDistance/);
+    assert.doesNotMatch(homeSource, /optimizeRouteByDistance/);
     assert.match(
-        source,
+        homeSource,
         /const optimized = optimizeRouteByStreetSweep\(routeProperties, start, end\);/,
     );
     assert.match(
-        source,
+        homeSource,
         /optimizeRouteByStreetSweep\(route\.properties \|\| \[\], null, null\)/,
     );
+    assert.match(repSource, /import \{ optimizeRouteByStreetSweep \} from '@\/components\/logic\/routeOptimizer'/);
+    assert.match(
+        repSource,
+        /const optimized = optimizeRouteByStreetSweep\(routeProperties, exactHomeBase, exactHomeBase\);/,
+    );
+    assert.doesNotMatch(repSource, /optimizeRouteWithBounds/);
 });

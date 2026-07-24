@@ -187,11 +187,13 @@ test('route completion is optimistic, advances selection, and keeps only archive
   assert.match(repHome, /nextUrl\.searchParams\.delete\('route'\)/);
   assert.match(repHome, /onSuccess: async \(\) => \{\s*try \{\s*const completedRoutes = queryClient\.getQueryData\(myRoutesQueryKey\)/);
   assert.match(repHome, /await localforage\.setItem\(routeCacheKey, completedRoutes\)/);
-  assert.match(repHome, /stats\.percent >= 100 && activeRouteCanComplete/);
+  assert.match(repHome, /routeHydrationComplete && stats\.percent >= 100 && activeRouteCanComplete/);
   assert.match(repHome, /completeRouteMutation\.mutate\(activeRoute\.id\)/);
   assert.match(repHome, /const activeRouteCanComplete = !activeRouteArchived && !activeRouteCompleted/);
   assert.match(repHome, /const outcomeLoggingDisabled = activeRouteArchived/);
-  assert.match(repHome, /navigationDisabled=\{activeRouteArchived \|\|/);
+  assert.match(repHome, /navigationDisabled=\{activeRouteArchived \|\| !routeHydrationComplete \|\|/);
+  assert.match(repHome, /Route recovery is incomplete/);
+  assert.match(repHome, /routeProperties\.length === expectedRoutePropertyCount/);
   assert.match(repHome, /selectable=\{filterStatus === 'done' && !activeRouteArchived\}/);
   assert.match(repHome, /disabled=\{activeRouteArchived \|\| !activeRouteBelongsToCurrentUser/);
   assert.match(repHome, /onClearDecision=\{activeRouteArchived \? undefined : handleClearDecision\}/);
