@@ -333,10 +333,14 @@ test('initial, manager, and rep optimization keep whole streets contiguous', asy
         new URL('../src/pages/RepHome.jsx', import.meta.url),
         'utf8',
     );
+    const optimizerSource = await readFile(
+        new URL('../src/components/logic/routeOptimizer.jsx', import.meta.url),
+        'utf8',
+    );
 
     assert.match(
         homeSource,
-        /import\s*\{\s*generateOptimizedRoutes,\s*optimizeRouteByStreetSweep\s*\}/,
+        /import\s*\{[\s\S]*?generateOptimizedRoutes,[\s\S]*?optimizeRouteByStreetSweep,[\s\S]*?\}\s*from '\.\.\/components\/logic\/routeOptimizer'/,
     );
     assert.doesNotMatch(homeSource, /optimizeRouteByDistance/);
     assert.match(
@@ -345,12 +349,26 @@ test('initial, manager, and rep optimization keep whole streets contiguous', asy
     );
     assert.match(
         homeSource,
-        /function requireRoadAwareRouteContext\(routingContext\)[\s\S]*routingContext\?\.roadAware === true[\s\S]*No routes were changed/,
+        /function requireUsableRouteContext\(routingContext\)[\s\S]*\['full', 'cost-only', 'fallback'\][\s\S]*No routes were changed/,
     );
     assert.equal(
-        (homeSource.match(/requireRoadAwareRouteContext\(routingContext\);/g) || []).length,
+        (homeSource.match(/requireUsableRouteContext\(routingContext\);/g) || []).length,
         3,
-        'initial generation, reorder, and manager Optimize must reject every non-road-aware context',
+        'initial generation, reorder, and manager Optimize must validate both road-aware and continuity contexts',
+    );
+    assert.doesNotMatch(
+        homeSource,
+        /Road-aware ordering is unavailable/,
+        'temporary road-source failures must never disable route optimization',
+    );
+    assert.match(
+        homeSource,
+        /function discloseRouteContinuityFallback[\s\S]*street\/neighborhood continuity optimizer[\s\S]*Every eligible home was preserved/,
+    );
+    assert.equal(
+        (homeSource.match(/discloseRouteContinuityFallback\(\s*'(?:generateRoutes|handleReorder|handleReoptimizeRoute)'/g) || []).length,
+        3,
+        'every manager optimization path must disclose continuity fallback without blocking',
     );
     assert.match(
         homeSource,
@@ -363,12 +381,12 @@ test('initial, manager, and rep optimization keep whole streets contiguous', asy
     );
     assert.match(
         homeSource,
-        /function requireCompleteRoadCosts\(routingContext\)[\s\S]*blockToBlockRoadCostFallbackCount[\s\S]*doorToDoorRoadCostFallbackCount[\s\S]*No routes were changed/,
+        /function discloseRoadCostFallback\(scope, routingContext\)[\s\S]*blockToBlockRoadCostFallbackCount[\s\S]*doorToDoorRoadCostFallbackCount[\s\S]*street and neighborhood continuity/,
     );
     assert.equal(
-        (homeSource.match(/requireCompleteRoadCosts\(routingContext\);/g) || []).length,
+        (homeSource.match(/discloseRoadCostFallback\(\s*'(?:generateRoutes|handleReorder|handleReoptimizeRoute)'/g) || []).length,
         3,
-        'initial generation, reorder, and manager Optimize must reject incomplete road comparisons before persistence',
+        'initial generation, reorder, and manager Optimize must disclose incomplete road comparisons without blocking',
     );
     assert.match(
         homeSource,
@@ -376,7 +394,7 @@ test('initial, manager, and rep optimization keep whole streets contiguous', asy
     );
     assert.match(
         homeSource,
-        /const roadGeometry = buildRoadRouteGeometry\(optimized, routingContext\);[\s\S]*requireCompleteRoadCosts\(routingContext\);[\s\S]*SavedRoute\.update\(route\.id, routeUpdate\)/,
+        /const roadGeometry = buildRoadRouteGeometry\(optimized, routingContext\);[\s\S]*discloseRoadCostFallback\('handleReoptimizeRoute', routingContext\);[\s\S]*SavedRoute\.update\(route\.id, routeUpdate\)/,
     );
     assert.match(
         homeSource,
@@ -384,13 +402,18 @@ test('initial, manager, and rep optimization keep whole streets contiguous', asy
     );
     assert.match(
         homeSource,
-        /routingContext\.costOnly[\s\S]*straight-line mileage; road-aware street ordering/,
+        /routingContext\.costOnly[\s\S]*straight-line mileage; road-aware street ordering[\s\S]*street-continuity estimate/,
     );
     assert.match(
         homeSource,
         /Re-optimize error:[\s\S]*e\?\.message \|\| 'Failed to re-optimize route\. The existing route was left unchanged\.'/,
     );
     assert.doesNotMatch(homeSource, /optimizeRouteByStreetSweep\(route\.properties \|\| \[\], null, null\)/);
+    assert.match(
+        optimizerSource,
+        /function assertExactRouteMembership\(expectedProperties, routes\)[\s\S]*routedKeys\.length !== expectedKeys\.length[\s\S]*routedKeys\.some\(key => !expectedSet\.has\(key\)\)[\s\S]*assertExactRouteMembership\(eligible, routes\);/,
+        'all client route sizes must fail before saving if a home is dropped or duplicated',
+    );
     assert.match(repSource, /import \{ optimizeRouteByStreetSweep \} from '@\/components\/logic\/routeOptimizer'/);
     assert.match(
         repSource,
@@ -398,11 +421,11 @@ test('initial, manager, and rep optimization keep whole streets contiguous', asy
     );
     assert.match(
         repSource,
-        /routingContext\.costOnly[\s\S]*straight-line mileage; road-aware street ordering/,
+        /routingContext\.costOnly[\s\S]*straight-line mileage; road-aware street ordering[\s\S]*street-continuity estimate/,
     );
     assert.match(
         repSource,
-        /requireRoadAwareRouteContext\(routingContext\);[\s\S]*const roadGeometry = buildRoadRouteGeometry\(optimized, routingContext\);[\s\S]*requireCompleteRoadCosts\(routingContext\);[\s\S]*SavedRoute\.update\(routeToOptimize\.id, routeUpdate\)/,
+        /requireUsableRouteContext\(routingContext\);[\s\S]*const roadGeometry = buildRoadRouteGeometry\(optimized, routingContext\);[\s\S]*discloseRoadCostFallback\(routingContext\);[\s\S]*discloseRouteContinuityFallback\(routingContext\);[\s\S]*SavedRoute\.update\(routeToOptimize\.id, routeUpdate\)/,
     );
     assert.match(
         repSource,

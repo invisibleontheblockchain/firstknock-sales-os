@@ -280,10 +280,11 @@ async function fetchQueryWithFallback(query, {
   signal,
   maxResponseBytes = MAX_BROWSER_TILE_JSON_BYTES,
   maxElements = MAX_BROWSER_OSM_ELEMENTS,
+  overpassUrls = OVERPASS_URLS,
 }) {
   let lastError = null;
   const failures = [];
-  for (const url of OVERPASS_URLS) {
+  for (const url of overpassUrls) {
     try {
       const { data, byteLength } = await fetchWithTimeout(url, query, timeoutMs, signal, maxResponseBytes);
       if (!Array.isArray(data?.elements)) {
@@ -319,6 +320,51 @@ async function fetchQueryWithFallback(query, {
   });
 }
 
+async function fetchSingleRoadNetwork(polygon, highwayFilter, options) {
+  const controller = new AbortController();
+  const overallTimeoutMs = Math.min(
+    DEFAULT_OVERALL_TIMEOUT_MS,
+    Math.max(1_000, Number(options.overallTimeoutMs) || DEFAULT_OVERALL_TIMEOUT_MS),
+  );
+  let overallTimedOut = false;
+  const abortFromCaller = () => controller.abort(options.signal?.reason);
+  options.signal?.addEventListener?.('abort', abortFromCaller, { once: true });
+  if (options.signal?.aborted) abortFromCaller();
+  const overallTimeout = setTimeout(() => {
+    overallTimedOut = true;
+    controller.abort();
+  }, overallTimeoutMs);
+  try {
+    const { data, url } = await fetchQueryWithFallback(
+      buildOverpassQuery(polygon, highwayFilter, options),
+      {
+        timeoutMs: options.timeoutMs,
+        signal: controller.signal,
+        maxResponseBytes: Math.min(
+          MAX_BROWSER_OSM_JSON_BYTES,
+          Math.max(1, Number(options.maxTotalBytes) || MAX_BROWSER_OSM_JSON_BYTES),
+        ),
+        maxElements: Math.min(
+          MAX_BROWSER_OSM_ELEMENTS,
+          Math.max(1, Number(options.maxElements) || MAX_BROWSER_OSM_ELEMENTS),
+        ),
+        overpassUrls: options.overpassUrls,
+      },
+    );
+    return roadNetworkResult(data, url);
+  } catch (error) {
+    if (overallTimedOut && !options.signal?.aborted) {
+      throw new CanvasRoadNetworkError('Street loading exceeded the safe overall time.', {
+        code: 'CANVAS_ROAD_NETWORK_TIMEOUT',
+      });
+    }
+    throw error;
+  } finally {
+    clearTimeout(overallTimeout);
+    options.signal?.removeEventListener?.('abort', abortFromCaller);
+  }
+}
+
 function mergeRoadElementsInto(byIdentity, network) {
   (network?.elements || []).forEach((element) => {
     const key = `${String(element?.type || '')}:${String(element?.id ?? '')}`;
@@ -342,6 +388,7 @@ async function fetchTiledRoadNetwork(tiles, highwayFilter, options) {
   let overallTimedOut = false;
   const abortFromCaller = () => batchController.abort(options.signal?.reason);
   options.signal?.addEventListener?.('abort', abortFromCaller, { once: true });
+  if (options.signal?.aborted) abortFromCaller();
   const overallTimeout = setTimeout(() => {
     overallTimedOut = true;
     batchController.abort();
@@ -415,6 +462,14 @@ export async function fetchOverpassRoadNetwork(polygon, options = {}) {
   const timeoutMs = Math.max(5000, Number(options.timeoutMs) || 25000);
   const cacheMaxAgeMs = Math.max(0, Number(options.cacheMaxAgeMs) || DEFAULT_CACHE_MAX_AGE_MS);
   const cacheEmptyResults = options.cacheEmptyResults !== false;
+  const maxTotalBytes = Math.min(
+    MAX_BROWSER_OSM_JSON_BYTES,
+    Math.max(1, Number(options.maxTotalBytes) || MAX_BROWSER_OSM_JSON_BYTES),
+  );
+  const maxElements = Math.min(
+    MAX_BROWSER_OSM_ELEMENTS,
+    Math.max(1, Number(options.maxElements) || MAX_BROWSER_OSM_ELEMENTS),
+  );
   const cacheKey = getRoadNetworkCacheKey(polygon, highwayFilter, options);
 
   if (options.bypassCache === true) clearOverpassRoadNetworkCache(polygon, highwayFilter, options);
@@ -425,10 +480,15 @@ export async function fetchOverpassRoadNetwork(polygon, options = {}) {
         const record = JSON.parse(cached);
         const cachedAt = Number(record?.cached_at);
         const data = record?.data;
+        const cachedDataBytes = data
+          ? new TextEncoder().encode(JSON.stringify(data)).byteLength
+          : 0;
         if (
           Number.isFinite(cachedAt)
           && Date.now() - cachedAt <= cacheMaxAgeMs
           && Array.isArray(data?.elements)
+          && data.elements.length <= maxElements
+          && cachedDataBytes <= maxTotalBytes
           && (cacheEmptyResults || data.elements.length > 0)
         ) {
           console.info(`[FK] Canvas road network cache hit: ${data.elements.length} OSM elements`);
@@ -442,13 +502,7 @@ export async function fetchOverpassRoadNetwork(polygon, options = {}) {
   const tiles = tiledBoundsForPolygon(polygon);
   const result = tiles.length
     ? await fetchTiledRoadNetwork(tiles, highwayFilter, { ...options, timeoutMs })
-    : (() => fetchQueryWithFallback(buildOverpassQuery(polygon, highwayFilter, options), {
-      timeoutMs,
-      signal: options.signal,
-      maxResponseBytes: Math.min(MAX_BROWSER_OSM_JSON_BYTES, Math.max(1, Number(options.maxTotalBytes) || MAX_BROWSER_OSM_JSON_BYTES)),
-      maxElements: Math.min(MAX_BROWSER_OSM_ELEMENTS, Math.max(1, Number(options.maxElements) || MAX_BROWSER_OSM_ELEMENTS)),
-    })
-      .then(({ data, url }) => roadNetworkResult(data, url)))();
+    : fetchSingleRoadNetwork(polygon, highwayFilter, { ...options, timeoutMs });
   const resolved = await result;
   try {
     const serialized = JSON.stringify({ cached_at: Date.now(), data: resolved });

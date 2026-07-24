@@ -78,6 +78,23 @@ function compressed(values) {
   return values.filter((value, index) => index === 0 || value !== values[index - 1]);
 }
 
+function routePropertyOrderFingerprint(properties) {
+  const identities = properties.map((door) => String(door.address_hash || door.legacy_hash || door.id || '').trim());
+  assert.equal(identities.every(Boolean), true);
+
+  let first = 2166136261;
+  let second = 2246822507;
+  identities.forEach((identity) => {
+    const framed = `${identity.length}:${identity}|`;
+    for (let index = 0; index < framed.length; index += 1) {
+      const code = framed.charCodeAt(index);
+      first = Math.imul(first ^ code, 16777619);
+      second = Math.imul(second ^ code, 3266489909);
+    }
+  });
+  return `${identities.length}:${(first >>> 0).toString(16).padStart(8, '0')}${(second >>> 0).toString(16).padStart(8, '0')}`;
+}
+
 test('large backend uses deterministic suffix-preserving street blocks inside atomic subdivision access blocks', async () => {
   const properties = [
     property({ id: 'a-oak-st-1', subdivision: 'Access A', street: 'Oak Street', house: 101, lat: 35.000, lng: -80.000 }),
@@ -88,7 +105,7 @@ test('large backend uses deterministic suffix-preserving street blocks inside at
     property({ id: 'b-birch-2', subdivision: 'Access B', street: 'Birch Ln', house: 202, lat: 35.005, lng: -80.001 }),
     property({ id: 'a-oak-rd-2', subdivision: 'Access A', street: 'Oak Rd.', house: 302, lat: 35.007, lng: -80.001 }),
     property({ id: 'a-pine-2', subdivision: 'Access A', street: 'Pine Ct', house: 402, lat: 35.010, lng: -80.002 }),
-    property({ id: 'a-pine-no-coordinates', subdivision: 'Access A', street: 'Pine Court', house: 403, lat: null, lng: null }),
+    property({ id: 'a-pine-3', subdivision: 'Access A', street: 'Pine Court', house: 403, lat: 35.011, lng: -80.002 }),
   ];
 
   const result = await generate(properties);
@@ -106,6 +123,50 @@ test('large backend uses deterministic suffix-preserving street blocks inside at
   assert.equal(result.routing_metadata.canonical_street_block_count, 4);
   assert.equal(result.routing_metadata.subdivision_access_block_count, 2);
   assert.equal(result.routing_metadata.exact_once_verified, true);
+  result.routes.forEach((route) => {
+    assert.equal(
+      route.metadata.routing.property_order_fingerprint,
+      routePropertyOrderFingerprint(route.properties),
+    );
+  });
+});
+
+test('large backend rejects properties that could not produce a durable map pin', async () => {
+  for (const invalidCoordinates of [
+    { lat: null, lng: null },
+    { lat: 0, lng: 0 },
+  ]) {
+    const handler = loadBackendHandler();
+    const response = await handler(new Request('https://app.example.com/api', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        properties: [
+          property({
+            id: 'valid',
+            subdivision: 'Access A',
+            street: 'Pine Court',
+            house: 401,
+            lat: 35,
+            lng: -80,
+          }),
+          property({
+            id: 'invalid',
+            subdivision: 'Access A',
+            street: 'Pine Court',
+            house: 403,
+            ...invalidCoordinates,
+          }),
+        ],
+        houses_per_route: 100,
+      }),
+    }));
+    const result = await response.json();
+
+    assert.equal(response.status, 400);
+    assert.equal(result.code, 'INVALID_PROPERTY_COORDINATES');
+    assert.equal(result.invalid_property_index, 1);
+  }
 });
 
 test('large backend chunks near the target at access boundaries without losing or duplicating doors', async () => {
@@ -152,16 +213,22 @@ test('large backend chunks near the target at access boundaries without losing o
   assert.equal(result.routing_metadata.input_property_count, properties.length);
   assert.equal(result.routing_metadata.output_property_count, properties.length);
   assert.equal(result.routing_metadata.route_count, 2);
+  result.routes.forEach((route) => {
+    assert.equal(
+      route.metadata.routing.property_order_fingerprint,
+      routePropertyOrderFingerprint(route.properties),
+    );
+  });
 });
 
 test('large backend orients a complete street sweep against both fixed endpoints and reports fallback metadata', async () => {
   const properties = [
-    property({ id: 'left', subdivision: 'Access A', street: 'Main Street', house: 101, lat: 0, lng: 0.01 }),
-    property({ id: 'middle', subdivision: 'Access A', street: 'Main Street', house: 103, lat: 0, lng: 0.02 }),
-    property({ id: 'right', subdivision: 'Access A', street: 'Main Street', house: 105, lat: 0, lng: 0.03 }),
+    property({ id: 'left', subdivision: 'Access A', street: 'Main Street', house: 101, lat: 10, lng: 10.01 }),
+    property({ id: 'middle', subdivision: 'Access A', street: 'Main Street', house: 103, lat: 10, lng: 10.02 }),
+    property({ id: 'right', subdivision: 'Access A', street: 'Main Street', house: 105, lat: 10, lng: 10.03 }),
   ];
-  const start = { lat: 0, lng: 0.04 };
-  const end = { lat: 0, lng: 0 };
+  const start = { lat: 10, lng: 10.04 };
+  const end = { lat: 10, lng: 10 };
 
   const result = await generate(properties, {
     start_location: start,

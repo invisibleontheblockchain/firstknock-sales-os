@@ -182,6 +182,28 @@ test('Canvas road loading is identifiable, abortable, typed, cached, and uses cu
     const allGradesQuery = new URLSearchParams(requests[2].init.body).get('data');
     assert.doesNotMatch(allGradesQuery, /\["bridge"!="yes"\]|\["tunnel"!="yes"\]/);
 
+    const constrainedBoundary = [{ lat: 33.1, lng: -112 }, { lat: 33.11, lng: -112 }, { lat: 33.1, lng: -111.99 }];
+    globalThis.fetch = async (url, init) => {
+      fetchCount += 1;
+      requests.push({ url, init });
+      return {
+        ok: true,
+        json: async () => ({
+          elements: fetchCount % 2 === 0
+            ? [{ type: 'node', id: 20 }, { type: 'node', id: 21 }]
+            : [{ type: 'node', id: 22 }],
+        }),
+      };
+    };
+    const beforeBudgetedCacheFetches = fetchCount;
+    await roads.fetchOverpassRoadNetwork(constrainedBoundary);
+    await roads.fetchOverpassRoadNetwork(constrainedBoundary, { maxElements: 1 });
+    assert.equal(
+      fetchCount,
+      beforeBudgetedCacheFetches + 2,
+      'a stricter caller must not reuse a cached road graph above its element budget',
+    );
+
     const emptyBoundary = [{ lat: 34, lng: -112 }, { lat: 34.01, lng: -112 }, { lat: 34, lng: -111.99 }];
     const fallbackRequests = [];
     globalThis.fetch = async (url, init) => {
@@ -233,6 +255,24 @@ test('Canvas road loading is identifiable, abortable, typed, cached, and uses cu
     await assert.rejects(
       inFlightRequest,
       (error) => error?.name === 'CanvasRoadNetworkError' && error?.code === 'CANVAS_ROAD_NETWORK_ABORTED',
+    );
+
+    globalThis.fetch = async (_url, init) => new Promise((resolve, reject) => {
+      init.signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true });
+    });
+    const overallStartedAt = Date.now();
+    await assert.rejects(
+      roads.fetchOverpassRoadNetwork([
+        { lat: 35.2, lng: -112 },
+        { lat: 35.21, lng: -112 },
+        { lat: 35.2, lng: -111.99 },
+      ], { overallTimeoutMs: 1000 }),
+      (error) => error?.name === 'CanvasRoadNetworkError'
+        && error?.code === 'CANVAS_ROAD_NETWORK_TIMEOUT',
+    );
+    assert.ok(
+      Date.now() - overallStartedAt < 3000,
+      'the overall timeout must bound a non-tiled request across all endpoint fallbacks',
     );
 
     const failedEndpoints = [];
@@ -303,6 +343,21 @@ test('large Canvas boundaries load complete deduplicated street tiles with progr
     assert.equal(result._canvas.tile_count, queries.length);
     assert.equal(result.elements.filter((element) => element.id === 1).length, 1);
     assert.equal(progress.at(-1).completed, progress.at(-1).total);
+    const aborted = new AbortController();
+    aborted.abort();
+    const queryCountBeforeAbort = queries.length;
+    await assert.rejects(
+      roads.fetchOverpassRoadNetwork(
+        boundary.map((point) => ({ ...point, lat: point.lat + 2 })),
+        { signal: aborted.signal },
+      ),
+      (error) => error?.code === 'CANVAS_ROAD_NETWORK_ABORTED',
+    );
+    assert.equal(
+      queries.length,
+      queryCountBeforeAbort,
+      'an already-aborted tiled request must not contact a road endpoint',
+    );
     await assert.rejects(
       roads.fetchOverpassRoadNetwork(boundary.map((point) => ({ ...point, lat: point.lat + 1 })), {
         maxTotalBytes: 250,

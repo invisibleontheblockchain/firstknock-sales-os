@@ -17,7 +17,13 @@ function isValidPoint(point) {
     }
     const lat = Number(point?.lat);
     const lng = Number(point?.lng);
-    return Number.isFinite(lat) && Number.isFinite(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
+    return Number.isFinite(lat)
+        && Number.isFinite(lng)
+        && lat >= -90
+        && lat <= 90
+        && lng >= -180
+        && lng <= 180
+        && !(Math.abs(lat) < 0.0001 && Math.abs(lng) < 0.0001);
 }
 
 const STREET_SUFFIX_ALIASES = new Map([
@@ -53,6 +59,32 @@ const FALLBACK_ROUTING_METADATA = Object.freeze({
     access_key: 'subdivision_name_when_available',
     chunk_boundary_priority: ['subdivision_access', 'street', 'door']
 });
+
+function routePropertyOrderFingerprint(propertiesOrHashes) {
+    if (!Array.isArray(propertiesOrHashes) || propertiesOrHashes.length === 0) return '';
+    const identities = propertiesOrHashes.map((value) => {
+        if (typeof value === 'string' || typeof value === 'number') return String(value).trim();
+        return String(
+            value?.address_hash
+            || value?.legacy_hash
+            || value?.id
+            || '',
+        ).trim();
+    });
+    if (identities.some((identity) => !identity)) return '';
+
+    let first = 2166136261;
+    let second = 2246822507;
+    identities.forEach((identity) => {
+        const framed = `${identity.length}:${identity}|`;
+        for (let index = 0; index < framed.length; index += 1) {
+            const code = framed.charCodeAt(index);
+            first = Math.imul(first ^ code, 16777619);
+            second = Math.imul(second ^ code, 3266489909);
+        }
+    });
+    return `${identities.length}:${(first >>> 0).toString(16).padStart(8, '0')}${(second >>> 0).toString(16).padStart(8, '0')}`;
+}
 
 function normalizeKeyPart(value) {
     if (value === undefined || value === null) return '';
@@ -576,6 +608,14 @@ Deno.serve(async (req) => {
                 }
             });
         }
+        const invalidCoordinateIndex = properties.findIndex((property) => !isValidPoint(property));
+        if (invalidCoordinateIndex >= 0) {
+            return Response.json({
+                error: 'Every route property requires a valid map coordinate.',
+                code: 'INVALID_PROPERTY_COORDINATES',
+                invalid_property_index: invalidCoordinateIndex
+            }, { status: 400 });
+        }
         if (properties.length > 10000) return Response.json({ error: 'Too many properties for one backend route generation request. Limit is 10,000.' }, { status: 400 });
 
         const streetBlocks = buildCanonicalStreetBlocks(properties);
@@ -629,7 +669,8 @@ Deno.serve(async (req) => {
                 exact_once_verified: true,
                 route_property_count: chunk.length,
                 route_street_block_count: chunkStreetCount,
-                route_access_block_count: chunkAccessCount
+                route_access_block_count: chunkAccessCount,
+                property_order_fingerprint: routePropertyOrderFingerprint(chunk)
             };
             routes.push({
                 id: `backend-route-${requestId}-${index + 1}`,

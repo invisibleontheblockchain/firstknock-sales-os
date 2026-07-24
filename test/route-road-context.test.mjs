@@ -383,6 +383,50 @@ test('501-5000 doors use bounded block-level road costs without eager door routi
   assert.equal('road_geometry' in metadata, false);
 });
 
+test('cost-only routing keeps the same street name separate across subdivisions', async () => {
+  const doors = Array.from({ length: 501 }, (_, index) => {
+    const inFirstSubdivision = index < 251;
+    return {
+      ...property(
+        `shared-name-${index}`,
+        'Shared Drive',
+        35,
+        (inFirstSubdivision ? -82 : -81.995) + (index % 200) * 0.00001,
+        inFirstSubdivision ? 'Neighborhood A' : 'Neighborhood B',
+      ),
+      house_number: index + 1,
+      effective_status: 'ELIGIBLE',
+    };
+  });
+  const roadNetwork = {
+    elements: [
+      node(7000, 35, -82.001),
+      node(7001, 35, -81.99),
+      way(700, [7000, 7001], 'Shared Drive'),
+    ],
+  };
+  const context = await createRouteRoadContext(doors, {
+    fetchRoadNetwork: async () => roadNetwork,
+  });
+
+  assert.equal(context.mode, 'cost-only');
+  assert.equal(context.diagnostics.representativeBlockCount, 2);
+  assert.notEqual(context.streetSegmentKey(doors[0]), context.streetSegmentKey(doors.at(-1)));
+  assert.notEqual(context.accessGroupKey(doors[0]), context.accessGroupKey(doors.at(-1)));
+
+  const [route] = generateOptimizedRoutes(
+    doors,
+    1000,
+    null,
+    [],
+    { routingContext: context },
+  );
+  const subdivisionRuns = route.properties
+    .map(({ subdivision_name: subdivision }) => subdivision)
+    .filter((subdivision, index, values) => index === 0 || subdivision !== values[index - 1]);
+  assert.equal(new Set(subdivisionRuns).size, subdivisionRuns.length);
+});
+
 test('large-route safety limits and road fallbacks are explicit and auditable', async () => {
   const doors = Array.from({ length: 501 }, (_, index) => property(
     `unique-${index}`,
@@ -441,6 +485,66 @@ test('large-route safety limits and road fallbacks are explicit and auditable', 
   const metadata = buildPersistedRoadRoutingMetadata(disconnected);
   assert.equal(metadata.routing.road_cost_fallback_count, 1);
   assert.equal(metadata.routing.block_to_block_road_cost_fallback_count, 1);
+});
+
+test('street and neighborhood continuity stays available through the 10,000-door route limit without road data', async () => {
+  for (const size of [43, 501, 5001, 10000]) {
+    const doors = Array.from({ length: size }, (_, index) => {
+      const streetIndex = index % 20;
+      const subdivisionIndex = Math.floor(streetIndex / 4);
+      return {
+        ...property(
+          `resilient-${size}-${index}`,
+          `Continuity Street ${streetIndex}`,
+          35 + subdivisionIndex * 0.01 + (index % 7) * 0.00001,
+          -82 + streetIndex * 0.001,
+          `Continuity Neighborhood ${subdivisionIndex}`,
+        ),
+        house_number: index + 1,
+        effective_status: 'ELIGIBLE',
+      };
+    }).reverse();
+    let fetchCalls = 0;
+    const context = await createRouteRoadContext(doors, {
+      fetchRoadNetwork: async () => {
+        fetchCalls += 1;
+        const error = new Error('offline');
+        error.code = 'TEST_ROAD_SOURCE_OFFLINE';
+        throw error;
+      },
+    });
+
+    assert.equal(context.mode, 'fallback');
+    assert.equal(context.roadAware, false);
+    assert.equal(fetchCalls, size <= 5000 ? 1 : 0);
+
+    const routes = generateOptimizedRoutes(
+      doors,
+      size + 1,
+      null,
+      [],
+      { routingContext: context },
+    );
+    assert.equal(routes.length, 1);
+    const optimized = routes[0].properties;
+    assert.equal(optimized.length, size);
+    assert.deepEqual(
+      optimized.map(({ id }) => id).sort(),
+      doors.map(({ id }) => id).sort(),
+    );
+
+    const streetRuns = optimized
+      .map(({ street_name: street }) => street)
+      .filter((street, index, values) => index === 0 || street !== values[index - 1]);
+    assert.equal(new Set(streetRuns).size, streetRuns.length);
+
+    const neighborhoodRuns = optimized
+      .map(({ subdivision_name: subdivision }) => subdivision)
+      .filter((subdivision, index, values) => (
+        index === 0 || subdivision !== values[index - 1]
+      ));
+    assert.equal(new Set(neighborhoodRuns).size, neighborhoodRuns.length);
+  }
 });
 
 test('cost-only refinement stays bounded as the number of street blocks grows', async () => {

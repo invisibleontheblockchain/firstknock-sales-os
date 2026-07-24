@@ -4,6 +4,8 @@ import test from 'node:test';
 import {
   hasCompleteRouteMapPoints,
   hydrateRouteWithLookup,
+  lookupRoutePropertiesInBatches,
+  ROUTE_HYDRATION_BATCH_LIMIT,
 } from '../src/components/logic/routeHydrationCore.js';
 
 const route = {
@@ -83,4 +85,147 @@ test('failed hydration preserves valid in-memory pins instead of replacing them 
   assert.deepEqual(hydrated.properties.map(property => property.id), ['property-a']);
   assert.equal(hydrated.houseCount, 2);
   assert.equal(hasCompleteRouteMapPoints(hydrated), false);
+});
+
+test('a 10,000-property saved route hydrates in authorized backend-sized batches', async () => {
+  const hashes = Array.from({ length: 10_000 }, (_, index) => `hash-${index}`);
+  const byHash = new Map(hashes.map((hash, index) => [hash, {
+    id: `property-${index}`,
+    address_hash: hash,
+    lat: 33 + (index / 100_000),
+    lng: -112 - (index / 100_000),
+  }]));
+  const calls = [];
+  const largeRoute = {
+    id: 'route-10000',
+    property_hashes: hashes,
+  };
+
+  const hydrated = await hydrateRouteWithLookup(largeRoute, request => (
+    lookupRoutePropertiesInBatches({
+      ...request,
+      lookupBatch: async (batch) => {
+        calls.push(batch);
+        // Deliberately scramble each response; hydration must restore manifest order.
+        return batch.hashes.map(hash => byHash.get(hash)).reverse();
+      },
+    })
+  ));
+
+  assert.equal(ROUTE_HYDRATION_BATCH_LIMIT, 5000);
+  assert.deepEqual(calls.map(call => call.hashes.length), [5000, 5000]);
+  assert.ok(calls.every(call => call.routeId === largeRoute.id));
+  assert.equal(hydrated.properties.length, 10_000);
+  assert.equal(hydrated.properties[0].address_hash, 'hash-0');
+  assert.equal(hydrated.properties.at(-1).address_hash, 'hash-9999');
+  assert.equal(hasCompleteRouteMapPoints(hydrated), true);
+});
+
+test('a partial batch fails closed instead of returning a partially hydrated route lookup', async () => {
+  const hashes = Array.from({ length: 5001 }, (_, index) => `hash-${index}`);
+  let batchNumber = 0;
+
+  await assert.rejects(
+    lookupRoutePropertiesInBatches({
+      hashes,
+      routeId: 'route-partial',
+      lookupBatch: async ({ hashes: batchHashes }) => {
+        batchNumber += 1;
+        const returnedHashes = batchNumber === 2 ? batchHashes.slice(0, -1) : batchHashes;
+        return returnedHashes.map((hash, index) => ({
+          id: `${batchNumber}-${index}`,
+          address_hash: hash,
+          lat: 33.1,
+          lng: -112.1,
+        }));
+      },
+    }),
+    error => error?.code === 'ROUTE_HYDRATION_PARTIAL_RESPONSE'
+      && error?.missingCount === 1
+      && error?.batchOffset === 5000
+  );
+  assert.equal(batchNumber, 2);
+});
+
+test('batched hydration de-duplicates lookup hashes while preserving first-requested property order', async () => {
+  const calls = [];
+  const properties = await lookupRoutePropertiesInBatches({
+    hashes: ['hash-b', 'hash-a', 'hash-b', 'legacy-a'],
+    routeId: 'route-deduplicated',
+    batchSize: 2,
+    lookupBatch: async (batch) => {
+      calls.push(batch);
+      if (batch.hashes.includes('hash-b')) {
+        return [{
+          id: 'property-b',
+          address_hash: 'hash-b',
+          lat: 33.2,
+          lng: -112.2,
+        }, {
+          id: 'property-a',
+          address_hash: 'hash-a',
+          legacy_hash: 'legacy-a',
+          lat: 33.1,
+          lng: -112.1,
+        }];
+      }
+      return [{
+        id: 'property-a',
+        address_hash: 'hash-a',
+        legacy_hash: 'legacy-a',
+        lat: 33.1,
+        lng: -112.1,
+      }];
+    },
+  });
+
+  assert.deepEqual(calls.map(call => call.hashes), [
+    ['hash-b', 'hash-a'],
+    ['legacy-a'],
+  ]);
+  assert.ok(calls.every(call => call.routeId === 'route-deduplicated'));
+  assert.deepEqual(properties.map(property => property.id), ['property-b', 'property-a']);
+});
+
+test('a failed route-scoped batch is discarded before the workspace fallback hydrates the route', async () => {
+  const hashes = Array.from({ length: 6 }, (_, index) => `hash-${index}`);
+  const calls = [];
+  const failedRoute = {
+    id: 'route-batch-failure',
+    property_hashes: hashes,
+  };
+
+  const hydrated = await hydrateRouteWithLookup(failedRoute, request => (
+    lookupRoutePropertiesInBatches({
+      ...request,
+      batchSize: 3,
+      lookupBatch: async (batch) => {
+        calls.push({
+          routeId: batch.routeId,
+          hashes: [...batch.hashes],
+        });
+        if (batch.routeId && batch.hashes.includes('hash-3')) {
+          throw new Error('second authorized batch unavailable');
+        }
+        return batch.hashes.map((hash, index) => ({
+          id: `${hash}-${index}`,
+          address_hash: hash,
+          lat: 33.2,
+          lng: -112.2,
+        }));
+      },
+    })
+  ));
+
+  assert.deepEqual(calls.map(call => call.routeId), [
+    failedRoute.id,
+    failedRoute.id,
+    null,
+    null,
+  ]);
+  assert.deepEqual(
+    hydrated.properties.map(property => property.address_hash),
+    hashes
+  );
+  assert.equal(hasCompleteRouteMapPoints(hydrated), true);
 });

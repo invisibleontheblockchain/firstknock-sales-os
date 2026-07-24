@@ -6,10 +6,15 @@ import {
 const MAX_POLYGON_POINTS = 32;
 const MAX_BOUNDS_AREA_SQ_MI = 125;
 const MAX_BOUNDS_SPAN_MILES = 30;
-const MAX_RESPONSE_BYTES = 3_500_000;
-const MAX_OSM_ELEMENTS = 60_000;
-const MAX_ENDPOINT_TIMEOUT_MS = 12_000;
-const MAX_OVERALL_TIMEOUT_MS = 40_000;
+const MAX_RESPONSE_BYTES = 8_000_000;
+const MAX_OSM_ELEMENTS = 120_000;
+const MAX_ENDPOINT_TIMEOUT_MS = 8_000;
+const MAX_OVERALL_TIMEOUT_MS = 20_000;
+const ROUTE_OVERPASS_URLS = Object.freeze([
+  'https://overpass-api.de/api/interpreter',
+  'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
+  'https://overpass.private.coffee/api/interpreter',
+]);
 
 function normalizedPolygon(polygon) {
   const normalized = (Array.isArray(polygon) ? polygon : []).map((point) => ({
@@ -111,6 +116,7 @@ export async function fetchRouteRoadNetwork(polygon, options = {}) {
       MAX_RESPONSE_BYTES,
       Math.max(1, Number(options.maxTotalBytes) || MAX_RESPONSE_BYTES),
     ),
+    overpassUrls: ROUTE_OVERPASS_URLS,
     cacheEmptyResults: false,
   });
   if (!Array.isArray(roadNetwork?.elements)) {

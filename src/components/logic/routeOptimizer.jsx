@@ -59,6 +59,60 @@ function buildRouteName(properties, routeMode, routeNumber) {
     return `${area} ${type} Route ${routeNumber}`;
 }
 
+function routeMembershipKey(property) {
+    const durableIdentity = property?.address_hash || property?.legacy_hash || property?.id;
+    if (durableIdentity !== null && durableIdentity !== undefined && String(durableIdentity).trim()) {
+        return `id:${String(durableIdentity).trim()}`;
+    }
+    // SavedRoute membership is a durable hash manifest. A coordinate-derived
+    // identity could pass optimization and then disappear when the route is
+    // persisted, so fail closed instead of inventing an unsaveable key.
+    return '';
+}
+
+function assertExactRouteMembership(expectedProperties, routes) {
+    const expectedKeys = expectedProperties.map(routeMembershipKey);
+    const routedKeys = routes
+        .flatMap(route => route?.properties || [])
+        .map(routeMembershipKey);
+    const expectedSet = new Set(expectedKeys);
+    const routedSet = new Set(routedKeys);
+    if (
+        expectedKeys.some(key => !key)
+        || routedKeys.some(key => !key)
+        || routedKeys.length !== expectedKeys.length
+        || expectedSet.size !== expectedKeys.length
+        || routedSet.size !== routedKeys.length
+        || expectedSet.size !== routedSet.size
+        || routedKeys.some(key => !expectedSet.has(key))
+    ) {
+        throw new Error(
+            `Route integrity verification failed: expected ${expectedKeys.length} unique homes and received ${routedKeys.length}.`
+        );
+    }
+}
+
+export function isStrictRoutePropertyPoint(property) {
+    if (
+        !property
+        || property.lat === null
+        || property.lat === undefined
+        || property.lat === ''
+        || property.lng === null
+        || property.lng === undefined
+        || property.lng === ''
+    ) return false;
+    const lat = Number(property.lat);
+    const lng = Number(property.lng);
+    return Number.isFinite(lat)
+        && Number.isFinite(lng)
+        && lat >= -90
+        && lat <= 90
+        && lng >= -180
+        && lng <= 180
+        && !(Math.abs(lat) < 0.0001 && Math.abs(lng) < 0.0001);
+}
+
 // Haversine distance in miles
 function calculateDistance(lat1, lng1, lat2, lng2) {
     const R = 3959; // Earth radius in miles
@@ -555,6 +609,8 @@ export function generateOptimizedRoutes(
         routeOriginMode = 'none',
         maxRouteDistance = null,
         excludeTerminal = true,
+        preserveInputMembership = false,
+        preserveGlobalChunkOrder = false,
         routingContext: optionRoutingContext = null
     } = options;
     const effectiveRoutingContext = routingContext || optionRoutingContext || null;
@@ -570,35 +626,46 @@ export function generateOptimizedRoutes(
 
     // Filter out properties on streets that are on cooldown
     // Also filter out invalid coordinates (Null Island 0,0)
-    let eligible = properties.filter(p =>
-        p && p.lat && p.lng &&
-        !(Math.abs(p.lat) < 0.0001 && Math.abs(p.lng) < 0.0001)
-    );
+    const inputProperties = Array.isArray(properties) ? properties : [];
+    let eligible = inputProperties.filter(isStrictRoutePropertyPoint);
+    if (preserveInputMembership && eligible.length !== inputProperties.length) {
+        throw new Error(
+            `Route integrity verification failed: ${inputProperties.length - eligible.length} homes have invalid coordinates.`
+        );
+    }
 
     // Deduplicate by normalized address (safety net for Phase1/Phase2 hash mismatch)
-    const addrMap = new Map();
-    eligible.forEach(p => {
-        const street = (p.street_name || '').toUpperCase().trim();
-        const num = p.house_number || 0;
-        const zip = String(p.zip_code || '').trim().slice(0, 5);
-        const key = `${num}|${street}|${zip}`;
-        const existing = addrMap.get(key);
-        if (!existing) {
-            addrMap.set(key, p);
-        } else {
-            const existDate = existing.sold_date ? new Date(existing.sold_date).getTime() : 0;
-            const newDate = p.sold_date ? new Date(p.sold_date).getTime() : 0;
-            if (newDate > existDate) addrMap.set(key, p);
+    if (!preserveInputMembership) {
+        const addrMap = new Map();
+        eligible.forEach(p => {
+            const street = (p.street_name || '').toUpperCase().trim();
+            const num = p.house_number || 0;
+            const zip = String(p.zip_code || '').trim().slice(0, 5);
+            const key = `${num}|${street}|${zip}`;
+            const existing = addrMap.get(key);
+            if (!existing) {
+                addrMap.set(key, p);
+            } else {
+                const existDate = existing.sold_date ? new Date(existing.sold_date).getTime() : 0;
+                const newDate = p.sold_date ? new Date(p.sold_date).getTime() : 0;
+                if (newDate > existDate) addrMap.set(key, p);
+            }
+        });
+        if (addrMap.size < eligible.length) {
+            console.log(`[routeOptimizer] Deduped: ${eligible.length} → ${addrMap.size} (removed ${eligible.length - addrMap.size} duplicate addresses)`);
         }
-    });
-    if (addrMap.size < eligible.length) {
-        console.log(`[routeOptimizer] Deduped: ${eligible.length} → ${addrMap.size} (removed ${eligible.length - addrMap.size} duplicate addresses)`);
+        eligible = Array.from(addrMap.values());
     }
-    eligible = Array.from(addrMap.values());
 
     // Apply street cooldown filter if logs are provided
     let cooldownInfo = null;
-    if (allLogs && allLogs.length > 0) {
+    const hasPropertyStreetCooldown = eligible.some(
+        property => property?.street_next_eligible_date
+    );
+    if (
+        !preserveInputMembership
+        && ((allLogs && allLogs.length > 0) || hasPropertyStreetCooldown)
+    ) {
         const filtered = filterByStreetCooldown(eligible, allLogs, streetCooldownDays);
         eligible = filtered.eligible;
         cooldownInfo = {
@@ -611,7 +678,7 @@ export function generateOptimizedRoutes(
     // NOTE: 'SOLD' here means the property's original MLS sale record, NOT that a rep already sold them.
     // 'UNVERIFIED' = legacy CSV data, still actionable for routing (treated like ELIGIBLE)
     // so we only exclude HARD_NO / DO_NOT_KNOCK / COOLDOWN — NOT 'SOLD' or 'UNVERIFIED'.
-    if (excludeTerminal) {
+    if (!preserveInputMembership && excludeTerminal) {
         const terminalStatuses = ['HARD_NO', 'DO_NOT_KNOCK', 'COOLDOWN'];
         eligible = eligible.filter(p => !terminalStatuses.includes(p.effective_status));
     }
@@ -708,7 +775,7 @@ export function generateOptimizedRoutes(
             && typeof effectiveRoutingContext?.distanceBetween === 'function';
 
         for (const orderedChunk of orderedChunks) {
-            const routeProperties = orderedChunks.length > 1
+            const routeProperties = orderedChunks.length > 1 && !preserveGlobalChunkOrder
                 ? mailCarrierOrder(
                     orderedChunk,
                     startLocation,
@@ -860,6 +927,10 @@ export function generateOptimizedRoutes(
         });
         }
     }
+
+    // Route ordering may change, but membership may not. Fail before any caller
+    // can save if a future optimization regression drops or duplicates a door.
+    assertExactRouteMembership(eligible, routes);
 
     // Sort routes by competitiveness
     routes.sort((a, b) => b.competitivenessScore - a.competitivenessScore);
@@ -1436,6 +1507,36 @@ function optimizeStreetBlockOrder(blocks, startLocation = null, endLocation = nu
         first.key,
         second.key
     ));
+    if (stableBlocks.length > 500) {
+        const cellSize = 0.01;
+        const spatiallySorted = [...stableBlocks].sort((first, second) => {
+            const firstRow = Math.floor(Number(first.lat) / cellSize);
+            const secondRow = Math.floor(Number(second.lat) / cellSize);
+            if (firstRow !== secondRow) return firstRow - secondRow;
+            if (Number(first.lng) !== Number(second.lng)) {
+                return firstRow % 2 === 0
+                    ? Number(first.lng) - Number(second.lng)
+                    : Number(second.lng) - Number(first.lng);
+            }
+            return compareStableKeys(first.key, second.key);
+        });
+        const reversed = [...spatiallySorted].reverse();
+        return streetBlockOrderCost(
+            reversed,
+            startLocation,
+            endLocation,
+            false,
+            routingContext
+        ) + 0.000001 < streetBlockOrderCost(
+            spatiallySorted,
+            startLocation,
+            endLocation,
+            false,
+            routingContext
+        )
+            ? reversed
+            : spatiallySorted;
+    }
     let ordered = typeof routingContext?.distanceBetween === 'function'
         ? contextAwareNearestNeighbor(
             stableBlocks,

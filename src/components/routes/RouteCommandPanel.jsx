@@ -8,6 +8,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { generateOptimizedRoutes } from "@/components/logic/routeOptimizer";
+import { createRouteContinuityContext } from "@/components/logic/routeRoadContext";
 import {
     Navigation, X, BarChart3, User, Shield, MapPin, Flame, Plus, Clock, CheckCircle2, ChevronRight, Zap, Trash2, Scissors, Pencil, Check, RefreshCw, Play, Home
 } from 'lucide-react';
@@ -296,6 +297,7 @@ export default function RouteCommandPanel({
                                                                     const mergeEnd = sharedRouteBounds
                                                                         ? (firstRoute.endLocation || firstRoute.end_location)
                                                                         : null;
+                                                                    const routingContext = createRouteContinuityContext(allProps);
                                                                     const merged = generateOptimizedRoutes(
                                                                         allProps,
                                                                         allProps.length,
@@ -306,7 +308,10 @@ export default function RouteCommandPanel({
                                                                             use2Opt: true,
                                                                             walkingPattern: 'nearest',
                                                                             endLocation: mergeEnd,
-                                                                            routeOriginMode: sharedRouteBounds ? firstOriginMode : 'none'
+                                                                            routeOriginMode: sharedRouteBounds ? firstOriginMode : 'none',
+                                                                            excludeTerminal: false,
+                                                                            preserveInputMembership: true,
+                                                                            routingContext
                                                                         }
                                                                     );
                                                                     if (merged && merged.length > 0) {
@@ -526,9 +531,10 @@ function SplitRouteButton({ route, onReplaceRoutes }) {
                             key={n}
                             onClick={() => {
                                 const perRoute = Math.ceil(totalHouses / n);
+                                const routingContext = createRouteContinuityContext(route.properties);
                                 const splits = generateOptimizedRoutes(
                                     route.properties, perRoute, null, [],
-                                    { minimizeTurns: true, use2Opt: true, walkingPattern: 'nearest' }
+                                    { minimizeTurns: true, use2Opt: true, walkingPattern: 'nearest', excludeTerminal: false, preserveInputMembership: true, routingContext }
                                 );
                                 if (splits && splits.length > 0 && onReplaceRoutes) {
                                     onReplaceRoutes(splits);

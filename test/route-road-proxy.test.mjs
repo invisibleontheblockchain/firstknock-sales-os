@@ -111,10 +111,15 @@ test('route browser requests cap response, element, and timeout budgets', async 
     },
   });
 
-  assert.equal(receivedOptions.timeoutMs, 12_000);
-  assert.equal(receivedOptions.overallTimeoutMs, 40_000);
-  assert.equal(receivedOptions.maxElements, 60_000);
-  assert.equal(receivedOptions.maxTotalBytes, 3_500_000);
+  assert.equal(receivedOptions.timeoutMs, 8_000);
+  assert.equal(receivedOptions.overallTimeoutMs, 20_000);
+  assert.equal(receivedOptions.maxElements, 120_000);
+  assert.equal(receivedOptions.maxTotalBytes, 8_000_000);
+  assert.deepEqual(receivedOptions.overpassUrls, [
+    'https://overpass-api.de/api/interpreter',
+    'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
+    'https://overpass.private.coffee/api/interpreter',
+  ]);
   assert.equal(receivedOptions.cacheEmptyResults, false);
 });
 

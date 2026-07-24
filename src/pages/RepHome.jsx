@@ -98,19 +98,16 @@ function shouldPollPrecisionFieldRoutes(response, localStatuses, routeId) {
   });
 }
 
-function requireRoadAwareRouteContext(routingContext) {
-  if (routingContext?.roadAware === true) return;
+function requireUsableRouteContext(routingContext) {
   if (
-    routingContext?.diagnostics?.reason === 'TOO_FEW_POINTS'
-    && Number(routingContext?.diagnostics?.suppliedPointCount) === 1
+    routingContext
+    && ['full', 'cost-only', 'fallback'].includes(routingContext.mode)
+    && typeof routingContext.accessGroupKey === 'function'
   ) return;
-  const reason = routingContext?.diagnostics?.reason || 'ROAD_NETWORK_UNAVAILABLE';
-  throw new Error(
-    `Road-aware ordering is unavailable (${reason}). The existing route was left unchanged; retry when street data is available.`
-  );
+  throw new Error('The route optimizer could not initialize safely. The existing route was left unchanged.');
 }
 
-function requireCompleteRoadCosts(routingContext) {
+function discloseRoadCostFallback(routingContext) {
   const diagnostics = routingContext?.diagnostics || {};
   const costOnly = routingContext?.mode === 'cost-only';
   const fallbackCount = Number(
@@ -118,7 +115,7 @@ function requireCompleteRoadCosts(routingContext) {
       ? diagnostics.blockToBlockRoadCostFallbackCount
       : diagnostics.doorToDoorRoadCostFallbackCount
   ) || 0;
-  if (fallbackCount === 0) return;
+  if (fallbackCount === 0) return false;
   const reasons = Object.keys(
     costOnly
       ? diagnostics.blockToBlockRoadCostFallbackReasons || {}
@@ -126,9 +123,28 @@ function requireCompleteRoadCosts(routingContext) {
   );
   const reasonText = reasons.length > 0 ? ` (${reasons.join(', ')})` : '';
   const comparisonType = costOnly ? 'street-block' : 'door-to-door';
-  throw new Error(
-    `The street graph could not connect every ${comparisonType} comparison${reasonText}. The existing route was left unchanged; retry when complete road data is available.`
+  console.warn(
+    `[RepHome] ${fallbackCount} ${comparisonType} comparisons used geographic continuity${reasonText}.`,
+    diagnostics
   );
+  toast.warning(
+    'The route was optimized with street and neighborhood continuity where live road connections were incomplete.',
+    { id: 'rep-home-road-cost-fallback', duration: 7000 }
+  );
+  return true;
+}
+
+function discloseRouteContinuityFallback(routingContext) {
+  if (!routingContext || routingContext.roadAware === true) return false;
+  console.warn(
+    '[RepHome] Live road data was unavailable; the size-independent street/neighborhood continuity optimizer was used.',
+    routingContext.diagnostics || {}
+  );
+  toast.warning(
+    'Live street data was unavailable, so FirstKnock used street and neighborhood continuity. Every eligible home was preserved.',
+    { id: 'rep-home-route-continuity-fallback', duration: 7000 }
+  );
+  return true;
 }
 
 function discloseExternalBoundRoadFallback(routingContext) {
@@ -1513,7 +1529,7 @@ export default function RepHome() {
         startLocation: exactHomeBase,
         endLocation: exactHomeBase,
       });
-      requireRoadAwareRouteContext(routingContext);
+      requireUsableRouteContext(routingContext);
       const optimized = optimizeRouteByStreetSweep(
         routeProperties,
         exactHomeBase,
@@ -1549,7 +1565,8 @@ export default function RepHome() {
         })
       ) * 100) / 100;
       const roadGeometry = buildRoadRouteGeometry(optimized, routingContext);
-      requireCompleteRoadCosts(routingContext);
+      discloseRoadCostFallback(routingContext);
+      discloseRouteContinuityFallback(routingContext);
       discloseExternalBoundRoadFallback(routingContext);
       const existingMetadata = { ...(routeToOptimize.metadata || {}) };
       delete existingMetadata.road_geometry;
@@ -1584,7 +1601,7 @@ export default function RepHome() {
         ? 'straight-line mileage; road-aware street ordering'
         : routingContext.roadAware
           ? 'road-network estimate'
-          : 'route estimate';
+          : 'street-continuity estimate';
       toast.success(`Home round trip optimized (${distance} mi ${estimateType}).`, {
         id: 'rep-home-route',
         duration: 5000
