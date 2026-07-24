@@ -12,6 +12,11 @@ body,
   overscroll-behavior: none;
 }
 
+/* Hide Leaflet map attribution control */
+.leaflet-control-attribution {
+  display: none !important;
+}
+
 button,
 a,
 [role="button"],
