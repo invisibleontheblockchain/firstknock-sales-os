@@ -12,6 +12,7 @@ export function isRenderableMapPoint(point) {
   const lng = Number(point.lng);
   return Number.isFinite(lat)
     && Number.isFinite(lng)
+    && (lat !== 0 || lng !== 0)
     && lat >= -90
     && lat <= 90
     && lng >= -180
