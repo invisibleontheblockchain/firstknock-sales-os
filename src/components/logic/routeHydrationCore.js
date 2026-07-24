@@ -6,6 +6,27 @@ function hasMapPoint(property) {
         && !(Math.abs(lat) < 0.0001 && Math.abs(lng) < 0.0001);
 }
 
+export const ROUTE_HYDRATION_BATCH_LIMIT = 5000;
+
+function uniqueRouteHashes(hashes = []) {
+    const unique = [];
+    const seen = new Set();
+    for (const value of Array.isArray(hashes) ? hashes : []) {
+        const hash = String(value ?? '').trim();
+        if (!hash || seen.has(hash)) continue;
+        seen.add(hash);
+        unique.push(hash);
+    }
+    return unique;
+}
+
+function routeHydrationError(code, message, details = {}) {
+    const error = new Error(message);
+    error.code = code;
+    Object.assign(error, details);
+    return error;
+}
+
 export function indexRouteProperties(properties = []) {
     const byHash = new Map();
     properties.forEach(property => {
@@ -15,6 +36,78 @@ export function indexRouteProperties(properties = []) {
         if (property.legacy_hash) byHash.set(String(property.legacy_hash), property);
     });
     return byHash;
+}
+
+/**
+ * Split a route lookup at the backend's authorization boundary. Every batch
+ * carries the same route id, and no partial batch is returned to the caller.
+ * This keeps large saved routes reliable without bypassing per-route ownership
+ * checks or silently treating missing pins as a successful hydration.
+ */
+export async function lookupRoutePropertiesInBatches({
+    hashes,
+    routeId = null,
+    lookupBatch,
+    batchSize = ROUTE_HYDRATION_BATCH_LIMIT,
+}) {
+    if (typeof lookupBatch !== 'function') {
+        throw routeHydrationError(
+            'ROUTE_HYDRATION_LOOKUP_REQUIRED',
+            'A route property batch lookup is required.'
+        );
+    }
+
+    const requestedHashes = uniqueRouteHashes(hashes);
+    if (requestedHashes.length === 0) return [];
+
+    const numericBatchSize = Math.floor(Number(batchSize));
+    const safeBatchSize = Math.min(
+        ROUTE_HYDRATION_BATCH_LIMIT,
+        Number.isFinite(numericBatchSize) && numericBatchSize > 0
+            ? numericBatchSize
+            : ROUTE_HYDRATION_BATCH_LIMIT
+    );
+    const orderedProperties = [];
+    const returnedPropertyKeys = new Set();
+
+    for (let offset = 0; offset < requestedHashes.length; offset += safeBatchSize) {
+        const batchHashes = requestedHashes.slice(offset, offset + safeBatchSize);
+        const response = await lookupBatch({
+            hashes: batchHashes,
+            routeId,
+        });
+        if (!Array.isArray(response)) {
+            throw routeHydrationError(
+                'ROUTE_HYDRATION_INVALID_RESPONSE',
+                'Route property lookup returned an invalid response.',
+                { batchOffset: offset }
+            );
+        }
+
+        const byHash = indexRouteProperties(response);
+        const missingHashes = batchHashes.filter(hash => !byHash.has(hash));
+        if (missingHashes.length > 0) {
+            throw routeHydrationError(
+                'ROUTE_HYDRATION_PARTIAL_RESPONSE',
+                `Route property lookup omitted ${missingHashes.length} requested properties.`,
+                {
+                    batchOffset: offset,
+                    requestedCount: batchHashes.length,
+                    missingCount: missingHashes.length,
+                }
+            );
+        }
+
+        for (const hash of batchHashes) {
+            const property = byHash.get(hash);
+            const propertyKey = String(property?.id || property?.address_hash || hash);
+            if (returnedPropertyKeys.has(propertyKey)) continue;
+            returnedPropertyKeys.add(propertyKey);
+            orderedProperties.push(property);
+        }
+    }
+
+    return orderedProperties;
 }
 
 function routeSourceProperties(route) {

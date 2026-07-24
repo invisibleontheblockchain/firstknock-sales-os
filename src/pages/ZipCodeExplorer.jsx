@@ -13,6 +13,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { generateOptimizedRoutes } from '../components/logic/routeOptimizer';
+import { createRouteContinuityContext } from '../components/logic/routeRoadContext';
 import { toast } from "sonner";
 
 // Fix leaflet marker icons
@@ -328,7 +329,8 @@ export default function ZipCodeExplorer() {
 
         // Generate routes with filtered properties and custom houses per route
         const finalHousesPerRoute = isPaid ? filters.housesPerRoute : Math.min(filters.housesPerRoute, 25);
-        let routes = generateOptimizedRoutes(filteredProps, finalHousesPerRoute, null, [], { streetCooldownDays: 0, useStreetSweep: true });
+        const routingContext = createRouteContinuityContext(filteredProps);
+        let routes = generateOptimizedRoutes(filteredProps, finalHousesPerRoute, null, [], { streetCooldownDays: 0, useStreetSweep: true, routingContext });
 
         // Limit number of routes
         if (routes.length > filters.maxRoutes) {

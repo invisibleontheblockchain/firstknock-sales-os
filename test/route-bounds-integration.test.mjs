@@ -201,8 +201,8 @@ test('Precision route bounds are explicit, off by default, and wired through per
   assert.match(territory, /fk_activePrecisionJob_/);
   assert.match(territory, /\['running', 'pending', 'completed'\]/);
   assert.doesNotMatch(home, /fk_precisionRouteBoundsContext/);
-  assert.match(home, /end_location: end/);
-  assert.match(home, /route_origin_mode: routeOriginMode/);
+  assert.match(home, /endLocation: end/);
+  assert.match(home, /routeOriginMode/);
   assert.match(optimizer, /optimizeRouteWithBounds/);
   assert.ok(savedRouteSchema.properties.end_location);
   assert.ok(savedRouteSchema.properties.route_origin_mode);

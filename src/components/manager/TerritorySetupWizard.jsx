@@ -7,6 +7,7 @@ import { Slider } from "@/components/ui/slider";
 import { MapPin, CheckCircle2, ArrowRight, Sparkles, Loader2, Save, AlertCircle, Lock } from 'lucide-react';
 import { toast } from "sonner";
 import { generateOptimizedRoutes } from '../logic/routeOptimizer';
+import { createRouteContinuityContext } from '../logic/routeRoadContext';
 import { useTheme, contrastText } from '@/components/theme/ThemeProvider';
 import BetaUsageMeter from '../beta/BetaUsageMeter';
 import { useQuery } from "@tanstack/react-query";
@@ -105,7 +106,8 @@ export default function TerritorySetupWizard({ user, onComplete }) {
         setTimeout(async () => {
             try {
                 const finalHousesPerRoute = isPaid ? housesPerRoute : Math.min(housesPerRoute, 25);
-                const routes = generateOptimizedRoutes(fetchedProperties, finalHousesPerRoute, null, [], { streetCooldownDays: 30, useStreetSweep: true }, learnedWeights);
+                const routingContext = createRouteContinuityContext(fetchedProperties);
+                const routes = generateOptimizedRoutes(fetchedProperties, finalHousesPerRoute, null, [], { streetCooldownDays: 30, useStreetSweep: true, routingContext }, learnedWeights);
                 setGeneratedRoutes(routes);
                 setStep(3);
                 

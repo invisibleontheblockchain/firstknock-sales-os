@@ -36,7 +36,12 @@ import { Loader2, X, BarChart3, Filter } from 'lucide-react';
 import { toast } from "sonner";
 import { determineEffectiveStatus, isPointInPolygon } from '../components/logic/territoryLogic';
 import { subMonths, subDays, isAfter, parseISO } from 'date-fns';
-import { generateOptimizedRoutes, optimizeRouteByStreetSweep } from '../components/logic/routeOptimizer';
+import {
+    generateOptimizedRoutes,
+    isStrictRoutePropertyPoint,
+    optimizeRouteByStreetSweep,
+} from '../components/logic/routeOptimizer';
+import { optimizeLargeRoutesAsync } from '../components/logic/largeRouteOptimizer';
 import {
     buildPersistedRoadRoutingMetadata,
     buildRoadRouteGeometry,
@@ -236,19 +241,18 @@ function buildPrecisionRouteShortfallMessage({ requested, routed, filtered }) {
     return `Built ${routed.toLocaleString()} of ${requested.toLocaleString()} requested homes from this exact area. FirstKnock only routes unique single-family homes that survive the current filters.${filterText} Draw a wider nearby area or loosen value/date filters to fill the remaining ${missing.toLocaleString()}.`;
 }
 
-function requireRoadAwareRouteContext(routingContext) {
-    if (routingContext?.roadAware === true) return;
+function requireUsableRouteContext(routingContext) {
     if (
-        routingContext?.diagnostics?.reason === 'TOO_FEW_POINTS'
-        && Number(routingContext?.diagnostics?.suppliedPointCount) === 1
+        routingContext
+        && ['full', 'cost-only', 'fallback'].includes(routingContext.mode)
+        && typeof routingContext.accessGroupKey === 'function'
     ) return;
-    const reason = routingContext?.diagnostics?.reason || 'ROAD_NETWORK_UNAVAILABLE';
     throw new Error(
-        `Road-aware ordering is unavailable (${reason}). No routes were changed; retry when street data is available or generate a smaller area.`
+        'The route optimizer could not initialize safely. No routes were changed.'
     );
 }
 
-function requireCompleteRoadCosts(routingContext) {
+function discloseRoadCostFallback(scope, routingContext) {
     const diagnostics = routingContext?.diagnostics || {};
     const costOnly = routingContext?.mode === 'cost-only';
     const fallbackCount = Number(
@@ -256,7 +260,7 @@ function requireCompleteRoadCosts(routingContext) {
             ? diagnostics.blockToBlockRoadCostFallbackCount
             : diagnostics.doorToDoorRoadCostFallbackCount
     ) || 0;
-    if (fallbackCount === 0) return;
+    if (fallbackCount === 0) return false;
     const reasons = Object.keys(
         costOnly
             ? diagnostics.blockToBlockRoadCostFallbackReasons || {}
@@ -264,9 +268,28 @@ function requireCompleteRoadCosts(routingContext) {
     );
     const reasonText = reasons.length > 0 ? ` (${reasons.join(', ')})` : '';
     const comparisonType = costOnly ? 'street-block' : 'door-to-door';
-    throw new Error(
-        `The street graph could not connect every ${comparisonType} comparison${reasonText}. No routes were changed; retry when complete road data is available or generate a smaller area.`
+    console.warn(
+        `[${scope}] ${fallbackCount} ${comparisonType} comparisons used geographic continuity${reasonText}.`,
+        diagnostics
     );
+    toast.warning(
+        'The route was optimized with street and neighborhood continuity where live road connections were incomplete.',
+        { id: 'route-road-cost-fallback', duration: 7000 }
+    );
+    return true;
+}
+
+function discloseRouteContinuityFallback(scope, routingContext) {
+    if (!routingContext || routingContext.roadAware === true) return false;
+    console.warn(
+        `[${scope}] Live road data was unavailable; the size-independent street/neighborhood continuity optimizer was used.`,
+        routingContext.diagnostics || {}
+    );
+    toast.warning(
+        'Live street data was unavailable, so FirstKnock used street and neighborhood continuity. Every eligible home was preserved.',
+        { id: 'route-continuity-fallback', duration: 7000 }
+    );
+    return true;
 }
 
 function discloseExternalBoundRoadFallback(scope, routingContext) {
@@ -293,6 +316,23 @@ function discloseLargeRouteContinuityFallback(scope, routingMetadata = null) {
         'Street/subdivision continuity was used for this very large route. Live road-network ordering is unavailable at this size.',
         { id: 'large-route-continuity-fallback', duration: 9000 }
     );
+}
+
+async function mapWithConcurrency(items, concurrency, mapper) {
+    const results = new Array(items.length);
+    let nextIndex = 0;
+    const workerCount = Math.min(
+        items.length,
+        Math.max(1, Math.floor(Number(concurrency)) || 1)
+    );
+    await Promise.all(Array.from({ length: workerCount }, async () => {
+        while (nextIndex < items.length) {
+            const index = nextIndex;
+            nextIndex += 1;
+            results[index] = await mapper(items[index], index);
+        }
+    }));
+    return results;
 }
 
 
@@ -558,6 +598,15 @@ export default function Home() {
             fetch_job_id: fetchJobId
         });
         const data = res.data || {};
+        if (data.capped === true) {
+            const confirmedLimit = Math.max(
+                1,
+                Number(data.limit) || Number(limit) || 1
+            );
+            throw new Error(
+                `Route candidate retrieval reached its ${confirmedLimit.toLocaleString()}-home safety window. Generation stopped before optimization so no homes could be silently omitted.`
+            );
+        }
         if (customOwnershipRange) {
             const confirmedRange = normalizeStrictOwnershipRangeDays(
                 data.ownership_range_days ?? {
@@ -1058,6 +1107,13 @@ export default function Home() {
         // road-aware order with the old aerial-only optimizer. The door order
         // and its non-personal road geometry remain valid without the bounds.
         const savedProperties = route.properties;
+        if (
+            !Array.isArray(savedProperties)
+            || savedProperties.length === 0
+            || savedProperties.some((property) => !isStrictRoutePropertyPoint(property))
+        ) {
+            throw new Error('Route integrity verification failed before save: one or more homes have an invalid map pin.');
+        }
         const savedPropertyOrderFingerprint = routePropertyOrderFingerprint(savedProperties);
         const sourceGeometryMatchesSavedOrder =
             route?.metadata?.routing?.property_order_fingerprint === savedPropertyOrderFingerprint;
@@ -1086,7 +1142,13 @@ export default function Home() {
             delete safeRouteMetadata.routing;
         }
 
-        const savedPropertyHashes = savedProperties.map(p => p.address_hash || p.id).filter(Boolean);
+        const savedPropertyHashes = savedProperties.map(p => p.address_hash || p.legacy_hash || p.id).filter(Boolean);
+        if (
+            savedPropertyHashes.length !== savedProperties.length
+            || new Set(savedPropertyHashes.map(String)).size !== savedProperties.length
+        ) {
+            throw new Error('Route integrity verification failed before save. No homes were persisted.');
+        }
         if (sourceGeometryMatchesSavedOrder && safeRouteMetadata.road_geometry && safeRouteMetadata.routing) {
             safeRouteMetadata.routing = {
                 ...safeRouteMetadata.routing,
@@ -1964,24 +2026,34 @@ export default function Home() {
                     endLocation: end,
                 })
                 : null;
-            if (finalCount <= 5000) requireRoadAwareRouteContext(routingContext);
-            const largeRouteResponse = finalCount > 5000
-                ? await base44.functions.invoke('generateRoutesBackend', {
+            if (finalCount <= 5000) requireUsableRouteContext(routingContext);
+            const largeRouteResult = finalCount > 5000
+                ? await optimizeLargeRoutesAsync({
                     properties: workingSet,
-                    houses_per_route: housesPerRoute,
-                    start_location: start,
-                    end_location: end,
-                    route_origin_mode: routeOriginMode
+                    housesPerRoute,
+                    startLocation: start,
+                    optimizerOptions: {
+                        streetCooldownDays,
+                        useStreetSweep: routeConfig.walkingPattern === 'street_sweep',
+                        minimizeTurns: routeConfig.minimizeTurns,
+                        walkingPattern: routeConfig.walkingPattern,
+                        returnToStart: !preparedRouteBounds.enabled && routeConfig.returnToStart,
+                        endLocation: end,
+                        routeOriginMode,
+                        excludeTerminal: routeConfig.excludeTerminal,
+                    },
+                    allLogs: logs,
+                    learnedWeights,
                 })
                 : null;
-            if (largeRouteResponse) {
+            if (largeRouteResult) {
                 discloseLargeRouteContinuityFallback(
                     'generateRoutes',
-                    largeRouteResponse.data?.routing_metadata
+                    largeRouteResult.routingMetadata
                 );
             }
-            const rawGenerated = largeRouteResponse
-                ? largeRouteResponse.data?.routes
+            const rawGenerated = largeRouteResult
+                ? largeRouteResult.routes
                 : await new Promise(resolve => setTimeout(() => resolve(generateOptimizedRoutes(workingSet, housesPerRoute, start, logs, { streetCooldownDays, useStreetSweep: routeConfig.walkingPattern === 'street_sweep', minimizeTurns: routeConfig.minimizeTurns, use2Opt: effectiveUse2Opt, walkingPattern: routeConfig.walkingPattern, returnToStart: !preparedRouteBounds.enabled && routeConfig.returnToStart, endLocation: end, routeOriginMode, excludeTerminal: routeConfig.excludeTerminal, routingContext }, learnedWeights)), 50));
             const generated = Array.isArray(rawGenerated)
                 ? rawGenerated.map(route => {
@@ -2000,7 +2072,8 @@ export default function Home() {
                     };
                 })
                 : rawGenerated;
-            requireCompleteRoadCosts(routingContext);
+            discloseRoadCostFallback('generateRoutes', routingContext);
+            discloseRouteContinuityFallback('generateRoutes', routingContext);
             discloseExternalBoundRoadFallback('generateRoutes', routingContext);
             const generatedDoorCount = Array.isArray(generated) ? generated.reduce((sum, route) => sum + (route.properties?.length || route.houseCount || 0), 0) : 0;
             console.log(`[RoutePipeline] after_route_command routes=${generated?.length || 0} doors=${generatedDoorCount} elapsed_ms=${Math.round(performance.now() - optStart)}`);
@@ -2014,7 +2087,11 @@ export default function Home() {
                 setGenerationStage(`Saving ${saveable.length} routes...`);
                 const bulkId = toast.loading(`Auto-saving ${saveable.length} routes...`);
                 try {
-                    savedRecords = await Promise.all(saveable.map(r => handleSaveRoute(r, null, null, true)));
+                    savedRecords = await mapWithConcurrency(
+                        saveable,
+                        4,
+                        (route) => handleSaveRoute(route, null, null, true)
+                    );
                     toast.success(`Saved ${saveable.length} routes`, { id: bulkId, duration: 3000 });
                     setModeRaw('analyze');
                     // Saved routes now live in Active (with NEW badge) — drop the in-memory copies so
@@ -2110,24 +2187,34 @@ export default function Home() {
                     endLocation: end,
                 })
                 : null;
-            if (workingSet.length <= 5000) requireRoadAwareRouteContext(routingContext);
-            const largeRouteResponse = workingSet.length > 5000
-                ? await base44.functions.invoke('generateRoutesBackend', {
+            if (workingSet.length <= 5000) requireUsableRouteContext(routingContext);
+            const largeRouteResult = workingSet.length > 5000
+                ? await optimizeLargeRoutesAsync({
                     properties: workingSet,
-                    houses_per_route: housesPerRoute,
-                    start_location: start,
-                    end_location: end,
-                    route_origin_mode: routeOriginMode
+                    housesPerRoute,
+                    startLocation: start,
+                    optimizerOptions: {
+                        streetCooldownDays,
+                        useStreetSweep: routeConfig.walkingPattern === 'street_sweep',
+                        minimizeTurns: routeConfig.minimizeTurns,
+                        walkingPattern: routeConfig.walkingPattern,
+                        returnToStart: !reorderBounds.enabled && routeConfig.returnToStart,
+                        endLocation: end,
+                        routeOriginMode,
+                        excludeTerminal: routeConfig.excludeTerminal,
+                    },
+                    allLogs: logs,
+                    learnedWeights,
                 })
                 : null;
-            if (largeRouteResponse) {
+            if (largeRouteResult) {
                 discloseLargeRouteContinuityFallback(
                     'handleReorder',
-                    largeRouteResponse.data?.routing_metadata
+                    largeRouteResult.routingMetadata
                 );
             }
-            const rawGenerated = largeRouteResponse
-                ? largeRouteResponse.data?.routes
+            const rawGenerated = largeRouteResult
+                ? largeRouteResult.routes
                 : generateOptimizedRoutes(workingSet, housesPerRoute, start, logs, { streetCooldownDays, useStreetSweep: routeConfig.walkingPattern === 'street_sweep', minimizeTurns: routeConfig.minimizeTurns, use2Opt: effectiveUse2Opt, walkingPattern: routeConfig.walkingPattern, returnToStart: !reorderBounds.enabled && routeConfig.returnToStart, endLocation: end, routeOriginMode, excludeTerminal: routeConfig.excludeTerminal, routingContext }, learnedWeights);
             const generated = Array.isArray(rawGenerated)
                 ? rawGenerated.map(route => {
@@ -2146,13 +2233,23 @@ export default function Home() {
                     };
                 })
                 : rawGenerated;
-            requireCompleteRoadCosts(routingContext);
+            discloseRoadCostFallback('handleReorder', routingContext);
+            discloseRouteContinuityFallback('handleReorder', routingContext);
             discloseExternalBoundRoadFallback('handleReorder', routingContext);
             setRoutes(generated);
             let savedRecords = [];
             if (generated.length > 0) {
                 const bulkId = toast.loading(`Auto-saving ${generated.length} routes...`);
-                try { savedRecords = await Promise.all(generated.map(r => handleSaveRoute(r, null, null, true))); toast.success(`Reordered into ${generated.length} routes`, { id: bulkId, duration: 3000 }); setModeRaw('analyze'); setRoutes([]); } catch (e) { toast.error('Auto-save failed.', { id: bulkId }); }
+                try {
+                    savedRecords = await mapWithConcurrency(
+                        generated,
+                        4,
+                        (route) => handleSaveRoute(route, null, null, true)
+                    );
+                    toast.success(`Reordered into ${generated.length} routes`, { id: bulkId, duration: 3000 });
+                    setModeRaw('analyze');
+                    setRoutes([]);
+                } catch (e) { toast.error('Auto-save failed.', { id: bulkId }); }
             }
             // Go straight to the map: activate the first generated route instead of opening the command panel
             if (generated.length > 0) {
@@ -2180,9 +2277,10 @@ export default function Home() {
         toast.loading(optimizeFromHome ? 'Optimizing from home base...' : 'Optimizing street-by-street...', { id: 'reoptimize-route' });
         const savedView = mapRef.current ? { center: mapRef.current.getCenter(), zoom: mapRef.current.getZoom() } : null;
         try {
-            const hashes = (route.property_hashes || (route.properties || []).map(p => p.address_hash || p.id)).filter(Boolean);
-            const routePropsByHash = new Map((route.properties || route.allProperties || []).map(p => [p.address_hash || p.id, p]));
-            const routeProperties = hashes.map(hash => effectiveProperties.find(p => p.address_hash === hash) || routePropsByHash.get(hash)).filter(Boolean);
+            const hashes = (route.property_hashes || (route.properties || []).map(p => p.address_hash || p.legacy_hash || p.id)).filter(Boolean);
+            const routePropsByHash = new Map((route.properties || route.allProperties || []).map(p => [p.address_hash || p.legacy_hash || p.id, p]));
+            const effectivePropsByHash = new Map(effectiveProperties.map(p => [p.address_hash || p.legacy_hash || p.id, p]));
+            const routeProperties = hashes.map(hash => effectivePropsByHash.get(hash) || routePropsByHash.get(hash)).filter(Boolean);
             if (routeProperties.length === 0) { toast.error('No properties found for this route.', { id: 'reoptimize-route' }); return; }
             if (routeProperties.length !== hashes.length) {
                 toast.error(`Only ${routeProperties.length} of ${hashes.length} route properties loaded. Refresh and try again.`, { id: 'reoptimize-route', duration: 6000 });
@@ -2240,10 +2338,10 @@ export default function Home() {
                 startLocation: start,
                 endLocation: end,
             });
-            requireRoadAwareRouteContext(routingContext);
+            requireUsableRouteContext(routingContext);
             const optimized = optimizeRouteByStreetSweep(routeProperties, start, end, routingContext);
             if (!optimized || optimized.length === 0) { toast.error('Optimization produced no results.', { id: 'reoptimize-route' }); return; }
-            const optimizedHashes = optimized.map(p => p.address_hash || p.id).filter(Boolean);
+            const optimizedHashes = optimized.map(p => p.address_hash || p.legacy_hash || p.id).filter(Boolean);
             const expectedHashes = new Set(hashes);
             if (
                 optimizedHashes.length !== hashes.length
@@ -2272,7 +2370,8 @@ export default function Home() {
             const savedBoundEnd = routeOriginMode === 'none' ? end : null;
             const clearedUnavailableBounds = !optimizeFromHome && existingRouteOriginMode !== 'none' && !isValidRoutePoint(end);
             const roadGeometry = buildRoadRouteGeometry(optimized, routingContext);
-            requireCompleteRoadCosts(routingContext);
+            discloseRoadCostFallback('handleReoptimizeRoute', routingContext);
+            discloseRouteContinuityFallback('handleReoptimizeRoute', routingContext);
             discloseExternalBoundRoadFallback('handleReoptimizeRoute', routingContext);
             const existingMetadata = { ...(route.metadata || {}) };
             delete existingMetadata.road_geometry;
@@ -2326,7 +2425,7 @@ export default function Home() {
                 ? 'straight-line mileage; road-aware street ordering'
                 : routingContext.roadAware
                     ? 'road-network estimate'
-                    : 'route estimate';
+                    : 'street-continuity estimate';
             const msg = savedMiles > 0 ? `${prefix}! Saved ~${savedMiles} estimated miles (${newDistance} mi ${estimateType})` : `${prefix} (${newDistance} mi ${estimateType})`;
             toast.success(msg, { id: 'reoptimize-route', duration: 4000 });
             if (clearedUnavailableBounds) {

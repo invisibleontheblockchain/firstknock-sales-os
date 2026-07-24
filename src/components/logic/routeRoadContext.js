@@ -203,7 +203,14 @@ function buildCostOnlyBlockPlan(properties) {
   const propertiesByStreet = new Map();
   const streetKeyByIdentity = new Map();
   properties.forEach((property, index) => {
-    const streetKey = canonicalStreetRoutingKey(property, index);
+    const canonicalStreetKey = canonicalStreetRoutingKey(property, index);
+    const accessKey = explicitAccessKey(property);
+    // The same street name may exist in separate subdivisions inside one ZIP.
+    // Keep those local street segments distinct so a cost-only route cannot
+    // merge both pockets and then lose the higher-level access grouping.
+    const streetKey = accessKey
+      ? `${canonicalStreetKey}|${accessKey}`
+      : canonicalStreetKey;
     const identity = propertyIdentity(property);
     streetKeyByIdentity.set(identity, streetKey);
     if (!propertiesByStreet.has(streetKey)) propertiesByStreet.set(streetKey, []);
@@ -341,6 +348,12 @@ function fallbackContext(properties, reason, error = null, diagnostics = {}) {
     roadAware: false,
     costOnly: false,
     mode: 'fallback',
+    streetSegmentKey(property) {
+      const accessKey = explicitAccessKey(property);
+      return accessKey
+        ? `${canonicalStreetRoutingKey(property)}|${accessKey}`
+        : '';
+    },
     accessGroupKey(property) {
       return explicitAccessKey(property);
     },
@@ -351,6 +364,17 @@ function fallbackContext(properties, reason, error = null, diagnostics = {}) {
       ...diagnostics,
     }),
   });
+}
+
+/**
+ * Returns the synchronous street/subdivision continuity context used whenever
+ * fetching a live road graph is unnecessary or unavailable. This has no route
+ * size limit and performs no network work.
+ */
+export function createRouteContinuityContext(properties) {
+  const validProperties = (Array.isArray(properties) ? properties : [])
+    .filter((property) => pointFrom(property));
+  return fallbackContext(validProperties, 'SYNCHRONOUS_CONTINUITY');
 }
 
 function costOnlyContext({

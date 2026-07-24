@@ -9,6 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Loader2, Settings2, Database, Map as MapIcon, Save } from 'lucide-react';
 import { generateOptimizedRoutes } from '../logic/routeOptimizer';
+import { createRouteContinuityContext } from '../logic/routeRoadContext';
 
 // Constants
 const BRAND = {
@@ -107,12 +108,13 @@ export default function CampaignWizard({ open, onOpenChange, existingPlan = null
             // We use a small delay to let UI render the progress message
             await new Promise(r => setTimeout(r, 500));
 
+            const routingContext = createRouteContinuityContext(filteredProps);
             const generatedRoutes = generateOptimizedRoutes(
                 filteredProps,
                 config.houses_per_route,
                 null, // No specific start location, use clustering
                 [], // No logs for initial generation
-                { streetCooldownDays: config.street_cooldown_days }
+                { streetCooldownDays: config.street_cooldown_days, routingContext }
             );
 
             setGenerationProgress(`Saving plan and ${generatedRoutes.length} routes...`);
