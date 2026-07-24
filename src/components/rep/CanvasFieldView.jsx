@@ -660,8 +660,7 @@ export default function CanvasFieldView({
       </div>
 
       <div className="relative flex-1">
-        <MapContainer key={assignment.__key} center={center} zoom={streetSegments.length ? 16 : 2} style={{ height: '100%', width: '100%' }} zoomControl={false} attributionControl preferCanvas>
-          <MapAttributionControl position="bottomleft" bottomOffset={144} />
+        <MapContainer key={assignment.__key} center={center} zoom={streetSegments.length ? 16 : 2} style={{ height: '100%', width: '100%' }} zoomControl={false} attributionControl={false} preferCanvas>
           <FitAssignmentBounds mapPoints={mapPoints} pins={pins} />
           {dncSafetyComplete && <MapTapCapture onPinLocation={choosePinLocation} />}
           <LocateControl />
@@ -670,9 +669,7 @@ export default function CanvasFieldView({
             url={satellite
               ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
               : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'}
-            attribution={satellite
-              ? ESRI_IMAGERY_ATTRIBUTION
-              : OPENSTREETMAP_ATTRIBUTION}
+            attribution=""
             maxNativeZoom={satellite ? 19 : 20}
             maxZoom={22}
           />

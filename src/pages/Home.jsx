@@ -2574,7 +2574,6 @@ export default function Home() {
                 markerZoomAnimation={true}
                 fadeAnimation={true}
             >
-                <MapAttributionControl position="bottomleft" bottomOffset={84} />
                 <MapRefHandler mapRef={mapRef} />
                 <TileLayer
                     key={`basemap-${mapTheme}`}
@@ -2587,15 +2586,13 @@ export default function Home() {
                                     ? "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
                                     : "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
                     }
-                    attribution={mapTheme === 'satellite' || mapTheme === 'hybrid'
-                        ? ESRI_IMAGERY_ATTRIBUTION
-                        : CARTO_ATTRIBUTION}
+                    attribution=""
                 />
                 {(mapTheme === 'hybrid' || mapTheme === 'satellite') && (
                     <TileLayer
                         key={`basemap-labels-${mapTheme}`}
                         url="https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png"
-                        attribution={CARTO_ATTRIBUTION}
+                        attribution=""
                         zIndex={100}
                     />
                 )}

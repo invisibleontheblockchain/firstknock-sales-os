@@ -779,6 +779,8 @@ export default function ZipCodeExplorer() {
             zoom={mapZoom}
             className="h-full w-full absolute inset-0"
             style={{ height: '100%', width: '100%' }}
+            zoomControl={false}
+            attributionControl={false}
             preferCanvas={true}
             wheelPxPerZoomLevel={120}
             wheelDebounceTime={150}
@@ -786,9 +788,8 @@ export default function ZipCodeExplorer() {
             markerZoomAnimation={true}
             fadeAnimation={true}
           >
-            <MapAttributionControl />
             <TileLayer
-              attribution={OPENSTREETMAP_ATTRIBUTION}
+              attribution=""
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             />
             <MapMover center={mapCenter} zoom={mapZoom} searchId={searchId} />

@@ -374,12 +374,11 @@ export default function RepMapView({
                     inertiaDeceleration={3000}
                     tapTolerance={24}
                 >
-                    <MapAttributionControl bottomOffset={hudExpanded ? 280 : 76} />
                     <MapRefCapture mapRef={mapRef} />
                     {focusProperty && <FlyToProperty focusProperty={focusProperty} />}
                     <TileLayer
                         url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-                        attribution={ESRI_IMAGERY_ATTRIBUTION}
+                        attribution=""
                         maxNativeZoom={19}
                         maxZoom={22}
                         updateWhenZooming={true}
