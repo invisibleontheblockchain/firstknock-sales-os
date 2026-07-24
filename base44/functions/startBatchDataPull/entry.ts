@@ -126,11 +126,12 @@ function betaPrecisionEvidence(user) {
             kind: 'beta',
             paidAccess: true,
             proAccess: true,
+            limit: 1000,
+            precisionLimit: 1000,
             subscriptionId: 'system_admin_grant',
             invoiceId: null,
             periodStart: new Date(2026, 0, 1).toISOString(),
-            periodEnd: new Date(2030, 0, 1).toISOString(),
-            precisionLimit: 1000
+            periodEnd: new Date(2030, 0, 1).toISOString()
         };
     }
     const rawGrants = Deno.env.get('BETA_ACCESS_GRANTS');
@@ -399,10 +400,12 @@ function jobUsage(job) {
     if (job?.precision_usage_recorded_at) return { used: Math.max(0, Math.floor(Number(job.precision_usage_count || 0))), reserved: 0 };
     if (job?.status === 'completed') return { used: legacyCompletedCount(job), reserved: 0 };
     const hasExplicitReservation = job?.precision_usage_reserved !== undefined && job?.precision_usage_reserved !== null;
-    const legacyReservationAllowed = ['pending', 'running'].includes(job?.status);
+    const createdAtMs = asTimestamp(job?.started_at || job?.created_date || job?.dry_run_metadata?.batchdata_only_started_at) || 0;
+    const isStale = createdAtMs > 0 && (Date.now() - createdAtMs > 10 * 60 * 1000);
+    const legacyReservationAllowed = ['pending', 'running'].includes(job?.status) && !isStale;
     const reserved = Math.max(0, Math.floor(Number(
         hasExplicitReservation
-            ? job.precision_usage_reserved
+            ? (isStale ? 0 : job.precision_usage_reserved)
             : legacyReservationAllowed
                 ? (job?.total_expected ?? job?.estimated_record_count ?? 0)
                 : 0
