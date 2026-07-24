@@ -789,10 +789,10 @@ test('outcome and identity fields are service-owned and legacy bypass endpoints 
   assert.match(elevated, /status:\s*410/);
   assert.doesNotMatch(elevated, /asServiceRole/);
   assert.match(offline, /status:\s*410/);
-  assert.doesNotMatch(lookup, /FROM properties p\s+WHERE p\.lat IS NOT NULL/);
+  assert.match(lookup, /if \(authorizedRoute && missingWorkspaceHashes\.length > 0\)[\s\S]*FROM properties p/);
 });
 
-test('assigned-route hydration uses the authorized route owner workspace without a global fallback', () => {
+test('assigned-route hydration uses the authorized route owner and guards canonical fallback by route membership', () => {
   const lookup = readSource('base44/functions/getRoutePropertiesByHashes/entry.ts');
 
   assert.match(
@@ -808,9 +808,12 @@ test('assigned-route hydration uses the authorized route owner workspace without
     /\}\s*else if\s*\(normalized\(user\.role\)\s*===\s*'admin'\s*&&\s*body\.user_email\)\s*\{\s*targetEmail\s*=\s*String\(body\.user_email\)\.trim\(\)/
   );
   assert.match(lookup, /WHERE wp\.user_email = \$\{targetEmail\}/);
+  assert.match(
+    lookup,
+    /if \(authorizedRoute && missingWorkspaceHashes\.length > 0\)[\s\S]*FROM properties p/
+  );
   assert.doesNotMatch(
     lookup,
     /const targetEmail\s*=\s*user\.role\s*===\s*'admin'\s*&&\s*body\.user_email\s*\?\s*body\.user_email\s*:\s*user\.email/
   );
-  assert.doesNotMatch(lookup, /FROM properties p\s+WHERE p\.lat IS NOT NULL/);
 });

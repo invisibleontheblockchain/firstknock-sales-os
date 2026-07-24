@@ -78,9 +78,9 @@ Deno.serve(async (req) => {
                 p.lng,
                 p.h3_index,
                 p.owner_full_name,
-                p.owner_occupied,
-                p.corporate_owned,
-                p.investor_owned,
+                NULLIF(to_jsonb(p) ->> 'owner_occupied', '')::BOOLEAN AS owner_occupied,
+                NULLIF(to_jsonb(p) ->> 'corporate_owned', '')::BOOLEAN AS corporate_owned,
+                NULLIF(to_jsonb(p) ->> 'investor_owned', '')::BOOLEAN AS investor_owned,
                 p.beds,
                 p.baths,
                 p.sqft,
@@ -121,6 +121,67 @@ Deno.serve(async (req) => {
             byHash.set(property.address_hash, property);
             if (property.legacy_hash) byHash.set(property.legacy_hash, property);
         });
+
+        // Historical routes can outlive their workspace_properties link. Once
+        // SavedRoute RLS has proved that this caller can see the route and the
+        // hash-membership check above has proved every requested hash belongs
+        // to it, hydrating those exact hashes from the canonical property table
+        // is tenant-safe. Never run this fallback for an arbitrary hash lookup.
+        const missingWorkspaceHashes = hashes.filter(hash => !byHash.has(hash));
+        if (authorizedRoute && missingWorkspaceHashes.length > 0) {
+            const routeRows = await sql`
+                SELECT
+                    p.id,
+                    p.address_hash,
+                    p.legacy_hash,
+                    p.full_address,
+                    p.house_number,
+                    p.street_name,
+                    p.city,
+                    p.state,
+                    p.zip_code,
+                    p.lat,
+                    p.lng,
+                    p.h3_index,
+                    p.owner_full_name,
+                    NULLIF(to_jsonb(p) ->> 'owner_occupied', '')::BOOLEAN AS owner_occupied,
+                    NULLIF(to_jsonb(p) ->> 'corporate_owned', '')::BOOLEAN AS corporate_owned,
+                    NULLIF(to_jsonb(p) ->> 'investor_owned', '')::BOOLEAN AS investor_owned,
+                    p.beds,
+                    p.baths,
+                    p.sqft,
+                    p.lot_size,
+                    p.year_built,
+                    p.price,
+                    p.sold_date,
+                    p.sale_type,
+                    p.property_type,
+                    p.mls_id,
+                    p.url,
+                    p.data_source,
+                    p.sale_confidence,
+                    p.original_status,
+                    p.created_at,
+                    p.updated_at
+                FROM properties p
+                WHERE p.lat IS NOT NULL
+                  AND p.lng IS NOT NULL
+                  AND (p.address_hash = ANY(${missingWorkspaceHashes}) OR p.legacy_hash = ANY(${missingWorkspaceHashes}))
+                LIMIT ${Math.min(limit, missingWorkspaceHashes.length)}
+            `;
+
+            for (const row of routeRows) {
+                const property = {
+                    ...row,
+                    id: String(row.id),
+                    address_hash: row.address_hash || String(row.id),
+                    created_date: row.created_at,
+                    updated_date: row.updated_at
+                };
+                if (property.address_hash) byHash.set(property.address_hash, property);
+                if (property.legacy_hash) byHash.set(property.legacy_hash, property);
+            }
+        }
 
         // CSV-imported properties may exist only in Base44. Their fallback is
         // allowed only when a caller-visible route or interaction proves both
