@@ -1,7 +1,9 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+import { neon } from 'npm:@neondatabase/serverless@0.9.0';
 import Stripe from 'npm:stripe@14.14.0';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') || '');
+const CONTINUITY_JOURNAL_TIMEOUT_MS = 1500;
 const CARD_REQUIRED_AFTER = 25;
 const FREE_OUTCOME_LIMIT = 50;
 const OUTCOME_LEASE_MS = 30_000;
@@ -166,6 +168,177 @@ async function sha256(value: any) {
     const bytes = new TextEncoder().encode(JSON.stringify(canonicalize(value)));
     const digest = await crypto.subtle.digest('SHA-256', bytes);
     return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+// ── Continuity journal ────────────────────────────────────────────────────────
+// A logged outcome is the one thing in this product that cannot be re-derived
+// from any other source. These helpers mirror it into the append-only
+// continuity ledger the moment it commits, so the record survives losing the
+// Base44 entity store entirely.
+//
+// Deliberately best effort. A mirror problem must never fail, slow, or roll
+// back a rep's knock — replicateFieldData re-reads anything missed here.
+// updated_date is excluded from the hash so the sweeper computes the identical
+// digest and dedupes against this write instead of duplicating it.
+function continuityCanonicalize(value: any): any {
+    if (Array.isArray(value)) return value.map(continuityCanonicalize);
+    if (!value || typeof value !== 'object') return value;
+    return Object.fromEntries(
+        Object.keys(value)
+            .filter((key) => key !== 'updated_date')
+            .sort()
+            .map((key) => [key, continuityCanonicalize(value[key])])
+    );
+}
+
+async function continuityHash(record: any) {
+    const bytes = new TextEncoder().encode(JSON.stringify(continuityCanonicalize(record)));
+    const digest = await crypto.subtle.digest('SHA-256', bytes);
+    return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+async function journalToContinuity(entity: string, record: any) {
+    const databaseUrl = Deno.env.get('DATABASE_URL');
+    if (!databaseUrl || !record?.id) return;
+
+    const write = (async () => {
+        const sql = neon(databaseUrl);
+        const recordId = String(record.id);
+        const managerId = String(record?.manager_id || '').trim() || null;
+        const createdBy = record?.created_by ? String(record.created_by).slice(0, 320) : null;
+        const payload = JSON.stringify(record);
+        const payloadHash = await continuityHash(record);
+        const rawUpdated = record?.updated_date || record?.created_date;
+        const parsedUpdated = rawUpdated ? new Date(rawUpdated) : null;
+        const sourceUpdatedAt = parsedUpdated && Number.isFinite(parsedUpdated.getTime())
+            ? parsedUpdated.toISOString()
+            : new Date().toISOString();
+        const params = [entity, recordId, managerId, createdBy, payload, payloadHash, sourceUpdatedAt];
+
+        await sql(
+            `INSERT INTO continuity.record_versions
+                 (entity, record_id, manager_id, created_by, payload, payload_hash, source_updated_at, source)
+             VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7::timestamptz, 'realtime')
+             ON CONFLICT DO NOTHING`,
+            params
+        );
+        await sql(
+            `INSERT INTO continuity.record_current
+                 (entity, record_id, manager_id, created_by, payload, payload_hash, source_updated_at, version_id)
+             VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7::timestamptz, COALESCE((
+                 SELECT MAX(rv.version_id) FROM continuity.record_versions rv
+                 WHERE rv.entity = $1 AND rv.record_id = $2
+             ), 0))
+             ON CONFLICT (entity, record_id) DO UPDATE SET
+                 manager_id = EXCLUDED.manager_id,
+                 created_by = EXCLUDED.created_by,
+                 payload = EXCLUDED.payload,
+                 payload_hash = EXCLUDED.payload_hash,
+                 source_updated_at = EXCLUDED.source_updated_at,
+                 version_id = GREATEST(EXCLUDED.version_id, continuity.record_current.version_id),
+                 last_seen_at = NOW(),
+                 deleted_detected_at = NULL
+             WHERE continuity.record_current.source_updated_at IS NULL
+                OR EXCLUDED.source_updated_at >= continuity.record_current.source_updated_at`,
+            params
+        );
+    })().catch((error: any) => {
+        // Entity and id only. These records carry homeowner addresses.
+        console.error('[continuity] journal failed', entity, record?.id, error?.message);
+    });
+
+    await Promise.race([
+        write,
+        new Promise((resolve) => setTimeout(resolve, CONTINUITY_JOURNAL_TIMEOUT_MS))
+    ]);
+}
+
+// Batched form for the import and workflow paths, which commit up to 500 rows
+// at once. One round trip per chunk instead of one per record.
+async function journalManyToContinuity(entity: string, records: any[]) {
+    const databaseUrl = Deno.env.get('DATABASE_URL');
+    const rows = asArray(records).filter((record: any) => record?.id);
+    if (!databaseUrl || !rows.length) return;
+
+    const write = (async () => {
+        const sql = neon(databaseUrl);
+        const byRecordId = new Map<string, any>();
+        for (const record of rows) {
+            const rawUpdated = record?.updated_date || record?.created_date;
+            const parsedUpdated = rawUpdated ? new Date(rawUpdated) : null;
+            byRecordId.set(String(record.id), {
+                recordId: String(record.id),
+                managerId: String(record?.manager_id || '').trim() || null,
+                createdBy: record?.created_by ? String(record.created_by).slice(0, 320) : null,
+                payload: JSON.stringify(record),
+                payloadHash: await continuityHash(record),
+                sourceUpdatedAt: parsedUpdated && Number.isFinite(parsedUpdated.getTime())
+                    ? parsedUpdated.toISOString()
+                    : new Date().toISOString()
+            });
+        }
+
+        const prepared = [...byRecordId.values()];
+        for (let start = 0; start < prepared.length; start += 100) {
+            const batch = prepared.slice(start, start + 100);
+            const params: any[] = [];
+            const tuples = batch.map((row, index) => {
+                const base = index * 7;
+                params.push(
+                    entity,
+                    row.recordId,
+                    row.managerId,
+                    row.createdBy,
+                    row.payload,
+                    row.payloadHash,
+                    row.sourceUpdatedAt
+                );
+                return `($${base + 1}::text, $${base + 2}::text, $${base + 3}::text, $${base + 4}::text,`
+                    + ` $${base + 5}::jsonb, $${base + 6}::text, $${base + 7}::timestamptz)`;
+            }).join(', ');
+
+            await sql(
+                `INSERT INTO continuity.record_versions
+                     (entity, record_id, manager_id, created_by, payload, payload_hash, source_updated_at, source)
+                 SELECT v.entity, v.record_id, v.manager_id, v.created_by, v.payload, v.payload_hash,
+                        v.source_updated_at, 'realtime'
+                 FROM (VALUES ${tuples}) AS v(entity, record_id, manager_id, created_by, payload,
+                                              payload_hash, source_updated_at)
+                 ON CONFLICT DO NOTHING`,
+                params
+            );
+            await sql(
+                `INSERT INTO continuity.record_current
+                     (entity, record_id, manager_id, created_by, payload, payload_hash, source_updated_at, version_id)
+                 SELECT v.entity, v.record_id, v.manager_id, v.created_by, v.payload, v.payload_hash, v.source_updated_at,
+                        COALESCE((
+                            SELECT MAX(rv.version_id) FROM continuity.record_versions rv
+                            WHERE rv.entity = v.entity AND rv.record_id = v.record_id
+                        ), 0)
+                 FROM (VALUES ${tuples}) AS v(entity, record_id, manager_id, created_by, payload,
+                                              payload_hash, source_updated_at)
+                 ON CONFLICT (entity, record_id) DO UPDATE SET
+                     manager_id = EXCLUDED.manager_id,
+                     created_by = EXCLUDED.created_by,
+                     payload = EXCLUDED.payload,
+                     payload_hash = EXCLUDED.payload_hash,
+                     source_updated_at = EXCLUDED.source_updated_at,
+                     version_id = GREATEST(EXCLUDED.version_id, continuity.record_current.version_id),
+                     last_seen_at = NOW(),
+                     deleted_detected_at = NULL
+                 WHERE continuity.record_current.source_updated_at IS NULL
+                    OR EXCLUDED.source_updated_at >= continuity.record_current.source_updated_at`,
+                params
+            );
+        }
+    })().catch((error: any) => {
+        console.error('[continuity] batch journal failed', entity, rows.length, error?.message);
+    });
+
+    await Promise.race([
+        write,
+        new Promise((resolve) => setTimeout(resolve, CONTINUITY_JOURNAL_TIMEOUT_MS * 2))
+    ]);
 }
 
 function mutationCommitted(mutation: any) {
@@ -769,6 +942,7 @@ async function recordOne(base44: any, authenticatedUser: any, body: any, clearDe
             } : {}),
             source
         });
+        await journalToContinuity('InteractionLog', created);
         await syncProtectedCount(
             base44,
             actor.id,
@@ -871,7 +1045,8 @@ async function importHistory(base44: any, authenticatedUser: any, body: any) {
     }
     const missing = prepared.filter((item) => !existingByKey.has(item.idempotency_key));
     if (missing.length > 0) {
-        await base44.asServiceRole.entities.InteractionLog.bulkCreate(missing);
+        const importedRows = await base44.asServiceRole.entities.InteractionLog.bulkCreate(missing);
+        await journalManyToContinuity('InteractionLog', asArray(importedRows));
     }
     return {
         success: true,
@@ -1012,6 +1187,7 @@ async function workflowTransition(base44: any, authenticatedUser: any, body: any
             ? await base44.asServiceRole.entities.InteractionLog.bulkCreate(missingRows)
             : [];
         const created = asArray(bulkResult);
+        await journalManyToContinuity('InteractionLog', created);
 
         return {
             success: true,
@@ -1091,6 +1267,7 @@ async function editSale(base44: any, authenticatedUser: any, body: any) {
     }
 
     const updated = await base44.asServiceRole.entities.InteractionLog.update(interactionId, updates);
+    await journalToContinuity('InteractionLog', updated || { ...existing, ...updates, id: interactionId });
     return {
         success: true,
         interaction: updated || { ...existing, ...updates }
