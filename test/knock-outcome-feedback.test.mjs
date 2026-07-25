@@ -58,11 +58,30 @@ test('an unsettled outcome survives a refetch triggered by an earlier write', ()
   const repHome = readSource('src/pages/RepHome.jsx');
 
   assert.match(repHome, /pendingOutcomesRef\.current\.set\(entry\.id, entry\)/);
-  assert.match(repHome, /pendingOutcomesRef\.current\.delete\(logData\?\.optimistic_id\)/);
   // Both log queries re-apply anything still in flight.
   assert.match(repHome, /return withPendingOutcomes\(merged\.filter/);
   assert.match(repHome, /withPendingOutcomes\(\s*\n?\s*Array\.isArray\(res\) \? res : res\?\.items \|\| \[\],\s*\n?\s*selectedProperty\.address_hash/);
 });
+
+// A door that reverted to Todo a moment after being marked done was this:
+// the optimistic row was retired when the write finished, so the refetch that
+// followed — not yet showing the new row — won the race.
+for (const [label, file] of [['knock tab', 'src/pages/RepHome.jsx'], ['checklist', 'src/pages/Home.jsx']]) {
+  test(`${label}: an optimistic row is retired only once its real row is visible`, () => {
+    const source = readSource(file);
+
+    // Retirement is driven by observing the server row, not by write completion.
+    assert.match(source, /const serverIds = new Set\(rows\.map\(\(row\) => row\?\.id\)\.filter\(Boolean\)\)/);
+    assert.match(source, /if \(entry\.server_id && serverIds\.has\(entry\.server_id\)\) \{\s*\n\s*pendingOutcomesRef\.current\.delete\(entry\.id\)/);
+
+    // The success handler records which server row the optimistic one stands for.
+    assert.match(source, /const serverId = result\?\.interaction\?\.id \|\| null/);
+    assert.match(source, /if \(serverId\) pendingEntry\.server_id = serverId/);
+
+    // onSettled must not retire it — that is the regression being pinned.
+    assert.doesNotMatch(source, /onSettled: \([^)]*\) => \{\s*\n\s*\/\/[^\n]*\n\s*pendingOutcomesRef\.current\.delete/);
+  });
+}
 
 test('the checklist logs outcomes optimistically on the same terms as the knock tab', () => {
   const home = readSource('src/pages/Home.jsx');
@@ -76,7 +95,6 @@ test('the checklist logs outcomes optimistically on the same terms as the knock 
   // Same rollback and refetch-survival contract as the knock tab.
   assert.match(home, /dropOptimisticLog\(logData\?\.optimistic_id, logData\?\.address_hash\)/);
   assert.match(home, /pendingOutcomesRef\.current\.set\(entry\.id, entry\)/);
-  assert.match(home, /pendingOutcomesRef\.current\.delete\(logData\?\.optimistic_id\)/);
   assert.match(home, /return withPendingOutcomes\(Array\.isArray\(res\) \? res : \(res\?\.items \|\| \[\]\)\)/);
 });
 
