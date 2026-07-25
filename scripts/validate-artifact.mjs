@@ -4,6 +4,9 @@ import path from 'node:path';
 
 const distRoot = path.resolve('dist');
 assert.ok(fs.existsSync(distRoot), 'dist is missing; run the production build first.');
+assert.ok(fs.existsSync(path.join(distRoot, 'index.html')), 'The Sales OS entry is missing from dist.');
+assert.ok(fs.existsSync(path.join(distRoot, 'hq', 'index.html')), 'The standalone FirstKnock HQ entry is missing from dist.');
+assert.ok(fs.existsSync(path.join(distRoot, 'hq', 'manifest.json')), 'The FirstKnock HQ mobile manifest is missing from dist.');
 
 const textExtensions = new Set(['.css', '.html', '.js', '.json', '.map', '.txt', '.webmanifest', '.xml']);
 const files = [];
