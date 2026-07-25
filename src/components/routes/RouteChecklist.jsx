@@ -50,6 +50,7 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose, navi
     const [houseNotes, setHouseNotes] = useState({});
     const [savingHash, setSavingHash] = useState(null);
     const [historyOpenHash, setHistoryOpenHash] = useState(null);
+    const [detailsOpenHash, setDetailsOpenHash] = useState(null);
     const [saleAmount, setSaleAmount] = useState('');
     const [saleAmountError, setSaleAmountError] = useState('');
     const [navigationSession, setNavigationSession] = useState(null);
@@ -511,6 +512,7 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose, navi
                         const noteDirty = noteDraft !== undefined && noteDraft.trim() !== savedNote;
                         const isSaving = savingHash === prop.address_hash;
                         const historyOpen = historyOpenHash === prop.address_hash;
+                        const detailsOpen = detailsOpenHash === prop.address_hash;
 
                         return (
                             <div
@@ -595,32 +597,57 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose, navi
                                             </div>
                                         )}
 
-                                        {/* House note — persists as InteractionLog.description */}
-                                        <div className="space-y-1">
-                                            <label
-                                                htmlFor={`house-note-${prop.address_hash}`}
-                                                className="text-[10px] font-bold uppercase"
-                                                style={{ color: '#555' }}
+                                        {/* Add Details — same affordance as the knock tab; the note
+                                            persists as InteractionLog.description */}
+                                        <div className="space-y-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => setDetailsOpenHash(detailsOpen ? null : prop.address_hash)}
+                                                aria-expanded={detailsOpen}
+                                                aria-controls={`house-note-panel-${prop.address_hash}`}
+                                                className="w-full flex items-center justify-between rounded-xl border border-[#2EEB57]/35 bg-[#2EEB57]/10 px-3 py-2.5 text-left active:scale-[0.99] transition-all"
                                             >
-                                                House details
-                                            </label>
-                                            <textarea
-                                                id={`house-note-${prop.address_hash}`}
-                                                value={houseNotes[prop.address_hash] ?? savedNote}
-                                                onChange={(e) => setHouseNotes((current) => ({
-                                                    ...current,
-                                                    [prop.address_hash]: e.target.value
-                                                }))}
-                                                placeholder="Notes for this house..."
-                                                rows={2}
-                                                className="selectable-text w-full resize-none rounded-lg border bg-black/70 p-2 text-[12px] text-white outline-none focus:border-[#39FF4A]"
-                                                style={{ borderColor: '#262626' }}
-                                            />
-                                            <p className="text-[9px]" style={{ color: '#555' }}>
-                                                {noteDirty
-                                                    ? 'Saves with the next outcome you log.'
-                                                    : 'Saved with this house.'}
-                                            </p>
+                                                <span className="flex items-center gap-2">
+                                                    <span className="text-[10px] font-black uppercase tracking-[0.18em] text-white">
+                                                        Add Details
+                                                    </span>
+                                                    {/* Never colour alone: a saved note is named, not just tinted. */}
+                                                    {(savedNote || noteDirty) && (
+                                                        <span className="rounded-full bg-white/10 px-1.5 py-0.5 text-[9px] font-bold text-white/70">
+                                                            {noteDirty ? 'Unsaved' : 'Saved'}
+                                                        </span>
+                                                    )}
+                                                </span>
+                                                <ChevronUp className={`w-4 h-4 text-white transition-transform ${detailsOpen ? '' : 'rotate-180'}`} />
+                                            </button>
+
+                                            {detailsOpen && (
+                                                <div id={`house-note-panel-${prop.address_hash}`} className="space-y-1">
+                                                    <textarea
+                                                        id={`house-note-${prop.address_hash}`}
+                                                        value={houseNotes[prop.address_hash] ?? savedNote}
+                                                        onChange={(e) => setHouseNotes((current) => ({
+                                                            ...current,
+                                                            [prop.address_hash]: e.target.value
+                                                        }))}
+                                                        placeholder="Notes for this house..."
+                                                        rows={3}
+                                                        autoFocus
+                                                        className="selectable-text w-full resize-none rounded-xl border border-[#2EEB57]/25 bg-black/70 p-3 text-[12px] text-white outline-none focus:border-[#39FF4A]"
+                                                    />
+                                                    <p className="text-[9px]" style={{ color: '#555' }}>
+                                                        {noteDirty
+                                                            ? 'Saves with the next outcome you log.'
+                                                            : 'Saved with this house.'}
+                                                    </p>
+                                                </div>
+                                            )}
+
+                                            {!detailsOpen && savedNote && (
+                                                <p className="truncate px-1 text-[10px] italic" style={{ color: '#777' }}>
+                                                    "{savedNote}"
+                                                </p>
+                                            )}
                                         </div>
 
                                         {/* Voice + Label */}
