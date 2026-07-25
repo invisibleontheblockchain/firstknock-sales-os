@@ -1,8 +1,17 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Check, X, Phone, Ban, Home, Navigation, Mic, MapPin, UserX, Clock, User, DollarSign, Ruler, Building2 } from 'lucide-react';
+import { Check, X, Navigation, Mic, MapPin, User, DollarSign, Ruler, Building2, ChevronUp, History, Loader2 } from 'lucide-react';
 import { getPropertyResultSummary } from '../logic/territoryLogic';
+import PropertyHistory from '@/components/rep/PropertyHistory';
+import {
+    OUTCOME_OPTIONS as STATUS_OPTIONS,
+    OUTCOME_COLORS as STATUS_COLORS,
+    outcomeBorder,
+    outcomeShortLabel,
+    outcomeTint,
+    latestOutcomeNote
+} from '../logic/outcomeStatus';
 import { buildFullAddress, getRouteNavigationPlan, openInMaps, openNavigationBatch } from '../logic/navigation';
 import { getNavigationSessionProgress, selectRemainingTodoStops } from '../logic/routeNavigation';
 import { parseOptionalSaleAmount } from '../analytics/salesManagement';
@@ -15,27 +24,6 @@ const BRAND = {
     gold: '#FFD700',
     charcoal: '#1F1F1F',
     offWhite: '#E5E5E5'
-};
-
-const STATUS_OPTIONS = [
-    { id: 'SOLD', label: 'Sold', icon: Check, color: '#22c55e', textColor: '#fff' },
-    { id: 'NO_ANSWER', label: 'No Answer', icon: Home, color: '#3b82f6', textColor: '#fff' },
-    { id: 'CALLBACK', label: 'Callback', icon: Phone, color: '#eab308', textColor: '#000' },
-    { id: 'HARD_NO', label: 'Not Interested', icon: Ban, color: '#8B5CF6', textColor: '#fff' },
-    { id: 'NOT_MOVED_IN', label: 'Not Moved In', icon: Clock, color: '#f97316', textColor: '#fff' },
-    { id: 'DM_NOT_HOME', label: 'DM Not Home', icon: UserX, color: '#06b6d4', textColor: '#fff' },
-];
-
-const STATUS_COLORS = {
-    ELIGIBLE: '#22c55e',
-    SOLD: '#22c55e',
-    HARD_NO: '#8B5CF6',
-    CALLBACK: '#eab308',
-    NO_ANSWER: '#6b7280',
-    QUALIFIED: '#3b82f6',
-    RECENT_OFF_MARKET: '#FFD700',
-    NOT_MOVED_IN: '#f97316',
-    DM_NOT_HOME: '#06b6d4'
 };
 
 const formatMoney = (value) => {
@@ -57,6 +45,11 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose, navi
     const [callbackPhone, setCallbackPhone] = useState('');
     const [selectedAction, setSelectedAction] = useState(null);
     const [isListening, setIsListening] = useState(false);
+    // Note drafts are keyed by address_hash, the canonical property id, so a
+    // draft can never be read back onto a different house.
+    const [houseNotes, setHouseNotes] = useState({});
+    const [savingHash, setSavingHash] = useState(null);
+    const [historyOpenHash, setHistoryOpenHash] = useState(null);
     const [saleAmount, setSaleAmount] = useState('');
     const [saleAmountError, setSaleAmountError] = useState('');
     const [navigationSession, setNavigationSession] = useState(null);
@@ -116,14 +109,26 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose, navi
         [displayRoute.properties, hideBusinessOwned]
     );
 
+    // Every house-level lookup goes through address_hash, never list position.
+    const logsByProperty = useMemo(() => {
+        const byHash = new Map();
+        logs.forEach((log) => {
+            if (!log?.address_hash) return;
+            if (!byHash.has(log.address_hash)) byHash.set(log.address_hash, []);
+            byHash.get(log.address_hash).push(log);
+        });
+        return byHash;
+    }, [logs]);
+
+    const logsForProperty = (property) => logsByProperty.get(property?.address_hash) || [];
+
     const propertyData = useMemo(() => {
         const dataMap = {};
         displayRoute.properties.forEach(p => {
-            const propLogs = logs.filter(l => l.address_hash === p.address_hash);
-            dataMap[p.address_hash] = getPropertyResultSummary(propLogs);
+            dataMap[p.address_hash] = getPropertyResultSummary(logsByProperty.get(p.address_hash) || []);
         });
         return dataMap;
-    }, [displayRoute.properties, logs]);
+    }, [displayRoute.properties, logsByProperty]);
 
     const propertyStatuses = useMemo(() => {
         const statusMap = {};
@@ -211,6 +216,42 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose, navi
         setSelectedAction(null);
     };
 
+    // A house note rides on the outcome as InteractionLog.description, the same
+    // field the knock tab writes. Only send it when the rep actually changed it,
+    // so re-logging a door does not silently rewrite an older note.
+    const houseNotePayload = (property) => {
+        const draft = houseNotes[property.address_hash];
+        if (draft === undefined) return {};
+        const trimmed = draft.trim();
+        const saved = latestOutcomeNote(logsForProperty(property));
+        if (trimmed === saved) return {};
+        return { description: trimmed || null };
+    };
+
+    const clearHouseNote = (addressHash) => {
+        setHouseNotes((current) => {
+            if (current[addressHash] === undefined) return current;
+            const next = { ...current };
+            delete next[addressHash];
+            return next;
+        });
+    };
+
+    // Outcomes are append-only, so the interface must not claim a save that the
+    // server rejected; the draft is only released once the write is accepted.
+    const logOutcome = async (property, logData) => {
+        setSavingHash(property.address_hash);
+        let saved = false;
+        try {
+            saved = await onLogResult(property, logData);
+        } finally {
+            setSavingHash(null);
+        }
+        if (saved === false) return false;
+        clearHouseNote(property.address_hash);
+        return saved;
+    };
+
     const saveSold = async (property, rawAmount = saleAmount) => {
         const parsedAmount = parseOptionalSaleAmount(rawAmount);
         if (parsedAmount.error) {
@@ -221,11 +262,12 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose, navi
 
         const logData = {
             parsed_status: 'SOLD',
-            raw_input_text: numericAmount === null ? 'SOLD' : `SOLD | Sale: $${numericAmount.toFixed(2)}`
+            raw_input_text: numericAmount === null ? 'SOLD' : `SOLD | Sale: $${numericAmount.toFixed(2)}`,
+            ...houseNotePayload(property)
         };
         if (numericAmount !== null) logData.sale_amount = numericAmount;
 
-        const saved = await onLogResult(property, logData);
+        const saved = await logOutcome(property, logData);
         if (saved === false) return;
         resetSalePrompt();
         setExpandedId(null);
@@ -245,13 +287,21 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose, navi
             setSelectedAction({ propertyId: property.address_hash, statusId });
             return;
         }
-        onLogResult(property, statusId);
+        logOutcome(property, {
+            parsed_status: statusId,
+            raw_input_text: statusId,
+            ...houseNotePayload(property)
+        });
         setExpandedId(null);
     };
 
     const confirmCallback = (property) => {
         const note = callbackPhone ? `Callback Phone: ${callbackPhone}` : 'Callback';
-        onLogResult(property, 'CALLBACK', note);
+        logOutcome(property, {
+            parsed_status: 'CALLBACK',
+            raw_input_text: note,
+            ...houseNotePayload(property)
+        });
         setCallbackPhone('');
         setSelectedAction(null);
         setExpandedId(null);
@@ -455,6 +505,12 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose, navi
                         const yearBuilt = Number(prop.year_built || prop.yearBuilt) || null;
                         const soldDate = prop.sold_date || prop.soldDate || prop.lastSoldDate || prop.last_sold_date || prop.saleDate || prop.sale_date;
                         const ageLabel = formatPropertyAge(soldDate);
+                        const houseLogs = logsForProperty(prop);
+                        const savedNote = latestOutcomeNote(houseLogs);
+                        const noteDraft = houseNotes[prop.address_hash];
+                        const noteDirty = noteDraft !== undefined && noteDraft.trim() !== savedNote;
+                        const isSaving = savingHash === prop.address_hash;
+                        const historyOpen = historyOpenHash === prop.address_hash;
 
                         return (
                             <div
@@ -523,7 +579,7 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose, navi
                                     {currentStatus && !isExpanded && (
                                         <span className="text-[9px] font-bold px-2 py-0.5 rounded-full shrink-0"
                                             style={{ background: STATUS_COLORS[currentStatus] + '20', color: STATUS_COLORS[currentStatus] }}>
-                                            {currentStatus === 'NO_ANSWER' ? 'N/A' : currentStatus === 'HARD_NO' ? 'NO' : currentStatus === 'NOT_MOVED_IN' ? 'NMI' : currentStatus === 'DM_NOT_HOME' ? 'DM' : currentStatus}
+                                            {outcomeShortLabel(currentStatus)}
                                         </span>
                                     )}
                                 </button>
@@ -538,6 +594,34 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose, navi
                                                 "{propData.resultText}"
                                             </div>
                                         )}
+
+                                        {/* House note — persists as InteractionLog.description */}
+                                        <div className="space-y-1">
+                                            <label
+                                                htmlFor={`house-note-${prop.address_hash}`}
+                                                className="text-[10px] font-bold uppercase"
+                                                style={{ color: '#555' }}
+                                            >
+                                                House details
+                                            </label>
+                                            <textarea
+                                                id={`house-note-${prop.address_hash}`}
+                                                value={houseNotes[prop.address_hash] ?? savedNote}
+                                                onChange={(e) => setHouseNotes((current) => ({
+                                                    ...current,
+                                                    [prop.address_hash]: e.target.value
+                                                }))}
+                                                placeholder="Notes for this house..."
+                                                rows={2}
+                                                className="selectable-text w-full resize-none rounded-lg border bg-black/70 p-2 text-[12px] text-white outline-none focus:border-[#39FF4A]"
+                                                style={{ borderColor: '#262626' }}
+                                            />
+                                            <p className="text-[9px]" style={{ color: '#555' }}>
+                                                {noteDirty
+                                                    ? 'Saves with the next outcome you log.'
+                                                    : 'Saved with this house.'}
+                                            </p>
+                                        </div>
 
                                         {/* Voice + Label */}
                                         <div className="flex items-center justify-between">
@@ -609,13 +693,50 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose, navi
                                                     <button
                                                         key={opt.id}
                                                         onClick={() => handleSelectStatus(prop, opt.id)}
-                                                        className="flex flex-col items-center gap-1 py-2.5 rounded-xl text-center transition-all active:scale-95"
-                                                        style={{ background: opt.color + '18', border: `1px solid ${opt.color}30` }}
+                                                        disabled={isSaving}
+                                                        aria-busy={isSaving}
+                                                        className={`flex flex-col items-center gap-1 py-2.5 rounded-xl text-center transition-all ${isSaving ? 'opacity-50' : 'active:scale-95'}`}
+                                                        style={{
+                                                            background: outcomeTint(opt.color, '18'),
+                                                            border: `1px solid ${outcomeBorder(opt.color, '30')}`
+                                                        }}
                                                     >
-                                                        <opt.icon className="w-4 h-4" style={{ color: opt.color }} />
+                                                        {isSaving
+                                                            ? <Loader2 className="w-4 h-4 animate-spin" style={{ color: opt.color }} />
+                                                            : <opt.icon className="w-4 h-4" style={{ color: opt.color }} />}
                                                         <span className="text-[9px] font-bold leading-tight" style={{ color: opt.color }}>{opt.label}</span>
                                                     </button>
                                                 ))}
+                                            </div>
+                                        )}
+
+                                        {/* History — collapsed so a long log never buries the outcome grid */}
+                                        {houseLogs.length > 0 && (
+                                            <div className="space-y-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setHistoryOpenHash(historyOpen ? null : prop.address_hash)}
+                                                    aria-expanded={historyOpen}
+                                                    aria-controls={`checklist-history-${prop.address_hash}`}
+                                                    className="w-full flex items-center justify-between rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-left active:scale-[0.99] transition-all"
+                                                >
+                                                    <span className="flex items-center gap-2">
+                                                        <History className="w-3 h-3 text-white/45" />
+                                                        <span className="text-[10px] font-bold uppercase tracking-wide text-white/75">History</span>
+                                                        <span className="rounded-full bg-white/10 px-1.5 py-0.5 text-[9px] font-bold text-white/70">
+                                                            {houseLogs.length}
+                                                        </span>
+                                                    </span>
+                                                    <ChevronUp className={`w-3.5 h-3.5 text-white/60 transition-transform ${historyOpen ? '' : 'rotate-180'}`} />
+                                                </button>
+                                                {historyOpen && (
+                                                    <div
+                                                        id={`checklist-history-${prop.address_hash}`}
+                                                        className="max-h-[40vh] overflow-y-auto pr-0.5"
+                                                    >
+                                                        <PropertyHistory logs={houseLogs} />
+                                                    </div>
+                                                )}
                                             </div>
                                         )}
 
