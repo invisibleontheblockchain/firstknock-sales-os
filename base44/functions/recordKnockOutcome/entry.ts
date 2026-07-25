@@ -187,34 +187,29 @@ async function acquireOutcomeLease(base44: any, actorId: string) {
         const nowIso = new Date(now).toISOString();
         const token = randomToken();
         const expiresAt = new Date(now + OUTCOME_LEASE_MS).toISOString();
-        const mutation = await base44.asServiceRole.entities.User.updateMany({
-            id: actorId,
-            $or: [
-                { knock_outcome_lock_token: '' },
-                { knock_outcome_lock_token: null },
-                { knock_outcome_lock_token: { $exists: false } },
-                { knock_outcome_lock_expires_at: { $lte: nowIso } }
-            ]
-        }, { $set: {
-            knock_outcome_lock_token: token,
-            knock_outcome_lock_acquired_at: nowIso,
-            knock_outcome_lock_expires_at: expiresAt
-        } });
 
-        if (mutationCommitted(mutation)) {
-            const lockedUser = await base44.asServiceRole.entities.User.get(actorId).catch(() => null);
-            if (
-                !lockedUser
-                || String(lockedUser.knock_outcome_lock_token || '') !== token
-                || String(lockedUser.knock_outcome_lock_expires_at || '') !== expiresAt
-            ) {
-                throw new HttpError(
-                    503,
-                    'outcome_lease_unverified',
-                    'FirstKnock could not verify the outcome write lock. Nothing was logged.'
-                );
+        const currentUser = await base44.asServiceRole.entities.User.get(actorId).catch(() => null);
+        if (currentUser) {
+            const existingToken = String(currentUser.knock_outcome_lock_token || '');
+            const existingExpiresAt = String(currentUser.knock_outcome_lock_expires_at || '');
+            const isExpired = !existingExpiresAt || new Date(existingExpiresAt).getTime() <= now;
+
+            if (!existingToken || isExpired) {
+                await base44.asServiceRole.entities.User.update(actorId, {
+                    knock_outcome_lock_token: token,
+                    knock_outcome_lock_acquired_at: nowIso,
+                    knock_outcome_lock_expires_at: expiresAt
+                }).catch(() => null);
+
+                const lockedUser = await base44.asServiceRole.entities.User.get(actorId).catch(() => null);
+                if (
+                    lockedUser
+                    && String(lockedUser.knock_outcome_lock_token || '') === token
+                    && String(lockedUser.knock_outcome_lock_expires_at || '') === expiresAt
+                ) {
+                    return { token };
+                }
             }
-            return { token };
         }
 
         if (Date.now() >= deadline) break;
@@ -230,14 +225,14 @@ async function acquireOutcomeLease(base44: any, actorId: string) {
 
 async function releaseOutcomeLease(base44: any, actorId: string, lease: any) {
     if (!lease) return;
-    await base44.asServiceRole.entities.User.updateMany({
-        id: actorId,
-        knock_outcome_lock_token: lease.token
-    }, { $unset: {
-        knock_outcome_lock_token: '',
-        knock_outcome_lock_acquired_at: '',
-        knock_outcome_lock_expires_at: ''
-    } }).catch(() => null);
+    const currentUser = await base44.asServiceRole.entities.User.get(actorId).catch(() => null);
+    if (currentUser && String(currentUser.knock_outcome_lock_token || '') === lease.token) {
+        await base44.asServiceRole.entities.User.update(actorId, {
+            knock_outcome_lock_token: null,
+            knock_outcome_lock_acquired_at: null,
+            knock_outcome_lock_expires_at: null
+        }).catch(() => null);
+    }
 }
 
 async function resolveActorAndBillingUser(base44: any, authenticatedUser: any) {
@@ -610,20 +605,18 @@ async function currentProtectedCount(base44: any, actor: any) {
 }
 
 async function syncProtectedCount(base44: any, actorId: string, lease: any, count: number, reconciledAt: string) {
-    const mutation = await base44.asServiceRole.entities.User.updateMany({
-        id: actorId,
-        knock_outcome_lock_token: lease.token
-    }, { $set: {
-        outcomes_logged: count,
-        outcomes_reconciled_at: reconciledAt
-    } });
-    if (!mutationCommitted(mutation)) {
+    const currentUser = await base44.asServiceRole.entities.User.get(actorId).catch(() => null);
+    if (!currentUser || String(currentUser.knock_outcome_lock_token || '') !== lease.token) {
         throw new HttpError(
             503,
             'outcome_counter_write_failed',
             'The outcome counter could not be committed. Retry with the same action.'
         );
     }
+    await base44.asServiceRole.entities.User.update(actorId, {
+        outcomes_logged: count,
+        outcomes_reconciled_at: reconciledAt
+    });
 }
 
 async function existingIdempotentLog(base44: any, actorId: string, key: string) {
