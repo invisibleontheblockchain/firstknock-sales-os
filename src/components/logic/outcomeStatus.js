@@ -48,11 +48,33 @@ export const OUTCOME_SHORT_LABELS = {
 
 export const outcomeShortLabel = (status) => OUTCOME_SHORT_LABELS[status] || status;
 
-// A house note is stored as InteractionLog.description. Outcomes are an
-// append-only ledger, so editing a note means appending a newer outcome that
-// carries it — the latest row wins, exactly as the knock tab already behaves.
+// A house note lives on its own non-metered InteractionLog row (source
+// 'house_note'), one per house, updated in place. It is durable field knowledge
+// a rep may read back months later, so it is deliberately independent of any
+// single outcome — and it carries no parsed_status, so it can never change a
+// door's decision.
+export const HOUSE_NOTE_SOURCE = 'house_note';
+
+// A house note records what a rep learned about a door, never what they decided
+// at it. Status derivation must ignore it, or saving a note would silently
+// reopen a house that was already sold.
+export const isHouseNoteLog = (log) => log?.source === HOUSE_NOTE_SOURCE;
+
+export const withoutHouseNotes = (logs) =>
+    (Array.isArray(logs) ? logs.filter((log) => !isHouseNoteLog(log)) : []);
+
+export const findHouseNoteLog = (logs = []) =>
+    (Array.isArray(logs) ? logs : [])
+        .filter((log) => log?.source === HOUSE_NOTE_SOURCE)
+        .sort((a, b) => new Date(b.created_date || 0) - new Date(a.created_date || 0))[0] || null;
+
 export const latestOutcomeNote = (logs = []) => {
-    const withNotes = logs
+    // The dedicated note row wins. Notes attached to older outcomes are still
+    // honoured so anything saved before house notes existed keeps showing.
+    const noteRow = findHouseNoteLog(logs);
+    if (noteRow) return typeof noteRow.description === 'string' ? noteRow.description.trim() : '';
+
+    const withNotes = (Array.isArray(logs) ? logs : [])
         .filter((log) => typeof log?.description === 'string' && log.description.trim())
         .sort((a, b) => new Date(b.created_date || 0) - new Date(a.created_date || 0));
     return withNotes[0]?.description?.trim() || '';

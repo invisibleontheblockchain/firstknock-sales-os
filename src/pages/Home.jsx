@@ -3371,6 +3371,10 @@ export default function Home() {
                                 route={filteredActiveRoute}
                                 logs={checklistLogs}
                                 onLogResult={handleLogResult}
+                                onNoteSaved={() => {
+                                    queryClient.invalidateQueries({ queryKey: ['routeChecklistLogs'] });
+                                    queryClient.invalidateQueries({ queryKey: ['selectedPropertyHistory'] });
+                                }}
                                 onClose={() => setShowChecklist(false)}
                                 navigationApp={navigationApp}
                                 activeRouteSoldFilter={activeRouteSoldFilter}

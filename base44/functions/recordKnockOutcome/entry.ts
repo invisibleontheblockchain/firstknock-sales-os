@@ -1015,6 +1015,57 @@ async function workflowTransition(base44: any, authenticatedUser: any, body: any
     }
 }
 
+// A house note is durable field knowledge — "gate code 4412", "husband decides,
+// evenings only" — that a rep may read back months later. It is deliberately NOT
+// an outcome:
+//   - it carries no parsed_status, so it can never change a door's decision;
+//   - counts_as_knock and counts_toward_free_limit are false and enforceGate is
+//     never called, so autosaving a note can never consume billed outcomes.
+// One row per house per tenant, updated in place, so autosave cannot flood the
+// interaction history. The outcome ledger above remains append-only; this is a
+// separate, non-metered record that happens to share the entity.
+async function saveHouseNote(base44: any, authenticatedUser: any, body: any) {
+    const addressHash = requiredString(body.address_hash, 'address_hash', 256);
+    const note = optionalString(body.note, 'note', 1000) || '';
+    const routeId = optionalString(body.route_id, 'route_id', 128);
+
+    const { actor, managerId } = await resolveActorAndBillingUser(base44, authenticatedUser);
+    if (routeId) {
+        await verifyRouteAccess(base44, actor, managerId, {
+            route_id: routeId,
+            address_hash: addressHash
+        });
+    }
+
+    const existing = asArray(await base44.asServiceRole.entities.InteractionLog.filter({
+        address_hash: addressHash,
+        manager_id: managerId,
+        source: 'house_note'
+    }, '-created_date', 1))[0] || null;
+
+    const fields = {
+        description: note,
+        raw_input_text: note ? 'House note updated' : 'House note cleared',
+        route_id: routeId || existing?.route_id || null,
+        logged_by_user_id: actor.id,
+        counts_toward_free_limit: false,
+        counts_as_knock: false,
+        workflow_action: 'HOUSE_NOTE',
+        source: 'house_note'
+    };
+
+    const saved = existing
+        ? await base44.asServiceRole.entities.InteractionLog.update(existing.id, fields)
+        : await base44.asServiceRole.entities.InteractionLog.create({
+            ...fields,
+            address_hash: addressHash,
+            created_by: actor.email,
+            manager_id: managerId
+        });
+
+    return { success: true, note: saved, address_hash: addressHash };
+}
+
 async function editSale(base44: any, authenticatedUser: any, body: any) {
     const allowedFields = new Set([
         'action',
@@ -1105,6 +1156,8 @@ Deno.serve(async (req: Request) => {
             result = await importHistory(base44, user, body);
         } else if (action === 'workflow_transition') {
             result = await workflowTransition(base44, user, body);
+        } else if (action === 'save_house_note') {
+            result = await saveHouseNote(base44, user, body);
         } else if (action === 'edit_sale') {
             result = await editSale(base44, user, body);
         } else {
