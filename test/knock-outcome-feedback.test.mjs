@@ -1,0 +1,48 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import test from 'node:test';
+
+const readSource = (relativePath) => fs.readFileSync(path.resolve(relativePath), 'utf8');
+
+test('a knock outcome tap acknowledges immediately instead of reading as a dead click', () => {
+  const sheet = readSource('src/components/rep/PropertyDetailSheet.jsx');
+
+  // The tapped decision, not the whole grid, carries the pending state.
+  assert.match(sheet, /const \[savingStatus, setSavingStatus\] = useState\(null\)/);
+  assert.match(sheet, /const isSavingOutcome = savingStatus !== null/);
+  assert.match(sheet, /setSavingStatus\(status\)/);
+  assert.match(sheet, /setSavingStatus\(null\)/);
+
+  // Pending feedback is visible (spinner) and announced (aria-busy).
+  assert.match(sheet, /const isPending = savingStatus === opt\.id/);
+  assert.match(sheet, /aria-busy=\{isPending\}/);
+  assert.match(sheet, /isPending\s*\n?\s*\?\s*<Loader2/);
+});
+
+test('a device fix is warmed ahead of the tap and never blocks the outcome write', () => {
+  const repHome = readSource('src/pages/RepHome.jsx');
+
+  // Warmed while the rep reads the house card, so the tap reuses a cached fix.
+  assert.match(repHome, /const warmGpsFix = React\.useCallback/);
+  assert.match(repHome, /if \(!selectedPropertyHash\) return;\s*\n\s*warmGpsFix\(\);/);
+
+  // A cached fix short-circuits, and a cold radio falls back fast.
+  assert.match(repHome, /Date\.now\(\) - cached\.capturedAt < GPS_FIX_MAX_AGE_MS/);
+  assert.match(repHome, /setTimeout\(\(\) => finish\(fallback\), GPS_FIX_WAIT_MS\)/);
+  assert.match(repHome, /const gpsProof = await resolveGpsProof\(prop\);/);
+
+  // The old blocking five-second high-accuracy wait is gone.
+  assert.doesNotMatch(repHome, /timeout: 5000, maximumAge: 0/);
+});
+
+test('property history collapses behind a dropdown so the outcome grid stays reachable', () => {
+  const sheet = readSource('src/components/rep/PropertyDetailSheet.jsx');
+
+  assert.match(sheet, /const \[showHistory, setShowHistory\] = useState\(false\)/);
+  assert.match(sheet, /aria-expanded=\{showHistory\}/);
+  assert.match(sheet, /aria-controls="property-history-panel"/);
+  assert.match(sheet, /id="property-history-panel"/);
+  // Expanded history is capped and scrolls inside itself.
+  assert.match(sheet, /max-h-\[45vh\] overflow-y-auto/);
+});
