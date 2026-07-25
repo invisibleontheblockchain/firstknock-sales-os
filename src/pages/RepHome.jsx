@@ -77,7 +77,9 @@ const FIELDROUTES_STATUS_POLL_MS = 15_000;
 // A device fix is warmed while the rep reads the house card, so an outcome tap
 // almost always reuses it instead of waiting on the GPS radio.
 const GPS_FIX_MAX_AGE_MS = 90_000;
-const GPS_FIX_WAIT_MS = 1_200;
+// The fix resolves behind an already-closed sheet, so accuracy no longer costs
+// the rep anything and this can stay generous.
+const GPS_FIX_WAIT_MS = 4_000;
 
 function precisionFieldRoutesStatus(response, sourceKey, addressHash) {
   return findFieldRoutesStatus(response, (row) => (
@@ -125,7 +127,8 @@ export default function RepHome() {
   const [showLimitSheet, setShowLimitSheet] = useState(false);
   const [limitDismissed, setLimitDismissed] = useState(false);
   const [gateMode, setGateMode] = useState('limit');
-  const loggingInFlightRef = React.useRef(false);
+  const outcomeQueueRef = React.useRef(Promise.resolve());
+  const pendingOutcomesRef = React.useRef(new Map());
   const gpsFixRef = React.useRef(null);
   const bulkWorkflowRetryRef = React.useRef(null);
   const appointmentRunFocusHandledRef = React.useRef(false);
@@ -516,6 +519,14 @@ export default function RepHome() {
     enabled: !!activeRoute
   });
 
+  // Outcomes whose write has not settled yet survive any refetch that lands in
+  // the meantime, so a door never flickers back to Todo under the rep.
+  const withPendingOutcomes = React.useCallback((rows, addressHash = null) => {
+    const pending = [...pendingOutcomesRef.current.values()]
+      .filter((entry) => !addressHash || entry.address_hash === addressHash);
+    return pending.length ? [...rows, ...pending] : rows;
+  }, []);
+
   // 3. Fetch Interaction Logs (History for this route)
   const { data: logs = [], isLoading: logsLoading } = useQuery({
     queryKey: ['routeLogs', activeRoute?.id],
@@ -527,17 +538,18 @@ export default function RepHome() {
         ]);
         const merged = [...(Array.isArray(hashLogsRes) ? hashLogsRes : hashLogsRes?.items || []), ...(Array.isArray(routeLogsRes) ? routeLogsRes : routeLogsRes?.items || [])];
         const seen = new Set();
-        return merged.filter((log) => {
+        return withPendingOutcomes(merged.filter((log) => {
           const key = log.id || `${log.address_hash}-${log.created_date}-${log.parsed_status}`;
           if (seen.has(key)) return false;
           seen.add(key);
           return true;
-        });
+        }));
       }
       if (user?.email) {
-        return await base44.entities.InteractionLog.filter({ created_by: user.email }, '-created_date', 500);
+        const res = await base44.entities.InteractionLog.filter({ created_by: user.email }, '-created_date', 500);
+        return withPendingOutcomes(Array.isArray(res) ? res : res?.items || []);
       }
-      return [];
+      return withPendingOutcomes([]);
     },
     enabled: !!activeRoute || !!user
   });
@@ -583,15 +595,38 @@ export default function RepHome() {
         { address_hash: selectedProperty.address_hash },
         '-created_date', 100
       );
-      return Array.isArray(res) ? res : res?.items || [];
+      return withPendingOutcomes(
+        Array.isArray(res) ? res : res?.items || [],
+        selectedProperty.address_hash
+      );
     },
     enabled: !!selectedProperty?.address_hash
   });
 
+  // Optimistic outcome rows are keyed by their own id so a rollback removes one
+  // failed write without discarding outcomes the rep logged after it.
+  const applyOptimisticLog = React.useCallback((entry) => {
+    // Held until the write settles so a refetch triggered by an earlier outcome
+    // cannot wipe rows whose own write is still queued behind it.
+    pendingOutcomesRef.current.set(entry.id, entry);
+    const insert = (old) => [...(Array.isArray(old) ? old : []), entry];
+    queryClient.setQueryData(['routeLogs', activeRoute?.id], insert);
+    queryClient.setQueryData(['propertyHistory', entry.address_hash], insert);
+  }, [queryClient, activeRoute?.id]);
+
+  const dropOptimisticLog = React.useCallback((optimisticId, addressHash) => {
+    if (!optimisticId) return;
+    pendingOutcomesRef.current.delete(optimisticId);
+    const remove = (old) => (Array.isArray(old) ? old.filter((log) => log?.id !== optimisticId) : old);
+    queryClient.setQueryData(['routeLogs', activeRoute?.id], remove);
+    queryClient.setQueryData(['propertyHistory', addressHash], remove);
+  }, [queryClient, activeRoute?.id]);
+
+
   // Log Result Mutation
   const createLogMutation = useMutation({
     mutationFn: async (logData) => {
-      const { property_snapshot, callback_contact_name, callback_contact_phone, callback_time, ...persistedLog } = logData;
+      const { property_snapshot, callback_contact_name, callback_contact_phone, callback_time, optimistic_id, ...persistedLog } = logData;
       const response = await base44.functions.invoke('recordKnockOutcome', {
         action: 'record',
         idempotency_key: createOutcomeIdempotencyKey('rep-knock'),
@@ -602,16 +637,11 @@ export default function RepHome() {
       });
       return response.data;
     },
-    onMutate: async (newLog) => {
-      await queryClient.cancelQueries({ queryKey: ['routeLogs', activeRoute?.id] });
-      const previousLogs = queryClient.getQueryData(['routeLogs', activeRoute?.id]);
-      queryClient.setQueryData(['routeLogs', activeRoute?.id], (old) => {
-        return [...(old || []), { ...newLog, created_date: new Date().toISOString() }];
-      });
-      return { previousLogs };
-    },
-    onError: (err, newLog, context) => {
-      queryClient.setQueryData(['routeLogs', activeRoute?.id], context?.previousLogs);
+    // The optimistic row is written at tap time by handleLog, not here: a queued
+    // write can start seconds after the rep already moved on, and the door has
+    // to read as done immediately.
+    onError: (err, newLog) => {
+      dropOptimisticLog(newLog?.optimistic_id, newLog?.address_hash);
       const gate = getOutcomeGateFromError(err);
       if (gate) {
         setGateMode(gate);
@@ -625,14 +655,15 @@ export default function RepHome() {
         || 'Outcome could not be saved. Please try again.'
       );
     },
-    onSettled: () => {
+    onSettled: (_result, _error, logData) => {
+      // The server row now stands in for the optimistic one on the next refetch.
+      pendingOutcomesRef.current.delete(logData?.optimistic_id);
       queryClient.invalidateQueries({ queryKey: ['myLogs'] });
       queryClient.invalidateQueries({ queryKey: ['routeLogs'] });
       queryClient.invalidateQueries({ queryKey: ['allMyLogs'] });
       queryClient.invalidateQueries({ queryKey: ['propertyHistory'] });
     },
     onSuccess: async (result, logData) => {
-      setSelectedProperty(null);
       if (logData?.parsed_status === 'CALLBACK' && logData?.next_eligible_date) {
         try {
           const p = logData.property_snapshot || {};
@@ -1375,40 +1406,57 @@ export default function RepHome() {
     }
     if (!selectedProperty && !logData.address_hash) return false;
     const prop = selectedProperty || {};
+    const addressHash = logData.address_hash || prop.address_hash;
+    if (!addressHash) return false;
 
-    // Keep the guard through GPS resolution and the authoritative server write.
-    if (loggingInFlightRef.current) return false;
-    loggingInFlightRef.current = true;
-    try {
-      const saleSnapshot = logData.parsed_status === 'SOLD'
-        ? {
-            sale_date: logData.sale_date || new Date().toISOString(),
-            property_address: buildFullAddress(prop),
-            homeowner_name: prop.owner_full_name || prop.owner_name || prop.ownerFullName || null,
-            rep_id: teamMember?.id || user?.id || null,
-            rep_name: teamMember?.name || user?.full_name || user?.name || user?.email || null,
-            route_name: activeRoute?.name || null,
-          }
-        : {};
-      const enrichedLogData = { ...logData, ...saleSnapshot, property_snapshot: prop };
+    const saleSnapshot = logData.parsed_status === 'SOLD'
+      ? {
+          sale_date: logData.sale_date || new Date().toISOString(),
+          property_address: buildFullAddress(prop),
+          homeowner_name: prop.owner_full_name || prop.owner_name || prop.ownerFullName || null,
+          rep_id: teamMember?.id || user?.id || null,
+          rep_name: teamMember?.name || user?.full_name || user?.name || user?.email || null,
+          route_name: activeRoute?.name || null,
+        }
+      : {};
+    const optimisticId = `optimistic-${createOutcomeIdempotencyKey('rep-knock')}`;
+    const enrichedLogData = {
+      ...logData,
+      ...saleSnapshot,
+      address_hash: addressHash,
+      optimistic_id: optimisticId,
+      property_snapshot: prop,
+      route_id: logData.route_id || activeRoute?.id || null,
+    };
 
-      // Haptic feedback
-      if (navigator.vibrate) navigator.vibrate(50);
+    // Haptic feedback
+    if (navigator.vibrate) navigator.vibrate(50);
 
-      const gpsProof = await resolveGpsProof(prop);
+    // The door is marked and the sheet closes on the tap. The GPS fix and the
+    // authoritative write run behind the rep, who is already at the next door;
+    // a failure rolls the row back and surfaces the billing gate or an error.
+    applyOptimisticLog({
+      ...enrichedLogData,
+      id: optimisticId,
+      created_date: new Date().toISOString(),
+      created_by: user?.email || null,
+      property_snapshot: undefined,
+    });
+    setSelectedProperty(null);
+    setSelectedPropertyIndex(null);
 
-      await createLogMutation.mutateAsync({
-        ...enrichedLogData,
-        ...gpsProof,
-        route_id: logData.route_id || activeRoute?.id || null,
+    // Every outcome write takes a per-user server lease, so concurrent taps
+    // would collide with 409 outcome_write_in_progress. Queue them instead.
+    outcomeQueueRef.current = outcomeQueueRef.current
+      .then(async () => {
+        const gpsProof = await resolveGpsProof(prop);
+        await createLogMutation.mutateAsync({ ...enrichedLogData, ...gpsProof });
+      })
+      .catch(() => {
+        // Mutation callbacks roll the row back and display gates and errors.
       });
-      return true;
-    } catch {
-      // Mutation callbacks display live billing gates and write errors.
-      return false;
-    } finally {
-      loggingInFlightRef.current = false;
-    }
+
+    return true;
   };
 
   const handleScheduleInspection = async ({ contact, property, notes }) => {

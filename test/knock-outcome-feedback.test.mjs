@@ -36,6 +36,34 @@ test('a device fix is warmed ahead of the tap and never blocks the outcome write
   assert.doesNotMatch(repHome, /timeout: 5000, maximumAge: 0/);
 });
 
+test('an outcome tap marks the door and closes the sheet without waiting on the write', () => {
+  const repHome = readSource('src/pages/RepHome.jsx');
+
+  // The row lands and the sheet closes before the write is enqueued.
+  assert.match(repHome, /applyOptimisticLog\(\{/);
+  assert.match(repHome, /applyOptimisticLog\(\{[\s\S]*?\}\);\s*\n\s*setSelectedProperty\(null\);/);
+  assert.match(repHome, /return true;/);
+  // The old blocking round-trip is gone from the tap path.
+  assert.doesNotMatch(repHome, /await createLogMutation\.mutateAsync\(\{\s*\n\s*\.\.\.enrichedLogData,\s*\n\s*\.\.\.gpsProof,\s*\n\s*route_id:/);
+
+  // Writes are serialized: the server takes a per-user lease per outcome.
+  assert.match(repHome, /outcomeQueueRef\.current = outcomeQueueRef\.current/);
+
+  // A failed write removes only its own row, not later ones.
+  assert.match(repHome, /dropOptimisticLog\(newLog\?\.optimistic_id, newLog\?\.address_hash\)/);
+  assert.match(repHome, /old\.filter\(\(log\) => log\?\.id !== optimisticId\)/);
+});
+
+test('an unsettled outcome survives a refetch triggered by an earlier write', () => {
+  const repHome = readSource('src/pages/RepHome.jsx');
+
+  assert.match(repHome, /pendingOutcomesRef\.current\.set\(entry\.id, entry\)/);
+  assert.match(repHome, /pendingOutcomesRef\.current\.delete\(logData\?\.optimistic_id\)/);
+  // Both log queries re-apply anything still in flight.
+  assert.match(repHome, /return withPendingOutcomes\(merged\.filter/);
+  assert.match(repHome, /withPendingOutcomes\(\s*\n?\s*Array\.isArray\(res\) \? res : res\?\.items \|\| \[\],\s*\n?\s*selectedProperty\.address_hash/);
+});
+
 test('property history collapses behind a dropdown so the outcome grid stays reachable', () => {
   const sheet = readSource('src/components/rep/PropertyDetailSheet.jsx');
 
