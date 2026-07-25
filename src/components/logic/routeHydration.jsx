@@ -3,6 +3,7 @@ import {
     hasCompleteRouteMapPoints,
     hydrateRouteWithLookup,
     indexRouteProperties,
+    isRouteHydrationCacheable,
     lookupRoutePropertiesInBatches,
     orderRouteProperties,
 } from './routeHydrationCore.js';
@@ -108,7 +109,7 @@ export async function hydrateRouteForMap(route, userEmail = null) {
     )).then(hydratedRoute => {
         // Do not make an outage or partial response sticky for the browser
         // session. A later render/refetch must be able to repair missing pins.
-        if (hasCompleteRouteMapPoints(hydratedRoute)) {
+        if (isRouteHydrationCacheable(hydratedRoute)) {
             cacheHydratedRoute(cacheKey, hydratedRoute);
         }
         return hydratedRoute;
@@ -155,7 +156,7 @@ export async function hydrateRoutesForMap(routes = [], userEmail = null, existin
     }));
 
     // As above, never make an empty/partial hydration result permanent.
-    if (hydrated.every(hasCompleteRouteMapPoints)) {
+    if (hydrated.every(isRouteHydrationCacheable)) {
         routeCollectionHydrationCache.set(collectionKey, hydrated);
         if (routeCollectionHydrationCache.size > MAX_ROUTE_COLLECTION_CACHE_ENTRIES) {
             const oldestKey = routeCollectionHydrationCache.keys().next().value;

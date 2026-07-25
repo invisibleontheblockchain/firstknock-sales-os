@@ -152,6 +152,15 @@ export function hasCompleteRouteMapPoints(route) {
     return hashes.every(hash => byHash.has(hash));
 }
 
+export function isRecoveryLimitedProperty(property) {
+    return property?.recovery_limited === true;
+}
+
+export function isRouteHydrationCacheable(route) {
+    if (!hasCompleteRouteMapPoints(route)) return false;
+    return !routeSourceProperties(route).some(isRecoveryLimitedProperty);
+}
+
 function missingRouteHashes(route) {
     const hashes = Array.isArray(route?.property_hashes)
         ? route.property_hashes.map(String)

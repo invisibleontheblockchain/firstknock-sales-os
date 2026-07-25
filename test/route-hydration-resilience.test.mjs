@@ -4,6 +4,8 @@ import test from 'node:test';
 import {
   hasCompleteRouteMapPoints,
   hydrateRouteWithLookup,
+  isRecoveryLimitedProperty,
+  isRouteHydrationCacheable,
   lookupRoutePropertiesInBatches,
   ROUTE_HYDRATION_BATCH_LIMIT,
 } from '../src/components/logic/routeHydrationCore.js';
@@ -85,6 +87,18 @@ test('failed hydration preserves valid in-memory pins instead of replacing them 
   assert.deepEqual(hydrated.properties.map(property => property.id), ['property-a']);
   assert.equal(hydrated.houseCount, 2);
   assert.equal(hasCompleteRouteMapPoints(hydrated), false);
+});
+
+test('recovery-limited pins remain visible but never become a trusted browser cache', () => {
+  const limitedProperty = { ...propertyA, recovery_limited: true };
+  const limitedRoute = { ...route, properties: [limitedProperty, propertyB] };
+
+  assert.equal(isRecoveryLimitedProperty(limitedProperty), true);
+  assert.equal(isRecoveryLimitedProperty(propertyB), false);
+  assert.equal(hasCompleteRouteMapPoints(limitedRoute), true);
+  assert.equal(isRouteHydrationCacheable(limitedRoute), false);
+  assert.equal(isRouteHydrationCacheable({ ...route, properties: [propertyA, propertyB] }), true);
+  assert.equal(isRouteHydrationCacheable({ ...route, properties: [propertyA] }), false);
 });
 
 test('a 10,000-property saved route hydrates in authorized backend-sized batches', async () => {

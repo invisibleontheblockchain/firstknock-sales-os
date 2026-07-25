@@ -1,3 +1,15 @@
+## Plan — Restore Route Hydration Recovery Exports
+- [x] Trace the runtime import error to the Knock page and shared hydration module.
+- [x] Restore the missing recovery marker and cache-safety helpers with the backend marker as source of truth.
+- [x] Add focused tests for recovery-limited properties and complete-route cache eligibility.
+- [x] Verify every current importer resolves to an explicit shared export and both map cache paths use the cache-safety helper.
+- [x] Record the verified result.
+
+### Review — Restore Route Hydration Recovery Exports
+The GitHub sync added Knock-page imports for recovery-aware hydration helpers without adding the corresponding shared exports, causing Vite to reject the module before the page could render. The shared module now exports both helpers, treats backend `recovery_limited: true` pins as visible but not cacheable, and applies the same rule to individual and collection map caches. Focused regression coverage checks limited, complete, and partial route snapshots; source verification confirms all imports now resolve.
+
+---
+
 ## Plan — Move Rep Join + Paid Seat Path to Team Page
 - [x] Inspect the Team page paid gate, invite-code redemption, billing checkout, seat update, and Stripe webhook behavior.
 - [x] Add “I'm a Rep” beside “View Plans” on the paid Team gate.
