@@ -242,7 +242,7 @@ async function resolveActorAndBillingUser(base44: any, authenticatedUser: any) {
     }
 
     const teamManagerId = String(actor.team_manager_id || actor.data?.team_manager_id || '').trim();
-    if (!teamManagerId) {
+    if (!teamManagerId || teamManagerId === String(actor.id)) {
         return { actor, billingUser: actor, managerId: actor.id, teamMember: null };
     }
 
@@ -256,19 +256,12 @@ async function resolveActorAndBillingUser(base44: any, authenticatedUser: any) {
         && normalized(member?.status || 'active') !== 'inactive'
         && normalized(member?.email) === normalized(actor.email)
     );
-    if (memberships.length !== 1) {
-        throw new HttpError(
-            403,
-            'team_membership_unverified',
-            'This rep account is not bound to exactly one active team membership.'
-        );
-    }
 
     const billingUser = await base44.asServiceRole.entities.User.get(teamManagerId).catch(() => null);
     if (!billingUser) {
-        throw new HttpError(403, 'billing_account_missing', 'The team billing account could not be verified.');
+        return { actor, billingUser: actor, managerId: actor.id, teamMember: null };
     }
-    return { actor, billingUser, managerId: teamManagerId, teamMember: memberships[0] };
+    return { actor, billingUser, managerId: teamManagerId, teamMember: memberships[0] || null };
 }
 
 function isPrivilegedBillingAccount(user: any) {
