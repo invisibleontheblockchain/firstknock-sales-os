@@ -76,6 +76,7 @@ import { hasCanvasAccess } from '@/lib/canvasAccess';
 import { validateCanvasBoundary } from '@/components/canvas/canvasPlannerUtils';
 import { fetchAllCanvasTeamMembers } from '@/components/canvas/canvasRosterPagination';
 import { buildFullAddress } from '@/components/logic/navigation';
+import { collectUnretiredOutcomes } from '@/components/logic/optimisticOutcomes';
 import { isKnockActivityLog } from '@/lib/interactionLogs';
 import {
     buildRepRouteScope,
@@ -1162,22 +1163,8 @@ export default function Home() {
     // Outcomes whose write has not settled yet survive any refetch that lands in
     // the meantime, so a checklist stop never flickers back to Todo under the rep.
     const withPendingOutcomes = useCallback((rows, addressHash = null) => {
-        const pending = [...pendingOutcomesRef.current.values()]
-            .filter((entry) => !addressHash || entry.address_hash === addressHash);
-        if (!pending.length) return rows;
-
-        const serverIds = new Set(rows.map((row) => row?.id).filter(Boolean));
-        const unconfirmed = pending.filter((entry) => {
-            // An optimistic row is retired only once its real row is actually
-            // visible here. Retiring it when the write finished instead let the
-            // refetch that followed flip the stop back to Todo.
-            if (entry.server_id && serverIds.has(entry.server_id)) {
-                pendingOutcomesRef.current.delete(entry.id);
-                return false;
-            }
-            return true;
-        });
-        return unconfirmed.length ? [...rows, ...unconfirmed] : rows;
+        const unretired = collectUnretiredOutcomes(pendingOutcomesRef.current, rows, addressHash);
+        return unretired.length ? [...rows, ...unretired] : rows;
     }, []);
 
     const { data: logsRaw = [], isLoading: logsLoading } = useQuery({
@@ -1346,13 +1333,11 @@ export default function Home() {
         },
         onSuccess: (result, logData) => {
             // Hand the optimistic row the id of the row it stands for, so it can
-            // be retired precisely rather than on a guess about timing.
+            // be retired precisely. If the response carries no id the row is NOT
+            // retired here — collectUnretiredOutcomes matches the outcome instead.
             const pendingEntry = pendingOutcomesRef.current.get(logData?.optimistic_id);
-            if (pendingEntry) {
-                const serverId = result?.interaction?.id || null;
-                if (serverId) pendingEntry.server_id = serverId;
-                else pendingOutcomesRef.current.delete(logData.optimistic_id);
-            }
+            const serverId = result?.interaction?.id || null;
+            if (pendingEntry && serverId) pendingEntry.server_id = serverId;
 
             if (Number.isFinite(result?.outcomes_logged)) {
                 queryClient.setQueryData(['user'], (current) => ({
@@ -1362,6 +1347,9 @@ export default function Home() {
             }
         },
         onError: (error, logData) => {
+            // A reverted stop means the write failed; leave the reason in the
+            // console so it can be read back without reproducing the tap.
+            console.error('[Home] Outcome write failed; rolling the stop back', error);
             dropOptimisticLog(logData?.optimistic_id, logData?.address_hash);
             const gate = getOutcomeGateFromError(error);
             if (gate) {

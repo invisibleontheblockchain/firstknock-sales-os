@@ -71,15 +71,21 @@ for (const [label, file] of [['knock tab', 'src/pages/RepHome.jsx'], ['checklist
     const source = readSource(file);
 
     // Retirement is driven by observing the server row, not by write completion.
-    assert.match(source, /const serverIds = new Set\(rows\.map\(\(row\) => row\?\.id\)\.filter\(Boolean\)\)/);
-    assert.match(source, /if \(entry\.server_id && serverIds\.has\(entry\.server_id\)\) \{\s*\n\s*pendingOutcomesRef\.current\.delete\(entry\.id\)/);
+    assert.match(source, /collectUnretiredOutcomes\(pendingOutcomesRef\.current, rows, addressHash\)/);
+    assert.match(source, /from '@\/components\/logic\/optimisticOutcomes'/);
 
-    // The success handler records which server row the optimistic one stands for.
+    // The success handler records which server row the optimistic one stands for,
+    // and must never retire the row when the response carries no id.
     assert.match(source, /const serverId = result\?\.interaction\?\.id \|\| null/);
-    assert.match(source, /if \(serverId\) pendingEntry\.server_id = serverId/);
+    assert.match(source, /if \(pendingEntry && serverId\) pendingEntry\.server_id = serverId/);
 
-    // onSettled must not retire it — that is the regression being pinned.
+    // Nothing outside the retirement helper may drop a pending row on success.
+    assert.doesNotMatch(source, /else pendingOutcomesRef\.current\.delete/);
     assert.doesNotMatch(source, /onSettled: \([^)]*\) => \{\s*\n\s*\/\/[^\n]*\n\s*pendingOutcomesRef\.current\.delete/);
+
+    // A failed write must leave a breadcrumb, since the visible symptom is
+    // identical to the race this file pins.
+    assert.match(source, /console\.error\('\[(RepHome|Home)\] Outcome write failed/);
   });
 }
 
