@@ -104,6 +104,24 @@ test('the checklist logs outcomes optimistically on the same terms as the knock 
   assert.match(home, /return withPendingOutcomes\(Array\.isArray\(res\) \? res : \(res\?\.items \|\| \[\]\)\)/);
 });
 
+// The checklist read its outcomes through a 5000-row global list plus an org
+// email filter, while the knock tab used a route-scoped filter. That extra
+// distance is where a freshly logged row went missing.
+test('the checklist reads outcomes route-scoped, the same way the knock tab does', () => {
+  const home = readSource('src/pages/Home.jsx');
+
+  assert.match(home, /queryKey: \['routeChecklistLogs', activeRoute\?\.id\]/);
+  assert.match(home, /InteractionLog\.filter\(\{ address_hash: hashes \}/);
+  assert.match(home, /InteractionLog\.filter\(\{ route_id: activeRoute\.id \}/);
+
+  // The checklist must consume that query, not the org-filtered global list.
+  assert.match(home, /<RouteChecklist[\s\S]{0,120}logs=\{checklistLogs\}/);
+
+  // Every cache the checklist and detail sheet read from moves together.
+  assert.match(home, /queryClient\.setQueryData\(\['routeChecklistLogs', activeRoute\?\.id\], apply\)/);
+  assert.match(home, /invalidateQueries\(\{ queryKey: \['routeChecklistLogs'\] \}\)/);
+});
+
 test('an optimistic checklist row carries created_by so the org filter keeps it', () => {
   const home = readSource('src/pages/Home.jsx');
 
