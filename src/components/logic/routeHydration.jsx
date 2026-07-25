@@ -1,8 +1,8 @@
 import { base44 } from '@/api/base44Client';
 import {
-    hasCompleteRouteMapPoints,
     hydrateRouteWithLookup,
     indexRouteProperties,
+    isRouteHydrationCacheable,
     lookupRoutePropertiesInBatches,
     orderRouteProperties,
 } from './routeHydrationCore.js';
@@ -40,6 +40,11 @@ function hydratedPropertyCount(route) {
 function readHydratedRouteCache(cacheKey) {
     if (!routeHydrationCache.has(cacheKey)) return null;
     const cached = routeHydrationCache.get(cacheKey);
+    if (!isRouteHydrationCacheable(cached)) {
+        routeHydrationCachedPropertyCount -= hydratedPropertyCount(cached);
+        routeHydrationCache.delete(cacheKey);
+        return null;
+    }
     // Refresh insertion order so frequently viewed routes survive the bound.
     routeHydrationCache.delete(cacheKey);
     routeHydrationCache.set(cacheKey, cached);
@@ -47,6 +52,7 @@ function readHydratedRouteCache(cacheKey) {
 }
 
 function cacheHydratedRoute(cacheKey, route) {
+    if (!isRouteHydrationCacheable(route)) return;
     const existing = routeHydrationCache.get(cacheKey);
     if (existing) routeHydrationCachedPropertyCount -= hydratedPropertyCount(existing);
     routeHydrationCache.delete(cacheKey);
@@ -90,7 +96,7 @@ export async function hydrateRouteForMap(route, userEmail = null) {
     // partial coverage must fall through to backend hydration or doors get silently dropped.
     if (Array.isArray(route?.properties) && route.properties.length > 0) {
         const ordered = orderRouteProperties(route);
-        if (hasCompleteRouteMapPoints(ordered)) return ordered;
+        if (isRouteHydrationCacheable(ordered)) return ordered;
     }
     if (hashes.length === 0) return route;
 
@@ -108,7 +114,7 @@ export async function hydrateRouteForMap(route, userEmail = null) {
     )).then(hydratedRoute => {
         // Do not make an outage or partial response sticky for the browser
         // session. A later render/refetch must be able to repair missing pins.
-        if (hasCompleteRouteMapPoints(hydratedRoute)) {
+        if (isRouteHydrationCacheable(hydratedRoute)) {
             cacheHydratedRoute(cacheKey, hydratedRoute);
         }
         return hydratedRoute;
@@ -127,10 +133,16 @@ export async function hydrateRoutesForMap(routes = [], userEmail = null, existin
         `${route.id || ''}:${route.updated_date || ''}:${manifestSignature(route.property_hashes || [])}`
     )));
     const propSig = manifestSignature(existingProperties.map(p => (
-        `${p.address_hash || p.legacy_hash || p.id || ''}:${p.updated_date || p.effective_status || ''}`
+        `${p.address_hash || p.legacy_hash || p.id || ''}:${p.updated_date || p.effective_status || ''}:${p.recovery_limited === true ? 'limited' : 'full'}`
     )));
     const collectionKey = `${userEmail || ''}::${routeSig}::${propSig}`;
-    if (routeCollectionHydrationCache.has(collectionKey)) return routeCollectionHydrationCache.get(collectionKey);
+    if (routeCollectionHydrationCache.has(collectionKey)) {
+        const cachedRoutes = routeCollectionHydrationCache.get(collectionKey);
+        if (Array.isArray(cachedRoutes) && cachedRoutes.every(isRouteHydrationCacheable)) {
+            return cachedRoutes;
+        }
+        routeCollectionHydrationCache.delete(collectionKey);
+    }
 
     const existingByHash = indexRouteProperties(existingProperties);
     const hydrated = await Promise.all(routes.map(async route => {
@@ -140,22 +152,23 @@ export async function hydrateRoutesForMap(routes = [], userEmail = null, existin
         // otherwise Route Command / map / checklist show fewer doors than Knock.
         if (Array.isArray(route?.properties) && route.properties.length > 0) {
             const ordered = orderRouteProperties(route);
-            if (hasCompleteRouteMapPoints(ordered)) return ordered;
+            if (isRouteHydrationCacheable(ordered)) return ordered;
         }
         const existingOrdered = hashes.map(hash => existingByHash.get(hash)).filter(Boolean);
         if (existingOrdered.length >= hashes.length && existingOrdered.length > 0) {
-            return {
+            const locallyHydrated = {
                 ...route,
                 properties: existingOrdered,
                 allProperties: existingOrdered,
                 houseCount: existingOrdered.length,
             };
+            if (isRouteHydrationCacheable(locallyHydrated)) return locallyHydrated;
         }
         return hydrateRouteForMap(route, userEmail);
     }));
 
     // As above, never make an empty/partial hydration result permanent.
-    if (hydrated.every(hasCompleteRouteMapPoints)) {
+    if (hydrated.every(isRouteHydrationCacheable)) {
         routeCollectionHydrationCache.set(collectionKey, hydrated);
         if (routeCollectionHydrationCache.size > MAX_ROUTE_COLLECTION_CACHE_ENTRIES) {
             const oldestKey = routeCollectionHydrationCache.keys().next().value;

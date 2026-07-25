@@ -184,6 +184,8 @@ test('a legacy route updated after the cutoff receives pin-safe recovery without
       address_hash: 'hash_1',
       full_address: '100 Main St',
       owner_full_name: 'Sensitive Owner',
+      price: 750000,
+      sold_date: '2025-10-01T00:00:00.000Z',
       lat: 33.45,
       lng: -112.07,
     }],
@@ -198,6 +200,8 @@ test('a legacy route updated after the cutoff receives pin-safe recovery without
   assert.equal(result.count, 1);
   assert.equal(result.properties[0].full_address, '100 Main St');
   assert.equal(result.properties[0].owner_full_name, undefined);
+  assert.equal(result.properties[0].price, 750000);
+  assert.equal(result.properties[0].sold_date, '2025-10-01T00:00:00.000Z');
   assert.equal(result.properties[0].recovery_limited, true);
   assert.equal(sqlCalls.filter(query => query.includes('INSERT INTO workspace_properties')).length, 0);
 });

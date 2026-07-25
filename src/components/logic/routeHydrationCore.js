@@ -8,6 +8,10 @@ function hasMapPoint(property) {
 
 export const ROUTE_HYDRATION_BATCH_LIMIT = 5000;
 
+export function isRecoveryLimitedProperty(property) {
+    return property?.recovery_limited === true;
+}
+
 function uniqueRouteHashes(hashes = []) {
     const unique = [];
     const seen = new Set();
@@ -29,11 +33,25 @@ function routeHydrationError(code, message, details = {}) {
 
 export function indexRouteProperties(properties = []) {
     const byHash = new Map();
+    const indexProperty = (hash, property) => {
+        if (!hash) return;
+        const key = String(hash);
+        const existing = byHash.get(key);
+        // A pin-only recovery row must never overwrite a full tenant-scoped
+        // property. For equally rich rows, preserve the existing "latest input
+        // wins" behavior used by in-memory status updates.
+        if (
+            existing
+            && !isRecoveryLimitedProperty(existing)
+            && isRecoveryLimitedProperty(property)
+        ) return;
+        byHash.set(key, property);
+    };
     properties.forEach(property => {
         if (!property || !hasMapPoint(property)) return;
         const hash = property.address_hash || property.id;
-        if (hash) byHash.set(String(hash), property);
-        if (property.legacy_hash) byHash.set(String(property.legacy_hash), property);
+        indexProperty(hash, property);
+        indexProperty(property.legacy_hash, property);
     });
     return byHash;
 }
@@ -152,12 +170,29 @@ export function hasCompleteRouteMapPoints(route) {
     return hashes.every(hash => byHash.has(hash));
 }
 
-function missingRouteHashes(route) {
+export function hasRecoveryLimitedRouteProperties(route) {
+    const hashes = Array.isArray(route?.property_hashes)
+        ? route.property_hashes.map(String)
+        : [];
+    if (hashes.length === 0) return false;
+    const byHash = indexRouteProperties(routeSourceProperties(route));
+    return hashes.some(hash => isRecoveryLimitedProperty(byHash.get(hash)));
+}
+
+export function isRouteHydrationCacheable(route) {
+    return hasCompleteRouteMapPoints(route)
+        && !hasRecoveryLimitedRouteProperties(route);
+}
+
+function routeHashesNeedingHydration(route) {
     const hashes = Array.isArray(route?.property_hashes)
         ? route.property_hashes.map(String)
         : [];
     const byHash = indexRouteProperties(routeSourceProperties(route));
-    return hashes.filter(hash => !byHash.has(hash));
+    return hashes.filter(hash => {
+        const property = byHash.get(hash);
+        return !property || isRecoveryLimitedProperty(property);
+    });
 }
 
 /**
@@ -174,12 +209,12 @@ export async function hydrateRouteWithLookup(route, lookup) {
     if (hashes.length === 0) return route;
 
     let hydrated = orderRouteProperties(route);
-    if (hasCompleteRouteMapPoints(hydrated)) return hydrated;
+    if (isRouteHydrationCacheable(hydrated)) return hydrated;
 
     let routeScopedProperties = [];
     try {
         routeScopedProperties = await lookup({
-            hashes: missingRouteHashes(hydrated),
+            hashes: routeHashesNeedingHydration(hydrated),
             routeId: route.id || null,
         });
     } catch {
@@ -189,12 +224,12 @@ export async function hydrateRouteWithLookup(route, lookup) {
         hydrated,
         Array.isArray(routeScopedProperties) ? routeScopedProperties : []
     );
-    if (hasCompleteRouteMapPoints(hydrated)) return hydrated;
+    if (isRouteHydrationCacheable(hydrated)) return hydrated;
 
     let workspaceProperties = [];
     try {
         workspaceProperties = await lookup({
-            hashes: missingRouteHashes(hydrated),
+            hashes: routeHashesNeedingHydration(hydrated),
             routeId: null,
         });
     } catch {

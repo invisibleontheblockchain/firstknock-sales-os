@@ -179,7 +179,7 @@ Deno.serve(async (req) => {
                     wp.fetch_job_id
                 FROM workspace_properties wp
                 JOIN properties p ON p.id = wp.property_id
-                WHERE wp.user_email = ${targetEmail}
+                WHERE LOWER(wp.user_email) = LOWER(${targetEmail})
                   AND wp.fetch_job_id = ${fetchJobId}
                 ORDER BY p.updated_at DESC
                 LIMIT ${limit}
@@ -263,7 +263,7 @@ Deno.serve(async (req) => {
                 p.updated_at
             FROM workspace_properties wp
             JOIN properties p ON p.id = wp.property_id
-            WHERE wp.user_email = ${targetEmail}
+            WHERE LOWER(wp.user_email) = LOWER(${targetEmail})
               AND (${fetchJobId === null} OR wp.fetch_job_id = ${fetchJobId})
               AND wp.route_active = TRUE
               AND p.lat IS NOT NULL

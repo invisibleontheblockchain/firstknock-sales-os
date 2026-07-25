@@ -13,7 +13,7 @@ const rootDir = resolve(testDir, '..');
 const readSource = (path) => readFileSync(resolve(rootDir, path), 'utf8');
 const endpointPath = 'base44/functions/getPrecisionUsage/entry.ts';
 
-function loadHandler({ base44, stripeApi }) {
+function loadHandler({ base44, stripeApi, betaAccessGrants = null, stripeSecret = 'sk_test' }) {
   const transpiled = ts.transpileModule(readSource(endpointPath), {
     compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
     fileName: endpointPath,
@@ -31,7 +31,13 @@ function loadHandler({ base44, stripeApi }) {
     console,
     createClientFromRequest: () => base44,
     Deno: {
-      env: { get: (key) => key === 'STRIPE_SECRET_KEY' ? 'sk_test' : null },
+      env: {
+        get: (key) => {
+          if (key === 'BETA_ACCESS_GRANTS') return betaAccessGrants;
+          if (key === 'STRIPE_SECRET_KEY') return stripeSecret;
+          return null;
+        }
+      },
       serve: (registeredHandler) => { handler = registeredHandler; }
     },
     Stripe: FakeStripe,
@@ -103,7 +109,14 @@ function makeBase44(user, initialJobs) {
   };
 }
 
-async function invoke({ user, jobs, subscription, searchSubscriptions = [] }) {
+async function invoke({
+  user,
+  jobs,
+  subscription,
+  searchSubscriptions = [],
+  betaAccessGrants = null,
+  stripeSecret = 'sk_test'
+}) {
   const base44 = makeBase44(user, jobs);
   const stripeApi = {
     subscriptions: {
@@ -111,7 +124,7 @@ async function invoke({ user, jobs, subscription, searchSubscriptions = [] }) {
       search: async () => ({ data: searchSubscriptions })
     }
   };
-  const handler = loadHandler({ base44: base44.client, stripeApi });
+  const handler = loadHandler({ base44: base44.client, stripeApi, betaAccessGrants, stripeSecret });
   const response = await handler(new Request('https://app.example.com/getPrecisionUsage', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -120,7 +133,16 @@ async function invoke({ user, jobs, subscription, searchSubscriptions = [] }) {
   return { response, result: await response.json(), base44 };
 }
 
-function completedJob({ id, created, count, kind, periodStart, userId = 'user_1' }) {
+function completedJob({
+  id,
+  created,
+  count,
+  kind,
+  periodStart,
+  periodEnd,
+  subscriptionId,
+  userId = 'user_1'
+}) {
   return {
     id,
     status: 'completed',
@@ -129,6 +151,8 @@ function completedJob({ id, created, count, kind, periodStart, userId = 'user_1'
     user_email: 'austenwaugh@gmail.com',
     ...(kind ? { precision_usage_user_id: userId, precision_usage_kind: kind } : {}),
     ...(periodStart ? { precision_usage_period_start: periodStart } : {}),
+    ...(periodEnd ? { precision_usage_period_end: periodEnd } : {}),
+    ...(subscriptionId ? { precision_subscription_id: subscriptionId } : {}),
     created_date: created,
     started_at: created,
     completed_at: created,
@@ -138,6 +162,142 @@ function completedJob({ id, created, count, kind, periodStart, userId = 'user_1'
     dry_run_metadata: { batchdata_summary: { active: count } }
   };
 }
+
+function betaGrant({
+  userId = 'user_1',
+  grantId = 'beta_grant_1',
+  startsAt = new Date(Date.now() - 60_000).toISOString(),
+  endsAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+  precisionLimit = 1000,
+  canvasSeats = 1
+} = {}) {
+  return JSON.stringify({
+    version: 1,
+    grants: {
+      [userId]: {
+        grant_id: grantId,
+        status: 'active',
+        precision_limit: precisionLimit,
+        starts_at: startsAt,
+        ends_at: endsAt,
+        canvas_seats: canvasSeats
+      }
+    }
+  });
+}
+
+test('an active immutable-ID beta grant gives a fresh fixed 1,000-property allowance before Stripe', async () => {
+  const now = Date.now();
+  const startsAt = new Date(now - 60_000).toISOString();
+  const endsAt = new Date(now + 24 * 60 * 60 * 1000).toISOString();
+  const user = { id: 'user_1', email: 'beta@example.com' };
+
+  const { response, result } = await invoke({
+    user,
+    jobs: [],
+    subscription: null,
+    betaAccessGrants: betaGrant({ startsAt, endsAt }),
+    stripeSecret: null
+  });
+
+  assert.equal(response.status, 200);
+  assert.equal(result.kind, 'beta');
+  assert.equal(result.paid_access, true);
+  assert.equal(result.pro_access, true);
+  assert.equal(result.limit, 1000);
+  assert.equal(result.used, 0);
+  assert.equal(result.remaining, 1000);
+  assert.equal(result.period_start, startsAt);
+  assert.equal(result.period_end, endsAt);
+  assert.equal(result.subscription_id, 'beta_grant_1');
+  assert.equal(result.invoice_id, null);
+});
+
+test('beta jobs reduce the fixed allowance only when the paid ledger grant ID and period match', async () => {
+  const now = Date.now();
+  const startsAt = new Date(now - 60_000).toISOString();
+  const endsAt = new Date(now + 24 * 60 * 60 * 1000).toISOString();
+  const user = { id: 'user_1', email: 'beta@example.com' };
+  const jobs = [
+    completedJob({
+      id: 'matching_beta_job',
+      created: new Date(now).toISOString(),
+      count: 125,
+      kind: 'paid',
+      periodStart: startsAt,
+      periodEnd: endsAt,
+      subscriptionId: '123'
+    }),
+    completedJob({
+      id: 'wrong_grant_job',
+      created: new Date(now).toISOString(),
+      count: 600,
+      kind: 'paid',
+      periodStart: startsAt,
+      periodEnd: endsAt,
+      subscriptionId: 123
+    }),
+    completedJob({
+      id: 'wrong_period_job',
+      created: new Date(now).toISOString(),
+      count: 275,
+      kind: 'paid',
+      periodStart: startsAt,
+      periodEnd: new Date(now + 48 * 60 * 60 * 1000).toISOString(),
+      subscriptionId: '123'
+    })
+  ];
+
+  const { result } = await invoke({
+    user,
+    jobs,
+    subscription: null,
+    betaAccessGrants: betaGrant({ grantId: '123', startsAt, endsAt }),
+    stripeSecret: null
+  });
+
+  assert.equal(result.kind, 'beta');
+  assert.equal(result.limit, 1000);
+  assert.equal(result.used, 125);
+  assert.equal(result.meter_used, 125);
+  assert.equal(result.remaining, 875);
+});
+
+test('wrong-ID, expired, malformed, and out-of-range beta grants fail closed to the free 50 properties', async (t) => {
+  const now = Date.now();
+  const cases = [
+    ['wrong immutable ID', betaGrant({ userId: 'different_user' })],
+    ['expired window', betaGrant({
+      startsAt: new Date(now - 48 * 60 * 60 * 1000).toISOString(),
+      endsAt: new Date(now - 24 * 60 * 60 * 1000).toISOString()
+    })],
+    ['malformed JSON', '{not valid JSON'],
+    ['zero precision allowance', betaGrant({ precisionLimit: 0 })],
+    ['over-cap precision allowance', betaGrant({ precisionLimit: 1001 })],
+    ['fractional precision allowance', betaGrant({ precisionLimit: 999.5 })],
+    ['zero canvas seats', betaGrant({ canvasSeats: 0 })],
+    ['over-cap canvas seats', betaGrant({ canvasSeats: 101 })],
+    ['fractional canvas seats', betaGrant({ canvasSeats: 1.5 })],
+    ['numeric-string canvas seats', betaGrant({ canvasSeats: '1' })]
+  ];
+
+  for (const [name, betaAccessGrants] of cases) {
+    await t.test(name, async () => {
+      const { response, result } = await invoke({
+        user: { id: 'user_1', email: 'beta@example.com' },
+        jobs: [],
+        subscription: null,
+        betaAccessGrants
+      });
+      assert.equal(response.status, 200);
+      assert.equal(result.kind, 'trial');
+      assert.equal(result.paid_access, false);
+      assert.equal(result.pro_access, false);
+      assert.equal(result.limit, 50);
+      assert.equal(result.remaining, 50);
+    });
+  }
+});
 
 test('50 trial properties remain credited and payment starts the paid meter at 0 / 1,000', async () => {
   const subscription = paidSubscription();

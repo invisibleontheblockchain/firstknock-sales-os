@@ -21,6 +21,55 @@ function stripeTimestampIso(value) {
     return Number.isFinite(seconds) && seconds > 0 ? new Date(seconds * 1000).toISOString() : null;
 }
 
+function betaPrecisionEvidence(user) {
+    const rawGrants = Deno.env.get('BETA_ACCESS_GRANTS');
+    if (!rawGrants || user?.id === undefined || user?.id === null) return null;
+
+    let document;
+    try {
+        document = JSON.parse(rawGrants);
+    } catch {
+        return null;
+    }
+
+    if (!document || typeof document !== 'object' || Array.isArray(document) || document.version !== 1 || !document.grants || typeof document.grants !== 'object' || Array.isArray(document.grants)) {
+        return null;
+    }
+
+    const immutableUserId = String(user.id);
+    if (!Object.prototype.hasOwnProperty.call(document.grants, immutableUserId)) return null;
+    const grant = document.grants[immutableUserId];
+    if (!grant || typeof grant !== 'object' || Array.isArray(grant)) return null;
+    const grantId = typeof grant?.grant_id === 'string' ? grant.grant_id.trim() : '';
+    const precisionLimit = grant?.precision_limit;
+    const canvasSeats = grant?.canvas_seats;
+    const periodStartMs = typeof grant?.starts_at === 'string' ? Date.parse(grant.starts_at) : NaN;
+    const periodEndMs = typeof grant?.ends_at === 'string' ? Date.parse(grant.ends_at) : NaN;
+    const now = Date.now();
+
+    if (
+        grant?.status !== 'active' ||
+        !grantId ||
+        !Number.isSafeInteger(precisionLimit) || precisionLimit <= 0 || precisionLimit > PAID_PROPERTY_CAP ||
+        !Number.isSafeInteger(canvasSeats) || canvasSeats <= 0 || canvasSeats > 100 ||
+        !Number.isFinite(periodStartMs) || !Number.isFinite(periodEndMs) || periodStartMs >= periodEndMs ||
+        now < periodStartMs || now >= periodEndMs
+    ) {
+        return null;
+    }
+
+    return {
+        kind: 'beta',
+        paidAccess: true,
+        proAccess: true,
+        subscriptionId: grantId,
+        invoiceId: null,
+        periodStart: new Date(periodStartMs).toISOString(),
+        periodEnd: new Date(periodEndMs).toISOString(),
+        precisionLimit
+    };
+}
+
 function invoiceCoversCurrentPeriod(subscription, invoice) {
     const currentStart = Number(subscription?.current_period_start);
     if (!Number.isFinite(currentStart) || currentStart <= 0) return false;
@@ -63,6 +112,9 @@ function trialPrecisionEvidence(subscription, userId) {
 }
 
 async function resolvePrecisionEntitlement(user) {
+    const beta = betaPrecisionEvidence(user);
+    if (beta) return beta;
+
     const secret = Deno.env.get('STRIPE_SECRET_KEY');
     if (!secret) throw new Error('Stripe billing verification is unavailable.');
     const stripe = new Stripe(secret);
@@ -378,11 +430,18 @@ async function getPrecisionAllowance(base44, user, entitlement) {
         const usage = jobUsage(job);
         lifetimeUsed += usage.used;
         const startedAt = asTimestamp(job.started_at || job.created_date || job.dry_run_metadata?.batchdata_only_started_at);
-        const matchesPaid = entitlement.kind === 'paid' && (
-            job.precision_usage_kind === 'paid'
-                ? asTimestamp(job.precision_usage_period_start) !== null && Math.abs(asTimestamp(job.precision_usage_period_start) - periodStart) < 1000
-                : !job.precision_usage_kind && startedAt !== null && periodStart !== null && startedAt >= periodStart && (periodEnd === null || startedAt < periodEnd)
-        );
+        const jobPeriodStart = asTimestamp(job.precision_usage_period_start);
+        const jobPeriodEnd = asTimestamp(job.precision_usage_period_end);
+        const matchesPaid = entitlement.kind === 'beta'
+            ? job.precision_usage_kind === 'paid'
+                && job.precision_subscription_id === entitlement.subscriptionId
+                && jobPeriodStart === periodStart
+                && jobPeriodEnd === periodEnd
+            : entitlement.kind === 'paid' && (
+                job.precision_usage_kind === 'paid'
+                    ? jobPeriodStart !== null && Math.abs(jobPeriodStart - periodStart) < 1000
+                    : !job.precision_usage_kind && startedAt !== null && periodStart !== null && startedAt >= periodStart && (periodEnd === null || startedAt < periodEnd)
+            );
         if (matchesPaid) {
             used += usage.used;
             reserved += usage.reserved;
@@ -390,11 +449,13 @@ async function getPrecisionAllowance(base44, user, entitlement) {
             trialUsed += usage.used + usage.reserved;
         }
     }
-    if (entitlement.kind !== 'paid') {
+    if (entitlement.kind !== 'paid' && entitlement.kind !== 'beta') {
         used = Math.min(FREE_PROPERTY_CAP, trialUsed);
         reserved = 0;
     }
-    const limit = entitlement.kind === 'paid' ? PAID_PROPERTY_CAP : FREE_PROPERTY_CAP;
+    const limit = entitlement.kind === 'beta'
+        ? entitlement.precisionLimit
+        : entitlement.kind === 'paid' ? PAID_PROPERTY_CAP : FREE_PROPERTY_CAP;
     used = Math.min(limit, used);
     reserved = Math.min(Math.max(0, limit - used), reserved);
     return { used, reserved, remaining: Math.max(0, limit - used - reserved), trialUsed: Math.min(FREE_PROPERTY_CAP, trialUsed), lifetimeUsed };
@@ -438,7 +499,7 @@ Deno.serve(async (req) => {
         const routeHomeStats = await getPrecisionRouteHomeStats(base44, user);
         const existingRouteHomes = routeHomeStats.count;
         const allowance = await getPrecisionAllowance(base44, user, entitlement);
-        const paidPropertyLimit = PAID_PROPERTY_CAP;
+        const paidPropertyLimit = entitlement.kind === 'beta' ? entitlement.precisionLimit : PAID_PROPERTY_CAP;
         const paidPropertiesUsed = hasPaidPrecisionCapacity ? allowance.used + allowance.reserved : null;
         const paidPropertiesRemaining = hasPaidPrecisionCapacity
             ? allowance.remaining
@@ -557,6 +618,7 @@ Deno.serve(async (req) => {
         const lockedEntitlement = await resolvePrecisionEntitlement(user);
         const lockedHasPaidPrecisionCapacity = lockedEntitlement.paidAccess;
         const lockedHasPrecisionPro = lockedEntitlement.proAccess;
+        const lockedPaidPropertyLimit = lockedEntitlement.kind === 'beta' ? lockedEntitlement.precisionLimit : PAID_PROPERTY_CAP;
         if (ownership.mode === 'custom' && !lockedHasPrecisionPro) {
             return Response.json({ error: 'upgrade_required', message: 'Custom ownership ranges require a Precision Pro plan.' }, { status: 403 });
         }
@@ -614,7 +676,7 @@ Deno.serve(async (req) => {
                 paid_properties_used: lockedHasPaidPrecisionCapacity ? lockedAllowance.used + lockedAllowance.reserved : null,
                 paid_properties_reserved: lockedHasPaidPrecisionCapacity ? lockedAllowance.reserved : null,
                 paid_properties_remaining: lockedHasPaidPrecisionCapacity ? lockedAllowance.remaining : null,
-                paid_property_limit: lockedHasPaidPrecisionCapacity ? paidPropertyLimit : null,
+                paid_property_limit: lockedHasPaidPrecisionCapacity ? lockedPaidPropertyLimit : null,
                 precision_usage_period_start: lockedEntitlement.periodStart,
                 free_property_cap: FREE_PROPERTY_CAP,
                 count_mode: body.count_mode === 'max_available' ? 'max_available' : 'fixed',
@@ -634,7 +696,7 @@ Deno.serve(async (req) => {
             pull_mode: 'new_area',
             user_email: user.email,
             precision_usage_user_id: user.id,
-            precision_usage_kind: lockedEntitlement.kind === 'paid' ? 'paid' : lockedEntitlement.kind === 'unmetered' ? 'unmetered' : 'trial',
+            precision_usage_kind: lockedEntitlement.kind === 'paid' || lockedEntitlement.kind === 'beta' ? 'paid' : lockedEntitlement.kind === 'unmetered' ? 'unmetered' : 'trial',
             ...(lockedEntitlement.subscriptionId ? { precision_subscription_id: lockedEntitlement.subscriptionId } : {}),
             ...(lockedEntitlement.invoiceId ? { precision_invoice_id: lockedEntitlement.invoiceId } : {}),
             ...(lockedEntitlement.periodStart ? { precision_usage_period_start: lockedEntitlement.periodStart } : {}),
@@ -657,6 +719,7 @@ Deno.serve(async (req) => {
             reservedProperties,
             lockedAllowance,
             lockedEntitlement,
+            lockedPaidPropertyLimit,
             lockedHasPaidPrecisionCapacity,
             lockedLimitedByFreeHomeCap,
             lockedLimitedByPaidPropertyCap,
@@ -671,6 +734,7 @@ Deno.serve(async (req) => {
             reservedProperties,
             lockedAllowance,
             lockedEntitlement,
+            lockedPaidPropertyLimit,
             lockedHasPaidPrecisionCapacity,
             lockedLimitedByFreeHomeCap,
             lockedLimitedByPaidPropertyCap,
@@ -694,7 +758,7 @@ Deno.serve(async (req) => {
             paid_properties_used: lockedHasPaidPrecisionCapacity ? lockedAllowance.used + lockedAllowance.reserved : null,
             paid_properties_reserved: lockedHasPaidPrecisionCapacity ? lockedAllowance.reserved + reservedProperties : null,
             paid_properties_remaining: lockedHasPaidPrecisionCapacity ? Math.max(0, lockedAllowance.remaining - reservedProperties) : null,
-            paid_property_limit: lockedHasPaidPrecisionCapacity ? paidPropertyLimit : null,
+            paid_property_limit: lockedHasPaidPrecisionCapacity ? lockedPaidPropertyLimit : null,
             precision_usage_period_start: lockedEntitlement.periodStart,
             sold_months: requestedSoldMonths,
             filters: { min_price: minPrice, max_price: maxPrice },

@@ -15,7 +15,7 @@ const livePaths = [
 ];
 const previewPath = 'base44/functions/previewBatchDataArea/entry.ts';
 
-function loadHandler(path, { base44, stripeApi = {}, ClientImpl = null }) {
+function loadHandler(path, { base44, stripeApi = {}, ClientImpl = null, env = {} }) {
   const transpiled = ts.transpileModule(readSource(path), {
     compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
     fileName: path,
@@ -36,7 +36,16 @@ function loadHandler(path, { base44, stripeApi = {}, ClientImpl = null }) {
     console,
     createClientFromRequest: () => base44,
     Deno: {
-      env: { get: (key) => key === 'STRIPE_SECRET_KEY' ? 'sk_test' : 'test_value' },
+      env: {
+        get: (key) => {
+          if (Object.prototype.hasOwnProperty.call(env, key)) {
+            return typeof env[key] === 'function' ? env[key]() : env[key];
+          }
+          if (key === 'STRIPE_SECRET_KEY') return 'sk_test';
+          if (key === 'DATABASE_URL') return 'test_value';
+          return undefined;
+        }
+      },
       serve: (registeredHandler) => { handler = registeredHandler; }
     },
     Stripe: FakeStripe,
@@ -177,16 +186,52 @@ async function invokeStartWithEntitlementSequence(path, { user, subscriptions, r
   return { response, result: await response.json(), createdJobs, events, retrieveIndex };
 }
 
-async function invokeLive(path, { user, jobs, routes, subscription, requested = 1000 }) {
-  const base44 = makeBase44({ user, jobs, routes, usageSnapshot: null });
+async function invokeStartWithBetaSequence(path, { user, grants, jobs = [], requested = 100, stripeSecret = 'sk_test' }) {
+  const createdJobs = [];
+  const events = [];
+  let betaReadCount = 0;
+  class TestClient {
+    async connect() { events.push('db:connect'); }
+    async query(sql) {
+      if (sql.includes('pg_advisory_xact_lock')) events.push('db:locked');
+      return { rows: [] };
+    }
+    async end() { events.push('db:end'); }
+  }
+  const base44 = makeBase44({ user, jobs, routes: [], usageSnapshot: null, createdJobs, events });
   const handler = loadHandler(path, {
     base44,
-    stripeApi: { subscriptions: { retrieve: async () => subscription } }
+    stripeApi: { subscriptions: {} },
+    ClientImpl: TestClient,
+    env: {
+      STRIPE_SECRET_KEY: stripeSecret,
+      BETA_ACCESS_GRANTS: () => {
+        const secret = grants[Math.min(betaReadCount, grants.length - 1)];
+        betaReadCount += 1;
+        events.push(`beta:${betaReadCount}`);
+        return secret;
+      }
+    }
   });
   const response = await handler(new Request('https://app.example.com/function', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(requestBody(requested))
+    body: JSON.stringify(startRequestBody(requested))
+  }));
+  return { response, result: await response.json(), createdJobs, events, betaReadCount };
+}
+
+async function invokeLive(path, { user, jobs, routes, subscription, requested = 1000, env = {}, body = null }) {
+  const base44 = makeBase44({ user, jobs, routes, usageSnapshot: null });
+  const handler = loadHandler(path, {
+    base44,
+    stripeApi: { subscriptions: { retrieve: async () => subscription } },
+    env
+  });
+  const response = await handler(new Request('https://app.example.com/function', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body || requestBody(requested))
   }));
   return { response, result: await response.json() };
 }
@@ -202,22 +247,58 @@ async function invokePreview({ user, routes, usageSnapshot, requested = 1000 }) 
   return { response, result: await response.json() };
 }
 
-function settledJob({ id, kind, count, periodStart, created }) {
+function settledJob({
+  id,
+  kind,
+  count,
+  periodStart,
+  periodEnd,
+  subscriptionId,
+  created,
+  userId = 'user_1',
+  userEmail = 'austenwaugh@gmail.com'
+}) {
   return {
     id,
     status: 'completed',
     provider: 'batchdata',
     mode_tag: 'PRECISION_TARGET',
-    user_email: 'austenwaugh@gmail.com',
-    precision_usage_user_id: 'user_1',
+    user_email: userEmail,
+    precision_usage_user_id: userId,
     precision_usage_kind: kind,
+    ...(subscriptionId ? { precision_subscription_id: subscriptionId } : {}),
     ...(periodStart ? { precision_usage_period_start: periodStart } : {}),
+    ...(periodEnd ? { precision_usage_period_end: periodEnd } : {}),
     precision_usage_reserved: 0,
     precision_usage_count: count,
     precision_usage_recorded_at: created,
     created_date: created,
     started_at: created
   };
+}
+
+function betaGrantSecret({
+  userId = 'beta_user_1',
+  grantId = 'beta_grant_1',
+  status = 'active',
+  precisionLimit = 1000,
+  startsAt = new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+  endsAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+  canvasSeats = 1
+} = {}) {
+  return JSON.stringify({
+    version: 1,
+    grants: {
+      [userId]: {
+        grant_id: grantId,
+        status,
+        precision_limit: precisionLimit,
+        starts_at: startsAt,
+        ends_at: endsAt,
+        canvas_seats: canvasSeats
+      }
+    }
+  });
 }
 
 test('all Precision endpoints cap a paid request at the current-period FetchJob remainder', async () => {
@@ -393,5 +474,150 @@ test('both start paths reject paid-only criteria when the locked entitlement los
       'db:locked',
       'stripe:in_incomplete'
     ], path);
+  }
+});
+
+test('beta grants expose only the exact remaining fixed allowance in both dry-run paths', async () => {
+  const user = { id: 'beta_user_1', email: 'devinfgalligan@gmail.com' };
+  const grantId = 'beta_devin_2026';
+  const periodStart = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const periodEnd = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+  const grantSecret = betaGrantSecret({
+    userId: user.id,
+    grantId,
+    precisionLimit: 875,
+    startsAt: periodStart,
+    endsAt: periodEnd,
+    canvasSeats: 2
+  });
+  const commonJob = {
+    kind: 'paid',
+    periodStart,
+    periodEnd,
+    subscriptionId: grantId,
+    userId: user.id,
+    userEmail: user.email,
+    created: new Date().toISOString()
+  };
+  const matchingReservation = settledJob({ id: 'matching_reserved', count: 0, ...commonJob });
+  matchingReservation.status = 'pending';
+  matchingReservation.precision_usage_reserved = 125;
+  delete matchingReservation.precision_usage_recorded_at;
+  const wrongPeriodEnd = new Date(new Date(periodEnd).getTime() + 24 * 60 * 60 * 1000).toISOString();
+  const jobs = [
+    settledJob({ id: 'matching_used', count: 325, ...commonJob }),
+    matchingReservation,
+    settledJob({ id: 'other_grant', count: 400, ...commonJob, subscriptionId: 'beta_someone_else' }),
+    settledJob({ id: 'changed_window', count: 500, ...commonJob, periodEnd: wrongPeriodEnd }),
+    settledJob({ id: 'prior_trial', kind: 'trial', count: 50, userId: user.id, userEmail: user.email, created: new Date().toISOString() })
+  ];
+  const premiumBody = requestBody(1000);
+  premiumBody.sold_months = 1;
+
+  for (const path of livePaths) {
+    const { response, result } = await invokeLive(path, {
+      user,
+      jobs,
+      routes: [],
+      requested: 1000,
+      body: premiumBody,
+      env: { BETA_ACCESS_GRANTS: grantSecret, STRIPE_SECRET_KEY: undefined }
+    });
+    assert.equal(response.status, 200, path);
+    assert.equal(result.requested_properties, 425, path);
+    assert.equal(result.paid_properties_used, 450, path);
+    assert.equal(result.paid_properties_reserved, 125, path);
+    assert.equal(result.paid_properties_remaining, 425, path);
+    assert.equal(result.paid_property_limit, 875, path);
+    assert.equal(result.precision_usage_period_start, periodStart, path);
+  }
+});
+
+test('beta live starts recheck the grant under lock and stamp the exact paid meter identity', async () => {
+  const user = { id: 'beta_user_1', email: 'devinfgalligan@gmail.com' };
+  const grantId = 'beta_devin_2026';
+  const periodStart = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const periodEnd = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+  const grantSecret = betaGrantSecret({ userId: user.id, grantId, startsAt: periodStart, endsAt: periodEnd });
+
+  for (const path of livePaths) {
+    const { response, result, createdJobs, events, betaReadCount } = await invokeStartWithBetaSequence(path, {
+      user,
+      grants: [grantSecret],
+      requested: 1000,
+      stripeSecret: undefined
+    });
+    assert.equal(response.status, 200, path);
+    assert.equal(betaReadCount, 2, `${path} must resolve beta access before and after taking the lock`);
+    assert.deepEqual(events.filter((event) => event.startsWith('beta:') || event === 'db:locked' || event === 'job:create'), [
+      'beta:1',
+      'db:locked',
+      'beta:2',
+      'job:create'
+    ], path);
+    assert.equal(createdJobs.length, 1, path);
+    assert.equal(createdJobs[0].precision_usage_kind, 'paid', path);
+    assert.equal(createdJobs[0].precision_subscription_id, grantId, path);
+    assert.equal(createdJobs[0].precision_usage_period_start, periodStart, path);
+    assert.equal(createdJobs[0].precision_usage_period_end, periodEnd, path);
+    assert.equal(Object.prototype.hasOwnProperty.call(createdJobs[0], 'precision_invoice_id'), false, path);
+    assert.equal(createdJobs[0].precision_usage_reserved, 1000, path);
+    assert.equal(createdJobs[0].dry_run_metadata.paid_property_limit, 1000, path);
+    assert.equal(result.requested_properties, 1000, path);
+    assert.equal(result.paid_property_limit, 1000, path);
+    assert.equal(result.precision_usage_period_start, periodStart, path);
+  }
+});
+
+test('beta live starts fail if the immutable grant expires before the lock recheck', async () => {
+  const user = { id: 'beta_user_1', email: 'devinfgalligan@gmail.com' };
+  const activeSecret = betaGrantSecret({ userId: user.id });
+  const expiredSecret = betaGrantSecret({
+    userId: user.id,
+    startsAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+    endsAt: new Date(Date.now() - 60 * 60 * 1000).toISOString()
+  });
+
+  for (const path of livePaths) {
+    const { response, result, createdJobs, betaReadCount } = await invokeStartWithBetaSequence(path, {
+      user,
+      grants: [activeSecret, expiredSecret],
+      requested: 100
+    });
+    assert.equal(response.status, 403, path);
+    assert.equal(result.error, 'paid_precision_required', path);
+    assert.equal(betaReadCount, 2, path);
+    assert.equal(createdJobs.length, 0, path);
+  }
+});
+
+test('wrong immutable IDs, expired windows, and malformed beta secrets fail closed', async () => {
+  const user = { id: 'beta_user_1', email: 'devinfgalligan@gmail.com' };
+  const deniedSecrets = [
+    betaGrantSecret({ userId: user.email }),
+    betaGrantSecret({
+      userId: user.id,
+      startsAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+      endsAt: new Date(Date.now() - 60 * 60 * 1000).toISOString()
+    }),
+    '{not-json',
+    betaGrantSecret({ userId: user.id, precisionLimit: '1000' }),
+    betaGrantSecret({ userId: user.id, precisionLimit: 1001 }),
+    betaGrantSecret({ userId: user.id, canvasSeats: '1' }),
+    betaGrantSecret({ userId: user.id, canvasSeats: 101 })
+  ];
+
+  for (const path of livePaths) {
+    for (const secret of deniedSecrets) {
+      const { response, result } = await invokeLive(path, {
+        user,
+        jobs: [],
+        routes: [],
+        requested: 100,
+        env: { BETA_ACCESS_GRANTS: secret }
+      });
+      assert.equal(response.status, 403, path);
+      assert.equal(result.error, 'paid_precision_required', path);
+    }
   }
 });

@@ -813,7 +813,7 @@ test('assigned-route hydration uses the verified tenant manager and guards canon
   assert.match(lookup, /manager_id is the SavedRoute tenant key/);
   assert.match(lookup, /resolveRouteTenantEmail\(/);
   assert.match(lookup, /findLegacyVisibleRoute\(/);
-  assert.match(lookup, /WHERE wp\.user_email = \$\{workspaceEmail\}/);
+  assert.match(lookup, /WHERE LOWER\(wp\.user_email\) = LOWER\(\$\{workspaceEmail\}\)/);
   assert.match(
     lookup,
     /const canonicalAuthorizedHashes = missingWorkspaceHashes\.filter[\s\S]*FROM properties p/

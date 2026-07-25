@@ -64,6 +64,8 @@ function pinSafeCanonicalProperty(property) {
         lat: property.lat,
         lng: property.lng,
         h3_index: property.h3_index,
+        price: property.price,
+        sold_date: property.sold_date,
         original_status: property.original_status,
         created_at: property.created_at,
         updated_at: property.updated_at,
@@ -426,7 +428,7 @@ Deno.serve(async (req) => {
                     p.updated_at
                 FROM workspace_properties wp
                 JOIN properties p ON p.id = wp.property_id
-                WHERE wp.user_email = ${workspaceEmail}
+                WHERE LOWER(wp.user_email) = LOWER(${workspaceEmail})
                   AND p.lat IS NOT NULL
                   AND p.lng IS NOT NULL
                   AND (p.address_hash = ANY(${hashes}) OR p.legacy_hash = ANY(${hashes}))

@@ -2,6 +2,7 @@ import React from 'react';
 import { Check, Navigation, User, DollarSign, Ruler } from 'lucide-react';
 import { formatPropertyAge } from '@/utils';
 import { buildFullAddress, openInMaps } from '@/components/logic/navigation';
+import { resolvePropertySaleMetadata } from '@/components/logic/propertySaleMetadata';
 
 const STATUS_COLORS = {
   ELIGIBLE: '#FFFFFF',
@@ -37,24 +38,11 @@ export default function PropertyCard({
 }) {
   const isDone = property.effective_status !== 'ELIGIBLE';
   const statusColor = STATUS_COLORS[property.effective_status] || '#555';
-  const soldDate = property.sold_date || property.soldDate || property.lastSoldDate || property.last_sold_date || property.saleDate || property.sale_date;
+  const saleMetadata = resolvePropertySaleMetadata(property);
+  const soldDate = saleMetadata.soldDate;
   const age = formatPropertyAge(soldDate);
   const ownerName = property.owner_full_name || property.owner_name || property.ownerFullName;
-  const valueLabel = formatMoney(
-    property.price ??
-    property.estimated_value ??
-    property.estimatedValue ??
-    property.sale_price ??
-    property.last_sale_price ??
-    property.lastSoldPrice ??
-    property.last_sold_price ??
-    property.sale_amount ??
-    property.saleAmount ??
-    property.assessed_value ??
-    property.assessedValue ??
-    property.market_value ??
-    property.marketValue
-  );
+  const valueLabel = formatMoney(saleMetadata.amount);
   const sqftLabel = formatNumber(property.sqft || property.squareFootage);
   const yearBuilt = Number(property.year_built || property.yearBuilt) || null;
   const addressLabel = `${property.house_number || ''} ${property.street_name || ''}`.trim() || 'route stop';

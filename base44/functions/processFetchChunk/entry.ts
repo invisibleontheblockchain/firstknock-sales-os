@@ -419,13 +419,11 @@ function buildBatchDataRequest(job, skip = 0, take = 500, mode = 'strict_polygon
         ...(customOwnershipBounds ? { maxDate: customOwnershipBounds.newestDate } : {})
     };
 
+    // Intentionally omit options.datasets. Live BatchData responses suppress
+    // the intel/sale evidence required by Knock cards when this is scoped.
     const options = {
         skip,
-        take: Math.min(Math.max(Number(take) || BATCHDATA_MAX_TAKE, 1), BATCHDATA_MAX_TAKE),
-        // Request only the property, deed, and owner datasets used by the
-        // Precision route product. Do not implicitly ingest contact,
-        // demographic, mortgage, lien, or financial add-ons.
-        datasets: ['basic', 'deed', 'owner']
+        take: Math.min(Math.max(Number(take) || BATCHDATA_MAX_TAKE, 1), BATCHDATA_MAX_TAKE)
     };
 
     if (mode === 'centroid_fallback') {
@@ -716,9 +714,14 @@ function withSubdivisionInRawPayload(rawPayload, subdivisionName) {
     }
 }
 
+function normalizeWorkspaceEmail(value) {
+    return String(value || '').trim().toLowerCase() || 'unknown';
+}
+
 async function writePropertiesToNeon(sql, properties, job, excludedRouteHashes = new Set()) {
     let inserted = 0, existed = 0, updated = 0;
     const customOwnershipRange = getCustomOwnershipRange(job);
+    const workspaceEmail = normalizeWorkspaceEmail(job.user_email);
 
     for (const p of properties) {
         const isInSavedRoute = excludedRouteHashes.has(p.address_hash);
@@ -768,7 +771,7 @@ async function writePropertiesToNeon(sql, properties, job, excludedRouteHashes =
             `;
             await sql`
                 INSERT INTO workspace_properties (property_id, user_email, fetch_job_id, route_active, status, updated_at)
-                VALUES (${created[0].id}, ${job.user_email || 'unknown'}, ${job.id}, ${p.route_active !== false}, ${p.original_status}, NOW())
+                VALUES (${created[0].id}, ${workspaceEmail}, ${job.id}, ${p.route_active !== false}, ${p.original_status}, NOW())
                 ON CONFLICT (property_id, user_email)
                 DO UPDATE SET
                     fetch_job_id = CASE WHEN ${isInSavedRoute} THEN workspace_properties.fetch_job_id ELSE EXCLUDED.fetch_job_id END,
@@ -824,7 +827,7 @@ async function writePropertiesToNeon(sql, properties, job, excludedRouteHashes =
 
         await sql`
             INSERT INTO workspace_properties (property_id, user_email, fetch_job_id, route_active, status, updated_at)
-            VALUES (${existing.id}, ${job.user_email || 'unknown'}, ${job.id}, ${p.route_active !== false}, ${p.original_status}, NOW())
+            VALUES (${existing.id}, ${workspaceEmail}, ${job.id}, ${p.route_active !== false}, ${p.original_status}, NOW())
             ON CONFLICT (property_id, user_email)
             DO UPDATE SET
                 fetch_job_id = CASE WHEN ${isInSavedRoute} THEN workspace_properties.fetch_job_id ELSE EXCLUDED.fetch_job_id END,
@@ -837,7 +840,7 @@ async function writePropertiesToNeon(sql, properties, job, excludedRouteHashes =
     if (properties.length > 0) {
         await sql`
             INSERT INTO ingestion_metrics (fetch_job_id, user_email, records_inserted, records_updated, records_skipped)
-            VALUES (${job.id}, ${job.user_email || 'unknown'}, ${inserted}, ${updated}, ${existed})
+            VALUES (${job.id}, ${workspaceEmail}, ${inserted}, ${updated}, ${existed})
         `.catch(() => {});
     }
 
@@ -876,7 +879,7 @@ async function batchDataFetchWithRetry(requestBody) {
             await sleep(2 ** attempt * 1000);
             continue;
         }
-        if ((response.status === 500 || response.status === 503) && attempt < 2) {
+        if (response.status >= 500 && attempt < 2) {
             await sleep(5000);
             continue;
         }
@@ -1022,6 +1025,396 @@ async function fetchBatchDataRecords(job, onProgress = null) {
     return { records: fallback, attempts, mode_used: fallback.length > 0 ? fallbackMode : 'none' };
 }
 
+class RepairHttpError extends Error {
+    constructor(status, code, message) {
+        super(message);
+        this.status = status;
+        this.code = code;
+    }
+}
+
+function repairEmail(value, required = false) {
+    const email = String(value || '').trim().toLowerCase();
+    if (!email && !required) return null;
+    if (!email || email.length > 320 || /\s/.test(email) || !/^[^@]+@[^@]+\.[^@]+$/.test(email)) {
+        throw new RepairHttpError(400, 'invalid_target_email', 'target_email must be a valid email address.');
+    }
+    return email;
+}
+
+async function resolveRepairWorkspaceEmail(service, route, requestedEmail) {
+    const creatorEmail = repairEmail(route?.created_by);
+    if (requestedEmail && requestedEmail === creatorEmail) return requestedEmail;
+
+    let managerEmail = null;
+    const managerId = String(route?.manager_id || '').trim();
+    if ((!creatorEmail || requestedEmail) && managerId) {
+        const manager = await service.entities.User.get(managerId).catch(() => null);
+        managerEmail = repairEmail(manager?.email);
+    }
+    if (requestedEmail) {
+        if (requestedEmail === managerEmail) return requestedEmail;
+        throw new RepairHttpError(403, 'route_tenant_mismatch', 'target_email does not match the saved route owner.');
+    }
+    if (creatorEmail) return creatorEmail;
+    if (managerEmail) return managerEmail;
+    throw new RepairHttpError(409, 'route_tenant_missing', 'The saved route does not have a verifiable workspace owner.');
+}
+
+function positiveRepairNumber(...values) {
+    for (const value of values) {
+        if (value === undefined || value === null || value === '') continue;
+        if (typeof value === 'object') {
+            const nested = positiveRepairNumber(
+                value.amount,
+                value.value,
+                value.estimatedValue,
+                value.total,
+                value.number,
+                value.raw
+            );
+            if (nested !== null) return nested;
+            continue;
+        }
+        const parsed = Number(String(value).replace(/[^0-9.-]/g, ''));
+        if (Number.isFinite(parsed) && parsed > 0) return parsed;
+    }
+    return null;
+}
+
+function isMissingRepairPrice(value) {
+    const price = Number(value);
+    return value === null || value === undefined || value === ''
+        || !Number.isFinite(price) || price <= 0;
+}
+
+function isMissingRepairDate(value) {
+    return value === null || value === undefined || value === '';
+}
+
+function repairMetadataFromRecord(record, job, allowedHashes) {
+    const mapped = mapBatchDataProperty(record, job);
+    if (!mapped || !allowedHashes.has(String(mapped.address_hash))) return null;
+
+    const p = record?.property || record || {};
+    const intel = p.intel || {};
+    const listing = p.listing || {};
+    const sale = p.sale || p.lastSale || p.deed?.sale || p.transaction || {};
+    const lastSale = sale.lastSale || sale.lastTransfer || sale;
+    const valuation = p.valuation || p.avm || p.estimatedValue || p.assessment?.valuation || p.assessor?.valuation || {};
+    const assessment = p.assessment || p.assessor || p.tax || {};
+    const saleAmount = positiveRepairNumber(
+        intel.lastSoldPrice,
+        intel.lastSalePrice,
+        intel.lastTransferPrice,
+        sale?.amount,
+        sale?.price,
+        sale?.salePrice,
+        lastSale?.amount,
+        lastSale?.price,
+        lastSale?.salePrice,
+        p.lastSalePrice,
+        p.lastSoldPrice,
+        p.salePrice,
+        p.price
+    );
+    const estimatedValue = positiveRepairNumber(
+        intel.estimatedValue,
+        intel.estimatedMarketValue,
+        intel.totalMarketValue,
+        intel.propertyValue,
+        intel.estValue,
+        intel.avm,
+        intel.avmValue,
+        intel.value,
+        intel.amount,
+        valuation.estimatedValue,
+        valuation.value,
+        valuation.avm,
+        valuation.avmValue,
+        valuation.amount,
+        assessment.totalValue,
+        assessment.marketValue,
+        assessment.assessedValue,
+        assessment.totalMarketValue,
+        assessment.market,
+        p.estimatedValue,
+        p.estimated_value,
+        p.avm,
+        p.avmValue,
+        p.assessedValue,
+        p.price,
+        listing.price,
+        listing.listPrice
+    );
+    return {
+        address_hash: String(mapped.address_hash),
+        price: positiveRepairNumber(mapped.price, estimatedValue, saleAmount),
+        sold_date: toNullableDate(mapped.sold_date),
+        sale_amount: saleAmount
+    };
+}
+
+function repairMetadataSatisfies(row, metadata) {
+    if (!metadata) return false;
+    if (isMissingRepairPrice(row.price) && isMissingRepairPrice(metadata.price)) return false;
+    if (isMissingRepairDate(row.sold_date) && isMissingRepairDate(metadata.sold_date)) return false;
+    return true;
+}
+
+function selectRepairFetchJobId(linkedIds, requestedId) {
+    const ids = [...new Set(linkedIds.map(id => String(id || '').trim()).filter(Boolean))];
+    if (requestedId) {
+        if (!ids.includes(requestedId)) {
+            throw new RepairHttpError(403, 'fetch_job_lineage_mismatch', 'fetch_job_id is not linked to this saved route workspace.');
+        }
+        return requestedId;
+    }
+    if (ids.length === 0) {
+        throw new RepairHttpError(409, 'fetch_job_lineage_missing', 'No FetchJob lineage is linked to this saved route.');
+    }
+    if (ids.length !== 1) {
+        throw new RepairHttpError(409, 'fetch_job_lineage_ambiguous', 'Multiple FetchJobs are linked to this route; provide fetch_job_id.');
+    }
+    return ids[0];
+}
+
+async function scanRepairMetadata(job, targetRows) {
+    const allowedHashes = new Set(targetRows.map(row => String(row.address_hash)));
+    const matches = new Map();
+    const maxReviewed = Math.min(1000, Math.max(BATCHDATA_MAX_TAKE, targetRows.length * 50));
+    let reviewed = 0;
+    let skip = 0;
+    let pages = 0;
+    let totalRecordCount = null;
+
+    while (reviewed < maxReviewed) {
+        const take = Math.min(BATCHDATA_MAX_TAKE, maxReviewed - reviewed);
+        const requestBody = buildBatchDataRequest(job, skip, take, 'broad_polygon');
+        const payload = await batchDataFetchWithRetry(requestBody);
+        const records = extractBatchDataRecords(payload);
+        if (totalRecordCount === null) totalRecordCount = extractBatchDataTotal(payload);
+        pages++;
+        reviewed += records.length;
+
+        for (const record of records) {
+            const metadata = repairMetadataFromRecord(record, job, allowedHashes);
+            if (!metadata) continue;
+            const existing = matches.get(metadata.address_hash);
+            matches.set(metadata.address_hash, existing ? {
+                address_hash: metadata.address_hash,
+                price: existing.price ?? metadata.price,
+                sold_date: existing.sold_date ?? metadata.sold_date,
+                sale_amount: existing.sale_amount ?? metadata.sale_amount
+            } : metadata);
+        }
+
+        if (targetRows.every(row => repairMetadataSatisfies(
+            row,
+            matches.get(String(row.address_hash))
+        ))) break;
+        if (records.length < take) break;
+        if (totalRecordCount !== null && reviewed >= totalRecordCount) break;
+        skip += take;
+    }
+    return {
+        matches,
+        pages,
+        reviewed,
+        scanLimitReached: reviewed >= maxReviewed
+            && (totalRecordCount === null || reviewed < totalRecordCount)
+    };
+}
+
+function buildRepairPlan(row, metadata) {
+    if (!metadata) return null;
+    const price = isMissingRepairPrice(row.price) && !isMissingRepairPrice(metadata.price)
+        ? metadata.price
+        : null;
+    const soldDate = isMissingRepairDate(row.sold_date) && !isMissingRepairDate(metadata.sold_date)
+        ? metadata.sold_date
+        : null;
+    if (price === null && soldDate === null) return null;
+    return { row, price, soldDate, saleAmount: metadata.sale_amount };
+}
+
+async function applyRouteMetadataRepair(sql, plan, routeId, workspaceEmail) {
+    const propertyAudit = plan.price === null ? {} : { estimated_value: plan.price };
+    const saleAudit = {
+        ...(plan.soldDate === null ? {} : { date: plan.soldDate }),
+        ...(plan.saleAmount === null || plan.saleAmount === undefined ? {} : { amount: plan.saleAmount })
+    };
+    const updated = await sql`
+        UPDATE properties
+        SET
+            price = CASE WHEN price IS NULL OR price <= 0 THEN ${plan.price} ELSE price END,
+            sold_date = COALESCE(sold_date, ${plan.soldDate}),
+            raw_payload = jsonb_set(
+                jsonb_set(
+                    COALESCE(raw_payload, '{}'::jsonb),
+                    '{property}',
+                    COALESCE(raw_payload -> 'property', '{}'::jsonb) || ${JSON.stringify(propertyAudit)}::jsonb,
+                    TRUE
+                ),
+                '{sale}',
+                COALESCE(raw_payload -> 'sale', '{}'::jsonb) || ${JSON.stringify(saleAudit)}::jsonb,
+                TRUE
+            ),
+            updated_at = NOW()
+        WHERE id = ${plan.row.id}
+          AND address_hash = ${String(plan.row.address_hash)}
+          AND (price IS NULL OR price <= 0 OR sold_date IS NULL)
+        RETURNING id
+    `;
+    const link = await sql`
+        INSERT INTO workspace_properties (
+            property_id, user_email, route_active, status, assigned_route_id, updated_at
+        )
+        VALUES (
+            ${plan.row.id},
+            ${workspaceEmail},
+            TRUE,
+            ${plan.row.original_status || 'BATCHDATA_CONFIRMED'},
+            ${routeId},
+            NOW()
+        )
+        ON CONFLICT (property_id, user_email) DO NOTHING
+        RETURNING property_id
+    `;
+    return { updated: updated.length > 0, linkInserted: link.length > 0 };
+}
+
+async function handleSavedRouteMetadataRepair(base44, body) {
+    try {
+        const actor = await base44.auth.me();
+        if (!actor) return Response.json({ error: 'unauthorized' }, { status: 401 });
+        if (String(actor.role || actor?.data?.role || '').trim().toLowerCase() !== 'admin') {
+            return Response.json({ error: 'forbidden' }, { status: 403 });
+        }
+        if (!BATCHDATA_API_KEY || !DATABASE_URL) {
+            throw new RepairHttpError(503, 'repair_configuration_unavailable', 'Saved-route metadata repair is not configured.');
+        }
+
+        const routeId = String(body.route_id || '').trim();
+        if (!routeId || routeId.length > 256) {
+            throw new RepairHttpError(400, 'invalid_route_id', 'route_id is required.');
+        }
+        const maxProperties = body.max_properties === undefined ? 100 : Number(body.max_properties);
+        if (!Number.isSafeInteger(maxProperties) || maxProperties < 1 || maxProperties > 100) {
+            throw new RepairHttpError(400, 'invalid_max_properties', 'max_properties must be a whole number from 1 through 100.');
+        }
+        const requestedFetchJobId = body.fetch_job_id === undefined
+            ? null
+            : String(body.fetch_job_id || '').trim();
+        if (requestedFetchJobId !== null && (!requestedFetchJobId || requestedFetchJobId.length > 256)) {
+            throw new RepairHttpError(400, 'invalid_fetch_job_id', 'fetch_job_id must be a valid identifier.');
+        }
+        const requestedEmail = body.target_email === undefined
+            ? null
+            : repairEmail(body.target_email, true);
+        const apply = body.apply === true;
+        const service = base44.asServiceRole;
+        const route = await service.entities.SavedRoute.get(routeId).catch(() => null);
+        if (!route || String(route.id || '') !== routeId) {
+            throw new RepairHttpError(404, 'route_not_found', 'The saved route was not found.');
+        }
+        const routeHashes = [...new Set(
+            (Array.isArray(route.property_hashes) ? route.property_hashes : [])
+                .map(hash => String(hash || '').trim())
+                .filter(Boolean)
+        )];
+        if (routeHashes.length === 0 || routeHashes.length > 5000 || routeHashes.some(hash => hash.length > 256)) {
+            throw new RepairHttpError(409, 'invalid_route_manifest', 'The saved route property manifest is invalid.');
+        }
+        const workspaceEmail = await resolveRepairWorkspaceEmail(service, route, requestedEmail);
+        const sql = neon(DATABASE_URL);
+        const canonicalRows = await sql`
+            SELECT p.id, p.address_hash, p.price, p.sold_date, p.original_status
+            FROM properties p
+            WHERE p.address_hash = ANY(${routeHashes})
+            ORDER BY p.id
+        `;
+        const lineageRows = await sql`
+            SELECT DISTINCT wp.fetch_job_id
+            FROM workspace_properties wp
+            JOIN properties p ON p.id = wp.property_id
+            WHERE LOWER(wp.user_email) = LOWER(${workspaceEmail})
+              AND p.address_hash = ANY(${routeHashes})
+              AND wp.fetch_job_id IS NOT NULL
+        `;
+        const fetchJobId = selectRepairFetchJobId(
+            lineageRows.map(row => row.fetch_job_id),
+            requestedFetchJobId
+        );
+        const sourceJob = await service.entities.FetchJob.get(fetchJobId).catch(() => null);
+        if (!sourceJob || String(sourceJob.id || '') !== fetchJobId) {
+            throw new RepairHttpError(404, 'fetch_job_not_found', 'The linked source FetchJob was not found.');
+        }
+        if (sourceJob.provider && String(sourceJob.provider).toLowerCase() !== 'batchdata') {
+            throw new RepairHttpError(409, 'invalid_source_job', 'The linked FetchJob is not a BatchData job.');
+        }
+
+        const allMissingRows = canonicalRows.filter(row => (
+            isMissingRepairPrice(row.price) || isMissingRepairDate(row.sold_date)
+        ));
+        const targetRows = allMissingRows.slice(0, maxProperties);
+        const scan = targetRows.length > 0
+            ? await scanRepairMetadata(sourceJob, targetRows)
+            : { matches: new Map(), pages: 0, reviewed: 0, scanLimitReached: false };
+        const plans = targetRows
+            .map(row => buildRepairPlan(row, scan.matches.get(String(row.address_hash))))
+            .filter(Boolean);
+
+        let updated = 0;
+        let workspaceLinksInserted = 0;
+        if (apply) {
+            for (const plan of plans) {
+                const result = await applyRouteMetadataRepair(
+                    sql,
+                    plan,
+                    routeId,
+                    workspaceEmail
+                );
+                if (result.updated) updated++;
+                if (result.linkInserted) workspaceLinksInserted++;
+            }
+        }
+        const fullyMatched = targetRows.filter(row => repairMetadataSatisfies(
+            row,
+            scan.matches.get(String(row.address_hash))
+        )).length;
+        return Response.json({
+            success: true,
+            apply,
+            counts: {
+                route_properties: routeHashes.length,
+                canonical_rows: canonicalRows.length,
+                missing_metadata: allMissingRows.length,
+                processed: targetRows.length,
+                provider_pages: scan.pages,
+                provider_records_reviewed: scan.reviewed,
+                exact_matches: scan.matches.size,
+                fully_matched: fullyMatched,
+                repairable: plans.length,
+                updated,
+                workspace_links_inserted: workspaceLinksInserted,
+                unmatched: targetRows.length - fullyMatched,
+                scan_limit_reached: scan.scanLimitReached ? 1 : 0,
+                truncated: allMissingRows.length > targetRows.length ? 1 : 0
+            }
+        });
+    } catch (error) {
+        if (error instanceof RepairHttpError) {
+            return Response.json({ error: error.code, message: error.message }, { status: error.status });
+        }
+        console.error('[processFetchChunk route repair]', error?.code || error?.name || 'unexpected_error');
+        return Response.json({
+            error: 'route_metadata_repair_failed',
+            message: 'Saved-route metadata repair could not be completed.'
+        }, { status: 502 });
+    }
+}
+
 Deno.serve(async (req) => {
     let base44 = null;
     let lockId = null;
@@ -1031,6 +1424,10 @@ Deno.serve(async (req) => {
         base44 = createClientFromRequest(req);
         const body = await req.json().catch(() => ({}));
         targetJobId = body.job_id ? String(body.job_id) : null;
+
+        if (body.repair_saved_route_metadata === true) {
+            return await handleSavedRouteMetadataRepair(base44, body);
+        }
 
         if (body.self_test === true) {
             return Response.json({ success: true, active_provider: 'batchdata', rentcast_active: false, batchdata_polygon_search: true, dataset_scope: 'omitted_for_sale_evidence', has_batchdata_key: !!BATCHDATA_API_KEY, has_database_url: !!DATABASE_URL });
@@ -1356,11 +1753,12 @@ Deno.serve(async (req) => {
         let integrityWarning = null;
         if (mapped.length > 0) {
             const mappedHashes = mapped.map(p => p.address_hash);
+            const workspaceEmail = normalizeWorkspaceEmail(job.user_email);
             const verifyRows = await sql`
                 SELECT p.address_hash
                 FROM workspace_properties wp
                 JOIN properties p ON p.id = wp.property_id
-                WHERE wp.user_email = ${job.user_email || 'unknown'}
+                WHERE LOWER(wp.user_email) = LOWER(${workspaceEmail})
                   AND p.address_hash = ANY(${mappedHashes})
             `;
             const persistedSet = new Set(verifyRows.map(r => r.address_hash));

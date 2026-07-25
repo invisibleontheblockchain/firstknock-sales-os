@@ -59,10 +59,11 @@ function betaGrantResolution(user: any) {
   const precisionLimit = Number(candidate?.precision_limit);
   const canvasSeats = Number(candidate?.canvas_seats);
   if (!candidate || Array.isArray(candidate) || typeof candidate !== 'object'
-    || typeof candidate.grant_id !== 'string' || !candidate.grant_id.trim() || candidate.grant_id.length > 256
+    || typeof candidate.grant_id !== 'string' || !candidate.grant_id.trim() || candidate.grant_id !== candidate.grant_id.trim() || candidate.grant_id.length > 256
     || candidate.status !== 'active'
-    || !Number.isInteger(precisionLimit) || precisionLimit < 1 || precisionLimit > 1_000
-    || !Number.isInteger(canvasSeats) || canvasSeats < 1 || canvasSeats > 100
+    || typeof candidate.precision_limit !== 'number' || typeof candidate.canvas_seats !== 'number'
+    || !Number.isSafeInteger(precisionLimit) || precisionLimit < 1 || precisionLimit > 1_000
+    || !Number.isSafeInteger(canvasSeats) || canvasSeats < 1 || canvasSeats > 100
     || startsAt === null || endsAt === null || startsAt >= endsAt) {
     return { present: true, grant: null };
   }

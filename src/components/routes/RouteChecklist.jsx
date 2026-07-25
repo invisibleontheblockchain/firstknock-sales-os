@@ -7,6 +7,7 @@ import { buildFullAddress, getRouteNavigationPlan, openInMaps, openNavigationBat
 import { getNavigationSessionProgress, selectRemainingTodoStops } from '../logic/routeNavigation';
 import { parseOptionalSaleAmount } from '../analytics/salesManagement';
 import { isBusinessOwnedProperty } from '../logic/ownerType';
+import { resolvePropertySaleMetadata } from '../logic/propertySaleMetadata';
 import { formatPropertyAge } from '@/utils';
 import { base44 } from '@/api/base44Client';
 
@@ -436,24 +437,11 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose, navi
                         const isExpanded = expandedId === prop.address_hash;
                         const isDone = currentStatus && currentStatus !== 'ELIGIBLE';
                         const ownerName = prop.owner_full_name || prop.owner_name || prop.ownerFullName;
-                        const valueLabel = formatMoney(
-                            prop.price ??
-                            prop.estimated_value ??
-                            prop.estimatedValue ??
-                            prop.sale_price ??
-                            prop.last_sale_price ??
-                            prop.lastSoldPrice ??
-                            prop.last_sold_price ??
-                            prop.sale_amount ??
-                            prop.saleAmount ??
-                            prop.assessed_value ??
-                            prop.assessedValue ??
-                            prop.market_value ??
-                            prop.marketValue
-                        );
+                        const saleMetadata = resolvePropertySaleMetadata(prop);
+                        const valueLabel = formatMoney(saleMetadata.amount);
                         const sqftLabel = formatNumber(prop.sqft || prop.squareFootage);
                         const yearBuilt = Number(prop.year_built || prop.yearBuilt) || null;
-                        const soldDate = prop.sold_date || prop.soldDate || prop.lastSoldDate || prop.last_sold_date || prop.saleDate || prop.sale_date;
+                        const soldDate = saleMetadata.soldDate;
                         const ageLabel = formatPropertyAge(soldDate);
 
                         return (

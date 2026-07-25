@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import test from 'node:test';
 
 import {
   hasCompleteRouteMapPoints,
+  hasRecoveryLimitedRouteProperties,
   hydrateRouteWithLookup,
+  isRouteHydrationCacheable,
   lookupRoutePropertiesInBatches,
   ROUTE_HYDRATION_BATCH_LIMIT,
 } from '../src/components/logic/routeHydrationCore.js';
@@ -74,6 +77,65 @@ test('a complete scoped response does not make an unnecessary fallback request',
   assert.equal(calls.length, 1);
   assert.equal(calls[0].routeId, 'route-1');
   assert.equal(hasCompleteRouteMapPoints(hydrated), true);
+});
+
+test('pin-only scoped recovery retries the workspace and keeps the richer property', async () => {
+  const calls = [];
+  const limitedProperty = {
+    ...propertyA,
+    recovery_limited: true,
+  };
+  const richProperty = {
+    ...propertyA,
+    sold_date: '2025-10-01T00:00:00.000Z',
+    price: 750000,
+  };
+  const onePropertyRoute = {
+    id: 'route-limited',
+    property_hashes: ['legacy-a'],
+  };
+
+  const hydrated = await hydrateRouteWithLookup(onePropertyRoute, async (request) => {
+    calls.push(request);
+    return request.routeId ? [limitedProperty] : [richProperty];
+  });
+
+  assert.deepEqual(calls, [
+    { hashes: ['legacy-a'], routeId: 'route-limited' },
+    { hashes: ['legacy-a'], routeId: null },
+  ]);
+  assert.equal(hydrated.properties[0].recovery_limited, undefined);
+  assert.equal(hydrated.properties[0].price, 750000);
+  assert.equal(hydrated.properties[0].sold_date, '2025-10-01T00:00:00.000Z');
+  assert.equal(isRouteHydrationCacheable(hydrated), true);
+});
+
+test('pin-only recovery remains visible but is not cacheable when the workspace has no richer row', async () => {
+  const limitedProperty = {
+    ...propertyA,
+    recovery_limited: true,
+  };
+  const onePropertyRoute = {
+    id: 'route-still-limited',
+    property_hashes: ['legacy-a'],
+  };
+
+  const hydrated = await hydrateRouteWithLookup(onePropertyRoute, async () => [limitedProperty]);
+
+  assert.equal(hasCompleteRouteMapPoints(hydrated), true);
+  assert.equal(hasRecoveryLimitedRouteProperties(hydrated), true);
+  assert.equal(isRouteHydrationCacheable(hydrated), false);
+});
+
+test('map and Knock caches use the recovery-aware cacheability guard', () => {
+  const wrapperSource = fs.readFileSync('src/components/logic/routeHydration.jsx', 'utf8');
+  const repHomeSource = fs.readFileSync('src/pages/RepHome.jsx', 'utf8');
+
+  assert.match(wrapperSource, /if \(isRouteHydrationCacheable\(hydratedRoute\)\)/);
+  assert.match(wrapperSource, /hydrated\.every\(isRouteHydrationCacheable\)/);
+  assert.match(repHomeSource, /cached\.some\(isRecoveryLimitedProperty\)/);
+  assert.match(repHomeSource, /localforage\.removeItem\(`cached_props_\$\{activeRoute\.id\}`\)/);
+  assert.match(repHomeSource, /if \(isRouteHydrationCacheable\(bestRoute\)\)/);
 });
 
 test('failed hydration preserves valid in-memory pins instead of replacing them with an empty route', async () => {
