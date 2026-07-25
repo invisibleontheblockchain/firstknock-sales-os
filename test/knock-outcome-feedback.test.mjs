@@ -64,6 +64,31 @@ test('an unsettled outcome survives a refetch triggered by an earlier write', ()
   assert.match(repHome, /withPendingOutcomes\(\s*\n?\s*Array\.isArray\(res\) \? res : res\?\.items \|\| \[\],\s*\n?\s*selectedProperty\.address_hash/);
 });
 
+test('the checklist logs outcomes optimistically on the same terms as the knock tab', () => {
+  const home = readSource('src/pages/Home.jsx');
+
+  // Marked and returned on the tap, not after the round-trip.
+  assert.match(home, /applyOptimisticLog\(\{[\s\S]*?\}\);\s*\n\s*\n?\s*\/\/[\s\S]*?outcomeQueueRef\.current = outcomeQueueRef\.current/);
+  assert.doesNotMatch(home, /await createLogMutation\.mutateAsync\(\{\s*\n\s*\.\.\.logData,/);
+  // The blocking single-flight guard is gone; the queue replaces it.
+  assert.doesNotMatch(home, /managerOutcomeInFlightRef/);
+
+  // Same rollback and refetch-survival contract as the knock tab.
+  assert.match(home, /dropOptimisticLog\(logData\?\.optimistic_id, logData\?\.address_hash\)/);
+  assert.match(home, /pendingOutcomesRef\.current\.set\(entry\.id, entry\)/);
+  assert.match(home, /pendingOutcomesRef\.current\.delete\(logData\?\.optimistic_id\)/);
+  assert.match(home, /return withPendingOutcomes\(Array\.isArray\(res\) \? res : \(res\?\.items \|\| \[\]\)\)/);
+});
+
+test('an optimistic checklist row carries created_by so the org filter keeps it', () => {
+  const home = readSource('src/pages/Home.jsx');
+
+  // logs drops any row whose created_by is outside the org, which would
+  // silently discard the optimistic row and leave the stop looking untouched.
+  assert.match(home, /validEmails\.has\(l\.created_by\.toLowerCase\(\)\)/);
+  assert.match(home, /created_by: user\?\.email \|\| null/);
+});
+
 test('property history collapses behind a dropdown so the outcome grid stays reachable', () => {
   const sheet = readSource('src/components/rep/PropertyDetailSheet.jsx');
 

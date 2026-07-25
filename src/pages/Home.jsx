@@ -95,6 +95,13 @@ import {
 } from '../components/map/mapAttribution';
 import useViewportMapProperties from '../components/map/useViewportMapProperties';
 
+// The log cache is an array in some responses and { items } in others.
+function mergeLogCache(old, mutate) {
+    if (Array.isArray(old)) return mutate(old);
+    if (old && Array.isArray(old.items)) return { ...old, items: mutate(old.items) };
+    return mutate([]);
+}
+
 function normalizeHistoryPolygon(value) {
     if (!Array.isArray(value)) return [];
     let points = value;
@@ -467,7 +474,8 @@ export default function Home() {
     });
     const mapRef = useRef(null);
     const appointmentMapFocusHandledRef = useRef(false);
-    const managerOutcomeInFlightRef = useRef(false);
+    const outcomeQueueRef = useRef(Promise.resolve());
+    const pendingOutcomesRef = useRef(new Map());
     const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me(), staleTime: 1000 * 60 * 5 });
     useEffect(() => {
         if (!user?.id || routeModeHydratedUserRef.current === user.id) return;
@@ -1151,10 +1159,22 @@ export default function Home() {
         // toast.success moved to handleSaveRoute/createRouteMutation onSuccess
     }, [activeRoute, filteredActiveRoute, activeRouteSoldFilter, handleSaveRoute]);
 
+    // Outcomes whose write has not settled yet survive any refetch that lands in
+    // the meantime, so a checklist stop never flickers back to Todo under the rep.
+    const withPendingOutcomes = useCallback((rows, addressHash = null) => {
+        const pending = [...pendingOutcomesRef.current.values()]
+            .filter((entry) => !addressHash || entry.address_hash === addressHash);
+        return pending.length ? [...rows, ...pending] : rows;
+    }, []);
+
     const { data: logsRaw = [], isLoading: logsLoading } = useQuery({
         queryKey: ['interactionLogs', user?.email],
         staleTime: 1000 * 60 * 2,
-        queryFn: () => user ? base44.entities.InteractionLog.list('-created_date', 5000) : [],
+        queryFn: async () => {
+            if (!user) return withPendingOutcomes([]);
+            const res = await base44.entities.InteractionLog.list('-created_date', 5000);
+            return withPendingOutcomes(Array.isArray(res) ? res : (res?.items || []));
+        },
         enabled: !!user
     });
 
@@ -1274,21 +1294,43 @@ export default function Home() {
         setShowRoutePanel(false);
     };
 
+    // Optimistic outcome rows are keyed by their own id so a rollback removes one
+    // failed write without discarding outcomes the rep logged after it.
+    const applyOptimisticLog = useCallback((entry) => {
+        pendingOutcomesRef.current.set(entry.id, entry);
+        const insert = (rows) => [...rows, entry];
+        queryClient.setQueryData(['interactionLogs', user?.email], (old) => mergeLogCache(old, insert));
+        queryClient.setQueryData(['selectedPropertyHistory', entry.address_hash], (old) => mergeLogCache(old, insert));
+    }, [queryClient, user?.email]);
+
+    const dropOptimisticLog = useCallback((optimisticId, addressHash) => {
+        if (!optimisticId) return;
+        pendingOutcomesRef.current.delete(optimisticId);
+        const remove = (rows) => rows.filter((log) => log?.id !== optimisticId);
+        queryClient.setQueryData(['interactionLogs', user?.email], (old) => mergeLogCache(old, remove));
+        queryClient.setQueryData(['selectedPropertyHistory', addressHash], (old) => mergeLogCache(old, remove));
+    }, [queryClient, user?.email]);
+
     const createLogMutation = useMutation({
         mutationFn: async (logData) => {
+            const { optimistic_id, ...persistedLog } = logData;
             const response = await base44.functions.invoke('recordKnockOutcome', {
                 action: 'record',
                 idempotency_key: createOutcomeIdempotencyKey('manager-knock'),
                 interaction: {
-                    ...logData,
-                    route_id: logData.route_id || activeRoute?.id || null
+                    ...persistedLog,
+                    route_id: persistedLog.route_id || activeRoute?.id || null
                 }
             });
             return response.data;
         },
-        onSuccess: (result) => {
+        onSettled: (_result, _error, logData) => {
+            // The server row now stands in for the optimistic one on the next refetch.
+            pendingOutcomesRef.current.delete(logData?.optimistic_id);
             queryClient.invalidateQueries({ queryKey: ['interactionLogs'] });
             queryClient.invalidateQueries({ queryKey: ['selectedPropertyHistory'] });
+        },
+        onSuccess: (result) => {
             if (Number.isFinite(result?.outcomes_logged)) {
                 queryClient.setQueryData(['user'], (current) => ({
                     ...(current || user || {}),
@@ -1296,7 +1338,8 @@ export default function Home() {
                 }));
             }
         },
-        onError: (error) => {
+        onError: (error, logData) => {
+            dropOptimisticLog(logData?.optimistic_id, logData?.address_hash);
             const gate = getOutcomeGateFromError(error);
             if (gate) {
                 setKnockGateMode(gate);
@@ -2535,14 +2578,16 @@ export default function Home() {
                 { address_hash: selectedProperty.address_hash },
                 '-created_date', 100
             );
-            return Array.isArray(res) ? res : (res?.items || []);
+            return withPendingOutcomes(
+                Array.isArray(res) ? res : (res?.items || []),
+                selectedProperty.address_hash
+            );
         },
         enabled: !!selectedProperty?.address_hash
     });
 
     const handleLogResult = useCallback(async (property, statusOrLogData, note = null) => {
-        if (managerOutcomeInFlightRef.current) return false;
-        managerOutcomeInFlightRef.current = true;
+        if (!property?.address_hash) return false;
 
         const logData = typeof statusOrLogData === 'object'
             ? statusOrLogData
@@ -2562,22 +2607,37 @@ export default function Home() {
             }
             : {};
 
-        try {
-            await createLogMutation.mutateAsync({
-                ...logData,
-                ...saleSnapshot,
-                address_hash: property.address_hash,
-                gps_proof_lat: property.lat,
-                gps_proof_lng: property.lng,
-                route_id: logData.route_id || activeRoute?.id || null
+        const optimisticId = `optimistic-${createOutcomeIdempotencyKey('manager-knock')}`;
+        const enrichedLogData = {
+            ...logData,
+            ...saleSnapshot,
+            address_hash: property.address_hash,
+            optimistic_id: optimisticId,
+            gps_proof_lat: property.lat,
+            gps_proof_lng: property.lng,
+            route_id: logData.route_id || activeRoute?.id || null
+        };
+
+        // The stop is marked on the tap; the authoritative write runs behind the
+        // rep. A failure rolls that row back and surfaces the gate or an error.
+        // created_by has to be set — the logs memo drops rows outside the org.
+        applyOptimisticLog({
+            ...enrichedLogData,
+            id: optimisticId,
+            created_date: new Date().toISOString(),
+            created_by: user?.email || null,
+        });
+
+        // Every outcome write takes a per-user server lease, so concurrent taps
+        // would collide with 409 outcome_write_in_progress. Queue them instead.
+        outcomeQueueRef.current = outcomeQueueRef.current
+            .then(() => createLogMutation.mutateAsync(enrichedLogData))
+            .catch(() => {
+                // Mutation callbacks roll the row back and display gates and errors.
             });
-            return true;
-        } catch {
-            return false;
-        } finally {
-            managerOutcomeInFlightRef.current = false;
-        }
-    }, [activeRoute, createLogMutation, user]);
+
+        return true;
+    }, [activeRoute, applyOptimisticLog, createLogMutation, user]);
 
     const handleDeleteInteraction = useCallback(async (log) => {
         if (!log?.id) return;
