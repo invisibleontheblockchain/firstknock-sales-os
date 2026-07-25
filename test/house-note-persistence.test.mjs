@@ -109,6 +109,30 @@ test('the checklist keys note drafts and history by address_hash', () => {
   assert.doesNotMatch(checklist, /houseNotes\[idx\]|houseNotes\[index\]/);
 });
 
+// Parity: the knock tab puts the note behind an Add Details toggle rather than
+// leaving a textarea open on every row.
+test('the note sits behind an Add Details button, like the knock tab', () => {
+  const checklist = readSource('src/components/routes/RouteChecklist.jsx');
+  const knock = readSource('src/components/rep/PropertyDetailSheet.jsx');
+
+  assert.match(knock, />\s*Add Details\s*</);
+  assert.match(checklist, />\s*Add Details\s*</);
+
+  // The toggle is per house and announced, and the field only exists when open.
+  assert.match(checklist, /setDetailsOpenHash\(detailsOpen \? null : prop\.address_hash\)/);
+  assert.match(checklist, /aria-expanded=\{detailsOpen\}/);
+  assert.match(checklist, /aria-controls=\{`house-note-panel-\$\{prop\.address_hash\}`\}/);
+  assert.match(checklist, /\{detailsOpen && \([\s\S]{0,400}?<textarea/);
+});
+
+// A collapsed row still has to show that a note exists, without relying on colour.
+test('a saved note is visible while Add Details is collapsed', () => {
+  const checklist = readSource('src/components/routes/RouteChecklist.jsx');
+
+  assert.match(checklist, /\{noteDirty \? 'Unsaved' : 'Saved'\}/);
+  assert.match(checklist, /\{!detailsOpen && savedNote &&/);
+});
+
 // A rejected write must not leave the interface claiming the note was saved.
 test('a failed outcome keeps the note draft instead of reporting success', () => {
   const checklist = readSource('src/components/routes/RouteChecklist.jsx');
