@@ -1164,7 +1164,20 @@ export default function Home() {
     const withPendingOutcomes = useCallback((rows, addressHash = null) => {
         const pending = [...pendingOutcomesRef.current.values()]
             .filter((entry) => !addressHash || entry.address_hash === addressHash);
-        return pending.length ? [...rows, ...pending] : rows;
+        if (!pending.length) return rows;
+
+        const serverIds = new Set(rows.map((row) => row?.id).filter(Boolean));
+        const unconfirmed = pending.filter((entry) => {
+            // An optimistic row is retired only once its real row is actually
+            // visible here. Retiring it when the write finished instead let the
+            // refetch that followed flip the stop back to Todo.
+            if (entry.server_id && serverIds.has(entry.server_id)) {
+                pendingOutcomesRef.current.delete(entry.id);
+                return false;
+            }
+            return true;
+        });
+        return unconfirmed.length ? [...rows, ...unconfirmed] : rows;
     }, []);
 
     const { data: logsRaw = [], isLoading: logsLoading } = useQuery({
@@ -1324,13 +1337,23 @@ export default function Home() {
             });
             return response.data;
         },
-        onSettled: (_result, _error, logData) => {
-            // The server row now stands in for the optimistic one on the next refetch.
-            pendingOutcomesRef.current.delete(logData?.optimistic_id);
+        onSettled: () => {
+            // The optimistic row is deliberately left in place here;
+            // withPendingOutcomes retires it when the refetch below actually
+            // returns the server row.
             queryClient.invalidateQueries({ queryKey: ['interactionLogs'] });
             queryClient.invalidateQueries({ queryKey: ['selectedPropertyHistory'] });
         },
-        onSuccess: (result) => {
+        onSuccess: (result, logData) => {
+            // Hand the optimistic row the id of the row it stands for, so it can
+            // be retired precisely rather than on a guess about timing.
+            const pendingEntry = pendingOutcomesRef.current.get(logData?.optimistic_id);
+            if (pendingEntry) {
+                const serverId = result?.interaction?.id || null;
+                if (serverId) pendingEntry.server_id = serverId;
+                else pendingOutcomesRef.current.delete(logData.optimistic_id);
+            }
+
             if (Number.isFinite(result?.outcomes_logged)) {
                 queryClient.setQueryData(['user'], (current) => ({
                     ...(current || user || {}),
