@@ -1,3 +1,5 @@
+import { withoutHouseNotes } from './outcomeStatus';
+
 /**
  * Territory Management Configuration
  * All properties stay ELIGIBLE in master data - we track results in logs
@@ -13,8 +15,9 @@ export const COOLDOWN_CONFIG = {
  * Master data stays ELIGIBLE - this determines routing/display priority
  */
 export const determineEffectiveStatus = (masterProp, logs) => {
-    const latestWorkflowLog = Array.isArray(logs) && logs.length > 0
-        ? [...logs].sort((a, b) => new Date(b.created_date).getTime() - new Date(a.created_date).getTime())[0]
+    const decisionLogs = withoutHouseNotes(logs);
+    const latestWorkflowLog = decisionLogs.length > 0
+        ? [...decisionLogs].sort((a, b) => new Date(b.created_date).getTime() - new Date(a.created_date).getTime())[0]
         : null;
     if (latestWorkflowLog?.counts_as_knock === false) {
         if (latestWorkflowLog.workflow_action === 'BULK_MOVE_TO_CALLBACK') return 'CALLBACK';
@@ -32,7 +35,7 @@ export const determineEffectiveStatus = (masterProp, logs) => {
     }
 
     // If no interaction logs, check master status first
-    if (!logs || logs.length === 0) {
+    if (decisionLogs.length === 0) {
         // Only exclude if it's a hard rejection. 'SOLD' in master data usually means MLS sold (Owner Occupied), 
         // which is a valid target, not "We sold it".
         if (['HARD_NO', 'DO_NOT_KNOCK'].includes(masterProp.original_status)) {
@@ -46,7 +49,7 @@ export const determineEffectiveStatus = (masterProp, logs) => {
     }
 
     // Sort logs by timestamp desc
-    const sortedLogs = [...logs].sort((a, b) => new Date(b.created_date).getTime() - new Date(a.created_date).getTime());
+    const sortedLogs = [...decisionLogs].sort((a, b) => new Date(b.created_date).getTime() - new Date(a.created_date).getTime());
     const latestLog = sortedLogs[0];
 
     // HARD_NO and SOLD are permanent exclusions from routing
@@ -398,11 +401,13 @@ export const isPointInPolygon = (point, vs) => {
 };
 
 export const getPropertyResultSummary = (logs) => {
-    if (!logs || logs.length === 0) {
+    // House notes are excluded: a saved note must never look like a decision.
+    const decisionLogs = withoutHouseNotes(logs);
+    if (decisionLogs.length === 0) {
         return { hasResult: false, latestResult: null, resultText: null, status: 'ELIGIBLE' };
     }
 
-    const sortedLogs = [...logs].sort((a, b) => new Date(b.created_date).getTime() - new Date(a.created_date).getTime());
+    const sortedLogs = [...decisionLogs].sort((a, b) => new Date(b.created_date).getTime() - new Date(a.created_date).getTime());
     const latest = sortedLogs[0];
 
     return {

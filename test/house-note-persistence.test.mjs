@@ -6,6 +6,7 @@ import test from 'node:test';
 import {
   OUTCOME_COLORS,
   OUTCOME_OPTIONS,
+  findHouseNoteLog,
   latestOutcomeNote,
   outcomeBorder,
   outcomeShortLabel,
@@ -104,9 +105,36 @@ test('the checklist keys note drafts and history by address_hash', () => {
   const checklist = readSource('src/components/routes/RouteChecklist.jsx');
 
   assert.match(checklist, /houseNotes\[prop\.address_hash\]/);
-  assert.match(checklist, /\[prop\.address_hash\]: e\.target\.value/);
+  assert.match(checklist, /onChange=\{\(e\) => handleNoteChange\(prop, e\.target\.value\)\}/);
+  assert.match(checklist, /const addressHash = property\.address_hash/);
   assert.match(checklist, /logsByProperty\.get\(property\?\.address_hash\)/);
   assert.doesNotMatch(checklist, /houseNotes\[idx\]|houseNotes\[index\]/);
+});
+
+// The dedicated note row is authoritative, and older notes that were attached
+// to an outcome still show, so nothing saved before house notes existed is lost.
+test('the dedicated note row wins over a note attached to an old outcome', () => {
+  const logs = [
+    log({ description: 'legacy note on an outcome', created_date: '2026-07-25T18:00:00.000Z' }),
+    log({
+      id: 'note-1',
+      source: 'house_note',
+      description: 'gate code 4412',
+      created_date: '2026-07-25T17:00:00.000Z'
+    })
+  ];
+
+  assert.equal(findHouseNoteLog(logs)?.id, 'note-1');
+  assert.equal(latestOutcomeNote(logs), 'gate code 4412');
+  assert.equal(latestOutcomeNote([log({ description: 'legacy only' })]), 'legacy only');
+});
+
+test('clearing a house note empties it rather than falling back to an old outcome note', () => {
+  const logs = [
+    log({ description: 'stale outcome note', created_date: '2026-07-25T18:00:00.000Z' }),
+    log({ source: 'house_note', description: '', created_date: '2026-07-25T19:00:00.000Z' })
+  ];
+  assert.equal(latestOutcomeNote(logs), '');
 });
 
 // Parity: the knock tab puts the note behind an Add Details toggle rather than
@@ -129,8 +157,47 @@ test('the note sits behind an Add Details button, like the knock tab', () => {
 test('a saved note is visible while Add Details is collapsed', () => {
   const checklist = readSource('src/components/routes/RouteChecklist.jsx');
 
-  assert.match(checklist, /\{noteDirty \? 'Unsaved' : 'Saved'\}/);
+  assert.match(checklist, /\{noteBadge\}/);
   assert.match(checklist, /\{!detailsOpen && savedNote &&/);
+});
+
+// Autosave: the rep types and walks away. The note must commit on a pause, on
+// blur, and when the panel closes — never only on a button they may not press.
+test('notes autosave on a pause and flush before they can be lost', () => {
+  const checklist = readSource('src/components/routes/RouteChecklist.jsx');
+
+  assert.match(checklist, /noteTimersRef\.current\[addressHash\] = setTimeout\(/);
+  assert.match(checklist, /onBlur=\{\(\) => flushHouseNote\(prop\)\}/);
+  assert.match(checklist, /if \(detailsOpen\) flushHouseNote\(prop\);/);
+  // Pending timers are cleared on unmount rather than firing into a dead tree.
+  assert.match(checklist, /return \(\) => Object\.values\(timers\)\.forEach\(clearTimeout\)/);
+});
+
+// The interface must never claim a note was stored when the write failed.
+test('a failed note save is reported, not swallowed', () => {
+  const checklist = readSource('src/components/routes/RouteChecklist.jsx');
+
+  assert.match(checklist, /\[addressHash\]: 'error'/);
+  assert.match(checklist, /Not saved — check your connection/);
+  assert.match(checklist, /role=\{noteState === 'error' \? 'alert' : undefined\}/);
+});
+
+// The note is written by its own non-metered server action, never as an outcome.
+test('the note save path is separate from outcome logging', () => {
+  const checklist = readSource('src/components/routes/RouteChecklist.jsx');
+  const server = readSource('base44/functions/recordKnockOutcome/entry.ts');
+
+  assert.match(checklist, /action: 'save_house_note'/);
+  // An outcome never carries a note any more.
+  assert.match(checklist, /const houseNotePayload = \(\) => \(\{\}\);/);
+
+  assert.match(server, /async function saveHouseNote/);
+  assert.match(server, /action === 'save_house_note'/);
+  // Non-metered: autosaving a note can never consume a billed outcome.
+  assert.match(server, /counts_toward_free_limit: false,\s*\n\s*counts_as_knock: false,\s*\n\s*workflow_action: 'HOUSE_NOTE'/);
+  const noteFn = server.slice(server.indexOf('async function saveHouseNote'), server.indexOf('async function editSale'));
+  assert.doesNotMatch(noteFn, /enforceGate/);
+  assert.doesNotMatch(noteFn, /parsed_status/);
 });
 
 // A rejected write must not leave the interface claiming the note was saved.

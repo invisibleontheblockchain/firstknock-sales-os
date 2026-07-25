@@ -37,7 +37,7 @@ const formatNumber = (value) => {
     return Number.isFinite(n) && n > 0 ? n.toLocaleString() : null;
 };
 
-export default function RouteChecklist({ route, logs, onLogResult, onClose, navigationApp = 'apple', activeRouteSoldFilter, setActiveRouteSoldFilter }) {
+export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, onClose, navigationApp = 'apple', activeRouteSoldFilter, setActiveRouteSoldFilter }) {
     const [latestRoute, setLatestRoute] = useState(route);
     const [expandedId, setExpandedId] = useState(null);
     const [filter, setFilter] = useState('all');
@@ -51,6 +51,10 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose, navi
     const [savingHash, setSavingHash] = useState(null);
     const [historyOpenHash, setHistoryOpenHash] = useState(null);
     const [detailsOpenHash, setDetailsOpenHash] = useState(null);
+    // 'saving' | 'saved' | 'error', keyed by address_hash. The rep is told the
+    // real state; a note is never shown as saved before the server took it.
+    const [noteStatus, setNoteStatus] = useState({});
+    const noteTimersRef = React.useRef({});
     const [saleAmount, setSaleAmount] = useState('');
     const [saleAmountError, setSaleAmountError] = useState('');
     const [navigationSession, setNavigationSession] = useState(null);
@@ -217,17 +221,54 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose, navi
         setSelectedAction(null);
     };
 
-    // A house note rides on the outcome as InteractionLog.description, the same
-    // field the knock tab writes. Only send it when the rep actually changed it,
-    // so re-logging a door does not silently rewrite an older note.
-    const houseNotePayload = (property) => {
-        const draft = houseNotes[property.address_hash];
-        if (draft === undefined) return {};
-        const trimmed = draft.trim();
-        const saved = latestOutcomeNote(logsForProperty(property));
-        if (trimmed === saved) return {};
-        return { description: trimmed || null };
+    // House notes save on their own, so an outcome never carries one.
+    const houseNotePayload = () => ({});
+
+    const persistHouseNote = async (property, value) => {
+        const addressHash = property.address_hash;
+        setNoteStatus((current) => ({ ...current, [addressHash]: 'saving' }));
+        try {
+            await base44.functions.invoke('recordKnockOutcome', {
+                action: 'save_house_note',
+                address_hash: addressHash,
+                note: value,
+                route_id: displayRoute?.id || null
+            });
+            setNoteStatus((current) => ({ ...current, [addressHash]: 'saved' }));
+            onNoteSaved?.();
+        } catch (error) {
+            // Never let the interface imply a note was stored when it was not.
+            console.error('[RouteChecklist] House note save failed', error);
+            setNoteStatus((current) => ({ ...current, [addressHash]: 'error' }));
+        }
     };
+
+    // Autosave: the rep types and walks away, so the note commits on a pause
+    // rather than waiting for a button they might never press.
+    const handleNoteChange = (property, value) => {
+        const addressHash = property.address_hash;
+        setHouseNotes((current) => ({ ...current, [addressHash]: value }));
+        setNoteStatus((current) => ({ ...current, [addressHash]: 'saving' }));
+        clearTimeout(noteTimersRef.current[addressHash]);
+        noteTimersRef.current[addressHash] = setTimeout(() => {
+            persistHouseNote(property, value);
+        }, 800);
+    };
+
+    // A pending keystroke must still commit when the field closes or unmounts.
+    const flushHouseNote = (property) => {
+        const addressHash = property.address_hash;
+        if (!noteTimersRef.current[addressHash]) return;
+        clearTimeout(noteTimersRef.current[addressHash]);
+        delete noteTimersRef.current[addressHash];
+        const draft = houseNotes[addressHash];
+        if (draft !== undefined) persistHouseNote(property, draft);
+    };
+
+    useEffect(() => {
+        const timers = noteTimersRef.current;
+        return () => Object.values(timers).forEach(clearTimeout);
+    }, []);
 
     const clearHouseNote = (addressHash) => {
         setHouseNotes((current) => {
@@ -513,6 +554,12 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose, navi
                         const isSaving = savingHash === prop.address_hash;
                         const historyOpen = historyOpenHash === prop.address_hash;
                         const detailsOpen = detailsOpenHash === prop.address_hash;
+                        const noteState = noteStatus[prop.address_hash] || null;
+                        const noteBadge = noteState === 'error'
+                            ? 'Not saved'
+                            : noteState === 'saving'
+                                ? 'Saving'
+                                : (savedNote ? 'Saved' : null);
 
                         return (
                             <div
@@ -602,7 +649,10 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose, navi
                                         <div className="space-y-2">
                                             <button
                                                 type="button"
-                                                onClick={() => setDetailsOpenHash(detailsOpen ? null : prop.address_hash)}
+                                                onClick={() => {
+                                                    if (detailsOpen) flushHouseNote(prop);
+                                                    setDetailsOpenHash(detailsOpen ? null : prop.address_hash);
+                                                }}
                                                 aria-expanded={detailsOpen}
                                                 aria-controls={`house-note-panel-${prop.address_hash}`}
                                                 className="w-full flex items-center justify-between rounded-xl border border-[#2EEB57]/35 bg-[#2EEB57]/10 px-3 py-2.5 text-left active:scale-[0.99] transition-all"
@@ -611,10 +661,15 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose, navi
                                                     <span className="text-[10px] font-black uppercase tracking-[0.18em] text-white">
                                                         Add Details
                                                     </span>
-                                                    {/* Never colour alone: a saved note is named, not just tinted. */}
-                                                    {(savedNote || noteDirty) && (
-                                                        <span className="rounded-full bg-white/10 px-1.5 py-0.5 text-[9px] font-bold text-white/70">
-                                                            {noteDirty ? 'Unsaved' : 'Saved'}
+                                                    {/* Never colour alone: the state is named, not just tinted. */}
+                                                    {noteBadge && (
+                                                        <span
+                                                            className="rounded-full px-1.5 py-0.5 text-[9px] font-bold"
+                                                            style={noteState === 'error'
+                                                                ? { background: 'rgba(255,107,107,0.15)', color: '#FF6B6B' }
+                                                                : { background: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.7)' }}
+                                                        >
+                                                            {noteBadge}
                                                         </span>
                                                     )}
                                                 </span>
@@ -626,19 +681,23 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose, navi
                                                     <textarea
                                                         id={`house-note-${prop.address_hash}`}
                                                         value={houseNotes[prop.address_hash] ?? savedNote}
-                                                        onChange={(e) => setHouseNotes((current) => ({
-                                                            ...current,
-                                                            [prop.address_hash]: e.target.value
-                                                        }))}
-                                                        placeholder="Notes for this house..."
+                                                        onChange={(e) => handleNoteChange(prop, e.target.value)}
+                                                        onBlur={() => flushHouseNote(prop)}
+                                                        placeholder="Gate code, who decides, best time to return..."
                                                         rows={3}
                                                         autoFocus
                                                         className="selectable-text w-full resize-none rounded-xl border border-[#2EEB57]/25 bg-black/70 p-3 text-[12px] text-white outline-none focus:border-[#39FF4A]"
                                                     />
-                                                    <p className="text-[9px]" style={{ color: '#555' }}>
-                                                        {noteDirty
-                                                            ? 'Saves with the next outcome you log.'
-                                                            : 'Saved with this house.'}
+                                                    <p
+                                                        className="text-[9px]"
+                                                        role={noteState === 'error' ? 'alert' : undefined}
+                                                        style={{ color: noteState === 'error' ? '#FF6B6B' : '#555' }}
+                                                    >
+                                                        {noteState === 'error'
+                                                            ? 'Not saved — check your connection and try again.'
+                                                            : noteState === 'saving'
+                                                                ? 'Saving...'
+                                                                : 'Saved automatically to this house.'}
                                                     </p>
                                                 </div>
                                             )}

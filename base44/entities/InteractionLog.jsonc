@@ -38,7 +38,8 @@
         "knock_mode",
         "decision_clear",
         "csv_history_import",
-        "workflow_transition"
+        "workflow_transition",
+        "house_note"
       ],
       "description": "Trusted write path that created this record"
     },
