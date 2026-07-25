@@ -122,6 +122,23 @@ test('the checklist reads outcomes route-scoped, the same way the knock tab does
   assert.match(home, /invalidateQueries\(\{ queryKey: \['routeChecklistLogs'\] \}\)/);
 });
 
+// `logs` feeds effectiveProperties, which walks every property on the map.
+// Touching it on tap made the whole page recompute before the stop repainted,
+// which is the checklist's version of the latency the knock tab already lost.
+test('logging an outcome does not rebuild the map on the tap path', () => {
+  const home = readSource('src/pages/Home.jsx');
+
+  const writeHelper = home.match(/const writeToLogCaches = useCallback\(\(addressHash, mutate\) => \{[\s\S]*?\}, \[[^\]]*\]\);/);
+  assert.ok(writeHelper, 'writeToLogCaches should exist');
+  assert.doesNotMatch(writeHelper[0], /interactionLogs/);
+  assert.match(writeHelper[0], /routeChecklistLogs/);
+  assert.match(writeHelper[0], /selectedPropertyHistory/);
+
+  // The 5000-row global refetch is deferred while the checklist is open.
+  assert.match(home, /if \(showChecklistRef\.current\) \{\s*\n\s*mapRefreshPendingRef\.current = true;\s*\n\s*return;/);
+  assert.match(home, /mapRefreshPendingRef\.current = false;\s*\n\s*queryClient\.invalidateQueries\(\{ queryKey: \['interactionLogs'\] \}\)/);
+});
+
 test('an optimistic checklist row carries created_by so the org filter keeps it', () => {
   const home = readSource('src/pages/Home.jsx');
 
