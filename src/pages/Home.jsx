@@ -289,6 +289,14 @@ export default function Home() {
     const [activeRoutePriceFilter, setActiveRoutePriceFilter] = useState('all');
     const [showChecklist, setShowChecklist] = useState(false);
 
+    // Closing the checklist is when the map becomes worth rebuilding again.
+    useEffect(() => {
+        showChecklistRef.current = showChecklist;
+        if (showChecklist || !mapRefreshPendingRef.current) return;
+        mapRefreshPendingRef.current = false;
+        queryClient.invalidateQueries({ queryKey: ['interactionLogs'] });
+    }, [showChecklist, queryClient]);
+
     const filteredActiveRoute = useMemo(() => {
         if (!activeRoute) return null;
         const hD = activeRouteSoldFilter !== 'all', hPr = activeRoutePriceFilter !== 'all';
@@ -477,6 +485,8 @@ export default function Home() {
     const appointmentMapFocusHandledRef = useRef(false);
     const outcomeQueueRef = useRef(Promise.resolve());
     const pendingOutcomesRef = useRef(new Map());
+    const showChecklistRef = useRef(false);
+    const mapRefreshPendingRef = useRef(false);
     const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me(), staleTime: 1000 * 60 * 5 });
     useEffect(() => {
         if (!user?.id || routeModeHydratedUserRef.current === user.id) return;
@@ -1330,12 +1340,17 @@ export default function Home() {
     // failed write without discarding outcomes the rep logged after it.
     // Every cache the checklist or the detail sheet reads from has to be kept in
     // step; a row applied to only some of them is a stop that reverts.
+    //
+    // The global interactionLogs cache is deliberately NOT one of them. `logs`
+    // feeds effectiveProperties, which walks every property on the map, so
+    // touching it on tap made the whole page recompute before the stop could
+    // repaint — the exact latency this optimistic path exists to remove. The map
+    // picks the row up on the refetch in onSettled, off the tap path.
     const writeToLogCaches = useCallback((addressHash, mutate) => {
         const apply = (old) => mergeLogCache(old, mutate);
-        queryClient.setQueryData(['interactionLogs', user?.email], apply);
         queryClient.setQueryData(['routeChecklistLogs', activeRoute?.id], apply);
         queryClient.setQueryData(['selectedPropertyHistory', addressHash], apply);
-    }, [queryClient, user?.email, activeRoute?.id]);
+    }, [queryClient, activeRoute?.id]);
 
     const applyOptimisticLog = useCallback((entry) => {
         pendingOutcomesRef.current.set(entry.id, entry);
@@ -1373,9 +1388,18 @@ export default function Home() {
             // The optimistic row is deliberately left in place here;
             // withPendingOutcomes retires it when the refetch below actually
             // returns the server row.
-            queryClient.invalidateQueries({ queryKey: ['interactionLogs'] });
             queryClient.invalidateQueries({ queryKey: ['routeChecklistLogs'] });
             queryClient.invalidateQueries({ queryKey: ['selectedPropertyHistory'] });
+
+            // Refreshing the global log list re-pulls 5000 rows and rebuilds
+            // effectiveProperties across the whole map. While the rep is working
+            // the checklist that is pure jank behind a panel they cannot see, so
+            // it is deferred until the checklist closes.
+            if (showChecklistRef.current) {
+                mapRefreshPendingRef.current = true;
+                return;
+            }
+            queryClient.invalidateQueries({ queryKey: ['interactionLogs'] });
         },
         onSuccess: (result, logData) => {
             // Swap the authoritative row in for the optimistic sketch. The stop
