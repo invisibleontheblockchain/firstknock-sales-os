@@ -21,6 +21,7 @@ import {
   createRouteContinuityContext,
 } from '@/components/logic/routeRoadContext';
 import { buildFullAddress, getRouteNavigationPlan, openNavigationBatch } from '@/components/logic/navigation';
+import { collectUnretiredOutcomes } from '@/components/logic/optimisticOutcomes';
 import { getNavigationSessionProgress, selectRemainingTodoStops } from '@/components/logic/routeNavigation';
 import {
   ROUTE_BULK_ACTIONS,
@@ -522,22 +523,8 @@ export default function RepHome() {
   // Outcomes whose write has not settled yet survive any refetch that lands in
   // the meantime, so a door never flickers back to Todo under the rep.
   const withPendingOutcomes = React.useCallback((rows, addressHash = null) => {
-    const pending = [...pendingOutcomesRef.current.values()]
-      .filter((entry) => !addressHash || entry.address_hash === addressHash);
-    if (!pending.length) return rows;
-
-    const serverIds = new Set(rows.map((row) => row?.id).filter(Boolean));
-    const unconfirmed = pending.filter((entry) => {
-      // An optimistic row is retired only once its real row is actually visible
-      // here. Retiring it when the write finished instead let the refetch that
-      // followed — which had not caught up yet — flip the door back to Todo.
-      if (entry.server_id && serverIds.has(entry.server_id)) {
-        pendingOutcomesRef.current.delete(entry.id);
-        return false;
-      }
-      return true;
-    });
-    return unconfirmed.length ? [...rows, ...unconfirmed] : rows;
+    const unretired = collectUnretiredOutcomes(pendingOutcomesRef.current, rows, addressHash);
+    return unretired.length ? [...rows, ...unretired] : rows;
   }, []);
 
   // 3. Fetch Interaction Logs (History for this route)
@@ -654,6 +641,9 @@ export default function RepHome() {
     // write can start seconds after the rep already moved on, and the door has
     // to read as done immediately.
     onError: (err, newLog) => {
+      // A reverted door means the write failed; leave the reason in the console
+      // so it can be read back without reproducing the tap.
+      console.error('[RepHome] Outcome write failed; rolling the door back', err);
       dropOptimisticLog(newLog?.optimistic_id, newLog?.address_hash);
       const gate = getOutcomeGateFromError(err);
       if (gate) {
@@ -678,13 +668,11 @@ export default function RepHome() {
     },
     onSuccess: async (result, logData) => {
       // Hand the optimistic row the id of the row it stands for, so it can be
-      // retired precisely rather than on a guess about replication timing.
+      // retired precisely. If the response carries no id the row is NOT retired
+      // here — collectUnretiredOutcomes falls back to matching the outcome.
       const pendingEntry = pendingOutcomesRef.current.get(logData?.optimistic_id);
-      if (pendingEntry) {
-        const serverId = result?.interaction?.id || null;
-        if (serverId) pendingEntry.server_id = serverId;
-        else pendingOutcomesRef.current.delete(logData.optimistic_id);
-      }
+      const serverId = result?.interaction?.id || null;
+      if (pendingEntry && serverId) pendingEntry.server_id = serverId;
 
       if (logData?.parsed_status === 'CALLBACK' && logData?.next_eligible_date) {
         try {
