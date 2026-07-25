@@ -2153,6 +2153,7 @@ var CANVAS_HIGHWAY_FILTER = "primary|secondary|tertiary|unclassified|residential
 var WORKLOAD_BASES = /* @__PURE__ */ new Set(["street_length", "street_length_plus_estimated_doors"]);
 var DIVISION_MODES = /* @__PURE__ */ new Set(["selected_reps", "area_count", "street_workload_target"]);
 var LEASE_DURATION_MS = 12e4;
+var LEASE_WAIT_MS = 10e3;
 var CAMPAIGN_TRANSITION_LOCK_MS = 3e4;
 var HttpError = class extends Error {
   status;
@@ -2193,7 +2194,7 @@ function betaGrantResolution(user) {
   const endsAt = isoInstant(candidate?.ends_at);
   const precisionLimit = Number(candidate?.precision_limit);
   const canvasSeats = Number(candidate?.canvas_seats);
-  if (!candidate || Array.isArray(candidate) || typeof candidate !== "object" || typeof candidate.grant_id !== "string" || !candidate.grant_id.trim() || candidate.grant_id.length > 256 || candidate.status !== "active" || !Number.isInteger(precisionLimit) || precisionLimit < 1 || precisionLimit > 1e3 || !Number.isInteger(canvasSeats) || canvasSeats < 1 || canvasSeats > 100 || startsAt === null || endsAt === null || startsAt >= endsAt) {
+  if (!candidate || Array.isArray(candidate) || typeof candidate !== "object" || typeof candidate.grant_id !== "string" || !candidate.grant_id.trim() || candidate.grant_id !== candidate.grant_id.trim() || candidate.grant_id.length > 256 || candidate.status !== "active" || typeof candidate.precision_limit !== "number" || typeof candidate.canvas_seats !== "number" || !Number.isSafeInteger(precisionLimit) || precisionLimit < 1 || precisionLimit > 1e3 || !Number.isSafeInteger(canvasSeats) || canvasSeats < 1 || canvasSeats > 100 || startsAt === null || endsAt === null || startsAt >= endsAt) {
     return { present: true, grant: null };
   }
   const now = Date.now();
@@ -2283,6 +2284,7 @@ async function resolveCanvasEntitlement(user) {
       grant_id: beta.grant.grant_id
     };
   }
+  if (beta.present) throw new HttpError(403, "canvas_entitlement_required", "An active in-window beta grant is required to deploy.");
   const secret = Deno.env.get("STRIPE_SECRET_KEY");
   if (!secret) throw new HttpError(503, "canvas_billing_unavailable", "Canvas billing verification is unavailable. Deployment was not changed.");
   const stripe = new Stripe(secret);
@@ -2910,47 +2912,62 @@ async function verifyServerTopology(session) {
     total_street_length_meters: Number(serverPlan.qa?.total_street_length_meters || 0)
   };
 }
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 function leaseToken() {
   const bytes = new Uint8Array(24);
   crypto.getRandomValues(bytes);
   return [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 async function acquireManagerLease(base44, managerId) {
-  const now = Date.now();
-  const nowIso = new Date(now).toISOString();
-  const token = leaseToken();
-  const expiresAt = new Date(now + LEASE_DURATION_MS).toISOString();
-  const mutation = await base44.asServiceRole.entities.User.updateMany({
-    id: managerId,
-    $or: [
-      { canvas_deployment_lock_token: null },
-      { canvas_deployment_lock_token: { $exists: false } },
-      { canvas_deployment_lock_expires_at: { $lte: nowIso } }
-    ]
-  }, { $set: {
-    canvas_deployment_lock_token: token,
-    canvas_deployment_lock_acquired_at: nowIso,
-    canvas_deployment_lock_expires_at: expiresAt
-  } });
-  if (mutation?.success !== true || Number(mutation?.updated) !== 1 || mutation?.has_more === true) {
-    throw new HttpError(409, "canvas_deployment_in_progress", "Another Canvas deployment won the manager lock. Retry in a moment.");
-  }
-  const lockedUser = await base44.asServiceRole.entities.User.get(managerId).catch(() => null);
-  if (!lockedUser || String(lockedUser.canvas_deployment_lock_token || "") !== token || String(lockedUser.canvas_deployment_lock_expires_at || "") !== expiresAt) {
-    throw new HttpError(503, "canvas_deployment_lease_unverified", "Canvas could not verify its manager deployment lock. Nothing was deployed.");
-  }
-  return { token, expires_at: expiresAt };
+  const deadline = Date.now() + LEASE_WAIT_MS;
+  do {
+    const now = Date.now();
+    const nowIso = new Date(now).toISOString();
+    const token = leaseToken();
+    const expiresAt = new Date(now + LEASE_DURATION_MS).toISOString();
+
+    const currentUser = await base44.asServiceRole.entities.User.get(managerId).catch(() => null);
+    if (currentUser) {
+      const existingToken = String(currentUser.canvas_deployment_lock_token || "");
+      const existingExpiresAt = String(currentUser.canvas_deployment_lock_expires_at || "");
+      const isExpired = !existingExpiresAt || new Date(existingExpiresAt).getTime() <= now;
+
+      if (!existingToken || isExpired) {
+        await base44.asServiceRole.entities.User.update(managerId, {
+          canvas_deployment_lock_token: token,
+          canvas_deployment_lock_acquired_at: nowIso,
+          canvas_deployment_lock_expires_at: expiresAt
+        }).catch(() => null);
+
+        const lockedUser = await base44.asServiceRole.entities.User.get(managerId).catch(() => null);
+        if (
+          lockedUser &&
+          String(lockedUser.canvas_deployment_lock_token || "") === token &&
+          String(lockedUser.canvas_deployment_lock_expires_at || "") === expiresAt
+        ) {
+          return { token, expires_at: expiresAt };
+        }
+      }
+    }
+
+    if (Date.now() >= deadline) break;
+    await sleep(50);
+  } while (Date.now() <= deadline);
+
+  throw new HttpError(409, "canvas_deployment_in_progress", "Another Canvas deployment won the manager lock. Retry in a moment.");
 }
 async function releaseManagerLease(base44, managerId, lease) {
   if (!lease) return;
-  await base44.asServiceRole.entities.User.updateMany({
-    id: managerId,
-    canvas_deployment_lock_token: lease.token
-  }, { $unset: {
-    canvas_deployment_lock_token: "",
-    canvas_deployment_lock_acquired_at: "",
-    canvas_deployment_lock_expires_at: ""
-  } }).catch(() => null);
+  const currentUser = await base44.asServiceRole.entities.User.get(managerId).catch(() => null);
+  if (currentUser && String(currentUser.canvas_deployment_lock_token || "") === lease.token) {
+    await base44.asServiceRole.entities.User.update(managerId, {
+      canvas_deployment_lock_token: null,
+      canvas_deployment_lock_acquired_at: null,
+      canvas_deployment_lock_expires_at: null
+    }).catch(() => null);
+  }
 }
 async function acquireCampaignTransitionLock(base44, session) {
   const now = /* @__PURE__ */ new Date();

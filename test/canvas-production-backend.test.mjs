@@ -140,6 +140,19 @@ function makeEntity(state, key, prefix) {
       if (!row) throw new Error('not found');
       return row;
     },
+    async update(id, updates) {
+      const row = rows.find((candidate) => candidate.id === id);
+      if (!row) throw new Error('not found');
+      for (const [k, v] of Object.entries(updates)) {
+        if (v === null || v === undefined) {
+          delete row[k];
+        } else {
+          row[k] = structuredClone(v);
+        }
+      }
+      row.updated_date = new Date().toISOString();
+      return row;
+    },
     async filter(query, sort = '', limit = 100, skip = 0) {
       const selected = rows.filter((row) => matches(row, query));
       const sortField = String(sort || '').replace(/^-/, '');
