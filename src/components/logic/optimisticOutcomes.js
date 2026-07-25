@@ -34,17 +34,35 @@ export function isOutcomeRowPresent(rows, entry) {
 // Returns the optimistic rows that still need to be shown, retiring any whose
 // real row is now visible. Mutates `pendingMap`, which is the point: retirement
 // is driven by what a query actually returned.
+//
+// Deletion goes by map key, never by entry.id — confirmOutcomeRow swaps the
+// entry's id to the server's, so keying off the entry would leak the row.
 export function collectUnretiredOutcomes(pendingMap, rows, addressHash = null) {
     if (!pendingMap || pendingMap.size === 0) return [];
 
     const unretired = [];
-    for (const entry of pendingMap.values()) {
+    for (const [key, entry] of pendingMap.entries()) {
         if (addressHash && entry.address_hash !== addressHash) continue;
         if (isOutcomeRowPresent(rows, entry)) {
-            pendingMap.delete(entry.id);
+            pendingMap.delete(key);
             continue;
         }
         unretired.push(entry);
     }
     return unretired;
+}
+
+// Once the write returns, the response carries the authoritative row it created.
+// Swap it in for the optimistic sketch so the door shows the real record and
+// keeps showing it even if the list query is lagging, capped, or scoped in a way
+// that never returns the row at all.
+export function confirmOutcomeRow(pendingMap, optimisticId, serverRow) {
+    if (!pendingMap || !optimisticId) return null;
+    const entry = pendingMap.get(optimisticId);
+    if (!entry) return null;
+    if (!serverRow?.id) return entry;
+
+    const confirmed = { ...entry, ...serverRow, id: serverRow.id, server_id: serverRow.id };
+    pendingMap.set(optimisticId, confirmed);
+    return confirmed;
 }

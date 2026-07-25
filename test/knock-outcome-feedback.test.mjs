@@ -74,10 +74,10 @@ for (const [label, file] of [['knock tab', 'src/pages/RepHome.jsx'], ['checklist
     assert.match(source, /collectUnretiredOutcomes\(pendingOutcomesRef\.current, rows, addressHash\)/);
     assert.match(source, /from '@\/components\/logic\/optimisticOutcomes'/);
 
-    // The success handler records which server row the optimistic one stands for,
-    // and must never retire the row when the response carries no id.
-    assert.match(source, /const serverId = result\?\.interaction\?\.id \|\| null/);
-    assert.match(source, /if \(pendingEntry && serverId\) pendingEntry\.server_id = serverId/);
+    // The success handler swaps in the authoritative row from the response, so
+    // the stop does not depend on the list query returning it.
+    assert.match(source, /confirmOutcomeRow\(\s*\n?\s*pendingOutcomesRef\.current,\s*\n?\s*logData\?\.optimistic_id,\s*\n?\s*result\?\.interaction\s*\n?\s*\)/);
+    assert.match(source, /if \(confirmed\) replaceOptimisticLog\(logData\?\.optimistic_id, confirmed\)/);
 
     // Nothing outside the retirement helper may drop a pending row on success.
     assert.doesNotMatch(source, /else pendingOutcomesRef\.current\.delete/);
