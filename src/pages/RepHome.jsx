@@ -10,9 +10,10 @@ import { Input } from "@/components/ui/input";
 import { getKnockWindowLabel } from '@/components/logic/knockTimeOptimizer';
 import { determineEffectiveStatus } from '@/components/logic/territoryLogic';
 import {
-  hasCompleteRouteMapPoints,
-  hydrateRouteWithLookup,
-  orderRouteProperties,
+    hydrateRouteWithLookup,
+    isRecoveryLimitedProperty,
+    isRouteHydrationCacheable,
+    orderRouteProperties,
 } from '@/components/logic/routeHydrationCore';
 import { optimizeRouteByStreetSweep } from '@/components/logic/routeOptimizer';
 import {
@@ -73,6 +74,10 @@ import {
 
 const CANVAS_ASSIGNMENT_POLL_MS = 15_000;
 const FIELDROUTES_STATUS_POLL_MS = 15_000;
+// A device fix is warmed while the rep reads the house card, so an outcome tap
+// almost always reuses it instead of waiting on the GPS radio.
+const GPS_FIX_MAX_AGE_MS = 90_000;
+const GPS_FIX_WAIT_MS = 1_200;
 
 function precisionFieldRoutesStatus(response, sourceKey, addressHash) {
   return findFieldRoutesStatus(response, (row) => (
@@ -121,6 +126,7 @@ export default function RepHome() {
   const [limitDismissed, setLimitDismissed] = useState(false);
   const [gateMode, setGateMode] = useState('limit');
   const loggingInFlightRef = React.useRef(false);
+  const gpsFixRef = React.useRef(null);
   const bulkWorkflowRetryRef = React.useRef(null);
   const appointmentRunFocusHandledRef = React.useRef(false);
   const [soldDateFilter, setSoldDateFilter] = useState('all');
@@ -476,23 +482,35 @@ export default function RepHome() {
         // A previously complete offline snapshot is safer than replacing the
         // route with a transient partial response. It only fills hashes that
         // are already present on this exact active route.
-        if (!hasCompleteRouteMapPoints(hydratedRoute)) {
+        if (!isRouteHydrationCacheable(hydratedRoute)) {
           const cached = await localforage.getItem(`cached_props_${activeRoute.id}`);
           if (Array.isArray(cached) && cached.length > 0) {
-            bestRoute = orderRouteProperties(hydratedRoute, cached);
-            loaded = Array.isArray(bestRoute?.properties) ? bestRoute.properties : loaded;
+            if (cached.some(isRecoveryLimitedProperty)) {
+              await localforage.removeItem(`cached_props_${activeRoute.id}`);
+            } else {
+              bestRoute = orderRouteProperties(hydratedRoute, cached);
+              loaded = Array.isArray(bestRoute?.properties) ? bestRoute.properties : loaded;
+            }
           }
         }
         console.log(`[RepHome] Found ${loaded.length}/${hashes.length} properties`);
 
-        if (hasCompleteRouteMapPoints(bestRoute)) {
-          localforage.setItem(`cached_props_${activeRoute.id}`, loaded);
+        if (isRouteHydrationCacheable(bestRoute)) {
+          await localforage.setItem(`cached_props_${activeRoute.id}`, loaded);
         }
         return loaded;
       } catch (e) {
         console.error("Error fetching properties", e);
         const cached = await localforage.getItem(`cached_props_${activeRoute.id}`);
-        return cached || [];
+        if (!Array.isArray(cached) || cached.length === 0) return [];
+        if (cached.some(isRecoveryLimitedProperty)) {
+          await localforage.removeItem(`cached_props_${activeRoute.id}`);
+          return [];
+        }
+        const cachedRoute = orderRouteProperties(activeRoute, cached);
+        return isRouteHydrationCacheable(cachedRoute)
+          ? cachedRoute.properties
+          : [];
       }
     },
     enabled: !!activeRoute
@@ -782,6 +800,7 @@ export default function RepHome() {
   const routeHydrationComplete = expectedRoutePropertyCount === 0 || (
     routeProperties.length === expectedRoutePropertyCount
     && routeProperties.every(isValidRoutePoint)
+    && !routeProperties.some(isRecoveryLimitedProperty)
   );
 
   const fieldRoutesPropertyKeys = useMemo(
@@ -1150,6 +1169,79 @@ export default function RepHome() {
     }
   };
 
+  const warmGpsFix = React.useCallback(() => {
+    if (typeof navigator === 'undefined' || !navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        gpsFixRef.current = {
+          gps_proof_lat: position.coords.latitude,
+          gps_proof_lng: position.coords.longitude,
+          gps_accuracy: position.coords.accuracy,
+          capturedAt: Date.now(),
+        };
+      },
+      () => {},
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: GPS_FIX_MAX_AGE_MS }
+    );
+  }, []);
+
+  // Opening a house card is the cue that an outcome tap is coming next.
+  const selectedPropertyHash = selectedProperty?.address_hash;
+  React.useEffect(() => {
+    if (!selectedPropertyHash) return;
+    warmGpsFix();
+  }, [selectedPropertyHash, warmGpsFix]);
+
+  const resolveGpsProof = React.useCallback(async (prop) => {
+    const fallback = {
+      gps_proof_lat: prop?.lat ?? null,
+      gps_proof_lng: prop?.lng ?? null,
+      gps_accuracy: 0,
+    };
+
+    const cached = gpsFixRef.current;
+    if (cached && Date.now() - cached.capturedAt < GPS_FIX_MAX_AGE_MS) {
+      warmGpsFix();
+      return {
+        gps_proof_lat: cached.gps_proof_lat,
+        gps_proof_lng: cached.gps_proof_lng,
+        gps_accuracy: cached.gps_accuracy,
+      };
+    }
+
+    if (typeof navigator === 'undefined' || !navigator.geolocation) return fallback;
+
+    // The radio never holds the write hostage: after a short wait the outcome
+    // saves against the property coordinates while the fix keeps warming.
+    return await new Promise((resolve) => {
+      let settled = false;
+      const finish = (value) => {
+        if (settled) return;
+        settled = true;
+        resolve(value);
+      };
+      const timer = setTimeout(() => finish(fallback), GPS_FIX_WAIT_MS);
+
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const proof = {
+            gps_proof_lat: position.coords.latitude,
+            gps_proof_lng: position.coords.longitude,
+            gps_accuracy: position.coords.accuracy,
+          };
+          gpsFixRef.current = { ...proof, capturedAt: Date.now() };
+          clearTimeout(timer);
+          finish(proof);
+        },
+        () => {
+          clearTimeout(timer);
+          finish(fallback);
+        },
+        { enableHighAccuracy: true, timeout: GPS_FIX_WAIT_MS, maximumAge: GPS_FIX_MAX_AGE_MS }
+      );
+    });
+  }, [warmGpsFix]);
+
   if (teamMembersLoading || routesLoading || propsLoading || logsLoading || (!activeRoute && canvasAssignmentsLoading)) {
     return (
       <div className="flex h-screen items-center justify-center bg-black text-white">
@@ -1303,17 +1395,7 @@ export default function RepHome() {
       // Haptic feedback
       if (navigator.vibrate) navigator.vibrate(50);
 
-      const gpsProof = navigator.geolocation
-        ? await new Promise((resolve) => navigator.geolocation.getCurrentPosition(
-            (position) => resolve({
-              gps_proof_lat: position.coords.latitude,
-              gps_proof_lng: position.coords.longitude,
-              gps_accuracy: position.coords.accuracy,
-            }),
-            () => resolve({ gps_proof_lat: prop.lat, gps_proof_lng: prop.lng, gps_accuracy: 0 }),
-            { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
-          ))
-        : { gps_proof_lat: prop.lat, gps_proof_lng: prop.lng, gps_accuracy: 0 };
+      const gpsProof = await resolveGpsProof(prop);
 
       await createLogMutation.mutateAsync({
         ...enrichedLogData,

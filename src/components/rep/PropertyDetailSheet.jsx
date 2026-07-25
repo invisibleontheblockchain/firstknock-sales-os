@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Navigation, Camera, Loader2, Phone, Clock, ChevronUp, ChevronLeft, Check, Home, Ban, MapPin, UserX } from 'lucide-react';
+import { Navigation, Camera, Loader2, Phone, Clock, ChevronUp, ChevronLeft, Check, Home, Ban, MapPin, UserX, History } from 'lucide-react';
 import { format } from 'date-fns';
 import PropertyHistory from './PropertyHistory';
 import { buildFullAddress, openInMaps } from '@/components/logic/navigation';
@@ -45,7 +45,9 @@ export default function PropertyDetailSheet({
     const [showSaleAmount, setShowSaleAmount] = useState(false);
     const [saleAmount, setSaleAmount] = useState('');
     const [saleAmountError, setSaleAmountError] = useState('');
-    const [isSavingOutcome, setIsSavingOutcome] = useState(false);
+    const [savingStatus, setSavingStatus] = useState(null);
+    const [showHistory, setShowHistory] = useState(false);
+    const isSavingOutcome = savingStatus !== null;
 
     const handleMark = async (status, { skipSaleAmount = false } = {}) => {
         if (isSavingOutcome) return;
@@ -123,12 +125,14 @@ export default function PropertyDetailSheet({
             logData.sale_amount = parsedSaleAmount;
         }
 
-        setIsSavingOutcome(true);
+        // The write waits on a GPS fix plus the server round-trip, so the tapped
+        // button has to acknowledge instantly or the tap reads as a dead click.
+        setSavingStatus(status);
         let saved = false;
         try {
             saved = await onLog(logData);
         } finally {
-            setIsSavingOutcome(false);
+            setSavingStatus(null);
         }
         if (saved === false) return;
         setShowSaleAmount(false);
@@ -200,18 +204,27 @@ export default function PropertyDetailSheet({
                         <span className="text-[10px] font-black uppercase text-white/45 tracking-[0.2em]">Log outcome</span>
                     </div>
                     <div className="grid grid-cols-3 gap-1.5">
-                        {STATUS_OPTIONS.map(opt => (
-                            <button
-                                key={opt.id}
-                                onClick={() => handleMark(opt.id)}
-                                disabled={isSavingOutcome}
-                                className={`flex flex-col items-center gap-1 py-3.5 rounded-2xl text-center transition-all ${outcomeDisabled ? 'opacity-40 cursor-not-allowed' : 'active:scale-95'} ${showSaleAmount && opt.id === 'SOLD' ? 'ring-2 ring-[#2EEB57]' : ''}`}
-                                style={{ background: opt.color === '#FFFFFF' ? 'rgba(255,255,255,0.055)' : opt.color + '14', border: `1px solid ${opt.color === '#FFFFFF' ? 'rgba(255,255,255,0.14)' : opt.color + '2e'}`, boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)' }}
-                            >
-                                <opt.icon className="w-5 h-5" style={{ color: opt.color }} />
-                                <span className="text-[9px] font-bold leading-tight" style={{ color: opt.color }}>{opt.label}</span>
-                            </button>
-                        ))}
+                        {STATUS_OPTIONS.map(opt => {
+                            const isPending = savingStatus === opt.id;
+                            const isDimmed = isSavingOutcome && !isPending;
+                            return (
+                                <button
+                                    key={opt.id}
+                                    onClick={() => handleMark(opt.id)}
+                                    disabled={isSavingOutcome}
+                                    aria-busy={isPending}
+                                    className={`relative flex flex-col items-center gap-1 py-3.5 rounded-2xl text-center transition-all ${outcomeDisabled ? 'opacity-40 cursor-not-allowed' : 'active:scale-95'} ${isDimmed ? 'opacity-40' : ''} ${isPending ? 'scale-[0.97]' : ''} ${(showSaleAmount && opt.id === 'SOLD') || isPending ? 'ring-2 ring-[#2EEB57]' : ''}`}
+                                    style={{ background: opt.color === '#FFFFFF' ? 'rgba(255,255,255,0.055)' : opt.color + '14', border: `1px solid ${opt.color === '#FFFFFF' ? 'rgba(255,255,255,0.14)' : opt.color + '2e'}`, boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)' }}
+                                >
+                                    {isPending
+                                        ? <Loader2 className="w-5 h-5 animate-spin" style={{ color: opt.color }} />
+                                        : <opt.icon className="w-5 h-5" style={{ color: opt.color }} />}
+                                    <span className="text-[9px] font-bold leading-tight" style={{ color: opt.color }}>
+                                        {isPending ? 'Saving...' : opt.label}
+                                    </span>
+                                </button>
+                            );
+                        })}
                     </div>
 
                     {showCallbackPrompt && (
@@ -242,9 +255,12 @@ export default function PropertyDetailSheet({
                                 />
                                 <button
                                     onClick={() => handleMark('CALLBACK')}
-                                    className="px-4 py-2.5 rounded-xl bg-[#2EEB57] text-black font-black text-xs active:scale-95 transition-all whitespace-nowrap"
+                                    disabled={isSavingOutcome}
+                                    aria-busy={savingStatus === 'CALLBACK'}
+                                    className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#2EEB57] text-black font-black text-xs active:scale-95 transition-all whitespace-nowrap disabled:opacity-60"
                                 >
-                                    Save Callback
+                                    {savingStatus === 'CALLBACK' && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                                    {savingStatus === 'CALLBACK' ? 'Saving...' : 'Save Callback'}
                                 </button>
                             </div>
                             {callbackError && <p className="mt-2 text-[10px] font-bold text-red-300">{callbackError}</p>}
@@ -272,9 +288,11 @@ export default function PropertyDetailSheet({
                             <button
                                 onClick={() => handleMark('SOLD')}
                                 disabled={isSavingOutcome}
-                                className="px-4 py-2.5 rounded-xl bg-[#2EEB57] text-black font-black text-xs active:scale-95 transition-all"
+                                aria-busy={savingStatus === 'SOLD'}
+                                className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#2EEB57] text-black font-black text-xs active:scale-95 transition-all disabled:opacity-60"
                             >
-                                Save
+                                {savingStatus === 'SOLD' && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                                <span>Save</span>
                             </button>
                             <button
                                 onClick={() => handleMark('SOLD', { skipSaleAmount: true })}
@@ -389,11 +407,34 @@ export default function PropertyDetailSheet({
                         </div>
                     )}
 
-                    {/* History */}
+                    {/* History — collapsed by default so a long log never buries the outcome grid */}
                     {logs?.length > 0 && (
                         <div className="space-y-2">
-                            <p className="text-[10px] font-bold text-gray-700 uppercase tracking-wider">History</p>
-                            <PropertyHistory logs={logs} onClearDecision={onClearDecision} />
+                            <button
+                                type="button"
+                                onClick={() => setShowHistory(current => !current)}
+                                aria-expanded={showHistory}
+                                aria-controls="property-history-panel"
+                                className="w-full flex items-center justify-between rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-left active:scale-[0.99] transition-all"
+                            >
+                                <span className="flex items-center gap-2">
+                                    <History className="w-3.5 h-3.5 text-white/45" />
+                                    <span className="text-[11px] font-black uppercase tracking-[0.18em] text-white/80">History</span>
+                                    <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-bold text-white/70">
+                                        {logs.length}
+                                    </span>
+                                </span>
+                                <ChevronUp className={`w-4 h-4 text-white/60 transition-transform ${showHistory ? '' : 'rotate-180'}`} />
+                            </button>
+
+                            {showHistory && (
+                                <div
+                                    id="property-history-panel"
+                                    className="max-h-[45vh] overflow-y-auto pr-0.5 animate-in slide-in-from-top-2 duration-200"
+                                >
+                                    <PropertyHistory logs={logs} onClearDecision={onClearDecision} />
+                                </div>
+                            )}
                         </div>
                     )}
                 </div>
