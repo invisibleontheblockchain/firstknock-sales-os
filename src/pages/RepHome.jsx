@@ -21,7 +21,7 @@ import {
   createRouteContinuityContext,
 } from '@/components/logic/routeRoadContext';
 import { buildFullAddress, getRouteNavigationPlan, openNavigationBatch } from '@/components/logic/navigation';
-import { collectUnretiredOutcomes } from '@/components/logic/optimisticOutcomes';
+import { collectUnretiredOutcomes, confirmOutcomeRow } from '@/components/logic/optimisticOutcomes';
 import { getNavigationSessionProgress, selectRemainingTodoStops } from '@/components/logic/routeNavigation';
 import {
   ROUTE_BULK_ACTIONS,
@@ -614,6 +614,16 @@ export default function RepHome() {
     queryClient.setQueryData(['propertyHistory', entry.address_hash], insert);
   }, [queryClient, activeRoute?.id]);
 
+  const replaceOptimisticLog = React.useCallback((optimisticId, confirmedRow) => {
+    if (!optimisticId || !confirmedRow) return;
+    const swap = (old) => [
+      ...(Array.isArray(old) ? old : []).filter((log) => log?.id !== optimisticId && log?.id !== confirmedRow.id),
+      confirmedRow
+    ];
+    queryClient.setQueryData(['routeLogs', activeRoute?.id], swap);
+    queryClient.setQueryData(['propertyHistory', confirmedRow.address_hash], swap);
+  }, [queryClient, activeRoute?.id]);
+
   const dropOptimisticLog = React.useCallback((optimisticId, addressHash) => {
     if (!optimisticId) return;
     pendingOutcomesRef.current.delete(optimisticId);
@@ -667,12 +677,15 @@ export default function RepHome() {
       queryClient.invalidateQueries({ queryKey: ['propertyHistory'] });
     },
     onSuccess: async (result, logData) => {
-      // Hand the optimistic row the id of the row it stands for, so it can be
-      // retired precisely. If the response carries no id the row is NOT retired
-      // here — collectUnretiredOutcomes falls back to matching the outcome.
-      const pendingEntry = pendingOutcomesRef.current.get(logData?.optimistic_id);
-      const serverId = result?.interaction?.id || null;
-      if (pendingEntry && serverId) pendingEntry.server_id = serverId;
+      // Swap the authoritative row in for the optimistic sketch, so the door
+      // reflects the real record and holds regardless of whether the log query
+      // returns it yet.
+      const confirmed = confirmOutcomeRow(
+        pendingOutcomesRef.current,
+        logData?.optimistic_id,
+        result?.interaction
+      );
+      if (confirmed) replaceOptimisticLog(logData?.optimistic_id, confirmed);
 
       if (logData?.parsed_status === 'CALLBACK' && logData?.next_eligible_date) {
         try {

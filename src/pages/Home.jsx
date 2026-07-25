@@ -76,7 +76,7 @@ import { hasCanvasAccess } from '@/lib/canvasAccess';
 import { validateCanvasBoundary } from '@/components/canvas/canvasPlannerUtils';
 import { fetchAllCanvasTeamMembers } from '@/components/canvas/canvasRosterPagination';
 import { buildFullAddress } from '@/components/logic/navigation';
-import { collectUnretiredOutcomes } from '@/components/logic/optimisticOutcomes';
+import { collectUnretiredOutcomes, confirmOutcomeRow } from '@/components/logic/optimisticOutcomes';
 import { isKnockActivityLog } from '@/lib/interactionLogs';
 import {
     buildRepRouteScope,
@@ -1303,6 +1303,16 @@ export default function Home() {
         queryClient.setQueryData(['selectedPropertyHistory', entry.address_hash], (old) => mergeLogCache(old, insert));
     }, [queryClient, user?.email]);
 
+    const replaceOptimisticLog = useCallback((optimisticId, confirmedRow) => {
+        if (!optimisticId || !confirmedRow) return;
+        const swap = (rows) => [
+            ...rows.filter((log) => log?.id !== optimisticId && log?.id !== confirmedRow.id),
+            confirmedRow
+        ];
+        queryClient.setQueryData(['interactionLogs', user?.email], (old) => mergeLogCache(old, swap));
+        queryClient.setQueryData(['selectedPropertyHistory', confirmedRow.address_hash], (old) => mergeLogCache(old, swap));
+    }, [queryClient, user?.email]);
+
     const dropOptimisticLog = useCallback((optimisticId, addressHash) => {
         if (!optimisticId) return;
         pendingOutcomesRef.current.delete(optimisticId);
@@ -1332,12 +1342,15 @@ export default function Home() {
             queryClient.invalidateQueries({ queryKey: ['selectedPropertyHistory'] });
         },
         onSuccess: (result, logData) => {
-            // Hand the optimistic row the id of the row it stands for, so it can
-            // be retired precisely. If the response carries no id the row is NOT
-            // retired here — collectUnretiredOutcomes matches the outcome instead.
-            const pendingEntry = pendingOutcomesRef.current.get(logData?.optimistic_id);
-            const serverId = result?.interaction?.id || null;
-            if (pendingEntry && serverId) pendingEntry.server_id = serverId;
+            // Swap the authoritative row in for the optimistic sketch. The stop
+            // then reflects the real record and holds regardless of whether the
+            // list query returns it — which is what kept flipping it back.
+            const confirmed = confirmOutcomeRow(
+                pendingOutcomesRef.current,
+                logData?.optimistic_id,
+                result?.interaction
+            );
+            if (confirmed) replaceOptimisticLog(logData?.optimistic_id, confirmed);
 
             if (Number.isFinite(result?.outcomes_logged)) {
                 queryClient.setQueryData(['user'], (current) => ({

@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   OUTCOME_CLOCK_SKEW_MS,
   collectUnretiredOutcomes,
+  confirmOutcomeRow,
   isOutcomeRowPresent
 } from '../src/components/logic/optimisticOutcomes.js';
 
@@ -117,6 +118,46 @@ test('an address filter neither returns nor retires other doors', () => {
   const unretired = collectUnretiredOutcomes(map, [], 'hash-b');
   assert.deepEqual(unretired, [other]);
   assert.equal(map.size, 2);
+});
+
+// The write returns the row it created. Showing that row means the stop no
+// longer depends on the list query returning it — the failure this chases.
+test('a confirmed outcome shows the real server row, keyed by the optimistic id', () => {
+  const map = pendingMap(optimistic());
+  const serverRow = {
+    id: 'server-1',
+    address_hash: 'hash-a',
+    parsed_status: 'NO_ANSWER',
+    created_date: LOGGED_AT,
+    created_by: 'rep@example.com',
+    outcome_sequence: 12
+  };
+
+  const confirmed = confirmOutcomeRow(map, 'optimistic-1', serverRow);
+  assert.equal(confirmed.id, 'server-1');
+  assert.equal(confirmed.server_id, 'server-1');
+  assert.equal(confirmed.outcome_sequence, 12);
+
+  // Still reachable under the optimistic key, and still shown until observed.
+  assert.equal(map.get('optimistic-1').id, 'server-1');
+  assert.deepEqual(collectUnretiredOutcomes(map, []), [confirmed]);
+});
+
+test('a confirmed outcome retires by map key once the list catches up', () => {
+  const map = pendingMap(optimistic());
+  confirmOutcomeRow(map, 'optimistic-1', { id: 'server-1', address_hash: 'hash-a' });
+
+  // Retiring by entry.id rather than the map key would leak the row forever.
+  assert.deepEqual(collectUnretiredOutcomes(map, [{ id: 'server-1' }]), []);
+  assert.equal(map.size, 0);
+});
+
+test('a response without a usable row leaves the optimistic entry standing', () => {
+  const map = pendingMap(optimistic());
+  const unchanged = confirmOutcomeRow(map, 'optimistic-1', undefined);
+  assert.equal(unchanged.id, 'optimistic-1');
+  assert.equal(map.size, 1);
+  assert.deepEqual(collectUnretiredOutcomes(map, []), [unchanged]);
 });
 
 test('an empty pending map is a no-op', () => {
