@@ -1185,6 +1185,38 @@ export default function Home() {
         const validEmails = new Set([user.email, ...(teamMembers || []).map(m => m.email)].map(e => e.toLowerCase()));
         return rawArray.filter(l => l.created_by && validEmails.has(l.created_by.toLowerCase()));
     }, [logsRaw, user, teamMembers]);
+
+    // The checklist reads its outcomes exactly the way the knock tab does: a
+    // route-scoped filter, no 5000-row global list and no org email filter on
+    // top. Those two extra hops are what kept losing a freshly logged row and
+    // letting a stop revert to Todo.
+    const { data: checklistLogs = [] } = useQuery({
+        queryKey: ['routeChecklistLogs', activeRoute?.id],
+        queryFn: async () => {
+            const hashes = activeRoute?.property_hashes || [];
+            if (!hashes.length && !activeRoute?.id) return withPendingOutcomes([]);
+            const [hashLogsRes, routeLogsRes] = await Promise.all([
+                hashes.length
+                    ? base44.entities.InteractionLog.filter({ address_hash: hashes }, '-created_date', 1000)
+                    : [],
+                activeRoute?.id
+                    ? base44.entities.InteractionLog.filter({ route_id: activeRoute.id }, '-created_date', 1000)
+                    : []
+            ]);
+            const merged = [
+                ...(Array.isArray(hashLogsRes) ? hashLogsRes : hashLogsRes?.items || []),
+                ...(Array.isArray(routeLogsRes) ? routeLogsRes : routeLogsRes?.items || [])
+            ];
+            const seen = new Set();
+            return withPendingOutcomes(merged.filter((log) => {
+                const key = log.id || `${log.address_hash}-${log.created_date}-${log.parsed_status}`;
+                if (seen.has(key)) return false;
+                seen.add(key);
+                return true;
+            }));
+        },
+        enabled: !!activeRoute?.id
+    });
     const { data: leadScoringWeightsRaw = [] } = useQuery({
         queryKey: ['leadScoringWeights'],
         staleTime: 1000 * 60 * 30,
@@ -1296,30 +1328,33 @@ export default function Home() {
 
     // Optimistic outcome rows are keyed by their own id so a rollback removes one
     // failed write without discarding outcomes the rep logged after it.
+    // Every cache the checklist or the detail sheet reads from has to be kept in
+    // step; a row applied to only some of them is a stop that reverts.
+    const writeToLogCaches = useCallback((addressHash, mutate) => {
+        const apply = (old) => mergeLogCache(old, mutate);
+        queryClient.setQueryData(['interactionLogs', user?.email], apply);
+        queryClient.setQueryData(['routeChecklistLogs', activeRoute?.id], apply);
+        queryClient.setQueryData(['selectedPropertyHistory', addressHash], apply);
+    }, [queryClient, user?.email, activeRoute?.id]);
+
     const applyOptimisticLog = useCallback((entry) => {
         pendingOutcomesRef.current.set(entry.id, entry);
-        const insert = (rows) => [...rows, entry];
-        queryClient.setQueryData(['interactionLogs', user?.email], (old) => mergeLogCache(old, insert));
-        queryClient.setQueryData(['selectedPropertyHistory', entry.address_hash], (old) => mergeLogCache(old, insert));
-    }, [queryClient, user?.email]);
+        writeToLogCaches(entry.address_hash, (rows) => [...rows, entry]);
+    }, [writeToLogCaches]);
 
     const replaceOptimisticLog = useCallback((optimisticId, confirmedRow) => {
         if (!optimisticId || !confirmedRow) return;
-        const swap = (rows) => [
+        writeToLogCaches(confirmedRow.address_hash, (rows) => [
             ...rows.filter((log) => log?.id !== optimisticId && log?.id !== confirmedRow.id),
             confirmedRow
-        ];
-        queryClient.setQueryData(['interactionLogs', user?.email], (old) => mergeLogCache(old, swap));
-        queryClient.setQueryData(['selectedPropertyHistory', confirmedRow.address_hash], (old) => mergeLogCache(old, swap));
-    }, [queryClient, user?.email]);
+        ]);
+    }, [writeToLogCaches]);
 
     const dropOptimisticLog = useCallback((optimisticId, addressHash) => {
         if (!optimisticId) return;
         pendingOutcomesRef.current.delete(optimisticId);
-        const remove = (rows) => rows.filter((log) => log?.id !== optimisticId);
-        queryClient.setQueryData(['interactionLogs', user?.email], (old) => mergeLogCache(old, remove));
-        queryClient.setQueryData(['selectedPropertyHistory', addressHash], (old) => mergeLogCache(old, remove));
-    }, [queryClient, user?.email]);
+        writeToLogCaches(addressHash, (rows) => rows.filter((log) => log?.id !== optimisticId));
+    }, [writeToLogCaches]);
 
     const createLogMutation = useMutation({
         mutationFn: async (logData) => {
@@ -1339,6 +1374,7 @@ export default function Home() {
             // withPendingOutcomes retires it when the refetch below actually
             // returns the server row.
             queryClient.invalidateQueries({ queryKey: ['interactionLogs'] });
+            queryClient.invalidateQueries({ queryKey: ['routeChecklistLogs'] });
             queryClient.invalidateQueries({ queryKey: ['selectedPropertyHistory'] });
         },
         onSuccess: (result, logData) => {
@@ -3309,7 +3345,7 @@ export default function Home() {
                         <React.Suspense fallback={null}>
                             <RouteChecklist
                                 route={filteredActiveRoute}
-                                logs={logs}
+                                logs={checklistLogs}
                                 onLogResult={handleLogResult}
                                 onClose={() => setShowChecklist(false)}
                                 navigationApp={navigationApp}
