@@ -24,6 +24,7 @@ import {
   ACTIVITY_RANGE_PRESETS,
   buildUserActivityRows,
   getUserActivityRange,
+  sortUserActivityRowsByActivity,
   summarizeUserActivity,
   toActivityDateInput,
 } from '@/lib/userActivityHeatmap';
@@ -164,6 +165,7 @@ export default function UserActivityHeatmap({
   isRefreshing = false,
   minimumActivityDate,
   onRefresh,
+  rankByActivity = false,
   scopeLabel = 'Team',
 }) {
   const [preset, setPreset] = useState('this_week');
@@ -233,12 +235,15 @@ export default function UserActivityHeatmap({
   const dailyActivity = usesExternalData ? activityData : (hasLiveData ? liveData.activity : []);
   const isFetching = usesExternalData ? isRefreshing : isQueryFetching;
   const refreshActivity = usesExternalData ? onRefresh : refetch;
-  const rows = useMemo(() => buildUserActivityRows({
-    members,
-    dailyActivity,
-    range,
-    now,
-  }), [members, dailyActivity, range, now]);
+  const rows = useMemo(() => {
+    const builtRows = buildUserActivityRows({
+      members,
+      dailyActivity,
+      range,
+      now,
+    });
+    return rankByActivity ? sortUserActivityRowsByActivity(builtRows) : builtRows;
+  }, [members, dailyActivity, range, now, rankByActivity]);
   const summary = useMemo(() => summarizeUserActivity(rows), [rows]);
   const unavailable = range.valid
     && !hasLiveData

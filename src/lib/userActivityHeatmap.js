@@ -265,6 +265,30 @@ export function buildUserActivityRows({
   });
 }
 
+function rowActivityLogs(row) {
+  return (row?.cells || []).reduce((sum, cell) => sum + numericMetric(cell?.logs), 0);
+}
+
+function rowLatestActivity(row) {
+  return (row?.cells || []).reduce((latest, cell) => {
+    const timestamp = cell?.lastActivity instanceof Date
+      ? cell.lastActivity.getTime()
+      : parseActivityDate(cell?.lastActivity)?.getTime();
+    return Number.isFinite(timestamp) ? Math.max(latest, timestamp) : latest;
+  }, 0);
+}
+
+export function sortUserActivityRowsByActivity(rows = []) {
+  return [...rows].sort((left, right) => (
+    Number(right?.activeDays || 0) - Number(left?.activeDays || 0)
+    || rowActivityLogs(right) - rowActivityLogs(left)
+    || rowLatestActivity(right) - rowLatestActivity(left)
+    || String(left?.member?.name || left?.member?.email || '').localeCompare(
+      String(right?.member?.name || right?.member?.email || '')
+    )
+  ));
+}
+
 export function summarizeUserActivity(rows = []) {
   const eligibleDays = rows[0]?.eligibleDays || 0;
   const comparisonEligibleDays = rows[0]?.comparisonEligibleDays || 0;

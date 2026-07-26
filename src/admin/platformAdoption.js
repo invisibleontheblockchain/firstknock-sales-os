@@ -1,6 +1,18 @@
+const HIDDEN_PLATFORM_ANALYTICS_NAMES = new Set([
+  'irobot v2',
+  'irobotv2',
+  'nick cohen',
+  'nicholas cohen',
+  'cory larson',
+]);
+
 function finiteMetric(value) {
   const number = Number(value);
   return Number.isFinite(number) && number > 0 ? number : 0;
+}
+
+function normalizedName(value) {
+  return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
 export function buildPlatformAdoptionView(adoption) {
@@ -10,7 +22,7 @@ export function buildPlatformAdoptionView(adoption) {
 
   for (const rep of reps) {
     const key = String(rep?.key || '').trim();
-    if (!key) continue;
+    if (!key || HIDDEN_PLATFORM_ANALYTICS_NAMES.has(normalizedName(rep?.name))) continue;
 
     members.push({
       id: key,
