@@ -10,6 +10,7 @@ const {
   getUserActivityRange,
   summarizeUserActivity,
 } = await import('../src/lib/userActivityHeatmap.js');
+const { buildPlatformAdoptionView } = await import('../src/admin/platformAdoption.js');
 
 const phoenixNow = new Date('2026-07-25T12:00:00-07:00');
 
@@ -201,17 +202,58 @@ test('Rows merge both ledgers, prefer stable user identity, and preserve inactiv
   });
 });
 
-test('HQ route, manager navigation, and manager-only heatmap are wired', () => {
+test('Team keeps its heatmap while HQ redirects before normal app authentication', () => {
   const hq = fs.readFileSync('src/pages/HQ.jsx', 'utf8');
+  const app = fs.readFileSync('src/App.jsx', 'utf8');
   const layout = fs.readFileSync('src/Layout.jsx', 'utf8');
   const adminTeam = fs.readFileSync('src/pages/AdminTeam.jsx', 'utf8');
 
-  assert.match(hq, /default.*AdminTeam/);
-  assert.match(layout, /label="HQ".*createPageUrl\('HQ'\)/);
+  assert.match(hq, /window\.location\.replace\(PRIVATE_HQ_PATH\)/);
+  assert.match(app, /isPrivateHqAlias\(window\.location\.pathname\)/);
+  assert.match(app, /\/hq\/index\.html\$\{window\.location\.search\}\$\{window\.location\.hash\}/);
+  assert.match(layout, /label="Team".*createPageUrl\('AdminTeam'\)/);
+  assert.match(layout, /canViewHQ && <a href="\/hq\/index\.html"/);
+  assert.doesNotMatch(layout, /label="HQ".*createPageUrl\('HQ'\)/);
   assert.match(adminTeam, /canManageTeam && \(\s*<UserActivityHeatmap/);
-  assert.match(adminTeam, /FirstKnock HQ/);
+  assert.match(adminTeam, /Team Command Center/);
+  assert.doesNotMatch(adminTeam, /FirstKnock HQ/);
   assert.match(adminTeam, /teamLoadFailed && teamMembers\.length === 0/);
   assert.match(adminTeam, /InteractionLog\.filter\(\s*\{ manager_id: managerId \}/);
+});
+
+test('Platform adoption adapter feeds the shared grid without exposing raw activity records', () => {
+  const view = buildPlatformAdoptionView({
+    reps: [{
+      key: 'user:rep_1',
+      name: 'Rep One',
+      email: 'rep@example.com',
+      team_name: 'North',
+      days: {
+        '2026-07-20': {
+          logs: 3,
+          doors: 2,
+          sales: 1,
+          callbacks: 1,
+          knock_logs: 2,
+          canvas_logs: 1,
+          last_activity_at: '2026-07-20T20:00:00.000Z',
+        },
+      },
+    }],
+  });
+
+  assert.deepEqual(view.members, [{
+    id: 'user:rep_1',
+    name: 'Rep One',
+    email: 'rep@example.com',
+    role: 'North',
+    team_name: 'North',
+  }]);
+  assert.equal(view.activity[0].actor_team_member_id, 'user:rep_1');
+  assert.equal(view.activity[0].logs, 3);
+  assert.equal(view.activity[0].doors, 2);
+  assert.equal(view.activity[0].sales, 1);
+  assert.equal(view.activity[0].last_activity, '2026-07-20T20:00:00.000Z');
 });
 
 test('Backend aggregation is manager-scoped, range-scoped, and returns no raw event PII', () => {

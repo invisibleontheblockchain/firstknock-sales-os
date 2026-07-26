@@ -1,0 +1,18 @@
+{
+  "id": "/hq/index.html",
+  "name": "FirstKnock HQ",
+  "short_name": "FK HQ",
+  "description": "Private FirstKnock platform command center",
+  "start_url": "/hq/index.html",
+  "scope": "/hq/",
+  "display": "standalone",
+  "background_color": "#030504",
+  "theme_color": "#030504",
+  "icons": [
+    {
+      "src": "https://media.base44.com/images/public/695eb764b077190880be21de/147abd69b_image.png",
+      "sizes": "1024x1024",
+      "type": "image/png"
+    }
+  ]
+}
