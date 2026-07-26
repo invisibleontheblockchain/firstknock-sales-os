@@ -28,6 +28,23 @@ const LayoutWrapper = ({ children, currentPageName }) => Layout ?
   <Layout currentPageName={currentPageName}>{children}</Layout>
   : <>{children}</>;
 
+function isPrivateHqAlias(pathname) {
+  return String(pathname || '').replace(/\/+$/, '').toLowerCase() === '/hq';
+}
+
+function PrivateHqAliasRedirect() {
+  React.useEffect(() => {
+    const destination = `/hq/index.html${window.location.search}${window.location.hash}`;
+    window.location.replace(destination);
+  }, []);
+
+  return (
+    <div className="fixed inset-0 flex items-center justify-center bg-black">
+      <div className="h-8 w-8 animate-spin rounded-full border-4 border-white/10 border-t-[#39FF6E]" />
+    </div>
+  );
+}
+
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
 
@@ -77,6 +94,9 @@ const AuthenticatedApp = () => {
 
 
 function App() {
+  if (typeof window !== 'undefined' && isPrivateHqAlias(window.location.pathname)) {
+    return <PrivateHqAliasRedirect />;
+  }
 
   return (
     <AuthProvider>

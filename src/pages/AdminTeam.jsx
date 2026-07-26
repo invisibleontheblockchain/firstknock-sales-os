@@ -552,7 +552,7 @@ export default function AdminTeam() {
                             <AlertCircle className="mx-auto mb-2 h-7 w-7 text-red-300" />
                             <CardTitle>Team data is unavailable</CardTitle>
                             <CardDescription className="text-gray-400">
-                                HQ could not verify the roster, so no one has been marked inactive.
+                                Team analytics could not verify the roster, so no one has been marked inactive.
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="text-center">
@@ -633,7 +633,7 @@ export default function AdminTeam() {
                         <div className="flex flex-col">
                             <h1 className="text-base md:text-3xl font-extrabold tracking-tight text-white flex items-center gap-2 md:gap-3">
                             <Shield className="w-4 h-4 md:w-8 md:h-8 text-yellow-500" />
-                            {canManageTeam ? 'FirstKnock HQ' : 'Team'}
+                            {canManageTeam ? 'Team Command Center' : 'Team'}
                             </h1>
                             <p className="hidden md:block text-gray-400 text-sm mt-1">
                                 {canManageTeam

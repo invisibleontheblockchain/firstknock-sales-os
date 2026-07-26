@@ -1,23 +1,11 @@
-import { getAccountRole } from '@/lib/roles';
-
-const DEFAULT_ADDITIONAL_VIEWERS = ['christian@nativapest.com', 'baysecurity@gmail.com'];
-
-function normalizedEmail(value) {
-  return String(value || '').trim().toLowerCase();
-}
-
-function configuredAdditionalViewers() {
-  const configured = String(import.meta.env.VITE_PLATFORM_DASHBOARD_ALLOWED_EMAILS || '')
-    .split(',')
-    .map(normalizedEmail)
-    .filter(Boolean);
-  return new Set([...DEFAULT_ADDITIONAL_VIEWERS, ...configured]);
-}
+export const PRIVATE_HQ_VIEWER_IDS = Object.freeze([
+  '695eb764b077190880be21df',
+  '6978c7229935cf40cde25086',
+]);
 
 export function canViewPlatformDashboard(user) {
   if (!user) return false;
-  if (getAccountRole(user) === 'admin') return true;
-  const email = normalizedEmail(user.email || user?.data?.email);
-  return configuredAdditionalViewers().has(email);
+  const id = String(user.id || user?.data?.id || '').trim();
+  return PRIVATE_HQ_VIEWER_IDS.includes(id);
 }
 

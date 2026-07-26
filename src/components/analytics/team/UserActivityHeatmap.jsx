@@ -11,7 +11,7 @@ import {
   Users,
   WifiOff,
 } from 'lucide-react';
-import { format, isSameDay, subDays } from 'date-fns';
+import { format, isSameDay, parseISO, subDays } from 'date-fns';
 import { base44 } from '@/api/base44Client';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
@@ -159,6 +159,12 @@ function ActivityCell({ cell, member }) {
 export default function UserActivityHeatmap({
   members = [],
   managerId,
+  activityData,
+  externalUpdatedAt = 0,
+  isRefreshing = false,
+  minimumActivityDate,
+  onRefresh,
+  scopeLabel = 'Team',
 }) {
   const [preset, setPreset] = useState('this_week');
   const [now, setNow] = useState(() => new Date());
@@ -166,18 +172,29 @@ export default function UserActivityHeatmap({
   const [customEnd, setCustomEnd] = useState(() => toActivityDateInput(new Date()));
   const isOnline = useOnlineStatus();
   const timeZone = useMemo(resolvedTimeZone, []);
+  const usesExternalData = Array.isArray(activityData);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 60_000);
     return () => window.clearInterval(timer);
   }, []);
 
-  const range = useMemo(() => getUserActivityRange({
-    preset,
-    customStart,
-    customEnd,
-    now,
-  }), [preset, customStart, customEnd, now]);
+  const range = useMemo(() => {
+    const resolved = getUserActivityRange({
+      preset,
+      customStart,
+      customEnd,
+      now,
+    });
+    if (!resolved.valid || !minimumActivityDate) return resolved;
+    const minimum = parseISO(String(minimumActivityDate));
+    if (!Number.isFinite(minimum.getTime()) || resolved.queryStart >= minimum) return resolved;
+    return {
+      ...resolved,
+      valid: false,
+      error: `Activity history is available from ${format(minimum, 'MMM d, yyyy')}.`,
+    };
+  }, [preset, customStart, customEnd, now, minimumActivityDate]);
 
   const queryStart = range.queryStart?.toISOString() || '';
   const queryEnd = range.queryEndExclusive?.toISOString() || '';
@@ -186,7 +203,7 @@ export default function UserActivityHeatmap({
     dataUpdatedAt,
     error,
     isError,
-    isFetching,
+    isFetching: isQueryFetching,
     isLoading,
     refetch,
   } = useQuery({
@@ -203,7 +220,7 @@ export default function UserActivityHeatmap({
       }
       return payload;
     },
-    enabled: !!managerId && range.valid,
+    enabled: !usesExternalData && !!managerId && range.valid,
     staleTime: 60_000,
     gcTime: 10 * 60_000,
     refetchInterval: isOnline ? 60_000 : false,
@@ -211,8 +228,11 @@ export default function UserActivityHeatmap({
     networkMode: 'offlineFirst',
   });
 
-  const hasLiveData = liveData?.success === true && Array.isArray(liveData.activity);
-  const dailyActivity = hasLiveData ? liveData.activity : [];
+  const hasLiveData = usesExternalData
+    || (liveData?.success === true && Array.isArray(liveData.activity));
+  const dailyActivity = usesExternalData ? activityData : (hasLiveData ? liveData.activity : []);
+  const isFetching = usesExternalData ? isRefreshing : isQueryFetching;
+  const refreshActivity = usesExternalData ? onRefresh : refetch;
   const rows = useMemo(() => buildUserActivityRows({
     members,
     dailyActivity,
@@ -222,12 +242,15 @@ export default function UserActivityHeatmap({
   const summary = useMemo(() => summarizeUserActivity(rows), [rows]);
   const unavailable = range.valid
     && !hasLiveData
+    && !usesExternalData
     && (isError || !isOnline || !managerId);
   const loadingWithoutData = range.valid
     && !hasLiveData
     && isOnline
     && (isLoading || isFetching);
-  const newestUpdate = hasLiveData ? dataUpdatedAt : 0;
+  const newestUpdate = usesExternalData ? externalUpdatedAt : (hasLiveData ? dataUpdatedAt : 0);
+  const rosterNoun = scopeLabel === 'Team' ? 'team members' : 'platform users';
+  const rowHeading = scopeLabel === 'Team' ? 'Team member' : 'Platform user';
   const dateColumnWidth = range.dates.length > 14 ? 48 : 76;
   const tableMinWidth = 210 + (range.dates.length * dateColumnWidth) + 112;
   const trendIcon = summary.direction === 'up'
@@ -291,9 +314,9 @@ export default function UserActivityHeatmap({
               </div>
               <button
                 type="button"
-                onClick={() => refetch()}
+                onClick={() => refreshActivity?.()}
                 disabled={isFetching || !range.valid}
-                aria-label="Refresh team activity"
+                aria-label={`Refresh ${scopeLabel.toLowerCase()} activity`}
                 className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/[0.08] bg-black/45 text-white/45 transition-colors hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? 'animate-spin' : ''}`} />
@@ -330,7 +353,7 @@ export default function UserActivityHeatmap({
           {range.valid && hasLiveData && (
             <div className="mt-4 grid grid-cols-2 gap-2 lg:grid-cols-4">
               <SummaryMetric
-                label="Team Adoption"
+                label={`${scopeLabel} Adoption`}
                 value={`${summary.adoptionPercent}%`}
                 detail={`${summary.activeUserDays} active user-days`}
                 icon={Activity}
@@ -386,7 +409,7 @@ export default function UserActivityHeatmap({
               <WifiOff className="mx-auto mb-3 h-6 w-6 text-amber-300/70" />
               <h3 className="text-sm font-black text-white">Activity is unavailable</h3>
               <p className="mt-1 text-xs leading-relaxed text-white/40">
-                No reliable activity snapshot is available, so HQ will not mark the team inactive.
+                No reliable activity snapshot is available, so {scopeLabel} analytics will not mark anyone inactive.
               </p>
               <button
                 type="button"
@@ -402,7 +425,7 @@ export default function UserActivityHeatmap({
           <div className="flex min-h-40 items-center justify-center px-6 text-center">
             <div>
               <Users className="mx-auto mb-2 h-5 w-5 text-white/25" />
-              <p className="text-xs font-bold text-white/55">No team members to measure yet.</p>
+              <p className="text-xs font-bold text-white/55">No {rosterNoun} to measure yet.</p>
               <p className="mt-1 text-[10px] text-white/30">Add a rep and their activity will appear here.</p>
             </div>
           </div>
@@ -421,7 +444,7 @@ export default function UserActivityHeatmap({
                     scope="col"
                     className="sticky left-0 z-20 w-[210px] bg-[#0C0F0C] px-4 py-3 text-left text-[9px] font-black uppercase tracking-[0.14em] text-white/30"
                   >
-                    Team member
+                    {rowHeading}
                   </th>
                   {range.dates.map((date) => {
                     const today = isSameDay(date, now);
