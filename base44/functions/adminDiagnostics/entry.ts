@@ -625,6 +625,7 @@ function buildAdoptionActivity(
             logs: 0,
             doors: 0,
             sales: 0,
+            recorded_sales_volume: 0,
             callbacks: 0,
             knock_logs: 0,
             canvas_logs: 0,
@@ -633,6 +634,10 @@ function buildAdoptionActivity(
         bucket.logs += 1;
         bucket.doors += metrics.doors || 0;
         bucket.sales += metrics.sales || 0;
+        bucket.recorded_sales_volume = round(
+            bucket.recorded_sales_volume + finiteNonNegative(metrics.recorded_sales_volume),
+            2
+        );
         bucket.callbacks += metrics.callbacks || 0;
         bucket.knock_logs += metrics.knock_logs || 0;
         bucket.canvas_logs += metrics.canvas_logs || 0;
@@ -656,6 +661,7 @@ function buildAdoptionActivity(
         touch(identity, date, occurredAt, {
             doors: isPrecisionDoorOutcome(log) ? 1 : 0,
             sales: status === 'sold' ? 1 : 0,
+            recorded_sales_volume: status === 'sold' ? finiteNonNegative(log?.sale_amount) : 0,
             callbacks: status === 'callback' ? 1 : 0,
             knock_logs: 1,
             canvas_logs: 0
@@ -672,6 +678,7 @@ function buildAdoptionActivity(
         touch(identity, date, occurredAt, {
             doors: isCanvasDoorOutcome(event) ? 1 : 0,
             sales: outcome === 'sale' ? 1 : 0,
+            recorded_sales_volume: 0,
             callbacks: outcome === 'callback' ? 1 : 0,
             knock_logs: 0,
             canvas_logs: 1

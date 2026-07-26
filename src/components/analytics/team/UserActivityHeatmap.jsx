@@ -29,6 +29,13 @@ import {
   toActivityDateInput,
 } from '@/lib/userActivityHeatmap';
 
+const recordedRevenueFormatter = new Intl.NumberFormat('en-US', {
+  style: 'currency',
+  currency: 'USD',
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 2,
+});
+
 function initials(name, email) {
   const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
   if (parts.length > 1) return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
@@ -94,7 +101,7 @@ function LoadingGrid() {
   );
 }
 
-function ActivityCell({ cell, member }) {
+function ActivityCell({ cell, member, showProductionTotals }) {
   const name = member?.name || member?.email || 'Team member';
   const dayLabel = format(cell.date, 'EEEE, MMMM d');
   const ariaLabel = cell.isFuture
@@ -123,7 +130,7 @@ function ActivityCell({ cell, member }) {
       <TooltipContent
         side="top"
         sideOffset={7}
-        className="w-56 rounded-xl border border-white/10 bg-[#111114] p-3 text-white shadow-2xl"
+        className={`${showProductionTotals ? 'w-64' : 'w-56'} rounded-xl border border-white/10 bg-[#111114] p-3 text-white shadow-2xl`}
       >
         <div className="mb-2 border-b border-white/[0.08] pb-2">
           <p className="text-xs font-black">{dayLabel}</p>
@@ -132,7 +139,7 @@ function ActivityCell({ cell, member }) {
           </p>
         </div>
         {!cell.isFuture && (
-          <div className="grid grid-cols-3 gap-2 text-center">
+          <div className={`grid ${showProductionTotals ? 'grid-cols-4' : 'grid-cols-3'} gap-2 text-center`}>
             <div>
               <div className="text-sm font-black text-white">{cell.logs}</div>
               <div className="text-[9px] uppercase tracking-wide text-white/35">Logs</div>
@@ -145,6 +152,14 @@ function ActivityCell({ cell, member }) {
               <div className="text-sm font-black text-[#2EEB57]">{cell.sales}</div>
               <div className="text-[9px] uppercase tracking-wide text-white/35">Sales</div>
             </div>
+            {showProductionTotals && (
+              <div>
+                <div className="text-xs font-black text-cyan-200">
+                  {recordedRevenueFormatter.format(cell.recordedSalesVolume)}
+                </div>
+                <div className="text-[9px] uppercase tracking-wide text-white/35">Revenue</div>
+              </div>
+            )}
           </div>
         )}
         {cell.lastActivity && (
@@ -166,6 +181,7 @@ export default function UserActivityHeatmap({
   minimumActivityDate,
   onRefresh,
   rankByActivity = false,
+  showProductionTotals = false,
   scopeLabel = 'Team',
 }) {
   const [preset, setPreset] = useState('this_week');
@@ -257,7 +273,8 @@ export default function UserActivityHeatmap({
   const rosterNoun = scopeLabel === 'Team' ? 'team members' : 'platform users';
   const rowHeading = scopeLabel === 'Team' ? 'Team member' : 'Platform user';
   const dateColumnWidth = range.dates.length > 14 ? 48 : 76;
-  const tableMinWidth = 210 + (range.dates.length * dateColumnWidth) + 112;
+  const productionColumnWidth = showProductionTotals ? 208 : 0;
+  const tableMinWidth = 210 + (range.dates.length * dateColumnWidth) + productionColumnWidth + 112;
   const trendIcon = summary.direction === 'up'
     ? ArrowUpRight
     : summary.direction === 'down'
@@ -442,6 +459,7 @@ export default function UserActivityHeatmap({
             >
               <caption className="sr-only">
                 User activity by day for {range.label}. Green circles indicate at least one logged action.
+                {showProductionTotals ? ' Sales and recorded revenue totals cover the selected date range.' : ''}
               </caption>
               <thead>
                 <tr className="border-b border-white/[0.06] bg-black/25">
@@ -472,6 +490,24 @@ export default function UserActivityHeatmap({
                       </th>
                     );
                   })}
+                  {showProductionTotals && (
+                    <>
+                      <th
+                        scope="col"
+                        title="Confirmed sales logged in the selected date range"
+                        className="w-20 min-w-20 bg-[#0C0F0C] px-3 py-3 text-right text-[9px] font-black uppercase tracking-[0.12em] text-white/30"
+                      >
+                        Sales
+                      </th>
+                      <th
+                        scope="col"
+                        title="Rep-recorded sale amounts in the selected date range"
+                        className="w-32 min-w-32 bg-[#0C0F0C] px-3 py-3 text-right text-[9px] font-black uppercase tracking-[0.12em] text-white/30"
+                      >
+                        Revenue
+                      </th>
+                    </>
+                  )}
                   <th
                     scope="col"
                     className="sticky right-0 z-20 w-28 bg-[#0C0F0C] px-3 py-3 text-right text-[9px] font-black uppercase tracking-[0.12em] text-white/30"
@@ -520,9 +556,29 @@ export default function UserActivityHeatmap({
                           isSameDay(cell.date, now) ? 'bg-[#2EEB57]/[0.035]' : ''
                         }`}
                       >
-                        <ActivityCell cell={cell} member={row.member} />
+                        <ActivityCell
+                          cell={cell}
+                          member={row.member}
+                          showProductionTotals={showProductionTotals}
+                        />
                       </td>
                     ))}
+                    {showProductionTotals && (
+                      <>
+                        <td
+                          aria-label={`${row.member?.name || row.member?.email || 'Unnamed user'}: ${row.totalSales} confirmed sales in ${range.label}`}
+                          className="bg-[#0B0E0B] px-3 py-2 text-right font-mono text-sm font-black text-[#7CFF9C]"
+                        >
+                          {row.totalSales}
+                        </td>
+                        <td
+                          aria-label={`${row.member?.name || row.member?.email || 'Unnamed user'}: ${recordedRevenueFormatter.format(row.recordedSalesVolume)} recorded revenue in ${range.label}`}
+                          className="bg-[#0B0E0B] px-3 py-2 text-right font-mono text-xs font-black text-cyan-200"
+                        >
+                          {recordedRevenueFormatter.format(row.recordedSalesVolume)}
+                        </td>
+                      </>
+                    )}
                     <td className="sticky right-0 z-10 bg-[#0B0E0B] px-3 py-2 text-right">
                       <div className={`text-sm font-black ${row.isConsistent ? 'text-[#2EEB57]' : row.isInactive ? 'text-white/30' : 'text-white'}`}>
                         {row.activeDays}/{row.eligibleDays}
@@ -556,6 +612,11 @@ export default function UserActivityHeatmap({
           <span>
             {newestUpdate ? `Updated ${format(new Date(newestUpdate), 'h:mm a')}` : 'Updates every minute'}
           </span>
+          {showProductionTotals && (
+            <span className="text-white/25">
+              Revenue includes recorded sale amounts; Canvas and unvalued sales contribute $0.
+            </span>
+          )}
         </div>
       </section>
     </TooltipProvider>
