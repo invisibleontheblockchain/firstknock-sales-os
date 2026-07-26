@@ -7,8 +7,19 @@ const STORAGE_KEY = 'fk_polygonHistory';
 const MAX_HISTORY = 20;
 
 function polygonKey(polygon = []) {
-    const first = polygon[0] || {};
-    return `${Number(first.lat || 0).toFixed(5)}:${Number(first.lng || 0).toFixed(5)}:${polygon.length}`;
+    if (!Array.isArray(polygon) || polygon.length < 3) return null;
+    const normalized = polygon.map((point) => {
+        const lat = Number(point?.lat);
+        const lng = Number(point?.lng);
+        return Number.isFinite(lat) && Number.isFinite(lng)
+            ? { lat: Number(lat.toFixed(6)), lng: Number(lng.toFixed(6)) }
+            : null;
+    });
+    if (normalized.some((point) => point === null)) return null;
+    const first = normalized[0];
+    const last = normalized[normalized.length - 1];
+    if (normalized.length > 3 && first.lat === last.lat && first.lng === last.lng) normalized.pop();
+    return normalized.map((point) => `${point.lat},${point.lng}`).join(';');
 }
 
 export function savePolygonToHistory(polygon, metadata = {}) {
@@ -96,10 +107,23 @@ export default function PolygonHistory({ currentPolygon, mode, serverHistory = [
             const existing = byKey.get(key);
             const existingTime = new Date(existing?.last_pull_date || existing?.updated_at || existing?.date || 0).getTime();
             const incomingTime = new Date(entry.last_pull_date || entry.updated_at || entry.date || 0).getTime();
-            if (existing && Number.isFinite(existingTime) && (!Number.isFinite(incomingTime) || existingTime > incomingTime)) return;
+            if (existing && Number.isFinite(existingTime) && (!Number.isFinite(incomingTime) || existingTime > incomingTime)) {
+                byKey.set(key, {
+                    ...existing,
+                    criteria: {
+                        ...(entry.criteria || {}),
+                        ...(existing.criteria || {})
+                    }
+                });
+                return;
+            }
             byKey.set(key, {
                 ...existing,
                 ...entry,
+                criteria: {
+                    ...(existing?.criteria || {}),
+                    ...(entry.criteria || {})
+                },
                 queried: true
             });
         });

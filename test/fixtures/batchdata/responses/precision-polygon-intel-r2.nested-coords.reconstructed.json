@@ -1,0 +1,47 @@
+{
+  "_source_type": "reconstructed_response",
+  "_warning": "NOT a raw provider capture. Reconstructed field-by-field from responses/observed-response-assertions.json. See _field_provenance.",
+  "_field_provenance": {
+    "results.properties": "OBS-corroborated (batchDataWebhookCallback, validateBatchDataShape, v15/v16 research doc). Envelope not captured.",
+    "address.street/city/state/zip": "BD-E04 — BatchData's own Anderson SC 500-row export uses column names street, city, state, zip. Values here are redacted placeholders.",
+    "address.location.latitude/longitude": "UNPROVEN nesting. This fixture pins the nested variant; the flat variant is pinned by the sibling fixture. Both aliases are retained in the parser until an authorized capture resolves which is real.",
+    "intel.lastSoldDate": "OBS-01 / OBS-04 — verbatim observed value and ISO-8601 UTC midnight format.",
+    "general.standardizedLandUseCode": "OBS-01 (value R2) + BD-E01 (request path searchCriteria.general.standardizedLandUseCode). Response nesting inferred from the request.",
+    "general.propertyTypeDetail": "BD-E04 — propertyTypeDetail is a BatchData-authored column name; 'Single Family' is a value from that export. Nesting under `general` is inferred.",
+    "valuation.estimatedValue": "BD-E01 — request path searchCriteria.valuation.estimatedValue. Response nesting inferred from the request.",
+    "owner.fullName / owner.ownerOccupied": "Internal v15/v16 dataset research document, owner add-on field table. Values redacted."
+  },
+  "results": {
+    "properties": [
+      {
+        "address": {
+          "street": "1000 Redacted St",
+          "city": "REDACTED_CITY_001",
+          "state": "NC",
+          "zip": "27000",
+          "location": {
+            "latitude": 35.5,
+            "longitude": -80.0
+          }
+        },
+        "ids": {
+          "propertyId": "PROPERTY_ID_001"
+        },
+        "intel": {
+          "lastSoldDate": "2026-06-23T00:00:00.000Z"
+        },
+        "general": {
+          "standardizedLandUseCode": "R2",
+          "propertyTypeDetail": "Single Family"
+        },
+        "valuation": {
+          "estimatedValue": 325000
+        },
+        "owner": {
+          "fullName": "OWNER_001",
+          "ownerOccupied": true
+        }
+      }
+    ]
+  }
+}

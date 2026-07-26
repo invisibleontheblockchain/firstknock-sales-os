@@ -11,11 +11,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { getCanvasCampaignMap, logCanvasHouseDecision } from '@/components/canvas/canvasProductionClient';
 import { getFieldRoutesStatuses } from '@/api/fieldRoutes';
 import ScheduleInspectionAction from '@/components/fieldroutes/ScheduleInspectionAction';
-import MapAttributionControl from '@/components/map/MapAttributionControl';
-import {
-  ESRI_IMAGERY_ATTRIBUTION,
-  OPENSTREETMAP_ATTRIBUTION,
-} from '@/components/map/mapAttribution';
 import {
   fieldRoutesStatusRows,
   fieldRoutesStatusPresentation,

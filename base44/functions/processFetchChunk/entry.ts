@@ -46,6 +46,14 @@ async function countPersistedPrecisionProperties(jobId) {
     return Math.max(0, Number(rows[0]?.count || 0));
 }
 
+// Precision pulls settle precision_usage_count from delivered route-active
+// rows, so only they carry the stricter delivered-equals-routeable invariant.
+function isPrecisionDeliveryJob(job) {
+    return job?.mode_tag === 'PRECISION_TARGET'
+        || job?.phase === 'batchdata_precision'
+        || Boolean(job?.precision_usage_user_id);
+}
+
 function cancellationRequested(job) {
     return job?.status === 'cancelled' || Boolean(job?.precision_cancel_requested_at);
 }
@@ -419,13 +427,18 @@ function buildBatchDataRequest(job, skip = 0, take = 500, mode = 'strict_polygon
         ...(customOwnershipBounds ? { maxDate: customOwnershipBounds.newestDate } : {})
     };
 
+    // Intentionally omit options.datasets. Evidence BD-E02 (live no-write A/B
+    // probe on one polygon, recorded in src/tasks/todo.md): scoping datasets
+    // made BatchData omit the `intel` and `sale` objects and the same polygon
+    // returned active=0, while the unscoped request returned active>0 with
+    // intel/sale evidence present. `intel` is not one of basic|listing|deed|
+    // owner, so any datasets array suppresses the exact field this request
+    // filters on (searchCriteria.intel.lastSoldDate) and the field the mapper
+    // treats as the authoritative recorded-sale date. take<=100 is enforced
+    // because BatchData rejects larger pages (evidence BD-E03).
     const options = {
         skip,
-        take: Math.min(Math.max(Number(take) || BATCHDATA_MAX_TAKE, 1), BATCHDATA_MAX_TAKE),
-        // Request only the property, deed, and owner datasets used by the
-        // Precision route product. Do not implicitly ingest contact,
-        // demographic, mortgage, lien, or financial add-ons.
-        datasets: ['basic', 'deed', 'owner']
+        take: Math.min(Math.max(Number(take) || BATCHDATA_MAX_TAKE, 1), BATCHDATA_MAX_TAKE)
     };
 
     if (mode === 'centroid_fallback') {
@@ -462,8 +475,21 @@ function buildBatchDataRequest(job, skip = 0, take = 500, mode = 'strict_polygon
 }
 
 function extractBatchDataRecords(payload) {
-    const batch = payload?.results?.properties || payload?.properties || payload?.results || [];
-    return Array.isArray(batch) ? batch : [batch].filter(Boolean);
+    // results.properties is the only envelope with corroborating evidence (it is
+    // what batchDataWebhookCallback reads in production, what the
+    // validateBatchDataShape probe reads, and what BatchData's own v15/v16
+    // dataset guidance documents). `properties` and `results` are retained as
+    // unproven aliases rather than deleted, because no capture rules them out.
+    //
+    // What is NOT retained is the previous `[batch].filter(Boolean)` fallback:
+    // it wrapped ANY truthy non-array value — including an unrecognised
+    // envelope object such as { results: { items: [...] } } — into a single
+    // fabricated "record". An unknown shape must yield zero records observably
+    // rather than one meaningless row that then fails mapping.
+    for (const candidate of [payload?.results?.properties, payload?.properties, payload?.results]) {
+        if (Array.isArray(candidate)) return candidate;
+    }
+    return [];
 }
 
 function extractBatchDataTotal(payload) {
@@ -493,7 +519,6 @@ function mapBatchDataProperty(record, job) {
 
     const owner = p.owner || {};
     const quickLists = p.quickLists || p.quick_lists || {};
-    const listing = p.listing || {};
     const intel = p.intel || {};
     const building = p.building || p.structure || p.propertyInfo || p.assessment?.building || p.assessor?.building || {};
     const sale = p.sale || p.lastSale || p.deed?.sale || p.transaction || {};
@@ -515,8 +540,6 @@ function mapBatchDataProperty(record, job) {
         record !== p && typeof record.subdivision === 'string' ? record.subdivision : null,
         record !== p ? record.subdivision?.name : null
     );
-    const listingStatus = firstValue(listing.status, listing.statusCategory);
-    const listingStatusLower = String(listingStatus || '').toLowerCase();
     const customOwnershipRange = getCustomOwnershipRange(job);
     const providerOwnershipDate = dateValue(
         intel.lastSoldDate,
@@ -529,8 +552,12 @@ function mapBatchDataProperty(record, job) {
         p.soldDate,
         p.sold_date
     );
+    // MLS listing dates are deliberately absent from this chain. The Precision
+    // request filters on searchCriteria.intel.lastSoldDate, and BatchData's own
+    // v15/v16 dataset guidance records a 30-60 day MLS-to-deed gap, so a
+    // listing.soldDate can disagree with the ownership transfer the user asked
+    // for. Only county-recorded/intel evidence may set the authoritative date.
     const defaultSaleDate = dateValue(
-        p.listing?.soldDate,
         p.deedHistory?.[0]?.saleDate,
         intel.lastSoldDate,
         intel.lastSaleDate,
@@ -587,14 +614,30 @@ function mapBatchDataProperty(record, job) {
         intel.avm, intel.avmValue, intel.value, intel.amount,
         valuation.estimatedValue, valuation.value, valuation.avm, valuation.avmValue, valuation.amount,
         assessment.totalValue, assessment.marketValue, assessment.assessedValue, assessment.totalMarketValue, assessment.market,
-        p.estimatedValue, p.estimated_value, p.avm, p.avmValue, p.assessedValue, p.price,
-        listing.price, listing.listPrice
+        // MLS list price is not an estimated property value. The outbound filter
+        // is searchCriteria.valuation.estimatedValue, so only valuation/assessment
+        // evidence may satisfy the user's home-value range.
+        p.estimatedValue, p.estimated_value, p.avm, p.avmValue, p.assessedValue, p.price
     );
     const price = estimatedValue ?? saleAmount;
     const landUseCode = firstValue(general.standardizedLandUseCode, p.standardizedLandUseCode);
-    const propertyType = firstValue(general.propertyTypeDetail, general.propertyType, p.propertyType, p.landUse, building.propertyType) || 'Single Family';
-    // Single-family-only gate. BatchData's standardized R2 code is the
-    // single-family residential bucket used by Precision route pulls.
+    const providerPropertyType = firstValue(general.propertyTypeDetail, general.propertyType, p.propertyType, p.landUse, building.propertyType);
+    const precisionDelivery = isPrecisionDeliveryJob(job);
+    // A Precision row never invents a provider property type. BatchData's own
+    // 500-row Anderson SC sample (evidence BD-E04) carries propertyTypeDetail on
+    // every record, so requiring it does not discard real inventory, and
+    // matchesSelectedPropertyType() treats blank text as permissive — meaning a
+    // fabricated "Single Family" and a missing type would both slide into the
+    // route. Precision therefore persists null and excludes the row below.
+    // Non-Precision pulls keep the historical default so unrelated legacy
+    // pipelines are unchanged.
+    const propertyType = providerPropertyType || (precisionDelivery ? null : 'Single Family');
+    // Land-use gate. R2 is the exact standardizedLandUseCode this pipeline sends
+    // in searchCriteria.general (evidence BD-E01) and the code real returned rows
+    // carried (evidence BD-E02), so rejecting a different returned code enforces
+    // the outbound request. R2 is proven "residential" by that evidence; it is
+    // NOT proven to mean single-family, so it is not used as positive
+    // single-family proof — providerPropertyType is required for that.
     const nonResidential = /commercial|industrial|vacant|agricultural|land|daycare|day ?care|child ?care|church|school|office|retail|store|warehouse|hotel|motel|restaurant|medical|hospital|parking|exempt|government|condo|condominium|apartment|multi[- ]?family|multifamily|duplex|triplex|fourplex|townhouse|townhome|row ?house/i.test(String(propertyType));
     const landUseRejected = !!landUseCode && String(landUseCode).toUpperCase() !== 'R2';
 
@@ -609,8 +652,35 @@ function mapBatchDataProperty(record, job) {
     const filterMaxPrice = Number(jobFilters.max_price) > 0 ? Number(jobFilters.max_price) : null;
     const priceKnown = Number.isFinite(Number(price)) && Number(price) > 0;
     const priceRejected = priceKnown && ((filterMinPrice !== null && Number(price) < filterMinPrice) || (filterMaxPrice !== null && Number(price) > filterMaxPrice));
-    const rejected = nonResidential || landUseRejected || priceRejected;
+
+    // ── Precision delivery invariant ─────────────────────────────────────
+    // A row may only count toward FetchJob.precision_usage_count when the
+    // server can prove it satisfies the persisted criteria AND that it is
+    // eligible for the exact-job candidate query that builds the route. The
+    // candidate query requires a recorded sale date inside the same window,
+    // so a row without one is delivered-but-unroutable and must not be
+    // billed. Unknown values and absent property types cannot prove the price
+    // or single-family criteria either, and no missing provider field is ever
+    // replaced with a guessed value to make a row eligible. Non-Precision pulls
+    // keep the looser provider-trusting behaviour.
+    const precisionExclusionReason = !precisionDelivery
+        ? null
+        : !hasValidSaleDate
+            ? 'missing_recorded_sale_date'
+            : !isSoldInWindow || !isInCustomOwnershipRange
+                ? 'recorded_sale_outside_window'
+                : filterMinPrice !== null && !priceKnown
+                    ? 'unprovable_minimum_value'
+                    : !providerPropertyType
+                        ? 'unprovable_property_type'
+                        : null;
+
+    const rejected = nonResidential || landUseRejected || priceRejected || Boolean(precisionExclusionReason);
     const routeActive = !rejected && isInCustomOwnershipRange;
+    const exclusionReason = precisionExclusionReason
+        || (nonResidential || landUseRejected ? 'not_single_family_residential' : null)
+        || (priceRejected ? 'outside_requested_value_range' : null)
+        || (routeActive ? null : 'outside_requested_ownership_window');
 
     const match = address.street.match(/^(\d+)\s+(.*)$/);
     const houseNumber = match ? parseInt(match[1], 10) : 0;
@@ -651,6 +721,7 @@ function mapBatchDataProperty(record, job) {
         sale_confidence: rejected ? 'REJECTED' : 'verified',
         original_status: rejected ? 'REJECTED' : 'BATCHDATA_CONFIRMED',
         route_active: routeActive,
+        exclusion_reason: routeActive ? null : exclusionReason,
         // Retain a deliberately minimized audit snapshot instead of the full
         // provider object, which can grow to include sensitive add-on fields.
         raw_payload: JSON.stringify({
@@ -683,6 +754,11 @@ function mapBatchDataProperty(record, job) {
             sale: {
                 date: saleDate || null,
                 amount: saleAmount ?? null
+            },
+            // Durable audit of why a delivered row was or was not routeable.
+            precision_eligibility: {
+                route_active: routeActive,
+                exclusion_reason: routeActive ? null : exclusionReason
             }
         })
     };

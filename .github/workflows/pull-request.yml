@@ -1,0 +1,69 @@
+name: Pull Request
+
+# Deterministic verification only. This workflow never deploys, never publishes,
+# never writes to a database, and never calls a paid provider API. It has no
+# access to repository secrets and its permissions are read-only.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # Guard rail: no job step may reach a live provider.
+      CI: 'true'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history so the merge-base whitespace check below can resolve.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: BatchData provider contract suite
+        # Replays the sanitized fixture corpus in test/fixtures/batchdata
+        # through the real request builder, parser, and candidate handler.
+        run: npm run test:batchdata-contract
+
+      - name: Precision suite
+        run: npm run test:precision
+
+      - name: Full test suite
+        run: npm test
+
+      - name: Backend validation
+        run: npm run validate:backend
+
+      - name: Build
+        run: npm run build
+
+      - name: Artifact validation
+        run: npm run validate:artifact
+
+      - name: Whitespace and conflict-marker check
+        run: |
+          BASE_SHA="$(git merge-base origin/${{ github.base_ref || 'main' }} HEAD)"
+          git diff --check "$BASE_SHA...HEAD"

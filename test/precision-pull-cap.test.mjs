@@ -14,6 +14,7 @@ const livePaths = [
   'base44/functions/startBatchDataPull/entry.ts'
 ];
 const previewPath = 'base44/functions/previewBatchDataArea/entry.ts';
+const activeJobCriteriaPath = 'base44/functions/_shared/precisionActiveJobCriteria.js';
 
 function loadHandler(path, { base44, stripeApi = {}, ClientImpl = null }) {
   const transpiled = ts.transpileModule(readSource(path), {
@@ -31,7 +32,12 @@ function loadHandler(path, { base44, stripeApi = {}, ClientImpl = null }) {
     async query() { return { rows: [] }; }
     async end() {}
   }
-  const executable = transpiled.outputText.replace(/^import .*;\s*$/gm, '');
+  const sharedExecutable = ts.transpileModule(readSource(activeJobCriteriaPath), {
+    compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
+    fileName: activeJobCriteriaPath,
+    reportDiagnostics: true
+  }).outputText.replace(/^export\s+/gm, '');
+  const executable = `${sharedExecutable}\n${transpiled.outputText.replace(/^import .*;\s*$/gm, '')}`;
   vm.runInNewContext(executable, {
     console,
     createClientFromRequest: () => base44,

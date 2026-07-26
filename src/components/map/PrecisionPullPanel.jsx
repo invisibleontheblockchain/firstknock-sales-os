@@ -65,6 +65,19 @@ function normalizeLocation(value) {
   };
 }
 
+function normalizeRouteBoundsIntent(value) {
+  if (!value || value.enabled !== true) return { enabled: false };
+  const startLocation = normalizeLocation(value.startLocation || value.start_location);
+  const endLocation = normalizeLocation(value.endLocation || value.end_location);
+  if (!startLocation || !endLocation) return { enabled: false };
+  return {
+    enabled: true,
+    mode: value.mode === 'current_to_home' ? 'current_to_home' : 'home_round_trip',
+    startLocation: { lat: startLocation.lat, lng: startLocation.lng },
+    endLocation: { lat: endLocation.lat, lng: endLocation.lng }
+  };
+}
+
 function normalizedAddress(value) {
   return String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
 }
@@ -125,6 +138,9 @@ export default function PrecisionPullPanel({
   onGenerate,
   generating,
   pullError,
+  blockingActiveJob = null,
+  onCancelBlockingJob,
+  onDismissBlockingActiveJob,
   onUpgrade,
   onClearArea,
   selectedHistoryArea,
@@ -136,7 +152,8 @@ export default function PrecisionPullPanel({
   setIncludeUnresolvedFollowUps,
   savedRouteHomeCount = 0,
   homeBase = null,
-  onSaveHomeBase
+  onSaveHomeBase,
+  restoredRouteBounds = { enabled: false }
 }) {
   const navigate = useNavigate();
   const [hoveredLockedOption, setHoveredLockedOption] = useState(null);
@@ -156,12 +173,38 @@ export default function PrecisionPullPanel({
   const [gpsLoading, setGpsLoading] = useState(false);
   const [gpsError, setGpsError] = useState('');
   const [routeOriginError, setRouteOriginError] = useState('');
+  const [activeRestoredRouteBounds, setActiveRestoredRouteBounds] = useState(
+    () => normalizeRouteBoundsIntent(restoredRouteBounds)
+  );
 
   const goToUpgrade = () => navigate(createPageUrl('Billing') + '?plan=precision');
   const historyCriteria = selectedHistoryArea?.criteria || {};
   const historyDate = selectedHistoryArea?.last_pull_date || selectedHistoryArea?.date;
   const [ownershipMinDays, ownershipMaxDays] = normalizeOwnershipRangeDays(ownershipRangeDays);
   const isCustomRange = ownershipRangeMode === 'custom';
+  const restoredUsesMaxAvailable = repullMode === 'max_since_last' || propertyCountMode === 'max_available';
+
+  useEffect(() => {
+    const normalized = normalizeRouteBoundsIntent(restoredRouteBounds);
+    setActiveRestoredRouteBounds(normalized);
+    setRouteFromHomeEnabled(normalized.enabled);
+    if (normalized.enabled) {
+      const usesCurrentLocation = normalized.mode === 'current_to_home';
+      setStartPointMode(usesCurrentLocation ? 'current' : 'home');
+      setCurrentLocation(usesCurrentLocation
+        ? { ...normalized.startLocation, address: 'Restored start point' }
+        : null);
+      setGpsError('');
+      setRouteOriginError('');
+    }
+  }, [
+    restoredRouteBounds?.enabled,
+    restoredRouteBounds?.mode,
+    restoredRouteBounds?.startLocation?.lat,
+    restoredRouteBounds?.startLocation?.lng,
+    restoredRouteBounds?.endLocation?.lat,
+    restoredRouteBounds?.endLocation?.lng
+  ]);
 
   useEffect(() => {
     const normalized = normalizeLocation(homeBase);
@@ -175,6 +218,10 @@ export default function PrecisionPullPanel({
     setHomeBaseError('');
   }, [homeBase?.address, homeBase?.lat, homeBase?.lng]);
 
+  const clearRestoredRouteBounds = () => {
+    setActiveRestoredRouteBounds({ enabled: false });
+  };
+
   const saveHomeBase = async () => {
     if (!String(homeBaseAddress || '').trim()) {
       setHomeBaseError('Enter your Home Base address, including city and state.');
@@ -182,6 +229,7 @@ export default function PrecisionPullPanel({
     }
 
     setHomeBaseSaving(true);
+    clearRestoredRouteBounds();
     setHomeBaseError('');
     setRouteOriginError('');
     try {
@@ -198,6 +246,7 @@ export default function PrecisionPullPanel({
   };
 
   const requestCurrentLocation = useCallback(() => {
+    setActiveRestoredRouteBounds({ enabled: false });
     setStartPointMode('current');
     setRouteOriginError('');
     setGpsError('');
@@ -244,6 +293,9 @@ export default function PrecisionPullPanel({
     if (!usageReady || Number(maxProperties) <= 0) return;
     if (!routeFromHomeEnabled) {
       return onGenerate?.({ enabled: false });
+    }
+    if (activeRestoredRouteBounds.enabled) {
+      return onGenerate?.(activeRestoredRouteBounds);
     }
 
     const savedHome = normalizeLocation(resolvedHomeBase);
@@ -351,29 +403,48 @@ export default function PrecisionPullPanel({
                 <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#39FF4A]">Previous area pull</p>
                 <p className="text-[11px] text-gray-400">Last pulled {formatHistoryDate(historyDate)}. Choose the ghost-mode refresh type.</p>
               </div>
+              <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2">
+                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-white">Restored from previous pull</p>
+                <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-gray-300">
+                  <span>
+                    {restoredUsesMaxAvailable
+                      ? `Max Available: ${usageReady ? `${formatCount(maxProperties)} homes` : 'current allowance'}`
+                      : `Fixed Count: ${formatCount(requestedPropertyCount)} homes`}
+                  </span>
+                  <span>
+                    Minimum value: {Number(minHomeValue) > 0 ? `$${formatCount(minHomeValue)}` : 'No minimum'}
+                  </span>
+                </div>
+              </div>
               <div className="grid grid-cols-2 gap-1.5">
                 <button
                   type="button"
                   onClick={() => {
                     setRepullMode?.('fill_gaps');
                     setForceFullRefresh?.(true);
-                    if (historyCriteria.requested_properties) setRequestedPropertyCount(historyCriteria.requested_properties);
-                    if (historyCriteria.sold_months) setSoldMonths(historyCriteria.sold_months);
+                    setPropertyCountMode?.(historyCriteria.count_mode === 'max_available' ? 'max_available' : 'fixed');
+                    setRequestedPropertyCount(historyCriteria.requested_properties || FREE_PRECISION_HOME_LIMIT);
+                    setSoldMonths(historyCriteria.sold_months || 12);
                     if (historyCriteria.ownership_range_mode === 'custom' && historyCriteria.ownership_range_days) {
                       setOwnershipRangeDays?.(normalizeOwnershipRangeDays(historyCriteria.ownership_range_days));
                       setOwnershipRangeMode?.('custom');
                     } else {
                       setOwnershipRangeMode?.('quick');
                     }
-                    if (historyCriteria.min_price !== undefined && historyCriteria.min_price !== null) setMinHomeValue(historyCriteria.min_price);
-                    if (historyCriteria.max_price !== undefined && historyCriteria.max_price !== null) setMaxHomeValue(historyCriteria.max_price || '');
+                    setMinHomeValue(Number(historyCriteria.min_price) > 0 ? Number(historyCriteria.min_price) : 100000);
+                    setMaxHomeValue(Number(historyCriteria.max_price) > 0 ? Number(historyCriteria.max_price) : '');
                   }}
                   className={`rounded-xl px-2 py-2 text-[9px] font-black transition-all ${repullMode === 'fill_gaps' || forceFullRefresh ? 'bg-[#2EEB57] text-black' : 'bg-white/5 text-gray-300 border border-white/10'}`}>
                   Fill Gaps
                 </button>
                 <button
                   type="button"
-                  onClick={() => { setRepullMode?.('max_since_last'); setForceFullRefresh?.(false); setRequestedPropertyCount(maxProperties); }}
+                  onClick={() => {
+                    setRepullMode?.('max_since_last');
+                    setForceFullRefresh?.(false);
+                    setPropertyCountMode?.('max_available');
+                    setRequestedPropertyCount(maxProperties);
+                  }}
                   className={`rounded-xl px-2 py-2 text-[9px] font-black transition-all ${repullMode === 'max_since_last' ? 'bg-[#2EEB57] text-black' : 'bg-white/5 text-gray-300 border border-white/10'}`}>
                   Max Since Last
                 </button>
@@ -491,6 +562,9 @@ export default function PrecisionPullPanel({
                 />
               </div>
             </div>
+            <p className="text-[10px] text-gray-500">
+              Leave the minimum blank and Precision uses its $100,000 default. Homes below that value are not pulled.
+            </p>
           </div>
 
           <div className="space-y-2">
@@ -654,6 +728,7 @@ export default function PrecisionPullPanel({
                 type="checkbox"
                 checked={routeFromHomeEnabled}
                 onChange={event => {
+                  clearRestoredRouteBounds();
                   setRouteFromHomeEnabled(event.target.checked);
                   setRouteOriginError('');
                 }}
@@ -669,6 +744,12 @@ export default function PrecisionPullPanel({
                 </span>
               </span>
             </label>
+
+            {activeRestoredRouteBounds.enabled && (
+              <p className="rounded-xl border border-[#2EEB57]/20 bg-[#2EEB57]/[0.06] px-3 py-2 text-[10px] leading-snug text-gray-300">
+                <span className="font-bold text-[#39FF4A]">Restored route bounds:</span> the saved start and finish coordinates from this previous pull will be reused. Changing an origin option below replaces them.
+              </p>
+            )}
 
             {routeFromHomeEnabled && (
               <div className="space-y-4 border-t border-white/10 pt-3">
@@ -695,6 +776,7 @@ export default function PrecisionPullPanel({
                         value={homeBaseAddress}
                         onChange={event => {
                           const nextAddress = event.target.value;
+                          clearRestoredRouteBounds();
                           setHomeBaseAddress(nextAddress);
                           setHomeBaseError('');
                           setRouteOriginError('');
@@ -745,6 +827,7 @@ export default function PrecisionPullPanel({
                       type="button"
                       aria-pressed={startPointMode === 'home'}
                       onClick={() => {
+                        clearRestoredRouteBounds();
                         setStartPointMode('home');
                         setGpsError('');
                         setRouteOriginError('');
@@ -826,6 +909,29 @@ export default function PrecisionPullPanel({
                   className="mt-2 h-8 rounded-lg bg-[#2EEB57] px-4 text-xs font-extrabold text-black hover:bg-[#39FF4A]">
                   View Plans
                 </button>
+              )}
+              {blockingActiveJob?.canCancel && (
+                <div className="mt-2.5 border-t border-red-500/30 pt-2.5">
+                  <p className="text-[10px] text-red-200/80">
+                    That import is {blockingActiveJob.status || 'active'}
+                    {Number.isFinite(blockingActiveJob.progressPct) ? ` at ${Math.round(blockingActiveJob.progressPct)}%` : ''}.
+                    Wait for it to finish, or cancel it to free the account for this request.
+                  </p>
+                  <div className="mt-2 flex gap-2">
+                    <button
+                      type="button"
+                      onClick={onDismissBlockingActiveJob}
+                      className="h-8 flex-1 rounded-lg border border-white/15 px-3 text-[11px] font-bold text-gray-200 hover:bg-white/5">
+                      Wait for it
+                    </button>
+                    <button
+                      type="button"
+                      onClick={onCancelBlockingJob}
+                      className="h-8 flex-1 rounded-lg border border-red-500/50 bg-red-500/20 px-3 text-[11px] font-bold text-red-200 hover:bg-red-500/30">
+                      Cancel that import
+                    </button>
+                  </div>
+                </div>
               )}
             </div>
           )}

@@ -1,0 +1,22 @@
+{
+  "house_number": 1000,
+  "street_name": "Redacted St",
+  "full_address": "1000 Redacted St, REDACTED_CITY_001, NC, 27000",
+  "city": "REDACTED_CITY_001",
+  "state": "NC",
+  "zip_code": "27000",
+  "lat": 35.5,
+  "lng": -80.0,
+  "owner_full_name": "OWNER_001",
+  "owner_occupied": true,
+  "price": 325000,
+  "sold_date": "2026-06-23T00:00:00.000Z",
+  "property_type": "Single Family",
+  "sale_type": "BatchData",
+  "data_source": "batchdata",
+  "sale_confidence": "verified",
+  "original_status": "BATCHDATA_CONFIRMED",
+  "route_active": true,
+  "exclusion_reason": null,
+  "legacy_hash": "PROPERTY_ID_001"
+}

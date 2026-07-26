@@ -61,7 +61,10 @@ test('retains a bounded BatchData subdivision label in the canonical and minimiz
     assert.equal(mapped.subdivision_name, 'Desert Ridge');
     const raw = JSON.parse(mapped.raw_payload);
     assert.equal(raw.property.subdivision_name, 'Desert Ridge');
-    assert.deepEqual(Object.keys(raw).sort(), ['address', 'owner', 'property', 'property_id', 'provider', 'sale', 'schema_version']);
+    // precision_eligibility is a two-field routeability audit (boolean plus a
+    // reason code). The snapshot stays minimized and provider-field free.
+    assert.deepEqual(Object.keys(raw).sort(), ['address', 'owner', 'precision_eligibility', 'property', 'property_id', 'provider', 'sale', 'schema_version']);
+    assert.deepEqual(Object.keys(raw.precision_eligibility).sort(), ['exclusion_reason', 'route_active']);
 });
 
 test('accepts explicit subdivision objects but rejects placeholder or oversized labels', () => {

@@ -14,6 +14,19 @@ import { usePrecisionUsage } from '@/hooks/usePrecisionUsage';
 import { normalizeOwnershipRangeDays as normalizeStrictOwnershipRangeDays } from '@/components/logic/soldDateRange';
 import { validateCanvasBoundary } from '@/components/canvas/canvasPlannerUtils';
 
+const DEFAULT_PRECISION_PROPERTY_COUNT = 50;
+const DEFAULT_PRECISION_COUNT_MODE = 'max_available';
+const DEFAULT_PRECISION_MIN_HOME_VALUE = 100000;
+const DEFAULT_PRECISION_MAX_HOME_VALUE = '';
+const DEFAULT_PRECISION_SOLD_MONTHS = 12;
+const DEFAULT_PRECISION_OWNERSHIP_RANGE_DAYS = [30, 180];
+const DEFAULT_PRECISION_ROUTE_FILTERS = Object.freeze({
+  propertyTypes: ['Single Family'],
+  excludeCommercial: true,
+  excludeCondos: true,
+  excludeLand: true
+});
+
 function formatWholeNumber(value) {
   const number = Math.max(0, Math.round(Number(value) || 0));
   return number.toLocaleString();
@@ -51,6 +64,212 @@ function ownershipRangeMaxToMonths(range) {
 function ownershipRangeCriteria(range) {
   const normalized = normalizeOwnershipRangeDays(range);
   return normalized ? { min: normalized[0], max: normalized[1] } : null;
+}
+
+function defaultSoldMonthsForUser(user) {
+  const value = Number(user?.pull_months_back);
+  return Number.isFinite(value) && value > 0 ? value : DEFAULT_PRECISION_SOLD_MONTHS;
+}
+
+function normalizeRouteFilters(value) {
+  const candidate = value && typeof value === 'object' ? value : {};
+  const hasPropertyTypes = Object.prototype.hasOwnProperty.call(candidate, 'propertyTypes');
+  const propertyTypes = hasPropertyTypes && Array.isArray(candidate.propertyTypes)
+    ? candidate.propertyTypes.filter(Boolean)
+    : [...DEFAULT_PRECISION_ROUTE_FILTERS.propertyTypes];
+  return {
+    propertyTypes,
+    excludeCommercial: candidate.excludeCommercial !== false,
+    excludeCondos: candidate.excludeCondos !== false,
+    excludeLand: candidate.excludeLand !== false
+  };
+}
+
+function normalizeRouteBounds(value) {
+  if (!value || value.enabled !== true) return { enabled: false };
+  const startLocation = value.startLocation || value.start_location;
+  const endLocation = value.endLocation || value.end_location;
+  const normalizePoint = (point) => {
+    const lat = Number(point?.lat);
+    const lng = Number(point?.lng);
+    if (!Number.isFinite(lat) || lat < -90 || lat > 90 || !Number.isFinite(lng) || lng < -180 || lng > 180) return null;
+    return { lat, lng };
+  };
+  const start = normalizePoint(startLocation);
+  const end = normalizePoint(endLocation);
+  if (!start || !end) return { enabled: false };
+  return {
+    enabled: true,
+    mode: value.mode === 'current_to_home' ? 'current_to_home' : 'home_round_trip',
+    startLocation: start,
+    endLocation: end
+  };
+}
+
+function normalizedHistoryCriteria(historyEntry, user) {
+  const criteria = historyEntry?.criteria || {};
+  const requestedCountValue = Number(criteria.requested_properties);
+  const hasRequestedCount = Number.isFinite(requestedCountValue) && requestedCountValue > 0;
+  const countMode = criteria.count_mode === 'max_available'
+    ? 'max_available'
+    : criteria.count_mode === 'fixed' || hasRequestedCount
+      ? 'fixed'
+      : DEFAULT_PRECISION_COUNT_MODE;
+  const ownershipRangeDays = normalizeOwnershipRangeDays(criteria.ownership_range_days);
+  const ownershipRangeMode = criteria.ownership_range_mode === 'custom' && ownershipRangeDays
+    ? 'custom'
+    : 'quick';
+  const minPriceValue = Number(criteria.min_price);
+  const maxPriceValue = Number(criteria.max_price);
+  const soldMonthsValue = Number(criteria.sold_months);
+  const restoredRepullMode = ['fill_gaps', 'max_since_last'].includes(criteria.repull_mode || historyEntry?.repull_mode)
+    ? (criteria.repull_mode || historyEntry.repull_mode)
+    : 'fill_gaps';
+  const routeBounds = normalizeRouteBounds(criteria.route_bounds || historyEntry?.route_bounds);
+
+  return {
+    requestedPropertyCount: hasRequestedCount ? Math.round(requestedCountValue) : DEFAULT_PRECISION_PROPERTY_COUNT,
+    propertyCountMode: countMode,
+    minHomeValue: Number.isFinite(minPriceValue) && minPriceValue > 0
+      ? minPriceValue
+      : DEFAULT_PRECISION_MIN_HOME_VALUE,
+    maxHomeValue: Number.isFinite(maxPriceValue) && maxPriceValue > 0
+      ? maxPriceValue
+      : DEFAULT_PRECISION_MAX_HOME_VALUE,
+    soldMonths: Number.isFinite(soldMonthsValue) && soldMonthsValue > 0
+      ? soldMonthsValue
+      : defaultSoldMonthsForUser(user),
+    ownershipRangeMode,
+    ownershipRangeDays: ownershipRangeDays || DEFAULT_PRECISION_OWNERSHIP_RANGE_DAYS,
+    repullMode: restoredRepullMode,
+    forceFullRefresh: restoredRepullMode === 'fill_gaps'
+      ? criteria.force_full_refresh !== false
+      : false,
+    includeUnresolvedFollowUps: criteria.include_unresolved_followups !== false,
+    routeFilters: normalizeRouteFilters(criteria.route_filters || historyEntry?.route_filters),
+    routeBounds
+  };
+}
+
+function precisionFunctionErrorDetails(error) {
+  const payload = error?.response?.data || error?.data || {};
+  return {
+    code: payload.error || error?.code || error?.name || '',
+    message: payload.message || payload.error || error?.message || 'Could not start the property import.',
+    status: Number(error?.response?.status || error?.status || 0) || null,
+    payload
+  };
+}
+
+// The only remedy a browser may offer comes from server-verified active-job
+// evidence. Without it — or without server permission to cancel — the user is
+// told to wait rather than being handed a cancel button for an unverified id.
+function precisionActiveJobRemediation(details) {
+  const payload = details?.payload || {};
+  const evidence = payload.active_job && typeof payload.active_job === 'object' && !Array.isArray(payload.active_job)
+    ? payload.active_job
+    : null;
+  const progress = Number(evidence?.progress_pct);
+  const cancellableId = evidence && evidence.cancellation_allowed === true && evidence.id
+    ? String(evidence.id)
+    : null;
+  return {
+    jobId: cancellableId,
+    status: evidence?.status || null,
+    progressPct: Number.isFinite(progress) ? progress : null,
+    criteriaMatch: evidence?.criteria_match === true,
+    canCancel: Boolean(cancellableId),
+    canWait: Boolean(evidence)
+  };
+}
+
+// Every material criterion a retry must restate, from one explicit mapper.
+// A retry starts a NEW job, so it sends the originally entered count and lets
+// the locked backend recompute the effective count from the current allowance.
+// Sending the previously capped effective count would shrink the request on
+// every attempt and conflict with the canonical entered count.
+function buildPrecisionRetryRequest(job, options) {
+  const fallbackSoldMonths = Number(options?.fallbackSoldMonths) > 0
+    ? Number(options.fallbackSoldMonths)
+    : DEFAULT_PRECISION_SOLD_MONTHS;
+  const metadata = job?.dry_run_metadata || {};
+  const canonical = metadata.precision_criteria && typeof metadata.precision_criteria === 'object'
+    ? metadata.precision_criteria
+    : null;
+  const view = canonical
+    ? {
+        count_mode: canonical.count_mode,
+        entered_count: canonical.entered_count,
+        min_price: canonical.min_price,
+        max_price: canonical.max_price,
+        sold_months: canonical.sold_months,
+        ownership_range_mode: canonical.ownership_range_mode,
+        ownership_range_days: canonical.ownership_range_days,
+        route_filters: canonical.route_filters,
+        route_bounds: canonical.route_bounds,
+        repull_mode: canonical.repull_mode,
+        previous_pull_date: canonical.previous_pull_date,
+        force_full_refresh: canonical.force_full_refresh,
+        include_unresolved_followups: canonical.include_unresolved_followups
+      }
+    : {
+        count_mode: metadata.count_mode,
+        entered_count: metadata.requested_properties_before_cap
+          ?? metadata.requested_properties
+          ?? job?.total_expected,
+        min_price: metadata.filters?.min_price ?? null,
+        max_price: metadata.filters?.max_price ?? null,
+        sold_months: job?.sold_months ?? metadata.sold_months,
+        ownership_range_mode: metadata.ownership_range_mode ?? job?.ownership_range_mode,
+        ownership_range_days: metadata.ownership_range_days ?? job?.ownership_range_days,
+        route_filters: metadata.route_filters,
+        route_bounds: metadata.route_bounds,
+        repull_mode: metadata.repull_mode ?? job?.pull_mode,
+        previous_pull_date: metadata.previous_pull_date ?? null,
+        force_full_refresh: metadata.force_full_refresh ?? job?.force_full_refresh,
+        include_unresolved_followups: metadata.include_unresolved_followups
+      };
+
+  const ownershipRangeDays = normalizeOwnershipRangeDays(view.ownership_range_days);
+  const ownershipRangeMode = view.ownership_range_mode === 'custom' && ownershipRangeDays ? 'custom' : 'quick';
+  const enteredCount = Number(view.entered_count);
+  const soldMonths = Number(view.sold_months);
+  const minPrice = Number(view.min_price);
+  const maxPrice = Number(view.max_price);
+
+  return {
+    latitude: job?.latitude ?? null,
+    longitude: job?.longitude ?? null,
+    radius: job?.radius ?? null,
+    polygon: Array.isArray(job?.polygon) ? job.polygon : [],
+    sold_months: Number.isFinite(soldMonths) && soldMonths > 0 ? soldMonths : fallbackSoldMonths,
+    ownership_range_mode: ownershipRangeMode,
+    ...(ownershipRangeMode === 'custom'
+      ? { ownership_min_days: ownershipRangeDays[0], ownership_max_days: ownershipRangeDays[1] }
+      : {}),
+    requested_properties: Number.isFinite(enteredCount) && enteredCount > 0
+      ? Math.round(enteredCount)
+      : DEFAULT_PRECISION_PROPERTY_COUNT,
+    count_mode: view.count_mode === 'max_available' ? 'max_available' : 'fixed',
+    min_price: Number.isFinite(minPrice) && minPrice > 0 ? minPrice : null,
+    max_price: Number.isFinite(maxPrice) && maxPrice > 0 ? maxPrice : null,
+    route_filters: normalizeRouteFilters(view.route_filters),
+    route_bounds: view.route_bounds || { enabled: false },
+    repull_mode: view.repull_mode || 'new_area',
+    previous_pull_date: view.previous_pull_date || null,
+    force_full_refresh: view.force_full_refresh === true,
+    include_unresolved_followups: view.include_unresolved_followups === true
+    // include_mls is deliberately not replayed. It belongs to the retired MLS
+    // pipeline, is not part of the BatchData Precision request, and is not in
+    // MATERIAL_CRITERIA_FIELDS, so echoing it back would put a field in the
+    // retry payload that no server-authoritative criteria comparison covers.
+  };
+}
+
+function activeJobCriteriaConflictMessage(serverMessage) {
+  const detail = String(serverMessage || '').trim();
+  const suffix = detail && detail !== 'active_job_criteria_conflict' ? ` ${detail}` : '';
+  return `A different Precision import is already running. This request was not started, and FirstKnock will not resume the older job because its criteria do not match.${suffix}`;
 }
 
 function buildPrecisionShortfallMessage({
@@ -147,9 +366,9 @@ export default function TerritoryPrompt({
   } = usePrecisionUsage(routeMode === 'precision' ? user : null);
   const [pulling, setPulling] = useState(false);
   const [pullProgress, setPullProgress] = useState('');
-  const [fetchMonths, setFetchMonths] = useState(() => user?.pull_months_back || 12);
+  const [fetchMonths, setFetchMonths] = useState(() => defaultSoldMonthsForUser(user));
   const [ownershipRangeMode, setOwnershipRangeMode] = useState('quick');
-  const [ownershipRangeDays, setOwnershipRangeDays] = useState([30, 180]);
+  const [ownershipRangeDays, setOwnershipRangeDays] = useState(DEFAULT_PRECISION_OWNERSHIP_RANGE_DAYS);
   const [pullPct, setPullPct] = useState(0);
   const [displayPct, setDisplayPct] = useState(0);
   const [etaText, setEtaText] = useState('');
@@ -160,10 +379,15 @@ export default function TerritoryPrompt({
   const [repullMode, setRepullMode] = useState('fill_gaps');
   const [includeUnresolvedFollowUps, setIncludeUnresolvedFollowUps] = useState(true);
   const [recoverableJob, setRecoverableJob] = useState(null);
-  const [requestedPropertyCount, setRequestedPropertyCount] = useState(50);
-  const [propertyCountMode, setPropertyCountMode] = useState('max_available');
-  const [minHomeValue, setMinHomeValue] = useState(100000);
-  const [maxHomeValue, setMaxHomeValue] = useState('');
+  // Server-verified evidence about an owned active job that blocked this
+  // request. Never populated from local storage or an unverified job id.
+  const [blockingActiveJob, setBlockingActiveJob] = useState(null);
+  const [requestedPropertyCount, setRequestedPropertyCount] = useState(DEFAULT_PRECISION_PROPERTY_COUNT);
+  const [propertyCountMode, setPropertyCountMode] = useState(DEFAULT_PRECISION_COUNT_MODE);
+  const [minHomeValue, setMinHomeValue] = useState(DEFAULT_PRECISION_MIN_HOME_VALUE);
+  const [maxHomeValue, setMaxHomeValue] = useState(DEFAULT_PRECISION_MAX_HOME_VALUE);
+  const [precisionRouteFilters, setPrecisionRouteFilters] = useState(() => normalizeRouteFilters());
+  const [restoredRouteBounds, setRestoredRouteBounds] = useState({ enabled: false });
   const [showPrecisionPullPanel, setShowPrecisionPullPanel] = useState(false);
   const [pullError, setPullError] = useState(null); // { message, upgrade } — persistent in-panel error, not a transient toast
   const [previewResult, setPreviewResult] = useState(null);
@@ -180,6 +404,9 @@ export default function TerritoryPrompt({
   const targetPctRef = useRef(0);
   const restoredCompletedJobRef = useRef(false);
   const pullIntentRef = useRef({});
+  const requestTokenRef = useRef(0);
+  const pollTokenRef = useRef(0);
+  const terminalPollTokenRef = useRef(null);
   const routeModeRef = useRef(routeMode);
   routeModeRef.current = routeMode;
   const activePrecisionJobStorageKey = useMemo(() => {
@@ -197,6 +424,59 @@ export default function TerritoryPrompt({
         localStorage.removeItem(activePrecisionJobStorageKey);
       }
     } catch {}
+  };
+
+  const isCurrentRequest = (requestToken) => requestTokenRef.current === requestToken;
+  const isCurrentPoll = (pollToken, jobId) => (
+    pollTokenRef.current === pollToken
+    && String(activeJobIdRef.current || '') === String(jobId || '')
+  );
+  const invalidateActivePolling = () => {
+    pollTokenRef.current += 1;
+    terminalPollTokenRef.current = null;
+    if (pollRef.current) clearInterval(pollRef.current);
+    pollRef.current = null;
+    activeJobIdRef.current = null;
+  };
+  const beginPrecisionRequest = () => {
+    requestTokenRef.current += 1;
+    invalidateActivePolling();
+    return requestTokenRef.current;
+  };
+  const claimTerminalPoll = (pollToken, jobId) => {
+    if (!isCurrentPoll(pollToken, jobId) || terminalPollTokenRef.current === pollToken) return false;
+    terminalPollTokenRef.current = pollToken;
+    if (pollRef.current) clearInterval(pollRef.current);
+    pollRef.current = null;
+    return true;
+  };
+  const finishPollIfCurrent = (pollToken, jobId) => {
+    if (!isCurrentPoll(pollToken, jobId)) return false;
+    activeJobIdRef.current = null;
+    pollTokenRef.current += 1;
+    terminalPollTokenRef.current = null;
+    return true;
+  };
+  const resetPrecisionCriteriaForNewArea = () => {
+    beginPrecisionRequest();
+    setFetchMonths(defaultSoldMonthsForUser(user));
+    setOwnershipRangeMode('quick');
+    setOwnershipRangeDays(DEFAULT_PRECISION_OWNERSHIP_RANGE_DAYS);
+    setRequestedPropertyCount(DEFAULT_PRECISION_PROPERTY_COUNT);
+    setPropertyCountMode(DEFAULT_PRECISION_COUNT_MODE);
+    setMinHomeValue(DEFAULT_PRECISION_MIN_HOME_VALUE);
+    setMaxHomeValue(DEFAULT_PRECISION_MAX_HOME_VALUE);
+    setSelectedHistoryArea(null);
+    setRepullMode('fill_gaps');
+    setForceFullRefresh(false);
+    setIncludeUnresolvedFollowUps(true);
+    setPrecisionRouteFilters(normalizeRouteFilters());
+    setRestoredRouteBounds({ enabled: false });
+    setIsDeltaPull(false);
+    setPreviewLoading(false);
+    setPreviewResult(null);
+    setPaidPullStarting(false);
+    Promise.resolve(onRouteBoundsPrepared?.({ enabled: false })).catch(() => {});
   };
 
   // Smooth progress animation — ticks display forward toward real target
@@ -220,23 +500,32 @@ export default function TerritoryPrompt({
   // Cleanup polling on unmount
   useEffect(() => {
     return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
+      requestTokenRef.current += 1;
+      invalidateActivePolling();
     };
   }, []);
 
   useEffect(() => {
     if (routeMode === 'precision') return;
-    if (pollRef.current) clearInterval(pollRef.current);
-    pollRef.current = null;
-    activeJobIdRef.current = null;
+    requestTokenRef.current += 1;
+    invalidateActivePolling();
     setPulling(false);
+    setPaidPullStarting(false);
+    setPreviewLoading(false);
   }, [routeMode]);
 
   // Auto-resume: check for running/pending fetch jobs on mount
   useEffect(() => {
     if (routeMode !== 'precision') return;
     if (!user?.email) return;
+    if (activeJobIdRef.current) return;
     let cancelled = false;
+    const requestVersionAtCheckStart = requestTokenRef.current;
+    const checkIsCurrent = () => (
+      !cancelled
+      && routeModeRef.current === 'precision'
+      && requestTokenRef.current === requestVersionAtCheckStart
+    );
 
     const checkRunningJobs = async () => {
       try {
@@ -246,6 +535,7 @@ export default function TerritoryPrompt({
           : null;
         if (rememberedJobId) {
           const rememberedJob = await base44.entities.FetchJob.get(rememberedJobId).catch(() => null);
+          if (!checkIsCurrent()) return;
           if (rememberedJob && ['running', 'pending', 'completed'].includes(rememberedJob.status)) {
             job = rememberedJob;
           } else {
@@ -259,6 +549,7 @@ export default function TerritoryPrompt({
             '-created_date',
             1
           );
+          if (!checkIsCurrent()) return;
           const jobList = Array.isArray(jobs) ? jobs : jobs?.items || [];
           job = jobList[0];
         }
@@ -270,6 +561,7 @@ export default function TerritoryPrompt({
             '-created_date',
             1
           );
+          if (!checkIsCurrent()) return;
           const pendingList = Array.isArray(pendingJobs) ? pendingJobs : pendingJobs?.items || [];
           job = pendingList[0];
         }
@@ -280,9 +572,10 @@ export default function TerritoryPrompt({
             '-updated_date',
             1
           );
+          if (!checkIsCurrent()) return;
           const failedList = Array.isArray(failedJobs) ? failedJobs : failedJobs?.items || [];
           const failedJob = failedList[0];
-          if (failedJob && !cancelled) {
+          if (failedJob) {
             const dismissedKey = `fk_dismissedRecoverableJob_${failedJob.id}`;
             if (localStorage.getItem(dismissedKey) !== '1') {
               setRecoverableJob(failedJob);
@@ -292,35 +585,61 @@ export default function TerritoryPrompt({
         }
 
         setRecoverableJob(null);
-        if (job && !cancelled && !pulling) {
+        if (job && checkIsCurrent() && !pulling) {
+          const requestToken = beginPrecisionRequest();
           console.log('[TerritoryPrompt] Resuming running job:', job.id);
           const jobMetadata = job.dry_run_metadata || {};
-          const resumedOwnershipRangeDays = normalizeOwnershipRangeDays(
-            job.ownership_range_days ?? jobMetadata.ownership_range_days
-          );
-          const resumedOwnershipRangeMode = (
-            job.ownership_range_mode ?? jobMetadata.ownership_range_mode
-          ) === 'custom' && resumedOwnershipRangeDays ? 'custom' : 'quick';
-          const resumedRouteBounds = jobMetadata.route_bounds || { enabled: false };
+          const resumedCriteria = normalizedHistoryCriteria({
+            repull_mode: jobMetadata.repull_mode,
+            route_bounds: jobMetadata.route_bounds,
+            criteria: {
+              requested_properties: jobMetadata.requested_properties ?? job.total_expected,
+              count_mode: jobMetadata.count_mode,
+              sold_months: job.sold_months ?? jobMetadata.sold_months,
+              ownership_range_mode: job.ownership_range_mode ?? jobMetadata.ownership_range_mode,
+              ownership_range_days: job.ownership_range_days ?? jobMetadata.ownership_range_days,
+              min_price: jobMetadata.filters?.min_price,
+              max_price: jobMetadata.filters?.max_price,
+              repull_mode: jobMetadata.repull_mode,
+              force_full_refresh: job.force_full_refresh ?? jobMetadata.force_full_refresh,
+              include_unresolved_followups: jobMetadata.include_unresolved_followups,
+              route_filters: jobMetadata.route_filters,
+              route_bounds: jobMetadata.route_bounds
+            }
+          }, user);
+          const resumedRouteBounds = resumedCriteria.routeBounds;
           pullIntentRef.current[job.id] = {
             polygon: job.polygon || [],
-            requestedCount: Number(jobMetadata.requested_properties ?? job.total_expected ?? 0) || null,
-            soldMonths: Number(job.sold_months || 12),
-            ownershipRangeMode: resumedOwnershipRangeMode,
-            ownershipRangeDays: resumedOwnershipRangeDays,
-            minHomeValue: jobMetadata.filters?.min_price ?? null,
-            maxHomeValue: jobMetadata.filters?.max_price ?? null,
-            routeBounds: resumedRouteBounds
+            requestedCount: resumedCriteria.requestedPropertyCount,
+            countMode: resumedCriteria.propertyCountMode,
+            soldMonths: resumedCriteria.soldMonths,
+            ownershipRangeMode: resumedCriteria.ownershipRangeMode,
+            ownershipRangeDays: resumedCriteria.ownershipRangeDays,
+            minHomeValue: resumedCriteria.minHomeValue,
+            maxHomeValue: resumedCriteria.maxHomeValue,
+            routeFilters: resumedCriteria.routeFilters,
+            routeBounds: resumedRouteBounds,
+            repullMode: resumedCriteria.repullMode
           };
+          setRequestedPropertyCount(resumedCriteria.requestedPropertyCount);
+          setPropertyCountMode(resumedCriteria.propertyCountMode);
+          setFetchMonths(resumedCriteria.soldMonths);
+          setOwnershipRangeMode(resumedCriteria.ownershipRangeMode);
+          setOwnershipRangeDays(resumedCriteria.ownershipRangeDays);
+          setMinHomeValue(resumedCriteria.minHomeValue);
+          setMaxHomeValue(resumedCriteria.maxHomeValue);
+          setRepullMode(resumedCriteria.repullMode);
+          setForceFullRefresh(resumedCriteria.forceFullRefresh);
+          setIncludeUnresolvedFollowUps(resumedCriteria.includeUnresolvedFollowUps);
+          setPrecisionRouteFilters(resumedCriteria.routeFilters);
+          setRestoredRouteBounds(resumedRouteBounds);
           await onRouteBoundsPrepared?.(resumedRouteBounds);
+          if (!isCurrentRequest(requestToken)) return;
           rememberActivePrecisionJob(job.id);
           if (Array.isArray(job.polygon) && job.polygon.length >= 3) {
             try { localStorage.setItem('fk_drawnPolygonQueried', 'true'); } catch {}
             setDrawnPolygon(job.polygon, true);
           }
-          setFetchMonths(Number(job.sold_months || 12));
-          setOwnershipRangeMode(resumedOwnershipRangeMode);
-          if (resumedOwnershipRangeDays) setOwnershipRangeDays(resumedOwnershipRangeDays);
           setPulling(true);
           setPullProgress('Resuming data import...');
           const pct = job.progress_pct || 0;
@@ -329,16 +648,18 @@ export default function TerritoryPrompt({
           targetPctRef.current = pct;
           setEtaText('Resuming...');
           pctHistoryRef.current = [];
-          startPolling(job.id);
+          startPolling(job.id, requestToken);
         }
       } catch (e) {
-        console.warn('[TerritoryPrompt] Error checking running/completed jobs:', e);
+        if (checkIsCurrent()) {
+          console.warn('[TerritoryPrompt] Error checking running/completed jobs:', e);
+        }
       }
     };
 
     checkRunningJobs();
     return () => {cancelled = true;};
-  }, [routeMode, user?.email, drawnPolygon]);
+  }, [routeMode, user?.email, activePrecisionJobStorageKey]);
 
   // Clear unqueried restored areas so draft polygons do not come back as ghost map areas.
   useEffect(() => {
@@ -366,16 +687,13 @@ export default function TerritoryPrompt({
     const handler = (event) => {
       const visible = !!event.detail?.visible;
       setGhostAreasVisible(visible);
-      if (!visible) {
-        setSelectedHistoryArea(null);
-        setRepullMode('fill_gaps');
-        setForceFullRefresh(false);
-        setIncludeUnresolvedFollowUps(true);
+      if (!visible && selectedHistoryArea) {
+        resetPrecisionCriteriaForNewArea();
       }
     };
     window.addEventListener('fk-ghost-areas-visibility', handler);
     return () => window.removeEventListener('fk-ghost-areas-visibility', handler);
-  }, []);
+  }, [selectedHistoryArea]);
 
   useEffect(() => {
     if (routeMode !== 'precision') return;
@@ -386,10 +704,7 @@ export default function TerritoryPrompt({
       return Math.abs(Number(point.lat) - Number(historyPoint.lat)) < 0.000001 && Math.abs(Number(point.lng) - Number(historyPoint.lng)) < 0.000001;
     });
     if (!samePolygon) {
-      setSelectedHistoryArea(null);
-      setRepullMode('fill_gaps');
-      setForceFullRefresh(false);
-      setIncludeUnresolvedFollowUps(true);
+      resetPrecisionCriteriaForNewArea();
     }
   }, [routeMode, drawnPolygon, ghostAreasVisible, selectedHistoryArea]);
 
@@ -398,11 +713,7 @@ export default function TerritoryPrompt({
     const drawHandler = () => {
       setDrawnPolygon(null);
       setDraftPolygon([]);
-      setSelectedHistoryArea(null);
-      setOwnershipRangeMode('quick');
-      setRepullMode('fill_gaps');
-      setForceFullRefresh(false);
-      setIncludeUnresolvedFollowUps(true);
+      resetPrecisionCriteriaForNewArea();
       setDrawingMode(true);
     };
     const precisionPullHandler = () => {
@@ -429,27 +740,51 @@ export default function TerritoryPrompt({
       if (!ghostOn) return;
       const polygon = event.detail?.polygon;
       if (!polygon || polygon.length < 3) return;
+      beginPrecisionRequest();
+      setPreviewLoading(false);
+      setPreviewResult(null);
       setMode('generate');
       const historyEntry = event.detail || { polygon };
       const criteria = historyEntry.criteria || {};
+      const restored = normalizedHistoryCriteria(historyEntry, user);
+      const restoredHistoryEntry = {
+        ...historyEntry,
+        polygon,
+        repull_mode: restored.repullMode,
+        route_bounds: restored.routeBounds,
+        criteria: {
+          ...criteria,
+          requested_properties: restored.requestedPropertyCount,
+          count_mode: restored.propertyCountMode,
+          sold_months: restored.soldMonths,
+          ownership_range_mode: restored.ownershipRangeMode,
+          ownership_range_days: ownershipRangeCriteria(restored.ownershipRangeDays),
+          min_price: restored.minHomeValue,
+          max_price: restored.maxHomeValue || null,
+          repull_mode: restored.repullMode,
+          force_full_refresh: restored.forceFullRefresh,
+          include_unresolved_followups: restored.includeUnresolvedFollowUps,
+          route_filters: restored.routeFilters,
+          route_bounds: restored.routeBounds
+        }
+      };
       setDrawnPolygon(polygon);
       setDraftPolygon([]);
       setDrawingMode(false);
-      setSelectedHistoryArea(historyEntry);
-      setRepullMode('fill_gaps');
-      setForceFullRefresh(true);
-      setIncludeUnresolvedFollowUps(true);
-      if (criteria.requested_properties) setRequestedPropertyCount(criteria.requested_properties);
-      if (criteria.sold_months) setFetchMonths(criteria.sold_months);
-      const historyOwnershipRange = normalizeOwnershipRangeDays(criteria.ownership_range_days);
-      if (criteria.ownership_range_mode === 'custom' && historyOwnershipRange) {
-        setOwnershipRangeMode('custom');
-        setOwnershipRangeDays(historyOwnershipRange);
-      } else {
-        setOwnershipRangeMode('quick');
-      }
-      if (criteria.min_price !== undefined && criteria.min_price !== null) setMinHomeValue(criteria.min_price);
-      if (criteria.max_price !== undefined && criteria.max_price !== null) setMaxHomeValue(criteria.max_price || '');
+      setSelectedHistoryArea(restoredHistoryEntry);
+      setRequestedPropertyCount(restored.requestedPropertyCount);
+      setPropertyCountMode(restored.propertyCountMode);
+      setFetchMonths(restored.soldMonths);
+      setOwnershipRangeMode(restored.ownershipRangeMode);
+      setOwnershipRangeDays(restored.ownershipRangeDays);
+      setMinHomeValue(restored.minHomeValue);
+      setMaxHomeValue(restored.maxHomeValue);
+      setRepullMode(restored.repullMode);
+      setForceFullRefresh(restored.forceFullRefresh);
+      setIncludeUnresolvedFollowUps(restored.includeUnresolvedFollowUps);
+      setPrecisionRouteFilters(restored.routeFilters);
+      setRestoredRouteBounds(restored.routeBounds);
+      Promise.resolve(onRouteBoundsPrepared?.(restored.routeBounds)).catch(() => {});
       setShowPrecisionPullPanel(true);
       toast.success('Previous area selected');
     };
@@ -461,7 +796,7 @@ export default function TerritoryPrompt({
       window.removeEventListener('fk-open-precision-pull', precisionPullHandler);
       window.removeEventListener('fk-select-polygon-history', historyHandler);
     };
-  }, [routeMode, setMode, setDrawnPolygon, setDraftPolygon, setDrawingMode, setShowCompare, setShowRoutePanel, drawnPolygon, ghostAreasVisible]);
+  }, [routeMode, setMode, setDrawnPolygon, setDraftPolygon, setDrawingMode, setShowCompare, setShowRoutePanel, drawnPolygon, ghostAreasVisible, user]);
 
   const stopMapTouch = (event) => {
     event?.preventDefault?.();
@@ -491,10 +826,7 @@ export default function TerritoryPrompt({
     const confirmedPolygon = canvasBoundary?.points || draftPolygon;
     setDrawnPolygon(confirmedPolygon);
     setDraftPolygon([]);
-    setSelectedHistoryArea(null);
-    setRepullMode('fill_gaps');
-    setForceFullRefresh(false);
-    setIncludeUnresolvedFollowUps(true);
+    if (routeMode === 'precision') resetPrecisionCriteriaForNewArea();
     setDrawingMode(false);
     if (routeMode === 'canvas') {
       setShowCompare(true);
@@ -523,38 +855,52 @@ export default function TerritoryPrompt({
 
   const showInitialPrompt = hasPulledData && hasDefinedMarket && mode === 'generate' && !activeRoute && !routesGenerating && !showCompare && !showRoutePanel && !drawingMode && (!drawnPolygon || drawnPolygon.length === 0);
 
-  const startPolling = (jobId) => {
-    if (routeModeRef.current !== 'precision') return;
+  const startPolling = (jobId, requestToken = requestTokenRef.current) => {
+    if (!jobId || routeModeRef.current !== 'precision' || !isCurrentRequest(requestToken)) return;
     if (pollRef.current) clearInterval(pollRef.current);
+    pollTokenRef.current += 1;
+    const pollToken = pollTokenRef.current;
+    terminalPollTokenRef.current = null;
     activeJobIdRef.current = jobId;
 
     let pollCount = 0;
     const MAX_POLLS = 450; // ~30 minutes at slower intervals
     const pollStartTime = Date.now();
+    const pollIsCurrent = () => (
+      routeModeRef.current === 'precision'
+      && isCurrentRequest(requestToken)
+      && isCurrentPoll(pollToken, jobId)
+    );
 
     const doPoll = async () => {
-      if (routeModeRef.current !== 'precision') return;
+      if (!pollIsCurrent() || terminalPollTokenRef.current === pollToken) return;
       pollCount++;
       if (pollCount > MAX_POLLS) {
-        clearInterval(pollRef.current);
-        pollRef.current = null;
-        setPulling(false);
+        if (!claimTerminalPoll(pollToken, jobId)) return;
         toast.info("Still running in the background — come back and your data will be here!");
+        if (finishPollIfCurrent(pollToken, jobId) && isCurrentRequest(requestToken)) {
+          setPulling(false);
+        }
         return;
       }
 
       // After first 30s, slow polling to reduce backend rate-limit pressure.
-      if (pollCount === 30) {
-        clearInterval(pollRef.current);
+      if (pollCount === 30 && pollIsCurrent()) {
+        if (pollRef.current) clearInterval(pollRef.current);
         pollRef.current = setInterval(doPoll, 5000);
       }
 
       try {
         const res = await base44.functions.invoke('fetchJobStatus', { job_id: jobId });
         if (routeModeRef.current !== 'precision') return;
+        if (!pollIsCurrent() || terminalPollTokenRef.current === pollToken) return;
         const d = res.data;
-
         if (!d) return;
+        const responseJobId = d.job_id ?? d.fetch_job_id ?? d.id;
+        if (!responseJobId || String(responseJobId) !== String(jobId)) {
+          console.warn('[TerritoryPrompt] Ignoring status response for a different or unidentified Precision job.');
+          return;
+        }
 
         const pct = d.progress_pct || 0;
         setPullPct(pct);
@@ -567,10 +913,8 @@ export default function TerritoryPrompt({
         const inserted = d.total_inserted || 0;
         setTotalExpected(expected);
 
-        // Detect delta pull from job status (important for resume)
-        if (d.is_delta_pull && !isDeltaPull) {
-          setIsDeltaPull(true);
-        }
+        // Detect delta pull from job status (important for resume).
+        if (d.is_delta_pull) setIsDeltaPull(true);
 
         // Track progress history for ETA calculation
         pctHistoryRef.current.push({ pct, time: Date.now() });
@@ -606,9 +950,7 @@ export default function TerritoryPrompt({
         }
 
         if (d.status === 'completed') {
-          clearInterval(pollRef.current);
-          pollRef.current = null;
-          activeJobIdRef.current = null;
+          if (!claimTerminalPoll(pollToken, jobId)) return;
           // Immediately show 100% — skip animation
           setPullPct(100);
           targetPctRef.current = 100;
@@ -647,7 +989,10 @@ export default function TerritoryPrompt({
               has_pulled_data: true,
               last_data_pull: new Date().toISOString()
             });
-          } catch (e) {console.warn('Failed to update pull status', e);}
+          } catch (e) {
+            if (pollIsCurrent()) console.warn('Failed to update pull status', e);
+          }
+          if (!pollIsCurrent()) return;
 
           // Signal to MapToolbar that data is now available for this territory
           window.dispatchEvent(new CustomEvent('fk-territory-data-ready'));
@@ -656,22 +1001,25 @@ export default function TerritoryPrompt({
             ...d,
             job_id: d.job_id || d.fetch_job_id || d.id || jobId,
             requested_properties: intendedCount || requestedCount,
+            count_mode: intent.countMode || diagnostics.count_mode,
             polygon: intent.polygon || d.polygon || [],
             diagnostics: {
               ...diagnostics,
               ownership_range_mode: completedOwnershipRangeMode,
-              ownership_range_days: ownershipRangeCriteria(completedOwnershipRangeDays)
+              ownership_range_days: ownershipRangeCriteria(completedOwnershipRangeDays),
+              route_filters: intent.routeFilters || diagnostics.route_filters
             },
             route_bounds: intent.routeBounds || diagnostics.route_bounds || { enabled: false }
           };
 
-          if (routeModeRef.current !== 'precision') return;
+          if (!pollIsCurrent()) return;
           if (onPullComplete) {
             setMode('generate');
             setShowRoutePanel(false);
             setShowCompare(false);
             await onPullComplete(completedSoldMonths, isPaid, completedJobStatus);
             if (routeModeRef.current !== 'precision') return;
+            if (!pollIsCurrent()) return;
           } else {
             queryClient.invalidateQueries({ queryKey: ['masterProperties'] });
             queryClient.invalidateQueries({ queryKey: ['user'] });
@@ -680,36 +1028,59 @@ export default function TerritoryPrompt({
             setShowCompare(false);
           }
           await refetchPrecisionUsage();
+          if (!pollIsCurrent()) return;
           clearActivePrecisionJob(jobId);
-          setPulling(false);
+          delete pullIntentRef.current[jobId];
+          if (finishPollIfCurrent(pollToken, jobId) && isCurrentRequest(requestToken)) {
+            setPulling(false);
+          }
         } else if (d.status === 'cancelled') {
-          clearInterval(pollRef.current);
-          pollRef.current = null;
-          activeJobIdRef.current = null;
-          setPulling(false);
+          if (!claimTerminalPoll(pollToken, jobId)) return;
           setEtaText('');
           setPullProgress('Cancelled');
           await refetchPrecisionUsage();
-          clearActivePrecisionJob(jobId);
+          if (!pollIsCurrent()) return;
           await onRouteBoundsPrepared?.({ enabled: false });
-          toast.info('Data import cancelled.');
+          if (!pollIsCurrent()) return;
+          clearActivePrecisionJob(jobId);
+          delete pullIntentRef.current[jobId];
+          if (finishPollIfCurrent(pollToken, jobId) && isCurrentRequest(requestToken)) {
+            setPulling(false);
+            toast.info('Data import cancelled.');
+          }
         } else if (d.status === 'failed') {
-          clearInterval(pollRef.current);
-          pollRef.current = null;
-          activeJobIdRef.current = null;
-          setPulling(false);
-          clearActivePrecisionJob(jobId);
+          if (!claimTerminalPoll(pollToken, jobId)) return;
           await onRouteBoundsPrepared?.({ enabled: false });
+          if (!pollIsCurrent()) return;
           await refetchPrecisionUsage();
-          toast.error(d.error_message || 'Fetch job failed.');
+          if (!pollIsCurrent()) return;
+          clearActivePrecisionJob(jobId);
+          delete pullIntentRef.current[jobId];
+          if (finishPollIfCurrent(pollToken, jobId) && isCurrentRequest(requestToken)) {
+            setPulling(false);
+            toast.error(d.error_message || 'Fetch job failed.');
+          }
         }
       } catch (e) {
-        // Silent — network hiccup, keep polling
+        if (!pollIsCurrent()) return;
+        if (terminalPollTokenRef.current === pollToken) {
+          clearActivePrecisionJob(jobId);
+          if (finishPollIfCurrent(pollToken, jobId) && isCurrentRequest(requestToken)) {
+            setPulling(false);
+            setPullError({
+              message: e?.message || 'The import finished, but final route preparation failed. Generate the area again.',
+              upgrade: false
+            });
+            toast.error(e?.message || 'Final route preparation failed.');
+          }
+          return;
+        }
+        // A transient network error does not terminate the current poll owner.
         console.warn('Poll error:', e.message);
       }
     };
 
-    // Start fast — poll every 1s for first 30s, then 2s after
+    // Start fast — poll every 1s for the first 30 polls, then every 5s.
     pollRef.current = setInterval(doPoll, 1000);
     // Also fire first poll immediately
     doPoll();
@@ -722,62 +1093,87 @@ export default function TerritoryPrompt({
       return;
     }
     if (!confirm('Cancel this data import? Any data already saved will stay, but no more records will be added.')) return;
-    await base44.functions.invoke('cancelFetchJob', { job_id: jobId });
-    if (pollRef.current) clearInterval(pollRef.current);
-    pollRef.current = null;
-    activeJobIdRef.current = null;
-    setPulling(false);
-    setEtaText('');
-    setPullProgress('Cancelled');
-    clearActivePrecisionJob(jobId);
-    await onRouteBoundsPrepared?.({ enabled: false });
-    queryClient.invalidateQueries({ queryKey: ['masterProperties'] });
-    toast.info('Data import cancelled.');
+    const requestToken = beginPrecisionRequest();
+    setPullProgress('Cancelling import...');
+    try {
+      await base44.functions.invoke('cancelFetchJob', { job_id: jobId });
+      if (!isCurrentRequest(requestToken) || routeModeRef.current !== 'precision') return;
+      await onRouteBoundsPrepared?.({ enabled: false });
+      if (!isCurrentRequest(requestToken) || routeModeRef.current !== 'precision') return;
+      setPulling(false);
+      setEtaText('');
+      setPullProgress('Cancelled');
+      clearActivePrecisionJob(jobId);
+      delete pullIntentRef.current[jobId];
+      queryClient.invalidateQueries({ queryKey: ['masterProperties'] });
+      toast.info('Data import cancelled.');
+    } catch (error) {
+      if (!isCurrentRequest(requestToken) || routeModeRef.current !== 'precision') return;
+      setPullProgress('Import is still running...');
+      setPullError({
+        message: error?.response?.data?.message || error?.message || 'Could not cancel this import. Progress tracking has resumed.',
+        upgrade: false
+      });
+      rememberActivePrecisionJob(jobId);
+      startPolling(jobId, requestToken);
+    }
+  };
+
+  // Explicit, user-chosen cancellation of an owned active job that is blocking a
+  // new pull. Nothing here happens automatically and nothing is cancelled just
+  // because a job looks old: the server verified ownership and stated that
+  // cancellation is allowed, and the user still has to confirm.
+  const handleCancelBlockingJob = async () => {
+    const remediation = blockingActiveJob;
+    if (!remediation?.jobId) return;
+    if (!confirm('Cancel the property import that is already running? Homes it already saved stay on the account, and its Precision usage is settled from what it actually delivered.')) return;
+    setPullProgress('Cancelling the active import...');
+    try {
+      await base44.functions.invoke('cancelFetchJob', { job_id: remediation.jobId });
+      clearActivePrecisionJob(remediation.jobId);
+      setBlockingActiveJob(null);
+      setPullError(null);
+      setPullProgress('');
+      await refetchPrecisionUsage();
+      toast.info('The blocking import was cancelled. You can start your new pull now.');
+    } catch (error) {
+      const details = precisionFunctionErrorDetails(error);
+      setPullProgress('');
+      setPullError({
+        message: details.message || 'Could not cancel the active import. It is still running.',
+        upgrade: false
+      });
+    }
   };
 
   const retryRecoverableJob = async () => {
     if (!recoverableJob) return;
+    const requestToken = beginPrecisionRequest();
     const jobToRecover = recoverableJob;
     const recoveryMetadata = jobToRecover.dry_run_metadata || {};
-    const recoveryOwnershipRangeDays = normalizeOwnershipRangeDays(
-      jobToRecover.ownership_range_days ?? recoveryMetadata.ownership_range_days
-    );
-    const recoveryOwnershipRangeMode = (
-      jobToRecover.ownership_range_mode ?? recoveryMetadata.ownership_range_mode
-    ) === 'custom' && recoveryOwnershipRangeDays ? 'custom' : 'quick';
-    const recoverySoldMonths = jobToRecover.sold_months || fetchMonths;
+    const retryRequest = buildPrecisionRetryRequest(jobToRecover, { fallbackSoldMonths: fetchMonths });
+    const recoveryOwnershipRangeDays = retryRequest.ownership_range_mode === 'custom'
+      ? [retryRequest.ownership_min_days, retryRequest.ownership_max_days]
+      : null;
+    const recoveryOwnershipRangeMode = retryRequest.ownership_range_mode;
     setRecoverableJob(null);
+    setBlockingActiveJob(null);
     setPulling(true);
-    setPullProgress('Retrying incomplete import from last checkpoint...');
-    setPullPct(jobToRecover.progress_pct || 0);
-    setDisplayPct(Math.max((jobToRecover.progress_pct || 0) - 5, 0));
-    targetPctRef.current = jobToRecover.progress_pct || 0;
-    setEtaText('Retrying...');
+    // A retry creates a new FetchJob. It restates the verified original
+    // criteria; it does not continue the previous processor state.
+    setPullProgress('Starting a new attempt using the verified original criteria...');
+    setPullPct(0);
+    setDisplayPct(0);
+    targetPctRef.current = 0;
+    setEtaText('Starting new attempt...');
     try {
-      const res = await base44.functions.invoke('fetchAreaProperties', {
-        latitude: jobToRecover.latitude,
-        longitude: jobToRecover.longitude,
-        radius: jobToRecover.radius,
-        polygon: jobToRecover.polygon || [],
-        sold_months: recoverySoldMonths,
-        ownership_range_mode: recoveryOwnershipRangeMode,
-        ...(recoveryOwnershipRangeMode === 'custom' ? {
-          ownership_min_days: recoveryOwnershipRangeDays[0],
-          ownership_max_days: recoveryOwnershipRangeDays[1]
-        } : {}),
-        requested_properties: recoveryMetadata.requested_properties ?? jobToRecover.total_expected,
-        count_mode: recoveryMetadata.count_mode || 'fixed',
-        min_price: recoveryMetadata.filters?.min_price ?? null,
-        max_price: recoveryMetadata.filters?.max_price ?? null,
-        route_filters: recoveryMetadata.route_filters,
-        route_bounds: recoveryMetadata.route_bounds || { enabled: false },
-        include_mls: jobToRecover.include_mls !== false,
-        force_full_refresh: jobToRecover.force_full_refresh || false
-      });
+      const res = await base44.functions.invoke('fetchAreaProperties', retryRequest);
+      if (!isCurrentRequest(requestToken) || routeModeRef.current !== 'precision') return;
       const data = res.data || {};
       if (data.error) {
         const error = new Error(data.message || data.error);
         error.name = data.error;
+        error.data = data;
         throw error;
       }
       if (!data.job_id) throw new Error('The retry did not return a new job id.');
@@ -787,20 +1183,23 @@ export default function TerritoryPrompt({
         ? (data.ownership_range_mode === 'custom' && responseOwnershipRangeDays ? 'custom' : 'quick')
         : recoveryOwnershipRangeMode;
       const pollingOwnershipRangeDays = resumedExistingJob ? responseOwnershipRangeDays : recoveryOwnershipRangeDays;
-      const recoveryRouteBounds = data.route_bounds || recoveryMetadata.route_bounds || { enabled: false };
+      const recoveryRouteBounds = normalizeRouteBounds(data.route_bounds || recoveryMetadata.route_bounds);
       await onRouteBoundsPrepared?.(recoveryRouteBounds);
+      if (!isCurrentRequest(requestToken) || routeModeRef.current !== 'precision') return;
       pullIntentRef.current[data.job_id] = {
         polygon: resumedExistingJob ? (data.polygon || []) : (jobToRecover.polygon || []),
         requestedCount: Number(
           resumedExistingJob
             ? (data.requested_properties ?? data.total_expected ?? 0)
-            : (recoveryMetadata.requested_properties ?? jobToRecover.total_expected ?? 0)
+            : retryRequest.requested_properties
         ) || null,
-        soldMonths: resumedExistingJob ? Number(data.sold_months || 12) : recoverySoldMonths,
+        soldMonths: resumedExistingJob ? Number(data.sold_months || 12) : retryRequest.sold_months,
         ownershipRangeMode: pollingOwnershipRangeMode,
         ownershipRangeDays: pollingOwnershipRangeDays,
-        minHomeValue: resumedExistingJob ? (data.min_price ?? null) : (recoveryMetadata.filters?.min_price ?? null),
-        maxHomeValue: resumedExistingJob ? (data.max_price ?? null) : (recoveryMetadata.filters?.max_price ?? null),
+        minHomeValue: resumedExistingJob ? (data.min_price ?? null) : retryRequest.min_price,
+        maxHomeValue: resumedExistingJob ? (data.max_price ?? null) : retryRequest.max_price,
+        countMode: resumedExistingJob ? data.count_mode : retryRequest.count_mode,
+        routeFilters: normalizeRouteFilters(data.route_filters || recoveryMetadata.route_filters),
         routeBounds: recoveryRouteBounds
       };
       if (resumedExistingJob && Array.isArray(data.polygon) && data.polygon.length >= 3) {
@@ -808,17 +1207,25 @@ export default function TerritoryPrompt({
         setDrawnPolygon(data.polygon, true);
       }
       rememberActivePrecisionJob(data.job_id);
-      startPolling(data.job_id);
+      startPolling(data.job_id, requestToken);
     } catch (error) {
-      const errCode = error.response?.data?.error || error.name;
-      const message = error.response?.data?.message || error.message || 'Could not retry this import.';
+      if (!isCurrentRequest(requestToken) || routeModeRef.current !== 'precision') return;
+      const details = precisionFunctionErrorDetails(error);
+      const isCriteriaConflict = details.code === 'active_job_criteria_conflict' || details.status === 409;
+      const message = isCriteriaConflict
+        ? activeJobCriteriaConflictMessage(details.message)
+        : details.message || 'Could not start a new attempt for this import.';
       setPulling(false);
       setEtaText('');
-      setPullProgress('Retry failed');
+      setPullProgress('New attempt could not start');
       setRecoverableJob(jobToRecover);
+      if (isCriteriaConflict) {
+        const remediation = precisionActiveJobRemediation(details);
+        setBlockingActiveJob(remediation.canCancel ? remediation : null);
+      }
       setPullError({
         message,
-        upgrade: ['paid_precision_required', 'upgrade_required'].includes(errCode)
+        upgrade: ['paid_precision_required', 'upgrade_required'].includes(details.code)
       });
       toast.error(message);
     }
@@ -846,6 +1253,7 @@ export default function TerritoryPrompt({
     const previewSoldMonths = previewOwnershipRangeDays
       ? ownershipRangeMaxToMonths(previewOwnershipRangeDays)
       : fetchMonths;
+    const requestToken = beginPrecisionRequest();
 
     setPreviewLoading(true);
     setPreviewResult(null);
@@ -857,6 +1265,7 @@ export default function TerritoryPrompt({
         sandbox: true,
         sandbox_probe: true
       });
+      if (!isCurrentRequest(requestToken) || routeModeRef.current !== 'precision') return;
       const d = res.data || {};
       setPreviewResult(d);
 
@@ -869,11 +1278,17 @@ export default function TerritoryPrompt({
         previewed_at: new Date().toISOString(),
         criteria: {
           requested_properties: d.requested_properties ?? safeRequestedPropertyCount,
+          count_mode: propertyCountMode,
           sold_months: previewSoldMonths,
           ownership_range_mode: previewOwnershipRangeMode,
           ownership_range_days: ownershipRangeCriteria(previewOwnershipRangeDays),
           min_price: minHomeValue ? Number(minHomeValue) : null,
-          max_price: maxHomeValue ? Number(maxHomeValue) : null
+          max_price: maxHomeValue ? Number(maxHomeValue) : null,
+          repull_mode: selectedHistoryArea ? repullMode : 'new_area',
+          force_full_refresh: selectedHistoryArea ? repullMode === 'fill_gaps' || forceFullRefresh : false,
+          include_unresolved_followups: selectedHistoryArea ? includeUnresolvedFollowUps : false,
+          route_filters: precisionRouteFilters,
+          route_bounds: restoredRouteBounds
         }
       });
       localStorage.setItem('fk_drawnPolygonQueried', 'true');
@@ -881,10 +1296,11 @@ export default function TerritoryPrompt({
       window.dispatchEvent(new CustomEvent('fk-polygon-history-updated'));
       toast.success(`Preview ready: up to ${(d.returned_property_count ?? safeRequestedPropertyCount).toLocaleString()} homes can be requested. Final count depends on sold homes in the area.`);
     } catch (e) {
+      if (!isCurrentRequest(requestToken) || routeModeRef.current !== 'precision') return;
       const msg = e.response?.data?.message || e.message;
       toast.error(`Sandbox preview failed: ${msg}`);
     } finally {
-      setPreviewLoading(false);
+      if (isCurrentRequest(requestToken)) setPreviewLoading(false);
     }
   };
 
@@ -915,16 +1331,26 @@ export default function TerritoryPrompt({
     const effectiveMinPrice = minHomeValue ? Number(minHomeValue) : null;
     const effectiveMaxPrice = maxHomeValue ? Number(maxHomeValue) : null;
     const premiumRecentRange = effectiveSoldMonths <= 1;
+    routeBounds = normalizeRouteBounds(routeBounds);
+    const requestToken = beginPrecisionRequest();
+    const finishPaidPullStart = () => {
+      if (isCurrentRequest(requestToken)) setPaidPullStarting(false);
+    };
+    setPaidPullStarting(true);
+    setPullError(null);
     let freshUsage;
     try {
       const refreshed = await refetchPrecisionUsage();
+      if (!isCurrentRequest(requestToken) || routeModeRef.current !== 'precision') return;
       freshUsage = refreshed.data;
       if (!freshUsage || refreshed.error) throw refreshed.error || new Error('Usage snapshot is incomplete.');
     } catch (error) {
+      if (!isCurrentRequest(requestToken) || routeModeRef.current !== 'precision') return;
       setPullError({
         message: error?.message || 'Could not verify your current Precision allowance. Please retry.',
         upgrade: false
       });
+      finishPaidPullStart();
       return;
     }
     const freshMaxProperties = freshUsage.remaining;
@@ -940,10 +1366,11 @@ export default function TerritoryPrompt({
             message: 'This account has used all paid Precision properties for the current billing cycle.',
             upgrade: false
           }
-        : {
+          : {
             message: 'This account has already received its included 50 single-family Precision route homes. Upgrade to Precision for larger routes.',
             upgrade: true
           });
+      finishPaidPullStart();
       return;
     }
 
@@ -951,6 +1378,7 @@ export default function TerritoryPrompt({
       toast.info('Precision pulls over 50 houses require the paid $99/month Precision plan after the first payment clears.');
       setShowPrecisionPullPanel(false);
       navigate(createPageUrl('Billing') + '?plan=precision');
+      finishPaidPullStart();
       return;
     }
 
@@ -958,17 +1386,17 @@ export default function TerritoryPrompt({
       const message = 'Custom recorded-sale ranges require a Precision Pro plan. Upgrade to target an exact recorded-sale window.';
       toast.info(message);
       setPullError({ message, upgrade: true });
+      finishPaidPullStart();
       return;
     }
 
     if (premiumRecentRange && !hasPrecisionPro) {
       toast.info('Your date range has been updated to 3 months. Upgrade to Pro for shorter ranges.');
       setFetchMonths(3);
+      finishPaidPullStart();
       return;
     }
 
-    setPaidPullStarting(true);
-    setPullError(null);
     try {
       const pullRequest = {
         polygon: drawnPolygon,
@@ -982,12 +1410,7 @@ export default function TerritoryPrompt({
         } : {}),
         min_price: effectiveMinPrice,
         max_price: effectiveMaxPrice,
-        route_filters: {
-          propertyTypes: ['Single Family'],
-          excludeCommercial: true,
-          excludeCondos: true,
-          excludeLand: true
-        },
+        route_filters: normalizeRouteFilters(precisionRouteFilters),
         route_bounds: routeBounds,
         force_full_refresh: isPreviousAreaPull ? repullMode === 'fill_gaps' || forceFullRefresh : false,
         include_unresolved_followups: isPreviousAreaPull ? includeUnresolvedFollowUps : false,
@@ -1004,7 +1427,14 @@ export default function TerritoryPrompt({
           ...pullRequest,
           dry_run: true
         });
+        if (!isCurrentRequest(requestToken) || routeModeRef.current !== 'precision') return;
         const preflightData = preflight.data || {};
+        if (preflightData.error) {
+          const error = new Error(preflightData.message || preflightData.error);
+          error.name = preflightData.error;
+          error.data = preflightData;
+          throw error;
+        }
         const preflightRange = normalizeStrictOwnershipRangeDays(
           preflightData.ownership_range_days ?? {
             min: preflightData.ownership_min_days,
@@ -1027,13 +1457,24 @@ export default function TerritoryPrompt({
       }
 
       const res = await base44.functions.invoke('startBatchDataPull', pullRequest);
+      if (!isCurrentRequest(requestToken) || routeModeRef.current !== 'precision') return;
       const data = res.data || {};
       if (data.error) {
+        if (data.error === 'active_job_criteria_conflict') {
+          const remediation = precisionActiveJobRemediation({ payload: data });
+          setBlockingActiveJob(remediation.canCancel ? remediation : null);
+          setPullError({
+            message: activeJobCriteriaConflictMessage(data.message),
+            upgrade: false
+          });
+          return;
+        }
         const isPlanGate = ['trial_required', 'paid_precision_required', 'upgrade_required'].includes(data.error);
         setPullError({ message: data.message || data.error, upgrade: isPlanGate });
         return;
       }
       await refetchPrecisionUsage();
+      if (!isCurrentRequest(requestToken) || routeModeRef.current !== 'precision') return;
       if (effectiveOwnershipRangeMode === 'custom') {
         const confirmedRange = normalizeStrictOwnershipRangeDays(
           data.ownership_range_days ?? {
@@ -1059,19 +1500,49 @@ export default function TerritoryPrompt({
           setPullError({ message: data.message || 'An import is already running, but its job id is missing.', upgrade: false });
           return;
         }
-        const resumedRouteBounds = data.route_bounds || { enabled: false };
+        const resumedCriteria = normalizedHistoryCriteria({
+          repull_mode: data.repull_mode,
+          route_bounds: data.route_bounds,
+          criteria: {
+            requested_properties: data.requested_properties ?? data.total_expected ?? pullRequest.requested_properties,
+            count_mode: data.count_mode ?? pullRequest.count_mode,
+            sold_months: data.sold_months ?? pullRequest.sold_months,
+            ownership_range_mode: data.ownership_range_mode ?? pullRequest.ownership_range_mode,
+            ownership_range_days: data.ownership_range_days ?? ownershipRangeCriteria(effectiveOwnershipRangeDays),
+            min_price: data.min_price ?? pullRequest.min_price,
+            max_price: data.max_price ?? pullRequest.max_price,
+            repull_mode: data.repull_mode ?? pullRequest.repull_mode,
+            force_full_refresh: data.force_full_refresh ?? pullRequest.force_full_refresh,
+            include_unresolved_followups: data.include_unresolved_followups ?? pullRequest.include_unresolved_followups,
+            route_filters: data.route_filters ?? pullRequest.route_filters,
+            route_bounds: data.route_bounds ?? pullRequest.route_bounds
+          }
+        }, user);
+        const resumedRouteBounds = resumedCriteria.routeBounds;
         await onRouteBoundsPrepared?.(resumedRouteBounds);
-        const serverOwnershipRangeDays = normalizeOwnershipRangeDays(data.ownership_range_days);
-        const serverOwnershipRangeMode = data.ownership_range_mode === 'custom' && serverOwnershipRangeDays ? 'custom' : 'quick';
-        const serverSoldMonths = Number(data.sold_months || 12);
+        if (!isCurrentRequest(requestToken) || routeModeRef.current !== 'precision') return;
+        setRequestedPropertyCount(resumedCriteria.requestedPropertyCount);
+        setPropertyCountMode(resumedCriteria.propertyCountMode);
+        setFetchMonths(resumedCriteria.soldMonths);
+        setOwnershipRangeMode(resumedCriteria.ownershipRangeMode);
+        setOwnershipRangeDays(resumedCriteria.ownershipRangeDays);
+        setMinHomeValue(resumedCriteria.minHomeValue);
+        setMaxHomeValue(resumedCriteria.maxHomeValue);
+        setRepullMode(resumedCriteria.repullMode);
+        setForceFullRefresh(resumedCriteria.forceFullRefresh);
+        setIncludeUnresolvedFollowUps(resumedCriteria.includeUnresolvedFollowUps);
+        setPrecisionRouteFilters(resumedCriteria.routeFilters);
+        setRestoredRouteBounds(resumedRouteBounds);
         pullIntentRef.current[data.job_id] = {
           polygon: data.polygon || [],
-          requestedCount: Number(data.requested_properties || data.total_expected || 0) || null,
-          soldMonths: serverSoldMonths,
-          ownershipRangeMode: serverOwnershipRangeMode,
-          ownershipRangeDays: serverOwnershipRangeDays,
-          minHomeValue: data.min_price ?? null,
-          maxHomeValue: data.max_price ?? null,
+          requestedCount: resumedCriteria.requestedPropertyCount,
+          countMode: resumedCriteria.propertyCountMode,
+          soldMonths: resumedCriteria.soldMonths,
+          ownershipRangeMode: resumedCriteria.ownershipRangeMode,
+          ownershipRangeDays: resumedCriteria.ownershipRangeDays,
+          minHomeValue: resumedCriteria.minHomeValue,
+          maxHomeValue: resumedCriteria.maxHomeValue,
+          routeFilters: resumedCriteria.routeFilters,
           routeBounds: resumedRouteBounds
         };
         if (Array.isArray(data.polygon) && data.polygon.length >= 3) {
@@ -1085,28 +1556,38 @@ export default function TerritoryPrompt({
         setPullProgress('Resuming the active property import...');
         setEtaText('Checking active import...');
         rememberActivePrecisionJob(data.job_id);
-        startPolling(data.job_id);
+        startPolling(data.job_id, requestToken);
         setShowPrecisionPullPanel(false);
         toast.info(data.message || 'A property import is already running. Resuming its progress.');
         return;
       }
-      const startedRequestedCount = Number(data.requested_properties ?? effectiveRequestedPropertyCount) || effectiveRequestedPropertyCount;
-      const startedRouteBounds = data.route_bounds || routeBounds || { enabled: false };
-      await onRouteBoundsPrepared?.(startedRouteBounds);
-      if (data.job_id) {
-        pullIntentRef.current[data.job_id] = {
-          polygon: drawnPolygon,
-          requestedCount: effectiveRequestedPropertyCount,
-          serverRequestedCount: startedRequestedCount,
-          soldMonths: effectiveSoldMonths,
-          ownershipRangeMode: effectiveOwnershipRangeMode,
-          ownershipRangeDays: effectiveOwnershipRangeDays,
-          minHomeValue: effectiveMinPrice,
-          maxHomeValue: effectiveMaxPrice,
-          routeBounds: startedRouteBounds,
-          limitedByFreeHomeCap: data.limited_by_free_home_cap === true
-        };
+      if (!data.job_id) {
+        setPullError({
+          message: 'The property import did not return a job id, so progress tracking and route generation were stopped.',
+          upgrade: false
+        });
+        return;
       }
+      const startedRequestedCount = Number(data.requested_properties ?? effectiveRequestedPropertyCount) || effectiveRequestedPropertyCount;
+      const startedRouteBounds = normalizeRouteBounds(data.route_bounds || pullRequest.route_bounds);
+      await onRouteBoundsPrepared?.(startedRouteBounds);
+      if (!isCurrentRequest(requestToken) || routeModeRef.current !== 'precision') return;
+      setRestoredRouteBounds(startedRouteBounds);
+      pullIntentRef.current[data.job_id] = {
+        polygon: drawnPolygon,
+        requestedCount: effectiveRequestedPropertyCount,
+        serverRequestedCount: startedRequestedCount,
+        countMode: usingMaxAvailable ? 'max_available' : 'fixed',
+        soldMonths: effectiveSoldMonths,
+        ownershipRangeMode: effectiveOwnershipRangeMode,
+        ownershipRangeDays: effectiveOwnershipRangeDays,
+        minHomeValue: effectiveMinPrice,
+        maxHomeValue: effectiveMaxPrice,
+        routeFilters: pullRequest.route_filters,
+        routeBounds: startedRouteBounds,
+        repullMode: pullRequest.repull_mode,
+        limitedByFreeHomeCap: data.limited_by_free_home_cap === true
+      };
       savePolygonToHistory(drawnPolygon, {
         last_pull_date: new Date().toISOString(),
         job_id: data.job_id,
@@ -1119,8 +1600,11 @@ export default function TerritoryPrompt({
           ownership_range_days: ownershipRangeCriteria(effectiveOwnershipRangeDays),
           min_price: effectiveMinPrice,
           max_price: effectiveMaxPrice,
+          repull_mode: isPreviousAreaPull ? repullMode : 'new_area',
           force_full_refresh: isPreviousAreaPull ? repullMode === 'fill_gaps' || forceFullRefresh : false,
-          include_unresolved_followups: isPreviousAreaPull ? includeUnresolvedFollowUps : false
+          include_unresolved_followups: isPreviousAreaPull ? includeUnresolvedFollowUps : false,
+          route_filters: pullRequest.route_filters,
+          route_bounds: startedRouteBounds
         }
       });
       localStorage.setItem('fk_drawnPolygonQueried', 'true');
@@ -1133,17 +1617,25 @@ export default function TerritoryPrompt({
       setPullProgress('Starting property import...');
       setEtaText('Starting import...');
       rememberActivePrecisionJob(data.job_id);
-      startPolling(data.job_id);
+      startPolling(data.job_id, requestToken);
       setShowPrecisionPullPanel(false);
       toast.success(`Property import started for up to ${startedRequestedCount.toLocaleString()} homes. Routes will build automatically.`);
     } catch (e) {
-      const errCode = e.response?.data?.error;
-      const msg = e.response?.data?.message || errCode || e.message;
-      const isPlanGate = ['trial_required', 'paid_precision_required', 'upgrade_required'].includes(errCode);
+      if (!isCurrentRequest(requestToken) || routeModeRef.current !== 'precision') return;
+      const details = precisionFunctionErrorDetails(e);
+      const isCriteriaConflict = details.code === 'active_job_criteria_conflict' || details.status === 409;
+      const msg = isCriteriaConflict
+        ? activeJobCriteriaConflictMessage(details.message)
+        : details.message;
+      const isPlanGate = ['trial_required', 'paid_precision_required', 'upgrade_required'].includes(details.code);
+      if (isCriteriaConflict) {
+        const remediation = precisionActiveJobRemediation(details);
+        setBlockingActiveJob(remediation.canCancel ? remediation : null);
+      }
       // Persistent in-panel error — a transient toast made blocked pulls look like a silent failure.
       setPullError({ message: msg, upgrade: isPlanGate });
     } finally {
-      setPaidPullStarting(false);
+      finishPaidPullStart();
     }
   };
 
@@ -1206,7 +1698,7 @@ export default function TerritoryPrompt({
       <div className="absolute top-14 left-1/2 -translate-x-1/2 z-[2000] w-11/12 max-w-sm animate-in fade-in">
                     <div className="bg-black/90 backdrop-blur-md border border-[#2EEB57]/50 rounded-xl p-4 shadow-2xl">
                         <p className="text-xs font-bold text-white mb-1">Incomplete data pull found</p>
-                        <p className="text-[10px] text-gray-400 mb-3">Your last import stopped at {Math.round(recoverableJob.progress_pct || 0)}%. Retry resumes from the saved job instead of starting a new full pull.</p>
+                        <p className="text-[10px] text-gray-400 mb-3">Your last import stopped at {Math.round(recoverableJob.progress_pct || 0)}%. Starting a new attempt using the verified original criteria from that import.</p>
                         <div className="flex gap-2">
                             <Button onClick={retryRecoverableJob} className="h-8 flex-1 text-xs bg-[#2EEB57] text-black hover:bg-[#39FF4A]">Retry Import</Button>
                             <Button
@@ -1302,7 +1794,13 @@ export default function TerritoryPrompt({
                         </Button>
                     </div>
                     <button
-          onClick={() => {setDrawnPolygon(null);setDraftPolygon([]);setDrawingMode(false);setShowPrecisionPullPanel(false);}}
+          onClick={() => {
+            setDrawnPolygon(null);
+            setDraftPolygon([]);
+            setDrawingMode(false);
+            setShowPrecisionPullPanel(false);
+            resetPrecisionCriteriaForNewArea();
+          }}
           type="button"
           aria-label="Clear selected area"
           title="Clear selected area"
@@ -1343,10 +1841,13 @@ export default function TerritoryPrompt({
         setOwnershipRangeMode={setOwnershipRangeMode}
         ownershipRangeDays={ownershipRangeDays}
         setOwnershipRangeDays={setOwnershipRangeDays}
-        onClose={() => {setShowPrecisionPullPanel(false);setPullError(null);}}
+        onClose={() => {setShowPrecisionPullPanel(false);setPullError(null);setBlockingActiveJob(null);}}
         onGenerate={handlePaidBatchDataPull}
         generating={paidPullStarting}
         pullError={pullError}
+        blockingActiveJob={blockingActiveJob}
+        onCancelBlockingJob={handleCancelBlockingJob}
+        onDismissBlockingActiveJob={() => setBlockingActiveJob(null)}
         onUpgrade={() => {setShowPrecisionPullPanel(false);setPullError(null);navigate(createPageUrl('Billing') + '?plan=precision');}}
         selectedHistoryArea={ghostAreasVisible ? selectedHistoryArea : null}
         repullMode={repullMode}
@@ -1358,7 +1859,14 @@ export default function TerritoryPrompt({
         savedRouteHomeCount={routeDeliveredPropertiesUsed}
         homeBase={homeBase}
         onSaveHomeBase={onSaveHomeBase}
-        onClearArea={() => {setDrawnPolygon(null);setDraftPolygon([]);setDrawingMode(false);setShowPrecisionPullPanel(false);setSelectedHistoryArea(null);}}
+        restoredRouteBounds={restoredRouteBounds}
+        onClearArea={() => {
+          setDrawnPolygon(null);
+          setDraftPolygon([]);
+          setDrawingMode(false);
+          setShowPrecisionPullPanel(false);
+          resetPrecisionCriteriaForNewArea();
+        }}
       />
       }
         </>);

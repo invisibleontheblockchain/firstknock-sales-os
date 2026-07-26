@@ -14,8 +14,6 @@ import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { generateOptimizedRoutes } from '../components/logic/routeOptimizer';
 import { createRouteContinuityContext } from '../components/logic/routeRoadContext';
-import MapAttributionControl from '../components/map/MapAttributionControl';
-import { OPENSTREETMAP_ATTRIBUTION } from '../components/map/mapAttribution';
 import { toast } from "sonner";
 
 // Fix leaflet marker icons
