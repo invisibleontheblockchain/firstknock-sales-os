@@ -7,6 +7,7 @@ import {
   ArrowUpRight,
   CalendarDays,
   CheckCircle2,
+  DollarSign,
   RefreshCw,
   Users,
   WifiOff,
@@ -25,6 +26,7 @@ import {
   buildUserActivityRows,
   getUserActivityRange,
   sortUserActivityRowsByActivity,
+  sortUserActivityRowsByPerformance,
   summarizeUserActivity,
   toActivityDateInput,
 } from '@/lib/userActivityHeatmap';
@@ -176,11 +178,13 @@ export default function UserActivityHeatmap({
   members = [],
   managerId,
   activityData,
+  allowAllTime = false,
   externalUpdatedAt = 0,
   isRefreshing = false,
   minimumActivityDate,
   onRefresh,
   rankByActivity = false,
+  rankByPerformance = false,
   showProductionTotals = false,
   scopeLabel = 'Team',
 }) {
@@ -202,6 +206,7 @@ export default function UserActivityHeatmap({
       preset,
       customStart,
       customEnd,
+      minimumDate: minimumActivityDate,
       now,
     });
     if (!resolved.valid || !minimumActivityDate) return resolved;
@@ -258,9 +263,13 @@ export default function UserActivityHeatmap({
       range,
       now,
     });
+    if (rankByPerformance) return sortUserActivityRowsByPerformance(builtRows);
     return rankByActivity ? sortUserActivityRowsByActivity(builtRows) : builtRows;
-  }, [members, dailyActivity, range, now, rankByActivity]);
-  const summary = useMemo(() => summarizeUserActivity(rows), [rows]);
+  }, [members, dailyActivity, range, now, rankByActivity, rankByPerformance]);
+  const summary = useMemo(
+    () => summarizeUserActivity(rows, { hasComparison: range.comparisonDates.length > 0 }),
+    [rows, range.comparisonDates.length]
+  );
   const unavailable = range.valid
     && !hasLiveData
     && !usesExternalData
@@ -272,9 +281,14 @@ export default function UserActivityHeatmap({
   const newestUpdate = usesExternalData ? externalUpdatedAt : (hasLiveData ? dataUpdatedAt : 0);
   const rosterNoun = scopeLabel === 'Team' ? 'team members' : 'platform users';
   const rowHeading = scopeLabel === 'Team' ? 'Team member' : 'Platform user';
-  const dateColumnWidth = range.dates.length > 14 ? 48 : 76;
+  const rangePresets = ACTIVITY_RANGE_PRESETS.filter((option) => (
+    option.id !== 'all_time' || allowAllTime
+  ));
+  const performanceFirst = rankByPerformance && showProductionTotals;
+  const visibleDates = range.aggregateOnly ? [] : range.dates;
+  const dateColumnWidth = visibleDates.length > 14 ? 48 : 76;
   const productionColumnWidth = showProductionTotals ? 208 : 0;
-  const tableMinWidth = 210 + (range.dates.length * dateColumnWidth) + productionColumnWidth + 112;
+  const tableMinWidth = 210 + (visibleDates.length * dateColumnWidth) + productionColumnWidth + 112;
   const trendIcon = summary.direction === 'up'
     ? ArrowUpRight
     : summary.direction === 'down'
@@ -304,7 +318,9 @@ export default function UserActivityHeatmap({
                   </span>
                 </div>
                 <p className="mt-0.5 text-[10px] text-white/40 md:text-sm">
-                  One green dot means that user logged activity that day.
+                  {rankByPerformance
+                    ? 'Ranked by sales, then recorded revenue, then usage.'
+                    : 'One green dot means that user logged activity that day.'}
                 </p>
                 <p className="mt-1 text-[9px] font-bold uppercase tracking-[0.12em] text-white/25">
                   {range.valid ? range.label : 'Choose a valid range'} / {timeZone.replace(/_/g, ' ')}
@@ -318,7 +334,7 @@ export default function UserActivityHeatmap({
                 aria-label="Activity date range"
                 className="flex min-h-10 shrink-0 items-center rounded-xl border border-white/[0.08] bg-black/45 p-1"
               >
-                {ACTIVITY_RANGE_PRESETS.map((option) => (
+                {rangePresets.map((option) => (
                   <button
                     key={option.id}
                     type="button"
@@ -374,33 +390,67 @@ export default function UserActivityHeatmap({
 
           {range.valid && hasLiveData && (
             <div className="mt-4 grid grid-cols-2 gap-2 lg:grid-cols-4">
-              <SummaryMetric
-                label={`${scopeLabel} Adoption`}
-                value={`${summary.adoptionPercent}%`}
-                detail={`${summary.activeUserDays} active user-days`}
-                icon={Activity}
-                tone="text-[#2EEB57]"
-              />
-              <SummaryMetric
-                label="Active Users"
-                value={`${summary.activeUsers}/${summary.totalUsers}`}
-                detail="logged in this period"
-                icon={Users}
-              />
-              <SummaryMetric
-                label="Every Day"
-                value={summary.consistentUsers}
-                detail={rows[0]?.eligibleDays ? `all ${rows[0].eligibleDays} measured days` : 'no measured days'}
-                icon={CheckCircle2}
-                tone="text-[#72F58B]"
-              />
-              <SummaryMetric
-                label="Vs Prior Period"
-                value={`${summary.change > 0 ? '+' : ''}${summary.change} pts`}
-                detail={`${summary.previousAdoptionPercent}% previously`}
-                icon={trendIcon}
-                tone={trendTone}
-              />
+              {range.aggregateOnly ? (
+                <>
+                  <SummaryMetric
+                    label="Active Users"
+                    value={`${summary.activeUsers}/${summary.totalUsers}`}
+                    detail="logged across complete history"
+                    icon={Users}
+                  />
+                  <SummaryMetric
+                    label="Usage Days"
+                    value={summary.activeUserDays.toLocaleString()}
+                    detail={`${summary.totalLogs.toLocaleString()} total logs`}
+                    icon={Activity}
+                    tone="text-[#2EEB57]"
+                  />
+                  <SummaryMetric
+                    label="Sales"
+                    value={summary.totalSales.toLocaleString()}
+                    detail="confirmed across complete history"
+                    icon={CheckCircle2}
+                    tone="text-[#72F58B]"
+                  />
+                  <SummaryMetric
+                    label="Recorded Revenue"
+                    value={recordedRevenueFormatter.format(summary.recordedSalesVolume)}
+                    detail="no fabricated prior-period comparison"
+                    icon={DollarSign}
+                    tone="text-cyan-200"
+                  />
+                </>
+              ) : (
+                <>
+                  <SummaryMetric
+                    label={`${scopeLabel} Adoption`}
+                    value={`${summary.adoptionPercent}%`}
+                    detail={`${summary.activeUserDays} active user-days`}
+                    icon={Activity}
+                    tone="text-[#2EEB57]"
+                  />
+                  <SummaryMetric
+                    label="Active Users"
+                    value={`${summary.activeUsers}/${summary.totalUsers}`}
+                    detail="logged in this period"
+                    icon={Users}
+                  />
+                  <SummaryMetric
+                    label="Every Day"
+                    value={summary.consistentUsers}
+                    detail={rows[0]?.eligibleDays ? `all ${rows[0].eligibleDays} measured days` : 'no measured days'}
+                    icon={CheckCircle2}
+                    tone="text-[#72F58B]"
+                  />
+                  <SummaryMetric
+                    label="Vs Prior Period"
+                    value={`${summary.change > 0 ? '+' : ''}${summary.change} pts`}
+                    detail={`${summary.previousAdoptionPercent}% previously`}
+                    icon={trendIcon}
+                    tone={trendTone}
+                  />
+                </>
+              )}
             </div>
           )}
 
@@ -458,8 +508,11 @@ export default function UserActivityHeatmap({
               style={{ minWidth: `${Math.max(tableMinWidth, 720)}px` }}
             >
               <caption className="sr-only">
-                User activity by day for {range.label}. Green circles indicate at least one logged action.
+                {range.aggregateOnly
+                  ? `All-time performance ranking for ${range.label}.`
+                  : `User activity by day for ${range.label}. Green circles indicate at least one logged action.`}
                 {showProductionTotals ? ' Sales and recorded revenue totals cover the selected date range.' : ''}
+                {rankByPerformance ? ' Rows rank by sales, recorded revenue, active days, logs, and recent activity.' : ''}
               </caption>
               <thead>
                 <tr className="border-b border-white/[0.06] bg-black/25">
@@ -469,9 +522,9 @@ export default function UserActivityHeatmap({
                   >
                     {rowHeading}
                   </th>
-                  {range.dates.map((date) => {
+                  {!performanceFirst && visibleDates.map((date) => {
                     const today = isSameDay(date, now);
-                    const compact = range.dates.length > 14;
+                    const compact = visibleDates.length > 14;
                     return (
                       <th
                         key={date.toISOString()}
@@ -494,6 +547,7 @@ export default function UserActivityHeatmap({
                     <>
                       <th
                         scope="col"
+                        aria-sort={rankByPerformance ? 'descending' : undefined}
                         title="Confirmed sales logged in the selected date range"
                         className="w-20 min-w-20 bg-[#0C0F0C] px-3 py-3 text-right text-[9px] font-black uppercase tracking-[0.12em] text-white/30"
                       >
@@ -504,16 +558,38 @@ export default function UserActivityHeatmap({
                         title="Rep-recorded sale amounts in the selected date range"
                         className="w-32 min-w-32 bg-[#0C0F0C] px-3 py-3 text-right text-[9px] font-black uppercase tracking-[0.12em] text-white/30"
                       >
-                        Revenue
+                        <span className="block">Revenue</span>
+                        <span className="mt-0.5 block text-[7px] tracking-[0.08em] text-cyan-200/45">Recorded</span>
                       </th>
                     </>
                   )}
                   <th
                     scope="col"
-                    className="sticky right-0 z-20 w-28 bg-[#0C0F0C] px-3 py-3 text-right text-[9px] font-black uppercase tracking-[0.12em] text-white/30"
+                    className={`${performanceFirst ? '' : 'sticky right-0 z-20'} w-28 min-w-28 bg-[#0C0F0C] px-3 py-3 text-right text-[9px] font-black uppercase tracking-[0.12em] text-white/30`}
                   >
-                    Active days
+                    {range.aggregateOnly ? 'Usage days' : 'Active days'}
                   </th>
+                  {performanceFirst && visibleDates.map((date) => {
+                    const today = isSameDay(date, now);
+                    const compact = visibleDates.length > 14;
+                    return (
+                      <th
+                        key={date.toISOString()}
+                        scope="col"
+                        className={`px-1 py-2 text-center font-bold ${today ? 'bg-[#2EEB57]/[0.055]' : ''}`}
+                        style={{ width: `${dateColumnWidth}px`, minWidth: `${dateColumnWidth}px` }}
+                      >
+                        <span className={`block text-[9px] uppercase tracking-[0.08em] ${today ? 'text-[#72F58B]' : 'text-white/35'}`}>
+                          {format(date, compact ? 'EEE' : 'EEEE')}
+                        </span>
+                        {(compact || range.preset === 'custom') && (
+                          <span className="mt-0.5 block text-[9px] font-medium text-white/20">
+                            {format(date, 'MMM d')}
+                          </span>
+                        )}
+                      </th>
+                    );
+                  })}
                 </tr>
               </thead>
               <tbody>
@@ -529,6 +605,11 @@ export default function UserActivityHeatmap({
                       className="sticky left-0 z-10 bg-[#0B0E0B] px-4 py-2.5 text-left"
                     >
                       <div className="flex min-w-0 items-center gap-2.5">
+                        {rankByPerformance && (
+                          <span className="w-5 shrink-0 font-mono text-[9px] font-black text-[#72F58B]/65">
+                            #{rowIndex + 1}
+                          </span>
+                        )}
                         <Avatar className="h-8 w-8 shrink-0 border border-white/10">
                           <AvatarImage src={row.member?.profile_image_url} alt="" />
                           <AvatarFallback
@@ -549,7 +630,7 @@ export default function UserActivityHeatmap({
                         </div>
                       </div>
                     </th>
-                    {row.cells.map((cell) => (
+                    {!performanceFirst && !range.aggregateOnly && row.cells.map((cell) => (
                       <td
                         key={cell.dateKey}
                         className={`px-1 py-1 text-center ${
@@ -579,12 +660,28 @@ export default function UserActivityHeatmap({
                         </td>
                       </>
                     )}
-                    <td className="sticky right-0 z-10 bg-[#0B0E0B] px-3 py-2 text-right">
+                    <td className={`${performanceFirst ? '' : 'sticky right-0 z-10'} bg-[#0B0E0B] px-3 py-2 text-right`}>
                       <div className={`text-sm font-black ${row.isConsistent ? 'text-[#2EEB57]' : row.isInactive ? 'text-white/30' : 'text-white'}`}>
-                        {row.activeDays}/{row.eligibleDays}
+                        {range.aggregateOnly ? row.activeDays : `${row.activeDays}/${row.eligibleDays}`}
                       </div>
-                      <div className="text-[9px] font-bold text-white/25">{row.activityPercent}%</div>
+                      <div className="text-[9px] font-bold text-white/25">
+                        {range.aggregateOnly ? 'active days' : `${row.activityPercent}%`}
+                      </div>
                     </td>
+                    {performanceFirst && !range.aggregateOnly && row.cells.map((cell) => (
+                      <td
+                        key={cell.dateKey}
+                        className={`px-1 py-1 text-center ${
+                          isSameDay(cell.date, now) ? 'bg-[#2EEB57]/[0.035]' : ''
+                        }`}
+                      >
+                        <ActivityCell
+                          cell={cell}
+                          member={row.member}
+                          showProductionTotals={showProductionTotals}
+                        />
+                      </td>
+                    ))}
                   </tr>
                 ))}
               </tbody>
@@ -593,22 +690,28 @@ export default function UserActivityHeatmap({
         )}
 
         <div className="flex flex-col gap-2 border-t border-white/[0.06] bg-black/25 px-4 py-3 text-[9px] text-white/30 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex flex-wrap items-center gap-3">
-            <span className="flex items-center gap-1.5">
-              <span className="h-2.5 w-2.5 rounded-full bg-[#2EEB57] shadow-[0_0_8px_rgba(46,235,87,0.45)]" />
-              Logged activity
+          {range.aggregateOnly ? (
+            <span className="font-semibold text-white/40">
+              Complete history is condensed to sales, recorded revenue, and usage totals.
             </span>
-            <span className="flex items-center gap-1.5">
-              <span className="h-2.5 w-2.5 rounded-full border border-white/10 bg-white/[0.025]" />
-              No activity
-            </span>
-            {range.dates.some((date) => date > now) && (
+          ) : (
+            <div className="flex flex-wrap items-center gap-3">
               <span className="flex items-center gap-1.5">
-                <span className="h-px w-2.5 bg-white/15" />
-                Not reached
+                <span className="h-2.5 w-2.5 rounded-full bg-[#2EEB57] shadow-[0_0_8px_rgba(46,235,87,0.45)]" />
+                Logged activity
               </span>
-            )}
-          </div>
+              <span className="flex items-center gap-1.5">
+                <span className="h-2.5 w-2.5 rounded-full border border-white/10 bg-white/[0.025]" />
+                No activity
+              </span>
+              {range.dates.some((date) => date > now) && (
+                <span className="flex items-center gap-1.5">
+                  <span className="h-px w-2.5 bg-white/15" />
+                  Not reached
+                </span>
+              )}
+            </div>
+          )}
           <span>
             {newestUpdate ? `Updated ${format(new Date(newestUpdate), 'h:mm a')}` : 'Updates every minute'}
           </span>

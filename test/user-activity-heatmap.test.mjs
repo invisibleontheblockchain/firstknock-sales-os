@@ -9,6 +9,7 @@ const {
   buildUserActivityRows,
   getUserActivityRange,
   sortUserActivityRowsByActivity,
+  sortUserActivityRowsByPerformance,
   summarizeUserActivity,
 } = await import('../src/lib/userActivityHeatmap.js');
 const { buildPlatformAdoptionView } = await import('../src/admin/platformAdoption.js');
@@ -66,6 +67,24 @@ test('Last Week and Last 30 Days use exact calendar-day windows', () => {
   assert.equal(activityDayKey(last30.dates[29]), '2026-07-25');
 });
 
+test('All Time spans complete available history without inventing a prior period', () => {
+  const allTime = getUserActivityRange({
+    preset: 'all_time',
+    minimumDate: '2024-01-15',
+    now: phoenixNow,
+  });
+
+  assert.equal(allTime.valid, true);
+  assert.equal(allTime.aggregateOnly, true);
+  assert.equal(activityDayKey(allTime.dates[0]), '2024-01-15');
+  assert.equal(activityDayKey(allTime.dates.at(-1)), '2026-07-25');
+  assert.deepEqual(allTime.comparisonDates, []);
+  assert.equal(allTime.queryStart.toISOString(), '2024-01-15T07:00:00.000Z');
+  assert.equal(allTime.queryEndExclusive.toISOString(), '2026-07-26T07:00:00.000Z');
+  assert.match(allTime.label, /^All Time · Jan 15, 2024 - Jul 25, 2026$/);
+  assert.equal(getUserActivityRange({ preset: 'all_time', now: phoenixNow }).valid, false);
+});
+
 test('Custom ranges are inclusive and reject reversed, future, and oversized input', () => {
   const custom = getUserActivityRange({
     preset: 'custom',
@@ -118,6 +137,58 @@ test('Custom ranges are inclusive and reject reversed, future, and oversized inp
     customEnd: '2026-07-25',
     now: phoenixNow,
   }).valid, false);
+});
+
+test('Sales and revenue totals follow every HQ date constraint including All Time', () => {
+  const members = [{ id: 'rep', name: 'Range Rep' }];
+  const dailyActivity = [
+    { actor_team_member_id: 'rep', date: '2026-07-20', logs: 1, sales: 1, recorded_sales_volume: 100 },
+    { actor_team_member_id: 'rep', date: '2026-07-15', logs: 1, sales: 2, recorded_sales_volume: 200 },
+    { actor_team_member_id: 'rep', date: '2026-07-01', logs: 1, sales: 3, recorded_sales_volume: 300 },
+    { actor_team_member_id: 'rep', date: '2026-05-01', logs: 1, sales: 4, recorded_sales_volume: 400 },
+  ];
+  const scenarios = [
+    { preset: 'this_week', expectedSales: 1, expectedRevenue: 100 },
+    { preset: 'last_week', expectedSales: 2, expectedRevenue: 200 },
+    { preset: 'last_30_days', expectedSales: 6, expectedRevenue: 600 },
+    {
+      preset: 'custom',
+      customStart: '2026-07-14',
+      customEnd: '2026-07-21',
+      expectedSales: 3,
+      expectedRevenue: 300,
+    },
+    {
+      preset: 'all_time',
+      minimumDate: '2026-05-01',
+      expectedSales: 10,
+      expectedRevenue: 1000,
+    },
+  ];
+
+  for (const scenario of scenarios) {
+    const range = getUserActivityRange({ ...scenario, now: phoenixNow });
+    const [row] = buildUserActivityRows({ members, dailyActivity, range, now: phoenixNow });
+    assert.equal(row.totalSales, scenario.expectedSales, `${scenario.preset} sales`);
+    assert.equal(row.recordedSalesVolume, scenario.expectedRevenue, `${scenario.preset} revenue`);
+  }
+
+  const allTimeRange = getUserActivityRange({
+    preset: 'all_time',
+    minimumDate: '2026-05-01',
+    now: phoenixNow,
+  });
+  const allTimeRows = buildUserActivityRows({
+    members,
+    dailyActivity,
+    range: allTimeRange,
+    now: phoenixNow,
+  });
+  const allTimeSummary = summarizeUserActivity(allTimeRows, { hasComparison: false });
+  assert.equal(allTimeSummary.hasComparison, false);
+  assert.equal(allTimeSummary.previousAdoptionPercent, null);
+  assert.equal(allTimeSummary.change, null);
+  assert.equal(allTimeSummary.direction, 'none');
 });
 
 test('Rows merge both ledgers, prefer stable user identity, and preserve inactive users', () => {
@@ -203,6 +274,10 @@ test('Rows merge both ledgers, prefer stable user identity, and preserve inactiv
     consistentUsers: 1,
     activeUserDays: 2,
     adoptionPercent: 50,
+    totalLogs: 4,
+    totalSales: 2,
+    recordedSalesVolume: 150.5,
+    hasComparison: true,
     previousAdoptionPercent: 25,
     change: 25,
     direction: 'up',
@@ -213,6 +288,7 @@ test('Team keeps its heatmap while HQ redirects before normal app authentication
   const hq = fs.readFileSync('src/pages/HQ.jsx', 'utf8');
   const app = fs.readFileSync('src/App.jsx', 'utf8');
   const adminDashboard = fs.readFileSync('src/admin/AdminDashboard.jsx', 'utf8');
+  const heatmap = fs.readFileSync('src/components/analytics/team/UserActivityHeatmap.jsx', 'utf8');
   const layout = fs.readFileSync('src/Layout.jsx', 'utf8');
   const adminTeam = fs.readFileSync('src/pages/AdminTeam.jsx', 'utf8');
 
@@ -224,8 +300,31 @@ test('Team keeps its heatmap while HQ redirects before normal app authentication
   assert.doesNotMatch(layout, /label="HQ".*createPageUrl\('HQ'\)/);
   assert.match(adminTeam, /canManageTeam && \(\s*<UserActivityHeatmap/);
   assert.doesNotMatch(adminTeam, /rankByActivity/);
+  assert.doesNotMatch(adminTeam, /allowAllTime|rankByPerformance/);
   assert.doesNotMatch(adminTeam, /showProductionTotals/);
-  assert.match(adminDashboard, /<UserActivityHeatmap[\s\S]*rankByActivity[\s\S]*showProductionTotals[\s\S]*scopeLabel="Platform"/);
+  assert.match(adminDashboard, /<UserActivityHeatmap[\s\S]*allowAllTime[\s\S]*rankByPerformance[\s\S]*showProductionTotals[\s\S]*scopeLabel="Platform"/);
+  assert.match(heatmap, /option\.id !== 'all_time' \|\| allowAllTime/);
+  assert.match(heatmap, /Rows rank by sales, recorded revenue, active days, logs, and recent activity/);
+  const tableHead = heatmap.slice(heatmap.indexOf('<thead>'), heatmap.indexOf('</thead>'));
+  const tableBody = heatmap.slice(heatmap.indexOf('<tbody>'), heatmap.indexOf('</tbody>'));
+  assert.ok(
+    tableHead.indexOf('{!performanceFirst && visibleDates.map') < tableHead.indexOf('{showProductionTotals && ('),
+    'Team date headers must remain before optional production totals'
+  );
+  assert.ok(
+    tableBody.indexOf('{!performanceFirst && !range.aggregateOnly && row.cells.map') < tableBody.indexOf('{showProductionTotals && ('),
+    'Team activity cells must remain before optional production totals'
+  );
+  assert.match(tableHead, /performanceFirst \? '' : 'sticky right-0 z-20'/);
+  assert.match(tableBody, /performanceFirst \? '' : 'sticky right-0 z-10'/);
+  assert.ok(
+    tableHead.indexOf('{performanceFirst && visibleDates.map') > tableHead.indexOf('Usage days'),
+    'HQ date headers must remain after sales, revenue, and usage'
+  );
+  assert.ok(
+    tableBody.indexOf('{performanceFirst && !range.aggregateOnly && row.cells.map') > tableBody.indexOf('row.activityPercent'),
+    'HQ activity cells must remain after sales, revenue, and usage'
+  );
   assert.match(adminTeam, /Team Command Center/);
   assert.doesNotMatch(adminTeam, /FirstKnock HQ/);
   assert.match(adminTeam, /teamLoadFailed && teamMembers\.length === 0/);
@@ -305,6 +404,35 @@ test('HQ activity ranking uses selected-range active days, then logs, with inact
     'Steady Rep',
     'Burst Rep',
     'Quiet Rep',
+    'Inactive Rep',
+  ]);
+  assert.deepEqual(rows.map((row) => row.member.name), members.map((member) => member.name));
+});
+
+test('HQ performance ranking prioritizes sales, revenue, then usage from top to bottom', () => {
+  const range = getUserActivityRange({ preset: 'this_week', now: phoenixNow });
+  const members = [
+    { id: 'inactive', name: 'Inactive Rep' },
+    { id: 'usage', name: 'Usage Leader' },
+    { id: 'revenue', name: 'Revenue Leader' },
+    { id: 'sales', name: 'Sales Leader' },
+    { id: 'logs', name: 'Log Leader' },
+  ];
+  const dailyActivity = [
+    { actor_team_member_id: 'sales', date: '2026-07-20', logs: 1, sales: 3, recorded_sales_volume: 100 },
+    { actor_team_member_id: 'revenue', date: '2026-07-20', logs: 1, sales: 2, recorded_sales_volume: 1000 },
+    { actor_team_member_id: 'usage', date: '2026-07-20', logs: 1, sales: 2, recorded_sales_volume: 500 },
+    { actor_team_member_id: 'usage', date: '2026-07-21', logs: 1 },
+    { actor_team_member_id: 'logs', date: '2026-07-20', logs: 10, sales: 2, recorded_sales_volume: 500 },
+  ];
+  const rows = buildUserActivityRows({ members, dailyActivity, range, now: phoenixNow });
+  const ranked = sortUserActivityRowsByPerformance(rows);
+
+  assert.deepEqual(ranked.map((row) => row.member.name), [
+    'Sales Leader',
+    'Revenue Leader',
+    'Usage Leader',
+    'Log Leader',
     'Inactive Rep',
   ]);
   assert.deepEqual(rows.map((row) => row.member.name), members.map((member) => member.name));

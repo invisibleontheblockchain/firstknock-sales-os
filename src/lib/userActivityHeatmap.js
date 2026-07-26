@@ -16,6 +16,7 @@ export const ACTIVITY_RANGE_PRESETS = [
   { id: 'this_week', label: 'This Week' },
   { id: 'last_week', label: 'Last Week' },
   { id: 'last_30_days', label: 'Last 30 Days' },
+  { id: 'all_time', label: 'All Time' },
   { id: 'custom', label: 'Custom' },
 ];
 
@@ -31,7 +32,8 @@ function emptyRange(preset, error) {
     comparisonDates: [],
     queryStart: null,
     queryEndExclusive: null,
-    label: 'Custom range',
+    aggregateOnly: preset === 'all_time',
+    label: preset === 'all_time' ? 'All Time' : 'Custom range',
   };
 }
 
@@ -56,6 +58,7 @@ export function getUserActivityRange({
   preset = 'this_week',
   customStart,
   customEnd,
+  minimumDate,
   now = new Date(),
 } = {}) {
   const parsedNow = parseActivityDate(now) || new Date();
@@ -69,6 +72,16 @@ export function getUserActivityRange({
   } else if (preset === 'last_30_days') {
     start = subDays(today, 29);
     end = today;
+  } else if (preset === 'all_time') {
+    const parsedMinimum = parseActivityDate(minimumDate);
+    if (!parsedMinimum) {
+      return emptyRange(preset, 'Complete activity history is unavailable.');
+    }
+    start = startOfDay(parsedMinimum);
+    end = today;
+    if (isAfter(start, end)) {
+      return emptyRange(preset, 'Activity history cannot begin in the future.');
+    }
   } else if (preset === 'custom') {
     const parsedStart = parseActivityDate(customStart);
     const parsedEnd = parseActivityDate(customEnd);
@@ -94,13 +107,19 @@ export function getUserActivityRange({
 
   const dates = eachDayOfInterval({ start, end });
   const elapsedDates = dates.filter((date) => !isAfter(date, today));
-  const comparisonOffsetDays = dates.length;
-  const comparisonDates = elapsedDates.map((date) => subDays(date, comparisonOffsetDays));
+  const aggregateOnly = preset === 'all_time';
+  const comparisonOffsetDays = aggregateOnly ? 0 : dates.length;
+  const comparisonDates = aggregateOnly
+    ? []
+    : elapsedDates.map((date) => subDays(date, comparisonOffsetDays));
   const queryStart = startOfDay(comparisonDates[0] || start);
   const queryEndExclusive = addDays(startOfDay(end), 1);
-  const label = format(start, 'MMM d') === format(end, 'MMM d')
+  const standardLabel = format(start, 'MMM d') === format(end, 'MMM d')
     ? format(start, 'MMM d, yyyy')
     : `${format(start, 'MMM d')} - ${format(end, 'MMM d, yyyy')}`;
+  const label = aggregateOnly
+    ? `All Time · ${format(start, 'MMM d, yyyy')} - ${format(end, 'MMM d, yyyy')}`
+    : standardLabel;
 
   return {
     preset,
@@ -111,6 +130,7 @@ export function getUserActivityRange({
     dates,
     elapsedDates,
     comparisonDates,
+    aggregateOnly,
     queryStart,
     queryEndExclusive,
     label,
@@ -218,8 +238,11 @@ export function buildUserActivityRows({
 } = {}) {
   if (!range?.valid) return [];
   const identityIndex = createIdentityIndex(members);
-  const currentKeys = new Set(range.dates.map(activityDayKey));
+  const aggregateOnly = range.aggregateOnly === true;
+  const currentKeys = aggregateOnly ? null : new Set(range.dates.map(activityDayKey));
   const comparisonKeys = new Set(range.comparisonDates.map(activityDayKey));
+  const currentStartKey = activityDayKey(range.start);
+  const currentEndKey = activityDayKey(range.end);
   const currentByIdentity = new Map();
   const comparisonByIdentity = new Map();
 
@@ -227,7 +250,10 @@ export function buildUserActivityRows({
     const identity = resolveActivityIdentity(activity, identityIndex);
     const dateKey = String(activity?.date || '');
     if (!identity || !dateKey) continue;
-    const targetMap = currentKeys.has(dateKey)
+    const isInCurrentRange = aggregateOnly
+      ? dateKey >= currentStartKey && dateKey <= currentEndKey
+      : currentKeys.has(dateKey);
+    const targetMap = isInCurrentRange
       ? currentByIdentity
       : comparisonKeys.has(dateKey)
         ? comparisonByIdentity
@@ -240,22 +266,27 @@ export function buildUserActivityRows({
     targetMap.set(identity.key, identityDays);
   }
 
-  const eligibleKeys = new Set(range.elapsedDates.map(activityDayKey));
+  const eligibleKeys = aggregateOnly ? null : new Set(range.elapsedDates.map(activityDayKey));
   const comparisonEligibleKeys = new Set(range.comparisonDates.map(activityDayKey));
 
   return identityIndex.rows.map(({ key, member }) => {
     const currentDays = currentByIdentity.get(key) || new Map();
     const comparisonDays = comparisonByIdentity.get(key) || new Map();
-    const cells = range.dates.map((date) => {
-      const dateKey = activityDayKey(date);
-      return currentDays.get(dateKey) || createBlankCell(date, now);
-    });
-    const activeDays = cells.filter((cell) => eligibleKeys.has(cell.dateKey) && cell.active).length;
-    const eligibleDays = eligibleKeys.size;
+    const cells = aggregateOnly
+      ? [...currentDays.values()].sort((left, right) => left.dateKey.localeCompare(right.dateKey))
+      : range.dates.map((date) => {
+        const dateKey = activityDayKey(date);
+        return currentDays.get(dateKey) || createBlankCell(date, now);
+      });
+    const activeDays = cells.filter((cell) => (
+      cell.active && (aggregateOnly ? !cell.isFuture : eligibleKeys.has(cell.dateKey))
+    )).length;
+    const eligibleDays = range.elapsedDates.length;
     const comparisonActiveDays = [...comparisonEligibleKeys]
       .filter((dateKey) => comparisonDays.get(dateKey)?.active)
       .length;
     const comparisonEligibleDays = comparisonEligibleKeys.size;
+    const totalLogs = cells.reduce((sum, cell) => sum + numericMetric(cell.logs), 0);
     const totalSales = cells.reduce((sum, cell) => sum + numericMetric(cell.sales), 0);
     const recordedSalesVolume = roundedMoney(
       cells.reduce((sum, cell) => sum + numericMetric(cell.recordedSalesVolume), 0)
@@ -265,6 +296,7 @@ export function buildUserActivityRows({
       key,
       member,
       cells,
+      totalLogs,
       totalSales,
       recordedSalesVolume,
       activeDays,
@@ -282,6 +314,7 @@ export function buildUserActivityRows({
 }
 
 function rowActivityLogs(row) {
+  if (Number.isFinite(Number(row?.totalLogs))) return numericMetric(row.totalLogs);
   return (row?.cells || []).reduce((sum, cell) => sum + numericMetric(cell?.logs), 0);
 }
 
@@ -294,18 +327,33 @@ function rowLatestActivity(row) {
   }, 0);
 }
 
+function rowDisplayName(row) {
+  return String(row?.member?.name || row?.member?.email || '').trim().toLowerCase();
+}
+
 export function sortUserActivityRowsByActivity(rows = []) {
   return [...rows].sort((left, right) => (
     Number(right?.activeDays || 0) - Number(left?.activeDays || 0)
     || rowActivityLogs(right) - rowActivityLogs(left)
     || rowLatestActivity(right) - rowLatestActivity(left)
-    || String(left?.member?.name || left?.member?.email || '').localeCompare(
-      String(right?.member?.name || right?.member?.email || '')
-    )
+    || rowDisplayName(left).localeCompare(rowDisplayName(right))
+    || String(left?.key || '').localeCompare(String(right?.key || ''))
   ));
 }
 
-export function summarizeUserActivity(rows = []) {
+export function sortUserActivityRowsByPerformance(rows = []) {
+  return [...rows].sort((left, right) => (
+    numericMetric(right?.totalSales) - numericMetric(left?.totalSales)
+    || numericMetric(right?.recordedSalesVolume) - numericMetric(left?.recordedSalesVolume)
+    || Number(right?.activeDays || 0) - Number(left?.activeDays || 0)
+    || rowActivityLogs(right) - rowActivityLogs(left)
+    || rowLatestActivity(right) - rowLatestActivity(left)
+    || rowDisplayName(left).localeCompare(rowDisplayName(right))
+    || String(left?.key || '').localeCompare(String(right?.key || ''))
+  ));
+}
+
+export function summarizeUserActivity(rows = [], { hasComparison = true } = {}) {
   const eligibleDays = rows[0]?.eligibleDays || 0;
   const comparisonEligibleDays = rows[0]?.comparisonEligibleDays || 0;
   const activeUsers = rows.filter((row) => row.activeDays > 0).length;
@@ -315,10 +363,17 @@ export function summarizeUserActivity(rows = []) {
   const denominator = rows.length * eligibleDays;
   const comparisonDenominator = rows.length * comparisonEligibleDays;
   const adoptionPercent = denominator ? Math.round((activeUserDays / denominator) * 100) : 0;
-  const previousAdoptionPercent = comparisonDenominator
-    ? Math.round((comparisonActiveUserDays / comparisonDenominator) * 100)
-    : 0;
-  const change = adoptionPercent - previousAdoptionPercent;
+  const previousAdoptionPercent = hasComparison
+    ? comparisonDenominator
+      ? Math.round((comparisonActiveUserDays / comparisonDenominator) * 100)
+      : 0
+    : null;
+  const change = hasComparison ? adoptionPercent - previousAdoptionPercent : null;
+  const totalLogs = rows.reduce((sum, row) => sum + rowActivityLogs(row), 0);
+  const totalSales = rows.reduce((sum, row) => sum + numericMetric(row?.totalSales), 0);
+  const recordedSalesVolume = roundedMoney(
+    rows.reduce((sum, row) => sum + numericMetric(row?.recordedSalesVolume), 0)
+  );
 
   return {
     totalUsers: rows.length,
@@ -326,8 +381,12 @@ export function summarizeUserActivity(rows = []) {
     consistentUsers,
     activeUserDays,
     adoptionPercent,
+    totalLogs,
+    totalSales,
+    recordedSalesVolume,
+    hasComparison,
     previousAdoptionPercent,
     change,
-    direction: change > 0 ? 'up' : change < 0 ? 'down' : 'flat',
+    direction: !hasComparison ? 'none' : change > 0 ? 'up' : change < 0 ? 'down' : 'flat',
   };
 }
