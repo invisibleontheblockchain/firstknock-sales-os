@@ -1,4 +1,4 @@
-import { withoutHouseNotes } from './outcomeStatus';
+import { withoutHouseNotes } from './outcomeStatus.js';
 
 /**
  * Territory Management Configuration

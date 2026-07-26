@@ -1,3 +1,7 @@
+// Extension is explicit: this module is imported directly by node --test, whose
+// ESM resolver does not fill it in the way Vite does.
+import { withoutHouseNotes } from './outcomeStatus.js';
+
 export const ROUTE_BULK_ACTIONS = Object.freeze({
   TODO: 'TODO',
   CALLBACK: 'CALLBACK',
@@ -79,8 +83,12 @@ export function selectionsEqual(left, right) {
   return leftSet.size === rightSet.size && [...leftSet].every((key) => rightSet.has(key));
 }
 
+// House notes are excluded here rather than at each call site: this is the one
+// chokepoint every workflow helper reads through, and a note is never a
+// decision. Without this, saving a note would become the newest log and wipe the
+// house's workflow bucket.
 export function getLatestInteractionLog(logs = []) {
-  return [...logs].sort((left, right) => {
+  return [...withoutHouseNotes(logs)].sort((left, right) => {
     const leftTime = new Date(left?.created_date || 0).getTime();
     const rightTime = new Date(right?.created_date || 0).getTime();
     return (Number.isFinite(rightTime) ? rightTime : 0) - (Number.isFinite(leftTime) ? leftTime : 0);

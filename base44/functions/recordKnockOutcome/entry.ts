@@ -1045,6 +1045,13 @@ async function saveHouseNote(base44: any, authenticatedUser: any, body: any) {
 
     const fields = {
         description: note,
+        // address_hash, parsed_status and raw_input_text are required by the
+        // InteractionLog schema, so they are written on updates too, not only on
+        // create. ELIGIBLE is the "no decision was made" value — every status
+        // derivation filters house notes out before reading it, so it is never
+        // what the house displays.
+        address_hash: addressHash,
+        parsed_status: 'ELIGIBLE',
         raw_input_text: note ? 'House note updated' : 'House note cleared',
         route_id: routeId || existing?.route_id || null,
         logged_by_user_id: actor.id,
@@ -1060,7 +1067,6 @@ async function saveHouseNote(base44: any, authenticatedUser: any, body: any) {
         ? await base44.asServiceRole.entities.InteractionLog.update(existing.id, fields)
         : await base44.asServiceRole.entities.InteractionLog.create({
             ...fields,
-            address_hash: addressHash,
             created_by: actor.email,
             manager_id: managerId
         });

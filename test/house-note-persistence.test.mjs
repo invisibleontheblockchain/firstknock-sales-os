@@ -202,11 +202,38 @@ test('the note save path is separate from outcome logging', () => {
   assert.match(noteFn, /counts_toward_free_limit: false/);
   assert.match(noteFn, /counts_as_knock: false/);
   assert.doesNotMatch(noteFn, /enforceGate/);
-  assert.doesNotMatch(noteFn, /parsed_status/);
-  // Only values the deployed schema already accepts. workflow_action is an enum
-  // of route-bucket transitions and HOUSE_NOTE is not one of them; writing it
-  // is what a schema-validating backend rejects.
+  // workflow_action is an enum of route-bucket transitions; HOUSE_NOTE is not
+  // one of them, and writing it is what a schema-validating backend rejects.
   assert.doesNotMatch(noteFn, /workflow_action:/);
+});
+
+// The InteractionLog schema declares required fields. A note row that omits any
+// of them is rejected outright — this is what "Field required" was telling us.
+test('a note row satisfies every required InteractionLog field', () => {
+  const server = readSource('base44/functions/recordKnockOutcome/entry.ts');
+  const schemaText = readSource('base44/entities/InteractionLog.jsonc').replace(/^\s*\/\/.*$/gm, '');
+  const required = JSON.parse(schemaText).required;
+
+  assert.deepEqual(required, ['address_hash', 'parsed_status', 'raw_input_text']);
+
+  const noteFn = server.slice(server.indexOf('async function saveHouseNote'), server.indexOf('async function editSale'));
+  const fields = noteFn.slice(noteFn.indexOf('const fields = {'), noteFn.indexOf('const saved ='));
+
+  // Written in `fields` so updates carry them too, not only creates.
+  for (const field of required) {
+    assert.match(fields, new RegExp(`${field}:`), `note row must write ${field}`);
+  }
+  // ELIGIBLE means "no decision"; the filters keep it from ever being displayed.
+  assert.match(fields, /parsed_status: 'ELIGIBLE'/);
+});
+
+// A note becomes the newest log, so any helper that reads "latest" must skip it.
+test('workflow helpers read the latest decision, not the latest note', () => {
+  const bulk = readSource('src/components/logic/routeBulkActions.js');
+
+  assert.match(bulk, /import \{ withoutHouseNotes \} from '\.\/outcomeStatus\.js'/);
+  assert.match(bulk, /\[\.\.\.withoutHouseNotes\(logs\)\]\.sort/);
+  assert.doesNotMatch(bulk, /return \[\.\.\.logs\]\.sort/);
 });
 
 // A rejected write must not leave the interface claiming the note was saved.

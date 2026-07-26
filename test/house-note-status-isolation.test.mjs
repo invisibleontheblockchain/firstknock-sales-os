@@ -70,7 +70,7 @@ test('filtering keeps every real decision, including non-metered workflow rows',
 test('both status derivations run on decision logs, never raw logs', () => {
   const territory = readSource('src/components/logic/territoryLogic.jsx');
 
-  assert.match(territory, /import \{ withoutHouseNotes \} from '\.\/outcomeStatus'/);
+  assert.match(territory, /import \{ withoutHouseNotes \} from '\.\/outcomeStatus\.js'/);
 
   const effective = territory.slice(
     territory.indexOf('export const determineEffectiveStatus'),
