@@ -1,6 +1,7 @@
 export const PRIVATE_HQ_VIEWER_IDS = Object.freeze([
   '695eb764b077190880be21df',
   '6978c7229935cf40cde25086',
+  '69cfceec85189c20b0f4e97a',
 ]);
 
 export function canViewPlatformDashboard(user) {

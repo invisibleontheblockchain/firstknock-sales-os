@@ -11,7 +11,8 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const ADOPTION_WINDOW_DAYS = 732;
 const PLATFORM_HQ_VIEWER_IDS = new Set([
     '695eb764b077190880be21df',
-    '6978c7229935cf40cde25086'
+    '6978c7229935cf40cde25086',
+    '69cfceec85189c20b0f4e97a'
 ]);
 const HIDDEN_LEADERBOARD_REP_NAMES = new Set(['nick cohen', 'nicholas cohen', 'cory larson']);
 const PRECISION_DOOR_OUTCOMES = new Set([
