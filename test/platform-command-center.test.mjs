@@ -180,6 +180,7 @@ test('platform adoption keeps inactive users and counts only real, timezone-corr
       created_by: 'old-active-email@example.com',
       logged_by_user_id: 'rep_1',
       parsed_status: 'SOLD',
+      sale_amount: 275.5,
       source: 'voice',
       created_date: '2026-07-20T06:30:00.000Z',
     },
@@ -188,6 +189,7 @@ test('platform adoption keeps inactive users and counts only real, timezone-corr
       created_by: 'active@example.com',
       logged_by_user_id: 'rep_1',
       parsed_status: 'CALLBACK',
+      sale_amount: 999,
       counts_as_knock: false,
       source: 'voice',
       created_date: '2026-07-20T06:45:00.000Z',
@@ -239,10 +241,12 @@ test('platform adoption keeps inactive users and counts only real, timezone-corr
   assert.equal(active.days['2026-07-19'].logs, 2);
   assert.equal(active.days['2026-07-19'].doors, 1);
   assert.equal(active.days['2026-07-19'].sales, 1);
+  assert.equal(active.days['2026-07-19'].recorded_sales_volume, 275.5);
   assert.equal(active.days['2026-07-19'].callbacks, 1);
   assert.equal(active.days['2026-07-20'].logs, 1);
   assert.equal(active.days['2026-07-20'].callbacks, 1);
   assert.equal(active.days['2026-07-20'].canvas_logs, 1);
+  assert.equal(active.days['2026-07-20'].recorded_sales_volume, 0);
   assert.equal(active.days['2026-07-21'], undefined);
   assert.deepEqual(inactive.days, {});
   assert.deepEqual(independent.days, {});

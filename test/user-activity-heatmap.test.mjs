@@ -143,6 +143,7 @@ test('Rows merge both ledgers, prefer stable user identity, and preserve inactiv
         logs: 2,
         doors: 2,
         sales: 1,
+        recorded_sales_volume: 120.25,
         callbacks: 0,
         canvas_logs: 2,
         last_activity: '2026-07-20T19:00:00.000Z',
@@ -152,7 +153,8 @@ test('Rows merge both ledgers, prefer stable user identity, and preserve inactiv
         actor_email: ' NICK@FIRSTKNOCK.TEST ',
         logs: 1,
         doors: 1,
-        sales: 0,
+        sales: 1,
+        recorded_sales_volume: 30.25,
         callbacks: 1,
         knock_logs: 1,
         last_activity: '2026-07-20T20:00:00.000Z',
@@ -173,6 +175,7 @@ test('Rows merge both ledgers, prefer stable user identity, and preserve inactiv
         logs: 1,
         doors: 1,
         sales: 0,
+        recorded_sales_volume: 999,
         callbacks: 0,
         knock_logs: 1,
         last_activity: '2026-07-18T18:00:00.000Z',
@@ -183,8 +186,11 @@ test('Rows merge both ledgers, prefer stable user identity, and preserve inactiv
   assert.equal(rows.length, 2);
   assert.equal(rows[0].cells[0].logs, 3);
   assert.equal(rows[0].cells[0].doors, 3);
-  assert.equal(rows[0].cells[0].sales, 1);
+  assert.equal(rows[0].cells[0].sales, 2);
+  assert.equal(rows[0].cells[0].recordedSalesVolume, 150.5);
   assert.equal(rows[0].cells[0].callbacks, 1);
+  assert.equal(rows[0].totalSales, 2);
+  assert.equal(rows[0].recordedSalesVolume, 150.5);
   assert.equal(rows[0].activeDays, 2);
   assert.equal(rows[0].activityPercent, 100);
   assert.equal(rows[0].comparisonActiveDays, 1);
@@ -218,7 +224,8 @@ test('Team keeps its heatmap while HQ redirects before normal app authentication
   assert.doesNotMatch(layout, /label="HQ".*createPageUrl\('HQ'\)/);
   assert.match(adminTeam, /canManageTeam && \(\s*<UserActivityHeatmap/);
   assert.doesNotMatch(adminTeam, /rankByActivity/);
-  assert.match(adminDashboard, /<UserActivityHeatmap[\s\S]*rankByActivity[\s\S]*scopeLabel="Platform"/);
+  assert.doesNotMatch(adminTeam, /showProductionTotals/);
+  assert.match(adminDashboard, /<UserActivityHeatmap[\s\S]*rankByActivity[\s\S]*showProductionTotals[\s\S]*scopeLabel="Platform"/);
   assert.match(adminTeam, /Team Command Center/);
   assert.doesNotMatch(adminTeam, /FirstKnock HQ/);
   assert.match(adminTeam, /teamLoadFailed && teamMembers\.length === 0/);
@@ -237,6 +244,7 @@ test('Platform adoption adapter feeds the shared grid without exposing raw activ
           logs: 3,
           doors: 2,
           sales: 1,
+          recorded_sales_volume: 275.5,
           callbacks: 1,
           knock_logs: 2,
           canvas_logs: 1,
@@ -257,6 +265,7 @@ test('Platform adoption adapter feeds the shared grid without exposing raw activ
   assert.equal(view.activity[0].logs, 3);
   assert.equal(view.activity[0].doors, 2);
   assert.equal(view.activity[0].sales, 1);
+  assert.equal(view.activity[0].recorded_sales_volume, 275.5);
   assert.equal(view.activity[0].last_activity, '2026-07-20T20:00:00.000Z');
 });
 

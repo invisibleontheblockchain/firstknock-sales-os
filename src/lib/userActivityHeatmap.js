@@ -126,10 +126,19 @@ function numericMetric(value) {
   return Number.isFinite(number) && number > 0 ? number : 0;
 }
 
+function roundedMoney(value) {
+  return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
+}
+
 function mergeCell(target, activity) {
   target.logs += numericMetric(activity.logs ?? activity.log_count);
   target.doors += numericMetric(activity.doors ?? activity.doors_knocked);
   target.sales += numericMetric(activity.sales);
+  target.recordedSalesVolume = roundedMoney(
+    target.recordedSalesVolume + numericMetric(
+      activity.recorded_sales_volume ?? activity.recordedSalesVolume
+    )
+  );
   target.callbacks += numericMetric(activity.callbacks);
   target.knockLogs += numericMetric(activity.knock_logs);
   target.canvasLogs += numericMetric(activity.canvas_logs);
@@ -193,6 +202,7 @@ function createBlankCell(date, now) {
     logs: 0,
     doors: 0,
     sales: 0,
+    recordedSalesVolume: 0,
     callbacks: 0,
     knockLogs: 0,
     canvasLogs: 0,
@@ -246,11 +256,17 @@ export function buildUserActivityRows({
       .filter((dateKey) => comparisonDays.get(dateKey)?.active)
       .length;
     const comparisonEligibleDays = comparisonEligibleKeys.size;
+    const totalSales = cells.reduce((sum, cell) => sum + numericMetric(cell.sales), 0);
+    const recordedSalesVolume = roundedMoney(
+      cells.reduce((sum, cell) => sum + numericMetric(cell.recordedSalesVolume), 0)
+    );
 
     return {
       key,
       member,
       cells,
+      totalSales,
+      recordedSalesVolume,
       activeDays,
       eligibleDays,
       activityPercent: eligibleDays ? Math.round((activeDays / eligibleDays) * 100) : 0,

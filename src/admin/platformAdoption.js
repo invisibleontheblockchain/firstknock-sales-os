@@ -39,6 +39,7 @@ export function buildPlatformAdoptionView(adoption) {
         logs: finiteMetric(bucket?.logs),
         doors: finiteMetric(bucket?.doors),
         sales: finiteMetric(bucket?.sales),
+        recorded_sales_volume: finiteMetric(bucket?.recorded_sales_volume),
         callbacks: finiteMetric(bucket?.callbacks),
         knock_logs: finiteMetric(bucket?.knock_logs),
         canvas_logs: finiteMetric(bucket?.canvas_logs),
