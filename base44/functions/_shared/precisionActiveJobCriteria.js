@@ -1,6 +1,35 @@
 export const PRECISION_CRITERIA_SCHEMA_VERSION = 1;
 export const DEFAULT_PRECISION_MIN_PRICE = 100000;
 
+// Version of the BatchData request/response interpretation a job was created
+// under. It is persisted on every new Precision job so a later retry, reprocess,
+// or route build can tell which provider contract produced the stored rows
+// instead of silently reinterpreting them through whatever parser is current.
+//
+// v1 (documented in docs/BATCHDATA_PRECISION_CONTRACT.md):
+//   - options.datasets is never sent (scoping suppresses intel/sale — OBS-02)
+//   - options.take <= 100 (OBS-03)
+//   - searchCriteria.intel.lastSoldDate carries the ownership window
+//   - intel.lastSoldDate is the authoritative recorded-sale date
+//   - MLS listing fields never set the sale date or the property value
+//   - a missing provider property type is never defaulted to Single Family
+export const PRECISION_PROVIDER_CONTRACT_VERSION = 1;
+export const SUPPORTED_PRECISION_PROVIDER_CONTRACT_VERSIONS = [1];
+
+// Returns the persisted contract version, or null when the job predates
+// versioning. Null is NOT an alias for v1: an unversioned job is legacy and is
+// judged under the legacy policy rather than the current provider contract.
+export function precisionProviderContractVersion(job) {
+    const raw = job?.dry_run_metadata?.provider_contract_version;
+    if (raw === undefined || raw === null || raw === '') return null;
+    const version = Number(raw);
+    return Number.isInteger(version) ? version : `invalid:${String(raw)}`;
+}
+
+export function isSupportedPrecisionProviderContract(version) {
+    return version === null || SUPPORTED_PRECISION_PROVIDER_CONTRACT_VERSIONS.includes(version);
+}
+
 const MATERIAL_CRITERIA_FIELDS = [
     'criteria_schema_version',
     'polygon_hash',

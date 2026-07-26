@@ -1,0 +1,39 @@
+{
+  "_source_type": "reconstructed_response",
+  "_warning": "NOT a raw provider capture. Identical to the nested-coords fixture except that latitude/longitude sit directly on `address`. Both coordinate shapes are unproven; this pair exists so neither alias can be deleted without a test failing.",
+  "_field_provenance": {
+    "address.latitude/longitude": "UNPROVEN flat variant. Pinned so the parser keeps accepting it until an authorized capture resolves the real shape.",
+    "_other_fields": "See precision-polygon-intel-r2.nested-coords.reconstructed.json"
+  },
+  "results": {
+    "properties": [
+      {
+        "address": {
+          "street": "1000 Redacted St",
+          "city": "REDACTED_CITY_001",
+          "state": "NC",
+          "zip": "27000",
+          "latitude": 35.5,
+          "longitude": -80.0
+        },
+        "ids": {
+          "propertyId": "PROPERTY_ID_001"
+        },
+        "intel": {
+          "lastSoldDate": "2026-06-23T00:00:00.000Z"
+        },
+        "general": {
+          "standardizedLandUseCode": "R2",
+          "propertyTypeDetail": "Single Family"
+        },
+        "valuation": {
+          "estimatedValue": 325000
+        },
+        "owner": {
+          "fullName": "OWNER_001",
+          "ownerOccupied": true
+        }
+      }
+    ]
+  }
+}

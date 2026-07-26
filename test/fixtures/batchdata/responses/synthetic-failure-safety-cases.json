@@ -1,0 +1,108 @@
+{
+  "_source_type": "synthetic_failure_safety",
+  "_warning": [
+    "Every object below is INVENTED. None of it is provider evidence and none of",
+    "it may be cited to justify a parser path. These cases exist only to prove",
+    "that the pipeline fails observably and refuses to guess when a field is",
+    "missing, malformed, or belongs to the retired MLS contract.",
+    "No new provider field path is introduced by this file: every field named",
+    "here is one the parser already reads, exercised in its absent/invalid state."
+  ],
+  "cases": [
+    {
+      "case_id": "SYN-01",
+      "intent": "Missing property type must not become Single Family and must not be billed.",
+      "property": {
+        "address": { "street": "1001 Redacted St", "city": "REDACTED_CITY_001", "state": "NC", "zip": "27000", "location": { "latitude": 35.5, "longitude": -80.0 } },
+        "intel": { "lastSoldDate": "2026-06-23T00:00:00.000Z" },
+        "general": { "standardizedLandUseCode": "R2" },
+        "valuation": { "estimatedValue": 325000 }
+      },
+      "expect": { "route_active": false, "exclusion_reason": "unprovable_property_type", "property_type": null }
+    },
+    {
+      "case_id": "SYN-02",
+      "intent": "Missing recorded sale date must not be replaced by an unrelated date, and must not be billed.",
+      "property": {
+        "address": { "street": "1002 Redacted St", "city": "REDACTED_CITY_001", "state": "NC", "zip": "27000", "location": { "latitude": 35.5, "longitude": -80.0 } },
+        "general": { "standardizedLandUseCode": "R2", "propertyTypeDetail": "Single Family" },
+        "valuation": { "estimatedValue": 325000 }
+      },
+      "expect": { "route_active": false, "exclusion_reason": "missing_recorded_sale_date", "sold_date": null }
+    },
+    {
+      "case_id": "SYN-03",
+      "intent": "An MLS listing.soldDate must NOT be adopted as the authoritative ownership-transfer date. The row has no intel/sale evidence, so it must fail closed even though a listing date is present.",
+      "property": {
+        "address": { "street": "1003 Redacted St", "city": "REDACTED_CITY_001", "state": "NC", "zip": "27000", "location": { "latitude": 35.5, "longitude": -80.0 } },
+        "general": { "standardizedLandUseCode": "R2", "propertyTypeDetail": "Single Family" },
+        "valuation": { "estimatedValue": 325000 },
+        "listing": { "status": "Sold", "soldDate": "2026-06-23T00:00:00.000Z", "soldPrice": 310000 }
+      },
+      "expect": { "route_active": false, "exclusion_reason": "missing_recorded_sale_date", "sold_date": null }
+    },
+    {
+      "case_id": "SYN-04",
+      "intent": "An MLS list price must NOT satisfy the user's minimum home value. Only valuation/assessment evidence may.",
+      "property": {
+        "address": { "street": "1004 Redacted St", "city": "REDACTED_CITY_001", "state": "NC", "zip": "27000", "location": { "latitude": 35.5, "longitude": -80.0 } },
+        "intel": { "lastSoldDate": "2026-06-23T00:00:00.000Z" },
+        "general": { "standardizedLandUseCode": "R2", "propertyTypeDetail": "Single Family" },
+        "listing": { "price": 900000, "listPrice": 900000 }
+      },
+      "expect": { "route_active": false, "exclusion_reason": "unprovable_minimum_value", "price": null }
+    },
+    {
+      "case_id": "SYN-05",
+      "intent": "A recorded sale outside the requested window must be excluded, not rounded into range.",
+      "property": {
+        "address": { "street": "1005 Redacted St", "city": "REDACTED_CITY_001", "state": "NC", "zip": "27000", "location": { "latitude": 35.5, "longitude": -80.0 } },
+        "intel": { "lastSoldDate": "2024-05-24T00:00:00.000Z" },
+        "general": { "standardizedLandUseCode": "R2", "propertyTypeDetail": "Single Family" },
+        "valuation": { "estimatedValue": 325000 }
+      },
+      "expect": { "route_active": false, "exclusion_reason": "recorded_sale_outside_window" }
+    },
+    {
+      "case_id": "SYN-06",
+      "intent": "A null sale date is not the same as a valid one; it must fail closed rather than parse to epoch.",
+      "property": {
+        "address": { "street": "1006 Redacted St", "city": "REDACTED_CITY_001", "state": "NC", "zip": "27000", "location": { "latitude": 35.5, "longitude": -80.0 } },
+        "intel": { "lastSoldDate": null },
+        "general": { "standardizedLandUseCode": "R2", "propertyTypeDetail": "Single Family" },
+        "valuation": { "estimatedValue": 325000 }
+      },
+      "expect": { "route_active": false, "exclusion_reason": "missing_recorded_sale_date", "sold_date": null }
+    },
+    {
+      "case_id": "SYN-07",
+      "intent": "A returned land-use code other than the R2 the request asked for must be rejected.",
+      "property": {
+        "address": { "street": "1007 Redacted St", "city": "REDACTED_CITY_001", "state": "NC", "zip": "27000", "location": { "latitude": 35.5, "longitude": -80.0 } },
+        "intel": { "lastSoldDate": "2026-06-23T00:00:00.000Z" },
+        "general": { "standardizedLandUseCode": "C1", "propertyTypeDetail": "Single Family" },
+        "valuation": { "estimatedValue": 325000 }
+      },
+      "expect": { "route_active": false, "exclusion_reason": "not_single_family_residential" }
+    },
+    {
+      "case_id": "SYN-08",
+      "intent": "Impossible coordinates outside the requested polygon must be dropped entirely, not counted.",
+      "property": {
+        "address": { "street": "1008 Redacted St", "city": "REDACTED_CITY_001", "state": "NC", "zip": "27000", "location": { "latitude": 0, "longitude": 0 } },
+        "intel": { "lastSoldDate": "2026-06-23T00:00:00.000Z" },
+        "general": { "standardizedLandUseCode": "R2", "propertyTypeDetail": "Single Family" },
+        "valuation": { "estimatedValue": 325000 }
+      },
+      "expect": { "mapped": null }
+    }
+  ],
+  "unsupported_envelopes": {
+    "_intent": "Shapes the extractor must NOT treat as a property list. Each must yield zero records rather than a silently accepted single object.",
+    "cases": [
+      { "case_id": "SYN-ENV-01", "payload": { "data": { "properties": [{ "address": { "street": "1099 Redacted St" } }] } } },
+      { "case_id": "SYN-ENV-02", "payload": { "records": [{ "address": { "street": "1099 Redacted St" } }] } },
+      { "case_id": "SYN-ENV-03", "payload": { "results": { "items": [{ "address": { "street": "1099 Redacted St" } }] } } }
+    ]
+  }
+}

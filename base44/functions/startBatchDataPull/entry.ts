@@ -10,7 +10,8 @@ import {
     normalizePrecisionMinPrice,
     precisionActiveJobEvidence,
     precisionCriteriaDiagnostic,
-    precisionWorkspaceIdentity
+    precisionWorkspaceIdentity,
+    PRECISION_PROVIDER_CONTRACT_VERSION
 } from '../_shared/precisionActiveJobCriteria.js';
 
 const FREE_PROPERTY_CAP = 50;
@@ -796,6 +797,10 @@ Deno.serve(async (req) => {
                 ownership_range_days: ownership.range,
                 workspace_id: workspaceIdentity,
                 precision_criteria: persistedCriteria,
+                // Which BatchData request/response interpretation created this
+                // job. Retries, reprocessing, and route builds check it so an
+                // older job is never silently reinterpreted by a newer parser.
+                provider_contract_version: PRECISION_PROVIDER_CONTRACT_VERSION,
                 processor_token: processorToken,
                 paid_pull_started_at: new Date().toISOString()
             },

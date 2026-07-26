@@ -1,0 +1,20 @@
+{
+  "searchCriteria": {
+    "address": {
+      "city": {
+        "equals": "Anderson"
+      },
+      "state": {
+        "equals": "SC"
+      }
+    },
+    "intel": {
+      "lastSoldDate": {
+        "minDate": "2026-06-16"
+      }
+    }
+  },
+  "options": {
+    "take": 10
+  }
+}

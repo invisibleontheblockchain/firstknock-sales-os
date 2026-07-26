@@ -1,0 +1,116 @@
+{
+  "_comment": [
+    "This file is NOT a raw provider response body. No raw BatchData response body",
+    "for the Precision polygon property-search call exists anywhere in this",
+    "repository, its git history, or the local working environment.",
+    "",
+    "What IS available is a set of specific, individually-cited facts that were",
+    "recorded at the time real responses were observed in production. Each entry",
+    "below records one such fact, the exact source it came from, and what it is",
+    "therefore trusted to prove. Fixtures in this directory that look like",
+    "response objects are reconstructed from these assertions and are labeled",
+    "`reconstructed_response` in manifest.json — they may not be cited as raw",
+    "provider captures."
+  ],
+  "assertions": [
+    {
+      "id": "OBS-01",
+      "source": "src/tasks/todo.md — review entry for job 6a4457023615809c140a8a19",
+      "observed_on": "2026-06-30",
+      "fact": "3 raw strict rows and 4 broad rows were returned; every row carried intel.lastSoldDate = '2026-06-23T00:00:00.000Z' and residential R2 land use.",
+      "proves": [
+        "intel.lastSoldDate exists on returned Precision polygon rows",
+        "its value is an ISO-8601 UTC datetime string at midnight, not a date-only string",
+        "the standardized land-use code on returned rows was R2"
+      ],
+      "does_not_prove": [
+        "the JSON path of the land-use code (recorded in prose as 'R2 land use', not as a path)",
+        "any address, coordinate, owner, valuation, or building field path"
+      ]
+    },
+    {
+      "id": "OBS-02",
+      "source": "src/tasks/todo.md — review entry 'Fix Zero Active Properties After Confirmed-Sales Gate'",
+      "observed_on": "before 2026-06-30",
+      "fact": "A live no-write A/B preview on one polygon: with options.datasets ['basic','listing','deed','owner'] the response omitted the intel and sale objects and the job produced active=0; with dataset scoping omitted the same polygon returned active>0 with intel/sale evidence present.",
+      "proves": [
+        "sending options.datasets suppresses the intel and sale objects",
+        "omitting options.datasets returns intel and sale",
+        "intel is not a member of basic|listing|deed|owner, so no datasets array can include it"
+      ],
+      "does_not_prove": [
+        "the per-dataset membership of any individual non-intel field"
+      ]
+    },
+    {
+      "id": "OBS-03",
+      "source": "src/tasks/todo.md — review entry on options.take",
+      "observed_on": "2026-06",
+      "fact": "BatchData rejects options.take greater than 100; paging at take<=100 succeeded.",
+      "proves": ["options.take has a provider-enforced maximum of 100"],
+      "does_not_prove": ["any maximum for options.skip"]
+    },
+    {
+      "id": "OBS-04",
+      "source": "src/tasks/batchdata-escalation.md — Payload 3 control result",
+      "observed_on": "2026-07-01",
+      "fact": "The polygon-only control request (no date filter) returned 1 property whose intel.lastSoldDate was '2024-05-24T00:00:00.000Z'.",
+      "proves": [
+        "intel.lastSoldDate is returned on the polygon endpoint with no date filter",
+        "the same ISO-8601 UTC midnight datetime format is used for older sales"
+      ],
+      "does_not_prove": ["that a sale object was or was not present on that row"]
+    },
+    {
+      "id": "OBS-05",
+      "source": "src/tasks/todo.md — no-write production probe on a 470.74 sq mi polygon",
+      "observed_on": "2026-06-30",
+      "fact": "Same polygon: no date filter returned 100 records; intel.lastSoldDate.minDate=2026-06-16 returned 10 records; minDate=2026-06-23 returned 0 records.",
+      "proves": [
+        "searchCriteria.intel.lastSoldDate.minDate is honoured by the provider when combined with address.geoLocationPolygon.geoPoints",
+        "the filter narrows monotonically as minDate moves later",
+        "zero results at a 7-day window reflect provider recency lag, not a rejected request"
+      ],
+      "does_not_prove": ["that maxDate is applied to the same returned field"]
+    },
+    {
+      "id": "OBS-06",
+      "source": "src/tasks/todo.md — no-write provider probe on a failed polygon",
+      "observed_on": "2026-06",
+      "fact": "Rows returned at a 14-day window often carried intel.lastSoldDate plus residential land use but no listing status and no sale amount.",
+      "proves": [
+        "listing status is frequently absent on Precision polygon rows",
+        "a sale amount is frequently absent on Precision polygon rows",
+        "absence of listing/sale-amount evidence is normal and must not by itself reject a row"
+      ],
+      "does_not_prove": ["that the listing object is never present"]
+    }
+  ],
+  "unproven_paths_requiring_authorized_capture": [
+    {
+      "path": "results.properties",
+      "status": "corroborated_not_captured",
+      "corroborated_by": [
+        "base44/functions/batchDataWebhookCallback/entry.ts reads data.results.properties in production",
+        "base44/functions/validateBatchDataShape/entry.ts probe reads payload.results.properties",
+        "internal v15/v16 dataset research document states data?.results?.properties"
+      ],
+      "note": "Three independent internal sources agree. Still not a captured body."
+    },
+    {
+      "path": "results.totalRecordCount | totalRecordCount | meta.totalRecordCount",
+      "status": "unproven",
+      "note": "extractBatchDataTotal reads all three. No evidence supports any of them. Paging currently terminates correctly on a short page, so the absence of this field is the tested behaviour."
+    },
+    {
+      "path": "address.location.latitude / address.location.longitude vs address.latitude / address.longitude",
+      "status": "unproven",
+      "note": "Required for map routing. Neither coordinate shape is observed anywhere. Both aliases are retained deliberately; removing either could break production routing. This is the highest-priority item for an authorized sandbox capture."
+    },
+    {
+      "path": "general.standardizedLandUseCode",
+      "status": "partially_proven",
+      "note": "OBS-01 proves the returned value R2 in prose. The exact JSON path is proven only on the request side (BD-E01). The response path is inferred from the request path."
+    }
+  ]
+}

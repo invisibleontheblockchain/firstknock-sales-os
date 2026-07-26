@@ -5,6 +5,8 @@ import {
     buildRequestedPrecisionCriteria,
     comparePrecisionCriteria,
     precisionCriteriaSource,
+    precisionProviderContractVersion,
+    isSupportedPrecisionProviderContract,
     precisionWorkspaceIdentity,
     LEGACY_UNVERIFIABLE_CRITERIA_FIELDS,
     LEGACY_VERIFIED_CRITERIA_FIELDS
@@ -367,6 +369,7 @@ Deno.serve(async (req) => {
         let persistedCriteria = null;
         let customOwnershipRange = null;
         let criteriaSource = null;
+        let providerContractVersion = null;
         let authenticatedImmutableUserId = null;
         let workspaceVerification = null;
         let targetEmail = user.role === 'admin' && body.user_email ? body.user_email : user.email;
@@ -423,6 +426,19 @@ Deno.serve(async (req) => {
                 persistedCriteria = { ...persistedCriteria, workspace_id: jobWorkspaceId };
             }
             criteriaSource = precisionCriteriaSource(fetchJob);
+            // A job records which BatchData contract produced its rows. If it
+            // was written under a contract this build does not implement, the
+            // stored rows cannot be reinterpreted here without guessing what
+            // the provider meant at the time, so route generation fails closed.
+            // An unversioned job is not treated as v1 — it stays legacy.
+            providerContractVersion = precisionProviderContractVersion(fetchJob);
+            if (!isSupportedPrecisionProviderContract(providerContractVersion)) {
+                return Response.json({
+                    error: 'precision_provider_contract_unsupported',
+                    message: 'This import was created under a BatchData contract this server does not implement, so route generation stopped.',
+                    provider_contract_version: providerContractVersion
+                }, { status: 409 });
+            }
             authenticatedImmutableUserId = String(user.id || '').trim();
             // Older records predate requested_properties_before_cap. Deriving it
             // from the effective count is not guessing: fetchJobStatus exposes
@@ -774,6 +790,10 @@ Deno.serve(async (req) => {
             ownership_range_days: customOwnershipRange,
             excluded_outside_exact_job_window: excludedOutsideExactJobWindow,
             excluded_outside_custom_range: excludedOutsideCustomRange,
+            // Which BatchData contract produced these rows. null means the job
+            // predates provider-contract versioning and was verified under the
+            // legacy policy, not reinterpreted under the current contract.
+            provider_contract_version: providerContractVersion,
             properties
         });
     } catch (error) {

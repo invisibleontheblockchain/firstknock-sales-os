@@ -1,0 +1,137 @@
+{
+  "contract": "batchdata_property_search_precision_polygon",
+  "endpoint": "POST https://api.batchdata.com/api/v1/property/search",
+  "source_type_definitions": {
+    "real_provider_request_capture": "A request body FirstKnock actually sent to BatchData, recorded verbatim at the time it was sent.",
+    "provider_supplied_example": "A payload BatchData themselves sent to FirstKnock as a recommended example.",
+    "provider_supplied_dataset": "A data export BatchData themselves produced and delivered to FirstKnock.",
+    "observed_response_assertion": "Specific cited facts recorded about a real response. The response body itself was not retained.",
+    "reconstructed_response": "A response-shaped object assembled field-by-field from observed_response_assertion entries. NOT a raw capture and never citable as provider contract evidence on its own.",
+    "internal_research_document": "FirstKnock-authored research describing the provider. Secondary corroboration only.",
+    "synthetic_failure_safety": "Invented input used only to prove fail-closed behaviour. Never contract evidence."
+  },
+  "fixtures": [
+    {
+      "fixture_id": "BD-E01-broad-7day",
+      "source_type": "real_provider_request_capture",
+      "endpoint": "property_search",
+      "captured_at": "2026-07-01",
+      "request_fixture": "requests/precision-polygon-broad-7day.json",
+      "response_fixture": null,
+      "expected_fixture": "expected/precision-polygon-broad-7day.request.json",
+      "redactions": [],
+      "notes": "Verbatim production-style polygon request from src/tasks/batchdata-escalation.md Payload 1. Proves the exact outbound paths: searchCriteria.address.geoLocationPolygon.geoPoints, searchCriteria.intel.lastSoldDate.minDate, options.skip, options.take. Observed result: 0 properties. Contains no personal data — polygon coordinates only.",
+      "trusted_for": ["outbound request shape", "polygon point ordering and closure", "date-only minDate format"]
+    },
+    {
+      "fixture_id": "BD-E01-strict-r2-minvalue",
+      "source_type": "real_provider_request_capture",
+      "endpoint": "property_search",
+      "captured_at": "2026-07-01",
+      "request_fixture": "requests/precision-polygon-strict-r2-minvalue.json",
+      "response_fixture": null,
+      "expected_fixture": null,
+      "redactions": [
+        "geoPoints was recorded in the source packet as the prose placeholder 'same exact geoPoints as Payload 1'; the verbatim Payload 1 points were substituted, which is the expansion the packet itself specifies."
+      ],
+      "notes": "Proves searchCriteria.general.standardizedLandUseCode.equals = 'R2' and searchCriteria.valuation.estimatedValue.min are real outbound paths. Observed result: 0 properties.",
+      "trusted_for": ["land-use outbound path", "estimated-value outbound path"]
+    },
+    {
+      "fixture_id": "BD-E01-no-date-control",
+      "source_type": "real_provider_request_capture",
+      "endpoint": "property_search",
+      "captured_at": "2026-07-01",
+      "request_fixture": "requests/precision-polygon-no-date-control.json",
+      "response_fixture": null,
+      "expected_fixture": null,
+      "redactions": ["same geoPoints expansion as BD-E01-strict-r2-minvalue"],
+      "notes": "Control request proving the polygon itself returns inventory. Observed result: 1 property with intel.lastSoldDate = '2024-05-24T00:00:00.000Z' (assertion OBS-04).",
+      "trusted_for": ["polygon validity", "intel.lastSoldDate presence and format"]
+    },
+    {
+      "fixture_id": "BD-E05-provider-example",
+      "source_type": "provider_supplied_example",
+      "endpoint": "property_search",
+      "captured_at": "2026-06",
+      "request_fixture": "requests/provider-example-city-state-lastsolddate.json",
+      "response_fixture": null,
+      "expected_fixture": null,
+      "redactions": [],
+      "notes": "The example BatchData sent FirstKnock showing intel.lastSoldDate.minDate usage with city/state geography. Confirms the searchCriteria.intel.lastSoldDate.minDate path and the date-only 'YYYY-MM-DD' bound format. BatchData did not confirm polygon support in writing; OBS-05 establishes it empirically.",
+      "trusted_for": ["intel.lastSoldDate.minDate path", "date-only bound format"]
+    },
+    {
+      "fixture_id": "BD-E02-observed-responses",
+      "source_type": "observed_response_assertion",
+      "endpoint": "property_search",
+      "captured_at": "2026-06-30",
+      "request_fixture": null,
+      "response_fixture": "responses/observed-response-assertions.json",
+      "expected_fixture": null,
+      "redactions": ["No raw body was ever retained; only cited field-level facts."],
+      "notes": "The complete set of cited facts about real Precision polygon responses, including the live A/B probe (OBS-02) proving options.datasets suppresses intel/sale, and the take<=100 provider limit (OBS-03).",
+      "trusted_for": ["dataset-scoping behaviour", "intel.lastSoldDate presence/format/value", "R2 land use on returned rows", "take limit", "absence of listing status and sale amount"]
+    },
+    {
+      "fixture_id": "BD-E04-anderson-sample",
+      "source_type": "provider_supplied_dataset",
+      "endpoint": "property_search",
+      "captured_at": "2026-05-18",
+      "request_fixture": null,
+      "response_fixture": "documentation/deepresearch/firstknockmainintegration05-18-2026/Batchdatasenttous/Anderson_SC_Neighborhood_Sample_500.csv",
+      "expected_fixture": null,
+      "redactions": [
+        "NOT copied into this fixture directory. The source file contains real owner names and mailing addresses. It is referenced in place and only its column names and type vocabulary are relied on."
+      ],
+      "notes": "BatchData-authored 500-row export. Its column names are BatchData's own field names: subdivisionName, street, city, state, zip, propertyTypeDetail, bedroomCount, bathroomCount, yearBuilt, totalBuildingAreaSquareFeet, lotSizeAcres, ownerFullName, lastSalePrice, lastSaleDate, totalMarketValue. propertyTypeDetail is populated on all 500 rows, which is why a Precision row is required to carry one. Observed type vocabulary: Single Family, Condominium Unit, Single Family Residential (Assumed), Vacant Land, Agricultural / Rural, Mobile / Manufactured Home, Water Area.",
+      "trusted_for": ["provider field naming", "property type vocabulary", "propertyTypeDetail population rate"]
+    },
+    {
+      "fixture_id": "BD-R01-nested-coords",
+      "source_type": "reconstructed_response",
+      "endpoint": "property_search",
+      "captured_at": null,
+      "request_fixture": "requests/precision-polygon-broad-7day.json",
+      "response_fixture": "responses/precision-polygon-intel-r2.nested-coords.reconstructed.json",
+      "expected_fixture": "expected/precision-polygon-intel-r2.mapped.json",
+      "redactions": ["street -> '1000 Redacted St' (house-number/street-name split preserved because the parser splits on it)", "city -> REDACTED_CITY_001", "owner name -> OWNER_001", "property id -> PROPERTY_ID_001"],
+      "notes": "Replay fixture. Every field is individually cited in _field_provenance. The coordinate nesting is UNPROVEN and is pinned here only so the alias cannot be deleted silently.",
+      "trusted_for": ["parser replay of individually-evidenced fields"],
+      "not_trusted_for": ["establishing the provider contract", "proving the coordinate nesting"]
+    },
+    {
+      "fixture_id": "BD-R02-flat-coords",
+      "source_type": "reconstructed_response",
+      "endpoint": "property_search",
+      "captured_at": null,
+      "request_fixture": "requests/precision-polygon-broad-7day.json",
+      "response_fixture": "responses/precision-polygon-intel-r2.flat-coords.reconstructed.json",
+      "expected_fixture": "expected/precision-polygon-intel-r2.mapped.json",
+      "redactions": ["same as BD-R01-nested-coords"],
+      "notes": "The flat coordinate variant. Paired with BD-R01 so that both unproven coordinate aliases stay covered until an authorized capture resolves which one is real.",
+      "trusted_for": ["parser replay of individually-evidenced fields"],
+      "not_trusted_for": ["establishing the provider contract", "proving the coordinate nesting"]
+    },
+    {
+      "fixture_id": "BD-S01-failure-safety",
+      "source_type": "synthetic_failure_safety",
+      "endpoint": "property_search",
+      "captured_at": null,
+      "request_fixture": null,
+      "response_fixture": "responses/synthetic-failure-safety-cases.json",
+      "expected_fixture": null,
+      "redactions": [],
+      "notes": "Invented fail-closed cases. Introduces no new provider field path — every field exercised is one the parser already reads, in its absent or invalid state.",
+      "trusted_for": ["fail-closed behaviour only"],
+      "not_trusted_for": ["any provider contract claim"]
+    }
+  ],
+  "evidence_gaps": [
+    "No raw BatchData response body for the Precision polygon property-search call exists in the repository, its git history, or the local environment. The parser was therefore NOT redesigned; only proven integrity bugs were corrected.",
+    "The address coordinate nesting (address.location.latitude vs address.latitude) is unproven and is required for map routing.",
+    "results.totalRecordCount / totalRecordCount / meta.totalRecordCount are all unproven; paging currently terminates on a short page.",
+    "Whether searchCriteria.intel.lastSoldDate.maxDate is applied by the provider to the same returned field as minDate is unproven; FirstKnock revalidates both bounds locally so correctness does not depend on it.",
+    "Whether a `sale` object and `intel.lastSoldDate` can disagree on a real row is unproven — no capture contains both."
+  ]
+}

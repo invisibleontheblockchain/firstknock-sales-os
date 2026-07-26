@@ -258,8 +258,11 @@ function buildPrecisionRetryRequest(job, options) {
     repull_mode: view.repull_mode || 'new_area',
     previous_pull_date: view.previous_pull_date || null,
     force_full_refresh: view.force_full_refresh === true,
-    include_unresolved_followups: view.include_unresolved_followups === true,
-    include_mls: job?.include_mls !== false
+    include_unresolved_followups: view.include_unresolved_followups === true
+    // include_mls is deliberately not replayed. It belongs to the retired MLS
+    // pipeline, is not part of the BatchData Precision request, and is not in
+    // MATERIAL_CRITERIA_FIELDS, so echoing it back would put a field in the
+    // retry payload that no server-authoritative criteria comparison covers.
   };
 }
 
