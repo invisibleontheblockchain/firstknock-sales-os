@@ -729,11 +729,15 @@ export default function AdminDashboard() {
           <UserActivityHeatmap
             members={adoptionView.members}
             activityData={adoptionView.activity}
+            allowAllTime={data?.rep?.adoption?.history_complete === true}
             externalUpdatedAt={Date.parse(data?.generated_at || '') || 0}
             isRefreshing={analyticsQuery.isFetching}
-            minimumActivityDate={data?.rep?.adoption?.days?.[0]?.date}
+            minimumActivityDate={
+              data?.rep?.adoption?.history_start_date
+              || data?.rep?.adoption?.days?.[0]?.date
+            }
             onRefresh={() => analyticsQuery.refetch()}
-            rankByActivity
+            rankByPerformance
             showProductionTotals
             scopeLabel="Platform"
           />

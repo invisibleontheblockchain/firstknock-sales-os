@@ -8,7 +8,6 @@ const MAX_STRIPE_CUSTOMERS = 50000;
 const MAX_STRIPE_SUBSCRIPTIONS = 20000;
 const MAX_STRIPE_INVOICES = 50000;
 const DAY_MS = 24 * 60 * 60 * 1000;
-const ADOPTION_WINDOW_DAYS = 732;
 const PLATFORM_HQ_VIEWER_IDS = new Set([
     '695eb764b077190880be21df',
     '6978c7229935cf40cde25086',
@@ -594,6 +593,13 @@ function buildAdoptionWindowDays(now: number, windowDays: number, formatter: Int
     return days;
 }
 
+function adoptionDaySpan(startDate: string, endDate: string) {
+    const start = Date.parse(`${startDate}T00:00:00.000Z`);
+    const end = Date.parse(`${endDate}T00:00:00.000Z`);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || start > end) return 1;
+    return Math.floor((end - start) / DAY_MS) + 1;
+}
+
 function buildAdoptionActivity(
     interactionLogs: any[],
     canvasEvents: any[],
@@ -602,11 +608,17 @@ function buildAdoptionActivity(
     users: any[],
     now: number,
     timeZone: string,
-    windowDays = ADOPTION_WINDOW_DAYS
+    windowDays: number | null = null
 ) {
     const dayFormatter = createDayFormatter(timeZone);
-    const days = buildAdoptionWindowDays(now, windowDays, dayFormatter);
-    const includedDays = new Set(days.map((day) => day.date));
+    const currentDate = timeZoneDayKey(now, dayFormatter) || dayKey(now);
+    const usesFixedWindow = Number.isInteger(windowDays) && Number(windowDays) > 0;
+    const fixedWindowDays = usesFixedWindow
+        ? buildAdoptionWindowDays(now, Number(windowDays), dayFormatter)
+        : [];
+    const includedDays = usesFixedWindow
+        ? new Set(fixedWindowDays.map((day) => day.date))
+        : null;
     const reps = new Map<string, any>();
 
     const ensureRep = (identity: any) => {
@@ -655,7 +667,12 @@ function buildAdoptionActivity(
         if (normalized(log?.source) === 'csv_history_import') continue;
         const occurredAt = timestamp(log?.created_date || log?.updated_date);
         const date = occurredAt === null ? null : timeZoneDayKey(occurredAt, dayFormatter);
-        if (occurredAt === null || !date || !includedDays.has(date)) continue;
+        if (
+            occurredAt === null
+            || !date
+            || date > currentDate
+            || (includedDays && !includedDays.has(date))
+        ) continue;
         const identity = precisionIdentity(log, maps);
         const status = normalized(log?.parsed_status);
         touch(identity, date, occurredAt, {
@@ -672,7 +689,12 @@ function buildAdoptionActivity(
         if (!isCommittedCanvasEvent(event)) continue;
         const occurredAt = timestamp(event?.client_recorded_at || event?.server_recorded_at || event?.created_date);
         const date = occurredAt === null ? null : timeZoneDayKey(occurredAt, dayFormatter);
-        if (occurredAt === null || !date || !includedDays.has(date)) continue;
+        if (
+            occurredAt === null
+            || !date
+            || date > currentDate
+            || (includedDays && !includedDays.has(date))
+        ) continue;
         const identity = canvasIdentity(event, maps);
         const outcome = normalized(event?.outcome);
         touch(identity, date, occurredAt, {
@@ -692,8 +714,22 @@ function buildAdoptionActivity(
         ensureRep(userIdentity(user, maps));
     }
 
-    const repList = [...reps.values()]
-        .filter((rep) => !HIDDEN_PLATFORM_ANALYTICS_REP_NAMES.has(normalizedLeaderboardName(rep?.name)))
+    const visibleReps = [...reps.values()]
+        .filter((rep) => !HIDDEN_PLATFORM_ANALYTICS_REP_NAMES.has(normalizedLeaderboardName(rep?.name)));
+    const earliestVisibleActivityDate = visibleReps.reduce((earliest: string | null, rep: any) => {
+        for (const date of rep.days.keys()) {
+            if (!earliest || date < earliest) earliest = date;
+        }
+        return earliest;
+    }, null);
+    const historyStartDate = usesFixedWindow
+        ? fixedWindowDays[0]?.date || currentDate
+        : earliestVisibleActivityDate || currentDate;
+    const days = usesFixedWindow
+        ? fixedWindowDays
+        : buildAdoptionWindowDays(now, adoptionDaySpan(historyStartDate, currentDate), dayFormatter);
+
+    const repList = visibleReps
         .map((rep) => ({
             key: rep.key,
             name: rep.name,
@@ -712,8 +748,11 @@ function buildAdoptionActivity(
 
     return {
         generated_at: new Date(now).toISOString(),
-        window_days: windowDays,
+        window_days: days.length,
         time_zone: timeZone,
+        history_start_date: historyStartDate,
+        history_end_date: currentDate,
+        history_complete: !usesFixedWindow,
         days,
         reps: repList
     };

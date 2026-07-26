@@ -252,6 +252,80 @@ test('platform adoption keeps inactive users and counts only real, timezone-corr
   assert.deepEqual(independent.days, {});
 });
 
+test('platform adoption exposes complete history from the earliest visible real activity', () => {
+  const base44 = { auth: { me: async () => null } };
+  const { sandbox } = loadFunction({
+    base44,
+    expose: 'globalThis.__buildIdentityMaps = buildIdentityMaps; globalThis.__buildAdoptionActivity = buildAdoptionActivity;',
+  });
+  const users = [
+    { id: 'visible', email: 'visible@example.com', full_name: 'Visible Rep' },
+    { id: 'hidden', email: 'hidden@example.com', full_name: 'Irobot v2' },
+  ];
+  const maps = sandbox.__buildIdentityMaps(users, []);
+  const interactionLogs = [
+    {
+      logged_by_user_id: 'visible',
+      created_by: 'visible@example.com',
+      parsed_status: 'SOLD',
+      sale_amount: 42.5,
+      source: 'voice',
+      created_date: '2024-01-15T19:00:00.000Z',
+    },
+    {
+      logged_by_user_id: 'hidden',
+      created_by: 'hidden@example.com',
+      parsed_status: 'SOLD',
+      sale_amount: 999,
+      source: 'voice',
+      created_date: '2023-01-15T19:00:00.000Z',
+    },
+    {
+      logged_by_user_id: 'visible',
+      created_by: 'visible@example.com',
+      parsed_status: 'SOLD',
+      sale_amount: 999,
+      source: 'csv_history_import',
+      created_date: '2022-01-15T19:00:00.000Z',
+    },
+    {
+      logged_by_user_id: 'visible',
+      created_by: 'visible@example.com',
+      parsed_status: 'SOLD',
+      sale_amount: 999,
+      source: 'voice',
+      created_date: '2026-07-26T19:00:00.000Z',
+    },
+  ];
+  const canvasEvents = [{
+    actor_user_id: 'visible',
+    write_status: 'pending',
+    outcome: 'sale',
+    client_recorded_at: '2021-01-15T19:00:00.000Z',
+  }];
+
+  const result = plain(sandbox.__buildAdoptionActivity(
+    interactionLogs,
+    canvasEvents,
+    maps,
+    [],
+    users,
+    Date.parse('2026-07-25T12:00:00-07:00'),
+    'America/Phoenix'
+  ));
+
+  assert.equal(result.history_complete, true);
+  assert.equal(result.history_start_date, '2024-01-15');
+  assert.equal(result.history_end_date, '2026-07-25');
+  assert.equal(result.days[0].date, '2024-01-15');
+  assert.equal(result.days.at(-1).date, '2026-07-25');
+  assert.equal(result.window_days, result.days.length);
+  assert.deepEqual(result.reps.map((rep) => rep.name), ['Visible Rep']);
+  assert.equal(result.reps[0].days['2024-01-15'].sales, 1);
+  assert.equal(result.reps[0].days['2024-01-15'].recorded_sales_volume, 42.5);
+  assert.equal(result.reps[0].days['2026-07-26'], undefined);
+});
+
 test('close rate combines Precision and committed Canvas outcomes and excludes clear-to-Todo rows', () => {
   const now = Date.now();
   const base44 = { auth: { me: async () => null } };
