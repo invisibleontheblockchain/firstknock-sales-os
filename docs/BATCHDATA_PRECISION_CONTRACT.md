@@ -8,6 +8,21 @@ Endpoint: `POST https://api.batchdata.com/api/v1/property/search`
 This document records what is **proven**, what is **inferred**, and what is
 **unknown**. Anything not backed by an evidence ID below is not implemented.
 
+This is the **Stage 6–8 (Provider and Interpretation plane)** authority. It is
+part of the canonical Precision documentation package:
+
+| Document | Use |
+|---|---|
+| [`precision/README.md`](./precision/README.md) | Index — which document to use |
+| [`precision/AGENT_BRIEF.md`](./precision/AGENT_BRIEF.md) | **Mandatory agent task protocol** |
+| [`precision/PRECISION_CONTROL_MAP.md`](./precision/PRECISION_CONTROL_MAP.md) | Stages 0–14, planes, target invariants |
+| [`precision/PRECISION_TEST_LAB.md`](./precision/PRECISION_TEST_LAB.md) | C0–C11 ledger, test design, diagnosis |
+| [`precision/PR66_STAGE_STATUS.md`](./precision/PR66_STAGE_STATUS.md) | What is proven today, per stage |
+
+Where this document and any other description of the BatchData request disagree,
+**this document and the code win.** In particular, `options.datasets` was sent
+historically and is now prohibited — see §2.
+
 ---
 
 ## 1. Evidence inventory
