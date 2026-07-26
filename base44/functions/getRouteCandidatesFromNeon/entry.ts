@@ -4,7 +4,10 @@ import {
     buildExistingPrecisionCriteria,
     buildRequestedPrecisionCriteria,
     comparePrecisionCriteria,
-    precisionWorkspaceIdentity
+    precisionCriteriaSource,
+    precisionWorkspaceIdentity,
+    LEGACY_UNVERIFIABLE_CRITERIA_FIELDS,
+    LEGACY_VERIFIED_CRITERIA_FIELDS
 } from '../_shared/precisionActiveJobCriteria.js';
 
 function normalizeZipList(body) {
@@ -232,7 +235,13 @@ function invalidPersistedCriteriaFields(criteria) {
     return invalidFields;
 }
 
-function requestCriteriaFromBody(body, requestedOwnership, requestedPolygonHash, persistedCriteria) {
+// Identity and workspace are server-derived from the authenticated actor. The
+// request body can never supply them, so the comparison against the persisted
+// scope stays meaningful instead of comparing a value with itself.
+function requestCriteriaFromBody(body, requestedOwnership, requestedPolygonHash, {
+    immutableUserId = null,
+    workspaceId = null
+} = {}) {
     return buildRequestedPrecisionCriteria({
         polygon_hash: requestedPolygonHash,
         count_mode: body.count_mode,
@@ -249,9 +258,68 @@ function requestCriteriaFromBody(body, requestedOwnership, requestedPolygonHash,
         force_full_refresh: body.force_full_refresh,
         include_unresolved_followups: body.include_unresolved_followups,
         route_bounds: body.route_bounds,
-        immutable_user_id: persistedCriteria?.immutable_user_id || null,
-        workspace_id: body.workspace_id ?? null
+        immutable_user_id: immutableUserId,
+        workspace_id: workspaceId
     });
+}
+
+// ── Legacy compatibility (jobs completed before schema-v1 criteria) ──────────
+// A legacy job is accepted only when the server can prove, from immutable
+// persisted evidence, every criterion that determines which rows the exact-job
+// query returns. Nothing is inferred from modern defaults.
+function invalidLegacyCriteriaFields(criteria) {
+    const invalidFields = [];
+    if (!criteria?.polygon_hash) invalidFields.push('polygon_hash');
+    if (!(Number(criteria?.sold_months) > 0)) invalidFields.push('sold_months');
+    if (!['quick', 'custom'].includes(criteria?.ownership_range_mode)) invalidFields.push('ownership_range_mode');
+    if (
+        criteria?.ownership_range_mode === 'custom' &&
+        (!criteria.ownership_range_days || !(criteria.ownership_range_days.min < criteria.ownership_range_days.max))
+    ) {
+        invalidFields.push('ownership_range_days');
+    }
+    // A legacy null minimum price is valid: it meant "no price floor".
+    if (criteria?.min_price !== null && !(Number(criteria?.min_price) > 0)) invalidFields.push('min_price');
+    if (!(Number(criteria?.entered_count) > 0)) invalidFields.push('entered_count');
+    if (!(Number(criteria?.effective_count) > 0)) invalidFields.push('effective_count');
+    if (!criteria?.immutable_user_id) invalidFields.push('immutable_user_id');
+    if (!criteria?.workspace_id) invalidFields.push('workspace_id');
+    return invalidFields;
+}
+
+function missingLegacyRouteCriteriaFields(body, ownershipMode) {
+    const requiredFields = [
+        'polygon',
+        'sold_months',
+        'ownership_range_mode',
+        'requested_properties_before_cap',
+        'requested_properties',
+        'min_price',
+        'workspace_id'
+    ];
+    if (ownershipMode === 'custom') requiredFields.push('ownership_min_days', 'ownership_max_days');
+    return requiredFields.filter(field => !hasOwn(body, field));
+}
+
+function invalidLegacyRequestedCriteriaFields(body, ownershipMode) {
+    const invalidFields = [];
+    if (!(Number.isFinite(Number(body.sold_months)) && Number(body.sold_months) > 0)) invalidFields.push('sold_months');
+    if (!['quick', 'custom'].includes(body.ownership_range_mode)) invalidFields.push('ownership_range_mode');
+    for (const field of ['requested_properties_before_cap', 'requested_properties']) {
+        if (!(Number.isInteger(Number(body[field])) && Number(body[field]) > 0)) invalidFields.push(field);
+    }
+    if (body.min_price !== null && !(Number.isFinite(Number(body.min_price)) && Number(body.min_price) > 0)) {
+        invalidFields.push('min_price');
+    }
+    if (ownershipMode === 'custom') {
+        const min = Number(body.ownership_min_days);
+        const max = Number(body.ownership_max_days);
+        if (!Number.isInteger(min) || !Number.isInteger(max) || min < 1 || max > 365 || min >= max) {
+            invalidFields.push('ownership_range_days');
+        }
+    }
+    if (!normalizeWorkspaceId(body.workspace_id)) invalidFields.push('workspace_id');
+    return [...new Set(invalidFields)];
 }
 
 function requestFieldName(criteriaField) {
@@ -298,6 +366,9 @@ Deno.serve(async (req) => {
         let fetchJob = null;
         let persistedCriteria = null;
         let customOwnershipRange = null;
+        let criteriaSource = null;
+        let authenticatedImmutableUserId = null;
+        let workspaceVerification = null;
         let targetEmail = user.role === 'admin' && body.user_email ? body.user_email : user.email;
         if (fetchJobId) {
             fetchJob = await base44.asServiceRole.entities.FetchJob.get(fetchJobId).catch(() => null);
@@ -351,18 +422,51 @@ Deno.serve(async (req) => {
             if (jobWorkspaceId && persistedCriteria.workspace_id !== jobWorkspaceId) {
                 persistedCriteria = { ...persistedCriteria, workspace_id: jobWorkspaceId };
             }
+            criteriaSource = precisionCriteriaSource(fetchJob);
+            authenticatedImmutableUserId = String(user.id || '').trim();
+            // Older records predate requested_properties_before_cap. Deriving it
+            // from the effective count is not guessing: fetchJobStatus exposes
+            // the identical fallback chain, so both sides resolve the same value.
+            if (criteriaSource === 'legacy' && !persistedCriteria.entered_count) {
+                const legacyEnteredCount = Number(
+                    fetchJob.dry_run_metadata?.requested_properties ?? fetchJob.total_expected
+                );
+                if (Number.isFinite(legacyEnteredCount) && legacyEnteredCount >= 1) {
+                    persistedCriteria = { ...persistedCriteria, entered_count: legacyEnteredCount };
+                }
+            }
+            // A legacy job predates persisted workspace evidence. Its workspace
+            // relationship is provable only through the immutable subject, which
+            // is then required to equal the authenticated actor below.
+            if (
+                criteriaSource === 'legacy' &&
+                !persistedCriteria.workspace_id &&
+                authenticatedWorkspaceId &&
+                persistedCriteria.immutable_user_id &&
+                persistedCriteria.immutable_user_id === authenticatedImmutableUserId
+            ) {
+                persistedCriteria = { ...persistedCriteria, workspace_id: authenticatedWorkspaceId };
+                workspaceVerification = 'derived_from_immutable_subject';
+            }
             customOwnershipRange = persistedCriteria.ownership_range_mode === 'custom'
                 ? persistedCriteria.ownership_range_days
                 : null;
-            const invalidPersistedFields = invalidPersistedCriteriaFields(persistedCriteria);
+            const invalidPersistedFields = criteriaSource === 'schema_v1'
+                ? invalidPersistedCriteriaFields(persistedCriteria)
+                : invalidLegacyCriteriaFields(persistedCriteria);
             if (invalidPersistedFields.length > 0) {
                 return Response.json({
-                    error: 'fetch_job_criteria_unverifiable',
-                    message: 'The completed property import is missing required persisted criteria, so route generation stopped.',
+                    error: criteriaSource === 'schema_v1'
+                        ? 'fetch_job_criteria_unverifiable'
+                        : 'legacy_precision_criteria_unverifiable',
+                    message: criteriaSource === 'schema_v1'
+                        ? 'The completed property import is missing required persisted criteria, so route generation stopped.'
+                        : 'This older property import cannot be verified without guessing its original criteria, so route generation stopped.',
+                    criteria_verification: criteriaSource === 'schema_v1' ? 'schema_v1' : 'legacy_reconstructed',
                     invalid_fields: invalidPersistedFields
                 }, { status: 409 });
             }
-            if (persistedCriteria.immutable_user_id !== String(user.id || '').trim()) {
+            if (persistedCriteria.immutable_user_id !== authenticatedImmutableUserId) {
                 return Response.json({
                     error: 'fetch_job_owner_mismatch',
                     message: 'The persisted import criteria do not belong to the authenticated user.'
@@ -372,6 +476,15 @@ Deno.serve(async (req) => {
                 return Response.json({
                     error: 'fetch_job_workspace_mismatch',
                     message: 'The persisted import criteria do not belong to the authenticated workspace.'
+                }, { status: 403 });
+            }
+            // The body may state its workspace, but it can never override the
+            // server-derived one.
+            const requestedWorkspaceId = normalizeWorkspaceId(body.workspace_id);
+            if (requestedWorkspaceId && requestedWorkspaceId !== authenticatedWorkspaceId) {
+                return Response.json({
+                    error: 'fetch_job_workspace_mismatch',
+                    message: 'The requested workspace does not match the authenticated workspace.'
                 }, { status: 403 });
             }
 
@@ -396,17 +509,21 @@ Deno.serve(async (req) => {
             }
 
             if (body.debug_job !== true) {
-                const missingFields = missingRouteCriteriaFields(
-                    body,
-                    persistedCriteria.ownership_range_mode,
-                    persistedCriteria.workspace_id
-                );
+                const missingFields = criteriaSource === 'schema_v1'
+                    ? missingRouteCriteriaFields(
+                        body,
+                        persistedCriteria.ownership_range_mode,
+                        persistedCriteria.workspace_id
+                    )
+                    : missingLegacyRouteCriteriaFields(body, persistedCriteria.ownership_range_mode);
                 const requestedPolygonHash = await polygonHash(body.polygon);
-                const invalidRequestFields = invalidRequestedCriteriaFields(
-                    body,
-                    persistedCriteria.ownership_range_mode,
-                    persistedCriteria.workspace_id
-                );
+                const invalidRequestFields = criteriaSource === 'schema_v1'
+                    ? invalidRequestedCriteriaFields(
+                        body,
+                        persistedCriteria.ownership_range_mode,
+                        persistedCriteria.workspace_id
+                    )
+                    : invalidLegacyRequestedCriteriaFields(body, persistedCriteria.ownership_range_mode);
                 if (!requestedPolygonHash) invalidRequestFields.push('polygon');
                 if (missingFields.length > 0 || invalidRequestFields.length > 0) {
                     const mismatchFields = [...new Set([...missingFields, ...invalidRequestFields])];
@@ -425,9 +542,14 @@ Deno.serve(async (req) => {
                     body,
                     requestedOwnership,
                     requestedPolygonHash,
-                    persistedCriteria
+                    {
+                        immutableUserId: authenticatedImmutableUserId,
+                        workspaceId: authenticatedWorkspaceId
+                    }
                 );
-                const comparison = comparePrecisionCriteria(requestedCriteria, persistedCriteria);
+                const comparison = criteriaSource === 'schema_v1'
+                    ? comparePrecisionCriteria(requestedCriteria, persistedCriteria)
+                    : comparePrecisionCriteria(requestedCriteria, persistedCriteria, LEGACY_VERIFIED_CRITERIA_FIELDS);
                 if (!comparison.matches) {
                     const mismatchFields = [...new Set(comparison.mismatched_fields.map(requestFieldName))];
                     return Response.json({
@@ -633,10 +755,17 @@ Deno.serve(async (req) => {
             user_email: targetEmail,
             fetch_job_id: fetchJobId,
             criteria_verified: fetchJobId !== null,
+            criteria_verification: fetchJobId === null
+                ? null
+                : criteriaSource === 'schema_v1' ? 'schema_v1' : 'legacy_reconstructed',
+            workspace_verification: workspaceVerification,
+            unverified_fields: criteriaSource === 'legacy' ? [...LEGACY_UNVERIFIABLE_CRITERIA_FIELDS] : [],
             count: properties.length,
             capped: properties.length >= limit,
             limit,
             sold_months: soldMonths,
+            min_price: persistedCriteria ? persistedCriteria.min_price : null,
+            max_price: persistedCriteria ? persistedCriteria.max_price : null,
             sold_at_or_after: exactJobSoldAtOrAfter,
             sold_before: exactJobSoldBefore,
             ownership_range_mode: customOwnershipRange ? 'custom' : 'quick',

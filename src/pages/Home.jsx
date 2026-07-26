@@ -618,8 +618,13 @@ export default function Home() {
             const responseJobId = data.fetch_job_id ? String(data.fetch_job_id) : null;
             const expectedSoldMonths = Number(jobCriteria?.sold_months);
             const confirmedSoldMonths = Number(data.sold_months);
+            // The service must name which verification mode it used. An unknown
+            // mode is treated as unverified so a future server change cannot
+            // silently widen what counts as a confirmed job.
+            const verificationMode = data.criteria_verification;
             if (
                 data.criteria_verified !== true ||
+                !['schema_v1', 'legacy_reconstructed'].includes(verificationMode) ||
                 responseJobId !== String(fetchJobId) ||
                 !Number.isFinite(expectedSoldMonths) ||
                 !Number.isFinite(confirmedSoldMonths) ||

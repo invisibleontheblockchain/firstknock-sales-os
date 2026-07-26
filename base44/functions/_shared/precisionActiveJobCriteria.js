@@ -22,6 +22,34 @@ const MATERIAL_CRITERIA_FIELDS = [
     'workspace_id'
 ];
 
+// Jobs completed before schema-v1 criteria existed can only prove the criteria
+// that were persisted as first-class evidence at the time. These are the fields
+// a legacy record can prove and that also determine which rows the exact-job
+// candidate query returns.
+export const LEGACY_VERIFIED_CRITERIA_FIELDS = [
+    'polygon_hash',
+    'sold_months',
+    'ownership_range_mode',
+    'ownership_range_days',
+    'min_price',
+    'entered_count',
+    'effective_count',
+    'immutable_user_id',
+    'workspace_id'
+];
+
+// Disclosed on every legacy response instead of being silently assumed.
+export const LEGACY_UNVERIFIABLE_CRITERIA_FIELDS = [
+    'count_mode',
+    'max_price',
+    'route_filters',
+    'repull_mode',
+    'previous_pull_date',
+    'force_full_refresh',
+    'include_unresolved_followups',
+    'route_bounds'
+];
+
 function isMissing(value) {
     return value === undefined
         || value === null
@@ -258,13 +286,53 @@ export function buildExistingPrecisionCriteria(job, {
     }, defaultRouteFilters);
 }
 
-export function comparePrecisionCriteria(requested, active) {
-    const mismatchedFields = MATERIAL_CRITERIA_FIELDS.filter(field =>
+export function comparePrecisionCriteria(requested, active, fields = MATERIAL_CRITERIA_FIELDS) {
+    const mismatchedFields = fields.filter(field =>
         JSON.stringify(requested?.[field] ?? null) !== JSON.stringify(active?.[field] ?? null)
     );
     return {
         matches: mismatchedFields.length === 0,
         mismatched_fields: mismatchedFields
+    };
+}
+
+// A record only counts as canonical schema-v1 evidence when the locked start
+// engine wrote its criteria. Everything else is legacy and must be reconstructed
+// under the legacy policy instead of being judged against schema-v1 rules.
+export function precisionCriteriaSource(job) {
+    const criteria = job?.dry_run_metadata?.precision_criteria;
+    return criteria && typeof criteria === 'object' && !Array.isArray(criteria) ? 'schema_v1' : 'legacy';
+}
+
+export function precisionCriteriaSummary(criteria) {
+    return {
+        polygon_hash: criteria?.polygon_hash ?? null,
+        count_mode: criteria?.count_mode ?? null,
+        entered_count: criteria?.entered_count ?? null,
+        effective_count: criteria?.effective_count ?? null,
+        min_price: criteria?.min_price ?? null,
+        max_price: criteria?.max_price ?? null,
+        sold_months: criteria?.sold_months ?? null,
+        ownership_range_mode: criteria?.ownership_range_mode ?? null,
+        ownership_range_days: criteria?.ownership_range_days ?? null
+    };
+}
+
+// Server-verified description of an owned active job. It is the only evidence a
+// browser may use to offer an explicit remedy, so it never depends on local
+// storage and it never implies that anything was cancelled or released.
+export function precisionActiveJobEvidence(job, criteria, { criteriaMatch = false } = {}) {
+    const status = stringOrNull(job?.status);
+    const progress = Number(job?.progress_pct);
+    return {
+        id: stringOrNull(job?.id),
+        status,
+        created_date: timestampOrNull(job?.created_date),
+        started_at: timestampOrNull(job?.started_at),
+        progress_pct: Number.isFinite(progress) ? progress : 0,
+        criteria_match: criteriaMatch === true,
+        cancellation_allowed: status === 'pending' || status === 'running',
+        criteria_summary: precisionCriteriaSummary(criteria)
     };
 }
 
