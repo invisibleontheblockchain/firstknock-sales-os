@@ -8,6 +8,7 @@ import {
     findActivePrecisionJob,
     normalizePrecisionMaxPrice,
     normalizePrecisionMinPrice,
+    precisionActiveJobEvidence,
     precisionCriteriaDiagnostic,
     precisionWorkspaceIdentity
 } from '../_shared/precisionActiveJobCriteria.js';
@@ -575,6 +576,7 @@ Deno.serve(async (req) => {
                     message: 'A different property import is already running. It was not resumed or replaced. Cancel it or wait for it to finish before starting this request.',
                     active_job_id: activeJob.id,
                     mismatched_fields: compatibility.mismatched_fields,
+                    active_job: precisionActiveJobEvidence(activeJob, activeCriteria, { criteriaMatch: false }),
                     active_criteria: precisionCriteriaDiagnostic(activeCriteria),
                     requested_criteria: precisionCriteriaDiagnostic(requestedCriteria)
                 }, { status: 409 });
@@ -602,6 +604,7 @@ Deno.serve(async (req) => {
                 force_full_refresh: activeCriteria.force_full_refresh,
                 include_unresolved_followups: activeCriteria.include_unresolved_followups,
                 workspace_id: activeCriteria.workspace_id,
+                active_job: precisionActiveJobEvidence(activeJob, activeCriteria, { criteriaMatch: true }),
                 criteria: precisionCriteriaDiagnostic(activeCriteria),
                 ...ownershipResponseFields(activeOwnership)
             });

@@ -138,6 +138,9 @@ export default function PrecisionPullPanel({
   onGenerate,
   generating,
   pullError,
+  blockingActiveJob = null,
+  onCancelBlockingJob,
+  onDismissBlockingActiveJob,
   onUpgrade,
   onClearArea,
   selectedHistoryArea,
@@ -559,6 +562,9 @@ export default function PrecisionPullPanel({
                 />
               </div>
             </div>
+            <p className="text-[10px] text-gray-500">
+              Leave the minimum blank and Precision uses its $100,000 default. Homes below that value are not pulled.
+            </p>
           </div>
 
           <div className="space-y-2">
@@ -903,6 +909,29 @@ export default function PrecisionPullPanel({
                   className="mt-2 h-8 rounded-lg bg-[#2EEB57] px-4 text-xs font-extrabold text-black hover:bg-[#39FF4A]">
                   View Plans
                 </button>
+              )}
+              {blockingActiveJob?.canCancel && (
+                <div className="mt-2.5 border-t border-red-500/30 pt-2.5">
+                  <p className="text-[10px] text-red-200/80">
+                    That import is {blockingActiveJob.status || 'active'}
+                    {Number.isFinite(blockingActiveJob.progressPct) ? ` at ${Math.round(blockingActiveJob.progressPct)}%` : ''}.
+                    Wait for it to finish, or cancel it to free the account for this request.
+                  </p>
+                  <div className="mt-2 flex gap-2">
+                    <button
+                      type="button"
+                      onClick={onDismissBlockingActiveJob}
+                      className="h-8 flex-1 rounded-lg border border-white/15 px-3 text-[11px] font-bold text-gray-200 hover:bg-white/5">
+                      Wait for it
+                    </button>
+                    <button
+                      type="button"
+                      onClick={onCancelBlockingJob}
+                      className="h-8 flex-1 rounded-lg border border-red-500/50 bg-red-500/20 px-3 text-[11px] font-bold text-red-200 hover:bg-red-500/30">
+                      Cancel that import
+                    </button>
+                  </div>
+                </div>
               )}
             </div>
           )}

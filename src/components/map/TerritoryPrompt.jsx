@@ -156,7 +156,110 @@ function precisionFunctionErrorDetails(error) {
   return {
     code: payload.error || error?.code || error?.name || '',
     message: payload.message || payload.error || error?.message || 'Could not start the property import.',
-    status: Number(error?.response?.status || error?.status || 0) || null
+    status: Number(error?.response?.status || error?.status || 0) || null,
+    payload
+  };
+}
+
+// The only remedy a browser may offer comes from server-verified active-job
+// evidence. Without it — or without server permission to cancel — the user is
+// told to wait rather than being handed a cancel button for an unverified id.
+function precisionActiveJobRemediation(details) {
+  const payload = details?.payload || {};
+  const evidence = payload.active_job && typeof payload.active_job === 'object' && !Array.isArray(payload.active_job)
+    ? payload.active_job
+    : null;
+  const progress = Number(evidence?.progress_pct);
+  const cancellableId = evidence && evidence.cancellation_allowed === true && evidence.id
+    ? String(evidence.id)
+    : null;
+  return {
+    jobId: cancellableId,
+    status: evidence?.status || null,
+    progressPct: Number.isFinite(progress) ? progress : null,
+    criteriaMatch: evidence?.criteria_match === true,
+    canCancel: Boolean(cancellableId),
+    canWait: Boolean(evidence)
+  };
+}
+
+// Every material criterion a retry must restate, from one explicit mapper.
+// A retry starts a NEW job, so it sends the originally entered count and lets
+// the locked backend recompute the effective count from the current allowance.
+// Sending the previously capped effective count would shrink the request on
+// every attempt and conflict with the canonical entered count.
+function buildPrecisionRetryRequest(job, options) {
+  const fallbackSoldMonths = Number(options?.fallbackSoldMonths) > 0
+    ? Number(options.fallbackSoldMonths)
+    : DEFAULT_PRECISION_SOLD_MONTHS;
+  const metadata = job?.dry_run_metadata || {};
+  const canonical = metadata.precision_criteria && typeof metadata.precision_criteria === 'object'
+    ? metadata.precision_criteria
+    : null;
+  const view = canonical
+    ? {
+        count_mode: canonical.count_mode,
+        entered_count: canonical.entered_count,
+        min_price: canonical.min_price,
+        max_price: canonical.max_price,
+        sold_months: canonical.sold_months,
+        ownership_range_mode: canonical.ownership_range_mode,
+        ownership_range_days: canonical.ownership_range_days,
+        route_filters: canonical.route_filters,
+        route_bounds: canonical.route_bounds,
+        repull_mode: canonical.repull_mode,
+        previous_pull_date: canonical.previous_pull_date,
+        force_full_refresh: canonical.force_full_refresh,
+        include_unresolved_followups: canonical.include_unresolved_followups
+      }
+    : {
+        count_mode: metadata.count_mode,
+        entered_count: metadata.requested_properties_before_cap
+          ?? metadata.requested_properties
+          ?? job?.total_expected,
+        min_price: metadata.filters?.min_price ?? null,
+        max_price: metadata.filters?.max_price ?? null,
+        sold_months: job?.sold_months ?? metadata.sold_months,
+        ownership_range_mode: metadata.ownership_range_mode ?? job?.ownership_range_mode,
+        ownership_range_days: metadata.ownership_range_days ?? job?.ownership_range_days,
+        route_filters: metadata.route_filters,
+        route_bounds: metadata.route_bounds,
+        repull_mode: metadata.repull_mode ?? job?.pull_mode,
+        previous_pull_date: metadata.previous_pull_date ?? null,
+        force_full_refresh: metadata.force_full_refresh ?? job?.force_full_refresh,
+        include_unresolved_followups: metadata.include_unresolved_followups
+      };
+
+  const ownershipRangeDays = normalizeOwnershipRangeDays(view.ownership_range_days);
+  const ownershipRangeMode = view.ownership_range_mode === 'custom' && ownershipRangeDays ? 'custom' : 'quick';
+  const enteredCount = Number(view.entered_count);
+  const soldMonths = Number(view.sold_months);
+  const minPrice = Number(view.min_price);
+  const maxPrice = Number(view.max_price);
+
+  return {
+    latitude: job?.latitude ?? null,
+    longitude: job?.longitude ?? null,
+    radius: job?.radius ?? null,
+    polygon: Array.isArray(job?.polygon) ? job.polygon : [],
+    sold_months: Number.isFinite(soldMonths) && soldMonths > 0 ? soldMonths : fallbackSoldMonths,
+    ownership_range_mode: ownershipRangeMode,
+    ...(ownershipRangeMode === 'custom'
+      ? { ownership_min_days: ownershipRangeDays[0], ownership_max_days: ownershipRangeDays[1] }
+      : {}),
+    requested_properties: Number.isFinite(enteredCount) && enteredCount > 0
+      ? Math.round(enteredCount)
+      : DEFAULT_PRECISION_PROPERTY_COUNT,
+    count_mode: view.count_mode === 'max_available' ? 'max_available' : 'fixed',
+    min_price: Number.isFinite(minPrice) && minPrice > 0 ? minPrice : null,
+    max_price: Number.isFinite(maxPrice) && maxPrice > 0 ? maxPrice : null,
+    route_filters: normalizeRouteFilters(view.route_filters),
+    route_bounds: view.route_bounds || { enabled: false },
+    repull_mode: view.repull_mode || 'new_area',
+    previous_pull_date: view.previous_pull_date || null,
+    force_full_refresh: view.force_full_refresh === true,
+    include_unresolved_followups: view.include_unresolved_followups === true,
+    include_mls: job?.include_mls !== false
   };
 }
 
@@ -273,6 +376,9 @@ export default function TerritoryPrompt({
   const [repullMode, setRepullMode] = useState('fill_gaps');
   const [includeUnresolvedFollowUps, setIncludeUnresolvedFollowUps] = useState(true);
   const [recoverableJob, setRecoverableJob] = useState(null);
+  // Server-verified evidence about an owned active job that blocked this
+  // request. Never populated from local storage or an unverified job id.
+  const [blockingActiveJob, setBlockingActiveJob] = useState(null);
   const [requestedPropertyCount, setRequestedPropertyCount] = useState(DEFAULT_PRECISION_PROPERTY_COUNT);
   const [propertyCountMode, setPropertyCountMode] = useState(DEFAULT_PRECISION_COUNT_MODE);
   const [minHomeValue, setMinHomeValue] = useState(DEFAULT_PRECISION_MIN_HOME_VALUE);
@@ -1010,46 +1116,55 @@ export default function TerritoryPrompt({
     }
   };
 
+  // Explicit, user-chosen cancellation of an owned active job that is blocking a
+  // new pull. Nothing here happens automatically and nothing is cancelled just
+  // because a job looks old: the server verified ownership and stated that
+  // cancellation is allowed, and the user still has to confirm.
+  const handleCancelBlockingJob = async () => {
+    const remediation = blockingActiveJob;
+    if (!remediation?.jobId) return;
+    if (!confirm('Cancel the property import that is already running? Homes it already saved stay on the account, and its Precision usage is settled from what it actually delivered.')) return;
+    setPullProgress('Cancelling the active import...');
+    try {
+      await base44.functions.invoke('cancelFetchJob', { job_id: remediation.jobId });
+      clearActivePrecisionJob(remediation.jobId);
+      setBlockingActiveJob(null);
+      setPullError(null);
+      setPullProgress('');
+      await refetchPrecisionUsage();
+      toast.info('The blocking import was cancelled. You can start your new pull now.');
+    } catch (error) {
+      const details = precisionFunctionErrorDetails(error);
+      setPullProgress('');
+      setPullError({
+        message: details.message || 'Could not cancel the active import. It is still running.',
+        upgrade: false
+      });
+    }
+  };
+
   const retryRecoverableJob = async () => {
     if (!recoverableJob) return;
     const requestToken = beginPrecisionRequest();
     const jobToRecover = recoverableJob;
     const recoveryMetadata = jobToRecover.dry_run_metadata || {};
-    const recoveryOwnershipRangeDays = normalizeOwnershipRangeDays(
-      jobToRecover.ownership_range_days ?? recoveryMetadata.ownership_range_days
-    );
-    const recoveryOwnershipRangeMode = (
-      jobToRecover.ownership_range_mode ?? recoveryMetadata.ownership_range_mode
-    ) === 'custom' && recoveryOwnershipRangeDays ? 'custom' : 'quick';
-    const recoverySoldMonths = jobToRecover.sold_months || fetchMonths;
+    const retryRequest = buildPrecisionRetryRequest(jobToRecover, { fallbackSoldMonths: fetchMonths });
+    const recoveryOwnershipRangeDays = retryRequest.ownership_range_mode === 'custom'
+      ? [retryRequest.ownership_min_days, retryRequest.ownership_max_days]
+      : null;
+    const recoveryOwnershipRangeMode = retryRequest.ownership_range_mode;
     setRecoverableJob(null);
+    setBlockingActiveJob(null);
     setPulling(true);
-    setPullProgress('Retrying incomplete import from last checkpoint...');
-    setPullPct(jobToRecover.progress_pct || 0);
-    setDisplayPct(Math.max((jobToRecover.progress_pct || 0) - 5, 0));
-    targetPctRef.current = jobToRecover.progress_pct || 0;
-    setEtaText('Retrying...');
+    // A retry creates a new FetchJob. It restates the verified original
+    // criteria; it does not continue the previous processor state.
+    setPullProgress('Starting a new attempt using the verified original criteria...');
+    setPullPct(0);
+    setDisplayPct(0);
+    targetPctRef.current = 0;
+    setEtaText('Starting new attempt...');
     try {
-      const res = await base44.functions.invoke('fetchAreaProperties', {
-        latitude: jobToRecover.latitude,
-        longitude: jobToRecover.longitude,
-        radius: jobToRecover.radius,
-        polygon: jobToRecover.polygon || [],
-        sold_months: recoverySoldMonths,
-        ownership_range_mode: recoveryOwnershipRangeMode,
-        ...(recoveryOwnershipRangeMode === 'custom' ? {
-          ownership_min_days: recoveryOwnershipRangeDays[0],
-          ownership_max_days: recoveryOwnershipRangeDays[1]
-        } : {}),
-        requested_properties: recoveryMetadata.requested_properties ?? jobToRecover.total_expected,
-        count_mode: recoveryMetadata.count_mode || 'fixed',
-        min_price: recoveryMetadata.filters?.min_price ?? null,
-        max_price: recoveryMetadata.filters?.max_price ?? null,
-        route_filters: recoveryMetadata.route_filters,
-        route_bounds: recoveryMetadata.route_bounds || { enabled: false },
-        include_mls: jobToRecover.include_mls !== false,
-        force_full_refresh: jobToRecover.force_full_refresh || false
-      });
+      const res = await base44.functions.invoke('fetchAreaProperties', retryRequest);
       if (!isCurrentRequest(requestToken) || routeModeRef.current !== 'precision') return;
       const data = res.data || {};
       if (data.error) {
@@ -1073,14 +1188,14 @@ export default function TerritoryPrompt({
         requestedCount: Number(
           resumedExistingJob
             ? (data.requested_properties ?? data.total_expected ?? 0)
-            : (recoveryMetadata.requested_properties ?? jobToRecover.total_expected ?? 0)
+            : retryRequest.requested_properties
         ) || null,
-        soldMonths: resumedExistingJob ? Number(data.sold_months || 12) : recoverySoldMonths,
+        soldMonths: resumedExistingJob ? Number(data.sold_months || 12) : retryRequest.sold_months,
         ownershipRangeMode: pollingOwnershipRangeMode,
         ownershipRangeDays: pollingOwnershipRangeDays,
-        minHomeValue: resumedExistingJob ? (data.min_price ?? null) : (recoveryMetadata.filters?.min_price ?? null),
-        maxHomeValue: resumedExistingJob ? (data.max_price ?? null) : (recoveryMetadata.filters?.max_price ?? null),
-        countMode: resumedExistingJob ? data.count_mode : (recoveryMetadata.count_mode || 'fixed'),
+        minHomeValue: resumedExistingJob ? (data.min_price ?? null) : retryRequest.min_price,
+        maxHomeValue: resumedExistingJob ? (data.max_price ?? null) : retryRequest.max_price,
+        countMode: resumedExistingJob ? data.count_mode : retryRequest.count_mode,
         routeFilters: normalizeRouteFilters(data.route_filters || recoveryMetadata.route_filters),
         routeBounds: recoveryRouteBounds
       };
@@ -1096,11 +1211,15 @@ export default function TerritoryPrompt({
       const isCriteriaConflict = details.code === 'active_job_criteria_conflict' || details.status === 409;
       const message = isCriteriaConflict
         ? activeJobCriteriaConflictMessage(details.message)
-        : details.message || 'Could not retry this import.';
+        : details.message || 'Could not start a new attempt for this import.';
       setPulling(false);
       setEtaText('');
-      setPullProgress('Retry failed');
+      setPullProgress('New attempt could not start');
       setRecoverableJob(jobToRecover);
+      if (isCriteriaConflict) {
+        const remediation = precisionActiveJobRemediation(details);
+        setBlockingActiveJob(remediation.canCancel ? remediation : null);
+      }
       setPullError({
         message,
         upgrade: ['paid_precision_required', 'upgrade_required'].includes(details.code)
@@ -1339,6 +1458,8 @@ export default function TerritoryPrompt({
       const data = res.data || {};
       if (data.error) {
         if (data.error === 'active_job_criteria_conflict') {
+          const remediation = precisionActiveJobRemediation({ payload: data });
+          setBlockingActiveJob(remediation.canCancel ? remediation : null);
           setPullError({
             message: activeJobCriteriaConflictMessage(data.message),
             upgrade: false
@@ -1504,6 +1625,10 @@ export default function TerritoryPrompt({
         ? activeJobCriteriaConflictMessage(details.message)
         : details.message;
       const isPlanGate = ['trial_required', 'paid_precision_required', 'upgrade_required'].includes(details.code);
+      if (isCriteriaConflict) {
+        const remediation = precisionActiveJobRemediation(details);
+        setBlockingActiveJob(remediation.canCancel ? remediation : null);
+      }
       // Persistent in-panel error — a transient toast made blocked pulls look like a silent failure.
       setPullError({ message: msg, upgrade: isPlanGate });
     } finally {
@@ -1570,7 +1695,7 @@ export default function TerritoryPrompt({
       <div className="absolute top-14 left-1/2 -translate-x-1/2 z-[2000] w-11/12 max-w-sm animate-in fade-in">
                     <div className="bg-black/90 backdrop-blur-md border border-[#2EEB57]/50 rounded-xl p-4 shadow-2xl">
                         <p className="text-xs font-bold text-white mb-1">Incomplete data pull found</p>
-                        <p className="text-[10px] text-gray-400 mb-3">Your last import stopped at {Math.round(recoverableJob.progress_pct || 0)}%. Retry resumes from the saved job instead of starting a new full pull.</p>
+                        <p className="text-[10px] text-gray-400 mb-3">Your last import stopped at {Math.round(recoverableJob.progress_pct || 0)}%. Starting a new attempt using the verified original criteria from that import.</p>
                         <div className="flex gap-2">
                             <Button onClick={retryRecoverableJob} className="h-8 flex-1 text-xs bg-[#2EEB57] text-black hover:bg-[#39FF4A]">Retry Import</Button>
                             <Button
@@ -1713,10 +1838,13 @@ export default function TerritoryPrompt({
         setOwnershipRangeMode={setOwnershipRangeMode}
         ownershipRangeDays={ownershipRangeDays}
         setOwnershipRangeDays={setOwnershipRangeDays}
-        onClose={() => {setShowPrecisionPullPanel(false);setPullError(null);}}
+        onClose={() => {setShowPrecisionPullPanel(false);setPullError(null);setBlockingActiveJob(null);}}
         onGenerate={handlePaidBatchDataPull}
         generating={paidPullStarting}
         pullError={pullError}
+        blockingActiveJob={blockingActiveJob}
+        onCancelBlockingJob={handleCancelBlockingJob}
+        onDismissBlockingActiveJob={() => setBlockingActiveJob(null)}
         onUpgrade={() => {setShowPrecisionPullPanel(false);setPullError(null);navigate(createPageUrl('Billing') + '?plan=precision');}}
         selectedHistoryArea={ghostAreasVisible ? selectedHistoryArea : null}
         repullMode={repullMode}
