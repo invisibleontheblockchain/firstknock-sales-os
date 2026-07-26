@@ -19,9 +19,11 @@ import TeamLeaderboard from '@/components/team/TeamLeaderboard';
 import TeamAnalyticsSummary from '@/components/analytics/team/TeamAnalyticsSummary';
 import TeamActivityTrend from '@/components/analytics/team/TeamActivityTrend';
 import TeamOutcomeBreakdown from '@/components/analytics/team/TeamOutcomeBreakdown';
+import UserActivityHeatmap from '@/components/analytics/team/UserActivityHeatmap';
 import SalesEditor from '@/components/analytics/SalesEditor';
 import { getManagerIdForAccount, isManagerAccount, isRepAccount } from '@/lib/roles';
 import { isKnockActivityLog } from '@/lib/interactionLogs';
+import { fetchAllAnalyticsPages } from '@/lib/analyticsDateFilter';
 
 
 const BRAND = {
@@ -84,12 +86,25 @@ export default function AdminTeam() {
         }
     }, [isRepView, activeTab]);
 
-    const { data: teamMembers = [], isLoading: teamLoading } = useQuery({
+    const {
+        data: teamMembers = [],
+        error: teamLoadError,
+        isError: teamLoadFailed,
+        isLoading: teamLoading,
+        refetch: refetchTeamMembers,
+    } = useQuery({
         queryKey: ['teamMembers', managerId],
         queryFn: async () => {
             if (!managerId) return [];
-            const res = await base44.entities.TeamMember.filter({ manager_id: managerId }, '-created_date', 100);
-            return Array.isArray(res) ? res : (res?.items || []);
+            return fetchAllAnalyticsPages(
+                (limit, skip) => base44.entities.TeamMember.filter(
+                    { manager_id: managerId },
+                    '-created_date',
+                    limit,
+                    skip
+                ),
+                { pageSize: 500, maxPages: 100 }
+            );
         },
         enabled: !!managerId
     });
@@ -115,21 +130,21 @@ export default function AdminTeam() {
     });
 
     const { data: logs = [] } = useQuery({
-        queryKey: ['teamLogs', user?.email, teamMembers.map(m => m.email).join(',')],
+        queryKey: ['teamLogs', managerId],
         staleTime: 1000 * 60 * 2,
         queryFn: async () => {
-            if (!user?.email) return [];
-            // Collect all team emails: manager + reps
-            const teamEmails = [user.email, ...teamMembers.map(m => m.email).filter(Boolean)];
-            // Fetch logs for each team member in parallel
-            const results = await Promise.all(
-                teamEmails.map(email => 
-                    base44.entities.InteractionLog.filter({ created_by: email }, '-created_date', 5000)
-                )
+            if (!managerId) return [];
+            return fetchAllAnalyticsPages(
+                (limit, skip) => base44.entities.InteractionLog.filter(
+                    { manager_id: managerId },
+                    '-created_date',
+                    limit,
+                    skip
+                ),
+                { pageSize: 5000, maxPages: 100 }
             );
-            return results.flatMap(res => Array.isArray(res) ? res : (res?.items || []));
         },
-        enabled: !!user?.email
+        enabled: !!managerId
     });
 
     // --- Mutations ---
@@ -528,6 +543,36 @@ export default function AdminTeam() {
         return <div className="p-10 text-center text-white">Loading Team Data...</div>;
     }
 
+    if (teamLoadFailed && teamMembers.length === 0) {
+        return (
+            <div className="h-full overflow-y-auto bg-black p-4 text-white md:p-6">
+                <div className="mx-auto flex min-h-[70vh] max-w-xl items-center justify-center">
+                    <Card className="w-full border-red-400/20 bg-[#111] text-white">
+                        <CardHeader className="text-center">
+                            <AlertCircle className="mx-auto mb-2 h-7 w-7 text-red-300" />
+                            <CardTitle>Team data is unavailable</CardTitle>
+                            <CardDescription className="text-gray-400">
+                                HQ could not verify the roster, so no one has been marked inactive.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="text-center">
+                            <Button
+                                type="button"
+                                onClick={() => refetchTeamMembers()}
+                                className="bg-white font-black text-black hover:bg-gray-200"
+                            >
+                                Retry
+                            </Button>
+                            {teamLoadError?.message && (
+                                <p className="mt-3 text-xs text-gray-600">{teamLoadError.message}</p>
+                            )}
+                        </CardContent>
+                    </Card>
+                </div>
+            </div>
+        );
+    }
+
     if (!teamToolsUnlocked) {
         return (
             <div className="h-full overflow-y-auto bg-black text-white p-4 md:p-6 pb-24">
@@ -588,9 +633,13 @@ export default function AdminTeam() {
                         <div className="flex flex-col">
                             <h1 className="text-base md:text-3xl font-extrabold tracking-tight text-white flex items-center gap-2 md:gap-3">
                             <Shield className="w-4 h-4 md:w-8 md:h-8 text-yellow-500" />
-                            Command Center
+                            {canManageTeam ? 'FirstKnock HQ' : 'Team'}
                             </h1>
-                            <p className="hidden md:block text-gray-400 text-sm mt-1">Manage your team, routes, and performance.</p>
+                            <p className="hidden md:block text-gray-400 text-sm mt-1">
+                                {canManageTeam
+                                    ? 'See adoption, field activity, routes, and team performance.'
+                                    : 'See your team and shared performance.'}
+                            </p>
                         </div>
                         {/* Mobile Team Filter */}
                         <div className="md:hidden">
@@ -811,6 +860,12 @@ export default function AdminTeam() {
 
                     {/* ANALYTICS TAB */}
                     <TabsContent value="analytics" className="space-y-3 md:space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        {canManageTeam && (
+                            <UserActivityHeatmap
+                                members={analyticsMembers}
+                                managerId={managerId}
+                            />
+                        )}
                         <TeamAnalyticsSummary members={analyticsMembers} logs={logs} routes={routes} />
                         <div className="grid grid-cols-1 xl:grid-cols-[1.15fr,0.85fr] gap-3 md:gap-6">
                             <TeamActivityTrend logs={logs} />

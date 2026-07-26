@@ -385,7 +385,7 @@ function LayoutInner({ children }) {
                         <NavItem icon={Navigation} label="Knock" to={(() => {try {const id = localStorage.getItem('fk_selectedKnockRouteId');return createPageUrl('RepHome') + (id ? `?route=${encodeURIComponent(id)}` : '');} catch {return createPageUrl('RepHome');}})()} active={isPageActive('RepHome')} accent={accent} />
                         <NavItem icon={TrendingUp} label="Analytics" to={createPageUrl('List')} active={isPageActive('List')} accent={accent} />
                         <NavItem icon={Calendar} label="Appts" to={createPageUrl('Appointments')} active={isPageActive('Appointments')} accent={accent} />
-                        <NavItem icon={Users} label="Team" to={createPageUrl('AdminTeam')} active={isPageActive('AdminTeam')} accent={accent} />
+                        <NavItem icon={Users} label="HQ" to={createPageUrl('HQ')} active={isPageActive('HQ') || isPageActive('AdminTeam')} accent={accent} />
                     </div>
         }
             </nav>
