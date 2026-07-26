@@ -178,8 +178,12 @@ test('a failed note save is reported, not swallowed', () => {
   const checklist = readSource('src/components/routes/RouteChecklist.jsx');
 
   assert.match(checklist, /\[addressHash\]: 'error'/);
-  assert.match(checklist, /Not saved — check your connection/);
   assert.match(checklist, /role=\{noteState === 'error' \? 'alert' : undefined\}/);
+  // The server's own reason is shown; a rejected write must not be blamed on
+  // the rep's connection.
+  assert.match(checklist, /error\?\.response\?\.data\?\.error/);
+  assert.match(checklist, /Not saved — \$\{noteError\[prop\.address_hash\]/);
+  assert.doesNotMatch(checklist, /check your connection/);
 });
 
 // The note is written by its own non-metered server action, never as an outcome.
@@ -194,10 +198,15 @@ test('the note save path is separate from outcome logging', () => {
   assert.match(server, /async function saveHouseNote/);
   assert.match(server, /action === 'save_house_note'/);
   // Non-metered: autosaving a note can never consume a billed outcome.
-  assert.match(server, /counts_toward_free_limit: false,\s*\n\s*counts_as_knock: false,\s*\n\s*workflow_action: 'HOUSE_NOTE'/);
   const noteFn = server.slice(server.indexOf('async function saveHouseNote'), server.indexOf('async function editSale'));
+  assert.match(noteFn, /counts_toward_free_limit: false/);
+  assert.match(noteFn, /counts_as_knock: false/);
   assert.doesNotMatch(noteFn, /enforceGate/);
   assert.doesNotMatch(noteFn, /parsed_status/);
+  // Only values the deployed schema already accepts. workflow_action is an enum
+  // of route-bucket transitions and HOUSE_NOTE is not one of them; writing it
+  // is what a schema-validating backend rejects.
+  assert.doesNotMatch(noteFn, /workflow_action:/);
 });
 
 // A rejected write must not leave the interface claiming the note was saved.

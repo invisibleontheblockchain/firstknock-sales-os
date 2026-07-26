@@ -58,7 +58,14 @@ export const HOUSE_NOTE_SOURCE = 'house_note';
 // A house note records what a rep learned about a door, never what they decided
 // at it. Status derivation must ignore it, or saving a note would silently
 // reopen a house that was already sold.
-export const isHouseNoteLog = (log) => log?.source === HOUSE_NOTE_SOURCE;
+// Matched on source, but also on shape: a row with a note and no decision on it
+// is a note whatever its source says. That keeps status derivation correct even
+// if a note row is written before the source enum reaches the deployed schema.
+export const isHouseNoteLog = (log) => {
+    if (!log) return false;
+    if (log.source === HOUSE_NOTE_SOURCE) return true;
+    return !log.parsed_status && typeof log.description === 'string';
+};
 
 export const withoutHouseNotes = (logs) =>
     (Array.isArray(logs) ? logs.filter((log) => !isHouseNoteLog(log)) : []);

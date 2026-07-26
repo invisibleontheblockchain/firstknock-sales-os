@@ -1050,7 +1050,9 @@ async function saveHouseNote(base44: any, authenticatedUser: any, body: any) {
         logged_by_user_id: actor.id,
         counts_toward_free_limit: false,
         counts_as_knock: false,
-        workflow_action: 'HOUSE_NOTE',
+        // No workflow action is set — that enum describes administrative
+        // transitions between route buckets, and a note is not one. No decision
+        // field is set either, so this row can never read as an outcome.
         source: 'house_note'
     };
 
