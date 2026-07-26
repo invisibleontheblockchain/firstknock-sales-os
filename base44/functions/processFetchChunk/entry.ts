@@ -46,6 +46,14 @@ async function countPersistedPrecisionProperties(jobId) {
     return Math.max(0, Number(rows[0]?.count || 0));
 }
 
+// Precision pulls settle precision_usage_count from delivered route-active
+// rows, so only they carry the stricter delivered-equals-routeable invariant.
+function isPrecisionDeliveryJob(job) {
+    return job?.mode_tag === 'PRECISION_TARGET'
+        || job?.phase === 'batchdata_precision'
+        || Boolean(job?.precision_usage_user_id);
+}
+
 function cancellationRequested(job) {
     return job?.status === 'cancelled' || Boolean(job?.precision_cancel_requested_at);
 }
@@ -592,7 +600,8 @@ function mapBatchDataProperty(record, job) {
     );
     const price = estimatedValue ?? saleAmount;
     const landUseCode = firstValue(general.standardizedLandUseCode, p.standardizedLandUseCode);
-    const propertyType = firstValue(general.propertyTypeDetail, general.propertyType, p.propertyType, p.landUse, building.propertyType) || 'Single Family';
+    const providerPropertyType = firstValue(general.propertyTypeDetail, general.propertyType, p.propertyType, p.landUse, building.propertyType);
+    const propertyType = providerPropertyType || 'Single Family';
     // Single-family-only gate. BatchData's standardized R2 code is the
     // single-family residential bucket used by Precision route pulls.
     const nonResidential = /commercial|industrial|vacant|agricultural|land|daycare|day ?care|child ?care|church|school|office|retail|store|warehouse|hotel|motel|restaurant|medical|hospital|parking|exempt|government|condo|condominium|apartment|multi[- ]?family|multifamily|duplex|triplex|fourplex|townhouse|townhome|row ?house/i.test(String(propertyType));
@@ -609,8 +618,35 @@ function mapBatchDataProperty(record, job) {
     const filterMaxPrice = Number(jobFilters.max_price) > 0 ? Number(jobFilters.max_price) : null;
     const priceKnown = Number.isFinite(Number(price)) && Number(price) > 0;
     const priceRejected = priceKnown && ((filterMinPrice !== null && Number(price) < filterMinPrice) || (filterMaxPrice !== null && Number(price) > filterMaxPrice));
-    const rejected = nonResidential || landUseRejected || priceRejected;
+
+    // ── Precision delivery invariant ─────────────────────────────────────
+    // A row may only count toward FetchJob.precision_usage_count when the
+    // server can prove it satisfies the persisted criteria AND that it is
+    // eligible for the exact-job candidate query that builds the route. The
+    // candidate query requires a recorded sale date inside the same window,
+    // so a row without one is delivered-but-unroutable and must not be
+    // billed. Unknown values and defaulted property types cannot prove the
+    // price or single-family criteria either. Non-Precision pulls keep the
+    // looser provider-trusting behaviour.
+    const precisionDelivery = isPrecisionDeliveryJob(job);
+    const precisionExclusionReason = !precisionDelivery
+        ? null
+        : !hasValidSaleDate
+            ? 'missing_recorded_sale_date'
+            : !isSoldInWindow || !isInCustomOwnershipRange
+                ? 'recorded_sale_outside_window'
+                : filterMinPrice !== null && !priceKnown
+                    ? 'unprovable_minimum_value'
+                    : !providerPropertyType && !landUseCode
+                        ? 'unprovable_property_type'
+                        : null;
+
+    const rejected = nonResidential || landUseRejected || priceRejected || Boolean(precisionExclusionReason);
     const routeActive = !rejected && isInCustomOwnershipRange;
+    const exclusionReason = precisionExclusionReason
+        || (nonResidential || landUseRejected ? 'not_single_family_residential' : null)
+        || (priceRejected ? 'outside_requested_value_range' : null)
+        || (routeActive ? null : 'outside_requested_ownership_window');
 
     const match = address.street.match(/^(\d+)\s+(.*)$/);
     const houseNumber = match ? parseInt(match[1], 10) : 0;
@@ -651,6 +687,7 @@ function mapBatchDataProperty(record, job) {
         sale_confidence: rejected ? 'REJECTED' : 'verified',
         original_status: rejected ? 'REJECTED' : 'BATCHDATA_CONFIRMED',
         route_active: routeActive,
+        exclusion_reason: routeActive ? null : exclusionReason,
         // Retain a deliberately minimized audit snapshot instead of the full
         // provider object, which can grow to include sensitive add-on fields.
         raw_payload: JSON.stringify({
@@ -683,6 +720,11 @@ function mapBatchDataProperty(record, job) {
             sale: {
                 date: saleDate || null,
                 amount: saleAmount ?? null
+            },
+            // Durable audit of why a delivered row was or was not routeable.
+            precision_eligibility: {
+                route_active: routeActive,
+                exclusion_reason: routeActive ? null : exclusionReason
             }
         })
     };
