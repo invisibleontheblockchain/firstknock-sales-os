@@ -54,6 +54,7 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
     // 'saving' | 'saved' | 'error', keyed by address_hash. The rep is told the
     // real state; a note is never shown as saved before the server took it.
     const [noteStatus, setNoteStatus] = useState({});
+    const [noteError, setNoteError] = useState({});
     const noteTimersRef = React.useRef({});
     const [saleAmount, setSaleAmount] = useState('');
     const [saleAmountError, setSaleAmountError] = useState('');
@@ -235,11 +236,24 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
                 route_id: displayRoute?.id || null
             });
             setNoteStatus((current) => ({ ...current, [addressHash]: 'saved' }));
+            setNoteError((current) => {
+                if (current[addressHash] === undefined) return current;
+                const next = { ...current };
+                delete next[addressHash];
+                return next;
+            });
             onNoteSaved?.();
         } catch (error) {
-            // Never let the interface imply a note was stored when it was not.
+            // Never let the interface imply a note was stored when it was not,
+            // and show what the server actually said. Blaming the network sends
+            // the rep chasing the wrong thing when the write was rejected.
+            const reason = error?.response?.data?.error
+                || error?.response?.data?.code
+                || error?.message
+                || 'Unknown error';
             console.error('[RouteChecklist] House note save failed', error);
             setNoteStatus((current) => ({ ...current, [addressHash]: 'error' }));
+            setNoteError((current) => ({ ...current, [addressHash]: String(reason) }));
         }
     };
 
@@ -694,7 +708,7 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
                                                         style={{ color: noteState === 'error' ? '#FF6B6B' : '#555' }}
                                                     >
                                                         {noteState === 'error'
-                                                            ? 'Not saved — check your connection and try again.'
+                                                            ? `Not saved — ${noteError[prop.address_hash] || 'the server rejected this note'}`
                                                             : noteState === 'saving'
                                                                 ? 'Saving...'
                                                                 : 'Saved automatically to this house.'}
