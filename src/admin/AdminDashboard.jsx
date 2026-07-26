@@ -733,6 +733,7 @@ export default function AdminDashboard() {
             isRefreshing={analyticsQuery.isFetching}
             minimumActivityDate={data?.rep?.adoption?.days?.[0]?.date}
             onRefresh={() => analyticsQuery.refetch()}
+            rankByActivity
             scopeLabel="Platform"
           />
         </div>

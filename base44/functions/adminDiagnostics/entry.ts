@@ -14,7 +14,13 @@ const PLATFORM_HQ_VIEWER_IDS = new Set([
     '6978c7229935cf40cde25086',
     '69cfceec85189c20b0f4e97a'
 ]);
-const HIDDEN_LEADERBOARD_REP_NAMES = new Set(['nick cohen', 'nicholas cohen', 'cory larson']);
+const HIDDEN_PLATFORM_ANALYTICS_REP_NAMES = new Set([
+    'irobot v2',
+    'irobotv2',
+    'nick cohen',
+    'nicholas cohen',
+    'cory larson'
+]);
 const PRECISION_DOOR_OUTCOMES = new Set([
     'sold',
     'hard_no',
@@ -474,7 +480,7 @@ function buildRepPeriod(
     }
 
     const leaderboard = [...reps.values()]
-        .filter((rep) => !HIDDEN_LEADERBOARD_REP_NAMES.has(normalizedLeaderboardName(rep?.name)))
+        .filter((rep) => !HIDDEN_PLATFORM_ANALYTICS_REP_NAMES.has(normalizedLeaderboardName(rep?.name)))
         .map((rep) => ({
             ...rep,
             close_rate: closeRate(rep.confirmed_sales, rep.knocks),
@@ -680,6 +686,7 @@ function buildAdoptionActivity(
     }
 
     const repList = [...reps.values()]
+        .filter((rep) => !HIDDEN_PLATFORM_ANALYTICS_REP_NAMES.has(normalizedLeaderboardName(rep?.name)))
         .map((rep) => ({
             key: rep.key,
             name: rep.name,

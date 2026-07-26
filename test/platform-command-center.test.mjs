@@ -163,6 +163,11 @@ test('platform adoption keeps inactive users and counts only real, timezone-corr
     { id: 'rep_1', email: 'active@example.com', full_name: 'Active Rep' },
     { id: 'rep_2', email: 'inactive@example.com', full_name: 'Inactive Rep' },
     { id: 'user_3', email: 'independent@example.com', full_name: 'Independent User' },
+    { id: 'hidden_irobot_1', email: 'irobot-one@example.com', full_name: 'Irobot v2' },
+    { id: 'hidden_irobot_2', email: 'irobot-two@example.com', full_name: '  IROBOT   V2 ' },
+    { id: 'hidden_nick', email: 'nick@example.com', full_name: 'Nick Cohen' },
+    { id: 'hidden_nicholas', email: 'nicholas@example.com', full_name: 'Nicholas Cohen' },
+    { id: 'hidden_cory', email: 'cory@example.com', full_name: 'Cory Larson' },
   ];
   const members = [
     { id: 'member_1', manager_id: 'manager_1', email: 'active@example.com', name: 'Active Rep' },
@@ -358,7 +363,7 @@ test('decision-maker metrics use conservative real-conversation outcomes and ign
   assert.equal(trend.reduce((sum, day) => sum + day.sales, 0), 2);
 });
 
-test('Nick Cohen and Cory Larson stay in global totals and live sales but not the leaderboard', () => {
+test('internal analytics accounts stay in global totals and live sales but not the leaderboard', () => {
   const now = Date.now();
   const base44 = { auth: { me: async () => null } };
   const { sandbox } = loadFunction({
@@ -369,6 +374,7 @@ test('Nick Cohen and Cory Larson stay in global totals and live sales but not th
     { id: 'nick', email: 'nick@example.com', full_name: '  NICK   COHEN ' },
     { id: 'nicholas', email: 'nicholas@example.com', full_name: 'Nicholas Cohen' },
     { id: 'cory', email: 'cory@example.com', full_name: 'Cory Larson' },
+    { id: 'irobot', email: 'irobot@example.com', full_name: 'Irobot v2' },
     { id: 'visible', email: 'visible@example.com', full_name: 'Visible Rep' },
   ];
   const maps = sandbox.__buildIdentityMaps(users, []);
@@ -384,10 +390,10 @@ test('Nick Cohen and Cory Larson stay in global totals and live sales but not th
 
   const period = plain(sandbox.__buildRepPeriod(logs, [], maps, null, now));
   const feed = plain(sandbox.__buildRecentRepSales(logs, [], maps));
-  assert.equal(period.knocks, 4);
-  assert.equal(period.confirmed_sales, 4);
-  assert.equal(period.active_reps, 4);
-  assert.equal(period.decision_maker_conversations, 4);
+  assert.equal(period.knocks, 5);
+  assert.equal(period.confirmed_sales, 5);
+  assert.equal(period.active_reps, 5);
+  assert.equal(period.decision_maker_conversations, 5);
   assert.equal(period.talk_rate, 100);
   assert.equal(period.decision_maker_close_rate, 100);
   assert.deepEqual(period.leaderboard.map((rep) => rep.email), ['visible@example.com']);

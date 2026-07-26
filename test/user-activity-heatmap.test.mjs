@@ -8,6 +8,7 @@ const {
   activityDayKey,
   buildUserActivityRows,
   getUserActivityRange,
+  sortUserActivityRowsByActivity,
   summarizeUserActivity,
 } = await import('../src/lib/userActivityHeatmap.js');
 const { buildPlatformAdoptionView } = await import('../src/admin/platformAdoption.js');
@@ -205,6 +206,7 @@ test('Rows merge both ledgers, prefer stable user identity, and preserve inactiv
 test('Team keeps its heatmap while HQ redirects before normal app authentication', () => {
   const hq = fs.readFileSync('src/pages/HQ.jsx', 'utf8');
   const app = fs.readFileSync('src/App.jsx', 'utf8');
+  const adminDashboard = fs.readFileSync('src/admin/AdminDashboard.jsx', 'utf8');
   const layout = fs.readFileSync('src/Layout.jsx', 'utf8');
   const adminTeam = fs.readFileSync('src/pages/AdminTeam.jsx', 'utf8');
 
@@ -215,6 +217,8 @@ test('Team keeps its heatmap while HQ redirects before normal app authentication
   assert.doesNotMatch(layout, /canViewHQ|canViewPlatformDashboard|\/hq\/index\.html|FirstKnock HQ/);
   assert.doesNotMatch(layout, /label="HQ".*createPageUrl\('HQ'\)/);
   assert.match(adminTeam, /canManageTeam && \(\s*<UserActivityHeatmap/);
+  assert.doesNotMatch(adminTeam, /rankByActivity/);
+  assert.match(adminDashboard, /<UserActivityHeatmap[\s\S]*rankByActivity[\s\S]*scopeLabel="Platform"/);
   assert.match(adminTeam, /Team Command Center/);
   assert.doesNotMatch(adminTeam, /FirstKnock HQ/);
   assert.match(adminTeam, /teamLoadFailed && teamMembers\.length === 0/);
@@ -254,6 +258,47 @@ test('Platform adoption adapter feeds the shared grid without exposing raw activ
   assert.equal(view.activity[0].doors, 2);
   assert.equal(view.activity[0].sales, 1);
   assert.equal(view.activity[0].last_activity, '2026-07-20T20:00:00.000Z');
+});
+
+test('Platform adoption removes internal duplicate accounts by normalized display name', () => {
+  const view = buildPlatformAdoptionView({
+    reps: [
+      { key: 'user:keep', name: 'Visible Rep', days: {} },
+      { key: 'user:irobot-1', name: 'Irobot v2', days: {} },
+      { key: 'user:irobot-2', name: '  IROBOT   V2 ', days: {} },
+      { key: 'user:nick-1', name: 'Nick Cohen', days: {} },
+      { key: 'user:nick-2', name: 'Nicholas Cohen', days: {} },
+      { key: 'user:cory', name: 'Cory Larson', days: {} },
+    ],
+  });
+
+  assert.deepEqual(view.members.map((member) => member.name), ['Visible Rep']);
+});
+
+test('HQ activity ranking uses selected-range active days, then logs, with inactive users last', () => {
+  const range = getUserActivityRange({ preset: 'this_week', now: phoenixNow });
+  const members = [
+    { id: 'inactive', name: 'Inactive Rep' },
+    { id: 'burst', name: 'Burst Rep' },
+    { id: 'steady', name: 'Steady Rep' },
+    { id: 'quiet', name: 'Quiet Rep' },
+  ];
+  const dailyActivity = [
+    { actor_team_member_id: 'steady', date: '2026-07-20', logs: 1 },
+    { actor_team_member_id: 'steady', date: '2026-07-21', logs: 1 },
+    { actor_team_member_id: 'burst', date: '2026-07-20', logs: 10 },
+    { actor_team_member_id: 'quiet', date: '2026-07-20', logs: 1 },
+  ];
+  const rows = buildUserActivityRows({ members, dailyActivity, range, now: phoenixNow });
+  const ranked = sortUserActivityRowsByActivity(rows);
+
+  assert.deepEqual(ranked.map((row) => row.member.name), [
+    'Steady Rep',
+    'Burst Rep',
+    'Quiet Rep',
+    'Inactive Rep',
+  ]);
+  assert.deepEqual(rows.map((row) => row.member.name), members.map((member) => member.name));
 });
 
 test('Backend aggregation is manager-scoped, range-scoped, and returns no raw event PII', () => {
