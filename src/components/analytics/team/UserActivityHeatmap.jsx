@@ -75,13 +75,17 @@ function SummaryMetric({ label, value, detail, icon: Icon, tone = 'text-white' }
   return (
     <div className="min-w-0 rounded-xl border border-white/[0.06] bg-white/[0.025] px-3 py-3 md:px-4">
       <div className="mb-1.5 flex items-center justify-between gap-2">
-        <span className="truncate text-[9px] font-bold uppercase tracking-[0.14em] text-white/35">
+        <span className="line-clamp-2 min-h-6 text-[9px] font-bold uppercase leading-tight tracking-[0.12em] text-white/35 sm:min-h-0 sm:truncate sm:tracking-[0.14em]">
           {label}
         </span>
         <Icon className={`h-3.5 w-3.5 shrink-0 ${tone}`} />
       </div>
-      <div className={`text-xl font-black tracking-tight md:text-2xl ${tone}`}>{value}</div>
-      <p className="mt-0.5 truncate text-[10px] text-white/35">{detail}</p>
+      <div title={String(value)} className={`break-words text-lg font-black leading-tight tracking-tight sm:truncate sm:whitespace-nowrap sm:text-xl md:text-2xl ${tone}`}>
+        {value}
+      </div>
+      <p className="mt-0.5 line-clamp-2 min-h-7 text-[10px] leading-snug text-white/35 sm:min-h-0 sm:truncate">
+        {detail}
+      </p>
     </div>
   );
 }
@@ -103,7 +107,7 @@ function LoadingGrid() {
   );
 }
 
-function ActivityCell({ cell, member, showProductionTotals }) {
+function ActivityCell({ cell, compact = false, member, showProductionTotals }) {
   const name = member?.name || member?.email || 'Team member';
   const dayLabel = format(cell.date, 'EEEE, MMMM d');
   const ariaLabel = cell.isFuture
@@ -118,14 +122,16 @@ function ActivityCell({ cell, member, showProductionTotals }) {
         <button
           type="button"
           aria-label={ariaLabel}
-          className="group mx-auto flex h-10 w-10 items-center justify-center rounded-full outline-none transition-colors hover:bg-white/[0.04] focus-visible:ring-2 focus-visible:ring-[#2EEB57]/70"
+          className={`group mx-auto flex items-center justify-center rounded-full outline-none transition-colors hover:bg-white/[0.04] focus-visible:ring-2 focus-visible:ring-[#2EEB57]/70 ${
+            compact ? 'h-8 w-8' : 'h-10 w-10'
+          }`}
         >
           {cell.isFuture ? (
-            <span className="h-px w-3 rounded-full bg-white/15" />
+            <span className={`${compact ? 'w-2.5' : 'w-3'} h-px rounded-full bg-white/15`} />
           ) : cell.active ? (
-            <span className="h-4 w-4 rounded-full border border-[#7BFF94]/70 bg-[#2EEB57] shadow-[0_0_14px_rgba(46,235,87,0.55)] transition-transform group-hover:scale-110" />
+            <span className={`${compact ? 'h-3 w-3' : 'h-4 w-4'} rounded-full border border-[#7BFF94]/70 bg-[#2EEB57] shadow-[0_0_14px_rgba(46,235,87,0.55)] transition-transform group-hover:scale-110`} />
           ) : (
-            <span className="h-3.5 w-3.5 rounded-full border border-white/[0.09] bg-white/[0.025]" />
+            <span className={`${compact ? 'h-3 w-3' : 'h-3.5 w-3.5'} rounded-full border border-white/[0.09] bg-white/[0.025]`} />
           )}
         </button>
       </TooltipTrigger>
@@ -182,6 +188,7 @@ export default function UserActivityHeatmap({
   externalUpdatedAt = 0,
   isRefreshing = false,
   minimumActivityDate,
+  mobileCardLayout = false,
   onRefresh,
   rankByActivity = false,
   rankByPerformance = false,
@@ -328,11 +335,23 @@ export default function UserActivityHeatmap({
               </div>
             </div>
 
-            <div className="flex max-w-full items-center gap-2 overflow-x-auto pb-1 xl:justify-end">
+            <div className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 xl:w-auto xl:grid-cols-[auto_auto] xl:justify-end">
+              {mobileCardLayout && (
+                <select
+                  aria-label="Activity date range"
+                  value={preset}
+                  onChange={(event) => setPreset(event.target.value)}
+                  className="h-11 w-full min-w-0 rounded-xl border border-white/[0.08] bg-black/45 px-3 text-[10px] font-black uppercase tracking-[0.08em] text-white [color-scheme:dark] sm:hidden"
+                >
+                  {rangePresets.map((option) => (
+                    <option key={option.id} value={option.id}>{option.label}</option>
+                  ))}
+                </select>
+              )}
               <div
                 role="group"
                 aria-label="Activity date range"
-                className="flex min-h-10 shrink-0 items-center rounded-xl border border-white/[0.08] bg-black/45 p-1"
+                className={`${mobileCardLayout ? 'hidden sm:flex' : 'flex'} min-h-10 min-w-0 items-center overflow-x-auto rounded-xl border border-white/[0.08] bg-black/45 p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden xl:overflow-visible`}
               >
                 {rangePresets.map((option) => (
                   <button
@@ -340,7 +359,7 @@ export default function UserActivityHeatmap({
                     type="button"
                     aria-pressed={preset === option.id}
                     onClick={() => setPreset(option.id)}
-                    className={`min-h-8 rounded-lg px-3 text-[9px] font-black uppercase tracking-[0.08em] transition-colors ${
+                    className={`min-h-8 shrink-0 rounded-lg px-3 text-[9px] font-black uppercase tracking-[0.08em] transition-colors ${
                       preset === option.id
                         ? 'bg-white text-black'
                         : 'text-white/40 hover:bg-white/[0.06] hover:text-white'
@@ -355,7 +374,7 @@ export default function UserActivityHeatmap({
                 onClick={() => refreshActivity?.()}
                 disabled={isFetching || !range.valid}
                 aria-label={`Refresh ${scopeLabel.toLowerCase()} activity`}
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/[0.08] bg-black/45 text-white/45 transition-colors hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/[0.08] bg-black/45 text-white/45 transition-colors hover:text-white disabled:cursor-not-allowed disabled:opacity-40 sm:h-10 sm:w-10"
               >
                 <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? 'animate-spin' : ''}`} />
               </button>
@@ -363,28 +382,28 @@ export default function UserActivityHeatmap({
           </div>
 
           {preset === 'custom' && (
-            <div className="mt-4 flex flex-wrap items-end gap-2 rounded-xl border border-white/[0.06] bg-black/30 p-3">
-              <label className="space-y-1 text-[9px] font-bold uppercase tracking-[0.12em] text-white/35">
+            <div className="mt-4 grid grid-cols-2 items-end gap-2 rounded-xl border border-white/[0.06] bg-black/30 p-3 sm:flex sm:flex-wrap">
+              <label className="min-w-0 space-y-1 text-[9px] font-bold uppercase tracking-[0.12em] text-white/35">
                 <span className="block">From</span>
                 <input
                   type="date"
                   value={customStart}
                   max={todayInput}
                   onChange={(event) => setCustomStart(event.target.value)}
-                  className="h-9 rounded-lg border border-white/10 bg-[#090909] px-3 text-xs font-semibold text-white [color-scheme:dark]"
+                  className="h-10 w-full min-w-0 rounded-lg border border-white/10 bg-[#090909] px-2 text-xs font-semibold text-white [color-scheme:dark] sm:h-9 sm:w-auto sm:px-3"
                 />
               </label>
-              <label className="space-y-1 text-[9px] font-bold uppercase tracking-[0.12em] text-white/35">
+              <label className="min-w-0 space-y-1 text-[9px] font-bold uppercase tracking-[0.12em] text-white/35">
                 <span className="block">To</span>
                 <input
                   type="date"
                   value={customEnd}
                   max={todayInput}
                   onChange={(event) => setCustomEnd(event.target.value)}
-                  className="h-9 rounded-lg border border-white/10 bg-[#090909] px-3 text-xs font-semibold text-white [color-scheme:dark]"
+                  className="h-10 w-full min-w-0 rounded-lg border border-white/10 bg-[#090909] px-2 text-xs font-semibold text-white [color-scheme:dark] sm:h-9 sm:w-auto sm:px-3"
                 />
               </label>
-              {!range.valid && <p className="pb-2 text-[10px] font-bold text-red-300">{range.error}</p>}
+              {!range.valid && <p className="col-span-2 pb-2 text-[10px] font-bold text-red-300">{range.error}</p>}
             </div>
           )}
 
@@ -502,7 +521,152 @@ export default function UserActivityHeatmap({
             </div>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+            {mobileCardLayout && (
+              <ol
+                data-activity-view="mobile"
+                aria-label={`${scopeLabel} activity ranking for ${range.label}`}
+                className="grid gap-2 p-2 md:grid-cols-2 md:gap-3 md:p-4 lg:hidden"
+              >
+                {rows.map((row, rowIndex) => {
+                  const mobileCells = range.aggregateOnly
+                    ? []
+                    : row.cells.length <= 7
+                      ? row.cells
+                      : [...row.cells.slice(-31)].reverse();
+                  const mobileCellsTruncated = row.cells.length > mobileCells.length;
+                  const memberName = row.member?.name || row.member?.email || 'Unnamed user';
+
+                  return (
+                    <li
+                      key={`mobile-${row.key}`}
+                      data-activity-card="user"
+                      className="min-w-0 overflow-hidden rounded-2xl border border-white/[0.07] bg-[#0B0E0B] shadow-[0_14px_35px_rgba(0,0,0,0.22)]"
+                    >
+                      <div className="flex min-w-0 items-center gap-2.5 px-3 py-3">
+                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-[#2EEB57]/15 bg-[#2EEB57]/[0.06] font-mono text-[9px] font-black text-[#72F58B]">
+                          #{rowIndex + 1}
+                        </span>
+                        <Avatar className="h-9 w-9 shrink-0 border border-white/10">
+                          <AvatarImage src={row.member?.profile_image_url} alt="" />
+                          <AvatarFallback
+                            className="text-[10px] font-black text-black"
+                            style={{ backgroundColor: row.member?.color || '#2EEB57' }}
+                          >
+                            {initials(row.member?.name, row.member?.email)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="min-w-0 flex-1">
+                          <p title={memberName} className="truncate text-sm font-black text-white">
+                            {memberName}
+                          </p>
+                          <p className="truncate text-[9px] font-semibold capitalize text-white/30">
+                            {row.member?.role || 'rep'}
+                            {row.member?.status === 'inactive' ? ' / inactive roster' : ''}
+                          </p>
+                        </div>
+                        {row.isInactive && (
+                          <span className="shrink-0 rounded-full border border-white/[0.06] bg-white/[0.025] px-2 py-1 text-[8px] font-black uppercase tracking-[0.08em] text-white/25">
+                            Inactive
+                          </span>
+                        )}
+                      </div>
+
+                      <dl className="grid grid-cols-3 border-y border-white/[0.055] bg-black/25">
+                        <div className="min-w-0 px-2 py-2.5 text-center">
+                          <dt className="text-[8px] font-black uppercase tracking-[0.1em] text-white/[0.28]">Sales</dt>
+                          <dd
+                            aria-label={`${memberName}: ${row.totalSales} confirmed sales in ${range.label}`}
+                            className="mt-0.5 truncate font-mono text-base font-black text-[#7CFF9C]"
+                          >
+                            {row.totalSales}
+                          </dd>
+                          <span className="block text-[8px] font-bold text-white/[0.22]">confirmed</span>
+                        </div>
+                        <div className="min-w-0 border-x border-white/[0.055] px-2 py-2.5 text-center">
+                          <dt className="text-[8px] font-black uppercase tracking-[0.1em] text-white/[0.28]">Revenue</dt>
+                          <dd
+                            title={recordedRevenueFormatter.format(row.recordedSalesVolume)}
+                            aria-label={`${memberName}: ${recordedRevenueFormatter.format(row.recordedSalesVolume)} recorded revenue in ${range.label}`}
+                            className="mt-0.5 whitespace-nowrap font-mono text-[length:clamp(0.5rem,2.8vw,0.8125rem)] font-black leading-tight text-cyan-200"
+                          >
+                            {recordedRevenueFormatter.format(row.recordedSalesVolume)}
+                          </dd>
+                          <span className="block text-[8px] font-bold text-white/[0.22]">recorded</span>
+                        </div>
+                        <div className="min-w-0 px-2 py-2.5 text-center">
+                          <dt className="text-[8px] font-black uppercase tracking-[0.1em] text-white/[0.28]">
+                            {range.aggregateOnly ? 'Usage' : 'Active'}
+                          </dt>
+                          <dd className={`mt-0.5 truncate text-base font-black ${
+                            row.isConsistent ? 'text-[#2EEB57]' : row.isInactive ? 'text-white/30' : 'text-white'
+                          }`}>
+                            {range.aggregateOnly ? row.activeDays : `${row.activeDays}/${row.eligibleDays}`}
+                          </dd>
+                          <span className="block text-[8px] font-bold text-white/[0.22]">
+                            {range.aggregateOnly ? 'active days' : `${row.activityPercent}% of days`}
+                          </span>
+                        </div>
+                      </dl>
+
+                      {!range.aggregateOnly && (
+                        <div data-activity-days className="px-3 pb-3 pt-2.5">
+                          <div className="mb-1.5 flex items-center justify-between gap-2">
+                            <span className="text-[8px] font-black uppercase tracking-[0.12em] text-white/[0.28]">
+                              Daily activity
+                            </span>
+                            <span className="text-[8px] font-bold text-white/[0.24]">
+                              {row.cells.length <= 7
+                                ? `${row.activeDays}/${row.eligibleDays} active`
+                                : mobileCellsTruncated
+                                  ? `Latest ${mobileCells.length} shown · totals use all ${row.cells.length}`
+                                  : 'Newest first · swipe for older'}
+                            </span>
+                          </div>
+                          <div
+                            className={row.cells.length <= 7
+                              ? 'grid grid-cols-7 gap-0.5'
+                              : 'flex snap-x snap-mandatory gap-1 overflow-x-auto overscroll-x-contain pb-1 [scrollbar-color:rgba(255,255,255,0.14)_transparent] [scrollbar-width:thin]'}
+                          >
+                            {mobileCells.map((cell) => (
+                              <div
+                                key={cell.dateKey}
+                                className={row.cells.length <= 7 ? 'min-w-0 text-center' : 'w-10 shrink-0 snap-start text-center'}
+                              >
+                                <p
+                                  title={format(cell.date, 'EEEE, MMMM d')}
+                                  className="truncate text-[8px] font-black uppercase tracking-tight text-white/[0.28]"
+                                >
+                                  {row.cells.length <= 7
+                                    ? format(cell.date, 'EEE').slice(0, 2)
+                                    : format(cell.date, 'MMM d')}
+                                </p>
+                                <ActivityCell
+                                  cell={cell}
+                                  compact
+                                  member={row.member}
+                                  showProductionTotals={showProductionTotals}
+                                />
+                                <p aria-hidden="true" className={`font-mono text-[8px] font-bold ${
+                                  cell.active ? 'text-[#72F58B]/70' : 'text-white/[0.18]'
+                                }`}>
+                                  {cell.isFuture ? '—' : cell.active ? cell.logs : '0'}
+                                </p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </li>
+                  );
+                })}
+              </ol>
+            )}
+
+            <div
+              data-activity-view="desktop"
+              className={mobileCardLayout ? 'hidden overflow-x-auto lg:block' : 'overflow-x-auto'}
+            >
             <table
               className="w-full border-collapse"
               style={{ minWidth: `${Math.max(tableMinWidth, 720)}px` }}
@@ -686,7 +850,8 @@ export default function UserActivityHeatmap({
                 ))}
               </tbody>
             </table>
-          </div>
+            </div>
+          </>
         )}
 
         <div className="flex flex-col gap-2 border-t border-white/[0.06] bg-black/25 px-4 py-3 text-[9px] text-white/30 sm:flex-row sm:items-center sm:justify-between">

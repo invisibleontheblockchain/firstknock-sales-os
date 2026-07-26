@@ -736,6 +736,7 @@ export default function AdminDashboard() {
               data?.rep?.adoption?.history_start_date
               || data?.rep?.adoption?.days?.[0]?.date
             }
+            mobileCardLayout
             onRefresh={() => analyticsQuery.refetch()}
             rankByPerformance
             showProductionTotals
