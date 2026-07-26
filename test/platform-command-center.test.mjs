@@ -80,6 +80,8 @@ test('global command center rejects accounts outside the private HQ audience', a
     { id: 'custom_admin', role: 'user', app_role: 'admin' },
     { id: 'other_platform_admin', role: 'admin', email: 'other-admin@example.com' },
     { id: 'wrong_id', role: 'admin', email: 'baysecurity@gmail.com' },
+    { id: 'wrong_help_id', role: 'admin', email: 'firstknockhelp@gmail.com' },
+    { id: 'wrong_christian_id', role: 'admin', email: 'christian@nativapest.com' },
   ]) {
     let serviceRead = false;
     const base44 = {
@@ -129,15 +131,26 @@ test('Christian is an explicit private HQ viewer without a platform-admin role',
   assert.equal(result.body.success, true);
 });
 
-test('client and server HQ gates name only the same two immutable operator IDs', () => {
+test('FirstKnock Help is an explicit private HQ viewer without a platform-admin role', async () => {
+  const base44 = {
+    auth: { me: async () => ({ id: '69cfceec85189c20b0f4e97a', role: 'user', email: 'firstknockhelp@gmail.com' }) },
+    asServiceRole: emptyService(),
+  };
+  const { handler } = loadFunction({ base44 });
+  const result = await invoke(handler);
+  assert.equal(result.response.status, 200);
+  assert.equal(result.body.success, true);
+});
+
+test('client and server HQ gates name only the same three immutable operator IDs', () => {
   const backend = readSource(functionPath);
   const frontend = readSource('src/lib/platformDashboardAccess.js');
-  for (const id of ['695eb764b077190880be21df', '6978c7229935cf40cde25086']) {
+  for (const id of ['695eb764b077190880be21df', '6978c7229935cf40cde25086', '69cfceec85189c20b0f4e97a']) {
     assert.match(backend, new RegExp(id));
     assert.match(frontend, new RegExp(id));
   }
   assert.doesNotMatch(backend, /user\.role === 'admin'/);
-  assert.doesNotMatch(frontend, /getAccountRole|VITE_PLATFORM_DASHBOARD_ALLOWED_EMAILS|baysecurity|nativapest/);
+  assert.doesNotMatch(frontend, /getAccountRole|VITE_PLATFORM_DASHBOARD_ALLOWED_EMAILS|baysecurity|nativapest|nativepest|firstknockhelp/);
 });
 
 test('platform adoption keeps inactive users and counts only real, timezone-correct activity', () => {

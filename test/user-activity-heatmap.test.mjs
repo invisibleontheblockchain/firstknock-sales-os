@@ -212,7 +212,7 @@ test('Team keeps its heatmap while HQ redirects before normal app authentication
   assert.match(app, /isPrivateHqAlias\(window\.location\.pathname\)/);
   assert.match(app, /\/hq\/index\.html\$\{window\.location\.search\}\$\{window\.location\.hash\}/);
   assert.match(layout, /label="Team".*createPageUrl\('AdminTeam'\)/);
-  assert.match(layout, /canViewHQ && <a href="\/hq\/index\.html"/);
+  assert.doesNotMatch(layout, /canViewHQ|canViewPlatformDashboard|\/hq\/index\.html|FirstKnock HQ/);
   assert.doesNotMatch(layout, /label="HQ".*createPageUrl\('HQ'\)/);
   assert.match(adminTeam, /canManageTeam && \(\s*<UserActivityHeatmap/);
   assert.match(adminTeam, /Team Command Center/);
