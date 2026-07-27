@@ -15,6 +15,26 @@ const livePaths = [
 ];
 const previewPath = 'base44/functions/previewBatchDataArea/entry.ts';
 
+
+// The Precision start paths import `_shared/precisionOrderSafety.js`. The
+// sandbox below strips imports, so the REAL module is evaluated once and its
+// exports supplied as globals. This is the production module, not a stub.
+function loadPrecisionOrderSafetyGlobals() {
+  const safetySource = readSource('base44/functions/_shared/precisionOrderSafety.js');
+  const names = [
+    ...[...safetySource.matchAll(/^export (?:async )?function (\w+)/gm)].map((m) => m[1]),
+    ...[...safetySource.matchAll(/^export const (\w+)/gm)].map((m) => m[1])
+  ];
+  let bindings = null;
+  vm.runInNewContext(
+    `${safetySource.replace(/^export /gm, '')}
+;__collect({ ${names.join(', ')} });`,
+    { __collect: (value) => { bindings = value; }, JSON, Number, String, Boolean, Array, Object, Set, Map, Math, Date, Error, console }
+  );
+  return bindings || {};
+}
+const PRECISION_ORDER_SAFETY = loadPrecisionOrderSafetyGlobals();
+
 function loadHandler(path, { base44, stripeApi = {}, ClientImpl = null }) {
   const transpiled = ts.transpileModule(readSource(path), {
     compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
@@ -33,6 +53,7 @@ function loadHandler(path, { base44, stripeApi = {}, ClientImpl = null }) {
   }
   const executable = transpiled.outputText.replace(/^import .*;\s*$/gm, '');
   vm.runInNewContext(executable, {
+    ...PRECISION_ORDER_SAFETY,
     console,
     createClientFromRequest: () => base44,
     Deno: {
