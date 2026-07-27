@@ -181,13 +181,18 @@ for (const [label, polygon] of [
   });
 }
 
+// NOTE: a self-intersecting ("bow-tie") polygon was previously listed here as
+// unusual-but-legal. That was wrong, and was asserted without provider evidence.
+// BatchData's geometry engine rejects a crossing boundary before running any
+// search, so such a pull fails with an opaque provider 500 after a reservation
+// has already been taken. The case now lives in
+// test/precision-polygon-simplicity.test.mjs as a REJECTION case.
 test('POLY-02 every unusual-but-legal polygon still succeeds, with geometry untouched', async () => {
   const stillValid = [
     ['closed ring', [...SQUARE_MILE_POLYGON, SQUARE_MILE_POLYGON[0]]],
     ['duplicate interior point', [SQUARE_MILE_POLYGON[0], SQUARE_MILE_POLYGON[1], SQUARE_MILE_POLYGON[1], SQUARE_MILE_POLYGON[2]]],
     ['reversed winding', [...SQUARE_MILE_POLYGON].reverse()],
     ['string coordinates', SQUARE_MILE_POLYGON.map((p) => ({ lat: String(p.lat), lng: String(p.lng) }))],
-    ['self-intersecting', [{ lat: 33.86, lng: -83.4 }, { lat: 33.87, lng: -83.38 }, { lat: 33.86, lng: -83.38 }, { lat: 33.87, lng: -83.4 }]],
     ['boundary latitude 90', [{ lat: 90, lng: 0 }, { lat: 89, lng: 1 }, { lat: 89, lng: -1 }]],
     ['boundary longitude -180', [{ lat: 33.86, lng: -180 }, { lat: 33.87, lng: -179 }, { lat: 33.88, lng: -179.5 }]]
   ];
