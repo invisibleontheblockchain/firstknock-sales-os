@@ -15,6 +15,26 @@ const livePaths = [
 ];
 const previewPath = 'base44/functions/previewBatchDataArea/entry.ts';
 
+
+// PR A: the Precision start paths import `_shared/precisionOrderContract.js`.
+// The sandbox below strips imports, so the module's real exports are evaluated
+// once and supplied as globals. This is the actual production module, not a stub.
+function loadPrecisionOrderContractGlobals() {
+  const contractSource = readFileSync(resolve(rootDir, 'base44/functions/_shared/precisionOrderContract.js'), 'utf8');
+  const contractNames = [
+    ...[...contractSource.matchAll(/^export (?:async )?function (\w+)/gm)].map((m) => m[1]),
+    ...[...contractSource.matchAll(/^export const (\w+)/gm)].map((m) => m[1])
+  ];
+  let bindings = null;
+  vm.runInNewContext(
+    `${contractSource.replace(/^export /gm, '')}
+;__collect({ ${contractNames.join(', ')} });`,
+    { __collect: (value) => { bindings = value; }, JSON, Number, String, Boolean, Array, Object, Set, Map, Math, Date, Error, console }
+  );
+  return bindings || {};
+}
+const PRECISION_ORDER_CONTRACT_GLOBALS = loadPrecisionOrderContractGlobals();
+
 function loadHandler(path, { base44, stripeApi = {}, ClientImpl = null }) {
   const transpiled = ts.transpileModule(readSource(path), {
     compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
@@ -33,6 +53,7 @@ function loadHandler(path, { base44, stripeApi = {}, ClientImpl = null }) {
   }
   const executable = transpiled.outputText.replace(/^import .*;\s*$/gm, '');
   vm.runInNewContext(executable, {
+    ...PRECISION_ORDER_CONTRACT_GLOBALS,
     console,
     createClientFromRequest: () => base44,
     Deno: {
