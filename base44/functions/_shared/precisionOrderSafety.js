@@ -72,6 +72,121 @@ const MAX_LONGITUDE = 180;
  * being dropped, which used to turn an N-point ring into a different
  * (N-1)-point ring with a different identity, silently.
  */
+/**
+ * Precision polygons must be SIMPLE rings — no edge may cross another.
+ *
+ * BatchData's geometry engine rejects self-intersecting polygons outright, before
+ * any property search runs:
+ *
+ *     search_phase_execution_exception / query_shard_exception
+ *     failed to create query: Self-intersection at or near point [lng, lat]
+ *
+ * The pull then fails with an opaque provider 500 after a reservation has
+ * already been taken. Rejecting the geometry up front turns that into a clear,
+ * actionable 400 before anything is reserved or spent.
+ *
+ * The polygon is never repaired: no reordering, untangling, hull-fitting or
+ * point removal. A crossing boundary is returned to the user to redraw, because
+ * any automatic repair would silently change the area they asked for.
+ */
+
+// Cross products are in squared degrees; vertices ~1e-2 apart give ~1e-4, so
+// this only absorbs floating-point noise, never a real crossing.
+const COLLINEAR_EPSILON = 1e-12;
+const TOUCH_EPSILON = 1e-9;
+
+function crossProduct(origin, a, b) {
+    return (a.lat - origin.lat) * (b.lng - origin.lng) - (a.lng - origin.lng) * (b.lat - origin.lat);
+}
+
+function orientation(p, q, r) {
+    const value = crossProduct(p, q, r);
+    if (Math.abs(value) < COLLINEAR_EPSILON) return 0;
+    return value > 0 ? 1 : -1;
+}
+
+/** True when collinear point `q` lies within the bounding box of segment `p`–`r`. */
+function withinSegment(p, q, r) {
+    return q.lat <= Math.max(p.lat, r.lat) + TOUCH_EPSILON
+        && q.lat >= Math.min(p.lat, r.lat) - TOUCH_EPSILON
+        && q.lng <= Math.max(p.lng, r.lng) + TOUCH_EPSILON
+        && q.lng >= Math.min(p.lng, r.lng) - TOUCH_EPSILON;
+}
+
+function segmentsIntersect(p1, q1, p2, q2) {
+    const o1 = orientation(p1, q1, p2);
+    const o2 = orientation(p1, q1, q2);
+    const o3 = orientation(p2, q2, p1);
+    const o4 = orientation(p2, q2, q1);
+
+    // Proper crossing.
+    if (o1 !== o2 && o3 !== o4) return true;
+
+    // Collinear overlap, or a non-adjacent endpoint touching another segment.
+    if (o1 === 0 && withinSegment(p1, p2, q1)) return true;
+    if (o2 === 0 && withinSegment(p1, q2, q1)) return true;
+    if (o3 === 0 && withinSegment(p2, p1, q2)) return true;
+    if (o4 === 0 && withinSegment(p2, q1, q2)) return true;
+
+    return false;
+}
+
+/** Approximate crossing point, for the error message only. */
+function intersectionPoint(p1, q1, p2, q2) {
+    const d = (q1.lat - p1.lat) * (q2.lng - p2.lng) - (q1.lng - p1.lng) * (q2.lat - p2.lat);
+    if (Math.abs(d) < COLLINEAR_EPSILON) return { lat: p2.lat, lng: p2.lng };
+    const t = ((p2.lat - p1.lat) * (q2.lng - p2.lng) - (p2.lng - p1.lng) * (q2.lat - p2.lat)) / d;
+    return {
+        lat: Number((p1.lat + t * (q1.lat - p1.lat)).toFixed(7)),
+        lng: Number((p1.lng + t * (q1.lng - p1.lng)).toFixed(7))
+    };
+}
+
+/**
+ * Returns the approximate crossing point of the first self-intersection found,
+ * or `null` when the ring is simple.
+ *
+ * One explicitly repeated closing vertex is normalized away first, and the
+ * implied final-to-first edge is always included — a boundary that only crosses
+ * itself on the closing line is still invalid.
+ */
+export function findPolygonSelfIntersection(points) {
+    const source = Array.isArray(points) ? points : [];
+
+    // Collapse consecutive duplicates. A repeated vertex is a zero-length edge,
+    // not a crossing, and would otherwise register as an endpoint touch. This
+    // is a comparison-only normalization — the caller's polygon is untouched.
+    const ring = [];
+    for (const point of source) {
+        const previous = ring[ring.length - 1];
+        if (previous && previous.lat === point.lat && previous.lng === point.lng) continue;
+        ring.push({ lat: point.lat, lng: point.lng });
+    }
+    if (ring.length > 3) {
+        const first = ring[0];
+        const last = ring[ring.length - 1];
+        if (first && last && first.lat === last.lat && first.lng === last.lng) ring.pop();
+    }
+    if (ring.length < 4) return null; // a triangle cannot self-intersect
+
+    const total = ring.length;
+    const edge = (index) => [ring[index], ring[(index + 1) % total]];
+
+    for (let i = 0; i < total; i += 1) {
+        for (let j = i + 1; j < total; j += 1) {
+            // Adjacent edges legitimately share an endpoint. The first and last
+            // edges are adjacent too, because the ring is closed.
+            const adjacent = j === i + 1 || (i === 0 && j === total - 1);
+            if (adjacent) continue;
+
+            const [p1, q1] = edge(i);
+            const [p2, q2] = edge(j);
+            if (segmentsIntersect(p1, q1, p2, q2)) return intersectionPoint(p1, q1, p2, q2);
+        }
+    }
+    return null;
+}
+
 export function normalizePrecisionPolygon(input) {
     if (!Array.isArray(input) || input.length === 0) {
         return { ok: false, code: 'invalid_polygon', message: 'At least 3 polygon points are required.' };
@@ -102,6 +217,20 @@ export function normalizePrecisionPolygon(input) {
     if (points.length < 3) {
         return { ok: false, code: 'invalid_polygon', message: 'At least 3 polygon points are required.' };
     }
+
+    // The provider rejects a crossing boundary before it runs any search, so
+    // catch it here rather than surfacing an opaque provider 500 after a
+    // reservation has been taken. The polygon is never auto-repaired.
+    const intersection = findPolygonSelfIntersection(points);
+    if (intersection) {
+        return {
+            ok: false,
+            code: 'self_intersecting_polygon',
+            message: 'Your drawn area crosses itself. Redraw the boundary without overlapping lines.',
+            intersection
+        };
+    }
+
     return { ok: true, points };
 }
 

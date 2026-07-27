@@ -1,5 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 import { neon } from 'npm:@neondatabase/serverless@0.9.0';
+import { findPolygonSelfIntersection } from '../_shared/precisionOrderSafety.js';
 
 const BATCHDATA_API_KEY = Deno.env.get('BATCH_DATA_API_KEY');
 const DATABASE_URL = Deno.env.get('DATABASE_URL');
@@ -290,6 +291,21 @@ function closePolygon(points) {
     }
     const distinct = new Set(polygon.slice(0, -1).map(point => `${point.latitude.toFixed(7)},${point.longitude.toFixed(7)}`));
     if (distinct.size < 3) throw new Error(`Invalid polygon: minimum 3 distinct points required. Received ${distinct.size} distinct points.`);
+
+    // Defense in depth. The start paths already reject a crossing boundary, but
+    // a job stored before that validation existed can still reach here. The
+    // provider rejects such geometry with an opaque 500, so fail first — this
+    // runs while the request is being built, before any network call.
+    const intersection = findPolygonSelfIntersection(
+        polygon.map(point => ({ lat: point.latitude, lng: point.longitude }))
+    );
+    if (intersection) {
+        throw new Error(
+            `Invalid polygon: the boundary crosses itself near ${intersection.lat}, ${intersection.lng}. `
+            + 'Redraw the area without overlapping lines.'
+        );
+    }
+
     return polygon;
 }
 
