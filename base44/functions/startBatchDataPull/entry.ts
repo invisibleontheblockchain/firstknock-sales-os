@@ -1,6 +1,16 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import { Client } from 'npm:@neondatabase/serverless@0.9.0';
 import Stripe from 'npm:stripe@14.14.0';
+import {
+    ACTIVE_PRECISION_STATUSES,
+    classifyActivePrecisionJobs,
+    isPrecisionJob,
+    normalizePrecisionPolygon,
+    normalizeRequestedCount,
+    requestedOrder,
+    resolveEffectiveCount,
+    selectOwnedPrecisionJobs
+} from '../_shared/precisionOrderSafety.js';
 
 const FREE_PROPERTY_CAP = 50;
 const PAID_PROPERTY_CAP = 1000;
@@ -425,7 +435,11 @@ async function getPrecisionJobs(base44, user) {
             jobsById.set(job.id, job);
         }
     }
-    return [...jobsById.values()];
+    // 5.1 The email query still runs, because rows written before
+    // precision_usage_user_id existed can only be found that way, but its
+    // results are ownership-filtered so a foreign immutable subject sharing an
+    // email cannot consume this user's allowance.
+    return selectOwnedPrecisionJobs([...jobsById.values()], user);
 }
 
 async function getPrecisionAllowance(base44, user, entitlement) {
@@ -479,10 +493,13 @@ Deno.serve(async (req) => {
         if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
         const body = await req.json().catch(() => ({}));
-        const polygon = normalizePolygon(body.polygon);
-        if (polygon.length < 3) {
-            return Response.json({ error: 'At least 3 polygon points are required.' }, { status: 400 });
+        // 5.3 Polygon input integrity. Geometry itself is untouched: no
+        // reordering, rewinding, dedupe, closure, centroid, area or hash change.
+        const polygonResult = normalizePrecisionPolygon(body.polygon);
+        if (!polygonResult.ok) {
+            return Response.json({ error: polygonResult.code, message: polygonResult.message }, { status: 400 });
         }
+        const polygon = polygonResult.points;
         const routeBounds = normalizeRouteBounds(body.route_bounds);
         if (routeBounds === null) {
             return Response.json({
@@ -529,9 +546,16 @@ Deno.serve(async (req) => {
             ? allowance.remaining
             : null;
         const maxProperties = hasPaidPrecisionCapacity ? paidPropertiesRemaining : FREE_PROPERTY_CAP;
-        const requestedRaw = Number(body.requested_properties || maxProperties);
-        const requestedValue = Math.max(1, Number.isFinite(requestedRaw) ? requestedRaw : maxProperties);
-        if (!hasPaidPrecisionCapacity && requestedValue > FREE_PROPERTY_CAP) {
+        const countMode = body.count_mode === 'max_available' ? 'max_available' : 'fixed';
+        // 5.4 An absent count keeps its established meaning (the plan maximum);
+        // anything present but unusable is rejected rather than silently
+        // becoming max-available or a fractional reservation.
+        const countResult = normalizeRequestedCount(body.requested_properties, { fallback: maxProperties });
+        if (!countResult.ok) {
+            return Response.json({ error: countResult.code, message: countResult.message }, { status: 400 });
+        }
+        const requestedValue = countResult.value;
+        if (!hasPaidPrecisionCapacity && countMode !== 'max_available' && requestedValue > FREE_PROPERTY_CAP) {
             return Response.json({
                 error: 'paid_precision_required',
                 message: 'That route size is above what your current plan includes. Start or upgrade to Precision to generate larger routes.'
@@ -555,9 +579,14 @@ Deno.serve(async (req) => {
         const effectiveMaxProperties = hasPaidPrecisionCapacity
             ? maxProperties
             : Math.min(maxProperties, freeHomesRemaining);
-        const requestedProperties = Math.max(1, Math.min(requestedValue, effectiveMaxProperties));
-        const limitedByFreeHomeCap = !hasPaidPrecisionCapacity && requestedProperties < requestedValue;
-        const limitedByPaidPropertyCap = hasPaidPrecisionCapacity && requestedProperties < requestedValue;
+        const dryRunTarget = resolveEffectiveCount({
+            countMode,
+            enteredCount: requestedValue,
+            lockedRemaining: effectiveMaxProperties
+        });
+        const requestedProperties = dryRunTarget.effective_count;
+        const limitedByFreeHomeCap = !hasPaidPrecisionCapacity && dryRunTarget.capped;
+        const limitedByPaidPropertyCap = hasPaidPrecisionCapacity && dryRunTarget.capped;
         const minPriceRaw = Number(body.min_price);
         const maxPriceRaw = Number(body.max_price);
         const minPrice = Number.isFinite(minPriceRaw) && minPriceRaw > 0 ? minPriceRaw : null;
@@ -574,8 +603,9 @@ Deno.serve(async (req) => {
                 dry_run: true,
                 provider: 'batchdata',
                 fips_code: fips.fips_code,
+                count_mode: countMode,
                 requested_properties: requestedProperties,
-                requested_properties_before_cap: requestedValue,
+                requested_properties_before_cap: dryRunTarget.entered_count,
                 limited_by_free_home_cap: limitedByFreeHomeCap,
                 limited_by_paid_property_cap: limitedByPaidPropertyCap,
                 existing_active_properties: existingRouteHomes,
@@ -597,58 +627,127 @@ Deno.serve(async (req) => {
             });
         }
 
+        const requestedPolygonHash = await polygonHash(polygon);
+
         const startResult = await withPrecisionUsageLock(user.id, async () => {
-        const runningJobs = await base44.entities.FetchJob.filter({ user_email: user.email, status: 'running' }, null, 5);
-        const pendingJobs = await base44.entities.FetchJob.filter({ user_email: user.email, status: 'pending' }, null, 5);
-        const runningList = Array.isArray(runningJobs) ? runningJobs : (runningJobs?.items || []);
-        const pendingList = Array.isArray(pendingJobs) ? pendingJobs : (pendingJobs?.items || []);
-        const existingJob = runningList[0] || pendingList[0];
-        const requestedCustomPolygonHash = ownership.mode === 'custom' ? await polygonHash(polygon) : null;
-        if (existingJob) {
-            const createdAtMs = new Date(existingJob.created_date || existingJob.started_at || Date.now()).getTime();
-            const ageMs = Date.now() - createdAtMs;
-            const isStale = ageMs > 120000 && Number(existingJob.progress_pct || 0) < 100;
-            if (isStale || body.force_full_refresh === true) {
-                try {
-                    await base44.asServiceRole.entities.FetchJob.update(existingJob.id, {
-                        status: 'cancelled',
-                        error_message: 'Cancelled automatically to start a fresh property import.'
-                    });
-                } catch (e) {}
-            } else {
-                const existingMetadata = existingJob.dry_run_metadata || {};
-                const existingOwnership = ownershipFromJob(existingJob);
-                const existingPolygonHash = existingJob.polygon_hash || (
-                    Array.isArray(existingJob.polygon) && existingJob.polygon.length >= 3
-                        ? await polygonHash(existingJob.polygon)
-                        : null
-                );
-                if (ownership.mode === 'custom' && (
-                    !sameCustomOwnershipRange(ownership, existingOwnership) ||
-                    !requestedCustomPolygonHash ||
-                    requestedCustomPolygonHash !== existingPolygonHash
-                )) {
-                    try {
-                        await base44.asServiceRole.entities.FetchJob.update(existingJob.id, {
-                            status: 'cancelled',
-                            error_message: 'Superceded by a new custom range request.'
-                        });
-                    } catch (e) {}
-                } else {
-                    return Response.json({
-                        status: 'already_running',
-                        job_id: existingJob.id,
-                        message: 'A data pull is already running. Resuming that pull with its original criteria.',
-                        polygon: existingJob.polygon || [],
-                        requested_properties: existingMetadata.requested_properties ?? existingJob.total_expected ?? null,
-                        sold_months: Number(existingJob.sold_months || 12),
-                        min_price: existingMetadata.filters?.min_price ?? null,
-                        max_price: existingMetadata.filters?.max_price ?? null,
-                        route_bounds: existingMetadata.route_bounds || { enabled: false },
-                        ...ownershipResponseFields(existingOwnership)
-                    });
-                }
+        // 5.2 / 5.6 Active-job resolution.
+        // Queries BOTH the immutable subject and the legacy email index, then
+        // keeps only Precision jobs this subject actually owns. Previously this
+        // filtered on user_email alone with no Precision filter, so a foreign
+        // account sharing an email — or an unrelated ZIP/MLS job — could block
+        // the pull and be offered for resume.
+        const activeQueries = [];
+        for (const activeStatus of ACTIVE_PRECISION_STATUSES) {
+            activeQueries.push(base44.asServiceRole.entities.FetchJob.filter(
+                { precision_usage_user_id: user.id, status: activeStatus }, '-created_date', 20));
+            if (user?.email) {
+                activeQueries.push(base44.asServiceRole.entities.FetchJob.filter(
+                    { user_email: user.email, status: activeStatus }, '-created_date', 20));
             }
+        }
+        const activeById = new Map();
+        for (const page of await Promise.all(activeQueries)) {
+            for (const candidate of asArray(page)) {
+                if (!candidate?.id || !ACTIVE_PRECISION_STATUSES.includes(candidate.status)) continue;
+                activeById.set(String(candidate.id), candidate);
+            }
+        }
+        const activeJobs = selectOwnedPrecisionJobs([...activeById.values()], user);
+
+        let activeDecision = { outcome: 'zero', count: 0, job: null, mismatched_fields: [], unprovable_fields: [] };
+        if (activeJobs.length > 0) {
+            // The target an identical order would resolve to, treating the active
+            // job's own reservation as available - otherwise a job would always
+            // conflict with itself on effective_count.
+            const activeReservation = activeJobs.reduce((sum, activeJob) => sum + jobUsage(activeJob).reserved, 0);
+            const compatibilityRemaining = Math.min(
+                hasPaidPrecisionCapacity ? paidPropertyLimit : FREE_PROPERTY_CAP,
+                Math.max(0, Number(allowance.remaining || 0)) + activeReservation
+            );
+            const compatibilityTarget = resolveEffectiveCount({
+                countMode,
+                enteredCount: requestedValue,
+                lockedRemaining: compatibilityRemaining
+            });
+            let activePolygonHash = null;
+            if (activeJobs.length === 1 && !activeJobs[0].polygon_hash
+                && Array.isArray(activeJobs[0].polygon) && activeJobs[0].polygon.length >= 3) {
+                activePolygonHash = await polygonHash(normalizePolygon(activeJobs[0].polygon));
+            }
+            activeDecision = classifyActivePrecisionJobs(activeJobs, requestedOrder({
+                polygon_hash: requestedPolygonHash,
+                count_mode: countMode,
+                effective_count: compatibilityTarget.effective_count,
+                min_price: minPrice,
+                max_price: maxPrice,
+                sold_months: requestedSoldMonths,
+                ownership_range_mode: ownership.mode,
+                ownership_range_days: ownership.range,
+                route_filters: routeFilters,
+                route_bounds: routeBounds,
+                repull_mode: body.repull_mode || 'new_area',
+                previous_pull_date: body.previous_pull_date || null
+            }), { polygonHash: activePolygonHash });
+        }
+
+        if (activeDecision.outcome === 'one_exact_match') {
+            const resumed = activeDecision.job;
+            const resumedOrder = activeDecision.persisted_order;
+            return Response.json({
+                status: 'already_running',
+                active_job_outcome: 'one_exact_match',
+                criteria_match: 'exact',
+                job_id: resumed.id,
+                message: 'An identical data pull is already running. Resuming that exact request.',
+                polygon: resumed.polygon || [],
+                requested_properties: resumedOrder.effective_count,
+                sold_months: resumedOrder.sold_months,
+                min_price: resumedOrder.min_price,
+                max_price: resumedOrder.max_price,
+                count_mode: resumedOrder.count_mode,
+                route_filters: resumedOrder.route_filters,
+                route_bounds: resumedOrder.route_bounds,
+                repull_mode: resumedOrder.repull_mode,
+                ...ownershipResponseFields({
+                    mode: resumedOrder.ownership_range_mode,
+                    range: resumedOrder.ownership_range_days
+                })
+            });
+        }
+
+        // Every non-exact outcome fails closed. Nothing is cancelled, mutated,
+        // selected among, or replaced. Cancellation and reservation lifecycle
+        // are deliberately out of scope - see docs/precision/PR_A_DEFERRED_DECISIONS.md.
+        if (activeDecision.outcome === 'one_unverifiable') {
+            return Response.json({
+                error: 'legacy_active_job_unverifiable',
+                active_job_outcome: 'one_unverifiable',
+                active_job_id: activeDecision.job.id,
+                active_job_count: 1,
+                unprovable_fields: activeDecision.unprovable_fields,
+                message: 'A property import is already running, but its original criteria cannot be verified from what was saved. It was not resumed or replaced. Wait for it to finish or cancel it before starting this request.'
+            }, { status: 409 });
+        }
+
+        if (activeDecision.outcome === 'one_conflict') {
+            return Response.json({
+                error: 'active_job_criteria_conflict',
+                active_job_outcome: 'one_conflict',
+                active_job_id: activeDecision.job.id,
+                active_job_count: 1,
+                mismatched_fields: activeDecision.mismatched_fields,
+                message: 'A different property import is already running. It was not resumed or replaced. Wait for it to finish or cancel it before starting this request.'
+            }, { status: 409 });
+        }
+
+        if (activeDecision.outcome === 'multiple_active') {
+            return Response.json({
+                error: 'active_job_criteria_conflict',
+                active_job_outcome: 'multiple_active',
+                active_job_count: activeDecision.count,
+                active_job_ids: activeDecision.job_ids,
+                message: 'More than one property import is already running for this account. Wait for them to finish or cancel them before starting a new pull.'
+            }, { status: 409 });
         }
 
         const lockedEntitlement = await resolvePrecisionEntitlement(user);
@@ -667,7 +766,7 @@ Deno.serve(async (req) => {
                 message: '1 day, 2 day, 1 week, 2 week, and 1 month Precision pulls require a Pro plan.'
             }, { status: 403 });
         }
-        if (!lockedHasPaidPrecisionCapacity && requestedValue > FREE_PROPERTY_CAP) {
+        if (!lockedHasPaidPrecisionCapacity && countMode !== 'max_available' && requestedValue > FREE_PROPERTY_CAP) {
             return Response.json({
                 error: 'paid_precision_required',
                 message: 'That route size is above what your current plan includes. Start or upgrade to Precision to generate larger routes.'
@@ -682,11 +781,18 @@ Deno.serve(async (req) => {
                     : 'This account has already received its included 50 single-family Precision route homes. Upgrade to Precision for larger routes.'
             }, { status: 403 });
         }
-        const reservedProperties = Math.max(1, Math.min(requestedValue, lockedAllowance.remaining));
-        const lockedLimitedByFreeHomeCap = !lockedHasPaidPrecisionCapacity && reservedProperties < requestedValue;
-        const lockedLimitedByPaidPropertyCap = lockedHasPaidPrecisionCapacity && reservedProperties < requestedValue;
+        // 5.5 max_available resolves from the allowance observed INSIDE the
+        // lock. The browser's number is not the authoritative maximum.
+        const effectiveTarget = resolveEffectiveCount({
+            countMode,
+            enteredCount: requestedValue,
+            lockedRemaining: lockedAllowance.remaining
+        });
+        const reservedProperties = effectiveTarget.effective_count;
+        const lockedLimitedByFreeHomeCap = !lockedHasPaidPrecisionCapacity && effectiveTarget.capped;
+        const lockedLimitedByPaidPropertyCap = lockedHasPaidPrecisionCapacity && effectiveTarget.capped;
         const lockedFreeHomesRemaining = lockedHasPaidPrecisionCapacity ? null : lockedAllowance.remaining;
-        const hash = requestedCustomPolygonHash || await polygonHash(polygon);
+        const hash = requestedPolygonHash;
         const processorToken = crypto.randomUUID();
         const job = await base44.asServiceRole.entities.FetchJob.create({
             status: 'pending',
@@ -705,7 +811,7 @@ Deno.serve(async (req) => {
             dry_run_metadata: {
                 county_resolution: fips,
                 requested_properties: reservedProperties,
-                requested_properties_before_cap: requestedValue,
+                requested_properties_before_cap: effectiveTarget.entered_count,
                 limited_by_free_home_cap: lockedLimitedByFreeHomeCap,
                 limited_by_paid_property_cap: lockedLimitedByPaidPropertyCap,
                 existing_active_properties: existingRouteHomes,
@@ -719,7 +825,7 @@ Deno.serve(async (req) => {
                 paid_property_limit: lockedHasPaidPrecisionCapacity ? lockedPaidPropertyLimit : null,
                 precision_usage_period_start: lockedEntitlement.periodStart,
                 free_property_cap: FREE_PROPERTY_CAP,
-                count_mode: body.count_mode === 'max_available' ? 'max_available' : 'fixed',
+                count_mode: countMode,
                 repull_mode: body.repull_mode || 'new_area',
                 previous_pull_date: body.previous_pull_date || null,
                 force_full_refresh: body.force_full_refresh === true,
@@ -760,6 +866,7 @@ Deno.serve(async (req) => {
             job,
             processorToken,
             reservedProperties,
+            enteredCount: effectiveTarget.entered_count,
             lockedAllowance,
             lockedEntitlement,
             lockedPaidPropertyLimit,
@@ -775,6 +882,7 @@ Deno.serve(async (req) => {
             job,
             processorToken,
             reservedProperties,
+            enteredCount,
             lockedAllowance,
             lockedEntitlement,
             lockedPaidPropertyLimit,
@@ -791,8 +899,10 @@ Deno.serve(async (req) => {
             status: 'started',
             job_id: job.id,
             provider: 'batchdata',
+            active_job_outcome: 'zero',
+            count_mode: countMode,
             requested_properties: reservedProperties,
-            requested_properties_before_cap: requestedValue,
+            requested_properties_before_cap: enteredCount,
             limited_by_free_home_cap: lockedLimitedByFreeHomeCap,
             limited_by_paid_property_cap: lockedLimitedByPaidPropertyCap,
             existing_route_homes: existingRouteHomes,
