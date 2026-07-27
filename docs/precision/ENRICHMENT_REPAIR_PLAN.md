@@ -239,3 +239,138 @@ Changed: the `options` object, plus `summarizeEnrichment` and its one call site.
 Not changed: order control (PR #74), active-job behaviour, allowance, candidate
 retrieval, route optimization, SavedRoute behaviour, retry architecture, the
 response parser, and the frontend. PR #66 was not modified or merged.
+
+## 8. The self-test reported an intention, not the request
+
+`processFetchChunk` exposes a `self_test` endpoint that reported:
+
+```js
+dataset_scope: 'omitted_for_sale_evidence'
+```
+
+as a **hard-coded string literal**, while `buildBatchDataRequest` was in fact
+sending `options.datasets`. The self-test asserted the desired contract rather
+than the actual one, so the defect could look tested while remaining live.
+
+`dataset_scope` is now derived by building a representative request through the
+real builder and inspecting `options.datasets`. It returns
+`omitted_for_sale_evidence` only when the request genuinely omits the array, and
+`scoped:<list>` otherwise. `ENRICH-17` asserts the biconditional — the self-test
+claim and the real request must agree — which no hard-coded string could satisfy.
+
+This is the mechanism that allowed the defect to survive. It is worth checking
+for the same pattern elsewhere: a diagnostic that states a constant instead of
+measuring the thing it describes is not a diagnostic.
+
+## 9. Diagnostics now recorded
+
+`batchdata_summary` gains three blocks, all aggregate counts, no payloads and no
+PII (`ENRICH-13`, `ENRICH-24`):
+
+```
+dataset_scope                                  derived, not asserted
+
+provider_fields:                               measured on the RAW payload
+  provider_records_reviewed
+  provider_records_with_intel_last_sold_date
+  provider_records_with_any_sale_date
+  provider_records_with_estimated_value
+  provider_records_with_year_built
+  provider_records_with_beds / baths / sqft / lot_size
+
+enrichment:                                    measured on MAPPED records
+  records_with_* / records_missing_*
+
+route_outcomes:                                why records did not route
+  mapped_records
+  route_active_records
+  custom_range_missing_sale_date
+  custom_range_outside_date_window
+  rejected_price / rejected_property_type / rejected_land_use
+  outside_polygon_or_invalid
+```
+
+Together these answer the question that could not be answered about the Ames
+job: **37 provider records → how many carried sale evidence → how many mapped →
+how many became route-active, and why the rest did not.**
+
+The distinction between `custom_range_missing_sale_date` and
+`custom_range_outside_date_window` is the important one. Both present to the user
+as "no qualifying homes", but the first means the provider sent no evidence
+(this defect) and the second means the filter genuinely excluded the inventory
+(correct behaviour). `ENRICH-22` pins that they are counted separately.
+
+## 10. Ames canary — not executed
+
+> **No provider call is authorized in this work order.** This documents a
+> separately authorized staging run.
+
+| | |
+|---|---|
+| Area | residential parcels surrounding 1801 Ridgewood Ave, Ames, IA |
+| Count mode | Fixed Count, 10 |
+| Minimum value | $100,000 |
+| Sold range | custom, 30–365 days |
+| Polygon | the polygon from the failed production attempt, if recoverable |
+
+Note on the address: **1801 Ridgewood Ave is Ames High School, not a
+residence.** If it was entered as the Home Base that is fine. It should not
+itself qualify as a sold home — the R2 land-use filter and the non-residential
+type gate should both exclude it. It does not explain the zero result, because
+the failure was that *all* 37 records lacked sale evidence, not that one parcel
+was ineligible.
+
+Capture and compare:
+
+```
+exact outbound request body            (must contain no options.datasets)
+provider_fields.*                       from the live response
+enrichment.*                            after mapping
+route_outcomes.*                        after eligibility
+api_calls consumed
+```
+
+Success gate:
+
+1. No `options.datasets` in the outbound body.
+2. When BatchData reports matching inventory, at least one returned record
+   carries `intel.lastSoldDate`.
+3. Every route-active record has a provable sale date inside the custom window.
+4. `provider_records_reviewed` reconciles with `mapped_records` plus
+   `outside_polygon_or_invalid`.
+5. No silent property loss.
+
+**Do not claim the canary passed until the actual provider response is
+captured.** The structural argument in §1 justifies the fix; only the canary
+converts it into direct evidence about provider behaviour.
+
+## 11. Ames repair
+
+1. Identify the exact failed FetchJob.
+2. Verify `batchdata_summary` shows reviewed = 37 and active = 0.
+3. Re-run only through an explicitly authorized canary or repair.
+4. Do not reuse stale route data.
+5. Do not charge the Precision allowance twice.
+
+Because that job produced zero persisted route-active properties, the user's
+Precision usage should settle at zero and the reservation should be released —
+though the BatchData API calls themselves were still consumed and should be
+reported separately. **Verify this rather than assume it**; reservation
+settlement on a zero-result job is part of the deferred lifecycle work
+(`PR_A_DEFERRED_DECISIONS.md` §6) and was not changed here.
+
+## 12. What this hotfix does not do
+
+It corrects the request and makes the failure measurable. It does **not**:
+
+- change eligibility rules to make counts look better;
+- redesign the parser or add unproven field aliases;
+- alter Fixed Count or Max Available semantics — `ENRICH-25` proves both build
+  an identical provider request, so the requested quantity was never the cause;
+- change order control, allowance, entitlement, candidate retrieval, route
+  optimization, SavedRoute, retry or cancellation behaviour;
+- touch the frontend, including the misleading "draw a larger area, widen the
+  sold-date range" guidance, which is wrong for this failure mode but is a
+  message change that belongs with the lifecycle work.
+
+PR #66 was not modified or merged.

@@ -441,3 +441,174 @@ test('ENRICH-13 the summary carries counts only — never provider payloads or P
     assert.equal(serialized.includes(leak), false, `summary must not contain "${leak}"`);
   }
 });
+
+/* ══════ 5. The self-test must report the REAL request, not an intention ══════ */
+//
+// `dataset_scope` was previously the hard-coded literal
+// 'omitted_for_sale_evidence' while the builder was in fact sending
+// options.datasets. The self-test therefore reported the desired contract and
+// the defect looked tested. It is now derived from a real request.
+
+test('ENRICH-17 dataset_scope reports omitted IFF the real request omits datasets', () => {
+  const { buildBatchDataRequest, observedDatasetScope } =
+    loadProcessor(['buildBatchDataRequest', 'observedDatasetScope']);
+
+  const requestOmitsDatasets = ['strict_polygon', 'centroid_fallback'].every(
+    (mode) => plain(buildBatchDataRequest(job(), 0, 100, mode)).options.datasets === undefined
+  );
+  const selfTestSaysOmitted = observedDatasetScope() === 'omitted_for_sale_evidence';
+
+  assert.equal(
+    selfTestSaysOmitted, requestOmitsDatasets,
+    'the self-test claim and the real request must agree — this is the biconditional ' +
+    'that the previous hard-coded string could not satisfy'
+  );
+  assert.equal(selfTestSaysOmitted, true, 'and both must currently be true');
+});
+
+test('ENRICH-18 dataset_scope is derived, so it would report scoping if scoping returned', () => {
+  const { observedDatasetScope } = loadProcessor(['observedDatasetScope']);
+  const scope = observedDatasetScope();
+
+  // A derived value takes one of these shapes; a hard-coded claim could not.
+  assert.ok(
+    scope === 'omitted_for_sale_evidence' || scope.startsWith('scoped:') || scope === 'unknown',
+    `unexpected dataset_scope shape: ${scope}`
+  );
+});
+
+/* ══════════ 6. Provider-level and route-outcome diagnostics ══════════ */
+
+test('ENRICH-19 provider field presence is measured on the RAW payload', () => {
+  const { summarizeProviderRecords } = loadProcessor(['summarizeProviderRecords']);
+
+  // synthetic_failure_safety — constructed, not a provider capture.
+  const summary = plain(summarizeProviderRecords([
+    shellRecord(1), shellRecord(2), shellRecord(3), enrichedRecord(4)
+  ]));
+
+  assert.equal(summary.provider_records_reviewed, 4);
+  assert.equal(summary.provider_records_with_intel_last_sold_date, 1);
+  assert.equal(summary.provider_records_with_any_sale_date, 1);
+  assert.equal(summary.provider_records_with_estimated_value, 1);
+  assert.equal(summary.provider_records_with_year_built, 1);
+  assert.equal(summary.provider_records_with_beds, 1);
+  assert.equal(summary.provider_records_with_baths, 1);
+  assert.equal(summary.provider_records_with_sqft, 1);
+  assert.equal(summary.provider_records_with_lot_size, 1);
+});
+
+test('ENRICH-20 a shell-only response is distinguishable from a parse failure', () => {
+  const { summarizeProviderRecords } = loadProcessor(['summarizeProviderRecords']);
+
+  // This is the measurement that proves the provider sent no evidence, rather
+  // than that we failed to read evidence which was present.
+  const shellsOnly = plain(summarizeProviderRecords(
+    Array.from({ length: 37 }, (_, i) => shellRecord(i + 1))
+  ));
+
+  assert.equal(shellsOnly.provider_records_reviewed, 37);
+  assert.equal(shellsOnly.provider_records_with_intel_last_sold_date, 0);
+  assert.equal(shellsOnly.provider_records_with_any_sale_date, 0);
+});
+
+test('ENRICH-21 route outcomes explain a zero-active custom-range pull', () => {
+  const { mapBatchDataProperty, summarizeRouteOutcomes } =
+    loadProcessor(['mapBatchDataProperty', 'summarizeRouteOutcomes']);
+
+  const custom = job({
+    dry_run_metadata: {
+      filters: { min_price: 100000 },
+      ownership_range_mode: 'custom',
+      ownership_range_days: { min: 30, max: 365 }
+    }
+  });
+
+  const raw = Array.from({ length: 37 }, (_, i) => shellRecord(i + 1));
+  const mapped = raw.map((record) => mapBatchDataProperty(record, custom)).filter(Boolean);
+  const outcomes = plain(summarizeRouteOutcomes(mapped, raw.length));
+
+  // Exactly the production symptom: records reviewed, none routeable, and the
+  // reason is now recorded rather than inferred.
+  assert.equal(outcomes.route_active_records, 0);
+  assert.equal(outcomes.custom_range_missing_sale_date, mapped.length);
+  assert.equal(outcomes.custom_range_outside_date_window, 0);
+  assert.equal(outcomes.rejected_price, 0);
+});
+
+test('ENRICH-22 missing sale date is counted separately from out-of-window', () => {
+  const { mapBatchDataProperty, summarizeRouteOutcomes } =
+    loadProcessor(['mapBatchDataProperty', 'summarizeRouteOutcomes']);
+
+  const custom = job({
+    dry_run_metadata: {
+      filters: { min_price: 100000 },
+      ownership_range_mode: 'custom',
+      ownership_range_days: { min: 30, max: 365 }
+    }
+  });
+
+  const stale = enrichedRecord(2);
+  stale.intel.lastSoldDate = new Date(Date.now() - 3000 * 86400000).toISOString();
+
+  const mapped = [
+    mapBatchDataProperty(shellRecord(1), custom),
+    mapBatchDataProperty(stale, custom)
+  ].filter(Boolean);
+  const outcomes = plain(summarizeRouteOutcomes(mapped, 2));
+
+  // These look identical from outside but have entirely different causes.
+  assert.equal(outcomes.custom_range_missing_sale_date, 1);
+  assert.equal(outcomes.custom_range_outside_date_window, 1);
+});
+
+test('ENRICH-23 quick-range behaviour is unchanged by this hotfix', () => {
+  const { mapBatchDataProperty, summarizeRouteOutcomes } =
+    loadProcessor(['mapBatchDataProperty', 'summarizeRouteOutcomes']);
+
+  const quick = job({ dry_run_metadata: { filters: { min_price: 100000 } } });
+  const raw = [shellRecord(1), shellRecord(2), enrichedRecord(3)];
+  const mapped = raw.map((record) => mapBatchDataProperty(record, quick)).filter(Boolean);
+  const outcomes = plain(summarizeRouteOutcomes(mapped, raw.length));
+
+  // Quick range still accepts every record; the hotfix changed the request, not
+  // eligibility. Diagnostics must not become a back-door eligibility change.
+  assert.equal(outcomes.mapped_records, 3);
+  assert.equal(outcomes.route_active_records, 3);
+  assert.equal(outcomes.custom_range_missing_sale_date, 0);
+});
+
+test('ENRICH-24 diagnostics carry counts only, never payloads or PII', () => {
+  const { mapBatchDataProperty, summarizeProviderRecords, summarizeRouteOutcomes } =
+    loadProcessor(['mapBatchDataProperty', 'summarizeProviderRecords', 'summarizeRouteOutcomes']);
+
+  const raw = [shellRecord(1), enrichedRecord(2)];
+  const mapped = raw.map((record) => mapBatchDataProperty(record, job())).filter(Boolean);
+
+  for (const summary of [plain(summarizeProviderRecords(raw)), plain(summarizeRouteOutcomes(mapped, raw.length))]) {
+    for (const [key, value] of Object.entries(summary)) {
+      assert.ok(Number.isInteger(value) && value >= 0, `${key} must be a non-negative integer`);
+    }
+    const serialized = JSON.stringify(summary);
+    for (const leak of ['Synthetic', 'OWNER', 'Greenville', '29607']) {
+      assert.equal(serialized.includes(leak), false, `must not contain "${leak}"`);
+    }
+  }
+});
+
+test('ENRICH-25 Fixed Count and Max Available build an identical provider request', () => {
+  const { buildBatchDataRequest } = loadProcessor(['buildBatchDataRequest']);
+
+  // Requested quantity is an order-control concern (PR #74). It must not reach
+  // the provider request, so it cannot be the cause of a zero-result pull.
+  const fixed = job({ count_mode: 'fixed', entered_count: 10, effective_count: 10, requested_properties: 10 });
+  const max = job({ count_mode: 'max_available', entered_count: 784, effective_count: 784, requested_properties: 784 });
+
+  for (const mode of ['strict_polygon', 'centroid_fallback']) {
+    assert.deepEqual(
+      plain(buildBatchDataRequest(fixed, 0, 100, mode)),
+      plain(buildBatchDataRequest(max, 0, 100, mode)),
+      `mode ${mode}: count mode must not change the outbound request`
+    );
+  }
+});

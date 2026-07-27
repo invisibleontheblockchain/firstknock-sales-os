@@ -495,6 +495,41 @@ function normalizeBatchDataAddress(record) {
 }
 
 /**
+ * Reports the dataset scope of the REAL outbound request.
+ *
+ * This must never be a hard-coded claim. It previously asserted
+ * 'omitted_for_sale_evidence' while the builder was in fact sending
+ * options.datasets, so the self-test reported the intended contract rather than
+ * the actual one and the defect looked tested. Deriving it from a representative
+ * request means the two cannot diverge again.
+ */
+function observedDatasetScope() {
+    try {
+        const probe = buildBatchDataRequest(
+            {
+                polygon: [
+                    { lat: 0, lng: 0 },
+                    { lat: 0, lng: 1 },
+                    { lat: 1, lng: 1 }
+                ],
+                latitude: 0,
+                longitude: 0,
+                sold_months: 12,
+                dry_run_metadata: { filters: {} }
+            },
+            0,
+            BATCHDATA_MAX_TAKE,
+            'strict_polygon'
+        );
+        const datasets = probe?.options?.datasets;
+        if (datasets === undefined) return 'omitted_for_sale_evidence';
+        return `scoped:${Array.isArray(datasets) ? datasets.join('+') : String(datasets)}`;
+    } catch {
+        return 'unknown';
+    }
+}
+
+/**
  * Aggregate enrichment completeness for a set of mapped properties.
  *
  * Counts only. No provider payload, address, owner name or other record content
@@ -523,6 +558,69 @@ function summarizeEnrichment(mapped = []) {
         records_with_lot_size: present('lot_size'),
         records_missing_recorded_sale_date: records.length - withSaleDate,
         records_missing_estimated_value: records.length - withValue
+    };
+}
+
+/**
+ * Field presence in the RAW provider payload, before mapping.
+ *
+ * This is the measurement that distinguishes "the provider did not send the
+ * evidence" from "we failed to parse evidence that was present". Counts only —
+ * no payload, address or owner content is retained.
+ */
+function summarizeProviderRecords(rawRecords = []) {
+    const records = (Array.isArray(rawRecords) ? rawRecords : []).filter(Boolean);
+    const has = (predicate) => records.filter((record) => {
+        const p = record.property || record;
+        try { return predicate(p); } catch { return false; }
+    }).length;
+
+    const num = (value) => Number.isFinite(Number(value)) && Number(value) !== 0;
+
+    return {
+        provider_records_reviewed: records.length,
+        provider_records_with_intel_last_sold_date: has((p) => Boolean(p.intel?.lastSoldDate)),
+        provider_records_with_any_sale_date: has((p) => Boolean(
+            p.intel?.lastSoldDate || p.intel?.lastSaleDate || p.intel?.lastTransferDate ||
+            p.sale?.lastSaleDate || p.sale?.saleDate || p.sale?.recordingDate || p.sale?.date ||
+            p.lastSoldDate || p.sold_date
+        )),
+        provider_records_with_estimated_value: has((p) => num(
+            p.valuation?.estimatedValue ?? p.intel?.estimatedValue ?? p.avm ?? p.estimatedValue
+        )),
+        provider_records_with_year_built: has((p) => num(p.intel?.yearBuilt ?? p.building?.yearBuilt ?? p.yearBuilt)),
+        provider_records_with_beds: has((p) => num(p.building?.bedroomCount ?? p.building?.bedrooms ?? p.bedrooms)),
+        provider_records_with_baths: has((p) => num(p.building?.bathroomCount ?? p.building?.bathrooms ?? p.bathrooms)),
+        provider_records_with_sqft: has((p) => num(
+            p.intel?.livingAreaSquareFeet ?? p.building?.livingAreaSquareFeet ?? p.building?.squareFeet ?? p.squareFootage
+        )),
+        provider_records_with_lot_size: has((p) => num(p.lot?.lotSizeSquareFeet ?? p.lot?.size ?? p.lotSize))
+    };
+}
+
+/**
+ * Why records did not become route-active.
+ *
+ * Lets a zero-result pull be explained precisely — in particular separating
+ * "the record carried no recorded sale date at all" from "its sale date fell
+ * outside the requested window", which look identical from the outside but have
+ * completely different causes.
+ */
+function summarizeRouteOutcomes(mapped = [], rawRecordCount = null) {
+    const records = Array.isArray(mapped) ? mapped.filter(Boolean) : [];
+    const count = (reason) => records.filter((property) => property.route_reject_reason === reason).length;
+
+    return {
+        mapped_records: records.length,
+        route_active_records: records.filter((property) => property.route_active !== false).length,
+        custom_range_missing_sale_date: count('custom_range_missing_sale_date'),
+        custom_range_outside_date_window: count('custom_range_outside_date_window'),
+        rejected_price: count('price'),
+        rejected_property_type: count('property_type'),
+        rejected_land_use: count('land_use'),
+        outside_polygon_or_invalid: Number.isFinite(Number(rawRecordCount))
+            ? Math.max(0, Number(rawRecordCount) - records.length)
+            : 0
     };
 }
 
@@ -653,6 +751,16 @@ function mapBatchDataProperty(record, job) {
     const rejected = nonResidential || landUseRejected || priceRejected;
     const routeActive = !rejected && isInCustomOwnershipRange;
 
+    // Diagnostic only. Never persisted (the property INSERT names its columns
+    // explicitly) and never used for eligibility — it exists so a zero-result
+    // pull can be explained without guessing.
+    const routeRejectReason = priceRejected ? 'price'
+        : landUseRejected ? 'land_use'
+        : nonResidential ? 'property_type'
+        : isInCustomOwnershipRange ? null
+        : hasValidSaleDate ? 'custom_range_outside_date_window'
+        : 'custom_range_missing_sale_date';
+
     const match = address.street.match(/^(\d+)\s+(.*)$/);
     const houseNumber = match ? parseInt(match[1], 10) : 0;
     const streetName = match ? match[2] : address.street;
@@ -692,6 +800,7 @@ function mapBatchDataProperty(record, job) {
         sale_confidence: rejected ? 'REJECTED' : 'verified',
         original_status: rejected ? 'REJECTED' : 'BATCHDATA_CONFIRMED',
         route_active: routeActive,
+        route_reject_reason: routeRejectReason,
         // Retain a deliberately minimized audit snapshot instead of the full
         // provider object, which can grow to include sensitive add-on fields.
         raw_payload: JSON.stringify({
@@ -1074,7 +1183,7 @@ Deno.serve(async (req) => {
         targetJobId = body.job_id ? String(body.job_id) : null;
 
         if (body.self_test === true) {
-            return Response.json({ success: true, active_provider: 'batchdata', rentcast_active: false, batchdata_polygon_search: true, dataset_scope: 'omitted_for_sale_evidence', has_batchdata_key: !!BATCHDATA_API_KEY, has_database_url: !!DATABASE_URL });
+            return Response.json({ success: true, active_provider: 'batchdata', rentcast_active: false, batchdata_polygon_search: true, dataset_scope: observedDatasetScope(), has_batchdata_key: !!BATCHDATA_API_KEY, has_database_url: !!DATABASE_URL });
         }
 
         if (body.request_preview === true) {
@@ -1387,9 +1496,14 @@ Deno.serve(async (req) => {
             skipped_route_type_breakdown: skippedRouteTypeBreakdownTotal,
             api_calls: batchDataApiCalls,
             scan_limit_reached: scanLimitReached,
-            // Aggregate counts only — see summarizeEnrichment. Makes an
-            // unenriched provider response visible at the job level.
-            enrichment: summarizeEnrichment(mapped)
+            // Aggregate counts only. Together these answer, for any pull:
+            // N provider records returned -> how many carried sale evidence ->
+            // how many mapped -> how many became route-active, and why the rest
+            // did not. No payloads, addresses or owner names are retained.
+            dataset_scope: observedDatasetScope(),
+            provider_fields: summarizeProviderRecords(rawRecords),
+            enrichment: summarizeEnrichment(mapped),
+            route_outcomes: summarizeRouteOutcomes(mapped, rawRecords.length)
         };
         const errorLog = [...(job.error_log || []), `[${completedAt}] BatchData-only Precision complete: mode=${batchFetch.mode_used}, attempts=${JSON.stringify(batchFetch.attempts)}, raw=${rawRecords.length}, mapped=${mapped.length}, active=${activeCount}, rejected=${rejected}, outside_or_invalid=${outsideOrInvalid}, skipped_existing_route=${totalSkippedExistingRoute}, skipped_duplicate=${skippedDuplicateFromFetch}, skipped_route_type=${totalSkippedRouteType}, scan_limit_reached=${scanLimitReached}`];
 
