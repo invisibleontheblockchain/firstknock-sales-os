@@ -47,7 +47,7 @@ import {
     createRouteContinuityContext,
     routePropertyOrderFingerprint,
 } from '../components/logic/routeRoadContext';
-import { calculateRouteDistanceMiles, isValidRoutePoint } from '@/lib/routeBounds';
+import { calculateRouteDistanceMiles, haversineDistanceMiles, isValidRoutePoint } from '@/lib/routeBounds';
 import { applyRouteFilters, formatStageCounts } from '../components/logic/routeFilterPipeline';
 import { normalizeOwnershipRangeDays as normalizeStrictOwnershipRangeDays } from '../components/logic/soldDateRange';
 import RouteGenerationOverlay from '../components/routes/RouteGenerationOverlay';
