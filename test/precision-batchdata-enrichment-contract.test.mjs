@@ -363,85 +363,6 @@ test('ENRICH-16 quick vs custom: the shell is accepted under one and rejected un
   assert.equal(plain(mapBatchDataProperty(shellRecord(1), custom)).route_active, false);
 });
 
-/* ══════════════ 4. Enrichment observability ══════════════ */
-
-test('ENRICH-11 summarizeEnrichment counts exactly the mapped records', () => {
-  const { mapBatchDataProperty, summarizeEnrichment } =
-    loadProcessor(['mapBatchDataProperty', 'summarizeEnrichment']);
-
-  const mapped = [
-    mapBatchDataProperty(shellRecord(1), job()),
-    mapBatchDataProperty(shellRecord(2), job()),
-    mapBatchDataProperty(shellRecord(3), job()),
-    mapBatchDataProperty(enrichedRecord(4), job())
-  ].filter(Boolean);
-
-  assert.equal(mapped.length, 4, 'all four fixtures must map');
-  const summary = plain(summarizeEnrichment(mapped));
-
-  assert.equal(summary.provider_records_returned, 4);
-
-  assert.equal(summary.records_with_recorded_sale_date, 1);
-  assert.equal(summary.records_with_estimated_value, 1);
-  assert.equal(summary.records_with_year_built, 1);
-  assert.equal(summary.records_with_beds, 1);
-  assert.equal(summary.records_with_baths, 1);
-  assert.equal(summary.records_with_sqft, 1);
-  assert.equal(summary.records_with_lot_size, 1);
-
-  assert.equal(summary.records_missing_recorded_sale_date, 3);
-  assert.equal(summary.records_missing_estimated_value, 3);
-});
-
-test('ENRICH-12 present + missing always equals the record total', () => {
-  const { mapBatchDataProperty, summarizeEnrichment } =
-    loadProcessor(['mapBatchDataProperty', 'summarizeEnrichment']);
-
-  for (const [shells, rich] of [[0, 0], [5, 0], [0, 5], [3, 2]]) {
-    const mapped = [
-      ...Array.from({ length: shells }, (_, i) => mapBatchDataProperty(shellRecord(i + 1), job())),
-      ...Array.from({ length: rich }, (_, i) => mapBatchDataProperty(enrichedRecord(i + 50), job()))
-    ].filter(Boolean);
-
-    const summary = plain(summarizeEnrichment(mapped));
-    const total = shells + rich;
-
-    assert.equal(summary.provider_records_returned, total);
-    assert.equal(
-      summary.records_with_recorded_sale_date + summary.records_missing_recorded_sale_date, total,
-      `sale-date counts must total ${total}`
-    );
-    assert.equal(
-      summary.records_with_estimated_value + summary.records_missing_estimated_value, total,
-      `value counts must total ${total}`
-    );
-    assert.equal(summary.records_with_recorded_sale_date, rich);
-    assert.equal(summary.records_with_estimated_value, rich);
-  }
-});
-
-test('ENRICH-13 the summary carries counts only — never provider payloads or PII', () => {
-  const { mapBatchDataProperty, summarizeEnrichment } =
-    loadProcessor(['mapBatchDataProperty', 'summarizeEnrichment']);
-  const mapped = [
-    mapBatchDataProperty(shellRecord(1), job()),
-    mapBatchDataProperty(enrichedRecord(2), job())
-  ].filter(Boolean);
-
-  const summary = plain(summarizeEnrichment(mapped));
-
-  for (const [key, value] of Object.entries(summary)) {
-    assert.equal(typeof value, 'number', `${key} must be a plain count`);
-    assert.ok(Number.isInteger(value) && value >= 0, `${key} must be a non-negative integer`);
-  }
-
-  // No address, owner name or any other record content may leak into diagnostics.
-  const serialized = JSON.stringify(summary);
-  for (const leak of ['Synthetic', 'OWNER', 'Greenville', '29607', 'address', 'owner']) {
-    assert.equal(serialized.includes(leak), false, `summary must not contain "${leak}"`);
-  }
-});
-
 /* ══════ 5. The self-test must report the REAL request, not an intention ══════ */
 //
 // `dataset_scope` was previously the hard-coded literal
@@ -477,125 +398,6 @@ test('ENRICH-18 dataset_scope is derived, so it would report scoping if scoping 
   );
 });
 
-/* ══════════ 6. Provider-level and route-outcome diagnostics ══════════ */
-
-test('ENRICH-19 provider field presence is measured on the RAW payload', () => {
-  const { summarizeProviderRecords } = loadProcessor(['summarizeProviderRecords']);
-
-  // synthetic_failure_safety — constructed, not a provider capture.
-  const summary = plain(summarizeProviderRecords([
-    shellRecord(1), shellRecord(2), shellRecord(3), enrichedRecord(4)
-  ]));
-
-  assert.equal(summary.provider_records_reviewed, 4);
-  assert.equal(summary.provider_records_with_intel_last_sold_date, 1);
-  assert.equal(summary.provider_records_with_any_sale_date, 1);
-  assert.equal(summary.provider_records_with_estimated_value, 1);
-  assert.equal(summary.provider_records_with_year_built, 1);
-  assert.equal(summary.provider_records_with_beds, 1);
-  assert.equal(summary.provider_records_with_baths, 1);
-  assert.equal(summary.provider_records_with_sqft, 1);
-  assert.equal(summary.provider_records_with_lot_size, 1);
-});
-
-test('ENRICH-20 a shell-only response is distinguishable from a parse failure', () => {
-  const { summarizeProviderRecords } = loadProcessor(['summarizeProviderRecords']);
-
-  // This is the measurement that proves the provider sent no evidence, rather
-  // than that we failed to read evidence which was present.
-  const shellsOnly = plain(summarizeProviderRecords(
-    Array.from({ length: 37 }, (_, i) => shellRecord(i + 1))
-  ));
-
-  assert.equal(shellsOnly.provider_records_reviewed, 37);
-  assert.equal(shellsOnly.provider_records_with_intel_last_sold_date, 0);
-  assert.equal(shellsOnly.provider_records_with_any_sale_date, 0);
-});
-
-test('ENRICH-21 route outcomes explain a zero-active custom-range pull', () => {
-  const { mapBatchDataProperty, summarizeRouteOutcomes } =
-    loadProcessor(['mapBatchDataProperty', 'summarizeRouteOutcomes']);
-
-  const custom = job({
-    dry_run_metadata: {
-      filters: { min_price: 100000 },
-      ownership_range_mode: 'custom',
-      ownership_range_days: { min: 30, max: 365 }
-    }
-  });
-
-  const raw = Array.from({ length: 37 }, (_, i) => shellRecord(i + 1));
-  const mapped = raw.map((record) => mapBatchDataProperty(record, custom)).filter(Boolean);
-  const outcomes = plain(summarizeRouteOutcomes(mapped, raw.length));
-
-  // Exactly the production symptom: records reviewed, none routeable, and the
-  // reason is now recorded rather than inferred.
-  assert.equal(outcomes.route_active_records, 0);
-  assert.equal(outcomes.custom_range_missing_sale_date, mapped.length);
-  assert.equal(outcomes.custom_range_outside_date_window, 0);
-  assert.equal(outcomes.rejected_price, 0);
-});
-
-test('ENRICH-22 missing sale date is counted separately from out-of-window', () => {
-  const { mapBatchDataProperty, summarizeRouteOutcomes } =
-    loadProcessor(['mapBatchDataProperty', 'summarizeRouteOutcomes']);
-
-  const custom = job({
-    dry_run_metadata: {
-      filters: { min_price: 100000 },
-      ownership_range_mode: 'custom',
-      ownership_range_days: { min: 30, max: 365 }
-    }
-  });
-
-  const stale = enrichedRecord(2);
-  stale.intel.lastSoldDate = new Date(Date.now() - 3000 * 86400000).toISOString();
-
-  const mapped = [
-    mapBatchDataProperty(shellRecord(1), custom),
-    mapBatchDataProperty(stale, custom)
-  ].filter(Boolean);
-  const outcomes = plain(summarizeRouteOutcomes(mapped, 2));
-
-  // These look identical from outside but have entirely different causes.
-  assert.equal(outcomes.custom_range_missing_sale_date, 1);
-  assert.equal(outcomes.custom_range_outside_date_window, 1);
-});
-
-test('ENRICH-23 quick-range behaviour is unchanged by this hotfix', () => {
-  const { mapBatchDataProperty, summarizeRouteOutcomes } =
-    loadProcessor(['mapBatchDataProperty', 'summarizeRouteOutcomes']);
-
-  const quick = job({ dry_run_metadata: { filters: { min_price: 100000 } } });
-  const raw = [shellRecord(1), shellRecord(2), enrichedRecord(3)];
-  const mapped = raw.map((record) => mapBatchDataProperty(record, quick)).filter(Boolean);
-  const outcomes = plain(summarizeRouteOutcomes(mapped, raw.length));
-
-  // Quick range still accepts every record; the hotfix changed the request, not
-  // eligibility. Diagnostics must not become a back-door eligibility change.
-  assert.equal(outcomes.mapped_records, 3);
-  assert.equal(outcomes.route_active_records, 3);
-  assert.equal(outcomes.custom_range_missing_sale_date, 0);
-});
-
-test('ENRICH-24 diagnostics carry counts only, never payloads or PII', () => {
-  const { mapBatchDataProperty, summarizeProviderRecords, summarizeRouteOutcomes } =
-    loadProcessor(['mapBatchDataProperty', 'summarizeProviderRecords', 'summarizeRouteOutcomes']);
-
-  const raw = [shellRecord(1), enrichedRecord(2)];
-  const mapped = raw.map((record) => mapBatchDataProperty(record, job())).filter(Boolean);
-
-  for (const summary of [plain(summarizeProviderRecords(raw)), plain(summarizeRouteOutcomes(mapped, raw.length))]) {
-    for (const [key, value] of Object.entries(summary)) {
-      assert.ok(Number.isInteger(value) && value >= 0, `${key} must be a non-negative integer`);
-    }
-    const serialized = JSON.stringify(summary);
-    for (const leak of ['Synthetic', 'OWNER', 'Greenville', '29607']) {
-      assert.equal(serialized.includes(leak), false, `must not contain "${leak}"`);
-    }
-  }
-});
-
 test('ENRICH-25 Fixed Count and Max Available build an identical provider request', () => {
   const { buildBatchDataRequest } = loadProcessor(['buildBatchDataRequest']);
 
@@ -611,4 +413,252 @@ test('ENRICH-25 Fixed Count and Max Available build an identical provider reques
       `mode ${mode}: count mode must not change the outbound request`
     );
   }
+});
+
+/* ══════════ 4. Diagnostics measured DURING the fetch loop ══════════ */
+//
+// These must be accumulated while every provider row is still in hand.
+// `fetchBatchDataRecordsForMode` returns only SELECTED rows, and for a
+// custom-range job that selected nothing it deliberately returns `records: []`.
+// Computing diagnostics from that would report zero provider rows for a job
+// that reviewed dozens — precisely the case they exist to explain.
+
+/** Drives the ledger the way the real fetch loop does: page first, then each row. */
+function runLedger(rawRecords, jobConfig) {
+  const { mapBatchDataProperty, createDiagnosticLedger } =
+    loadProcessor(['mapBatchDataProperty', 'createDiagnosticLedger']);
+
+  const ledger = createDiagnosticLedger();
+  ledger.observeProviderPage(rawRecords);
+  for (const raw of rawRecords) ledger.observeMapped(mapBatchDataProperty(raw, jobConfig));
+  return plain(ledger.snapshot());
+}
+
+const CUSTOM_RANGE = {
+  filters: { min_price: 100000 },
+  ownership_range_mode: 'custom',
+  ownership_range_days: { min: 30, max: 365 }
+};
+
+test('ENRICH-11 provider field presence is measured on the RAW page', () => {
+  const raw = [shellRecord(1), shellRecord(2), shellRecord(3), enrichedRecord(4)];
+  const { provider_fields: fields } = runLedger(raw, job());
+
+  assert.equal(fields.provider_records_reviewed, 4);
+  assert.equal(fields.provider_records_with_intel_last_sold_date, 1);
+  assert.equal(fields.provider_records_with_any_sale_date, 1);
+  assert.equal(fields.provider_records_with_estimated_value, 1);
+  assert.equal(fields.provider_records_with_year_built, 1);
+  assert.equal(fields.provider_records_with_beds, 1);
+  assert.equal(fields.provider_records_with_baths, 1);
+  assert.equal(fields.provider_records_with_sqft, 1);
+  assert.equal(fields.provider_records_with_lot_size, 1);
+});
+
+test('ENRICH-12 mapped enrichment counts always reconcile to the mapped total', () => {
+  for (const [shells, rich] of [[0, 0], [5, 0], [0, 5], [3, 2]]) {
+    const raw = [
+      ...Array.from({ length: shells }, (_, i) => shellRecord(i + 1)),
+      ...Array.from({ length: rich }, (_, i) => enrichedRecord(i + 50))
+    ];
+    const { enrichment } = runLedger(raw, job());
+    const total = shells + rich;
+
+    assert.equal(enrichment.mapped_records_reviewed, total);
+    assert.equal(
+      enrichment.records_with_recorded_sale_date + enrichment.records_missing_recorded_sale_date,
+      total, `sale-date counts must total ${total}`
+    );
+    assert.equal(
+      enrichment.records_with_estimated_value + enrichment.records_missing_estimated_value,
+      total, `value counts must total ${total}`
+    );
+    assert.equal(enrichment.records_with_recorded_sale_date, rich);
+  }
+});
+
+test('ENRICH-13 the ledger carries counts only, never payloads or PII', () => {
+  const snapshot = runLedger([shellRecord(1), enrichedRecord(2)], job());
+
+  for (const block of Object.values(snapshot)) {
+    for (const [key, value] of Object.entries(block)) {
+      assert.ok(Number.isInteger(value) && value >= 0, `${key} must be a non-negative integer`);
+    }
+  }
+  const serialized = JSON.stringify(snapshot);
+  for (const leak of ['Synthetic', 'OWNER', 'Greenville', '29607', 'address']) {
+    assert.equal(serialized.includes(leak), false, `must not contain "${leak}"`);
+  }
+});
+
+/* ══════ 7. The Ames reproduction, driven through the REAL fetch loop ══════ */
+//
+// This is the case the previous revision of these diagnostics got wrong: it
+// summarized `batchFetch.records`, which is EMPTY here, and so reported zero
+// provider rows for a job that reviewed 37.
+
+/**
+ * Executes the real `fetchBatchDataRecordsForMode` with a stubbed provider
+ * response. No network call is possible — `fetch` is replaced by a function
+ * that returns the supplied pages and throws if called more often.
+ */
+function runRealFetchLoop({ pages, jobOverrides = {}, requested = 10 }) {
+  const source = readFileSync(resolve(process.cwd(), PROCESSOR), 'utf8');
+  const transpiled = ts.transpileModule(source, {
+    compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
+    fileName: PROCESSOR
+  });
+
+  const executable = `${transpiled.outputText.replace(/^import .*;\s*$/gm, '')}
+;__collect({ fetchBatchDataRecordsForMode });`;
+
+  let collected = null;
+  let page = 0;
+  vm.runInNewContext(executable, {
+    __collect: (value) => { collected = value; },
+    Deno: { env: { get: (k) => (k === 'BATCHDATA_API_KEY' ? 'test-key' : undefined) }, serve: () => {} },
+    createClientFromRequest: () => ({}),
+    neon: () => (() => {}),
+    Request, Response, TextEncoder, TextDecoder, URL,
+    crypto: globalThis.crypto,
+    // The ONLY provider seam. Returns canned pages; never touches the network.
+    fetch: async () => {
+      const body = { results: { properties: pages[page] || [], totalRecordCount: pages.flat().length } };
+      page += 1;
+      return { ok: true, status: 200, json: async () => body, text: async () => JSON.stringify(body) };
+    },
+    setTimeout: (fn) => fn(), clearTimeout, AbortController,
+    console: { log: () => {}, warn: () => {}, error: () => {} },
+    JSON, Number, String, Boolean, Array, Object, Set, Map, Math, Date, Error,
+    Promise, Uint8Array, isNaN, isFinite, parseInt, parseFloat
+  }, { filename: PROCESSOR });
+
+  assert.equal(typeof collected?.fetchBatchDataRecordsForMode, 'function',
+    'fetchBatchDataRecordsForMode was not captured — this guard must be re-derived');
+
+  return collected.fetchBatchDataRecordsForMode(
+    job({ dry_run_metadata: CUSTOM_RANGE, ...jobOverrides }),
+    'broad_polygon',
+    requested
+  );
+}
+
+test('ENRICH-26 INTEGRATION: 37 shells under a custom range are fully accounted for', async () => {
+  const shells = Array.from({ length: 37 }, (_, i) => shellRecord(i + 1));
+  const result = plain(await runRealFetchLoop({ pages: [shells] }));
+
+  // The production symptom, reproduced end to end.
+  assert.equal(result.reviewed, 37);
+  assert.equal(result.active, 0);
+  assert.equal(result.records.length, 0, 'a custom-range job with no matches returns no records');
+
+  // And now — unlike the previous revision — the rows are still counted.
+  assert.equal(result.provider_fields.provider_records_reviewed, 37,
+    'all 37 provider rows must be counted even though none survived selection');
+  assert.equal(result.provider_fields.provider_records_with_intel_last_sold_date, 0);
+  assert.equal(result.provider_fields.provider_records_with_any_sale_date, 0);
+
+  assert.equal(result.enrichment.mapped_records_reviewed, 37);
+  assert.equal(result.enrichment.records_missing_recorded_sale_date, 37);
+
+  assert.equal(result.route_outcomes.custom_range_missing_sale_date, 37);
+  assert.equal(result.route_outcomes.custom_range_outside_date_window, 0);
+  assert.equal(result.route_outcomes.mapped_route_active_before_selection, 0);
+});
+
+test('ENRICH-27 INTEGRATION: counts aggregate across two provider pages', async () => {
+  const pageOne = Array.from({ length: 100 }, (_, i) => shellRecord(i + 1));
+  const pageTwo = Array.from({ length: 20 }, (_, i) => shellRecord(i + 200));
+  const result = plain(await runRealFetchLoop({ pages: [pageOne, pageTwo], requested: 500 }));
+
+  assert.equal(result.provider_fields.provider_records_reviewed, 120, 'both pages must be counted');
+  assert.equal(result.enrichment.mapped_records_reviewed, 120);
+  assert.equal(result.route_outcomes.custom_range_missing_sale_date, 120);
+});
+
+test('ENRICH-28 INTEGRATION: a mixed page reconciles exactly', async () => {
+  const inWindow = () => {
+    const record = enrichedRecord(Math.floor(Math.random() * 1e6));
+    record.intel.lastSoldDate = new Date(Date.now() - 90 * 86400000).toISOString();
+    return record;
+  };
+  const pages = [[shellRecord(1), shellRecord(2), inWindow(), inWindow(), inWindow()]];
+  const result = plain(await runRealFetchLoop({ pages, requested: 500 }));
+
+  assert.equal(result.provider_fields.provider_records_reviewed, 5);
+  assert.equal(result.provider_fields.provider_records_with_intel_last_sold_date, 3);
+  assert.equal(result.enrichment.records_with_recorded_sale_date, 3);
+  assert.equal(result.enrichment.records_missing_recorded_sale_date, 2);
+  assert.equal(result.route_outcomes.custom_range_missing_sale_date, 2);
+  assert.equal(result.route_outcomes.mapped_route_active_before_selection, 3);
+});
+
+test('ENRICH-29 INTEGRATION: missing sale date stays distinct from out-of-window', async () => {
+  const stale = enrichedRecord(9);
+  stale.intel.lastSoldDate = new Date(Date.now() - 3000 * 86400000).toISOString();
+  const result = plain(await runRealFetchLoop({ pages: [[shellRecord(1), stale]], requested: 500 }));
+
+  // Identical to the user, entirely different causes.
+  assert.equal(result.route_outcomes.custom_range_missing_sale_date, 1);
+  assert.equal(result.route_outcomes.custom_range_outside_date_window, 1);
+  assert.equal(result.provider_fields.provider_records_with_intel_last_sold_date, 1);
+});
+
+test('ENRICH-30 INTEGRATION: duplicates do not erase provider-field counts', async () => {
+  const inWindow = (n) => {
+    const record = enrichedRecord(n);
+    record.intel.lastSoldDate = new Date(Date.now() - 90 * 86400000).toISOString();
+    return record;
+  };
+  // Same address three times: one selected, two deduplicated.
+  const result = plain(await runRealFetchLoop({ pages: [[inWindow(1), inWindow(1), inWindow(1)]], requested: 500 }));
+
+  assert.equal(result.provider_fields.provider_records_reviewed, 3, 'dedupe must not reduce reviewed rows');
+  assert.equal(result.enrichment.mapped_records_reviewed, 3);
+  assert.equal(result.route_outcomes.mapped_route_active_before_selection, 3);
+  assert.equal(result.skipped_duplicate, 2);
+  assert.equal(result.active, 1, 'final selected is lower, and is named separately');
+});
+
+test('ENRICH-31 INTEGRATION: quick-range behaviour is unchanged', async () => {
+  const result = plain(await runRealFetchLoop({
+    pages: [[shellRecord(1), shellRecord(2), shellRecord(3)]],
+    jobOverrides: { dry_run_metadata: { filters: { min_price: 100000 } } },
+    requested: 500
+  }));
+
+  // Quick range still accepts shells — the hotfix changed the request, not
+  // eligibility. Diagnostics must not become a back-door eligibility change.
+  assert.equal(result.active, 3);
+  assert.equal(result.route_outcomes.mapped_route_active_before_selection, 3);
+  assert.equal(result.route_outcomes.custom_range_missing_sale_date, 0);
+  assert.equal(result.provider_fields.provider_records_reviewed, 3);
+});
+
+test('ENRICH-32 INTEGRATION: no PII reaches the diagnostics', async () => {
+  const result = plain(await runRealFetchLoop({ pages: [[shellRecord(1), enrichedRecord(2)]], requested: 500 }));
+  const serialized = JSON.stringify({
+    provider_fields: result.provider_fields,
+    enrichment: result.enrichment,
+    route_outcomes: result.route_outcomes
+  });
+
+  for (const leak of ['Synthetic', 'OWNER', 'Greenville', '29607', 'Shell Way']) {
+    assert.equal(serialized.includes(leak), false, `diagnostics must not contain "${leak}"`);
+  }
+});
+
+test('ENRICH-33 per-attempt ledgers merge into a job total', () => {
+  const { mergeDiagnosticLedgers } = loadProcessor(['mergeDiagnosticLedgers']);
+
+  const merged = plain(mergeDiagnosticLedgers([
+    { provider_fields: { provider_records_reviewed: 37 }, enrichment: { mapped_records_reviewed: 37 }, route_outcomes: { custom_range_missing_sale_date: 37 } },
+    { provider_fields: { provider_records_reviewed: 12 }, enrichment: { mapped_records_reviewed: 12 }, route_outcomes: { custom_range_missing_sale_date: 10 } }
+  ]));
+
+  assert.equal(merged.provider_fields.provider_records_reviewed, 49);
+  assert.equal(merged.enrichment.mapped_records_reviewed, 49);
+  assert.equal(merged.route_outcomes.custom_range_missing_sale_date, 47);
+  // Absent keys stay zero rather than becoming NaN or undefined.
+  assert.equal(merged.provider_fields.provider_records_with_beds, 0);
 });

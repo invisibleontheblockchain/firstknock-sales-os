@@ -530,98 +530,143 @@ function observedDatasetScope() {
 }
 
 /**
- * Aggregate enrichment completeness for a set of mapped properties.
+ * Accumulates enrichment and route-outcome diagnostics DURING the provider
+ * page loop, while every returned row is still in hand.
  *
- * Counts only. No provider payload, address, owner name or other record content
- * is retained, so this is safe to persist in job diagnostics. Its purpose is to
- * make a regression like the `options.datasets` shell response visible at the
- * job level instead of only in an exported CSV.
+ * This must not be computed at completion. `fetchBatchDataRecordsForMode`
+ * returns only the SELECTED rows — and for a custom-range job that selected
+ * nothing it deliberately returns `records: []`, while the non-custom path
+ * returns at most a capped rejected sample. Summarizing either would report
+ * zero provider rows for a job that in fact reviewed dozens, which is exactly
+ * the case these diagnostics exist to explain.
+ *
+ * Counts only. No payload, address or owner content is retained.
  */
-function summarizeEnrichment(mapped = []) {
-    const records = Array.isArray(mapped) ? mapped.filter(Boolean) : [];
-    const present = (field) => records.filter((property) => {
-        const value = property?.[field];
-        return value !== null && value !== undefined && value !== '';
-    }).length;
-
-    const withSaleDate = present('sold_date');
-    const withValue = present('price');
-
-    return {
-        provider_records_returned: records.length,
-        records_with_recorded_sale_date: withSaleDate,
-        records_with_estimated_value: withValue,
-        records_with_year_built: present('year_built'),
-        records_with_beds: present('beds'),
-        records_with_baths: present('baths'),
-        records_with_sqft: present('sqft'),
-        records_with_lot_size: present('lot_size'),
-        records_missing_recorded_sale_date: records.length - withSaleDate,
-        records_missing_estimated_value: records.length - withValue
+function createDiagnosticLedger() {
+    const provider = {
+        provider_records_reviewed: 0,
+        provider_records_with_intel_last_sold_date: 0,
+        provider_records_with_any_sale_date: 0,
+        provider_records_with_estimated_value: 0,
+        provider_records_with_year_built: 0,
+        provider_records_with_beds: 0,
+        provider_records_with_baths: 0,
+        provider_records_with_sqft: 0,
+        provider_records_with_lot_size: 0
     };
-}
-
-/**
- * Field presence in the RAW provider payload, before mapping.
- *
- * This is the measurement that distinguishes "the provider did not send the
- * evidence" from "we failed to parse evidence that was present". Counts only —
- * no payload, address or owner content is retained.
- */
-function summarizeProviderRecords(rawRecords = []) {
-    const records = (Array.isArray(rawRecords) ? rawRecords : []).filter(Boolean);
-    const has = (predicate) => records.filter((record) => {
-        const p = record.property || record;
-        try { return predicate(p); } catch { return false; }
-    }).length;
+    const enrichment = {
+        mapped_records_reviewed: 0,
+        records_with_recorded_sale_date: 0,
+        records_with_estimated_value: 0,
+        records_with_year_built: 0,
+        records_with_beds: 0,
+        records_with_baths: 0,
+        records_with_sqft: 0,
+        records_with_lot_size: 0,
+        records_missing_recorded_sale_date: 0,
+        records_missing_estimated_value: 0
+    };
+    const outcomes = {
+        mapped_route_active_before_selection: 0,
+        custom_range_missing_sale_date: 0,
+        custom_range_outside_date_window: 0,
+        rejected_price: 0,
+        rejected_property_type: 0,
+        rejected_land_use: 0,
+        outside_polygon_or_invalid: 0
+    };
 
     const num = (value) => Number.isFinite(Number(value)) && Number(value) !== 0;
+    const filled = (value) => value !== null && value !== undefined && value !== '';
 
     return {
-        provider_records_reviewed: records.length,
-        provider_records_with_intel_last_sold_date: has((p) => Boolean(p.intel?.lastSoldDate)),
-        provider_records_with_any_sale_date: has((p) => Boolean(
-            p.intel?.lastSoldDate || p.intel?.lastSaleDate || p.intel?.lastTransferDate ||
-            p.sale?.lastSaleDate || p.sale?.saleDate || p.sale?.recordingDate || p.sale?.date ||
-            p.lastSoldDate || p.sold_date
-        )),
-        provider_records_with_estimated_value: has((p) => num(
-            p.valuation?.estimatedValue ?? p.intel?.estimatedValue ?? p.avm ?? p.estimatedValue
-        )),
-        provider_records_with_year_built: has((p) => num(p.intel?.yearBuilt ?? p.building?.yearBuilt ?? p.yearBuilt)),
-        provider_records_with_beds: has((p) => num(p.building?.bedroomCount ?? p.building?.bedrooms ?? p.bedrooms)),
-        provider_records_with_baths: has((p) => num(p.building?.bathroomCount ?? p.building?.bathrooms ?? p.bathrooms)),
-        provider_records_with_sqft: has((p) => num(
-            p.intel?.livingAreaSquareFeet ?? p.building?.livingAreaSquareFeet ?? p.building?.squareFeet ?? p.squareFootage
-        )),
-        provider_records_with_lot_size: has((p) => num(p.lot?.lotSizeSquareFeet ?? p.lot?.size ?? p.lotSize))
+        /** Called once per provider page, BEFORE any row is mapped or filtered. */
+        observeProviderPage(list = []) {
+            for (const record of (Array.isArray(list) ? list : [])) {
+                if (!record) continue;
+                const p = record.property || record;
+                provider.provider_records_reviewed += 1;
+                try {
+                    if (p.intel?.lastSoldDate) provider.provider_records_with_intel_last_sold_date += 1;
+                    if (
+                        p.intel?.lastSoldDate || p.intel?.lastSaleDate || p.intel?.lastTransferDate ||
+                        p.sale?.lastSaleDate || p.sale?.saleDate || p.sale?.recordingDate || p.sale?.date ||
+                        p.lastSoldDate || p.sold_date
+                    ) provider.provider_records_with_any_sale_date += 1;
+                    if (num(p.valuation?.estimatedValue ?? p.intel?.estimatedValue ?? p.avm ?? p.estimatedValue)) {
+                        provider.provider_records_with_estimated_value += 1;
+                    }
+                    if (num(p.intel?.yearBuilt ?? p.building?.yearBuilt ?? p.yearBuilt)) provider.provider_records_with_year_built += 1;
+                    if (num(p.building?.bedroomCount ?? p.building?.bedrooms ?? p.bedrooms)) provider.provider_records_with_beds += 1;
+                    if (num(p.building?.bathroomCount ?? p.building?.bathrooms ?? p.bathrooms)) provider.provider_records_with_baths += 1;
+                    if (num(
+                        p.intel?.livingAreaSquareFeet ?? p.building?.livingAreaSquareFeet ??
+                        p.building?.squareFeet ?? p.squareFootage
+                    )) provider.provider_records_with_sqft += 1;
+                    if (num(p.lot?.lotSizeSquareFeet ?? p.lot?.size ?? p.lotSize)) provider.provider_records_with_lot_size += 1;
+                } catch { /* a malformed row still counts as reviewed */ }
+            }
+        },
+
+        /** Called once per raw row, with the mapper's result (null when unmappable). */
+        observeMapped(mapped) {
+            if (!mapped) {
+                outcomes.outside_polygon_or_invalid += 1;
+                return;
+            }
+            enrichment.mapped_records_reviewed += 1;
+            if (filled(mapped.sold_date)) enrichment.records_with_recorded_sale_date += 1;
+            else enrichment.records_missing_recorded_sale_date += 1;
+            if (filled(mapped.price)) enrichment.records_with_estimated_value += 1;
+            else enrichment.records_missing_estimated_value += 1;
+            if (filled(mapped.year_built)) enrichment.records_with_year_built += 1;
+            if (filled(mapped.beds)) enrichment.records_with_beds += 1;
+            if (filled(mapped.baths)) enrichment.records_with_baths += 1;
+            if (filled(mapped.sqft)) enrichment.records_with_sqft += 1;
+            if (filled(mapped.lot_size)) enrichment.records_with_lot_size += 1;
+
+            if (mapped.route_active !== false) {
+                outcomes.mapped_route_active_before_selection += 1;
+                return;
+            }
+            switch (mapped.route_reject_reason) {
+                case 'price': outcomes.rejected_price += 1; break;
+                case 'land_use': outcomes.rejected_land_use += 1; break;
+                case 'property_type': outcomes.rejected_property_type += 1; break;
+                case 'custom_range_outside_date_window': outcomes.custom_range_outside_date_window += 1; break;
+                case 'custom_range_missing_sale_date': outcomes.custom_range_missing_sale_date += 1; break;
+                default: break;
+            }
+        },
+
+        snapshot() {
+            return {
+                provider_fields: { ...provider },
+                enrichment: { ...enrichment },
+                route_outcomes: { ...outcomes }
+            };
+        }
     };
 }
 
-/**
- * Why records did not become route-active.
- *
- * Lets a zero-result pull be explained precisely — in particular separating
- * "the record carried no recorded sale date at all" from "its sale date fell
- * outside the requested window", which look identical from the outside but have
- * completely different causes.
- */
-function summarizeRouteOutcomes(mapped = [], rawRecordCount = null) {
-    const records = Array.isArray(mapped) ? mapped.filter(Boolean) : [];
-    const count = (reason) => records.filter((property) => property.route_reject_reason === reason).length;
-
-    return {
-        mapped_records: records.length,
-        route_active_records: records.filter((property) => property.route_active !== false).length,
-        custom_range_missing_sale_date: count('custom_range_missing_sale_date'),
-        custom_range_outside_date_window: count('custom_range_outside_date_window'),
-        rejected_price: count('price'),
-        rejected_property_type: count('property_type'),
-        rejected_land_use: count('land_use'),
-        outside_polygon_or_invalid: Number.isFinite(Number(rawRecordCount))
-            ? Math.max(0, Number(rawRecordCount) - records.length)
-            : 0
+/** Sums the per-attempt ledgers so a job reports totals across every attempt. */
+function mergeDiagnosticLedgers(attempts = []) {
+    const empty = createDiagnosticLedger().snapshot();
+    const total = {
+        provider_fields: { ...empty.provider_fields },
+        enrichment: { ...empty.enrichment },
+        route_outcomes: { ...empty.route_outcomes }
     };
+    for (const attempt of (Array.isArray(attempts) ? attempts : [])) {
+        for (const block of ['provider_fields', 'enrichment', 'route_outcomes']) {
+            const source = attempt?.[block];
+            if (!source) continue;
+            for (const key of Object.keys(total[block])) {
+                total[block][key] += Number(source[key]) || 0;
+            }
+        }
+    }
+    return total;
 }
 
 function mapBatchDataProperty(record, job) {
@@ -1042,6 +1087,11 @@ async function fetchBatchDataRecordsForMode(job, mode, requested, onProgress = n
     const routeTypeFilters = getRouteTypeFilters(job);
     const rejectedSamples = [];
     const pageTimings = [];
+    // Diagnostics accumulate HERE, while every provider row is still in hand.
+    // Computing them at completion is wrong: a custom-range job that selects
+    // nothing returns records: [], and the non-custom path returns at most a
+    // capped rejected sample, so both would under-report.
+    const ledger = createDiagnosticLedger();
     let skip = 0;
     let reviewed = 0;
     let totalRecordCount = null;
@@ -1076,9 +1126,11 @@ async function fetchBatchDataRecordsForMode(job, mode, requested, onProgress = n
         pageTimings.push({ skip, take, returned: list.length, elapsed_ms: pageElapsedMs });
         if (totalRecordCount === null) totalRecordCount = extractBatchDataTotal(payload);
         reviewed += list.length;
+        ledger.observeProviderPage(list);
 
         for (const raw of list) {
             const mapped = mapBatchDataProperty(raw, job);
+            ledger.observeMapped(mapped);
             if (mapped && mapped.route_active !== false) {
                 if (excludedRouteHashes.has(mapped.address_hash)) {
                     skippedExistingRoute++;
@@ -1146,7 +1198,8 @@ async function fetchBatchDataRecordsForMode(job, mode, requested, onProgress = n
         max_reviewed: maxReviewed,
         scan_limit_reached: scanLimitReached,
         page_timings: pageTimings,
-        totalRecordCount
+        totalRecordCount,
+        ...ledger.snapshot()
     };
 }
 
@@ -1501,9 +1554,13 @@ Deno.serve(async (req) => {
             // how many mapped -> how many became route-active, and why the rest
             // did not. No payloads, addresses or owner names are retained.
             dataset_scope: observedDatasetScope(),
-            provider_fields: summarizeProviderRecords(rawRecords),
-            enrichment: summarizeEnrichment(mapped),
-            route_outcomes: summarizeRouteOutcomes(mapped, rawRecords.length)
+            // Sourced from the fetch loop, NOT from batchFetch.records. The
+            // returned records are already filtered — and are empty for a
+            // custom-range job that selected nothing — so recomputing here
+            // would report zero rows for a job that reviewed dozens.
+            ...mergeDiagnosticLedgers(batchFetch.attempts),
+            final_selected_records: mapped.length,
+            persisted_route_active_records: activeCount
         };
         const errorLog = [...(job.error_log || []), `[${completedAt}] BatchData-only Precision complete: mode=${batchFetch.mode_used}, attempts=${JSON.stringify(batchFetch.attempts)}, raw=${rawRecords.length}, mapped=${mapped.length}, active=${activeCount}, rejected=${rejected}, outside_or_invalid=${outsideOrInvalid}, skipped_existing_route=${totalSkippedExistingRoute}, skipped_duplicate=${skippedDuplicateFromFetch}, skipped_route_type=${totalSkippedRouteType}, scan_limit_reached=${scanLimitReached}`];
 
