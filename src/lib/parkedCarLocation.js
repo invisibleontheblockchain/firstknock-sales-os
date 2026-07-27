@@ -58,6 +58,19 @@ export function isLowAccuracyCapture(point, warnAboveMeters = CAR_LOCATION_ACCUR
 }
 
 /**
+ * The disclosure shown before a poor fix is used as an anchor.
+ *
+ * One builder for every surface. The manager map and the rep map must not drift
+ * into telling the same person two different things about the same radius.
+ */
+export function lowAccuracyConfirmationMessage(point) {
+    const accuracy = Math.round(Number(point?.accuracy_m));
+    return `Location accuracy is approximately ±${accuracy} m.
+
+Use this location anyway? Cancel to retry.`;
+}
+
+/**
  * Requests a single high-accuracy fix.
  *
  * Resolves `{ ok: true, point }` or `{ ok: false, code, message }`. It never

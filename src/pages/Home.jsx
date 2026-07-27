@@ -95,7 +95,7 @@ import {
     ESRI_IMAGERY_ATTRIBUTION,
 } from '../components/map/mapAttribution';
 import useViewportMapProperties from '../components/map/useViewportMapProperties';
-import { captureParkedCarLocation, isLowAccuracyCapture } from '@/lib/parkedCarLocation';
+import { captureParkedCarLocation, isLowAccuracyCapture, lowAccuracyConfirmationMessage } from '@/lib/parkedCarLocation';
 import { OPTIMIZE_MODES, resolveOptimizeMode, routeOriginModeForOptimizeMode } from '@/lib/routeOriginModes';
 import {
     buildRouteOptimizeUpdate,
@@ -2332,12 +2332,7 @@ export default function Home() {
                 return;
             }
             if (isLowAccuracyCapture(capture.point)) {
-                const accuracy = Math.round(Number(capture.point.accuracy_m));
-                const accepted = confirmLowAccuracyLocation(
-                    `Location accuracy is approximately ±${accuracy} m.
-
-Use this location anyway? Cancel to retry.`
-                );
+                const accepted = confirmLowAccuracyLocation(lowAccuracyConfirmationMessage(capture.point));
                 if (!accepted) {
                     toast.dismiss('reoptimize-route');
                     return;

@@ -19,14 +19,18 @@ import { readFile } from 'node:fs/promises';
 const PAGES = [
   'src/pages/Home.jsx',
   'src/pages/RepHome.jsx',
-  'src/components/map/MapToolbar.jsx'
+  'src/components/map/MapToolbar.jsx',
+  'src/components/rep/RepMapView.jsx',
+  // The rep orchestration is itself a consumer of every shared helper.
+  'src/lib/repRouteOptimize.js'
 ];
 
 const HELPER_MODULES = [
   ['@/lib/routeBounds', 'src/lib/routeBounds.js'],
   ['@/lib/routeOriginModes', 'src/lib/routeOriginModes.js'],
   ['@/lib/routeOptimizeUpdate', 'src/lib/routeOptimizeUpdate.js'],
-  ['@/lib/parkedCarLocation', 'src/lib/parkedCarLocation.js']
+  ['@/lib/parkedCarLocation', 'src/lib/parkedCarLocation.js'],
+  ['@/lib/repRouteOptimize', 'src/lib/repRouteOptimize.js']
 ];
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8');

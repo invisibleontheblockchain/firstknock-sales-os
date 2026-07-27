@@ -73,14 +73,16 @@ function ChoiceRow({ choice, disabled, disabledReason, onSelect, compact }) {
  * @param {boolean} carDisabled            true when the route is assigned to someone else
  * @param {string}  carDisabledReason      shown in place of the description
  * @param {boolean} busy                   suppresses duplicate submissions
+ * @param {boolean} defaultOpen            renders the choices immediately; a test seam
  */
 export default function OptimizeRouteMenu({
     onSelectMode,
     carDisabled = false,
     carDisabledReason = 'The assigned rep must optimize this route from their car on their device.',
-    busy = false
+    busy = false,
+    defaultOpen = false
 }) {
-    const [open, setOpen] = useState(false);
+    const [open, setOpen] = useState(defaultOpen);
     const containerRef = useRef(null);
 
     const close = useCallback(() => setOpen(false), []);

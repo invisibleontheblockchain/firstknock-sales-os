@@ -39,6 +39,28 @@ export function normalizeRouteOriginMode(mode) {
     return isAnchoredRouteOriginMode(mode) ? mode : ROUTE_ORIGIN_MODES.NONE;
 }
 
+/**
+ * Map marker copy for an anchored route, keyed by mode.
+ *
+ * The label must come from the MODE, never from the geometry. RepMapView used
+ * to infer "Home" whenever the start and end points matched, which is true of
+ * every round trip — a parked car would have been labelled as the rep's house.
+ *
+ * `null` means no marker: `none` has no external anchor to draw.
+ */
+export function routeAnchorMarkerLabels(mode) {
+    switch (normalizeRouteOriginMode(mode)) {
+        case ROUTE_ORIGIN_MODES.HOME_ROUND_TRIP:
+            return { start: 'Home • Start / Finish', end: null };
+        case ROUTE_ORIGIN_MODES.CAR_ROUND_TRIP:
+            return { start: 'Car • Start / Finish', end: null };
+        case ROUTE_ORIGIN_MODES.CURRENT_TO_HOME:
+            return { start: 'Start', end: 'Finish' };
+        default:
+            return { start: null, end: null };
+    }
+}
+
 /* ── The optimization choices offered by the Optimize menu ── */
 
 export const OPTIMIZE_MODES = Object.freeze({
