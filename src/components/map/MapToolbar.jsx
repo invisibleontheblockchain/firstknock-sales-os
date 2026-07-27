@@ -11,6 +11,7 @@ import { FOLLOW_UP_STATUSES, getRouteOutcomeStats, getRerunHashes, getRerunPrope
 import { base44 } from '@/api/base44Client';
 import { useQueryClient } from "@tanstack/react-query";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import OptimizeRouteMenu from './OptimizeRouteMenu';
 
 /**
  * MapToolbar — extracted from Home.jsx
@@ -242,6 +243,18 @@ export default function MapToolbar({
     toast.success('Filtered route saved');
   };
 
+  const [reoptimizeBusy, setReoptimizeBusy] = useState(false);
+
+  // "From My Car" uses THIS device's GPS, so it is only meaningful for the
+  // person holding the phone. A manager viewing a rep's route must never anchor
+  // it to where the manager parked. Home Base has a server-side lookup for the
+  // assignee; a parked car has no such source of truth, so this is stricter.
+  const routeIsOptimizableFromCar = React.useMemo(() => {
+    if (!activeRoute) return false;
+    if (!activeRoute.assigned_to) return true;
+    return activeRoute.assigned_to === user?.id;
+  }, [activeRoute, user?.id]);
+
   const isCompletedRoute = activeRoute?.status === 'COMPLETED';
   const completedOutcomeStats = React.useMemo(() => getRouteOutcomeStats(activeRoute, logs), [activeRoute, logs]);
   const rerunOptions = [
@@ -436,15 +449,17 @@ export default function MapToolbar({
                 
                                     <Scissors className="w-2.5 h-2.5" /><span>SPLIT ROUTE</span>
                                 </button>
-                                <button
-                onPointerDown={(e) => {window.__fkSuppressMapFitUntil = Date.now() + 1500;e.preventDefault();e.stopPropagation();e.nativeEvent?.stopImmediatePropagation?.();}}
-                onTouchStart={(e) => {window.__fkSuppressMapFitUntil = Date.now() + 1500;e.stopPropagation();e.nativeEvent?.stopImmediatePropagation?.();}}
-                onClick={(e) => {window.__fkSuppressMapFitUntil = Date.now() + 1500;e.preventDefault();e.stopPropagation();e.nativeEvent?.stopImmediatePropagation?.();if (onReoptimizeRoute) onReoptimizeRoute(activeRoute);}}
-                className="md:hidden flex h-8 items-center gap-1 rounded-md bg-[#111] px-2 text-[9px] font-bold text-[#39FF4A] border border-[#2EEB57]/30 hover:bg-[#222] touch-manipulation select-none active:scale-95"
-                title="Optimize">
-                
-                                    <Zap className="w-3 h-3" /><span>OPTIMIZE</span>
-                                </button>
+                                <OptimizeRouteMenu
+                                  busy={reoptimizeBusy}
+                                  carDisabled={!routeIsOptimizableFromCar}
+                                  onSelectMode={async (mode) => {
+                                    window.__fkSuppressMapFitUntil = Date.now() + 1500;
+                                    if (!onReoptimizeRoute || reoptimizeBusy) return;
+                                    setReoptimizeBusy(true);
+                                    try { await onReoptimizeRoute(activeRoute, { mode }); }
+                                    finally { setReoptimizeBusy(false); }
+                                  }}
+                                />
                                 <button
                 onPointerDown={(e) => {e.preventDefault();e.stopPropagation();}}
                 onClick={handleExportActiveRouteCsv}
@@ -452,15 +467,6 @@ export default function MapToolbar({
                 title="Export route as CSV">
                 
                                     <Download className="w-2.5 h-2.5" /><span>EXPORT</span>
-                                </button>
-                                <button
-                onPointerDown={(e) => {window.__fkSuppressMapFitUntil = Date.now() + 1500;e.preventDefault();e.stopPropagation();e.nativeEvent?.stopImmediatePropagation?.();}}
-                onTouchStart={(e) => {window.__fkSuppressMapFitUntil = Date.now() + 1500;e.stopPropagation();e.nativeEvent?.stopImmediatePropagation?.();}}
-                onClick={(e) => {window.__fkSuppressMapFitUntil = Date.now() + 1500;e.preventDefault();e.stopPropagation();e.nativeEvent?.stopImmediatePropagation?.();if (onReoptimizeRoute) onReoptimizeRoute(activeRoute);}}
-                className="hidden md:flex h-7 px-2 text-[10px] font-bold bg-[#111] hover:bg-[#222] text-[#39FF4A] border border-[#2EEB57]/30 rounded-md items-center gap-1 touch-manipulation select-none active:scale-95"
-                title="Optimize">
-                
-                                    <Zap className="w-2.5 h-2.5" /><span>OPTIMIZE</span>
                                 </button>
                                 <DropdownMenu>
                                   <DropdownMenuTrigger asChild>

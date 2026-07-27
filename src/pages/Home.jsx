@@ -95,6 +95,12 @@ import {
     ESRI_IMAGERY_ATTRIBUTION,
 } from '../components/map/mapAttribution';
 import useViewportMapProperties from '../components/map/useViewportMapProperties';
+import { captureParkedCarLocation, carRouteBoundsMetadata } from '@/lib/parkedCarLocation';
+import {
+    OPTIMIZE_MODES,
+    resolveOptimizeMode,
+    routeOriginModeForOptimizeMode
+} from '@/lib/routeOriginModes';
 
 // The log cache is an array in some responses and { items } in others.
 function mergeLogCache(old, mutate) {
@@ -2291,8 +2297,36 @@ export default function Home() {
 
     // Re-optimize a single saved route while keeping each street sweep contiguous.
     const handleReoptimizeRoute = useCallback(async (route, options = {}) => {
-        const optimizeFromHome = options?.fromHome === true;
-        toast.loading(optimizeFromHome ? 'Optimizing from home base...' : 'Optimizing street-by-street...', { id: 'reoptimize-route' });
+        // Explicit mode. The legacy { fromHome: true } shape still resolves, but
+        // every call from the Optimize menu names its mode, because the anchor is
+        // part of the resulting order and inferring it was what made the old
+        // single button unpredictable.
+        const optimizeMode = resolveOptimizeMode(options);
+        const optimizeFromHome = optimizeMode === OPTIMIZE_MODES.HOME_ROUND_TRIP;
+        const optimizeFromCar = optimizeMode === OPTIMIZE_MODES.CAR_ROUND_TRIP;
+
+        let carAnchor = null;
+        if (optimizeFromCar) {
+            const assignedToSomeoneElse = route.assigned_to && route.assigned_to !== user?.id;
+            if (assignedToSomeoneElse) {
+                toast.error('The assigned rep must optimize this route from their car on their device.', { id: 'reoptimize-route', duration: 6000 });
+                return;
+            }
+            toast.loading('Getting your parked-car location...', { id: 'reoptimize-route' });
+            const capture = await captureParkedCarLocation();
+            if (!capture.ok) {
+                toast.error(capture.message, { id: 'reoptimize-route', duration: 6000 });
+                return;
+            }
+            carAnchor = capture.point;
+        }
+
+        toast.loading(
+            optimizeFromCar ? 'Optimizing from your car...'
+                : optimizeFromHome ? 'Optimizing from Home Base...'
+                : 'Optimizing route...',
+            { id: 'reoptimize-route' }
+        );
         const savedView = mapRef.current ? { center: mapRef.current.getCenter(), zoom: mapRef.current.getZoom() } : null;
         try {
             const hashes = (route.property_hashes || (route.properties || []).map(p => p.address_hash || p.legacy_hash || p.id)).filter(Boolean);
@@ -2304,7 +2338,6 @@ export default function Home() {
                 toast.error(`Only ${routeProperties.length} of ${hashes.length} route properties loaded. Refresh and try again.`, { id: 'reoptimize-route', duration: 6000 });
                 return;
             }
-            const currentCenter = mapRef.current ? mapRef.current.getCenter() : null;
             const assignedMember = teamMembers.find(member =>
                 member.id === route.assigned_to || member.user_id === route.assigned_to
             );
@@ -2334,24 +2367,20 @@ export default function Home() {
 
             const savedStart = route.start_location || route.startLocation;
             const savedEnd = route.end_location || route.endLocation;
-            const start = optimizeFromHome
-                ? requestedHomeBase
-                : isValidRoutePoint(savedStart)
-                    ? savedStart
-                    : startLocation || (currentCenter ? { lat: currentCenter.lat, lng: currentCenter.lng } : null);
-            const end = optimizeFromHome
-                ? requestedHomeBase
-                : isValidRoutePoint(savedEnd)
-                    ? savedEnd
-                    : null;
+            // route_only means EXACTLY the doors: no map centre, no current GPS,
+            // no Home Base, no stale saved bound. Previously this path fell back
+            // to the map centre, which silently anchored the route to wherever
+            // the user happened to be looking.
+            const start = optimizeFromCar ? carAnchor
+                : optimizeFromHome ? requestedHomeBase
+                : null;
+            const end = optimizeFromCar ? carAnchor
+                : optimizeFromHome ? requestedHomeBase
+                : null;
             const existingRouteOriginMode = ['home_round_trip', 'current_to_home'].includes(route.route_origin_mode || route.routeOriginMode)
                 ? (route.route_origin_mode || route.routeOriginMode)
                 : 'none';
-            const routeOriginMode = optimizeFromHome
-                ? 'home_round_trip'
-                : isValidRoutePoint(end) && existingRouteOriginMode !== 'none'
-                    ? existingRouteOriginMode
-                    : 'none';
+            const routeOriginMode = routeOriginModeForOptimizeMode(optimizeMode);
             const routingContext = createRouteContinuityContext(routeProperties);
             requireUsableRouteContext(routingContext);
             const optimized = optimizeRouteByStreetSweep(routeProperties, start, end, routingContext);
@@ -2371,12 +2400,16 @@ export default function Home() {
             ) * 100) / 100;
             const oldDistance = route.metrics?.distance || route.totalDistance || 0;
             const newOrder = optimizedHashes;
-            const routeBoundsMetadata = isValidRoutePoint(end)
-                ? { route_bounds: { enabled: true, mode: routeOriginMode } }
-                : {};
-            const savedBoundStart = routeOriginMode === 'none' ? start : null;
-            const savedBoundEnd = routeOriginMode === 'none' ? end : null;
-            const clearedUnavailableBounds = !optimizeFromHome && existingRouteOriginMode !== 'none' && !isValidRoutePoint(end);
+            const routeBoundsMetadata = optimizeFromCar
+                ? { route_bounds: carRouteBoundsMetadata(carAnchor) }
+                : isValidRoutePoint(end)
+                    ? { route_bounds: { enabled: true, mode: routeOriginMode } }
+                    : {};
+            const savedBoundStart = isValidRoutePoint(start) ? { lat: start.lat, lng: start.lng } : null;
+            const savedBoundEnd = isValidRoutePoint(end) ? { lat: end.lat, lng: end.lng } : null;
+            // route_only clears any previous external anchor — but only here, on
+            // the way to a successful save, never before optimization succeeds.
+            const clearedUnavailableBounds = routeOriginMode === 'none' && existingRouteOriginMode !== 'none';
             const existingMetadata = { ...(route.metadata || {}) };
             delete existingMetadata.road_geometry;
             const routingMetadata = buildPersistedRoadRoutingMetadata(
