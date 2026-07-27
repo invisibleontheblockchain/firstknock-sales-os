@@ -419,13 +419,22 @@ function buildBatchDataRequest(job, skip = 0, take = 500, mode = 'strict_polygon
         ...(customOwnershipBounds ? { maxDate: customOwnershipBounds.newestDate } : {})
     };
 
+    // Intentionally omit `options.datasets`.
+    //
+    // `intel` is not a member of the selectable `basic | listing | deed | owner`
+    // dataset list, so ANY datasets array suppresses the very object this
+    // request filters on (`searchCriteria.intel.lastSoldDate`) and the object
+    // the mapper treats as authoritative for recorded sale date, estimated
+    // value, year built and living area. Scoping therefore returns an
+    // owner/address shell: address, coordinates and owner present, with value,
+    // beds, baths, sqft, lot size, year built and sold date all null. The local
+    // gates deliberately do not reject incomplete rows, so such shells persist
+    // and reach routes.
+    //
+    // Guarded by test/precision-batchdata-enrichment-contract.test.mjs.
     const options = {
         skip,
-        take: Math.min(Math.max(Number(take) || BATCHDATA_MAX_TAKE, 1), BATCHDATA_MAX_TAKE),
-        // Request only the property, deed, and owner datasets used by the
-        // Precision route product. Do not implicitly ingest contact,
-        // demographic, mortgage, lien, or financial add-ons.
-        datasets: ['basic', 'deed', 'owner']
+        take: Math.min(Math.max(Number(take) || BATCHDATA_MAX_TAKE, 1), BATCHDATA_MAX_TAKE)
     };
 
     if (mode === 'centroid_fallback') {
@@ -482,6 +491,38 @@ function normalizeBatchDataAddress(record) {
         zip: String(firstValue(address.zip, address.zipCode, record.zipCode, '') || '').slice(0, 5),
         lat: Number(firstValue(location.latitude, address.latitude, address.lat, record.latitude, record.lat)),
         lng: Number(firstValue(location.longitude, address.longitude, address.lng, record.longitude, record.lng))
+    };
+}
+
+/**
+ * Aggregate enrichment completeness for a set of mapped properties.
+ *
+ * Counts only. No provider payload, address, owner name or other record content
+ * is retained, so this is safe to persist in job diagnostics. Its purpose is to
+ * make a regression like the `options.datasets` shell response visible at the
+ * job level instead of only in an exported CSV.
+ */
+function summarizeEnrichment(mapped = []) {
+    const records = Array.isArray(mapped) ? mapped.filter(Boolean) : [];
+    const present = (field) => records.filter((property) => {
+        const value = property?.[field];
+        return value !== null && value !== undefined && value !== '';
+    }).length;
+
+    const withSaleDate = present('sold_date');
+    const withValue = present('price');
+
+    return {
+        provider_records_returned: records.length,
+        records_with_recorded_sale_date: withSaleDate,
+        records_with_estimated_value: withValue,
+        records_with_year_built: present('year_built'),
+        records_with_beds: present('beds'),
+        records_with_baths: present('baths'),
+        records_with_sqft: present('sqft'),
+        records_with_lot_size: present('lot_size'),
+        records_missing_recorded_sale_date: records.length - withSaleDate,
+        records_missing_estimated_value: records.length - withValue
     };
 }
 
@@ -1345,7 +1386,10 @@ Deno.serve(async (req) => {
             skipped_route_type: totalSkippedRouteType,
             skipped_route_type_breakdown: skippedRouteTypeBreakdownTotal,
             api_calls: batchDataApiCalls,
-            scan_limit_reached: scanLimitReached
+            scan_limit_reached: scanLimitReached,
+            // Aggregate counts only — see summarizeEnrichment. Makes an
+            // unenriched provider response visible at the job level.
+            enrichment: summarizeEnrichment(mapped)
         };
         const errorLog = [...(job.error_log || []), `[${completedAt}] BatchData-only Precision complete: mode=${batchFetch.mode_used}, attempts=${JSON.stringify(batchFetch.attempts)}, raw=${rawRecords.length}, mapped=${mapped.length}, active=${activeCount}, rejected=${rejected}, outside_or_invalid=${outsideOrInvalid}, skipped_existing_route=${totalSkippedExistingRoute}, skipped_duplicate=${skippedDuplicateFromFetch}, skipped_route_type=${totalSkippedRouteType}, scan_limit_reached=${scanLimitReached}`];
 
