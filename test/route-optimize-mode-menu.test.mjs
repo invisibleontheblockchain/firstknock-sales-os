@@ -306,17 +306,11 @@ test('ASSIGN-01 the car choice is disabled for a route assigned to someone else'
   const toolbar = await readFile(new URL('../src/components/map/MapToolbar.jsx', import.meta.url), 'utf8');
 
   assert.match(toolbar, /routeIsOptimizableFromCar/, 'the toolbar computes an assignee guard');
-  assert.match(toolbar, /activeRoute\.assigned_to === user\?\.id/, 'and compares against the acting user');
+  assert.match(toolbar, /routeBelongsToActingUser\(activeRoute, user, teamMembers\)/,
+    'and uses the SAME shared predicate as the handler — see route-optimize-update.test.mjs for its behaviour');
   assert.match(toolbar, /carDisabled=\{!routeIsOptimizableFromCar\}/, 'and passes it to the menu');
 });
 
-test('ASSIGN-02 the handler refuses car mode on another rep\'s route', async () => {
-  const home = await readFile(new URL('../src/pages/Home.jsx', import.meta.url), 'utf8');
-
-  // A UI guard alone is not enough — the handler must refuse independently.
-  assert.match(home, /assignedToSomeoneElse/, 'the handler checks assignment itself');
-  assert.match(home, /must optimize this route from their car on their device/);
-});
 
 test('ASSIGN-03 Home Base delegation for another rep is unchanged', async () => {
   const home = await readFile(new URL('../src/pages/Home.jsx', import.meta.url), 'utf8');
@@ -344,15 +338,4 @@ test('ROUTEONLY-01 route_only passes no anchor at all', async () => {
   );
   assert.match(home, /const start = optimizeFromCar \? carAnchor/);
   assert.match(home, /: null;/);
-});
-
-test('ROUTEONLY-02 route_only clears prior bounds, and only on the way to a save', async () => {
-  const home = await readFile(new URL('../src/pages/Home.jsx', import.meta.url), 'utf8');
-
-  assert.match(home, /clearedUnavailableBounds = routeOriginMode === 'none' && existingRouteOriginMode !== 'none'/);
-  // The clear is computed after optimization and membership verification, so a
-  // failure leaves the existing bounds in place.
-  const clearIndex = home.indexOf('clearedUnavailableBounds =');
-  const verifyIndex = home.indexOf('Route integrity verification failed');
-  assert.ok(verifyIndex > 0 && clearIndex > verifyIndex, 'bounds are cleared only after verification passes');
 });

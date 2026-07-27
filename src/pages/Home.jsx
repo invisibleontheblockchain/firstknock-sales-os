@@ -95,12 +95,14 @@ import {
     ESRI_IMAGERY_ATTRIBUTION,
 } from '../components/map/mapAttribution';
 import useViewportMapProperties from '../components/map/useViewportMapProperties';
-import { captureParkedCarLocation, carRouteBoundsMetadata } from '@/lib/parkedCarLocation';
+import { captureParkedCarLocation, isLowAccuracyCapture } from '@/lib/parkedCarLocation';
+import { OPTIMIZE_MODES, resolveOptimizeMode, routeOriginModeForOptimizeMode } from '@/lib/routeOriginModes';
 import {
-    OPTIMIZE_MODES,
-    resolveOptimizeMode,
-    routeOriginModeForOptimizeMode
-} from '@/lib/routeOriginModes';
+    buildRouteOptimizeUpdate,
+    compareRouteObjective,
+    optimizeSuccessMessage,
+    routeBelongsToActingUser
+} from '@/lib/routeOptimizeUpdate';
 
 // The log cache is an array in some responses and { items } in others.
 function mergeLogCache(old, mutate) {
@@ -2296,6 +2298,15 @@ export default function Home() {
     }, [frozenWorkingSet, housesPerRoute, startLocation, logs, streetCooldownDays, zipCodeFilter, routeConfig, soldDateFilter, drawnPolygon, lastPullMode, learnedWeights, user?.territory_zip_codes, assignedHashes]);
 
     // Re-optimize a single saved route while keeping each street sweep contiguous.
+    // Injectable so the low-accuracy interaction is executable in tests rather
+    // than only reachable through a real browser dialog.
+    const confirmLowAccuracyLocation = useCallback(
+        (message) => (typeof window !== 'undefined' && typeof window.confirm === 'function'
+            ? window.confirm(message)
+            : true),
+        []
+    );
+
     const handleReoptimizeRoute = useCallback(async (route, options = {}) => {
         // Explicit mode. The legacy { fromHome: true } shape still resolves, but
         // every call from the Optimize menu names its mode, because the anchor is
@@ -2307,8 +2318,10 @@ export default function Home() {
 
         let carAnchor = null;
         if (optimizeFromCar) {
-            const assignedToSomeoneElse = route.assigned_to && route.assigned_to !== user?.id;
-            if (assignedToSomeoneElse) {
+            // Authoritative refusal, before any GPS is requested. assigned_to may
+            // hold a User id OR a TeamMember id, so a plain user.id comparison
+            // denies the real assignee whenever the route stored a TeamMember id.
+            if (!routeBelongsToActingUser(route, user, teamMembers)) {
                 toast.error('The assigned rep must optimize this route from their car on their device.', { id: 'reoptimize-route', duration: 6000 });
                 return;
             }
@@ -2317,6 +2330,18 @@ export default function Home() {
             if (!capture.ok) {
                 toast.error(capture.message, { id: 'reoptimize-route', duration: 6000 });
                 return;
+            }
+            if (isLowAccuracyCapture(capture.point)) {
+                const accuracy = Math.round(Number(capture.point.accuracy_m));
+                const accepted = confirmLowAccuracyLocation(
+                    `Location accuracy is approximately ±${accuracy} m.
+
+Use this location anyway? Cancel to retry.`
+                );
+                if (!accepted) {
+                    toast.dismiss('reoptimize-route');
+                    return;
+                }
             }
             carAnchor = capture.point;
         }
@@ -2377,9 +2402,6 @@ export default function Home() {
             const end = optimizeFromCar ? carAnchor
                 : optimizeFromHome ? requestedHomeBase
                 : null;
-            const existingRouteOriginMode = ['home_round_trip', 'current_to_home'].includes(route.route_origin_mode || route.routeOriginMode)
-                ? (route.route_origin_mode || route.routeOriginMode)
-                : 'none';
             const routeOriginMode = routeOriginModeForOptimizeMode(optimizeMode);
             const routingContext = createRouteContinuityContext(routeProperties);
             requireUsableRouteContext(routingContext);
@@ -2394,77 +2416,68 @@ export default function Home() {
             ) {
                 throw new Error('Route integrity verification failed, so the existing route was left unchanged.');
             }
-            const newDistance = Math.round(calculateRouteDistanceMiles(
-                optimized,
-                isValidRoutePoint(end) ? { startLocation: start, endLocation: end } : {}
-            ) * 100) / 100;
-            const oldDistance = route.metrics?.distance || route.totalDistance || 0;
-            const newOrder = optimizedHashes;
-            const routeBoundsMetadata = optimizeFromCar
-                ? { route_bounds: carRouteBoundsMetadata(carAnchor) }
-                : isValidRoutePoint(end)
-                    ? { route_bounds: { enabled: true, mode: routeOriginMode } }
-                    : {};
-            const savedBoundStart = isValidRoutePoint(start) ? { lat: start.lat, lng: start.lng } : null;
-            const savedBoundEnd = isValidRoutePoint(end) ? { lat: end.lat, lng: end.lng } : null;
-            // route_only clears any previous external anchor — but only here, on
-            // the way to a successful save, never before optimization succeeds.
-            const clearedUnavailableBounds = routeOriginMode === 'none' && existingRouteOriginMode !== 'none';
+            // Compare the CURRENT order against the CANDIDATE order under the
+            // SAME anchors. Comparing a stored metric from a previous mode would
+            // report the gap between two anchors as optimizer savings — a route
+            // re-anchored from a distant Home Base to a nearby car would claim
+            // miles saved without a single door being reordered.
+            const objective = compareRouteObjective({
+                currentOrder: routeProperties,
+                candidateOrder: optimized,
+                start: isValidRoutePoint(start) ? start : null,
+                end: isValidRoutePoint(end) ? end : null,
+                distanceFn: (from, to) => haversineDistanceMiles(from, to)
+            });
+            const appliedProperties = objective.applyCandidate ? optimized : routeProperties;
+            const appliedHashes = appliedProperties.map(p => p.address_hash || p.legacy_hash || p.id).filter(Boolean);
+            const newDistanceRounded = Math.round(objective.appliedDistance * 100) / 100;
+            const oldDistance = Math.round(objective.baselineDistance * 100) / 100;
+            const newOrder = appliedHashes;
             const existingMetadata = { ...(route.metadata || {}) };
-            delete existingMetadata.road_geometry;
             const routingMetadata = buildPersistedRoadRoutingMetadata(
                 routingContext,
                 null,
-                optimizedHashes
+                appliedHashes
             );
-            const routeUpdate = {
-                property_hashes: newOrder,
-                metrics: { ...route.metrics, distance: newDistance, house_count: optimized.length },
-                metadata: {
-                    ...existingMetadata,
-                    ...routingMetadata,
-                    ...routeBoundsMetadata,
-                    ...(clearedUnavailableBounds
-                        ? { route_bounds: { enabled: false, cleared_reason: 'reoptimized_without_home' } }
-                        : {})
-                },
-                ...(isValidRoutePoint(end) ? {
-                    start_location: savedBoundStart,
-                    end_location: savedBoundEnd,
-                    route_origin_mode: routeOriginMode
-                } : clearedUnavailableBounds ? {
-                    start_location: null,
-                    end_location: null,
-                    route_origin_mode: 'none'
-                } : {})
-            };
+            const routeUpdate = buildRouteOptimizeUpdate({
+                optimizeMode,
+                order: newOrder,
+                distanceMiles: newDistanceRounded,
+                existingMetrics: route.metrics,
+                existingMetadata,
+                routingMetadata,
+                carCapture: carAnchor
+            });
             await base44.entities.SavedRoute.update(route.id, routeUpdate);
             queryClient.invalidateQueries({ queryKey: ['savedRoutes'] });
             if (activeRoute && activeRoute.id === route.id) {
                 setActiveRoute(prev => ({
                     ...prev,
                     ...routeUpdate,
-                    ...(routeOriginMode !== 'none' ? { startLocation: start, endLocation: end, routeOriginMode } : {}),
-                    ...(clearedUnavailableBounds ? { startLocation: null, endLocation: null, routeOriginMode: 'none' } : {}),
+                    // The exact anchor lives in SESSION state only. It is
+                    // deliberately not written to SavedRoute, whose schema states
+                    // personal home/current coordinates must not be stored there.
+                    startLocation: routeOriginMode !== 'none' ? start : null,
+                    endLocation: routeOriginMode !== 'none' ? end : null,
+                    routeOriginMode,
                     property_hashes: newOrder,
-                    properties: optimized,
-                    allProperties: optimized,
-                    houseCount: optimized.length,
-                    totalDistance: newDistance,
-                    metrics: { ...prev?.metrics, distance: newDistance, house_count: optimized.length }
+                    properties: appliedProperties,
+                    allProperties: appliedProperties,
+                    houseCount: appliedProperties.length,
+                    totalDistance: newDistanceRounded,
+                    metrics: { ...prev?.metrics, distance: newDistanceRounded, house_count: appliedProperties.length }
                 }));
             }
             // Restore map view to prevent zoom-out from fitBounds reacting to property reorder
             if (savedView && mapRef.current) { try { mapRef.current.setView(savedView.center, savedView.zoom, { animate: false }); } catch (e) { } }
-            const savedMiles = Math.round((oldDistance - newDistance) * 100) / 100;
-            const prefix = optimizeFromHome ? 'Home round trip optimized' : 'Route optimized';
-            const msg = savedMiles > 0
-                ? `${prefix}! Saved ~${savedMiles} estimated miles (${newDistance} mi street-continuity estimate)`
-                : `${prefix} (${newDistance} mi street-continuity estimate)`;
+            // Savings are baseline-minus-applied under ONE objective, so they can
+            // never report the gap between two different anchors as optimization.
+            const savedMiles = Math.round(objective.estimatedSavings * 100) / 100;
+            const base = optimizeSuccessMessage(optimizeMode, { alreadyOptimal: !objective.applyCandidate });
+            const msg = objective.applyCandidate && savedMiles > 0
+                ? `${base} Saved ~${savedMiles} estimated miles (${newDistanceRounded} mi street-continuity estimate).`
+                : `${base} (${newDistanceRounded} mi street-continuity estimate)`;
             toast.success(msg, { id: 'reoptimize-route', duration: 4000 });
-            if (clearedUnavailableBounds) {
-                toast.info('Home Base mode was removed. Use “Optimize from Home Base” to keep a home round trip.', { duration: 6000 });
-            }
         } catch (e) {
             console.error('Re-optimize error:', e);
             toast.error(

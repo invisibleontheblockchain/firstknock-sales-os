@@ -12,6 +12,7 @@ import { base44 } from '@/api/base44Client';
 import { useQueryClient } from "@tanstack/react-query";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import OptimizeRouteMenu from './OptimizeRouteMenu';
+import { routeBelongsToActingUser } from '@/lib/routeOptimizeUpdate';
 
 /**
  * MapToolbar — extracted from Home.jsx
@@ -249,11 +250,13 @@ export default function MapToolbar({
   // person holding the phone. A manager viewing a rep's route must never anchor
   // it to where the manager parked. Home Base has a server-side lookup for the
   // assignee; a parked car has no such source of truth, so this is stricter.
-  const routeIsOptimizableFromCar = React.useMemo(() => {
-    if (!activeRoute) return false;
-    if (!activeRoute.assigned_to) return true;
-    return activeRoute.assigned_to === user?.id;
-  }, [activeRoute, user?.id]);
+  // One shared predicate with the handler. assigned_to may hold a User id OR a
+  // TeamMember id linked by user_id or email, so a plain user.id comparison
+  // disables the control for the very rep who should have it.
+  const routeIsOptimizableFromCar = React.useMemo(
+    () => routeBelongsToActingUser(activeRoute, user, teamMembers),
+    [activeRoute, user, teamMembers]
+  );
 
   const isCompletedRoute = activeRoute?.status === 'COMPLETED';
   const completedOutcomeStats = React.useMemo(() => getRouteOutcomeStats(activeRoute, logs), [activeRoute, logs]);
