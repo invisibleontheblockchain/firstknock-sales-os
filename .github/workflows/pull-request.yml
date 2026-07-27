@@ -1,0 +1,202 @@
+name: Pull Request
+
+# Deterministic verification only.
+#
+# This workflow never deploys, never publishes, never writes to a database and
+# never calls a provider API. It runs with read-only permissions, is not exposed
+# to repository secrets, and uses `pull_request` (never `pull_request_target`)
+# so a fork PR cannot obtain write access or secrets.
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Deterministic verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CI: 'true'
+
+    steps:
+      # Third-party actions are pinned to immutable commit SHAs. The trailing
+      # comment records the tag each SHA corresponds to.
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          # Full history so the merge base can be resolved for the whitespace
+          # and lint-regression gates below.
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        with:
+          node-version: '22.x'
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      # ── Blocking gates, one per step so a failure names the exact gate ──
+
+      - name: Test suite
+        run: npm test
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      - name: Backend validation
+        run: npm run validate:backend
+
+      - name: Artifact validation
+        run: npm run validate:artifact
+
+      - name: Whitespace and conflict-marker check
+        run: |
+          BASE_SHA="$(git merge-base "origin/${{ github.base_ref }}" HEAD)"
+          echo "Merge base: $BASE_SHA"
+          git diff --check "$BASE_SHA...HEAD"
+
+      # ── Optional suites: run only where the script actually exists ──
+      #
+      # These are defined on some branches and not on others. A branch that
+      # does not define them is not a failure; it is reported as skipped.
+
+      - name: Precision suite (optional)
+        run: |
+          if node -e "process.exit(require('./package.json').scripts['test:precision'] ? 0 : 1)"; then
+            npm run test:precision
+          else
+            echo "::notice title=Optional suite skipped::npm run test:precision is not defined on this branch."
+            echo "- \`test:precision\` — **skipped**, not defined on this branch" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: BatchData contract suite (optional)
+        run: |
+          if node -e "process.exit(require('./package.json').scripts['test:batchdata-contract'] ? 0 : 1)"; then
+            npm run test:batchdata-contract
+          else
+            echo "::notice title=Optional suite skipped::npm run test:batchdata-contract is not defined on this branch."
+            echo "- \`test:batchdata-contract\` — **skipped**, not defined on this branch" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # ── Lint ──
+      #
+      # `npm run lint` is NOT an unconditional blocking gate: main currently
+      # carries inherited diagnostics that are unrelated to most pull requests,
+      # and failing every PR on pre-existing debt teaches people to ignore the
+      # signal. The blocking gate is "no NEW diagnostics"; the full report is
+      # published as an informational baseline.
+
+      - name: Lint — no new diagnostics
+        run: |
+          set -euo pipefail
+          BASE_SHA="$(git merge-base "origin/${{ github.base_ref }}" HEAD)"
+
+          # Paths eslint.config.js actually covers, minus its own ignores.
+          LINT_INCLUDE='^(src/components/|src/admin/|src/pages/).*\.(js|mjs|cjs|jsx)$|^src/Layout\.jsx$'
+          LINT_EXCLUDE='^src/lib/|^src/components/ui/'
+
+          CHANGED="$(git diff --name-only --diff-filter=d "$BASE_SHA...HEAD" \
+            | { grep -E "$LINT_INCLUDE" || true; } \
+            | { grep -vE "$LINT_EXCLUDE" || true; })"
+
+          if [ -z "$CHANGED" ]; then
+            echo "No eslint-configured files changed by this pull request."
+            echo "### Lint gate: skipped" >> "$GITHUB_STEP_SUMMARY"
+            echo "No file matching \`eslint.config.js\` targets was changed, so no new diagnostics are possible." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          echo "Changed eslint-configured files:"
+          echo "$CHANGED" | sed 's/^/  /'
+
+          echo "$CHANGED" | xargs npx eslint --no-error-on-unmatched-pattern -f json > "$RUNNER_TEMP/head.json" || true
+
+          # Lint the SAME files as they were at the merge base, so a diagnostic
+          # that already existed there cannot fail this pull request. The base
+          # worktree reuses the installed node_modules and mirrors the repo
+          # layout, which eslint's flat config resolves relative to cwd.
+          git worktree add --detach "$RUNNER_TEMP/lintbase" "$BASE_SHA" >/dev/null
+          ln -s "$GITHUB_WORKSPACE/node_modules" "$RUNNER_TEMP/lintbase/node_modules"
+
+          ( cd "$RUNNER_TEMP/lintbase" \
+            && echo "$CHANGED" | while read -r f; do [ -f "$f" ] && echo "$f"; done \
+              | xargs -r npx eslint --no-error-on-unmatched-pattern -f json ) \
+            > "$RUNNER_TEMP/base.json" || true
+
+          node -e '
+            const fs = require("fs");
+            const read = (p) => { try { return JSON.parse(fs.readFileSync(p, "utf8") || "[]"); } catch { return []; } };
+            const keys = (results) => {
+              const set = new Map();
+              for (const file of results) {
+                const rel = file.filePath.replace(/\\/g, "/").replace(/^.*?\/(src\/)/, "$1");
+                for (const m of file.messages) {
+                  if (m.severity !== 2) continue;
+                  const key = `${rel}|${m.ruleId || "syntax"}|${m.message}`;
+                  set.set(key, (set.get(key) || 0) + 1);
+                }
+              }
+              return set;
+            };
+            const head = keys(read(process.env.RUNNER_TEMP + "/head.json"));
+            const base = keys(read(process.env.RUNNER_TEMP + "/base.json"));
+
+            const added = [];
+            for (const [key, count] of head) {
+              const inherited = base.get(key) || 0;
+              for (let i = inherited; i < count; i += 1) added.push(key);
+            }
+            const inheritedTotal = [...head].reduce((n, [k, c]) => n + Math.min(c, base.get(k) || 0), 0);
+
+            const summary = [];
+            summary.push("### Lint gate: changed files only");
+            summary.push("");
+            summary.push(`- inherited diagnostics carried over from the merge base: **${inheritedTotal}**`);
+            summary.push(`- new diagnostics introduced by this pull request: **${added.length}**`);
+            if (added.length) {
+              summary.push("");
+              summary.push("New diagnostics:");
+              summary.push("");
+              for (const key of added) summary.push("- `" + key + "`");
+            }
+            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary.join("\n") + "\n");
+
+            console.log(`inherited: ${inheritedTotal}  new: ${added.length}`);
+            for (const key of added) console.error(`::error::New lint diagnostic: ${key}`);
+            process.exit(added.length ? 1 : 0);
+          '
+
+      - name: Lint — full baseline report (informational)
+        if: always()
+        continue-on-error: true
+        run: |
+          set +e
+          npm run lint > "$RUNNER_TEMP/lint-full.txt" 2>&1
+          STATUS=$?
+          tail -n 40 "$RUNNER_TEMP/lint-full.txt"
+          {
+            echo "### Lint: full repository baseline (informational, non-blocking)"
+            echo ""
+            if [ "$STATUS" -eq 0 ]; then
+              echo "Clean."
+            else
+              echo "The repository currently carries inherited lint debt. This step never blocks the pull request; the blocking gate is \"no new diagnostics\" above."
+              echo ""
+              echo '```'
+              tail -n 20 "$RUNNER_TEMP/lint-full.txt"
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 0
