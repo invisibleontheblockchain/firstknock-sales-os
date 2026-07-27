@@ -1,0 +1,376 @@
+{
+  "fixture_id": "PRA-F-fixed-above-allowance",
+  "scenario_id": "fixed-above-allowance",
+  "evidence_type": "production_code_characterization",
+  "hand_edited": false,
+  "audited_source_blobs": {
+    "base44/functions/startBatchDataPull/entry.ts": "0933fbc24736ab7d434e74dfb77d2ab42f97e6ab",
+    "base44/functions/fetchAreaProperties/entry.ts": "e35db421a8c37fcfe1fd32b38dc90e6224fa23a9",
+    "base44/functions/previewBatchDataArea/entry.ts": "2a2516a79a9be79a68e51054c31cd17674d9fead"
+  },
+  "generation_command": "node scripts/precision-order-audit/generate-fixtures.mjs",
+  "source_files": [
+    "base44/functions/startBatchDataPull/entry.ts",
+    "base44/functions/fetchAreaProperties/entry.ts",
+    "base44/functions/previewBatchDataArea/entry.ts"
+  ],
+  "source_functions": [
+    "Deno.serve handler",
+    "withPrecisionUsageLock",
+    "getPrecisionAllowance",
+    "resolvePrecisionEntitlement"
+  ],
+  "frozen_clock": "2026-07-26T12:00:00.000Z",
+  "timezone": "UTC",
+  "c0_user_intent": "Free user with 20 remaining submits a Fixed Count of 45; the server caps to 20.",
+  "browser_state": {
+    "propertyCountMode": "fixed",
+    "displayedRemaining": 20,
+    "typedCount": 45
+  },
+  "what_it_proves": "What the production Stage 0-4 code does with this exact submitted order, including the authority fields it read, the writes it made and the canonical FetchJob it persisted.",
+  "what_it_does_not_prove": "It does not prove Base44 result ordering, real Stripe responses, real BatchData behaviour, or that the browser produced this submitted request.",
+  "submitted_request": {
+    "polygon": [
+      {
+        "lat": 33.86,
+        "lng": -83.4
+      },
+      {
+        "lat": 33.86,
+        "lng": -83.3825
+      },
+      {
+        "lat": 33.8745,
+        "lng": -83.3825
+      },
+      {
+        "lat": 33.8745,
+        "lng": -83.4
+      }
+    ],
+    "requested_properties": 45,
+    "count_mode": "fixed",
+    "sold_months": 3,
+    "ownership_range_mode": "quick",
+    "min_price": null,
+    "max_price": null,
+    "route_filters": {
+      "propertyTypes": [
+        "Single Family"
+      ],
+      "excludeCommercial": true,
+      "excludeCondos": true,
+      "excludeLand": true
+    },
+    "route_bounds": {
+      "enabled": false
+    },
+    "force_full_refresh": false,
+    "include_unresolved_followups": false,
+    "repull_mode": "new_area",
+    "previous_pull_date": null
+  },
+  "authenticated_actor": {
+    "id": "user_immutable_1",
+    "email": "rep@example.com"
+  },
+  "usage_subject": "user_immutable_1",
+  "workspace": null,
+  "response_status": 200,
+  "response": {
+    "success": true,
+    "status": "started",
+    "job_id": "fetchjob_created_1",
+    "provider": "batchdata",
+    "active_job_outcome": "zero",
+    "criteria_schema_version": 1,
+    "provider_contract_version": 1,
+    "count_mode": "fixed",
+    "requested_properties": 20,
+    "requested_properties_before_cap": 45,
+    "criteria": {
+      "criteria_schema_version": 1,
+      "polygon_hash": "c72a34f15134bdc1",
+      "count_mode": "fixed",
+      "entered_count": 45,
+      "effective_count": 20,
+      "min_price": null,
+      "max_price": null,
+      "sold_months": 3,
+      "ownership_range_mode": "quick",
+      "ownership_range_days": null,
+      "route_filters": {
+        "propertyTypes": [
+          "Single Family"
+        ],
+        "excludeCommercial": true,
+        "excludeCondos": true,
+        "excludeLand": true
+      },
+      "repull_mode": "new_area",
+      "previous_pull_date": null,
+      "force_full_refresh": false,
+      "include_unresolved_followups": false,
+      "route_bounds": {
+        "enabled": false
+      },
+      "immutable_user_id": "user_immutable_1",
+      "workspace_id": "user_immutable_1"
+    },
+    "limited_by_free_home_cap": true,
+    "limited_by_paid_property_cap": false,
+    "existing_route_homes": 0,
+    "excluded_route_home_count": 0,
+    "free_properties_remaining": 0,
+    "paid_properties_used": null,
+    "paid_properties_reserved": null,
+    "paid_properties_remaining": null,
+    "paid_property_limit": null,
+    "precision_usage_period_start": null,
+    "route_filters": {
+      "propertyTypes": [
+        "Single Family"
+      ],
+      "excludeCommercial": true,
+      "excludeCondos": true,
+      "excludeLand": true
+    },
+    "route_bounds": {
+      "enabled": false
+    },
+    "sold_months": 3,
+    "ownership_range_mode": "quick",
+    "ownership_min_days": null,
+    "ownership_max_days": null,
+    "ownership_range_days": null,
+    "message": "Precision pull started for up to 20 properties."
+  },
+  "c1_effective_target": {
+    "count_mode": "fixed",
+    "entered_count": 45,
+    "effective_count": 20,
+    "polygon_hash": "c72a34f15134bdc1",
+    "sold_months": 3,
+    "min_price": null,
+    "max_price": null,
+    "ownership_range_mode": "quick",
+    "ownership_range_days": null,
+    "route_bounds": {
+      "enabled": false
+    },
+    "reservation": 20
+  },
+  "canonical_fetch_job": {
+    "id": "fetchjob_created_1",
+    "status": "pending",
+    "provider": "batchdata",
+    "mode_tag": "PRECISION_TARGET",
+    "phase": "batchdata_precision",
+    "latitude": 33.86725,
+    "longitude": -83.39125,
+    "radius": 0.5650707072826806,
+    "polygon": [
+      {
+        "lat": 33.86,
+        "lng": -83.4
+      },
+      {
+        "lat": 33.86,
+        "lng": -83.3825
+      },
+      {
+        "lat": 33.8745,
+        "lng": -83.3825
+      },
+      {
+        "lat": 33.8745,
+        "lng": -83.4
+      }
+    ],
+    "fips_code": "13221",
+    "area_sq_mi": 1,
+    "polygon_hash": "c72a34f15134bdc1",
+    "estimated_record_count": 20,
+    "estimated_cost": 0.2,
+    "dry_run_metadata": {
+      "county_resolution": {
+        "fips_code": "13221",
+        "county_name": "Oconee",
+        "state_code": "GA",
+        "state_name": "Georgia"
+      },
+      "criteria_schema_version": 1,
+      "provider_contract_version": 1,
+      "workspace_id": "user_immutable_1",
+      "precision_criteria_withheld": [
+        "min_price"
+      ],
+      "requested_properties": 20,
+      "requested_properties_before_cap": 45,
+      "limited_by_free_home_cap": true,
+      "limited_by_paid_property_cap": false,
+      "existing_active_properties": 0,
+      "existing_route_homes": 0,
+      "excluded_route_home_count": 0,
+      "excluded_route_hashes": [],
+      "free_properties_remaining": 20,
+      "paid_properties_used": null,
+      "paid_properties_reserved": null,
+      "paid_properties_remaining": null,
+      "paid_property_limit": null,
+      "precision_usage_period_start": null,
+      "free_property_cap": 50,
+      "count_mode": "fixed",
+      "repull_mode": "new_area",
+      "previous_pull_date": null,
+      "force_full_refresh": false,
+      "include_unresolved_followups": false,
+      "filters": {
+        "min_price": null,
+        "max_price": null
+      },
+      "route_filters": {
+        "propertyTypes": [
+          "Single Family"
+        ],
+        "excludeCommercial": true,
+        "excludeCondos": true,
+        "excludeLand": true
+      },
+      "route_bounds": {
+        "enabled": false
+      },
+      "ownership_range_mode": "quick",
+      "ownership_range_days": null,
+      "processor_token": "00000000-0000-4000-8000-000000000001",
+      "paid_pull_started_at": "2026-07-26T12:00:00.000Z"
+    },
+    "sold_months": 3,
+    "force_full_refresh": false,
+    "pull_mode": "new_area",
+    "include_mls": false,
+    "user_email": "rep@example.com",
+    "precision_usage_user_id": "user_immutable_1",
+    "precision_usage_kind": "trial",
+    "precision_usage_reserved": 20,
+    "precision_usage_count": 0,
+    "progress_pct": 0,
+    "current_offset": 0,
+    "total_expected": 20,
+    "total_sub_circles": 1,
+    "completed_sub_circles": 0,
+    "total_batchdata_calls": 0
+  },
+  "trace": {
+    "authority_reads": [
+      {
+        "entity": "SavedRoute(serviceRole).filter",
+        "filter_keys": [
+          "manager_id"
+        ],
+        "sort": "-created_date",
+        "limit": 500
+      },
+      {
+        "entity": "SavedRoute(serviceRole).filter",
+        "filter_keys": [
+          "created_by"
+        ],
+        "sort": "-created_date",
+        "limit": 500
+      },
+      {
+        "entity": "FetchJob(serviceRole).filter",
+        "filter_keys": [
+          "precision_usage_user_id"
+        ],
+        "sort": "-created_date",
+        "limit": 500
+      },
+      {
+        "entity": "FetchJob(serviceRole).filter",
+        "filter_keys": [
+          "user_email"
+        ],
+        "sort": "-created_date",
+        "limit": 500
+      },
+      {
+        "entity": "FetchJob(serviceRole).filter",
+        "filter_keys": [
+          "precision_usage_user_id",
+          "status"
+        ],
+        "sort": "-created_date",
+        "limit": 20
+      },
+      {
+        "entity": "FetchJob(serviceRole).filter",
+        "filter_keys": [
+          "precision_usage_user_id",
+          "status"
+        ],
+        "sort": "-created_date",
+        "limit": 20
+      },
+      {
+        "entity": "FetchJob(serviceRole).filter",
+        "filter_keys": [
+          "user_email",
+          "status"
+        ],
+        "sort": "-created_date",
+        "limit": 20
+      },
+      {
+        "entity": "FetchJob(serviceRole).filter",
+        "filter_keys": [
+          "user_email",
+          "status"
+        ],
+        "sort": "-created_date",
+        "limit": 20
+      },
+      {
+        "entity": "FetchJob(serviceRole).filter",
+        "filter_keys": [
+          "precision_usage_user_id"
+        ],
+        "sort": "-created_date",
+        "limit": 500
+      },
+      {
+        "entity": "FetchJob(serviceRole).filter",
+        "filter_keys": [
+          "user_email"
+        ],
+        "sort": "-created_date",
+        "limit": 500
+      }
+    ],
+    "writes": [
+      {
+        "op": "FetchJob.create",
+        "id": null,
+        "patch_keys": null
+      }
+    ],
+    "external_hosts": [
+      "geo.fcc.gov"
+    ],
+    "provider_requests": [],
+    "stripe_calls": [
+      "client.construct",
+      "subscriptions.search",
+      "client.construct",
+      "subscriptions.search"
+    ],
+    "lock_keys": [
+      "precision-usage:user_immutable_1"
+    ],
+    "processor_invocations": [
+      "processFetchChunk"
+    ]
+  }
+}

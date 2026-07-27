@@ -1,0 +1,144 @@
+{
+  "fixture_id": "PRA-F-preview-single",
+  "scenario_id": "preview-single",
+  "evidence_type": "production_code_characterization",
+  "hand_edited": false,
+  "audited_source_blobs": {
+    "base44/functions/startBatchDataPull/entry.ts": "0933fbc24736ab7d434e74dfb77d2ab42f97e6ab",
+    "base44/functions/fetchAreaProperties/entry.ts": "e35db421a8c37fcfe1fd32b38dc90e6224fa23a9",
+    "base44/functions/previewBatchDataArea/entry.ts": "2a2516a79a9be79a68e51054c31cd17674d9fead"
+  },
+  "generation_command": "node scripts/precision-order-audit/generate-fixtures.mjs",
+  "source_files": [
+    "base44/functions/startBatchDataPull/entry.ts",
+    "base44/functions/fetchAreaProperties/entry.ts",
+    "base44/functions/previewBatchDataArea/entry.ts"
+  ],
+  "source_functions": [
+    "Deno.serve handler",
+    "withPrecisionUsageLock",
+    "getPrecisionAllowance",
+    "resolvePrecisionEntitlement"
+  ],
+  "frozen_clock": "2026-07-26T12:00:00.000Z",
+  "timezone": "UTC",
+  "c0_user_intent": "User clicks Preview once on a drawn area.",
+  "browser_state": {
+    "previewClicks": 1
+  },
+  "what_it_proves": "What the production Stage 0-4 code does with this exact submitted order, including the authority fields it read, the writes it made and the canonical FetchJob it persisted.",
+  "what_it_does_not_prove": "It does not prove Base44 result ordering, real Stripe responses, real BatchData behaviour, or that the browser produced this submitted request.",
+  "submitted_request": {
+    "polygon": [
+      {
+        "lat": 33.86,
+        "lng": -83.4
+      },
+      {
+        "lat": 33.86,
+        "lng": -83.3825
+      },
+      {
+        "lat": 33.8745,
+        "lng": -83.3825
+      },
+      {
+        "lat": 33.8745,
+        "lng": -83.4
+      }
+    ],
+    "requested_properties": 40,
+    "sandbox": true,
+    "sandbox_probe": true
+  },
+  "authenticated_actor": {
+    "id": "user_immutable_1",
+    "email": "rep@example.com"
+  },
+  "response_statuses": [
+    200
+  ],
+  "responses": [
+    {
+      "success": true,
+      "mode": "sandbox_preview_no_paid_batchdata_charge",
+      "provider": "batchdata",
+      "sandbox": true,
+      "paid_pull_enabled": true,
+      "phase": "phase_1_precision_preview",
+      "polygon_hash": "c72a34f15134bdc1",
+      "centroid": {
+        "lat": 33.86725,
+        "lng": -83.39125
+      },
+      "area_sq_mi": 1,
+      "bounds_miles": {
+        "width": 1,
+        "height": 1,
+        "max_allowed_span": null
+      },
+      "account_type": "free",
+      "max_area_sq_mi": null,
+      "max_allowed_properties": 40,
+      "requested_properties": 40,
+      "existing_active_properties": 10,
+      "existing_route_homes": 10,
+      "excluded_route_home_count": 10,
+      "free_properties_remaining": 40,
+      "paid_properties_used": null,
+      "paid_properties_reserved": null,
+      "paid_properties_remaining": null,
+      "paid_property_limit": null,
+      "precision_usage_period_start": null,
+      "returned_property_count": 40,
+      "hard_rejected": false,
+      "rejection_reason": null,
+      "county_resolution": {
+        "fips_code": "13221",
+        "county_name": "Oconee",
+        "state_code": "GA",
+        "state_name": "Georgia"
+      },
+      "county_count_cap": 1,
+      "sandbox_probe": {
+        "ok": true,
+        "status": 200,
+        "record_count": 3
+      },
+      "sandbox_probe_error": null,
+      "sandbox_probe_meaning": "provider_reachability_at_centroid",
+      "availability_measured": false,
+      "estimated_batchdata_cost_per_record": 0.01,
+      "estimated_max_batchdata_cost": 0.4,
+      "pricing_context": {
+        "precision_price_per_user": 99,
+        "break_even_records_per_user": 9900,
+        "batchdata_plan_cost": 1000,
+        "batchdata_plan_records": 100000
+      },
+      "message": "This area is eligible to pull up to 40 BatchData properties from your drawn Precision territory."
+    }
+  ],
+  "canonical_fetch_job": null,
+  "reservation": null,
+  "trace": {
+    "authority_reads": [],
+    "writes": [],
+    "external_hosts": [
+      "geo.fcc.gov",
+      "api.batchdata.com"
+    ],
+    "provider_requests": [
+      {
+        "url": "https://api.batchdata.com/api/v1/property/search",
+        "method": "POST",
+        "body": "{\"searchCriteria\":{\"query\":\"33.86725,-83.39125\"},\"options\":{\"datasets\":[\"basic\"],\"limit\":5}}"
+      }
+    ],
+    "stripe_calls": [],
+    "lock_keys": [],
+    "processor_invocations": [
+      "getPrecisionUsage"
+    ]
+  }
+}

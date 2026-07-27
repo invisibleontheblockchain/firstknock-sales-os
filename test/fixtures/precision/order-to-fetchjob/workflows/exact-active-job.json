@@ -1,0 +1,242 @@
+{
+  "fixture_id": "PRA-F-exact-active-job",
+  "scenario_id": "exact-active-job",
+  "evidence_type": "production_code_characterization",
+  "hand_edited": false,
+  "audited_source_blobs": {
+    "base44/functions/startBatchDataPull/entry.ts": "0933fbc24736ab7d434e74dfb77d2ab42f97e6ab",
+    "base44/functions/fetchAreaProperties/entry.ts": "e35db421a8c37fcfe1fd32b38dc90e6224fa23a9",
+    "base44/functions/previewBatchDataArea/entry.ts": "2a2516a79a9be79a68e51054c31cd17674d9fead"
+  },
+  "generation_command": "node scripts/precision-order-audit/generate-fixtures.mjs",
+  "source_files": [
+    "base44/functions/startBatchDataPull/entry.ts",
+    "base44/functions/fetchAreaProperties/entry.ts",
+    "base44/functions/previewBatchDataArea/entry.ts"
+  ],
+  "source_functions": [
+    "Deno.serve handler",
+    "withPrecisionUsageLock",
+    "getPrecisionAllowance",
+    "resolvePrecisionEntitlement"
+  ],
+  "frozen_clock": "2026-07-26T12:00:00.000Z",
+  "timezone": "UTC",
+  "c0_user_intent": "User resubmits the identical order while their own identical pull is still running.",
+  "browser_state": {
+    "propertyCountMode": "fixed",
+    "typedCount": 25
+  },
+  "what_it_proves": "What the production Stage 0-4 code does with this exact submitted order, including the authority fields it read, the writes it made and the canonical FetchJob it persisted.",
+  "what_it_does_not_prove": "It does not prove Base44 result ordering, real Stripe responses, real BatchData behaviour, or that the browser produced this submitted request.",
+  "submitted_request": {
+    "polygon": [
+      {
+        "lat": 33.86,
+        "lng": -83.4
+      },
+      {
+        "lat": 33.86,
+        "lng": -83.3825
+      },
+      {
+        "lat": 33.8745,
+        "lng": -83.3825
+      },
+      {
+        "lat": 33.8745,
+        "lng": -83.4
+      }
+    ],
+    "requested_properties": 25,
+    "count_mode": "fixed",
+    "sold_months": 3,
+    "ownership_range_mode": "quick",
+    "min_price": null,
+    "max_price": null,
+    "route_filters": {
+      "propertyTypes": [
+        "Single Family"
+      ],
+      "excludeCommercial": true,
+      "excludeCondos": true,
+      "excludeLand": true
+    },
+    "route_bounds": {
+      "enabled": false
+    },
+    "force_full_refresh": false,
+    "include_unresolved_followups": false,
+    "repull_mode": "new_area",
+    "previous_pull_date": null
+  },
+  "authenticated_actor": {
+    "id": "user_immutable_1",
+    "email": "rep@example.com"
+  },
+  "usage_subject": null,
+  "workspace": null,
+  "response_status": 200,
+  "response": {
+    "status": "already_running",
+    "active_job_outcome": "one_exact_match",
+    "criteria_match": "exact",
+    "job_id": "job_identical",
+    "message": "An identical data pull is already running. Resuming that exact request.",
+    "polygon": [
+      {
+        "lat": 33.86,
+        "lng": -83.4
+      },
+      {
+        "lat": 33.86,
+        "lng": -83.3825
+      },
+      {
+        "lat": 33.8745,
+        "lng": -83.3825
+      },
+      {
+        "lat": 33.8745,
+        "lng": -83.4
+      }
+    ],
+    "requested_properties": 25,
+    "requested_properties_before_cap": 25,
+    "sold_months": 3,
+    "min_price": null,
+    "max_price": null,
+    "count_mode": "fixed",
+    "route_filters": {
+      "propertyTypes": [
+        "Single Family"
+      ],
+      "excludeCommercial": true,
+      "excludeCondos": true,
+      "excludeLand": true
+    },
+    "route_bounds": {
+      "enabled": false
+    },
+    "criteria": {
+      "criteria_schema_version": 1,
+      "polygon_hash": "c72a34f15134bdc1",
+      "count_mode": "fixed",
+      "entered_count": 25,
+      "effective_count": 25,
+      "min_price": null,
+      "max_price": null,
+      "sold_months": 3,
+      "ownership_range_mode": "quick",
+      "ownership_range_days": null,
+      "route_filters": {
+        "propertyTypes": [
+          "Single Family"
+        ],
+        "excludeCommercial": true,
+        "excludeCondos": true,
+        "excludeLand": true
+      },
+      "repull_mode": null,
+      "previous_pull_date": null,
+      "force_full_refresh": false,
+      "include_unresolved_followups": false,
+      "route_bounds": {
+        "enabled": false
+      },
+      "immutable_user_id": "user_immutable_1",
+      "workspace_id": null
+    },
+    "ownership_range_mode": "quick",
+    "ownership_min_days": null,
+    "ownership_max_days": null,
+    "ownership_range_days": null
+  },
+  "c1_effective_target": null,
+  "canonical_fetch_job": null,
+  "trace": {
+    "authority_reads": [
+      {
+        "entity": "SavedRoute(serviceRole).filter",
+        "filter_keys": [
+          "manager_id"
+        ],
+        "sort": "-created_date",
+        "limit": 500
+      },
+      {
+        "entity": "SavedRoute(serviceRole).filter",
+        "filter_keys": [
+          "created_by"
+        ],
+        "sort": "-created_date",
+        "limit": 500
+      },
+      {
+        "entity": "FetchJob(serviceRole).filter",
+        "filter_keys": [
+          "precision_usage_user_id"
+        ],
+        "sort": "-created_date",
+        "limit": 500
+      },
+      {
+        "entity": "FetchJob(serviceRole).filter",
+        "filter_keys": [
+          "user_email"
+        ],
+        "sort": "-created_date",
+        "limit": 500
+      },
+      {
+        "entity": "FetchJob(serviceRole).filter",
+        "filter_keys": [
+          "precision_usage_user_id",
+          "status"
+        ],
+        "sort": "-created_date",
+        "limit": 20
+      },
+      {
+        "entity": "FetchJob(serviceRole).filter",
+        "filter_keys": [
+          "precision_usage_user_id",
+          "status"
+        ],
+        "sort": "-created_date",
+        "limit": 20
+      },
+      {
+        "entity": "FetchJob(serviceRole).filter",
+        "filter_keys": [
+          "user_email",
+          "status"
+        ],
+        "sort": "-created_date",
+        "limit": 20
+      },
+      {
+        "entity": "FetchJob(serviceRole).filter",
+        "filter_keys": [
+          "user_email",
+          "status"
+        ],
+        "sort": "-created_date",
+        "limit": 20
+      }
+    ],
+    "writes": [],
+    "external_hosts": [
+      "geo.fcc.gov"
+    ],
+    "provider_requests": [],
+    "stripe_calls": [
+      "client.construct",
+      "subscriptions.search"
+    ],
+    "lock_keys": [
+      "precision-usage:user_immutable_1"
+    ],
+    "processor_invocations": []
+  }
+}

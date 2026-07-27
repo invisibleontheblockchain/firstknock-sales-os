@@ -1,0 +1,30 @@
+{
+  "fixture_id": "PRA-F-fixed-custom-range",
+  "scenario_id": "fixed-custom-range",
+  "oracle_version": 1,
+  "response_status": 200,
+  "response_state": "started",
+  "created_fetch_job": true,
+  "submitted_count": 20,
+  "submitted_count_mode": "fixed",
+  "persisted_entered_count": 20,
+  "persisted_effective_count": 20,
+  "entered_count_equals_submitted": true,
+  "polygon_point_count_preserved": true,
+  "persisted_min_price": null,
+  "persisted_sold_months": 6,
+  "persisted_ownership_range_days": {
+    "min": 30,
+    "max": 180
+  },
+  "persisted_route_bounds": {
+    "enabled": false
+  },
+  "persisted_repull_mode": "new_area",
+  "criteria_schema_version_present": true,
+  "provider_contract_version_present": true,
+  "workspace_id_present": true,
+  "reservation_writes": 1,
+  "job_mutations": 0,
+  "processor_invocations": 1
+}

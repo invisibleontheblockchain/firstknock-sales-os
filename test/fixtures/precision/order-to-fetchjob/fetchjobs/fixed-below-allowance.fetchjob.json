@@ -1,0 +1,101 @@
+{
+  "id": "fetchjob_created_1",
+  "status": "pending",
+  "provider": "batchdata",
+  "mode_tag": "PRECISION_TARGET",
+  "phase": "batchdata_precision",
+  "latitude": 33.86725,
+  "longitude": -83.39125,
+  "radius": 0.5650707072826806,
+  "polygon": [
+    {
+      "lat": 33.86,
+      "lng": -83.4
+    },
+    {
+      "lat": 33.86,
+      "lng": -83.3825
+    },
+    {
+      "lat": 33.8745,
+      "lng": -83.3825
+    },
+    {
+      "lat": 33.8745,
+      "lng": -83.4
+    }
+  ],
+  "fips_code": "13221",
+  "area_sq_mi": 1,
+  "polygon_hash": "c72a34f15134bdc1",
+  "estimated_record_count": 25,
+  "estimated_cost": 0.25,
+  "dry_run_metadata": {
+    "county_resolution": {
+      "fips_code": "13221",
+      "county_name": "Oconee",
+      "state_code": "GA",
+      "state_name": "Georgia"
+    },
+    "criteria_schema_version": 1,
+    "provider_contract_version": 1,
+    "workspace_id": "user_immutable_1",
+    "precision_criteria_withheld": [
+      "min_price"
+    ],
+    "requested_properties": 25,
+    "requested_properties_before_cap": 25,
+    "limited_by_free_home_cap": false,
+    "limited_by_paid_property_cap": false,
+    "existing_active_properties": 0,
+    "existing_route_homes": 0,
+    "excluded_route_home_count": 0,
+    "excluded_route_hashes": [],
+    "free_properties_remaining": 50,
+    "paid_properties_used": null,
+    "paid_properties_reserved": null,
+    "paid_properties_remaining": null,
+    "paid_property_limit": null,
+    "precision_usage_period_start": null,
+    "free_property_cap": 50,
+    "count_mode": "fixed",
+    "repull_mode": "new_area",
+    "previous_pull_date": null,
+    "force_full_refresh": false,
+    "include_unresolved_followups": false,
+    "filters": {
+      "min_price": null,
+      "max_price": null
+    },
+    "route_filters": {
+      "propertyTypes": [
+        "Single Family"
+      ],
+      "excludeCommercial": true,
+      "excludeCondos": true,
+      "excludeLand": true
+    },
+    "route_bounds": {
+      "enabled": false
+    },
+    "ownership_range_mode": "quick",
+    "ownership_range_days": null,
+    "processor_token": "00000000-0000-4000-8000-000000000001",
+    "paid_pull_started_at": "2026-07-26T12:00:00.000Z"
+  },
+  "sold_months": 3,
+  "force_full_refresh": false,
+  "pull_mode": "new_area",
+  "include_mls": false,
+  "user_email": "rep@example.com",
+  "precision_usage_user_id": "user_immutable_1",
+  "precision_usage_kind": "trial",
+  "precision_usage_reserved": 25,
+  "precision_usage_count": 0,
+  "progress_pct": 0,
+  "current_offset": 0,
+  "total_expected": 25,
+  "total_sub_circles": 1,
+  "completed_sub_circles": 0,
+  "total_batchdata_calls": 0
+}
