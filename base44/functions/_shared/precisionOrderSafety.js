@@ -150,23 +150,38 @@ function intersectionPoint(p1, q1, p2, q2) {
  * implied final-to-first edge is always included — a boundary that only crosses
  * itself on the closing line is still invalid.
  */
-export function findPolygonSelfIntersection(points) {
+/**
+ * Comparison-only view of a ring: consecutive duplicates collapsed and one
+ * explicit closing vertex removed.
+ *
+ * A repeated vertex is a zero-length edge, not a crossing, and would otherwise
+ * register as an endpoint touch. The caller's polygon is never modified — this
+ * exists so the distinct-vertex check and the topology scan agree on what the
+ * ring actually is.
+ */
+function comparisonRing(points) {
     const source = Array.isArray(points) ? points : [];
-
-    // Collapse consecutive duplicates. A repeated vertex is a zero-length edge,
-    // not a crossing, and would otherwise register as an endpoint touch. This
-    // is a comparison-only normalization — the caller's polygon is untouched.
     const ring = [];
     for (const point of source) {
         const previous = ring[ring.length - 1];
         if (previous && previous.lat === point.lat && previous.lng === point.lng) continue;
         ring.push({ lat: point.lat, lng: point.lng });
     }
-    if (ring.length > 3) {
+    if (ring.length >= 2) {
         const first = ring[0];
         const last = ring[ring.length - 1];
-        if (first && last && first.lat === last.lat && first.lng === last.lng) ring.pop();
+        if (first.lat === last.lat && first.lng === last.lng) ring.pop();
     }
+    return ring;
+}
+
+/** Distinct latitude/longitude pairs remaining after comparison normalization. */
+export function countDistinctPolygonVertices(points) {
+    return new Set(comparisonRing(points).map((point) => `${point.lat},${point.lng}`)).size;
+}
+
+export function findPolygonSelfIntersection(points) {
+    const ring = comparisonRing(points);
     if (ring.length < 4) return null; // a triangle cannot self-intersect
 
     const total = ring.length;
@@ -216,6 +231,12 @@ export function normalizePrecisionPolygon(input) {
 
     if (points.length < 3) {
         return { ok: false, code: 'invalid_polygon', message: 'At least 3 polygon points are required.' };
+    }
+
+    // Three submitted points is not three real corners: [A, B, A] and
+    // [A, B, B, A] describe a line, which is not an area to search.
+    if (countDistinctPolygonVertices(points) < 3) {
+        return { ok: false, code: 'invalid_polygon', message: 'At least 3 distinct polygon points are required.' };
     }
 
     // The provider rejects a crossing boundary before it runs any search, so
