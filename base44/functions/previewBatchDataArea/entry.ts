@@ -51,24 +51,41 @@ function boundsMiles(points) {
     };
 }
 
+const SANDBOX_PROBE_TIMEOUT_MS = 8000;
+
+// 5.8 Transport containment only. The request shape, centroid query, dataset
+// selection, trigger and cache behaviour are all deliberately unchanged - those
+// need separate evidence or a product decision. What changes is that a provider
+// transport failure no longer destroys a Preview whose county resolution, area
+// and allowance estimate are all still valid.
 async function runSandboxProbe(center) {
     const apiKey = Deno.env.get('BATCH_DATA_SANDBOX_KEY');
-    if (!apiKey || !center) return null;
+    if (!apiKey || !center) return { probe: null, error: null };
 
-    const response = await fetch('https://api.batchdata.com/api/v1/property/search', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-        body: JSON.stringify({
-            searchCriteria: { query: `${center.lat},${center.lng}` },
-            options: { datasets: ['basic'], limit: 5 }
-        })
-    });
-    const text = await response.text();
-    let payload = null;
-    try { payload = text ? JSON.parse(text) : null; } catch { payload = { raw_text: text.slice(0, 300) }; }
-    const records = payload?.results?.properties || payload?.properties || payload?.results || [];
-    const list = Array.isArray(records) ? records : [records].filter(Boolean);
-    return { ok: response.ok, status: response.status, record_count: list.length };
+    const controller = typeof AbortController === 'function' ? new AbortController() : null;
+    const timer = controller ? setTimeout(() => controller.abort(), SANDBOX_PROBE_TIMEOUT_MS) : null;
+    try {
+        const response = await fetch('https://api.batchdata.com/api/v1/property/search', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+            body: JSON.stringify({
+                searchCriteria: { query: `${center.lat},${center.lng}` },
+                options: { datasets: ['basic'], limit: 5 }
+            }),
+            ...(controller ? { signal: controller.signal } : {})
+        });
+        const text = await response.text();
+        let payload = null;
+        try { payload = text ? JSON.parse(text) : null; } catch { payload = { raw_text: text.slice(0, 300) }; }
+        const records = payload?.results?.properties || payload?.properties || payload?.results || [];
+        const list = Array.isArray(records) ? records : [records].filter(Boolean);
+        return { probe: { ok: response.ok, status: response.status, record_count: list.length }, error: null };
+    } catch (error) {
+        console.warn(`[previewBatchDataArea] provider probe unavailable: ${error?.message || error}`);
+        return { probe: null, error: 'provider_unreachable' };
+    } finally {
+        if (timer) clearTimeout(timer);
+    }
 }
 
 async function resolveFips(center) {
@@ -137,7 +154,10 @@ Deno.serve(async (req) => {
         const rejectionReason = null;
         const costPerRecord = BATCHDATA_PLAN_COST / BATCHDATA_PLAN_RECORDS;
         const estimatedMaxCost = requestedProperties * costPerRecord;
-        const sandboxProbe = body.sandbox_probe === true && !hardRejected ? await runSandboxProbe(center) : null;
+        const probeResult = body.sandbox_probe === true && !hardRejected
+            ? await runSandboxProbe(center)
+            : { probe: null, error: null };
+        const sandboxProbe = probeResult.probe;
 
         return Response.json({
             success: true,
@@ -173,6 +193,10 @@ Deno.serve(async (req) => {
             county_resolution: fips,
             county_count_cap: MAX_COUNTIES_PER_PULL,
             sandbox_probe: sandboxProbe,
+            sandbox_probe_error: probeResult.error,
+            // The probe queries the polygon CENTROID as a text string. It is a
+            // provider reachability check and measures nothing about this area.
+            availability_measured: false,
             estimated_batchdata_cost_per_record: costPerRecord,
             estimated_max_batchdata_cost: Number(estimatedMaxCost.toFixed(2)),
             pricing_context: {
