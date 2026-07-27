@@ -1,0 +1,228 @@
+{
+  "manifest_version": 1,
+  "pr": "PR A — Precision Order and Control Hardening",
+  "result": "MODEL_2_PR_A_RESULT: DRAFT_PR_CREATED",
+  "handoff": "PR_A_TO_PR66_HANDOFF: PASS",
+  "coordinates": {
+    "model_2_branch": "hardening/precision-order-control-model-2",
+    "model_2_base_sha": "03adf5cd59aba8c4b7f095d4a799085ecb9f7186",
+    "current_origin_main_sha": "03adf5cd59aba8c4b7f095d4a799085ecb9f7186",
+    "main_advanced_since_model_1": false,
+    "model_1_branch": "audit/precision-order-control-model-1",
+    "model_1_starting_sha": "03adf5cd59aba8c4b7f095d4a799085ecb9f7186",
+    "model_1_candidate_sha": "0c3fd666bfa0ba5b506503578d727d201c62fbdc",
+    "model_1_candidate_verified": true,
+    "model_1_branch_on_origin": false,
+    "model_1_branch_on_origin_note": "Model 1 was forbidden to push; the frozen candidate is verified locally at the exact expected SHA.",
+    "pr_66_audited_head": "35396b50457e93fc3c5a1d838a23fae787c75fa6",
+    "pr_66_current_head": "35396b50457e93fc3c5a1d838a23fae787c75fa6",
+    "pr_66_advanced": false,
+    "working_tree_state": "clean apart from intended changes"
+  },
+  "adjudications": [
+    {
+      "id": "ADJ-M2-001",
+      "stage": 0,
+      "model_1": [
+        "F-PRA-003"
+      ],
+      "verdict": "VERIFIED",
+      "severity": "upgraded to P0",
+      "decision": "CHANGE_BEHAVIOR",
+      "change": "CH-01"
+    },
+    {
+      "id": "ADJ-M2-002",
+      "stage": 1,
+      "model_1": [
+        "F-PRA-008",
+        "F-PRA-009",
+        "F-PRA-012"
+      ],
+      "verdict": "VERIFIED",
+      "decision": "CHANGE_BEHAVIOR",
+      "change": "CH-02",
+      "note": "centroid sub-proposal rejected"
+    },
+    {
+      "id": "ADJ-M2-003",
+      "stage": 2,
+      "model_1": [
+        "F-PRA-016",
+        "F-PRA-017"
+      ],
+      "verdict": "VERIFIED",
+      "decision": "CHANGE_BEHAVIOR",
+      "change": "CH-03",
+      "note": "empty string kept as absent, revising Model 1"
+    },
+    {
+      "id": "ADJ-M2-004",
+      "stage": 2,
+      "model_1": [
+        "F-PRA-018"
+      ],
+      "verdict": "VERIFIED",
+      "decision": "CHANGE_BEHAVIOR",
+      "change": "CH-04"
+    },
+    {
+      "id": "ADJ-M2-005",
+      "stage": 4,
+      "model_1": [
+        "F-PRA-036",
+        "F-PRA-037",
+        "F-PRA-038",
+        "F-PRA-041"
+      ],
+      "verdict": "VERIFIED",
+      "decision": "CHANGE_BEHAVIOR",
+      "change": "CH-05"
+    },
+    {
+      "id": "ADJ-M2-006",
+      "stage": 4,
+      "model_1": [
+        "F-PRA-039",
+        "F-PRA-040"
+      ],
+      "verdict": "PARTIALLY_VERIFIED",
+      "decision": "CHANGE_BEHAVIOR",
+      "change": "CH-05",
+      "note": "remedy narrowed; age-based cancel retained for conflicts"
+    },
+    {
+      "id": "ADJ-M2-007",
+      "stage": 4,
+      "model_1": [
+        "F-PRA-004",
+        "F-PRA-026",
+        "F-PRA-046",
+        "F-PRA-047",
+        "F-PRA-049"
+      ],
+      "verdict": "VERIFIED",
+      "decision": "CHANGE_BEHAVIOR",
+      "change": "CH-06"
+    },
+    {
+      "id": "ADJ-M2-008",
+      "stage": 3,
+      "model_1": [
+        "F-PRA-031",
+        "F-PRA-033"
+      ],
+      "verdict": "VERIFIED",
+      "decision": "CHANGE_BEHAVIOR",
+      "change": "CH-07",
+      "note": "three Preview proposals rejected or deferred"
+    },
+    {
+      "id": "ADJ-M2-009",
+      "stage": 2,
+      "model_1": [
+        "F-PRA-015"
+      ],
+      "verdict": "PRODUCT_DECISION_REQUIRED",
+      "decision": "REQUIRES_PRODUCT_DECISION",
+      "change": null
+    }
+  ],
+  "new_model_2_findings": [
+    {
+      "id": "M2-NEW-01",
+      "severity": "high",
+      "summary": "Publishing a schema-v1 criteria snapshot on a blank-minimum order would flip a job PR #66 accepts into one it rejects. Regression caught before shipping.",
+      "resolution": "snapshot gated on schema-v1 eligibility; reason recorded in precision_criteria_withheld"
+    },
+    {
+      "id": "M2-NEW-02",
+      "severity": "high",
+      "summary": "Comparing a pre-PR-A job against the full criteria set would 409 every in-flight job at deploy time.",
+      "resolution": "LEGACY_COMPARABLE_CRITERIA_FIELDS"
+    },
+    {
+      "id": "M2-NEW-03",
+      "severity": "medium",
+      "summary": "The unresolved min_price divergence now surfaces as an explicit cross-path 409 instead of a silent wrong-criteria resume.",
+      "resolution": "documented; product decision unchanged"
+    }
+  ],
+  "production_files_changed": [
+    "base44/functions/_shared/precisionOrderContract.js",
+    "base44/functions/startBatchDataPull/entry.ts",
+    "base44/functions/fetchAreaProperties/entry.ts",
+    "base44/functions/previewBatchDataArea/entry.ts"
+  ],
+  "frontend_files_changed": [],
+  "stages_5_to_11_files_changed": [],
+  "validation": {
+    "baseline": {
+      "tests": 518,
+      "pass": 518,
+      "fail": 0,
+      "lint_errors": 10
+    },
+    "final": {
+      "tests": 723,
+      "pass": 723,
+      "fail": 0,
+      "lint_errors": 10
+    },
+    "inherited_failures": 1,
+    "new_failures": 0,
+    "test_first": {
+      "tests": 32,
+      "failed_on_main": 26,
+      "passed_on_main": 6
+    },
+    "mutations": {
+      "applied": 30,
+      "caught": 30,
+      "survived": 0
+    },
+    "unavailable_commands": [
+      "npm run test:precision — UNAVAILABLE_ON_BASELINE"
+    ]
+  },
+  "performance": {
+    "method": "25 samples per path per side, real handlers, stubbed I/O",
+    "entity_reads": "8 -> 10",
+    "entity_writes": "1 -> 1",
+    "entitlement_resolutions": "2 -> 2",
+    "external_http": "1 -> 1",
+    "processor_invocations": "1 -> 1",
+    "median_ms_startBatchDataPull": "13.80 -> 15.68",
+    "median_ms_fetchAreaProperties": "11.54 -> 13.65"
+  },
+  "externally_blocked": [
+    "BatchData sandbox-key billing",
+    "production FetchJob row counts",
+    "real lock contention"
+  ],
+  "evidence_gaps": [
+    "rendered React component behaviour",
+    "full PR #66 HTTP handler execution",
+    "kind unmetered has no producer"
+  ],
+  "product_decisions_unresolved": [
+    "Fixed Count contract A vs B",
+    "min_price default divergence (PR #66 owns)",
+    "hard-coded email entitlement grant",
+    "polygon_hash submission vs area identity",
+    "what Preview promises"
+  ],
+  "safety": {
+    "paid_or_sandbox_provider_call": false,
+    "provider_response_fabricated": false,
+    "production_db_query": false,
+    "production_fetchjob_mutated": false,
+    "production_reservation_modified": false,
+    "billing_rule_changed_without_adjudication": false,
+    "deployed": false,
+    "merged": false,
+    "pr_66_modified": false,
+    "force_push": false,
+    "pr_a_draft": true
+  }
+}

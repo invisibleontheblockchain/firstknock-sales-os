@@ -1,0 +1,36 @@
+{
+  "fixture_id": "PRA-F-current-to-home",
+  "scenario_id": "current-to-home",
+  "oracle_version": 1,
+  "response_status": 200,
+  "response_state": "started",
+  "created_fetch_job": true,
+  "submitted_count": 20,
+  "submitted_count_mode": "fixed",
+  "persisted_entered_count": 20,
+  "persisted_effective_count": 20,
+  "entered_count_equals_submitted": true,
+  "polygon_point_count_preserved": true,
+  "persisted_min_price": null,
+  "persisted_sold_months": 3,
+  "persisted_ownership_range_days": null,
+  "persisted_route_bounds": {
+    "enabled": true,
+    "mode": "current_to_home",
+    "start_location": {
+      "lat": 33.951,
+      "lng": -83.357
+    },
+    "end_location": {
+      "lat": 33.9,
+      "lng": -83.4
+    }
+  },
+  "persisted_repull_mode": "new_area",
+  "criteria_schema_version_present": true,
+  "provider_contract_version_present": true,
+  "workspace_id_present": true,
+  "reservation_writes": 1,
+  "job_mutations": 0,
+  "processor_invocations": 1
+}

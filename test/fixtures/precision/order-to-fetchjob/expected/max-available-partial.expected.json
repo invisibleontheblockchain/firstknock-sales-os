@@ -1,0 +1,27 @@
+{
+  "fixture_id": "PRA-F-max-available-partial",
+  "scenario_id": "max-available-partial",
+  "oracle_version": 1,
+  "response_status": 200,
+  "response_state": "started",
+  "created_fetch_job": true,
+  "submitted_count": 30,
+  "submitted_count_mode": "max_available",
+  "persisted_entered_count": 30,
+  "persisted_effective_count": 30,
+  "entered_count_equals_submitted": true,
+  "polygon_point_count_preserved": true,
+  "persisted_min_price": null,
+  "persisted_sold_months": 3,
+  "persisted_ownership_range_days": null,
+  "persisted_route_bounds": {
+    "enabled": false
+  },
+  "persisted_repull_mode": "new_area",
+  "criteria_schema_version_present": true,
+  "provider_contract_version_present": true,
+  "workspace_id_present": true,
+  "reservation_writes": 1,
+  "job_mutations": 0,
+  "processor_invocations": 1
+}

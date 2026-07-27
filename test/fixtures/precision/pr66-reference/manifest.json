@@ -1,0 +1,27 @@
+{
+  "manifest_version": 1,
+  "evidence_type": "production_code_characterization",
+  "description": "Byte-exact copies of PR #66 source, vendored read-only so Model 1 can execute PR #66 ACTUAL validators against Model 1 golden FetchJobs. Not a re-implementation and not a simplified duplicate.",
+  "pr_number": 66,
+  "pr_branch": "codex/precision-phase1-containment",
+  "pr_head_sha": "35396b50457e93fc3c5a1d838a23fae787c75fa6",
+  "extraction_command": "git show origin/codex/precision-phase1-containment:<path> > test/fixtures/precision/pr66-reference/<name>",
+  "hand_edited": false,
+  "files": [
+    {
+      "vendored_as": "precisionActiveJobCriteria.js",
+      "upstream_path": "base44/functions/_shared/precisionActiveJobCriteria.js",
+      "sha256_lf_normalized": "494d5f5f0354d3a718318ec43bd88bffc8c8c6d3260a6477fe4fb958e196721d",
+      "bytes_lf_normalized": 14768
+    },
+    {
+      "vendored_as": "getRouteCandidatesFromNeon.entry.ts",
+      "upstream_path": "base44/functions/getRouteCandidatesFromNeon/entry.ts",
+      "sha256_lf_normalized": "548116be829ee33183dac4230b22ea2fdd53499a8cda7baefcbf7422079ed101",
+      "bytes_lf_normalized": 39720
+    }
+  ],
+  "what_it_proves": "How PR #66 own criteria-identity and legacy-compatibility logic judges a FetchJob produced by main Stage 0-4 code.",
+  "what_it_does_not_prove": "It does not prove PR #66 end-to-end HTTP behaviour, its database queries, or that PR #66 will merge in this form.",
+  "checksum_note": "sha256 is taken over LF-normalized UTF-8 content, so the check survives git core.autocrlf on Windows checkouts."
+}

@@ -1,0 +1,147 @@
+{
+  "manifest_version": 1,
+  "audited_source_blobs": {
+    "base44/functions/startBatchDataPull/entry.ts": "0933fbc24736ab7d434e74dfb77d2ab42f97e6ab",
+    "base44/functions/fetchAreaProperties/entry.ts": "e35db421a8c37fcfe1fd32b38dc90e6224fa23a9",
+    "base44/functions/previewBatchDataArea/entry.ts": "2a2516a79a9be79a68e51054c31cd17674d9fead"
+  },
+  "generation_command": "node scripts/precision-order-audit/generate-fixtures.mjs",
+  "frozen_clock": "2026-07-26T12:00:00.000Z",
+  "frozen_clock_ms": 1785067200000,
+  "evidence_type": "production_code_characterization",
+  "hand_edited": false,
+  "redactions": "none — no real user, subscription, address or provider record is present",
+  "audited_paths": [
+    "base44/functions/startBatchDataPull/entry.ts",
+    "base44/functions/fetchAreaProperties/entry.ts",
+    "base44/functions/previewBatchDataArea/entry.ts"
+  ],
+  "fixtures": [
+    {
+      "fixture_id": "PRA-F-fixed-below-allowance",
+      "scenario_id": "fixed-below-allowance",
+      "kind": "start_path_workflow",
+      "created_fetch_job": true,
+      "response_status": 200
+    },
+    {
+      "fixture_id": "PRA-F-fixed-equal-allowance",
+      "scenario_id": "fixed-equal-allowance",
+      "kind": "start_path_workflow",
+      "created_fetch_job": true,
+      "response_status": 200
+    },
+    {
+      "fixture_id": "PRA-F-fixed-above-allowance",
+      "scenario_id": "fixed-above-allowance",
+      "kind": "start_path_workflow",
+      "created_fetch_job": true,
+      "response_status": 200
+    },
+    {
+      "fixture_id": "PRA-F-max-available-partial",
+      "scenario_id": "max-available-partial",
+      "kind": "start_path_workflow",
+      "created_fetch_job": true,
+      "response_status": 200
+    },
+    {
+      "fixture_id": "PRA-F-max-available-concurrent-change",
+      "scenario_id": "max-available-concurrent-change",
+      "kind": "start_path_workflow",
+      "created_fetch_job": true,
+      "response_status": 200
+    },
+    {
+      "fixture_id": "PRA-F-fixed-quick-range",
+      "scenario_id": "fixed-quick-range",
+      "kind": "start_path_workflow",
+      "created_fetch_job": true,
+      "response_status": 200
+    },
+    {
+      "fixture_id": "PRA-F-fixed-custom-range",
+      "scenario_id": "fixed-custom-range",
+      "kind": "start_path_workflow",
+      "created_fetch_job": true,
+      "response_status": 200
+    },
+    {
+      "fixture_id": "PRA-F-max-custom-range",
+      "scenario_id": "max-custom-range",
+      "kind": "start_path_workflow",
+      "created_fetch_job": true,
+      "response_status": 200
+    },
+    {
+      "fixture_id": "PRA-F-home-round-trip",
+      "scenario_id": "home-round-trip",
+      "kind": "start_path_workflow",
+      "created_fetch_job": true,
+      "response_status": 200
+    },
+    {
+      "fixture_id": "PRA-F-current-to-home",
+      "scenario_id": "current-to-home",
+      "kind": "start_path_workflow",
+      "created_fetch_job": true,
+      "response_status": 200
+    },
+    {
+      "fixture_id": "PRA-F-exact-active-job",
+      "scenario_id": "exact-active-job",
+      "kind": "start_path_workflow",
+      "created_fetch_job": false,
+      "response_status": 200
+    },
+    {
+      "fixture_id": "PRA-F-active-job-conflict",
+      "scenario_id": "active-job-conflict",
+      "kind": "start_path_workflow",
+      "created_fetch_job": false,
+      "response_status": 409
+    },
+    {
+      "fixture_id": "PRA-F-multiple-active-jobs",
+      "scenario_id": "multiple-active-jobs",
+      "kind": "start_path_workflow",
+      "created_fetch_job": false,
+      "response_status": 409
+    },
+    {
+      "fixture_id": "PRA-F-fixed-below-allowance-fetchareaproperties",
+      "scenario_id": "fixed-below-allowance-fetchareaproperties",
+      "kind": "start_path_workflow",
+      "created_fetch_job": true,
+      "response_status": 200
+    },
+    {
+      "fixture_id": "PRA-F-repull-max-since-last",
+      "scenario_id": "repull-max-since-last",
+      "kind": "start_path_workflow",
+      "created_fetch_job": true,
+      "response_status": 200
+    },
+    {
+      "fixture_id": "PRA-F-concurrent-max-available",
+      "scenario_id": "concurrent-max-available",
+      "kind": "concurrent_start_workflow",
+      "created_fetch_job": true,
+      "response_status": null
+    },
+    {
+      "fixture_id": "PRA-F-preview-single",
+      "scenario_id": "preview-single",
+      "kind": "preview_workflow",
+      "created_fetch_job": false,
+      "response_status": 200
+    },
+    {
+      "fixture_id": "PRA-F-preview-identical-repeat",
+      "scenario_id": "preview-identical-repeat",
+      "kind": "preview_workflow",
+      "created_fetch_job": false,
+      "response_status": 200
+    }
+  ]
+}
