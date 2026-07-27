@@ -6,6 +6,8 @@ import 'leaflet/dist/leaflet.css';
 import { routePropertyOrderFingerprint } from '@/components/logic/routeRoadContext';
 import MapAttributionControl from '@/components/map/MapAttributionControl';
 import { ESRI_IMAGERY_ATTRIBUTION } from '@/components/map/mapAttribution';
+import OptimizeRouteMenu from '@/components/map/OptimizeRouteMenu';
+import { ROUTE_ORIGIN_MODES, routeAnchorMarkerLabels } from '@/lib/routeOriginModes';
 
 // Fix Leaflet unmount error during scroll wheel zoom
 const originalGetMapPanePos = L.Map.prototype._getMapPanePos;
@@ -203,6 +205,11 @@ export default function RepMapView({
     focusProperty,
     startLocation = null,
     endLocation = null,
+    routeOriginMode = ROUTE_ORIGIN_MODES.NONE,
+    onOptimizeMode = null,
+    optimizeBusy = false,
+    optimizeDisabled = false,
+    optimizeDisabledReason = 'This route must be assigned to you before you can optimize it.',
     roadGeometry = null,
     roadGeometryFingerprint = '',
 }) {
@@ -298,6 +305,10 @@ export default function RepMapView({
         if (isRoutePoint(endLocation)) positions.push([Number(endLocation.lat), Number(endLocation.lng)]);
         return positions;
     }, [endLocation, position, properties, roadGeometry, roadGeometryFingerprint, startLocation]);
+    // Labels come from the MODE, never from the geometry. Inferring "Home"
+    // because the endpoints match is true of every round trip, so a parked car
+    // was being labelled as the rep's house.
+    const anchorLabels = useMemo(() => routeAnchorMarkerLabels(routeOriginMode), [routeOriginMode]);
     const endpointsMatch = isRoutePoint(startLocation) && isRoutePoint(endLocation)
         && Number(startLocation.lat) === Number(endLocation.lat)
         && Number(startLocation.lng) === Number(endLocation.lng);
@@ -332,7 +343,17 @@ export default function RepMapView({
                     <X className="w-4 h-4 sm:mr-1" /> <span className="hidden sm:inline">Close Map</span>
                 </Button>
 
-                <div className="pointer-events-auto flex gap-2">
+                <div className="pointer-events-auto flex items-center gap-2" data-testid="rep-map-actions">
+                    {/* Optimize sits beside Locate, visible whenever the rep is
+                        looking at the active route — not buried in a panel. */}
+                    {onOptimizeMode && (
+                        <OptimizeRouteMenu
+                            busy={optimizeBusy}
+                            carDisabled={optimizeDisabled}
+                            carDisabledReason={optimizeDisabledReason}
+                            onSelectMode={(mode) => onOptimizeMode(mode)}
+                        />
+                    )}
                     <Button
                         onClick={() => {
                             try {
@@ -414,22 +435,22 @@ export default function RepMapView({
                         />
                     )}
 
-                    {isRoutePoint(startLocation) && (
+                    {anchorLabels.start && isRoutePoint(startLocation) && (
                         <CircleMarker
                             center={[Number(startLocation.lat), Number(startLocation.lng)]}
                             radius={8}
                             pathOptions={{ color: '#ffffff', fillColor: BRAND.gold, fillOpacity: 1, weight: 2 }}
                         >
-                            <Tooltip permanent direction="top" offset={[0, -8]}>{endpointsMatch ? 'Home • Start / Finish' : 'Start'}</Tooltip>
+                            <Tooltip permanent direction="top" offset={[0, -8]}>{anchorLabels.start}</Tooltip>
                         </CircleMarker>
                     )}
-                    {!endpointsMatch && isRoutePoint(endLocation) && (
+                    {anchorLabels.end && !endpointsMatch && isRoutePoint(endLocation) && (
                         <CircleMarker
                             center={[Number(endLocation.lat), Number(endLocation.lng)]}
                             radius={8}
                             pathOptions={{ color: '#ffffff', fillColor: '#60A5FA', fillOpacity: 1, weight: 2 }}
                         >
-                            <Tooltip permanent direction="top" offset={[0, -8]}>Finish</Tooltip>
+                            <Tooltip permanent direction="top" offset={[0, -8]}>{anchorLabels.end}</Tooltip>
                         </CircleMarker>
                     )}
 

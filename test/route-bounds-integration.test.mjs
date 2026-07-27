@@ -209,10 +209,21 @@ test('Precision route bounds are explicit, off by default, and wired through per
   assert.ok(userSchema.properties.home_base);
   assert.equal(teamMemberSchema.properties.home_base, undefined);
   assert.match(home, /getRouteHomeBase/);
-  assert.match(home, /start_location: savedBoundStart/);
+  // The reoptimize path no longer persists ANY coordinate: SavedRoute documents
+  // start_location/end_location as non-personal, and both a Home Base and a
+  // parked-car point are personal. The generation path keeps its own bounds.
+  assert.match(home, /savedRouteStartLocation/);
   assert.match(home, /precisionAreaMetadata\.precision_area\?\.job_id/);
   assert.match(home, /Skipping duplicate recovered route/);
-  assert.match(readSource('src/pages/RepHome.jsx'), /start_location: null[\s\S]*end_location: null/);
+  // The rep page no longer builds this payload itself — all three of its modes
+  // go through the shared builder, which nulls both coordinates unconditionally.
+  // See rep-optimize-surface.test.mjs for the executed proof per mode.
+  assert.match(readSource('src/lib/routeOptimizeUpdate.js'), /start_location: null[\s\S]*end_location: null/);
+  assert.doesNotMatch(
+    readSource('src/pages/RepHome.jsx'),
+    /start_location:\s*[^n]/,
+    'the rep page must not write a coordinate of its own',
+  );
 });
 
 test('MERGE ALL preserves route bounds only for identical bounds and assignee', () => {

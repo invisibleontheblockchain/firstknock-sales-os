@@ -333,6 +333,10 @@ test('initial, manager, and rep optimization keep whole streets contiguous', asy
         new URL('../src/pages/RepHome.jsx', import.meta.url),
         'utf8',
     );
+    const repOptimizeSource = await readFile(
+        new URL('../src/lib/repRouteOptimize.js', import.meta.url),
+        'utf8',
+    );
     const optimizerSource = await readFile(
         new URL('../src/components/logic/routeOptimizer.jsx', import.meta.url),
         'utf8',
@@ -383,7 +387,7 @@ test('initial, manager, and rep optimization keep whole streets contiguous', asy
     );
     assert.match(
         homeSource,
-        /buildPersistedRoadRoutingMetadata\(\s*routingContext,\s*null,\s*optimizedHashes\s*\)[\s\S]*SavedRoute\.update\(route\.id, routeUpdate\)/,
+        /buildPersistedRoadRoutingMetadata\(\s*routingContext,\s*null,\s*appliedHashes\s*\)[\s\S]*SavedRoute\.update\(route\.id, routeUpdate\)/,
     );
     assert.match(
         homeSource,
@@ -391,7 +395,7 @@ test('initial, manager, and rep optimization keep whole streets contiguous', asy
     );
     assert.match(
         homeSource,
-        /Route optimized[\s\S]*street-continuity estimate/,
+        /optimizeSuccessMessage[\s\S]*street-continuity estimate/,
     );
     assert.match(
         homeSource,
@@ -403,33 +407,37 @@ test('initial, manager, and rep optimization keep whole streets contiguous', asy
         /function assertExactRouteMembership\(expectedProperties, routes\)[\s\S]*routedKeys\.length !== expectedKeys\.length[\s\S]*routedKeys\.some\(key => !expectedSet\.has\(key\)\)[\s\S]*assertExactRouteMembership\(eligible, routes\);/,
         'all client route sizes must fail before saving if a home is dropped or duplicated',
     );
-    assert.match(repSource, /import \{ optimizeRouteByStreetSweep \} from '@\/components\/logic\/routeOptimizer'/);
+    // The rep optimization moved out of RepHome into a module all three modes
+    // share, so the same guarantees are asserted where they now live.
+    assert.match(repOptimizeSource, /import \{ optimizeRouteByStreetSweep \} from '@\/components\/logic\/routeOptimizer'/);
     assert.match(
-        repSource,
-        /const routingContext = createRouteContinuityContext\(routeProperties\);[\s\S]*const optimized = optimizeRouteByStreetSweep\([\s\S]*routeProperties,[\s\S]*exactHomeBase,[\s\S]*exactHomeBase,[\s\S]*routingContext/,
+        repOptimizeSource,
+        /const routingContext = createRouteContinuityContext\(routeProperties\);[\s\S]*optimizeRouteByStreetSweep\(routeProperties, anchor\.start, anchor\.end, routingContext\)/,
     );
-    assert.doesNotMatch(
-        repSource,
-        /\bcreateRouteRoadContext\b/,
-        'rep optimization must not wait on live road loading',
-    );
-    assert.doesNotMatch(
-        repSource,
-        /discloseRouteContinuityFallback|Live (?:street|road) data was unavailable|Every eligible home was preserved/,
-        'intentional rep continuity must not show an unavailable-live-road warning',
+    for (const source of [repSource, repOptimizeSource]) {
+        assert.doesNotMatch(
+            source,
+            /\bcreateRouteRoadContext\b/,
+            'rep optimization must not wait on live road loading',
+        );
+        assert.doesNotMatch(
+            source,
+            /discloseRouteContinuityFallback|Live (?:street|road) data was unavailable|Every eligible home was preserved/,
+            'intentional rep continuity must not show an unavailable-live-road warning',
+        );
+        assert.doesNotMatch(
+            source,
+            /discloseRoadCostFallback|discloseExternalBoundRoadFallback|live road connections were incomplete/,
+            'offline rep routing must not retain dormant live-road warning paths',
+        );
+        assert.doesNotMatch(source, /optimizeRouteWithBounds/);
+    }
+    assert.match(
+        repOptimizeSource,
+        /optimizeSuccessMessage[\s\S]*street-continuity estimate/,
     );
     assert.match(
-        repSource,
-        /Home round trip optimized[\s\S]*street-continuity estimate/,
+        repOptimizeSource,
+        /usableRouteContext\(routingContext\)[\s\S]*buildPersistedRoadRoutingMetadata\(routingContext, null, appliedHashes\)[\s\S]*saveRoute\(route\.id, routeUpdate\)/,
     );
-    assert.match(
-        repSource,
-        /requireUsableRouteContext\(routingContext\);[\s\S]*buildPersistedRoadRoutingMetadata\(routingContext, null, propertyHashes\)[\s\S]*SavedRoute\.update\(routeToOptimize\.id, routeUpdate\)/,
-    );
-    assert.doesNotMatch(
-        repSource,
-        /discloseRoadCostFallback|discloseExternalBoundRoadFallback|live road connections were incomplete/,
-        'offline rep routing must not retain dormant live-road warning paths',
-    );
-    assert.doesNotMatch(repSource, /optimizeRouteWithBounds/);
 });
