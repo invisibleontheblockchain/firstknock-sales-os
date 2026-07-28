@@ -302,10 +302,20 @@ function LayoutInner({ children }) {
             {/* Header */}
             {!isRoleSelectPage &&
       <header className={`px-4 pt-[env(safe-area-inset-top)] pb-0 z-20 shadow-md bg-black ${isPageActive('RepHome') ? 'border-b border-transparent' : 'border-b border-slate-800'}`}>
-                <div className="flex items-center w-full h-16 pt-0">
+                {/* 60px row on mobile; desktop keeps its 64px. The header owns the
+                    top safe-area inset exactly once (above), so the row must not add
+                    any further top offset of its own. */}
+                <div className="flex items-center w-full h-[60px] md:h-16 pt-0">
                     <Link to="/" className="flex items-center mr-auto group shrink-0 text-white">
-                        <span className="relative block h-12 w-[152px] overflow-hidden">
-                            <img src="https://media.base44.com/images/public/695eb764b077190880be21de/80866e548_ChatGPTImageJul1202611_48_19AM.png" alt="FirstKnock" className="h-[102px] w-auto max-w-none -translate-y-[23px] object-contain" />
+                        {/* The source artwork is 1024x683 with the wordmark occupying
+                            only rows 231-394, so it is cropped to a window that hugs
+                            the wordmark. At the old mobile size the wordmark rendered
+                            24.5px tall inside a 64px row, leaving ~20px of dead black
+                            above and below it and making the header look oversized.
+                            Mobile now renders it 27.9px tall in a 36px window, centred
+                            to within half a pixel. Desktop values are unchanged. */}
+                        <span className="relative block h-9 w-[175px] md:h-12 md:w-[152px] overflow-hidden">
+                            <img src="https://media.base44.com/images/public/695eb764b077190880be21de/80866e548_ChatGPTImageJul1202611_48_19AM.png" alt="FirstKnock" className="h-[117px] -translate-y-[36px] md:h-[102px] md:-translate-y-[23px] w-auto max-w-none object-contain" />
                         </span>
                     </Link>
 
