@@ -848,16 +848,6 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
                         </button>
                     )}
                 </div>
-                {onReoptimize && (
-                    <button
-                        onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); onReoptimize(route, { fromHome: true }); }}
-                        className="mt-2 flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-amber-400/25 bg-amber-400/[0.08] px-3 text-[10px] font-black text-amber-300 transition-colors hover:border-amber-400/45 hover:bg-amber-400/[0.14] md:h-8"
-                        title="Optimize from home base"
-                    >
-                        <Home className="h-4 w-4" /> OPTIMIZE FROM HOME BASE
-                    </button>
-                )}
             </div>
             {onDelete && (
                 <button
