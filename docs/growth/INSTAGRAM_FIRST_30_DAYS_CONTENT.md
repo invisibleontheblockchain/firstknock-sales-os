@@ -8,6 +8,12 @@
 - **Campaign:** `1000-users`
 - **Landing page:** `https://firstknock.online/instagram`
 
+Before the sprint starts, open `/GrowthDashboard` and select **Load 30-day sprint** in
+the growth action queue. Confirm that all 20 content IDs below appear. Loading the sprint
+creates or refreshes the plans; it does not mark them published or create performance
+data. If a load is interrupted, use **Sync 30-day sprint**. Published briefs are frozen,
+so a repair cannot rewrite completed experiment evidence.
+
 Tracked-link template:
 
 ```text
@@ -28,8 +34,21 @@ Use real product screens in a synthetic workspace. Redact names, addresses, cont
 details, and invite codes. Label hypothetical rescue scenarios. Do not claim customer
 results, exact time savings, conversion lifts, or pricing.
 
-Save the hook and hypothesis before publishing. Enter the cumulative Instagram Insights
-snapshot when each asset reaches seven days. Change one major variable at a time.
+Use the queue as the daily operating record:
+
+1. Open **Next Publish**, review the saved hook and hypothesis, and copy its tracked link.
+2. Publish the planned asset, then select **Mark published** with its real publish time.
+3. Enter the canonical cumulative Instagram Insights snapshot at seven days.
+4. Use optional 1-day and 3-day checkpoints as early reads; neither clears the 7-day
+   checkpoint or enters official reach totals. The queue advances after each saved early
+   checkpoint. Use the manual snapshot form for an optional 30-day retention follow-up.
+5. When **Decision Due** appears, write the learning note and choose Repeat, Iterate, or
+   Hold. The decision is bound to the captured checkpoint and becomes stale if that
+   evidence changes.
+
+Hold is available only after three completed assets in the same campaign and comparison
+group have comparable snapshots at the same checkpoint age. Until then, use Repeat or
+Iterate and change one major variable at a time.
 
 Planning gates are FirstKnock hypotheses, not Instagram benchmarks:
 
@@ -412,17 +431,28 @@ registration?
 - **Hypothesis:** The complete loop will create at least one activated workspace and beat
   the sprint median for both reach-to-signup and signup-to-activation.
 
-## Weekly review queue
+## Daily and weekly review queue
+
+### Daily, August 3-28
+
+- Open the Growth Dashboard before posting and publish the exact **Next Publish** asset.
+- Mark the asset published immediately after it goes live.
+- Capture any snapshot marked due or overdue; do not wait for the weekly review.
+- Resolve every **Decision Due** item with a note grounded in its conversion evidence.
+- Use the queue's tracked link for every Story sticker or manual DM reply.
 
 ### Monday, August 10
 
-- Enter each Week 1 asset's snapshot as it reaches age seven.
+- Clear every due or overdue 7-day checkpoint. Optional 1-day and 3-day early reads remain
+  separate and never satisfy the 7-day checkpoint.
 - Compare pain Reels, product demo, role contrast, and rescue Story.
+- Record Repeat or Iterate decisions with notes. Hold remains locked until a comparison
+  group has three completed comparable assets.
 - Choose the hook with the highest landing-session rate; do not choose by likes.
 
 ### Monday, August 17
 
-- Finish Week 2 snapshots on a rolling seven-day basis.
+- Finish Week 2 fixed-age checkpoints on their due dates.
 - Compare landing-to-CTA, CTA-to-signup, and signup-to-activation.
 - Preserve the strongest visual sequence for Week 4 and change only the hook or handoff.
 
@@ -435,12 +465,13 @@ registration?
 
 ### Monday, August 31
 
-- Enter every available Week 4 snapshot and export the content-conversion CSV.
-- Classify each repeated concept:
+- Enter every due Week 4 checkpoint and export the content-conversion CSV.
+- Resolve each **Decision Due** item with an evidence-bound note:
 
   - **Repeat:** produced an activated workspace or a rep with a first outcome.
   - **Iterate:** strong upstream signal with one clear funnel leak.
-  - **Hold/stop:** no conversion and no distinct learning after comparable repetitions.
+  - **Hold:** no conversion and no distinct learning after at least three comparable
+    completed assets.
 
 ### Friday, September 4
 
@@ -450,3 +481,10 @@ registration?
 - Build the next sprint from the top two pain hooks, top two proof formats, and strongest
   CTA mechanism.
 - Do not average Story, Reel, and carousel engagement rates together.
+
+### Thirty days after each publish
+
+- Optionally capture a 30-day checkpoint in the manual snapshot form.
+- Revisit the seven-day decision against retained active users and paid conversion.
+- If the canonical seven-day checkpoint was corrected, resolve the stale decision with a
+  new note.

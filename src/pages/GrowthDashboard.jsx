@@ -16,8 +16,11 @@ import { toast } from 'sonner';
 import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import GrowthActionQueue from '@/components/acquisition/GrowthActionQueue';
 import { useTheme, contrastText } from '@/components/theme/ThemeProvider';
+import { INSTAGRAM_FIRST_30_DAYS } from '@/data/instagramFirst30Days';
 import { buildInstagramTrackedLink } from '@/lib/acquisitionTracking';
+import { csvCell } from '@/lib/csvExport';
 
 const GOAL_USERS = 1000;
 
@@ -29,8 +32,8 @@ function contentIdForToday() {
   return `ig-${y}${m}${d}-01`;
 }
 
-function localDate() {
-  const date = new Date();
+function localDate(value = new Date()) {
+  const date = new Date(value);
   const offset = date.getTimezoneOffset() * 60_000;
   return new Date(date.getTime() - offset).toISOString().slice(0, 10);
 }
@@ -38,11 +41,6 @@ function localDate() {
 function percent(value, digits = 0) {
   const number = Number(value || 0) * 100;
   return `${number.toFixed(number > 0 && number < 1 ? Math.max(1, digits) : digits)}%`;
-}
-
-function csvCell(value) {
-  const text = String(value ?? '');
-  return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
 }
 
 function MetricCard({ label, value, helper, icon: Icon, color }) {
@@ -110,6 +108,7 @@ export default function GrowthDashboard() {
     link_clicks: '',
     dm_intents: '',
   });
+  const [queueSnapshotLock, setQueueSnapshotLock] = React.useState(null);
 
   const {
     data: report,
@@ -132,11 +131,13 @@ export default function GrowthDashboard() {
       const response = await base44.functions.invoke('upsertGrowthContentMetric', {
         campaign,
         content: contentId,
-        format: snapshot.format,
-        hook: snapshot.hook,
-        published_at: snapshot.published_date
-          ? new Date(`${snapshot.published_date}T12:00:00`).toISOString()
-          : undefined,
+        format: queueSnapshotLock?.format || snapshot.format,
+        hook: queueSnapshotLock?.hook || snapshot.hook,
+        cta_variant: queueSnapshotLock?.ctaVariant,
+        published_at: queueSnapshotLock?.publishedAt
+          || (snapshot.published_date
+            ? new Date(`${snapshot.published_date}T12:00:00`).toISOString()
+            : undefined),
         snapshot_days: Number(snapshot.snapshot_days),
         snapshot_captured_at: new Date().toISOString(),
         reach: Number(snapshot.reach || 0),
@@ -150,19 +151,54 @@ export default function GrowthDashboard() {
     },
     onSuccess: async () => {
       toast.success('Instagram snapshot saved');
+      setQueueSnapshotLock(null);
       await refetch();
     },
     onError: (mutationError) => {
+      const code = mutationError?.response?.data?.error;
+      const messages = {
+        growth_admin_required: 'Owner or admin access is required',
+        stale_content_snapshot: 'A newer snapshot already exists for this checkpoint',
+        content_snapshot_conflict: 'This checkpoint already has different values at the same capture time',
+        invalid_content_metric: 'Use whole, non-negative numbers for every Instagram metric',
+        invalid_content_metric_timestamp: 'Check the publication and snapshot dates',
+      };
       toast.error(
-        mutationError?.response?.data?.error === 'growth_admin_required'
-          ? 'Owner or admin access is required'
-          : 'Could not save this Instagram snapshot',
+        messages[code] || 'Could not save this Instagram snapshot',
       );
     },
   });
 
+  const manageContentPlan = useMutation({
+    mutationFn: async (payload) => {
+      const response = await base44.functions.invoke('manageGrowthContentPlan', payload);
+      return response?.data || response;
+    },
+    onSuccess: async (_result, variables) => {
+      const messages = {
+        seed: 'The 20-asset Instagram sprint is loaded',
+        publish: 'Content marked published; its snapshot clock is running',
+        review: 'Growth decision saved against the current fixed-age snapshot',
+      };
+      toast.success(messages[variables?.action] || 'Growth queue updated');
+      await refetch();
+    },
+    onError: (mutationError) => {
+      const code = mutationError?.response?.data?.error;
+      const messages = {
+        fixed_age_snapshot_required: 'The canonical fixed-age snapshot is required first',
+        hold_requires_three_comparable_snapshots: 'Hold unlocks after three comparable fixed-age snapshots',
+        content_plan_not_found: 'Reload the first 30-day sprint before updating this asset',
+        content_plan_conflict: 'Conflicting queue rows were detected; no evidence was changed',
+        content_snapshot_conflict: 'Conflicting snapshot rows were detected; no decision was changed',
+        invalid_published_at: 'The publication time is invalid',
+        growth_admin_required: 'Owner or admin access is required',
+      };
+      toast.error(messages[code] || 'Could not update the growth queue');
+    },
+  });
+
   const trackedLink = buildInstagramTrackedLink({
-    origin: window.location.origin,
     campaign,
     contentId,
   });
@@ -185,6 +221,65 @@ export default function GrowthDashboard() {
     setSnapshot((current) => ({ ...current, [field]: value }));
   };
 
+  const seedContentSprint = () => {
+    manageContentPlan.mutate({
+      action: 'seed',
+      plans: INSTAGRAM_FIRST_30_DAYS,
+    });
+  };
+
+  const markContentPublished = (item) => {
+    manageContentPlan.mutate({
+      action: 'publish',
+      campaign: item.campaign,
+      content: item.content,
+      published_at: new Date().toISOString(),
+    });
+  };
+
+  const prepareQueueSnapshot = (item, snapshotDays) => {
+    if (!item || !snapshotDays) return;
+    setCampaign(item.campaign);
+    setContentId(item.content);
+    setQueueSnapshotLock({
+      campaign: item.campaign,
+      content: item.content,
+      snapshotDays: Number(snapshotDays),
+      publishedAt: item.published_at,
+      format: item.format || 'reel',
+      hook: item.hook || '',
+      ctaVariant: `${item.cta_channel || 'unknown'}:${item.cta_label || 'unknown'}`,
+    });
+    setSnapshot({
+      format: item.format || 'reel',
+      hook: item.hook || '',
+      published_date: item.published_at ? localDate(item.published_at) : localDate(),
+      snapshot_days: String(snapshotDays),
+      reach: '',
+      views: '',
+      shares: '',
+      saves: '',
+      link_clicks: '',
+      dm_intents: '',
+    });
+    requestAnimationFrame(() => {
+      document.getElementById('instagram-snapshot-form')?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      });
+    });
+  };
+
+  const saveGrowthDecision = (item, decision, note) => {
+    manageContentPlan.mutate({
+      action: 'review',
+      campaign: item.campaign,
+      content: item.content,
+      decision,
+      note,
+    });
+  };
+
   const copyLink = async () => {
     try {
       await navigator.clipboard.writeText(trackedLink);
@@ -202,7 +297,14 @@ export default function GrowthDashboard() {
       'content_id',
       'format',
       'hook',
+      'planned_publish_at',
+      'published_at',
       'snapshot_days',
+      'snapshot_due_at',
+      'queue_state',
+      'decision',
+      'decision_note',
+      'decision_at',
       'reach',
       'views',
       'shares',
@@ -232,9 +334,46 @@ export default function GrowthDashboard() {
       'first_signup_at',
       'last_signup_at',
     ];
-    const rows = (report?.by_content || []).map((row) => headers.map((header) => (
-      header === 'content_id' ? row.content : row[header]
-    )));
+    const queueItems = report?.content_queue?.items || [];
+    const queueByKey = new Map(queueItems.map((item) => [
+      `${item.campaign}|${item.content}`,
+      item,
+    ]));
+    const exportByKey = new Map((report?.by_content || []).map((row) => [
+      `${row.campaign}|${row.content}`,
+      row,
+    ]));
+    for (const item of queueItems) {
+      const key = `${item.campaign}|${item.content}`;
+      if (!exportByKey.has(key)) {
+        exportByKey.set(key, {
+          source: 'instagram',
+          medium: 'organic_social',
+          campaign: item.campaign,
+          content: item.content,
+          format: item.format,
+          hook: item.hook,
+        });
+      }
+    }
+    const rows = [...exportByKey.values()].map((row) => {
+      const queueItem = queueByKey.get(`${row.campaign}|${row.content}`) || {};
+      return headers.map((header) => {
+        if (header === 'content_id') return row.content;
+        if (header === 'queue_state') return queueItem.state;
+        if ([
+          'planned_publish_at',
+          'published_at',
+          'snapshot_due_at',
+          'decision',
+          'decision_note',
+          'decision_at',
+        ].includes(header)) {
+          return queueItem[header];
+        }
+        return row[header] ?? queueItem[header];
+      });
+    });
     const csv = [headers, ...rows].map((row) => row.map(csvCell).join(',')).join('\n');
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
     const anchor = document.createElement('a');
@@ -274,7 +413,9 @@ export default function GrowthDashboard() {
           <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-100">
             {error?.response?.data?.error === 'growth_admin_required'
               ? 'This dashboard is restricted to the FirstKnock owner or an admin.'
-              : 'The acquisition report is not available yet. Deploy the growth entities and backend functions together, then refresh.'}
+              : error?.response?.data?.error === 'growth_content_conflict'
+                ? 'Conflicting content evidence was detected. The report stopped instead of choosing a row arbitrarily; resolve the duplicate checkpoint or lifecycle records, then refresh.'
+                : 'The acquisition report is not available yet. Deploy the growth entities and backend functions together, then refresh.'}
           </div>
         )}
 
@@ -282,6 +423,19 @@ export default function GrowthDashboard() {
           <div className="rounded-2xl border border-amber-400/30 bg-amber-400/10 p-4 text-sm text-amber-100">
             {repIdentityConflicts.toLocaleString()} roster identity conflict(s) were excluded from joined and activated rep totals. Review duplicate active roster records.
           </div>
+        )}
+
+        {!isError && !isLoading && (
+          <GrowthActionQueue
+            queue={report?.content_queue}
+            accent={accent}
+            accentText={accentText}
+            busy={manageContentPlan.isPending}
+            onSeed={seedContentSprint}
+            onPublish={markContentPublished}
+            onSnapshot={prepareQueueSnapshot}
+            onDecision={saveGrowthDecision}
+          />
         )}
 
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -388,6 +542,7 @@ export default function GrowthDashboard() {
                 <Input
                   value={campaign}
                   onChange={(event) => setCampaign(event.target.value)}
+                  disabled={Boolean(queueSnapshotLock)}
                   className="border-white/10 bg-black text-white"
                   placeholder="1000-users"
                 />
@@ -397,6 +552,7 @@ export default function GrowthDashboard() {
                 <Input
                   value={contentId}
                   onChange={(event) => setContentId(event.target.value)}
+                  disabled={Boolean(queueSnapshotLock)}
                   className="border-white/10 bg-black text-white"
                   placeholder="ig-20260728-01"
                 />
@@ -420,12 +576,15 @@ export default function GrowthDashboard() {
             </p>
           </section>
 
-          <section className="rounded-2xl border border-white/10 bg-[#0b0b0b] p-5 sm:p-6">
+          <section
+            id="instagram-snapshot-form"
+            className="scroll-mt-6 rounded-2xl border border-white/10 bg-[#0b0b0b] p-5 sm:p-6"
+          >
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h2 className="text-lg font-black">Log Instagram snapshot</h2>
                 <p className="mt-1 text-xs text-white/45">
-                  Use the same seven-day snapshot age for comparison. Saving again updates this asset.
+                  Use the canonical seven-day snapshot for comparison. Optional early reads stay separate.
                 </p>
               </div>
               <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[9px] font-black uppercase tracking-wider text-white/40">
@@ -433,12 +592,31 @@ export default function GrowthDashboard() {
               </span>
             </div>
 
+            {queueSnapshotLock && (
+              <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-blue-400/20 bg-blue-400/10 p-3">
+                <p className="text-xs leading-relaxed text-blue-100">
+                  Queue selection locked to <strong>{queueSnapshotLock.content}</strong>
+                  {' · '}{queueSnapshotLock.snapshotDays}-day checkpoint.
+                </p>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setQueueSnapshotLock(null)}
+                  className="shrink-0 text-blue-100 hover:bg-blue-400/10 hover:text-white"
+                >
+                  Clear
+                </Button>
+              </div>
+            )}
+
             <div className="mt-4 grid gap-3 sm:grid-cols-3">
               <label className="space-y-2 text-xs font-bold text-white/60">
                 Format
                 <select
                   value={snapshot.format}
                   onChange={(event) => updateSnapshot('format', event.target.value)}
+                  disabled={Boolean(queueSnapshotLock)}
                   className="h-10 w-full rounded-md border border-white/10 bg-black px-3 text-sm text-white"
                 >
                   <option value="reel">Reel</option>
@@ -455,6 +633,7 @@ export default function GrowthDashboard() {
                   type="date"
                   value={snapshot.published_date}
                   onChange={(event) => updateSnapshot('published_date', event.target.value)}
+                  disabled={Boolean(queueSnapshotLock)}
                   className="border-white/10 bg-black text-white"
                 />
               </label>
@@ -463,6 +642,7 @@ export default function GrowthDashboard() {
                 <select
                   value={snapshot.snapshot_days}
                   onChange={(event) => updateSnapshot('snapshot_days', event.target.value)}
+                  disabled={Boolean(queueSnapshotLock)}
                   className="h-10 w-full rounded-md border border-white/10 bg-black px-3 text-sm text-white"
                 >
                   <option value="1">24 hours</option>
@@ -478,6 +658,7 @@ export default function GrowthDashboard() {
               <Input
                 value={snapshot.hook}
                 onChange={(event) => updateSnapshot('hook', event.target.value)}
+                disabled={Boolean(queueSnapshotLock)}
                 className="border-white/10 bg-black text-white"
                 placeholder="What six overlapping canvassers cost"
               />
@@ -517,7 +698,7 @@ export default function GrowthDashboard() {
               type="button"
               variant="outline"
               onClick={downloadCsv}
-              disabled={!report?.by_content?.length}
+              disabled={!report?.by_content?.length && !report?.content_queue?.items?.length}
               className="border-white/15 bg-transparent text-white hover:bg-white/10"
             >
               <Download className="mr-2 h-4 w-4" />

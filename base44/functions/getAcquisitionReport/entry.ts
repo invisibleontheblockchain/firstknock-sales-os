@@ -5,6 +5,35 @@ const MAX_USERS = 10000;
 const MAX_ACTIVITY_RECORDS = 100000;
 const MAX_GROWTH_RECORDS = 25000;
 const DAY_MS = 24 * 60 * 60 * 1000;
+const CONTENT_METRIC_FIELDS = [
+  "reach",
+  "views",
+  "shares",
+  "saves",
+  "comments",
+  "follows",
+  "profile_visits",
+  "link_clicks",
+  "dm_intents",
+];
+const PLAN_DEFINITION_FIELDS = [
+  "campaign",
+  "content",
+  "sprint",
+  "sequence",
+  "format",
+  "audience",
+  "hook",
+  "script",
+  "cta_label",
+  "cta_channel",
+  "primary_metric",
+  "hypothesis",
+  "comparison_group",
+  "major_variable",
+  "planned_publish_at",
+  "snapshot_days",
+];
 
 function asArray(value: any): any[] {
   return Array.isArray(value) ? value : Array.isArray(value?.items) ? value.items : [];
@@ -18,6 +47,12 @@ function canViewGrowth(user: any): boolean {
   return user?.is_owner === true
     || normalized(user?.role) === "admin"
     || normalized(user?.app_role) === "admin";
+}
+
+function growthEvidenceConflict(message: string): Error {
+  const error: any = new Error(message);
+  error.code = "growth_content_conflict";
+  return error;
 }
 
 function isActivated(user: any, activationIndex: any): boolean {
@@ -173,6 +208,207 @@ function instagramEvents(events: any[]): any[] {
 
 function uniqueCount(records: any[], field: string): number {
   return new Set(records.map((record) => String(record?.[field] || "")).filter(Boolean)).size;
+}
+
+function assetKey(campaign: any, content: any): string {
+  const cleanContent = normalized(content);
+  return cleanContent
+    ? `${normalized(campaign) || "1000-users"}|${cleanContent}`
+    : "";
+}
+
+function checkpointKey(campaign: any, content: any, snapshotDays: any): string {
+  const key = assetKey(campaign, content);
+  return key ? `${key}|${Number(snapshotDays || 7)}` : "";
+}
+
+function latestRecord(records: any[], fields: string[]): any | null {
+  return [...records].sort((left, right) => (
+    dateValue(right, fields) - dateValue(left, fields)
+    || String(right?.id || "").localeCompare(String(left?.id || ""))
+  ))[0] || null;
+}
+
+function planLifecycleRank(plan: any): number {
+  if (
+    plan?.review_evidence_hash
+    || plan?.review_snapshot_captured_at
+    || plan?.review_decision
+    || plan?.reviewed_at
+  ) {
+    return 2;
+  }
+  return dateValue(plan, ["published_at"]) > 0 ? 1 : 0;
+}
+
+function planDefinitionPayload(plan: any): string {
+  return JSON.stringify(Object.fromEntries(
+    PLAN_DEFINITION_FIELDS.map((field) => [field, plan?.[field] ?? null]),
+  ));
+}
+
+function planReviewPayload(plan: any): string {
+  return JSON.stringify({
+    decision: normalized(plan?.review_decision),
+    note: String(plan?.review_note || ""),
+    snapshot_captured_at: dateValue(plan, ["review_snapshot_captured_at"]),
+    evidence_hash: String(plan?.review_evidence_hash || ""),
+  });
+}
+
+function canonicalContentPlans(plans: any[]): any[] {
+  const grouped = new Map<string, any[]>();
+  for (const plan of plans) {
+    const key = assetKey(plan?.campaign, plan?.content);
+    if (!key) continue;
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key)?.push(plan);
+  }
+  const canonical: any[] = [];
+  for (const [key, records] of grouped.entries()) {
+    const lifecycleRecords = records.filter((record) => planLifecycleRank(record) > 0);
+    const publishedValues = new Set(
+      lifecycleRecords
+        .map((record) => dateValue(record, ["published_at"]))
+        .filter((value) => value > 0),
+    );
+    const reviewValues = new Set(
+      lifecycleRecords
+        .filter((record) => planLifecycleRank(record) === 2)
+        .map(planReviewPayload),
+    );
+    const executedDefinitions = new Set(lifecycleRecords.map(planDefinitionPayload));
+    if (
+      publishedValues.size > 1
+      || reviewValues.size > 1
+      || executedDefinitions.size > 1
+    ) {
+      throw growthEvidenceConflict(
+        `Conflicting lifecycle evidence for growth content plan ${key}.`,
+      );
+    }
+    const selected = [...records].sort((left, right) => (
+      planLifecycleRank(right) - planLifecycleRank(left)
+      || dateValue(right, [
+        "reviewed_at",
+        "review_snapshot_captured_at",
+        "published_at",
+        "updated_date",
+        "created_date",
+      ])
+        - dateValue(left, [
+          "reviewed_at",
+          "review_snapshot_captured_at",
+          "published_at",
+          "updated_date",
+          "created_date",
+        ])
+      || String(right?.id || "").localeCompare(String(left?.id || ""))
+    ))[0];
+    if (selected) canonical.push(selected);
+  }
+  return canonical;
+}
+
+function hasContentSnapshot(metric: any): boolean {
+  const capturedAt = dateValue(metric, ["snapshot_captured_at"]);
+  const reach = Number(metric?.reach);
+  return capturedAt > 0
+    && Number.isSafeInteger(reach)
+    && reach >= 0;
+}
+
+function metricEvidencePayload(metric: any): string {
+  const payload: any = {
+    campaign: normalized(metric?.campaign) || "1000-users",
+    content: normalized(metric?.content),
+    snapshot_days: Number(metric?.snapshot_days || 7),
+    snapshot_captured_at: dateValue(metric, ["snapshot_captured_at"]),
+    published_at: dateValue(metric, ["published_at"]),
+  };
+  for (const field of CONTENT_METRIC_FIELDS) {
+    payload[field] = Math.max(0, Number(metric?.[field] || 0));
+  }
+  return JSON.stringify(payload);
+}
+
+function canonicalMetricCheckpoints(metrics: any[]): any[] {
+  const grouped = new Map<string, any[]>();
+  for (const metric of metrics.filter(hasContentSnapshot)) {
+    const key = checkpointKey(
+      metric?.campaign,
+      metric?.content,
+      metric?.snapshot_days,
+    );
+    if (!key) continue;
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key)?.push(metric);
+  }
+  const canonical: any[] = [];
+  for (const [key, records] of grouped.entries()) {
+    const latestCapture = Math.max(
+      ...records.map((record) => dateValue(record, ["snapshot_captured_at"])),
+    );
+    const latestCandidates = records.filter(
+      (record) => dateValue(record, ["snapshot_captured_at"]) === latestCapture,
+    );
+    const evidence = new Set(latestCandidates.map(metricEvidencePayload));
+    if (evidence.size > 1) {
+      throw growthEvidenceConflict(`Conflicting growth content checkpoint ${key}.`);
+    }
+    const selected = latestRecord(
+      latestCandidates,
+      ["snapshot_captured_at", "updated_date", "created_date"],
+    );
+    if (selected) canonical.push(selected);
+  }
+  return canonical;
+}
+
+function operatingContentMetrics(metrics: any[], plans: any[]): any[] {
+  const plansByAsset = new Map(plans.map((plan) => [
+    assetKey(plan?.campaign, plan?.content),
+    plan,
+  ]));
+  const grouped = new Map<string, any[]>();
+  for (const metric of metrics) {
+    const key = assetKey(metric?.campaign, metric?.content);
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key)?.push(metric);
+  }
+  return [...grouped.entries()].map(([key, checkpoints]) => {
+    const plan = plansByAsset.get(key);
+    if (plan) {
+      const expected = Number(plan?.snapshot_days || 7);
+      const metric = checkpoints.find(
+        (candidate) => Number(candidate?.snapshot_days || 7) === expected,
+      );
+      const publishedAt = dateValue(plan, ["published_at"]);
+      const capturedAt = dateValue(metric, ["snapshot_captured_at"]);
+      return metric
+        && publishedAt > 0
+        && capturedAt >= publishedAt + expected * DAY_MS
+        ? metric
+        : null;
+    }
+    const metric = checkpoints.find(
+      (candidate) => Number(candidate?.snapshot_days || 7) === 7,
+    ) || latestRecord(checkpoints, [
+        "snapshot_captured_at",
+        "updated_date",
+        "created_date",
+      ]);
+    const publishedAt = dateValue(metric, ["published_at"]);
+    const capturedAt = dateValue(metric, ["snapshot_captured_at"]);
+    const snapshotDays = Number(metric?.snapshot_days || 7);
+    return metric
+      && (
+        publishedAt <= 0
+        || capturedAt >= publishedAt + snapshotDays * DAY_MS
+      )
+      ? metric
+      : null;
+  }).filter(Boolean);
 }
 
 function activeRepRoster(
@@ -519,15 +755,267 @@ function contentRows(
     ));
 }
 
+function buildContentQueue(
+  plans: any[],
+  metricCheckpoints: any[],
+  byContent: any[],
+  asOf: number,
+) {
+  const checkpointsByAsset = new Map<string, any[]>();
+  for (const metric of metricCheckpoints) {
+    const key = assetKey(metric?.campaign, metric?.content);
+    if (!checkpointsByAsset.has(key)) checkpointsByAsset.set(key, []);
+    checkpointsByAsset.get(key)?.push(metric);
+  }
+  const conversionsByAsset = new Map(byContent.map((row) => [
+    assetKey(row?.campaign, row?.content),
+    row,
+  ]));
+
+  const queue = plans.map((plan) => {
+    const key = assetKey(plan?.campaign, plan?.content);
+    const snapshotDays = Number(plan?.snapshot_days || 7);
+    const plannedPublishAt = dateValue(plan, ["planned_publish_at"]);
+    const publishedAt = dateValue(plan, ["published_at"]);
+    const snapshotDueAt = publishedAt > 0
+      ? publishedAt + snapshotDays * DAY_MS
+      : 0;
+    const checkpoints = checkpointsByAsset.get(key) || [];
+    const canonicalMetric = checkpoints.find(
+      (metric) => Number(metric?.snapshot_days || 7) === snapshotDays,
+    ) || null;
+    const capturedAt = dateValue(canonicalMetric, ["snapshot_captured_at"]);
+    const fixedSnapshotCaptured = snapshotDueAt > 0 && capturedAt >= snapshotDueAt;
+    const capturedCheckpointDays = checkpoints
+      .filter((metric) => {
+        const checkpointDays = Number(metric?.snapshot_days || 7);
+        const checkpointCapturedAt = dateValue(metric, ["snapshot_captured_at"]);
+        return publishedAt > 0
+          && checkpointCapturedAt >= publishedAt + checkpointDays * DAY_MS;
+      })
+      .map((metric) => Number(metric?.snapshot_days || 7));
+    const capturedCheckpointSet = new Set(capturedCheckpointDays);
+    const highestCapturedEarlyDays = Math.max(
+      0,
+      ...capturedCheckpointDays.filter((checkpointDays) => checkpointDays < snapshotDays),
+    );
+    const nextEarlySnapshotDays = [3, 1].find((checkpointDays) => (
+      publishedAt > 0
+      && checkpointDays < snapshotDays
+      && checkpointDays > highestCapturedEarlyDays
+      && asOf >= publishedAt + checkpointDays * DAY_MS
+      && !capturedCheckpointSet.has(checkpointDays)
+    )) || null;
+    const earlyMetric = latestRecord(
+      checkpoints.filter((metric) => {
+        const checkpointDays = Number(metric?.snapshot_days || 7);
+        const value = dateValue(metric, ["snapshot_captured_at"]);
+        return checkpointDays < snapshotDays
+          && publishedAt > 0
+          && value >= publishedAt
+          && value > 0
+          && (!snapshotDueAt || value < snapshotDueAt);
+      }),
+      ["snapshot_captured_at", "updated_date", "created_date"],
+    );
+    const evidenceCurrent = Boolean(
+      fixedSnapshotCaptured
+      && plan?.review_decision
+      && plan?.review_evidence_hash
+      && canonicalMetric?.snapshot_fingerprint
+      && String(plan.review_evidence_hash) === String(canonicalMetric.snapshot_fingerprint)
+      && dateValue(plan, ["review_snapshot_captured_at"]) === capturedAt
+    );
+    const decisionStale = Boolean(plan?.review_decision && !evidenceCurrent);
+    let state = "planned";
+    if (fixedSnapshotCaptured) {
+      state = evidenceCurrent ? "reviewed" : "review_due";
+    } else if (publishedAt > 0) {
+      state = asOf >= snapshotDueAt ? "snapshot_due" : "published";
+    } else if (plannedPublishAt > 0 && asOf >= plannedPublishAt) {
+      state = "publish_due";
+    }
+    let snapshotStatus = "scheduled";
+    if (publishedAt > 0 && fixedSnapshotCaptured) {
+      snapshotStatus = "captured";
+    } else if (publishedAt > 0 && asOf > snapshotDueAt + DAY_MS) {
+      snapshotStatus = "overdue";
+    } else if (publishedAt > 0 && asOf >= snapshotDueAt) {
+      snapshotStatus = "due";
+    } else if (publishedAt > 0) {
+      snapshotStatus = "collecting";
+    }
+    const conversion = conversionsByAsset.get(key) || {};
+    return {
+      campaign: normalized(plan?.campaign) || "1000-users",
+      content: normalized(plan?.content),
+      sprint: normalized(plan?.sprint),
+      sequence: Number(plan?.sequence || 0),
+      format: normalized(plan?.format),
+      audience: String(plan?.audience || ""),
+      hook: String(plan?.hook || ""),
+      script: String(plan?.script || ""),
+      cta_label: String(plan?.cta_label || ""),
+      cta_channel: normalized(plan?.cta_channel),
+      primary_metric: String(plan?.primary_metric || ""),
+      hypothesis: String(plan?.hypothesis || ""),
+      comparison_group: normalized(plan?.comparison_group),
+      major_variable: String(plan?.major_variable || ""),
+      planned_publish_at: plannedPublishAt
+        ? new Date(plannedPublishAt).toISOString()
+        : null,
+      published_at: publishedAt ? new Date(publishedAt).toISOString() : null,
+      snapshot_days: snapshotDays,
+      snapshot_due_at: snapshotDueAt
+        ? new Date(snapshotDueAt).toISOString()
+        : null,
+      fixed_snapshot_captured_at: fixedSnapshotCaptured
+        ? new Date(capturedAt).toISOString()
+        : null,
+      early_snapshot_days: earlyMetric
+        ? Number(earlyMetric?.snapshot_days || 0)
+        : null,
+      early_snapshot_captured_at: earlyMetric
+        ? new Date(dateValue(earlyMetric, ["snapshot_captured_at"])).toISOString()
+        : null,
+      captured_checkpoint_days: [...new Set(capturedCheckpointDays)]
+        .sort((left, right) => left - right),
+      next_early_snapshot_days: nextEarlySnapshotDays,
+      next_early_snapshot_due_at: nextEarlySnapshotDays && publishedAt
+        ? new Date(publishedAt + nextEarlySnapshotDays * DAY_MS).toISOString()
+        : null,
+      state,
+      snapshot_status: snapshotStatus,
+      publish_overdue: !publishedAt && plannedPublishAt > 0 && asOf >= plannedPublishAt,
+      decision: evidenceCurrent ? normalized(plan?.review_decision) : null,
+      decision_note: evidenceCurrent ? String(plan?.review_note || "") : "",
+      decision_at: evidenceCurrent && dateValue(plan, ["reviewed_at"])
+        ? new Date(dateValue(plan, ["reviewed_at"])).toISOString()
+        : null,
+      decision_stale: decisionStale,
+      reach: Number(canonicalMetric?.reach || 0),
+      owned_intents: Number(conversion?.owned_intents || 0),
+      landing_sessions: Number(conversion?.landing_sessions || 0),
+      signups: Number(conversion?.signups || 0),
+      activated_workspaces: Number(conversion?.activated_workspaces || 0),
+      activated_users: Number(conversion?.activated_users || 0),
+      activated_reps: Number(conversion?.activated_reps || 0),
+      hold_eligible: false,
+    };
+  }).sort((left, right) => (
+    String(left.planned_publish_at || "").localeCompare(
+      String(right.planned_publish_at || ""),
+    )
+    || left.sequence - right.sequence
+    || left.content.localeCompare(right.content)
+  ));
+
+  const completedByGroup = new Map<string, number>();
+  for (const item of queue) {
+    if (!item.fixed_snapshot_captured_at) continue;
+    const groupKey = `${item.campaign}|${item.comparison_group}|${item.snapshot_days}`;
+    completedByGroup.set(
+      groupKey,
+      (completedByGroup.get(groupKey) || 0) + 1,
+    );
+  }
+  for (const item of queue) {
+    const groupKey = `${item.campaign}|${item.comparison_group}|${item.snapshot_days}`;
+    item.hold_eligible = (completedByGroup.get(groupKey) || 0) >= 3;
+  }
+
+  const nextPublish = queue.find((item) => !item.published_at) || null;
+  const canonicalSnapshotDue = [...queue]
+    .filter((item) => (
+      item.published_at
+      && !item.fixed_snapshot_captured_at
+      && item.snapshot_due_at
+      && asOf >= new Date(item.snapshot_due_at).getTime()
+    ))
+    .sort((left, right) => (
+      String(left.snapshot_due_at || "").localeCompare(
+        String(right.snapshot_due_at || ""),
+      )
+    ))[0] || null;
+  const earlySnapshotDue = [...queue]
+    .filter((item) => (
+      item.published_at
+      && !item.fixed_snapshot_captured_at
+      && item.next_early_snapshot_days
+    ))
+    .sort((left, right) => (
+      String(left.next_early_snapshot_due_at || "").localeCompare(
+        String(right.next_early_snapshot_due_at || ""),
+      )
+    ))[0] || null;
+  const scheduledSnapshot = [...queue]
+    .filter((item) => item.published_at && !item.fixed_snapshot_captured_at)
+    .sort((left, right) => (
+      String(left.snapshot_due_at || "").localeCompare(
+        String(right.snapshot_due_at || ""),
+      )
+    ))[0] || null;
+  const nextSnapshotBase = canonicalSnapshotDue || earlySnapshotDue || scheduledSnapshot;
+  const nextSnapshot = nextSnapshotBase
+    ? {
+      ...nextSnapshotBase,
+      snapshot_action_days: canonicalSnapshotDue
+        ? nextSnapshotBase.snapshot_days
+        : earlySnapshotDue
+          ? nextSnapshotBase.next_early_snapshot_days
+          : null,
+      snapshot_action_due_at: canonicalSnapshotDue
+        ? nextSnapshotBase.snapshot_due_at
+        : earlySnapshotDue
+          ? nextSnapshotBase.next_early_snapshot_due_at
+          : null,
+    }
+    : null;
+  const nextDecision = [...queue]
+    .filter((item) => item.fixed_snapshot_captured_at && !item.decision)
+    .sort((left, right) => (
+      String(left.fixed_snapshot_captured_at || "").localeCompare(
+        String(right.fixed_snapshot_captured_at || ""),
+      )
+    ))[0] || null;
+  const summary = queue.reduce((totals: any, item) => {
+    totals[item.state] = Number(totals[item.state] || 0) + 1;
+    return totals;
+  }, {
+    total: queue.length,
+    planned: 0,
+    publish_due: 0,
+    published: 0,
+    snapshot_due: 0,
+    review_due: 0,
+    reviewed: 0,
+  });
+
+  return {
+    summary,
+    next_publish: nextPublish,
+    next_snapshot: nextSnapshot,
+    next_decision: nextDecision,
+    items: queue,
+  };
+}
+
+function reportResponse(data: any, status = 200): Response {
+  return Response.json(data, {
+    status,
+    headers: { "cache-control": "no-store" },
+  });
+}
+
 Deno.serve(async (req: Request) => {
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
     if (!user?.id) {
-      return Response.json({ error: "unauthorized" }, { status: 401 });
+      return reportResponse({ error: "unauthorized" }, 401);
     }
     if (!canViewGrowth(user)) {
-      return Response.json({ error: "growth_admin_required" }, { status: 403 });
+      return reportResponse({ error: "growth_admin_required" }, 403);
     }
 
     const [
@@ -538,6 +1026,7 @@ Deno.serve(async (req: Request) => {
       teamMembers,
       events,
       metrics,
+      contentPlans,
     ] = await Promise.all([
       listAll(base44.asServiceRole.entities.User, MAX_USERS, "User report"),
       listAll(
@@ -570,6 +1059,11 @@ Deno.serve(async (req: Request) => {
         MAX_GROWTH_RECORDS,
         "Growth content report",
       ),
+      listAll(
+        base44.asServiceRole.entities.GrowthContentPlan,
+        MAX_GROWTH_RECORDS,
+        "Growth content plan report",
+      ),
     ]);
     const activationIndex = buildActivationIndex(routes, canvasSessions);
     const activityIndex = buildActivityIndex(
@@ -584,16 +1078,28 @@ Deno.serve(async (req: Request) => {
       candidate,
     ]));
     const rosterGroups = activeRepRoster(teamMembers, usersById);
-    return Response.json({
+    const plans = canonicalContentPlans(contentPlans);
+    const metricCheckpoints = canonicalMetricCheckpoints(metrics);
+    const operatingMetrics = operatingContentMetrics(metricCheckpoints, plans);
+    const byContent = contentRows(
+      users,
+      usersById,
+      activationIndex,
+      events,
+      operatingMetrics,
+      rosterGroups,
+    );
+    const generatedAt = new Date().toISOString();
+    return reportResponse({
       success: true,
-      generated_at: new Date().toISOString(),
+      generated_at: generatedAt,
       all_time: summarize(
         users,
         usersById,
         activationIndex,
         activityIndex,
         events,
-        metrics,
+        operatingMetrics,
         rosterGroups,
       ),
       last_28_days: summarize(
@@ -602,7 +1108,7 @@ Deno.serve(async (req: Request) => {
         activationIndex,
         activityIndex,
         events.filter((event) => isRecent(event, 28, ["occurred_at", "created_date"])),
-        metrics.filter((metric) => isRecent(metric, 28, [
+        operatingMetrics.filter((metric) => isRecent(metric, 28, [
           "published_at",
           "snapshot_captured_at",
           "created_date",
@@ -615,20 +1121,19 @@ Deno.serve(async (req: Request) => {
         activationIndex,
         activityIndex,
         events.filter((event) => isRecent(event, 7, ["occurred_at", "created_date"])),
-        metrics.filter((metric) => isRecent(metric, 7, [
+        operatingMetrics.filter((metric) => isRecent(metric, 7, [
           "published_at",
           "snapshot_captured_at",
           "created_date",
         ])),
         rosterGroups,
       ),
-      by_content: contentRows(
-        users,
-        usersById,
-        activationIndex,
-        events,
-        metrics,
-        rosterGroups,
+      by_content: byContent,
+      content_queue: buildContentQueue(
+        plans,
+        metricCheckpoints,
+        byContent,
+        new Date(generatedAt).getTime(),
       ),
       definitions: {
         acquisition_unit: "manager_workspace",
@@ -647,6 +1152,9 @@ Deno.serve(async (req: Request) => {
     });
   } catch (error: any) {
     console.error("[getAcquisitionReport]", error?.message || error);
-    return Response.json({ error: "acquisition_report_unavailable" }, { status: 503 });
+    if (error?.code === "growth_content_conflict") {
+      return reportResponse({ error: "growth_content_conflict" }, 409);
+    }
+    return reportResponse({ error: "acquisition_report_unavailable" }, 503);
   }
 });

@@ -18,6 +18,8 @@ import {
   buildAcquisitionEvent,
   getAcquisitionIdentity,
 } from '../src/lib/acquisitionEvents.js';
+import { INSTAGRAM_FIRST_30_DAYS } from '../src/data/instagramFirst30Days.js';
+import { csvCell } from '../src/lib/csvExport.js';
 import { writeAcquisitionMilestone } from '../base44/functions/_shared/acquisitionMilestones.js';
 
 const testDir = dirname(fileURLToPath(import.meta.url));
@@ -31,6 +33,19 @@ function memoryStorage() {
     setItem: (key, value) => values.set(key, String(value)),
     removeItem: (key) => values.delete(key),
   };
+}
+
+function recursiveKeys(value, keys = new Set()) {
+  if (!value || typeof value !== 'object') return keys;
+  if (Array.isArray(value)) {
+    for (const item of value) recursiveKeys(item, keys);
+    return keys;
+  }
+  for (const [key, nested] of Object.entries(value)) {
+    keys.add(key);
+    recursiveKeys(nested, keys);
+  }
+  return keys;
 }
 
 function loadDenoHandler(path, base44) {
@@ -366,6 +381,21 @@ test('trusted acquisition milestones are pseudonymous and idempotent', async () 
 
 test('owner report groups Instagram content by signup, activation, and paid outcome', async () => {
   const now = new Date().toISOString();
+  const oneSecondAgo = new Date(Date.now() - 1000).toISOString();
+  const sevenAndHalfDaysAgo = new Date(
+    Date.now() - 7.5 * 24 * 60 * 60 * 1000,
+  ).toISOString();
+  const sixDaysAgo = new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString();
+  const twoDaysAgo = new Date(
+    new Date(now).getTime() - 2 * 24 * 60 * 60 * 1000,
+  ).toISOString();
+  const oneDayAgo = new Date(
+    new Date(now).getTime() - 24 * 60 * 60 * 1000,
+  ).toISOString();
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const eightDaysAgo = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString();
+  const nineDaysAgo = new Date(Date.now() - 9 * 24 * 60 * 60 * 1000).toISOString();
+  const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
   const instagramTouch = (content) => ({
     source: 'instagram',
     medium: 'organic_social',
@@ -456,16 +486,136 @@ test('owner report groups Instagram content by signup, activation, and paid outc
       campaign: '1000-users',
       content: 'ig-a',
       format: 'reel',
+      hook: 'Early route rescue',
+      snapshot_days: 1,
+      snapshot_captured_at: sevenAndHalfDaysAgo,
+      published_at: eightDaysAgo,
+      reach: 500,
+      views: 600,
+    },
+    {
+      id: 'metric_older_duplicate',
+      campaign: '1000-users',
+      content: 'ig-a',
+      format: 'reel',
+      hook: 'Route rescue',
+      snapshot_days: 7,
+      snapshot_captured_at: oneSecondAgo,
+      published_at: eightDaysAgo,
+      reach: 900,
+      views: 1000,
+    },
+    {
+      id: 'metric_canonical',
+      campaign: '1000-users',
+      content: 'ig-a',
+      format: 'reel',
       hook: 'Route rescue',
       snapshot_days: 7,
       snapshot_captured_at: now,
-      published_at: now,
+      published_at: eightDaysAgo,
       reach: 1000,
       views: 1200,
       shares: 15,
       saves: 20,
+      snapshot_fingerprint: 'a'.repeat(64),
+    },
+    {
+      id: 'metric_early_only',
+      campaign: '1000-users',
+      content: 'ig-snapshot-due',
+      format: 'story',
+      hook: 'Snapshot due',
+      snapshot_days: 1,
+      snapshot_captured_at: sixDaysAgo,
+      published_at: sevenDaysAgo,
+      reach: 700,
+      views: 800,
     },
   ];
+  const contentPlans = [
+    {
+      id: 'plan_1',
+      campaign: '1000-users',
+      content: 'ig-a',
+      sprint: 'test-sprint',
+      sequence: 1,
+      format: 'reel',
+      audience: 'Managers',
+      hook: 'Route rescue',
+      script: 'Show the route rescue.',
+      cta_label: 'ROUTE',
+      cta_channel: 'story_link',
+      primary_metric: 'Landing sessions / reach',
+      hypothesis: 'The rescue earns intent.',
+      comparison_group: 'test-reels',
+      major_variable: 'Pain hook',
+      planned_publish_at: nineDaysAgo,
+      published_at: eightDaysAgo,
+      snapshot_days: 7,
+      review_decision: 'repeat',
+      review_note: 'Preserve the original hook.',
+      reviewed_at: oneSecondAgo,
+      review_snapshot_captured_at: now,
+      review_evidence_hash: 'a'.repeat(64),
+      created_date: nineDaysAgo,
+      updated_date: eightDaysAgo,
+    },
+    {
+      id: 'plan_2',
+      campaign: '1000-users',
+      content: 'ig-future',
+      sprint: 'test-sprint',
+      sequence: 2,
+      format: 'carousel',
+      audience: 'Managers',
+      hook: 'Future checklist',
+      script: 'Show the checklist.',
+      cta_label: 'PLAN',
+      cta_channel: 'dm_reply',
+      primary_metric: 'Saves / reach',
+      hypothesis: 'The checklist earns saves.',
+      comparison_group: 'test-carousels',
+      major_variable: 'Checklist framing',
+      planned_publish_at: tomorrow,
+      snapshot_days: 7,
+      created_date: now,
+      updated_date: now,
+    },
+    {
+      id: 'plan_3',
+      campaign: '1000-users',
+      content: 'ig-snapshot-due',
+      sprint: 'test-sprint',
+      sequence: 3,
+      format: 'story',
+      audience: 'Managers',
+      hook: 'Snapshot due',
+      script: 'Capture the fixed-age snapshot.',
+      cta_label: 'DUE',
+      cta_channel: 'story_link',
+      primary_metric: 'Link clicks / reach',
+      hypothesis: 'The Story earns intent.',
+      comparison_group: 'test-stories',
+      major_variable: 'Due boundary',
+      planned_publish_at: eightDaysAgo,
+      published_at: sevenDaysAgo,
+      snapshot_days: 7,
+      created_date: eightDaysAgo,
+      updated_date: sevenDaysAgo,
+    },
+  ];
+  contentPlans.push({
+    ...structuredClone(contentPlans[0]),
+    id: 'plan_1_unexecuted_duplicate',
+    published_at: undefined,
+    review_decision: undefined,
+    review_note: undefined,
+    reviewed_at: undefined,
+    review_snapshot_captured_at: undefined,
+    review_evidence_hash: undefined,
+    updated_date: tomorrow,
+  });
   const teamMembers = [
     {
       id: 'member_1_placeholder',
@@ -589,14 +739,40 @@ test('owner report groups Instagram content by signup, activation, and paid outc
         GrowthContentMetric: {
           list: async (_sort, limit, skip = 0) => structuredClone(metrics.slice(skip, skip + limit)),
         },
+        GrowthContentPlan: {
+          list: async (_sort, limit, skip = 0) => (
+            structuredClone(contentPlans.slice(skip, skip + limit))
+          ),
+        },
       },
     },
   };
   const handler = loadDenoHandler('base44/functions/getAcquisitionReport/entry.ts', base44);
+  const reviewedResponse = await handler(
+    new Request('https://firstknock.online/api/report', { method: 'POST' }),
+  );
+  const reviewedReport = await reviewedResponse.json();
+  assert.equal(reviewedResponse.status, 200);
+  const reviewedItem = reviewedReport.content_queue.items.find(
+    (item) => item.content === 'ig-a',
+  );
+  assert.equal(reviewedItem.state, 'reviewed');
+  assert.equal(reviewedItem.decision, 'repeat');
+  assert.equal(reviewedItem.decision_stale, false);
+  assert.equal(reviewedReport.content_queue.next_decision, null);
+
+  const newerCapture = new Date(new Date(now).getTime() + 1).toISOString();
+  metrics.push({
+    ...structuredClone(metrics.find((metric) => metric.id === 'metric_canonical')),
+    id: 'metric_newer_canonical',
+    snapshot_captured_at: newerCapture,
+    snapshot_fingerprint: 'c'.repeat(64),
+  });
   const response = await handler(new Request('https://firstknock.online/api/report', { method: 'POST' }));
   const report = await response.json();
 
   assert.equal(response.status, 200);
+  assert.equal(response.headers.get('cache-control'), 'no-store');
   assert.equal(report.all_time.users, 9);
   assert.equal(report.all_time.activated_users, 3);
   assert.equal(report.all_time.instagram_acquired_users, 4);
@@ -609,6 +785,7 @@ test('owner report groups Instagram content by signup, activation, and paid outc
   assert.equal(report.all_time.instagram_activated_reps, 1);
   assert.equal(report.all_time.instagram_rep_identity_conflicts, 1);
   assert.equal(report.all_time.instagram_reach, 1000);
+  assert.equal(report.all_time.instagram_content_assets, 1);
   assert.equal(report.all_time.instagram_landing_sessions, 1);
   assert.equal(report.all_time.instagram_signup_cta_sessions, 1);
   assert.equal(report.all_time.retained_active_users_30d, 2);
@@ -631,10 +808,72 @@ test('owner report groups Instagram content by signup, activation, and paid outc
   assert.ok(report.by_content[0].joined_reps <= report.by_content[0].active_rep_roster);
   assert.equal(report.by_content[0].reach_to_signup_rate, 0.002);
   assert.equal(report.by_content[0].users_per_activated_workspace, 2);
+  assert.equal(report.content_queue.items.length, 3);
+  assert.equal(report.content_queue.next_publish.content, 'ig-future');
+  assert.equal(report.content_queue.next_snapshot.content, 'ig-snapshot-due');
+  assert.equal(report.content_queue.next_snapshot.snapshot_action_days, 7);
+  assert.equal(report.content_queue.next_decision.content, 'ig-a');
+  assert.equal(report.content_queue.items[0].state, 'review_due');
+  assert.equal(report.content_queue.items[0].decision_stale, true);
+  assert.equal(report.content_queue.items[0].early_snapshot_days, 1);
+  assert.equal(
+    report.content_queue.items.find((item) => item.content === 'ig-snapshot-due').state,
+    'snapshot_due',
+  );
   const serialized = JSON.stringify(report);
   assert.equal(serialized.includes('rep1@example.com'), false);
   assert.equal(serialized.includes('member_1'), false);
   assert.equal(serialized.includes('manager_1'), false);
+  const keys = recursiveKeys(report);
+  for (const forbidden of [
+    'email',
+    'phone',
+    'user_id',
+    'manager_id',
+    'member_id',
+    'invite_code',
+    'ip_address',
+    'anonymous_id',
+    'session_id',
+    'workspace_manager_id',
+    'evidence_id',
+    'created_by',
+    'referrer_host',
+  ]) {
+    assert.equal(keys.has(forbidden), false, `report leaked forbidden key ${forbidden}`);
+  }
+
+  const earlyOnlyMetric = metrics.find((metric) => metric.id === 'metric_early_only');
+  earlyOnlyMetric.published_at = twoDaysAgo;
+  earlyOnlyMetric.snapshot_captured_at = oneDayAgo;
+  const snapshotDuePlan = contentPlans.find((plan) => plan.content === 'ig-snapshot-due');
+  snapshotDuePlan.published_at = twoDaysAgo;
+  const laterPublishedPlan = contentPlans.find((plan) => plan.content === 'ig-future');
+  laterPublishedPlan.published_at = oneDayAgo;
+  const advancedQueueResponse = await handler(
+    new Request('https://firstknock.online/api/report', { method: 'POST' }),
+  );
+  const advancedQueueReport = await advancedQueueResponse.json();
+  assert.equal(advancedQueueResponse.status, 200);
+  assert.equal(advancedQueueReport.content_queue.next_snapshot.content, 'ig-future');
+  assert.equal(advancedQueueReport.content_queue.next_snapshot.snapshot_action_days, 1);
+
+  metrics.push({
+    ...structuredClone(metrics.find((metric) => metric.id === 'metric_newer_canonical')),
+    id: 'metric_conflicting_duplicate',
+    reach: 999,
+  });
+  const conflictingResponse = await handler(
+    new Request('https://firstknock.online/api/report', { method: 'POST' }),
+  );
+  assert.equal(
+    conflictingResponse.status,
+    409,
+    'same-capture conflicting duplicates must fail closed instead of selecting by ID',
+  );
+  assert.deepEqual(await conflictingResponse.json(), {
+    error: 'growth_content_conflict',
+  });
 });
 
 test('acquisition report rejects ordinary managers before service-role reads', async () => {
@@ -729,10 +968,12 @@ test('owner can upsert a cumulative Instagram content snapshot', async () => {
   const records = [];
   const metricEntity = {
     filter: async (query) => records.filter((record) => (
-      record.campaign === query.campaign && record.content === query.content
+      record.campaign === query.campaign
+      && record.content === query.content
+      && record.snapshot_days === query.snapshot_days
     )),
     create: async (value) => {
-      const created = { id: 'metric_1', ...structuredClone(value) };
+      const created = { id: `metric_${records.length + 1}`, ...structuredClone(value) };
       records.push(created);
       return structuredClone(created);
     },
@@ -747,29 +988,540 @@ test('owner can upsert a cumulative Instagram content snapshot', async () => {
     asServiceRole: { entities: { GrowthContentMetric: metricEntity } },
   };
   const handler = loadDenoHandler('base44/functions/upsertGrowthContentMetric/entry.ts', base44);
-  const invoke = (reach) => handler(new Request('https://firstknock.online/api/metric', {
+  const invoke = ({ reach, capturedAt, snapshotDays = 7 }) => handler(new Request('https://firstknock.online/api/metric', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
       campaign: '1000 Users',
       content: 'IG Snapshot 01',
       format: 'reel',
-      snapshot_days: 7,
+      snapshot_days: snapshotDays,
+      snapshot_captured_at: capturedAt,
+      published_at: '2026-07-01T12:00:00.000Z',
       reach,
       views: reach + 100,
     }),
   }));
 
-  const created = await invoke(1000);
+  const firstCapturedAt = '2026-07-08T12:00:00.000Z';
+  const secondCapturedAt = '2026-07-08T13:00:00.000Z';
+  const created = await invoke({ reach: 1000, capturedAt: firstCapturedAt });
   assert.equal(created.status, 200);
   assert.equal((await created.json()).created, true);
   assert.equal(records[0].campaign, '1000-users');
   assert.equal(records[0].content, 'ig-snapshot-01');
   assert.equal(records[0].reach, 1000);
+  assert.match(records[0].snapshot_fingerprint, /^[a-f0-9]{64}$/);
 
-  const updated = await invoke(1500);
+  const updated = await invoke({ reach: 1500, capturedAt: secondCapturedAt });
   assert.equal(updated.status, 200);
   assert.equal((await updated.json()).created, false);
   assert.equal(records.length, 1);
   assert.equal(records[0].reach, 1500);
+
+  const idempotent = await invoke({ reach: 1500, capturedAt: secondCapturedAt });
+  assert.equal(idempotent.status, 200);
+  assert.equal((await idempotent.json()).idempotent, true);
+
+  const conflict = await invoke({ reach: 1600, capturedAt: secondCapturedAt });
+  assert.equal(conflict.status, 409);
+  assert.deepEqual(await conflict.json(), { error: 'content_snapshot_conflict' });
+  assert.equal(records[0].reach, 1500);
+
+  const stale = await invoke({ reach: 900, capturedAt: firstCapturedAt });
+  assert.equal(stale.status, 409);
+  assert.equal((await stale.json()).error, 'stale_content_snapshot');
+  assert.equal(records[0].reach, 1500);
+
+  const earlyRead = await invoke({
+    reach: 700,
+    capturedAt: '2026-07-02T12:00:00.000Z',
+    snapshotDays: 1,
+  });
+  assert.equal(earlyRead.status, 200);
+  assert.equal(records.length, 2, 'one-day and seven-day checkpoints must coexist');
+
+  records.push({
+    ...structuredClone(records[0]),
+    id: 'metric_conflicting_duplicate',
+    reach: 1499,
+  });
+  const blockedByDuplicateConflict = await invoke({
+    reach: 1700,
+    capturedAt: '2026-07-08T14:00:00.000Z',
+  });
+  assert.equal(blockedByDuplicateConflict.status, 409);
+  assert.equal(
+    (await blockedByDuplicateConflict.json()).error,
+    'content_snapshot_conflict',
+  );
+  assert.equal(
+    records.some((record) => record.reach === 1700),
+    false,
+    'conflicting duplicate evidence must be resolved before a later update',
+  );
+});
+
+test('content snapshot lookup failures fail closed before create', async () => {
+  let creates = 0;
+  const base44 = {
+    auth: { me: async () => ({ id: 'owner', is_owner: true }) },
+    asServiceRole: {
+      entities: {
+        GrowthContentMetric: {
+          filter: async () => {
+            throw new Error('temporary metric lookup outage');
+          },
+          create: async () => {
+            creates += 1;
+            return {};
+          },
+        },
+      },
+    },
+  };
+  const handler = loadDenoHandler('base44/functions/upsertGrowthContentMetric/entry.ts', base44);
+  const response = await handler(new Request('https://firstknock.online/api/metric', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      campaign: '1000-users',
+      content: 'ig-fail-closed',
+      format: 'reel',
+      snapshot_days: 7,
+      snapshot_captured_at: '2026-07-08T12:00:00.000Z',
+      published_at: '2026-07-01T12:00:00.000Z',
+      reach: 10,
+    }),
+  }));
+
+  assert.equal(response.status, 503);
+  assert.equal(creates, 0);
+});
+
+test('content snapshot rejects invalid metrics and timestamps instead of rewriting them', async () => {
+  let reads = 0;
+  const base44 = {
+    auth: { me: async () => ({ id: 'owner', is_owner: true }) },
+    asServiceRole: {
+      entities: {
+        GrowthContentMetric: {
+          filter: async () => {
+            reads += 1;
+            return [];
+          },
+        },
+      },
+    },
+  };
+  const handler = loadDenoHandler('base44/functions/upsertGrowthContentMetric/entry.ts', base44);
+  const invoke = (overrides) => handler(new Request('https://firstknock.online/api/metric', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      campaign: '1000-users',
+      content: 'ig-invalid',
+      format: 'reel',
+      snapshot_days: 7,
+      snapshot_captured_at: '2026-07-08T12:00:00.000Z',
+      published_at: '2026-07-01T12:00:00.000Z',
+      reach: 10,
+      ...overrides,
+    }),
+  }));
+
+  assert.equal((await invoke({ reach: -1 })).status, 400);
+  assert.equal((await invoke({ reach: 1.5 })).status, 400);
+  assert.equal((await invoke({ reach: 'not-a-number' })).status, 400);
+  assert.equal((await invoke({ snapshot_captured_at: 'not-a-date' })).status, 400);
+  assert.equal((await invoke({
+    snapshot_captured_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+  })).status, 400);
+  assert.equal((await invoke({
+    snapshot_captured_at: '2026-07-08T12:00:00.000Z',
+    published_at: '2026-07-09T12:00:00.000Z',
+  })).status, 400);
+  assert.equal(reads, 0, 'invalid payloads must be rejected before entity reads');
+});
+
+test('growth mutations reject anonymous and ordinary-manager callers before service-role access', async () => {
+  for (const [label, user, expectedStatus] of [
+    ['anonymous', null, 401],
+    ['ordinary manager', { id: 'manager', app_role: 'manager' }, 403],
+  ]) {
+    for (const functionPath of [
+      'base44/functions/upsertGrowthContentMetric/entry.ts',
+      'base44/functions/manageGrowthContentPlan/entry.ts',
+    ]) {
+      let serviceTouches = 0;
+      const guardedEntity = new Proxy({}, {
+        get() {
+          serviceTouches += 1;
+          return async () => [];
+        },
+      });
+      const base44 = {
+        auth: { me: async () => structuredClone(user) },
+        asServiceRole: {
+          entities: {
+            GrowthContentMetric: guardedEntity,
+            GrowthContentPlan: guardedEntity,
+          },
+        },
+      };
+      const handler = loadDenoHandler(functionPath, base44);
+      const response = await handler(new Request('https://firstknock.online/api/growth', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: '{}',
+      }));
+      assert.equal(response.status, expectedStatus, `${label} status for ${functionPath}`);
+      assert.equal(
+        serviceTouches,
+        0,
+        `${label} must not touch service-role entities for ${functionPath}`,
+      );
+    }
+  }
+});
+
+test('owner can seed, publish, and review the fixed-age growth queue', async () => {
+  const plans = [];
+  const metrics = [];
+  const planEntity = {
+    list: async (_sort, limit, skip = 0) => structuredClone(plans.slice(skip, skip + limit)),
+    filter: async (query) => structuredClone(plans.filter((plan) => (
+      plan.campaign === query.campaign && plan.content === query.content
+    ))),
+    create: async (value) => {
+      const created = {
+        id: `plan_${plans.length + 1}`,
+        created_date: new Date().toISOString(),
+        updated_date: new Date().toISOString(),
+        ...structuredClone(value),
+      };
+      plans.push(created);
+      return structuredClone(created);
+    },
+    update: async (id, value) => {
+      const index = plans.findIndex((plan) => plan.id === id);
+      plans[index] = {
+        ...plans[index],
+        ...structuredClone(value),
+        updated_date: new Date().toISOString(),
+      };
+      return structuredClone(plans[index]);
+    },
+  };
+  const metricEntity = {
+    list: async (_sort, limit, skip = 0) => structuredClone(metrics.slice(skip, skip + limit)),
+    filter: async (query) => structuredClone(metrics.filter((metric) => (
+      metric.campaign === query.campaign
+      && metric.content === query.content
+      && metric.snapshot_days === query.snapshot_days
+    ))),
+    update: async (id, value) => {
+      const index = metrics.findIndex((metric) => metric.id === id);
+      metrics[index] = { ...metrics[index], ...structuredClone(value) };
+      return structuredClone(metrics[index]);
+    },
+  };
+  const base44 = {
+    auth: { me: async () => ({ id: 'owner', is_owner: true }) },
+    asServiceRole: {
+      entities: {
+        GrowthContentPlan: planEntity,
+        GrowthContentMetric: metricEntity,
+      },
+    },
+  };
+  const handler = loadDenoHandler('base44/functions/manageGrowthContentPlan/entry.ts', base44);
+  const invoke = (body) => handler(new Request('https://firstknock.online/api/content-plan', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  }));
+
+  assert.equal(INSTAGRAM_FIRST_30_DAYS.length, 20);
+  assert.equal(new Set(INSTAGRAM_FIRST_30_DAYS.map((plan) => plan.content)).size, 20);
+  const sprintDocument = readSource('docs/growth/INSTAGRAM_FIRST_30_DAYS_CONTENT.md');
+  for (const plan of INSTAGRAM_FIRST_30_DAYS) {
+    assert.match(sprintDocument, new RegExp(`\\b${plan.content}\\b`));
+  }
+  const seeded = await invoke({ action: 'seed', plans: INSTAGRAM_FIRST_30_DAYS });
+  assert.equal(seeded.status, 200);
+  assert.deepEqual(await seeded.json(), {
+    success: true,
+    created: 20,
+    updated: 0,
+    preserved: 0,
+    total: 20,
+  });
+  assert.equal(plans.length, 20);
+  assert.equal(plans.some((plan) => 'published_at' in plan), false);
+  assert.equal(plans.some((plan) => 'reach' in plan), false);
+
+  const reseeded = await invoke({ action: 'seed', plans: INSTAGRAM_FIRST_30_DAYS });
+  assert.equal(reseeded.status, 200);
+  assert.equal((await reseeded.json()).updated, 20);
+  assert.equal(plans.length, 20, 'seeding retries must not duplicate queue assets');
+
+  const first = INSTAGRAM_FIRST_30_DAYS[0];
+  const invalidPublish = await invoke({
+    action: 'publish',
+    campaign: first.campaign,
+    content: first.content,
+    published_at: 'not-a-date',
+  });
+  assert.equal(invalidPublish.status, 400);
+  assert.equal(plans[0].published_at, undefined);
+
+  const published = await invoke({
+    action: 'publish',
+    campaign: first.campaign,
+    content: first.content,
+    published_at: '2026-07-01T12:00:00.000Z',
+  });
+  assert.equal(published.status, 200);
+  assert.equal(plans[0].published_at, '2026-07-01T12:00:00.000Z');
+
+  metrics.push({
+    id: 'metric_early_duplicate',
+    campaign: first.campaign,
+    content: first.content,
+    snapshot_days: 7,
+    snapshot_captured_at: '2026-07-07T12:00:00.000Z',
+    updated_date: '2026-07-20T12:00:00.000Z',
+    published_at: '2026-07-01T12:00:00.000Z',
+    reach: 80,
+    views: 90,
+  });
+  const prematureReview = await invoke({
+    action: 'review',
+    campaign: first.campaign,
+    content: first.content,
+    decision: 'repeat',
+    note: 'This evidence is still too early.',
+  });
+  assert.equal(prematureReview.status, 409);
+  assert.equal((await prematureReview.json()).error, 'fixed_age_snapshot_required');
+
+  metrics.push({
+    id: 'metric_7d',
+    campaign: first.campaign,
+    content: first.content,
+    snapshot_days: 7,
+    snapshot_captured_at: '2026-07-08T12:00:00.000Z',
+    updated_date: '2026-07-09T12:00:00.000Z',
+    published_at: '2026-07-01T12:00:00.000Z',
+    reach: 100,
+    views: 120,
+    shares: 2,
+    saves: 3,
+    comments: 0,
+    follows: 0,
+    profile_visits: 4,
+    link_clicks: 1,
+    dm_intents: 0,
+  });
+  const reviewed = await invoke({
+    action: 'review',
+    campaign: first.campaign,
+    content: first.content,
+    decision: 'repeat',
+    note: 'Preserve the overlap hook and Story handoff.',
+  });
+  assert.equal(reviewed.status, 200);
+  assert.equal(plans[0].review_decision, 'repeat');
+  assert.equal(plans[0].review_snapshot_captured_at, '2026-07-08T12:00:00.000Z');
+  assert.match(plans[0].review_evidence_hash, /^[a-f0-9]{64}$/);
+  assert.equal(metrics[1].snapshot_fingerprint, plans[0].review_evidence_hash);
+  assert.equal(
+    metrics[0].snapshot_fingerprint,
+    undefined,
+    'newer writes with older capture times must not replace the fixed-age evidence',
+  );
+
+  const immutablePlanEvidence = {
+    hook: plans[0].hook,
+    hypothesis: plans[0].hypothesis,
+    planned_publish_at: plans[0].planned_publish_at,
+    snapshot_days: plans[0].snapshot_days,
+    published_at: plans[0].published_at,
+    review_evidence_hash: plans[0].review_evidence_hash,
+  };
+  const changedSprint = INSTAGRAM_FIRST_30_DAYS.map((plan) => (
+    plan.content === first.content
+      ? {
+        ...plan,
+        hook: 'A rewritten hook that must not replace published evidence.',
+        hypothesis: 'A rewritten hypothesis that must remain only a draft.',
+        planned_publish_at: '2026-09-01T16:00:00.000Z',
+        snapshot_days: 30,
+      }
+      : plan
+  ));
+  const frozenSeed = await invoke({ action: 'seed', plans: changedSprint });
+  assert.equal(frozenSeed.status, 200);
+  assert.deepEqual(await frozenSeed.json(), {
+    success: true,
+    created: 0,
+    updated: 19,
+    preserved: 1,
+    total: 20,
+  });
+  assert.deepEqual({
+    hook: plans[0].hook,
+    hypothesis: plans[0].hypothesis,
+    planned_publish_at: plans[0].planned_publish_at,
+    snapshot_days: plans[0].snapshot_days,
+    published_at: plans[0].published_at,
+    review_evidence_hash: plans[0].review_evidence_hash,
+  }, immutablePlanEvidence);
+
+  plans.push({
+    ...structuredClone(plans[0]),
+    id: 'unexecuted_race_duplicate',
+    published_at: undefined,
+    review_decision: undefined,
+    review_note: undefined,
+    reviewed_at: undefined,
+    review_snapshot_captured_at: undefined,
+    review_evidence_hash: undefined,
+    updated_date: '2027-01-01T00:00:00.000Z',
+  });
+
+  for (let index = 1; index <= 2; index += 1) {
+    plans.push({
+      ...structuredClone(plans[0]),
+      id: `other_campaign_plan_${index}`,
+      campaign: 'other-campaign',
+      content: `other-campaign-${index}`,
+      review_decision: undefined,
+      review_note: undefined,
+      reviewed_at: undefined,
+      review_snapshot_captured_at: undefined,
+      review_evidence_hash: undefined,
+    });
+    metrics.push({
+      id: `other_campaign_metric_${index}`,
+      campaign: 'other-campaign',
+      content: `other-campaign-${index}`,
+      snapshot_days: 7,
+      snapshot_captured_at: '2026-07-08T12:00:00.000Z',
+      published_at: '2026-07-01T12:00:00.000Z',
+      reach: 50,
+    });
+  }
+  for (let index = 1; index <= 2; index += 1) {
+    plans.push({
+      ...structuredClone(plans[0]),
+      id: `other_horizon_plan_${index}`,
+      content: `other-horizon-${index}`,
+      snapshot_days: 3,
+      review_decision: undefined,
+      review_note: undefined,
+      reviewed_at: undefined,
+      review_snapshot_captured_at: undefined,
+      review_evidence_hash: undefined,
+    });
+    metrics.push({
+      id: `other_horizon_metric_${index}`,
+      campaign: first.campaign,
+      content: `other-horizon-${index}`,
+      snapshot_days: 3,
+      snapshot_captured_at: '2026-07-04T12:00:00.000Z',
+      published_at: '2026-07-01T12:00:00.000Z',
+      reach: 50,
+    });
+  }
+
+  const hold = await invoke({
+    action: 'review',
+    campaign: first.campaign,
+    content: first.content,
+    decision: 'hold',
+    note: 'Hold after comparable evidence.',
+  });
+  assert.equal(hold.status, 409);
+  assert.equal((await hold.json()).error, 'hold_requires_three_comparable_snapshots');
+
+  const sameHorizonComparables = plans.filter((plan) => (
+    plan.campaign === first.campaign
+    && plan.comparison_group === plans[0].comparison_group
+    && plan.snapshot_days === 7
+    && plan.content !== first.content
+    && String(plan.id || '').startsWith('plan_')
+  )).slice(0, 2);
+  assert.equal(sameHorizonComparables.length, 2);
+  for (const [index, plan] of sameHorizonComparables.entries()) {
+    plan.published_at = '2026-07-01T12:00:00.000Z';
+    metrics.push({
+      id: `same_horizon_metric_${index + 1}`,
+      campaign: plan.campaign,
+      content: plan.content,
+      snapshot_days: 7,
+      snapshot_captured_at: '2026-07-08T12:00:00.000Z',
+      published_at: '2026-07-01T12:00:00.000Z',
+      reach: 75,
+    });
+  }
+  const eligibleHold = await invoke({
+    action: 'review',
+    campaign: first.campaign,
+    content: first.content,
+    decision: 'hold',
+    note: 'Three same-age comparable snapshots support pausing this concept.',
+  });
+  assert.equal(eligibleHold.status, 200);
+  assert.equal(plans[0].review_decision, 'hold');
+
+  metrics.push({
+    ...structuredClone(metrics.find((metric) => metric.id === 'metric_7d')),
+    id: 'metric_7d_conflict',
+    reach: 999,
+  });
+  const conflictingReview = await invoke({
+    action: 'review',
+    campaign: first.campaign,
+    content: first.content,
+    decision: 'repeat',
+    note: 'This must not bind to arbitrarily selected duplicate evidence.',
+  });
+  assert.equal(conflictingReview.status, 409);
+  assert.equal((await conflictingReview.json()).error, 'content_snapshot_conflict');
+  assert.equal(plans[0].review_decision, 'hold');
+});
+
+test('growth queue entities remain service-only', () => {
+  const planSchema = JSON.parse(readSource('base44/entities/GrowthContentPlan.jsonc'));
+  const metricSchema = JSON.parse(readSource('base44/entities/GrowthContentMetric.jsonc'));
+  for (const action of ['create', 'read', 'update', 'delete']) {
+    assert.equal(planSchema.rls[action].user_condition.id, '__service_role_only__');
+    assert.equal(metricSchema.rls[action].user_condition.id, '__service_role_only__');
+  }
+});
+
+test('growth CSV export neutralizes spreadsheet formulas and preserves quoting', () => {
+  assert.equal(
+    csvCell('=HYPERLINK("https://evil.example")'),
+    `"'=HYPERLINK(""https://evil.example"")"`,
+  );
+  assert.equal(csvCell('  +SUM(1,1)'), '"\'  +SUM(1,1)"');
+  assert.equal(csvCell('@command'), "'@command");
+  assert.equal(csvCell('safe, value'), '"safe, value"');
+  assert.equal(csvCell('line\rbreak'), '"line\rbreak"');
+});
+
+test('growth dashboard keeps queue evidence locked, repairable, and production-linked', () => {
+  const dashboard = readSource('src/pages/GrowthDashboard.jsx');
+  const queue = readSource('src/components/acquisition/GrowthActionQueue.jsx');
+  assert.match(dashboard, /queueSnapshotLock\?\.publishedAt/);
+  assert.match(dashboard, /queueSnapshotLock\?\.format/);
+  assert.match(dashboard, /queueSnapshotLock\?\.hook/);
+  assert.match(dashboard, /cta_variant:\s*queueSnapshotLock\?\.ctaVariant/);
+  assert.doesNotMatch(dashboard, /origin:\s*window\.location\.origin/);
+  assert.match(queue, /Sync 30-day sprint/);
+  assert.match(queue, /snapshot_action_days/);
+  assert.match(queue, /htmlFor="growth-decision-note"/);
 });

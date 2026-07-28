@@ -84,6 +84,11 @@
     "dm_intents": {
       "type": "integer",
       "minimum": 0
+    },
+    "snapshot_fingerprint": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "Service-computed hash used to bind growth decisions to exact snapshot evidence"
     }
   },
   "required": [

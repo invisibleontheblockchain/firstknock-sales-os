@@ -1,0 +1,558 @@
+import { createClientFromRequest } from "npm:@base44/sdk@0.8.31";
+
+const FORMATS = new Set(["reel", "carousel", "story", "collab", "live", "other"]);
+const CTA_CHANNELS = new Set(["story_link", "dm_reply", "comment_reply", "bio"]);
+const SNAPSHOT_DAYS = new Set([1, 3, 7, 30]);
+const DECISIONS = new Set(["repeat", "iterate", "hold"]);
+const MAX_BODY_BYTES = 100_000;
+const MAX_SEED_PLANS = 25;
+const PAGE_SIZE = 5000;
+const MAX_RECORDS = 25000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+const PLAN_DEFINITION_FIELDS = [
+  "campaign",
+  "content",
+  "sprint",
+  "sequence",
+  "format",
+  "audience",
+  "hook",
+  "script",
+  "cta_label",
+  "cta_channel",
+  "primary_metric",
+  "hypothesis",
+  "comparison_group",
+  "major_variable",
+  "planned_publish_at",
+  "snapshot_days",
+];
+
+function normalized(value: any): string {
+  return String(value || "").trim().toLowerCase();
+}
+
+function token(value: any, fallback = ""): string {
+  return normalized(value)
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9._~-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 120) || fallback;
+}
+
+function text(value: any, max: number): string {
+  return String(value || "").trim().replace(/\s+/g, " ").slice(0, max);
+}
+
+function timestamp(value: any): string | null {
+  const parsed = new Date(value || "");
+  return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : null;
+}
+
+function timeValue(record: any, fields: string[]): number {
+  for (const field of fields) {
+    const parsed = new Date(record?.[field] || "");
+    if (Number.isFinite(parsed.getTime())) return parsed.getTime();
+  }
+  return 0;
+}
+
+function asArray(value: any): any[] {
+  return Array.isArray(value) ? value : Array.isArray(value?.items) ? value.items : [];
+}
+
+function canManageGrowth(user: any): boolean {
+  return user?.is_owner === true
+    || normalized(user?.role) === "admin"
+    || normalized(user?.app_role) === "admin";
+}
+
+function response(data: any, status = 200): Response {
+  return Response.json(data, {
+    status,
+    headers: { "cache-control": "no-store" },
+  });
+}
+
+function latest(
+  records: any[],
+  timeFields = ["updated_date", "created_date"],
+): any | null {
+  return [...records].sort((left, right) => (
+    timeValue(right, timeFields)
+      - timeValue(left, timeFields)
+    || String(right?.id || "").localeCompare(String(left?.id || ""))
+  ))[0] || null;
+}
+
+async function listAll(entity: any, label: string): Promise<any[]> {
+  const records: any[] = [];
+  for (let skip = 0; skip < MAX_RECORDS; skip += PAGE_SIZE) {
+    const page = asArray(await entity.list("-created_date", PAGE_SIZE, skip));
+    records.push(...page);
+    if (page.length < PAGE_SIZE) return records;
+  }
+  throw new Error(`${label} exceeded the safe limit.`);
+}
+
+function planKey(campaign: any, content: any): string {
+  return `${token(campaign, "1000-users")}|${token(content)}`;
+}
+
+function metricKey(campaign: any, content: any, snapshotDays: any): string {
+  const key = planKey(campaign, content);
+  return key.endsWith("|") ? "" : `${key}|${Number(snapshotDays || 7)}`;
+}
+
+function planLifecycleRank(plan: any): number {
+  if (
+    plan?.review_evidence_hash
+    || plan?.review_snapshot_captured_at
+    || plan?.review_decision
+    || plan?.reviewed_at
+  ) {
+    return 2;
+  }
+  return timestamp(plan?.published_at) ? 1 : 0;
+}
+
+function planDefinitionPayload(plan: any): string {
+  return JSON.stringify(Object.fromEntries(
+    PLAN_DEFINITION_FIELDS.map((field) => [field, plan?.[field] ?? null]),
+  ));
+}
+
+function reviewPayload(plan: any): string {
+  return JSON.stringify({
+    decision: normalized(plan?.review_decision),
+    note: String(plan?.review_note || ""),
+    snapshot_captured_at: timestamp(plan?.review_snapshot_captured_at) || "",
+    evidence_hash: String(plan?.review_evidence_hash || ""),
+  });
+}
+
+function canonicalPlan(records: any[]): { record: any | null; conflict: boolean } {
+  if (!records.length) return { record: null, conflict: false };
+  const lifecycleRecords = records.filter((record) => planLifecycleRank(record) > 0);
+  const publishedValues = new Set(
+    lifecycleRecords
+      .map((record) => timestamp(record?.published_at))
+      .filter(Boolean),
+  );
+  const reviewedValues = new Set(
+    lifecycleRecords
+      .filter((record) => planLifecycleRank(record) === 2)
+      .map(reviewPayload),
+  );
+  const executedDefinitions = new Set(lifecycleRecords.map(planDefinitionPayload));
+  const conflict = publishedValues.size > 1
+    || reviewedValues.size > 1
+    || executedDefinitions.size > 1;
+  const record = [...records].sort((left, right) => (
+    planLifecycleRank(right) - planLifecycleRank(left)
+    || timeValue(right, [
+      "reviewed_at",
+      "review_snapshot_captured_at",
+      "published_at",
+      "updated_date",
+      "created_date",
+    ])
+      - timeValue(left, [
+        "reviewed_at",
+        "review_snapshot_captured_at",
+        "published_at",
+        "updated_date",
+        "created_date",
+      ])
+    || String(right?.id || "").localeCompare(String(left?.id || ""))
+  ))[0] || null;
+  return { record, conflict };
+}
+
+function canonicalPlanMap(records: any[]): {
+  records: Map<string, any>;
+  conflictKey: string | null;
+} {
+  const grouped = new Map<string, any[]>();
+  for (const record of records) {
+    const key = planKey(record?.campaign, record?.content);
+    if (!key || key.endsWith("|")) continue;
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key)?.push(record);
+  }
+  const canonical = new Map<string, any>();
+  for (const [key, values] of grouped.entries()) {
+    const result = canonicalPlan(values);
+    if (result.conflict) return { records: canonical, conflictKey: key };
+    if (result.record) canonical.set(key, result.record);
+  }
+  return { records: canonical, conflictKey: null };
+}
+
+function normalizePlan(value: any): any | null {
+  const campaign = token(value?.campaign, "1000-users");
+  const content = token(value?.content);
+  const sprint = token(value?.sprint);
+  const sequence = Number(value?.sequence);
+  const format = token(value?.format);
+  const audience = text(value?.audience, 300);
+  const hook = text(value?.hook, 300);
+  const script = text(value?.script, 2500);
+  const ctaLabel = text(value?.cta_label, 120);
+  const ctaChannel = token(value?.cta_channel);
+  const primaryMetric = text(value?.primary_metric, 160);
+  const hypothesis = text(value?.hypothesis, 500);
+  const comparisonGroup = token(value?.comparison_group);
+  const majorVariable = text(value?.major_variable, 160);
+  const plannedPublishAt = timestamp(value?.planned_publish_at);
+  const snapshotDays = Number(value?.snapshot_days || 7);
+
+  if (
+    !content
+    || !sprint
+    || !Number.isSafeInteger(sequence)
+    || sequence < 1
+    || sequence > 10000
+    || !FORMATS.has(format)
+    || !audience
+    || !hook
+    || !script
+    || !ctaLabel
+    || !CTA_CHANNELS.has(ctaChannel)
+    || !primaryMetric
+    || !hypothesis
+    || !comparisonGroup
+    || !majorVariable
+    || !plannedPublishAt
+    || !SNAPSHOT_DAYS.has(snapshotDays)
+  ) {
+    return null;
+  }
+
+  return {
+    campaign,
+    content,
+    sprint,
+    sequence,
+    format,
+    audience,
+    hook,
+    script,
+    cta_label: ctaLabel,
+    cta_channel: ctaChannel,
+    primary_metric: primaryMetric,
+    hypothesis,
+    comparison_group: comparisonGroup,
+    major_variable: majorVariable,
+    planned_publish_at: plannedPublishAt,
+    snapshot_days: snapshotDays,
+  };
+}
+
+function snapshotPayload(metric: any): string {
+  return JSON.stringify({
+    campaign: token(metric?.campaign, "1000-users"),
+    content: token(metric?.content),
+    snapshot_days: Number(metric?.snapshot_days || 7),
+    snapshot_captured_at: timestamp(metric?.snapshot_captured_at) || "",
+    published_at: timestamp(metric?.published_at) || "",
+    reach: Number(metric?.reach || 0),
+    views: Number(metric?.views || 0),
+    shares: Number(metric?.shares || 0),
+    saves: Number(metric?.saves || 0),
+    comments: Number(metric?.comments || 0),
+    follows: Number(metric?.follows || 0),
+    profile_visits: Number(metric?.profile_visits || 0),
+    link_clicks: Number(metric?.link_clicks || 0),
+    dm_intents: Number(metric?.dm_intents || 0),
+  });
+}
+
+function metricConflictKey(records: any[]): string | null {
+  const grouped = new Map<string, any[]>();
+  for (const record of records) {
+    const key = metricKey(
+      record?.campaign,
+      record?.content,
+      record?.snapshot_days,
+    );
+    if (!key || key.endsWith("|")) continue;
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key)?.push(record);
+  }
+  for (const [key, values] of grouped.entries()) {
+    const latestCapturedAt = Math.max(
+      ...values.map((record) => timeValue(record, ["snapshot_captured_at"])),
+    );
+    const latestCandidates = values.filter(
+      (record) => timeValue(record, ["snapshot_captured_at"]) === latestCapturedAt,
+    );
+    if (new Set(latestCandidates.map(snapshotPayload)).size > 1) return key;
+  }
+  return null;
+}
+
+async function sha256(value: string): Promise<string> {
+  const bytes = new TextEncoder().encode(value);
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function canonicalByKey(
+  records: any[],
+  keyFor: (record: any) => string,
+  timeFields = ["updated_date", "created_date"],
+): Map<string, any> {
+  const grouped = new Map<string, any[]>();
+  for (const record of records) {
+    const key = keyFor(record);
+    if (!key || key.endsWith("|")) continue;
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key)?.push(record);
+  }
+  return new Map(
+    [...grouped.entries()].map(([key, values]) => [key, latest(values, timeFields)]),
+  );
+}
+
+Deno.serve(async (req: Request) => {
+  try {
+    if (req.method === "OPTIONS") return new Response(null, { status: 204 });
+    if (req.method !== "POST") return response({ error: "method_not_allowed" }, 405);
+
+    const base44 = createClientFromRequest(req);
+    const user = await base44.auth.me();
+    if (!user?.id) return response({ error: "unauthorized" }, 401);
+    if (!canManageGrowth(user)) {
+      return response({ error: "growth_admin_required" }, 403);
+    }
+
+    const rawBody = await req.text();
+    if (new TextEncoder().encode(rawBody).length > MAX_BODY_BYTES) {
+      return response({ error: "content_plan_too_large" }, 413);
+    }
+    const body = JSON.parse(rawBody || "{}");
+    const action = normalized(body?.action);
+    const planEntity = base44.asServiceRole.entities.GrowthContentPlan;
+
+    if (action === "seed") {
+      if (
+        !Array.isArray(body?.plans)
+        || body.plans.length < 1
+        || body.plans.length > MAX_SEED_PLANS
+      ) {
+        return response({ error: "invalid_content_plan_batch" }, 400);
+      }
+      const plans = body.plans.map(normalizePlan);
+      if (plans.some((plan: any) => !plan)) {
+        return response({ error: "invalid_content_plan" }, 400);
+      }
+
+      // Read the complete current queue before writing so a lookup outage never
+      // fails open into duplicate creates. Partial writes remain retry-safe.
+      const existingResult = canonicalPlanMap(
+        await listAll(planEntity, "Growth content plan"),
+      );
+      if (existingResult.conflictKey) {
+        return response({
+          error: "content_plan_conflict",
+          content_key: existingResult.conflictKey,
+        }, 409);
+      }
+      const existing = existingResult.records;
+      let created = 0;
+      let updated = 0;
+      let preserved = 0;
+      for (const plan of plans) {
+        const current = existing.get(planKey(plan.campaign, plan.content));
+        if (current?.id) {
+          if (timestamp(current?.published_at)) {
+            // Once an asset is published, its creative definition and snapshot
+            // horizon are historical evidence. A sprint sync may repair missing
+            // plans, but it cannot rewrite an executed experiment.
+            preserved += 1;
+          } else {
+            await planEntity.update(current.id, plan);
+            updated += 1;
+          }
+        } else {
+          const saved = await planEntity.create(plan);
+          existing.set(planKey(plan.campaign, plan.content), saved || plan);
+          created += 1;
+        }
+      }
+      return response({
+        success: true,
+        created,
+        updated,
+        preserved,
+        total: plans.length,
+      });
+    }
+
+    const campaign = token(body?.campaign, "1000-users");
+    const content = token(body?.content);
+    if (!content) return response({ error: "invalid_content_plan" }, 400);
+    const currentResult = canonicalPlan(asArray(await planEntity.filter(
+      { campaign, content },
+      "-updated_date",
+      20,
+    )));
+    if (currentResult.conflict) {
+      return response({ error: "content_plan_conflict" }, 409);
+    }
+    const current = currentResult.record;
+    if (!current?.id) return response({ error: "content_plan_not_found" }, 404);
+
+    if (action === "publish") {
+      if (current?.published_at) {
+        return response({
+          success: true,
+          idempotent: true,
+          published_at: current.published_at,
+        });
+      }
+      const hasPublishedAt = Object.prototype.hasOwnProperty.call(body, "published_at");
+      const publishedAt = hasPublishedAt
+        ? timestamp(body.published_at)
+        : new Date().toISOString();
+      if (!publishedAt) {
+        return response({ error: "invalid_published_at" }, 400);
+      }
+      if (new Date(publishedAt).getTime() > Date.now() + 5 * 60 * 1000) {
+        return response({ error: "invalid_published_at" }, 400);
+      }
+      const saved = await planEntity.update(current.id, { published_at: publishedAt });
+      return response({
+        success: true,
+        idempotent: false,
+        published_at: saved?.published_at || publishedAt,
+      });
+    }
+
+    if (action === "review") {
+      const decision = normalized(body?.decision);
+      const note = text(body?.note, 500);
+      if (!DECISIONS.has(decision) || note.length < 5) {
+        return response({ error: "invalid_growth_decision" }, 400);
+      }
+      const publishedAt = timestamp(current?.published_at);
+      if (!publishedAt) return response({ error: "content_not_published" }, 409);
+      const snapshotDays = Number(current?.snapshot_days || 7);
+      const metricEntity = base44.asServiceRole.entities.GrowthContentMetric;
+      const metricRecords = asArray(await metricEntity.filter(
+          { campaign, content, snapshot_days: snapshotDays },
+          "-snapshot_captured_at",
+          20,
+      ));
+      if (metricConflictKey(metricRecords)) {
+        return response({ error: "content_snapshot_conflict" }, 409);
+      }
+      const metric = latest(
+        metricRecords,
+        ["snapshot_captured_at", "updated_date", "created_date"],
+      );
+      const capturedAt = timestamp(metric?.snapshot_captured_at);
+      const dueAt = new Date(
+        new Date(publishedAt).getTime() + snapshotDays * DAY_MS,
+      ).toISOString();
+      if (!metric?.id || !capturedAt || capturedAt < dueAt) {
+        return response({ error: "fixed_age_snapshot_required", due_at: dueAt }, 409);
+      }
+
+      if (decision === "hold") {
+        const [allPlans, allMetrics] = await Promise.all([
+          listAll(planEntity, "Growth content plan"),
+          listAll(metricEntity, "Growth content metric"),
+        ]);
+        const canonicalPlanResult = canonicalPlanMap(allPlans);
+        if (canonicalPlanResult.conflictKey) {
+          return response({
+            error: "content_plan_conflict",
+            content_key: canonicalPlanResult.conflictKey,
+          }, 409);
+        }
+        const canonicalPlans = canonicalPlanResult.records;
+        const metricConflict = metricConflictKey(allMetrics);
+        if (metricConflict) {
+          return response({
+            error: "content_snapshot_conflict",
+            content_key: metricConflict,
+          }, 409);
+        }
+        const canonicalMetrics = canonicalByKey(
+          allMetrics,
+          (record) => metricKey(
+            record?.campaign,
+            record?.content,
+            record?.snapshot_days,
+          ),
+          ["snapshot_captured_at", "updated_date", "created_date"],
+        );
+        let comparableSnapshots = 0;
+        for (const plan of canonicalPlans.values()) {
+          if (
+            normalized(plan?.campaign) !== normalized(current?.campaign)
+            || normalized(plan?.comparison_group) !== normalized(current?.comparison_group)
+            || Number(plan?.snapshot_days || 7) !== snapshotDays
+          ) {
+            continue;
+          }
+          const planPublishedAt = timestamp(plan?.published_at);
+          const planSnapshotDays = Number(plan?.snapshot_days || 7);
+          const comparableMetric = canonicalMetrics.get(metricKey(
+            plan?.campaign,
+            plan?.content,
+            planSnapshotDays,
+          ));
+          const comparableCapturedAt = timestamp(comparableMetric?.snapshot_captured_at);
+          if (
+            planPublishedAt
+            && comparableCapturedAt
+            && new Date(comparableCapturedAt).getTime()
+              >= new Date(planPublishedAt).getTime() + planSnapshotDays * DAY_MS
+          ) {
+            comparableSnapshots += 1;
+          }
+        }
+        if (comparableSnapshots < 3) {
+          return response({
+            error: "hold_requires_three_comparable_snapshots",
+            comparable_snapshots: comparableSnapshots,
+          }, 409);
+        }
+      }
+
+      const evidenceHash = metric?.snapshot_fingerprint
+        || await sha256(snapshotPayload(metric));
+      if (!metric?.snapshot_fingerprint) {
+        await metricEntity.update(metric.id, { snapshot_fingerprint: evidenceHash });
+      }
+      const reviewedAt = new Date().toISOString();
+      await planEntity.update(current.id, {
+        review_decision: decision,
+        review_note: note,
+        reviewed_at: reviewedAt,
+        review_snapshot_captured_at: capturedAt,
+        review_evidence_hash: evidenceHash,
+      });
+      return response({
+        success: true,
+        decision,
+        reviewed_at: reviewedAt,
+        evidence_hash: evidenceHash,
+      });
+    }
+
+    return response({ error: "invalid_content_plan_action" }, 400);
+  } catch (error: any) {
+    if (error instanceof SyntaxError) {
+      return response({ error: "invalid_json" }, 400);
+    }
+    console.error("[manageGrowthContentPlan]", error?.message || error);
+    return response({ error: "content_plan_unavailable" }, 503);
+  }
+});

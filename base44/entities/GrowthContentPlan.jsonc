@@ -1,0 +1,159 @@
+{
+  "name": "GrowthContentPlan",
+  "type": "object",
+  "properties": {
+    "campaign": {
+      "type": "string",
+      "maxLength": 120
+    },
+    "content": {
+      "type": "string",
+      "maxLength": 120,
+      "description": "Unique content ID shared with utm_content"
+    },
+    "sprint": {
+      "type": "string",
+      "maxLength": 120
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10000
+    },
+    "format": {
+      "type": "string",
+      "enum": [
+        "reel",
+        "carousel",
+        "story",
+        "collab",
+        "live",
+        "other"
+      ]
+    },
+    "audience": {
+      "type": "string",
+      "maxLength": 300
+    },
+    "hook": {
+      "type": "string",
+      "maxLength": 300
+    },
+    "script": {
+      "type": "string",
+      "maxLength": 2500
+    },
+    "cta_label": {
+      "type": "string",
+      "maxLength": 120
+    },
+    "cta_channel": {
+      "type": "string",
+      "enum": [
+        "story_link",
+        "dm_reply",
+        "comment_reply",
+        "bio"
+      ]
+    },
+    "primary_metric": {
+      "type": "string",
+      "maxLength": 160
+    },
+    "hypothesis": {
+      "type": "string",
+      "maxLength": 500
+    },
+    "comparison_group": {
+      "type": "string",
+      "maxLength": 120,
+      "description": "Comparable creative family used to gate hold decisions"
+    },
+    "major_variable": {
+      "type": "string",
+      "maxLength": 160,
+      "description": "The one major experimental variable changed by this asset"
+    },
+    "planned_publish_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "published_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "snapshot_days": {
+      "type": "integer",
+      "enum": [
+        1,
+        3,
+        7,
+        30
+      ],
+      "default": 7
+    },
+    "review_decision": {
+      "type": "string",
+      "enum": [
+        "repeat",
+        "iterate",
+        "hold"
+      ]
+    },
+    "review_note": {
+      "type": "string",
+      "maxLength": 500
+    },
+    "reviewed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "review_snapshot_captured_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "review_evidence_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    }
+  },
+  "required": [
+    "campaign",
+    "content",
+    "sprint",
+    "sequence",
+    "format",
+    "hook",
+    "script",
+    "cta_label",
+    "cta_channel",
+    "primary_metric",
+    "hypothesis",
+    "comparison_group",
+    "major_variable",
+    "planned_publish_at",
+    "snapshot_days"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "id": "__service_role_only__"
+      }
+    },
+    "read": {
+      "user_condition": {
+        "id": "__service_role_only__"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "id": "__service_role_only__"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "id": "__service_role_only__"
+      }
+    }
+  }
+}

@@ -111,17 +111,34 @@ the domain directly, recover influence only through self-report.
 
 ## Per-asset operating procedure
 
+### Load the sprint once
+
+1. Open `/GrowthDashboard` as an owner or admin.
+2. In the growth action queue, select **Load 30-day sprint**.
+3. Confirm all 20 planned content IDs appear before publishing the first asset.
+
+Loading the sprint creates the operating queue; it does not publish an asset or create
+reach. Re-running it is safe: the same campaign and content ID are updated rather than
+duplicated, while publish and review history is preserved. Once an asset is published,
+its brief, comparison group, and checkpoint age are frozen as historical experiment
+evidence. Use **Sync 30-day sprint** to repair a partial load without rewriting published
+work.
+
 ### Before publishing
 
-1. Create the content ID in the workbook's `Content Tracker`.
-2. In `/GrowthDashboard`, generate the matching tracked `/instagram` link.
-3. Choose one manager audience, one pain, one hook, one proof, and one CTA.
+1. Open **Next Publish** in the `/GrowthDashboard` growth action queue.
+2. Review the planned audience, hook, brief, hypothesis, CTA, and comparison group.
+3. Copy the queue's matching tracked `/instagram` link.
 4. Put that exact link in the Story sticker, bio slot, or originating DM reply.
-5. Record the publish date and hypothesis before seeing results.
+5. Publish the asset, then select **Mark published** so every checkpoint is calculated
+   from the real publish time.
 
-### At a fixed snapshot age
+### At fixed snapshot ages
 
-Use the same age for comparisons, normally seven days. In Instagram Insights, record:
+Capture the canonical cumulative Instagram Insights snapshot seven days after the
+recorded publish time. The queue identifies the next scheduled, due, or overdue
+seven-day checkpoint. Optional 1-day and 3-day reads provide an early signal, and an
+optional 30-day follow-up supports the retention review. At each captured age, record:
 
 - reach
 - views
@@ -130,12 +147,38 @@ Use the same age for comparisons, normally seven days. In Instagram Insights, re
 - link clicks
 - qualified DM intents
 
-In `/GrowthDashboard`, use **Add Instagram snapshot** with the same campaign and content
-ID. Re-entering the same content ID updates the cumulative snapshot rather than creating
-a second row.
+Use **Add Instagram snapshot** from the queue so the campaign, content ID, and snapshot
+age are locked to the planned asset. A 1-day or 3-day read is an early signal only: it
+never clears the canonical 7-day checkpoint. The manual snapshot form can also record a
+30-day follow-up. Each fixed age remains a separate checkpoint; re-entering the same
+campaign, content ID, and age updates only that checkpoint.
 
-Instagram Insights uses a rolling reporting window, so enter snapshots weekly instead of
-treating Instagram as the permanent historical database. See [Instagram Insights](https://www.facebook.com/help/instagram/788388387972460).
+The headline reach and content-conversion table use only a mature canonical checkpoint.
+An early read stays visible in the queue but cannot inflate official reach, measured-asset
+counts, or a decision. After an early checkpoint is saved, the queue advances to the next
+missing eligible read rather than repeatedly overwriting it.
+
+Instagram Insights uses a rolling reporting window, so capture each due checkpoint on
+schedule instead of treating Instagram as the permanent historical database. See
+[Instagram Insights](https://www.facebook.com/help/instagram/788388387972460).
+
+### Make an evidence-bound decision
+
+When the queue moves an asset to **Decision Due**, read the fixed-age snapshot beside its
+joined product-conversion evidence. Enter a specific learning note, then choose:
+
+- **Repeat:** preserve the concept because it produced meaningful product outcomes or
+  clearly won its comparable group.
+- **Iterate:** keep the concept but change one named major variable at the next execution.
+- **Hold:** stop allocating a slot for now.
+
+The decision is bound to the Instagram checkpoint used for the review. If that checkpoint
+changes, the queue marks the decision stale and requires a new note and decision. Product
+conversion counters remain live, so revisit them during the weekly and optional 30-day
+reviews. **Hold** remains
+locked until at least three completed assets in the same comparison group have comparable
+fixed-age snapshots from the same campaign and checkpoint age. Early reads and a single
+outlier are never sufficient evidence to hold a concept.
 
 ### Product outcomes
 
@@ -152,24 +195,36 @@ The dashboard joins that snapshot to:
 Export the content conversion CSV after the Monday snapshot update. The join key is the
 campaign plus content ID, so spelling consistency is part of the measurement system.
 
-## Monday growth review
+## Daily operating cadence
+
+Each publishing day:
+
+1. Open the growth action queue.
+2. Publish the exact **Next Publish** asset and mark its real publish time.
+3. Capture any **Snapshot checkpoint** that is due or overdue.
+4. Resolve **Decision Due** items with a note and one Repeat/Iterate/Hold decision.
+5. Copy the tracked link from the queue for every Story sticker or manual DM reply.
+
+Do not wait for Monday to capture a checkpoint that is due today.
+
+## Weekly growth review
 
 Every Monday:
 
-1. Enter the previous week's fixed-age Instagram snapshots.
+1. Clear every due or overdue seven-day Instagram checkpoint.
 2. Open `/GrowthDashboard` and set the same reporting window used last week.
 3. Read the funnel left to right and identify the largest absolute leak.
 4. Export the content conversion CSV and update the operating workbook.
 5. Review the `Weekly Scorecard` and `Lead Funnel`.
-6. Make one decision for each repeated concept:
+6. Resolve every **Decision Due** item with its evidence-bound note.
+7. Compare fixed-age medians within format and comparison group after at least three
+   comparable executions.
+8. Assign the next sprint slots to Repeat concepts and one-variable Iterations; leave
+   Hold concepts out until new evidence justifies revisiting them.
 
-   - **Repeat:** it produced an activated workspace or reps with a first outcome.
-   - **Iterate:** it had strong upstream signal but leaked at one clear stage.
-   - **Hold/stop:** it produced neither a conversion nor a useful learning after enough
-     repetitions.
-
-Compare medians after at least three comparable executions. Do not call a winner from one
-outlier post.
+Use the optional 30-day snapshot to revisit the seven-day decision against retained-user
+evidence. The operating decision stays bound to its seven-day evidence; if that canonical
+checkpoint is corrected, the queue marks the decision stale and requires a fresh note.
 
 ## Diagnose the leak
 
@@ -238,4 +293,5 @@ The executable 20-asset queue is in
 [`INSTAGRAM_FIRST_30_DAYS_CONTENT.md`](./INSTAGRAM_FIRST_30_DAYS_CONTENT.md). It tests
 proof-first openings, keyword CTA versus Story link, route-rescue proof, Reel length,
 role-specific product proof, and the manager-to-team loop. Change one major variable at
-a time.
+a time. Load it with **Load 30-day sprint** in `/GrowthDashboard`; use the document as
+the creative brief and the in-product queue as the operating record.
