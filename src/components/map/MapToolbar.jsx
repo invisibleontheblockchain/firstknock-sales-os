@@ -285,7 +285,14 @@ export default function MapToolbar({
   return (
     <>
             {/* Top Stats Bar */}
-            <div className="absolute top-1 left-1 right-1 sm:top-4 sm:left-4 sm:right-4 z-[1000] flex flex-col gap-1.5 sm:gap-2 pointer-events-none">
+            {/* index.html sets viewport-fit=cover, so in an installed PWA or the
+                Capacitor app this overlay extends under the status bar / notch.
+                A bare top-1 put the whole bar — including the active-route
+                banner and its Optimize control — behind it, clipped off the top
+                of the screen. RepMapView already offsets by the same inset.
+                env() resolves to 0px wherever there is no inset, so desktop and
+                non-notched devices keep the exact offsets they had. */}
+            <div className="absolute top-[calc(env(safe-area-inset-top)+0.25rem)] left-1 right-1 sm:top-[calc(env(safe-area-inset-top)+1rem)] sm:left-4 sm:right-4 z-[1000] flex flex-col gap-1.5 sm:gap-2 pointer-events-none">
                 <div className="relative flex flex-nowrap items-center justify-between gap-1 sm:gap-2 w-full">
                     {/* DASHBOARD & SETTINGS TOGGLES */}
                     <div className="pointer-events-auto shrink-0 flex gap-1 sm:gap-2">
