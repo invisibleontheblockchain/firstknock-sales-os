@@ -18,7 +18,12 @@ function makeStripeClass(api) {
   };
 }
 
-function loadHandler({ base44, stripeApi, stripeConfigured = true }) {
+function loadHandler({
+  base44,
+  stripeApi,
+  stripeConfigured = true,
+  milestoneWriter = async () => null,
+}) {
   const path = 'base44/functions/recordKnockOutcome/entry.ts';
   const transpiled = ts.transpileModule(readSource(path), {
     compilerOptions: {
@@ -36,6 +41,7 @@ function loadHandler({ base44, stripeApi, stripeConfigured = true }) {
   vm.runInNewContext(executable, {
     console,
     createClientFromRequest: () => base44,
+    writeAcquisitionMilestone: milestoneWriter,
     Stripe: makeStripeClass(stripeApi),
     Deno: {
       env: {
@@ -422,6 +428,73 @@ test('team reps inherit only an exactly verified manager billing account', async
   assert.equal(response.status, 200);
   assert.equal(state.logs[0].manager_id, manager.id);
   assert.equal(state.logs[0].logged_by_user_id, actor.id);
+});
+
+test('a stale tenant link without verified membership cannot borrow billing or emit rep activation', async () => {
+  const actor = {
+    id: 'rep_stale',
+    email: 'stale@example.com',
+    team_manager_id: 'manager_1',
+    outcomes_logged: 0,
+    outcomes_reconciled_at: '2026-07-23T00:00:00.000Z',
+  };
+  const manager = {
+    id: 'manager_1',
+    email: 'manager@example.com',
+    subscription_paid_confirmed: true,
+  };
+  const milestones = [];
+  const { base44, state } = makeBase44({ actor, users: [manager], memberships: [] });
+  const { response } = await invoke(loadHandler({
+    base44,
+    stripeApi: {},
+    milestoneWriter: async (_service, payload) => milestones.push(payload),
+  }));
+
+  assert.equal(response.status, 200);
+  assert.equal(state.logs[0].manager_id, actor.id);
+  assert.equal(state.logs[0].logged_by_user_id, actor.id);
+  assert.equal(milestones.length, 0);
+});
+
+test('a verified rep first outcome emits one trusted activation milestone', async () => {
+  const actor = {
+    id: 'rep_first',
+    email: 'rep.first@example.com',
+    team_manager_id: 'manager_1',
+    outcomes_logged: 0,
+    outcomes_reconciled_at: '2026-07-23T00:00:00.000Z',
+  };
+  const manager = { id: 'manager_1', email: 'manager@example.com' };
+  const membership = {
+    id: 'member_first',
+    user_id: actor.id,
+    manager_id: manager.id,
+    email: actor.email,
+    role: 'rep',
+    status: 'active',
+  };
+  const milestones = [];
+  const { base44, state } = makeBase44({
+    actor,
+    users: [manager],
+    memberships: [membership],
+  });
+  const handler = loadHandler({
+    base44,
+    stripeApi: {},
+    milestoneWriter: async (_service, payload) => milestones.push(structuredClone(payload)),
+  });
+  const first = await invoke(handler);
+  const retry = await invoke(handler);
+
+  assert.equal(first.response.status, 200);
+  assert.equal(retry.response.status, 200);
+  assert.equal(state.logs.length, 1);
+  assert.equal(milestones.length, 1);
+  assert.equal(milestones[0].eventName, 'invited_rep_activated');
+  assert.equal(milestones[0].workspaceManagerId, manager.id);
+  assert.equal(milestones[0].evidenceId, state.logs[0].id);
 });
 
 test('SOLD snapshots persist while rep, tenant, and route identity are server-derived', async () => {

@@ -272,6 +272,70 @@
       "type": "string",
       "description": "Referral code used when this user signed up"
     },
+    "acquisition_first_touch": {
+      "type": "object",
+      "description": "Immutable first known acquisition touch, captured before auth and written by the attribution service",
+      "properties": {
+        "source": { "type": "string" },
+        "medium": { "type": "string" },
+        "campaign": { "type": "string" },
+        "content": { "type": "string" },
+        "term": { "type": "string" },
+        "landing_path": { "type": "string" },
+        "referrer_host": { "type": "string" },
+        "captured_at": { "type": "string", "format": "date-time" }
+      },
+      "rls": {
+        "write": { "user_condition": { "role": "admin" } }
+      }
+    },
+    "first_paid_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Immutable first verified positive subscription payment timestamp",
+      "rls": {
+        "write": { "user_condition": { "role": "admin" } }
+      }
+    },
+    "first_paid_subscription_id": {
+      "type": "string",
+      "description": "Stripe subscription that produced the first verified positive payment",
+      "rls": {
+        "write": { "user_condition": { "role": "admin" } }
+      }
+    },
+    "first_paid_invoice_id": {
+      "type": "string",
+      "description": "Stripe invoice proving the first verified positive payment",
+      "rls": {
+        "write": { "user_condition": { "role": "admin" } }
+      }
+    },
+    "acquisition_last_touch": {
+      "type": "object",
+      "description": "Most recent known acquisition touch, used for campaign and creative optimization",
+      "properties": {
+        "source": { "type": "string" },
+        "medium": { "type": "string" },
+        "campaign": { "type": "string" },
+        "content": { "type": "string" },
+        "term": { "type": "string" },
+        "landing_path": { "type": "string" },
+        "referrer_host": { "type": "string" },
+        "captured_at": { "type": "string", "format": "date-time" }
+      },
+      "rls": {
+        "write": { "user_condition": { "role": "admin" } }
+      }
+    },
+    "acquisition_attribution_updated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Last time the attribution service persisted a touch for this account",
+      "rls": {
+        "write": { "user_condition": { "role": "admin" } }
+      }
+    },
     "pull_months_back": {
       "type": "integer",
       "default": 3,

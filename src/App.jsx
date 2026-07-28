@@ -9,6 +9,8 @@ import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import Layout from './Layout.jsx';
+import AcquisitionTracker from '@/components/acquisition/AcquisitionTracker';
+import InstagramLanding from '@/components/marketing/InstagramLanding';
 
 // Phase 5 — code-splitting: every page in ./pages is its own lazy-loaded chunk.
 // import.meta.glob bypasses the stale auto-generated pages.config.js — any new
@@ -92,6 +94,12 @@ const AuthenticatedApp = () => {
   );
 };
 
+const AppRoutes = () => (
+  <Routes>
+    <Route path="/instagram" element={<InstagramLanding />} />
+    <Route path="*" element={<AuthenticatedApp />} />
+  </Routes>
+);
 
 function App() {
   if (typeof window !== 'undefined' && isPrivateHqAlias(window.location.pathname)) {
@@ -102,13 +110,14 @@ function App() {
     <AuthProvider>
       <QueryClientProvider client={queryClientInstance}>
         <Router>
+          <AcquisitionTracker />
           <NavigationTracker />
           <React.Suspense fallback={
             <div className="fixed inset-0 flex items-center justify-center bg-black">
               <div className="w-8 h-8 border-4 border-slate-700 border-t-yellow-500 rounded-full animate-spin"></div>
             </div>
           }>
-            <AuthenticatedApp />
+            <AppRoutes />
           </React.Suspense>
         </Router>
         <Toaster />

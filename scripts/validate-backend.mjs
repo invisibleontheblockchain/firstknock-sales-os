@@ -8,9 +8,16 @@ const functionFiles = fs.readdirSync(functionRoot, { withFileTypes: true })
   .filter((entry) => entry.isDirectory())
   .map((entry) => path.join(functionRoot, entry.name, 'entry.ts'))
   .filter((file) => fs.existsSync(file));
+const sharedRoot = path.join(functionRoot, '_shared');
+const sharedFiles = fs.existsSync(sharedRoot)
+  ? fs.readdirSync(sharedRoot, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith('.js'))
+    .map((entry) => path.join(sharedRoot, entry.name))
+  : [];
+const backendFiles = [...functionFiles, ...sharedFiles];
 
 const syntaxErrors = [];
-for (const file of functionFiles) {
+for (const file of backendFiles) {
   const result = ts.transpileModule(fs.readFileSync(file, 'utf8'), {
     fileName: file,
     compilerOptions: {
@@ -27,11 +34,13 @@ for (const file of functionFiles) {
 assert.deepEqual(syntaxErrors, [], `Backend syntax errors:\n${syntaxErrors.join('\n')}`);
 
 const jsonFiles = [
+  'base44/entities/AcquisitionEvent.jsonc',
   'base44/entities/FetchJob.jsonc',
+  'base44/entities/GrowthContentMetric.jsonc',
   'base44/entities/User.jsonc',
   'base44/config.jsonc',
   'package.json'
 ];
 for (const file of jsonFiles) JSON.parse(fs.readFileSync(file, 'utf8'));
 
-console.log(`Validated ${functionFiles.length} Base44 functions and ${jsonFiles.length} JSON configuration files.`);
+console.log(`Validated ${functionFiles.length} Base44 functions, ${sharedFiles.length} shared modules, and ${jsonFiles.length} JSON configuration files.`);

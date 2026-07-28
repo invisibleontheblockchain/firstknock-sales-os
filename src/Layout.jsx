@@ -211,6 +211,7 @@ function LayoutInner({ children }) {
   const appRole = getAppRole(user);
   const isRepNav = isRepAccount(user);
   const hasManagerAccess = isManagerAccount(user);
+  const hasGrowthAccess = user?.is_owner === true || user?.role === 'admin' || user?.app_role === 'admin';
   if (!appRole && !hasManagerAccess && !isRoleSelectPage) {window.location.href = createPageUrl('RoleSelect');return null;}
 
   return (
@@ -316,6 +317,7 @@ function LayoutInner({ children }) {
                         <Link to="/About" className="rounded-full px-3 py-1.5 text-[10px] font-bold tracking-[0.18em] text-white/60 transition-colors hover:text-white">ABOUT</Link>
                         <Link to="/Contact" className="rounded-full px-3 py-1.5 text-[10px] font-bold tracking-[0.18em] text-white/60 transition-colors hover:text-white">CONTACT</Link>
                         <Link to={createPageUrl('Setup')} className="rounded-full px-3 py-1.5 text-[10px] font-bold tracking-[0.18em] text-white/60 transition-colors hover:text-white">SETUP</Link>
+                        {hasGrowthAccess && <Link to={createPageUrl('GrowthDashboard')} className={`rounded-full px-3 py-1.5 text-[10px] font-bold tracking-[0.18em] transition-colors ${isPageActive('GrowthDashboard') ? 'bg-white/10 text-[#39FF4A]' : 'text-white/60 hover:text-white'}`}>GROWTH</Link>}
                         {hasManagerAccess && <Link to={createPageUrl('Integrations')} className={`rounded-full px-3 py-1.5 text-[10px] font-bold tracking-[0.18em] transition-colors ${isPageActive('Integrations') ? 'bg-white/10 text-[#39FF4A]' : 'text-white/60 hover:text-white'}`}>INTEGRATIONS</Link>}
                         <Link to={createPageUrl('Billing')} className={`rounded-full px-4 py-1.5 text-[10px] font-extrabold tracking-[0.18em] transition-all ${isPageActive('Billing') ? 'bg-white text-black hover:bg-[#39FF4A]' : 'text-white/60 hover:text-white hover:bg-white/10'}`}>PLANS</Link>
                         <div className="h-5 w-px bg-white/10" />
@@ -335,6 +337,7 @@ function LayoutInner({ children }) {
                                 <DropdownMenuLabel>My Account</DropdownMenuLabel>
                                 <DropdownMenuSeparator className="bg-slate-800" />
                                 <DropdownMenuItem asChild className="focus:bg-slate-800 focus:text-white cursor-pointer"><Link to={createPageUrl('Setup')} className="flex items-center w-full"><Upload className="mr-2 h-4 w-4" /><span>Setup</span></Link></DropdownMenuItem>
+                                {hasGrowthAccess && <DropdownMenuItem asChild className="focus:bg-slate-800 focus:text-white cursor-pointer"><Link to={createPageUrl('GrowthDashboard')} className="flex items-center w-full"><TrendingUp className="mr-2 h-4 w-4" /><span>Growth</span></Link></DropdownMenuItem>}
                                 {hasManagerAccess && <DropdownMenuItem asChild className="focus:bg-slate-800 focus:text-white cursor-pointer"><Link to={createPageUrl('Integrations')} className="flex items-center w-full"><Plug className="mr-2 h-4 w-4" /><span>Integrations</span></Link></DropdownMenuItem>}
                                 <DropdownMenuItem asChild className="focus:bg-slate-800 focus:text-white cursor-pointer"><Link to={createPageUrl('Billing')} className="flex items-center w-full"><Sparkles className="mr-2 h-4 w-4" /><span>Plans</span></Link></DropdownMenuItem>
                                 <DropdownMenuItem asChild className="focus:bg-slate-800 focus:text-white cursor-pointer"><Link to={createPageUrl('MobileApp')} className="flex items-center w-full"><Smartphone className="mr-2 h-4 w-4" /><span>Get Mobile App</span></Link></DropdownMenuItem>
