@@ -220,9 +220,16 @@ export default function StandaloneDiagnostics({ user = null }) {
 
     const report = {
         ...data,
+        diagnostic_allowlist_configured: Boolean(DIAGNOSTIC_USER_ID),
         diagnostic_account_match: activation.allowlisted,
         diagnostic_activation_reason: activation.reason,
         authenticated_user_id: maskId(user?.id),
+        // Bootstrap only. VITE_FK_DIAG_USER_ID needs the full id, and this is how
+        // it is read from your own authenticated session instead of being
+        // committed to the repository. Revealed ONLY when the panel was opened
+        // deliberately with ?fkdiag — never during automatic standalone
+        // activation, where nobody asked to see it.
+        ...(activation.forced ? { authenticated_user_id_full: String(user?.id || 'none') } : {}),
         ...(workerData || { service_worker_controller_url: 'collecting…' }),
     };
 
