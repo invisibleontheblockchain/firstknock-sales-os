@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { CarFront, Home, Route as RouteIcon, Zap } from 'lucide-react';
 
 import { OPTIMIZE_MODES } from '@/lib/routeOriginModes';
@@ -84,6 +85,10 @@ export default function OptimizeRouteMenu({
 }) {
     const [open, setOpen] = useState(defaultOpen);
     const containerRef = useRef(null);
+    // The mobile sheet is portaled out of this component's tree, so it is NOT a
+    // descendant of containerRef. Outside-click needs both refs or the first tap
+    // on a choice reads as "outside" and closes before the selection runs.
+    const panelRef = useRef(null);
 
     const close = useCallback(() => setOpen(false), []);
 
@@ -92,7 +97,9 @@ export default function OptimizeRouteMenu({
 
         const onKeyDown = (event) => { if (event.key === 'Escape') close(); };
         const onPointerDown = (event) => {
-            if (containerRef.current && !containerRef.current.contains(event.target)) close();
+            if (containerRef.current?.contains(event.target)) return;
+            if (panelRef.current?.contains(event.target)) return;
+            close();
         };
 
         document.addEventListener('keydown', onKeyDown);
@@ -103,6 +110,18 @@ export default function OptimizeRouteMenu({
         };
     }, [open, close]);
 
+    // Lock background scrolling only while the bottom sheet is actually on
+    // screen. The desktop dropdown does not cover the page, so locking there
+    // would freeze the map for no reason.
+    useEffect(() => {
+        if (!open || typeof document === 'undefined' || typeof window === 'undefined') return undefined;
+        if (!window.matchMedia?.('(max-width: 767px)')?.matches) return undefined;
+
+        const previousOverflow = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+        return () => { document.body.style.overflow = previousOverflow; };
+    }, [open]);
+
     const select = useCallback((mode) => {
         if (busy) return;
         close();
@@ -110,6 +129,65 @@ export default function OptimizeRouteMenu({
     }, [busy, close, onSelectMode]);
 
     const disabledFor = (mode) => mode === OPTIMIZE_MODES.CAR_ROUND_TRIP && carDisabled;
+
+    /**
+     * The mobile sheet, portaled to document.body.
+     *
+     * It must NOT render inside the toolbar tree. The active-route banner sets
+     * `backdrop-blur`, and a backdrop-filter makes an element the containing
+     * block for its `position: fixed` descendants. `fixed inset-0` therefore
+     * resolved against the ~380x76px banner instead of the viewport, and
+     * `items-end` bottom-aligned the sheet inside that box — pushing Route,
+     * From Home and the From My Car heading above the top of the screen.
+     *
+     * Sizing is bound to the dynamic viewport so mobile browser chrome and the
+     * notch cannot clip it either.
+     */
+    const mobileSheet = typeof document === 'undefined' ? null : createPortal(
+        <div
+            data-testid="optimize-menu-mobile"
+            // Above the rep map overlay (z-9999) as well as the toolbar and
+            // Leaflet's panes.
+            className="md:hidden fixed inset-0 z-[10000] flex items-end"
+            style={{ height: '100dvh' }}
+            onPointerDown={(event) => { event.stopPropagation(); close(); }}
+        >
+            <div className="absolute inset-0 bg-black/60" />
+            <div
+                ref={panelRef}
+                role="menu"
+                onPointerDown={(event) => event.stopPropagation()}
+                className="relative w-full overflow-y-auto rounded-t-2xl border-t border-white/10 bg-[#0A0A0A] p-3"
+                style={{
+                    maxHeight: 'calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 0.5rem)',
+                    paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))'
+                }}
+            >
+                <p className="px-3 pb-2 text-[10px] font-bold uppercase tracking-wide text-gray-500">
+                    Optimize route
+                </p>
+                {OPTIMIZE_CHOICES.map((choice) => (
+                    <ChoiceRow
+                        key={choice.mode}
+                        choice={choice}
+                        disabled={disabledFor(choice.mode)}
+                        disabledReason={carDisabledReason}
+                        onSelect={select}
+                        compact
+                    />
+                ))}
+                <button
+                    type="button"
+                    onPointerDown={stopMapInteraction}
+                    onClick={(event) => { stopMapInteraction(event); close(); }}
+                    className="w-full mt-2 rounded-md border border-white/10 px-3 py-3 text-xs font-bold text-gray-300 hover:bg-white/10"
+                >
+                    Cancel
+                </button>
+            </div>
+        </div>,
+        document.body
+    );
 
     return (
         <span ref={containerRef} className="relative inline-flex">
@@ -176,41 +254,7 @@ export default function OptimizeRouteMenu({
                         </button>
                     </div>
 
-                    {/* Mobile: bottom sheet, not tucked into the overflow menu. */}
-                    <div
-                        data-testid="optimize-menu-mobile"
-                        className="md:hidden fixed inset-0 z-[5000] flex items-end"
-                        onPointerDown={(event) => { event.stopPropagation(); close(); }}
-                    >
-                        <div className="absolute inset-0 bg-black/60" />
-                        <div
-                            role="menu"
-                            onPointerDown={(event) => event.stopPropagation()}
-                            className="relative w-full rounded-t-2xl border-t border-white/10 bg-[#0A0A0A] p-3 pb-6"
-                        >
-                            <p className="px-3 pb-2 text-[10px] font-bold uppercase tracking-wide text-gray-500">
-                                Optimize route
-                            </p>
-                            {OPTIMIZE_CHOICES.map((choice) => (
-                                <ChoiceRow
-                                    key={choice.mode}
-                                    choice={choice}
-                                    disabled={disabledFor(choice.mode)}
-                                    disabledReason={carDisabledReason}
-                                    onSelect={select}
-                                    compact
-                                />
-                            ))}
-                            <button
-                                type="button"
-                                onPointerDown={stopMapInteraction}
-                                onClick={(event) => { stopMapInteraction(event); close(); }}
-                                className="w-full mt-2 rounded-md border border-white/10 px-3 py-3 text-xs font-bold text-gray-300 hover:bg-white/10"
-                            >
-                                Cancel
-                            </button>
-                        </div>
-                    </div>
+                    {mobileSheet}
                 </>
             )}
         </span>
