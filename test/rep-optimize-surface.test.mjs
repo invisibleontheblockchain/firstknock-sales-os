@@ -137,7 +137,10 @@ test('REPMENU-01 the rep map renders the shared Optimize control beside Locate',
 });
 
 test('REPMENU-02 the menu renders exactly Route, From Home and From My Car', () => {
-  // Rendered output, not the source: this is what the rep actually sees.
+  // Rendered output, not the source: this is what the user actually sees.
+  // The mobile sheet is portaled to document.body, which does not exist under
+  // renderToStaticMarkup, so only the desktop dropdown appears here. The mobile
+  // sheet's contents are asserted in the browser layout tests below.
   const html = renderToStaticMarkup(
     React.createElement(OptimizeRouteMenu, { defaultOpen: true, onSelectMode: () => {} })
   );
@@ -145,11 +148,33 @@ test('REPMENU-02 the menu renders exactly Route, From Home and From My Car', () 
   const rendered = [...html.matchAll(/data-optimize-mode="([a-z_]+)"[\s\S]*?<span class="block font-bold[^"]*">([^<]+)</g)]
     .map((match) => ({ mode: match[1], label: match[2] }));
 
-  // Desktop dropdown and mobile sheet each render all three.
-  assert.equal(rendered.length, 6, 'three choices in each of the two layouts');
-  assert.deepEqual([...new Set(rendered.map((choice) => choice.label))], ['Route', 'From Home', 'From My Car']);
-  assert.deepEqual([...new Set(rendered.map((choice) => choice.mode))],
+  assert.equal(rendered.length, 3, 'the desktop dropdown renders all three choices');
+  assert.deepEqual(rendered.map((choice) => choice.label), ['Route', 'From Home', 'From My Car']);
+  assert.deepEqual(rendered.map((choice) => choice.mode),
     ['route_only', 'home_round_trip', 'car_round_trip']);
+});
+
+test('REPMENU-02b the mobile sheet is portaled out of the toolbar tree', async () => {
+  const source = await read('src/components/map/OptimizeRouteMenu.jsx');
+
+  // The active-route banner sets backdrop-blur. A backdrop-filter makes an
+  // element the containing block for its position:fixed descendants, so a sheet
+  // rendered inline resolved `fixed inset-0` against the ~380x76px banner and
+  // pushed Route / From Home / From My Car above the top of the screen.
+  assert.match(source, /import \{ createPortal \} from 'react-dom'/);
+  assert.match(source, /createPortal\(/);
+  assert.match(source, /document\.body\s*\)/, 'the mobile sheet mounts on document.body');
+
+  // Sized against the dynamic viewport and the safe area, not the parent box.
+  assert.match(source, /100dvh/);
+  assert.match(source, /env\(safe-area-inset-bottom\)/);
+  assert.match(source, /env\(safe-area-inset-top\)/);
+  assert.match(source, /overflow-y-auto/, 'and scrolls internally when space is short');
+
+  // Portaled content is not a DOM descendant of the trigger, so outside-click
+  // must consult the panel ref too or the first tap closes before it selects.
+  assert.match(source, /panelRef/);
+  assert.match(source, /panelRef\.current\?\.contains\(event\.target\)/);
 });
 
 test('REPMENU-03 each label is bound to the mode the orchestration understands', () => {
