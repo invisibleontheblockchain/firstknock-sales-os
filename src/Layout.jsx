@@ -373,7 +373,7 @@ function LayoutInner({ children }) {
             <main data-fk-main className="flex-1 relative overflow-hidden">
                 {/* TEMPORARY: standalone-only header diagnostics. Remove once the
                     installed-PWA geometry is confirmed. */}
-                <StandaloneDiagnostics />
+                <StandaloneDiagnostics user={user} />
                 <ErrorBoundary>{children}</ErrorBoundary>
                 <AiAssistant />
                 <OnboardingWizard user={user} />

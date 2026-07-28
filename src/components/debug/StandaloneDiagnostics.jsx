@@ -1,23 +1,37 @@
 import React from 'react';
 
 /**
- * TEMPORARY diagnostics for the installed Home Screen PWA. REMOVE once the
- * header geometry question is settled.
+ * TEMPORARY diagnostics for the installed Home Screen PWA. REMOVE together with
+ * the follow-up PR that implements — or declines — the standalone-only layout
+ * change.
  *
  * Why this exists: a standalone iOS web app is a different display surface from
  * a Safari tab. It has no browser chrome, it honours
  * `apple-mobile-web-app-status-bar-style`, and it reports a real
  * `env(safe-area-inset-top)`. None of that is reproducible in a desktop browser
  * at a phone-sized viewport, where the inset is always 0 — so browser
- * measurements cannot confirm or refute a standalone-only layout report.
+ * measurements can neither confirm nor refute a standalone-only report.
  *
  * The build SHA is the important field: an installed PWA can serve a cached
- * shell indefinitely, so a measurement is only meaningful alongside the commit
- * that produced it.
+ * shell indefinitely, so a measurement means nothing without the commit that
+ * produced it.
+ *
+ * AUDIENCE: this panel covers most of the screen. Automatic display in
+ * standalone is restricted to a single allowlisted account so reps and managers
+ * never receive a debug overlay. It FAILS CLOSED — if no id is configured, the
+ * standalone path is disabled entirely and only the explicit `?fkdiag` query
+ * parameter can open it.
  */
 
 const BUILD_SHA = import.meta.env.VITE_FK_BUILD_SHA || 'unknown';
 const BUILD_TIME = import.meta.env.VITE_FK_BUILD_TIME || 'unknown';
+
+/**
+ * The one account that sees the panel automatically in standalone.
+ * Set VITE_FK_DIAG_USER_ID at build time. Empty means nobody — deliberately.
+ */
+const DIAGNOSTIC_USER_ID = import.meta.env.VITE_FK_DIAG_USER_ID || '';
+
 const DISMISS_KEY = 'fk_diag_dismissed_sha';
 
 /** Reads a real px value for an env() inset, which JS cannot query directly. */
@@ -32,6 +46,14 @@ function measureInset(side) {
 }
 
 const px = (value) => (typeof value === 'number' ? `${Math.round(value * 10) / 10}px` : String(value));
+
+/** Enough to confirm identity without printing a full account id into a report. */
+function maskId(id) {
+  const value = String(id || '');
+  if (!value) return 'none';
+  if (value.length <= 8) return `${value.slice(0, 2)}…${value.slice(-2)}`;
+  return `${value.slice(0, 4)}…${value.slice(-4)}`;
+}
 
 export function collectStandaloneDiagnostics() {
   const el = (selector) => document.querySelector(selector);
@@ -71,7 +93,9 @@ export function collectStandaloneDiagnostics() {
 
 /**
  * Service-worker and cache state, which decides whether a stale shell is being
- * served. Async, so it is merged into the panel once resolved.
+ * served. Refreshed alongside the layout numbers, because a worker can take
+ * control after the first render — which is precisely the case that would
+ * otherwise be missed.
  */
 export async function collectWorkerDiagnostics() {
   const out = {
@@ -115,76 +139,107 @@ export async function collectWorkerDiagnostics() {
   return out;
 }
 
-export default function StandaloneDiagnostics() {
+export default function StandaloneDiagnostics({ user = null }) {
     const [data, setData] = React.useState(null);
     const [workerData, setWorkerData] = React.useState(null);
     const [dismissed, setDismissed] = React.useState(false);
-    const [copied, setCopied] = React.useState(false);
+    const [copyState, setCopyState] = React.useState('idle'); // idle | copied | failed
+    const [fallbackText, setFallbackText] = React.useState('');
+    const sequenceRef = React.useRef(0);
+    const fallbackRef = React.useRef(null);
 
-    // `?fkdiag` is an escape hatch so the panel can be opened in a normal tab
-    // for comparison against the standalone numbers. Standalone alone is what
-    // shows it unprompted.
-    const shouldShow = React.useMemo(() => {
-        if (typeof window === 'undefined') return false;
+    const activation = React.useMemo(() => {
+        if (typeof window === 'undefined') {
+            return { show: false, forced: false, standalone: false, allowlisted: false, reason: 'ssr' };
+        }
+        const forced = new URLSearchParams(window.location.search).has('fkdiag');
         const standalone = window.matchMedia?.('(display-mode: standalone)')?.matches === true
             || window.navigator.standalone === true;
-        const forced = new URLSearchParams(window.location.search).has('fkdiag');
-        return standalone || forced;
-    }, []);
+        // Fails closed: with no configured id, standalone never auto-opens.
+        const allowlisted = Boolean(DIAGNOSTIC_USER_ID) && user?.id === DIAGNOSTIC_USER_ID;
+        const show = forced || (standalone && allowlisted);
+        return {
+            show,
+            forced,
+            standalone,
+            allowlisted,
+            reason: forced ? 'forced' : show ? 'standalone-allowlisted' : 'hidden',
+        };
+    }, [user?.id]);
 
     React.useEffect(() => {
-        if (!shouldShow) return undefined;
+        if (!activation.show) return undefined;
         try {
             if (localStorage.getItem(DISMISS_KEY) === BUILD_SHA) setDismissed(true);
         } catch { /* storage unavailable — just show it */ }
 
-        // Measure after paint so the header has its final box. Remeasured on the
-        // events where a standalone app's viewport actually changes: returning
-        // from the app switcher (pageshow, possibly from the back/forward cache),
-        // regaining visibility, rotating, and once more at 500ms in case the
-        // status bar settles after first paint.
-        const measure = () => setData(collectStandaloneDiagnostics());
-        const onVisibility = () => { if (document.visibilityState === 'visible') measure(); };
+        // One refresh for layout AND worker state. The sequence guard stops a
+        // slow worker lookup from overwriting a newer sample.
+        const refresh = async () => {
+            const sequence = sequenceRef.current + 1;
+            sequenceRef.current = sequence;
+            setData(collectStandaloneDiagnostics());
+            const worker = await collectWorkerDiagnostics();
+            if (sequenceRef.current === sequence) setWorkerData(worker);
+        };
+        const onVisibility = () => { if (document.visibilityState === 'visible') refresh(); };
 
-        const frame = requestAnimationFrame(() => requestAnimationFrame(measure));
-        const settle = setTimeout(measure, 500);
-        window.addEventListener('resize', measure);
-        window.addEventListener('pageshow', measure);
-        window.addEventListener('orientationchange', measure);
+        // Measure after paint so the header has its final box, then again once
+        // the status bar has settled.
+        const frame = requestAnimationFrame(() => requestAnimationFrame(refresh));
+        const settle = setTimeout(refresh, 500);
+        window.addEventListener('resize', refresh);
+        window.addEventListener('pageshow', refresh);
+        window.addEventListener('orientationchange', refresh);
         document.addEventListener('visibilitychange', onVisibility);
-        window.visualViewport?.addEventListener('resize', measure);
-
-        let cancelled = false;
-        collectWorkerDiagnostics().then((worker) => {
-            if (!cancelled) setWorkerData(worker);
-        });
+        window.visualViewport?.addEventListener('resize', refresh);
+        navigator.serviceWorker?.addEventListener?.('controllerchange', refresh);
 
         return () => {
-            cancelled = true;
+            sequenceRef.current += 1; // invalidate any in-flight worker lookup
             cancelAnimationFrame(frame);
             clearTimeout(settle);
-            window.removeEventListener('resize', measure);
-            window.removeEventListener('pageshow', measure);
-            window.removeEventListener('orientationchange', measure);
+            window.removeEventListener('resize', refresh);
+            window.removeEventListener('pageshow', refresh);
+            window.removeEventListener('orientationchange', refresh);
             document.removeEventListener('visibilitychange', onVisibility);
-            window.visualViewport?.removeEventListener('resize', measure);
+            window.visualViewport?.removeEventListener('resize', refresh);
+            navigator.serviceWorker?.removeEventListener?.('controllerchange', refresh);
         };
-    }, [shouldShow]);
+    }, [activation.show]);
 
-    if (!shouldShow || dismissed || !data) return null;
+    // When the clipboard is unavailable the JSON is rendered instead, focused and
+    // selected so it can be copied by hand.
+    React.useEffect(() => {
+        if (copyState !== 'failed' || !fallbackRef.current) return;
+        fallbackRef.current.focus();
+        fallbackRef.current.select();
+    }, [copyState]);
 
-    const report = { ...data, ...(workerData || { service_worker: 'collecting…' }) };
+    if (!activation.show || dismissed || !data) return null;
+
+    const report = {
+        ...data,
+        diagnostic_account_match: activation.allowlisted,
+        diagnostic_activation_reason: activation.reason,
+        authenticated_user_id: maskId(user?.id),
+        ...(workerData || { service_worker_controller_url: 'collecting…' }),
+    };
 
     const copy = async () => {
         const text = JSON.stringify(report, null, 2);
         try {
+            if (!navigator.clipboard?.writeText) throw new Error('clipboard unavailable');
             await navigator.clipboard.writeText(text);
+            // Only claim success once the write actually resolved. Reporting
+            // "copied" on a rejected write would leave the JSON uncaptured while
+            // looking like it had been saved.
+            setCopyState('copied');
+            setTimeout(() => setCopyState('idle'), 1500);
         } catch {
-            // Clipboard is unavailable in some standalone contexts; select-to-copy
-            // still works because the values are rendered as plain text.
+            setCopyState('failed');
+            setFallbackText(text);
         }
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1500);
     };
 
     const dismiss = () => {
@@ -201,13 +256,24 @@ export default function StandaloneDiagnostics() {
                 <span className="font-bold tracking-wide">FK HEADER DIAGNOSTICS</span>
                 <span className="flex gap-2">
                     <button type="button" onClick={copy} className="rounded border border-[#39FF4A]/40 px-2 py-1">
-                        {copied ? 'copied' : 'copy'}
+                        {copyState === 'copied' ? 'copied' : copyState === 'failed' ? 'select below' : 'copy'}
                     </button>
                     <button type="button" onClick={dismiss} className="rounded border border-white/25 px-2 py-1 text-white/70">
                         hide
                     </button>
                 </span>
             </div>
+
+            {copyState === 'failed' && (
+                <textarea
+                    ref={fallbackRef}
+                    readOnly
+                    value={fallbackText}
+                    onFocus={(event) => event.target.select()}
+                    className="mb-2 h-40 w-full rounded border border-[#39FF4A]/40 bg-black p-2 text-[10px] text-[#39FF4A]"
+                />
+            )}
+
             <table>
                 <tbody>
                     {Object.entries(report).map(([key, value]) => (
