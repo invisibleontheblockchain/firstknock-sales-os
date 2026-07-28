@@ -15,6 +15,11 @@ import {
     isRouteHydrationCacheable,
     orderRouteProperties,
 } from '@/components/logic/routeHydrationCore';
+import { optimizeRouteByStreetSweep } from '@/components/logic/routeOptimizer';
+import {
+  buildPersistedRoadRoutingMetadata,
+  createRouteContinuityContext,
+} from '@/components/logic/routeRoadContext';
 import { buildFullAddress, getRouteNavigationPlan, openNavigationBatch } from '@/components/logic/navigation';
 import { collectUnretiredOutcomes, confirmOutcomeRow } from '@/components/logic/optimisticOutcomes';
 import { getNavigationSessionProgress, selectRemainingTodoStops } from '@/components/logic/routeNavigation';
@@ -57,8 +62,6 @@ import KnockLimitBanner from '@/components/upgrade/KnockLimitBanner';
 import { createOutcomeIdempotencyKey, getOutcomeGateFromError } from '@/components/upgrade/knockGate';
 import { geocodeAddress } from '@/lib/geocoding';
 import { calculateRouteDistanceMiles, isValidRoutePoint } from '@/lib/routeBounds';
-import { OPTIMIZE_MODES } from '@/lib/routeOriginModes';
-import { REP_OPTIMIZE_ERRORS, optimizeRepRoute, resolveRepMapAnchor } from '@/lib/repRouteOptimize';
 import { getFieldRoutesCapability, getFieldRoutesStatuses } from '@/api/fieldRoutes';
 import { useFieldRoutesInspectionQueue } from '@/components/fieldroutes/useFieldRoutesInspectionQueue';
 import {
@@ -101,6 +104,15 @@ function shouldPollPrecisionFieldRoutes(response, localStatuses, routeId) {
   });
 }
 
+function requireUsableRouteContext(routingContext) {
+  if (
+    routingContext
+    && ['full', 'cost-only', 'fallback'].includes(routingContext.mode)
+    && typeof routingContext.accessGroupKey === 'function'
+  ) return;
+  throw new Error('The route optimizer could not initialize safely. The existing route was left unchanged.');
+}
+
 export default function RepHome() {
   const queryClient = useQueryClient();
   const [selectedProperty, setSelectedProperty] = useState(null);
@@ -129,14 +141,8 @@ export default function RepHome() {
   const [homeBaseAddress, setHomeBaseAddress] = useState('');
   const [homeBaseSaving, setHomeBaseSaving] = useState(false);
   const [homeBaseError, setHomeBaseError] = useState('');
-  const [routeOptimizing, setRouteOptimizing] = useState(false);
-  const [routeOptimizeError, setRouteOptimizeError] = useState('');
-  // The exact Home/car anchor for the route being knocked RIGHT NOW.
-  // Session-only and deliberately so: SavedRoute is shared, and its schema
-  // states personal home/current coordinates must not be stored on it. Not
-  // localStorage, not sessionStorage — a refresh keeps the optimized door order
-  // and drops the coordinate, which the rep recaptures from the menu.
-  const [routeAnchorSession, setRouteAnchorSession] = useState(null);
+  const [homeRouteOptimizing, setHomeRouteOptimizing] = useState(false);
+  const [homeRouteError, setHomeRouteError] = useState('');
   const [homeBasePanelOpen, setHomeBasePanelOpen] = useState(false);
   const [canvasFieldDismissed, setCanvasFieldDismissed] = useState(false);
   const [canvasFieldOpen, setCanvasFieldOpen] = useState(false);
@@ -844,24 +850,6 @@ export default function RepHome() {
     return orderedProps;
   }, [activeRoute, properties, logs]);
 
-  // Switching routes drops the previous route's anchor. A car parked for
-  // yesterday's neighbourhood is not the start of today's.
-  React.useEffect(() => {
-    setRouteAnchorSession((current) => (current && current.routeId === activeRoute?.id ? current : null));
-  }, [activeRoute?.id]);
-
-  // What the map should draw: the live session anchor while it exists, then a
-  // Home Base re-resolved from the authenticated user. Never a fabricated car
-  // point, and never live GPS standing in for one.
-  const repMapAnchor = useMemo(
-    () => resolveRepMapAnchor({
-      route: activeRoute,
-      sessionAnchor: routeAnchorSession,
-      homeBase: user?.home_base || null,
-    }),
-    [activeRoute, routeAnchorSession, user?.home_base],
-  );
-
   const expectedRoutePropertyCount = activeRoute?.property_hashes?.length || 0;
   const routeHydrationComplete = expectedRoutePropertyCount === 0 || (
     routeProperties.length === expectedRoutePropertyCount
@@ -1552,11 +1540,11 @@ export default function RepHome() {
 
   const handleSaveRepHomeBase = async (event) => {
     event?.preventDefault();
-    if (homeBaseSaving || routeOptimizing) return;
+    if (homeBaseSaving || homeRouteOptimizing) return;
 
     setHomeBaseSaving(true);
     setHomeBaseError('');
-    setRouteOptimizeError('');
+    setHomeRouteError('');
     toast.loading('Looking up your Home Base...', { id: 'rep-home-base' });
     try {
       const resolved = await geocodeAddress(homeBaseAddress);
@@ -1585,102 +1573,123 @@ export default function RepHome() {
     }
   };
 
-  // The low-accuracy disclosure, injectable so the interaction is executable in
-  // tests rather than only reachable through a real browser dialog. Same seam
-  // and same copy as the manager surface.
-  const confirmLowAccuracyLocation = (message) => (
-    typeof window !== 'undefined' && typeof window.confirm === 'function'
-      ? window.confirm(message)
-      : true
-  );
-
-  /**
-   * One mode-aware optimizer for the rep, shared by the map's Optimize menu and
-   * the Home Base panel button.
-   *
-   * There is deliberately no second car-specific handler beside it: membership
-   * verification, the identity refusal, the privacy rules, the SavedRoute
-   * payload, road continuity and the objective comparison must be identical for
-   * all three modes, and the only way to guarantee that is one path.
-   */
-  const handleOptimizeSelectedRoute = async ({ mode } = {}) => {
-    if (routeOptimizing || homeBaseSaving) return;
+  const handleOptimizeSelectedRouteFromHome = async () => {
+    if (homeRouteOptimizing || homeBaseSaving) return;
+    if (activeRouteArchived) {
+      const message = 'Archived routes are read-only and cannot be optimized.';
+      setHomeRouteError(message);
+      toast.error(message, { id: 'rep-home-route' });
+      return;
+    }
+    if (!activeRoute?.id) {
+      const message = 'Select a route before optimizing from home.';
+      setHomeRouteError(message);
+      toast.error(message, { id: 'rep-home-route' });
+      return;
+    }
 
     const routeToOptimize = activeRoute;
-    setRouteOptimizing(true);
-    setRouteOptimizeError('');
+    if (!activeRouteBelongsToCurrentUser) {
+      const message = 'This route must be assigned to you before you can optimize it from your Home Base.';
+      setHomeRouteError(message);
+      toast.error(message, { id: 'rep-home-route', duration: 6000 });
+      return;
+    }
+    setHomeRouteOptimizing(true);
+    setHomeRouteError('');
+    toast.loading('Optimizing the selected route from home...', { id: 'rep-home-route' });
 
     try {
-      // Home Base lives on the authenticated user, so refresh it first — one
-      // saved on another device would otherwise be missed. Only this mode needs
-      // it; route_only and car_round_trip never look the Home Base up.
-      let freshUser = user;
-      if (mode === OPTIMIZE_MODES.HOME_ROUND_TRIP) {
-        try {
-          const latestUser = await base44.auth.me();
-          if (latestUser) {
-            freshUser = latestUser;
-            queryClient.setQueryData(['user'], latestUser);
-          }
-        } catch {
-          freshUser = user;
-        }
+      let freshUser = null;
+      try {
+        freshUser = await base44.auth.me();
+        if (freshUser) queryClient.setQueryData(['user'], freshUser);
+      } catch {
+        freshUser = user;
       }
 
-      toast.loading(
-        mode === OPTIMIZE_MODES.CAR_ROUND_TRIP ? 'Getting your parked-car location...'
-          : mode === OPTIMIZE_MODES.HOME_ROUND_TRIP ? 'Optimizing from your Home Base...'
-            : 'Optimizing route order...',
-        { id: 'rep-route-optimize' }
-      );
+      const exactHomeBase = freshUser?.home_base || user?.home_base;
+      if (!isValidRoutePoint(exactHomeBase)) {
+        throw new Error('Save a Home Base above before optimizing this route.');
+      }
+      if (!routeProperties.length) throw new Error('No properties are loaded for the selected route.');
 
-      const result = await optimizeRepRoute({
-        mode,
-        route: routeToOptimize,
+      const expectedPropertyCount = routeToOptimize.property_hashes?.length || 0;
+      if (expectedPropertyCount > 0 && routeProperties.length !== expectedPropertyCount) {
+        throw new Error(`Only ${routeProperties.length} of ${expectedPropertyCount} route properties loaded. Refresh and try again.`);
+      }
+      const invalidProperty = routeProperties.find((property) => !isValidRoutePoint(property));
+      if (invalidProperty) throw new Error('A route property is missing map coordinates. Ask your manager to repair this route.');
+
+      const routingContext = createRouteContinuityContext(routeProperties);
+      requireUsableRouteContext(routingContext);
+      const optimized = optimizeRouteByStreetSweep(
         routeProperties,
-        homeBase: freshUser?.home_base || user?.home_base || null,
-        routeBelongsToRep: activeRouteBelongsToCurrentUser,
-        routeArchived: activeRouteArchived,
-        hydrationComplete: routeHydrationComplete,
-        expectedPropertyCount: expectedRoutePropertyCount,
-        confirmLowAccuracy: confirmLowAccuracyLocation,
-        saveRoute: (routeId, update) => base44.entities.SavedRoute.update(routeId, update),
-      });
-
-      if (!result.ok) {
-        // Declining the poor-accuracy disclosure is a choice, not an error.
-        if (result.code === REP_OPTIMIZE_ERRORS.LOCATION_DECLINED) {
-          toast.dismiss('rep-route-optimize');
-          return;
-        }
-        setRouteOptimizeError(result.message);
-        toast.error(result.message, { id: 'rep-route-optimize', duration: 6000 });
-        return;
+        exactHomeBase,
+        exactHomeBase,
+        routingContext,
+      );
+      if (optimized.length !== routeProperties.length) {
+        throw new Error('The optimizer could not preserve every property in this route.');
       }
 
+      const propertyHashes = optimized.map((property) => property.address_hash || property.legacy_hash || property.id);
+      if (propertyHashes.some((hash) => !hash)) {
+        throw new Error('A route property is missing its address identifier. Ask your manager to repair this route.');
+      }
+      const expectedHashes = new Set(routeProperties.map(
+        (property) => property.address_hash || property.legacy_hash || property.id,
+      ));
+      if (
+        new Set(propertyHashes).size !== expectedHashes.size
+        || propertyHashes.some((hash) => !expectedHashes.has(hash))
+      ) {
+        throw new Error('Route integrity verification failed, so the existing route was left unchanged.');
+      }
+
+      const distance = Math.round(calculateRouteDistanceMiles(optimized, {
+        startLocation: exactHomeBase,
+        endLocation: exactHomeBase,
+      }) * 100) / 100;
+      const existingMetadata = { ...(routeToOptimize.metadata || {}) };
+      delete existingMetadata.road_geometry;
+      const routeUpdate = {
+        property_hashes: propertyHashes,
+        metrics: {
+          ...(routeToOptimize.metrics || {}),
+          distance,
+          house_count: optimized.length
+        },
+        start_location: null,
+        end_location: null,
+        route_origin_mode: 'home_round_trip',
+        metadata: {
+          ...existingMetadata,
+          ...buildPersistedRoadRoutingMetadata(routingContext, null, propertyHashes),
+          route_bounds: { enabled: true, mode: 'home_round_trip' }
+        }
+      };
+
+      await base44.entities.SavedRoute.update(routeToOptimize.id, routeUpdate);
       queryClient.setQueryData(myRoutesQueryKey, (currentRoutes) =>
         Array.isArray(currentRoutes)
-          ? currentRoutes.map((route) => route.id === routeToOptimize.id ? { ...route, ...result.routeUpdate } : route)
+          ? currentRoutes.map((route) => route.id === routeToOptimize.id ? { ...route, ...routeUpdate } : route)
           : currentRoutes
       );
-      // Only now, because the save succeeded. `result.sessionAnchor` is null for
-      // route_only, which is how choosing Route clears a previous anchor.
-      setRouteAnchorSession(result.sessionAnchor);
-      // Any open navigation batch was built from the OLD order and would send
-      // the rep through a sequence this route no longer has.
-      setNavigationSession(null);
-      setNavigationError('');
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['myRoutes'] }),
         queryClient.invalidateQueries({ queryKey: ['routeProperties'] })
       ]);
-      toast.success(result.message, { id: 'rep-route-optimize', duration: 5000 });
+      toast.success(`Home round trip optimized (${distance} mi street-continuity estimate).`, {
+        id: 'rep-home-route',
+        duration: 5000
+      });
     } catch (error) {
-      const message = error?.message || 'Could not optimize this route. Please try again.';
-      setRouteOptimizeError(message);
-      toast.error(message, { id: 'rep-route-optimize', duration: 6000 });
+      const message = error?.message || 'Could not optimize this route from home. Please try again.';
+      setHomeRouteError(message);
+      toast.error(message, { id: 'rep-home-route', duration: 6000 });
     } finally {
-      setRouteOptimizing(false);
+      setHomeRouteOptimizing(false);
     }
   };
 
@@ -2001,13 +2010,13 @@ export default function RepHome() {
                     }}
                     autoComplete="street-address"
                     placeholder="Street, city, state, ZIP"
-                    disabled={homeBaseSaving || routeOptimizing}
+                    disabled={homeBaseSaving || homeRouteOptimizing}
                     className="h-11 rounded-xl border-white/10 bg-black/45 px-3 text-sm text-white placeholder:text-white/30 focus:border-[#2EEB57]/60" />
 
                                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                                         <Button
                       type="submit"
-                      disabled={!homeBaseAddress.trim() || homeBaseSaving || routeOptimizing}
+                      disabled={!homeBaseAddress.trim() || homeBaseSaving || homeRouteOptimizing}
                       className="h-11 w-full rounded-xl border border-white/15 bg-white/[0.08] text-xs font-black text-white hover:bg-white/[0.14] disabled:opacity-45">
                                             {homeBaseSaving ?
                         <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Saving...</> :
@@ -2016,10 +2025,10 @@ export default function RepHome() {
                                         </Button>
                                         <Button
                       type="button"
-                      onClick={() => handleOptimizeSelectedRoute({ mode: OPTIMIZE_MODES.HOME_ROUND_TRIP })}
-                      disabled={activeRouteArchived || !activeRouteBelongsToCurrentUser || !routeHydrationComplete || !routeProperties.length || routeOptimizing || homeBaseSaving}
+                      onClick={handleOptimizeSelectedRouteFromHome}
+                      disabled={activeRouteArchived || !activeRouteBelongsToCurrentUser || !routeHydrationComplete || !routeProperties.length || homeRouteOptimizing || homeBaseSaving}
                       className="h-11 w-full rounded-xl bg-gradient-to-r from-[#2EEB57] to-[#B6FF5C] px-3 text-[11px] font-black text-black hover:brightness-110 disabled:opacity-45">
-                                            {routeOptimizing ?
+                                            {homeRouteOptimizing ?
                         <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Optimizing...</> :
                         <><Sparkles className="mr-2 h-4 w-4" />Optimize selected route from home</>
                       }
@@ -2027,9 +2036,9 @@ export default function RepHome() {
                                     </div>
                                 </form>
 
-                                {(homeBaseError || routeOptimizeError) &&
+                                {(homeBaseError || homeRouteError) &&
                   <p aria-live="polite" className="mt-2.5 rounded-xl border border-red-500/25 bg-red-500/10 px-3 py-2 text-[11px] leading-relaxed text-red-200">
-                                        {homeBaseError || routeOptimizeError}
+                                        {homeBaseError || homeRouteError}
                                 </p>
                   }
                                 <p className="mt-3 text-[10px] leading-relaxed text-white/40">
@@ -2088,13 +2097,8 @@ export default function RepHome() {
         focusProperty={focusProperty}
         roadGeometry={activeRoute?.metadata?.road_geometry}
         roadGeometryFingerprint={activeRoute?.metadata?.routing?.property_order_fingerprint}
-        startLocation={repMapAnchor.startLocation}
-        endLocation={repMapAnchor.endLocation}
-        routeOriginMode={repMapAnchor.mode}
-        onOptimizeMode={(mode) => handleOptimizeSelectedRoute({ mode })}
-        optimizeBusy={routeOptimizing}
-        optimizeDisabled={!activeRouteBelongsToCurrentUser}
-        optimizeDisabledReason="This route must be assigned to you before you can optimize it from your car." />
+        startLocation={activeRoute?.route_origin_mode === 'home_round_trip' ? user?.home_base : null}
+        endLocation={['home_round_trip', 'current_to_home'].includes(activeRoute?.route_origin_mode) ? user?.home_base : null} />
 
       }
 

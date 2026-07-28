@@ -96,8 +96,7 @@
       "enum": [
         "none",
         "home_round_trip",
-        "current_to_home",
-        "car_round_trip"
+        "current_to_home"
       ],
       "default": "none",
       "description": "Explicit opt-in routing bounds. none preserves normal route generation behavior."

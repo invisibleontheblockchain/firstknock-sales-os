@@ -223,9 +223,7 @@ test('every non-Home route generator supplies synchronous continuity context', a
 test('Home and RepHome interactive optimizers never depend on live road loading', async () => {
   const auditedPages = [
     ['../src/pages/Home.jsx', 3],
-    // The rep's interactive optimizer moved out of the page into the module all
-    // three of its modes share; the guarantee is audited where it now lives.
-    ['../src/lib/repRouteOptimize.js', 1],
+    ['../src/pages/RepHome.jsx', 1],
   ];
 
   for (const [relativePath, expectedCalls] of auditedPages) {
@@ -257,23 +255,6 @@ test('Home and RepHome interactive optimizers never depend on live road loading'
       `${relativePath} local continuity construction must stay synchronous`,
     );
   }
-
-  // RepHome itself must stay clear of live street loading too, even though it
-  // now delegates the ordering.
-  const repHomeSource = await readFile(
-    new URL('../src/pages/RepHome.jsx', import.meta.url),
-    'utf8',
-  );
-  assert.doesNotMatch(
-    repHomeSource,
-    /\b(?:createRouteRoadContext|fetchOverpassRoadNetwork|loadRouteRoadNetwork)\b/,
-    'RepHome must not reach for a live street network',
-  );
-  assert.match(
-    repHomeSource,
-    /import\s*\{[^}]*\boptimizeRepRoute\b[^}]*\}\s*from\s*'@\/lib\/repRouteOptimize'/,
-    'RepHome must delegate to the audited orchestration module',
-  );
 
   const homeSource = await readFile(
     new URL('../src/pages/Home.jsx', import.meta.url),
