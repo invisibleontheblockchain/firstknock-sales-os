@@ -264,6 +264,10 @@ const stripComments = (source) => source
 const readToolbar = () => readFile(
   new URL('../src/components/map/MapToolbar.jsx', import.meta.url), 'utf8'
 );
+const readRouteCommandSurfaces = () => Promise.all([
+  readFile(new URL('../src/components/routes/ActiveRoutesTab.jsx', import.meta.url), 'utf8'),
+  readFile(new URL('../src/components/routes/RouteCommandPanel.jsx', import.meta.url), 'utf8'),
+]);
 
 test('MENU-01 the Optimize button no longer reoptimizes on click', async () => {
   const source = await readToolbar();
@@ -376,6 +380,21 @@ test('MENU-08 switching routes collapses the choices', async () => {
 
   assert.match(source, /useEffect\(\(\) => \{ setShowOptimizeMenu\(false\); \}, \[activeRoute\?\.id\]\)/,
     'a stale expansion must not carry across to a different route');
+});
+
+test('MENU-09 Route Command omits the redundant Home Base shortcut', async () => {
+  const routeCommandSurfaces = await readRouteCommandSurfaces();
+
+  for (const routeCommandSource of routeCommandSurfaces.map(stripComments)) {
+    assert.doesNotMatch(routeCommandSource, /OPTIMIZE FROM HOME BASE/);
+    assert.doesNotMatch(routeCommandSource, /Optimize from home base/);
+    assert.doesNotMatch(routeCommandSource, /onReoptimize\(route, \{ fromHome: true \}\)/);
+  }
+
+  const toolbar = await readToolbar();
+  assert.match(toolbar, /<OptimizeRouteChoices/, 'the solo-route choices remain available');
+  assert.match(toolbar, /onReoptimizeRoute\(activeRoute, \{ mode \}\)/,
+    'the solo-route optimizer still passes the chosen mode');
 });
 
 /* ══════════════ 5. Assigned-route protection ══════════════ */
