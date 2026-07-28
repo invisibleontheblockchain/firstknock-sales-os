@@ -9,7 +9,13 @@ import { execSync } from 'node:child_process'
 // layout report from a device is meaningless without the commit it came from.
 const buildSha = (() => {
   try {
-    return execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+    const sha = execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+    // A build from a dirty tree is NOT the commit it names. Without this suffix
+    // a bundle built from uncommitted work is stamped with its parent commit,
+    // which makes "is the device running my change?" unanswerable — exactly the
+    // ambiguity that invalidated the first stamp check.
+    const dirty = execSync('git status --porcelain', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+    return dirty ? `${sha}-dirty` : sha;
   } catch {
     const ciSha = process.env.GITHUB_SHA || process.env.VERCEL_GIT_COMMIT_SHA || '';
     return ciSha ? ciSha.slice(0, 7) : 'unknown';

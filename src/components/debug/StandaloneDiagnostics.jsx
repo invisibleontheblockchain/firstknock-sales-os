@@ -34,13 +34,12 @@ function measureInset(side) {
 const px = (value) => (typeof value === 'number' ? `${Math.round(value * 10) / 10}px` : String(value));
 
 export function collectStandaloneDiagnostics() {
-  const rect = (selector) => {
-    const el = document.querySelector(selector);
-    return el ? el.getBoundingClientRect() : null;
-  };
-  const header = rect('[data-fk-header]');
-  const row = rect('[data-fk-header-row]');
-  const main = rect('[data-fk-main]');
+  const el = (selector) => document.querySelector(selector);
+  const headerEl = el('[data-fk-header]');
+  const header = headerEl?.getBoundingClientRect() ?? null;
+  const row = el('[data-fk-header-row]')?.getBoundingClientRect() ?? null;
+  const main = el('[data-fk-main]')?.getBoundingClientRect() ?? null;
+  const headerStyle = headerEl ? getComputedStyle(headerEl) : null;
   const vv = typeof window !== 'undefined' ? window.visualViewport : null;
 
   return {
@@ -57,15 +56,68 @@ export function collectStandaloneDiagnostics() {
     header_top: header ? px(header.top) : 'not found',
     header_bottom: header ? px(header.bottom) : 'not found',
     header_total_height: header ? px(header.height) : 'not found',
+    // The three values that decide whether CSS owns the inset correctly:
+    // padding-top should EQUAL env(safe-area-inset-top), and total height should
+    // equal that inset + the row + the border.
+    header_computed_padding_top: headerStyle ? headerStyle.paddingTop : 'not found',
+    header_border_bottom_width: headerStyle ? headerStyle.borderBottomWidth : 'not found',
     inner_row_height: row ? px(row.height) : 'not found',
     main_map_top: main ? px(main.top) : 'not found',
     devicePixelRatio: window.devicePixelRatio,
     viewport: `${window.innerWidth}x${window.innerHeight}`,
+    measured_at: new Date().toISOString(),
   };
+}
+
+/**
+ * Service-worker and cache state, which decides whether a stale shell is being
+ * served. Async, so it is merged into the panel once resolved.
+ */
+export async function collectWorkerDiagnostics() {
+  const out = {
+    service_worker_controller_url: null,
+    registration_active_url: null,
+    registration_active_state: null,
+    registration_waiting_url: null,
+    registration_waiting_state: null,
+    registration_installing_url: null,
+    registration_installing_state: null,
+    cache_storage_names: null,
+  };
+
+  try {
+    if ('serviceWorker' in navigator) {
+      out.service_worker_controller_url = navigator.serviceWorker.controller?.scriptURL ?? 'no controller';
+      const registration = await navigator.serviceWorker.getRegistration();
+      if (registration) {
+        out.registration_active_url = registration.active?.scriptURL ?? null;
+        out.registration_active_state = registration.active?.state ?? null;
+        out.registration_waiting_url = registration.waiting?.scriptURL ?? null;
+        out.registration_waiting_state = registration.waiting?.state ?? null;
+        out.registration_installing_url = registration.installing?.scriptURL ?? null;
+        out.registration_installing_state = registration.installing?.state ?? null;
+      } else {
+        out.registration_active_state = 'no registration';
+      }
+    } else {
+      out.service_worker_controller_url = 'serviceWorker unsupported';
+    }
+  } catch (error) {
+    out.service_worker_controller_url = `error: ${error?.message || error}`;
+  }
+
+  try {
+    out.cache_storage_names = 'caches' in window ? (await caches.keys()).join(', ') || '(none)' : 'unsupported';
+  } catch (error) {
+    out.cache_storage_names = `error: ${error?.message || error}`;
+  }
+
+  return out;
 }
 
 export default function StandaloneDiagnostics() {
     const [data, setData] = React.useState(null);
+    const [workerData, setWorkerData] = React.useState(null);
     const [dismissed, setDismissed] = React.useState(false);
     const [copied, setCopied] = React.useState(false);
 
@@ -86,22 +138,45 @@ export default function StandaloneDiagnostics() {
             if (localStorage.getItem(DISMISS_KEY) === BUILD_SHA) setDismissed(true);
         } catch { /* storage unavailable — just show it */ }
 
-        // Measure after paint so the header has its final box.
+        // Measure after paint so the header has its final box. Remeasured on the
+        // events where a standalone app's viewport actually changes: returning
+        // from the app switcher (pageshow, possibly from the back/forward cache),
+        // regaining visibility, rotating, and once more at 500ms in case the
+        // status bar settles after first paint.
         const measure = () => setData(collectStandaloneDiagnostics());
+        const onVisibility = () => { if (document.visibilityState === 'visible') measure(); };
+
         const frame = requestAnimationFrame(() => requestAnimationFrame(measure));
+        const settle = setTimeout(measure, 500);
         window.addEventListener('resize', measure);
+        window.addEventListener('pageshow', measure);
+        window.addEventListener('orientationchange', measure);
+        document.addEventListener('visibilitychange', onVisibility);
         window.visualViewport?.addEventListener('resize', measure);
+
+        let cancelled = false;
+        collectWorkerDiagnostics().then((worker) => {
+            if (!cancelled) setWorkerData(worker);
+        });
+
         return () => {
+            cancelled = true;
             cancelAnimationFrame(frame);
+            clearTimeout(settle);
             window.removeEventListener('resize', measure);
+            window.removeEventListener('pageshow', measure);
+            window.removeEventListener('orientationchange', measure);
+            document.removeEventListener('visibilitychange', onVisibility);
             window.visualViewport?.removeEventListener('resize', measure);
         };
     }, [shouldShow]);
 
     if (!shouldShow || dismissed || !data) return null;
 
+    const report = { ...data, ...(workerData || { service_worker: 'collecting…' }) };
+
     const copy = async () => {
-        const text = JSON.stringify(data, null, 2);
+        const text = JSON.stringify(report, null, 2);
         try {
             await navigator.clipboard.writeText(text);
         } catch {
@@ -135,7 +210,7 @@ export default function StandaloneDiagnostics() {
             </div>
             <table>
                 <tbody>
-                    {Object.entries(data).map(([key, value]) => (
+                    {Object.entries(report).map(([key, value]) => (
                         <tr key={key}>
                             <td className="pr-3 align-top text-white/55">{key}</td>
                             <td className="align-top break-all">{String(value)}</td>
