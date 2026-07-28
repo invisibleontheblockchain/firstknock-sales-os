@@ -14,6 +14,8 @@ import MarketOnboarding from '@/components/onboarding/MarketOnboarding';
 import { ThemeProvider, useTheme } from '@/components/theme/ThemeProvider';
 import { getAppRole, isManagerAccount, isRepAccount } from '@/lib/roles';
 import { clearFieldRoutesInspectionQueue } from '@/components/fieldroutes/fieldRoutesInspectionQueue';
+// TEMPORARY — remove with the diagnostics panel once the PWA geometry is known.
+import StandaloneDiagnostics from '@/components/debug/StandaloneDiagnostics';
 
 class ErrorBoundary extends React.Component {
   constructor(props) {super(props);this.state = { hasError: false, error: null };}
@@ -301,14 +303,14 @@ function LayoutInner({ children }) {
 
             {/* Header */}
             {!isRoleSelectPage &&
-      <header className={`px-4 pt-[env(safe-area-inset-top)] pb-0 z-20 shadow-md bg-black ${isPageActive('RepHome') ? 'border-b border-transparent' : 'border-b border-slate-800'}`}>
+      <header data-fk-header className={`px-4 pt-[env(safe-area-inset-top)] pb-0 z-20 shadow-md bg-black ${isPageActive('RepHome') ? 'border-b border-transparent' : 'border-b border-slate-800'}`}>
                 {/* 56px row on mobile (h-14); desktop keeps its 64px. The row height
                     and the safe-area inset are independent: the header above owns the
                     FULL env(safe-area-inset-top) exactly once, and this row simply sits
                     beneath it. The row adds no top offset of its own — no negative
                     margin, no absolute positioning, no spacer — so the map follows
                     immediately in normal flex flow. */}
-                <div className="flex items-center w-full h-14 md:h-16 pt-0">
+                <div data-fk-header-row className="flex items-center w-full h-14 md:h-16 pt-0">
                     <Link to="/" className="flex items-center mr-auto group shrink-0 text-white">
                         {/* TODO(asset): replace with a tightly cropped wordmark (ideally
                             SVG) with accurate intrinsic bounds, then delete this crop.
@@ -368,7 +370,10 @@ function LayoutInner({ children }) {
 
 
 
-            <main className="flex-1 relative overflow-hidden">
+            <main data-fk-main className="flex-1 relative overflow-hidden">
+                {/* TEMPORARY: standalone-only header diagnostics. Remove once the
+                    installed-PWA geometry is confirmed. */}
+                <StandaloneDiagnostics user={user} />
                 <ErrorBoundary>{children}</ErrorBoundary>
                 <AiAssistant />
                 <OnboardingWizard user={user} />
