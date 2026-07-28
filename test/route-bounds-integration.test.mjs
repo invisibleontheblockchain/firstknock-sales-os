@@ -209,7 +209,13 @@ test('Precision route bounds are explicit, off by default, and wired through per
   assert.ok(userSchema.properties.home_base);
   assert.equal(teamMemberSchema.properties.home_base, undefined);
   assert.match(home, /getRouteHomeBase/);
-  assert.match(home, /start_location: savedBoundStart/);
+  // The route-GENERATION path still persists its own non-personal bounds.
+  assert.match(home, /start_location: savedRouteStartLocation/);
+  // The REOPTIMIZE path no longer persists any coordinate: SavedRoute documents
+  // start_location/end_location as non-personal, and both a Home Base and a
+  // parked-car point are personal. The shared builder nulls both unconditionally.
+  // See route-optimize-update.test.mjs for the executed proof per mode.
+  assert.match(readSource('src/lib/routeOptimizeUpdate.js'), /start_location: null[\s\S]*end_location: null/);
   assert.match(home, /precisionAreaMetadata\.precision_area\?\.job_id/);
   assert.match(home, /Skipping duplicate recovered route/);
   assert.match(readSource('src/pages/RepHome.jsx'), /start_location: null[\s\S]*end_location: null/);
