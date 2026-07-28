@@ -74,6 +74,35 @@ Over 50 operating weeks, the initial targets are:
 Treat this as a forecast to update, not a promise. The workbook recalculates the required
 reach and content volume from actual conversion rates.
 
+The in-product **Path to 1,000** control mirrors this as a rolling 50-week planning
+scenario. Its goal progress uses the all-channel rolling-30-day retained-active stock.
+Its observed Instagram rows use only canonical, mature `1000-users` assets backed by the
+published content plan; unplanned assets, other campaigns, and `ig-release-smoke` are
+excluded.
+
+After a complete observation window, the weekly observed values are the plan-backed
+last-28-day totals divided by four:
+
+- mature Instagram reach whose authoritative fixed-age checkpoint became due in the
+  window;
+- canonical content assets whose fixed-age checkpoint became due in the window;
+- activated manager workspaces whose accounts were created in the window; and
+- Instagram-attributed users created in the window who currently satisfy the rolling
+  retained-active rule.
+
+That last value is a **gross signup-cohort contribution**, not net growth in the
+rolling-active stock. Older users can leave the stock while new users enter it, so the
+dashboard does not turn this proxy into an arrival date. A trustworthy ETA requires a
+persisted weekly history of the all-channel retained-active stock.
+
+The planning assumptions stay authoritative while the observed sample matures. The card
+shows raw partial totals first, then unlocks weekly comparisons only after 28 days of
+canonical checkpoint history. It also shows progress toward 30 canonical plan-backed
+assets before it calls the observed funnel sample mature. A corrected old snapshot keeps
+its original plan-derived checkpoint date and cannot re-enter the current pace window.
+Even after the sample matures, observed throughput remains descriptive; the baseline is
+not silently replaced by a fragile early conversion rate.
+
 ## Attribution contract
 
 Every Instagram asset gets one lowercase content ID:
@@ -212,14 +241,16 @@ Do not wait for Monday to capture a checkpoint that is due today.
 Every Monday:
 
 1. Clear every due or overdue seven-day Instagram checkpoint.
-2. Open `/GrowthDashboard` and set the same reporting window used last week.
-3. Read the funnel left to right and identify the largest absolute leak.
-4. Export the content conversion CSV and update the operating workbook.
-5. Review the `Weekly Scorecard` and `Lead Funnel`.
-6. Resolve every **Decision Due** item with its evidence-bound note.
-7. Compare fixed-age medians within format and comparison group after at least three
+2. Open `/GrowthDashboard` and read **Path to 1,000**.
+3. Compare observed reach, mature assets, activated workspaces, and gross retained-cohort
+   contribution per week with the required 50-week planning pace.
+4. Read the funnel left to right and identify the earliest material constraint.
+5. Export the content conversion CSV and update the operating workbook.
+6. Review the `Weekly Scorecard` and `Lead Funnel`.
+7. Resolve every **Decision Due** item with its evidence-bound note.
+8. Compare fixed-age medians within format and comparison group after at least three
    comparable executions.
-8. Assign the next sprint slots to Repeat concepts and one-variable Iterations; leave
+9. Assign the next sprint slots to Repeat concepts and one-variable Iterations; leave
    Hold concepts out until new evidence justifies revisiting them.
 
 Use the optional 30-day snapshot to revisit the seven-day decision against retained-user

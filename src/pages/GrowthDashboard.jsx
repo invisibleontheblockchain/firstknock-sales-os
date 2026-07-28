@@ -21,8 +21,14 @@ import { useTheme, contrastText } from '@/components/theme/ThemeProvider';
 import { INSTAGRAM_FIRST_30_DAYS } from '@/data/instagramFirst30Days';
 import { buildInstagramTrackedLink } from '@/lib/acquisitionTracking';
 import { csvCell } from '@/lib/csvExport';
+import {
+  buildGrowthPaceFromReport,
+  getGrowthPaceStatus,
+  GROWTH_HORIZON_WEEKS,
+  MIN_OBSERVED_CONTENT_ASSETS,
+} from '@/lib/growthPace';
 
-const GOAL_USERS = 1000;
+const PACE_ACCENT = '#39FF4A';
 
 function contentIdForToday() {
   const date = new Date();
@@ -43,6 +49,14 @@ function percent(value, digits = 0) {
   return `${number.toFixed(number > 0 && number < 1 ? Math.max(1, digits) : digits)}%`;
 }
 
+function paceNumber(value, digits = 1) {
+  const number = Number(value || 0);
+  return number.toLocaleString(undefined, {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
+}
+
 function MetricCard({ label, value, helper, icon: Icon, color }) {
   return (
     <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
@@ -53,6 +67,183 @@ function MetricCard({ label, value, helper, icon: Icon, color }) {
       <p className="mt-3 text-3xl font-black text-white">{Number(value || 0).toLocaleString()}</p>
       <p className="mt-1 text-xs text-white/45">{helper}</p>
     </div>
+  );
+}
+
+function PaceRow({
+  label,
+  observed,
+  required,
+  ratio,
+  observedAvailable,
+  accent,
+}) {
+  const percentage = Number.isFinite(ratio) ? Math.max(0, ratio * 100) : 0;
+  const visualPercentage = Math.min(100, percentage);
+  return (
+    <div className="rounded-xl border border-white/10 bg-black/35 p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[11px] font-black uppercase tracking-[0.15em] text-white/60">
+            {label}
+          </p>
+          <p className="mt-1 text-sm font-black tabular-nums text-white">
+            {observedAvailable ? `${paceNumber(observed)} / week` : '—'}
+          </p>
+        </div>
+        <div className="shrink-0 text-right">
+          <p className="text-[11px] font-bold text-white/55">Need</p>
+          <p className="mt-1 text-sm font-black tabular-nums text-white/70">
+            {paceNumber(required)} / week
+          </p>
+        </div>
+      </div>
+      <div
+        className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10"
+        role={observedAvailable ? 'progressbar' : undefined}
+        aria-label={observedAvailable ? `${label} pace` : undefined}
+        aria-valuemin={observedAvailable ? 0 : undefined}
+        aria-valuemax={observedAvailable ? 100 : undefined}
+        aria-valuenow={observedAvailable ? Math.round(visualPercentage) : undefined}
+        aria-valuetext={observedAvailable
+          ? `${Math.round(percentage)} percent of the weekly planning requirement`
+          : undefined}
+      >
+        {observedAvailable && (
+          <div
+            className="h-full rounded-full"
+            style={{ width: `${visualPercentage}%`, backgroundColor: accent }}
+          />
+        )}
+      </div>
+      <p className="mt-2 text-[11px] text-white/55">
+        {observedAvailable
+          ? `${Math.round(percentage)}% of the weekly planning requirement`
+          : 'Waiting for current plan-backed evidence'}
+      </p>
+    </div>
+  );
+}
+
+function PathToGoalCard({ pace }) {
+  const observed = pace.observed_weekly_proxy_28d;
+  const constraint = getGrowthPaceStatus(pace);
+  const hasCompleteWindow = pace.weekly_proxy_available;
+  const sampleMature = pace.measured_content_assets >= MIN_OBSERVED_CONTENT_ASSETS
+    && pace.observation_window_complete;
+
+  return (
+    <section className="rounded-2xl border border-white/10 bg-[#0b0b0b] p-5 sm:p-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p
+            className="text-[11px] font-black uppercase tracking-[0.2em]"
+            style={{ color: PACE_ACCENT }}
+          >
+            Weekly operating control
+          </p>
+          <h2 className="mt-1 text-xl font-black">Path to 1,000</h2>
+          <p className="mt-1 max-w-2xl text-xs leading-relaxed text-white/60">
+            Required Instagram pace if this channel closes the full remaining all-source
+            retained-user gap.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2 sm:justify-end">
+          <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-white/65">
+            {pace.remaining_users.toLocaleString()} remaining
+          </span>
+          <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-white/65">
+            {GROWTH_HORIZON_WEEKS}-week scenario
+          </span>
+        </div>
+      </div>
+
+      {pace.goal_reached ? (
+        <div className="mt-5 rounded-xl border border-green-400/25 bg-green-400/10 p-4">
+          <p className="text-lg font-black text-green-100">{constraint.title}</p>
+          <p className="mt-1 text-sm text-green-100/70">{constraint.detail}</p>
+        </div>
+      ) : (
+        <>
+          <div className="mt-5 grid gap-4 lg:grid-cols-[0.75fr_1.25fr]">
+            <div className="rounded-xl border border-white/10 bg-white/[0.035] p-4">
+              <p className="text-[11px] font-black uppercase tracking-[0.16em] text-white/60">
+                All-channel north star
+              </p>
+              <p className="mt-2 text-3xl font-black tabular-nums text-white">
+                {pace.retained_active_users.toLocaleString()}
+                <span className="text-base text-white/30"> / {pace.goal_users.toLocaleString()}</span>
+              </p>
+              <p className="mt-4 text-[11px] font-black uppercase tracking-[0.16em] text-white/60">
+                Baseline reach still required
+              </p>
+              <p className="mt-2 text-2xl font-black tabular-nums" style={{ color: PACE_ACCENT }}>
+                {Math.ceil(pace.required_total_reach).toLocaleString()}
+              </p>
+              <p className="mt-2 text-xs leading-relaxed text-white/60">
+                Planning baseline, not an observed forecast.
+              </p>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <PaceRow
+                label="Plan-backed reach"
+                observed={observed.reach}
+                required={pace.target_weekly.reach}
+                ratio={pace.pace_ratio.reach}
+                observedAvailable={hasCompleteWindow}
+                accent={PACE_ACCENT}
+              />
+              <PaceRow
+                label="Mature assets"
+                observed={observed.content_assets}
+                required={pace.target_weekly.content_assets}
+                ratio={pace.pace_ratio.content_assets}
+                observedAvailable={hasCompleteWindow}
+                accent={PACE_ACCENT}
+              />
+              <PaceRow
+                label="Activated workspaces"
+                observed={observed.activated_workspaces}
+                required={pace.target_weekly.activated_workspaces}
+                ratio={pace.pace_ratio.activated_workspaces}
+                observedAvailable={hasCompleteWindow}
+                accent={PACE_ACCENT}
+              />
+              <PaceRow
+                label="Gross retained cohort"
+                observed={observed.retained_users}
+                required={pace.target_weekly.retained_users}
+                ratio={pace.pace_ratio.retained_users}
+                observedAvailable={hasCompleteWindow}
+                accent={PACE_ACCENT}
+              />
+            </div>
+          </div>
+
+          <div className="mt-4 rounded-xl border border-white/10 bg-black/35 p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <p className="font-black text-white">{constraint.title}</p>
+                <p className="mt-1 text-xs leading-relaxed text-white/60">{constraint.detail}</p>
+              </div>
+              <span className="shrink-0 rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-white/60">
+                {sampleMature
+                  ? `${pace.measured_content_assets} mature assets · descriptive`
+                  : `${pace.measured_content_assets}/${MIN_OBSERVED_CONTENT_ASSETS} mature assets`}
+              </span>
+            </div>
+          </div>
+        </>
+      )}
+
+      <p className="mt-4 text-xs leading-relaxed text-white/60">
+        Weekly observed values are canonical, plan-backed last-28-day totals divided by
+        four. The retained value is a gross Instagram-attributed signup-cohort
+        contribution, not net growth in the rolling active-user stock. FirstKnock keeps
+        ETA off until weekly stock history can support one.
+      </p>
+    </section>
   );
 }
 
@@ -204,8 +395,9 @@ export default function GrowthDashboard() {
   });
   const totals = report?.all_time || {};
   const instagram = report?.last_28_days || {};
+  const pace = buildGrowthPaceFromReport(report);
   const retainedActive = Number(totals.retained_active_users_30d || 0);
-  const remaining = Math.max(0, GOAL_USERS - retainedActive);
+  const remaining = pace.remaining_users;
   const reach28 = Number(instagram.instagram_reach || 0);
   const landings28 = Number(instagram.instagram_landing_sessions || 0);
   const cta28 = Number(instagram.instagram_signup_cta_sessions || 0);
@@ -436,6 +628,10 @@ export default function GrowthDashboard() {
             onSnapshot={prepareQueueSnapshot}
             onDecision={saveGrowthDecision}
           />
+        )}
+
+        {!isError && !isLoading && (
+          <PathToGoalCard pace={pace} />
         )}
 
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

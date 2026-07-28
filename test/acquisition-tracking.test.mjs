@@ -20,6 +20,11 @@ import {
 } from '../src/lib/acquisitionEvents.js';
 import { INSTAGRAM_FIRST_30_DAYS } from '../src/data/instagramFirst30Days.js';
 import { csvCell } from '../src/lib/csvExport.js';
+import {
+  buildGrowthPace,
+  buildGrowthPaceFromReport,
+  getGrowthPaceStatus,
+} from '../src/lib/growthPace.js';
 import { writeAcquisitionMilestone } from '../base44/functions/_shared/acquisitionMilestones.js';
 
 const testDir = dirname(fileURLToPath(import.meta.url));
@@ -779,6 +784,8 @@ test('owner report groups Instagram content by signup, activation, and paid outc
   assert.equal(report.all_time.instagram_signups, 2);
   assert.equal(report.all_time.instagram_activated_workspaces, 1);
   assert.equal(report.all_time.instagram_activated_users, 2);
+  assert.equal(report.all_time.instagram_retained_active_users_30d, 2);
+  assert.equal(report.last_28_days.instagram_retained_active_users_30d, 2);
   assert.equal(report.all_time.instagram_paid_users, 1);
   assert.equal(report.all_time.instagram_active_rep_roster, 7);
   assert.equal(report.all_time.instagram_joined_reps, 2);
@@ -789,6 +796,14 @@ test('owner report groups Instagram content by signup, activation, and paid outc
   assert.equal(report.all_time.instagram_landing_sessions, 1);
   assert.equal(report.all_time.instagram_signup_cta_sessions, 1);
   assert.equal(report.all_time.retained_active_users_30d, 2);
+  assert.equal(report.pace_evidence.campaign, '1000-users');
+  assert.equal(report.pace_evidence.scope, 'canonical_mature_plan_backed_assets');
+  assert.equal(report.pace_evidence.measured_content_assets_all_time, 1);
+  assert.equal(report.pace_evidence.observation_window_complete, false);
+  assert.equal(report.pace_evidence.last_28_days.instagram_reach, 1000);
+  assert.equal(report.pace_evidence.last_28_days.instagram_content_assets, 1);
+  assert.equal(report.pace_evidence.last_28_days.instagram_activated_workspaces, 1);
+  assert.equal(report.pace_evidence.last_28_days.instagram_retained_active_users_30d, 2);
   assert.equal(report.by_content.length, 1);
   assert.deepEqual(
     report.by_content.map((row) => [row.content, row.signups, row.activated_users, row.paid_users]),
@@ -843,6 +858,42 @@ test('owner report groups Instagram content by signup, activation, and paid outc
     assert.equal(keys.has(forbidden), false, `report leaked forbidden key ${forbidden}`);
   }
 
+  const managerTouch = users.find((user) => user.id === 'manager_1').acquisition_first_touch;
+  const originalCapturedAt = managerTouch.captured_at;
+  managerTouch.captured_at = nineDaysAgo;
+  const prepublicationResponse = await handler(
+    new Request('https://firstknock.online/api/report', { method: 'POST' }),
+  );
+  const prepublicationReport = await prepublicationResponse.json();
+  assert.equal(prepublicationResponse.status, 200);
+  assert.equal(prepublicationReport.all_time.instagram_retained_active_users_30d, 2);
+  assert.equal(
+    prepublicationReport.pace_evidence.last_28_days.instagram_retained_active_users_30d,
+    0,
+  );
+  assert.equal(
+    prepublicationReport.pace_evidence.last_28_days.instagram_activated_workspaces,
+    0,
+  );
+  managerTouch.captured_at = originalCapturedAt;
+
+  const recentCreatedAt = users.find((user) => user.id === 'manager_1').created_date;
+  users.find((user) => user.id === 'manager_1').created_date = new Date(
+    Date.now() - 40 * 24 * 60 * 60 * 1000,
+  ).toISOString();
+  const cohortResponse = await handler(
+    new Request('https://firstknock.online/api/report', { method: 'POST' }),
+  );
+  const cohortReport = await cohortResponse.json();
+  assert.equal(cohortResponse.status, 200);
+  assert.equal(cohortReport.all_time.instagram_retained_active_users_30d, 2);
+  assert.equal(cohortReport.last_28_days.instagram_retained_active_users_30d, 1);
+  assert.equal(
+    cohortReport.pace_evidence.last_28_days.instagram_retained_active_users_30d,
+    1,
+  );
+  users.find((user) => user.id === 'manager_1').created_date = recentCreatedAt;
+
   const earlyOnlyMetric = metrics.find((metric) => metric.id === 'metric_early_only');
   earlyOnlyMetric.published_at = twoDaysAgo;
   earlyOnlyMetric.snapshot_captured_at = oneDayAgo;
@@ -857,6 +908,113 @@ test('owner report groups Instagram content by signup, activation, and paid outc
   assert.equal(advancedQueueResponse.status, 200);
   assert.equal(advancedQueueReport.content_queue.next_snapshot.content, 'ig-future');
   assert.equal(advancedQueueReport.content_queue.next_snapshot.snapshot_action_days, 1);
+
+  metrics.push(
+    {
+      id: 'metric_release_smoke',
+      campaign: '1000-users',
+      content: 'ig-release-smoke',
+      format: 'reel',
+      hook: 'Release smoke',
+      snapshot_days: 7,
+      snapshot_captured_at: now,
+      published_at: eightDaysAgo,
+      reach: 5000,
+      views: 6000,
+    },
+    {
+      id: 'metric_other_campaign',
+      campaign: 'other-campaign',
+      content: 'ig-other',
+      format: 'reel',
+      hook: 'Other campaign',
+      snapshot_days: 7,
+      snapshot_captured_at: now,
+      published_at: eightDaysAgo,
+      reach: 7000,
+      views: 8000,
+    },
+  );
+  contentPlans.push({
+    ...structuredClone(contentPlans[0]),
+    id: 'plan_other_campaign',
+    campaign: 'other-campaign',
+    content: 'ig-other',
+    published_at: eightDaysAgo,
+    review_decision: undefined,
+    review_note: undefined,
+    reviewed_at: undefined,
+    review_snapshot_captured_at: undefined,
+    review_evidence_hash: undefined,
+  });
+  const thirtyTwoDaysAgo = new Date(
+    Date.now() - 32 * 24 * 60 * 60 * 1000,
+  ).toISOString();
+  const fortyFiveDaysAgo = new Date(
+    Date.now() - 45 * 24 * 60 * 60 * 1000,
+  ).toISOString();
+  contentPlans.push(
+    {
+      ...structuredClone(contentPlans[0]),
+      id: 'plan_due_in_window',
+      content: 'ig-due-in-window',
+      sequence: 4,
+      published_at: thirtyTwoDaysAgo,
+      review_decision: undefined,
+      review_note: undefined,
+      reviewed_at: undefined,
+      review_snapshot_captured_at: undefined,
+      review_evidence_hash: undefined,
+    },
+    {
+      ...structuredClone(contentPlans[0]),
+      id: 'plan_old_correction',
+      content: 'ig-old-correction',
+      sequence: 5,
+      published_at: fortyFiveDaysAgo,
+      review_decision: undefined,
+      review_note: undefined,
+      reviewed_at: undefined,
+      review_snapshot_captured_at: undefined,
+      review_evidence_hash: undefined,
+    },
+  );
+  metrics.push(
+    {
+      id: 'metric_due_in_window',
+      campaign: '1000-users',
+      content: 'ig-due-in-window',
+      format: 'reel',
+      hook: 'Due in current evidence window',
+      snapshot_days: 7,
+      snapshot_captured_at: now,
+      published_at: now,
+      reach: 3000,
+      views: 3500,
+    },
+    {
+      id: 'metric_old_correction',
+      campaign: '1000-users',
+      content: 'ig-old-correction',
+      format: 'reel',
+      hook: 'Corrected after its evidence window',
+      snapshot_days: 7,
+      snapshot_captured_at: now,
+      published_at: now,
+      reach: 4000,
+      views: 4500,
+    },
+  );
+  const scopedPaceResponse = await handler(
+    new Request('https://firstknock.online/api/report', { method: 'POST' }),
+  );
+  const scopedPaceReport = await scopedPaceResponse.json();
+  assert.equal(scopedPaceResponse.status, 200);
+  assert.equal(scopedPaceReport.all_time.instagram_reach, 20000);
+  assert.equal(scopedPaceReport.pace_evidence.measured_content_assets_all_time, 3);
+  assert.equal(scopedPaceReport.pace_evidence.observation_window_complete, true);
+  assert.equal(scopedPaceReport.pace_evidence.last_28_days.instagram_content_assets, 2);
+  assert.equal(scopedPaceReport.pace_evidence.last_28_days.instagram_reach, 4000);
 
   metrics.push({
     ...structuredClone(metrics.find((metric) => metric.id === 'metric_newer_canonical')),
@@ -1520,8 +1678,229 @@ test('growth dashboard keeps queue evidence locked, repairable, and production-l
   assert.match(dashboard, /queueSnapshotLock\?\.format/);
   assert.match(dashboard, /queueSnapshotLock\?\.hook/);
   assert.match(dashboard, /cta_variant:\s*queueSnapshotLock\?\.ctaVariant/);
+  assert.match(dashboard, /buildGrowthPaceFromReport\(report\)/);
+  assert.match(dashboard, /Path to 1,000/);
+  assert.match(dashboard, /Gross retained cohort/);
+  assert.match(dashboard, /FirstKnock keeps\s+ETA off/);
+  assert.match(dashboard, /weekly_proxy_available/);
   assert.doesNotMatch(dashboard, /origin:\s*window\.location\.origin/);
   assert.match(queue, /Sync 30-day sprint/);
   assert.match(queue, /snapshot_action_days/);
   assert.match(queue, /htmlFor="growth-decision-note"/);
+});
+
+test('growth pace uses the documented baseline until the sample is mature', () => {
+  const empty = buildGrowthPace();
+  assert.equal(empty.rate_basis, 'planning_baseline');
+  assert.equal(empty.remaining_users, 1000);
+  assert.equal(empty.target_weekly.retained_users, 20);
+  assert.ok(Math.abs(empty.target_weekly.reach - 9533.34) < 0.01);
+  assert.equal(empty.target_weekly.activated_workspaces, 5);
+  assert.equal(empty.target_weekly.content_assets, 5);
+  assert.equal(empty.forecast_available, false);
+  assert.equal('projected_goal_at' in empty, false);
+  assert.equal(empty.weekly_proxy_available, false);
+  assert.equal(empty.observed_weekly_proxy_28d.reach, null);
+  assert.equal(empty.pace_ratio.reach, null);
+
+  const smallSample = buildGrowthPace({
+    retainedActiveUsers: 100,
+    instagramReach28: 40000,
+    instagramActivatedWorkspaces28: 20,
+    instagramRetainedActiveUsers28: 80,
+    measuredContentAssets: 29,
+    measuredContentAssets28: 20,
+    observationWindowComplete: true,
+  });
+  assert.equal(smallSample.rate_basis, 'planning_baseline');
+  assert.equal(smallSample.observed_rates_ready, false);
+  assert.ok(Math.abs(smallSample.reach_per_retained_user - 476.667) < 0.001);
+  assert.equal(smallSample.observed_weekly_proxy_28d.retained_users, 20);
+
+  const partialWindow = buildGrowthPace({
+    instagramReach28: 7000,
+    instagramActivatedWorkspaces28: 4,
+    instagramRetainedActiveUsers28: 8,
+    measuredContentAssets: 5,
+    measuredContentAssets28: 5,
+    observationWindowComplete: false,
+  });
+  assert.deepEqual(partialWindow.observed_totals_28d, {
+    reach: 7000,
+    activated_workspaces: 4,
+    retained_users: 8,
+    content_assets: 5,
+  });
+  assert.deepEqual(partialWindow.observed_weekly_proxy_28d, {
+    reach: null,
+    activated_workspaces: null,
+    retained_users: null,
+    content_assets: null,
+  });
+  assert.deepEqual(partialWindow.pace_ratio, {
+    reach: null,
+    activated_workspaces: null,
+    retained_users: null,
+    content_assets: null,
+  });
+});
+
+test('growth pace marks a mature observed sample without turning it into an ETA', () => {
+  const mature = buildGrowthPace({
+    retainedActiveUsers: 100,
+    instagramReach28: 40000,
+    instagramActivatedWorkspaces28: 20,
+    instagramRetainedActiveUsers28: 80,
+    measuredContentAssets: 30,
+    measuredContentAssets28: 20,
+    observationWindowComplete: true,
+  });
+  assert.equal(mature.rate_basis, 'planning_baseline');
+  assert.equal(mature.observed_rates_ready, true);
+  assert.equal(mature.remaining_users, 900);
+  assert.ok(Math.abs(mature.target_weekly.reach - 8580.006) < 0.001);
+  assert.equal(mature.target_weekly.activated_workspaces, 4.5);
+  assert.equal(mature.target_weekly.retained_users, 18);
+  assert.equal(mature.observed_weekly_proxy_28d.reach, 10000);
+  assert.equal(mature.observed_weekly_proxy_28d.activated_workspaces, 5);
+  assert.equal(mature.observed_weekly_proxy_28d.retained_users, 20);
+  assert.equal(mature.observed_weekly_proxy_28d.content_assets, 5);
+  assert.equal(mature.forecast_available, false);
+
+  const recordedZeroReach = buildGrowthPace({
+    instagramReach28: 0,
+    instagramActivatedWorkspaces28: 0,
+    instagramRetainedActiveUsers28: 0,
+    measuredContentAssets: 30,
+    measuredContentAssets28: 20,
+    observationWindowComplete: true,
+  });
+  assert.equal(recordedZeroReach.weekly_proxy_available, true);
+  assert.equal(recordedZeroReach.observed_weekly_proxy_28d.reach, 0);
+  assert.equal(recordedZeroReach.pace_ratio.reach, 0);
+  assert.equal(recordedZeroReach.observed_rates_ready, false);
+
+  const stoppedPublishing = buildGrowthPace({
+    measuredContentAssets: 30,
+    measuredContentAssets28: 0,
+    observationWindowComplete: true,
+  });
+  assert.equal(stoppedPublishing.observed_weekly_proxy_28d.content_assets, 0);
+  assert.equal(stoppedPublishing.pace_ratio.content_assets, 0);
+
+  const complete = buildGrowthPace({
+    retainedActiveUsers: 1200,
+    instagramReach28: -1,
+    instagramActivatedWorkspaces28: Number.NaN,
+    measuredContentAssets: Number.POSITIVE_INFINITY,
+    instagramRetainedActiveUsers28: 0,
+    measuredContentAssets28: 0,
+  });
+  assert.equal(complete.goal_reached, true);
+  assert.equal(complete.retained_active_users, 1200);
+  assert.equal(complete.remaining_users, 0);
+  assert.equal(complete.target_weekly.retained_users, 0);
+  assert.equal(complete.target_weekly.reach, 0);
+  assert.equal(complete.target_weekly.activated_workspaces, 0);
+  assert.equal(complete.target_weekly.content_assets, 0);
+  assert.equal(complete.pace_ratio.retained_users, null);
+});
+
+test('growth pace adapter keeps all-source progress separate from Instagram throughput', () => {
+  const pace = buildGrowthPaceFromReport({
+    all_time: {
+      retained_active_users_30d: 100,
+      instagram_retained_active_users_30d: 90,
+      instagram_content_assets: 30,
+    },
+    last_28_days: {
+      retained_active_users_30d: 80,
+      instagram_retained_active_users_30d: 70,
+      instagram_reach: 90000,
+      instagram_activated_workspaces: 40,
+    },
+    pace_evidence: {
+      measured_content_assets_all_time: 30,
+      observation_window_complete: true,
+      last_28_days: {
+        instagram_reach: 40000,
+        instagram_content_assets: 20,
+        instagram_activated_workspaces: 5,
+        instagram_retained_active_users_30d: 20,
+      },
+    },
+  });
+
+  assert.equal(pace.retained_active_users, 100);
+  assert.equal(pace.remaining_users, 900);
+  assert.equal(pace.measured_content_assets, 30);
+  assert.equal(pace.observed_weekly_proxy_28d.reach, 10000);
+  assert.equal(pace.observed_weekly_proxy_28d.activated_workspaces, 1.25);
+  assert.equal(pace.observed_weekly_proxy_28d.retained_users, 5);
+  assert.equal(pace.observed_weekly_proxy_28d.content_assets, 5);
+});
+
+test('growth pace status names the earliest trustworthy operating constraint', () => {
+  const cases = [
+    [{}, 'No measured baseline yet'],
+    [{
+      measuredContentAssets: 1,
+      measuredContentAssets28: 1,
+      instagramReach28: 1000,
+    }, '28-day observation window incomplete'],
+    [{
+      measuredContentAssets: 30,
+      measuredContentAssets28: 0,
+      observationWindowComplete: true,
+    }, 'Publishing cadence is the constraint'],
+    [{
+      measuredContentAssets: 30,
+      measuredContentAssets28: 1,
+      observationWindowComplete: true,
+    }, 'Reach is the constraint'],
+    [{
+      measuredContentAssets: 30,
+      measuredContentAssets28: 1,
+      instagramReach28: 10000,
+      observationWindowComplete: true,
+    }, 'Activation is the constraint'],
+    [{
+      measuredContentAssets: 30,
+      measuredContentAssets28: 1,
+      instagramReach28: 10000,
+      instagramActivatedWorkspaces28: 4,
+      observationWindowComplete: true,
+    }, 'Retention is the constraint'],
+    [{
+      measuredContentAssets: 30,
+      measuredContentAssets28: 1,
+      instagramActivatedWorkspaces28: 4,
+      instagramRetainedActiveUsers28: 4,
+      observationWindowComplete: true,
+    }, 'Attribution baseline is incomplete'],
+    [{ retainedActiveUsers: 1200 }, 'Goal reached'],
+  ];
+
+  for (const [input, expectedTitle] of cases) {
+    assert.equal(getGrowthPaceStatus(buildGrowthPace(input)).title, expectedTitle);
+  }
+});
+
+test('growth pace sanitizes invalid inputs without NaN or Infinity', () => {
+  const pace = buildGrowthPace({
+    goalUsers: Number.NaN,
+    retainedActiveUsers: Number.POSITIVE_INFINITY,
+    instagramReach28: Number.NEGATIVE_INFINITY,
+    instagramActivatedWorkspaces28: -10,
+    instagramRetainedActiveUsers28: Number.NaN,
+    measuredContentAssets: -30,
+    measuredContentAssets28: Number.POSITIVE_INFINITY,
+    horizonWeeks: 0,
+  });
+  const visit = (value) => {
+    if (typeof value === 'number') assert.equal(Number.isFinite(value), true);
+    if (Array.isArray(value)) value.forEach(visit);
+    else if (value && typeof value === 'object') Object.values(value).forEach(visit);
+  };
+  visit(pace);
 });

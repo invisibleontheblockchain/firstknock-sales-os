@@ -5,6 +5,9 @@ const MAX_USERS = 10000;
 const MAX_ACTIVITY_RECORDS = 100000;
 const MAX_GROWTH_RECORDS = 25000;
 const DAY_MS = 24 * 60 * 60 * 1000;
+const PACE_CAMPAIGN = "1000-users";
+const PACE_OBSERVATION_DAYS = 28;
+const PACE_EXCLUDED_CONTENT = new Set(["ig-release-smoke"]);
 const CONTENT_METRIC_FIELDS = [
   "reach",
   "views",
@@ -548,11 +551,95 @@ function summarize(
       .filter((user) => isActivated(user, activationIndex)).length,
     instagram_activated_users: instagram
       .filter((user) => isActivated(user, activationIndex)).length,
+    instagram_retained_active_users_30d: instagram
+      .filter((user) => isRetainedActive(user, activationIndex, activityIndex)).length,
     instagram_paid_users: instagram.filter(isPaid).length,
     instagram_active_rep_roster: multiplier.active_rep_roster,
     instagram_joined_reps: multiplier.joined_reps,
     instagram_activated_reps: multiplier.activated_reps,
     instagram_rep_identity_conflicts: multiplier.identity_conflicts,
+  };
+}
+
+function buildPaceEvidence(
+  users: any[],
+  allUsersById: Map<string, any>,
+  activationIndex: any,
+  activityIndex: any,
+  metrics: any[],
+  plans: any[],
+  rosterGroups: any[],
+) {
+  const scopedPlans = plans.filter((plan) => (
+    normalized(plan?.campaign) === PACE_CAMPAIGN
+    && !PACE_EXCLUDED_CONTENT.has(normalized(plan?.content))
+    && dateValue(plan, ["published_at"]) > 0
+  ));
+  const scopedAssetKeys = new Set(
+    scopedPlans.map((plan) => assetKey(plan?.campaign, plan?.content)),
+  );
+  const scopedPlansByAsset = new Map(scopedPlans.map((plan) => [
+    assetKey(plan?.campaign, plan?.content),
+    plan,
+  ]));
+  const scopedMetrics = metrics.filter((metric) => (
+    scopedAssetKeys.has(assetKey(metric?.campaign, metric?.content))
+  ));
+  const now = Date.now();
+  const observationCutoff = now - PACE_OBSERVATION_DAYS * DAY_MS;
+  const checkpointDueAt = (plan: any) => (
+    dateValue(plan, ["published_at"])
+    + Number(plan?.snapshot_days || 7) * DAY_MS
+  );
+  const recentMetrics = scopedMetrics.filter((metric) => {
+    const plan = scopedPlansByAsset.get(assetKey(metric?.campaign, metric?.content));
+    const dueAt = checkpointDueAt(plan);
+    return dueAt >= observationCutoff && dueAt <= now;
+  });
+  const activeMemberships = activeRepMemberships(rosterGroups);
+  const scopedUsers = users.filter((user) => {
+    const touch = acquisitionTouchForUser(user, allUsersById, activeMemberships);
+    const plan = scopedPlansByAsset.get(assetKey(touch?.campaign, touch?.content));
+    const publishedAt = dateValue(plan, ["published_at"]);
+    const capturedAt = dateValue(touch, ["captured_at"]);
+    return normalized(touch?.source) === "instagram"
+      && publishedAt > 0
+      && capturedAt >= publishedAt
+      && capturedAt <= now;
+  });
+  const recentUsers = scopedUsers.filter(
+    (user) => isRecent(user, PACE_OBSERVATION_DAYS, ["created_date"]),
+  );
+  const recentManagers = recentUsers.filter((user) => (
+    ["manager", "admin"].includes(normalized(user?.app_role))
+  ));
+  const checkpointDueTimes = scopedPlans
+    .map(checkpointDueAt)
+    .filter((value) => value > 0);
+  const firstCheckpointDueAt = checkpointDueTimes.length
+    ? Math.min(...checkpointDueTimes)
+    : 0;
+
+  return {
+    campaign: PACE_CAMPAIGN,
+    scope: "canonical_mature_plan_backed_assets",
+    observation_window_days: PACE_OBSERVATION_DAYS,
+    observation_window_complete: firstCheckpointDueAt > 0
+      && firstCheckpointDueAt <= observationCutoff,
+    measured_content_assets_all_time: scopedMetrics.length,
+    last_28_days: {
+      instagram_reach: recentMetrics.reduce(
+        (total, metric) => total + Math.max(0, Number(metric?.reach || 0)),
+        0,
+      ),
+      instagram_content_assets: recentMetrics.length,
+      instagram_activated_workspaces: recentManagers.filter(
+        (user) => isActivated(user, activationIndex),
+      ).length,
+      instagram_retained_active_users_30d: recentUsers.filter(
+        (user) => isRetainedActive(user, activationIndex, activityIndex),
+      ).length,
+    },
   };
 }
 
@@ -1089,6 +1176,15 @@ Deno.serve(async (req: Request) => {
       operatingMetrics,
       rosterGroups,
     );
+    const paceEvidence = buildPaceEvidence(
+      users,
+      usersById,
+      activationIndex,
+      activityIndex,
+      operatingMetrics,
+      plans,
+      rosterGroups,
+    );
     const generatedAt = new Date().toISOString();
     return reportResponse({
       success: true,
@@ -1128,6 +1224,7 @@ Deno.serve(async (req: Request) => {
         ])),
         rosterGroups,
       ),
+      pace_evidence: paceEvidence,
       by_content: byContent,
       content_queue: buildContentQueue(
         plans,
@@ -1147,7 +1244,10 @@ Deno.serve(async (req: Request) => {
         reach_source: "owner-entered Instagram Insights snapshot",
         anonymous_funnel: "unique pseudonymous browser sessions; no names, emails, or contact fields before auth",
         north_star: "activated users with verified product activity in the last 30 days",
+        instagram_retained_active_user: "Instagram-attributed manager or active-team rep with verified product activity in the last 30 days",
         reporting_window_user_basis: "manager accounts created in the window; activation and team metrics reflect their current verified state",
+        pace_evidence_scope: "canonical mature 1000-users assets backed by a published GrowthContentPlan; release smoke, unplanned assets, and other campaigns are excluded",
+        pace_observed_throughput: "current retained-active users whose accounts were created in the last 28 days; descriptive gross cohort contribution, not net retained-stock growth or an ETA",
       },
     });
   } catch (error: any) {
