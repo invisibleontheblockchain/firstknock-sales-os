@@ -383,7 +383,7 @@ test('initial, manager, and rep optimization keep whole streets contiguous', asy
     );
     assert.match(
         homeSource,
-        /buildPersistedRoadRoutingMetadata\(\s*routingContext,\s*null,\s*optimizedHashes\s*\)[\s\S]*SavedRoute\.update\(route\.id, routeUpdate\)/,
+        /buildPersistedRoadRoutingMetadata\(\s*routingContext,\s*null,\s*appliedHashes\s*\)[\s\S]*SavedRoute\.update\(route\.id, routeUpdate\)/,
     );
     assert.match(
         homeSource,
@@ -391,7 +391,7 @@ test('initial, manager, and rep optimization keep whole streets contiguous', asy
     );
     assert.match(
         homeSource,
-        /Route optimized[\s\S]*street-continuity estimate/,
+        /optimizeSuccessMessage[\s\S]*street-continuity estimate/,
     );
     assert.match(
         homeSource,
