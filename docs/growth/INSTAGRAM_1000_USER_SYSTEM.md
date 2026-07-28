@@ -24,7 +24,9 @@ Instagram reach
   -> signup CTA session
   -> manager signup
   -> activated workspace
-  -> activated manager and invited reps
+  -> active rep roster
+  -> joined reps
+  -> reps with a first outcome
   -> retained active users (30 days)
   -> first paid conversion
 ```
@@ -37,7 +39,11 @@ Definitions:
 - **Manager signup:** an attributed account that successfully created a manager workspace.
 - **Activated workspace:** a manager with a verified owned nonempty route or a deployed or
   completed Canvas campaign.
-- **Activated rep:** an invited rep who successfully joins and logs a real first outcome.
+- **Active rep roster:** unique active rep seats under the manager, deduplicated by
+  manager and normalized email. This is a roster proxy, not proof an invitation was sent.
+- **Joined rep:** an active roster seat linked to exactly one matching rep account by user
+  ID, manager, and email.
+- **Activated rep:** a joined rep who logs a real first outcome.
 - **Retained active user:** a verified active manager or rep in the rolling 30-day window.
 - **First paid conversion:** the first verified positive Stripe payment for a workspace.
 
@@ -98,7 +104,7 @@ FirstKnock preserves:
 
 - immutable first touch, which credits the creative that acquired the account;
 - mutable last touch, which shows the latest tracked visit before conversion; and
-- manager-level attribution for reps invited into that manager's workspace.
+- manager-level attribution for trusted active roster members in that manager's workspace.
 
 Do not claim organic view-through attribution. If someone watches a Reel and later types
 the domain directly, recover influence only through self-report.
@@ -137,8 +143,9 @@ The dashboard joins that snapshot to:
 
 - anonymous landing and CTA sessions;
 - manager signups;
-- all acquired users, including invited reps rolled up to the acquiring manager;
+- all acquired users, including active linked reps rolled up to the acquiring manager;
 - activated workspaces and activated users;
+- current active roster, joined-rep, and first-outcome counts;
 - retained active users; and
 - first paid conversions.
 
@@ -156,7 +163,7 @@ Every Monday:
 5. Review the `Weekly Scorecard` and `Lead Funnel`.
 6. Make one decision for each repeated concept:
 
-   - **Repeat:** it produced an activated workspace or activated invited users.
+   - **Repeat:** it produced an activated workspace or reps with a first outcome.
    - **Iterate:** it had strong upstream signal but leaked at one clear stage.
    - **Hold/stop:** it produced neither a conversion nor a useful learning after enough
      repetitions.
@@ -189,6 +196,9 @@ Scale concepts that create activated workspaces and retained users, not merely l
   emails, invite codes, IP addresses, or raw query strings.
 - First touch and first paid conversion are immutable. Later visits or renewals must not
   rewrite historical acquisition credit.
+- The 7- and 28-day team multiplier is a cohort view: it shows current roster, join, and
+  activation state for managers whose accounts were created in that window. It does not
+  claim those team actions occurred during the window.
 - Accounts acquired before tracking launched cannot be retroactively click-attributed
   unless the user supplies a self-reported source.
 
@@ -224,6 +234,8 @@ Start with:
 4. Manager map versus rep map
 5. Route Rescue #1
 
-The first experiment queue should test proof-first openings, keyword CTA versus generic
-bio CTA, industry-specific pain, route-rescue proof, Reel length, Story follow-up, and
-landing-page proof. Change one major variable at a time.
+The executable 20-asset queue is in
+[`INSTAGRAM_FIRST_30_DAYS_CONTENT.md`](./INSTAGRAM_FIRST_30_DAYS_CONTENT.md). It tests
+proof-first openings, keyword CTA versus Story link, route-rescue proof, Reel length,
+role-specific product proof, and the manager-to-team loop. Change one major variable at
+a time.

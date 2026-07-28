@@ -400,6 +400,35 @@ test('owner report groups Instagram content by signup, activation, and paid outc
       acquisition_first_touch: instagramTouch('ig-b'),
       outcomes_logged: 1,
     },
+    {
+      id: 'rep_2',
+      email: 'rep2@example.com',
+      app_role: 'rep',
+      team_manager_id: 'manager_2',
+      created_date: now,
+    },
+    {
+      id: 'rep_removed',
+      email: 'removed@example.com',
+      app_role: 'rep',
+      team_manager_id: 'manager_1',
+      created_date: now,
+      outcomes_logged: 1,
+    },
+    {
+      id: 'rep_conflict_1',
+      email: 'conflict@example.com',
+      app_role: 'rep',
+      team_manager_id: 'manager_1',
+      created_date: now,
+    },
+    {
+      id: 'rep_conflict_2',
+      email: 'conflict@example.com',
+      app_role: 'rep',
+      team_manager_id: 'manager_1',
+      created_date: now,
+    },
     { id: 'direct_1', email: 'direct@example.com', app_role: 'manager', created_date: now },
   ];
   const events = [
@@ -437,6 +466,90 @@ test('owner report groups Instagram content by signup, activation, and paid outc
       saves: 20,
     },
   ];
+  const teamMembers = [
+    {
+      id: 'member_1_placeholder',
+      manager_id: 'manager_1',
+      email: 'REP1@example.com',
+      role: 'rep',
+      status: 'active',
+    },
+    {
+      id: 'member_1',
+      manager_id: 'manager_1',
+      user_id: 'rep_1',
+      email: 'rep1@example.com',
+      role: 'rep',
+      status: 'active',
+    },
+    {
+      id: 'member_2',
+      manager_id: 'manager_1',
+      email: 'invited-a@example.com',
+      role: 'rep',
+      status: 'active',
+    },
+    {
+      id: 'member_3',
+      manager_id: 'manager_1',
+      email: 'shared@example.com',
+      role: 'rep',
+      status: 'active',
+    },
+    {
+      id: 'member_wrong_email',
+      manager_id: 'manager_1',
+      user_id: 'rep_removed',
+      email: 'wrong@example.com',
+      role: 'rep',
+      status: 'active',
+    },
+    {
+      id: 'member_4',
+      manager_id: 'manager_2',
+      user_id: 'rep_2',
+      email: 'rep2@example.com',
+      role: 'rep',
+      status: 'active',
+    },
+    {
+      id: 'member_5',
+      manager_id: 'manager_2',
+      email: 'SHARED@example.com',
+      role: 'rep',
+      status: 'active',
+    },
+    {
+      id: 'member_inactive',
+      manager_id: 'manager_1',
+      email: 'inactive@example.com',
+      role: 'rep',
+      status: 'inactive',
+    },
+    {
+      id: 'member_conflict_1',
+      manager_id: 'manager_1',
+      user_id: 'rep_conflict_1',
+      email: 'conflict@example.com',
+      role: 'rep',
+      status: 'active',
+    },
+    {
+      id: 'member_conflict_2',
+      manager_id: 'manager_1',
+      user_id: 'rep_conflict_2',
+      email: 'conflict@example.com',
+      role: 'rep',
+      status: 'active',
+    },
+    {
+      id: 'member_invalid_status',
+      manager_id: 'manager_1',
+      email: 'invalid@example.com',
+      role: 'rep',
+      status: 'invited',
+    },
+  ];
   const base44 = {
     auth: { me: async () => structuredClone(users[0]) },
     asServiceRole: {
@@ -466,7 +579,9 @@ test('owner report groups Instagram content by signup, activation, and paid outc
           }],
         },
         TeamMember: {
-          list: async () => [],
+          list: async (_sort, limit, skip = 0) => (
+            structuredClone(teamMembers.slice(skip, skip + limit))
+          ),
         },
         AcquisitionEvent: {
           list: async (_sort, limit, skip = 0) => structuredClone(events.slice(skip, skip + limit)),
@@ -482,13 +597,17 @@ test('owner report groups Instagram content by signup, activation, and paid outc
   const report = await response.json();
 
   assert.equal(response.status, 200);
-  assert.equal(report.all_time.users, 5);
-  assert.equal(report.all_time.activated_users, 2);
-  assert.equal(report.all_time.instagram_acquired_users, 3);
+  assert.equal(report.all_time.users, 9);
+  assert.equal(report.all_time.activated_users, 3);
+  assert.equal(report.all_time.instagram_acquired_users, 4);
   assert.equal(report.all_time.instagram_signups, 2);
   assert.equal(report.all_time.instagram_activated_workspaces, 1);
   assert.equal(report.all_time.instagram_activated_users, 2);
   assert.equal(report.all_time.instagram_paid_users, 1);
+  assert.equal(report.all_time.instagram_active_rep_roster, 7);
+  assert.equal(report.all_time.instagram_joined_reps, 2);
+  assert.equal(report.all_time.instagram_activated_reps, 1);
+  assert.equal(report.all_time.instagram_rep_identity_conflicts, 1);
   assert.equal(report.all_time.instagram_reach, 1000);
   assert.equal(report.all_time.instagram_landing_sessions, 1);
   assert.equal(report.all_time.instagram_signup_cta_sessions, 1);
@@ -501,8 +620,59 @@ test('owner report groups Instagram content by signup, activation, and paid outc
   assert.equal(report.by_content[0].reach, 1000);
   assert.equal(report.by_content[0].landing_sessions, 1);
   assert.equal(report.by_content[0].signup_cta_sessions, 1);
+  assert.equal(report.by_content[0].active_rep_roster, 7);
+  assert.equal(report.by_content[0].joined_reps, 2);
+  assert.equal(report.by_content[0].activated_reps, 1);
+  assert.equal(report.by_content[0].rep_identity_conflicts, 1);
+  assert.equal(report.by_content[0].roster_to_join_rate, 2 / 7);
+  assert.equal(report.by_content[0].joined_to_activation_rate, 0.5);
+  assert.equal(report.by_content[0].active_rep_roster, report.all_time.instagram_active_rep_roster);
+  assert.ok(report.by_content[0].activated_reps <= report.by_content[0].joined_reps);
+  assert.ok(report.by_content[0].joined_reps <= report.by_content[0].active_rep_roster);
   assert.equal(report.by_content[0].reach_to_signup_rate, 0.002);
   assert.equal(report.by_content[0].users_per_activated_workspace, 2);
+  const serialized = JSON.stringify(report);
+  assert.equal(serialized.includes('rep1@example.com'), false);
+  assert.equal(serialized.includes('member_1'), false);
+  assert.equal(serialized.includes('manager_1'), false);
+});
+
+test('acquisition report rejects ordinary managers before service-role reads', async () => {
+  let serviceReads = 0;
+  const unreadableEntity = {
+    list: async () => {
+      serviceReads += 1;
+      return [];
+    },
+  };
+  const base44 = {
+    auth: {
+      me: async () => ({
+        id: 'manager_non_owner',
+        email: 'manager@example.com',
+        app_role: 'manager',
+      }),
+    },
+    asServiceRole: {
+      entities: {
+        User: unreadableEntity,
+        SavedRoute: unreadableEntity,
+        CanvasSession: unreadableEntity,
+        InteractionLog: unreadableEntity,
+        TeamMember: unreadableEntity,
+        AcquisitionEvent: unreadableEntity,
+        GrowthContentMetric: unreadableEntity,
+      },
+    },
+  };
+  const handler = loadDenoHandler('base44/functions/getAcquisitionReport/entry.ts', base44);
+  const response = await handler(new Request('https://firstknock.online/api/report', {
+    method: 'POST',
+  }));
+
+  assert.equal(response.status, 403);
+  assert.deepEqual(await response.json(), { error: 'growth_admin_required' });
+  assert.equal(serviceReads, 0);
 });
 
 test('public acquisition events are allowlisted and deduplicated by session stage', async () => {

@@ -147,8 +147,20 @@ function isRetainedActive(user: any, activationIndex: any, activityIndex: any): 
     || activityIndex.userEmails.has(normalized(user?.email));
 }
 
-function acquisitionTouchForUser(user: any, usersById: Map<string, any>): any {
-  if (normalized(user?.app_role) === "rep" && user?.team_manager_id) {
+function membershipKey(managerId: any, userId: any): string {
+  return `${String(managerId || "")}|${String(userId || "")}`;
+}
+
+function acquisitionTouchForUser(
+  user: any,
+  usersById: Map<string, any>,
+  activeMemberships: Set<string>,
+): any {
+  if (
+    normalized(user?.app_role) === "rep"
+    && user?.team_manager_id
+    && activeMemberships.has(membershipKey(user.team_manager_id, user.id))
+  ) {
     const manager = usersById.get(String(user.team_manager_id));
     if (manager?.acquisition_first_touch) return manager.acquisition_first_touch;
   }
@@ -163,6 +175,90 @@ function uniqueCount(records: any[], field: string): number {
   return new Set(records.map((record) => String(record?.[field] || "")).filter(Boolean)).size;
 }
 
+function activeRepRoster(
+  teamMembers: any[],
+  allUsersById: Map<string, any>,
+): any[] {
+  const groups = new Map<string, any>();
+  for (const member of teamMembers) {
+    const memberId = String(member?.id || "");
+    const managerId = String(member?.manager_id || "");
+    const email = normalized(member?.email);
+    if (
+      !memberId
+      || !managerId
+      || !email
+      || normalized(member?.role) !== "rep"
+      || normalized(member?.status) !== "active"
+    ) {
+      continue;
+    }
+    const key = `${managerId}|${email}`;
+    if (!groups.has(key)) {
+      groups.set(key, {
+        key,
+        manager_id: managerId,
+        email,
+        member_ids: new Set<string>(),
+        linked_user_ids: new Set<string>(),
+      });
+    }
+    const group = groups.get(key);
+    group.member_ids.add(memberId);
+    if (member?.user_id) group.linked_user_ids.add(String(member.user_id));
+  }
+
+  return [...groups.values()].map((group) => {
+    const validUserIds = new Set<string>();
+    for (const userId of group.linked_user_ids) {
+      const user = allUsersById.get(userId);
+      if (
+        user
+        && String(user?.id || "") === userId
+        && normalized(user?.app_role) === "rep"
+        && String(user?.team_manager_id || "") === group.manager_id
+        && normalized(user?.email) === group.email
+      ) {
+        validUserIds.add(userId);
+      }
+    }
+    const joinedUserId = validUserIds.size === 1 ? [...validUserIds][0] : "";
+    return {
+      ...group,
+      joined_user: joinedUserId ? allUsersById.get(joinedUserId) : null,
+      identity_conflict: validUserIds.size > 1,
+    };
+  });
+}
+
+function activeRepMemberships(rosterGroups: any[]): Set<string> {
+  return new Set(
+    rosterGroups
+      .filter((group) => group?.joined_user?.id)
+      .map((group) => membershipKey(group.manager_id, group.joined_user.id)),
+  );
+}
+
+function teamMultiplier(
+  managerIds: Set<string>,
+  rosterGroups: any[],
+) {
+  const managerRoster = rosterGroups.filter((group) => (
+    managerIds.has(String(group?.manager_id || ""))
+  ));
+  const joinedRepUsers = managerRoster
+    .map((group) => group.joined_user)
+    .filter(Boolean);
+  return {
+    active_rep_roster: managerRoster.length,
+    joined_reps: joinedRepUsers.length,
+    activated_reps: joinedRepUsers.filter(
+      (user) => Number(user?.outcomes_logged || 0) > 0,
+    ).length,
+    identity_conflicts: managerRoster.filter((group) => group.identity_conflict).length,
+  };
+}
+
 function summarize(
   users: any[],
   allUsersById: Map<string, any>,
@@ -170,13 +266,21 @@ function summarize(
   activityIndex: any,
   events: any[],
   metrics: any[],
+  rosterGroups: any[],
 ) {
+  const activeMemberships = activeRepMemberships(rosterGroups);
   const instagram = users.filter((user) => (
-    normalized(acquisitionTouchForUser(user, allUsersById)?.source) === "instagram"
+    normalized(
+      acquisitionTouchForUser(user, allUsersById, activeMemberships)?.source,
+    ) === "instagram"
   ));
   const instagramManagers = instagram.filter((user) => (
     ["manager", "admin"].includes(normalized(user?.app_role))
   ));
+  const multiplier = teamMultiplier(
+    new Set(instagramManagers.map((user) => String(user?.id || "")).filter(Boolean)),
+    rosterGroups,
+  );
   const igEvents = instagramEvents(events);
   return {
     users: users.length,
@@ -209,6 +313,10 @@ function summarize(
     instagram_activated_users: instagram
       .filter((user) => isActivated(user, activationIndex)).length,
     instagram_paid_users: instagram.filter(isPaid).length,
+    instagram_active_rep_roster: multiplier.active_rep_roster,
+    instagram_joined_reps: multiplier.joined_reps,
+    instagram_activated_reps: multiplier.activated_reps,
+    instagram_rep_identity_conflicts: multiplier.identity_conflicts,
   };
 }
 
@@ -222,7 +330,9 @@ function contentRows(
   activationIndex: any,
   events: any[],
   metrics: any[],
+  rosterGroups: any[],
 ) {
+  const activeMemberships = activeRepMemberships(rosterGroups);
   const rows = new Map<string, any>();
   const ensureRow = (campaign: any, content: any) => {
     const cleanCampaign = normalized(campaign) || "unassigned";
@@ -254,6 +364,10 @@ function contentRows(
         paid_users: 0,
         manager_signups: 0,
         rep_signups: 0,
+        active_rep_roster_keys: new Set<string>(),
+        joined_rep_user_ids: new Set<string>(),
+        activated_rep_user_ids: new Set<string>(),
+        rep_identity_conflicts: 0,
         first_signup_at: null,
         last_signup_at: null,
         metric_timestamp: 0,
@@ -302,7 +416,7 @@ function contentRows(
   }
 
   for (const user of users) {
-    const touch = acquisitionTouchForUser(user, allUsersById);
+    const touch = acquisitionTouchForUser(user, allUsersById, activeMemberships);
     if (normalized(touch?.source) !== "instagram") continue;
     const row = ensureRow(touch?.campaign, touch?.content);
     row.medium = normalized(touch?.medium) || "organic_social";
@@ -323,12 +437,32 @@ function contentRows(
     }
   }
 
+  for (const group of rosterGroups) {
+    const manager = allUsersById.get(String(group?.manager_id || ""));
+    const touch = manager?.acquisition_first_touch;
+    if (normalized(touch?.source) !== "instagram") continue;
+    const row = ensureRow(touch?.campaign, touch?.content);
+    row.active_rep_roster_keys.add(group.key);
+    if (group.identity_conflict) row.rep_identity_conflicts += 1;
+    const joinedUser = group.joined_user;
+    if (joinedUser?.id) {
+      const joinedKey = membershipKey(group.manager_id, joinedUser.id);
+      row.joined_rep_user_ids.add(joinedKey);
+      if (Number(joinedUser?.outcomes_logged || 0) > 0) {
+        row.activated_rep_user_ids.add(joinedKey);
+      }
+    }
+  }
+
   return [...rows.values()]
     .map((row) => {
       const landingSessions = row.landing_session_ids.size;
       const signupCtaSessions = row.signup_cta_session_ids.size;
       const authCompleted = row.auth_user_ids.size;
       const ownedIntents = row.link_clicks + row.dm_intents;
+      const activeRepRosterCount = row.active_rep_roster_keys.size;
+      const joinedReps = row.joined_rep_user_ids.size;
+      const activatedReps = row.activated_rep_user_ids.size;
       return {
         source: row.source,
         medium: row.medium,
@@ -355,6 +489,10 @@ function contentRows(
         paid_users: row.paid_users,
         manager_signups: row.manager_signups,
         rep_signups: row.rep_signups,
+        active_rep_roster: activeRepRosterCount,
+        joined_reps: joinedReps,
+        activated_reps: activatedReps,
+        rep_identity_conflicts: row.rep_identity_conflicts,
         reach_to_landing_rate: row.reach ? landingSessions / row.reach : 0,
         landing_to_cta_rate: landingSessions ? signupCtaSessions / landingSessions : 0,
         cta_to_signup_rate: signupCtaSessions ? row.signups / signupCtaSessions : 0,
@@ -365,6 +503,10 @@ function contentRows(
           ? row.activated_users / row.activated_workspaces
           : 0,
         paid_rate: row.activated_workspaces ? row.paid_users / row.activated_workspaces : 0,
+        roster_to_join_rate: activeRepRosterCount
+          ? joinedReps / activeRepRosterCount
+          : 0,
+        joined_to_activation_rate: joinedReps ? activatedReps / joinedReps : 0,
         first_signup_at: row.first_signup_at,
         last_signup_at: row.last_signup_at,
       };
@@ -441,6 +583,7 @@ Deno.serve(async (req: Request) => {
       String(candidate?.id || ""),
       candidate,
     ]));
+    const rosterGroups = activeRepRoster(teamMembers, usersById);
     return Response.json({
       success: true,
       generated_at: new Date().toISOString(),
@@ -451,6 +594,7 @@ Deno.serve(async (req: Request) => {
         activityIndex,
         events,
         metrics,
+        rosterGroups,
       ),
       last_28_days: summarize(
         users.filter((candidate) => isRecent(candidate, 28, ["created_date"])),
@@ -463,6 +607,7 @@ Deno.serve(async (req: Request) => {
           "snapshot_captured_at",
           "created_date",
         ])),
+        rosterGroups,
       ),
       last_7_days: summarize(
         users.filter((candidate) => isRecent(candidate, 7, ["created_date"])),
@@ -475,18 +620,29 @@ Deno.serve(async (req: Request) => {
           "snapshot_captured_at",
           "created_date",
         ])),
+        rosterGroups,
       ),
-      by_content: contentRows(users, usersById, activationIndex, events, metrics),
+      by_content: contentRows(
+        users,
+        usersById,
+        activationIndex,
+        events,
+        metrics,
+        rosterGroups,
+      ),
       definitions: {
         acquisition_unit: "manager_workspace",
         manager_activation: "saved route with at least one property or deployed Canvas campaign",
         rep_activation: "first logged door outcome",
         attribution_model: "first touch",
-        invite_attribution: "rep outcomes roll up to the acquiring manager workspace",
+        team_attribution: "current active rep roster state rolls up to the acquiring manager workspace",
+        active_rep_roster: "unique active rep roster seat by manager and normalized email",
+        joined_rep: "active roster seat linked to exactly one matching rep User by user ID, manager, and email",
+        team_multiplier_window_basis: "current roster, join, and activation state for managers whose accounts were created in the reporting window",
         reach_source: "owner-entered Instagram Insights snapshot",
         anonymous_funnel: "unique pseudonymous browser sessions; no names, emails, or contact fields before auth",
         north_star: "activated users with verified product activity in the last 30 days",
-        reporting_window_user_basis: "accounts created in the window; activation reflects their current verified state",
+        reporting_window_user_basis: "manager accounts created in the window; activation and team metrics reflect their current verified state",
       },
     });
   } catch (error: any) {

@@ -176,6 +176,10 @@ export default function GrowthDashboard() {
   const signups28 = Number(instagram.instagram_signups || 0);
   const activatedWorkspaces28 = Number(instagram.instagram_activated_workspaces || 0);
   const activated28 = Number(instagram.instagram_activated_users || 0);
+  const activeRepRoster28 = Number(instagram.instagram_active_rep_roster || 0);
+  const joinedReps28 = Number(instagram.instagram_joined_reps || 0);
+  const activatedReps28 = Number(instagram.instagram_activated_reps || 0);
+  const repIdentityConflicts = Number(totals.instagram_rep_identity_conflicts || 0);
 
   const updateSnapshot = (field, value) => {
     setSnapshot((current) => ({ ...current, [field]: value }));
@@ -212,6 +216,10 @@ export default function GrowthDashboard() {
       'activated_workspaces',
       'activated_users',
       'paid_users',
+      'active_rep_roster',
+      'joined_reps',
+      'activated_reps',
+      'rep_identity_conflicts',
       'reach_to_landing_rate',
       'landing_to_cta_rate',
       'cta_to_signup_rate',
@@ -219,6 +227,8 @@ export default function GrowthDashboard() {
       'reach_to_activation_rate',
       'activation_rate',
       'paid_rate',
+      'roster_to_join_rate',
+      'joined_to_activation_rate',
       'first_signup_at',
       'last_signup_at',
     ];
@@ -245,7 +255,7 @@ export default function GrowthDashboard() {
             </div>
             <h1 className="mt-2 text-3xl font-black tracking-tight sm:text-4xl">1,000-user growth system</h1>
             <p className="mt-2 max-w-3xl text-sm text-white/55">
-              Enter each asset&apos;s Instagram Insights snapshot once. FirstKnock joins reach to anonymous landing sessions, signup clicks, accounts, activated users, and paid users.
+              Enter each asset&apos;s Instagram Insights snapshot once. FirstKnock joins reach to anonymous landing sessions, signup clicks, activated manager workspaces, their active rep rosters, first rep outcomes, and paid users.
             </p>
           </div>
           <Button
@@ -265,6 +275,12 @@ export default function GrowthDashboard() {
             {error?.response?.data?.error === 'growth_admin_required'
               ? 'This dashboard is restricted to the FirstKnock owner or an admin.'
               : 'The acquisition report is not available yet. Deploy the growth entities and backend functions together, then refresh.'}
+          </div>
+        )}
+
+        {repIdentityConflicts > 0 && (
+          <div className="rounded-2xl border border-amber-400/30 bg-amber-400/10 p-4 text-sm text-amber-100">
+            {repIdentityConflicts.toLocaleString()} roster identity conflict(s) were excluded from joined and activated rep totals. Review duplicate active roster records.
           </div>
         )}
 
@@ -325,6 +341,37 @@ export default function GrowthDashboard() {
               label="Signup cohort activated"
               value={activatedWorkspaces28}
               helper={`${activated28.toLocaleString()} total users`}
+            />
+          </div>
+        </section>
+
+        <section className="rounded-2xl border border-white/10 bg-[#0b0b0b] p-5 sm:p-6">
+          <div className="mb-4">
+            <h2 className="text-lg font-black">Manager → team multiplier</h2>
+            <p className="mt-1 text-xs text-white/45">
+              Current team adoption created by Instagram-attributed managers in the 28-day signup cohort.
+            </p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <FunnelStage
+              label="Manager workspaces"
+              value={signups28}
+              helper="Instagram-attributed signups"
+            />
+            <FunnelStage
+              label="Active roster seats"
+              value={activeRepRoster28}
+              helper={`${signups28 ? (activeRepRoster28 / signups28).toFixed(1) : '0.0'} per manager`}
+            />
+            <FunnelStage
+              label="Rep accounts joined"
+              value={joinedReps28}
+              helper={`${percent(activeRepRoster28 ? joinedReps28 / activeRepRoster28 : 0)} of roster`}
+            />
+            <FunnelStage
+              label="Reps with first outcome"
+              value={activatedReps28}
+              helper={`${percent(joinedReps28 ? activatedReps28 / joinedReps28 : 0)} of joined reps`}
             />
           </div>
         </section>
@@ -478,7 +525,7 @@ export default function GrowthDashboard() {
             </Button>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1080px] text-left text-sm">
+            <table className="w-full min-w-[1220px] text-left text-sm">
               <thead className="bg-white/[0.03] text-[10px] uppercase tracking-[0.14em] text-white/40">
                 <tr>
                   <th className="px-5 py-3">Content ID</th>
@@ -488,6 +535,7 @@ export default function GrowthDashboard() {
                   <th className="px-4 py-3 text-right">CTA</th>
                   <th className="px-4 py-3 text-right">Signups</th>
                   <th className="px-4 py-3 text-right">Activated</th>
+                  <th className="px-4 py-3 text-right">Rep loop I / J / A</th>
                   <th className="px-4 py-3 text-right">Reach → signup</th>
                   <th className="px-4 py-3 text-right">Signup → workspace</th>
                   <th className="px-5 py-3 text-right">First paid</th>
@@ -495,7 +543,7 @@ export default function GrowthDashboard() {
               </thead>
               <tbody className="divide-y divide-white/[0.06]">
                 {isLoading ? (
-                  <tr><td colSpan={10} className="px-5 py-10 text-center text-white/40">Loading funnel…</td></tr>
+                  <tr><td colSpan={11} className="px-5 py-10 text-center text-white/40">Loading funnel…</td></tr>
                 ) : report?.by_content?.length ? (
                   report.by_content.map((row) => {
                     const signal = signalFor(row);
@@ -515,6 +563,12 @@ export default function GrowthDashboard() {
                         <td className="px-4 py-3 text-right font-bold">{row.signup_cta_sessions}</td>
                         <td className="px-4 py-3 text-right font-bold">{row.signups}</td>
                         <td className="px-4 py-3 text-right font-bold">{row.activated_users}</td>
+                        <td
+                          className="px-4 py-3 text-right font-bold"
+                          title="Active roster seats / joined rep accounts / reps with a first outcome"
+                        >
+                          {Number(row.active_rep_roster || 0)} / {Number(row.joined_reps || 0)} / {Number(row.activated_reps || 0)}
+                        </td>
                         <td className="px-4 py-3 text-right text-white/55">{percent(row.reach_to_signup_rate, 2)}</td>
                         <td className="px-4 py-3 text-right text-white/55">{percent(row.activation_rate)}</td>
                         <td className="px-5 py-3 text-right font-bold">{row.paid_users}</td>
@@ -523,7 +577,7 @@ export default function GrowthDashboard() {
                   })
                 ) : (
                   <tr>
-                    <td colSpan={10} className="px-5 py-10 text-center">
+                    <td colSpan={11} className="px-5 py-10 text-center">
                       <p className="font-semibold text-white/60">No measured content yet</p>
                       <p className="mt-1 text-xs text-white/35">Create a tracked link and save its first Instagram snapshot.</p>
                     </td>
@@ -542,13 +596,14 @@ export default function GrowthDashboard() {
               <li>2. Landings but no signup clicks: promise, proof, or page clarity.</li>
               <li>3. Clicks but no accounts: authentication or signup friction.</li>
               <li>4. Accounts but no activation: onboarding or product-value friction.</li>
-              <li>5. Activation but no paid users: packaging, timing, or trust.</li>
+              <li>5. Activated managers but few joined or active reps: invitation or rep onboarding friction.</li>
+              <li>6. Activation but no paid users: packaging, timing, or trust.</li>
             </ol>
           </div>
           <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-5">
             <h3 className="font-black">Measurement boundary</h3>
             <p className="mt-3 text-sm leading-relaxed text-white/55">
-              Reach and engagement are copied from Instagram Insights. Anonymous FirstKnock events use rotating pseudonymous session IDs and store no names, emails, or contact fields. Signup, activation, and paid status come from authenticated product records.
+              Reach and engagement are copied from Instagram Insights. Anonymous FirstKnock events use rotating pseudonymous session IDs and store no names, emails, or contact fields. Signup, activation, active roster-seat counts, and paid status come from authenticated product records; this report returns aggregate counts rather than rep contact details.
             </p>
             <a
               href="https://www.facebook.com/help/instagram/788388387972460"
