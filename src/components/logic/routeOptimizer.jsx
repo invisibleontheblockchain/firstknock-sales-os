@@ -21,7 +21,6 @@ import {
     isValidRoutePoint,
     optimizeRouteWithBounds
 } from '@/lib/routeBounds';
-import { normalizeRouteOriginMode } from '@/lib/routeOriginModes';
 
 function cleanAreaLabel(value) {
     if (value === undefined || value === null) return '';
@@ -615,7 +614,9 @@ export function generateOptimizedRoutes(
         routingContext: optionRoutingContext = null
     } = options;
     const effectiveRoutingContext = routingContext || optionRoutingContext || null;
-    const normalizedRouteOriginMode = normalizeRouteOriginMode(routeOriginMode);
+    const normalizedRouteOriginMode = ['home_round_trip', 'current_to_home'].includes(routeOriginMode)
+        ? routeOriginMode
+        : 'none';
     const effectiveEndLocation = normalizedRouteOriginMode !== 'none' && isValidRoutePoint(endLocation)
         ? endLocation
         : null;

@@ -14,8 +14,6 @@ import MarketOnboarding from '@/components/onboarding/MarketOnboarding';
 import { ThemeProvider, useTheme } from '@/components/theme/ThemeProvider';
 import { getAppRole, isManagerAccount, isRepAccount } from '@/lib/roles';
 import { clearFieldRoutesInspectionQueue } from '@/components/fieldroutes/fieldRoutesInspectionQueue';
-// TEMPORARY — remove with the diagnostics panel once the PWA geometry is known.
-import StandaloneDiagnostics from '@/components/debug/StandaloneDiagnostics';
 
 class ErrorBoundary extends React.Component {
   constructor(props) {super(props);this.state = { hasError: false, error: null };}
@@ -303,26 +301,11 @@ function LayoutInner({ children }) {
 
             {/* Header */}
             {!isRoleSelectPage &&
-      <header data-fk-header className={`px-4 pt-[env(safe-area-inset-top)] pb-0 z-20 shadow-md bg-black ${isPageActive('RepHome') ? 'border-b border-transparent' : 'border-b border-slate-800'}`}>
-                {/* 56px row on mobile (h-14); desktop keeps its 64px. The row height
-                    and the safe-area inset are independent: the header above owns the
-                    FULL env(safe-area-inset-top) exactly once, and this row simply sits
-                    beneath it. The row adds no top offset of its own — no negative
-                    margin, no absolute positioning, no spacer — so the map follows
-                    immediately in normal flex flow. */}
-                <div data-fk-header-row className="flex items-center w-full h-14 md:h-16 pt-0">
+      <header className={`px-4 pt-[env(safe-area-inset-top)] pb-0 z-20 shadow-md bg-black ${isPageActive('RepHome') ? 'border-b border-transparent' : 'border-b border-slate-800'}`}>
+                <div className="flex items-center w-full h-16 pt-0">
                     <Link to="/" className="flex items-center mr-auto group shrink-0 text-white">
-                        {/* TODO(asset): replace with a tightly cropped wordmark (ideally
-                            SVG) with accurate intrinsic bounds, then delete this crop.
-                            The current PNG is 1024x683 but the wordmark occupies only
-                            rows 231-394, so the element height is NOT the visible height
-                            and it must be shown through a window that hugs the artwork.
-                            Measured: at h-[123px] the wordmark renders 29.5px tall;
-                            translating -39px inside a 34px window centres it in the
-                            56px row with ~13px of clearance above and below, clipped at
-                            neither edge. Desktop values are deliberately untouched. */}
-                        <span className="relative block h-[34px] w-[185px] md:h-12 md:w-[152px] overflow-hidden">
-                            <img src="https://media.base44.com/images/public/695eb764b077190880be21de/80866e548_ChatGPTImageJul1202611_48_19AM.png" alt="FirstKnock" className="h-[123px] -translate-y-[39px] md:h-[102px] md:-translate-y-[23px] w-auto max-w-none object-contain" />
+                        <span className="relative block h-12 w-[152px] overflow-hidden">
+                            <img src="https://media.base44.com/images/public/695eb764b077190880be21de/80866e548_ChatGPTImageJul1202611_48_19AM.png" alt="FirstKnock" className="h-[102px] w-auto max-w-none -translate-y-[23px] object-contain" />
                         </span>
                     </Link>
 
@@ -370,10 +353,7 @@ function LayoutInner({ children }) {
 
 
 
-            <main data-fk-main className="flex-1 relative overflow-hidden">
-                {/* TEMPORARY: standalone-only header diagnostics. Remove once the
-                    installed-PWA geometry is confirmed. */}
-                <StandaloneDiagnostics user={user} />
+            <main className="flex-1 relative overflow-hidden">
                 <ErrorBoundary>{children}</ErrorBoundary>
                 <AiAssistant />
                 <OnboardingWizard user={user} />
