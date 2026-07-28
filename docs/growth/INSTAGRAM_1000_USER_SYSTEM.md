@@ -326,3 +326,9 @@ proof-first openings, keyword CTA versus Story link, route-rescue proof, Reel le
 role-specific product proof, and the manager-to-team loop. Change one major variable at
 a time. Load it with **Load 30-day sprint** in `/GrowthDashboard`; use the document as
 the creative brief and the in-product queue as the operating record.
+
+The next production layer is the
+[`CROSS_PLATFORM_CONTENT_ENGINE.md`](./CROSS_PLATFORM_CONTENT_ENGINE.md) architecture.
+It turns approved source material and evidence-backed concepts into Instagram and TikTok
+renditions while keeping privacy review, platform IDs, delivery status, and learning
+separate.
