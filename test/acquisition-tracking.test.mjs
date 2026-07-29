@@ -1292,7 +1292,7 @@ test('acquisition report rejects ordinary managers before service-role reads', a
   assert.equal(serviceReads, 0);
 });
 
-test('public acquisition events are allowlisted and deduplicated by session stage', async () => {
+test('public acquisition events accept /start and legacy /instagram, then deduplicate each session stage', async () => {
   const records = [];
   const eventEntity = {
     filter: async (query) => records.filter((record) => (
@@ -1313,7 +1313,7 @@ test('public acquisition events are allowlisted and deduplicated by session stag
     anonymous_id: 'anon_public_001',
     session_id: 'session_public_001',
     occurred_at: new Date().toISOString(),
-    landing_path: '/instagram',
+    landing_path: '/start',
     touch: {
       source: 'instagram',
       medium: 'organic_social',
@@ -1333,13 +1333,70 @@ test('public acquisition events are allowlisted and deduplicated by session stag
   assert.equal((await invoke(payload)).status, 200);
   assert.equal(records.length, 1);
   assert.equal(records[0].content, 'ig-public');
+  assert.equal(records[0].landing_path, '/start');
 
   assert.equal((await invoke({ ...payload, event_id: 'event_public_002' })).status, 200);
   assert.equal(records.length, 1, 'same session and stage should be deduplicated');
 
-  const rejected = await invoke({ ...payload, event_id: 'event_public_003', event_name: 'purchase' });
-  assert.equal(rejected.status, 400);
-  assert.equal(records.length, 1);
+  const legacy = await invoke({
+    ...payload,
+    event_id: 'event_public_003',
+    session_id: 'session_public_legacy',
+    landing_path: '/Instagram/',
+    touch: {
+      ...payload.touch,
+      content: 'ig-legacy',
+    },
+  });
+  assert.equal(legacy.status, 200);
+  assert.equal(records.length, 2);
+  assert.equal(records[1].landing_path, '/instagram');
+  assert.equal(records[1].content, 'ig-legacy');
+
+  const tiktokEvent = buildAcquisitionEvent('signup_cta_clicked', {
+    ctaVariant: 'hero-primary',
+    landingPath: '/start',
+    identity: {
+      anonymous_id: 'anon_public_tiktok',
+      session_id: 'session_public_tiktok',
+    },
+    storage: memoryStorage(),
+    now: new Date(),
+    cryptoApi: {
+      randomUUID: () => 'event-public-tiktok',
+    },
+  });
+  const tiktok = await invoke({
+    ...tiktokEvent,
+    touch: {
+      source: 'tiktok',
+      medium: 'organic_social',
+      campaign: '1000-users',
+      content: 'tt-public',
+    },
+  });
+  assert.equal(tiktok.status, 200);
+  assert.equal(records.length, 3);
+  assert.equal(records[2].landing_path, '/start');
+  assert.equal(records[2].source, 'tiktok');
+  assert.equal(records[2].content, 'tt-public');
+
+  const invalidCases = [
+    { event_id: 'event_public_004', event_name: 'purchase' },
+    { event_id: 'event_public_005', landing_path: '/' },
+    { event_id: 'event_public_006', landing_path: '/start/extra' },
+    { event_id: 'event_public_007', landing_path: 'start' },
+    { event_id: 'event_public_008', landing_path: undefined },
+  ];
+  for (const invalid of invalidCases) {
+    const rejected = await invoke({
+      ...payload,
+      session_id: `session_${invalid.event_id}`,
+      ...invalid,
+    });
+    assert.equal(rejected.status, 400);
+  }
+  assert.equal(records.length, 3);
 });
 
 test('owner can upsert cumulative platform checkpoints without colliding', async () => {

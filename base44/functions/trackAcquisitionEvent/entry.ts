@@ -1,6 +1,7 @@
 import { createClientFromRequest } from "npm:@base44/sdk@0.8.31";
 
 const PUBLIC_EVENTS = new Set(["landing_viewed", "signup_cta_clicked"]);
+const PUBLIC_LANDING_PATHS = new Set(["/start", "/instagram"]);
 const TOKEN_MAX = 120;
 const FUTURE_SKEW_MS = 5 * 60 * 1000;
 const PAST_LIMIT_MS = 31 * 24 * 60 * 60 * 1000;
@@ -38,9 +39,10 @@ function timestamp(value: any): string | null {
 }
 
 function landingPath(value: any): string {
-  const path = String(value || "/instagram").trim().slice(0, 300);
-  if (!path.startsWith("/")) return "/instagram";
-  return path.length > 1 ? path.replace(/\/+$/, "") : path;
+  const raw = String(value || "").trim().slice(0, 300);
+  if (!raw.startsWith("/")) return "";
+  const path = (raw.length > 1 ? raw.replace(/\/+$/, "") : raw).toLowerCase();
+  return PUBLIC_LANDING_PATHS.has(path) ? path : "";
 }
 
 function sanitizeTouch(raw: any): any {
@@ -124,7 +126,7 @@ Deno.serve(async (req: Request) => {
       || !anonymousId
       || !sessionId
       || !occurredAt
-      || path.toLowerCase() !== "/instagram"
+      || !path
     ) {
       return Response.json({ error: "invalid_acquisition_event" }, { status: 400 });
     }
