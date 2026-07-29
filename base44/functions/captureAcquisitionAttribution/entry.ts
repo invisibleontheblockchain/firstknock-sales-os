@@ -4,6 +4,7 @@ const TOKEN_MAX = 120;
 const PATH_MAX = 300;
 const HOST_MAX = 160;
 const FUTURE_SKEW_MS = 5 * 60 * 1000;
+const ATTRIBUTION_WRITE_ATTEMPTS = 4;
 
 function normalized(value: any): string {
   return String(value || "").trim().toLowerCase();
@@ -65,6 +66,69 @@ async function hashedIdentifier(kind: string, value: string): Promise<string> {
   return `${kind}_${hex.slice(0, 48)}`;
 }
 
+function touchTime(value: any): number {
+  const parsed = new Date(value?.captured_at || "");
+  return Number.isFinite(parsed.getTime()) ? parsed.getTime() : 0;
+}
+
+function latestTouch(current: any, incoming: any): any {
+  if (!current) return incoming;
+  if (!incoming) return current;
+  return touchTime(incoming) > touchTime(current) ? incoming : current;
+}
+
+async function persistAttribution(
+  userEntity: any,
+  authenticated: any,
+  firstTouch: any,
+  lastTouch: any,
+): Promise<any | null> {
+  for (let attempt = 0; attempt < ATTRIBUTION_WRITE_ATTEMPTS; attempt += 1) {
+    const current = await userEntity.get(authenticated.id);
+    if (
+      !current
+      || normalized(current.email) !== normalized(authenticated.email)
+      || !current.updated_date
+    ) {
+      return null;
+    }
+    const persistedFirstTouch = current.acquisition_first_touch
+      || firstTouch
+      || lastTouch;
+    const persistedLastTouch = latestTouch(
+      current.acquisition_last_touch,
+      lastTouch || firstTouch,
+    );
+    const firstTouchCreated = !current.acquisition_first_touch;
+    const updates: Record<string, any> = {
+      acquisition_last_touch: persistedLastTouch,
+      acquisition_attribution_updated_at: new Date().toISOString(),
+      ...(firstTouchCreated
+        ? { acquisition_first_touch: persistedFirstTouch }
+        : {}),
+    };
+    const result = await userEntity.updateMany(
+      {
+        id: current.id,
+        updated_date: current.updated_date,
+      },
+      { $set: updates },
+    );
+    if (Number(result?.updated || 0) === 1) {
+      return {
+        user: { ...current, ...updates },
+        firstTouchCreated,
+        firstTouch: persistedFirstTouch,
+        lastTouch: persistedLastTouch,
+      };
+    }
+  }
+  throw Object.assign(
+    new Error("attribution_capture_conflict"),
+    { code: "attribution_capture_conflict" },
+  );
+}
+
 Deno.serve(async (req: Request) => {
   try {
     if (req.method === "OPTIONS") return new Response(null, { status: 204 });
@@ -85,21 +149,17 @@ Deno.serve(async (req: Request) => {
       return Response.json({ error: "invalid_attribution_touch" }, { status: 400 });
     }
 
-    const user = await base44.asServiceRole.entities.User.get(authenticated.id);
-    if (!user || normalized(user.email) !== normalized(authenticated.email)) {
+    const userEntity = base44.asServiceRole.entities.User;
+    const persisted = await persistAttribution(
+      userEntity,
+      authenticated,
+      firstTouch,
+      lastTouch,
+    );
+    if (!persisted) {
       return Response.json({ error: "account_verification_failed" }, { status: 401 });
     }
-
-    const updates: Record<string, any> = {
-      acquisition_last_touch: lastTouch,
-      acquisition_attribution_updated_at: new Date().toISOString(),
-    };
-    const firstTouchCreated = !user.acquisition_first_touch;
-    if (firstTouchCreated) {
-      updates.acquisition_first_touch = firstTouch || lastTouch;
-    }
-
-    await base44.asServiceRole.entities.User.update(user.id, updates);
+    const user = persisted.user;
 
     // Record auth completion once for this user. Attribution remains the
     // authoritative source; this event supplies a timestamped funnel stage.
@@ -113,10 +173,7 @@ Deno.serve(async (req: Request) => {
         ? existing
         : Array.isArray(existing?.items) ? existing.items : [];
       if (!rows.length) {
-        const touch = updates.acquisition_first_touch
-          || user.acquisition_first_touch
-          || firstTouch
-          || lastTouch;
+        const touch = persisted.firstTouch;
         const anonymousId = identifier(body?.anonymous_id, `authenticated_${user.id}`);
         const sessionId = identifier(body?.session_id, `authenticated_${user.id}`);
         await events.create({
@@ -147,11 +204,14 @@ Deno.serve(async (req: Request) => {
 
     return Response.json({
       success: true,
-      first_touch_created: firstTouchCreated,
-      first_touch: updates.acquisition_first_touch || user.acquisition_first_touch,
-      last_touch: lastTouch,
+      first_touch_created: persisted.firstTouchCreated,
+      first_touch: persisted.firstTouch,
+      last_touch: persisted.lastTouch,
     });
   } catch (error: any) {
+    if (error?.code === "attribution_capture_conflict") {
+      return Response.json({ error: error.code }, { status: 409 });
+    }
     console.error("[captureAcquisitionAttribution]", error?.message || error);
     return Response.json({ error: "attribution_capture_failed" }, { status: 500 });
   }

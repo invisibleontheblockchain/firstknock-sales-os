@@ -2,11 +2,11 @@ import React from 'react';
 import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
 import {
-  markStoredAcquisitionSynced,
   readStoredAcquisition,
   shouldSyncStoredAcquisition,
 } from '@/lib/acquisitionTracking';
 import { getAcquisitionIdentity } from '@/lib/acquisitionEvents';
+import { syncAcquisitionAttribution } from '@/lib/acquisitionSync';
 
 export default function AcquisitionTracker() {
   const { isAuthenticated, user } = useAuth();
@@ -18,13 +18,20 @@ export default function AcquisitionTracker() {
 
     let cancelled = false;
     const identity = getAcquisitionIdentity();
-    base44.functions.invoke('captureAcquisitionAttribution', {
-      first_touch: stored.first_touch,
-      last_touch: stored.last_touch || stored.first_touch,
-      anonymous_id: identity.anonymous_id,
-      session_id: identity.session_id,
-    }).then(() => {
-      if (!cancelled) markStoredAcquisitionSynced(user.id);
+    void syncAcquisitionAttribution({
+      invoke: (functionName, payload) => (
+        base44.functions.invoke(functionName, payload)
+      ),
+      userId: user.id,
+      stored,
+      identity,
+      shouldCancel: () => cancelled,
+      onRetry: (error) => {
+        console.warn(
+          '[Acquisition] Attribution sync retrying',
+          error?.message || error,
+        );
+      },
     }).catch((error) => {
       console.warn('[Acquisition] Attribution sync deferred', error?.message || error);
     });

@@ -142,19 +142,24 @@ Deno.serve(async (req: Request) => {
       return Response.json({ success: true, deduplicated: true });
     }
 
-    // Each stage is counted once per browser session. This prevents accidental
-    // rerenders/retries from inflating the funnel and limits low-effort abuse.
+    const touch = sanitizeTouch(body?.touch);
+    // Each stage is counted once per browser session and tracked content touch.
+    // This prevents rerenders/retries from inflating a content row without
+    // discarding a legitimate visit to a second post during the same session.
     const duplicateStage = asArray(
       await entity.filter({
         session_id: storedSessionId,
         event_name: eventName,
+        source: touch.source,
+        medium: touch.medium,
+        campaign: touch.campaign,
+        content: touch.content,
       }, "-created_date", 1).catch(() => []),
     );
     if (duplicateStage.length) {
       return Response.json({ success: true, deduplicated: true });
     }
 
-    const touch = sanitizeTouch(body?.touch);
     const created = await entity.create({
       event_id: eventId,
       event_name: eventName,

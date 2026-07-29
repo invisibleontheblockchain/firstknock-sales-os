@@ -19,6 +19,7 @@ import {
   buildAcquisitionEvent,
   getAcquisitionIdentity,
 } from '../src/lib/acquisitionEvents.js';
+import { syncAcquisitionAttribution } from '../src/lib/acquisitionSync.js';
 import { INSTAGRAM_FIRST_30_DAYS } from '../src/data/instagramFirst30Days.js';
 import { csvCell } from '../src/lib/csvExport.js';
 import {
@@ -80,6 +81,32 @@ function loadDenoHandler(path, base44) {
   }, { filename: path });
   assert.equal(typeof handler, 'function');
   return handler;
+}
+
+function attributionUserEntity(user, updates = []) {
+  let revision = 0;
+  if (!user.updated_date) {
+    user.updated_date = '2026-07-28T17:00:00.000Z';
+  }
+  return {
+    get: async () => structuredClone(user),
+    updateMany: async (query, operations) => {
+      if (
+        query.id !== user.id
+        || query.updated_date !== user.updated_date
+      ) {
+        return { updated: 0 };
+      }
+      const patch = structuredClone(operations?.$set || {});
+      updates.push(patch);
+      Object.assign(user, patch);
+      revision += 1;
+      user.updated_date = new Date(
+        Date.parse('2026-07-28T17:00:00.000Z') + revision * 1000,
+      ).toISOString();
+      return { updated: 1 };
+    },
+  };
 }
 
 test('Instagram UTMs are normalized into a stable content touch', () => {
@@ -276,6 +303,81 @@ test('anonymous and session identities remain stable without storing personal da
   assert.equal(event.event_name, 'landing_viewed');
 });
 
+test('authenticated attribution retries transient failures and marks the exact local journey only after success', async () => {
+  const storage = memoryStorage();
+  captureAcquisitionTouch({
+    href: 'https://firstknock.online/start?utm_source=tiktok&utm_medium=organic_social&utm_campaign=1000-users&utm_content=tt-retry',
+    now: new Date('2026-07-28T18:00:00.000Z'),
+    storage,
+  });
+  const stored = readStoredAcquisition(storage);
+  const calls = [];
+  const waits = [];
+  const result = await syncAcquisitionAttribution({
+    invoke: async (functionName, payload) => {
+      calls.push({ functionName, payload: structuredClone(payload) });
+      if (calls.length === 1) throw new Error('temporary network outage');
+      return { success: true };
+    },
+    userId: 'user_retry_1',
+    stored,
+    identity: {
+      anonymous_id: 'anon_retry_1',
+      session_id: 'session_retry_1',
+    },
+    storage,
+    sleep: async (milliseconds) => {
+      waits.push(milliseconds);
+    },
+  });
+
+  assert.deepEqual(result, { status: 'synced', attempts: 2 });
+  assert.equal(calls.length, 2);
+  assert.deepEqual(waits, [500]);
+  assert.equal(calls[0].functionName, 'captureAcquisitionAttribution');
+  assert.equal(calls[0].payload.first_touch.content, 'tt-retry');
+  assert.equal(
+    shouldSyncStoredAcquisition(readStoredAcquisition(storage), 'user_retry_1'),
+    false,
+  );
+});
+
+test('authenticated attribution cancellation stops retries and never marks the local journey synced', async () => {
+  const storage = memoryStorage();
+  captureAcquisitionTouch({
+    href: 'https://firstknock.online/start?utm_source=instagram&utm_medium=organic_social&utm_campaign=1000-users&utm_content=ig-cancel',
+    now: new Date('2026-07-28T18:00:00.000Z'),
+    storage,
+  });
+  const stored = readStoredAcquisition(storage);
+  let cancelled = false;
+  let calls = 0;
+  const result = await syncAcquisitionAttribution({
+    invoke: async () => {
+      calls += 1;
+      throw new Error('temporary network outage');
+    },
+    userId: 'user_cancel_1',
+    stored,
+    identity: {
+      anonymous_id: 'anon_cancel_1',
+      session_id: 'session_cancel_1',
+    },
+    storage,
+    shouldCancel: () => cancelled,
+    sleep: async () => {
+      cancelled = true;
+    },
+  });
+
+  assert.deepEqual(result, { status: 'canceled', attempts: 1 });
+  assert.equal(calls, 1);
+  assert.equal(
+    shouldSyncStoredAcquisition(readStoredAcquisition(storage), 'user_cancel_1'),
+    true,
+  );
+});
+
 test('backend preserves first touch and updates only last touch on later visits', async () => {
   const user = { id: 'user_1', email: 'owner@example.com' };
   const updates = [];
@@ -284,13 +386,7 @@ test('backend preserves first touch and updates only last touch on later visits'
     auth: { me: async () => ({ id: user.id, email: user.email }) },
     asServiceRole: {
       entities: {
-        User: {
-          get: async () => structuredClone(user),
-          update: async (_id, value) => {
-            updates.push(structuredClone(value));
-            Object.assign(user, structuredClone(value));
-          },
-        },
+        User: attributionUserEntity(user, updates),
         AcquisitionEvent: {
           filter: async (query) => events.filter((event) => (
             event.event_name === query.event_name && event.user_id === query.user_id
@@ -344,6 +440,119 @@ test('backend preserves first touch and updates only last touch on later visits'
   assert.equal(events[0].content, 'ig-first');
 });
 
+test('concurrent attribution capture allows exactly one immutable first touch and preserves the newest last touch', async () => {
+  const user = {
+    id: 'concurrent_user',
+    email: 'concurrent@example.com',
+    updated_date: '2026-07-28T17:00:00.000Z',
+  };
+  const successfulWrites = [];
+  let revision = 0;
+  let initialReads = 0;
+  let releaseInitialReads;
+  const initialReadBarrier = new Promise((resolveBarrier) => {
+    releaseInitialReads = resolveBarrier;
+  });
+  const userEntity = {
+    get: async () => {
+      const snapshot = structuredClone(user);
+      if (snapshot.updated_date === '2026-07-28T17:00:00.000Z') {
+        initialReads += 1;
+        if (initialReads === 2) releaseInitialReads();
+        await initialReadBarrier;
+      }
+      return snapshot;
+    },
+    updateMany: async (query, operations) => {
+      if (
+        query.id !== user.id
+        || query.updated_date !== user.updated_date
+      ) {
+        return { updated: 0 };
+      }
+      const patch = structuredClone(operations?.$set || {});
+      successfulWrites.push(patch);
+      Object.assign(user, patch);
+      revision += 1;
+      user.updated_date = new Date(
+        Date.parse('2026-07-28T17:00:00.000Z') + revision * 1000,
+      ).toISOString();
+      return { updated: 1 };
+    },
+  };
+  const base44 = {
+    auth: {
+      me: async () => ({ id: user.id, email: user.email }),
+    },
+    asServiceRole: {
+      entities: {
+        User: userEntity,
+        AcquisitionEvent: {
+          filter: async () => [{ id: 'existing_auth_event' }],
+          create: async () => {
+            throw new Error('auth event should already exist');
+          },
+        },
+      },
+    },
+  };
+  const handler = loadDenoHandler(
+    'base44/functions/captureAcquisitionAttribution/entry.ts',
+    base44,
+  );
+  const invoke = (content, capturedAt) => handler(new Request(
+    'https://firstknock.online/api/capture',
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        first_touch: {
+          source: 'instagram',
+          medium: 'organic_social',
+          campaign: '1000-users',
+          content,
+          landing_path: '/start',
+          captured_at: capturedAt,
+        },
+        last_touch: {
+          source: 'instagram',
+          medium: 'organic_social',
+          campaign: '1000-users',
+          content,
+          landing_path: '/start',
+          captured_at: capturedAt,
+        },
+        anonymous_id: `anon_${content}`,
+        session_id: `session_${content}`,
+      }),
+    },
+  ));
+
+  const [firstResponse, secondResponse] = await Promise.all([
+    invoke('ig-concurrent-first', '2026-07-28T18:00:00.000Z'),
+    invoke('ig-concurrent-second', '2026-07-28T18:05:00.000Z'),
+  ]);
+  assert.equal(firstResponse.status, 200);
+  assert.equal(secondResponse.status, 200);
+  const firstBody = await firstResponse.json();
+  const secondBody = await secondResponse.json();
+
+  assert.equal(initialReads, 2);
+  assert.equal(
+    successfulWrites.filter((write) => write.acquisition_first_touch).length,
+    1,
+  );
+  assert.equal(
+    firstBody.first_touch.content,
+    secondBody.first_touch.content,
+  );
+  assert.equal(
+    user.acquisition_first_touch.content,
+    firstBody.first_touch.content,
+  );
+  assert.equal(user.acquisition_last_touch.content, 'ig-concurrent-second');
+});
+
 test('auth completion uses the account immutable first touch, not a later Instagram visit', async () => {
   const user = {
     id: 'existing_user',
@@ -362,10 +571,7 @@ test('auth completion uses the account immutable first touch, not a later Instag
     auth: { me: async () => ({ id: user.id, email: user.email }) },
     asServiceRole: {
       entities: {
-        User: {
-          get: async () => structuredClone(user),
-          update: async (_id, value) => Object.assign(user, structuredClone(value)),
-        },
+        User: attributionUserEntity(user),
         AcquisitionEvent: {
           filter: async () => [],
           create: async (value) => {
@@ -1338,6 +1544,22 @@ test('public acquisition events accept /start and legacy /instagram, then dedupl
   assert.equal((await invoke({ ...payload, event_id: 'event_public_002' })).status, 200);
   assert.equal(records.length, 1, 'same session and stage should be deduplicated');
 
+  const secondContent = await invoke({
+    ...payload,
+    event_id: 'event_public_second_content',
+    touch: {
+      ...payload.touch,
+      content: 'ig-public-second',
+    },
+  });
+  assert.equal(secondContent.status, 200);
+  assert.equal(
+    records.length,
+    2,
+    'a different tracked content touch in the same session must be preserved',
+  );
+  assert.equal(records[1].content, 'ig-public-second');
+
   const legacy = await invoke({
     ...payload,
     event_id: 'event_public_003',
@@ -1349,9 +1571,9 @@ test('public acquisition events accept /start and legacy /instagram, then dedupl
     },
   });
   assert.equal(legacy.status, 200);
-  assert.equal(records.length, 2);
-  assert.equal(records[1].landing_path, '/instagram');
-  assert.equal(records[1].content, 'ig-legacy');
+  assert.equal(records.length, 3);
+  assert.equal(records[2].landing_path, '/instagram');
+  assert.equal(records[2].content, 'ig-legacy');
 
   const tiktokEvent = buildAcquisitionEvent('signup_cta_clicked', {
     ctaVariant: 'hero-primary',
@@ -1376,10 +1598,10 @@ test('public acquisition events accept /start and legacy /instagram, then dedupl
     },
   });
   assert.equal(tiktok.status, 200);
-  assert.equal(records.length, 3);
-  assert.equal(records[2].landing_path, '/start');
-  assert.equal(records[2].source, 'tiktok');
-  assert.equal(records[2].content, 'tt-public');
+  assert.equal(records.length, 4);
+  assert.equal(records[3].landing_path, '/start');
+  assert.equal(records[3].source, 'tiktok');
+  assert.equal(records[3].content, 'tt-public');
 
   const invalidCases = [
     { event_id: 'event_public_004', event_name: 'purchase' },
@@ -1396,7 +1618,7 @@ test('public acquisition events accept /start and legacy /instagram, then dedupl
     });
     assert.equal(rejected.status, 400);
   }
-  assert.equal(records.length, 3);
+  assert.equal(records.length, 4);
 });
 
 test('owner can upsert cumulative platform checkpoints without colliding', async () => {
