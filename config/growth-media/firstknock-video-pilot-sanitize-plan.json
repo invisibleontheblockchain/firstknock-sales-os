@@ -1,0 +1,365 @@
+{
+  "schema_version": "firstknock-video-sanitize-plan.v1",
+  "plan_id": "firstknock-video-pilot-4-day-2026-07",
+  "purpose": "Create eight privacy-reviewed video donors for a four-day, two-videos-per-day pilot.",
+  "source_policy": {
+    "raw_assets_are_private": true,
+    "raw_assets_are_publishable": false,
+    "copy_raw_assets_into_repository": false,
+    "mask_coordinate_space": "raw_source_pixels",
+    "mask_timing_space": "raw_source_milliseconds",
+    "frame_selection_is_authoritative": true,
+    "required_release_gate": "blocked_until_sanitized_derivative_hash_and_frame_review"
+  },
+  "output_profile": {
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "video_codec": "h264",
+    "pixel_format": "yuv420p",
+    "audio_mode": "replace_silent_source",
+    "default_crop": {
+      "x": 0,
+      "y": 210,
+      "width": 1206,
+      "height": 2178
+    }
+  },
+  "conditional_exclusions": [
+    {
+      "safe_derived_asset_key": "video-pilot-refresh-area-safe-v1",
+      "failure_action": "exclude_donor",
+      "reason": "The private quota panel changes vertical position during a scroll. Exclude the donor if either bounded mask fails to cover every quota character in every kept frame and transition."
+    },
+    {
+      "safe_derived_asset_key": "video-pilot-route-optimize-safe-v1",
+      "failure_action": "exclude_donor",
+      "reason": "Exclude the donor if the route title enters any kept pixel outside the fixed opaque route-header mask, or if any Control Center transition remains at or before the authoritative hard end."
+    },
+    {
+      "safe_derived_asset_key": "video-pilot-route-filtering-safe-v1",
+      "failure_action": "exclude_donor",
+      "reason": "Exclude the donor if the route title enters any kept pixel outside the fixed opaque route-header mask."
+    },
+    {
+      "safe_derived_asset_key": "video-pilot-multi-route-map-safe-v1",
+      "failure_action": "exclude_donor",
+      "reason": "Exclude the donor if any Control Center transition remains at or before the authoritative hard end."
+    },
+    {
+      "safe_derived_asset_key": "video-pilot-territory-filters-safe-v1",
+      "failure_action": "exclude_donor",
+      "reason": "Exclude the donor if any Home Base address frame appears before the authoritative end frame."
+    },
+    {
+      "safe_derived_asset_key": "video-pilot-map-settings-safe-v1",
+      "failure_action": "exclude_donor",
+      "reason": "Exclude the donor if any account-specific team label, route title, or Home Base address frame appears before the authoritative end frame."
+    }
+  ],
+  "assets": [
+    {
+      "pilot_slot": "day-1-video-1",
+      "raw_source": {
+        "filename": "ScreenRecording_07-14-2026 12-52-33_1.MP4",
+        "bytes": 23719508,
+        "sha256": "6dfd45792727d8f271a903658607ca52c51696cae2be1f973ceafde7807fa8ad",
+        "duration_ms": 12852,
+        "width": 1206,
+        "height": 2622,
+        "codec": "hevc",
+        "raw_privacy_status": "crop_and_review_required"
+      },
+      "safe_derived_asset_key": "video-pilot-route-start-finish-safe-v1",
+      "title": "Set the route start and finish",
+      "feature_summary": "Shows the controls for starting from Home Base or current location and returning to Home Base before route generation.",
+      "rights_status": "firstknock_owned",
+      "trim": {
+        "start_ms": 0,
+        "end_ms": 12000,
+        "hard_end": true,
+        "start_frame_inclusive": 0,
+        "start_pts_ms": 0,
+        "end_frame_exclusive": 719,
+        "end_pts_exclusive_ms": 12001.667
+      },
+      "output_duration_ms": 12000,
+      "short_source_fit": "none",
+      "apply_default_crop": true,
+      "privacy_masks": [],
+      "release_state": "blocked_until_sanitized_derivative_hash_and_frame_review"
+    },
+    {
+      "pilot_slot": "day-1-video-2",
+      "raw_source": {
+        "filename": "ScreenRecording_07-10-2026 11-00-40_1.MP4",
+        "bytes": 13208444,
+        "sha256": "6d440bb96c8feded2f8d8984f3a3eef4ffb248080c03ac6809c85950c2e92f7b",
+        "duration_ms": 5615,
+        "width": 1206,
+        "height": 2622,
+        "codec": "hevc",
+        "raw_privacy_status": "redaction_required"
+      },
+      "safe_derived_asset_key": "video-pilot-route-optimize-safe-v1",
+      "title": "Optimize a route before the first knock",
+      "feature_summary": "Shows a mapped route and the route-optimization control without making a speed, distance, or performance claim.",
+      "rights_status": "firstknock_owned",
+      "trim": {
+        "start_ms": 0,
+        "end_ms": 4866,
+        "hard_end": true,
+        "reject_frames_at_or_after_end": true,
+        "start_frame_inclusive": 0,
+        "start_pts_ms": 0,
+        "end_frame_exclusive": 292,
+        "end_pts_exclusive_ms": 4866.667
+      },
+      "output_duration_ms": 10000,
+      "short_source_fit": "freeze_last_frame",
+      "apply_default_crop": true,
+      "privacy_masks": [
+        {
+          "id": "route-header-name",
+          "effect": "opaque_brand_black",
+          "x": 0,
+          "y": 500,
+          "width": 720,
+          "height": 190,
+          "start_ms": 0,
+          "end_ms": 4866,
+          "start_frame_inclusive": 0,
+          "end_frame_exclusive": 292
+        }
+      ],
+      "release_state": "blocked_until_sanitized_derivative_hash_and_frame_review"
+    },
+    {
+      "pilot_slot": "day-2-video-1",
+      "raw_source": {
+        "filename": "ScreenRecording_07-14-2026 12-52-01_1.MP4",
+        "bytes": 33255727,
+        "sha256": "535046f9ce1f6ccfca0f6742b622080a3d61b2f9ae3abe3142701c2b0d572cb4",
+        "duration_ms": 21220,
+        "width": 1206,
+        "height": 2622,
+        "codec": "hevc",
+        "raw_privacy_status": "hard_trim_required_exact_home_address_after_cut"
+      },
+      "safe_derived_asset_key": "video-pilot-territory-filters-safe-v1",
+      "title": "Draw the territory and set the route filters",
+      "feature_summary": "Shows freehand territory selection followed by the route-builder filters, ending before the saved Home Base address appears.",
+      "rights_status": "firstknock_owned",
+      "trim": {
+        "start_ms": 0,
+        "end_ms": 6400,
+        "hard_end": true,
+        "reject_frames_at_or_after_end": true,
+        "start_frame_inclusive": 0,
+        "start_pts_ms": 0,
+        "end_frame_exclusive": 384,
+        "end_pts_exclusive_ms": 6401.667
+      },
+      "output_duration_ms": 10000,
+      "short_source_fit": "freeze_last_frame",
+      "apply_default_crop": true,
+      "privacy_masks": [],
+      "release_state": "blocked_until_sanitized_derivative_hash_and_frame_review"
+    },
+    {
+      "pilot_slot": "day-2-video-2",
+      "raw_source": {
+        "filename": "ScreenRecording_07-10-2026 10-59-58_1.MP4",
+        "bytes": 7800673,
+        "sha256": "caab7783a1de1800acadb1c13fd275ef9ec7d17a2dd2752bed45e75a5f17a3fa",
+        "duration_ms": 4318,
+        "width": 1206,
+        "height": 2622,
+        "codec": "hevc",
+        "raw_privacy_status": "crop_and_review_required"
+      },
+      "safe_derived_asset_key": "video-pilot-multi-route-map-safe-v1",
+      "title": "See active routes in one map view",
+      "feature_summary": "Shows multiple route paths and stops on the map, then zooms out to the broader territory.",
+      "rights_status": "firstknock_owned",
+      "trim": {
+        "start_ms": 0,
+        "end_ms": 3683,
+        "hard_end": true,
+        "reject_frames_at_or_after_end": true,
+        "start_frame_inclusive": 0,
+        "start_pts_ms": 0,
+        "end_frame_exclusive": 221,
+        "end_pts_exclusive_ms": 3683.333
+      },
+      "output_duration_ms": 10000,
+      "short_source_fit": "freeze_last_frame",
+      "apply_default_crop": true,
+      "privacy_masks": [],
+      "release_state": "blocked_until_sanitized_derivative_hash_and_frame_review"
+    },
+    {
+      "pilot_slot": "day-3-video-1",
+      "raw_source": {
+        "filename": "ScreenRecording_07-10-2026 09-33-16_1.MP4",
+        "bytes": 30647767,
+        "sha256": "3092560ae2325cac7effabc02cacd71bc6e88591cc6457dadc1d6d0195e30b23",
+        "duration_ms": 16837,
+        "width": 1206,
+        "height": 2622,
+        "codec": "hevc",
+        "raw_privacy_status": "redaction_required"
+      },
+      "safe_derived_asset_key": "video-pilot-route-filtering-safe-v1",
+      "title": "Filter the route for today's work",
+      "feature_summary": "Shows route filtering by date window and price range without claiming a targeting or conversion result.",
+      "rights_status": "firstknock_owned",
+      "trim": {
+        "start_ms": 0,
+        "end_ms": 12000,
+        "hard_end": true,
+        "start_frame_inclusive": 0,
+        "start_pts_ms": 0,
+        "end_frame_exclusive": 693,
+        "end_pts_exclusive_ms": 12001.667
+      },
+      "output_duration_ms": 12000,
+      "short_source_fit": "none",
+      "apply_default_crop": true,
+      "privacy_masks": [
+        {
+          "id": "route-header-name",
+          "effect": "opaque_brand_black",
+          "x": 0,
+          "y": 500,
+          "width": 720,
+          "height": 190,
+          "start_ms": 0,
+          "end_ms": 12000,
+          "start_frame_inclusive": 0,
+          "end_frame_exclusive": 693
+        }
+      ],
+      "release_state": "blocked_until_sanitized_derivative_hash_and_frame_review"
+    },
+    {
+      "pilot_slot": "day-3-video-2",
+      "raw_source": {
+        "filename": "ScreenRecording_07-21-2026 16-40-03_1.mov",
+        "bytes": 14651136,
+        "sha256": "b0fbab553630e023a83a6ce91adbe7ca4c782c0d03a0de548d290330f569adc2",
+        "duration_ms": 10965,
+        "width": 1206,
+        "height": 2622,
+        "codec": "h264",
+        "raw_privacy_status": "redaction_required_private_quota_state"
+      },
+      "safe_derived_asset_key": "video-pilot-refresh-area-safe-v1",
+      "title": "Refresh a previously worked area",
+      "feature_summary": "Shows the previous-area refresh workflow and the Fill Gaps or Max Since Last choices while hiding private account quota state.",
+      "rights_status": "firstknock_owned",
+      "trim": {
+        "start_ms": 513.333,
+        "end_ms": 10515,
+        "hard_end": true,
+        "start_frame_inclusive": 31,
+        "start_pts_ms": 513.333,
+        "end_frame_exclusive": 617,
+        "end_pts_exclusive_ms": 10515
+      },
+      "output_duration_ms": 10000,
+      "short_source_fit": "none",
+      "apply_default_crop": true,
+      "privacy_masks": [
+        {
+          "id": "quota-panel-before-scroll",
+          "effect": "opaque_brand_black",
+          "x": 20,
+          "y": 760,
+          "width": 1166,
+          "height": 460,
+          "start_ms": 513.333,
+          "end_ms": 6515,
+          "start_frame_inclusive": 31,
+          "end_frame_exclusive": 388
+        },
+        {
+          "id": "quota-panel-after-scroll",
+          "effect": "opaque_brand_black",
+          "x": 20,
+          "y": 1160,
+          "width": 1166,
+          "height": 500,
+          "start_ms": 5498.333,
+          "end_ms": 10515,
+          "start_frame_inclusive": 330,
+          "end_frame_exclusive": 617
+        }
+      ],
+      "release_state": "blocked_until_sanitized_derivative_hash_and_frame_review"
+    },
+    {
+      "pilot_slot": "day-4-video-1",
+      "raw_source": {
+        "filename": "ScreenRecording_07-22-2026 16-42-44_1.MP4",
+        "bytes": 83162247,
+        "sha256": "f33067c2fe9dde73e5887cb16707ceec0b7b98ee87fb931a84012d7e9a5d268a",
+        "duration_ms": 38842,
+        "width": 1206,
+        "height": 2622,
+        "codec": "hevc",
+        "raw_privacy_status": "hard_trim_required_exact_home_address_later_in_source"
+      },
+      "safe_derived_asset_key": "video-pilot-map-settings-safe-v1",
+      "title": "Choose the map and navigation settings",
+      "feature_summary": "Shows map style, route-path display, pin labels, and navigation-app preferences before any Home Base address is shown.",
+      "rights_status": "firstknock_owned",
+      "trim": {
+        "start_ms": 0,
+        "end_ms": 4900,
+        "hard_end": true,
+        "reject_frames_at_or_after_end": true,
+        "start_frame_inclusive": 0,
+        "start_pts_ms": 0,
+        "end_frame_exclusive": 294,
+        "end_pts_exclusive_ms": 4901.667
+      },
+      "output_duration_ms": 8000,
+      "short_source_fit": "freeze_last_frame",
+      "apply_default_crop": true,
+      "privacy_masks": [],
+      "release_state": "blocked_until_sanitized_derivative_hash_and_frame_review"
+    },
+    {
+      "pilot_slot": "day-4-video-2",
+      "raw_source": {
+        "filename": "ScreenRecording_07-14-2026 12-58-02_1.MP4",
+        "bytes": 31834665,
+        "sha256": "e341f9bfa3d5027c68981d686c8ff7a219d47bede377f86cca0066ed4ebef78f",
+        "duration_ms": 11735,
+        "width": 1206,
+        "height": 2622,
+        "codec": "hevc",
+        "raw_privacy_status": "crop_and_review_required_zero_value_demo"
+      },
+      "safe_derived_asset_key": "video-pilot-analytics-date-safe-v1",
+      "title": "Review analytics for a selected day",
+      "feature_summary": "Shows the analytics date picker and selected-day view; captions must describe the filter only and must not imply a customer result.",
+      "rights_status": "firstknock_owned",
+      "trim": {
+        "start_ms": 350,
+        "end_ms": 10351.667,
+        "hard_end": true,
+        "start_frame_inclusive": 21,
+        "start_pts_ms": 350,
+        "end_frame_exclusive": 594,
+        "end_pts_exclusive_ms": 10351.667
+      },
+      "output_duration_ms": 10000,
+      "short_source_fit": "none",
+      "apply_default_crop": true,
+      "privacy_masks": [],
+      "release_state": "blocked_until_sanitized_derivative_hash_and_frame_review"
+    }
+  ]
+}

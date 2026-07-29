@@ -88,6 +88,7 @@ test('measured batch builder only offers current repeat or iterate evidence', ()
     /parent:\s*\{[\s\S]*?platform: selectedParent\.platform[\s\S]*?campaign: selectedParent\.campaign[\s\S]*?content: selectedParent\.content/,
   );
   assert.match(contentEngine, /target_date: draft\.target_date/);
+  assert.match(contentEngine, /content_profile: draft\.content_profile/);
   assert.match(contentEngine, /concept_count: Number\(draft\.concept_count\)/);
   assert.match(growthDashboard, /contentQueue=\{report\?\.content_queue\}/);
   assert.match(
@@ -109,6 +110,22 @@ test('measured batch builder defaults to the next Phoenix day and accepts either
   assert.match(contentEngine, /3 per platform · 6 artifacts/);
 });
 
+test('measured batch builder recommends and locks the two-video feature explainer profile', () => {
+  assert.match(
+    contentEngine,
+    /content_profile: FEATURE_EXPLAINER_VIDEO_PROFILE[\s\S]*?concept_count: '2'/,
+  );
+  assert.match(contentEngine, /Video feature explainer · Recommended/);
+  assert.match(
+    contentEngine,
+    /value=\{draft\.concept_count\}[\s\S]*?disabled=\{featureExplainerSelected\}/,
+  );
+  assert.match(contentEngine, /Locked to two concepts/);
+  assert.match(contentEngine, /publish-candidate video donors/);
+  assert.match(contentEngine, /14 for a seven-day rotation/);
+  assert.match(contentEngine, /Build two video explainers/);
+});
+
 test('measured batches can be downloaded, owner-authorized, and revoked without publishing', () => {
   assert.match(contentEngine, /action: 'get_batch'/);
   assert.match(contentEngine, /result\?\.pack_sha256 !== batch\.canonical_pack_sha256/);
@@ -120,6 +137,31 @@ test('measured batches can be downloaded, owner-authorized, and revoked without 
   assert.match(contentEngine, /Authorization and import do not publish/);
   assert.match(contentEngine, /normal four-gate review/);
   assert.match(contentEngine, /exact-revision owner approval/);
+});
+
+test('strict video batches use one explicit, resumable, sequential activation flow', () => {
+  assert.match(
+    contentEngine,
+    /import\s*\{[\s\S]*?growthBatchScheduleRequest[\s\S]*?inspectGrowthBatchActivation[\s\S]*?\}\s*from '@\/lib\/growthBatchActivation'/,
+  );
+  assert.match(contentEngine, /Activate two daily videos/);
+  assert.match(contentEngine, /Activate 4 posts/);
+  assert.match(contentEngine, /Resume \$\{4 - activation\.protected_count\} posts/);
+  assert.match(contentEngine, /I reviewed and approved all four exact renditions/);
+  assert.match(contentEngine, /including any silent audio[\s\S]*?without a native-app finishing step/);
+  assert.match(
+    contentEngine,
+    /const refreshed = await query\.refetch\(\)[\s\S]*?inspectGrowthBatchActivation\([\s\S]*?schedule_candidates\.map[\s\S]*?for \(let index = 0; index < requests\.length; index \+= 1\)[\s\S]*?await base44\.functions\.invoke/,
+  );
+  assert.doesNotMatch(
+    contentEngine,
+    /Promise\.all\(\s*requests\.map/,
+  );
+  assert.match(contentEngine, /Activation stopped after \$\{protectedCount\} of 4 posts were protected/);
+  assert.match(
+    contentEngine,
+    /<MeasuredBatchPanel[\s\S]*?artifacts=\{artifacts\}[\s\S]*?jobs=\{jobs\}[\s\S]*?activationBusy=\{batchActivation\.isPending\}/,
+  );
 });
 
 test('render import opens for static trust or authorized measured-batch trust', () => {
@@ -147,7 +189,8 @@ test('render import opens for static trust or authorized measured-batch trust', 
 });
 
 test('measured batch UI makes the starter donor-capacity boundary explicit', () => {
-  assert.match(contentEngine, /current 5 safe donors cover about 2 days at 2 concepts per day/);
+  assert.match(contentEngine, /needs 2 distinct safe, publish-candidate video donors now/);
+  assert.match(contentEngine, /14 for a seven-day rotation/);
   assert.match(contentEngine, /needs 14 safe donors at 2\/day or 21 at 3\/day/);
   assert.match(contentEngine, /Hold and stale decisions cannot seed a batch/);
 });
@@ -169,20 +212,20 @@ test('seed manifests stay within the whole-request budget and require exact safe
   assert.match(contentEngine, /Seed manifest must be 150 KB or smaller/);
   assert.match(
     contentEngine,
-    /function seedDonorRequirements\(pack\)[\s\S]*?rights_status\) !== 'firstknock_owned'/,
+    /function seedDonorRequirements\(pack, contentProfile[\s\S]*?rights_status\) !== 'firstknock_owned'/,
   );
   assert.match(
     contentEngine,
-    /function seedDonorRequirements\(pack\)[\s\S]*?distribution_state\) !== 'publish_candidate'/,
+    /function seedDonorRequirements\(pack, contentProfile[\s\S]*?distribution_state\) !== 'publish_candidate'/,
   );
   assert.match(
     contentEngine,
-    /function seedSourceReadiness\(pack, registeredSources, conceptCount\)[\s\S]*?privacy_status\) !== 'safe'[\s\S]*?source_reference[\s\S]*?source_sha256/,
+    /function seedSourceReadiness\([\s\S]*?registeredSources,[\s\S]*?conceptCount,[\s\S]*?privacy_status\) !== 'safe'[\s\S]*?source_reference[\s\S]*?source_sha256/,
   );
   assert.match(contentEngine, /if \(!selectedParent \|\| !draft\.seed_pack \|\| !seedSources\.ready\) return/);
   assert.match(
     contentEngine,
-    /disabled=\{[\s\S]*?!generationReady[\s\S]*?!hasRegisteredSafeSource[\s\S]*?busy/,
+    /disabled=\{[\s\S]*?!generationReady[\s\S]*?!eligibleParents\.length[\s\S]*?busy/,
   );
   assert.match(contentEngine, /\|\| !seedSources\.ready/);
   assert.match(contentEngine, /Load the audited source inventory before building/);

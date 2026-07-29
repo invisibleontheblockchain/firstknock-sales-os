@@ -33,6 +33,11 @@ const SOURCE_COOLDOWN_DAYS = 7;
 const HOOK_DEDUPE_DAYS = 28;
 const MAX_BATCH_TARGET_DAYS = 90;
 const NEXT_BATCH_PROFILE = "measured-next-batch-v1";
+const FEATURE_EXPLAINER_VIDEO_PROFILE = "feature_explainer_video_v1";
+const NEXT_BATCH_PROFILES = new Set([
+  NEXT_BATCH_PROFILE,
+  FEATURE_EXPLAINER_VIDEO_PROFILE,
+]);
 const NEXT_BATCH_SCHEMA = "growth-next-batch.v1";
 const NEXT_BATCH_TIMEZONE = "America/Phoenix";
 const NEXT_BATCH_DISCLOSURE =
@@ -1922,6 +1927,16 @@ function exactSha256(value: any): string {
   return /^[a-f0-9]{64}$/.test(hash) ? hash : "";
 }
 
+function batchContentProfile(batch: any): string {
+  if (
+    !batch
+    || !Object.prototype.hasOwnProperty.call(batch, "content_profile")
+  ) {
+    return NEXT_BATCH_PROFILE;
+  }
+  return token(batch.content_profile);
+}
+
 function cloneJson(value: any): any {
   return JSON.parse(JSON.stringify(value));
 }
@@ -2127,6 +2142,7 @@ function safeBatch(batch: any): any {
     evidence_hash: batch?.evidence_hash,
     review_decision: batch?.review_decision,
     target_date: batch?.target_date,
+    content_profile: batchContentProfile(batch),
     timezone: batch?.timezone,
     concept_count: Number(batch?.concept_count || 0),
     slot_keys: cleanTokenList(batch?.slot_keys, 3),
@@ -2146,7 +2162,7 @@ function safeBatch(batch: any): any {
   };
 }
 
-function seedDonorPool(renderPack: any): {
+function seedDonorPool(renderPack: any, contentProfile = NEXT_BATCH_PROFILE): {
   error?: string;
   donors?: any[];
   sourceByKey?: Map<string, any>;
@@ -2173,6 +2189,8 @@ function seedDonorPool(renderPack: any): {
     return { error: "invalid_seed_render_pack" };
   }
   const sourceByKey = new Map<string, any>();
+  const videoFeatureExplainer =
+    contentProfile === FEATURE_EXPLAINER_VIDEO_PROFILE;
   for (const source of sources) {
     const assetKey = token(source?.asset_key);
     if (
@@ -2185,6 +2203,10 @@ function seedDonorPool(renderPack: any): {
       || !exactSha256(source?.source_sha256)
       || token(source?.privacy_status) !== "safe"
       || token(source?.rights_status) !== "firstknock_owned"
+      || (
+        videoFeatureExplainer
+        && token(source?.media_kind) !== "video"
+      )
     ) {
       continue;
     }
@@ -2505,12 +2527,18 @@ function batchArtifactProvenanceMap(
   const batchKey = exactSha256(batch?.batch_key);
   const targetDate = String(batch?.target_date || "").trim();
   const conceptCount = Number(batch?.concept_count || 0);
+  const contentProfile = batchContentProfile(batch);
   const slots = cleanTokenList(batch?.slot_keys, 3);
   const artifacts = asArray(pack?.artifacts);
   if (
     !batchKey
+    || !NEXT_BATCH_PROFILES.has(contentProfile)
     || !phoenixDateStart(targetDate)
     || ![2, 3].includes(conceptCount)
+    || (
+      contentProfile === FEATURE_EXPLAINER_VIDEO_PROFILE
+      && conceptCount !== 2
+    )
     || slots.length !== conceptCount
     || slots.some(
       (slot, index) => slot !== NEXT_BATCH_SLOTS[index],
@@ -2608,6 +2636,7 @@ function activeBatchReservations(
 async function currentDonorSources(
   sourceEntity: any,
   donors: any[],
+  contentProfile = NEXT_BATCH_PROFILE,
 ): Promise<any[] | null> {
   const keys = donors.map((donor) => donor.sourceKey);
   if (new Set(keys).size !== keys.length) return null;
@@ -2619,6 +2648,13 @@ async function currentDonorSources(
         !== localReference(donors[index]?.source?.source_reference)
       || exactSha256(sources[index]?.source_sha256)
         !== exactSha256(donors[index]?.source?.source_sha256)
+      || (
+        contentProfile === FEATURE_EXPLAINER_VIDEO_PROFILE
+        && (
+          token(sources[index]?.media_kind) !== "video"
+          || token(donors[index]?.source?.media_kind) !== "video"
+        )
+      )
     ) {
       return null;
     }
@@ -2691,7 +2727,40 @@ function chooseDonors(
   return { donors: selected, eligible: eligible.length };
 }
 
-function nextBatchGeneratorSchema(conceptCount: number): any {
+function nextBatchGeneratorSchema(
+  conceptCount: number,
+  contentProfile = NEXT_BATCH_PROFILE,
+): any {
+  const featureExplainer =
+    contentProfile === FEATURE_EXPLAINER_VIDEO_PROFILE;
+  const variantProperties = featureExplainer
+    ? {
+      platform: {
+        type: "string",
+        enum: ["instagram", "tiktok"],
+      },
+      problem: { type: "string" },
+      visible_feature_behavior: { type: "string" },
+      practical_benefit: { type: "string" },
+      cta_label: { type: "string" },
+    }
+    : {
+      platform: {
+        type: "string",
+        enum: ["instagram", "tiktok"],
+      },
+      caption: { type: "string" },
+      cta_label: { type: "string" },
+    };
+  const variantRequired = featureExplainer
+    ? [
+      "platform",
+      "problem",
+      "visible_feature_behavior",
+      "practical_benefit",
+      "cta_label",
+    ]
+    : ["platform", "caption", "cta_label"];
   return {
     type: "object",
     properties: {
@@ -2720,15 +2789,8 @@ function nextBatchGeneratorSchema(conceptCount: number): any {
               maxItems: 2,
               items: {
                 type: "object",
-                properties: {
-                  platform: {
-                    type: "string",
-                    enum: ["instagram", "tiktok"],
-                  },
-                  caption: { type: "string" },
-                  cta_label: { type: "string" },
-                },
-                required: ["platform", "caption", "cta_label"],
+                properties: variantProperties,
+                required: variantRequired,
               },
             },
           },
@@ -2794,6 +2856,11 @@ function unsafeGeneratedClaim(value: any): boolean {
     || /\b(?:increase|boost|improve|multiply|grow)\b.{0,40}\b(?:sales|revenue|close rate|conversion|performance|results?)\b/i
       .test(textValue)
   );
+}
+
+function unsafeGeneratedQuantification(value: any): boolean {
+  return /\b(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|hundred|thousand|million|percent(?:age)?|times?|fold)\b/i
+    .test(String(value || ""));
 }
 
 function sentTimeByArtifact(jobs: any[]): Map<string, number> {
@@ -3085,7 +3152,10 @@ function normalizeGeneratedConcepts(
   value: any,
   donors: any[],
   historicalHooks: string[],
+  contentProfile = NEXT_BATCH_PROFILE,
 ): any[] | null {
+  const featureExplainer =
+    contentProfile === FEATURE_EXPLAINER_VIDEO_PROFILE;
   const concepts = asArray(value?.concepts);
   if (concepts.length !== donors.length) return null;
   const byDonor = new Map(
@@ -3140,8 +3210,43 @@ function normalizeGeneratedConcepts(
     const normalizedVariants: any = {};
     for (const platform of PLATFORMS) {
       const variant = variantByPlatform.get(platform);
-      const caption = String(variant?.caption || "").trim();
       const ctaLabel = compactText(variant?.cta_label, 80);
+      if (featureExplainer) {
+        const problem = compactText(variant?.problem, 280);
+        const visibleFeatureBehavior = compactText(
+          variant?.visible_feature_behavior,
+          400,
+        );
+        const practicalBenefit = compactText(
+          variant?.practical_benefit,
+          280,
+        );
+        const sections = [
+          problem,
+          visibleFeatureBehavior,
+          practicalBenefit,
+        ];
+        if (
+          !ctaLabel
+          || sections.some((section) => hookTokens(section).length < 4)
+          || !/\bfirstknock\b/i.test(visibleFeatureBehavior)
+          || new Set(sections.map(normalized)).size !== sections.length
+          || [...sections, ctaLabel].some(unsafeGeneratedText)
+          || [...sections, ctaLabel].some(unsafeGeneratedClaim)
+          || unsafeGeneratedQuantification(practicalBenefit)
+        ) {
+          return null;
+        }
+        normalizedVariants[platform] = {
+          problem,
+          visible_feature_behavior: visibleFeatureBehavior,
+          practical_benefit: practicalBenefit,
+          caption: sections.join("\n\n"),
+          cta_label: ctaLabel,
+        };
+        continue;
+      }
+      const caption = String(variant?.caption || "").trim();
       if (
         !caption
         || caption.length > 1800
@@ -3169,6 +3274,19 @@ function normalizeGeneratedConcepts(
   return normalizedConcepts;
 }
 
+function featureExplainerProviderCaption(
+  variant: any,
+  ctaUrl: string,
+): string {
+  return [
+    compactText(variant?.problem, 280),
+    compactText(variant?.visible_feature_behavior, 400),
+    compactText(variant?.practical_benefit, 280),
+    NEXT_BATCH_DISCLOSURE,
+    `${compactText(variant?.cta_label, 80)}: ${ctaUrl}`,
+  ].filter(Boolean).join("\n\n");
+}
+
 function generatedRenderPack(
   seedPack: any,
   donors: any[],
@@ -3176,6 +3294,7 @@ function generatedRenderPack(
   batchKey: string,
   targetDate: string,
   campaign: string,
+  contentProfile = NEXT_BATCH_PROFILE,
 ): any {
   const compactDate = targetDate.replaceAll("-", "");
   const batchId = token(`growth-${compactDate}-${batchKey.slice(0, 12)}`);
@@ -3196,6 +3315,13 @@ function generatedRenderPack(
       const donorArtifact = platform === "instagram"
         ? donor.instagram
         : donor.tiktok;
+      const ctaUrl = platformTrackedUrl(platform, campaign, artifactKey);
+      const caption = contentProfile === FEATURE_EXPLAINER_VIDEO_PROFILE
+        ? featureExplainerProviderCaption(
+          generated.variants[platform],
+          ctaUrl,
+        )
+        : generated.variants[platform].caption;
       artifacts.push({
         artifact_key: artifactKey,
         concept_id: conceptId,
@@ -3211,9 +3337,9 @@ function generatedRenderPack(
         hook: generated.hook,
         overlay_text: cloneJson(generated.overlay_text),
         shot_list: cloneJson(generated.shot_list),
-        caption: generated.variants[platform].caption,
+        caption,
         cta_label: generated.variants[platform].cta_label,
-        cta_url: platformTrackedUrl(platform, campaign, artifactKey),
+        cta_url: ctaUrl,
         overlay_cta: generated.overlay_cta,
         disclosure: NEXT_BATCH_DISCLOSURE,
         render: cloneJson(donorArtifact?.render),
@@ -3235,15 +3361,52 @@ function batchGenerationPrompt(
   donors: any[],
   promptSources: any[],
   conceptCount: number,
+  contentProfile = NEXT_BATCH_PROFILE,
 ): string {
+  const featureExplainer =
+    contentProfile === FEATURE_EXPLAINER_VIDEO_PROFILE;
   const sourceContext = donors.map((donor, index) => ({
     donor_concept_id: donor.conceptId,
+    ...(featureExplainer
+      ? { source_media_kind: token(donor.source?.media_kind) }
+      : {}),
     pillar: compactText(donor.instagram?.pillar, 120),
     prior_hook: compactText(donor.instagram?.hook, 120),
     prior_caption_instagram: String(donor.instagram?.caption || "").slice(0, 600),
     prior_caption_tiktok: String(donor.tiktok?.caption || "").slice(0, 600),
     safe_source_summary: promptSources[index]?.safe_source_summary,
   }));
+  if (featureExplainer) {
+    return `You are FirstKnock's measured video feature-explainer editor. Produce exactly
+${conceptCount} video concepts from the reviewed direction and the exact audited donor
+context below.
+
+Reviewed direction: ${evidence.decision}
+Winning hook or variable: ${compactText(evidence?.plan?.hook, 300)}
+Major variable: ${compactText(evidence?.plan?.major_variable, 160)}
+Audited video donor context:
+${JSON.stringify(sourceContext)}
+
+Return exactly one concept for every donor_concept_id, in the same order, and exactly one
+Instagram plus one TikTok variant for each concept. Each variant must return these four
+fields in this semantic order:
+1. problem: the recognizable workflow friction shown by the donor context;
+2. visible_feature_behavior: what the source visibly demonstrates the app doing, stated
+   with the word FirstKnock and without inferring any unshown screen or capability;
+3. practical_benefit: a concrete workflow advantage, never a quantified outcome or
+   performance promise;
+4. cta_label: a short action inviting the viewer to inspect FirstKnock.
+
+The server assembles those fields into the final caption, then adds the fixed DEMO
+disclosure and exact tracked CTA URL. Do not return a URL or disclosure. Derive all public
+product statements only from safe_source_summary and the audited prior hook/captions in
+the supplied donor context. Each hook must be 4-7 words. Use 1-6 short overlay lines and
+a practical shot list that edits the inherited source video rather than inventing new
+footage. For Repeat, preserve the proven problem/benefit pattern without copying the old
+hook. For Iterate, change only the named major variable while preserving the rest of the
+pattern. Never invent customer results, performance numbers, testimonials, names,
+addresses, emails, account identifiers, internal metrics, or capabilities.`;
+  }
   const metricContext = {
     snapshot_days: Number(evidence?.plan?.snapshot_days || 7),
     reach: Number(evidence?.metric?.reach || 0),
@@ -3690,12 +3853,49 @@ async function markBatchFailed(
   );
 }
 
+function featureExplainerPackContract(pack: any): boolean {
+  const sources = asArray(pack?.sources);
+  const artifacts = asArray(pack?.artifacts);
+  return (
+    sources.length === 2
+    && sources.every((source) => token(source?.media_kind) === "video")
+    && artifacts.length === 4
+    && artifacts.every((artifact) => {
+      const ctaLabel = compactText(artifact?.cta_label, 80);
+      const ctaUrl = String(artifact?.cta_url || "").trim();
+      const blocks = String(artifact?.caption || "")
+        .split(/\n{2,}/)
+        .map((value) => value.trim())
+        .filter(Boolean);
+      return token(artifact?.format) === "video"
+        && token(artifact?.distribution_state) === "publish_candidate"
+        && blocks.length === 5
+        && blocks.slice(0, 3).every(
+          (section) => hookTokens(section).length >= 4,
+        )
+        && /\bfirstknock\b/i.test(blocks[1])
+        && blocks.slice(0, 3).every(
+          (section) => !unsafeGeneratedText(section)
+            && !unsafeGeneratedClaim(section),
+        )
+        && !unsafeGeneratedQuantification(blocks[2])
+        && blocks[3] === NEXT_BATCH_DISCLOSURE
+        && blocks[4] === `${ctaLabel}: ${ctaUrl}`
+        && socialPostText(artifact) === artifact.caption;
+    })
+  );
+}
+
 async function validateCurrentBatch(
   batch: any,
   planEntity: any,
   metricEntity: any,
   sourceEntity: any,
 ): Promise<{ ok: boolean; error?: string; evidence?: any; pack?: any }> {
+  const contentProfile = batchContentProfile(batch);
+  if (!NEXT_BATCH_PROFILES.has(contentProfile)) {
+    return { ok: false, error: "growth_batch_profile_conflict" };
+  }
   if (!(await storedPackIsValid(batch))) {
     return { ok: false, error: "growth_batch_storage_conflict" };
   }
@@ -3719,9 +3919,10 @@ async function validateCurrentBatch(
   const pack = storedPack(batch);
   const packSources = asArray(pack?.sources);
   const sourceKeys = cleanTokenList(batch?.source_asset_keys, 3);
+  const conceptCount = Number(batch?.concept_count || 0);
   if (
     !pack
-    || sourceKeys.length !== Number(batch?.concept_count || 0)
+    || sourceKeys.length !== conceptCount
     || packSources.length !== sourceKeys.length
     || packSources.some(
       (source, index) => token(source?.asset_key) !== sourceKeys[index],
@@ -3732,6 +3933,18 @@ async function validateCurrentBatch(
   const currentSources = await sourcesForArtifact(sourceEntity, sourceKeys);
   if (!sourcesAreSafe(currentSources, sourceKeys.length)) {
     return { ok: false, error: "growth_batch_source_unavailable" };
+  }
+  if (
+    contentProfile === FEATURE_EXPLAINER_VIDEO_PROFILE
+    && (
+      conceptCount !== 2
+      || currentSources.some(
+        (source) => token(source?.media_kind) !== "video",
+      )
+      || !featureExplainerPackContract(pack)
+    )
+  ) {
+    return { ok: false, error: "growth_batch_profile_conflict" };
   }
   const promptSourceSha256 = await sha256Hex(canonicalStringify(
     batchPromptSourceSnapshot(sourceKeys, currentSources),
@@ -4243,6 +4456,20 @@ Deno.serve(async (req: Request) => {
       }
       const targetDate = validBatchTargetDate(body?.target_date);
       const conceptCount = Number(body?.concept_count);
+      const requestedContentProfile = token(body?.content_profile);
+      const contentProfile = requestedContentProfile || NEXT_BATCH_PROFILE;
+      if (!NEXT_BATCH_PROFILES.has(contentProfile)) {
+        return response({ error: "invalid_content_profile" }, 400);
+      }
+      if (
+        contentProfile === FEATURE_EXPLAINER_VIDEO_PROFILE
+        && conceptCount !== 2
+      ) {
+        return response({
+          error: "feature_explainer_requires_two_concepts",
+          required_concepts: 2,
+        }, 400);
+      }
       const seedPack = body?.seed_pack?.pack || body?.seed_pack;
       const requestedSeedValues = asArray(body?.seed_concept_ids);
       const requestedSeedConceptIds = cleanTokenList(
@@ -4275,11 +4502,31 @@ Deno.serve(async (req: Request) => {
       if (!allowedSeedHashes.has(seedPackSha256)) {
         return response({ error: "untrusted_seed_render_pack" }, 409);
       }
-      const seed = seedDonorPool(seedPack);
+      const seed = seedDonorPool(seedPack, contentProfile);
       if (seed.error || !seed.donors) {
+        if (
+          contentProfile === FEATURE_EXPLAINER_VIDEO_PROFILE
+          && seed.error === "seed_pack_has_no_safe_donors"
+        ) {
+          return response({
+            error: "insufficient_eligible_video_donors",
+            required_donors: 2,
+            eligible_donors: 0,
+          }, 409);
+        }
         return response({ error: seed.error || "invalid_seed_render_pack" }, 400);
       }
-      const batchKey = await sha256Hex(canonicalStringify({
+      if (
+        contentProfile === FEATURE_EXPLAINER_VIDEO_PROFILE
+        && seed.donors.length < 2
+      ) {
+        return response({
+          error: "insufficient_eligible_video_donors",
+          required_donors: 2,
+          eligible_donors: seed.donors.length,
+        }, 409);
+      }
+      const batchIdentity: any = {
         schema: NEXT_BATCH_SCHEMA,
         parent: {
           platform: evidence.platform,
@@ -4288,7 +4535,11 @@ Deno.serve(async (req: Request) => {
         },
         review_hash: evidence.reviewHash,
         target_date: targetDate,
-      }));
+      };
+      if (requestedContentProfile) {
+        batchIdentity.content_profile = contentProfile;
+      }
+      const batchKey = await sha256Hex(canonicalStringify(batchIdentity));
       const priorRows = await exactBatchRows(batchEntity, batchKey);
       if (priorRows.length > 1) {
         return response({ error: "growth_batch_conflict" }, 409);
@@ -4335,15 +4586,27 @@ Deno.serve(async (req: Request) => {
         reservedSources,
       );
       if (selected.error || !selected.donors) {
+        const profileCapacityError =
+          contentProfile === FEATURE_EXPLAINER_VIDEO_PROFILE
+          && [
+            "insufficient_eligible_donors",
+            "seed_donor_unavailable",
+          ].includes(String(selected.error || ""));
         return response({
-          error: selected.error || "insufficient_eligible_donors",
+          error: profileCapacityError
+            ? "insufficient_eligible_video_donors"
+            : selected.error || "insufficient_eligible_donors",
           required_donors: conceptCount,
           eligible_donors: Number(selected.eligible || 0),
           source_cooldown_days: SOURCE_COOLDOWN_DAYS,
         }, 409);
       }
       const donors = selected.donors;
-      const currentSources = await currentDonorSources(sourceEntity, donors);
+      const currentSources = await currentDonorSources(
+        sourceEntity,
+        donors,
+        contentProfile,
+      );
       if (!currentSources) {
         return response({ error: "seed_donor_source_unavailable" }, 409);
       }
@@ -4363,7 +4626,8 @@ Deno.serve(async (req: Request) => {
       ]);
       const requestHash = await sha256Hex(canonicalStringify({
         batch_key: batchKey,
-        generation_profile: NEXT_BATCH_PROFILE,
+        generation_profile: contentProfile,
+        ...(requestedContentProfile ? { content_profile: contentProfile } : {}),
         concept_count: conceptCount,
         seed_pack_sha256: seedPackSha256,
         seed_pack_batch_id: token(seedPack?.batch_id),
@@ -4384,6 +4648,7 @@ Deno.serve(async (req: Request) => {
         reviewed_at: evidence.reviewedAt,
         review_snapshot_captured_at: evidence.reviewedSnapshotAt,
         target_date: targetDate,
+        content_profile: contentProfile,
         timezone: NEXT_BATCH_TIMEZONE,
         concept_count: conceptCount,
         slot_count: conceptCount,
@@ -4442,9 +4707,13 @@ Deno.serve(async (req: Request) => {
             donors,
             promptSources,
             conceptCount,
+            contentProfile,
           ),
           add_context_from_internet: false,
-          response_json_schema: nextBatchGeneratorSchema(conceptCount),
+          response_json_schema: nextBatchGeneratorSchema(
+            conceptCount,
+            contentProfile,
+          ),
         });
       } catch (error: any) {
         await markBatchFailed(
@@ -4471,6 +4740,7 @@ Deno.serve(async (req: Request) => {
         generated,
         donors,
         priorHooks,
+        contentProfile,
       );
       if (!generatedConcepts) {
         await markBatchFailed(
@@ -4496,6 +4766,7 @@ Deno.serve(async (req: Request) => {
         batchKey,
         targetDate,
         evidence.campaign,
+        contentProfile,
       );
       const canonicalPackJson = canonicalStringify(renderPack);
       const canonicalPackSha256 = await sha256Hex(canonicalPackJson);
@@ -4525,7 +4796,7 @@ Deno.serve(async (req: Request) => {
           campaign: evidence.campaign,
           content: evidence.content,
         }),
-        currentDonorSources(sourceEntity, donors),
+        currentDonorSources(sourceEntity, donors, contentProfile),
         listAllDependencies(artifactEntity, "Growth creative artifacts"),
         listAllDependencies(batchEntity, "Growth content batches"),
         listAllDependencies(jobEntity, "Growth publish jobs"),

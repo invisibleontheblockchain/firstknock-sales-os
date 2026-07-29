@@ -28,9 +28,23 @@ const PACK_PATH = resolve(
   'growth-media',
   'firstknock-safe-starter.json',
 );
+const VIDEO_PILOT_PACK_PATH = resolve(
+  'config',
+  'growth-media',
+  'firstknock-video-pilot-seed.json',
+);
+const VIDEO_PILOT_REVIEW_PATH = resolve(
+  'config',
+  'growth-media',
+  'firstknock-video-pilot-review.json',
+);
 
 async function starterPack() {
   return JSON.parse(await readFile(PACK_PATH, 'utf8'));
+}
+
+async function videoPilotPack() {
+  return JSON.parse(await readFile(VIDEO_PILOT_PACK_PATH, 'utf8'));
 }
 
 function clone(value) {
@@ -67,6 +81,78 @@ test('starter render pack provides ten importable renditions plus two fenced vid
       .update(rendererCanonicalStringify(pack))
       .digest('hex'),
     '144fa73c2d35cf850dacd84c16c7ace14e8e02bb6cd50495f3a915ab89e36a59',
+  );
+});
+
+test('reviewed video pilot provides seven safe paired feature donors', async () => {
+  const pack = validatePack(await videoPilotPack());
+  const review = JSON.parse(
+    await readFile(VIDEO_PILOT_REVIEW_PATH, 'utf8'),
+  );
+  const packSha256 = createHash('sha256')
+    .update(rendererCanonicalStringify(pack))
+    .digest('hex');
+  assert.equal(pack.sources.length, 7);
+  assert.equal(pack.artifacts.length, 14);
+  assert.equal(
+    pack.sources.every((source) => (
+      source.media_kind === 'video'
+      && source.mime_type === 'video/mp4'
+      && source.codec === 'h264'
+      && source.privacy_status === 'safe'
+      && source.rights_status === 'firstknock_owned'
+    )),
+    true,
+  );
+  assert.equal(
+    pack.artifacts.every((artifact) => (
+      artifact.format === 'video'
+      && artifact.distribution_state === 'publish_candidate'
+      && artifact.render.duration_ms <= artifact.render.trim_end_ms
+    )),
+    true,
+  );
+  const platformsByConcept = new Map();
+  for (const artifact of pack.artifacts) {
+    if (!platformsByConcept.has(artifact.concept_id)) {
+      platformsByConcept.set(artifact.concept_id, []);
+    }
+    platformsByConcept.get(artifact.concept_id).push(artifact.platform);
+  }
+  assert.equal(platformsByConcept.size, 7);
+  for (const platforms of platformsByConcept.values()) {
+    assert.deepEqual(platforms.sort(), ['instagram', 'tiktok']);
+  }
+  assert.equal(review.approved_count, 7);
+  assert.equal(review.rejected_count, 1);
+  assert.equal(review.publication_authorized, false);
+  assert.equal(review.trusted_seed_pack.canonical_sha256, packSha256);
+  assert.equal(
+    packSha256,
+    '6234aa57662eaec2b8ad46279d1f37ee3a855686fbd083347dfa2b4a101e6d81',
+  );
+  const approvedByKey = new Map(
+    review.decisions
+      .filter((decision) => decision.decision === 'approved_as_safe_donor')
+      .map((decision) => [decision.asset_key, decision]),
+  );
+  assert.deepEqual(
+    pack.sources.map((source) => source.asset_key).sort(),
+    [...approvedByKey.keys()].sort(),
+  );
+  for (const source of pack.sources) {
+    const decision = approvedByKey.get(source.asset_key);
+    assert.equal(decision.source_reference, source.source_reference);
+    assert.equal(decision.source_sha256, source.source_sha256);
+    assert.equal(decision.duration_ms, source.duration_ms);
+  }
+  assert.equal(
+    review.decisions.some((decision) => (
+      decision.asset_key === 'video-pilot-refresh-area-safe-v1'
+      && decision.decision === 'rejected'
+      && decision.privacy_status === 'blocked'
+    )),
+    true,
   );
 });
 
@@ -135,6 +221,10 @@ test('growth content batches are bounded service-only provenance records', async
     'revoked',
   ]);
   assert.deepEqual(schema.properties.concept_count.enum, [2, 3]);
+  assert.deepEqual(schema.properties.content_profile.enum, [
+    'measured-next-batch-v1',
+    'feature_explainer_video_v1',
+  ]);
   assert.deepEqual(schema.properties.slot_count.enum, [2, 3]);
   assert.equal(schema.properties.slot_keys.maxItems, 3);
   assert.equal(schema.properties.source_lineage.maxItems, 3);
@@ -165,9 +255,12 @@ test('growth content batches are bounded service-only provenance records', async
 });
 
 test('safe dashboard registry stays hash-aligned with the render pack', async () => {
-  const pack = validatePack(await starterPack());
+  const packs = [
+    validatePack(await starterPack()),
+    validatePack(await videoPilotPack()),
+  ];
   const safePackSources = new Map(
-    pack.sources
+    packs.flatMap((pack) => pack.sources)
       .filter((source) => source.privacy_status === 'safe')
       .map((source) => [source.asset_key, source.source_sha256]),
   );

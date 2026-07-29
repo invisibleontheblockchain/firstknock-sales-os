@@ -275,6 +275,37 @@ const measuredSeedPack = validatePack(JSON.parse(readFileSync(
   'utf8',
 )));
 const measuredSeedPackSha256 = fixtureSha256(measuredSeedPack);
+const featureExplainerConceptIds = [
+  'fk-ce-field-funnel-01',
+  'fk-ce-clean-routes-01',
+];
+const featureExplainerSeedPack = structuredClone(measuredSeedPack);
+const featureExplainerSourceKeys = new Set(
+  featureExplainerSeedPack.artifacts
+    .filter((artifact) => (
+      featureExplainerConceptIds.includes(artifact.concept_id)
+    ))
+    .map((artifact) => artifact.source_asset_key),
+);
+for (const source of featureExplainerSeedPack.sources) {
+  if (!featureExplainerSourceKeys.has(source.asset_key)) continue;
+  source.media_kind = 'video';
+  source.mime_type = 'video/mp4';
+  source.codec = 'h264';
+  source.duration_ms = 12_000;
+}
+for (const artifact of featureExplainerSeedPack.artifacts) {
+  if (!featureExplainerConceptIds.includes(artifact.concept_id)) continue;
+  artifact.render = {
+    ...artifact.render,
+    duration_ms: 12_000,
+    trim_start_ms: 0,
+    trim_end_ms: 12_000,
+  };
+}
+const featureExplainerSeedPackSha256 = fixtureSha256(
+  featureExplainerSeedPack,
+);
 
 function measuredSourceRegistry() {
   return measuredSeedPack.sources
@@ -294,6 +325,29 @@ function measuredSourceRegistry() {
       duration_ms: source.duration_ms,
       privacy_status: 'safe',
       safe_summary: `Sanitized product proof for ${source.asset_key}.`,
+      active: true,
+      privacy_change_pending: false,
+    }));
+}
+
+function featureExplainerSourceRegistry() {
+  return featureExplainerSeedPack.sources
+    .filter((source) => (
+      source.privacy_status === 'safe'
+      && source.rights_status === 'firstknock_owned'
+    ))
+    .map((source) => ({
+      asset_key: source.asset_key,
+      title: `Trusted ${source.asset_key}`,
+      source_reference: source.source_reference,
+      source_sha256: source.source_sha256,
+      media_kind: source.media_kind,
+      mime_type: source.mime_type,
+      width: source.width,
+      height: source.height,
+      duration_ms: source.duration_ms,
+      privacy_status: 'safe',
+      safe_summary: `Sanitized visible FirstKnock workflow for ${source.asset_key}.`,
       active: true,
       privacy_change_pending: false,
     }));
@@ -399,6 +453,44 @@ function measuredGeneration(conceptIds) {
           cta_label: 'Open FirstKnock',
         },
       ],
+    })),
+  };
+}
+
+function featureExplainerGeneration(conceptIds) {
+  return {
+    concepts: conceptIds.map((conceptId, index) => ({
+      donor_concept_id: conceptId,
+      title: index === 0
+        ? 'Find the field bottleneck'
+        : 'Own the route handoff',
+      hook: index === 0
+        ? 'Find the field bottleneck'
+        : 'Own every route handoff',
+      overlay_text: index === 0
+        ? ['See the field workflow', 'Choose the next question']
+        : ['Build the route', 'Confirm the owner'],
+      shot_list: [
+        'Open on the audited source video.',
+        'Show only the visible FirstKnock behavior.',
+        'Finish on the workspace CTA.',
+      ],
+      overlay_cta: index === 0
+        ? 'See the field workflow'
+        : 'See the route handoff',
+      variants: ['instagram', 'tiktok'].map((platform) => ({
+        platform,
+        problem: index === 0
+          ? 'Field activity can hide the coaching question.'
+          : 'Route ownership can become unclear before field work.',
+        visible_feature_behavior: index === 0
+          ? 'FirstKnock shows the field funnel in one manager view.'
+          : 'FirstKnock shows the route and its owner before the handoff.',
+        practical_benefit: index === 0
+          ? 'Managers can choose the next workflow question with context.'
+          : 'The team can begin with a clear route handoff.',
+        cta_label: index === 0 ? 'See FirstKnock' : 'Open FirstKnock',
+      })),
     })),
   };
 }
@@ -1471,6 +1563,10 @@ test('reviewed evidence builds one durable daily batch and imports only after ow
   assert.equal(built.body.idempotent, false);
   assert.equal(built.body.batch.state, 'ready');
   assert.equal(built.body.batch.concept_count, 2);
+  assert.equal(
+    built.body.batch.content_profile,
+    'measured-next-batch-v1',
+  );
   assert.equal(built.body.render_pack.artifacts.length, 4);
   assert.equal(built.body.render_pack.sources.length, 2);
   assert.equal(
@@ -1630,6 +1726,292 @@ test('reviewed evidence builds one durable daily batch and imports only after ow
   });
   assert.equal(reviewAfterMissingBatch.status, 409);
   assert.equal(reviewAfterMissingBatch.body.error, 'growth_batch_not_authorized');
+});
+
+test('video feature explainer profile is server-locked to exactly two concepts', async (t) => {
+  const { base44, entities } = createGrowthBase44();
+  const handler = loadGrowthHandler(managePath, {
+    base44,
+    env: {
+      ...env,
+      GROWTH_CONTENT_GENERATION_ENABLED: 'true',
+    },
+    dateImpl: controlledClock(
+      Date.parse('2026-07-28T18:00:00.000Z'),
+    ).DateImpl,
+  });
+
+  await t.test('rejects an unknown profile', async () => {
+    const result = await invokeJson(handler, {
+      action: 'build_next_batch',
+      target_date: '2026-07-29',
+      concept_count: 2,
+      content_profile: 'untrusted_video_profile',
+    });
+    assert.equal(result.status, 400);
+    assert.equal(result.body.error, 'invalid_content_profile');
+  });
+
+  await t.test('rejects any count other than two', async () => {
+    const result = await invokeJson(handler, {
+      action: 'build_next_batch',
+      target_date: '2026-07-29',
+      concept_count: 3,
+      content_profile: 'feature_explainer_video_v1',
+    });
+    assert.equal(result.status, 400);
+    assert.equal(
+      result.body.error,
+      'feature_explainer_requires_two_concepts',
+    );
+    assert.equal(result.body.required_concepts, 2);
+  });
+
+  assert.equal(entities.GrowthContentBatch.records.length, 0);
+});
+
+test('video feature explainer fails closed without two safe video donors', async () => {
+  const { plan, metric } = await measuredReviewEvidence();
+  let llmCalls = 0;
+  const { base44, entities } = createGrowthBase44({
+    sources: measuredSourceRegistry(),
+    plans: [plan],
+    metrics: [metric],
+    invokeLlm: async () => {
+      llmCalls += 1;
+      return featureExplainerGeneration(featureExplainerConceptIds);
+    },
+  });
+  const handler = loadGrowthHandler(managePath, {
+    base44,
+    env: {
+      ...env,
+      GROWTH_CONTENT_GENERATION_ENABLED: 'true',
+      GROWTH_RENDER_PACK_SHA256S: measuredSeedPackSha256,
+    },
+    dateImpl: controlledClock(
+      Date.parse('2026-07-28T18:00:00.000Z'),
+    ).DateImpl,
+  });
+
+  const result = await invokeJson(handler, {
+    action: 'build_next_batch',
+    parent: {
+      platform: plan.platform,
+      campaign: plan.campaign,
+      content: plan.content,
+    },
+    target_date: '2026-07-29',
+    content_profile: 'feature_explainer_video_v1',
+    concept_count: 2,
+    seed_pack: measuredSeedPack,
+  });
+
+  assert.equal(result.status, 409);
+  assert.equal(result.body.error, 'insufficient_eligible_video_donors');
+  assert.equal(result.body.required_donors, 2);
+  assert.equal(result.body.eligible_donors, 0);
+  assert.equal(llmCalls, 0);
+  assert.equal(entities.GrowthContentBatch.records.length, 0);
+});
+
+test('video feature explainer binds its profile and assembles grounded tracked captions', async () => {
+  const { plan, metric } = await measuredReviewEvidence();
+  let llmRequest;
+  const { base44, entities } = createGrowthBase44({
+    sources: featureExplainerSourceRegistry(),
+    plans: [plan],
+    metrics: [metric],
+    invokeLlm: async (request) => {
+      llmRequest = request;
+      return featureExplainerGeneration(featureExplainerConceptIds);
+    },
+  });
+  const measuredEnv = {
+    ...env,
+    GROWTH_CONTENT_GENERATION_ENABLED: 'true',
+    GROWTH_RENDER_PACK_SHA256S: featureExplainerSeedPackSha256,
+  };
+  const handler = loadGrowthHandler(managePath, {
+    base44,
+    env: measuredEnv,
+    dateImpl: controlledClock(
+      Date.parse('2026-07-28T18:00:00.000Z'),
+    ).DateImpl,
+  });
+  const request = {
+    action: 'build_next_batch',
+    parent: {
+      platform: plan.platform,
+      campaign: plan.campaign,
+      content: plan.content,
+    },
+    target_date: '2026-07-29',
+    content_profile: 'feature_explainer_video_v1',
+    concept_count: 2,
+    seed_concept_ids: featureExplainerConceptIds,
+    seed_pack: featureExplainerSeedPack,
+  };
+
+  const built = await invokeJson(handler, request);
+  assert.equal(built.status, 201);
+  assert.equal(
+    built.body.batch.content_profile,
+    'feature_explainer_video_v1',
+  );
+  assert.equal(built.body.batch.concept_count, 2);
+  assert.equal(entities.GrowthContentBatch.records[0].content_profile,
+    'feature_explainer_video_v1');
+  assert.equal(entities.GrowthContentBatch.records[0].state, 'ready');
+  assert.equal(entities.GrowthCreativeArtifact.records.length, 0);
+  assert.equal(llmRequest.add_context_from_internet, false);
+  assert.match(llmRequest.prompt, /problem:[\s\S]*?visible_feature_behavior:/);
+  assert.match(llmRequest.prompt, /practical_benefit:[\s\S]*?cta_label:/);
+  assert.match(llmRequest.prompt, /only from safe_source_summary/);
+  assert.match(llmRequest.prompt, /server assembles[\s\S]*?tracked CTA URL/i);
+  const variantSchema = llmRequest.response_json_schema.properties
+    .concepts.items.properties.variants.items;
+  assert.deepEqual(
+    Array.from(variantSchema.required),
+    [
+      'platform',
+      'problem',
+      'visible_feature_behavior',
+      'practical_benefit',
+      'cta_label',
+    ],
+  );
+  assert.equal('caption' in variantSchema.properties, false);
+
+  assert.equal(built.body.render_pack.sources.length, 2);
+  assert.equal(
+    built.body.render_pack.sources.every(
+      (source) => source.media_kind === 'video',
+    ),
+    true,
+  );
+  assert.equal(built.body.render_pack.artifacts.length, 4);
+  for (const artifact of built.body.render_pack.artifacts) {
+    assert.equal(artifact.format, 'video');
+    assert.equal(artifact.distribution_state, 'publish_candidate');
+    const blocks = artifact.caption.split(/\n{2,}/);
+    assert.equal(blocks.length, 5);
+    assert.match(blocks[1], /\bFirstKnock\b/);
+    assert.equal(
+      blocks[3],
+      'DEMO DATA - no customer result or performance promise.',
+    );
+    assert.equal(blocks[4], `${artifact.cta_label}: ${artifact.cta_url}`);
+    assert.match(
+      artifact.cta_url,
+      new RegExp(`utm_source=${artifact.platform}`),
+    );
+    assert.equal(growthHelpers.socialPostText(artifact), artifact.caption);
+  }
+  assert.doesNotThrow(
+    () => validatePack(structuredClone(built.body.render_pack)),
+  );
+
+  entities.GrowthContentBatch.records[0].content_profile = '';
+  const corruptedProfile = await invokeJson(handler, {
+    action: 'authorize_batch',
+    batch_key: built.body.batch.batch_key,
+    expected_pack_sha256: built.body.pack_sha256,
+    inspection_acknowledged: true,
+    note: 'A blank stored profile must fail closed before authorization.',
+  });
+  assert.equal(corruptedProfile.status, 409);
+  assert.equal(
+    corruptedProfile.body.error,
+    'growth_batch_profile_conflict',
+  );
+
+  const { base44: legacyBase44 } = createGrowthBase44({
+    sources: featureExplainerSourceRegistry(),
+    plans: [plan],
+    metrics: [metric],
+    invokeLlm: async () => measuredGeneration(featureExplainerConceptIds),
+  });
+  const legacyHandler = loadGrowthHandler(managePath, {
+    base44: legacyBase44,
+    env: measuredEnv,
+    dateImpl: controlledClock(
+      Date.parse('2026-07-28T18:00:00.000Z'),
+    ).DateImpl,
+  });
+  const legacy = await invokeJson(legacyHandler, {
+    ...request,
+    content_profile: 'measured-next-batch-v1',
+  });
+  assert.equal(legacy.status, 201);
+  assert.notEqual(legacy.body.batch.batch_key, built.body.batch.batch_key);
+  assert.notEqual(legacy.body.batch.request_hash, built.body.batch.request_hash);
+});
+
+test('video feature explainer rejects ungrounded or promissory caption sections', async (t) => {
+  const cases = [
+    {
+      name: 'visible behavior does not identify FirstKnock',
+      mutate: (generation) => {
+        generation.concepts[0].variants[0].visible_feature_behavior =
+          'The app displays the field funnel in one manager view.';
+      },
+    },
+    {
+      name: 'benefit invents a quantified result',
+      mutate: (generation) => {
+        generation.concepts[0].variants[0].practical_benefit =
+          'Managers close twenty percent more sales.';
+      },
+    },
+  ];
+  for (const item of cases) {
+    await t.test(item.name, async () => {
+      const { plan, metric } = await measuredReviewEvidence();
+      const generation = featureExplainerGeneration(
+        featureExplainerConceptIds,
+      );
+      item.mutate(generation);
+      const { base44, entities } = createGrowthBase44({
+        sources: featureExplainerSourceRegistry(),
+        plans: [plan],
+        metrics: [metric],
+        invokeLlm: async () => generation,
+      });
+      const handler = loadGrowthHandler(managePath, {
+        base44,
+        env: {
+          ...env,
+          GROWTH_CONTENT_GENERATION_ENABLED: 'true',
+          GROWTH_RENDER_PACK_SHA256S: featureExplainerSeedPackSha256,
+        },
+        dateImpl: controlledClock(
+          Date.parse('2026-07-28T18:00:00.000Z'),
+        ).DateImpl,
+      });
+      const result = await invokeJson(handler, {
+        action: 'build_next_batch',
+        parent: {
+          platform: plan.platform,
+          campaign: plan.campaign,
+          content: plan.content,
+        },
+        target_date: '2026-07-29',
+        content_profile: 'feature_explainer_video_v1',
+        concept_count: 2,
+        seed_concept_ids: featureExplainerConceptIds,
+        seed_pack: featureExplainerSeedPack,
+      });
+
+      assert.equal(result.status, 502);
+      assert.equal(result.body.error, 'invalid_generated_batch');
+      assert.equal(entities.GrowthContentBatch.records[0].state, 'failed');
+      assert.equal(
+        entities.GrowthContentBatch.records[0].canonical_pack_json,
+        undefined,
+      );
+    });
+  }
 });
 
 test('published measured-batch history cannot be erased by later approval changes', async () => {

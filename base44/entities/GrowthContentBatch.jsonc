@@ -5,7 +5,7 @@
     "batch_key": {
       "type": "string",
       "pattern": "^[a-f0-9]{64}$",
-      "description": "Deterministic identity for one reviewed parent decision and Phoenix target date"
+      "description": "Deterministic identity for one reviewed parent decision, content profile, and Phoenix target date"
     },
     "request_hash": {
       "type": "string",
@@ -56,6 +56,14 @@
       "type": "string",
       "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
       "description": "Publishing date interpreted only in the persisted timezone"
+    },
+    "content_profile": {
+      "type": "string",
+      "enum": [
+        "measured-next-batch-v1",
+        "feature_explainer_video_v1"
+      ],
+      "description": "Server-owned generation and validation contract; older rows without this field use measured-next-batch-v1"
     },
     "timezone": {
       "type": "string",

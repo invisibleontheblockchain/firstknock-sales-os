@@ -22,6 +22,7 @@
     "test:fieldroutes": "node --test test/fieldroutes-backend.test.mjs test/fieldroutes-manager-ui.test.mjs test/fieldroutes-rep-ui.test.mjs",
     "smoke:fieldroutes:readonly": "node scripts/fieldroutes-readonly-smoke.mjs",
     "render:growth-pack": "node scripts/render-growth-pack.mjs",
+    "sanitize:growth-video-sources": "node scripts/sanitize-growth-video-sources.mjs",
     "verify:growth-media-origin": "node scripts/verify-growth-media-origin.mjs",
     "typecheck": "tsc -p ./jsconfig.validation.json",
     "validate:dependencies": "npm audit --audit-level=high",

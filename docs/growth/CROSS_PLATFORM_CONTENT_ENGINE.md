@@ -114,7 +114,8 @@ The repository now includes the first safe operating layer:
   operations cannot overwrite a concurrent Buffer-owned measurement contract; and
 - a disabled-by-default kill switch.
 
-The dashboard can load metadata and exact hashes for five audited starter sources. The
+The dashboard can load metadata and exact hashes for twelve audited sources: five
+starter images and seven approved sanitized feature videos. The
 local renderer produces ten publish-candidate renditions plus two sanitized video
 previews without uploading or copying the source package. The neutral `/start` landing
 path and platform-specific UTM links preserve Instagram and TikTok identity. No public

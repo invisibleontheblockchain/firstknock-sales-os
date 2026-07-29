@@ -1,0 +1,589 @@
+{
+  "schema_version": "growth-render-pack.v1",
+  "batch_id": "firstknock-video-feature-pilot-2026-07",
+  "template": {
+    "id": "firstknock-feature-explainer",
+    "version": "1.0.0",
+    "brand": "FirstKnock",
+    "accent_color": "0x39FF4A",
+    "background_color": "0x050705",
+    "hook_font_size": 76,
+    "cta_font_size": 42,
+    "disclosure_font_size": 25
+  },
+  "output": {
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "duration_ms": 10000,
+    "video_bitrate": "8M",
+    "max_video_bitrate": "10M",
+    "audio_bitrate": "128k",
+    "thumbnail_offset_ms": 1000,
+    "audio_mode": "silent"
+  },
+  "sources": [
+    {
+      "asset_key": "video-pilot-route-start-finish-safe-v1",
+      "source_origin": "asset_pack",
+      "source_reference": "6b5afb7bca558113d8ba5e5a9674466f132e1a6c0aaa8333c930edc199ea388c-video-pilot-route-start-finish-safe-v1.mp4",
+      "source_sha256": "6b5afb7bca558113d8ba5e5a9674466f132e1a6c0aaa8333c930edc199ea388c",
+      "media_kind": "video",
+      "mime_type": "video/mp4",
+      "codec": "h264",
+      "width": 1080,
+      "height": 1920,
+      "duration_ms": 12021,
+      "privacy_status": "safe",
+      "rights_status": "firstknock_owned"
+    },
+    {
+      "asset_key": "video-pilot-route-optimize-safe-v1",
+      "source_origin": "asset_pack",
+      "source_reference": "2cecdc69ec1159bb61211cc2c167d93c3a44dbdf3a28b160060eaa7692c03b5f-video-pilot-route-optimize-safe-v1.mp4",
+      "source_sha256": "2cecdc69ec1159bb61211cc2c167d93c3a44dbdf3a28b160060eaa7692c03b5f",
+      "media_kind": "video",
+      "mime_type": "video/mp4",
+      "codec": "h264",
+      "width": 1080,
+      "height": 1920,
+      "duration_ms": 10021,
+      "privacy_status": "safe",
+      "rights_status": "firstknock_owned"
+    },
+    {
+      "asset_key": "video-pilot-territory-filters-safe-v1",
+      "source_origin": "asset_pack",
+      "source_reference": "867d52b52188f065870fc391c045b2d48819f8d48ca3156accaa4d6e9735dffc-video-pilot-territory-filters-safe-v1.mp4",
+      "source_sha256": "867d52b52188f065870fc391c045b2d48819f8d48ca3156accaa4d6e9735dffc",
+      "media_kind": "video",
+      "mime_type": "video/mp4",
+      "codec": "h264",
+      "width": 1080,
+      "height": 1920,
+      "duration_ms": 10021,
+      "privacy_status": "safe",
+      "rights_status": "firstknock_owned"
+    },
+    {
+      "asset_key": "video-pilot-multi-route-map-safe-v1",
+      "source_origin": "asset_pack",
+      "source_reference": "349e9309343d1f85f02df2c73f639b229c3fffe8e3b12042ff2d8278b91eaa77-video-pilot-multi-route-map-safe-v1.mp4",
+      "source_sha256": "349e9309343d1f85f02df2c73f639b229c3fffe8e3b12042ff2d8278b91eaa77",
+      "media_kind": "video",
+      "mime_type": "video/mp4",
+      "codec": "h264",
+      "width": 1080,
+      "height": 1920,
+      "duration_ms": 10021,
+      "privacy_status": "safe",
+      "rights_status": "firstknock_owned"
+    },
+    {
+      "asset_key": "video-pilot-route-filtering-safe-v1",
+      "source_origin": "asset_pack",
+      "source_reference": "fdf85ce18b66e0f20428f2b21625851bbbc37ac31cf6761250901cffa0ca1c50-video-pilot-route-filtering-safe-v1.mp4",
+      "source_sha256": "fdf85ce18b66e0f20428f2b21625851bbbc37ac31cf6761250901cffa0ca1c50",
+      "media_kind": "video",
+      "mime_type": "video/mp4",
+      "codec": "h264",
+      "width": 1080,
+      "height": 1920,
+      "duration_ms": 12021,
+      "privacy_status": "safe",
+      "rights_status": "firstknock_owned"
+    },
+    {
+      "asset_key": "video-pilot-map-settings-safe-v1",
+      "source_origin": "asset_pack",
+      "source_reference": "07b18a284f6f566bc939fc337f57634e3d24488a9c1d36a2a07f7b15f05ddcd1-video-pilot-map-settings-safe-v1.mp4",
+      "source_sha256": "07b18a284f6f566bc939fc337f57634e3d24488a9c1d36a2a07f7b15f05ddcd1",
+      "media_kind": "video",
+      "mime_type": "video/mp4",
+      "codec": "h264",
+      "width": 1080,
+      "height": 1920,
+      "duration_ms": 8021,
+      "privacy_status": "safe",
+      "rights_status": "firstknock_owned"
+    },
+    {
+      "asset_key": "video-pilot-analytics-date-safe-v1",
+      "source_origin": "asset_pack",
+      "source_reference": "2369dafce0aa8f09a72850a868fbae0e8389489c48bd4ae8a7ee145946e98d4e-video-pilot-analytics-date-safe-v1.mp4",
+      "source_sha256": "2369dafce0aa8f09a72850a868fbae0e8389489c48bd4ae8a7ee145946e98d4e",
+      "media_kind": "video",
+      "mime_type": "video/mp4",
+      "codec": "h264",
+      "width": 1080,
+      "height": 1920,
+      "duration_ms": 10021,
+      "privacy_status": "safe",
+      "rights_status": "firstknock_owned"
+    }
+  ],
+  "artifacts": [
+    {
+      "artifact_key": "ig-vp-route-start-finish-01",
+      "concept_id": "fk-vp-route-start-finish-01",
+      "platform": "instagram",
+      "platform_content_id": "ig-vp-route-start-finish-01",
+      "campaign": "1000-users",
+      "title": "Choose where the route starts and ends",
+      "pillar": "route-builder",
+      "format": "video",
+      "distribution_state": "publish_candidate",
+      "source_asset_key": "video-pilot-route-start-finish-safe-v1",
+      "hook": "Choose where every route begins",
+      "overlay_text": [
+        "Choose the starting point",
+        "Choose the finish",
+        "Generate the route"
+      ],
+      "shot_list": [
+        "Open on the route-builder filters.",
+        "Show Home Base and current-location start controls.",
+        "Finish on the route-generation control."
+      ],
+      "caption": "A route should not begin with a last-minute location decision. FirstKnock shows Home Base and current-location start controls, plus the return-to-Home-Base option, directly in the route builder. Set the route endpoints before the field day starts.",
+      "cta_label": "See the route builder",
+      "cta_url": "https://firstknock.online/start?utm_source=instagram&utm_medium=organic_social&utm_campaign=1000-users&utm_content=ig-vp-route-start-finish-01",
+      "overlay_cta": "Build the route",
+      "disclosure": "FIRSTKNOCK PRODUCT DEMO - NO CUSTOMER RESULT.",
+      "render": {
+        "duration_ms": 12000,
+        "trim_start_ms": 0,
+        "trim_end_ms": 12000
+      }
+    },
+    {
+      "artifact_key": "tt-vp-route-start-finish-01",
+      "concept_id": "fk-vp-route-start-finish-01",
+      "platform": "tiktok",
+      "platform_content_id": "tt-vp-route-start-finish-01",
+      "campaign": "1000-users",
+      "title": "Choose where the route starts and ends",
+      "pillar": "route-builder",
+      "format": "video",
+      "distribution_state": "publish_candidate",
+      "source_asset_key": "video-pilot-route-start-finish-safe-v1",
+      "hook": "Choose where every route begins",
+      "overlay_text": [
+        "Start at Home Base",
+        "Or use current location",
+        "Choose the finish"
+      ],
+      "shot_list": [
+        "Show the visible route start and finish controls.",
+        "Hold on the selected route behavior.",
+        "Finish on Generate."
+      ],
+      "caption": "Starting and finishing details should not live in a text thread. FirstKnock keeps the route start, finish, and return behavior in the same visible builder. The rep can see how the route is configured before it is generated.",
+      "cta_label": "Watch the route workflow",
+      "cta_url": "https://firstknock.online/start?utm_source=tiktok&utm_medium=organic_social&utm_campaign=1000-users&utm_content=tt-vp-route-start-finish-01",
+      "overlay_cta": "See the route workflow",
+      "disclosure": "FIRSTKNOCK PRODUCT DEMO - NO CUSTOMER RESULT.",
+      "render": {
+        "duration_ms": 12000,
+        "trim_start_ms": 0,
+        "trim_end_ms": 12000
+      }
+    },
+    {
+      "artifact_key": "ig-vp-route-optimize-01",
+      "concept_id": "fk-vp-route-optimize-01",
+      "platform": "instagram",
+      "platform_content_id": "ig-vp-route-optimize-01",
+      "campaign": "1000-users",
+      "title": "Optimize before the first knock",
+      "pillar": "route-command",
+      "format": "video",
+      "distribution_state": "publish_candidate",
+      "source_asset_key": "video-pilot-route-optimize-safe-v1",
+      "hook": "Optimize before the first knock",
+      "overlay_text": [
+        "Open the mapped route",
+        "Use Optimize",
+        "Review the route order"
+      ],
+      "shot_list": [
+        "Open on the visible mapped stops.",
+        "Keep the Optimize control in frame.",
+        "Finish on the complete route map."
+      ],
+      "caption": "A mapped route is easier to review when the next action is visible. FirstKnock places the Optimize control beside the route and numbered stops. Managers and reps can inspect the route plan before the first knock.",
+      "cta_label": "See route optimization",
+      "cta_url": "https://firstknock.online/start?utm_source=instagram&utm_medium=organic_social&utm_campaign=1000-users&utm_content=ig-vp-route-optimize-01",
+      "overlay_cta": "Review the route",
+      "disclosure": "FIRSTKNOCK PRODUCT DEMO - NO CUSTOMER RESULT.",
+      "render": {
+        "duration_ms": 10000,
+        "trim_start_ms": 0,
+        "trim_end_ms": 10000
+      }
+    },
+    {
+      "artifact_key": "tt-vp-route-optimize-01",
+      "concept_id": "fk-vp-route-optimize-01",
+      "platform": "tiktok",
+      "platform_content_id": "tt-vp-route-optimize-01",
+      "campaign": "1000-users",
+      "title": "Optimize before the first knock",
+      "pillar": "route-command",
+      "format": "video",
+      "distribution_state": "publish_candidate",
+      "source_asset_key": "video-pilot-route-optimize-safe-v1",
+      "hook": "Optimize before the first knock",
+      "overlay_text": [
+        "Mapped stops",
+        "One Optimize control",
+        "A route ready to inspect"
+      ],
+      "shot_list": [
+        "Show the mapped route at full height.",
+        "Keep the Optimize action visible.",
+        "Hold on the numbered stop sequence."
+      ],
+      "caption": "When a route changes, the update should be visible where the work happens. FirstKnock shows the mapped stops and the Optimize control in one route view. Review the sequence before the team heads out.",
+      "cta_label": "See the mapped route",
+      "cta_url": "https://firstknock.online/start?utm_source=tiktok&utm_medium=organic_social&utm_campaign=1000-users&utm_content=tt-vp-route-optimize-01",
+      "overlay_cta": "Open the route map",
+      "disclosure": "FIRSTKNOCK PRODUCT DEMO - NO CUSTOMER RESULT.",
+      "render": {
+        "duration_ms": 10000,
+        "trim_start_ms": 0,
+        "trim_end_ms": 10000
+      }
+    },
+    {
+      "artifact_key": "ig-vp-territory-filters-01",
+      "concept_id": "fk-vp-territory-filters-01",
+      "platform": "instagram",
+      "platform_content_id": "ig-vp-territory-filters-01",
+      "campaign": "1000-users",
+      "title": "Draw the territory and set the filters",
+      "pillar": "custom-area-to-route",
+      "format": "video",
+      "distribution_state": "publish_candidate",
+      "source_asset_key": "video-pilot-territory-filters-safe-v1",
+      "hook": "Draw the exact working territory",
+      "overlay_text": [
+        "Draw the area",
+        "Set the route filters",
+        "Generate the plan"
+      ],
+      "shot_list": [
+        "Open on the freehand territory control.",
+        "Show the completed selected area.",
+        "Reveal the visible route-builder filters."
+      ],
+      "caption": "A whole-market map can hide the area the team actually plans to work. FirstKnock lets you draw a territory, then set visible property and route filters in the builder. Turn the chosen area into a route brief without switching tools.",
+      "cta_label": "See territory building",
+      "cta_url": "https://firstknock.online/start?utm_source=instagram&utm_medium=organic_social&utm_campaign=1000-users&utm_content=ig-vp-territory-filters-01",
+      "overlay_cta": "Build the territory",
+      "disclosure": "FIRSTKNOCK PRODUCT DEMO - NO CUSTOMER RESULT.",
+      "render": {
+        "duration_ms": 10000,
+        "trim_start_ms": 0,
+        "trim_end_ms": 10000
+      }
+    },
+    {
+      "artifact_key": "tt-vp-territory-filters-01",
+      "concept_id": "fk-vp-territory-filters-01",
+      "platform": "tiktok",
+      "platform_content_id": "tt-vp-territory-filters-01",
+      "campaign": "1000-users",
+      "title": "Draw the territory and set the filters",
+      "pillar": "custom-area-to-route",
+      "format": "video",
+      "distribution_state": "publish_candidate",
+      "source_asset_key": "video-pilot-territory-filters-safe-v1",
+      "hook": "Draw the exact working territory",
+      "overlay_text": [
+        "Outline the area",
+        "Choose the filters",
+        "Build the route"
+      ],
+      "shot_list": [
+        "Show the freehand area taking shape.",
+        "Transition into the route builder.",
+        "Hold on the selected filter controls."
+      ],
+      "caption": "The working territory is rarely a perfect square. FirstKnock shows a freehand area selection and the route filters that follow it. Define the patch, choose the visible rules, and prepare the route in one flow.",
+      "cta_label": "Watch the territory flow",
+      "cta_url": "https://firstknock.online/start?utm_source=tiktok&utm_medium=organic_social&utm_campaign=1000-users&utm_content=tt-vp-territory-filters-01",
+      "overlay_cta": "Draw the working area",
+      "disclosure": "FIRSTKNOCK PRODUCT DEMO - NO CUSTOMER RESULT.",
+      "render": {
+        "duration_ms": 10000,
+        "trim_start_ms": 0,
+        "trim_end_ms": 10000
+      }
+    },
+    {
+      "artifact_key": "ig-vp-multi-route-map-01",
+      "concept_id": "fk-vp-multi-route-map-01",
+      "platform": "instagram",
+      "platform_content_id": "ig-vp-multi-route-map-01",
+      "campaign": "1000-users",
+      "title": "See active routes together",
+      "pillar": "route-command",
+      "format": "video",
+      "distribution_state": "publish_candidate",
+      "source_asset_key": "video-pilot-multi-route-map-safe-v1",
+      "hook": "See every active route together",
+      "overlay_text": [
+        "Route paths",
+        "Numbered stops",
+        "One broader map"
+      ],
+      "shot_list": [
+        "Open on the detailed route paths.",
+        "Keep numbered stops visible.",
+        "Zoom to the broader route overview."
+      ],
+      "caption": "Separate route screenshots make the field plan harder to scan. FirstKnock keeps route paths and numbered stops on the same map, then lets the view expand to the broader territory. See the route picture without rebuilding it elsewhere.",
+      "cta_label": "See the route overview",
+      "cta_url": "https://firstknock.online/start?utm_source=instagram&utm_medium=organic_social&utm_campaign=1000-users&utm_content=ig-vp-multi-route-map-01",
+      "overlay_cta": "See the whole route",
+      "disclosure": "FIRSTKNOCK PRODUCT DEMO - NO CUSTOMER RESULT.",
+      "render": {
+        "duration_ms": 10000,
+        "trim_start_ms": 0,
+        "trim_end_ms": 10000
+      }
+    },
+    {
+      "artifact_key": "tt-vp-multi-route-map-01",
+      "concept_id": "fk-vp-multi-route-map-01",
+      "platform": "tiktok",
+      "platform_content_id": "tt-vp-multi-route-map-01",
+      "campaign": "1000-users",
+      "title": "See active routes together",
+      "pillar": "route-command",
+      "format": "video",
+      "distribution_state": "publish_candidate",
+      "source_asset_key": "video-pilot-multi-route-map-safe-v1",
+      "hook": "See every active route together",
+      "overlay_text": [
+        "Start with the stops",
+        "Follow the paths",
+        "Zoom out for context"
+      ],
+      "shot_list": [
+        "Show multiple active paths.",
+        "Keep the stop numbers readable.",
+        "Finish on the wide map view."
+      ],
+      "caption": "A route list does not show how the field plan fits together. FirstKnock displays the active paths and numbered stops directly on the map. Zoom from the local route into the wider territory for context.",
+      "cta_label": "Watch the map view",
+      "cta_url": "https://firstknock.online/start?utm_source=tiktok&utm_medium=organic_social&utm_campaign=1000-users&utm_content=tt-vp-multi-route-map-01",
+      "overlay_cta": "Open the map view",
+      "disclosure": "FIRSTKNOCK PRODUCT DEMO - NO CUSTOMER RESULT.",
+      "render": {
+        "duration_ms": 10000,
+        "trim_start_ms": 0,
+        "trim_end_ms": 10000
+      }
+    },
+    {
+      "artifact_key": "ig-vp-route-filtering-01",
+      "concept_id": "fk-vp-route-filtering-01",
+      "platform": "instagram",
+      "platform_content_id": "ig-vp-route-filtering-01",
+      "campaign": "1000-users",
+      "title": "Filter the routes you need",
+      "pillar": "route-command",
+      "format": "video",
+      "distribution_state": "publish_candidate",
+      "source_asset_key": "video-pilot-route-filtering-safe-v1",
+      "hook": "Filter the routes you need",
+      "overlay_text": [
+        "Choose a date window",
+        "Choose a price range",
+        "Return to the map"
+      ],
+      "shot_list": [
+        "Open on the route map.",
+        "Show the date and price filter menus.",
+        "Return to the filtered map view."
+      ],
+      "caption": "A crowded route map makes it harder to focus on the work you need. FirstKnock exposes date and price filters directly above the mapped routes. Narrow the view and keep the relevant route context visible.",
+      "cta_label": "See route filtering",
+      "cta_url": "https://firstknock.online/start?utm_source=instagram&utm_medium=organic_social&utm_campaign=1000-users&utm_content=ig-vp-route-filtering-01",
+      "overlay_cta": "Filter the route map",
+      "disclosure": "FIRSTKNOCK PRODUCT DEMO - NO CUSTOMER RESULT.",
+      "render": {
+        "duration_ms": 12000,
+        "trim_start_ms": 0,
+        "trim_end_ms": 12000
+      }
+    },
+    {
+      "artifact_key": "tt-vp-route-filtering-01",
+      "concept_id": "fk-vp-route-filtering-01",
+      "platform": "tiktok",
+      "platform_content_id": "tt-vp-route-filtering-01",
+      "campaign": "1000-users",
+      "title": "Filter the routes you need",
+      "pillar": "route-command",
+      "format": "video",
+      "distribution_state": "publish_candidate",
+      "source_asset_key": "video-pilot-route-filtering-safe-v1",
+      "hook": "Filter the routes you need",
+      "overlay_text": [
+        "Date",
+        "Price",
+        "The routes that match"
+      ],
+      "shot_list": [
+        "Show the date menu.",
+        "Show the price menu.",
+        "Finish on the visible route result."
+      ],
+      "caption": "Not every route belongs in the same working view. FirstKnock keeps date and price filters inside the route map experience. Select the range you need and return to the route context without a separate report.",
+      "cta_label": "Watch route filtering",
+      "cta_url": "https://firstknock.online/start?utm_source=tiktok&utm_medium=organic_social&utm_campaign=1000-users&utm_content=tt-vp-route-filtering-01",
+      "overlay_cta": "Choose the route view",
+      "disclosure": "FIRSTKNOCK PRODUCT DEMO - NO CUSTOMER RESULT.",
+      "render": {
+        "duration_ms": 12000,
+        "trim_start_ms": 0,
+        "trim_end_ms": 12000
+      }
+    },
+    {
+      "artifact_key": "ig-vp-map-settings-01",
+      "concept_id": "fk-vp-map-settings-01",
+      "platform": "instagram",
+      "platform_content_id": "ig-vp-map-settings-01",
+      "campaign": "1000-users",
+      "title": "Make the map fit the team",
+      "pillar": "map-controls",
+      "format": "video",
+      "distribution_state": "publish_candidate",
+      "source_asset_key": "video-pilot-map-settings-safe-v1",
+      "hook": "Make the map fit the team",
+      "overlay_text": [
+        "Choose the map style",
+        "Choose navigation",
+        "Tune dots and paths"
+      ],
+      "shot_list": [
+        "Open the Map Settings panel.",
+        "Show map style and navigation controls.",
+        "Scroll through property-dot and route-path controls."
+      ],
+      "caption": "A field map should match how the team actually navigates and reads routes. FirstKnock groups map style, navigation app, property-dot, and route-path controls in one settings panel. Configure the working view without leaving the map.",
+      "cta_label": "See the map settings",
+      "cta_url": "https://firstknock.online/start?utm_source=instagram&utm_medium=organic_social&utm_campaign=1000-users&utm_content=ig-vp-map-settings-01",
+      "overlay_cta": "Tune the field map",
+      "disclosure": "FIRSTKNOCK PRODUCT DEMO - NO CUSTOMER RESULT.",
+      "render": {
+        "duration_ms": 8000,
+        "trim_start_ms": 0,
+        "trim_end_ms": 8000
+      }
+    },
+    {
+      "artifact_key": "tt-vp-map-settings-01",
+      "concept_id": "fk-vp-map-settings-01",
+      "platform": "tiktok",
+      "platform_content_id": "tt-vp-map-settings-01",
+      "campaign": "1000-users",
+      "title": "Make the map fit the team",
+      "pillar": "map-controls",
+      "format": "video",
+      "distribution_state": "publish_candidate",
+      "source_asset_key": "video-pilot-map-settings-safe-v1",
+      "hook": "Make the map fit the team",
+      "overlay_text": [
+        "Map style",
+        "Navigation app",
+        "Route display"
+      ],
+      "shot_list": [
+        "Show the settings sheet opening.",
+        "Move through map and navigation choices.",
+        "Finish on route-path display controls."
+      ],
+      "caption": "The same map view does not work for every field team. FirstKnock puts map style, navigation, property dots, and route paths into one visible settings flow. Adjust the map to the way the team works.",
+      "cta_label": "Watch the settings flow",
+      "cta_url": "https://firstknock.online/start?utm_source=tiktok&utm_medium=organic_social&utm_campaign=1000-users&utm_content=tt-vp-map-settings-01",
+      "overlay_cta": "Set up the map",
+      "disclosure": "FIRSTKNOCK PRODUCT DEMO - NO CUSTOMER RESULT.",
+      "render": {
+        "duration_ms": 8000,
+        "trim_start_ms": 0,
+        "trim_end_ms": 8000
+      }
+    },
+    {
+      "artifact_key": "ig-vp-analytics-date-01",
+      "concept_id": "fk-vp-analytics-date-01",
+      "platform": "instagram",
+      "platform_content_id": "ig-vp-analytics-date-01",
+      "campaign": "1000-users",
+      "title": "Pick a date and inspect activity",
+      "pillar": "manager-analytics",
+      "format": "video",
+      "distribution_state": "publish_candidate",
+      "source_asset_key": "video-pilot-analytics-date-safe-v1",
+      "hook": "Pick a date, inspect activity",
+      "overlay_text": [
+        "Open the date picker",
+        "Choose one day",
+        "Inspect the field funnel"
+      ],
+      "shot_list": [
+        "Open on the analytics dashboard.",
+        "Choose one date from the calendar.",
+        "Scroll through the selected-day funnel."
+      ],
+      "caption": "A period total can hide what happened on one specific day. FirstKnock lets a manager choose a date and inspect the selected-day revenue and field funnel in the analytics view. Move from the calendar into the activity behind that day.",
+      "cta_label": "See the analytics workflow",
+      "cta_url": "https://firstknock.online/start?utm_source=instagram&utm_medium=organic_social&utm_campaign=1000-users&utm_content=ig-vp-analytics-date-01",
+      "overlay_cta": "Inspect one day",
+      "disclosure": "FIRSTKNOCK PRODUCT DEMO - NO CUSTOMER RESULT.",
+      "render": {
+        "duration_ms": 10000,
+        "trim_start_ms": 0,
+        "trim_end_ms": 10000
+      }
+    },
+    {
+      "artifact_key": "tt-vp-analytics-date-01",
+      "concept_id": "fk-vp-analytics-date-01",
+      "platform": "tiktok",
+      "platform_content_id": "tt-vp-analytics-date-01",
+      "campaign": "1000-users",
+      "title": "Pick a date and inspect activity",
+      "pillar": "manager-analytics",
+      "format": "video",
+      "distribution_state": "publish_candidate",
+      "source_asset_key": "video-pilot-analytics-date-safe-v1",
+      "hook": "Pick a date, inspect activity",
+      "overlay_text": [
+        "Choose the date",
+        "Load the day",
+        "Review the funnel"
+      ],
+      "shot_list": [
+        "Show the calendar opening.",
+        "Select one demo date.",
+        "Finish on the selected-day analytics."
+      ],
+      "caption": "Weekly totals do not answer every coaching question. FirstKnock shows a date picker that opens the analytics for one selected day. Review the visible funnel behind the date before deciding what to inspect next.",
+      "cta_label": "Watch the analytics flow",
+      "cta_url": "https://firstknock.online/start?utm_source=tiktok&utm_medium=organic_social&utm_campaign=1000-users&utm_content=tt-vp-analytics-date-01",
+      "overlay_cta": "Open the daily view",
+      "disclosure": "FIRSTKNOCK PRODUCT DEMO - NO CUSTOMER RESULT.",
+      "render": {
+        "duration_ms": 10000,
+        "trim_start_ms": 0,
+        "trim_end_ms": 10000
+      }
+    }
+  ]
+}

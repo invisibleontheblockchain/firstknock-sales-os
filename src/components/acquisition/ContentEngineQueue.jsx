@@ -33,6 +33,10 @@ import {
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { FIRSTKNOCK_AUDITED_SOURCES } from '@/data/firstKnockAuditedSources';
+import {
+  growthBatchScheduleRequest,
+  inspectGrowthBatchActivation,
+} from '@/lib/growthBatchActivation';
 
 const PLATFORM_LABELS = {
   instagram: 'Instagram',
@@ -87,6 +91,8 @@ const MEASURED_BATCH_SLOT_TIMES = {
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MAX_SEED_MANIFEST_BYTES = 150_000;
 const MAX_BATCH_NOTE_LENGTH = 500;
+const LEGACY_MEASURED_PROFILE = 'measured-next-batch-v1';
+const FEATURE_EXPLAINER_VIDEO_PROFILE = 'feature_explainer_video_v1';
 
 const PILLARS = [
   'Product proof',
@@ -165,7 +171,9 @@ function exactSha256(value) {
   return /^[a-f0-9]{64}$/.test(hash) ? hash : '';
 }
 
-function seedDonorRequirements(pack) {
+function seedDonorRequirements(pack, contentProfile = LEGACY_MEASURED_PROFILE) {
+  const videoFeatureExplainer =
+    contentProfile === FEATURE_EXPLAINER_VIDEO_PROFILE;
   const sourceByKey = new Map();
   for (const source of pack?.sources || []) {
     const assetKey = growthToken(source?.asset_key);
@@ -179,6 +187,7 @@ function seedDonorRequirements(pack) {
       || !sourceSha256
       || growthToken(source?.privacy_status) !== 'safe'
       || growthToken(source?.rights_status) !== 'firstknock_owned'
+      || (videoFeatureExplainer && growthToken(source?.media_kind) !== 'video')
     ) {
       continue;
     }
@@ -186,6 +195,7 @@ function seedDonorRequirements(pack) {
       asset_key: assetKey,
       source_reference: sourceReference,
       source_sha256: sourceSha256,
+      media_kind: growthToken(source?.media_kind),
     });
   }
 
@@ -226,8 +236,13 @@ function seedDonorRequirements(pack) {
   return [...requiredBySource.values()];
 }
 
-function seedSourceReadiness(pack, registeredSources, conceptCount) {
-  const requirements = seedDonorRequirements(pack);
+function seedSourceReadiness(
+  pack,
+  registeredSources,
+  conceptCount,
+  contentProfile = LEGACY_MEASURED_PROFILE,
+) {
+  const requirements = seedDonorRequirements(pack, contentProfile);
   const registeredByKey = new Map();
   for (const source of registeredSources || []) {
     const assetKey = growthToken(source?.asset_key);
@@ -249,6 +264,10 @@ function seedSourceReadiness(pack, registeredSources, conceptCount) {
       || growthToken(current?.privacy_status) !== 'safe'
       || String(current?.source_reference || '').trim() !== requirement.source_reference
       || exactSha256(current?.source_sha256) !== requirement.source_sha256
+      || (
+        contentProfile === FEATURE_EXPLAINER_VIDEO_PROFILE
+        && growthToken(current?.media_kind) !== 'video'
+      )
     ) {
       changed.push(requirement.asset_key);
     }
@@ -531,19 +550,25 @@ function MeasuredBatchPanel({
   accentText,
   contentQueue,
   sources,
+  artifacts,
+  jobs,
   batches,
   capabilities,
   summary,
   busy,
+  activationBusy,
   onAction,
+  onActivateBatch,
 }) {
   const seedInputRef = React.useRef(null);
   const [builderOpen, setBuilderOpen] = React.useState(false);
   const [retrievingBatchKey, setRetrievingBatchKey] = React.useState('');
   const [batchDecision, setBatchDecision] = React.useState(null);
+  const [activationDecision, setActivationDecision] = React.useState(null);
   const [draft, setDraft] = React.useState(() => ({
     parent_key: '',
     target_date: nextPhoenixTargetDate(),
+    content_profile: FEATURE_EXPLAINER_VIDEO_PROFILE,
     concept_count: '2',
     seed_pack: null,
     seed_file_name: '',
@@ -560,14 +585,28 @@ function MeasuredBatchPanel({
   const canAuthorize = capabilities.can_approve === true;
   const readyBatches = Number(summary.batches_ready || 0);
   const authorizedBatches = Number(summary.batches_authorized || 0);
+  const featureExplainerSelected =
+    draft.content_profile === FEATURE_EXPLAINER_VIDEO_PROFILE;
   const conceptCount = Number(draft.concept_count);
-  const seedSources = seedSourceReadiness(draft.seed_pack, sources, conceptCount);
-  const hasRegisteredSafeSource = (sources || []).some((source) => (
+  const seedSources = seedSourceReadiness(
+    draft.seed_pack,
+    sources,
+    conceptCount,
+    draft.content_profile,
+  );
+  const registeredSafeSourceCount = (sources || []).filter((source) => (
     source?.active !== false
     && growthToken(source?.privacy_status) === 'safe'
     && exactSha256(source?.source_sha256)
     && String(source?.source_reference || '').trim()
-  ));
+    && (
+      !featureExplainerSelected
+      || growthToken(source?.media_kind) === 'video'
+    )
+  )).length;
+  const hasRegisteredSafeSource = registeredSafeSourceCount >= (
+    featureExplainerSelected ? 2 : 1
+  );
   const normalizedDecisionNote = compactBatchNote(batchDecision?.note);
 
   const chooseSeedPack = async (event) => {
@@ -606,6 +645,7 @@ function MeasuredBatchPanel({
         content: selectedParent.content,
       },
       target_date: draft.target_date,
+      content_profile: draft.content_profile,
       concept_count: Number(draft.concept_count),
       seed_pack: draft.seed_pack,
     }, {
@@ -678,6 +718,37 @@ function MeasuredBatchPanel({
     });
   };
 
+  const activationForBatch = (batch) => inspectGrowthBatchActivation({
+    batch,
+    artifacts,
+    jobs,
+    capabilities,
+    isMediaReady: artifactMediaReady,
+  });
+
+  const openActivationDecision = (batch) => {
+    setActivationDecision({
+      batch,
+      inspection: activationForBatch(batch),
+      acknowledged: false,
+    });
+  };
+
+  const submitActivationDecision = () => {
+    if (
+      !activationDecision?.batch
+      || activationDecision.acknowledged !== true
+    ) {
+      return;
+    }
+    onActivateBatch({
+      batch_key: activationDecision.batch.batch_key,
+      silent_automatic_confirmed: true,
+    }, {
+      onSuccess: () => setActivationDecision(null),
+    });
+  };
+
   return (
     <>
       <div className="mt-4 rounded-2xl border border-blue-300/15 bg-blue-300/[0.06] p-4">
@@ -693,7 +764,7 @@ function MeasuredBatchPanel({
               </Pill>
             </div>
             <p className="mt-1 max-w-2xl text-[11px] leading-relaxed text-white/45">
-              Use a current Repeat or Iterate decision to create two or three paired Instagram and TikTok concepts for the next Phoenix production day.
+              The recommended profile turns audited app recordings into exactly two daily feature-explainer videos, each with Instagram and TikTok copy tied to measured evidence.
             </p>
           </div>
           <Button
@@ -709,7 +780,6 @@ function MeasuredBatchPanel({
             disabled={
               !generationReady
               || !eligibleParents.length
-              || !hasRegisteredSafeSource
               || busy
             }
             style={{ background: accent, color: accentText }}
@@ -732,14 +802,22 @@ function MeasuredBatchPanel({
         )}
         {generationReady && !hasRegisteredSafeSource && (
           <p className="mt-3 rounded-xl border border-amber-400/20 bg-amber-400/10 p-3 text-[11px] leading-relaxed text-amber-100/70">
-            Load the audited source inventory before building. Generation stays locked until at least one active, privacy-safe source has exact reference and SHA-256 evidence.
+            Load the audited source inventory before building. {featureExplainerSelected
+              ? 'Video explainers stay locked until two active, privacy-safe video sources have exact reference and SHA-256 evidence.'
+              : 'Generation stays locked until one active, privacy-safe source has exact reference and SHA-256 evidence.'}
           </p>
         )}
 
         <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-400/20 bg-amber-400/[0.08] p-3">
           <CircleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-200" />
           <p className="text-[10px] leading-relaxed text-amber-100/65">
-            Capacity warning: the current 5 safe donors cover about 2 days at 2 concepts per day. A seven-day source rotation needs 14 safe donors at 2/day or 21 at 3/day.
+            {featureExplainerSelected
+              ? `Video capacity: this profile needs 2 distinct safe, publish-candidate video donors now and 14 for a seven-day rotation. ${
+                draft.seed_pack
+                  ? `The loaded seed currently exposes ${seedSources.requirements.length}.`
+                  : 'Load the audited video seed to check current capacity.'
+              }`
+              : 'Legacy capacity: a seven-day source rotation needs 14 safe donors at 2/day or 21 at 3/day.'}
           </p>
         </div>
 
@@ -748,6 +826,11 @@ function MeasuredBatchPanel({
             {batches.slice(0, 8).map((batch) => {
               const downloadable = ['ready', 'render_authorized'].includes(batch.state);
               const revocable = ['ready', 'render_authorized', 'failed'].includes(batch.state);
+              const videoExplainerBatch =
+                batch.content_profile === FEATURE_EXPLAINER_VIDEO_PROFILE;
+              const activation = videoExplainerBatch
+                ? activationForBatch(batch)
+                : null;
               return (
                 <div
                   key={batch.batch_key}
@@ -762,6 +845,21 @@ function MeasuredBatchPanel({
                         {batch.state?.replaceAll('_', ' ')}
                       </Pill>
                       <Pill>{batch.review_decision || 'review'}</Pill>
+                      {batch.content_profile === FEATURE_EXPLAINER_VIDEO_PROFILE && (
+                        <Pill tone="border-fuchsia-300/20 bg-fuchsia-300/10 text-fuchsia-100">
+                          video explainer
+                        </Pill>
+                      )}
+                      {activation?.complete && (
+                        <Pill tone="border-green-300/20 bg-green-300/10 text-green-100">
+                          activation submitted
+                        </Pill>
+                      )}
+                      {activation && !activation.complete && activation.protected_count > 0 && (
+                        <Pill tone="border-blue-300/20 bg-blue-300/10 text-blue-100">
+                          {activation.protected_count}/4 submitted
+                        </Pill>
+                      )}
                     </div>
                     <p className="mt-1 truncate text-[10px] text-white/40">
                       {PLATFORM_LABELS[batch.parent_platform] || batch.parent_platform}
@@ -800,6 +898,31 @@ function MeasuredBatchPanel({
                         Authorize exact pack
                       </Button>
                     )}
+                    {videoExplainerBatch && batch.state === 'render_authorized' && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => openActivationDecision(batch)}
+                        disabled={
+                          busy
+                          || activationBusy
+                          || !activation?.can_activate
+                        }
+                        title={activation?.blockers?.[0] || ''}
+                        className="bg-fuchsia-300 font-black text-black hover:bg-fuchsia-200"
+                      >
+                        {activationBusy
+                          ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          : <Send className="mr-2 h-4 w-4" />}
+                        {activation?.complete
+                          ? 'Activation submitted'
+                          : activation?.protected_count
+                            ? `Resume ${4 - activation.protected_count} posts`
+                            : activation?.can_activate
+                              ? 'Activate 4 posts'
+                              : 'Review 4 posts'}
+                      </Button>
+                    )}
                     {revocable && (
                       <Button
                         type="button"
@@ -830,10 +953,33 @@ function MeasuredBatchPanel({
           <DialogHeader className="text-left">
             <DialogTitle className="text-xl font-black">Build the next measured batch</DialogTitle>
             <DialogDescription className="text-white/45">
-              The backend rechecks the parent&apos;s current fixed-age evidence, source safety, cooldowns, and exact trusted seed before generation.
+              Video feature explainer is recommended. The backend rechecks fixed-age evidence, video-only donor lineage, cooldowns, and the exact trusted seed before generation.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
+            <DetailField
+              label="Generation profile"
+              helper="The recommended profile uses audited video sources and server-assembled feature captions."
+            >
+              <select
+                value={draft.content_profile}
+                onChange={(event) => setDraft((current) => ({
+                  ...current,
+                  content_profile: event.target.value,
+                  concept_count: event.target.value === FEATURE_EXPLAINER_VIDEO_PROFILE
+                    ? '2'
+                    : current.concept_count,
+                }))}
+                className="h-10 w-full rounded-md border border-white/10 bg-black px-3 text-sm text-white"
+              >
+                <option value={FEATURE_EXPLAINER_VIDEO_PROFILE}>
+                  Video feature explainer · Recommended
+                </option>
+                <option value={LEGACY_MEASURED_PROFILE}>
+                  General measured remix · Legacy
+                </option>
+              </select>
+            </DetailField>
             <DetailField
               label="Reviewed parent"
               helper="Only current Repeat or Iterate decisions are selectable."
@@ -869,6 +1015,7 @@ function MeasuredBatchPanel({
               <DetailField label="Concepts per platform">
                 <select
                   value={draft.concept_count}
+                  disabled={featureExplainerSelected}
                   onChange={(event) => setDraft((current) => ({
                     ...current,
                     concept_count: event.target.value,
@@ -878,6 +1025,11 @@ function MeasuredBatchPanel({
                   <option value="2">2 per platform · 4 artifacts</option>
                   <option value="3">3 per platform · 6 artifacts</option>
                 </select>
+                {featureExplainerSelected && (
+                  <p className="mt-1 text-[10px] leading-relaxed text-white/35">
+                    Locked to two concepts: two source videos, each rendered once for Instagram and once for TikTok.
+                  </p>
+                )}
               </DetailField>
             </div>
             <DetailField
@@ -906,14 +1058,18 @@ function MeasuredBatchPanel({
                 seedSources.ready
                   ? 'border-green-300/20 bg-green-300/[0.07] text-green-100/70'
                   : 'border-amber-400/20 bg-amber-400/[0.08] text-amber-100/70'
-              }`}>
+                }`}>
                 {seedSources.requirements.length < conceptCount
-                  ? `This seed has ${seedSources.requirements.length} usable paired donor source(s); ${conceptCount} are required.`
+                  ? `This seed has ${seedSources.requirements.length} usable paired ${
+                    featureExplainerSelected ? 'video ' : ''
+                  }donor source(s); ${conceptCount} are required.`
                   : seedSources.missing.length
                     ? `${seedSources.missing.length} exact donor source(s) are not registered in this content engine.`
                     : seedSources.changed.length
                       ? `${seedSources.changed.length} donor source(s) are inactive, no longer privacy-safe, duplicated, or do not match the seed reference and SHA-256.`
-                      : `${seedSources.requirements.length} exact donor source(s) are registered, active, and privacy-safe.`}
+                      : `${seedSources.requirements.length} exact ${
+                        featureExplainerSelected ? 'video ' : ''
+                      }donor source(s) are registered, active, and privacy-safe.`}
               </div>
             )}
             <Button
@@ -933,7 +1089,9 @@ function MeasuredBatchPanel({
               {busy
                 ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 : <Sparkles className="mr-2 h-4 w-4" />}
-              Build paired batch
+              {featureExplainerSelected
+                ? 'Build two video explainers'
+                : 'Build paired batch'}
             </Button>
           </div>
         </DialogContent>
@@ -1039,6 +1197,83 @@ function MeasuredBatchPanel({
           )}
         </DialogContent>
       </Dialog>
+
+      <Dialog
+        open={Boolean(activationDecision)}
+        onOpenChange={(open) => {
+          if (!open && !activationBusy) setActivationDecision(null);
+        }}
+      >
+        <DialogContent className="border-white/10 bg-[#080808] text-white sm:max-w-lg">
+          <DialogHeader className="text-left">
+            <DialogTitle className="text-xl font-black">
+              Activate two daily videos
+            </DialogTitle>
+            <DialogDescription className="text-white/45">
+              Queue the two approved concepts for both Instagram and TikTok: four exact
+              Buffer posts at 9:30 AM and 1:30 PM America/Phoenix.
+            </DialogDescription>
+          </DialogHeader>
+          {activationDecision?.inspection && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-2">
+                <SummaryChip
+                  label="Already protected"
+                  value={activationDecision.inspection.protected_count}
+                />
+                <SummaryChip
+                  label="Will queue now"
+                  value={activationDecision.inspection.schedule_candidates.length}
+                />
+              </div>
+              <div className="rounded-xl border border-white/10 bg-black/40 p-3">
+                <p className="text-[10px] font-black uppercase tracking-wider text-white/35">
+                  Exact batch
+                </p>
+                <p className="mt-2 break-all font-mono text-[10px] text-white/70">
+                  {activationDecision.batch.canonical_pack_sha256}
+                </p>
+              </div>
+              <label className="flex items-start gap-3 rounded-xl border border-fuchsia-300/20 bg-fuchsia-300/[0.07] p-3 text-xs leading-relaxed text-fuchsia-100/75">
+                <input
+                  type="checkbox"
+                  checked={activationDecision.acknowledged}
+                  onChange={(event) => setActivationDecision((current) => ({
+                    ...current,
+                    acknowledged: event.target.checked,
+                  }))}
+                  className="mt-0.5 h-4 w-4 accent-fuchsia-300"
+                />
+                I reviewed and approved all four exact renditions. I intend Buffer to
+                publish the approved bytes automatically, including any silent audio
+                tracks, without a native-app finishing step.
+              </label>
+              <p className="text-[10px] leading-relaxed text-white/35">
+                FirstKnock refetches and revalidates both channels, every approval and
+                media hash, the batch slots, and terminal delivery evidence before the
+                first request. It then queues morning Instagram, morning TikTok,
+                midday Instagram, and midday TikTok sequentially. A safe retry resumes
+                only unfinished posts.
+              </p>
+              <Button
+                type="button"
+                onClick={submitActivationDecision}
+                disabled={
+                  activationBusy
+                  || !activationDecision.acknowledged
+                  || !activationDecision.inspection.can_activate
+                }
+                className="w-full bg-fuchsia-300 font-black text-black hover:bg-fuchsia-200"
+              >
+                {activationBusy
+                  ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  : <Send className="mr-2 h-4 w-4" />}
+                Submit automatic activation
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
@@ -1084,6 +1319,9 @@ function fieldError(code) {
     render_source_lineage_unavailable: 'Register the exact privacy-safe source hashes before importing this render pack',
     creative_changed_during_render_import: 'A creative changed during import; refresh and safely retry the same pack',
     invalid_growth_batch_request: 'Choose a reviewed parent, Phoenix production date, and 2 or 3 concepts',
+    invalid_content_profile: 'Choose one of the server-supported measured content profiles',
+    feature_explainer_requires_two_concepts: 'Video feature explainer is locked to exactly two concepts',
+    insufficient_eligible_video_donors: 'Two distinct, audited publish-candidate video donors are required outside the seven-day cooldown',
     reviewed_parent_not_published: 'The selected parent is not recorded as published',
     reviewed_parent_on_hold: 'Hold decisions cannot seed a new content batch',
     reviewed_parent_required: 'Save a current Repeat or Iterate decision before building a batch',
@@ -1098,6 +1336,9 @@ function fieldError(code) {
     growth_batch_not_found: 'The measured batch no longer exists',
     growth_batch_not_ready: 'The measured batch is not ready to download',
     growth_batch_pack_mismatch: 'The generated pack hash changed; refresh before authorizing',
+    growth_batch_profile_conflict: 'The generated pack no longer matches its locked content profile',
+    growth_batch_activation_not_ready: 'Finish all four rendition reviews and approvals, verify both Buffer channels, then retry activation',
+    growth_batch_activation_partial: 'Activation stopped safely. Refresh and resume only the unfinished posts',
     growth_batch_render_pack_tampered: 'The stored render pack no longer matches its exact SHA-256',
     growth_batch_not_authorized: 'The exact measured batch is not currently authorized for import',
     invalid_batch_authorization: 'Inspect the exact pack, acknowledge it, and add an authorization note',
@@ -2076,6 +2317,101 @@ export default function ContentEngineQueue({ accent, accentText, contentQueue })
   );
   const canApprove = capabilities.can_approve === true;
   const canSchedule = capabilities.can_schedule === true;
+  const batchActivation = useMutation({
+    mutationFn: async ({
+      batch_key: batchKey,
+      silent_automatic_confirmed: silentAutomaticConfirmed,
+    }) => {
+      const refreshed = await query.refetch();
+      const snapshot = refreshed.data || {};
+      const batch = (snapshot.batches || []).find(
+        (candidate) => candidate?.batch_key === batchKey,
+      );
+      const inspection = inspectGrowthBatchActivation({
+        batch,
+        artifacts: snapshot.artifacts || [],
+        jobs: snapshot.jobs || [],
+        capabilities: snapshot.capabilities || {},
+        isMediaReady: artifactMediaReady,
+      });
+      if (inspection.complete) {
+        return {
+          protected_count: 4,
+          submitted: 0,
+          idempotent: true,
+        };
+      }
+      if (!inspection.can_activate || silentAutomaticConfirmed !== true) {
+        const activationError = new Error(
+          'The four-post batch changed or is not ready for automatic activation.',
+        );
+        activationError.code = 'growth_batch_activation_not_ready';
+        activationError.protected_count = inspection.protected_count;
+        activationError.blockers = inspection.blockers;
+        throw activationError;
+      }
+      const requests = inspection.schedule_candidates.map((candidate) => (
+        growthBatchScheduleRequest(candidate, {
+          silentAutomaticConfirmed,
+        })
+      ));
+      if (requests.some((request) => !request)) {
+        const activationError = new Error(
+          'The automatic-delivery request could not be constructed safely.',
+        );
+        activationError.code = 'growth_batch_activation_not_ready';
+        activationError.protected_count = inspection.protected_count;
+        throw activationError;
+      }
+
+      let protectedCount = inspection.protected_count;
+      for (let index = 0; index < requests.length; index += 1) {
+        try {
+          await base44.functions.invoke(
+            'manageGrowthContentEngine',
+            requests[index],
+          );
+          protectedCount += 1;
+        } catch (cause) {
+          const activationError = new Error(
+            `Activation stopped after ${protectedCount} of 4 posts were protected.`,
+          );
+          activationError.code = 'growth_batch_activation_partial';
+          activationError.protected_count = protectedCount;
+          activationError.failed_artifact_id =
+            inspection.schedule_candidates[index]?.artifact?.id;
+          activationError.cause = cause;
+          throw activationError;
+        }
+      }
+      return {
+        protected_count: protectedCount,
+        submitted: requests.length,
+        idempotent: false,
+      };
+    },
+    onSuccess: async (result) => {
+      toast.success(
+        `${Number(result?.protected_count || 0)}/4 posts submitted for automatic Buffer delivery`,
+      );
+      await query.refetch();
+      await queryClient.invalidateQueries({ queryKey: ['acquisitionReport'] });
+    },
+    onError: async (error) => {
+      const sourceError = error?.cause || error;
+      const sourceCode = sourceError?.response?.data?.error || error?.code;
+      const sourceMessage = sourceError?.response?.data?.message
+        || fieldError(sourceCode);
+      const protectedCount = Number(error?.protected_count || 0);
+      toast.error(
+        protectedCount > 0
+          ? `${protectedCount}/4 posts are protected. ${sourceMessage}`
+          : sourceMessage,
+      );
+      await query.refetch();
+      await queryClient.invalidateQueries({ queryKey: ['acquisitionReport'] });
+    },
+  });
   const openBrief = () => {
     setBrief(initialBrief(nextConceptIdForToday(artifacts)));
     setBriefOpen(true);
@@ -2293,11 +2629,17 @@ export default function ContentEngineQueue({ accent, accentText, contentQueue })
               accentText={accentText}
               contentQueue={contentQueue}
               sources={sources}
+              artifacts={artifacts}
+              jobs={jobs}
               batches={batches}
               capabilities={capabilities}
               summary={summary}
               busy={action.isPending}
+              activationBusy={batchActivation.isPending}
               onAction={(payload, options) => action.mutate(payload, options)}
+              onActivateBatch={(payload, options) => (
+                batchActivation.mutate(payload, options)
+              )}
             />
 
             {!sources.length ? (
@@ -2305,7 +2647,7 @@ export default function ContentEngineQueue({ accent, accentText, contentQueue })
                 <Image className="mx-auto h-6 w-6 text-white/35" />
                 <p className="mt-3 font-black">Load the audited starter inventory</p>
                 <p className="mx-auto mt-1 max-w-md text-xs leading-relaxed text-white/40">
-                  This registers five audited, privacy-safe FirstKnock sources by opaque filename, exact SHA-256, and sanitized summary. The local files are not uploaded or copied.
+                  This registers {FIRSTKNOCK_AUDITED_SOURCES.length} audited, privacy-safe FirstKnock sources, including seven approved feature videos, by opaque filename, exact SHA-256, and sanitized summary. The local files are not uploaded or copied.
                 </p>
                 <Button
                   type="button"

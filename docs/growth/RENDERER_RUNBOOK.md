@@ -242,7 +242,7 @@ Production sequence:
 
    Comma-separated allowlists support a controlled overlap while rolling to a reviewed
    new pack or renderer environment.
-9. Open Growth Dashboard, load the five audited sources, and select **Import render
+9. Open Growth Dashboard, load the audited source inventory, and select **Import render
    result**.
 10. Load each hosted rendition in the dashboard and complete privacy, demo-label, claims,
    and media-rights review.
