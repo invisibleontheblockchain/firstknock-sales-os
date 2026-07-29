@@ -5,6 +5,7 @@ const MAX_USERS = 10000;
 const MAX_ACTIVITY_RECORDS = 100000;
 const MAX_GROWTH_RECORDS = 25000;
 const DAY_MS = 24 * 60 * 60 * 1000;
+const SNAPSHOT_GRACE_MS = DAY_MS;
 const PACE_CAMPAIGN = "1000-users";
 const PACE_OBSERVATION_DAYS = 28;
 const PACE_EXCLUDED_CONTENT = new Set(["ig-release-smoke"]);
@@ -413,9 +414,11 @@ function operatingContentMetrics(metrics: any[], plans: any[]): any[] {
       );
       const publishedAt = dateValue(plan, ["published_at"]);
       const capturedAt = dateValue(metric, ["snapshot_captured_at"]);
+      const dueAt = publishedAt + expected * DAY_MS;
       return metric
         && publishedAt > 0
-        && capturedAt >= publishedAt + expected * DAY_MS
+        && capturedAt >= dueAt
+        && capturedAt <= dueAt + SNAPSHOT_GRACE_MS
         ? metric
         : null;
     }
@@ -1052,18 +1055,28 @@ function buildContentQueue(
     const snapshotDueAt = publishedAt > 0
       ? publishedAt + snapshotDays * DAY_MS
       : 0;
+    const snapshotWindowClosesAt = snapshotDueAt > 0
+      ? snapshotDueAt + SNAPSHOT_GRACE_MS
+      : 0;
     const checkpoints = checkpointsByAsset.get(key) || [];
     const canonicalMetric = checkpoints.find(
       (metric) => Number(metric?.snapshot_days || 7) === snapshotDays,
     ) || null;
     const capturedAt = dateValue(canonicalMetric, ["snapshot_captured_at"]);
-    const fixedSnapshotCaptured = snapshotDueAt > 0 && capturedAt >= snapshotDueAt;
+    const fixedSnapshotCaptured = snapshotDueAt > 0
+      && capturedAt >= snapshotDueAt
+      && capturedAt <= snapshotWindowClosesAt;
+    const snapshotWindowMissed = snapshotWindowClosesAt > 0
+      && asOf > snapshotWindowClosesAt
+      && !fixedSnapshotCaptured;
     const capturedCheckpointDays = checkpoints
       .filter((metric) => {
         const checkpointDays = Number(metric?.snapshot_days || 7);
         const checkpointCapturedAt = dateValue(metric, ["snapshot_captured_at"]);
+        const checkpointDueAt = publishedAt + checkpointDays * DAY_MS;
         return publishedAt > 0
-          && checkpointCapturedAt >= publishedAt + checkpointDays * DAY_MS;
+          && checkpointCapturedAt >= checkpointDueAt
+          && checkpointCapturedAt <= checkpointDueAt + SNAPSHOT_GRACE_MS;
       })
       .map((metric) => Number(metric?.snapshot_days || 7));
     const capturedCheckpointSet = new Set(capturedCheckpointDays);
@@ -1076,15 +1089,18 @@ function buildContentQueue(
       && checkpointDays < snapshotDays
       && checkpointDays > highestCapturedEarlyDays
       && asOf >= publishedAt + checkpointDays * DAY_MS
+      && asOf <= publishedAt + checkpointDays * DAY_MS + SNAPSHOT_GRACE_MS
       && !capturedCheckpointSet.has(checkpointDays)
     )) || null;
     const earlyMetric = latestRecord(
       checkpoints.filter((metric) => {
         const checkpointDays = Number(metric?.snapshot_days || 7);
         const value = dateValue(metric, ["snapshot_captured_at"]);
+        const checkpointDueAt = publishedAt + checkpointDays * DAY_MS;
         return checkpointDays < snapshotDays
           && publishedAt > 0
-          && value >= publishedAt
+          && value >= checkpointDueAt
+          && value <= checkpointDueAt + SNAPSHOT_GRACE_MS
           && value > 0
           && (!snapshotDueAt || value < snapshotDueAt);
       }),
@@ -1104,6 +1120,8 @@ function buildContentQueue(
       state = "canceled";
     } else if (fixedSnapshotCaptured) {
       state = evidenceCurrent ? "reviewed" : "review_due";
+    } else if (snapshotWindowMissed) {
+      state = "snapshot_missed";
     } else if (publishedAt > 0) {
       state = asOf >= snapshotDueAt ? "snapshot_due" : "published";
     } else if (plannedPublishAt > 0 && asOf >= plannedPublishAt) {
@@ -1112,8 +1130,8 @@ function buildContentQueue(
     let snapshotStatus = "scheduled";
     if (publishedAt > 0 && fixedSnapshotCaptured) {
       snapshotStatus = "captured";
-    } else if (publishedAt > 0 && asOf > snapshotDueAt + DAY_MS) {
-      snapshotStatus = "overdue";
+    } else if (publishedAt > 0 && snapshotWindowMissed) {
+      snapshotStatus = "missed";
     } else if (publishedAt > 0 && asOf >= snapshotDueAt) {
       snapshotStatus = "due";
     } else if (publishedAt > 0) {
@@ -1146,6 +1164,10 @@ function buildContentQueue(
       snapshot_due_at: snapshotDueAt
         ? new Date(snapshotDueAt).toISOString()
         : null,
+      snapshot_window_closes_at: snapshotWindowClosesAt
+        ? new Date(snapshotWindowClosesAt).toISOString()
+        : null,
+      snapshot_window_missed: snapshotWindowMissed,
       fixed_snapshot_captured_at: fixedSnapshotCaptured
         ? new Date(capturedAt).toISOString()
         : null,
@@ -1211,6 +1233,7 @@ function buildContentQueue(
     .filter((item) => (
       item.published_at
       && !item.fixed_snapshot_captured_at
+      && !item.snapshot_window_missed
       && item.snapshot_due_at
       && asOf >= new Date(item.snapshot_due_at).getTime()
     ))
@@ -1223,6 +1246,7 @@ function buildContentQueue(
     .filter((item) => (
       item.published_at
       && !item.fixed_snapshot_captured_at
+      && !item.snapshot_window_missed
       && item.next_early_snapshot_days
     ))
     .sort((left, right) => (
@@ -1231,7 +1255,11 @@ function buildContentQueue(
       )
     ))[0] || null;
   const scheduledSnapshot = [...queue]
-    .filter((item) => item.published_at && !item.fixed_snapshot_captured_at)
+    .filter((item) => (
+      item.published_at
+      && !item.fixed_snapshot_captured_at
+      && !item.snapshot_window_missed
+    ))
     .sort((left, right) => (
       String(left.snapshot_due_at || "").localeCompare(
         String(right.snapshot_due_at || ""),
@@ -1269,6 +1297,7 @@ function buildContentQueue(
     publish_due: 0,
     published: 0,
     snapshot_due: 0,
+    snapshot_missed: 0,
     review_due: 0,
     reviewed: 0,
     canceled: 0,

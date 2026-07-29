@@ -74,6 +74,9 @@ The repository now includes the first safe operating layer:
   `sent`, with a
   local measurement-only retry state that cannot recreate the provider post or be
   blocked by later source/configuration changes;
+- a 24-hour capture window after each D1, D3, D7, or D30 checkpoint, so late
+  cumulative analytics remain descriptive but cannot masquerade as comparable
+  fixed-age evidence or drive Repeat/Iterate/Hold;
 - platform-aware manual Instagram and TikTok checkpoints that keep reach, views,
   engagement, and downstream first-touch conversion rows separate by platform,
   campaign, and content ID while preserving legacy Instagram records;

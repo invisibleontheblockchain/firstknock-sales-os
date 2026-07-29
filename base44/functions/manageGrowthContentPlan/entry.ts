@@ -16,6 +16,7 @@ const MAX_SEED_PLANS = 25;
 const PAGE_SIZE = 5000;
 const MAX_RECORDS = 25000;
 const DAY_MS = 24 * 60 * 60 * 1000;
+const SNAPSHOT_GRACE_MS = DAY_MS;
 const PLAN_DEFINITION_FIELDS = [
   "platform",
   "campaign",
@@ -671,8 +672,19 @@ Deno.serve(async (req: Request) => {
       const dueAt = new Date(
         new Date(publishedAt).getTime() + snapshotDays * DAY_MS,
       ).toISOString();
+      const windowClosesAt = new Date(
+        new Date(dueAt).getTime() + SNAPSHOT_GRACE_MS,
+      ).toISOString();
       if (!metric?.id || !capturedAt || capturedAt < dueAt) {
         return response({ error: "fixed_age_snapshot_required", due_at: dueAt }, 409);
+      }
+      if (capturedAt > windowClosesAt) {
+        return response({
+          error: "fixed_age_snapshot_window_missed",
+          due_at: dueAt,
+          window_closes_at: windowClosesAt,
+          captured_at: capturedAt,
+        }, 409);
       }
 
       if (decision === "hold") {
@@ -724,11 +736,15 @@ Deno.serve(async (req: Request) => {
             plan?.platform,
           ));
           const comparableCapturedAt = timestamp(comparableMetric?.snapshot_captured_at);
+          const comparableDueAt = planPublishedAt
+            ? new Date(planPublishedAt).getTime() + planSnapshotDays * DAY_MS
+            : 0;
           if (
             planPublishedAt
             && comparableCapturedAt
+            && new Date(comparableCapturedAt).getTime() >= comparableDueAt
             && new Date(comparableCapturedAt).getTime()
-              >= new Date(planPublishedAt).getTime() + planSnapshotDays * DAY_MS
+              <= comparableDueAt + SNAPSHOT_GRACE_MS
           ) {
             comparableSnapshots += 1;
           }

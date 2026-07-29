@@ -392,6 +392,7 @@ export default function GrowthDashboard() {
       const code = mutationError?.response?.data?.error;
       const messages = {
         fixed_age_snapshot_required: 'The canonical fixed-age snapshot is required first',
+        fixed_age_snapshot_window_missed: 'This fixed-age window closed; reschedule a fresh experiment instead of using late cumulative analytics',
         hold_requires_three_comparable_snapshots: 'Hold unlocks after three comparable fixed-age snapshots',
         content_plan_not_found: 'Reload the first 30-day sprint before updating this asset',
         content_plan_conflict: 'Conflicting queue rows were detected; no evidence was changed',

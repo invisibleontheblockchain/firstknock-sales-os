@@ -767,7 +767,7 @@ test('owner report groups Instagram content by signup, activation, and paid outc
       format: 'reel',
       hook: 'Early route rescue',
       snapshot_days: 1,
-      snapshot_captured_at: sevenAndHalfDaysAgo,
+      snapshot_captured_at: sixDaysAgo,
       published_at: eightDaysAgo,
       reach: 500,
       views: 600,
@@ -780,7 +780,7 @@ test('owner report groups Instagram content by signup, activation, and paid outc
       hook: 'Route rescue',
       snapshot_days: 7,
       snapshot_captured_at: oneSecondAgo,
-      published_at: eightDaysAgo,
+      published_at: sevenAndHalfDaysAgo,
       reach: 900,
       views: 1000,
     },
@@ -792,7 +792,7 @@ test('owner report groups Instagram content by signup, activation, and paid outc
       hook: 'Route rescue',
       snapshot_days: 7,
       snapshot_captured_at: now,
-      published_at: eightDaysAgo,
+      published_at: sevenAndHalfDaysAgo,
       reach: 1000,
       views: 1200,
       shares: 15,
@@ -830,7 +830,7 @@ test('owner report groups Instagram content by signup, activation, and paid outc
       comparison_group: 'test-reels',
       major_variable: 'Pain hook',
       planned_publish_at: nineDaysAgo,
-      published_at: eightDaysAgo,
+      published_at: sevenAndHalfDaysAgo,
       snapshot_days: 7,
       review_decision: 'repeat',
       review_note: 'Preserve the original hook.',
@@ -1284,11 +1284,23 @@ test('owner report groups Instagram content by signup, activation, and paid outc
   );
   const scopedPaceReport = await scopedPaceResponse.json();
   assert.equal(scopedPaceResponse.status, 200);
-  assert.equal(scopedPaceReport.all_time.instagram_reach, 20000);
-  assert.equal(scopedPaceReport.pace_evidence.measured_content_assets_all_time, 3);
+  assert.equal(
+    scopedPaceReport.all_time.instagram_reach,
+    13000,
+    'late cumulative checkpoints must not enter comparable operating reach',
+  );
+  assert.equal(scopedPaceReport.pace_evidence.measured_content_assets_all_time, 1);
   assert.equal(scopedPaceReport.pace_evidence.observation_window_complete, true);
-  assert.equal(scopedPaceReport.pace_evidence.last_28_days.instagram_content_assets, 2);
-  assert.equal(scopedPaceReport.pace_evidence.last_28_days.instagram_reach, 4000);
+  assert.equal(scopedPaceReport.pace_evidence.last_28_days.instagram_content_assets, 1);
+  assert.equal(scopedPaceReport.pace_evidence.last_28_days.instagram_reach, 1000);
+  for (const content of ['ig-due-in-window', 'ig-old-correction']) {
+    const item = scopedPaceReport.content_queue.items.find(
+      (candidate) => candidate.content === content,
+    );
+    assert.equal(item.state, 'snapshot_missed');
+    assert.equal(item.snapshot_status, 'missed');
+    assert.equal(item.snapshot_window_missed, true);
+  }
 
   metrics.push({
     ...structuredClone(metrics.find((metric) => metric.id === 'metric_newer_canonical')),
@@ -2130,6 +2142,29 @@ test('owner can seed, publish, and review the fixed-age growth queue', async () 
     undefined,
     'newer writes with older capture times must not replace the fixed-age evidence',
   );
+
+  metrics.push({
+    ...structuredClone(metrics.find((metric) => metric.id === 'metric_7d')),
+    id: 'metric_7d_after_window',
+    snapshot_captured_at: '2026-07-09T12:00:00.001Z',
+    updated_date: '2026-07-09T12:00:00.001Z',
+  });
+  const lateReview = await invoke({
+    action: 'review',
+    campaign: first.campaign,
+    content: first.content,
+    decision: 'iterate',
+    note: 'Late cumulative totals must remain descriptive only.',
+  });
+  assert.equal(lateReview.status, 409);
+  assert.deepEqual(await lateReview.json(), {
+    error: 'fixed_age_snapshot_window_missed',
+    due_at: '2026-07-08T12:00:00.000Z',
+    window_closes_at: '2026-07-09T12:00:00.000Z',
+    captured_at: '2026-07-09T12:00:00.001Z',
+  });
+  assert.equal(plans[0].review_decision, 'repeat');
+  metrics.pop();
 
   const immutablePlanEvidence = {
     hook: plans[0].hook,

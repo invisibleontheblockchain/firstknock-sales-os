@@ -27,6 +27,9 @@ function dateLabel(value) {
 
 function dueLabel(item) {
   if (!item?.snapshot_due_at) return 'Publish before the snapshot clock starts';
+  if (item?.snapshot_status === 'missed') {
+    return `Window closed ${dateLabel(item.snapshot_window_closes_at)}`;
+  }
   const due = new Date(item.snapshot_due_at).getTime();
   const daysUntil = Math.ceil(Math.max(0, due - Date.now()) / (24 * 60 * 60 * 1000));
   const overdueDays = Math.max(
@@ -48,6 +51,7 @@ function stateLabel(item) {
     publish_due: 'Publish overdue',
     published: dueLabel(item),
     snapshot_due: dueLabel(item),
+    snapshot_missed: 'Canonical snapshot window missed',
     review_due: item.decision_stale ? 'Decision needs refresh' : 'Decision due',
     reviewed: `Decision: ${item.decision}`,
   };
@@ -179,6 +183,11 @@ export default function GrowthActionQueue({
             <span className="rounded-full border border-amber-400/20 bg-amber-400/10 px-2.5 py-1 text-amber-200">
               {Number(summary.snapshot_due || 0)} snapshots due
             </span>
+            {Number(summary.snapshot_missed || 0) > 0 && (
+              <span className="rounded-full border border-red-400/20 bg-red-400/10 px-2.5 py-1 text-red-200">
+                {Number(summary.snapshot_missed)} windows missed
+              </span>
+            )}
             <span className="rounded-full border border-blue-400/20 bg-blue-400/10 px-2.5 py-1 text-blue-200">
               {Number(summary.review_due || 0)} decisions due
             </span>
@@ -335,8 +344,12 @@ export default function GrowthActionQueue({
             </div>
           ) : (
             <EmptyAction
-              title="No snapshot waiting"
-              detail="Publish the next asset to start its fixed-age measurement clock."
+              title={Number(summary.snapshot_missed || 0) > 0
+                ? 'A canonical window was missed'
+                : 'No snapshot waiting'}
+              detail={Number(summary.snapshot_missed || 0) > 0
+                ? 'Reschedule a fresh experiment instead of labeling late cumulative analytics as fixed-age evidence.'
+                : 'Publish the next asset to start its fixed-age measurement clock.'}
             />
           )}
         </ActionCard>
