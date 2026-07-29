@@ -864,6 +864,18 @@ function buildContentQueue(
     const snapshotDays = Number(plan?.snapshot_days || 7);
     const plannedPublishAt = dateValue(plan, ["planned_publish_at"]);
     const publishedAt = dateValue(plan, ["published_at"]);
+    const deliveryManagedBy = normalized(plan?.delivery_managed_by) === "buffer"
+      ? "buffer"
+      : "manual";
+    const recordedDeliveryStatus = normalized(plan?.delivery_status);
+    const deliveryStatus = ["planned", "published", "canceled"].includes(
+      recordedDeliveryStatus,
+    )
+      ? recordedDeliveryStatus
+      : publishedAt > 0
+        ? "published"
+        : "planned";
+    const canceled = deliveryStatus === "canceled" && publishedAt <= 0;
     const snapshotDueAt = publishedAt > 0
       ? publishedAt + snapshotDays * DAY_MS
       : 0;
@@ -915,7 +927,9 @@ function buildContentQueue(
     );
     const decisionStale = Boolean(plan?.review_decision && !evidenceCurrent);
     let state = "planned";
-    if (fixedSnapshotCaptured) {
+    if (canceled) {
+      state = "canceled";
+    } else if (fixedSnapshotCaptured) {
       state = evidenceCurrent ? "reviewed" : "review_due";
     } else if (publishedAt > 0) {
       state = asOf >= snapshotDueAt ? "snapshot_due" : "published";
@@ -952,6 +966,8 @@ function buildContentQueue(
         ? new Date(plannedPublishAt).toISOString()
         : null,
       published_at: publishedAt ? new Date(publishedAt).toISOString() : null,
+      delivery_managed_by: deliveryManagedBy,
+      delivery_status: deliveryStatus,
       snapshot_days: snapshotDays,
       snapshot_due_at: snapshotDueAt
         ? new Date(snapshotDueAt).toISOString()
@@ -973,7 +989,10 @@ function buildContentQueue(
         : null,
       state,
       snapshot_status: snapshotStatus,
-      publish_overdue: !publishedAt && plannedPublishAt > 0 && asOf >= plannedPublishAt,
+      publish_overdue: !canceled
+        && !publishedAt
+        && plannedPublishAt > 0
+        && asOf >= plannedPublishAt,
       decision: evidenceCurrent ? normalized(plan?.review_decision) : null,
       decision_note: evidenceCurrent ? String(plan?.review_note || "") : "",
       decision_at: evidenceCurrent && dateValue(plan, ["reviewed_at"])
@@ -1011,7 +1030,9 @@ function buildContentQueue(
     item.hold_eligible = (completedByGroup.get(groupKey) || 0) >= 3;
   }
 
-  const nextPublish = queue.find((item) => !item.published_at) || null;
+  const nextPublish = queue.find(
+    (item) => !item.published_at && item.delivery_status !== "canceled",
+  ) || null;
   const canonicalSnapshotDue = [...queue]
     .filter((item) => (
       item.published_at
@@ -1076,6 +1097,7 @@ function buildContentQueue(
     snapshot_due: 0,
     review_due: 0,
     reviewed: 0,
+    canceled: 0,
   });
 
   return {

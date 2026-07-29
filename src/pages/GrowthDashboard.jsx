@@ -1,5 +1,5 @@
 import React from 'react';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   BarChart3,
   Copy,
@@ -16,6 +16,7 @@ import { toast } from 'sonner';
 import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import ContentEngineQueue from '@/components/acquisition/ContentEngineQueue';
 import GrowthActionQueue from '@/components/acquisition/GrowthActionQueue';
 import { useTheme, contrastText } from '@/components/theme/ThemeProvider';
 import { INSTAGRAM_FIRST_30_DAYS } from '@/data/instagramFirst30Days';
@@ -283,6 +284,7 @@ function signalFor(row) {
 }
 
 export default function GrowthDashboard() {
+  const queryClient = useQueryClient();
   const { accent } = useTheme();
   const accentText = contrastText(accent);
   const [campaign, setCampaign] = React.useState('1000-users');
@@ -382,6 +384,7 @@ export default function GrowthDashboard() {
         content_plan_not_found: 'Reload the first 30-day sprint before updating this asset',
         content_plan_conflict: 'Conflicting queue rows were detected; no evidence was changed',
         content_snapshot_conflict: 'Conflicting snapshot rows were detected; no decision was changed',
+        provider_managed_publication: 'Buffer owns publication for this content-engine plan; refresh to see its delivery state',
         invalid_published_at: 'The publication time is invalid',
         growth_admin_required: 'Owner or admin access is required',
       };
@@ -427,6 +430,13 @@ export default function GrowthDashboard() {
       content: item.content,
       published_at: new Date().toISOString(),
     });
+  };
+
+  const refreshGrowthSystem = async () => {
+    await Promise.all([
+      refetch(),
+      queryClient.invalidateQueries({ queryKey: ['growthContentEngine'] }),
+    ]);
   };
 
   const prepareQueueSnapshot = (item, snapshotDays) => {
@@ -592,7 +602,7 @@ export default function GrowthDashboard() {
           <Button
             type="button"
             variant="outline"
-            onClick={() => refetch()}
+            onClick={refreshGrowthSystem}
             disabled={isFetching}
             className="border-white/15 bg-white/[0.04] text-white hover:bg-white/10"
           >
@@ -694,6 +704,8 @@ export default function GrowthDashboard() {
             />
           </div>
         </section>
+
+        <ContentEngineQueue accent={accent} accentText={accentText} />
 
         <section className="rounded-2xl border border-white/10 bg-[#0b0b0b] p-5 sm:p-6">
           <div className="mb-4">

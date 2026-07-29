@@ -31,6 +31,51 @@ Private source asset
 Automation must increase output without turning private product data, weak claims, or
 duplicate creative into public posts.
 
+## Implemented foundation
+
+The repository now includes the first safe operating layer:
+
+- service-only `GrowthSourceAsset`, `GrowthCreativeArtifact`, `GrowthPublishJob`, and
+  `GrowthPublishHeartbeat` entities;
+- an owner/admin content queue that registers only opaque source references and
+  sanitized summaries;
+- optional schema-validated Instagram and TikTok draft generation behind
+  `GROWTH_CONTENT_GENERATION_ENABLED`;
+- editable manual drafts when generation is disabled;
+- blocking privacy, demo-data, claims, and media-rights review;
+- fenced source blocking/deactivation that cancels dependent queued work and refuses a
+  false-success downgrade while provider work is live or ambiguous;
+- one exact provider-text field containing the caption, disclosure, CTA, and tracking
+  URL;
+- owner-only approval bound to a canonical SHA-256 of the complete public rendition and
+  all four passed review gates;
+- scheduling bound to the approved hash, exact Buffer organization/channel, UTC due
+  time, immutable media origin, and request hash;
+- artifact-key compare-and-set scheduling locks plus worker-side canonical-job
+  suppression, so duplicate artifact or job rows cannot produce two provider posts;
+- owner revocation fenced against those scheduling locks, with approval and lease
+  ownership rechecked immediately before provider submission;
+- a constant-time secret-authenticated Buffer worker with atomic lease fencing;
+- a configuration-bound worker heartbeat, so the dashboard and schedule endpoint only
+  report delivery ready after a recent authenticated scheduler run;
+- a pre-publish fetch that recomputes SHA-256 from the rendition bytes on the configured
+  FirstKnock media origin before Buffer receives the URL;
+- a Buffer-channel identity check that rejects the wrong organization, platform,
+  disconnected, locked, or paused queue before `createPost`;
+- ambiguous-create reconciliation that never blindly replays `createPost`;
+- an Instagram measurement-plan bridge that uses the same `platform_content_id` and
+  starts its fixed-age snapshot clock when Buffer reports `sent`, with a
+  local measurement-only retry state that cannot recreate the provider post or be
+  blocked by later source/configuration changes;
+- compare-and-set protection on manual plan seeding and publication, so manual growth
+  operations cannot overwrite a concurrent Buffer-owned measurement contract; and
+- a disabled-by-default kill switch.
+
+The dashboard can load metadata for the three strongest already-redacted starter images.
+It does not upload or copy the local source files. No media renderer, public rendition
+host, Buffer credentials, live scheduler, TikTok attribution, or social account is
+connected by this code change.
+
 ## Existing source library
 
 The July 28 source package contains:
@@ -85,11 +130,11 @@ customer result and permission are verified.
 
 | Slot | Default format | Job |
 |---|---|---|
-| Morning | Graphic, carousel, or TikTok photo mode | Name one costly operating problem |
-| Midday | 10-20 second Reel/TikTok | Show one product behavior solving that problem |
-| Evening, optional | Founder clip, FAQ, comment reply, or proof | Answer an objection or report a learning |
+| 09:30 Arizona | Graphic, carousel, or TikTok photo mode | Name one costly operating problem |
+| 13:30 Arizona | 10-20 second Reel/TikTok | Show one product behavior solving that problem |
+| 18:30 Arizona, optional | Founder clip, FAQ, comment reply, or proof | Answer an objection or report a learning |
 
-Default Arizona publishing windows are 08:30, 12:30, and 17:30. These are starting
+Default Arizona publishing windows are 09:30, 13:30, and 18:30. These are starting
 hypotheses. Change them only after comparing fixed-age reach and retained-user outcomes.
 
 ### Weekly rotation
@@ -145,6 +190,10 @@ comparison group: manager-pain-short-video
 Tracked URLs preserve the shared concept while keeping platform acquisition distinct:
 
 ```text
+Current Instagram implementation:
+/instagram?utm_source=instagram&utm_medium=organic_social&utm_campaign=1000-users&utm_content=ig-20260803-01
+
+Target neutral cross-platform paths:
 Instagram:
 /start?utm_source=instagram&utm_medium=organic_social&utm_campaign=1000-users&utm_content=ig-20260803-01
 
@@ -152,10 +201,21 @@ TikTok:
 /start?utm_source=tiktok&utm_medium=organic_social&utm_campaign=1000-users&utm_content=tt-20260803-01
 ```
 
-Do not assign the same platform content ID to both posts. FirstKnock should compare
-concept performance across platforms while preserving platform-specific reach,
-conversion, and retained-user evidence. Add the neutral `/start` landing route before
-TikTok launch; do not send TikTok traffic to the current Instagram-named landing path.
+Do not assign the same platform content ID to both posts. The implemented engine creates
+or updates the matching Instagram `GrowthContentPlan`, embeds its tracked URL in the
+exact approved provider text as `caption_url`, and records `published_at` from Buffer's
+sent state.
+
+Instagram caption URLs are not a dependable clickable-link surface for every account
+or viewer. The current URL is useful as exact creative evidence, but it must not be
+treated as reliable per-post conversion attribution. Before conversion reporting is
+used to choose winners, add the neutral `/start` route and a verified clickable
+distribution path (for example, a controlled profile-link or comment/DM workflow) that
+preserves `utm_content`.
+FirstKnock should compare concept performance across platforms while preserving
+platform-specific reach, conversion, and retained-user evidence. Add the neutral
+`/start` landing route and TikTok source reporting before enabling TikTok attribution;
+do not send TikTok traffic to the current Instagram-named landing path.
 
 ## Publishing architecture
 
@@ -170,12 +230,24 @@ This avoids two bad foundations:
 - a private one-brand TikTok Direct Post client that cannot satisfy TikTok's intended-use
   audit policy.
 
-Buffer's current public API supports Instagram and TikTok channels, automatic or
-approval-based scheduling, images and videos, exact due times, post status, and metrics.
-It requires media to remain available at a stable public HTTPS URL until publishing.
+The adapter uses Buffer's current channel metadata for Instagram and TikTok,
+automatic or notification scheduling, images and videos, exact due times, and post
+status. Buffer's general supported-platform guide does not yet list every capability
+exposed by the evolving schema, so both real channels must pass staging smoke posts
+before the kill switch is enabled. Buffer requires media to remain available at a
+stable public HTTPS URL until publishing.
 
 Only approved, sanitized **renditions** may be placed at that public delivery URL. Raw
-source assets stay private. Do not use short-lived signed URLs for scheduled Buffer media.
+source assets stay private. Do not use short-lived signed URLs for scheduled Buffer
+media. Configure an owned immutable origin with `GROWTH_MEDIA_ORIGIN`; the delivery URL
+must use that exact origin and include the complete 64-character rendition SHA-256.
+Storage at that origin is a security boundary: keys must be content-addressed,
+write-once, and reject overwrites for the lifetime of every scheduled post. Immediately
+before a create request, the worker downloads the bounded rendition without following
+redirects, rejects MIME mismatches, recomputes the full SHA-256 from the bytes, and
+fails closed if it differs from approval. Because Buffer fetches media after the
+FirstKnock preflight, byte-to-URL integrity depends on that no-overwrite origin contract;
+deployment acceptance must include an attempted overwrite that the host rejects.
 
 Useful references:
 
@@ -194,19 +266,31 @@ publish job:
 
 ```text
 idempotency key =
-  provider + channel + account + platform_content_id + artifact_sha256
+  provider + organization + channel + platform + platform_content_id + artifact_sha256
 ```
 
 The worker:
 
 1. leases a bounded batch of due jobs;
-2. verifies approval, hash, media metadata, and stable delivery URL;
+2. verifies approval, hash, media metadata, immutable origin, and fetched rendition
+   bytes;
 3. creates or reconciles the provider post;
 4. stores the provider post ID and scheduled time;
 5. polls or receives status until sent or terminally failed;
-6. retries retryable failures with bounded backoff; and
-7. never creates a second provider post after an ambiguous response without first
+6. retries retryable failures with bounded backoff;
+7. uses `delivery_reconcile` to cancel the linked Instagram measurement plan before a
+   no-provider failure or owner cancellation can become terminal; and
+8. never creates a second provider post after an ambiguous response without first
    reconciling.
+
+An owner may cancel a job locally only while it is still `queued` or `retry_wait` and
+has no provider post ID. Once a job is processing, ambiguous, or known to Buffer, the
+engine refuses to claim that local revocation canceled the provider post. Cancel and
+verify it in Buffer first, then use the explicit owner attestation in FirstKnock to
+close a `review_required` job. Sent posts cannot use that resolution. This conservative
+boundary keeps a live scheduled post from being hidden behind a misleading local
+`canceled` state. Canceling also marks the linked measurement plan canceled so it
+cannot become the dashboard's next publish action.
 
 Copy the lease, idempotency, retry, and ambiguous-write pattern already used by
 `fieldRoutesIntegration`; do not copy older fire-and-forget scheduled functions.
@@ -240,10 +324,21 @@ Keep `GrowthContentPlan` as the experiment and editorial brief. Add:
 - provider, channel, account, and scheduled time;
 - idempotency key and request hash;
 - state, attempt count, lease, retry time, and last safe error;
+- a `measurement_retry` state for a sent provider post whose local publication clock
+  still needs to be written;
+- a `delivery_reconcile` state and terminal target for a no-provider failure or owner
+  cancellation whose linked Instagram plan still needs to be canceled;
 - provider post ID, provider status, and public post URL; and
 - sent, failed, or canceled timestamps.
 
-All three entities remain service-role-only. Owner/admin functions return aggregate or
+### GrowthPublishHeartbeat
+
+- one configuration-bound `buffer-publisher` health record;
+- the last successfully completed authenticated worker invocation;
+- bounded inspected/processed counts; and
+- no API key, worker secret, access token, or provider credential.
+
+All four entities remain service-role-only. Owner/admin functions return aggregate or
 sanitized data and never expose provider tokens or raw private-media URLs.
 
 ## Rendering boundary
@@ -293,7 +388,8 @@ Exit gate: ten approved posts with no privacy, claim, attribution, or media-spec
 - create the durable publishing outbox and worker;
 - start in Buffer/FirstKnock approval mode;
 - reconcile provider status and public links; and
-- preserve manual cancellation before send.
+- preserve compare-and-set local cancellation before provider submission and require
+  verified Buffer cancellation afterward.
 
 Exit gate: twenty consecutive scheduled posts delivered or safely failed without a
 duplicate, wrong account, wrong time, or unreviewed publish.
@@ -330,11 +426,26 @@ without allowing a generative model to make every public-brand decision.
 - connected Buffer Instagram channel;
 - connected Buffer TikTok channel;
 - server-side `BUFFER_API_KEY`;
-- Instagram and TikTok Buffer channel IDs;
+- `BUFFER_ORGANIZATION_ID`;
+- `BUFFER_INSTAGRAM_CHANNEL_ID`;
+- `BUFFER_TIKTOK_CHANNEL_ID`;
+- `GROWTH_MEDIA_ORIGIN` set to the exact owned immutable HTTPS origin serving approved
+  renditions;
+- an independent random `GROWTH_PUBLISH_WORKER_SECRET` with at least 32 characters;
+- `GROWTH_PUBLISH_ENABLED=true` only after credentialed staging posts pass;
+- `GROWTH_CONTENT_GENERATION_ENABLED=true` when AI draft generation is desired;
 - stable public delivery host for approved renditions;
+- write-once/no-overwrite enforcement for full-SHA rendition keys;
 - default Arizona posting windows;
-- owner/admin approval policy; and
+- owner-only approval policy; and
 - a decision on voice: founder-recorded, synthetic voice with disclosure, or text/music
   only.
+
+Run an external scheduler once per minute against `processGrowthPublishQueue` with the
+worker secret in an Authorization bearer header. Keep the worker batch at five or fewer.
+Run it once with an empty queue after deployment so the configuration-bound heartbeat
+is fresh; scheduling remains disabled if that heartbeat is older than three minutes.
+The worker can process one configured platform independently, but both channel IDs are
+required before the intended dual-platform cadence is operational.
 
 Never paste API keys into source files, a content plan, a browser field, or chat history.

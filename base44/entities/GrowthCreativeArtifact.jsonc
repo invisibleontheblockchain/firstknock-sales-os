@@ -1,0 +1,279 @@
+{
+  "name": "GrowthCreativeArtifact",
+  "type": "object",
+  "properties": {
+    "artifact_key": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._~-]{0,119}$"
+    },
+    "concept_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._~-]{0,119}$"
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000
+    },
+    "campaign": {
+      "type": "string",
+      "maxLength": 120
+    },
+    "platform": {
+      "type": "string",
+      "enum": [
+        "instagram",
+        "tiktok"
+      ]
+    },
+    "platform_content_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._~-]{0,119}$"
+    },
+    "title": {
+      "type": "string",
+      "maxLength": 160
+    },
+    "pillar": {
+      "type": "string",
+      "maxLength": 120
+    },
+    "format": {
+      "type": "string",
+      "enum": [
+        "video",
+        "photo",
+        "carousel"
+      ]
+    },
+    "source_asset_keys": {
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "type": "string",
+        "maxLength": 120
+      }
+    },
+    "generation_status": {
+      "type": "string",
+      "enum": [
+        "manual",
+        "draft_ready",
+        "generation_failed"
+      ]
+    },
+    "generation_error": {
+      "type": "string",
+      "maxLength": 240
+    },
+    "hook": {
+      "type": "string",
+      "maxLength": 300
+    },
+    "caption": {
+      "type": "string",
+      "maxLength": 5000
+    },
+    "provider_text": {
+      "type": "string",
+      "maxLength": 2200,
+      "description": "Exact caption, disclosure, CTA, and tracking URL submitted to the provider"
+    },
+    "overlay_text": {
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "type": "string",
+        "maxLength": 160
+      }
+    },
+    "shot_list": {
+      "type": "array",
+      "maxItems": 30,
+      "items": {
+        "type": "string",
+        "maxLength": 300
+      }
+    },
+    "cta_label": {
+      "type": "string",
+      "maxLength": 160
+    },
+    "cta_url": {
+      "type": "string",
+      "maxLength": 2048
+    },
+    "disclosure": {
+      "type": "string",
+      "maxLength": 500
+    },
+    "ai_generated": {
+      "type": "boolean",
+      "default": false
+    },
+    "media_url": {
+      "type": "string",
+      "maxLength": 2048
+    },
+    "media_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "mime_type": {
+      "type": "string",
+      "enum": [
+        "video/mp4",
+        "image/jpeg",
+        "image/png",
+        "image/webp"
+      ]
+    },
+    "width": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 20000
+    },
+    "height": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 20000
+    },
+    "duration_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 3600000
+    },
+    "thumbnail_offset_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 3600000
+    },
+    "review_status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "passed",
+        "changes_requested"
+      ]
+    },
+    "privacy_cleared": {
+      "type": "boolean",
+      "default": false
+    },
+    "demo_labeled": {
+      "type": "boolean",
+      "default": false
+    },
+    "claims_supported": {
+      "type": "boolean",
+      "default": false
+    },
+    "media_rights_confirmed": {
+      "type": "boolean",
+      "default": false
+    },
+    "review_note": {
+      "type": "string",
+      "maxLength": 1000
+    },
+    "reviewed_by": {
+      "type": "string",
+      "maxLength": 160
+    },
+    "reviewed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "approval_status": {
+      "type": "string",
+      "enum": [
+        "not_approved",
+        "approved",
+        "revoked"
+      ]
+    },
+    "approved_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "approved_by": {
+      "type": "string",
+      "maxLength": 160
+    },
+    "approved_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "revoked_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "revocation_note": {
+      "type": "string",
+      "maxLength": 500
+    },
+    "schedule_lock_generation": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1000000,
+      "default": 0
+    },
+    "schedule_lock_token": {
+      "type": "string",
+      "maxLength": 160
+    },
+    "schedule_lock_expires_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "artifact_key",
+    "concept_id",
+    "revision",
+    "campaign",
+    "platform",
+    "platform_content_id",
+    "title",
+    "pillar",
+    "format",
+    "source_asset_keys",
+    "generation_status",
+    "hook",
+    "caption",
+    "provider_text",
+    "overlay_text",
+    "shot_list",
+    "cta_label",
+    "ai_generated",
+    "review_status",
+    "privacy_cleared",
+    "demo_labeled",
+    "claims_supported",
+    "media_rights_confirmed",
+    "approval_status",
+    "schedule_lock_generation"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "id": "__service_role_only__"
+      }
+    },
+    "read": {
+      "user_condition": {
+        "id": "__service_role_only__"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "id": "__service_role_only__"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "id": "__service_role_only__"
+      }
+    }
+  }
+}

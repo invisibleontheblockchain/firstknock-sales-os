@@ -1370,6 +1370,27 @@ test('owner can seed, publish, and review the fixed-age growth queue', async () 
       };
       return structuredClone(plans[index]);
     },
+    updateMany: async (query, operations) => {
+      let updated = 0;
+      for (let index = 0; index < plans.length; index += 1) {
+        if (
+          (query.id !== undefined && plans[index].id !== query.id)
+          || (
+            query.updated_date !== undefined
+            && plans[index].updated_date !== query.updated_date
+          )
+        ) {
+          continue;
+        }
+        plans[index] = {
+          ...plans[index],
+          ...structuredClone(operations?.$set || {}),
+          updated_date: new Date().toISOString(),
+        };
+        updated += 1;
+      }
+      return { success: true, updated, has_more: false };
+    },
   };
   const metricEntity = {
     list: async (_sort, limit, skip = 0) => structuredClone(metrics.slice(skip, skip + limit)),
@@ -1390,6 +1411,9 @@ test('owner can seed, publish, and review the fixed-age growth queue', async () 
       entities: {
         GrowthContentPlan: planEntity,
         GrowthContentMetric: metricEntity,
+        GrowthCreativeArtifact: {
+          filter: async () => [],
+        },
       },
     },
   };

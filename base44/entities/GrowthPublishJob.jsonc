@@ -1,0 +1,270 @@
+{
+  "name": "GrowthPublishJob",
+  "type": "object",
+  "properties": {
+    "job_key": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "request_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "provider": {
+      "type": "string",
+      "enum": [
+        "buffer"
+      ]
+    },
+    "provider_organization_id": {
+      "type": "string",
+      "maxLength": 300
+    },
+    "provider_channel_id": {
+      "type": "string",
+      "maxLength": 300
+    },
+    "provider_service": {
+      "type": "string",
+      "enum": [
+        "instagram",
+        "tiktok"
+      ]
+    },
+    "config_revision": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "media_origin": {
+      "type": "string",
+      "maxLength": 2048
+    },
+    "artifact_id": {
+      "type": "string",
+      "maxLength": 160
+    },
+    "artifact_key": {
+      "type": "string",
+      "maxLength": 120
+    },
+    "artifact_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "concept_id": {
+      "type": "string",
+      "maxLength": 120
+    },
+    "campaign": {
+      "type": "string",
+      "maxLength": 120
+    },
+    "platform": {
+      "type": "string",
+      "enum": [
+        "instagram",
+        "tiktok"
+      ]
+    },
+    "platform_content_id": {
+      "type": "string",
+      "maxLength": 120
+    },
+    "due_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "timezone": {
+      "type": "string",
+      "maxLength": 80
+    },
+    "scheduling_type": {
+      "type": "string",
+      "enum": [
+        "automatic",
+        "notification"
+      ]
+    },
+    "state": {
+      "type": "string",
+      "enum": [
+        "queued",
+        "processing",
+        "retry_wait",
+        "create_reconcile",
+        "approval_wait",
+        "scheduled",
+        "sending",
+        "measurement_retry",
+        "delivery_reconcile",
+        "sent",
+        "review_required",
+        "failed",
+        "canceled"
+      ]
+    },
+    "provider_status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "error",
+        "needs_approval",
+        "scheduled",
+        "sending",
+        "sent"
+      ]
+    },
+    "provider_post_id": {
+      "type": "string",
+      "maxLength": 300
+    },
+    "provider_due_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "provider_sent_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "provider_external_link": {
+      "type": "string",
+      "maxLength": 2048
+    },
+    "provider_response_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "attempt_count": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1000000,
+      "default": 0
+    },
+    "reconciliation_count": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1000,
+      "default": 0
+    },
+    "next_retry_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "delivery_reconcile_target": {
+      "type": "string",
+      "enum": [
+        "failed",
+        "canceled"
+      ]
+    },
+    "schedule_cutoff_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "lease_token": {
+      "type": "string",
+      "maxLength": 160
+    },
+    "lease_source_state": {
+      "type": "string",
+      "enum": [
+        "queued",
+        "retry_wait",
+        "create_reconcile",
+        "approval_wait",
+        "scheduled",
+        "sending",
+        "measurement_retry",
+        "delivery_reconcile"
+      ]
+    },
+    "lease_generation": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1000000,
+      "default": 0
+    },
+    "lease_acquired_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "lease_expires_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "last_attempt_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "last_error_code": {
+      "type": "string",
+      "maxLength": 120
+    },
+    "last_error_message": {
+      "type": "string",
+      "maxLength": 240
+    },
+    "canceled_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "resolved_by": {
+      "type": "string",
+      "maxLength": 160
+    },
+    "resolved_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "resolution_evidence_note": {
+      "type": "string",
+      "maxLength": 500
+    }
+  },
+  "required": [
+    "job_key",
+    "request_hash",
+    "provider",
+    "provider_organization_id",
+    "provider_channel_id",
+    "provider_service",
+    "config_revision",
+    "media_origin",
+    "artifact_id",
+    "artifact_key",
+    "artifact_hash",
+    "concept_id",
+    "campaign",
+    "platform",
+    "platform_content_id",
+    "due_at",
+    "timezone",
+    "scheduling_type",
+    "state",
+    "attempt_count",
+    "reconciliation_count",
+    "lease_generation"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "id": "__service_role_only__"
+      }
+    },
+    "read": {
+      "user_condition": {
+        "id": "__service_role_only__"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "id": "__service_role_only__"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "id": "__service_role_only__"
+      }
+    }
+  }
+}

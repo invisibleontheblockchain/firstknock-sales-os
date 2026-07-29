@@ -1,0 +1,119 @@
+{
+  "name": "GrowthSourceAsset",
+  "type": "object",
+  "properties": {
+    "asset_key": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._~-]{0,119}$"
+    },
+    "title": {
+      "type": "string",
+      "maxLength": 160
+    },
+    "source_reference": {
+      "type": "string",
+      "maxLength": 300,
+      "description": "Opaque source reference; never a local filesystem path or credentialed URL"
+    },
+    "media_kind": {
+      "type": "string",
+      "enum": [
+        "video",
+        "image"
+      ]
+    },
+    "mime_type": {
+      "type": "string",
+      "maxLength": 120
+    },
+    "width": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 20000
+    },
+    "height": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 20000
+    },
+    "duration_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 3600000
+    },
+    "source_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "privacy_status": {
+      "type": "string",
+      "enum": [
+        "safe",
+        "redaction_required",
+        "blocked"
+      ]
+    },
+    "safe_summary": {
+      "type": "string",
+      "maxLength": 1000,
+      "description": "Sanitized product/content summary that may be sent to the draft generator"
+    },
+    "privacy_note": {
+      "type": "string",
+      "maxLength": 1000
+    },
+    "active": {
+      "type": "boolean",
+      "default": true
+    },
+    "privacy_change_pending": {
+      "type": "boolean",
+      "default": false,
+      "description": "Service-only fence held while a privacy downgrade is canceling dependent publish work"
+    },
+    "privacy_change_generation": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1000000,
+      "default": 0
+    },
+    "privacy_change_token": {
+      "type": "string",
+      "maxLength": 160
+    },
+    "privacy_change_expires_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "asset_key",
+    "title",
+    "media_kind",
+    "privacy_status",
+    "safe_summary",
+    "active"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "id": "__service_role_only__"
+      }
+    },
+    "read": {
+      "user_condition": {
+        "id": "__service_role_only__"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "id": "__service_role_only__"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "id": "__service_role_only__"
+      }
+    }
+  }
+}

@@ -33,11 +33,12 @@ for (const file of backendFiles) {
 }
 assert.deepEqual(syntaxErrors, [], `Backend syntax errors:\n${syntaxErrors.join('\n')}`);
 
+const entityJsonFiles = fs.readdirSync(path.resolve('base44/entities'))
+  .filter((file) => file.endsWith('.jsonc'))
+  .sort()
+  .map((file) => path.join('base44/entities', file));
 const jsonFiles = [
-  'base44/entities/AcquisitionEvent.jsonc',
-  'base44/entities/FetchJob.jsonc',
-  'base44/entities/GrowthContentMetric.jsonc',
-  'base44/entities/User.jsonc',
+  ...entityJsonFiles,
   'base44/config.jsonc',
   'package.json'
 ];

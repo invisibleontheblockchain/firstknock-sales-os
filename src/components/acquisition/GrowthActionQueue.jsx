@@ -60,6 +60,7 @@ function channelLabel(channel) {
     dm_reply: 'Manual DM reply',
     comment_reply: 'Comment → manual DM',
     bio: 'Profile bio link',
+    caption_url: 'Caption URL',
   }[channel] || channel;
 }
 
@@ -100,6 +101,8 @@ export default function GrowthActionQueue({
   const nextSnapshot = queue?.next_snapshot;
   const nextDecision = queue?.next_decision;
   const summary = queue?.summary || {};
+  const providerManagedPublish = nextPublish?.delivery_managed_by === 'buffer'
+    || nextPublish?.sprint === 'content-engine';
 
   React.useEffect(() => {
     setDecisionNote('');
@@ -181,6 +184,11 @@ export default function GrowthActionQueue({
             <span className="rounded-full border border-green-400/20 bg-green-400/10 px-2.5 py-1 text-green-200">
               {Number(summary.reviewed || 0)} reviewed
             </span>
+            {Number(summary.canceled || 0) > 0 && (
+              <span className="rounded-full border border-red-400/20 bg-red-400/10 px-2.5 py-1 text-red-200">
+                {Number(summary.canceled)} canceled
+              </span>
+            )}
           </div>
           <Button
             type="button"
@@ -226,17 +234,34 @@ export default function GrowthActionQueue({
                   <ClipboardCopy className="mr-2 h-4 w-4" />
                   Copy link
                 </Button>
-                <Button
-                  type="button"
-                  onClick={() => onPublish(nextPublish)}
-                  disabled={busy}
-                  style={{ background: accent, color: accentText }}
-                  className="font-black"
-                >
-                  <CheckCircle2 className="mr-2 h-4 w-4" />
-                  Mark published
-                </Button>
+                {providerManagedPublish ? (
+                  <Button
+                    type="button"
+                    disabled
+                    variant="outline"
+                    className="border-blue-300/20 bg-blue-300/10 font-black text-blue-100"
+                  >
+                    <CalendarClock className="mr-2 h-4 w-4" />
+                    Buffer managed
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    onClick={() => onPublish(nextPublish)}
+                    disabled={busy}
+                    style={{ background: accent, color: accentText }}
+                    className="font-black"
+                  >
+                    <CheckCircle2 className="mr-2 h-4 w-4" />
+                    Mark published
+                  </Button>
+                )}
               </div>
+              {providerManagedPublish && (
+                <p className="mt-2 rounded-lg border border-blue-400/20 bg-blue-400/10 px-3 py-2 text-[10px] leading-relaxed text-blue-100/70">
+                  Buffer owns publication for this content-engine plan. FirstKnock will start its measurement clock automatically after Buffer confirms the post was sent.
+                </p>
+              )}
               <details className="mt-3 rounded-xl border border-white/10 bg-white/[0.03] p-3">
                 <summary className="flex cursor-pointer list-none items-center justify-between text-xs font-bold text-white/60">
                   View brief
@@ -253,8 +278,10 @@ export default function GrowthActionQueue({
             </div>
           ) : (
             <EmptyAction
-              title="Sprint published"
-              detail="All planned assets have a recorded publication time."
+              title={Number(summary.canceled || 0) > 0 ? 'No publish action' : 'Sprint published'}
+              detail={Number(summary.canceled || 0) > 0
+                ? 'Remaining provider-managed plans were canceled. Create or reschedule approved content before treating the sprint as published.'
+                : 'All planned assets have a recorded publication time.'}
             />
           )}
         </ActionCard>

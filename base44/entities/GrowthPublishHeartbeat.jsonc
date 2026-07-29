@@ -1,0 +1,72 @@
+{
+  "name": "GrowthPublishHeartbeat",
+  "type": "object",
+  "properties": {
+    "heartbeat_key": {
+      "type": "string",
+      "enum": [
+        "buffer-publisher"
+      ]
+    },
+    "config_revision": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "observed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "ready"
+      ]
+    },
+    "invocation_generation": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2147483647
+    },
+    "last_batch_inspected": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1000
+    },
+    "last_batch_processed": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1000
+    }
+  },
+  "required": [
+    "heartbeat_key",
+    "config_revision",
+    "observed_at",
+    "status",
+    "invocation_generation",
+    "last_batch_inspected",
+    "last_batch_processed"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "id": "__service_role_only__"
+      }
+    },
+    "read": {
+      "user_condition": {
+        "id": "__service_role_only__"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "id": "__service_role_only__"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "id": "__service_role_only__"
+      }
+    }
+  }
+}

@@ -1,7 +1,13 @@
 import { createClientFromRequest } from "npm:@base44/sdk@0.8.31";
 
 const FORMATS = new Set(["reel", "carousel", "story", "collab", "live", "other"]);
-const CTA_CHANNELS = new Set(["story_link", "dm_reply", "comment_reply", "bio"]);
+const CTA_CHANNELS = new Set([
+  "story_link",
+  "dm_reply",
+  "comment_reply",
+  "bio",
+  "caption_url",
+]);
 const SNAPSHOT_DAYS = new Set([1, 3, 7, 30]);
 const DECISIONS = new Set(["repeat", "iterate", "hold"]);
 const MAX_BODY_BYTES = 100_000;
@@ -199,7 +205,7 @@ function normalizePlan(value: any): any | null {
   const audience = text(value?.audience, 300);
   const hook = text(value?.hook, 300);
   const script = text(value?.script, 2500);
-  const ctaLabel = text(value?.cta_label, 120);
+  const ctaLabel = text(value?.cta_label, 160);
   const ctaChannel = token(value?.cta_channel);
   const primaryMetric = text(value?.primary_metric, 160);
   const hypothesis = text(value?.hypothesis, 500);
@@ -318,6 +324,42 @@ function canonicalByKey(
   );
 }
 
+function providerOwnsPlan(plan: any): boolean {
+  return Boolean(
+    timestamp(plan?.published_at)
+    || token(plan?.sprint) === "content-engine"
+    || token(plan?.delivery_managed_by) === "buffer",
+  );
+}
+
+async function contentEngineOwnsKey(
+  artifactEntity: any,
+  campaign: string,
+  content: string,
+): Promise<boolean> {
+  const rows = asArray(await artifactEntity.filter(
+    {
+      campaign,
+      platform_content_id: content,
+    },
+    "-updated_date",
+    20,
+  ));
+  return rows.length > 0;
+}
+
+async function currentPlanForKey(
+  planEntity: any,
+  campaign: string,
+  content: string,
+): Promise<{ record: any | null; conflict: boolean }> {
+  return canonicalPlan(asArray(await planEntity.filter(
+    { campaign, content },
+    "-updated_date",
+    20,
+  )));
+}
+
 Deno.serve(async (req: Request) => {
   try {
     if (req.method === "OPTIONS") return new Response(null, { status: 204 });
@@ -337,6 +379,7 @@ Deno.serve(async (req: Request) => {
     const body = JSON.parse(rawBody || "{}");
     const action = normalized(body?.action);
     const planEntity = base44.asServiceRole.entities.GrowthContentPlan;
+    const artifactEntity = base44.asServiceRole.entities.GrowthCreativeArtifact;
 
     if (action === "seed") {
       if (
@@ -367,20 +410,117 @@ Deno.serve(async (req: Request) => {
       let updated = 0;
       let preserved = 0;
       for (const plan of plans) {
-        const current = existing.get(planKey(plan.campaign, plan.content));
+        const key = planKey(plan.campaign, plan.content);
+        if (await contentEngineOwnsKey(
+          artifactEntity,
+          plan.campaign,
+          plan.content,
+        )) {
+          preserved += 1;
+          continue;
+        }
+        const liveResult = await currentPlanForKey(
+          planEntity,
+          plan.campaign,
+          plan.content,
+        );
+        if (liveResult.conflict) {
+          return response({
+            error: "content_plan_conflict",
+            content_key: key,
+          }, 409);
+        }
+        const current = liveResult.record || existing.get(key);
         if (current?.id) {
-          if (timestamp(current?.published_at)) {
+          if (providerOwnsPlan(current)) {
             // Once an asset is published, its creative definition and snapshot
-            // horizon are historical evidence. A sprint sync may repair missing
-            // plans, but it cannot rewrite an executed experiment.
+            // horizon are historical evidence. Provider-managed definitions are
+            // owned by the approved content-engine artifact and publish job even
+            // before delivery. A sprint sync may repair missing manual plans, but
+            // it cannot rewrite either kind of measurement contract.
             preserved += 1;
           } else {
-            await planEntity.update(current.id, plan);
-            updated += 1;
+            const result = await planEntity.updateMany(
+              {
+                id: current.id,
+                updated_date: current.updated_date,
+              },
+              { $set: plan },
+            );
+            if (Number(result?.updated || 0) === 1) {
+              updated += 1;
+            } else {
+              const raced = await currentPlanForKey(
+                planEntity,
+                plan.campaign,
+                plan.content,
+              );
+              if (
+                !raced.conflict
+                && raced.record?.id
+                && (
+                  providerOwnsPlan(raced.record)
+                  || await contentEngineOwnsKey(
+                    artifactEntity,
+                    plan.campaign,
+                    plan.content,
+                  )
+                )
+              ) {
+                preserved += 1;
+              } else {
+                return response({
+                  error: raced.conflict
+                    ? "content_plan_conflict"
+                    : "content_plan_changed_during_seed",
+                  content_key: key,
+                }, 409);
+              }
+            }
           }
         } else {
+          if (await contentEngineOwnsKey(
+            artifactEntity,
+            plan.campaign,
+            plan.content,
+          )) {
+            preserved += 1;
+            continue;
+          }
+          const raced = await currentPlanForKey(
+            planEntity,
+            plan.campaign,
+            plan.content,
+          );
+          if (raced.conflict) {
+            return response({
+              error: "content_plan_conflict",
+              content_key: key,
+            }, 409);
+          }
+          if (raced.record?.id) {
+            if (providerOwnsPlan(raced.record)) {
+              preserved += 1;
+              continue;
+            }
+            return response({
+              error: "content_plan_changed_during_seed",
+              content_key: key,
+            }, 409);
+          }
           const saved = await planEntity.create(plan);
-          existing.set(planKey(plan.campaign, plan.content), saved || plan);
+          const verified = await currentPlanForKey(
+            planEntity,
+            plan.campaign,
+            plan.content,
+          );
+          if (verified.conflict || !verified.record?.id) {
+            return response({
+              error: "content_plan_conflict",
+              content_key: key,
+            }, 409);
+          }
+          existing.set(key, saved || plan);
           created += 1;
         }
       }
@@ -408,6 +548,12 @@ Deno.serve(async (req: Request) => {
     if (!current?.id) return response({ error: "content_plan_not_found" }, 404);
 
     if (action === "publish") {
+      if (
+        token(current?.sprint) === "content-engine"
+        || token(current?.delivery_managed_by) === "buffer"
+      ) {
+        return response({ error: "provider_managed_publication" }, 409);
+      }
       if (current?.published_at) {
         return response({
           success: true,
@@ -425,11 +571,37 @@ Deno.serve(async (req: Request) => {
       if (new Date(publishedAt).getTime() > Date.now() + 5 * 60 * 1000) {
         return response({ error: "invalid_published_at" }, 400);
       }
-      const saved = await planEntity.update(current.id, { published_at: publishedAt });
+      const published = await planEntity.updateMany(
+        {
+          id: current.id,
+          updated_date: current.updated_date,
+        },
+        { $set: { published_at: publishedAt } },
+      );
+      if (Number(published?.updated || 0) !== 1) {
+        const raced = await currentPlanForKey(planEntity, campaign, content);
+        if (raced.conflict) {
+          return response({ error: "content_plan_conflict" }, 409);
+        }
+        if (
+          token(raced.record?.sprint) === "content-engine"
+          || token(raced.record?.delivery_managed_by) === "buffer"
+        ) {
+          return response({ error: "provider_managed_publication" }, 409);
+        }
+        if (raced.record?.published_at) {
+          return response({
+            success: true,
+            idempotent: true,
+            published_at: raced.record.published_at,
+          });
+        }
+        return response({ error: "content_plan_changed_before_publish" }, 409);
+      }
       return response({
         success: true,
         idempotent: false,
-        published_at: saved?.published_at || publishedAt,
+        published_at: publishedAt,
       });
     }
 
