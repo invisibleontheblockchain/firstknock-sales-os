@@ -2,6 +2,15 @@
   "name": "GrowthContentMetric",
   "type": "object",
   "properties": {
+    "platform": {
+      "type": "string",
+      "enum": [
+        "instagram",
+        "tiktok"
+      ],
+      "default": "instagram",
+      "description": "Social platform that owns this content checkpoint; legacy rows without a value are Instagram"
+    },
     "campaign": {
       "type": "string",
       "maxLength": 120
@@ -9,7 +18,7 @@
     "content": {
       "type": "string",
       "maxLength": 120,
-      "description": "Instagram content ID shared with utm_content"
+      "description": "Platform content ID shared with utm_content"
     },
     "format": {
       "type": "string",

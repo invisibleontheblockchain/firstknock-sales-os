@@ -16,6 +16,7 @@ import {
   Send,
   ShieldCheck,
   Sparkles,
+  Upload,
   XCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -182,6 +183,10 @@ function phoenixLocalToIso(value) {
   return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : null;
 }
 
+function defaultSchedulingType(artifact) {
+  return artifact?.audio_mode === 'silent' ? 'notification' : 'automatic';
+}
+
 function draftFromArtifact(artifact) {
   return {
     hook: artifact?.hook || '',
@@ -337,8 +342,12 @@ function fieldError(code) {
     content_review_required: 'All four review checks must pass before approval',
     source_privacy_clearance_required: 'Every source must be marked safe before approval',
     source_asset_unavailable: 'One of the selected source assets is blocked or unavailable',
+    source_privacy_change_in_progress: 'Another source safety or render-identity change is still in progress',
+    source_privacy_cancellation_required: 'Cancel or resolve dependent Buffer work before changing this source',
+    source_asset_changed_during_update: 'The source changed elsewhere; refresh and retry the exact update',
     approved_artifact_required: 'The exact approved revision is required',
-    publish_preflight_failed: 'Media or source privacy changed after approval',
+    publish_preflight_failed: 'Media, source safety, or source lineage changed after approval',
+    source_render_lineage_changed: 'The registered source reference or hash changed; rerender and review this content',
     invalid_publish_schedule: 'Choose a time at least 15 minutes from now',
     platform_content_already_scheduled: 'This platform content ID already has an active job',
     platform_content_already_published: 'This platform content ID already published; create a new content ID',
@@ -350,8 +359,8 @@ function fieldError(code) {
     publish_job_not_reviewable: 'This delivery no longer needs manual resolution; refresh and inspect its current state',
     provider_post_already_sent: 'Buffer reports this post as published, so it cannot be closed as canceled',
     publish_job_changed_before_resolution: 'The delivery changed during resolution; refresh and verify its latest Buffer state',
-    content_plan_conflict: 'The Instagram measurement plan has conflicting records and must be repaired first',
-    content_plan_already_published: 'This Instagram content ID is already recorded as published; use a new content ID',
+    content_plan_conflict: 'The social measurement plan has conflicting records and must be repaired first',
+    content_plan_already_published: 'This platform content ID is already recorded as published; use a new content ID',
     creative_changed_before_save: 'The creative changed elsewhere; refresh before saving again',
     creative_changed_before_review: 'The creative changed during review; refresh and inspect the latest revision',
     creative_changed_before_approval: 'The review changed before approval; refresh and inspect every gate again',
@@ -359,6 +368,12 @@ function fieldError(code) {
     creative_artifact_conflict: 'Duplicate creative rows need repair before this content ID can continue',
     partial_generation_conflict: 'One platform draft already exists; open a new brief or finish the existing concept',
     approved_artifact_immutable: 'Approved creative is immutable; create a new content ID for changes',
+    invalid_render_result: 'This result is not bound to the configured media origin and trusted render-pack hash',
+    invalid_render_result_artifact: 'A rendered artifact failed identity, codec, attribution, or QC validation',
+    render_result_has_no_publish_candidates: 'This pack contains previews only and has no publish candidates',
+    render_source_lineage_unavailable: 'Register the exact privacy-safe source hashes before importing this render pack',
+    creative_changed_during_render_import: 'A creative changed during import; refresh and safely retry the same pack',
+    silent_media_decision_required: 'Choose notification finishing, or explicitly select automatic delivery for this silent rendition',
     growth_owner_required: 'Only the FirstKnock owner can approve or schedule content',
     growth_admin_required: 'Owner or admin access is required',
   };
@@ -415,7 +430,7 @@ function ContentDetailDialog({
   });
   const [schedule, setSchedule] = React.useState({
     local: nextScheduleSlot(jobs, Date.now(), artifact?.platform),
-    scheduling_type: 'automatic',
+    scheduling_type: defaultSchedulingType(artifact),
   });
   const [mediaInspection, setMediaInspection] = React.useState({
     status: 'idle',
@@ -442,9 +457,9 @@ function ContentDetailDialog({
     scheduledArtifactRef.current = artifact.id;
     setSchedule({
       local: nextScheduleSlot(jobs, Date.now(), artifact.platform),
-      scheduling_type: 'automatic',
+      scheduling_type: defaultSchedulingType(artifact),
     });
-  }, [artifact?.id, artifact?.platform, jobs]);
+  }, [artifact?.id, artifact?.platform, artifact?.audio_mode, jobs]);
 
   const renditionKey = [
     artifact?.id,
@@ -479,12 +494,24 @@ function ContentDetailDialog({
   const captionReady = providerText.length > 0
     && providerText.length <= MAX_SOCIAL_POST_TEXT;
   const sourceByKey = new Map((sources || []).map((source) => [source.asset_key, source]));
+  const lineageByKey = new Map(
+    (artifact.render_source_lineage || []).map((source) => [source.asset_key, source]),
+  );
   const selectedSources = (artifact.source_asset_keys || []).map((assetKey) => ({
     assetKey,
     source: sourceByKey.get(assetKey),
+    lineage: lineageByKey.get(assetKey),
   }));
-  const sourcesReady = selectedSources.length > 0 && selectedSources.every(({ source }) => (
-    source?.active !== false && source?.privacy_status === 'safe'
+  const sourcesReady = selectedSources.length > 0 && selectedSources.every(({ source, lineage }) => (
+    source?.active !== false
+    && source?.privacy_status === 'safe'
+    && (
+      !artifact.render_result_schema
+      || (
+        lineage?.source_sha256 === source?.source_sha256
+        && lineage?.source_reference === source?.source_reference
+      )
+    )
   ));
   const terminalRetryAvailable = latestJob
     && ['failed', 'canceled'].includes(latestJob.state)
@@ -580,6 +607,9 @@ function ContentDetailDialog({
       due_at: dueAt,
       timezone: 'America/Phoenix',
       scheduling_type: schedule.scheduling_type,
+      confirm_silent_automatic:
+        artifact.audio_mode === 'silent'
+        && schedule.scheduling_type === 'automatic',
       retry_terminal: terminalRetryAvailable,
     });
   };
@@ -712,6 +742,14 @@ function ContentDetailDialog({
                 <p className="break-all font-mono text-[9px] leading-relaxed text-white/35">
                   SHA-256: {artifact.media_sha256 || 'Not recorded'}
                 </p>
+                {artifact.render_result_schema && (
+                  <div className="grid gap-1 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-[9px] leading-relaxed text-white/40 sm:grid-cols-2">
+                    <span>Renderer: {artifact.render_profile_id || 'unknown'}</span>
+                    <span>Audio: {artifact.audio_mode === 'silent' ? 'silent track' : 'owned/licensed baked audio'}</span>
+                    <span>Bytes: {Number(artifact.media_byte_size || 0).toLocaleString()}</span>
+                    <span>Template: {artifact.render_template_version || 'unknown'}</span>
+                  </div>
+                )}
                 <div className={`rounded-lg border px-3 py-2 text-[10px] leading-relaxed ${
                   mediaInspection.status === 'failed'
                     ? 'border-red-300/20 bg-red-300/10 text-red-100'
@@ -827,14 +865,14 @@ function ContentDetailDialog({
               <DetailField
                 label="CTA URL"
                 helper={artifact.platform === 'instagram'
-                  ? 'The content ID is preserved in this URL, but Instagram caption URLs are not reliably clickable. Use a controlled bio, Story, comment/DM, or /start handoff before treating conversions as attributable.'
-                  : 'TikTok attribution is not connected yet.'}
+                  ? 'The content ID is preserved in the neutral /start URL, but Instagram caption URLs are not reliably clickable. Use a controlled bio, Story, or comment/DM handoff before treating conversions as attributable.'
+                  : 'The content ID is preserved in the neutral /start URL. Use a controlled TikTok profile-link or comment/DM handoff so viewers can reach the tracked URL.'}
               >
                 <Input
                   value={draft.cta_url}
                   onChange={(event) => updateDraft('cta_url', event.target.value)}
                   placeholder="https://firstknock.online"
-                  disabled={artifact.platform === 'instagram'}
+                  disabled
                   className="border-white/10 bg-black text-white"
                 />
               </DetailField>
@@ -1037,9 +1075,14 @@ function ContentDetailDialog({
                 Only the FirstKnock owner can queue delivery.
               </div>
             )}
+            {artifact.audio_mode === 'silent' && (
+              <div className="rounded-xl border border-blue-300/25 bg-blue-300/10 p-3 text-xs leading-relaxed text-blue-100">
+                This rendition has a silent audio track. Notification finish is selected by default so you can add owned, licensed, or native platform audio. Choosing Automatic explicitly confirms that publishing it silent is intentional.
+              </div>
+            )}
             {(!mediaReady || !captionReady || !sourcesReady) && (
               <div className="rounded-xl border border-red-300/25 bg-red-300/10 p-3 text-xs leading-relaxed text-red-100">
-                Delivery is blocked because the approved media, caption, or source privacy state no longer passes preflight. Revoke approval and create a reviewed revision.
+                Delivery is blocked because the approved media, caption, source safety, or source lineage no longer passes preflight. Revoke approval and create a reviewed revision.
               </div>
             )}
             <div className="grid gap-3 sm:grid-cols-2">
@@ -1066,7 +1109,7 @@ function ContentDetailDialog({
               Queue for Buffer worker
             </Button>
             <p className="text-[10px] leading-relaxed text-white/35">
-              Use notification mode when a post needs native trending audio or a final in-app edit.
+              Use notification mode when a post needs native trending audio or a final in-app edit. Automatic delivery publishes the exact approved bytes.
             </p>
           </div>
         )}
@@ -1171,6 +1214,7 @@ function ContentDetailDialog({
 
 export default function ContentEngineQueue({ accent, accentText }) {
   const queryClient = useQueryClient();
+  const renderImportRef = React.useRef(null);
   const [briefOpen, setBriefOpen] = React.useState(false);
   const [brief, setBrief] = React.useState(initialBrief);
   const [selectedId, setSelectedId] = React.useState('');
@@ -1191,7 +1235,7 @@ export default function ContentEngineQueue({ accent, accentText }) {
       const result = await base44.functions.invoke('manageGrowthContentEngine', payload);
       return result?.data || result;
     },
-    onSuccess: async (_result, variables) => {
+    onSuccess: async (result, variables) => {
       const messages = {
         register_sources: 'Audited FirstKnock source inventory loaded',
         create_draft: 'Manual content draft created',
@@ -1204,7 +1248,14 @@ export default function ContentEngineQueue({ accent, accentText }) {
         cancel_job: 'Queued Buffer delivery canceled',
         resolve_job: 'Buffer cancellation recorded; delivery job closed',
       };
-      toast.success(messages[variables?.action] || 'Content engine updated');
+      if (variables?.action === 'import_render_result') {
+        const previewNote = Number(result?.preview_skipped || 0)
+          ? `; ${Number(result.preview_skipped)} sanitized preview-only rendition(s) skipped`
+          : '';
+        toast.success(`${Number(result?.imported || 0)} rendered artifact(s) imported${previewNote}`);
+      } else {
+        toast.success(messages[variables?.action] || 'Content engine updated');
+      }
       if (['create_draft', 'generate_drafts'].includes(variables?.action)) {
         setBriefOpen(false);
         setBrief(initialBrief());
@@ -1257,6 +1308,7 @@ export default function ContentEngineQueue({ accent, accentText }) {
   const selected = artifacts.find((artifact) => artifact.id === selectedId) || null;
   const capabilities = data.capabilities || {};
   const publishingReady = capabilities.publishing_enabled === true;
+  const renderImportReady = capabilities.render_result_import_ready === true;
   const canApprove = capabilities.can_approve === true;
   const canSchedule = capabilities.can_schedule === true;
   const summary = data.summary || {};
@@ -1265,6 +1317,28 @@ export default function ContentEngineQueue({ accent, accentText }) {
     setBriefOpen(true);
   };
   const updateBrief = (field, value) => setBrief((current) => ({ ...current, [field]: value }));
+  const importRenderResult = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (file.size > 200_000) {
+      toast.error('Render result must be 200 KB or smaller');
+      return;
+    }
+    try {
+      const renderResult = JSON.parse(await file.text());
+      if (
+        renderResult?.schema_version !== 'growth-render-result.v1'
+        || !Array.isArray(renderResult?.artifacts)
+        || !renderResult.artifacts.length
+      ) {
+        throw new Error('invalid');
+      }
+      action.mutate({ action: 'import_render_result', render_result: renderResult });
+    } catch {
+      toast.error('Choose a valid growth-render-result.v1 JSON file');
+    }
+  };
 
   const toggleSource = (assetKey) => {
     setBrief((current) => ({
@@ -1336,16 +1410,35 @@ export default function ContentEngineQueue({ accent, accentText }) {
               Turn sanitized FirstKnock product moments into reviewed Instagram and TikTok drafts, then prepare the exact approved rendition for Buffer when delivery is configured.
             </p>
           </div>
-          <Button
-            type="button"
-            onClick={openBrief}
-            disabled={!sources.length || query.isLoading}
-            style={{ background: accent, color: accentText }}
-            className="w-full shrink-0 font-black lg:w-auto"
-          >
-            <Plus className="mr-2 h-4 w-4" />
-            New brief
-          </Button>
+          <div className="flex w-full shrink-0 flex-col gap-2 sm:flex-row lg:w-auto">
+            <input
+              ref={renderImportRef}
+              type="file"
+              accept="application/json,.json"
+              onChange={importRenderResult}
+              className="hidden"
+            />
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => renderImportRef.current?.click()}
+              disabled={!sources.length || !renderImportReady || query.isLoading || action.isPending}
+              className="w-full border-white/15 bg-transparent font-black text-white hover:bg-white/10 lg:w-auto"
+            >
+              <Upload className="mr-2 h-4 w-4" />
+              Import render result
+            </Button>
+            <Button
+              type="button"
+              onClick={openBrief}
+              disabled={!sources.length || query.isLoading}
+              style={{ background: accent, color: accentText }}
+              className="w-full font-black lg:w-auto"
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              New brief
+            </Button>
+          </div>
         </div>
 
         {query.isLoading ? (
@@ -1377,7 +1470,15 @@ export default function ContentEngineQueue({ accent, accentText }) {
               </div>
               <div className="rounded-xl border border-white/10 bg-black/30 p-3">
                 <p className="font-black uppercase tracking-wider text-white/35">Media rendering</p>
-                <p className="mt-1 font-bold text-white/70">External renderer required</p>
+                <p className="mt-1 font-bold text-white/70">
+                  {capabilities.render_result_import_ready
+                    ? 'Trusted render import ready'
+                    : !capabilities.immutable_media_origin_configured
+                      ? 'Renderer built; media host needed'
+                      : !capabilities.trusted_render_pack_configured
+                        ? 'Approve a render-pack hash'
+                        : 'Approve the renderer environment'}
+                </p>
               </div>
               <div className="rounded-xl border border-white/10 bg-black/30 p-3">
                 <p className="font-black uppercase tracking-wider text-white/35">Instagram delivery</p>
@@ -1389,6 +1490,14 @@ export default function ContentEngineQueue({ accent, accentText }) {
               </div>
             </div>
 
+            {!renderImportReady && (
+              <div className="mt-4 rounded-xl border border-violet-300/20 bg-violet-300/10 p-3">
+                <p className="text-xs font-black text-violet-100">Rendered-media import is locked</p>
+                <p className="mt-1 text-[11px] leading-relaxed text-violet-100/60">
+                  Configure the immutable media origin, then allowlist the reviewed pack and renderer-environment SHA-256 values before importing hosted candidates.
+                </p>
+              </div>
+            )}
             {!capabilities.draft_generation_configured && (
               <div className="mt-4 rounded-xl border border-amber-400/25 bg-amber-400/10 p-3">
                 <p className="text-xs font-black text-amber-100">Draft generation is off</p>
@@ -1416,7 +1525,7 @@ export default function ContentEngineQueue({ accent, accentText }) {
                 <Image className="mx-auto h-6 w-6 text-white/35" />
                 <p className="mt-3 font-black">Load the audited starter inventory</p>
                 <p className="mx-auto mt-1 max-w-md text-xs leading-relaxed text-white/40">
-                  This registers three already-redacted analytics images by opaque filename and sanitized summary. The local files are not uploaded or copied.
+                  This registers five audited, privacy-safe FirstKnock sources by opaque filename, exact SHA-256, and sanitized summary. The local files are not uploaded or copied.
                 </p>
                 <Button
                   type="button"
@@ -1498,7 +1607,7 @@ export default function ContentEngineQueue({ accent, accentText }) {
               <div className="mt-4 flex items-start gap-3 rounded-xl border border-white/10 bg-black/30 p-3">
                 <CircleAlert className="mt-0.5 h-4 w-4 shrink-0 text-white/40" />
                 <p className="text-[11px] leading-relaxed text-white/45">
-                  TikTok attribution is not configured yet. TikTok drafts can be reviewed and delivered, but conversions remain absent from the acquisition funnel until the neutral /start path and TikTok source reporting are added.
+                  TikTok drafts now preserve their platform and content ID in a neutral /start link. Verify a clickable profile-link or comment/DM handoff and TikTok source reporting before using conversions to choose winners.
                 </p>
               </div>
             )}

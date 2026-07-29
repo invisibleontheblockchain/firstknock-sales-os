@@ -77,6 +77,7 @@ export function memoryEntity(initial = [], name = 'Entity') {
     filter: 0,
     get: 0,
     create: 0,
+    delete: 0,
     update: 0,
     updateMany: 0,
   };
@@ -116,6 +117,13 @@ export function memoryEntity(initial = [], name = 'Entity') {
       };
       records.push(saved);
       return jsonClone(saved);
+    },
+    async delete(id) {
+      counters.delete += 1;
+      const index = records.findIndex((record) => record.id === id);
+      if (index < 0) throw new Error(`${name} not found`);
+      records.splice(index, 1);
+      return { success: true };
     },
     async update(id, value) {
       counters.update += 1;

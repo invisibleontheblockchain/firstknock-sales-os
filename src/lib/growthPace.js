@@ -154,7 +154,7 @@ export function getGrowthPaceStatus(pace) {
   if (!observed.retained_users) {
     return {
       title: 'Retention is the constraint',
-      detail: 'No Instagram-attributed retained user is present in the current signup cohort.',
+      detail: 'No social-attributed retained user is present in the current signup cohort.',
     };
   }
   const ratio = pace.pace_ratio.retained_users || 0;
@@ -175,11 +175,14 @@ export function buildGrowthPaceFromReport(report, options = {}) {
   return buildGrowthPace({
     ...options,
     retainedActiveUsers: report?.all_time?.retained_active_users_30d,
-    instagramReach28: recent.instagram_reach,
-    instagramActivatedWorkspaces28: recent.instagram_activated_workspaces,
-    instagramRetainedActiveUsers28: recent.instagram_retained_active_users_30d,
+    instagramReach28: recent.social_reach ?? recent.instagram_reach,
+    instagramActivatedWorkspaces28:
+      recent.social_activated_workspaces ?? recent.instagram_activated_workspaces,
+    instagramRetainedActiveUsers28:
+      recent.social_retained_active_users_30d
+      ?? recent.instagram_retained_active_users_30d,
     measuredContentAssets: evidence.measured_content_assets_all_time,
-    measuredContentAssets28: recent.instagram_content_assets,
+    measuredContentAssets28: recent.social_content_assets ?? recent.instagram_content_assets,
     observationWindowComplete: evidence.observation_window_complete,
   });
 }

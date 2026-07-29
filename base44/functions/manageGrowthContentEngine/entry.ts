@@ -3,12 +3,13 @@ import {
   MAX_SOCIAL_POST_TEXT,
   artifactApprovalHash,
   asArray,
+  canonicalStringify,
   compactText,
-  instagramTrackedUrl,
   isContentAddressedMediaUrl,
   isPublicHttpsUrl,
   isStablePublicHttpsUrl,
   normalized,
+  platformTrackedUrl,
   publishJobKey,
   publishJobRequestHash,
   safeProviderError,
@@ -20,6 +21,7 @@ import {
 
 const MAX_BODY_BYTES = 200_000;
 const MAX_SOURCE_BATCH = 50;
+const MAX_RENDER_IMPORT = 30;
 const MAX_LIST = 500;
 const DEPENDENCY_PAGE_SIZE = 1000;
 const MAX_DEPENDENCY_RECORDS = 25000;
@@ -37,6 +39,10 @@ const SCHEDULE_LOCK_MS = 5 * 60 * 1000;
 const SOURCE_PRIVACY_FENCE_MS = 10 * 60 * 1000;
 const WORKER_HEARTBEAT_KEY = "buffer-publisher";
 const WORKER_HEARTBEAT_MAX_AGE_MS = 3 * 60 * 1000;
+const RENDER_RESULT_SCHEMA = "growth-render-result.v1";
+const RENDER_PROFILE_ID = "firstknock-h264-bitexact-v2";
+const MAX_MEDIA_BYTES = 250 * 1024 * 1024;
+const AUDIO_MODES = new Set(["silent", "baked_owned_or_licensed"]);
 
 function response(data: any, status = 200): Response {
   return Response.json(data, {
@@ -75,6 +81,38 @@ function configuredMediaOrigin(): string {
   }
 }
 
+function configuredSha256Allowlist(keys: string[]): Set<string> {
+  const values = keys
+    .map((key) => Deno.env.get(key))
+    .filter(Boolean)
+    .join(",")
+    .split(/[\s,]+/)
+    .map((value) => normalized(value))
+    .filter(Boolean);
+  if (
+    !values.length
+    || values.length > 20
+    || values.some((value) => !/^[a-f0-9]{64}$/.test(value))
+  ) {
+    return new Set();
+  }
+  return new Set(values);
+}
+
+function configuredRenderPackHashes(): Set<string> {
+  return configuredSha256Allowlist([
+    "GROWTH_RENDER_PACK_SHA256",
+    "GROWTH_RENDER_PACK_SHA256S",
+  ]);
+}
+
+function configuredRenderEnvironmentHashes(): Set<string> {
+  return configuredSha256Allowlist([
+    "GROWTH_RENDER_ENVIRONMENT_SHA256",
+    "GROWTH_RENDER_ENVIRONMENT_SHA256S",
+  ]);
+}
+
 function mediaUsesOrigin(value: any, origin: string): boolean {
   if (!origin || !isStablePublicHttpsUrl(value)) return false;
   try {
@@ -94,6 +132,29 @@ function cleanStringList(value: any, maxItems: number, itemMax: number): string[
 function cleanTokenList(value: any, maxItems = 20): string[] {
   return [...new Set(asArray(value).map((item) => token(item)).filter(Boolean))]
     .slice(0, maxItems);
+}
+
+function cleanRenderSourceLineage(value: any): any[] | null {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value) || value.length < 1 || value.length > 20) {
+    return null;
+  }
+  const lineage = value.map((source) => ({
+    asset_key: token(source?.asset_key),
+    source_reference: localReference(source?.source_reference),
+    source_sha256: normalized(source?.source_sha256),
+  }));
+  if (
+    lineage.some((source) => (
+      !source.asset_key
+      || !source.source_reference
+      || !/^[a-f0-9]{64}$/.test(source.source_sha256)
+    ))
+    || new Set(lineage.map((source) => source.asset_key)).size !== lineage.length
+  ) {
+    return null;
+  }
+  return lineage;
 }
 
 function localReference(value: any): string | null {
@@ -175,12 +236,10 @@ function normalizeDraft(
   const requestedCtaUrl = String(
     value?.cta_url
       ?? current?.cta_url
-      ?? (platform === "instagram"
-        ? instagramTrackedUrl(campaign, platformContentId)
-        : "https://firstknock.online"),
+      ?? "",
   ).trim().slice(0, 2048);
-  const ctaUrl = platform === "instagram"
-    ? instagramTrackedUrl(campaign, platformContentId)
+  const ctaUrl = PLATFORMS.has(platform)
+    ? platformTrackedUrl(platform, campaign, platformContentId)
     : requestedCtaUrl;
   const disclosure = compactText(value?.disclosure ?? current?.disclosure, 500);
   const sourceAssetKeys = cleanTokenList(
@@ -211,6 +270,53 @@ function normalizeDraft(
       value?.thumbnail_offset_ms ?? current?.thumbnail_offset_ms ?? 0,
     )),
   );
+  const renderResultSchema = compactText(
+    value?.render_result_schema ?? current?.render_result_schema,
+    80,
+  );
+  const renderPackSha256 = normalized(
+    value?.render_pack_sha256 ?? current?.render_pack_sha256,
+  );
+  const renderTemplateId = token(
+    value?.render_template_id ?? current?.render_template_id,
+  );
+  const renderTemplateVersion = compactText(
+    value?.render_template_version ?? current?.render_template_version,
+    80,
+  );
+  const renderInputSha256 = normalized(
+    value?.render_input_sha256 ?? current?.render_input_sha256,
+  );
+  const renderProfileId = token(
+    value?.render_profile_id ?? current?.render_profile_id,
+  );
+  const renderEnvironmentSha256 = normalized(
+    value?.render_environment_sha256 ?? current?.render_environment_sha256,
+  );
+  const renderDeliveryKey = String(
+    value?.render_delivery_key ?? current?.render_delivery_key ?? "",
+  ).trim().slice(0, 300);
+  const renderSourceLineage = cleanRenderSourceLineage(
+    value?.render_source_lineage ?? current?.render_source_lineage,
+  );
+  const normalizedRenderSourceLineage = renderSourceLineage || [];
+  const mediaByteSizeValue =
+    value?.media_byte_size ?? current?.media_byte_size;
+  const mediaByteSize = mediaByteSizeValue === undefined
+    ? 0
+    : Number(mediaByteSizeValue);
+  const audioMode = token(value?.audio_mode ?? current?.audio_mode);
+  const hasRenderProvenance = Boolean(
+    renderResultSchema
+    || renderPackSha256
+    || renderTemplateId
+    || renderTemplateVersion
+    || renderInputSha256
+    || renderProfileId
+    || renderEnvironmentSha256
+    || renderDeliveryKey
+    || normalizedRenderSourceLineage.length
+  );
   const providerText = socialPostText({
     caption,
     disclosure,
@@ -240,6 +346,29 @@ function normalizeDraft(
     || (mediaUrl && !isStablePublicHttpsUrl(mediaUrl))
     || (mediaSha256 && !/^[a-f0-9]{64}$/.test(mediaSha256))
     || (mimeType && !MIME_TYPES.has(mimeType))
+    || renderSourceLineage === null
+    || (
+      hasRenderProvenance
+      && (
+        renderResultSchema !== RENDER_RESULT_SCHEMA
+        || !/^[a-f0-9]{64}$/.test(renderPackSha256)
+        || !renderTemplateId
+        || !renderTemplateVersion
+        || !/^[a-f0-9]{64}$/.test(renderInputSha256)
+        || !renderProfileId
+        || !/^[a-f0-9]{64}$/.test(renderEnvironmentSha256)
+        || renderDeliveryKey
+          !== `sha256/${mediaSha256}-${platformContentId}.mp4`
+        || normalizedRenderSourceLineage.length !== sourceAssetKeys.length
+        || normalizedRenderSourceLineage.some(
+          (source, index) => source.asset_key !== sourceAssetKeys[index],
+        )
+        || !Number.isSafeInteger(mediaByteSize)
+        || mediaByteSize < 1
+        || mediaByteSize > MAX_MEDIA_BYTES
+        || !AUDIO_MODES.has(audioMode)
+      )
+    )
   ) {
     return null;
   }
@@ -273,6 +402,19 @@ function normalizeDraft(
     height: height || undefined,
     duration_ms: durationMs || undefined,
     thumbnail_offset_ms: thumbnailOffsetMs || undefined,
+    render_result_schema: renderResultSchema || undefined,
+    render_pack_sha256: renderPackSha256 || undefined,
+    render_template_id: renderTemplateId || undefined,
+    render_template_version: renderTemplateVersion || undefined,
+    render_input_sha256: renderInputSha256 || undefined,
+    render_profile_id: renderProfileId || undefined,
+    render_environment_sha256: renderEnvironmentSha256 || undefined,
+    render_delivery_key: renderDeliveryKey || undefined,
+    render_source_lineage: normalizedRenderSourceLineage.length
+      ? normalizedRenderSourceLineage
+      : undefined,
+    media_byte_size: mediaByteSize || undefined,
+    audio_mode: audioMode || undefined,
     review_status: "pending",
     privacy_cleared: false,
     demo_labeled: false,
@@ -316,6 +458,239 @@ function artifactMediaReady(artifact: any): boolean {
   return false;
 }
 
+function normalizeRenderImportItem(value: any, context: any): any | null {
+  if (
+    token(value?.distribution_state) !== "publish_candidate"
+    || value?.qc?.ready_for_content_engine_import !== true
+  ) {
+    return null;
+  }
+  const artifactKey = token(value?.artifact_key);
+  const mediaSha256 = normalized(value?.media_sha256);
+  const renderInputSha256 = normalized(value?.render_input_sha256);
+  const renderEnvironmentSha256 = normalized(
+    value?.render_environment_sha256,
+  );
+  const deliveryKey = String(value?.delivery_key || "").trim();
+  const byteSize = Number(value?.byte_size);
+  const audioMode = token(value?.qc?.audio_mode);
+  const artifactFields = value?.artifact_fields;
+  const trustedArtifact = context.packArtifact;
+  const sourceAssetKeys = cleanTokenList(artifactFields?.source_asset_keys);
+  const envelopeSourceAssetKeys = cleanTokenList(value?.source_asset_keys);
+  const lineage = cleanRenderSourceLineage(value?.source_lineage);
+  const draft = normalizeDraft({
+    ...artifactFields,
+    render_result_schema: RENDER_RESULT_SCHEMA,
+    render_pack_sha256: context.packSha256,
+    render_template_id: value?.template_id,
+    render_template_version: value?.template_version,
+    render_input_sha256: renderInputSha256,
+    render_profile_id: value?.render_profile_id,
+    render_environment_sha256: renderEnvironmentSha256,
+    render_delivery_key: deliveryKey,
+    render_source_lineage: lineage,
+    media_byte_size: byteSize,
+    audio_mode: audioMode,
+  });
+  let parsedMediaUrl;
+  try {
+    parsedMediaUrl = new URL(String(value?.media_url || ""));
+  } catch {
+    return null;
+  }
+  if (
+    !draft
+    || !lineage
+    || draft.artifact_key !== artifactKey
+    || renderInputSha256 !== context.expectedRenderInputSha256
+    || draft.concept_id !== token(value?.concept_id)
+    || draft.platform !== token(value?.platform)
+    || draft.platform_content_id !== token(value?.platform_content_id)
+    || value?.template_id !== context.templateId
+    || value?.template_version !== context.templateVersion
+    || token(value?.render_profile_id) !== RENDER_PROFILE_ID
+    || token(value?.render_profile_id) !== context.renderProfileId
+    || renderEnvironmentSha256 !== context.renderEnvironmentSha256
+    || artifactFields?.artifact_key !== trustedArtifact?.artifact_key
+    || artifactFields?.concept_id !== trustedArtifact?.concept_id
+    || artifactFields?.campaign !== trustedArtifact?.campaign
+    || artifactFields?.platform !== trustedArtifact?.platform
+    || artifactFields?.platform_content_id
+      !== trustedArtifact?.platform_content_id
+    || artifactFields?.title !== trustedArtifact?.title
+    || artifactFields?.pillar !== trustedArtifact?.pillar
+    || artifactFields?.format !== trustedArtifact?.format
+    || artifactFields?.hook !== trustedArtifact?.hook
+    || artifactFields?.caption !== trustedArtifact?.caption
+    || artifactFields?.cta_label !== trustedArtifact?.cta_label
+    || artifactFields?.cta_url !== trustedArtifact?.cta_url
+    || artifactFields?.disclosure !== trustedArtifact?.disclosure
+    || JSON.stringify(asArray(artifactFields?.overlay_text))
+      !== JSON.stringify(asArray(trustedArtifact?.overlay_text))
+    || JSON.stringify(asArray(artifactFields?.shot_list))
+      !== JSON.stringify(asArray(trustedArtifact?.shot_list))
+    || sourceAssetKeys.length !== 1
+    || sourceAssetKeys[0] !== trustedArtifact?.source_asset_key
+    || draft.media_url !== String(value?.media_url || "").trim()
+    || draft.media_sha256 !== mediaSha256
+    || draft.mime_type !== "video/mp4"
+    || value?.mime_type !== draft.mime_type
+    || Number(draft.width) !== 1080
+    || Number(draft.height) !== 1920
+    || value?.width !== draft.width
+    || value?.height !== draft.height
+    || Number(draft.duration_ms) < 5000
+    || Number(draft.duration_ms) > 60000
+    || value?.duration_ms !== draft.duration_ms
+    || Number(draft.thumbnail_offset_ms) < 0
+    || Number(draft.thumbnail_offset_ms) >= Number(draft.duration_ms)
+    || value?.thumbnail_offset_ms !== draft.thumbnail_offset_ms
+    || !/^[a-f0-9]{64}$/.test(renderInputSha256)
+    || !/^[a-f0-9]{64}$/.test(renderEnvironmentSha256)
+    || !/^[a-f0-9]{64}$/.test(mediaSha256)
+    || deliveryKey !== `sha256/${mediaSha256}-${artifactKey}.mp4`
+    || parsedMediaUrl.pathname !== `/${deliveryKey}`
+    || !mediaUsesOrigin(draft.media_url, context.mediaOrigin)
+    || !isContentAddressedMediaUrl(draft.media_url, mediaSha256)
+    || value?.video_codec !== "h264"
+    || value?.pixel_format !== "yuv420p"
+    || value?.frame_rate !== 30
+    || value?.audio_codec !== "aac"
+    || value?.audio_sample_rate !== 48000
+    || value?.audio_channels !== 2
+    || value?.color_space !== "bt709"
+    || value?.color_transfer !== "bt709"
+    || value?.color_primaries !== "bt709"
+    || value?.fast_start !== true
+    || !Number.isSafeInteger(byteSize)
+    || byteSize < 1
+    || byteSize > MAX_MEDIA_BYTES
+    || value?.qc?.source_sha256_verified !== true
+    || value?.qc?.privacy_status !== "safe"
+    || value?.qc?.rights_status !== "firstknock_owned"
+    || value?.qc?.disclosure_burned_in !== true
+    || value?.qc?.hook_first_frame !== true
+    || value?.qc?.third_party_watermark !== false
+    || audioMode !== "silent"
+    || value?.qc?.ready_for_human_review !== true
+    || lineage.length !== sourceAssetKeys.length
+    || lineage[0]?.source_reference
+      !== context.packSource?.source_reference
+    || lineage[0]?.source_sha256 !== context.packSource?.source_sha256
+    || envelopeSourceAssetKeys.length !== sourceAssetKeys.length
+    || asArray(value?.source_asset_keys).length !== sourceAssetKeys.length
+    || lineage.some((source, index) => (
+      source.asset_key !== sourceAssetKeys[index]
+      || envelopeSourceAssetKeys[index] !== sourceAssetKeys[index]
+    ))
+  ) {
+    return null;
+  }
+  return {
+    fields: {
+      ...artifactFields,
+      render_result_schema: RENDER_RESULT_SCHEMA,
+      render_pack_sha256: context.packSha256,
+      render_template_id: value?.template_id,
+      render_template_version: value?.template_version,
+      render_input_sha256: renderInputSha256,
+      render_profile_id: value?.render_profile_id,
+      render_environment_sha256: renderEnvironmentSha256,
+      render_delivery_key: deliveryKey,
+      render_source_lineage: lineage,
+      media_byte_size: byteSize,
+      audio_mode: audioMode,
+    },
+    draft,
+    lineage,
+  };
+}
+
+function renderImportMatches(current: any, next: any): boolean {
+  const fields = [
+    "artifact_key",
+    "concept_id",
+    "campaign",
+    "platform",
+    "platform_content_id",
+    "title",
+    "pillar",
+    "format",
+    "generation_status",
+    "hook",
+    "caption",
+    "provider_text",
+    "cta_label",
+    "cta_url",
+    "disclosure",
+    "ai_generated",
+    "media_url",
+    "media_sha256",
+    "mime_type",
+    "width",
+    "height",
+    "duration_ms",
+    "thumbnail_offset_ms",
+    "render_result_schema",
+    "render_pack_sha256",
+    "render_template_id",
+    "render_template_version",
+    "render_input_sha256",
+    "render_profile_id",
+    "render_environment_sha256",
+    "render_delivery_key",
+    "media_byte_size",
+    "audio_mode",
+  ];
+  return fields.every((field) => (
+    JSON.stringify(current?.[field] ?? null) === JSON.stringify(next?.[field] ?? null)
+  ))
+    && JSON.stringify(asArray(current?.source_asset_keys))
+      === JSON.stringify(asArray(next?.source_asset_keys))
+    && JSON.stringify(asArray(current?.overlay_text))
+      === JSON.stringify(asArray(next?.overlay_text))
+    && JSON.stringify(asArray(current?.shot_list))
+      === JSON.stringify(asArray(next?.shot_list))
+    && JSON.stringify(asArray(current?.render_source_lineage))
+      === JSON.stringify(asArray(next?.render_source_lineage));
+}
+
+async function reconcileNewRenderArtifact(
+  artifactEntity: any,
+  saved: any,
+  expected: any,
+): Promise<any> {
+  const rows = asArray(await artifactEntity.filter(
+    { artifact_key: expected.artifact_key },
+    "created_date",
+    50,
+  )).sort((left, right) => (
+    String(left?.created_date || "").localeCompare(
+      String(right?.created_date || ""),
+    )
+    || String(left?.id || "").localeCompare(String(right?.id || ""))
+  ));
+  if (
+    rows.length === 1
+    && String(rows[0]?.id || "") === String(saved?.id || "")
+  ) {
+    return { status: "created", artifact: rows[0] };
+  }
+  const winner = rows[0];
+  const savedIsWinner = String(winner?.id || "") === String(saved?.id || "");
+  if (!savedIsWinner && saved?.id) {
+    await artifactEntity.delete(saved.id).catch(() => null);
+  }
+  if (!winner || !renderImportMatches(winner, expected)) {
+    return { status: "conflict" };
+  }
+  return {
+    status: savedIsWinner ? "created" : "idempotent",
+    artifact: winner,
+  };
+}
+
 async function sourcesForArtifact(sourceEntity: any, keys: string[]): Promise<any[]> {
   if (!keys.length) return [];
   const rows = asArray(await sourceEntity.filter(
@@ -345,6 +720,28 @@ function sourcesAreSafe(sources: any[], expectedCount: number): boolean {
       && source?.privacy_change_pending !== true
       && token(source?.privacy_status) === "safe"
     ));
+}
+
+function renderLineageMatchesSources(artifact: any, sources: any[]): boolean {
+  if (!artifact?.render_result_schema) return true;
+  const lineage = cleanRenderSourceLineage(artifact?.render_source_lineage);
+  const sourceKeys = cleanTokenList(artifact?.source_asset_keys);
+  if (
+    !lineage
+    || lineage.length !== sourceKeys.length
+    || sources.length !== sourceKeys.length
+  ) {
+    return false;
+  }
+  const sourceByKey = new Map(
+    sources.map((source) => [token(source?.asset_key), source]),
+  );
+  return lineage.every((item, index) => {
+    const source = sourceByKey.get(item.asset_key);
+    return item.asset_key === sourceKeys[index]
+      && item.source_reference === localReference(source?.source_reference)
+      && item.source_sha256 === normalized(source?.source_sha256);
+  });
 }
 
 function publisherEnvironment(): any {
@@ -417,6 +814,9 @@ async function recentWorkerHeartbeat(
 
 async function publicCapabilities(user: any, heartbeatEntity: any): Promise<any> {
   const environment = publisherEnvironment();
+  const renderPackConfigured = configuredRenderPackHashes().size > 0;
+  const renderEnvironmentConfigured =
+    configuredRenderEnvironmentHashes().size > 0;
   const heartbeat = await recentWorkerHeartbeat(heartbeatEntity, environment);
   const publisherReady = environment.publisherReady && heartbeat.ready;
   const instagramConfigured = Boolean(environment.instagramChannelId);
@@ -426,8 +826,14 @@ async function publicCapabilities(user: any, heartbeatEntity: any): Promise<any>
     can_schedule: canApproveGrowth(user),
     draft_generation_configured:
       normalized(Deno.env.get("GROWTH_CONTENT_GENERATION_ENABLED")) === "true",
-    media_rendering: "external_required",
+    media_rendering: "manifest_import",
     immutable_media_origin_configured: Boolean(environment.mediaOrigin),
+    trusted_render_pack_configured: renderPackConfigured,
+    trusted_render_environment_configured: renderEnvironmentConfigured,
+    render_result_import_ready:
+      Boolean(environment.mediaOrigin)
+      && renderPackConfigured
+      && renderEnvironmentConfigured,
     publishing_environment_ready: environment.publisherReady,
     worker_healthy: heartbeat.ready,
     worker_last_seen_at: heartbeat.observedAt,
@@ -442,7 +848,7 @@ async function publicCapabilities(user: any, heartbeatEntity: any): Promise<any>
       delivery: publisherReady && tiktokConfigured
         ? "buffer"
         : "not_configured",
-      attribution: "not_configured",
+      attribution: "configured",
     },
     planning_timezone: "America/Phoenix",
     approval_policy: "owner_only",
@@ -519,6 +925,18 @@ function sourceSafetyDowngraded(current: any, next: any): boolean {
       next?.active === false
       || token(next?.privacy_status) !== "safe"
   );
+}
+
+function sourceRenderIdentityChanged(current: any, next: any): boolean {
+  return localReference(current?.source_reference)
+      !== localReference(next?.source_reference)
+    || normalized(current?.source_sha256)
+      !== normalized(next?.source_sha256);
+}
+
+function sourceRequiresDependencyFence(current: any, next: any): boolean {
+  return sourceSafetyDowngraded(current, next)
+    || sourceRenderIdentityChanged(current, next);
 }
 
 function sourcePrivacyFenceActive(source: any, nowMs = Date.now()): boolean {
@@ -650,6 +1068,17 @@ function optionalDraftFields(value: any): {
     "height",
     "duration_ms",
     "thumbnail_offset_ms",
+    "render_result_schema",
+    "render_pack_sha256",
+    "render_template_id",
+    "render_template_version",
+    "render_input_sha256",
+    "render_profile_id",
+    "render_environment_sha256",
+    "render_delivery_key",
+    "render_source_lineage",
+    "media_byte_size",
+    "audio_mode",
     "review_note",
     "reviewed_by",
     "reviewed_at",
@@ -831,8 +1260,34 @@ function measurementSequence(content: string): number {
   return (Math.abs(value) % 10000) + 1;
 }
 
-function instagramMeasurementPlan(artifact: any, dueAt: string): any {
+function normalizedMeasurementPlatform(value: any): string {
+  return token(value) === "tiktok" ? "tiktok" : "instagram";
+}
+
+async function measurementPlanRows(
+  planEntity: any,
+  platform: any,
+  campaign: any,
+  content: any,
+): Promise<any[]> {
+  const expectedPlatform = normalizedMeasurementPlatform(platform);
+  return asArray(await planEntity.filter(
+    {
+      campaign: token(campaign, "1000-users"),
+      content: token(content),
+    },
+    "-updated_date",
+    50,
+  )).filter((plan) => (
+    normalizedMeasurementPlatform(plan?.platform) === expectedPlatform
+  ));
+}
+
+function socialMeasurementPlan(artifact: any, dueAt: string): any {
+  const platform = normalizedMeasurementPlatform(artifact?.platform);
+  const platformLabel = platform === "tiktok" ? "TikTok" : "Instagram";
   return {
+    platform,
     campaign: artifact.campaign,
     content: artifact.platform_content_id,
     sprint: "content-engine",
@@ -843,8 +1298,8 @@ function instagramMeasurementPlan(artifact: any, dueAt: string): any {
     script: artifact.provider_text,
     cta_label: artifact.cta_label,
     cta_channel: "caption_url",
-    primary_metric: "Instagram activated users",
-    hypothesis: `${artifact.pillar} content will convert qualified organic reach into FirstKnock activation.`,
+    primary_metric: `${platformLabel} activated users`,
+    hypothesis: `${artifact.pillar} content on ${platformLabel} will convert qualified organic reach into FirstKnock activation.`,
     comparison_group: token(`${artifact.pillar}-${artifact.format}`),
     major_variable: compactText(artifact.hook, 160),
     planned_publish_at: dueAt,
@@ -854,20 +1309,18 @@ function instagramMeasurementPlan(artifact: any, dueAt: string): any {
   };
 }
 
-async function setInstagramMeasurementDelivery(
+async function setSocialMeasurementDelivery(
   planEntity: any,
   job: any,
   deliveryStatus: "planned" | "published" | "canceled",
 ): Promise<{ ok: boolean; error?: string }> {
-  if (token(job?.platform) !== "instagram") return { ok: true };
-  const rows = asArray(await planEntity.filter(
-    {
-      campaign: token(job?.campaign, "1000-users"),
-      content: token(job?.platform_content_id),
-    },
-    "-updated_date",
-    20,
-  ));
+  if (!PLATFORMS.has(token(job?.platform))) return { ok: true };
+  const rows = await measurementPlanRows(
+    planEntity,
+    job?.platform,
+    job?.campaign,
+    job?.platform_content_id,
+  );
   if (!rows.length && deliveryStatus === "canceled") return { ok: true };
   if (rows.length !== 1) return { ok: false, error: "content_plan_conflict" };
   const current = rows[0];
@@ -896,7 +1349,7 @@ async function queueCanceledPlanReconciliation(
   job: any,
 ): Promise<any | null> {
   if (
-    token(job?.platform) !== "instagram"
+    !PLATFORMS.has(token(job?.platform))
     || token(job?.state) !== "canceled"
   ) {
     return null;
@@ -930,7 +1383,7 @@ async function reconcileCanceledMeasurementPlan(
   job?: any;
   error?: string;
 }> {
-  const delivery = await setInstagramMeasurementDelivery(
+  const delivery = await setSocialMeasurementDelivery(
     planEntity,
     job,
     "canceled",
@@ -948,22 +1401,20 @@ async function reconcileCanceledMeasurementPlan(
     : { ok: false, job: latest, error: delivery.error };
 }
 
-async function syncInstagramMeasurementPlan(
+async function syncSocialMeasurementPlan(
   planEntity: any,
   artifact: any,
   dueAt: string,
 ): Promise<{ ok: boolean; error?: string }> {
-  if (artifact?.platform !== "instagram") return { ok: true };
-  const rows = asArray(await planEntity.filter(
-    {
-      campaign: artifact.campaign,
-      content: artifact.platform_content_id,
-    },
-    "-updated_date",
-    20,
-  ));
+  if (!PLATFORMS.has(token(artifact?.platform))) return { ok: true };
+  const rows = await measurementPlanRows(
+    planEntity,
+    artifact?.platform,
+    artifact?.campaign,
+    artifact?.platform_content_id,
+  );
   if (rows.length > 1) return { ok: false, error: "content_plan_conflict" };
-  const plan = instagramMeasurementPlan(artifact, dueAt);
+  const plan = socialMeasurementPlan(artifact, dueAt);
   if (rows[0]?.published_at) {
     return { ok: false, error: "content_plan_already_published" };
   }
@@ -980,14 +1431,12 @@ async function syncInstagramMeasurementPlan(
     }
   } else {
     await planEntity.create(plan);
-    const verified = asArray(await planEntity.filter(
-      {
-        campaign: artifact.campaign,
-        content: artifact.platform_content_id,
-      },
-      "-updated_date",
-      20,
-    ));
+    const verified = await measurementPlanRows(
+      planEntity,
+      artifact?.platform,
+      artifact?.campaign,
+      artifact?.platform_content_id,
+    );
     if (verified.length !== 1) {
       return { ok: false, error: "content_plan_conflict" };
     }
@@ -1227,28 +1676,36 @@ Deno.serve(async (req: Request) => {
       }
       let created = 0;
       let updated = 0;
-      const downgrades = sources.filter((source: any) => {
+      const guardedChanges = sources.filter((source: any) => {
         const current = grouped.get(source.asset_key)?.[0];
-        return current?.id && sourceSafetyDowngraded(current, source);
+        return current?.id && sourceRequiresDependencyFence(current, source);
       });
-      const downgradeKeys = new Set(
-        downgrades.map((source: any) => source.asset_key),
+      const guardedKeys = new Set(
+        guardedChanges.map((source: any) => source.asset_key),
+      );
+      const lineageChangeKeys = new Set(
+        guardedChanges
+          .filter((source: any) => sourceRenderIdentityChanged(
+            grouped.get(source.asset_key)?.[0],
+            source,
+          ))
+          .map((source: any) => source.asset_key),
       );
       if (existing.some((source) => sourcePrivacyFenceActive(source))) {
         return response({ error: "source_privacy_change_in_progress" }, 409);
       }
       if (existing.some((source) => (
         source?.privacy_change_pending === true
-        && !downgradeKeys.has(token(source?.asset_key))
+        && !guardedKeys.has(token(source?.asset_key))
       ))) {
         return response({
           error: "stale_source_privacy_change_requires_downgrade_retry",
         }, 409);
       }
       const privacyFences: any[] = [];
-      if (downgrades.length) {
+      if (guardedChanges.length) {
         try {
-          for (const source of downgrades) {
+          for (const source of guardedChanges) {
             const current = grouped.get(source.asset_key)?.[0];
             const fence = await acquireSourcePrivacyFence(sourceEntity, current);
             if (!fence) {
@@ -1262,7 +1719,7 @@ Deno.serve(async (req: Request) => {
           ]);
           const dependentArtifacts = allArtifacts.filter((artifact) => (
             cleanTokenList(artifact?.source_asset_keys)
-              .some((key) => downgradeKeys.has(key))
+              .some((key) => guardedKeys.has(key))
           ));
           const artifactIds = new Set(
             dependentArtifacts.map((artifact) => String(artifact?.id || "")),
@@ -1300,7 +1757,7 @@ Deno.serve(async (req: Request) => {
             return response({
               error: "source_privacy_cancellation_required",
               message:
-                "Cancel or resolve live and ambiguous provider work before downgrading source privacy.",
+                "Cancel or resolve live and ambiguous provider work before changing source safety or render identity.",
             }, 409);
           }
           const cancelableJobs = dependentJobs.filter((job) => (
@@ -1310,6 +1767,17 @@ Deno.serve(async (req: Request) => {
             )
           ));
           for (const job of cancelableJobs) {
+            const dependentArtifact = dependentArtifacts.find((artifact) => (
+              String(artifact?.id || "") === String(job?.artifact_id || "")
+              || (
+                token(artifact?.platform) === token(job?.platform)
+                && token(artifact?.platform_content_id)
+                  === token(job?.platform_content_id)
+              )
+            ));
+            const lineageChanged = cleanTokenList(
+              dependentArtifact?.source_asset_keys,
+            ).some((key) => lineageChangeKeys.has(key));
             const canceledAt = new Date().toISOString();
             const verifiedCancellation = ownerVerifiedProviderCancellation(job);
             const canceled = await jobEntity.updateMany(
@@ -1327,9 +1795,12 @@ Deno.serve(async (req: Request) => {
                   ...(verifiedCancellation
                     ? {}
                     : {
-                      last_error_code: "source_privacy_downgraded",
-                      last_error_message:
-                        "A dependent source was blocked before provider submission.",
+                      last_error_code: lineageChanged
+                        ? "source_render_lineage_changed"
+                        : "source_privacy_downgraded",
+                      last_error_message: lineageChanged
+                        ? "A rendered source changed before provider submission."
+                        : "A dependent source was blocked before provider submission.",
                     }),
                 },
                 $unset: {
@@ -1343,7 +1814,7 @@ Deno.serve(async (req: Request) => {
               return response({
                 error: "source_privacy_cancellation_required",
                 message:
-                  "A dependent publish job began processing while source privacy was changing.",
+                  "A dependent publish job began processing while source safety or render identity was changing.",
               }, 409);
             }
             const saved = await jobEntity.get(job.id);
@@ -1360,7 +1831,7 @@ Deno.serve(async (req: Request) => {
               }, 409);
             }
           }
-          for (const source of downgrades) {
+          for (const source of guardedChanges) {
             const fence = privacyFences.find(
               (item) => item.assetKey === source.asset_key,
             );
@@ -1395,7 +1866,7 @@ Deno.serve(async (req: Request) => {
         }
       }
       for (const source of sources) {
-        if (downgradeKeys.has(source.asset_key)) continue;
+        if (guardedKeys.has(source.asset_key)) continue;
         const current = grouped.get(source.asset_key)?.[0];
         if (current?.id) {
           const result = await sourceEntity.updateMany(
@@ -1427,6 +1898,248 @@ Deno.serve(async (req: Request) => {
         }
       }
       return response({ success: true, created, updated, total: sources.length });
+    }
+
+    if (action === "import_render_result") {
+      const mediaOrigin = configuredMediaOrigin();
+      const allowedPackHashes = configuredRenderPackHashes();
+      const allowedRenderEnvironmentHashes =
+        configuredRenderEnvironmentHashes();
+      const renderResult = body?.render_result;
+      const renderPack = renderResult?.pack;
+      const rawArtifacts = asArray(renderResult?.artifacts);
+      const packArtifacts = asArray(renderPack?.artifacts);
+      const packSources = asArray(renderPack?.sources);
+      const packSha256 = normalized(renderResult?.pack_sha256);
+      const templateId = token(renderResult?.template?.id);
+      const templateVersion = compactText(renderResult?.template?.version, 80);
+      const renderProfileId = token(renderResult?.renderer?.profile_id);
+      const renderEnvironment = {
+        profile_id: renderProfileId,
+        renderer_sha256: normalized(renderResult?.renderer?.renderer_sha256),
+        bold_font_sha256: normalized(
+          renderResult?.renderer?.bold_font_sha256,
+        ),
+        regular_font_sha256: normalized(
+          renderResult?.renderer?.regular_font_sha256,
+        ),
+        ffmpeg_build_sha256: normalized(
+          renderResult?.renderer?.ffmpeg_build_sha256,
+        ),
+      };
+      const renderEnvironmentSha256 = normalized(
+        renderResult?.renderer?.environment_sha256,
+      );
+      const [computedPackSha256, computedRenderEnvironmentSha256] =
+        await Promise.all([
+          sha256Hex(canonicalStringify(renderPack)),
+          sha256Hex(canonicalStringify(renderEnvironment)),
+        ]);
+      const packArtifactByKey = new Map(
+        packArtifacts.map((artifact) => [token(artifact?.artifact_key), artifact]),
+      );
+      const packSourceByKey = new Map(
+        packSources.map((source) => [token(source?.asset_key), source]),
+      );
+      if (
+        !mediaOrigin
+        || !allowedPackHashes.size
+        || !allowedRenderEnvironmentHashes.size
+        || renderResult?.schema_version !== RENDER_RESULT_SCHEMA
+        || !token(renderResult?.batch_id)
+        || renderPack?.schema_version !== "growth-render-pack.v1"
+        || token(renderPack?.batch_id) !== token(renderResult?.batch_id)
+        || computedPackSha256 !== packSha256
+        || !allowedPackHashes.has(packSha256)
+        || !templateId
+        || !templateVersion
+        || token(renderPack?.template?.id) !== templateId
+        || compactText(renderPack?.template?.version, 80) !== templateVersion
+        || renderProfileId !== RENDER_PROFILE_ID
+        || !/^[a-f0-9]{64}$/.test(renderEnvironmentSha256)
+        || !allowedRenderEnvironmentHashes.has(renderEnvironmentSha256)
+        || Object.values(renderEnvironment).some((value) => (
+          value !== RENDER_PROFILE_ID
+          && !/^[a-f0-9]{64}$/.test(value)
+        ))
+        || computedRenderEnvironmentSha256 !== renderEnvironmentSha256
+        || String(renderResult?.media_origin || "") !== mediaOrigin
+        || !packArtifacts.length
+        || packArtifacts.length > MAX_RENDER_IMPORT
+        || packArtifactByKey.size !== packArtifacts.length
+        || !packSources.length
+        || packSources.length > MAX_SOURCE_BATCH
+        || packSourceByKey.size !== packSources.length
+        || !rawArtifacts.length
+        || rawArtifacts.length > MAX_RENDER_IMPORT
+        || Number(renderResult?.artifact_count) !== rawArtifacts.length
+        || new Set(rawArtifacts.map((item) => token(item?.artifact_key))).size
+          !== rawArtifacts.length
+        || rawArtifacts.some((item) => (
+          !packArtifactByKey.has(token(item?.artifact_key))
+        ))
+        || rawArtifacts.some((item) => (
+          !["publish_candidate", "sanitized_preview_only"].includes(
+            token(item?.distribution_state),
+          )
+          || (
+            token(item?.distribution_state) === "sanitized_preview_only"
+            && item?.qc?.ready_for_content_engine_import !== false
+          )
+        ))
+      ) {
+        return response({ error: "invalid_render_result" }, 400);
+      }
+      const publishCandidates = rawArtifacts.filter(
+        (item) => token(item?.distribution_state) === "publish_candidate",
+      );
+      const previewSkipped = rawArtifacts.length - publishCandidates.length;
+      if (!publishCandidates.length) {
+        return response({ error: "render_result_has_no_publish_candidates" }, 400);
+      }
+      const items = await Promise.all(publishCandidates.map(async (item) => {
+        const packArtifact = packArtifactByKey.get(token(item?.artifact_key));
+        const packSource = packSourceByKey.get(
+          token(packArtifact?.source_asset_key),
+        );
+        if (!packArtifact || !packSource) return null;
+        const durationMs = Number(packArtifact?.render?.duration_ms);
+        const thumbnailOffsetMs = Math.min(
+          Number(renderPack?.output?.thumbnail_offset_ms),
+          durationMs - 1,
+        );
+        const recipe = {
+          schema_version: renderPack.schema_version,
+          batch_id: renderPack.batch_id,
+          template: renderPack.template,
+          output: {
+            ...renderPack.output,
+            duration_ms: durationMs,
+            thumbnail_offset_ms: thumbnailOffsetMs,
+          },
+          renderer: renderEnvironment,
+          source: packSource,
+          artifact: packArtifact,
+        };
+        return normalizeRenderImportItem(item, {
+          mediaOrigin,
+          packSha256,
+          templateId,
+          templateVersion,
+          renderProfileId,
+          renderEnvironmentSha256,
+          packArtifact,
+          packSource,
+          expectedRenderInputSha256: await sha256Hex(
+            canonicalStringify(recipe),
+          ),
+        });
+      }));
+      if (
+        items.some((item) => !item)
+        || new Set(items.map((item) => item.draft.artifact_key)).size !== items.length
+      ) {
+        return response({ error: "invalid_render_result_artifact" }, 400);
+      }
+      const sourceKeys = [...new Set(items.flatMap(
+        (item) => item.draft.source_asset_keys,
+      ))];
+      const sources = await sourcesForArtifact(sourceEntity, sourceKeys);
+      const sourceByKey = new Map(
+        sources.map((source) => [token(source?.asset_key), source]),
+      );
+      if (
+        !sourcesAreSafe(sources, sourceKeys.length)
+        || items.some((item) => item.lineage.some((lineage) => {
+          const source = sourceByKey.get(lineage.asset_key);
+          return normalized(source?.source_sha256) !== lineage.source_sha256
+            || localReference(source?.source_reference)
+              !== lineage.source_reference;
+        }))
+      ) {
+        return response({ error: "render_source_lineage_unavailable" }, 409);
+      }
+      const artifactKeys = items.map((item) => item.draft.artifact_key);
+      const existing = asArray(await artifactEntity.filter(
+        { artifact_key: { $in: artifactKeys } },
+        "-updated_date",
+        artifactKeys.length * 3,
+      ));
+      const existingByKey = new Map<string, any[]>();
+      for (const artifact of existing) {
+        const key = token(artifact?.artifact_key);
+        if (!existingByKey.has(key)) existingByKey.set(key, []);
+        existingByKey.get(key)?.push(artifact);
+      }
+      if ([...existingByKey.values()].some((rows) => rows.length > 1)) {
+        return response({ error: "creative_artifact_conflict" }, 409);
+      }
+      const planned = items.map((item) => {
+        const current = existingByKey.get(item.draft.artifact_key)?.[0] || null;
+        const next = current
+          ? normalizeDraft(item.fields, current, current?.generation_status)
+          : item.draft;
+        return { item, current, next };
+      });
+      if (
+        planned.some(({ item, current, next }) => (
+          !next
+          || next.artifact_key !== item.draft.artifact_key
+          || (
+            current?.approval_status === "approved"
+            && !renderImportMatches(current, next)
+          )
+        ))
+      ) {
+        return response({ error: "approved_artifact_immutable" }, 409);
+      }
+      let created = 0;
+      let updated = 0;
+      let idempotent = 0;
+      for (const { current, next } of planned) {
+        if (current && renderImportMatches(current, next)) {
+          idempotent += 1;
+          continue;
+        }
+        if (!current) {
+          const saved = await artifactEntity.create(next);
+          const reconciled = await reconcileNewRenderArtifact(
+            artifactEntity,
+            saved,
+            next,
+          );
+          if (reconciled.status === "conflict") {
+            return response({ error: "creative_artifact_conflict" }, 409);
+          }
+          if (reconciled.status === "idempotent") idempotent += 1;
+          else created += 1;
+          continue;
+        }
+        const patch = optionalDraftFields(next);
+        const result = await artifactEntity.updateMany(
+          {
+            id: current.id,
+            revision: Number(current?.revision || 0),
+            approval_status: current.approval_status,
+          },
+          {
+            $set: patch.set,
+            $unset: patch.unset,
+          },
+        );
+        if (Number(result?.updated || 0) !== 1) {
+          return response({ error: "creative_changed_during_render_import" }, 409);
+        }
+        updated += 1;
+      }
+      return response({
+        success: true,
+        created,
+        updated,
+        idempotent,
+        preview_skipped: previewSkipped,
+        imported: created + updated + idempotent,
+      });
     }
 
     if (action === "create_draft") {
@@ -1605,6 +2318,7 @@ TikTok and Instagram copy should feel native but convey the same concept.`;
           || source?.privacy_change_pending === true
           || source?.privacy_status === "blocked"
         ))
+        || !renderLineageMatchesSources(next, sources)
       ) {
         return response({ error: "source_asset_unavailable" }, 409);
       }
@@ -1645,6 +2359,7 @@ TikTok and Instagram copy should feel native but convey the same concept.`;
       );
       const passed = Object.values(checks).every(Boolean)
         && sourcesAreSafe(sources, cleanTokenList(current?.source_asset_keys).length)
+        && renderLineageMatchesSources(current, sources)
         && artifactMediaReady(current);
       const reviewNote = compactText(body?.note, 1000);
       const result = await artifactEntity.updateMany(
@@ -1693,7 +2408,10 @@ TikTok and Instagram copy should feel native but convey the same concept.`;
       }
       const sourceKeys = cleanTokenList(current?.source_asset_keys);
       const sources = await sourcesForArtifact(sourceEntity, sourceKeys);
-      if (!sourcesAreSafe(sources, sourceKeys.length)) {
+      if (
+        !sourcesAreSafe(sources, sourceKeys.length)
+        || !renderLineageMatchesSources(current, sources)
+      ) {
         return response({ error: "source_privacy_clearance_required" }, 409);
       }
       if (!artifactMediaReady(current)) {
@@ -1879,8 +2597,8 @@ TikTok and Instagram copy should feel native but convey the same concept.`;
           }, 409);
         }
         measurementRepairPending = delivery.repairPending === true;
-      } else if (token(current?.platform) === "instagram") {
-        const delivery = await setInstagramMeasurementDelivery(
+      } else if (PLATFORMS.has(token(current?.platform))) {
+        const delivery = await setSocialMeasurementDelivery(
           planEntity,
           current,
           "canceled",
@@ -1889,7 +2607,7 @@ TikTok and Instagram copy should feel native but convey the same concept.`;
           return response({
             error: delivery.error,
             message:
-              "Approval remains active because its Instagram measurement plan could not be canceled.",
+              "Approval remains active because its social measurement plan could not be canceled.",
           }, 409);
         }
       }
@@ -1946,7 +2664,11 @@ TikTok and Instagram copy should feel native but convey the same concept.`;
       }
       const sourceKeys = cleanTokenList(artifact?.source_asset_keys);
       const sources = await sourcesForArtifact(sourceEntity, sourceKeys);
-      if (!sourcesAreSafe(sources, sourceKeys.length) || !artifactMediaReady(artifact)) {
+      if (
+        !sourcesAreSafe(sources, sourceKeys.length)
+        || !renderLineageMatchesSources(artifact, sources)
+        || !artifactMediaReady(artifact)
+      ) {
         return response({ error: "publish_preflight_failed" }, 409);
       }
       const dueAt = timestamp(body?.due_at);
@@ -1962,6 +2684,13 @@ TikTok and Instagram copy should feel native but convey the same concept.`;
         || !/^[A-Za-z_]+(?:\/[A-Za-z0-9_+-]+)+$/.test(timezone)
       ) {
         return response({ error: "invalid_publish_schedule" }, 400);
+      }
+      if (
+        token(artifact?.audio_mode) === "silent"
+        && schedulingType === "automatic"
+        && body?.confirm_silent_automatic !== true
+      ) {
+        return response({ error: "silent_media_decision_required" }, 409);
       }
       const publishEnvironment = publisherEnvironment();
       if (!publishEnvironment.publisherReady) {
@@ -2096,7 +2825,7 @@ TikTok and Instagram copy should feel native but convey the same concept.`;
         if (!await scheduleLockStillOwned(artifactEntity, lock)) {
           return response({ error: "publish_schedule_in_progress" }, 409);
         }
-        const measurement = await syncInstagramMeasurementPlan(
+        const measurement = await syncSocialMeasurementPlan(
           planEntity,
           artifact,
           dueAt,
@@ -2104,7 +2833,7 @@ TikTok and Instagram copy should feel native but convey the same concept.`;
         if (!measurement.ok) {
           return response({ error: measurement.error }, 409);
         }
-        measurementPlanned = artifact.platform === "instagram";
+        measurementPlanned = PLATFORMS.has(token(artifact?.platform));
         const jobFields = {
           job_key: jobKey,
           request_hash: requestHash,
@@ -2130,7 +2859,7 @@ TikTok and Instagram copy should feel native but convey the same concept.`;
           schedule_cutoff_at: new Date(dueMs - SCHEDULE_CUTOFF_MS).toISOString(),
         };
         if (!await renewScheduleLock(artifactEntity, lock)) {
-          await setInstagramMeasurementDelivery(
+          await setSocialMeasurementDelivery(
             planEntity,
             artifact,
             "canceled",
@@ -2198,7 +2927,7 @@ TikTok and Instagram copy should feel native but convey the same concept.`;
               20,
             )).some((job) => !["failed", "canceled"].includes(token(job?.state)));
             if (!durable) {
-              await setInstagramMeasurementDelivery(
+              await setSocialMeasurementDelivery(
                 planEntity,
                 artifact,
                 "canceled",

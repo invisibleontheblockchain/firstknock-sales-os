@@ -95,6 +95,17 @@ export function instagramTrackedUrl(campaign, contentId) {
   return url.toString();
 }
 
+export function platformTrackedUrl(platform, campaign, contentId) {
+  const source = token(platform);
+  const fallbackContent = source === "tiktok" ? "tt-bio" : "ig-bio";
+  const url = new URL("/start", "https://firstknock.online");
+  url.searchParams.set("utm_source", source);
+  url.searchParams.set("utm_medium", "organic_social");
+  url.searchParams.set("utm_campaign", token(campaign, "1000-users"));
+  url.searchParams.set("utm_content", token(contentId, fallbackContent));
+  return url.toString();
+}
+
 export function socialPostText(artifact) {
   const caption = String(artifact?.caption || "").trim();
   const disclosure = compactText(artifact?.disclosure, 500);
@@ -162,6 +173,28 @@ export function canonicalArtifactPayload(artifact) {
     height: Number(artifact?.height || 0),
     duration_ms: Number(artifact?.duration_ms || 0),
     thumbnail_offset_ms: Number(artifact?.thumbnail_offset_ms || 0),
+    render_result_schema: compactText(artifact?.render_result_schema, 80),
+    render_pack_sha256: normalized(artifact?.render_pack_sha256),
+    render_template_id: token(artifact?.render_template_id),
+    render_template_version: compactText(artifact?.render_template_version, 80),
+    render_input_sha256: normalized(artifact?.render_input_sha256),
+    render_profile_id: token(artifact?.render_profile_id),
+    render_environment_sha256: normalized(
+      artifact?.render_environment_sha256,
+    ),
+    render_delivery_key: String(artifact?.render_delivery_key || "")
+      .trim()
+      .slice(0, 300),
+    render_source_lineage: asArray(artifact?.render_source_lineage)
+      .map((source) => ({
+        asset_key: token(source?.asset_key),
+        source_reference: String(source?.source_reference || "")
+          .trim()
+          .slice(0, 300),
+        source_sha256: normalized(source?.source_sha256),
+      })),
+    media_byte_size: Number(artifact?.media_byte_size || 0),
+    audio_mode: token(artifact?.audio_mode),
     review_status: token(artifact?.review_status),
     privacy_cleared: artifact?.privacy_cleared === true,
     demo_labeled: artifact?.demo_labeled === true,

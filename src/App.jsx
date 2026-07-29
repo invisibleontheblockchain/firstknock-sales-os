@@ -96,6 +96,7 @@ const AuthenticatedApp = () => {
 
 const AppRoutes = () => (
   <Routes>
+    <Route path="/start" element={<InstagramLanding />} />
     <Route path="/instagram" element={<InstagramLanding />} />
     <Route path="*" element={<AuthenticatedApp />} />
   </Routes>

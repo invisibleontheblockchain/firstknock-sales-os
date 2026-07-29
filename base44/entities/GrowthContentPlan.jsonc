@@ -2,6 +2,15 @@
   "name": "GrowthContentPlan",
   "type": "object",
   "properties": {
+    "platform": {
+      "type": "string",
+      "enum": [
+        "instagram",
+        "tiktok"
+      ],
+      "default": "instagram",
+      "description": "Social platform that owns this plan; legacy rows without a value are Instagram"
+    },
     "campaign": {
       "type": "string",
       "maxLength": 120

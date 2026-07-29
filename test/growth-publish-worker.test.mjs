@@ -22,11 +22,14 @@ const env = {
 };
 const mediaBytes = new TextEncoder().encode('firstknock-approved-media-fixture-v1');
 const mediaSha256 = await growthHelpers.sha256BytesHex(mediaBytes);
+const sourceSha256 = 'a'.repeat(64);
 
 const source = {
   id: 'source_1',
   asset_key: 'safe-product-proof',
   title: 'Safe source',
+  source_reference: 'safe-product-proof.mp4',
+  source_sha256: sourceSha256,
   media_kind: 'video',
   privacy_status: 'safe',
   safe_summary: 'Sanitized route workflow.',
@@ -115,11 +118,80 @@ async function fixture(overrides = {}) {
   };
 }
 
+async function renderedFixture(overrides = {}) {
+  const original = await fixture();
+  const artifact = {
+    ...original.artifact,
+    render_result_schema: 'growth-render-result.v1',
+    render_source_lineage: [{
+      asset_key: source.asset_key,
+      source_reference: source.source_reference,
+      source_sha256: source.source_sha256,
+    }],
+    ...(overrides.artifact || {}),
+  };
+  artifact.provider_text = growthHelpers.socialPostText(artifact);
+  artifact.approved_hash = await growthHelpers.artifactApprovalHash(artifact);
+  const job = {
+    ...original.job,
+    artifact_id: artifact.id,
+    artifact_key: artifact.artifact_key,
+    artifact_hash: artifact.approved_hash,
+    ...(overrides.job || {}),
+  };
+  job.job_key = await growthHelpers.publishJobKey(job);
+  job.request_hash = await growthHelpers.publishJobRequestHash(job);
+  return { artifact, job, dueAt: job.due_at };
+}
+
+async function tiktokFixture(overrides = {}) {
+  const original = await fixture();
+  const artifact = {
+    ...original.artifact,
+    id: 'artifact_tiktok',
+    artifact_key: 'tt-route-proof-01',
+    platform: 'tiktok',
+    platform_content_id: 'tt-route-proof-01',
+    cta_url: growthHelpers.platformTrackedUrl(
+      'tiktok',
+      original.artifact.campaign,
+      'tt-route-proof-01',
+    ),
+    ...(overrides.artifact || {}),
+  };
+  artifact.provider_text = growthHelpers.socialPostText(artifact);
+  artifact.approved_hash = await growthHelpers.artifactApprovalHash(artifact);
+  const configRevision = await growthHelpers.sha256Hex([
+    'buffer',
+    env.BUFFER_ORGANIZATION_ID,
+    env.BUFFER_TIKTOK_CHANNEL_ID,
+    'tiktok',
+    env.GROWTH_MEDIA_ORIGIN,
+  ].join('|'));
+  const job = {
+    ...original.job,
+    id: 'job_tiktok',
+    provider_channel_id: env.BUFFER_TIKTOK_CHANNEL_ID,
+    provider_service: 'tiktok',
+    config_revision: configRevision,
+    artifact_id: artifact.id,
+    artifact_hash: artifact.approved_hash,
+    artifact_key: artifact.artifact_key,
+    platform: 'tiktok',
+    platform_content_id: artifact.platform_content_id,
+    campaign: artifact.campaign,
+    ...(overrides.job || {}),
+  };
+  job.job_key = await growthHelpers.publishJobKey(job);
+  job.request_hash = await growthHelpers.publishJobRequestHash(job);
+  return { artifact, job, dueAt: job.due_at };
+}
+
 function bufferPost(fx, overrides = {}) {
   return {
     id: 'buffer_post_1',
-    channelId: env.BUFFER_INSTAGRAM_CHANNEL_ID,
-    channelService: 'instagram',
+    channelId: fx.job.provider_channel_id,
+    channelService: fx.job.provider_service,
     status: 'scheduled',
     dueAt: fx.dueAt,
     sentAt: null,
@@ -735,6 +807,102 @@ test('source privacy withdrawal on the immediate pre-create reread fails closed'
   }
 });
 
+test('rendered source lineage drift fails preflight and cancels measurement', async (t) => {
+  const cases = [
+    {
+      name: 'source SHA changes',
+      changedSource: { ...source, source_sha256: 'b'.repeat(64) },
+    },
+    {
+      name: 'source reference changes',
+      changedSource: { ...source, source_reference: 'replacement-proof.mp4' },
+    },
+  ];
+  for (const item of cases) {
+    await t.test(item.name, async () => {
+      const fx = await renderedFixture();
+      const { base44, entities } = createGrowthBase44({
+        sources: [item.changedSource],
+        artifacts: [fx.artifact],
+        jobs: [fx.job],
+        plans: [measurementPlan(fx)],
+      });
+      let providerCalls = 0;
+      const handler = loadGrowthHandler(workerPath, {
+        base44,
+        env,
+        fetchImpl: async () => {
+          providerCalls += 1;
+          throw new Error('provider access must not run after source lineage drift');
+        },
+      });
+
+      const result = await invokeJson(handler, {}, { secret: workerSecret });
+
+      assert.equal(result.status, 200);
+      assert.equal(providerCalls, 0);
+      assert.equal(entities.GrowthPublishJob.records[0].state, 'failed');
+      assert.equal(
+        entities.GrowthPublishJob.records[0].last_error_code,
+        'source_render_lineage_changed',
+      );
+      assert.equal(entities.GrowthContentPlan.records[0].delivery_status, 'canceled');
+    });
+  }
+});
+
+test('rendered source lineage drift on the immediate pre-create reread fails closed', async (t) => {
+  const cases = [
+    {
+      name: 'source SHA changes',
+      changedSource: { ...source, source_sha256: 'b'.repeat(64) },
+    },
+    {
+      name: 'source reference changes',
+      changedSource: { ...source, source_reference: 'replacement-proof.mp4' },
+    },
+  ];
+  for (const item of cases) {
+    await t.test(item.name, async () => {
+      const fx = await renderedFixture();
+      const { base44, entities } = createGrowthBase44({
+        sources: [source],
+        artifacts: [fx.artifact],
+        jobs: [fx.job],
+        plans: [measurementPlan(fx)],
+      });
+      const originalSourceFilter = entities.GrowthSourceAsset.filter;
+      let sourceReads = 0;
+      entities.GrowthSourceAsset.filter = async (...args) => {
+        sourceReads += 1;
+        if (sourceReads === 1) return originalSourceFilter(...args);
+        return [structuredClone(item.changedSource)];
+      };
+      let createCalls = 0;
+      const handler = loadGrowthHandler(workerPath, {
+        base44,
+        env,
+        fetchImpl: withApprovedMedia(async () => {
+          createCalls += 1;
+          throw new Error('createPost must not run after source lineage drift');
+        }),
+      });
+
+      const result = await invokeJson(handler, {}, { secret: workerSecret });
+
+      assert.equal(result.status, 200);
+      assert.equal(sourceReads, 2);
+      assert.equal(createCalls, 0);
+      assert.equal(entities.GrowthPublishJob.records[0].state, 'failed');
+      assert.equal(
+        entities.GrowthPublishJob.records[0].last_error_code,
+        'source_render_lineage_changed',
+      );
+      assert.equal(entities.GrowthContentPlan.records[0].delivery_status, 'canceled');
+    });
+  }
+});
+
 test('a transient pre-create source reread outage retries without creating in Buffer', async () => {
   const fx = await fixture();
   const { base44, entities } = createGrowthBase44({
@@ -1031,6 +1199,61 @@ test('a missed scheduling cutoff cancels its Instagram measurement plan', async 
     'missed_schedule_window',
   );
   assert.equal(entities.GrowthContentPlan.records[0].delivery_status, 'canceled');
+});
+
+test('a missed TikTok scheduling cutoff cancels only its platform measurement plan', async () => {
+  const fx = await tiktokFixture({
+    job: {
+      schedule_cutoff_at: new Date(Date.now() - 1000).toISOString(),
+    },
+  });
+  const instagramPlan = measurementPlan(fx, {
+    id: 'growth_plan_instagram_collision',
+    platform: 'instagram',
+  });
+  const tiktokPlan = measurementPlan(fx, {
+    id: 'growth_plan_tiktok_collision',
+    platform: 'tiktok',
+  });
+  const { base44, entities } = createGrowthBase44({
+    sources: [source],
+    artifacts: [fx.artifact],
+    jobs: [fx.job],
+    plans: [instagramPlan, tiktokPlan],
+  });
+  const planQueries = [];
+  const originalPlanFilter = entities.GrowthContentPlan.filter;
+  entities.GrowthContentPlan.filter = async (query, ...args) => {
+    planQueries.push(structuredClone(query));
+    return originalPlanFilter(query, ...args);
+  };
+  let providerFetches = 0;
+  const handler = loadGrowthHandler(workerPath, {
+    base44,
+    env,
+    fetchImpl: async () => {
+      providerFetches += 1;
+      throw new Error('a missed cutoff must fail before Buffer');
+    },
+  });
+
+  const result = await invokeJson(handler, {}, { secret: workerSecret });
+
+  assert.equal(result.status, 200);
+  assert.equal(providerFetches, 0);
+  assert.ok(planQueries.some((query) => query.platform === 'tiktok'));
+  assert.equal(
+    entities.GrowthContentPlan.records.find(
+      (plan) => plan.platform === 'tiktok',
+    ).delivery_status,
+    'canceled',
+  );
+  assert.equal(
+    entities.GrowthContentPlan.records.find(
+      (plan) => plan.platform === 'instagram',
+    ).delivery_status,
+    'planned',
+  );
 });
 
 test('every failed review gate blocks provider access after approval', async (t) => {
@@ -1869,6 +2092,69 @@ test('a sent Instagram post starts the matching measurement-plan clock', async (
   assert.equal(entities.GrowthContentPlan.records[0].published_at, sentAt);
 });
 
+test('a sent TikTok post starts only its matching platform measurement clock', async () => {
+  const sentAt = new Date(Date.now() - 1000).toISOString();
+  const fx = await tiktokFixture({
+    job: {
+      state: 'scheduled',
+      provider_post_id: 'buffer_post_tiktok',
+      provider_status: 'scheduled',
+      next_retry_at: new Date(Date.now() - 1000).toISOString(),
+    },
+  });
+  const instagramPlan = measurementPlan(fx, {
+    id: 'growth_plan_instagram_collision',
+    platform: 'instagram',
+  });
+  const tiktokPlan = measurementPlan(fx, {
+    id: 'growth_plan_tiktok_collision',
+    platform: 'tiktok',
+  });
+  const { base44, entities } = createGrowthBase44({
+    sources: [source],
+    artifacts: [fx.artifact],
+    jobs: [fx.job],
+    plans: [instagramPlan, tiktokPlan],
+  });
+  const planQueries = [];
+  const originalPlanFilter = entities.GrowthContentPlan.filter;
+  entities.GrowthContentPlan.filter = async (query, ...args) => {
+    planQueries.push(structuredClone(query));
+    return originalPlanFilter(query, ...args);
+  };
+  const handler = loadGrowthHandler(workerPath, {
+    base44,
+    env,
+    fetchImpl: async () => Response.json({
+      data: {
+        post: bufferPost(fx, {
+          id: 'buffer_post_tiktok',
+          status: 'sent',
+          sentAt,
+          externalLink: 'https://www.tiktok.com/@firstknock/video/123456789',
+        }),
+      },
+    }),
+  });
+
+  const result = await invokeJson(handler, {}, { secret: workerSecret });
+
+  assert.equal(result.status, 200);
+  assert.equal(entities.GrowthPublishJob.records[0].state, 'sent');
+  assert.ok(planQueries.some((query) => query.platform === 'tiktok'));
+  const savedInstagram = entities.GrowthContentPlan.records.find(
+    (plan) => plan.platform === 'instagram',
+  );
+  const savedTikTok = entities.GrowthContentPlan.records.find(
+    (plan) => plan.platform === 'tiktok',
+  );
+  assert.equal(savedInstagram.published_at, undefined);
+  assert.equal(savedInstagram.delivery_status, 'planned');
+  assert.equal(savedTikTok.published_at, sentAt);
+  assert.equal(savedTikTok.delivery_managed_by, 'buffer');
+  assert.equal(savedTikTok.delivery_status, 'published');
+});
+
 test('fallback publication clock survives a lost job fence and the next sent poll', async () => {
   const fx = await fixture({
     job: {
@@ -2093,6 +2379,10 @@ test('measurement sync failure retries the plan clock locally without another pr
   assert.equal(
     entities.GrowthPublishJob.records[0].last_error_code,
     'content_plan_changed_before_publish',
+  );
+  assert.equal(
+    entities.GrowthPublishJob.records[0].last_error_message,
+    'Buffer published the post, but its platform measurement clock could not be started.',
   );
   assert.equal(entities.GrowthContentPlan.records[0].published_at, undefined);
 

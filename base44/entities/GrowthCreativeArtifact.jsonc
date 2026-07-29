@@ -148,6 +148,76 @@
       "minimum": 0,
       "maximum": 3600000
     },
+    "render_result_schema": {
+      "type": "string",
+      "maxLength": 80
+    },
+    "render_pack_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "render_template_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._~-]{0,119}$"
+    },
+    "render_template_version": {
+      "type": "string",
+      "maxLength": 80
+    },
+    "render_input_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "render_profile_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._~-]{0,119}$"
+    },
+    "render_environment_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "render_delivery_key": {
+      "type": "string",
+      "maxLength": 300
+    },
+    "render_source_lineage": {
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "properties": {
+          "asset_key": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9._~-]{0,119}$"
+          },
+          "source_reference": {
+            "type": "string",
+            "maxLength": 300
+          },
+          "source_sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          }
+        },
+        "required": [
+          "asset_key",
+          "source_reference",
+          "source_sha256"
+        ]
+      }
+    },
+    "media_byte_size": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 262144000
+    },
+    "audio_mode": {
+      "type": "string",
+      "enum": [
+        "silent",
+        "baked_owned_or_licensed"
+      ]
+    },
     "review_status": {
       "type": "string",
       "enum": [

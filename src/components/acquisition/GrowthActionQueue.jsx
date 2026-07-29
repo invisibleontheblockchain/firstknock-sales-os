@@ -14,7 +14,7 @@ import {
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { buildInstagramTrackedLink } from '@/lib/acquisitionTracking';
+import { buildPlatformTrackedLink } from '@/lib/acquisitionTracking';
 
 function dateLabel(value) {
   if (!value) return 'Not scheduled';
@@ -106,10 +106,11 @@ export default function GrowthActionQueue({
 
   React.useEffect(() => {
     setDecisionNote('');
-  }, [nextDecision?.content]);
+  }, [nextDecision?.platform, nextDecision?.campaign, nextDecision?.content]);
 
   const copyLink = async (item) => {
-    const link = buildInstagramTrackedLink({
+    const link = buildPlatformTrackedLink({
+      platform: item.platform || 'instagram',
       campaign: item.campaign,
       contentId: item.content,
     });
@@ -443,10 +444,12 @@ export default function GrowthActionQueue({
         </summary>
         <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
           {items.map((item) => (
-            <div key={`${item.campaign}-${item.content}`} className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+            <div key={`${item.platform || 'instagram'}-${item.campaign}-${item.content}`} className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
               <div className="flex items-center justify-between gap-2">
                 <p className="font-mono text-[9px] font-black" style={{ color: accent }}>{item.content}</p>
-                <span className="text-[8px] font-black uppercase text-white/30">{item.format}</span>
+                <span className="text-[8px] font-black uppercase text-white/30">
+                  {item.platform || 'instagram'} · {item.format}
+                </span>
               </div>
               <p className="mt-2 line-clamp-2 text-xs font-bold text-white/70">{item.hook}</p>
               <p className="mt-2 text-[9px] font-bold text-white/35">{stateLabel(item)}</p>

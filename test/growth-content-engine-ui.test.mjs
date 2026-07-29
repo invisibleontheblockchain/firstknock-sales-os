@@ -60,7 +60,9 @@ test('review and approval require a loaded, explicitly inspected rendition', () 
 
 test('attribution and canceled-plan copy do not overstate measurement', () => {
   assert.match(contentEngine, /Instagram caption URLs are not reliably clickable/);
-  assert.match(contentEngine, /controlled bio, Story, comment\/DM, or \/start handoff/);
+  assert.match(contentEngine, /neutral \/start URL/);
+  assert.match(contentEngine, /controlled TikTok profile-link or comment\/DM handoff/);
+  assert.match(contentEngine, /Verify a clickable profile-link or comment\/DM handoff/);
   assert.match(growthQueue, /summary\.canceled/);
   assert.match(growthQueue, /No publish action/);
   assert.match(growthQueue, /before treating the sprint as published/);

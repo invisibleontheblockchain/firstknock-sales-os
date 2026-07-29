@@ -20,7 +20,7 @@ import ContentEngineQueue from '@/components/acquisition/ContentEngineQueue';
 import GrowthActionQueue from '@/components/acquisition/GrowthActionQueue';
 import { useTheme, contrastText } from '@/components/theme/ThemeProvider';
 import { INSTAGRAM_FIRST_30_DAYS } from '@/data/instagramFirst30Days';
-import { buildInstagramTrackedLink } from '@/lib/acquisitionTracking';
+import { buildPlatformTrackedLink } from '@/lib/acquisitionTracking';
 import { csvCell } from '@/lib/csvExport';
 import {
   buildGrowthPaceFromReport,
@@ -30,13 +30,17 @@ import {
 } from '@/lib/growthPace';
 
 const PACE_ACCENT = '#39FF4A';
+const PLATFORM_LABELS = {
+  instagram: 'Instagram',
+  tiktok: 'TikTok',
+};
 
-function contentIdForToday() {
+function contentIdForToday(platform = 'instagram') {
   const date = new Date();
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, '0');
   const d = String(date.getDate()).padStart(2, '0');
-  return `ig-${y}${m}${d}-01`;
+  return `${platform === 'tiktok' ? 'tt' : 'ig'}-${y}${m}${d}-01`;
 }
 
 function localDate(value = new Date()) {
@@ -145,8 +149,8 @@ function PathToGoalCard({ pace }) {
           </p>
           <h2 className="mt-1 text-xl font-black">Path to 1,000</h2>
           <p className="mt-1 max-w-2xl text-xs leading-relaxed text-white/60">
-            Required Instagram pace if this channel closes the full remaining all-source
-            retained-user gap.
+            Required Instagram and TikTok pace if organic social closes the full remaining
+            all-source retained-user gap.
           </p>
         </div>
         <div className="flex flex-wrap gap-2 sm:justify-end">
@@ -240,7 +244,7 @@ function PathToGoalCard({ pace }) {
 
       <p className="mt-4 text-xs leading-relaxed text-white/60">
         Weekly observed values are canonical, plan-backed last-28-day totals divided by
-        four. The retained value is a gross Instagram-attributed signup-cohort
+        four. The retained value is a gross social-attributed signup-cohort
         contribution, not net growth in the rolling active-user stock. FirstKnock keeps
         ETA off until weekly stock history can support one.
       </p>
@@ -287,6 +291,7 @@ export default function GrowthDashboard() {
   const queryClient = useQueryClient();
   const { accent } = useTheme();
   const accentText = contrastText(accent);
+  const [platform, setPlatform] = React.useState('instagram');
   const [campaign, setCampaign] = React.useState('1000-users');
   const [contentId, setContentId] = React.useState(contentIdForToday);
   const [snapshot, setSnapshot] = React.useState({
@@ -298,6 +303,9 @@ export default function GrowthDashboard() {
     views: '',
     shares: '',
     saves: '',
+    comments: '',
+    follows: '',
+    profile_visits: '',
     link_clicks: '',
     dm_intents: '',
   });
@@ -322,6 +330,7 @@ export default function GrowthDashboard() {
   const saveSnapshot = useMutation({
     mutationFn: async () => {
       const response = await base44.functions.invoke('upsertGrowthContentMetric', {
+        platform: queueSnapshotLock?.platform || platform,
         campaign,
         content: contentId,
         format: queueSnapshotLock?.format || snapshot.format,
@@ -337,13 +346,16 @@ export default function GrowthDashboard() {
         views: Number(snapshot.views || 0),
         shares: Number(snapshot.shares || 0),
         saves: Number(snapshot.saves || 0),
+        comments: Number(snapshot.comments || 0),
+        follows: Number(snapshot.follows || 0),
+        profile_visits: Number(snapshot.profile_visits || 0),
         link_clicks: Number(snapshot.link_clicks || 0),
         dm_intents: Number(snapshot.dm_intents || 0),
       });
       return response?.data || response;
     },
     onSuccess: async () => {
-      toast.success('Instagram snapshot saved');
+      toast.success(`${PLATFORM_LABELS[queueSnapshotLock?.platform || platform]} snapshot saved`);
       setQueueSnapshotLock(null);
       await refetch();
     },
@@ -353,11 +365,11 @@ export default function GrowthDashboard() {
         growth_admin_required: 'Owner or admin access is required',
         stale_content_snapshot: 'A newer snapshot already exists for this checkpoint',
         content_snapshot_conflict: 'This checkpoint already has different values at the same capture time',
-        invalid_content_metric: 'Use whole, non-negative numbers for every Instagram metric',
+        invalid_content_metric: 'Use whole, non-negative numbers for every social metric',
         invalid_content_metric_timestamp: 'Check the publication and snapshot dates',
       };
       toast.error(
-        messages[code] || 'Could not save this Instagram snapshot',
+        messages[code] || `Could not save this ${PLATFORM_LABELS[platform]} snapshot`,
       );
     },
   });
@@ -392,40 +404,61 @@ export default function GrowthDashboard() {
     },
   });
 
-  const trackedLink = buildInstagramTrackedLink({
+  const trackedLink = buildPlatformTrackedLink({
+    platform,
     campaign,
     contentId,
   });
   const totals = report?.all_time || {};
-  const instagram = report?.last_28_days || {};
+  const socialWindow = report?.last_28_days || {};
+  const platformLabel = PLATFORM_LABELS[platform];
+  const platformMetric = (field) => Number(socialWindow?.[`${platform}_${field}`] || 0);
   const pace = buildGrowthPaceFromReport(report);
   const retainedActive = Number(totals.retained_active_users_30d || 0);
   const remaining = pace.remaining_users;
-  const reach28 = Number(instagram.instagram_reach || 0);
-  const landings28 = Number(instagram.instagram_landing_sessions || 0);
-  const cta28 = Number(instagram.instagram_signup_cta_sessions || 0);
-  const signups28 = Number(instagram.instagram_signups || 0);
-  const activatedWorkspaces28 = Number(instagram.instagram_activated_workspaces || 0);
-  const activated28 = Number(instagram.instagram_activated_users || 0);
-  const activeRepRoster28 = Number(instagram.instagram_active_rep_roster || 0);
-  const joinedReps28 = Number(instagram.instagram_joined_reps || 0);
-  const activatedReps28 = Number(instagram.instagram_activated_reps || 0);
-  const repIdentityConflicts = Number(totals.instagram_rep_identity_conflicts || 0);
+  const reach28 = platformMetric('reach');
+  const landings28 = platformMetric('landing_sessions');
+  const cta28 = platformMetric('signup_cta_sessions');
+  const signups28 = platformMetric('signups');
+  const activatedWorkspaces28 = platformMetric('activated_workspaces');
+  const activated28 = platformMetric('activated_users');
+  const activeRepRoster28 = platformMetric('active_rep_roster');
+  const joinedReps28 = platformMetric('joined_reps');
+  const activatedReps28 = platformMetric('activated_reps');
+  const repIdentityConflicts = Number(
+    totals?.instagram_rep_identity_conflicts || 0,
+  ) + Number(totals?.tiktok_rep_identity_conflicts || 0);
 
   const updateSnapshot = (field, value) => {
     setSnapshot((current) => ({ ...current, [field]: value }));
+  };
+  const changePlatform = (nextPlatform) => {
+    setPlatform(nextPlatform);
+    if (nextPlatform === 'tiktok') {
+      setSnapshot((current) => ({
+        ...current,
+        format: ['story', 'collab'].includes(current.format) ? 'reel' : current.format,
+      }));
+    }
+    if (/^(ig|tt)-\d{8}-\d{2}$/.test(contentId)) {
+      setContentId(contentIdForToday(nextPlatform));
+    }
   };
 
   const seedContentSprint = () => {
     manageContentPlan.mutate({
       action: 'seed',
-      plans: INSTAGRAM_FIRST_30_DAYS,
+      plans: INSTAGRAM_FIRST_30_DAYS.map((plan) => ({
+        ...plan,
+        platform: 'instagram',
+      })),
     });
   };
 
   const markContentPublished = (item) => {
     manageContentPlan.mutate({
       action: 'publish',
+      platform: item.platform || 'instagram',
       campaign: item.campaign,
       content: item.content,
       published_at: new Date().toISOString(),
@@ -441,11 +474,14 @@ export default function GrowthDashboard() {
 
   const prepareQueueSnapshot = (item, snapshotDays) => {
     if (!item || !snapshotDays) return;
+    const itemPlatform = item.platform || 'instagram';
+    setPlatform(itemPlatform);
     setCampaign(item.campaign);
     setContentId(item.content);
     setQueueSnapshotLock({
       campaign: item.campaign,
       content: item.content,
+      platform: itemPlatform,
       snapshotDays: Number(snapshotDays),
       publishedAt: item.published_at,
       format: item.format || 'reel',
@@ -461,11 +497,14 @@ export default function GrowthDashboard() {
       views: '',
       shares: '',
       saves: '',
+      comments: '',
+      follows: '',
+      profile_visits: '',
       link_clicks: '',
       dm_intents: '',
     });
     requestAnimationFrame(() => {
-      document.getElementById('instagram-snapshot-form')?.scrollIntoView({
+      document.getElementById('social-snapshot-form')?.scrollIntoView({
         behavior: 'smooth',
         block: 'start',
       });
@@ -475,6 +514,7 @@ export default function GrowthDashboard() {
   const saveGrowthDecision = (item, decision, note) => {
     manageContentPlan.mutate({
       action: 'review',
+      platform: item.platform || 'instagram',
       campaign: item.campaign,
       content: item.content,
       decision,
@@ -485,7 +525,7 @@ export default function GrowthDashboard() {
   const copyLink = async () => {
     try {
       await navigator.clipboard.writeText(trackedLink);
-      toast.success('Tracked Instagram landing link copied');
+      toast.success(`Tracked ${platformLabel} landing link copied`);
     } catch {
       toast.error('Could not copy the link');
     }
@@ -511,6 +551,9 @@ export default function GrowthDashboard() {
       'views',
       'shares',
       'saves',
+      'comments',
+      'follows',
+      'profile_visits',
       'link_clicks',
       'dm_intents',
       'landing_sessions',
@@ -538,18 +581,18 @@ export default function GrowthDashboard() {
     ];
     const queueItems = report?.content_queue?.items || [];
     const queueByKey = new Map(queueItems.map((item) => [
-      `${item.campaign}|${item.content}`,
+      `${item.platform || 'instagram'}|${item.campaign}|${item.content}`,
       item,
     ]));
     const exportByKey = new Map((report?.by_content || []).map((row) => [
-      `${row.campaign}|${row.content}`,
+      `${row.source || 'instagram'}|${row.campaign}|${row.content}`,
       row,
     ]));
     for (const item of queueItems) {
-      const key = `${item.campaign}|${item.content}`;
+      const key = `${item.platform || 'instagram'}|${item.campaign}|${item.content}`;
       if (!exportByKey.has(key)) {
         exportByKey.set(key, {
-          source: 'instagram',
+          source: item.platform || 'instagram',
           medium: 'organic_social',
           campaign: item.campaign,
           content: item.content,
@@ -559,7 +602,9 @@ export default function GrowthDashboard() {
       }
     }
     const rows = [...exportByKey.values()].map((row) => {
-      const queueItem = queueByKey.get(`${row.campaign}|${row.content}`) || {};
+      const queueItem = queueByKey.get(
+        `${row.source || 'instagram'}|${row.campaign}|${row.content}`,
+      ) || {};
       return headers.map((header) => {
         if (header === 'content_id') return row.content;
         if (header === 'queue_state') return queueItem.state;
@@ -580,7 +625,7 @@ export default function GrowthDashboard() {
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
     const anchor = document.createElement('a');
     anchor.href = url;
-    anchor.download = `firstknock-instagram-funnel-${new Date().toISOString().slice(0, 10)}.csv`;
+    anchor.download = `firstknock-social-funnel-${new Date().toISOString().slice(0, 10)}.csv`;
     anchor.click();
     URL.revokeObjectURL(url);
   };
@@ -596,7 +641,7 @@ export default function GrowthDashboard() {
             </div>
             <h1 className="mt-2 text-3xl font-black tracking-tight sm:text-4xl">1,000-user growth system</h1>
             <p className="mt-2 max-w-3xl text-sm text-white/55">
-              Enter each asset&apos;s Instagram Insights snapshot once. FirstKnock joins reach to anonymous landing sessions, signup clicks, activated manager workspaces, their active rep rosters, first rep outcomes, and paid users.
+              Enter each Instagram or TikTok analytics snapshot once. FirstKnock joins reach to anonymous landing sessions, signup clicks, activated manager workspaces, their active rep rosters, first rep outcomes, and paid users.
             </p>
           </div>
           <Button
@@ -653,14 +698,14 @@ export default function GrowthDashboard() {
             color={accent}
           />
           <MetricCard
-            label="Instagram reach · 28d"
+            label={`${platformLabel} reach · 28d`}
             value={reach28}
-            helper={`${Number(instagram.instagram_content_assets || 0).toLocaleString()} measured assets`}
+            helper={`${platformMetric('content_assets').toLocaleString()} measured assets`}
             icon={Eye}
             color="#60a5fa"
           />
           <MetricCard
-            label="Instagram signups · 28d"
+            label={`${platformLabel} signups · 28d`}
             value={signups28}
             helper={`${percent(reach28 ? signups28 / reach28 : 0, 2)} of reach`}
             icon={BarChart3}
@@ -677,7 +722,11 @@ export default function GrowthDashboard() {
 
         <section className="rounded-2xl border border-white/10 bg-[#0b0b0b] p-5 sm:p-6">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-            <FunnelStage label="Reach" value={reach28} helper="Meta Insights" />
+            <FunnelStage
+              label="Reach"
+              value={reach28}
+              helper={platform === 'instagram' ? 'Instagram Insights' : 'TikTok analytics'}
+            />
             <span className="hidden text-white/20 lg:block">→</span>
             <FunnelStage
               label="Landing sessions"
@@ -711,14 +760,14 @@ export default function GrowthDashboard() {
           <div className="mb-4">
             <h2 className="text-lg font-black">Manager → team multiplier</h2>
             <p className="mt-1 text-xs text-white/45">
-              Current team adoption created by Instagram-attributed managers in the 28-day signup cohort.
+              Current team adoption created by {platformLabel}-attributed managers in the 28-day signup cohort.
             </p>
           </div>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <FunnelStage
               label="Manager workspaces"
               value={signups28}
-              helper="Instagram-attributed signups"
+              helper={`${platformLabel}-attributed signups`}
             />
             <FunnelStage
               label="Active roster seats"
@@ -742,9 +791,21 @@ export default function GrowthDashboard() {
           <section className="rounded-2xl border border-white/10 bg-[#0b0b0b] p-5 sm:p-6">
             <h2 className="text-lg font-black">Tracked landing link</h2>
             <p className="mt-1 text-xs text-white/45">
-              Give every Reel, post, Story, Collab, or DM response one lowercase content ID.
+              Give every Instagram or TikTok post and controlled link handoff one lowercase content ID.
             </p>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+              <label className="space-y-2 text-xs font-bold text-white/60">
+                Platform
+                <select
+                  value={platform}
+                  onChange={(event) => changePlatform(event.target.value)}
+                  disabled={Boolean(queueSnapshotLock)}
+                  className="h-10 w-full rounded-md border border-white/10 bg-black px-3 text-sm text-white"
+                >
+                  <option value="instagram">Instagram</option>
+                  <option value="tiktok">TikTok</option>
+                </select>
+              </label>
               <label className="space-y-2 text-xs font-bold text-white/60">
                 Campaign
                 <Input
@@ -762,7 +823,7 @@ export default function GrowthDashboard() {
                   onChange={(event) => setContentId(event.target.value)}
                   disabled={Boolean(queueSnapshotLock)}
                   className="border-white/10 bg-black text-white"
-                  placeholder="ig-20260728-01"
+                  placeholder={platform === 'instagram' ? 'ig-20260728-01' : 'tt-20260728-01'}
                 />
               </label>
             </div>
@@ -780,17 +841,17 @@ export default function GrowthDashboard() {
               </Button>
             </div>
             <p className="mt-3 text-xs leading-relaxed text-white/35">
-              The link opens the public Instagram landing page. Attribution is captured before sign-in and attached to the account after authentication.
+              The neutral /start link records {platformLabel}, campaign, and content before sign-in, then attaches the first touch to the account after authentication.
             </p>
           </section>
 
           <section
-            id="instagram-snapshot-form"
+            id="social-snapshot-form"
             className="scroll-mt-6 rounded-2xl border border-white/10 bg-[#0b0b0b] p-5 sm:p-6"
           >
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h2 className="text-lg font-black">Log Instagram snapshot</h2>
+                <h2 className="text-lg font-black">Log {platformLabel} snapshot</h2>
                 <p className="mt-1 text-xs text-white/45">
                   Use the canonical seven-day snapshot for comparison. Optional early reads stay separate.
                 </p>
@@ -804,7 +865,7 @@ export default function GrowthDashboard() {
               <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-blue-400/20 bg-blue-400/10 p-3">
                 <p className="text-xs leading-relaxed text-blue-100">
                   Queue selection locked to <strong>{queueSnapshotLock.content}</strong>
-                  {' · '}{queueSnapshotLock.snapshotDays}-day checkpoint.
+                  {' · '}{PLATFORM_LABELS[queueSnapshotLock.platform]} · {queueSnapshotLock.snapshotDays}-day checkpoint.
                 </p>
                 <Button
                   type="button"
@@ -827,10 +888,10 @@ export default function GrowthDashboard() {
                   disabled={Boolean(queueSnapshotLock)}
                   className="h-10 w-full rounded-md border border-white/10 bg-black px-3 text-sm text-white"
                 >
-                  <option value="reel">Reel</option>
-                  <option value="carousel">Carousel</option>
-                  <option value="story">Story</option>
-                  <option value="collab">Collab</option>
+                  <option value="reel">{platform === 'instagram' ? 'Reel' : 'Video'}</option>
+                  <option value="carousel">{platform === 'instagram' ? 'Carousel' : 'Photo post'}</option>
+                  {platform === 'instagram' && <option value="story">Story</option>}
+                  {platform === 'instagram' && <option value="collab">Collab</option>}
                   <option value="live">Live</option>
                   <option value="other">Other</option>
                 </select>
@@ -877,6 +938,9 @@ export default function GrowthDashboard() {
               <NumberField label="Views" value={snapshot.views} onChange={(value) => updateSnapshot('views', value)} />
               <NumberField label="Shares" value={snapshot.shares} onChange={(value) => updateSnapshot('shares', value)} />
               <NumberField label="Saves" value={snapshot.saves} onChange={(value) => updateSnapshot('saves', value)} />
+              <NumberField label="Comments" value={snapshot.comments} onChange={(value) => updateSnapshot('comments', value)} />
+              <NumberField label="Follows" value={snapshot.follows} onChange={(value) => updateSnapshot('follows', value)} />
+              <NumberField label="Profile visits" value={snapshot.profile_visits} onChange={(value) => updateSnapshot('profile_visits', value)} />
               <NumberField label="Link clicks" value={snapshot.link_clicks} onChange={(value) => updateSnapshot('link_clicks', value)} />
               <NumberField label="DM intents" value={snapshot.dm_intents} onChange={(value) => updateSnapshot('dm_intents', value)} />
             </div>
@@ -899,7 +963,7 @@ export default function GrowthDashboard() {
             <div>
               <h2 className="text-lg font-black">Content → conversion</h2>
               <p className="mt-1 text-xs text-white/45">
-                Find the exact stage that each Instagram asset wins or loses.
+                Compare the exact stage that each Instagram or TikTok asset wins or loses.
               </p>
             </div>
             <Button
@@ -937,9 +1001,14 @@ export default function GrowthDashboard() {
                   report.by_content.map((row) => {
                     const signal = signalFor(row);
                     return (
-                      <tr key={`${row.campaign}-${row.content}`} className="hover:bg-white/[0.025]">
+                      <tr key={`${row.source}-${row.campaign}-${row.content}`} className="hover:bg-white/[0.025]">
                         <td className="px-5 py-3">
-                          <p className="font-mono text-xs font-bold" style={{ color: accent }}>{row.content}</p>
+                          <div className="flex items-center gap-2">
+                            <p className="font-mono text-xs font-bold" style={{ color: accent }}>{row.content}</p>
+                            <span className="rounded-full border border-white/10 bg-white/5 px-1.5 py-0.5 text-[8px] font-black uppercase text-white/40">
+                              {row.source}
+                            </span>
+                          </div>
                           <p className="mt-1 max-w-[260px] truncate text-[10px] text-white/35">{row.hook || row.campaign}</p>
                         </td>
                         <td className="px-4 py-3">
@@ -968,7 +1037,7 @@ export default function GrowthDashboard() {
                   <tr>
                     <td colSpan={11} className="px-5 py-10 text-center">
                       <p className="font-semibold text-white/60">No measured content yet</p>
-                      <p className="mt-1 text-xs text-white/35">Create a tracked link and save its first Instagram snapshot.</p>
+                      <p className="mt-1 text-xs text-white/35">Create a tracked link and save the first platform snapshot.</p>
                     </td>
                   </tr>
                 )}
@@ -992,7 +1061,7 @@ export default function GrowthDashboard() {
           <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-5">
             <h3 className="font-black">Measurement boundary</h3>
             <p className="mt-3 text-sm leading-relaxed text-white/55">
-              Reach and engagement are copied from Instagram Insights. Anonymous FirstKnock events use rotating pseudonymous session IDs and store no names, emails, or contact fields. Signup, activation, active roster-seat counts, and paid status come from authenticated product records; this report returns aggregate counts rather than rep contact details.
+              Reach and engagement are copied from the matching Instagram Insights or TikTok analytics checkpoint. Anonymous FirstKnock events use rotating pseudonymous session IDs and store no names, emails, or contact fields. Signup, activation, active roster-seat counts, and paid status come from authenticated product records; this report returns aggregate counts rather than rep contact details.
             </p>
             <a
               href="https://www.facebook.com/help/instagram/788388387972460"

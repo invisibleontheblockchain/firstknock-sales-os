@@ -1,0 +1,480 @@
+{
+  "schema_version": "growth-render-pack.v1",
+  "batch_id": "firstknock-safe-starter-2026-07",
+  "template": {
+    "id": "firstknock-product-proof",
+    "version": "1.1.0",
+    "brand": "FirstKnock",
+    "accent_color": "0x39FF4A",
+    "background_color": "0x050705",
+    "hook_font_size": 76,
+    "cta_font_size": 42,
+    "disclosure_font_size": 25
+  },
+  "output": {
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "duration_ms": 12000,
+    "video_bitrate": "8M",
+    "max_video_bitrate": "10M",
+    "audio_bitrate": "128k",
+    "thumbnail_offset_ms": 1000,
+    "audio_mode": "silent"
+  },
+  "sources": [
+    {
+      "asset_key": "manager-analytics-single-card",
+      "source_reference": "IMG_1525.jpg",
+      "source_sha256": "72639994ecaca5ecb06fe06d032acc50b0783506dc4f48813a39d320829b39d6",
+      "media_kind": "image",
+      "mime_type": "image/jpeg",
+      "width": 1206,
+      "height": 930,
+      "privacy_status": "safe",
+      "rights_status": "firstknock_owned"
+    },
+    {
+      "asset_key": "manager-leaderboard-mobile",
+      "source_reference": "3DFF7ABF-98ED-4FDC-AB6C-F06AE9BD8FF9.PNG",
+      "source_sha256": "e0545901deecc25dfbefea058018954b7bd1e7e1eec74c9957b628a2e73db8cd",
+      "media_kind": "image",
+      "mime_type": "image/png",
+      "width": 853,
+      "height": 1844,
+      "privacy_status": "safe",
+      "rights_status": "firstknock_owned"
+    },
+    {
+      "asset_key": "manager-analytics-comparison",
+      "source_reference": "IMG_1541.jpg",
+      "source_sha256": "5c8263d40d8a68a1bdd952ccd8ad03a1196e7870ad38a5fd96f30099e0022116",
+      "media_kind": "image",
+      "mime_type": "image/jpeg",
+      "width": 1206,
+      "height": 1898,
+      "privacy_status": "safe",
+      "rights_status": "firstknock_owned"
+    },
+    {
+      "asset_key": "analytics-date-picker-demo",
+      "source_reference": "ScreenRecording_07-14-2026 12-58-02_1.MP4",
+      "source_sha256": "e341f9bfa3d5027c68981d686c8ff7a219d47bede377f86cca0066ed4ebef78f",
+      "media_kind": "video",
+      "mime_type": "video/mp4",
+      "codec": "hevc",
+      "width": 1206,
+      "height": 2622,
+      "duration_ms": 11735,
+      "privacy_status": "redaction_required",
+      "rights_status": "firstknock_owned"
+    },
+    {
+      "asset_key": "rerun-route-phone-demo",
+      "source_reference": "58DA851F-F7C4-4A55-BB44-947C28BD021F.PNG",
+      "source_sha256": "224f85996b263e43159248c64fd8814b39d5e0c9d71ef6da19291d1b82ca9ce5",
+      "media_kind": "image",
+      "mime_type": "image/png",
+      "width": 1024,
+      "height": 1536,
+      "privacy_status": "safe",
+      "rights_status": "firstknock_owned"
+    },
+    {
+      "asset_key": "route-handoff-og",
+      "source_origin": "repository_public",
+      "source_reference": "og.png",
+      "source_sha256": "2e50feb8550056a02f223faa536415425b70c317ec576add0d49294ee27ae25a",
+      "media_kind": "image",
+      "mime_type": "image/png",
+      "width": 1774,
+      "height": 887,
+      "privacy_status": "safe",
+      "rights_status": "firstknock_owned"
+    }
+  ],
+  "artifacts": [
+    {
+      "artifact_key": "ig-ce-field-funnel-01",
+      "concept_id": "fk-ce-field-funnel-01",
+      "platform": "instagram",
+      "platform_content_id": "ig-ce-field-funnel-01",
+      "campaign": "1000-users",
+      "title": "See the field funnel",
+      "pillar": "manager-analytics",
+      "format": "video",
+      "source_asset_key": "manager-analytics-single-card",
+      "hook": "See the field funnel",
+      "overlay_text": [
+        "Doors",
+        "Decision-maker conversations",
+        "Sales"
+      ],
+      "shot_list": [
+        "Open on the complete manager scorecard.",
+        "Hold long enough to compare door close and decision-maker close.",
+        "Finish on the manager-workspace CTA."
+      ],
+      "caption": "Activity is easy to count. The useful question is where the field funnel changes: doors, decision-maker conversations, and sales in one manager view.",
+      "cta_label": "See the FirstKnock workflow",
+      "cta_url": "https://firstknock.online/start?utm_source=instagram&utm_medium=organic_social&utm_campaign=1000-users&utm_content=ig-ce-field-funnel-01",
+      "overlay_cta": "Build your manager workspace",
+      "disclosure": "Demo data - no customer result or performance promise."
+    },
+    {
+      "artifact_key": "tt-ce-field-funnel-01",
+      "concept_id": "fk-ce-field-funnel-01",
+      "platform": "tiktok",
+      "platform_content_id": "tt-ce-field-funnel-01",
+      "campaign": "1000-users",
+      "title": "See the field funnel",
+      "pillar": "manager-analytics",
+      "format": "video",
+      "source_asset_key": "manager-analytics-single-card",
+      "hook": "See the field funnel",
+      "overlay_text": [
+        "Doors",
+        "Decision-maker conversations",
+        "Sales"
+      ],
+      "shot_list": [
+        "Open on the complete manager scorecard.",
+        "Hold long enough to compare door close and decision-maker close.",
+        "Finish on the manager-workspace CTA."
+      ],
+      "caption": "Your team is active. Can you see where the field funnel changes? FirstKnock keeps doors, conversations, and sales visible in one manager view.",
+      "cta_label": "See the FirstKnock workflow",
+      "cta_url": "https://firstknock.online/start?utm_source=tiktok&utm_medium=organic_social&utm_campaign=1000-users&utm_content=tt-ce-field-funnel-01",
+      "overlay_cta": "Build your manager workspace",
+      "disclosure": "Demo data - no customer result or performance promise."
+    },
+    {
+      "artifact_key": "ig-ce-coach-patterns-01",
+      "concept_id": "fk-ce-coach-patterns-01",
+      "platform": "instagram",
+      "platform_content_id": "ig-ce-coach-patterns-01",
+      "campaign": "1000-users",
+      "title": "Coach patterns, not guesses",
+      "pillar": "manager-analytics",
+      "format": "video",
+      "source_asset_key": "manager-leaderboard-mobile",
+      "hook": "Coach patterns, not guesses",
+      "overlay_text": [
+        "Compare the same field signals",
+        "Find the coaching question",
+        "Follow the next shift"
+      ],
+      "shot_list": [
+        "Open on the redacted leaderboard.",
+        "Hold on the two demo scorecards.",
+        "Finish on the coaching-loop CTA."
+      ],
+      "caption": "A leaderboard is useful when it starts a better coaching question. Compare the same field signals, find the pattern, and follow what changes on the next shift.",
+      "cta_label": "See the manager view",
+      "cta_url": "https://firstknock.online/start?utm_source=instagram&utm_medium=organic_social&utm_campaign=1000-users&utm_content=ig-ce-coach-patterns-01",
+      "overlay_cta": "See the manager view",
+      "disclosure": "Demo data - names redacted - no performance promise."
+    },
+    {
+      "artifact_key": "tt-ce-coach-patterns-01",
+      "concept_id": "fk-ce-coach-patterns-01",
+      "platform": "tiktok",
+      "platform_content_id": "tt-ce-coach-patterns-01",
+      "campaign": "1000-users",
+      "title": "Coach patterns, not guesses",
+      "pillar": "manager-analytics",
+      "format": "video",
+      "source_asset_key": "manager-leaderboard-mobile",
+      "hook": "Coach patterns, not guesses",
+      "overlay_text": [
+        "Compare the same field signals",
+        "Find the coaching question",
+        "Follow the next shift"
+      ],
+      "shot_list": [
+        "Open on the redacted leaderboard.",
+        "Hold on the two demo scorecards.",
+        "Finish on the coaching-loop CTA."
+      ],
+      "caption": "The point is not another leaderboard. It is finding the field pattern that gives a manager the next coaching question.",
+      "cta_label": "See the manager view",
+      "cta_url": "https://firstknock.online/start?utm_source=tiktok&utm_medium=organic_social&utm_campaign=1000-users&utm_content=tt-ce-coach-patterns-01",
+      "overlay_cta": "See the manager view",
+      "disclosure": "Demo data - names redacted - no performance promise."
+    },
+    {
+      "artifact_key": "ig-ce-one-coaching-loop-01",
+      "concept_id": "fk-ce-one-coaching-loop-01",
+      "platform": "instagram",
+      "platform_content_id": "ig-ce-one-coaching-loop-01",
+      "campaign": "1000-users",
+      "title": "One view, better questions",
+      "pillar": "manager-analytics",
+      "format": "video",
+      "source_asset_key": "manager-analytics-comparison",
+      "hook": "One view, better questions",
+      "overlay_text": [
+        "What changed?",
+        "Where did the funnel move?",
+        "What should we test next?"
+      ],
+      "shot_list": [
+        "Open on the first redacted demo card.",
+        "Reveal the second card in the same manager view.",
+        "Finish with the next-experiment CTA."
+      ],
+      "caption": "Put the same field signals side by side and the conversation changes: what moved, where did the funnel change, and what should the team test next?",
+      "cta_label": "Open the FirstKnock workflow",
+      "cta_url": "https://firstknock.online/start?utm_source=instagram&utm_medium=organic_social&utm_campaign=1000-users&utm_content=ig-ce-one-coaching-loop-01",
+      "overlay_cta": "Run the next field experiment",
+      "disclosure": "Demo data - names redacted - no customer result."
+    },
+    {
+      "artifact_key": "tt-ce-one-coaching-loop-01",
+      "concept_id": "fk-ce-one-coaching-loop-01",
+      "platform": "tiktok",
+      "platform_content_id": "tt-ce-one-coaching-loop-01",
+      "campaign": "1000-users",
+      "title": "One view, better questions",
+      "pillar": "manager-analytics",
+      "format": "video",
+      "source_asset_key": "manager-analytics-comparison",
+      "hook": "One view, better questions",
+      "overlay_text": [
+        "What changed?",
+        "Where did the funnel move?",
+        "What should we test next?"
+      ],
+      "shot_list": [
+        "Open on the first redacted demo card.",
+        "Reveal the second card in the same manager view.",
+        "Finish with the next-experiment CTA."
+      ],
+      "caption": "When the same field signals live in one view, managers can ask a better next question instead of guessing from end-of-day updates.",
+      "cta_label": "Open the FirstKnock workflow",
+      "cta_url": "https://firstknock.online/start?utm_source=tiktok&utm_medium=organic_social&utm_campaign=1000-users&utm_content=tt-ce-one-coaching-loop-01",
+      "overlay_cta": "Run the next field experiment",
+      "disclosure": "Demo data - names redacted - no customer result."
+    },
+    {
+      "artifact_key": "ig-ce-pick-a-day-01",
+      "concept_id": "fk-ce-pick-a-day-01",
+      "platform": "instagram",
+      "platform_content_id": "ig-ce-pick-a-day-01",
+      "campaign": "1000-users",
+      "title": "Pick a day, see the work",
+      "pillar": "manager-analytics",
+      "format": "video",
+      "distribution_state": "sanitized_preview_only",
+      "source_asset_key": "analytics-date-picker-demo",
+      "hook": "Pick a day, see the work",
+      "overlay_text": [
+        "Choose the date",
+        "Inspect the activity",
+        "Coach the next action"
+      ],
+      "shot_list": [
+        "Start on the 30-day analytics view.",
+        "Open the date picker and choose one demo date.",
+        "Finish on the selected-day analytics view."
+      ],
+      "caption": "A daily number is more useful when a manager can inspect the activity behind it. Choose a date, review the field funnel, and coach the next action.",
+      "cta_label": "See the analytics workflow",
+      "cta_url": "https://firstknock.online/start?utm_source=instagram&utm_medium=organic_social&utm_campaign=1000-users&utm_content=ig-ce-pick-a-day-01",
+      "overlay_cta": "See the work behind the day",
+      "disclosure": "Demo data - no customer result or performance promise.",
+      "render": {
+        "duration_ms": 10000,
+        "trim_start_ms": 350,
+        "trim_end_ms": 10700,
+        "privacy_recipe_id": "analytics-date-picker-trim-v1",
+        "crop": {
+          "x": 0,
+          "y": 210,
+          "width": 1206,
+          "height": 2178
+        }
+      }
+    },
+    {
+      "artifact_key": "tt-ce-pick-a-day-01",
+      "concept_id": "fk-ce-pick-a-day-01",
+      "platform": "tiktok",
+      "platform_content_id": "tt-ce-pick-a-day-01",
+      "campaign": "1000-users",
+      "title": "Pick a day, see the work",
+      "pillar": "manager-analytics",
+      "format": "video",
+      "distribution_state": "sanitized_preview_only",
+      "source_asset_key": "analytics-date-picker-demo",
+      "hook": "Pick a day, see the work",
+      "overlay_text": [
+        "Choose the date",
+        "Inspect the activity",
+        "Coach the next action"
+      ],
+      "shot_list": [
+        "Start on the 30-day analytics view.",
+        "Open the date picker and choose one demo date.",
+        "Finish on the selected-day analytics view."
+      ],
+      "caption": "Pick any day and inspect the activity behind the outcome: the date, the field funnel, and the next coaching action in one manager view.",
+      "cta_label": "See the analytics workflow",
+      "cta_url": "https://firstknock.online/start?utm_source=tiktok&utm_medium=organic_social&utm_campaign=1000-users&utm_content=tt-ce-pick-a-day-01",
+      "overlay_cta": "See the work behind the day",
+      "disclosure": "Demo data - no customer result or performance promise.",
+      "render": {
+        "duration_ms": 10000,
+        "trim_start_ms": 350,
+        "trim_end_ms": 10700,
+        "privacy_recipe_id": "analytics-date-picker-trim-v1",
+        "crop": {
+          "x": 0,
+          "y": 210,
+          "width": 1206,
+          "height": 2178
+        }
+      }
+    },
+    {
+      "artifact_key": "ig-ce-rerun-followups-01",
+      "concept_id": "fk-ce-rerun-followups-01",
+      "platform": "instagram",
+      "platform_content_id": "ig-ce-rerun-followups-01",
+      "campaign": "1000-users",
+      "title": "Revisit the doors that matter",
+      "pillar": "route-command",
+      "format": "video",
+      "source_asset_key": "rerun-route-phone-demo",
+      "hook": "Revisit the doors that matter",
+      "overlay_text": [
+        "Callbacks",
+        "No answers",
+        "Unsold follow-ups"
+      ],
+      "shot_list": [
+        "Contain only the claim-free phone interface crop.",
+        "Hold on the selectable rerun outcomes.",
+        "Finish on the route-rerun CTA."
+      ],
+      "caption": "Turn callbacks, no answers, and unsold follow-ups into the next route instead of rebuilding the work from scratch.",
+      "cta_label": "See the rerun workflow",
+      "cta_url": "https://firstknock.online/start?utm_source=instagram&utm_medium=organic_social&utm_campaign=1000-users&utm_content=ig-ce-rerun-followups-01",
+      "overlay_cta": "Build the follow-up route",
+      "disclosure": "Product demo - no customer result or performance promise.",
+      "render": {
+        "crop": {
+          "x": 20,
+          "y": 160,
+          "width": 540,
+          "height": 1080
+        }
+      }
+    },
+    {
+      "artifact_key": "tt-ce-rerun-followups-01",
+      "concept_id": "fk-ce-rerun-followups-01",
+      "platform": "tiktok",
+      "platform_content_id": "tt-ce-rerun-followups-01",
+      "campaign": "1000-users",
+      "title": "Revisit the doors that matter",
+      "pillar": "route-command",
+      "format": "video",
+      "source_asset_key": "rerun-route-phone-demo",
+      "hook": "Revisit the doors that matter",
+      "overlay_text": [
+        "Callbacks",
+        "No answers",
+        "Unsold follow-ups"
+      ],
+      "shot_list": [
+        "Contain only the claim-free phone interface crop.",
+        "Hold on the selectable rerun outcomes.",
+        "Finish on the route-rerun CTA."
+      ],
+      "caption": "Callbacks, no answers, and unsold follow-ups should become the next route—not another spreadsheet or screenshot.",
+      "cta_label": "See the rerun workflow",
+      "cta_url": "https://firstknock.online/start?utm_source=tiktok&utm_medium=organic_social&utm_campaign=1000-users&utm_content=tt-ce-rerun-followups-01",
+      "overlay_cta": "Build the follow-up route",
+      "disclosure": "Product demo - no customer result or performance promise.",
+      "render": {
+        "crop": {
+          "x": 20,
+          "y": 160,
+          "width": 540,
+          "height": 1080
+        }
+      }
+    },
+    {
+      "artifact_key": "ig-ce-clean-routes-01",
+      "concept_id": "fk-ce-clean-routes-01",
+      "platform": "instagram",
+      "platform_content_id": "ig-ce-clean-routes-01",
+      "campaign": "1000-users",
+      "title": "Clean routes before the first knock",
+      "pillar": "custom-area-to-route",
+      "format": "video",
+      "source_asset_key": "route-handoff-og",
+      "hook": "Clean routes before the first knock",
+      "overlay_text": [
+        "Build the territory",
+        "Assign clear ownership",
+        "Send the field team"
+      ],
+      "shot_list": [
+        "Use only the route-map and phone crop.",
+        "Keep the numbered route sequence visible.",
+        "Finish on the clean-handoff CTA."
+      ],
+      "caption": "A field day starts cleaner when territory, route ownership, and the rep handoff live in the same workflow before the first knock.",
+      "cta_label": "See the route workflow",
+      "cta_url": "https://firstknock.online/start?utm_source=instagram&utm_medium=organic_social&utm_campaign=1000-users&utm_content=ig-ce-clean-routes-01",
+      "overlay_cta": "Build the clean handoff",
+      "disclosure": "Illustrative product demo - no customer result.",
+      "render": {
+        "crop": {
+          "x": 980,
+          "y": 0,
+          "width": 794,
+          "height": 887
+        }
+      }
+    },
+    {
+      "artifact_key": "tt-ce-clean-routes-01",
+      "concept_id": "fk-ce-clean-routes-01",
+      "platform": "tiktok",
+      "platform_content_id": "tt-ce-clean-routes-01",
+      "campaign": "1000-users",
+      "title": "Clean routes before the first knock",
+      "pillar": "custom-area-to-route",
+      "format": "video",
+      "source_asset_key": "route-handoff-og",
+      "hook": "Clean routes before the first knock",
+      "overlay_text": [
+        "Build the territory",
+        "Assign clear ownership",
+        "Send the field team"
+      ],
+      "shot_list": [
+        "Use only the route-map and phone crop.",
+        "Keep the numbered route sequence visible.",
+        "Finish on the clean-handoff CTA."
+      ],
+      "caption": "Build the territory, give each route an owner, and send the team into the field with one clean handoff.",
+      "cta_label": "See the route workflow",
+      "cta_url": "https://firstknock.online/start?utm_source=tiktok&utm_medium=organic_social&utm_campaign=1000-users&utm_content=tt-ce-clean-routes-01",
+      "overlay_cta": "Build the clean handoff",
+      "disclosure": "Illustrative product demo - no customer result.",
+      "render": {
+        "crop": {
+          "x": 980,
+          "y": 0,
+          "width": 794,
+          "height": 887
+        }
+      }
+    }
+  ]
+}

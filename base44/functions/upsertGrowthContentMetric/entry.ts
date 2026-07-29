@@ -1,6 +1,7 @@
 import { createClientFromRequest } from "npm:@base44/sdk@0.8.31";
 
 const FORMATS = new Set(["reel", "carousel", "story", "collab", "live", "other"]);
+const PLATFORMS = new Set(["instagram", "tiktok"]);
 const SNAPSHOT_DAYS = new Set([1, 3, 7, 30]);
 const MAX_METRIC = 1_000_000_000;
 const MAX_BODY_BYTES = 32_000;
@@ -79,7 +80,14 @@ function latestMetric(records: any[]): any | null {
   ))[0] || null;
 }
 
+function metricPlatform(metric: any): string {
+  const platform = token(metric?.platform);
+  return PLATFORMS.has(platform) ? platform : "instagram";
+}
+
 function snapshotPayload(metric: any): string {
+  // Keep the historical fingerprint shape stable. Platform is part of the
+  // checkpoint lookup key, so legacy Instagram evidence hashes remain valid.
   const values: any = {
     campaign: token(metric?.campaign, "1000-users"),
     content: token(metric?.content),
@@ -140,11 +148,17 @@ Deno.serve(async (req: Request) => {
       return response({ error: "content_metric_too_large" }, 413);
     }
     const body = JSON.parse(rawBody || "{}");
+    const platform = token(body?.platform, "instagram");
     const campaign = token(body?.campaign, "1000-users");
     const content = token(body?.content);
     const format = token(body?.format, "reel");
     const snapshotDays = Number(body?.snapshot_days || 7);
-    if (!content || !FORMATS.has(format) || !SNAPSHOT_DAYS.has(snapshotDays)) {
+    if (
+      !PLATFORMS.has(platform)
+      || !content
+      || !FORMATS.has(format)
+      || !SNAPSHOT_DAYS.has(snapshotDays)
+    ) {
       return response({ error: "invalid_content_metric" }, 400);
     }
 
@@ -172,6 +186,7 @@ Deno.serve(async (req: Request) => {
       metricValues[field] = value;
     }
     const metric = {
+      platform,
       campaign,
       content,
       format,
@@ -189,8 +204,8 @@ Deno.serve(async (req: Request) => {
     const existingRecords = asArray(await entity.filter(
       { campaign, content, snapshot_days: snapshotDays },
       "-snapshot_captured_at",
-      20,
-    ));
+      50,
+    )).filter((record) => metricPlatform(record) === platform);
     if (latestCheckpointConflict(existingRecords)) {
       return response({ error: "content_snapshot_conflict" }, 409);
     }
@@ -212,7 +227,7 @@ Deno.serve(async (req: Request) => {
         success: true,
         created: false,
         idempotent: true,
-        metric: existing,
+        metric: { ...existing, platform },
       });
     }
     const saved = existing?.id

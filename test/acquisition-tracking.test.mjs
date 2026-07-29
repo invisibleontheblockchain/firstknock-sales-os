@@ -8,6 +8,7 @@ import ts from 'typescript';
 import {
   ACQUISITION_STORAGE_KEY,
   buildInstagramTrackedLink,
+  buildPlatformTrackedLink,
   captureAcquisitionTouch,
   markStoredAcquisitionSynced,
   parseAcquisitionTouch,
@@ -100,6 +101,38 @@ test('Instagram UTMs are normalized into a stable content touch', () => {
   });
 });
 
+test('TikTok referrers infer an organic social touch on the neutral landing path', () => {
+  const touch = parseAcquisitionTouch({
+    href: 'https://firstknock.online/start',
+    referrer: 'https://vm.tiktok.com/ZM123456/',
+    now: new Date('2026-07-28T18:00:00.000Z'),
+  });
+
+  assert.deepEqual(touch, {
+    source: 'tiktok',
+    medium: 'organic_social',
+    campaign: 'unassigned',
+    content: 'unassigned',
+    term: '',
+    landing_path: '/start',
+    referrer_host: 'vm.tiktok.com',
+    captured_at: '2026-07-28T18:00:00.000Z',
+  });
+});
+
+test('explicit tracking parameters override a social referrer inference', () => {
+  const touch = parseAcquisitionTouch({
+    href: 'https://firstknock.online/start?utm_source=instagram&utm_medium=organic_social&utm_content=ig-explicit',
+    referrer: 'https://www.tiktok.com/',
+    now: new Date('2026-07-28T18:00:00.000Z'),
+  });
+
+  assert.equal(touch.source, 'instagram');
+  assert.equal(touch.medium, 'organic_social');
+  assert.equal(touch.content, 'ig-explicit');
+  assert.equal(touch.referrer_host, 'www.tiktok.com');
+});
+
 test('first touch remains immutable while the latest Instagram touch changes', () => {
   const storage = memoryStorage();
   captureAcquisitionTouch({
@@ -160,6 +193,41 @@ test('tracked links use one normalized Instagram source and unique content id', 
   assert.equal(link.searchParams.get('utm_medium'), 'organic_social');
   assert.equal(link.searchParams.get('utm_campaign'), '1-000-users');
   assert.equal(link.searchParams.get('utm_content'), 'ig-20260728-01');
+});
+
+test('platform tracked links share /start while preserving platform identity', () => {
+  for (const [platform, contentId, fallback] of [
+    ['instagram', 'IG Neutral 01', 'ig-neutral-01'],
+    ['tiktok', 'TT Neutral 01', 'tt-neutral-01'],
+  ]) {
+    const link = new URL(buildPlatformTrackedLink({
+      platform,
+      campaign: '1,000 Users',
+      contentId,
+    }));
+    assert.equal(link.pathname, '/start');
+    assert.equal(link.searchParams.get('utm_source'), platform);
+    assert.equal(link.searchParams.get('utm_medium'), 'organic_social');
+    assert.equal(link.searchParams.get('utm_campaign'), '1-000-users');
+    assert.equal(link.searchParams.get('utm_content'), fallback);
+  }
+
+  assert.throws(
+    () => buildPlatformTrackedLink({ platform: 'youtube' }),
+    /supported acquisition platform/,
+  );
+});
+
+test('/start and /instagram reuse the same public acquisition landing UI', () => {
+  const app = readSource('src/App.jsx');
+  assert.equal(
+    app.includes('<Route path="/start" element={<InstagramLanding />} />'),
+    true,
+  );
+  assert.equal(
+    app.includes('<Route path="/instagram" element={<InstagramLanding />} />'),
+    true,
+  );
 });
 
 test('anonymous and session identities remain stable without storing personal data', () => {
@@ -1034,6 +1102,158 @@ test('owner report groups Instagram content by signup, activation, and paid outc
   });
 });
 
+test('owner report separates Instagram and TikTok reach and conversions by source', async () => {
+  const now = new Date().toISOString();
+  const publishedAt = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString();
+  const touch = (source) => ({
+    source,
+    medium: 'organic_social',
+    campaign: '1000-users',
+    content: 'shared-content-id',
+    captured_at: now,
+  });
+  const users = [
+    { id: 'owner', is_owner: true, app_role: 'manager', created_date: now },
+    {
+      id: 'ig_manager',
+      email: 'ig@example.com',
+      app_role: 'manager',
+      created_date: now,
+      acquisition_first_touch: touch('instagram'),
+    },
+    {
+      id: 'tt_manager',
+      email: 'tt@example.com',
+      app_role: 'manager',
+      created_date: now,
+      acquisition_first_touch: touch('tiktok'),
+    },
+  ];
+  const metrics = [
+    {
+      id: 'legacy_ig_metric',
+      campaign: '1000-users',
+      content: 'shared-content-id',
+      format: 'reel',
+      snapshot_days: 7,
+      snapshot_captured_at: now,
+      published_at: publishedAt,
+      reach: 100,
+      views: 120,
+    },
+    {
+      id: 'tt_metric',
+      platform: 'tiktok',
+      campaign: '1000-users',
+      content: 'shared-content-id',
+      format: 'reel',
+      snapshot_days: 7,
+      snapshot_captured_at: now,
+      published_at: publishedAt,
+      reach: 250,
+      views: 300,
+      comments: 4,
+      follows: 2,
+    },
+  ];
+  const events = [
+    {
+      event_name: 'landing_viewed',
+      source: 'instagram',
+      campaign: '1000-users',
+      content: 'shared-content-id',
+      session_id: 'ig_session',
+      occurred_at: now,
+    },
+    {
+      event_name: 'landing_viewed',
+      source: 'tiktok',
+      campaign: '1000-users',
+      content: 'shared-content-id',
+      session_id: 'tt_session',
+      occurred_at: now,
+    },
+    {
+      event_name: 'signup_cta_clicked',
+      source: 'tiktok',
+      campaign: '1000-users',
+      content: 'shared-content-id',
+      session_id: 'tt_session',
+      occurred_at: now,
+    },
+  ];
+  const base44 = {
+    auth: { me: async () => structuredClone(users[0]) },
+    asServiceRole: {
+      entities: {
+        User: {
+          list: async (_sort, limit, skip = 0) => structuredClone(
+            users.slice(skip, skip + limit),
+          ),
+        },
+        SavedRoute: {
+          list: async () => [
+            {
+              created_by: 'ig@example.com',
+              property_hashes: ['ig-property'],
+              updated_date: now,
+            },
+            {
+              created_by: 'tt@example.com',
+              property_hashes: ['tt-property'],
+              updated_date: now,
+            },
+          ],
+        },
+        CanvasSession: { list: async () => [] },
+        InteractionLog: { list: async () => [] },
+        TeamMember: { list: async () => [] },
+        AcquisitionEvent: {
+          list: async (_sort, limit, skip = 0) => structuredClone(
+            events.slice(skip, skip + limit),
+          ),
+        },
+        GrowthContentMetric: {
+          list: async (_sort, limit, skip = 0) => structuredClone(
+            metrics.slice(skip, skip + limit),
+          ),
+        },
+        GrowthContentPlan: { list: async () => [] },
+      },
+    },
+  };
+  const handler = loadDenoHandler('base44/functions/getAcquisitionReport/entry.ts', base44);
+  const response = await handler(
+    new Request('https://firstknock.online/api/report', { method: 'POST' }),
+  );
+  const report = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(report.all_time.instagram_reach, 100);
+  assert.equal(report.all_time.tiktok_reach, 250);
+  assert.equal(report.all_time.social_reach, 350);
+  assert.equal(report.all_time.instagram_signups, 1);
+  assert.equal(report.all_time.tiktok_signups, 1);
+  assert.equal(report.all_time.instagram_activated_workspaces, 1);
+  assert.equal(report.all_time.tiktok_activated_workspaces, 1);
+  assert.equal(report.all_time.instagram_landing_sessions, 1);
+  assert.equal(report.all_time.tiktok_landing_sessions, 1);
+  assert.equal(report.all_time.tiktok_signup_cta_sessions, 1);
+  assert.equal(report.by_content.length, 2);
+  const instagram = report.by_content.find((row) => row.source === 'instagram');
+  const tiktok = report.by_content.find((row) => row.source === 'tiktok');
+  assert.equal(instagram.content, 'shared-content-id');
+  assert.equal(instagram.reach, 100);
+  assert.equal(instagram.signups, 1);
+  assert.equal(tiktok.content, 'shared-content-id');
+  assert.equal(tiktok.reach, 250);
+  assert.equal(tiktok.views, 300);
+  assert.equal(tiktok.comments, 4);
+  assert.equal(tiktok.follows, 2);
+  assert.equal(tiktok.signups, 1);
+  assert.equal(tiktok.activated_users, 1);
+});
+
 test('acquisition report rejects ordinary managers before service-role reads', async () => {
   let serviceReads = 0;
   const unreadableEntity = {
@@ -1122,7 +1342,7 @@ test('public acquisition events are allowlisted and deduplicated by session stag
   assert.equal(records.length, 1);
 });
 
-test('owner can upsert a cumulative Instagram content snapshot', async () => {
+test('owner can upsert cumulative platform checkpoints without colliding', async () => {
   const records = [];
   const metricEntity = {
     filter: async (query) => records.filter((record) => (
@@ -1146,12 +1366,19 @@ test('owner can upsert a cumulative Instagram content snapshot', async () => {
     asServiceRole: { entities: { GrowthContentMetric: metricEntity } },
   };
   const handler = loadDenoHandler('base44/functions/upsertGrowthContentMetric/entry.ts', base44);
-  const invoke = ({ reach, capturedAt, snapshotDays = 7 }) => handler(new Request('https://firstknock.online/api/metric', {
+  const invoke = ({
+    reach,
+    capturedAt,
+    snapshotDays = 7,
+    platform,
+    content = 'IG Snapshot 01',
+  }) => handler(new Request('https://firstknock.online/api/metric', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
       campaign: '1000 Users',
-      content: 'IG Snapshot 01',
+      content,
+      platform,
       format: 'reel',
       snapshot_days: snapshotDays,
       snapshot_captured_at: capturedAt,
@@ -1168,6 +1395,7 @@ test('owner can upsert a cumulative Instagram content snapshot', async () => {
   assert.equal((await created.json()).created, true);
   assert.equal(records[0].campaign, '1000-users');
   assert.equal(records[0].content, 'ig-snapshot-01');
+  assert.equal(records[0].platform, 'instagram');
   assert.equal(records[0].reach, 1000);
   assert.match(records[0].snapshot_fingerprint, /^[a-f0-9]{64}$/);
 
@@ -1198,6 +1426,20 @@ test('owner can upsert a cumulative Instagram content snapshot', async () => {
   });
   assert.equal(earlyRead.status, 200);
   assert.equal(records.length, 2, 'one-day and seven-day checkpoints must coexist');
+
+  const tiktok = await invoke({
+    platform: 'tiktok',
+    content: 'IG Snapshot 01',
+    reach: 2200,
+    capturedAt: secondCapturedAt,
+  });
+  assert.equal(tiktok.status, 200);
+  assert.equal((await tiktok.json()).created, true);
+  assert.equal(records.length, 3, 'the same content token may exist on both platforms');
+  assert.equal(
+    records.find((record) => record.platform === 'tiktok')?.reach,
+    2200,
+  );
 
   records.push({
     ...structuredClone(records[0]),
@@ -1291,6 +1533,7 @@ test('content snapshot rejects invalid metrics and timestamps instead of rewriti
   assert.equal((await invoke({ reach: -1 })).status, 400);
   assert.equal((await invoke({ reach: 1.5 })).status, 400);
   assert.equal((await invoke({ reach: 'not-a-number' })).status, 400);
+  assert.equal((await invoke({ platform: 'youtube' })).status, 400);
   assert.equal((await invoke({ snapshot_captured_at: 'not-a-date' })).status, 400);
   assert.equal((await invoke({
     snapshot_captured_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
@@ -1341,6 +1584,91 @@ test('growth mutations reject anonymous and ordinary-manager callers before serv
       );
     }
   }
+});
+
+test('growth plans use platform as part of their lifecycle identity', async () => {
+  const plans = [];
+  const planEntity = {
+    list: async (_sort, limit, skip = 0) => structuredClone(
+      plans.slice(skip, skip + limit),
+    ),
+    filter: async (query) => structuredClone(plans.filter((plan) => (
+      plan.campaign === query.campaign && plan.content === query.content
+    ))),
+    create: async (value) => {
+      const created = {
+        id: `plan_${plans.length + 1}`,
+        created_date: '2026-07-01T00:00:00.000Z',
+        updated_date: '2026-07-01T00:00:00.000Z',
+        ...structuredClone(value),
+      };
+      plans.push(created);
+      return structuredClone(created);
+    },
+    updateMany: async (query, operations) => {
+      const plan = plans.find((candidate) => (
+        candidate.id === query.id
+        && (
+          query.updated_date === undefined
+          || candidate.updated_date === query.updated_date
+        )
+      ));
+      if (!plan) return { updated: 0 };
+      Object.assign(plan, structuredClone(operations?.$set || {}), {
+        updated_date: '2026-07-02T00:00:00.000Z',
+      });
+      return { updated: 1 };
+    },
+  };
+  const base44 = {
+    auth: { me: async () => ({ id: 'owner', is_owner: true }) },
+    asServiceRole: {
+      entities: {
+        GrowthContentPlan: planEntity,
+        GrowthCreativeArtifact: { filter: async () => [] },
+      },
+    },
+  };
+  const handler = loadDenoHandler('base44/functions/manageGrowthContentPlan/entry.ts', base44);
+  const invoke = (body) => handler(new Request(
+    'https://firstknock.online/api/content-plan',
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    },
+  ));
+  const basePlan = {
+    ...INSTAGRAM_FIRST_30_DAYS[0],
+    content: 'shared-plan-id',
+  };
+  const seeded = await invoke({
+    action: 'seed',
+    plans: [
+      { ...basePlan, platform: 'instagram' },
+      { ...basePlan, platform: 'tiktok', sequence: basePlan.sequence + 1 },
+    ],
+  });
+  assert.equal(seeded.status, 200);
+  assert.equal((await seeded.json()).created, 2);
+  assert.equal(plans.length, 2);
+
+  const published = await invoke({
+    action: 'publish',
+    platform: 'tiktok',
+    campaign: basePlan.campaign,
+    content: basePlan.content,
+    published_at: '2026-07-01T12:00:00.000Z',
+  });
+  assert.equal(published.status, 200);
+  assert.equal(
+    plans.find((plan) => plan.platform === 'tiktok')?.published_at,
+    '2026-07-01T12:00:00.000Z',
+  );
+  assert.equal(
+    plans.find((plan) => plan.platform === 'instagram')?.published_at,
+    undefined,
+  );
 });
 
 test('owner can seed, publish, and review the fixed-age growth queue', async () => {
@@ -1682,6 +2010,10 @@ test('growth queue entities remain service-only', () => {
     assert.equal(planSchema.rls[action].user_condition.id, '__service_role_only__');
     assert.equal(metricSchema.rls[action].user_condition.id, '__service_role_only__');
   }
+  assert.deepEqual(planSchema.properties.platform.enum, ['instagram', 'tiktok']);
+  assert.deepEqual(metricSchema.properties.platform.enum, ['instagram', 'tiktok']);
+  assert.equal(planSchema.properties.platform.default, 'instagram');
+  assert.equal(metricSchema.properties.platform.default, 'instagram');
 });
 
 test('growth CSV export neutralizes spreadsheet formulas and preserves quoting', () => {
@@ -1699,6 +2031,7 @@ test('growth dashboard keeps queue evidence locked, repairable, and production-l
   const dashboard = readSource('src/pages/GrowthDashboard.jsx');
   const queue = readSource('src/components/acquisition/GrowthActionQueue.jsx');
   assert.match(dashboard, /queueSnapshotLock\?\.publishedAt/);
+  assert.match(dashboard, /queueSnapshotLock\?\.platform/);
   assert.match(dashboard, /queueSnapshotLock\?\.format/);
   assert.match(dashboard, /queueSnapshotLock\?\.hook/);
   assert.match(dashboard, /cta_variant:\s*queueSnapshotLock\?\.ctaVariant/);
@@ -1707,8 +2040,13 @@ test('growth dashboard keeps queue evidence locked, repairable, and production-l
   assert.match(dashboard, /Gross retained cohort/);
   assert.match(dashboard, /FirstKnock keeps\s+ETA off/);
   assert.match(dashboard, /weekly_proxy_available/);
+  assert.match(dashboard, /buildPlatformTrackedLink/);
+  assert.match(dashboard, /Log \{platformLabel\} snapshot/);
+  assert.match(dashboard, /Instagram or TikTok analytics snapshot/);
+  assert.match(dashboard, /platform:\s*queueSnapshotLock\?\.platform \|\| platform/);
   assert.doesNotMatch(dashboard, /origin:\s*window\.location\.origin/);
   assert.match(queue, /Sync 30-day sprint/);
+  assert.match(queue, /buildPlatformTrackedLink/);
   assert.match(queue, /snapshot_action_days/);
   assert.match(queue, /htmlFor="growth-decision-note"/);
 });
@@ -1830,7 +2168,7 @@ test('growth pace marks a mature observed sample without turning it into an ETA'
   assert.equal(complete.pace_ratio.retained_users, null);
 });
 
-test('growth pace adapter keeps all-source progress separate from Instagram throughput', () => {
+test('growth pace adapter preserves legacy Instagram evidence and prefers combined social evidence', () => {
   const pace = buildGrowthPaceFromReport({
     all_time: {
       retained_active_users_30d: 100,
@@ -1862,6 +2200,25 @@ test('growth pace adapter keeps all-source progress separate from Instagram thro
   assert.equal(pace.observed_weekly_proxy_28d.activated_workspaces, 1.25);
   assert.equal(pace.observed_weekly_proxy_28d.retained_users, 5);
   assert.equal(pace.observed_weekly_proxy_28d.content_assets, 5);
+
+  const combined = buildGrowthPaceFromReport({
+    all_time: { retained_active_users_30d: 100 },
+    pace_evidence: {
+      measured_content_assets_all_time: 35,
+      observation_window_complete: true,
+      last_28_days: {
+        instagram_reach: 100,
+        social_reach: 60000,
+        social_content_assets: 24,
+        social_activated_workspaces: 12,
+        social_retained_active_users_30d: 16,
+      },
+    },
+  });
+  assert.equal(combined.observed_weekly_proxy_28d.reach, 15000);
+  assert.equal(combined.observed_weekly_proxy_28d.content_assets, 6);
+  assert.equal(combined.observed_weekly_proxy_28d.activated_workspaces, 3);
+  assert.equal(combined.observed_weekly_proxy_28d.retained_users, 4);
 });
 
 test('growth pace status names the earliest trustworthy operating constraint', () => {

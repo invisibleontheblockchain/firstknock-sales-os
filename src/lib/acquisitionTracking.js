@@ -38,9 +38,14 @@ function inferSourceFromReferrer(host) {
   if (
     host === 'instagram.com'
     || host.endsWith('.instagram.com')
-    || host === 'l.instagram.com'
   ) {
     return { source: 'instagram', medium: 'organic_social' };
+  }
+  if (
+    host === 'tiktok.com'
+    || host.endsWith('.tiktok.com')
+  ) {
+    return { source: 'tiktok', medium: 'organic_social' };
   }
   return null;
 }
@@ -189,5 +194,28 @@ export function buildInstagramTrackedLink({
   base.searchParams.set('utm_medium', 'organic_social');
   base.searchParams.set('utm_campaign', cleanToken(campaign) || '1000-users');
   base.searchParams.set('utm_content', cleanToken(contentId) || 'ig-bio');
+  return base.toString();
+}
+
+export function buildPlatformTrackedLink({
+  origin = 'https://firstknock.online',
+  destination = '/start',
+  platform,
+  campaign = '1000-users',
+  contentId,
+} = {}) {
+  const source = cleanToken(platform);
+  if (!['instagram', 'tiktok'].includes(source)) {
+    throw new TypeError('A supported acquisition platform is required.');
+  }
+
+  const base = new URL(cleanPath(destination), origin);
+  base.searchParams.set('utm_source', source);
+  base.searchParams.set('utm_medium', 'organic_social');
+  base.searchParams.set('utm_campaign', cleanToken(campaign) || '1000-users');
+  base.searchParams.set(
+    'utm_content',
+    cleanToken(contentId) || (source === 'tiktok' ? 'tt-bio' : 'ig-bio'),
+  );
   return base.toString();
 }

@@ -37,14 +37,20 @@ The repository now includes the first safe operating layer:
 
 - service-only `GrowthSourceAsset`, `GrowthCreativeArtifact`, `GrowthPublishJob`, and
   `GrowthPublishHeartbeat` entities;
+- an executable Node/FFmpeg renderer with exact source hashes, deterministic crop/trim
+  recipes, 1080x1920 H.264 exports, technical probing, full-SHA output keys, and a
+  bounded render-result manifest;
+- a Growth Dashboard render-result import that verifies the configured origin, codec
+  evidence, attribution, QC flags, and registered source lineage before creating or
+  revising a draft;
 - an owner/admin content queue that registers only opaque source references and
   sanitized summaries;
 - optional schema-validated Instagram and TikTok draft generation behind
   `GROWTH_CONTENT_GENERATION_ENABLED`;
 - editable manual drafts when generation is disabled;
 - blocking privacy, demo-data, claims, and media-rights review;
-- fenced source blocking/deactivation that cancels dependent queued work and refuses a
-  false-success downgrade while provider work is live or ambiguous;
+- fenced source safety and render-identity changes that cancel dependent queued work
+  and refuse a false-success update while provider work is live or ambiguous;
 - one exact provider-text field containing the caption, disclosure, CTA, and tracking
   URL;
 - owner-only approval bound to a canonical SHA-256 of the complete public rendition and
@@ -63,18 +69,28 @@ The repository now includes the first safe operating layer:
 - a Buffer-channel identity check that rejects the wrong organization, platform,
   disconnected, locked, or paused queue before `createPost`;
 - ambiguous-create reconciliation that never blindly replays `createPost`;
-- an Instagram measurement-plan bridge that uses the same `platform_content_id` and
-  starts its fixed-age snapshot clock when Buffer reports `sent`, with a
+- an Instagram and TikTok measurement-plan bridge that uses each platform's exact
+  `platform_content_id` and starts its fixed-age snapshot clock when Buffer reports
+  `sent`, with a
   local measurement-only retry state that cannot recreate the provider post or be
   blocked by later source/configuration changes;
+- platform-aware manual Instagram and TikTok checkpoints that keep reach, views,
+  engagement, and downstream first-touch conversion rows separate by platform,
+  campaign, and content ID while preserving legacy Instagram records;
 - compare-and-set protection on manual plan seeding and publication, so manual growth
   operations cannot overwrite a concurrent Buffer-owned measurement contract; and
 - a disabled-by-default kill switch.
 
-The dashboard can load metadata for the three strongest already-redacted starter images.
-It does not upload or copy the local source files. No media renderer, public rendition
-host, Buffer credentials, live scheduler, TikTok attribution, or social account is
-connected by this code change.
+The dashboard can load metadata and exact hashes for five audited starter sources. The
+local renderer produces ten publish-candidate renditions plus two sanitized video
+previews without uploading or copying the source package. The neutral `/start` landing
+path and platform-specific UTM links preserve Instagram and TikTok identity. No public
+rendition host, Buffer credentials, live scheduler, automated TikTok reach import, or
+social account is connected by this code change.
+
+TikTok reach and engagement can be entered manually in Growth Dashboard today and join
+to TikTok `/start` conversions by content ID. Automatic provider ingestion remains a
+later deployment step.
 
 ## Existing source library
 
@@ -121,8 +137,10 @@ Before a source can enter generation, it needs one of:
 - `blocked`: not eligible for generation.
 
 `IMG_1525`, `3DFF7ABF-98ED-4FDC-AB6C-F06AE9BD8FF9`, and `IMG_1541` are the strongest
-initial sanitized candidates. Treat analytics values as demo data unless the underlying
-customer result and permission are verified.
+initial sanitized analytics candidates. The claim-free phone crop from
+`58DA851F-F7C4-4A55-BB44-947C28BD021F` and the owned public `og.png` route-map crop are
+also registered with exact hashes. Treat analytics values as demo data unless the
+underlying customer result and permission are verified.
 
 ## Editorial system
 
@@ -190,10 +208,10 @@ comparison group: manager-pain-short-video
 Tracked URLs preserve the shared concept while keeping platform acquisition distinct:
 
 ```text
-Current Instagram implementation:
+Legacy Instagram links remain supported:
 /instagram?utm_source=instagram&utm_medium=organic_social&utm_campaign=1000-users&utm_content=ig-20260803-01
 
-Target neutral cross-platform paths:
+Content-engine cross-platform links:
 Instagram:
 /start?utm_source=instagram&utm_medium=organic_social&utm_campaign=1000-users&utm_content=ig-20260803-01
 
@@ -202,20 +220,20 @@ TikTok:
 ```
 
 Do not assign the same platform content ID to both posts. The implemented engine creates
-or updates the matching Instagram `GrowthContentPlan`, embeds its tracked URL in the
-exact approved provider text as `caption_url`, and records `published_at` from Buffer's
-sent state.
+or updates the matching platform-aware `GrowthContentPlan`, embeds its tracked URL in
+the exact approved provider text as `caption_url`, and records `published_at` from
+Buffer's sent state.
 
 Instagram caption URLs are not a dependable clickable-link surface for every account
-or viewer. The current URL is useful as exact creative evidence, but it must not be
-treated as reliable per-post conversion attribution. Before conversion reporting is
-used to choose winners, add the neutral `/start` route and a verified clickable
-distribution path (for example, a controlled profile-link or comment/DM workflow) that
-preserves `utm_content`.
+or viewer. The URL is useful as exact creative evidence, but it must not be treated as
+reliable per-post conversion attribution without a verified clickable distribution
+path (for example, a controlled profile-link or comment/DM workflow) that preserves
+`utm_content`.
 FirstKnock should compare concept performance across platforms while preserving
-platform-specific reach, conversion, and retained-user evidence. Add the neutral
-`/start` landing route and TikTok source reporting before enabling TikTok attribution;
-do not send TikTok traffic to the current Instagram-named landing path.
+platform-specific reach, conversion, and retained-user evidence. The neutral `/start`
+landing route accepts both platform sources and TikTok referrer inference. Verify
+TikTok source reporting and a clickable distribution surface before enabling TikTok
+conversion decisions.
 
 ## Publishing architecture
 
@@ -237,10 +255,11 @@ exposed by the evolving schema, so both real channels must pass staging smoke po
 before the kill switch is enabled. Buffer requires media to remain available at a
 stable public HTTPS URL until publishing.
 
-Only approved, sanitized **renditions** may be placed at that public delivery URL. Raw
-source assets stay private. Do not use short-lived signed URLs for scheduled Buffer
-media. Configure an owned immutable origin with `GROWTH_MEDIA_ORIGIN`; the delivery URL
-must use that exact origin and include the complete 64-character rendition SHA-256.
+Only locally reviewed, sanitized publish candidates may be staged at that non-indexed
+public delivery URL; hosting is not approval. Raw source assets and preview-only
+renditions stay private. Do not use short-lived signed URLs for scheduled Buffer media.
+Configure an owned immutable origin with `GROWTH_MEDIA_ORIGIN`; the delivery URL must
+use that exact origin and include the complete 64-character rendition SHA-256.
 Storage at that origin is a security boundary: keys must be content-addressed,
 write-once, and reject overwrites for the lifetime of every scheduled post. Immediately
 before a create request, the worker downloads the bounded rendition without following
@@ -272,13 +291,13 @@ idempotency key =
 The worker:
 
 1. leases a bounded batch of due jobs;
-2. verifies approval, hash, media metadata, immutable origin, and fetched rendition
-   bytes;
+2. verifies approval, exact registered source lineage, media metadata, immutable
+   origin, and fetched rendition bytes;
 3. creates or reconciles the provider post;
 4. stores the provider post ID and scheduled time;
 5. polls or receives status until sent or terminally failed;
 6. retries retryable failures with bounded backoff;
-7. uses `delivery_reconcile` to cancel the linked Instagram measurement plan before a
+7. uses `delivery_reconcile` to cancel the linked platform measurement plan before a
    no-provider failure or owner cancellation can become terminal; and
 8. never creates a second provider post after an ambiguous response without first
    reconciling.
@@ -327,7 +346,7 @@ Keep `GrowthContentPlan` as the experiment and editorial brief. Add:
 - a `measurement_retry` state for a sent provider post whose local publication clock
   still needs to be written;
 - a `delivery_reconcile` state and terminal target for a no-provider failure or owner
-  cancellation whose linked Instagram plan still needs to be canceled;
+  cancellation whose linked platform plan still needs to be canceled;
 - provider post ID, provider status, and public post URL; and
 - sent, failed, or canceled timestamps.
 
@@ -344,28 +363,36 @@ sanitized data and never expose provider tokens or raw private-media URLs.
 ## Rendering boundary
 
 Base44 can generate structured copy and images, but it is not the right place to run a
-long FFmpeg render inside an HTTP request. Use:
+long FFmpeg render inside an HTTP request. The checked-in renderer and pack now provide
+the executable external-worker boundary:
 
 1. a short Base44 generation function for a schema-validated creative brief;
 2. a durable render job;
 3. an external video worker or template renderer;
-4. a signed callback or bounded poller;
+4. a bounded `growth-render-result.v1` import today, followed by a signed callback or
+   bounded poller when remote render jobs are provisioned;
 5. private source storage; and
-6. a separate stable delivery copy only after approval.
+6. a separate stable delivery copy before review, so the exact immutable bytes can be
+   inspected, approved, and later delivered.
 
-The initial video template should:
+The initial video template now:
 
-- export 1080x1920 H.264 at 30 fps;
-- place the 1206x2622 screen capture inside a safe framed layout rather than blindly
+- exports 1080x1920 H.264 at constant 30 fps with AAC, Rec.709, and fast-start;
+- places the 1206x2622 screen capture inside a safe framed layout rather than blindly
   center-cropping it;
-- zoom to the one interaction being explained;
-- show a 4-7 word hook in the first second;
-- include burned-in captions and one CTA;
-- use voiceover or properly licensed platform-safe audio; and
-- contain no third-party watermark.
+- uses an exact crop/trim for the one interaction being explained;
+- shows a 4-7 word hook in the first second;
+- includes burned-in context, demo disclosure, and one CTA;
+- emits a silent AAC review track until hash-bound owned/licensed audio is implemented;
+- contains no third-party watermark;
+- verifies the exact private source SHA before rendering; and
+- distinguishes ten importable publish candidates from two redaction-bound previews.
 
 Instagram feed graphics should export at 1080x1350. TikTok photo-mode renditions should
 export at 1080x1920.
+
+See [RENDERER_RUNBOOK.md](./RENDERER_RUNBOOK.md) for commands, output layout, immutable
+hosting verification, and dashboard import.
 
 ## Rollout
 
@@ -379,6 +406,10 @@ export at 1080x1920.
 - export or manually schedule while validating quality.
 
 Exit gate: ten approved posts with no privacy, claim, attribution, or media-spec failure.
+
+Local progress: ten publish-candidate renditions now exist as a reproducible pack and
+pass deterministic technical checks. They are not approved posts until they are hosted,
+loaded in the dashboard, inspected, and passed through all four review gates.
 
 ### Phase 2: scheduled delivery
 
@@ -396,7 +427,7 @@ duplicate, wrong account, wrong time, or unreviewed publish.
 
 ### Phase 3: learning loop
 
-- import platform reach and engagement at fixed ages;
+- automate the currently manual platform reach and engagement checkpoints at fixed ages;
 - join both platform IDs to the shared concept;
 - keep product conversion and retained-user attribution in FirstKnock;
 - compare platform, format, hook, CTA, and source family;
@@ -429,12 +460,17 @@ without allowing a generative model to make every public-brand decision.
 - `BUFFER_ORGANIZATION_ID`;
 - `BUFFER_INSTAGRAM_CHANNEL_ID`;
 - `BUFFER_TIKTOK_CHANNEL_ID`;
-- `GROWTH_MEDIA_ORIGIN` set to the exact owned immutable HTTPS origin serving approved
-  renditions;
+- `GROWTH_MEDIA_ORIGIN` set to the exact owned immutable HTTPS origin serving locally
+  reviewed staging candidates and approved renditions;
+- `GROWTH_RENDER_PACK_SHA256S` set to the reviewed render pack hash (or a short,
+  controlled comma-separated rollout allowlist);
+- `GROWTH_RENDER_ENVIRONMENT_SHA256S` set to the reviewed renderer-environment hash
+  (or a short, controlled comma-separated rollout allowlist);
 - an independent random `GROWTH_PUBLISH_WORKER_SECRET` with at least 32 characters;
 - `GROWTH_PUBLISH_ENABLED=true` only after credentialed staging posts pass;
 - `GROWTH_CONTENT_GENERATION_ENABLED=true` when AI draft generation is desired;
-- stable public delivery host for approved renditions;
+- a stable, non-indexed public delivery host for locally reviewed staging candidates
+  and approved renditions;
 - write-once/no-overwrite enforcement for full-SHA rendition keys;
 - default Arizona posting windows;
 - owner-only approval policy; and

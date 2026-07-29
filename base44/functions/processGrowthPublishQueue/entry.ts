@@ -27,6 +27,7 @@ const PROVIDER_STATUSES = new Set([
   "sending",
   "sent",
 ]);
+const SOCIAL_PLATFORMS = new Set(["instagram", "tiktok"]);
 const MIME_TYPES = new Set(["video/mp4", "image/jpeg", "image/png", "image/webp"]);
 const LEASE_MS = 90 * 1000;
 const MAX_BATCH = 5;
@@ -878,23 +879,45 @@ function providerFields(post: any, now: Date): any {
   };
 }
 
-async function syncInstagramPublication(
+async function measurementPlansForPlatform(
+  entity: any,
+  platform: string,
+  campaign: string,
+  content: string,
+): Promise<any[]> {
+  const explicit = asArray(await entity.filter(
+    { platform, campaign, content },
+    "-updated_date",
+    20,
+  ));
+  if (platform !== "instagram" || explicit.length) return explicit;
+
+  // Platform was added after the original Instagram measurement plans shipped.
+  // Keep those rows addressable as Instagram without allowing them to match TikTok.
+  const legacy = asArray(await entity.filter(
+    { campaign, content },
+    "-updated_date",
+    20,
+  )).filter((plan) => !token(plan?.platform));
+  return legacy;
+}
+
+async function syncPlatformPublication(
   entities: any,
   artifact: any,
   post: any,
   now: Date,
 ): Promise<{ ok: boolean; error?: string }> {
-  if (artifact?.platform !== "instagram" || token(post?.status) !== "sent") {
+  const platform = token(artifact?.platform);
+  if (!SOCIAL_PLATFORMS.has(platform) || token(post?.status) !== "sent") {
     return { ok: true };
   }
-  const plans = asArray(await entities.GrowthContentPlan.filter(
-    {
-      campaign: artifact.campaign,
-      content: artifact.platform_content_id,
-    },
-    "-updated_date",
-    20,
-  ));
+  const plans = await measurementPlansForPlatform(
+    entities.GrowthContentPlan,
+    platform,
+    token(artifact?.campaign, "1000-users"),
+    token(artifact?.platform_content_id),
+  );
   if (plans.length !== 1) {
     return { ok: false, error: "content_plan_conflict" };
   }
@@ -948,19 +971,18 @@ async function syncInstagramPublication(
   return { ok: true };
 }
 
-async function cancelInstagramMeasurementDelivery(
+async function cancelPlatformMeasurementDelivery(
   entities: any,
   job: any,
 ): Promise<{ ok: boolean; error?: string }> {
-  if (token(job?.platform) !== "instagram") return { ok: true };
-  const plans = asArray(await entities.GrowthContentPlan.filter(
-    {
-      campaign: token(job?.campaign, "1000-users"),
-      content: token(job?.platform_content_id),
-    },
-    "-updated_date",
-    20,
-  ));
+  const platform = token(job?.platform);
+  if (!SOCIAL_PLATFORMS.has(platform)) return { ok: true };
+  const plans = await measurementPlansForPlatform(
+    entities.GrowthContentPlan,
+    platform,
+    token(job?.campaign, "1000-users"),
+    token(job?.platform_content_id),
+  );
   if (!plans.length) return { ok: true };
   if (plans.length !== 1) return { ok: false, error: "content_plan_conflict" };
   const current = plans[0];
@@ -1004,7 +1026,7 @@ async function measurementAwareFields(
 ): Promise<any> {
   const fields = providerFields(post, now);
   if (fields.state !== "sent") return fields;
-  const measurement = await syncInstagramPublication(
+  const measurement = await syncPlatformPublication(
     entities,
     artifact,
     post,
@@ -1017,14 +1039,57 @@ async function measurementAwareFields(
     next_retry_at: new Date(now.getTime() + 2 * 60 * 1000).toISOString(),
     last_error_code: measurement.error || "content_plan_unavailable",
     last_error_message:
-      "Buffer published the post, but its Instagram measurement clock could not be started.",
+      "Buffer published the post, but its platform measurement clock could not be started.",
   };
 }
 
-async function sourcePrivacyState(
+type SourceReadinessState =
+  | "safe"
+  | "unsafe"
+  | "lineage_changed"
+  | "unavailable";
+
+function opaqueSourceReference(value: any): string {
+  const reference = String(value || "").trim();
+  return /^[A-Za-z0-9][A-Za-z0-9._~-]{0,299}$/.test(reference)
+    ? reference
+    : "";
+}
+
+function renderedLineageMatchesSources(
+  artifact: any,
+  sourceKeys: string[],
+  groupedSources: Map<string, any[]>,
+): boolean {
+  if (!artifact?.render_result_schema) return true;
+  const lineage = asArray(artifact?.render_source_lineage);
+  if (
+    lineage.length !== sourceKeys.length
+    || new Set(sourceKeys).size !== sourceKeys.length
+  ) {
+    return false;
+  }
+  return lineage.every((item, index) => {
+    const assetKey = token(item?.asset_key);
+    const sources = groupedSources.get(assetKey) || [];
+    const source = sources[0];
+    const lineageReference = opaqueSourceReference(item?.source_reference);
+    const sourceReference = opaqueSourceReference(source?.source_reference);
+    const lineageSha256 = normalized(item?.source_sha256);
+    const sourceSha256 = normalized(source?.source_sha256);
+    return assetKey === sourceKeys[index]
+      && sources.length === 1
+      && Boolean(lineageReference)
+      && lineageReference === sourceReference
+      && /^[a-f0-9]{64}$/.test(lineageSha256)
+      && lineageSha256 === sourceSha256;
+  });
+}
+
+async function sourceReadinessState(
   entities: any,
   artifact: any,
-): Promise<"safe" | "unsafe" | "unavailable"> {
+): Promise<SourceReadinessState> {
   try {
     const sourceKeys = asArray(artifact?.source_asset_keys)
       .map((value) => token(value))
@@ -1041,15 +1106,17 @@ async function sourcePrivacyState(
       if (!grouped.has(key)) grouped.set(key, []);
       grouped.get(key)?.push(source);
     }
-    return sourceKeys.some((key) => {
+    const unsafe = sourceKeys.some((key) => {
       const rows = grouped.get(key) || [];
       return rows.length !== 1
         || rows[0]?.active === false
         || rows[0]?.privacy_change_pending === true
         || token(rows[0]?.privacy_status) !== "safe";
-    })
-      ? "unsafe"
-      : "safe";
+    });
+    if (unsafe) return "unsafe";
+    return renderedLineageMatchesSources(artifact, sourceKeys, grouped)
+      ? "safe"
+      : "lineage_changed";
   } catch {
     return "unavailable";
   }
@@ -1099,14 +1166,17 @@ async function preflight(
   } catch {
     return { error: "media_origin_mismatch" };
   }
-  const privacyState = await sourcePrivacyState(entities, artifact);
-  if (privacyState === "unavailable") {
+  const sourceState = await sourceReadinessState(entities, artifact);
+  if (sourceState === "unavailable") {
     return {
       error: "source_privacy_clearance_unavailable",
       outcome: "retry",
     };
   }
-  if (privacyState !== "safe") {
+  if (sourceState === "lineage_changed") {
+    return { error: "source_render_lineage_changed" };
+  }
+  if (sourceState !== "safe") {
     return { error: "source_privacy_clearance_changed" };
   }
   return { artifact };
@@ -1144,7 +1214,7 @@ async function finishFailure(
     nextRetryAt = new Date(now.getTime() + seconds * 1000).toISOString();
   }
   if (state === "failed") {
-    const delivery = await cancelInstagramMeasurementDelivery(entities, job)
+    const delivery = await cancelPlatformMeasurementDelivery(entities, job)
       .catch(() => ({ ok: false, error: "content_plan_unavailable" }));
     if (!delivery.ok) {
       state = "delivery_reconcile";
@@ -1177,7 +1247,7 @@ async function processDeliveryReconcile(
   now: Date,
   secrets: string[],
 ): Promise<string> {
-  const delivery = await cancelInstagramMeasurementDelivery(entities, claim.row)
+  const delivery = await cancelPlatformMeasurementDelivery(entities, claim.row)
     .catch(() => ({ ok: false, error: "content_plan_unavailable" }));
   const baseMessage = cleanSecrets(
     claim.row?.last_error_message || "Delivery failed before provider submission.",
@@ -1233,7 +1303,7 @@ async function processMeasurementRetry(
     );
   }
   const sentAt = timestamp(job?.provider_sent_at) || undefined;
-  const measurement = await syncInstagramPublication(
+  const measurement = await syncPlatformPublication(
     entities,
     job,
     {
@@ -1257,7 +1327,7 @@ async function processMeasurementRetry(
       next_retry_at: new Date(now.getTime() + 2 * 60 * 1000).toISOString(),
       last_error_code: measurement.error || "content_plan_unavailable",
       last_error_message:
-        "Buffer published the post, but its Instagram measurement clock could not be started.",
+        "Buffer published the post, but its platform measurement clock could not be started.",
     };
   const saved = await fencedUpdate(
     entities.GrowthPublishJob,
@@ -1299,19 +1369,23 @@ async function processCreate(
       secrets,
     );
   }
-  const privacyState = await sourcePrivacyState(entities, artifact);
-  if (privacyState !== "safe") {
+  const sourceState = await sourceReadinessState(entities, artifact);
+  if (sourceState !== "safe") {
     return finishFailure(
       entities,
       claim.row,
       claim,
       {
-        outcome: privacyState === "unavailable" ? "retry" : "review",
-        code: privacyState === "unavailable"
+        outcome: sourceState === "unavailable" ? "retry" : "review",
+        code: sourceState === "unavailable"
           ? "source_privacy_clearance_unavailable"
+          : sourceState === "lineage_changed"
+          ? "source_render_lineage_changed"
           : "source_privacy_clearance_changed",
-        message: privacyState === "unavailable"
+        message: sourceState === "unavailable"
           ? "Source privacy clearance could not be re-read before publishing."
+          : sourceState === "lineage_changed"
+          ? "Rendered source lineage changed before provider submission."
           : "A source was blocked or deactivated before provider submission.",
       },
       now,

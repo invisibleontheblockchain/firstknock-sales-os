@@ -8,6 +8,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const PACE_CAMPAIGN = "1000-users";
 const PACE_OBSERVATION_DAYS = 28;
 const PACE_EXCLUDED_CONTENT = new Set(["ig-release-smoke"]);
+const SOCIAL_PLATFORMS = new Set(["instagram", "tiktok"]);
 const CONTENT_METRIC_FIELDS = [
   "reach",
   "views",
@@ -20,6 +21,7 @@ const CONTENT_METRIC_FIELDS = [
   "dm_intents",
 ];
 const PLAN_DEFINITION_FIELDS = [
+  "platform",
   "campaign",
   "content",
   "sprint",
@@ -205,23 +207,41 @@ function acquisitionTouchForUser(
   return user?.acquisition_first_touch;
 }
 
-function instagramEvents(events: any[]): any[] {
-  return events.filter((event) => normalized(event?.source) === "instagram");
+function socialPlatform(value: any): string {
+  const platform = normalized(value);
+  return SOCIAL_PLATFORMS.has(platform) ? platform : "instagram";
+}
+
+function recordPlatform(record: any): string {
+  return socialPlatform(record?.platform || record?.source);
+}
+
+function platformEvents(events: any[], platform: string): any[] {
+  return events.filter((event) => normalized(event?.source) === platform);
 }
 
 function uniqueCount(records: any[], field: string): number {
   return new Set(records.map((record) => String(record?.[field] || "")).filter(Boolean)).size;
 }
 
-function assetKey(campaign: any, content: any): string {
+function assetKey(
+  campaign: any,
+  content: any,
+  platform: any = "instagram",
+): string {
   const cleanContent = normalized(content);
   return cleanContent
-    ? `${normalized(campaign) || "1000-users"}|${cleanContent}`
+    ? `${socialPlatform(platform)}|${normalized(campaign) || "1000-users"}|${cleanContent}`
     : "";
 }
 
-function checkpointKey(campaign: any, content: any, snapshotDays: any): string {
-  const key = assetKey(campaign, content);
+function checkpointKey(
+  campaign: any,
+  content: any,
+  snapshotDays: any,
+  platform: any = "instagram",
+): string {
+  const key = assetKey(campaign, content, platform);
   return key ? `${key}|${Number(snapshotDays || 7)}` : "";
 }
 
@@ -246,7 +266,10 @@ function planLifecycleRank(plan: any): number {
 
 function planDefinitionPayload(plan: any): string {
   return JSON.stringify(Object.fromEntries(
-    PLAN_DEFINITION_FIELDS.map((field) => [field, plan?.[field] ?? null]),
+    PLAN_DEFINITION_FIELDS.map((field) => [
+      field,
+      field === "platform" ? recordPlatform(plan) : plan?.[field] ?? null,
+    ]),
   ));
 }
 
@@ -262,7 +285,7 @@ function planReviewPayload(plan: any): string {
 function canonicalContentPlans(plans: any[]): any[] {
   const grouped = new Map<string, any[]>();
   for (const plan of plans) {
-    const key = assetKey(plan?.campaign, plan?.content);
+    const key = assetKey(plan?.campaign, plan?.content, recordPlatform(plan));
     if (!key) continue;
     if (!grouped.has(key)) grouped.set(key, []);
     grouped.get(key)?.push(plan);
@@ -323,6 +346,7 @@ function hasContentSnapshot(metric: any): boolean {
 
 function metricEvidencePayload(metric: any): string {
   const payload: any = {
+    platform: recordPlatform(metric),
     campaign: normalized(metric?.campaign) || "1000-users",
     content: normalized(metric?.content),
     snapshot_days: Number(metric?.snapshot_days || 7),
@@ -342,6 +366,7 @@ function canonicalMetricCheckpoints(metrics: any[]): any[] {
       metric?.campaign,
       metric?.content,
       metric?.snapshot_days,
+      recordPlatform(metric),
     );
     if (!key) continue;
     if (!grouped.has(key)) grouped.set(key, []);
@@ -370,12 +395,12 @@ function canonicalMetricCheckpoints(metrics: any[]): any[] {
 
 function operatingContentMetrics(metrics: any[], plans: any[]): any[] {
   const plansByAsset = new Map(plans.map((plan) => [
-    assetKey(plan?.campaign, plan?.content),
+    assetKey(plan?.campaign, plan?.content, recordPlatform(plan)),
     plan,
   ]));
   const grouped = new Map<string, any[]>();
   for (const metric of metrics) {
-    const key = assetKey(metric?.campaign, metric?.content);
+    const key = assetKey(metric?.campaign, metric?.content, recordPlatform(metric));
     if (!grouped.has(key)) grouped.set(key, []);
     grouped.get(key)?.push(metric);
   }
@@ -498,6 +523,94 @@ function teamMultiplier(
   };
 }
 
+const PLATFORM_SUMMARY_FIELDS = [
+  "reach",
+  "content_assets",
+  "landing_sessions",
+  "signup_cta_sessions",
+  "auth_completed",
+  "acquired_users",
+  "signups",
+  "activated_workspaces",
+  "activated_users",
+  "retained_active_users_30d",
+  "paid_users",
+  "active_rep_roster",
+  "joined_reps",
+  "activated_reps",
+  "rep_identity_conflicts",
+];
+
+function summarizePlatform(
+  platform: string,
+  users: any[],
+  allUsersById: Map<string, any>,
+  activationIndex: any,
+  activityIndex: any,
+  events: any[],
+  metrics: any[],
+  rosterGroups: any[],
+): any {
+  const activeMemberships = activeRepMemberships(rosterGroups);
+  const acquired = users.filter((user) => (
+    normalized(
+      acquisitionTouchForUser(user, allUsersById, activeMemberships)?.source,
+    ) === platform
+  ));
+  const managers = acquired.filter((user) => (
+    ["manager", "admin"].includes(normalized(user?.app_role))
+  ));
+  const multiplier = teamMultiplier(
+    new Set(managers.map((user) => String(user?.id || "")).filter(Boolean)),
+    rosterGroups,
+  );
+  const socialEvents = platformEvents(events, platform);
+  const platformMetrics = metrics.filter(
+    (metric) => recordPlatform(metric) === platform,
+  );
+  return {
+    reach: platformMetrics.reduce(
+      (total, metric) => total + Math.max(0, Number(metric?.reach || 0)),
+      0,
+    ),
+    content_assets: platformMetrics.length,
+    landing_sessions: uniqueCount(
+      socialEvents.filter((event) => event?.event_name === "landing_viewed"),
+      "session_id",
+    ),
+    signup_cta_sessions: uniqueCount(
+      socialEvents.filter((event) => event?.event_name === "signup_cta_clicked"),
+      "session_id",
+    ),
+    auth_completed: uniqueCount(
+      socialEvents.filter((event) => event?.event_name === "auth_completed"),
+      "user_id",
+    ),
+    acquired_users: acquired.length,
+    signups: managers.length,
+    activated_workspaces: managers
+      .filter((user) => isActivated(user, activationIndex)).length,
+    activated_users: acquired
+      .filter((user) => isActivated(user, activationIndex)).length,
+    retained_active_users_30d: acquired
+      .filter((user) => isRetainedActive(user, activationIndex, activityIndex)).length,
+    paid_users: acquired.filter(isPaid).length,
+    active_rep_roster: multiplier.active_rep_roster,
+    joined_reps: multiplier.joined_reps,
+    activated_reps: multiplier.activated_reps,
+    rep_identity_conflicts: multiplier.identity_conflicts,
+  };
+}
+
+function prefixedPlatformSummary(platform: string, summary: any): any {
+  return Object.fromEntries(
+    PLATFORM_SUMMARY_FIELDS.map((field) => [
+      `${platform}_${field}`,
+      Number(summary?.[field] || 0),
+    ]),
+  );
+}
+
 function summarize(
   users: any[],
   allUsersById: Map<string, any>,
@@ -507,20 +620,32 @@ function summarize(
   metrics: any[],
   rosterGroups: any[],
 ) {
-  const activeMemberships = activeRepMemberships(rosterGroups);
-  const instagram = users.filter((user) => (
-    normalized(
-      acquisitionTouchForUser(user, allUsersById, activeMemberships)?.source,
-    ) === "instagram"
-  ));
-  const instagramManagers = instagram.filter((user) => (
-    ["manager", "admin"].includes(normalized(user?.app_role))
-  ));
-  const multiplier = teamMultiplier(
-    new Set(instagramManagers.map((user) => String(user?.id || "")).filter(Boolean)),
+  const instagram = summarizePlatform(
+    "instagram",
+    users,
+    allUsersById,
+    activationIndex,
+    activityIndex,
+    events,
+    metrics,
     rosterGroups,
   );
-  const igEvents = instagramEvents(events);
+  const tiktok = summarizePlatform(
+    "tiktok",
+    users,
+    allUsersById,
+    activationIndex,
+    activityIndex,
+    events,
+    metrics,
+    rosterGroups,
+  );
+  const social = Object.fromEntries(
+    PLATFORM_SUMMARY_FIELDS.map((field) => [
+      field,
+      Number(instagram[field] || 0) + Number(tiktok[field] || 0),
+    ]),
+  );
   return {
     users: users.length,
     activated_users: users.filter((user) => isActivated(user, activationIndex)).length,
@@ -528,36 +653,9 @@ function summarize(
       (user) => isRetainedActive(user, activationIndex, activityIndex),
     ).length,
     paid_users: users.filter(isPaid).length,
-    instagram_reach: metrics.reduce(
-      (total, metric) => total + Math.max(0, Number(metric?.reach || 0)),
-      0,
-    ),
-    instagram_content_assets: metrics.length,
-    instagram_landing_sessions: uniqueCount(
-      igEvents.filter((event) => event?.event_name === "landing_viewed"),
-      "session_id",
-    ),
-    instagram_signup_cta_sessions: uniqueCount(
-      igEvents.filter((event) => event?.event_name === "signup_cta_clicked"),
-      "session_id",
-    ),
-    instagram_auth_completed: uniqueCount(
-      igEvents.filter((event) => event?.event_name === "auth_completed"),
-      "user_id",
-    ),
-    instagram_acquired_users: instagram.length,
-    instagram_signups: instagramManagers.length,
-    instagram_activated_workspaces: instagramManagers
-      .filter((user) => isActivated(user, activationIndex)).length,
-    instagram_activated_users: instagram
-      .filter((user) => isActivated(user, activationIndex)).length,
-    instagram_retained_active_users_30d: instagram
-      .filter((user) => isRetainedActive(user, activationIndex, activityIndex)).length,
-    instagram_paid_users: instagram.filter(isPaid).length,
-    instagram_active_rep_roster: multiplier.active_rep_roster,
-    instagram_joined_reps: multiplier.joined_reps,
-    instagram_activated_reps: multiplier.activated_reps,
-    instagram_rep_identity_conflicts: multiplier.identity_conflicts,
+    ...prefixedPlatformSummary("instagram", instagram),
+    ...prefixedPlatformSummary("tiktok", tiktok),
+    ...prefixedPlatformSummary("social", social),
   };
 }
 
@@ -576,14 +674,22 @@ function buildPaceEvidence(
     && dateValue(plan, ["published_at"]) > 0
   ));
   const scopedAssetKeys = new Set(
-    scopedPlans.map((plan) => assetKey(plan?.campaign, plan?.content)),
+    scopedPlans.map((plan) => assetKey(
+      plan?.campaign,
+      plan?.content,
+      recordPlatform(plan),
+    )),
   );
   const scopedPlansByAsset = new Map(scopedPlans.map((plan) => [
-    assetKey(plan?.campaign, plan?.content),
+    assetKey(plan?.campaign, plan?.content, recordPlatform(plan)),
     plan,
   ]));
   const scopedMetrics = metrics.filter((metric) => (
-    scopedAssetKeys.has(assetKey(metric?.campaign, metric?.content))
+    scopedAssetKeys.has(assetKey(
+      metric?.campaign,
+      metric?.content,
+      recordPlatform(metric),
+    ))
   ));
   const now = Date.now();
   const observationCutoff = now - PACE_OBSERVATION_DAYS * DAY_MS;
@@ -592,27 +698,62 @@ function buildPaceEvidence(
     + Number(plan?.snapshot_days || 7) * DAY_MS
   );
   const recentMetrics = scopedMetrics.filter((metric) => {
-    const plan = scopedPlansByAsset.get(assetKey(metric?.campaign, metric?.content));
+    const plan = scopedPlansByAsset.get(assetKey(
+      metric?.campaign,
+      metric?.content,
+      recordPlatform(metric),
+    ));
     const dueAt = checkpointDueAt(plan);
     return dueAt >= observationCutoff && dueAt <= now;
   });
   const activeMemberships = activeRepMemberships(rosterGroups);
   const scopedUsers = users.filter((user) => {
     const touch = acquisitionTouchForUser(user, allUsersById, activeMemberships);
-    const plan = scopedPlansByAsset.get(assetKey(touch?.campaign, touch?.content));
+    const source = normalized(touch?.source);
+    if (!SOCIAL_PLATFORMS.has(source)) return false;
+    const plan = scopedPlansByAsset.get(assetKey(
+      touch?.campaign,
+      touch?.content,
+      source,
+    ));
     const publishedAt = dateValue(plan, ["published_at"]);
     const capturedAt = dateValue(touch, ["captured_at"]);
-    return normalized(touch?.source) === "instagram"
-      && publishedAt > 0
+    return publishedAt > 0
       && capturedAt >= publishedAt
       && capturedAt <= now;
   });
   const recentUsers = scopedUsers.filter(
     (user) => isRecent(user, PACE_OBSERVATION_DAYS, ["created_date"]),
   );
-  const recentManagers = recentUsers.filter((user) => (
-    ["manager", "admin"].includes(normalized(user?.app_role))
+  const recentUsersForPlatform = (platform: string) => recentUsers.filter((user) => (
+    normalized(
+      acquisitionTouchForUser(user, allUsersById, activeMemberships)?.source,
+    ) === platform
   ));
+  const paceForPlatform = (platform: string) => {
+    const platformMetrics = recentMetrics.filter(
+      (metric) => recordPlatform(metric) === platform,
+    );
+    const platformUsers = recentUsersForPlatform(platform);
+    const managers = platformUsers.filter((user) => (
+      ["manager", "admin"].includes(normalized(user?.app_role))
+    ));
+    return {
+      reach: platformMetrics.reduce(
+        (total, metric) => total + Math.max(0, Number(metric?.reach || 0)),
+        0,
+      ),
+      content_assets: platformMetrics.length,
+      activated_workspaces: managers.filter(
+        (user) => isActivated(user, activationIndex),
+      ).length,
+      retained_active_users_30d: platformUsers.filter(
+        (user) => isRetainedActive(user, activationIndex, activityIndex),
+      ).length,
+    };
+  };
+  const instagram = paceForPlatform("instagram");
+  const tiktok = paceForPlatform("tiktok");
   const checkpointDueTimes = scopedPlans
     .map(checkpointDueAt)
     .filter((value) => value > 0);
@@ -627,24 +768,35 @@ function buildPaceEvidence(
     observation_window_complete: firstCheckpointDueAt > 0
       && firstCheckpointDueAt <= observationCutoff,
     measured_content_assets_all_time: scopedMetrics.length,
+    measured_content_assets_all_time_by_platform: {
+      instagram: scopedMetrics.filter(
+        (metric) => recordPlatform(metric) === "instagram",
+      ).length,
+      tiktok: scopedMetrics.filter(
+        (metric) => recordPlatform(metric) === "tiktok",
+      ).length,
+    },
     last_28_days: {
-      instagram_reach: recentMetrics.reduce(
-        (total, metric) => total + Math.max(0, Number(metric?.reach || 0)),
-        0,
-      ),
-      instagram_content_assets: recentMetrics.length,
-      instagram_activated_workspaces: recentManagers.filter(
-        (user) => isActivated(user, activationIndex),
-      ).length,
-      instagram_retained_active_users_30d: recentUsers.filter(
-        (user) => isRetainedActive(user, activationIndex, activityIndex),
-      ).length,
+      instagram_reach: instagram.reach,
+      instagram_content_assets: instagram.content_assets,
+      instagram_activated_workspaces: instagram.activated_workspaces,
+      instagram_retained_active_users_30d: instagram.retained_active_users_30d,
+      tiktok_reach: tiktok.reach,
+      tiktok_content_assets: tiktok.content_assets,
+      tiktok_activated_workspaces: tiktok.activated_workspaces,
+      tiktok_retained_active_users_30d: tiktok.retained_active_users_30d,
+      social_reach: instagram.reach + tiktok.reach,
+      social_content_assets: instagram.content_assets + tiktok.content_assets,
+      social_activated_workspaces:
+        instagram.activated_workspaces + tiktok.activated_workspaces,
+      social_retained_active_users_30d:
+        instagram.retained_active_users_30d + tiktok.retained_active_users_30d,
     },
   };
 }
 
-function rowKey(campaign: any, content: any): string {
-  return `${normalized(campaign) || "unassigned"}|${normalized(content) || "unassigned"}`;
+function rowKey(platform: any, campaign: any, content: any): string {
+  return `${socialPlatform(platform)}|${normalized(campaign) || "unassigned"}|${normalized(content) || "unassigned"}`;
 }
 
 function contentRows(
@@ -657,13 +809,14 @@ function contentRows(
 ) {
   const activeMemberships = activeRepMemberships(rosterGroups);
   const rows = new Map<string, any>();
-  const ensureRow = (campaign: any, content: any) => {
+  const ensureRow = (platform: any, campaign: any, content: any) => {
+    const cleanPlatform = socialPlatform(platform);
     const cleanCampaign = normalized(campaign) || "unassigned";
     const cleanContent = normalized(content) || "unassigned";
-    const key = rowKey(cleanCampaign, cleanContent);
+    const key = rowKey(cleanPlatform, cleanCampaign, cleanContent);
     if (!rows.has(key)) {
       rows.set(key, {
-        source: "instagram",
+        source: cleanPlatform,
         medium: "organic_social",
         campaign: cleanCampaign,
         content: cleanContent,
@@ -674,6 +827,8 @@ function contentRows(
         views: 0,
         shares: 0,
         saves: 0,
+        comments: 0,
+        follows: 0,
         profile_visits: 0,
         link_clicks: 0,
         dm_intents: 0,
@@ -699,9 +854,13 @@ function contentRows(
     return rows.get(key);
   };
 
-  // Keep the most recently captured cumulative Instagram snapshot per asset.
+  // Keep the most recently captured cumulative snapshot per platform asset.
   for (const metric of metrics) {
-    const row = ensureRow(metric?.campaign, metric?.content);
+    const row = ensureRow(
+      recordPlatform(metric),
+      metric?.campaign,
+      metric?.content,
+    );
     const metricTimestamp = dateValue(metric, [
       "snapshot_captured_at",
       "updated_date",
@@ -717,6 +876,8 @@ function contentRows(
       "views",
       "shares",
       "saves",
+      "comments",
+      "follows",
       "profile_visits",
       "link_clicks",
       "dm_intents",
@@ -725,8 +886,10 @@ function contentRows(
     }
   }
 
-  for (const event of instagramEvents(events)) {
-    const row = ensureRow(event?.campaign, event?.content);
+  for (const event of events) {
+    const source = normalized(event?.source);
+    if (!SOCIAL_PLATFORMS.has(source)) continue;
+    const row = ensureRow(source, event?.campaign, event?.content);
     if (event?.event_name === "landing_viewed" && event?.session_id) {
       row.landing_session_ids.add(String(event.session_id));
     }
@@ -740,8 +903,9 @@ function contentRows(
 
   for (const user of users) {
     const touch = acquisitionTouchForUser(user, allUsersById, activeMemberships);
-    if (normalized(touch?.source) !== "instagram") continue;
-    const row = ensureRow(touch?.campaign, touch?.content);
+    const source = normalized(touch?.source);
+    if (!SOCIAL_PLATFORMS.has(source)) continue;
+    const row = ensureRow(source, touch?.campaign, touch?.content);
     row.medium = normalized(touch?.medium) || "organic_social";
     row.acquired_users += 1;
     if (isActivated(user, activationIndex)) row.activated_users += 1;
@@ -763,8 +927,9 @@ function contentRows(
   for (const group of rosterGroups) {
     const manager = allUsersById.get(String(group?.manager_id || ""));
     const touch = manager?.acquisition_first_touch;
-    if (normalized(touch?.source) !== "instagram") continue;
-    const row = ensureRow(touch?.campaign, touch?.content);
+    const source = normalized(touch?.source);
+    if (!SOCIAL_PLATFORMS.has(source)) continue;
+    const row = ensureRow(source, touch?.campaign, touch?.content);
     row.active_rep_roster_keys.add(group.key);
     if (group.identity_conflict) row.rep_identity_conflicts += 1;
     const joinedUser = group.joined_user;
@@ -798,6 +963,8 @@ function contentRows(
         views: row.views,
         shares: row.shares,
         saves: row.saves,
+        comments: row.comments,
+        follows: row.follows,
         profile_visits: row.profile_visits,
         link_clicks: row.link_clicks,
         dm_intents: row.dm_intents,
@@ -838,6 +1005,7 @@ function contentRows(
       right.activated_users - left.activated_users
       || right.signups - left.signups
       || right.reach - left.reach
+      || left.source.localeCompare(right.source)
       || left.content.localeCompare(right.content)
     ));
 }
@@ -850,17 +1018,22 @@ function buildContentQueue(
 ) {
   const checkpointsByAsset = new Map<string, any[]>();
   for (const metric of metricCheckpoints) {
-    const key = assetKey(metric?.campaign, metric?.content);
+    const key = assetKey(
+      metric?.campaign,
+      metric?.content,
+      recordPlatform(metric),
+    );
     if (!checkpointsByAsset.has(key)) checkpointsByAsset.set(key, []);
     checkpointsByAsset.get(key)?.push(metric);
   }
   const conversionsByAsset = new Map(byContent.map((row) => [
-    assetKey(row?.campaign, row?.content),
+    assetKey(row?.campaign, row?.content, row?.source),
     row,
   ]));
 
   const queue = plans.map((plan) => {
-    const key = assetKey(plan?.campaign, plan?.content);
+    const platform = recordPlatform(plan);
+    const key = assetKey(plan?.campaign, plan?.content, platform);
     const snapshotDays = Number(plan?.snapshot_days || 7);
     const plannedPublishAt = dateValue(plan, ["planned_publish_at"]);
     const publishedAt = dateValue(plan, ["published_at"]);
@@ -948,6 +1121,7 @@ function buildContentQueue(
     }
     const conversion = conversionsByAsset.get(key) || {};
     return {
+      platform,
       campaign: normalized(plan?.campaign) || "1000-users",
       content: normalized(plan?.content),
       sprint: normalized(plan?.sprint),
@@ -1019,14 +1193,14 @@ function buildContentQueue(
   const completedByGroup = new Map<string, number>();
   for (const item of queue) {
     if (!item.fixed_snapshot_captured_at) continue;
-    const groupKey = `${item.campaign}|${item.comparison_group}|${item.snapshot_days}`;
+    const groupKey = `${item.platform}|${item.campaign}|${item.comparison_group}|${item.snapshot_days}`;
     completedByGroup.set(
       groupKey,
       (completedByGroup.get(groupKey) || 0) + 1,
     );
   }
   for (const item of queue) {
-    const groupKey = `${item.campaign}|${item.comparison_group}|${item.snapshot_days}`;
+    const groupKey = `${item.platform}|${item.campaign}|${item.comparison_group}|${item.snapshot_days}`;
     item.hold_eligible = (completedByGroup.get(groupKey) || 0) >= 3;
   }
 
@@ -1263,10 +1437,12 @@ Deno.serve(async (req: Request) => {
         active_rep_roster: "unique active rep roster seat by manager and normalized email",
         joined_rep: "active roster seat linked to exactly one matching rep User by user ID, manager, and email",
         team_multiplier_window_basis: "current roster, join, and activation state for managers whose accounts were created in the reporting window",
-        reach_source: "owner-entered Instagram Insights snapshot",
+        reach_source: "owner-entered Instagram Insights or TikTok analytics snapshot",
         anonymous_funnel: "unique pseudonymous browser sessions; no names, emails, or contact fields before auth",
         north_star: "activated users with verified product activity in the last 30 days",
         instagram_retained_active_user: "Instagram-attributed manager or active-team rep with verified product activity in the last 30 days",
+        tiktok_retained_active_user: "TikTok-attributed manager or active-team rep with verified product activity in the last 30 days",
+        social_retained_active_user: "Instagram- or TikTok-attributed manager or active-team rep with verified product activity in the last 30 days",
         reporting_window_user_basis: "manager accounts created in the window; activation and team metrics reflect their current verified state",
         pace_evidence_scope: "canonical mature 1000-users assets backed by a published GrowthContentPlan; release smoke, unplanned assets, and other campaigns are excluded",
         pace_observed_throughput: "current retained-active users whose accounts were created in the last 28 days; descriptive gross cohort contribution, not net retained-stock growth or an ETA",

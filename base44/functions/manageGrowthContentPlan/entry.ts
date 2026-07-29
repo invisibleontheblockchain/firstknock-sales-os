@@ -1,6 +1,7 @@
 import { createClientFromRequest } from "npm:@base44/sdk@0.8.31";
 
 const FORMATS = new Set(["reel", "carousel", "story", "collab", "live", "other"]);
+const PLATFORMS = new Set(["instagram", "tiktok"]);
 const CTA_CHANNELS = new Set([
   "story_link",
   "dm_reply",
@@ -16,6 +17,7 @@ const PAGE_SIZE = 5000;
 const MAX_RECORDS = 25000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const PLAN_DEFINITION_FIELDS = [
+  "platform",
   "campaign",
   "content",
   "sprint",
@@ -102,12 +104,22 @@ async function listAll(entity: any, label: string): Promise<any[]> {
   throw new Error(`${label} exceeded the safe limit.`);
 }
 
-function planKey(campaign: any, content: any): string {
-  return `${token(campaign, "1000-users")}|${token(content)}`;
+function socialPlatform(value: any): string {
+  const platform = token(value);
+  return PLATFORMS.has(platform) ? platform : "instagram";
 }
 
-function metricKey(campaign: any, content: any, snapshotDays: any): string {
-  const key = planKey(campaign, content);
+function planKey(campaign: any, content: any, platform: any = "instagram"): string {
+  return `${socialPlatform(platform)}|${token(campaign, "1000-users")}|${token(content)}`;
+}
+
+function metricKey(
+  campaign: any,
+  content: any,
+  snapshotDays: any,
+  platform: any = "instagram",
+): string {
+  const key = planKey(campaign, content, platform);
   return key.endsWith("|") ? "" : `${key}|${Number(snapshotDays || 7)}`;
 }
 
@@ -125,7 +137,10 @@ function planLifecycleRank(plan: any): number {
 
 function planDefinitionPayload(plan: any): string {
   return JSON.stringify(Object.fromEntries(
-    PLAN_DEFINITION_FIELDS.map((field) => [field, plan?.[field] ?? null]),
+    PLAN_DEFINITION_FIELDS.map((field) => [
+      field,
+      field === "platform" ? socialPlatform(plan?.platform) : plan?.[field] ?? null,
+    ]),
   ));
 }
 
@@ -182,7 +197,7 @@ function canonicalPlanMap(records: any[]): {
 } {
   const grouped = new Map<string, any[]>();
   for (const record of records) {
-    const key = planKey(record?.campaign, record?.content);
+    const key = planKey(record?.campaign, record?.content, record?.platform);
     if (!key || key.endsWith("|")) continue;
     if (!grouped.has(key)) grouped.set(key, []);
     grouped.get(key)?.push(record);
@@ -197,6 +212,7 @@ function canonicalPlanMap(records: any[]): {
 }
 
 function normalizePlan(value: any): any | null {
+  const platform = token(value?.platform, "instagram");
   const campaign = token(value?.campaign, "1000-users");
   const content = token(value?.content);
   const sprint = token(value?.sprint);
@@ -215,7 +231,8 @@ function normalizePlan(value: any): any | null {
   const snapshotDays = Number(value?.snapshot_days || 7);
 
   if (
-    !content
+    !PLATFORMS.has(platform)
+    || !content
     || !sprint
     || !Number.isSafeInteger(sequence)
     || sequence < 1
@@ -237,6 +254,7 @@ function normalizePlan(value: any): any | null {
   }
 
   return {
+    platform,
     campaign,
     content,
     sprint,
@@ -282,6 +300,7 @@ function metricConflictKey(records: any[]): string | null {
       record?.campaign,
       record?.content,
       record?.snapshot_days,
+      record?.platform,
     );
     if (!key || key.endsWith("|")) continue;
     if (!grouped.has(key)) grouped.set(key, []);
@@ -334,11 +353,13 @@ function providerOwnsPlan(plan: any): boolean {
 
 async function contentEngineOwnsKey(
   artifactEntity: any,
+  platform: string,
   campaign: string,
   content: string,
 ): Promise<boolean> {
   const rows = asArray(await artifactEntity.filter(
     {
+      platform,
       campaign,
       platform_content_id: content,
     },
@@ -350,14 +371,15 @@ async function contentEngineOwnsKey(
 
 async function currentPlanForKey(
   planEntity: any,
+  platform: string,
   campaign: string,
   content: string,
 ): Promise<{ record: any | null; conflict: boolean }> {
   return canonicalPlan(asArray(await planEntity.filter(
     { campaign, content },
     "-updated_date",
-    20,
-  )));
+    50,
+  )).filter((record) => socialPlatform(record?.platform) === platform));
 }
 
 Deno.serve(async (req: Request) => {
@@ -410,9 +432,10 @@ Deno.serve(async (req: Request) => {
       let updated = 0;
       let preserved = 0;
       for (const plan of plans) {
-        const key = planKey(plan.campaign, plan.content);
+        const key = planKey(plan.campaign, plan.content, plan.platform);
         if (await contentEngineOwnsKey(
           artifactEntity,
+          plan.platform,
           plan.campaign,
           plan.content,
         )) {
@@ -421,6 +444,7 @@ Deno.serve(async (req: Request) => {
         }
         const liveResult = await currentPlanForKey(
           planEntity,
+          plan.platform,
           plan.campaign,
           plan.content,
         );
@@ -452,6 +476,7 @@ Deno.serve(async (req: Request) => {
             } else {
               const raced = await currentPlanForKey(
                 planEntity,
+                plan.platform,
                 plan.campaign,
                 plan.content,
               );
@@ -462,6 +487,7 @@ Deno.serve(async (req: Request) => {
                   providerOwnsPlan(raced.record)
                   || await contentEngineOwnsKey(
                     artifactEntity,
+                    plan.platform,
                     plan.campaign,
                     plan.content,
                   )
@@ -481,6 +507,7 @@ Deno.serve(async (req: Request) => {
         } else {
           if (await contentEngineOwnsKey(
             artifactEntity,
+            plan.platform,
             plan.campaign,
             plan.content,
           )) {
@@ -489,6 +516,7 @@ Deno.serve(async (req: Request) => {
           }
           const raced = await currentPlanForKey(
             planEntity,
+            plan.platform,
             plan.campaign,
             plan.content,
           );
@@ -511,6 +539,7 @@ Deno.serve(async (req: Request) => {
           const saved = await planEntity.create(plan);
           const verified = await currentPlanForKey(
             planEntity,
+            plan.platform,
             plan.campaign,
             plan.content,
           );
@@ -533,14 +562,20 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    const requestedPlatform = token(body?.platform, "instagram");
+    if (!PLATFORMS.has(requestedPlatform)) {
+      return response({ error: "invalid_content_plan" }, 400);
+    }
+    const platform = requestedPlatform;
     const campaign = token(body?.campaign, "1000-users");
     const content = token(body?.content);
     if (!content) return response({ error: "invalid_content_plan" }, 400);
-    const currentResult = canonicalPlan(asArray(await planEntity.filter(
-      { campaign, content },
-      "-updated_date",
-      20,
-    )));
+    const currentResult = await currentPlanForKey(
+      planEntity,
+      platform,
+      campaign,
+      content,
+    );
     if (currentResult.conflict) {
       return response({ error: "content_plan_conflict" }, 409);
     }
@@ -579,7 +614,12 @@ Deno.serve(async (req: Request) => {
         { $set: { published_at: publishedAt } },
       );
       if (Number(published?.updated || 0) !== 1) {
-        const raced = await currentPlanForKey(planEntity, campaign, content);
+        const raced = await currentPlanForKey(
+          planEntity,
+          platform,
+          campaign,
+          content,
+        );
         if (raced.conflict) {
           return response({ error: "content_plan_conflict" }, 409);
         }
@@ -618,8 +658,8 @@ Deno.serve(async (req: Request) => {
       const metricRecords = asArray(await metricEntity.filter(
           { campaign, content, snapshot_days: snapshotDays },
           "-snapshot_captured_at",
-          20,
-      ));
+          50,
+      )).filter((record) => socialPlatform(record?.platform) === platform);
       if (metricConflictKey(metricRecords)) {
         return response({ error: "content_snapshot_conflict" }, 409);
       }
@@ -661,13 +701,15 @@ Deno.serve(async (req: Request) => {
             record?.campaign,
             record?.content,
             record?.snapshot_days,
+            record?.platform,
           ),
           ["snapshot_captured_at", "updated_date", "created_date"],
         );
         let comparableSnapshots = 0;
         for (const plan of canonicalPlans.values()) {
           if (
-            normalized(plan?.campaign) !== normalized(current?.campaign)
+            socialPlatform(plan?.platform) !== platform
+            || normalized(plan?.campaign) !== normalized(current?.campaign)
             || normalized(plan?.comparison_group) !== normalized(current?.comparison_group)
             || Number(plan?.snapshot_days || 7) !== snapshotDays
           ) {
@@ -679,6 +721,7 @@ Deno.serve(async (req: Request) => {
             plan?.campaign,
             plan?.content,
             planSnapshotDays,
+            plan?.platform,
           ));
           const comparableCapturedAt = timestamp(comparableMetric?.snapshot_captured_at);
           if (
