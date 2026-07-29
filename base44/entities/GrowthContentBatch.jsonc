@@ -1,0 +1,394 @@
+{
+  "name": "GrowthContentBatch",
+  "type": "object",
+  "properties": {
+    "batch_key": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "Deterministic identity for one reviewed parent decision and Phoenix target date"
+    },
+    "request_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "Canonical hash of every generation input, including ordered seed and source lineage"
+    },
+    "parent_platform": {
+      "type": "string",
+      "enum": [
+        "instagram",
+        "tiktok"
+      ]
+    },
+    "parent_campaign": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._~-]{0,119}$"
+    },
+    "parent_content": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._~-]{0,119}$"
+    },
+    "review_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "Hash binding the exact evidence, decision, operator note, and review timestamps"
+    },
+    "evidence_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "Canonical fixed-age social evidence hash used by the reviewed parent"
+    },
+    "review_decision": {
+      "type": "string",
+      "enum": [
+        "repeat",
+        "iterate"
+      ]
+    },
+    "reviewed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "review_snapshot_captured_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "target_date": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+      "description": "Publishing date interpreted only in the persisted timezone"
+    },
+    "timezone": {
+      "type": "string",
+      "enum": [
+        "America/Phoenix"
+      ]
+    },
+    "concept_count": {
+      "type": "integer",
+      "enum": [
+        2,
+        3
+      ]
+    },
+    "slot_count": {
+      "type": "integer",
+      "enum": [
+        2,
+        3
+      ]
+    },
+    "slot_keys": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 3,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": [
+          "morning",
+          "midday",
+          "evening"
+        ]
+      }
+    },
+    "source_asset_keys": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 3,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9][a-z0-9._~-]{0,119}$"
+      }
+    },
+    "source_lineage": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "properties": {
+          "asset_key": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9._~-]{0,119}$"
+          },
+          "source_origin": {
+            "type": "string",
+            "enum": [
+              "asset_pack",
+              "repository_public"
+            ]
+          },
+          "source_reference": {
+            "type": "string",
+            "maxLength": 300
+          },
+          "source_sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          }
+        },
+        "required": [
+          "asset_key",
+          "source_origin",
+          "source_reference",
+          "source_sha256"
+        ]
+      }
+    },
+    "prompt_source_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "Hash of the exact sanitized source summaries sent to the generator"
+    },
+    "generated_hook_reservations": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 3,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 120
+      },
+      "description": "Bounded generated hooks used for durable 28-day batch-to-batch deduplication"
+    },
+    "generated_hooks_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "Canonical SHA-256 of the ordered generated hook reservations"
+    },
+    "seed_pack_batch_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._~-]{0,119}$"
+    },
+    "seed_pack_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "seed_concept_ids": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 3,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9][a-z0-9._~-]{0,119}$"
+      }
+    },
+    "seed_artifact_keys": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 6,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9][a-z0-9._~-]{0,119}$"
+      }
+    },
+    "seed_lineage": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "properties": {
+          "concept_id": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9._~-]{0,119}$"
+          },
+          "source_asset_key": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9._~-]{0,119}$"
+          },
+          "instagram_artifact_key": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9._~-]{0,119}$"
+          },
+          "tiktok_artifact_key": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9._~-]{0,119}$"
+          }
+        },
+        "required": [
+          "concept_id",
+          "source_asset_key",
+          "instagram_artifact_key",
+          "tiktok_artifact_key"
+        ]
+      }
+    },
+    "state": {
+      "type": "string",
+      "enum": [
+        "generating",
+        "ready",
+        "render_authorized",
+        "failed",
+        "superseded",
+        "revoked"
+      ]
+    },
+    "pack_schema_version": {
+      "type": "string",
+      "enum": [
+        "growth-render-pack.v1"
+      ]
+    },
+    "pack_artifact_count": {
+      "type": "integer",
+      "minimum": 4,
+      "maximum": 6
+    },
+    "canonical_pack_json": {
+      "type": "string",
+      "maxLength": 100000,
+      "description": "Canonical serialized render pack; never source bytes, paths, credentials, or provider secrets"
+    },
+    "canonical_pack_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "lease_token": {
+      "type": "string",
+      "maxLength": 160
+    },
+    "lease_generation": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1000000,
+      "default": 0
+    },
+    "lease_acquired_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "lease_expires_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "attempt_count": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1000000,
+      "default": 0
+    },
+    "requested_by": {
+      "type": "string",
+      "maxLength": 160
+    },
+    "requested_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "state_changed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "ready_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "render_authorized_by": {
+      "type": "string",
+      "maxLength": 160
+    },
+    "render_authorized_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "render_authorization_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "render_authorization_note": {
+      "type": "string",
+      "maxLength": 500
+    },
+    "superseded_by_batch_key": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "superseded_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "revoked_by": {
+      "type": "string",
+      "maxLength": 160
+    },
+    "revoked_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "revocation_note": {
+      "type": "string",
+      "maxLength": 500
+    },
+    "failed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "last_error_code": {
+      "type": "string",
+      "maxLength": 120
+    },
+    "last_error_message": {
+      "type": "string",
+      "maxLength": 500
+    }
+  },
+  "required": [
+    "batch_key",
+    "request_hash",
+    "parent_platform",
+    "parent_campaign",
+    "parent_content",
+    "review_hash",
+    "evidence_hash",
+    "review_decision",
+    "reviewed_at",
+    "review_snapshot_captured_at",
+    "target_date",
+    "timezone",
+    "concept_count",
+    "slot_count",
+    "slot_keys",
+    "source_asset_keys",
+    "source_lineage",
+    "prompt_source_sha256",
+    "seed_pack_batch_id",
+    "seed_pack_sha256",
+    "seed_concept_ids",
+    "seed_artifact_keys",
+    "seed_lineage",
+    "state",
+    "lease_generation",
+    "attempt_count",
+    "requested_by",
+    "requested_at",
+    "state_changed_at"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "id": "__service_role_only__"
+      }
+    },
+    "read": {
+      "user_condition": {
+        "id": "__service_role_only__"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "id": "__service_role_only__"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "id": "__service_role_only__"
+      }
+    }
+  }
+}

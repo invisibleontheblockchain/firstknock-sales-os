@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
   createGrowthBase44,
@@ -35,6 +36,11 @@ const source = {
   safe_summary: 'Sanitized route workflow.',
   active: true,
 };
+const sourceLineageSnapshot = [{
+  asset_key: source.asset_key,
+  source_reference: source.source_reference,
+  source_sha256: source.source_sha256,
+}];
 
 async function fixture(overrides = {}) {
   const artifact = {
@@ -96,6 +102,8 @@ async function fixture(overrides = {}) {
     due_at: dueAt,
     scheduling_type: 'automatic',
     timezone: 'America/Phoenix',
+    source_lineage_snapshot: sourceLineageSnapshot,
+    hook_snapshot: artifact.hook,
   };
   const job = {
     id: 'job_1',
@@ -260,6 +268,263 @@ function withApprovedMedia(bufferFetch, bytes = mediaBytes, channelOverrides = {
     return bufferFetch(url, options);
   };
 }
+
+test('new publish lineage fields are conditional so legacy request hashes remain stable', async () => {
+  const legacyRequest = {
+    provider: 'buffer',
+    provider_organization_id: 'org_firstknock',
+    provider_channel_id: 'channel_instagram',
+    provider_service: 'instagram',
+    config_revision: 'a'.repeat(64),
+    media_origin: 'https://media.firstknock.online',
+    artifact_hash: 'b'.repeat(64),
+    platform: 'instagram',
+    platform_content_id: 'ig-example',
+    due_at: '2026-07-29T16:30:00.000Z',
+    scheduling_type: 'automatic',
+    timezone: 'America/Phoenix',
+  };
+  const legacyHash =
+    '6c8e1b8cb0e961f32fe985d1d08aaa1d357085a5d1c58585538d873bf150609a';
+  assert.equal(
+    await growthHelpers.publishJobRequestHash(legacyRequest),
+    legacyHash,
+  );
+  assert.equal(
+    await growthHelpers.publishJobRequestHash({
+      ...legacyRequest,
+      source_lineage_snapshot: [],
+      hook_snapshot: '   ',
+      render_pack_sha256: '',
+      growth_batch_key: '',
+    }),
+    legacyHash,
+  );
+  const boundRequest = {
+    ...legacyRequest,
+    source_lineage_snapshot: sourceLineageSnapshot,
+    hook_snapshot: 'One area. One clean route.',
+    render_pack_sha256: 'c'.repeat(64),
+    growth_batch_key: 'd'.repeat(64),
+  };
+  const boundHash = await growthHelpers.publishJobRequestHash(boundRequest);
+  assert.notEqual(boundHash, legacyHash);
+  assert.notEqual(
+    await growthHelpers.publishJobRequestHash({
+      ...boundRequest,
+      source_lineage_snapshot: [{
+        ...sourceLineageSnapshot[0],
+        source_reference: 'replacement-proof.mp4',
+      }],
+    }),
+    boundHash,
+  );
+});
+
+test('publish-job schema admits reservation_pending but the worker never claims it', async () => {
+  const schema = JSON.parse(readFileSync(
+    new URL('../base44/entities/GrowthPublishJob.jsonc', import.meta.url),
+    'utf8',
+  ));
+  assert.equal(
+    schema.properties.state.enum.includes('reservation_pending'),
+    true,
+  );
+  const fx = await fixture({
+    job: {
+      state: 'reservation_pending',
+      lease_token: 'active-scheduler-reservation',
+      lease_generation: 2,
+      lease_acquired_at: new Date().toISOString(),
+      lease_expires_at: new Date(Date.now() + 60_000).toISOString(),
+    },
+  });
+  const { base44, entities } = createGrowthBase44({
+    sources: [source],
+    artifacts: [fx.artifact],
+    jobs: [fx.job],
+  });
+  let fetches = 0;
+  const handler = loadGrowthHandler(workerPath, {
+    base44,
+    env,
+    fetchImpl: async () => {
+      fetches += 1;
+      throw new Error('reservation_pending must not reach provider or media');
+    },
+  });
+
+  const result = await invokeJson(handler, {}, { secret: workerSecret });
+
+  assert.equal(result.status, 200);
+  assert.equal(result.body.inspected, 0);
+  assert.equal(result.body.processed, 0);
+  assert.equal(fetches, 0);
+  assert.equal(entities.GrowthPublishJob.records[0].state, 'reservation_pending');
+  assert.equal(entities.GrowthPublishJob.records[0].attempt_count, 0);
+  assert.equal(entities.GrowthPublishJob.counters.updateMany, 0);
+});
+
+test('an expired scheduler reservation is canceled with its planned measurement and no provider access', async () => {
+  const fx = await fixture({
+    job: {
+      state: 'reservation_pending',
+      lease_token: 'expired-scheduler-reservation',
+      lease_generation: 3,
+      lease_acquired_at: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
+      lease_expires_at: new Date(Date.now() - 1000).toISOString(),
+    },
+  });
+  const { base44, entities } = createGrowthBase44({
+    sources: [source],
+    artifacts: [fx.artifact],
+    jobs: [fx.job],
+    plans: [measurementPlan(fx)],
+  });
+  let fetches = 0;
+  const handler = loadGrowthHandler(workerPath, {
+    base44,
+    env,
+    fetchImpl: async () => {
+      fetches += 1;
+      throw new Error('expired reservation cleanup must remain local');
+    },
+  });
+
+  const result = await invokeJson(handler, {}, { secret: workerSecret });
+
+  assert.equal(result.status, 200);
+  assert.equal(result.body.inspected, 1);
+  assert.equal(result.body.processed, 1);
+  assert.equal(result.body.states.canceled, 1);
+  assert.equal(fetches, 0);
+  const saved = entities.GrowthPublishJob.records[0];
+  assert.equal(saved.state, 'canceled');
+  assert.equal(saved.attempt_count, 0);
+  assert.equal(saved.last_error_code, 'schedule_reservation_expired');
+  assert.equal(saved.lease_token, undefined);
+  assert.equal(saved.lease_expires_at, undefined);
+  assert.equal(saved.delivery_reconcile_target, undefined);
+  assert.equal(entities.GrowthContentPlan.records[0].delivery_status, 'canceled');
+  assert.equal(entities.GrowthSourceAsset.counters.filter, 0);
+  assert.equal(entities.GrowthCreativeArtifact.counters.get, 0);
+});
+
+test('an expired reservation plan-CAS failure enters durable local delivery repair', async () => {
+  const fx = await fixture({
+    job: {
+      state: 'reservation_pending',
+      lease_token: 'expired-scheduler-repair',
+      lease_generation: 4,
+      lease_acquired_at: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
+      lease_expires_at: new Date(Date.now() - 1000).toISOString(),
+    },
+  });
+  const { base44, entities } = createGrowthBase44({
+    sources: [source],
+    artifacts: [fx.artifact],
+    jobs: [fx.job],
+    plans: [measurementPlan(fx)],
+  });
+  const originalPlanUpdateMany = entities.GrowthContentPlan.updateMany;
+  let failPlanCancellation = true;
+  entities.GrowthContentPlan.updateMany = async (...args) => {
+    if (failPlanCancellation) {
+      return { success: true, updated: 0, has_more: false };
+    }
+    return originalPlanUpdateMany(...args);
+  };
+  let fetches = 0;
+  const handler = loadGrowthHandler(workerPath, {
+    base44,
+    env,
+    fetchImpl: async () => {
+      fetches += 1;
+      throw new Error('reservation measurement repair must remain local');
+    },
+  });
+
+  let result = await invokeJson(handler, {}, { secret: workerSecret });
+
+  assert.equal(result.status, 200);
+  assert.equal(result.body.states.delivery_reconcile, 1);
+  assert.equal(fetches, 0);
+  let saved = entities.GrowthPublishJob.records[0];
+  assert.equal(saved.state, 'delivery_reconcile');
+  assert.equal(saved.delivery_reconcile_target, 'canceled');
+  assert.equal(saved.last_error_code, 'schedule_reservation_expired');
+  assert.equal(saved.attempt_count, 0);
+  assert.equal(entities.GrowthContentPlan.records[0].delivery_status, 'planned');
+
+  failPlanCancellation = false;
+  saved.next_retry_at = new Date(Date.now() - 1000).toISOString();
+  result = await invokeJson(handler, {}, { secret: workerSecret });
+
+  assert.equal(result.status, 200);
+  assert.equal(result.body.states.canceled, 1);
+  assert.equal(fetches, 0);
+  saved = entities.GrowthPublishJob.records[0];
+  assert.equal(saved.state, 'canceled');
+  assert.equal(saved.delivery_reconcile_target, undefined);
+  assert.equal(saved.attempt_count, 0);
+  assert.equal(entities.GrowthContentPlan.records[0].delivery_status, 'canceled');
+});
+
+test('an expired reservation sweep loses safely to a fresh scheduler lease', async () => {
+  const fx = await fixture({
+    job: {
+      state: 'reservation_pending',
+      lease_token: 'expired-scheduler-cas',
+      lease_generation: 5,
+      lease_acquired_at: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
+      lease_expires_at: new Date(Date.now() - 1000).toISOString(),
+    },
+  });
+  const { base44, entities } = createGrowthBase44({
+    sources: [source],
+    artifacts: [fx.artifact],
+    jobs: [fx.job],
+    plans: [measurementPlan(fx)],
+  });
+  const originalJobUpdateMany = entities.GrowthPublishJob.updateMany;
+  let raced = false;
+  entities.GrowthPublishJob.updateMany = async (query, operations) => {
+    if (!raced && query?.state === 'reservation_pending') {
+      raced = true;
+      Object.assign(entities.GrowthPublishJob.records[0], {
+        lease_token: 'fresh-scheduler-cas',
+        lease_generation: 6,
+        lease_acquired_at: new Date().toISOString(),
+        lease_expires_at: new Date(Date.now() + 60_000).toISOString(),
+      });
+      return { success: true, updated: 0, has_more: false };
+    }
+    return originalJobUpdateMany(query, operations);
+  };
+  let fetches = 0;
+  const handler = loadGrowthHandler(workerPath, {
+    base44,
+    env,
+    fetchImpl: async () => {
+      fetches += 1;
+      throw new Error('a lost cleanup CAS must not access providers');
+    },
+  });
+
+  const result = await invokeJson(handler, {}, { secret: workerSecret });
+
+  assert.equal(result.status, 200);
+  assert.equal(result.body.inspected, 1);
+  assert.equal(result.body.processed, 0);
+  assert.equal(fetches, 0);
+  const saved = entities.GrowthPublishJob.records[0];
+  assert.equal(saved.state, 'reservation_pending');
+  assert.equal(saved.lease_token, 'fresh-scheduler-cas');
+  assert.equal(saved.lease_generation, 6);
+  assert.ok(new Date(saved.lease_expires_at).getTime() > Date.now());
+  assert.equal(saved.last_error_code, undefined);
+  assert.equal(entities.GrowthContentPlan.records[0].delivery_status, 'planned');
+});
 
 test('worker rejects missing configuration and bad secrets before storage or provider access', async () => {
   const { base44, entities } = createGrowthBase44();
@@ -805,6 +1070,168 @@ test('source privacy withdrawal on the immediate pre-create reread fails closed'
       );
     });
   }
+});
+
+test('manual source lineage snapshot drift fails preflight and cancels measurement', async (t) => {
+  const cases = [
+    {
+      name: 'source SHA changes',
+      changedSource: { ...source, source_sha256: 'b'.repeat(64) },
+    },
+    {
+      name: 'source reference changes',
+      changedSource: { ...source, source_reference: 'replacement-proof.mp4' },
+    },
+  ];
+  for (const item of cases) {
+    await t.test(item.name, async () => {
+      const fx = await fixture();
+      const { base44, entities } = createGrowthBase44({
+        sources: [item.changedSource],
+        artifacts: [fx.artifact],
+        jobs: [fx.job],
+        plans: [measurementPlan(fx)],
+      });
+      let providerCalls = 0;
+      const handler = loadGrowthHandler(workerPath, {
+        base44,
+        env,
+        fetchImpl: async () => {
+          providerCalls += 1;
+          throw new Error('provider access must not run after source lineage drift');
+        },
+      });
+
+      const result = await invokeJson(handler, {}, { secret: workerSecret });
+
+      assert.equal(result.status, 200);
+      assert.equal(providerCalls, 0);
+      assert.equal(entities.GrowthPublishJob.records[0].state, 'failed');
+      assert.equal(
+        entities.GrowthPublishJob.records[0].last_error_code,
+        'source_render_lineage_changed',
+      );
+      assert.equal(entities.GrowthContentPlan.records[0].delivery_status, 'canceled');
+    });
+  }
+});
+
+test('manual source lineage drift on the immediate pre-create reread fails closed', async (t) => {
+  const cases = [
+    {
+      name: 'source SHA changes',
+      changedSource: { ...source, source_sha256: 'b'.repeat(64) },
+    },
+    {
+      name: 'source reference changes',
+      changedSource: { ...source, source_reference: 'replacement-proof.mp4' },
+    },
+  ];
+  for (const item of cases) {
+    await t.test(item.name, async () => {
+      const fx = await fixture();
+      const { base44, entities } = createGrowthBase44({
+        sources: [source],
+        artifacts: [fx.artifact],
+        jobs: [fx.job],
+        plans: [measurementPlan(fx)],
+      });
+      const originalSourceFilter = entities.GrowthSourceAsset.filter;
+      let sourceReads = 0;
+      entities.GrowthSourceAsset.filter = async (...args) => {
+        sourceReads += 1;
+        if (sourceReads === 1) return originalSourceFilter(...args);
+        return [structuredClone(item.changedSource)];
+      };
+      let createCalls = 0;
+      const handler = loadGrowthHandler(workerPath, {
+        base44,
+        env,
+        fetchImpl: withApprovedMedia(async () => {
+          createCalls += 1;
+          throw new Error('createPost must not run after source lineage drift');
+        }),
+      });
+
+      const result = await invokeJson(handler, {}, { secret: workerSecret });
+
+      assert.equal(result.status, 200);
+      assert.equal(sourceReads, 2);
+      assert.equal(createCalls, 0);
+      assert.equal(entities.GrowthPublishJob.records[0].state, 'failed');
+      assert.equal(
+        entities.GrowthPublishJob.records[0].last_error_code,
+        'source_render_lineage_changed',
+      );
+      assert.equal(entities.GrowthContentPlan.records[0].delivery_status, 'canceled');
+    });
+  }
+});
+
+test('legacy manual jobs without a source snapshot fail closed explicitly', async () => {
+  const fx = await fixture();
+  delete fx.job.source_lineage_snapshot;
+  fx.job.request_hash = await growthHelpers.publishJobRequestHash(fx.job);
+  const { base44, entities } = createGrowthBase44({
+    sources: [source],
+    artifacts: [fx.artifact],
+    jobs: [fx.job],
+    plans: [measurementPlan(fx)],
+  });
+  let providerCalls = 0;
+  const handler = loadGrowthHandler(workerPath, {
+    base44,
+    env,
+    fetchImpl: async () => {
+      providerCalls += 1;
+      throw new Error('legacy manual jobs must not reach provider or media');
+    },
+  });
+
+  const result = await invokeJson(handler, {}, { secret: workerSecret });
+
+  assert.equal(result.status, 200);
+  assert.equal(providerCalls, 0);
+  assert.equal(entities.GrowthPublishJob.records[0].state, 'failed');
+  assert.equal(
+    entities.GrowthPublishJob.records[0].last_error_code,
+    'source_lineage_snapshot_missing',
+  );
+  assert.equal(entities.GrowthContentPlan.records[0].delivery_status, 'canceled');
+});
+
+test('legacy rendered jobs may fall back to approval-bound render lineage', async () => {
+  const fx = await renderedFixture();
+  delete fx.job.source_lineage_snapshot;
+  fx.job.request_hash = await growthHelpers.publishJobRequestHash(fx.job);
+  const { base44, entities } = createGrowthBase44({
+    sources: [source],
+    artifacts: [fx.artifact],
+    jobs: [fx.job],
+    plans: [measurementPlan(fx)],
+  });
+  let createCalls = 0;
+  const handler = loadGrowthHandler(workerPath, {
+    base44,
+    env,
+    fetchImpl: withApprovedMedia(async () => {
+      createCalls += 1;
+      return Response.json({
+        data: {
+          createPost: {
+            __typename: 'PostActionSuccess',
+            post: bufferPost(fx),
+          },
+        },
+      });
+    }),
+  });
+
+  const result = await invokeJson(handler, {}, { secret: workerSecret });
+
+  assert.equal(result.status, 200);
+  assert.equal(createCalls, 1);
+  assert.equal(entities.GrowthPublishJob.records[0].state, 'scheduled');
 });
 
 test('rendered source lineage drift fails preflight and cancels measurement', async (t) => {

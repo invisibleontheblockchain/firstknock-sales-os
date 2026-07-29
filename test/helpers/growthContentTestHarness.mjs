@@ -164,6 +164,8 @@ export function createGrowthBase44({
   artifacts = [],
   jobs = [],
   plans = [],
+  metrics = [],
+  batches = [],
   heartbeats,
   invokeLlm,
 } = {}) {
@@ -185,6 +187,8 @@ export function createGrowthBase44({
       'GrowthPublishHeartbeat',
     ),
     GrowthContentPlan: memoryEntity(plans, 'GrowthContentPlan'),
+    GrowthContentMetric: memoryEntity(metrics, 'GrowthContentMetric'),
+    GrowthContentBatch: memoryEntity(batches, 'GrowthContentBatch'),
   };
   const base44 = {
     auth: { me: async () => jsonClone(currentUser.value) },

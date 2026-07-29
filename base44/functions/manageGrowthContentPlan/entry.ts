@@ -11,6 +11,7 @@ const CTA_CHANNELS = new Set([
 ]);
 const SNAPSHOT_DAYS = new Set([1, 3, 7, 30]);
 const DECISIONS = new Set(["repeat", "iterate", "hold"]);
+const REVIEW_LOCKING_BATCH_STATES = new Set(["ready", "render_authorized"]);
 const MAX_BODY_BYTES = 100_000;
 const MAX_SEED_PLANS = 25;
 const PAGE_SIZE = 5000;
@@ -112,6 +113,14 @@ function socialPlatform(value: any): string {
 
 function planKey(campaign: any, content: any, platform: any = "instagram"): string {
   return `${socialPlatform(platform)}|${token(campaign, "1000-users")}|${token(content)}`;
+}
+
+function batchLocksParentReview(batch: any, nowMs = Date.now()): boolean {
+  const state = token(batch?.state);
+  if (REVIEW_LOCKING_BATCH_STATES.has(state)) return true;
+  if (state !== "generating") return false;
+  const expiresMs = new Date(batch?.lease_expires_at || 0).getTime();
+  return !Number.isFinite(expiresMs) || expiresMs > nowMs;
 }
 
 function metricKey(
@@ -651,6 +660,27 @@ Deno.serve(async (req: Request) => {
       const note = text(body?.note, 500);
       if (!DECISIONS.has(decision) || note.length < 5) {
         return response({ error: "invalid_growth_decision" }, 400);
+      }
+      const batchEntity = base44.asServiceRole.entities.GrowthContentBatch;
+      const descendants = asArray(await batchEntity.filter(
+        {
+          parent_campaign: campaign,
+          parent_content: content,
+        },
+        "-state_changed_at",
+        100,
+      )).filter(
+        (batch) => socialPlatform(batch?.parent_platform) === platform,
+      );
+      if (descendants.length >= 100) {
+        return response({ error: "growth_batch_lineage_conflict" }, 409);
+      }
+      if (descendants.some((batch) => batchLocksParentReview(batch))) {
+        return response({
+          error: "growth_review_lineage_locked",
+          message:
+            "Revoke the active downstream batch before changing its reviewed parent decision.",
+        }, 409);
       }
       const publishedAt = timestamp(current?.published_at);
       if (!publishedAt) return response({ error: "content_not_published" }, 409);

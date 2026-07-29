@@ -127,6 +127,77 @@ rendering and then reuse the old result manifest. Imported silent renditions def
 Buffer notification finishing; automatic silent delivery requires an explicit owner
 choice.
 
+## Measured daily batch workflow
+
+After a D1, D3, D7, or D30 item has a current Repeat or Iterate decision, Growth
+Dashboard can compile the next two or three paired Instagram/TikTok concepts:
+
+1. Open **Measured next batch** in the Content Engine.
+2. Select the reviewed parent and Phoenix target date.
+3. Choose the exact trusted starter `growth-render-result.v1` file; the dashboard uses
+   its embedded normalized `pack`. A standalone `growth-render-pack.v1` is also
+   accepted.
+4. Build the batch. The server rechecks the fixed-age evidence and donor source hashes,
+   binds the sanitized source summaries, reserves distinct source hashes for seven
+   days, reserves generated hooks for 28 days, and stores the canonical generated
+   pack. Generated titles, hooks, overlays, shot lists, captions, and CTA labels fail
+   closed on explicit URLs, `www`, bare domains or domain paths, social handles, email
+   addresses, and phone numbers.
+5. Download the generated pack JSON. Save it outside the repository or in ignored
+   render output.
+6. Inspect the hooks, captions, disclosure, source choices, crop/trim recipes, and
+   platform attribution. The owner may then authorize that exact pack SHA-256 for
+   render-result import.
+7. Render it with the same private source package and deterministic renderer:
+
+   ```powershell
+   npm.cmd run render:growth-pack -- --manifest C:\private\firstknock-next-batch.json --source-dir C:\private\FirstKnockAssets --output-dir C:\private\firstknock-next-output
+   ```
+
+8. Inspect every local video, stage only the approved candidates at the immutable media
+   origin, rerender the manifest with `--media-origin`, and run the origin verifier.
+9. Import the resulting `growth-render-result.v1` in Growth Dashboard.
+10. Complete the normal visual inspection and four review gates, approve each exact
+    rendition, and only then queue the platform posts. Generated renditions are pinned
+    to their batch date and cadence slot: morning is 9:30 AM, midday is 1:30 PM, and
+    evening is 6:30 PM America/Phoenix. If a slot is missed, do not move it to a later
+    day; create and review a new target-date batch so source cooldown remains truthful.
+
+Batch authorization only permits the exact generated pack to cross the render-import
+trust boundary. It does not approve a rendition, schedule a post, or enable the Buffer
+kill switch.
+
+After step 4, the parent review is lineage-locked while the batch has an unexpired
+`generating` lease or is `ready` or `render_authorized`. If the unused batch should no
+longer drive production, revoke it before re-reviewing the parent. If its imported
+renditions are approved or queued, revoke those approvals and deliveries in the normal
+order first. A batch with a rendition that has durable sent evidence cannot be revoked;
+do not rewrite published/sent history to release source or hook capacity. An abandoned
+expired generation lease does not permanently block re-review.
+
+Repeat and Iterate remain owner-inspected editorial controls in this version. Before
+authorization, compare each generated concept with its donor and verify that the
+intended major variable—not several uncontrolled variables—changed. The server does
+not claim that free-text Iterate directions are automatically single-variable tests.
+
+The current five safe donor sources support roughly two two-concept days before the
+seven-day cooldown correctly stops generation. A sustained two-post daily rotation
+needs 14 distinct safe sources; three posts daily needs 21.
+
+The active `GrowthContentBatch` is the durable first reservation layer for its selected
+source keys and hashes plus generated-hook set. Scheduling uses a second, provisional
+layer: the schedule action first persists a fenced `reservation_pending` publish job
+with the approved artifact, due time, hook, generated-batch identity, and exact source
+key/reference/SHA-256 snapshot. It then re-reads durable batch and publish-job
+reservations and promotes the row to `queued` only if the seven-day source and 28-day
+hook checks still pass.
+
+The expected Instagram/TikTok pair has one narrow same-day exemption from those
+cross-content checks: both renditions must have the same canonical concept ID,
+render-pack SHA-256, source reservation tokens, and Phoenix day, and must be opposite
+platforms. Do not treat a different pack, changed lineage, different day, same-platform
+duplicate, or unrelated concept as a pair.
+
 This profile stays inside the current first-party limits documented by
 [Meta's Instagram API collection](https://www.postman.com/meta/instagram/documentation/6yqw8pt/instagram-api),
 [TikTok's media transfer guide](https://developers.tiktok.com/doc/content-posting-api-media-transfer-guide),
@@ -185,11 +256,19 @@ the result schema, configured media origin, full-SHA delivery key and URL, exact
 fields, codec evidence, attribution, QC flags, byte size, and registered source lineage.
 `sanitized_preview_only` artifacts are reported and skipped.
 
-The backend publisher rechecks the rendered artifact's exact registered source
-reference and SHA-256, then repeats the remote byte fetch and rendition SHA-256
-verification immediately before asking Buffer to create a post. A source safety,
-reference, or hash change cancels queued delivery or fails closed if provider work is
-already live or ambiguous.
+The schedule action copies each source key, opaque reference, and SHA-256 into the
+publish job. The backend worker rechecks that immutable snapshot against exactly one
+current active privacy-safe source, then repeats the remote byte fetch and rendition
+SHA-256 verification immediately before asking Buffer to create a post. A source
+safety, reference, or hash change cancels queued delivery or fails closed if provider
+work is already live or ambiguous.
+
+On each authenticated scheduler invocation, expired provisional reservations are
+handled before normal due jobs. The repair fences the abandoned row, cancels its local
+measurement plan, and either finalizes it as `canceled` or leaves
+`delivery_reconcile` for retry. The reservation repair itself does not contact Buffer
+and does not fetch media. This cleanup occurs only when the operator has deployed and
+is invoking the recurring worker.
 
 ## Platform and attribution gates
 
@@ -217,4 +296,7 @@ not yet provision:
 - automatic provider analytics ingestion.
 
 Those are deployment and credential steps, not reasons to bypass review or expose the
-raw source package.
+raw source package. Rendering, immutable hosting, credential configuration, worker
+deployment, recurring scheduler operation, final review, and enabling delivery remain
+operator responsibilities; the checked-in code does not publish social posts on its
+own.

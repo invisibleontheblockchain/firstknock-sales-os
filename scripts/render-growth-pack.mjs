@@ -109,6 +109,12 @@ function exactInteger(value, label, minimum, maximum) {
   return number;
 }
 
+function optionalBoolean(value, label, fallback = false) {
+  if (value === undefined) return fallback;
+  if (typeof value !== 'boolean') fail(`${label} must be a boolean`);
+  return value;
+}
+
 function simpleFilename(value, label) {
   const name = String(value || '').trim();
   if (
@@ -326,6 +332,10 @@ export function validatePack(rawPack) {
       `${prefix}.source_asset_key`,
     );
     const source = sourceByKey.get(sourceAssetKey);
+    const aiGenerated = optionalBoolean(
+      artifact.ai_generated,
+      `${prefix}.ai_generated`,
+    );
     const renderValue = artifact.render && typeof artifact.render === 'object'
       ? artifact.render
       : {};
@@ -349,8 +359,8 @@ export function validatePack(rawPack) {
         : exactInteger(
           renderValue.trim_end_ms,
           `${prefix}.render.trim_end_ms`,
-          1,
-          Math.max(1, Number(source?.duration_ms || 0)),
+          Number(source?.duration_ms || 0) > 0 ? 1 : 0,
+          Math.max(0, Number(source?.duration_ms || 0)),
         ),
       crop: cropValue
         ? {
@@ -379,6 +389,7 @@ export function validatePack(rawPack) {
       title: nonemptyText(artifact.title, `${prefix}.title`, 160),
       pillar: nonemptyText(artifact.pillar, `${prefix}.pillar`, 120),
       format: artifact.format,
+      ...(aiGenerated ? { ai_generated: true } : {}),
       distribution_state: String(
         artifact.distribution_state || 'publish_candidate',
       ).trim().toLowerCase(),
@@ -906,6 +917,41 @@ export async function validateRenderedVideo(path, pack, ffprobe = 'ffprobe') {
   };
 }
 
+export function buildRenderedArtifactFields({
+  artifact,
+  technical,
+  mediaUrl,
+  mediaSha256,
+  thumbnailOffsetMs,
+}) {
+  return {
+    artifact_key: artifact.artifact_key,
+    concept_id: artifact.concept_id,
+    campaign: artifact.campaign,
+    platform: artifact.platform,
+    platform_content_id: artifact.platform_content_id,
+    title: artifact.title,
+    pillar: artifact.pillar,
+    format: artifact.format,
+    source_asset_keys: [artifact.source_asset_key],
+    hook: artifact.hook,
+    caption: artifact.caption,
+    overlay_text: artifact.overlay_text,
+    shot_list: artifact.shot_list,
+    cta_label: artifact.cta_label,
+    cta_url: artifact.cta_url,
+    disclosure: artifact.disclosure,
+    media_url: mediaUrl,
+    media_sha256: mediaSha256,
+    mime_type: technical.mime_type,
+    width: technical.width,
+    height: technical.height,
+    duration_ms: technical.duration_ms,
+    thumbnail_offset_ms: thumbnailOffsetMs,
+    ai_generated: artifact.ai_generated === true,
+  };
+}
+
 async function renderArtifact({
   pack,
   artifact,
@@ -1084,32 +1130,13 @@ async function renderArtifact({
       ready_for_content_engine_import:
         artifact.distribution_state === 'publish_candidate',
     },
-    artifact_fields: {
-      artifact_key: artifact.artifact_key,
-      concept_id: artifact.concept_id,
-      campaign: artifact.campaign,
-      platform: artifact.platform,
-      platform_content_id: artifact.platform_content_id,
-      title: artifact.title,
-      pillar: artifact.pillar,
-      format: artifact.format,
-      source_asset_keys: [artifact.source_asset_key],
-      hook: artifact.hook,
-      caption: artifact.caption,
-      overlay_text: artifact.overlay_text,
-      shot_list: artifact.shot_list,
-      cta_label: artifact.cta_label,
-      cta_url: artifact.cta_url,
-      disclosure: artifact.disclosure,
-      media_url: mediaUrl,
-      media_sha256: mediaSha256,
-      mime_type: technical.mime_type,
-      width: technical.width,
-      height: technical.height,
-      duration_ms: technical.duration_ms,
-      thumbnail_offset_ms: effectivePack.output.thumbnail_offset_ms,
-      ai_generated: false,
-    },
+    artifact_fields: buildRenderedArtifactFields({
+      artifact,
+      technical,
+      mediaUrl,
+      mediaSha256,
+      thumbnailOffsetMs: effectivePack.output.thumbnail_offset_ms,
+    }),
   };
 }
 

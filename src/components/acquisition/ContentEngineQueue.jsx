@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   ChevronRight,
   CircleAlert,
+  Download,
   ExternalLink,
   Film,
   Image,
@@ -78,6 +79,14 @@ const PHOENIX_CADENCE_SLOTS = [
   [13, 30],
   [18, 30],
 ];
+const MEASURED_BATCH_SLOT_TIMES = {
+  morning: '09:30',
+  midday: '13:30',
+  evening: '18:30',
+};
+const DAY_MS = 24 * 60 * 60 * 1000;
+const MAX_SEED_MANIFEST_BYTES = 150_000;
+const MAX_BATCH_NOTE_LENGTH = 500;
 
 const PILLARS = [
   'Product proof',
@@ -118,6 +127,180 @@ function phoenixDayKey(timestamp) {
     String(wallClock.getUTCMonth() + 1).padStart(2, '0'),
     String(wallClock.getUTCDate()).padStart(2, '0'),
   ].join('-');
+}
+
+function nextPhoenixTargetDate(now = Date.now()) {
+  return phoenixDayKey(now + DAY_MS);
+}
+
+function measuredParentKey(item) {
+  return [
+    item?.platform || 'instagram',
+    item?.campaign || '1000-users',
+    item?.content || '',
+  ].join('|');
+}
+
+function reviewedBatchParents(contentQueue) {
+  return (contentQueue?.items || []).filter((item) => (
+    item?.state === 'reviewed'
+    && item?.decision_stale !== true
+    && ['repeat', 'iterate'].includes(item?.decision)
+  ));
+}
+
+function growthToken(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '-')
+    .replace(/[^a-z0-9._~-]/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 120);
+}
+
+function exactSha256(value) {
+  const hash = String(value || '').trim().toLowerCase();
+  return /^[a-f0-9]{64}$/.test(hash) ? hash : '';
+}
+
+function seedDonorRequirements(pack) {
+  const sourceByKey = new Map();
+  for (const source of pack?.sources || []) {
+    const assetKey = growthToken(source?.asset_key);
+    const sourceReference = String(source?.source_reference || '').trim();
+    const sourceSha256 = exactSha256(source?.source_sha256);
+    if (
+      !assetKey
+      || sourceByKey.has(assetKey)
+      || !['asset_pack', 'repository_public'].includes(growthToken(source?.source_origin))
+      || !sourceReference
+      || !sourceSha256
+      || growthToken(source?.privacy_status) !== 'safe'
+      || growthToken(source?.rights_status) !== 'firstknock_owned'
+    ) {
+      continue;
+    }
+    sourceByKey.set(assetKey, {
+      asset_key: assetKey,
+      source_reference: sourceReference,
+      source_sha256: sourceSha256,
+    });
+  }
+
+  const artifactsByConcept = new Map();
+  for (const artifact of pack?.artifacts || []) {
+    const conceptId = growthToken(artifact?.concept_id);
+    const platform = growthToken(artifact?.platform);
+    const sourceKey = growthToken(artifact?.source_asset_key);
+    if (
+      !conceptId
+      || !['instagram', 'tiktok'].includes(platform)
+      || growthToken(artifact?.distribution_state) !== 'publish_candidate'
+      || growthToken(artifact?.format) !== 'video'
+      || !sourceByKey.has(sourceKey)
+      || !artifact?.render
+      || typeof artifact.render !== 'object'
+    ) {
+      continue;
+    }
+    if (!artifactsByConcept.has(conceptId)) artifactsByConcept.set(conceptId, []);
+    artifactsByConcept.get(conceptId).push({ platform, sourceKey });
+  }
+
+  const requiredBySource = new Map();
+  for (const artifacts of artifactsByConcept.values()) {
+    if (
+      artifacts.length !== 2
+      || new Set(artifacts.map((artifact) => artifact.platform)).size !== 2
+      || !artifacts.some((artifact) => artifact.platform === 'instagram')
+      || !artifacts.some((artifact) => artifact.platform === 'tiktok')
+      || artifacts[0].sourceKey !== artifacts[1].sourceKey
+    ) {
+      continue;
+    }
+    const requirement = sourceByKey.get(artifacts[0].sourceKey);
+    requiredBySource.set(requirement.asset_key, requirement);
+  }
+  return [...requiredBySource.values()];
+}
+
+function seedSourceReadiness(pack, registeredSources, conceptCount) {
+  const requirements = seedDonorRequirements(pack);
+  const registeredByKey = new Map();
+  for (const source of registeredSources || []) {
+    const assetKey = growthToken(source?.asset_key);
+    if (!registeredByKey.has(assetKey)) registeredByKey.set(assetKey, []);
+    registeredByKey.get(assetKey).push(source);
+  }
+  const missing = [];
+  const changed = [];
+  for (const requirement of requirements) {
+    const matches = registeredByKey.get(requirement.asset_key) || [];
+    if (!matches.length) {
+      missing.push(requirement.asset_key);
+      continue;
+    }
+    const current = matches[0];
+    if (
+      matches.length !== 1
+      || current?.active === false
+      || growthToken(current?.privacy_status) !== 'safe'
+      || String(current?.source_reference || '').trim() !== requirement.source_reference
+      || exactSha256(current?.source_sha256) !== requirement.source_sha256
+    ) {
+      changed.push(requirement.asset_key);
+    }
+  }
+  return {
+    requirements,
+    missing,
+    changed,
+    ready: requirements.length >= conceptCount
+      && !missing.length
+      && !changed.length,
+  };
+}
+
+function normalizeBatchNoteInput(value) {
+  return String(value || '')
+    .replace(/\s+/g, ' ')
+    .slice(0, MAX_BATCH_NOTE_LENGTH);
+}
+
+function compactBatchNote(value) {
+  return String(value || '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .slice(0, MAX_BATCH_NOTE_LENGTH);
+}
+
+function renderPackFromSeedFile(value) {
+  const pack = value?.schema_version === 'growth-render-result.v1'
+    ? value?.pack
+    : value;
+  if (
+    pack?.schema_version !== 'growth-render-pack.v1'
+    || !Array.isArray(pack?.artifacts)
+    || !pack.artifacts.length
+    || !seedDonorRequirements(pack).length
+  ) {
+    throw new Error('invalid_seed_pack');
+  }
+  return pack;
+}
+
+function downloadJsonFile(fileName, value) {
+  const url = URL.createObjectURL(new Blob(
+    [`${JSON.stringify(value, null, 2)}\n`],
+    { type: 'application/json;charset=utf-8' },
+  ));
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = fileName;
+  anchor.click();
+  URL.revokeObjectURL(url);
 }
 
 function phoenixLocalInput(timestamp) {
@@ -162,6 +345,14 @@ function nextScheduleSlot(jobs = [], now = Date.now(), platform = '') {
 
   const fallback = Date.UTC(year, month, day + 90, 16, 30, 0, 0);
   return phoenixLocalInput(fallback);
+}
+
+function measuredBatchScheduleLocal(artifact) {
+  const targetDate = String(artifact?.growth_batch_target_date || '').trim();
+  const localTime = MEASURED_BATCH_SLOT_TIMES[artifact?.growth_batch_slot_key];
+  return /^\d{4}-\d{2}-\d{2}$/.test(targetDate) && localTime
+    ? `${targetDate}T${localTime}`
+    : '';
 }
 
 function dateLabel(value) {
@@ -296,7 +487,9 @@ function artifactMediaReady(artifact) {
   return artifact?.format === 'photo' && mimeType.startsWith('image/');
 }
 
-function publishJobRefetchInterval(data) {
+function contentEngineRefetchInterval(data) {
+  const batches = data?.batches || [];
+  if (batches.some((batch) => batch?.state === 'generating')) return 10_000;
   const jobs = data?.jobs || [];
   if (jobs.some((job) => FAST_POLLING_JOB_STATES.has(job?.state))) return 10_000;
   if (jobs.some((job) => SLOW_POLLING_JOB_STATES.has(job?.state))) return 60_000;
@@ -304,13 +497,13 @@ function publishJobRefetchInterval(data) {
 }
 
 function statusTone(value) {
-  if (['approved', 'passed', 'scheduled', 'sent'].includes(value)) {
+  if (['approved', 'passed', 'scheduled', 'sent', 'ready', 'render_authorized'].includes(value)) {
     return 'border-green-400/25 bg-green-400/10 text-green-100';
   }
-  if (['review_required', 'changes_requested', 'create_reconcile', 'delivery_reconcile', 'failed'].includes(value)) {
+  if (['review_required', 'changes_requested', 'create_reconcile', 'delivery_reconcile', 'failed', 'revoked', 'superseded'].includes(value)) {
     return 'border-red-400/25 bg-red-400/10 text-red-100';
   }
-  if (['queued', 'processing', 'sending', 'approval_wait', 'measurement_retry'].includes(value)) {
+  if (['queued', 'processing', 'sending', 'approval_wait', 'measurement_retry', 'generating'].includes(value)) {
     return 'border-blue-400/25 bg-blue-400/10 text-blue-100';
   }
   return 'border-white/10 bg-white/5 text-white/55';
@@ -330,6 +523,523 @@ function SummaryChip({ label, value }) {
       <p className="text-[9px] font-black uppercase tracking-[0.14em] text-white/40">{label}</p>
       <p className="mt-1 text-lg font-black text-white">{Number(value || 0).toLocaleString()}</p>
     </div>
+  );
+}
+
+function MeasuredBatchPanel({
+  accent,
+  accentText,
+  contentQueue,
+  sources,
+  batches,
+  capabilities,
+  summary,
+  busy,
+  onAction,
+}) {
+  const seedInputRef = React.useRef(null);
+  const [builderOpen, setBuilderOpen] = React.useState(false);
+  const [retrievingBatchKey, setRetrievingBatchKey] = React.useState('');
+  const [batchDecision, setBatchDecision] = React.useState(null);
+  const [draft, setDraft] = React.useState(() => ({
+    parent_key: '',
+    target_date: nextPhoenixTargetDate(),
+    concept_count: '2',
+    seed_pack: null,
+    seed_file_name: '',
+  }));
+  const eligibleParents = reviewedBatchParents(contentQueue);
+  const eligibleByKey = new Map(
+    eligibleParents.map((item) => [measuredParentKey(item), item]),
+  );
+  const selectedParentKey = eligibleByKey.has(draft.parent_key)
+    ? draft.parent_key
+    : measuredParentKey(eligibleParents[0]);
+  const selectedParent = eligibleByKey.get(selectedParentKey);
+  const generationReady = capabilities.measured_batch_generation_ready === true;
+  const canAuthorize = capabilities.can_approve === true;
+  const readyBatches = Number(summary.batches_ready || 0);
+  const authorizedBatches = Number(summary.batches_authorized || 0);
+  const conceptCount = Number(draft.concept_count);
+  const seedSources = seedSourceReadiness(draft.seed_pack, sources, conceptCount);
+  const hasRegisteredSafeSource = (sources || []).some((source) => (
+    source?.active !== false
+    && growthToken(source?.privacy_status) === 'safe'
+    && exactSha256(source?.source_sha256)
+    && String(source?.source_reference || '').trim()
+  ));
+  const normalizedDecisionNote = compactBatchNote(batchDecision?.note);
+
+  const chooseSeedPack = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    setDraft((current) => ({
+      ...current,
+      seed_pack: null,
+      seed_file_name: '',
+    }));
+    if (file.size > MAX_SEED_MANIFEST_BYTES) {
+      toast.error('Seed manifest must be 150 KB or smaller');
+      return;
+    }
+    try {
+      const parsed = JSON.parse(await file.text());
+      const pack = renderPackFromSeedFile(parsed);
+      setDraft((current) => ({
+        ...current,
+        seed_pack: pack,
+        seed_file_name: file.name,
+      }));
+    } catch {
+      toast.error('Choose a growth-render-pack.v1 file or a growth-render-result.v1 file containing .pack');
+    }
+  };
+
+  const buildBatch = () => {
+    if (!selectedParent || !draft.seed_pack || !seedSources.ready) return;
+    onAction({
+      action: 'build_next_batch',
+      parent: {
+        platform: selectedParent.platform || 'instagram',
+        campaign: selectedParent.campaign,
+        content: selectedParent.content,
+      },
+      target_date: draft.target_date,
+      concept_count: Number(draft.concept_count),
+      seed_pack: draft.seed_pack,
+    }, {
+      onSuccess: () => setBuilderOpen(false),
+    });
+  };
+
+  const downloadBatch = async (batch) => {
+    setRetrievingBatchKey(batch.batch_key);
+    try {
+      const response = await base44.functions.invoke('manageGrowthContentEngine', {
+        action: 'get_batch',
+        batch_key: batch.batch_key,
+      });
+      const result = response?.data || response;
+      if (
+        result?.render_pack?.schema_version !== 'growth-render-pack.v1'
+        || result?.pack_sha256 !== batch.canonical_pack_sha256
+      ) {
+        throw new Error('growth_batch_render_pack_tampered');
+      }
+      const suffix = String(batch.batch_key || '').slice(0, 12);
+      downloadJsonFile(
+        `firstknock-${batch.target_date || 'daily'}-${suffix}-render-pack.json`,
+        result.render_pack,
+      );
+      toast.success('Exact generated render pack downloaded');
+    } catch (error) {
+      toast.error(
+        error?.response?.data?.message
+        || fieldError(error?.response?.data?.error || error?.message),
+      );
+    } finally {
+      setRetrievingBatchKey('');
+    }
+  };
+
+  const openBatchDecision = (mode, batch) => {
+    setBatchDecision({
+      mode,
+      batch,
+      acknowledged: false,
+      note: '',
+    });
+  };
+
+  const submitBatchDecision = () => {
+    if (!batchDecision?.batch) return;
+    const isAuthorization = batchDecision.mode === 'authorize';
+    const note = compactBatchNote(batchDecision.note);
+    if (
+      note.length < 5
+      || (isAuthorization && batchDecision.acknowledged !== true)
+    ) {
+      return;
+    }
+    setBatchDecision((current) => (current ? { ...current, note } : current));
+    onAction({
+      action: isAuthorization ? 'authorize_batch' : 'revoke_batch',
+      batch_key: batchDecision.batch.batch_key,
+      ...(isAuthorization
+        ? {
+          expected_pack_sha256: batchDecision.batch.canonical_pack_sha256,
+          inspection_acknowledged: true,
+        }
+        : {}),
+      note,
+    }, {
+      onSuccess: () => setBatchDecision(null),
+    });
+  };
+
+  return (
+    <>
+      <div className="mt-4 rounded-2xl border border-blue-300/15 bg-blue-300/[0.06] p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-sm font-black text-white">Measured daily batches</p>
+              <Pill tone="border-blue-300/20 bg-blue-300/10 text-blue-100">
+                {readyBatches} ready
+              </Pill>
+              <Pill tone="border-green-300/20 bg-green-300/10 text-green-100">
+                {authorizedBatches} authorized
+              </Pill>
+            </div>
+            <p className="mt-1 max-w-2xl text-[11px] leading-relaxed text-white/45">
+              Use a current Repeat or Iterate decision to create two or three paired Instagram and TikTok concepts for the next Phoenix production day.
+            </p>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => {
+              setDraft((current) => ({
+                ...current,
+                target_date: nextPhoenixTargetDate(),
+              }));
+              setBuilderOpen(true);
+            }}
+            disabled={
+              !generationReady
+              || !eligibleParents.length
+              || !hasRegisteredSafeSource
+              || busy
+            }
+            style={{ background: accent, color: accentText }}
+            className="shrink-0 font-black"
+          >
+            <CalendarClock className="mr-2 h-4 w-4" />
+            Build next batch
+          </Button>
+        </div>
+
+        {!generationReady && (
+          <p className="mt-3 rounded-xl border border-amber-400/20 bg-amber-400/10 p-3 text-[11px] leading-relaxed text-amber-100/70">
+            Measured generation needs server-side generation plus an allowlisted trusted seed pack.
+          </p>
+        )}
+        {generationReady && !eligibleParents.length && (
+          <p className="mt-3 rounded-xl border border-white/10 bg-black/25 p-3 text-[11px] leading-relaxed text-white/45">
+            No eligible parent yet. Capture a canonical fixed-age snapshot and save a current Repeat or Iterate review first; Hold and stale decisions cannot seed a batch.
+          </p>
+        )}
+        {generationReady && !hasRegisteredSafeSource && (
+          <p className="mt-3 rounded-xl border border-amber-400/20 bg-amber-400/10 p-3 text-[11px] leading-relaxed text-amber-100/70">
+            Load the audited source inventory before building. Generation stays locked until at least one active, privacy-safe source has exact reference and SHA-256 evidence.
+          </p>
+        )}
+
+        <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-400/20 bg-amber-400/[0.08] p-3">
+          <CircleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-200" />
+          <p className="text-[10px] leading-relaxed text-amber-100/65">
+            Capacity warning: the current 5 safe donors cover about 2 days at 2 concepts per day. A seven-day source rotation needs 14 safe donors at 2/day or 21 at 3/day.
+          </p>
+        </div>
+
+        {batches.length > 0 && (
+          <div className="mt-3 space-y-2">
+            {batches.slice(0, 8).map((batch) => {
+              const downloadable = ['ready', 'render_authorized'].includes(batch.state);
+              const revocable = ['ready', 'render_authorized', 'failed'].includes(batch.state);
+              return (
+                <div
+                  key={batch.batch_key}
+                  className="flex flex-col gap-3 rounded-xl border border-white/10 bg-black/30 p-3 lg:flex-row lg:items-center"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-mono text-[11px] font-black text-white">
+                        {batch.target_date} · {batch.concept_count} concepts
+                      </p>
+                      <Pill tone={statusTone(batch.state)}>
+                        {batch.state?.replaceAll('_', ' ')}
+                      </Pill>
+                      <Pill>{batch.review_decision || 'review'}</Pill>
+                    </div>
+                    <p className="mt-1 truncate text-[10px] text-white/40">
+                      {PLATFORM_LABELS[batch.parent_platform] || batch.parent_platform}
+                      {' · '}{batch.parent_content}
+                      {' · '}{batch.pack_artifact_count || batch.concept_count * 2} paired artifacts
+                    </p>
+                    {batch.canonical_pack_sha256 && (
+                      <p className="mt-1 truncate font-mono text-[9px] text-white/25">
+                        SHA-256 {batch.canonical_pack_sha256}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => downloadBatch(batch)}
+                      disabled={!downloadable || retrievingBatchKey === batch.batch_key || busy}
+                      className="border-white/15 bg-transparent text-white hover:bg-white/10"
+                    >
+                      {retrievingBatchKey === batch.batch_key
+                        ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        : <Download className="mr-2 h-4 w-4" />}
+                      Download JSON
+                    </Button>
+                    {batch.state === 'ready' && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => openBatchDecision('authorize', batch)}
+                        disabled={!canAuthorize || busy}
+                        className="bg-green-300 font-black text-black hover:bg-green-200"
+                      >
+                        <ShieldCheck className="mr-2 h-4 w-4" />
+                        Authorize exact pack
+                      </Button>
+                    )}
+                    {revocable && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => openBatchDecision('revoke', batch)}
+                        disabled={!canAuthorize || busy}
+                        className="text-red-200 hover:bg-red-400/10 hover:text-red-100"
+                      >
+                        <XCircle className="mr-2 h-4 w-4" />
+                        Revoke
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        <p className="mt-3 text-[10px] leading-relaxed text-white/35">
+          Authorization and import do not publish. Every imported rendition still requires the normal four-gate review—privacy, demo labeling, supported claims, and media rights—plus exact-revision owner approval and separate delivery scheduling.
+        </p>
+      </div>
+
+      <Dialog open={builderOpen} onOpenChange={setBuilderOpen}>
+        <DialogContent className="border-white/10 bg-[#080808] text-white sm:max-w-xl">
+          <DialogHeader className="text-left">
+            <DialogTitle className="text-xl font-black">Build the next measured batch</DialogTitle>
+            <DialogDescription className="text-white/45">
+              The backend rechecks the parent&apos;s current fixed-age evidence, source safety, cooldowns, and exact trusted seed before generation.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <DetailField
+              label="Reviewed parent"
+              helper="Only current Repeat or Iterate decisions are selectable."
+            >
+              <select
+                value={selectedParentKey}
+                onChange={(event) => setDraft((current) => ({
+                  ...current,
+                  parent_key: event.target.value,
+                }))}
+                className="h-10 w-full rounded-md border border-white/10 bg-black px-3 text-sm text-white"
+              >
+                {eligibleParents.map((item) => (
+                  <option key={measuredParentKey(item)} value={measuredParentKey(item)}>
+                    {PLATFORM_LABELS[item.platform] || item.platform} · {item.content} · {item.decision}
+                  </option>
+                ))}
+              </select>
+            </DetailField>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <DetailField label="Production date" helper="America/Phoenix">
+                <Input
+                  type="date"
+                  min={phoenixDayKey(Date.now())}
+                  value={draft.target_date}
+                  onChange={(event) => setDraft((current) => ({
+                    ...current,
+                    target_date: event.target.value,
+                  }))}
+                  className="border-white/10 bg-black text-white"
+                />
+              </DetailField>
+              <DetailField label="Concepts per platform">
+                <select
+                  value={draft.concept_count}
+                  onChange={(event) => setDraft((current) => ({
+                    ...current,
+                    concept_count: event.target.value,
+                  }))}
+                  className="h-10 w-full rounded-md border border-white/10 bg-black px-3 text-sm text-white"
+                >
+                  <option value="2">2 per platform · 4 artifacts</option>
+                  <option value="3">3 per platform · 6 artifacts</option>
+                </select>
+              </DetailField>
+            </div>
+            <DetailField
+              label="Trusted seed manifest"
+              helper="Accepts growth-render-pack.v1, or growth-render-result.v1 and extracts its .pack."
+            >
+              <input
+                ref={seedInputRef}
+                type="file"
+                accept="application/json,.json"
+                onChange={chooseSeedPack}
+                className="hidden"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => seedInputRef.current?.click()}
+                className="w-full justify-start border-white/15 bg-black text-white hover:bg-white/10"
+              >
+                <Upload className="mr-2 h-4 w-4" />
+                {draft.seed_file_name || 'Choose trusted seed JSON'}
+              </Button>
+            </DetailField>
+            {draft.seed_pack && (
+              <div className={`rounded-xl border p-3 text-[11px] leading-relaxed ${
+                seedSources.ready
+                  ? 'border-green-300/20 bg-green-300/[0.07] text-green-100/70'
+                  : 'border-amber-400/20 bg-amber-400/[0.08] text-amber-100/70'
+              }`}>
+                {seedSources.requirements.length < conceptCount
+                  ? `This seed has ${seedSources.requirements.length} usable paired donor source(s); ${conceptCount} are required.`
+                  : seedSources.missing.length
+                    ? `${seedSources.missing.length} exact donor source(s) are not registered in this content engine.`
+                    : seedSources.changed.length
+                      ? `${seedSources.changed.length} donor source(s) are inactive, no longer privacy-safe, duplicated, or do not match the seed reference and SHA-256.`
+                      : `${seedSources.requirements.length} exact donor source(s) are registered, active, and privacy-safe.`}
+              </div>
+            )}
+            <Button
+              type="button"
+              onClick={buildBatch}
+              disabled={
+                busy
+                || !generationReady
+                || !selectedParent
+                || !draft.target_date
+                || !draft.seed_pack
+                || !seedSources.ready
+              }
+              style={{ background: accent, color: accentText }}
+              className="w-full font-black"
+            >
+              {busy
+                ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                : <Sparkles className="mr-2 h-4 w-4" />}
+              Build paired batch
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(batchDecision)}
+        onOpenChange={(open) => {
+          if (!open) setBatchDecision(null);
+        }}
+      >
+        <DialogContent className="border-white/10 bg-[#080808] text-white sm:max-w-lg">
+          <DialogHeader className="text-left">
+            <DialogTitle className="text-xl font-black">
+              {batchDecision?.mode === 'authorize'
+                ? 'Authorize exact generated pack'
+                : 'Revoke generated batch'}
+            </DialogTitle>
+            <DialogDescription className="text-white/45">
+              {batchDecision?.mode === 'authorize'
+                ? 'This owner action allows only the displayed SHA-256 pack to enter trusted render-result import.'
+                : 'Revocation removes this batch from the dynamic import allowlist.'}
+            </DialogDescription>
+          </DialogHeader>
+          {batchDecision?.batch && (
+            <div className="space-y-4">
+              <div className="rounded-xl border border-white/10 bg-black/40 p-3">
+                <p className="text-[10px] font-black uppercase tracking-wider text-white/35">
+                  Exact pack SHA-256
+                </p>
+                <p className="mt-2 break-all font-mono text-[10px] text-white/70">
+                  {batchDecision.batch.canonical_pack_sha256 || 'No completed pack hash'}
+                </p>
+              </div>
+              {batchDecision.mode === 'authorize' && (
+                <label className="flex items-start gap-3 rounded-xl border border-green-300/20 bg-green-300/[0.07] p-3 text-xs leading-relaxed text-green-100/75">
+                  <input
+                    type="checkbox"
+                    checked={batchDecision.acknowledged}
+                    onChange={(event) => setBatchDecision((current) => ({
+                      ...current,
+                      acknowledged: event.target.checked,
+                    }))}
+                    className="mt-0.5 h-4 w-4 accent-green-300"
+                  />
+                  I downloaded and inspected this exact manifest, its source lineage, and paired render recipes.
+                </label>
+              )}
+              <DetailField
+                label={batchDecision.mode === 'authorize' ? 'Authorization note' : 'Revocation reason'}
+                helper="Required · whitespace is normalized · 5–500 characters"
+              >
+                <Textarea
+                  value={batchDecision.note}
+                  onChange={(event) => setBatchDecision((current) => ({
+                    ...current,
+                    note: normalizeBatchNoteInput(event.target.value),
+                  }))}
+                  onBlur={() => setBatchDecision((current) => (
+                    current
+                      ? { ...current, note: compactBatchNote(current.note) }
+                      : current
+                  ))}
+                  maxLength={MAX_BATCH_NOTE_LENGTH}
+                  className="min-h-24 border-white/10 bg-black text-white"
+                  placeholder={batchDecision.mode === 'authorize'
+                    ? 'Inspected exact source lineage and paired recipes.'
+                  : 'Evidence or source changed; regenerate.'}
+                />
+                <span className="block text-right font-mono text-[9px] text-white/30">
+                  {normalizedDecisionNote.length}/{MAX_BATCH_NOTE_LENGTH} normalized characters
+                </span>
+              </DetailField>
+              <p className="text-[10px] leading-relaxed text-white/35">
+                This action does not publish, schedule, or bypass the normal four-gate rendition review and exact-revision owner approval.
+              </p>
+              <Button
+                type="button"
+                onClick={submitBatchDecision}
+                disabled={
+                  busy
+                  || normalizedDecisionNote.length < 5
+                  || (
+                    batchDecision.mode === 'authorize'
+                    && (
+                      !batchDecision.acknowledged
+                      || !batchDecision.batch.canonical_pack_sha256
+                    )
+                  )
+                }
+                className={`w-full font-black ${
+                  batchDecision.mode === 'authorize'
+                    ? 'bg-green-300 text-black hover:bg-green-200'
+                    : 'bg-red-300 text-black hover:bg-red-200'
+                }`}
+              >
+                {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {batchDecision.mode === 'authorize'
+                  ? 'Authorize this exact pack for import'
+                  : 'Revoke this batch'}
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
@@ -373,6 +1083,32 @@ function fieldError(code) {
     render_result_has_no_publish_candidates: 'This pack contains previews only and has no publish candidates',
     render_source_lineage_unavailable: 'Register the exact privacy-safe source hashes before importing this render pack',
     creative_changed_during_render_import: 'A creative changed during import; refresh and safely retry the same pack',
+    invalid_growth_batch_request: 'Choose a reviewed parent, Phoenix production date, and 2 or 3 concepts',
+    reviewed_parent_not_published: 'The selected parent is not recorded as published',
+    reviewed_parent_on_hold: 'Hold decisions cannot seed a new content batch',
+    reviewed_parent_required: 'Save a current Repeat or Iterate decision before building a batch',
+    reviewed_parent_evidence_stale: 'The parent evidence changed; refresh the report and review it again',
+    trusted_seed_pack_not_configured: 'Allowlist the trusted starter pack before measured generation',
+    untrusted_seed_render_pack: 'This seed manifest is not the exact allowlisted trusted starter pack',
+    invalid_seed_render_pack: 'The seed manifest does not contain valid paired Instagram and TikTok donors',
+    insufficient_eligible_donors: 'There are not enough safe donors outside the seven-day source cooldown',
+    seed_donor_source_unavailable: 'A selected seed source changed or is no longer privacy-safe',
+    growth_batch_request_conflict: 'This measured batch already exists with a different request',
+    growth_batch_generation_in_progress: 'This measured batch is already being generated; refresh shortly',
+    growth_batch_not_found: 'The measured batch no longer exists',
+    growth_batch_not_ready: 'The measured batch is not ready to download',
+    growth_batch_pack_mismatch: 'The generated pack hash changed; refresh before authorizing',
+    growth_batch_render_pack_tampered: 'The stored render pack no longer matches its exact SHA-256',
+    growth_batch_not_authorized: 'The exact measured batch is not currently authorized for import',
+    invalid_batch_authorization: 'Inspect the exact pack, acknowledge it, and add an authorization note',
+    invalid_batch_revocation: 'Add a revocation reason of at least 5 characters',
+    growth_batch_authorization_conflict: 'This batch was already authorized with a different note',
+    growth_batch_authorization_contended: 'The batch changed while authorizing; refresh and inspect it again',
+    growth_batch_not_revocable: 'This measured batch can no longer be revoked from this state',
+    growth_batch_published_history_immutable: 'Published batch history must stay recorded for source cooldown and hook deduplication',
+    growth_batch_schedule_slot_mismatch: 'Measured batches must use their reserved Phoenix cadence date and time',
+    source_cooldown_conflict: 'That source is already reserved inside the seven-day cooldown',
+    hook_dedupe_conflict: 'That hook is too similar to approved or scheduled content in the active 28-day window',
     silent_media_decision_required: 'Choose notification finishing, or explicitly select automatic delivery for this silent rendition',
     growth_owner_required: 'Only the FirstKnock owner can approve or schedule content',
     growth_admin_required: 'Owner or admin access is required',
@@ -429,7 +1165,8 @@ function ContentDetailDialog({
     note: '',
   });
   const [schedule, setSchedule] = React.useState({
-    local: nextScheduleSlot(jobs, Date.now(), artifact?.platform),
+    local: measuredBatchScheduleLocal(artifact)
+      || nextScheduleSlot(jobs, Date.now(), artifact?.platform),
     scheduling_type: defaultSchedulingType(artifact),
   });
   const [mediaInspection, setMediaInspection] = React.useState({
@@ -456,10 +1193,18 @@ function ContentDetailDialog({
     if (scheduledArtifactRef.current === artifact.id) return;
     scheduledArtifactRef.current = artifact.id;
     setSchedule({
-      local: nextScheduleSlot(jobs, Date.now(), artifact.platform),
+      local: measuredBatchScheduleLocal(artifact)
+        || nextScheduleSlot(jobs, Date.now(), artifact.platform),
       scheduling_type: defaultSchedulingType(artifact),
     });
-  }, [artifact?.id, artifact?.platform, artifact?.audio_mode, jobs]);
+  }, [
+    artifact?.id,
+    artifact?.platform,
+    artifact?.audio_mode,
+    artifact?.growth_batch_target_date,
+    artifact?.growth_batch_slot_key,
+    jobs,
+  ]);
 
   const renditionKey = [
     artifact?.id,
@@ -1088,9 +1833,17 @@ function ContentDetailDialog({
             <div className="grid gap-3 sm:grid-cols-2">
               <DetailField
                 label="Publish date and time"
-                helper="Suggested from the 9:30 AM, 1:30 PM, and 6:30 PM America/Phoenix cadence; existing non-canceled jobs are skipped."
+                helper={measuredBatchScheduleLocal(artifact)
+                  ? `Reserved ${artifact.growth_batch_slot_key} slot from the measured batch; this exact Phoenix cadence time cannot be moved.`
+                  : 'Suggested from the 9:30 AM, 1:30 PM, and 6:30 PM America/Phoenix cadence; existing non-canceled jobs are skipped.'}
               >
-                <Input type="datetime-local" value={schedule.local} onChange={(event) => setSchedule((current) => ({ ...current, local: event.target.value }))} className="border-white/10 bg-black text-white" />
+                <Input
+                  type="datetime-local"
+                  value={schedule.local}
+                  onChange={(event) => setSchedule((current) => ({ ...current, local: event.target.value }))}
+                  disabled={Boolean(measuredBatchScheduleLocal(artifact))}
+                  className="border-white/10 bg-black text-white"
+                />
               </DetailField>
               <DetailField label="Delivery mode">
                 <select value={schedule.scheduling_type} onChange={(event) => setSchedule((current) => ({ ...current, scheduling_type: event.target.value }))} className="h-10 w-full rounded-md border border-white/10 bg-black px-3 text-sm text-white">
@@ -1212,7 +1965,7 @@ function ContentDetailDialog({
   );
 }
 
-export default function ContentEngineQueue({ accent, accentText }) {
+export default function ContentEngineQueue({ accent, accentText, contentQueue }) {
   const queryClient = useQueryClient();
   const renderImportRef = React.useRef(null);
   const [briefOpen, setBriefOpen] = React.useState(false);
@@ -1226,7 +1979,7 @@ export default function ContentEngineQueue({ accent, accentText }) {
       return result?.data || result;
     },
     retry: false,
-    refetchInterval: (currentQuery) => publishJobRefetchInterval(currentQuery.state.data),
+    refetchInterval: (currentQuery) => contentEngineRefetchInterval(currentQuery.state.data),
     refetchIntervalInBackground: false,
   });
 
@@ -1247,6 +2000,9 @@ export default function ContentEngineQueue({ accent, accentText }) {
         schedule: 'Approved post queued for Buffer worker',
         cancel_job: 'Queued Buffer delivery canceled',
         resolve_job: 'Buffer cancellation recorded; delivery job closed',
+        build_next_batch: 'Measured Instagram and TikTok batch built',
+        authorize_batch: 'Exact generated pack authorized for render-result import',
+        revoke_batch: 'Generated batch revoked',
       };
       if (variables?.action === 'import_render_result') {
         const previewNote = Number(result?.preview_skipped || 0)
@@ -1281,6 +2037,7 @@ export default function ContentEngineQueue({ accent, accentText }) {
   const sources = data.sources || [];
   const artifacts = data.artifacts || [];
   const jobs = data.jobs || [];
+  const batches = data.batches || [];
   const sentJobSignature = jobs
     .filter((job) => job.state === 'sent')
     .map((job) => `${job.id}:${job.provider_sent_at || ''}`)
@@ -1308,10 +2065,17 @@ export default function ContentEngineQueue({ accent, accentText }) {
   const selected = artifacts.find((artifact) => artifact.id === selectedId) || null;
   const capabilities = data.capabilities || {};
   const publishingReady = capabilities.publishing_enabled === true;
-  const renderImportReady = capabilities.render_result_import_ready === true;
+  const summary = data.summary || {};
+  const staticRenderImportReady = capabilities.render_result_import_ready === true;
+  const locallyAuthorizedBatchImportAvailable = (
+    capabilities.authorized_batch_import_ready === true
+    && Number(summary.batches_authorized || 0) > 0
+  );
+  const renderImportAvailable = (
+    staticRenderImportReady || locallyAuthorizedBatchImportAvailable
+  );
   const canApprove = capabilities.can_approve === true;
   const canSchedule = capabilities.can_schedule === true;
-  const summary = data.summary || {};
   const openBrief = () => {
     setBrief(initialBrief(nextConceptIdForToday(artifacts)));
     setBriefOpen(true);
@@ -1422,7 +2186,7 @@ export default function ContentEngineQueue({ accent, accentText }) {
               type="button"
               variant="outline"
               onClick={() => renderImportRef.current?.click()}
-              disabled={!sources.length || !renderImportReady || query.isLoading || action.isPending}
+              disabled={!sources.length || !renderImportAvailable || query.isLoading || action.isPending}
               className="w-full border-white/15 bg-transparent font-black text-white hover:bg-white/10 lg:w-auto"
             >
               <Upload className="mr-2 h-4 w-4" />
@@ -1455,12 +2219,14 @@ export default function ContentEngineQueue({ accent, accentText }) {
           </div>
         ) : (
           <>
-            <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-5">
+            <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
               <SummaryChip label="Sources" value={summary.sources} />
               <SummaryChip label="Needs review" value={summary.needs_review} />
               <SummaryChip label="Approved" value={summary.approved} />
               <SummaryChip label="Delivery queue" value={summary.queued} />
               <SummaryChip label="Needs attention" value={summary.attention} />
+              <SummaryChip label="Batches ready" value={summary.batches_ready} />
+              <SummaryChip label="Batches authorized" value={summary.batches_authorized} />
             </div>
 
             <div className="mt-4 grid gap-2 text-[10px] sm:grid-cols-2 lg:grid-cols-4">
@@ -1471,8 +2237,10 @@ export default function ContentEngineQueue({ accent, accentText }) {
               <div className="rounded-xl border border-white/10 bg-black/30 p-3">
                 <p className="font-black uppercase tracking-wider text-white/35">Media rendering</p>
                 <p className="mt-1 font-bold text-white/70">
-                  {capabilities.render_result_import_ready
-                    ? 'Trusted render import ready'
+                  {renderImportAvailable
+                    ? (staticRenderImportReady
+                      ? 'Static trusted import ready'
+                      : 'Locally authorized batch; server revalidates on import')
                     : !capabilities.immutable_media_origin_configured
                       ? 'Renderer built; media host needed'
                       : !capabilities.trusted_render_pack_configured
@@ -1490,11 +2258,11 @@ export default function ContentEngineQueue({ accent, accentText }) {
               </div>
             </div>
 
-            {!renderImportReady && (
+            {!renderImportAvailable && (
               <div className="mt-4 rounded-xl border border-violet-300/20 bg-violet-300/10 p-3">
                 <p className="text-xs font-black text-violet-100">Rendered-media import is locked</p>
                 <p className="mt-1 text-[11px] leading-relaxed text-violet-100/60">
-                  Configure the immutable media origin, then allowlist the reviewed pack and renderer-environment SHA-256 values before importing hosted candidates.
+                  Configure the immutable media origin and trusted renderer environment, then either allowlist a static reviewed pack or owner-authorize an exact measured batch before importing hosted candidates.
                 </p>
               </div>
             )}
@@ -1519,6 +2287,18 @@ export default function ContentEngineQueue({ accent, accentText }) {
                 </p>
               </div>
             )}
+
+            <MeasuredBatchPanel
+              accent={accent}
+              accentText={accentText}
+              contentQueue={contentQueue}
+              sources={sources}
+              batches={batches}
+              capabilities={capabilities}
+              summary={summary}
+              busy={action.isPending}
+              onAction={(payload, options) => action.mutate(payload, options)}
+            />
 
             {!sources.length ? (
               <div className="mt-5 rounded-2xl border border-dashed border-white/15 bg-white/[0.025] p-6 text-center">

@@ -398,6 +398,8 @@ export default function GrowthDashboard() {
         content_plan_conflict: 'Conflicting queue rows were detected; no evidence was changed',
         content_snapshot_conflict: 'Conflicting snapshot rows were detected; no decision was changed',
         provider_managed_publication: 'Buffer owns publication for this content-engine plan; refresh to see its delivery state',
+        growth_review_lineage_locked: 'This decision already has an active downstream batch. Revoke that batch before changing its evidence lineage',
+        growth_batch_lineage_conflict: 'Too many downstream batch records exist for this decision; repair the lineage before reviewing it again',
         invalid_published_at: 'The publication time is invalid',
         growth_admin_required: 'Owner or admin access is required',
       };
@@ -755,7 +757,11 @@ export default function GrowthDashboard() {
           </div>
         </section>
 
-        <ContentEngineQueue accent={accent} accentText={accentText} />
+        <ContentEngineQueue
+          accent={accent}
+          accentText={accentText}
+          contentQueue={report?.content_queue}
+        />
 
         <section className="rounded-2xl border border-white/10 bg-[#0b0b0b] p-5 sm:p-6">
           <div className="mb-4">

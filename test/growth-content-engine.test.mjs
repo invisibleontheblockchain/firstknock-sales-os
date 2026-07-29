@@ -9,6 +9,7 @@ import {
   invokeJson,
   loadGrowthHandler,
 } from './helpers/growthContentTestHarness.mjs';
+import { validatePack } from '../scripts/render-growth-pack.mjs';
 
 const managePath = 'base44/functions/manageGrowthContentEngine/entry.ts';
 const entityNames = [
@@ -16,12 +17,14 @@ const entityNames = [
   'GrowthCreativeArtifact',
   'GrowthPublishJob',
   'GrowthPublishHeartbeat',
+  'GrowthContentBatch',
 ];
 
 const safeSource = {
   asset_key: 'safe-product-proof',
   title: 'Safe product proof',
   source_reference: 'safe.png',
+  source_sha256: '9'.repeat(64),
   media_kind: 'image',
   mime_type: 'image/png',
   width: 1080,
@@ -267,6 +270,262 @@ function renderImportResult() {
   };
 }
 
+const measuredSeedPack = validatePack(JSON.parse(readFileSync(
+  resolve('config/growth-media/firstknock-safe-starter.json'),
+  'utf8',
+)));
+const measuredSeedPackSha256 = fixtureSha256(measuredSeedPack);
+
+function measuredSourceRegistry() {
+  return measuredSeedPack.sources
+    .filter((source) => (
+      source.privacy_status === 'safe'
+      && source.rights_status === 'firstknock_owned'
+    ))
+    .map((source) => ({
+      asset_key: source.asset_key,
+      title: `Trusted ${source.asset_key}`,
+      source_reference: source.source_reference,
+      source_sha256: source.source_sha256,
+      media_kind: source.media_kind,
+      mime_type: source.mime_type,
+      width: source.width,
+      height: source.height,
+      duration_ms: source.duration_ms,
+      privacy_status: 'safe',
+      safe_summary: `Sanitized product proof for ${source.asset_key}.`,
+      active: true,
+      privacy_change_pending: false,
+    }));
+}
+
+async function measuredReviewEvidence(overrides = {}) {
+  const publishedAt = overrides.published_at || '2026-07-20T12:00:00.000Z';
+  const capturedAt = overrides.snapshot_captured_at || '2026-07-27T12:00:00.000Z';
+  const metric = {
+    id: 'metric_measured_parent',
+    platform: 'instagram',
+    campaign: '1000-users',
+    content: 'ig-ce-field-funnel-01',
+    snapshot_days: 7,
+    snapshot_captured_at: capturedAt,
+    published_at: publishedAt,
+    reach: 1200,
+    views: 1500,
+    shares: 20,
+    saves: 30,
+    comments: 4,
+    follows: 10,
+    profile_visits: 50,
+    link_clicks: 25,
+    dm_intents: 2,
+    ...overrides.metric,
+  };
+  const snapshotPayload = JSON.stringify({
+    campaign: metric.campaign,
+    content: metric.content,
+    snapshot_days: metric.snapshot_days,
+    snapshot_captured_at: metric.snapshot_captured_at,
+    published_at: metric.published_at,
+    reach: metric.reach,
+    views: metric.views,
+    shares: metric.shares,
+    saves: metric.saves,
+    comments: metric.comments,
+    follows: metric.follows,
+    profile_visits: metric.profile_visits,
+    link_clicks: metric.link_clicks,
+    dm_intents: metric.dm_intents,
+  });
+  metric.snapshot_fingerprint = createHash('sha256')
+    .update(snapshotPayload)
+    .digest('hex');
+  const plan = {
+    id: 'plan_measured_parent',
+    platform: 'instagram',
+    campaign: metric.campaign,
+    content: metric.content,
+    sprint: 'content-engine',
+    sequence: 1,
+    format: 'reel',
+    audience: 'Field sales managers',
+    hook: 'See the field funnel',
+    script: 'Show the manager funnel.',
+    cta_label: 'See FirstKnock',
+    cta_channel: 'caption_url',
+    primary_metric: 'Activated users',
+    hypothesis: 'Specific product proof will create qualified interest.',
+    comparison_group: 'manager-analytics-video',
+    major_variable: 'Field funnel hook',
+    planned_publish_at: publishedAt,
+    published_at: publishedAt,
+    delivery_managed_by: 'buffer',
+    delivery_status: 'published',
+    snapshot_days: 7,
+    review_decision: overrides.review_decision || 'repeat',
+    review_note: overrides.review_note || 'Keep the concrete funnel pattern and vary the opening.',
+    reviewed_at: '2026-07-27T13:00:00.000Z',
+    review_snapshot_captured_at: capturedAt,
+    review_evidence_hash: metric.snapshot_fingerprint,
+    ...overrides.plan,
+  };
+  return { plan, metric };
+}
+
+function measuredGeneration(conceptIds) {
+  return {
+    concepts: conceptIds.map((conceptId, index) => ({
+      donor_concept_id: conceptId,
+      title: index === 0 ? 'Find the field bottleneck' : 'Own the route handoff',
+      hook: index === 0 ? 'Find the field bottleneck' : 'Own every route handoff',
+      overlay_text: index === 0
+        ? ['Doors', 'Conversations', 'Sales']
+        : ['Build', 'Assign', 'Send'],
+      shot_list: ['Open on the safe product frame', 'Finish on the workspace CTA'],
+      overlay_cta: index === 0 ? 'See the field workflow' : 'Build the clean handoff',
+      variants: [
+        {
+          platform: 'instagram',
+          caption: index === 0
+            ? 'See where the field workflow changes, then coach the next step.'
+            : 'Give every route a clear owner before the team starts knocking.',
+          cta_label: 'See FirstKnock',
+        },
+        {
+          platform: 'tiktok',
+          caption: index === 0
+            ? 'The useful field question is where the workflow changes.'
+            : 'A clean field day starts with one clear route handoff.',
+          cta_label: 'Open FirstKnock',
+        },
+      ],
+    })),
+  };
+}
+
+function generatedRenderResult(renderPack) {
+  const packSha256 = fixtureSha256(renderPack);
+  const artifacts = renderPack.artifacts.map((artifact) => {
+    const source = renderPack.sources.find(
+      (candidate) => candidate.asset_key === artifact.source_asset_key,
+    );
+    const durationMs = Number(artifact.render.duration_ms);
+    const thumbnailOffsetMs = Math.min(
+      Number(renderPack.output.thumbnail_offset_ms),
+      durationMs - 1,
+    );
+    const renderInputHash = fixtureSha256({
+      schema_version: renderPack.schema_version,
+      batch_id: renderPack.batch_id,
+      template: renderPack.template,
+      output: {
+        ...renderPack.output,
+        duration_ms: durationMs,
+        thumbnail_offset_ms: thumbnailOffsetMs,
+      },
+      renderer: renderEnvironment,
+      source,
+      artifact,
+    });
+    const mediaSha256 = createHash('sha256')
+      .update(artifact.artifact_key)
+      .digest('hex');
+    const deliveryKey = `sha256/${mediaSha256}-${artifact.artifact_key}.mp4`;
+    const mediaUrl = `${env.GROWTH_MEDIA_ORIGIN}/${deliveryKey}`;
+    return {
+      artifact_key: artifact.artifact_key,
+      concept_id: artifact.concept_id,
+      platform: artifact.platform,
+      platform_content_id: artifact.platform_content_id,
+      distribution_state: 'publish_candidate',
+      source_asset_keys: [artifact.source_asset_key],
+      source_lineage: [{
+        asset_key: source.asset_key,
+        source_reference: source.source_reference,
+        source_sha256: source.source_sha256,
+      }],
+      template_id: renderPack.template.id,
+      template_version: renderPack.template.version,
+      render_profile_id: renderEnvironment.profile_id,
+      render_environment_sha256: renderEnvironmentSha256,
+      render_input_sha256: renderInputHash,
+      delivery_key: deliveryKey,
+      media_url: mediaUrl,
+      media_sha256: mediaSha256,
+      mime_type: 'video/mp4',
+      width: 1080,
+      height: 1920,
+      duration_ms: durationMs,
+      frame_rate: 30,
+      video_codec: 'h264',
+      pixel_format: 'yuv420p',
+      audio_codec: 'aac',
+      audio_sample_rate: 48_000,
+      audio_channels: 2,
+      byte_size: 2_000_000,
+      color_space: 'bt709',
+      color_transfer: 'bt709',
+      color_primaries: 'bt709',
+      fast_start: true,
+      thumbnail_offset_ms: thumbnailOffsetMs,
+      qc: {
+        source_sha256_verified: true,
+        privacy_status: 'safe',
+        rights_status: 'firstknock_owned',
+        disclosure_burned_in: true,
+        hook_first_frame: true,
+        third_party_watermark: false,
+        audio_mode: 'silent',
+        ready_for_human_review: true,
+        ready_for_content_engine_import: true,
+      },
+      artifact_fields: {
+        artifact_key: artifact.artifact_key,
+        concept_id: artifact.concept_id,
+        campaign: artifact.campaign,
+        platform: artifact.platform,
+        platform_content_id: artifact.platform_content_id,
+        title: artifact.title,
+        pillar: artifact.pillar,
+        format: artifact.format,
+        source_asset_keys: [artifact.source_asset_key],
+        hook: artifact.hook,
+        caption: artifact.caption,
+        overlay_text: artifact.overlay_text,
+        shot_list: artifact.shot_list,
+        cta_label: artifact.cta_label,
+        cta_url: artifact.cta_url,
+        disclosure: artifact.disclosure,
+        ai_generated: true,
+        media_url: mediaUrl,
+        media_sha256: mediaSha256,
+        mime_type: 'video/mp4',
+        width: 1080,
+        height: 1920,
+        duration_ms: durationMs,
+        thumbnail_offset_ms: thumbnailOffsetMs,
+      },
+    };
+  });
+  return {
+    schema_version: 'growth-render-result.v1',
+    batch_id: renderPack.batch_id,
+    pack_sha256: packSha256,
+    pack: structuredClone(renderPack),
+    template: {
+      id: renderPack.template.id,
+      version: renderPack.template.version,
+    },
+    renderer: {
+      ...renderEnvironment,
+      environment_sha256: renderEnvironmentSha256,
+    },
+    media_origin: env.GROWTH_MEDIA_ORIGIN,
+    artifact_count: artifacts.length,
+    artifacts,
+  };
+}
+
 async function approvedArtifact(overrides = {}) {
   const artifact = {
     id: 'artifact_approved_1',
@@ -310,6 +569,67 @@ async function approvedArtifact(overrides = {}) {
   resolved.provider_text = growthHelpers.socialPostText(resolved);
   resolved.approved_hash = await growthHelpers.artifactApprovalHash(resolved);
   return resolved;
+}
+
+async function pendingScheduleReservation(artifact, dueAt, overrides = {}) {
+  const providerChannelId = artifact.platform === 'tiktok'
+    ? env.BUFFER_TIKTOK_CHANNEL_ID
+    : env.BUFFER_INSTAGRAM_CHANNEL_ID;
+  const configRevision = await growthHelpers.sha256Hex([
+    'buffer',
+    env.BUFFER_ORGANIZATION_ID,
+    providerChannelId,
+    artifact.platform,
+    env.GROWTH_MEDIA_ORIGIN,
+  ].join('|'));
+  const sourceLineageSnapshot = [{
+    asset_key: safeSource.asset_key,
+    source_reference: safeSource.source_reference,
+    source_sha256: safeSource.source_sha256,
+  }];
+  const request = {
+    provider: 'buffer',
+    provider_organization_id: env.BUFFER_ORGANIZATION_ID,
+    provider_channel_id: providerChannelId,
+    provider_service: artifact.platform,
+    config_revision: configRevision,
+    media_origin: env.GROWTH_MEDIA_ORIGIN,
+    artifact_id: artifact.id,
+    artifact_hash: artifact.approved_hash,
+    source_lineage_snapshot: sourceLineageSnapshot,
+    hook_snapshot: artifact.hook,
+    ...(artifact.render_pack_sha256
+      ? { render_pack_sha256: artifact.render_pack_sha256 }
+      : {}),
+    ...(artifact.growth_batch_key
+      ? { growth_batch_key: artifact.growth_batch_key }
+      : {}),
+    platform: artifact.platform,
+    platform_content_id: artifact.platform_content_id,
+    due_at: dueAt,
+    scheduling_type: 'automatic',
+    timezone: 'America/Phoenix',
+  };
+  return {
+    id: `job_pending_${artifact.id}`,
+    ...request,
+    job_key: await growthHelpers.publishJobKey(request),
+    request_hash: await growthHelpers.publishJobRequestHash(request),
+    artifact_key: artifact.artifact_key,
+    concept_id: artifact.concept_id,
+    campaign: artifact.campaign,
+    state: 'reservation_pending',
+    attempt_count: 0,
+    reconciliation_count: 0,
+    schedule_cutoff_at: new Date(
+      new Date(dueAt).getTime() - 15 * 60 * 1000,
+    ).toISOString(),
+    lease_token: `expired-${artifact.id}`,
+    lease_generation: 1,
+    lease_acquired_at: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
+    lease_expires_at: new Date(Date.now() - 60 * 1000).toISOString(),
+    ...overrides,
+  };
 }
 
 function manualSeedPlan(overrides = {}) {
@@ -433,6 +753,16 @@ test('creative artifact schema persists constrained render provenance', () => {
     'silent',
     'baked_owned_or_licensed',
   ]);
+  assert.equal(properties.growth_batch_key.pattern, '^[a-f0-9]{64}$');
+  assert.equal(
+    properties.growth_batch_target_date.pattern,
+    '^\\d{4}-\\d{2}-\\d{2}$',
+  );
+  assert.deepEqual(properties.growth_batch_slot_key.enum, [
+    'morning',
+    'midday',
+    'evening',
+  ]);
 });
 
 test('manager list exposes only public HTTPS provider links', async () => {
@@ -541,6 +871,9 @@ test('approval hash is canonical and covers every public rendition field', async
     }],
     media_byte_size: 2_000_000,
     audio_mode: 'silent',
+    growth_batch_key: 'd'.repeat(64),
+    growth_batch_target_date: '2026-07-29',
+    growth_batch_slot_key: 'morning',
   };
   const reordered = Object.fromEntries(Object.entries(artifact).reverse());
   const baseline = await growthHelpers.artifactApprovalHash(artifact);
@@ -573,6 +906,9 @@ test('approval hash is canonical and covers every public rendition field', async
     }],
     media_byte_size: 2_000_001,
     audio_mode: 'baked_owned_or_licensed',
+    growth_batch_key: 'e'.repeat(64),
+    growth_batch_target_date: '2026-07-30',
+    growth_batch_slot_key: 'midday',
   };
   for (const [field, value] of Object.entries(mutations)) {
     assert.notEqual(
@@ -1090,6 +1426,1015 @@ test('rendered artifact cannot pass review after a safe source hash changes', as
   assert.equal(reviewed.body.artifact.review_status, 'changes_requested');
 });
 
+test('reviewed evidence builds one durable daily batch and imports only after owner authorization', async () => {
+  const { plan, metric } = await measuredReviewEvidence();
+  const selectedConceptIds = [
+    'fk-ce-field-funnel-01',
+    'fk-ce-clean-routes-01',
+  ];
+  let llmCalls = 0;
+  const { base44, entities, currentUser } = createGrowthBase44({
+    sources: measuredSourceRegistry(),
+    plans: [plan],
+    metrics: [metric],
+    invokeLlm: async () => {
+      llmCalls += 1;
+      return measuredGeneration(selectedConceptIds);
+    },
+  });
+  const clock = controlledClock(Date.parse('2026-07-28T18:00:00.000Z'));
+  const measuredEnv = {
+    ...env,
+    GROWTH_CONTENT_GENERATION_ENABLED: 'true',
+    GROWTH_RENDER_PACK_SHA256S: measuredSeedPackSha256,
+  };
+  const handler = loadGrowthHandler(managePath, {
+    base44,
+    env: measuredEnv,
+    dateImpl: clock.DateImpl,
+  });
+  const request = {
+    action: 'build_next_batch',
+    parent: {
+      platform: plan.platform,
+      campaign: plan.campaign,
+      content: plan.content,
+    },
+    target_date: '2026-07-29',
+    concept_count: 2,
+    seed_concept_ids: selectedConceptIds,
+    seed_pack: measuredSeedPack,
+  };
+
+  const built = await invokeJson(handler, request);
+  assert.equal(built.status, 201);
+  assert.equal(built.body.idempotent, false);
+  assert.equal(built.body.batch.state, 'ready');
+  assert.equal(built.body.batch.concept_count, 2);
+  assert.equal(built.body.render_pack.artifacts.length, 4);
+  assert.equal(built.body.render_pack.sources.length, 2);
+  assert.equal(
+    built.body.render_pack.artifacts.every((artifact) => artifact.ai_generated === true),
+    true,
+  );
+  assert.deepEqual(
+    built.body.render_pack.artifacts.map((artifact) => artifact.platform),
+    ['instagram', 'tiktok', 'instagram', 'tiktok'],
+  );
+  for (const artifact of built.body.render_pack.artifacts) {
+    assert.match(artifact.cta_url, /^https:\/\/firstknock\.online\/start\?/);
+    assert.match(artifact.cta_url, new RegExp(`utm_source=${artifact.platform}`));
+    assert.equal(
+      artifact.disclosure,
+      'DEMO DATA - no customer result or performance promise.',
+    );
+  }
+  assert.doesNotThrow(() => validatePack(structuredClone(built.body.render_pack)));
+  assert.equal(llmCalls, 1);
+  assert.equal(entities.GrowthContentBatch.records.length, 1);
+  assert.equal(entities.GrowthCreativeArtifact.records.length, 0);
+
+  const retried = await invokeJson(handler, request);
+  assert.equal(retried.status, 200);
+  assert.equal(retried.body.idempotent, true);
+  assert.deepEqual(retried.body.render_pack, built.body.render_pack);
+  assert.equal(llmCalls, 1, 'an exact ready retry must not invoke the LLM again');
+
+  const prematureImport = await invokeJson(handler, {
+    action: 'import_render_result',
+    render_result: generatedRenderResult(built.body.render_pack),
+  });
+  assert.equal(prematureImport.status, 400);
+  assert.equal(prematureImport.body.error, 'invalid_render_result');
+  assert.equal(entities.GrowthCreativeArtifact.records.length, 0);
+
+  currentUser.value = { id: 'admin_1', role: 'admin', is_owner: false };
+  const adminAuthorization = await invokeJson(handler, {
+    action: 'authorize_batch',
+    batch_key: built.body.batch.batch_key,
+    expected_pack_sha256: built.body.pack_sha256,
+    inspection_acknowledged: true,
+    note: 'An ordinary admin cannot authorize a generated render pack.',
+  });
+  assert.equal(adminAuthorization.status, 403);
+  assert.equal(adminAuthorization.body.error, 'growth_owner_required');
+  currentUser.value = { id: 'owner_1', role: 'admin', is_owner: true };
+
+  const authorized = await invokeJson(handler, {
+    action: 'authorize_batch',
+    batch_key: built.body.batch.batch_key,
+    expected_pack_sha256: built.body.pack_sha256,
+    inspection_acknowledged: true,
+    note: 'I reviewed the exact generated hooks, captions, sources, and render recipe.',
+  });
+  assert.equal(authorized.status, 200);
+  assert.equal(authorized.body.idempotent, false);
+  assert.equal(authorized.body.batch.state, 'render_authorized');
+  const authorizationRetry = await invokeJson(handler, {
+    action: 'authorize_batch',
+    batch_key: built.body.batch.batch_key,
+    expected_pack_sha256: built.body.pack_sha256,
+    inspection_acknowledged: true,
+    note: 'I reviewed the exact generated hooks, captions, sources, and render recipe.',
+  });
+  assert.equal(authorizationRetry.status, 200);
+  assert.equal(authorizationRetry.body.idempotent, true);
+
+  const imported = await invokeJson(handler, {
+    action: 'import_render_result',
+    render_result: generatedRenderResult(built.body.render_pack),
+  });
+  assert.equal(imported.status, 200);
+  assert.equal(imported.body.created, 4);
+  assert.equal(imported.body.imported, 4);
+  assert.equal(entities.GrowthCreativeArtifact.records.length, 4);
+  for (const [index, artifact] of entities.GrowthCreativeArtifact.records.entries()) {
+    assert.equal(artifact.ai_generated, true);
+    assert.equal(artifact.generation_status, 'draft_ready');
+    assert.equal(artifact.review_status, 'pending');
+    assert.equal(artifact.approval_status, 'not_approved');
+    assert.equal(artifact.growth_batch_key, built.body.batch.batch_key);
+    assert.equal(artifact.growth_batch_target_date, '2026-07-29');
+    assert.equal(
+      artifact.growth_batch_slot_key,
+      index < 2 ? 'morning' : 'midday',
+    );
+  }
+  const generatedArtifact = entities.GrowthCreativeArtifact.records[0];
+  const edited = await invokeJson(handler, {
+    action: 'update_draft',
+    artifact_id: generatedArtifact.id,
+    artifact: { caption: 'Copy changed after rendering.' },
+  });
+  assert.equal(edited.status, 409);
+  assert.equal(edited.body.error, 'rendered_artifact_requires_rerender');
+  const reviewedGeneratedArtifact = await invokeJson(handler, {
+    action: 'review',
+    artifact_id: generatedArtifact.id,
+    privacy_cleared: true,
+    demo_labeled: true,
+    claims_supported: true,
+    media_rights_confirmed: true,
+  });
+  assert.equal(reviewedGeneratedArtifact.status, 200);
+  assert.equal(reviewedGeneratedArtifact.body.passed, true);
+  const approvedGeneratedArtifact = await invokeJson(handler, {
+    action: 'approve',
+    artifact_id: generatedArtifact.id,
+  });
+  assert.equal(approvedGeneratedArtifact.status, 200);
+  const wrongDaySchedule = await invokeJson(handler, {
+    action: 'schedule',
+    artifact_id: generatedArtifact.id,
+    due_at: '2026-08-01T16:30:00.000Z',
+    timezone: 'America/Phoenix',
+    scheduling_type: 'notification',
+  });
+  assert.equal(wrongDaySchedule.status, 409);
+  assert.equal(
+    wrongDaySchedule.body.error,
+    'growth_batch_schedule_slot_mismatch',
+  );
+  const revokedGeneratedArtifact = await invokeJson(handler, {
+    action: 'revoke',
+    artifact_id: generatedArtifact.id,
+    note: 'Remove this rendition before revoking the measured batch.',
+  });
+  assert.equal(revokedGeneratedArtifact.status, 200);
+
+  const revoked = await invokeJson(handler, {
+    action: 'revoke_batch',
+    batch_key: built.body.batch.batch_key,
+    note: 'Withdraw this generated batch before any rendition is approved.',
+  });
+  assert.equal(revoked.status, 200);
+  assert.equal(revoked.body.batch.state, 'revoked');
+  const reviewAfterRevoke = await invokeJson(handler, {
+    action: 'review',
+    artifact_id: generatedArtifact.id,
+    privacy_cleared: true,
+    demo_labeled: true,
+    claims_supported: true,
+    media_rights_confirmed: true,
+  });
+  assert.equal(reviewAfterRevoke.status, 409);
+  assert.equal(reviewAfterRevoke.body.error, 'growth_batch_not_authorized');
+  entities.GrowthContentBatch.records.splice(0);
+  const reviewAfterMissingBatch = await invokeJson(handler, {
+    action: 'review',
+    artifact_id: generatedArtifact.id,
+    privacy_cleared: true,
+    demo_labeled: true,
+    claims_supported: true,
+    media_rights_confirmed: true,
+  });
+  assert.equal(reviewAfterMissingBatch.status, 409);
+  assert.equal(reviewAfterMissingBatch.body.error, 'growth_batch_not_authorized');
+});
+
+test('published measured-batch history cannot be erased by later approval changes', async () => {
+  const batchKey = 'd'.repeat(64);
+  const packSha256 = 'e'.repeat(64);
+  const artifactId = 'artifact_published_batch';
+  const { base44, entities } = createGrowthBase44({
+    batches: [{
+      batch_key: batchKey,
+      request_hash: 'f'.repeat(64),
+      state: 'render_authorized',
+      canonical_pack_sha256: packSha256,
+      lease_generation: 1,
+    }],
+    artifacts: [{
+      id: artifactId,
+      artifact_key: 'ig-published-batch-proof',
+      platform: 'instagram',
+      platform_content_id: 'ig-published-batch-proof',
+      render_pack_sha256: packSha256,
+      approval_status: 'revoked',
+    }],
+    jobs: [{
+      artifact_id: artifactId,
+      platform: 'instagram',
+      platform_content_id: 'ig-published-batch-proof',
+      state: 'sent',
+      due_at: '2026-07-27T16:30:00.000Z',
+      provider_sent_at: '2026-07-27T16:31:00.000Z',
+    }],
+  });
+  const handler = loadGrowthHandler(managePath, { base44, env });
+
+  const result = await invokeJson(handler, {
+    action: 'revoke_batch',
+    batch_key: batchKey,
+    note: 'Attempt to erase a batch after one rendition was published.',
+  });
+
+  assert.equal(result.status, 409);
+  assert.equal(result.body.error, 'growth_batch_published_history_immutable');
+  assert.equal(entities.GrowthContentBatch.records[0].state, 'render_authorized');
+});
+
+test('measured batch generation fails closed on stale evidence, untrusted seeds, and exhausted donor capacity', async (t) => {
+  const measuredEnv = {
+    ...env,
+    GROWTH_CONTENT_GENERATION_ENABLED: 'true',
+    GROWTH_RENDER_PACK_SHA256S: measuredSeedPackSha256,
+  };
+  const clock = controlledClock(Date.parse('2026-07-28T18:00:00.000Z'));
+  const requestFor = (plan, seedPack = measuredSeedPack) => ({
+    action: 'build_next_batch',
+    parent: {
+      platform: plan.platform,
+      campaign: plan.campaign,
+      content: plan.content,
+    },
+    target_date: '2026-07-29',
+    concept_count: 2,
+    seed_pack: seedPack,
+  });
+
+  await t.test('hold decision', async () => {
+    const { plan, metric } = await measuredReviewEvidence({
+      review_decision: 'hold',
+    });
+    const { base44, entities } = createGrowthBase44({
+      sources: measuredSourceRegistry(),
+      plans: [plan],
+      metrics: [metric],
+    });
+    const handler = loadGrowthHandler(managePath, {
+      base44,
+      env: measuredEnv,
+      dateImpl: clock.DateImpl,
+    });
+    const result = await invokeJson(handler, requestFor(plan));
+    assert.equal(result.status, 409);
+    assert.equal(result.body.error, 'reviewed_parent_on_hold');
+    assert.equal(entities.GrowthContentBatch.records.length, 0);
+  });
+
+  await t.test('late fixed-age evidence', async () => {
+    const { plan, metric } = await measuredReviewEvidence({
+      snapshot_captured_at: '2026-07-28T12:00:00.001Z',
+    });
+    const { base44, entities } = createGrowthBase44({
+      sources: measuredSourceRegistry(),
+      plans: [plan],
+      metrics: [metric],
+    });
+    const handler = loadGrowthHandler(managePath, {
+      base44,
+      env: measuredEnv,
+      dateImpl: clock.DateImpl,
+    });
+    const result = await invokeJson(handler, requestFor(plan));
+    assert.equal(result.status, 409);
+    assert.equal(result.body.error, 'fixed_age_snapshot_window_missed');
+    assert.equal(entities.GrowthContentBatch.records.length, 0);
+  });
+
+  await t.test('untrusted seed pack', async () => {
+    const { plan, metric } = await measuredReviewEvidence();
+    const changedSeed = structuredClone(measuredSeedPack);
+    changedSeed.batch_id = 'untrusted-seed-pack';
+    const { base44, entities } = createGrowthBase44({
+      sources: measuredSourceRegistry(),
+      plans: [plan],
+      metrics: [metric],
+    });
+    const handler = loadGrowthHandler(managePath, {
+      base44,
+      env: measuredEnv,
+      dateImpl: clock.DateImpl,
+    });
+    const result = await invokeJson(handler, requestFor(plan, changedSeed));
+    assert.equal(result.status, 409);
+    assert.equal(result.body.error, 'untrusted_seed_render_pack');
+    assert.equal(entities.GrowthContentBatch.records.length, 0);
+  });
+
+  await t.test('duplicate source bytes under different donor aliases', async () => {
+    const { plan, metric } = await measuredReviewEvidence();
+    const aliasedSeed = structuredClone(measuredSeedPack);
+    const firstSource = aliasedSeed.sources.find(
+      (source) => source.asset_key === 'manager-analytics-single-card',
+    );
+    const aliasedSource = aliasedSeed.sources.find(
+      (source) => source.asset_key === 'manager-leaderboard-mobile',
+    );
+    aliasedSource.source_sha256 = firstSource.source_sha256;
+    const registry = measuredSourceRegistry();
+    registry.find(
+      (source) => source.asset_key === aliasedSource.asset_key,
+    ).source_sha256 = firstSource.source_sha256;
+    let llmCalls = 0;
+    const { base44, entities } = createGrowthBase44({
+      sources: registry,
+      plans: [plan],
+      metrics: [metric],
+      invokeLlm: async () => {
+        llmCalls += 1;
+        throw new Error('duplicate source bytes must fail before generation');
+      },
+    });
+    const handler = loadGrowthHandler(managePath, {
+      base44,
+      env: {
+        ...measuredEnv,
+        GROWTH_RENDER_PACK_SHA256S: fixtureSha256(aliasedSeed),
+      },
+      dateImpl: clock.DateImpl,
+    });
+    const result = await invokeJson(handler, {
+      ...requestFor(plan, aliasedSeed),
+      seed_concept_ids: [
+        'fk-ce-field-funnel-01',
+        'fk-ce-coach-patterns-01',
+      ],
+    });
+    assert.equal(result.status, 409);
+    assert.equal(result.body.error, 'duplicate_seed_source');
+    assert.equal(llmCalls, 0);
+    assert.equal(entities.GrowthContentBatch.records.length, 0);
+  });
+
+  await t.test('recent sent-post history reserves its immutable source', async () => {
+    const { plan, metric } = await measuredReviewEvidence();
+    const registry = measuredSourceRegistry();
+    const source = registry.find(
+      (candidate) => candidate.asset_key === 'manager-analytics-single-card',
+    );
+    let llmCalls = 0;
+    const { base44, entities } = createGrowthBase44({
+      sources: registry,
+      plans: [plan],
+      metrics: [metric],
+      artifacts: [{
+        id: 'artifact_recently_sent',
+        artifact_key: 'ig-recently-sent',
+        platform: 'instagram',
+        platform_content_id: 'ig-recently-sent',
+        source_asset_keys: [source.asset_key],
+        render_source_lineage: [{
+          asset_key: source.asset_key,
+          source_reference: source.source_reference,
+          source_sha256: source.source_sha256,
+        }],
+        approval_status: 'revoked',
+        hook: 'A previously published hook',
+      }],
+      jobs: [{
+        artifact_id: 'artifact_recently_sent',
+        platform: 'instagram',
+        platform_content_id: 'ig-recently-sent',
+        state: 'sent',
+        due_at: '2026-07-28T16:30:00.000Z',
+        provider_sent_at: '2026-07-28T16:31:00.000Z',
+      }],
+      invokeLlm: async () => {
+        llmCalls += 1;
+        throw new Error('sent source history must fail before generation');
+      },
+    });
+    const handler = loadGrowthHandler(managePath, {
+      base44,
+      env: measuredEnv,
+      dateImpl: clock.DateImpl,
+    });
+    const result = await invokeJson(handler, {
+      ...requestFor(plan),
+      seed_concept_ids: [
+        'fk-ce-field-funnel-01',
+        'fk-ce-clean-routes-01',
+      ],
+    });
+    assert.equal(result.status, 409);
+    assert.equal(result.body.error, 'seed_donor_unavailable');
+    assert.equal(llmCalls, 0);
+    assert.equal(entities.GrowthContentBatch.records.length, 0);
+  });
+
+  await t.test('queued job snapshot reserves aliased source bytes', async () => {
+    const { plan, metric } = await measuredReviewEvidence();
+    const registry = measuredSourceRegistry();
+    const source = registry.find(
+      (candidate) => candidate.asset_key === 'manager-analytics-single-card',
+    );
+    let llmCalls = 0;
+    const { base44, entities } = createGrowthBase44({
+      sources: registry,
+      plans: [plan],
+      metrics: [metric],
+      jobs: [{
+        id: 'job_queued_source_alias',
+        artifact_id: 'deleted_artifact_source_alias',
+        concept_id: 'older-queued-concept',
+        platform: 'instagram',
+        platform_content_id: 'ig-older-queued-concept',
+        state: 'queued',
+        due_at: '2026-07-28T16:30:00.000Z',
+        source_lineage_snapshot: [{
+          asset_key: 'same-bytes-under-another-key',
+          source_reference: 'same-bytes-under-another-key.png',
+          source_sha256: source.source_sha256,
+        }],
+        hook_snapshot: 'A different queued hook',
+      }],
+      invokeLlm: async () => {
+        llmCalls += 1;
+        throw new Error('queued source history must fail before generation');
+      },
+    });
+    const handler = loadGrowthHandler(managePath, {
+      base44,
+      env: measuredEnv,
+      dateImpl: clock.DateImpl,
+    });
+    const result = await invokeJson(handler, {
+      ...requestFor(plan),
+      seed_concept_ids: [
+        'fk-ce-field-funnel-01',
+        'fk-ce-clean-routes-01',
+      ],
+    });
+
+    assert.equal(result.status, 409);
+    assert.equal(result.body.error, 'seed_donor_unavailable');
+    assert.equal(llmCalls, 0);
+    assert.equal(entities.GrowthContentBatch.records.length, 0);
+  });
+
+  await t.test('seven-day source cooldown capacity', async () => {
+    const { plan, metric } = await measuredReviewEvidence();
+    const safeSourceKeys = measuredSourceRegistry().map((source) => source.asset_key);
+    assert.equal(safeSourceKeys.length, 5);
+    let llmCalls = 0;
+    const { base44, entities } = createGrowthBase44({
+      sources: measuredSourceRegistry(),
+      plans: [plan],
+      metrics: [metric],
+      batches: [
+        {
+          batch_key: 'd'.repeat(64),
+          request_hash: 'e'.repeat(64),
+          target_date: '2026-07-26',
+          source_asset_keys: safeSourceKeys.slice(0, 2),
+          state: 'ready',
+        },
+        {
+          batch_key: 'f'.repeat(64),
+          request_hash: '1'.repeat(64),
+          target_date: '2026-07-28',
+          source_asset_keys: safeSourceKeys.slice(2, 4),
+          state: 'ready',
+        },
+      ],
+      invokeLlm: async () => {
+        llmCalls += 1;
+        throw new Error('capacity failure must happen before generation');
+      },
+    });
+    const handler = loadGrowthHandler(managePath, {
+      base44,
+      env: measuredEnv,
+      dateImpl: clock.DateImpl,
+    });
+    const result = await invokeJson(handler, requestFor(plan));
+    assert.equal(result.status, 409);
+    assert.deepEqual(result.body, {
+      error: 'insufficient_eligible_donors',
+      required_donors: 2,
+      eligible_donors: 1,
+      source_cooldown_days: 7,
+    });
+    assert.equal(llmCalls, 0);
+    assert.equal(entities.GrowthContentBatch.records.length, 2);
+  });
+});
+
+test('measured batch leases block active duplicates and fence an expired generator', async () => {
+  const { plan, metric } = await measuredReviewEvidence();
+  const selectedConceptIds = [
+    'fk-ce-field-funnel-01',
+    'fk-ce-clean-routes-01',
+  ];
+  const firstGeneration = deferred();
+  const firstEntered = deferred();
+  let llmCalls = 0;
+  const { base44, entities } = createGrowthBase44({
+    sources: measuredSourceRegistry(),
+    plans: [plan],
+    metrics: [metric],
+    invokeLlm: async () => {
+      llmCalls += 1;
+      if (llmCalls === 1) {
+        firstEntered.resolve();
+        return firstGeneration.promise;
+      }
+      return measuredGeneration(selectedConceptIds);
+    },
+  });
+  const clock = controlledClock(Date.parse('2026-07-28T18:00:00.000Z'));
+  const handler = loadGrowthHandler(managePath, {
+    base44,
+    env: {
+      ...env,
+      GROWTH_CONTENT_GENERATION_ENABLED: 'true',
+      GROWTH_RENDER_PACK_SHA256S: measuredSeedPackSha256,
+    },
+    dateImpl: clock.DateImpl,
+  });
+  const request = {
+    action: 'build_next_batch',
+    parent: {
+      platform: plan.platform,
+      campaign: plan.campaign,
+      content: plan.content,
+    },
+    target_date: '2026-07-29',
+    concept_count: 2,
+    seed_concept_ids: selectedConceptIds,
+    seed_pack: measuredSeedPack,
+  };
+
+  const staleRequest = invokeJson(handler, request);
+  await firstEntered.promise;
+  assert.equal(entities.GrowthContentBatch.records[0].state, 'generating');
+
+  const activeDuplicate = await invokeJson(handler, request);
+  assert.equal(activeDuplicate.status, 409);
+  assert.equal(activeDuplicate.body.error, 'growth_batch_generation_in_progress');
+  assert.equal(llmCalls, 1);
+
+  clock.set(clock.now() + 6 * 60 * 1000);
+  const takeover = await invokeJson(handler, request);
+  assert.equal(takeover.status, 201);
+  assert.equal(takeover.body.batch.state, 'ready');
+  assert.equal(llmCalls, 2);
+
+  firstGeneration.resolve(measuredGeneration(selectedConceptIds));
+  const staleCompletion = await staleRequest;
+  assert.equal(staleCompletion.status, 409);
+  assert.equal(staleCompletion.body.error, 'growth_batch_lease_expired');
+  assert.equal(entities.GrowthContentBatch.records.length, 1);
+  assert.equal(entities.GrowthContentBatch.records[0].state, 'ready');
+
+  const exactRetry = await invokeJson(handler, request);
+  assert.equal(exactRetry.status, 200);
+  assert.equal(exactRetry.body.idempotent, true);
+  assert.equal(llmCalls, 2);
+});
+
+test('an expired batch cannot supersede a fresh different-key daily winner', async () => {
+  const first = await measuredReviewEvidence();
+  const second = await measuredReviewEvidence({
+    metric: {
+      id: 'metric_measured_second_parent',
+      content: 'ig-ce-coach-patterns-01',
+    },
+    plan: { id: 'plan_measured_second_parent' },
+  });
+  const firstConceptIds = [
+    'fk-ce-field-funnel-01',
+    'fk-ce-clean-routes-01',
+  ];
+  const secondConceptIds = [
+    'fk-ce-coach-patterns-01',
+    'fk-ce-one-coaching-loop-01',
+  ];
+  const firstGeneration = deferred();
+  const firstEntered = deferred();
+  let llmCalls = 0;
+  const { base44, entities } = createGrowthBase44({
+    sources: measuredSourceRegistry(),
+    plans: [first.plan, second.plan],
+    metrics: [first.metric, second.metric],
+    invokeLlm: async () => {
+      llmCalls += 1;
+      if (llmCalls === 1) {
+        firstEntered.resolve();
+        return firstGeneration.promise;
+      }
+      return measuredGeneration(secondConceptIds);
+    },
+  });
+  const clock = controlledClock(Date.parse('2026-07-28T18:00:00.000Z'));
+  const handler = loadGrowthHandler(managePath, {
+    base44,
+    env: {
+      ...env,
+      GROWTH_CONTENT_GENERATION_ENABLED: 'true',
+      GROWTH_RENDER_PACK_SHA256S: measuredSeedPackSha256,
+    },
+    dateImpl: clock.DateImpl,
+  });
+  const requestFor = (plan, seedConceptIds) => ({
+    action: 'build_next_batch',
+    parent: {
+      platform: plan.platform,
+      campaign: plan.campaign,
+      content: plan.content,
+    },
+    target_date: '2026-07-29',
+    concept_count: 2,
+    seed_concept_ids: seedConceptIds,
+    seed_pack: measuredSeedPack,
+  });
+
+  const expiredRequest = invokeJson(
+    handler,
+    requestFor(first.plan, firstConceptIds),
+  );
+  await firstEntered.promise;
+  clock.set(clock.now() + 6 * 60 * 1000);
+
+  const freshWinner = await invokeJson(
+    handler,
+    requestFor(second.plan, secondConceptIds),
+  );
+  assert.equal(freshWinner.status, 201);
+  assert.equal(freshWinner.body.batch.state, 'ready');
+
+  firstGeneration.resolve(measuredGeneration(firstConceptIds));
+  const expiredResult = await expiredRequest;
+  assert.equal(expiredResult.status, 409);
+  assert.equal(expiredResult.body.error, 'growth_batch_lease_expired');
+  assert.equal(
+    entities.GrowthContentBatch.records.filter((batch) => batch.state === 'ready').length,
+    1,
+  );
+  assert.equal(freshWinner.body.batch.batch_key, entities.GrowthContentBatch.records
+    .find((batch) => batch.state === 'ready')?.batch_key);
+});
+
+test('concurrent generated batches durably reserve near-duplicate hooks', async () => {
+  const { plan, metric } = await measuredReviewEvidence();
+  const firstConceptIds = [
+    'fk-ce-field-funnel-01',
+    'fk-ce-clean-routes-01',
+  ];
+  const secondConceptIds = [
+    'fk-ce-coach-patterns-01',
+    'fk-ce-one-coaching-loop-01',
+  ];
+  const generations = [deferred(), deferred()];
+  const entered = [deferred(), deferred()];
+  let llmCalls = 0;
+  const { base44, entities } = createGrowthBase44({
+    sources: measuredSourceRegistry(),
+    plans: [plan],
+    metrics: [metric],
+    invokeLlm: async () => {
+      const index = llmCalls;
+      llmCalls += 1;
+      entered[index].resolve();
+      return generations[index].promise;
+    },
+  });
+  const clock = controlledClock(Date.parse('2026-07-28T18:00:00.000Z'));
+  const handler = loadGrowthHandler(managePath, {
+    base44,
+    env: {
+      ...env,
+      GROWTH_CONTENT_GENERATION_ENABLED: 'true',
+      GROWTH_RENDER_PACK_SHA256S: measuredSeedPackSha256,
+    },
+    dateImpl: clock.DateImpl,
+  });
+  const requestFor = (targetDate, seedConceptIds) => ({
+    action: 'build_next_batch',
+    parent: {
+      platform: plan.platform,
+      campaign: plan.campaign,
+      content: plan.content,
+    },
+    target_date: targetDate,
+    concept_count: 2,
+    seed_concept_ids: seedConceptIds,
+    seed_pack: measuredSeedPack,
+  });
+  const firstRequest = invokeJson(
+    handler,
+    requestFor('2026-07-29', firstConceptIds),
+  );
+  await entered[0].promise;
+  const secondRequest = invokeJson(
+    handler,
+    requestFor('2026-08-05', secondConceptIds),
+  );
+  await entered[1].promise;
+
+  generations[0].resolve(measuredGeneration(firstConceptIds));
+  generations[1].resolve(measuredGeneration(secondConceptIds));
+  const results = await Promise.all([firstRequest, secondRequest]);
+  assert.deepEqual(
+    results.map((result) => result.status).sort(),
+    [201, 409],
+  );
+  assert.equal(
+    results.find((result) => result.status === 409)?.body.error,
+    'hook_dedupe_conflict',
+  );
+  assert.equal(
+    entities.GrowthContentBatch.records.filter((batch) => batch.state === 'ready').length,
+    1,
+  );
+  assert.equal(
+    entities.GrowthContentBatch.records.filter(
+      (batch) => batch.state === 'superseded',
+    ).length,
+    1,
+  );
+});
+
+test('invalid measured generation records a safe failure and can retry the same claim', async () => {
+  const { plan, metric } = await measuredReviewEvidence();
+  const selectedConceptIds = [
+    'fk-ce-field-funnel-01',
+    'fk-ce-clean-routes-01',
+  ];
+  let llmCalls = 0;
+  const { base44, entities } = createGrowthBase44({
+    sources: measuredSourceRegistry(),
+    plans: [plan],
+    metrics: [metric],
+    invokeLlm: async () => {
+      llmCalls += 1;
+      if (llmCalls === 1) {
+        const invalid = measuredGeneration(selectedConceptIds);
+        invalid.concepts[0].hook =
+          'Double your close rate in seven days';
+        return invalid;
+      }
+      return measuredGeneration(selectedConceptIds);
+    },
+  });
+  const clock = controlledClock(Date.parse('2026-07-28T18:00:00.000Z'));
+  const handler = loadGrowthHandler(managePath, {
+    base44,
+    env: {
+      ...env,
+      GROWTH_CONTENT_GENERATION_ENABLED: 'true',
+      GROWTH_RENDER_PACK_SHA256S: measuredSeedPackSha256,
+    },
+    dateImpl: clock.DateImpl,
+  });
+  const request = {
+    action: 'build_next_batch',
+    parent: {
+      platform: plan.platform,
+      campaign: plan.campaign,
+      content: plan.content,
+    },
+    target_date: '2026-07-29',
+    concept_count: 2,
+    seed_concept_ids: selectedConceptIds,
+    seed_pack: measuredSeedPack,
+  };
+
+  const failed = await invokeJson(handler, request);
+  assert.equal(failed.status, 502);
+  assert.equal(failed.body.error, 'invalid_generated_batch');
+  assert.equal(entities.GrowthContentBatch.records.length, 1);
+  assert.equal(entities.GrowthContentBatch.records[0].state, 'failed');
+  assert.equal(
+    entities.GrowthContentBatch.records[0].last_error_code,
+    'invalid_generated_batch',
+  );
+  assert.equal(entities.GrowthContentBatch.records[0].canonical_pack_json, undefined);
+  assert.equal(entities.GrowthCreativeArtifact.records.length, 0);
+
+  const retried = await invokeJson(handler, request);
+  assert.equal(retried.status, 201);
+  assert.equal(retried.body.batch.state, 'ready');
+  assert.equal(entities.GrowthContentBatch.records[0].attempt_count, 2);
+  assert.equal(llmCalls, 2);
+});
+
+test('measured generation rejects bare domains, domain paths, and social handles', async (t) => {
+  const selectedConceptIds = [
+    'fk-ce-field-funnel-01',
+    'fk-ce-clean-routes-01',
+  ];
+  const cases = [
+    {
+      name: 'bare domain in hook',
+      mutate: (generation) => {
+        generation.concepts[0].hook = 'See firstknock.com in the field';
+      },
+    },
+    {
+      name: 'bare subdomain path in caption',
+      mutate: (generation) => {
+        generation.concepts[0].variants[0].caption =
+          'Open go.firstknock.online/path to see the workflow.';
+      },
+    },
+    {
+      name: 'social handle in CTA',
+      mutate: (generation) => {
+        generation.concepts[0].variants[1].cta_label = 'Follow @firstknock';
+      },
+    },
+  ];
+  for (const item of cases) {
+    await t.test(item.name, async () => {
+      const { plan, metric } = await measuredReviewEvidence();
+      const invalid = measuredGeneration(selectedConceptIds);
+      item.mutate(invalid);
+      const { base44, entities } = createGrowthBase44({
+        sources: measuredSourceRegistry(),
+        plans: [plan],
+        metrics: [metric],
+        invokeLlm: async () => invalid,
+      });
+      const handler = loadGrowthHandler(managePath, {
+        base44,
+        env: {
+          ...env,
+          GROWTH_CONTENT_GENERATION_ENABLED: 'true',
+          GROWTH_RENDER_PACK_SHA256S: measuredSeedPackSha256,
+        },
+        dateImpl: controlledClock(
+          Date.parse('2026-07-28T18:00:00.000Z'),
+        ).DateImpl,
+      });
+      const result = await invokeJson(handler, {
+        action: 'build_next_batch',
+        parent: {
+          platform: plan.platform,
+          campaign: plan.campaign,
+          content: plan.content,
+        },
+        target_date: '2026-07-29',
+        concept_count: 2,
+        seed_concept_ids: selectedConceptIds,
+        seed_pack: measuredSeedPack,
+      });
+
+      assert.equal(result.status, 502);
+      assert.equal(result.body.error, 'invalid_generated_batch');
+      assert.equal(entities.GrowthContentBatch.records[0].state, 'failed');
+      assert.equal(
+        entities.GrowthContentBatch.records[0].canonical_pack_json,
+        undefined,
+      );
+    });
+  }
+});
+
+test('measured batch finalization loses when its reviewed decision changes during generation', async () => {
+  const { plan, metric } = await measuredReviewEvidence();
+  const selectedConceptIds = [
+    'fk-ce-field-funnel-01',
+    'fk-ce-clean-routes-01',
+  ];
+  const generation = deferred();
+  const generationEntered = deferred();
+  const { base44, entities } = createGrowthBase44({
+    sources: measuredSourceRegistry(),
+    plans: [plan],
+    metrics: [metric],
+    invokeLlm: async () => {
+      generationEntered.resolve();
+      return generation.promise;
+    },
+  });
+  const clock = controlledClock(Date.parse('2026-07-28T18:00:00.000Z'));
+  const handler = loadGrowthHandler(managePath, {
+    base44,
+    env: {
+      ...env,
+      GROWTH_CONTENT_GENERATION_ENABLED: 'true',
+      GROWTH_RENDER_PACK_SHA256S: measuredSeedPackSha256,
+    },
+    dateImpl: clock.DateImpl,
+  });
+  const pending = invokeJson(handler, {
+    action: 'build_next_batch',
+    parent: {
+      platform: plan.platform,
+      campaign: plan.campaign,
+      content: plan.content,
+    },
+    target_date: '2026-07-29',
+    concept_count: 2,
+    seed_concept_ids: selectedConceptIds,
+    seed_pack: measuredSeedPack,
+  });
+  await generationEntered.promise;
+  entities.GrowthContentPlan.records[0].review_note =
+    'The operator interpretation changed while the model was running.';
+  generation.resolve(measuredGeneration(selectedConceptIds));
+
+  const result = await pending;
+  assert.equal(result.status, 409);
+  assert.equal(result.body.error, 'growth_batch_inputs_changed');
+  assert.equal(entities.GrowthContentBatch.records[0].state, 'failed');
+  assert.equal(
+    entities.GrowthContentBatch.records[0].last_error_code,
+    'growth_batch_inputs_changed',
+  );
+  assert.equal(entities.GrowthContentBatch.records[0].canonical_pack_json, undefined);
+});
+
+test('measured batch request and finalization bind the exact sanitized source summaries', async () => {
+  const { plan, metric } = await measuredReviewEvidence();
+  const selectedConceptIds = [
+    'fk-ce-field-funnel-01',
+    'fk-ce-clean-routes-01',
+  ];
+  const generation = deferred();
+  const generationEntered = deferred();
+  const { base44, entities } = createGrowthBase44({
+    sources: measuredSourceRegistry(),
+    plans: [plan],
+    metrics: [metric],
+    invokeLlm: async () => {
+      generationEntered.resolve();
+      return generation.promise;
+    },
+  });
+  const clock = controlledClock(Date.parse('2026-07-28T18:00:00.000Z'));
+  const handler = loadGrowthHandler(managePath, {
+    base44,
+    env: {
+      ...env,
+      GROWTH_CONTENT_GENERATION_ENABLED: 'true',
+      GROWTH_RENDER_PACK_SHA256S: measuredSeedPackSha256,
+    },
+    dateImpl: clock.DateImpl,
+  });
+  const pending = invokeJson(handler, {
+    action: 'build_next_batch',
+    parent: {
+      platform: plan.platform,
+      campaign: plan.campaign,
+      content: plan.content,
+    },
+    target_date: '2026-07-29',
+    concept_count: 2,
+    seed_concept_ids: selectedConceptIds,
+    seed_pack: measuredSeedPack,
+  });
+  await generationEntered.promise;
+  assert.match(
+    entities.GrowthContentBatch.records[0].prompt_source_sha256,
+    /^[a-f0-9]{64}$/,
+  );
+  const changedSource = entities.GrowthSourceAsset.records.find(
+    (source) => source.asset_key === 'manager-analytics-single-card',
+  );
+  changedSource.safe_summary = 'A different sanitized summary entered the prompt lineage.';
+  generation.resolve(measuredGeneration(selectedConceptIds));
+
+  const result = await pending;
+  assert.equal(result.status, 409);
+  assert.equal(result.body.error, 'growth_batch_inputs_changed');
+  assert.equal(entities.GrowthContentBatch.records[0].state, 'failed');
+  assert.equal(entities.GrowthContentBatch.records[0].canonical_pack_json, undefined);
+});
+
 test('stable media guard rejects local, private, signed, and credentialed URLs', () => {
   assert.equal(
     growthHelpers.isStablePublicHttpsUrl('https://media.firstknock.online/sha256/asset.mp4'),
@@ -1270,6 +2615,186 @@ test('scheduling requires a ready publisher environment and a fresh matching wor
     assert.equal(entities.GrowthPublishJob.records.length, 1);
     assert.equal(entities.GrowthContentPlan.records.length, 1);
   });
+});
+
+test('one canonical concept may schedule its paired Instagram and TikTok renditions', async () => {
+  const pairPackSha256 = '7'.repeat(64);
+  const conceptId = 'paired-cross-platform-proof';
+  const pairLineage = [{
+    asset_key: safeSource.asset_key,
+    source_reference: safeSource.source_reference,
+    source_sha256: safeSource.source_sha256,
+  }];
+  const instagram = await approvedArtifact({
+    id: 'artifact_pair_instagram',
+    artifact_key: 'ig-paired-cross-platform-proof',
+    platform_content_id: 'ig-paired-cross-platform-proof',
+    concept_id: conceptId,
+    render_pack_sha256: pairPackSha256,
+    render_source_lineage: pairLineage,
+  });
+  const tiktok = await approvedArtifact({
+    id: 'artifact_pair_tiktok',
+    artifact_key: 'tt-paired-cross-platform-proof',
+    platform: 'tiktok',
+    platform_content_id: 'tt-paired-cross-platform-proof',
+    concept_id: conceptId,
+    render_pack_sha256: pairPackSha256,
+    render_source_lineage: pairLineage,
+    cta_url: growthHelpers.platformTrackedUrl(
+      'tiktok',
+      draftInput.campaign,
+      'tt-paired-cross-platform-proof',
+    ),
+  });
+  const { base44, entities } = createGrowthBase44({
+    sources: [safeSource],
+    artifacts: [instagram, tiktok],
+  });
+  const handler = loadGrowthHandler(managePath, { base44, env });
+  const dueAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+
+  const instagramResult = await invokeJson(handler, {
+    action: 'schedule',
+    artifact_id: instagram.id,
+    due_at: dueAt,
+    timezone: 'America/Phoenix',
+    scheduling_type: 'automatic',
+  });
+  const tiktokResult = await invokeJson(handler, {
+    action: 'schedule',
+    artifact_id: tiktok.id,
+    due_at: dueAt,
+    timezone: 'America/Phoenix',
+    scheduling_type: 'automatic',
+  });
+
+  assert.equal(instagramResult.status, 201);
+  assert.equal(tiktokResult.status, 201);
+  assert.deepEqual(
+    entities.GrowthPublishJob.records.map((job) => job.platform).sort(),
+    ['instagram', 'tiktok'],
+  );
+  assert.equal(entities.GrowthContentPlan.records.length, 2);
+});
+
+test('schedule revalidates the global 28-day hook reservation', async () => {
+  const first = await approvedArtifact({
+    id: 'artifact_hook_reservation_first',
+    artifact_key: 'ig-hook-reservation-first',
+    platform_content_id: 'ig-hook-reservation-first',
+  });
+  const secondSource = {
+    ...safeSource,
+    id: 'source_hook_reservation_second',
+    asset_key: 'safe-product-proof-second',
+    source_reference: 'safe-second.png',
+    source_sha256: '8'.repeat(64),
+  };
+  const second = await approvedArtifact({
+    id: 'artifact_hook_reservation_second',
+    artifact_key: 'ig-hook-reservation-second',
+    platform_content_id: 'ig-hook-reservation-second',
+    concept_id: 'hook-reservation-second',
+    source_asset_keys: [secondSource.asset_key],
+  });
+  const { base44, entities } = createGrowthBase44({
+    sources: [safeSource],
+    artifacts: [first],
+  });
+  const handler = loadGrowthHandler(managePath, { base44, env });
+  const dueAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+  const firstResult = await invokeJson(handler, {
+    action: 'schedule',
+    artifact_id: first.id,
+    due_at: dueAt,
+    timezone: 'America/Phoenix',
+    scheduling_type: 'automatic',
+  });
+  assert.equal(firstResult.status, 201);
+  entities.GrowthSourceAsset.records.push({
+    ...secondSource,
+    created_date: new Date().toISOString(),
+    updated_date: new Date().toISOString(),
+  });
+  entities.GrowthCreativeArtifact.records.push({
+    ...second,
+    created_date: new Date().toISOString(),
+    updated_date: new Date().toISOString(),
+  });
+
+  const secondResult = await invokeJson(handler, {
+    action: 'schedule',
+    artifact_id: second.id,
+    due_at: dueAt,
+    timezone: 'America/Phoenix',
+    scheduling_type: 'automatic',
+  });
+
+  assert.equal(secondResult.status, 409);
+  assert.equal(secondResult.body.error, 'hook_dedupe_conflict');
+  assert.equal(entities.GrowthPublishJob.records.length, 1);
+  assert.equal(entities.GrowthContentPlan.records.length, 1);
+});
+
+test('sent job provenance overrides a later mutable artifact pairing', async () => {
+  const currentPack = '6'.repeat(64);
+  const current = await approvedArtifact({
+    id: 'artifact_current_immutable_history',
+    artifact_key: 'ig-current-immutable-history',
+    platform_content_id: 'ig-current-immutable-history',
+    concept_id: 'current-immutable-history',
+    render_pack_sha256: currentPack,
+  });
+  const mutatedHistoricalArtifact = await approvedArtifact({
+    id: 'artifact_mutated_historical_history',
+    artifact_key: 'tt-mutated-historical-history',
+    platform: 'tiktok',
+    platform_content_id: 'tt-mutated-historical-history',
+    concept_id: current.concept_id,
+    render_pack_sha256: currentPack,
+    approval_status: 'revoked',
+    cta_url: growthHelpers.platformTrackedUrl(
+      'tiktok',
+      draftInput.campaign,
+      'tt-mutated-historical-history',
+    ),
+  });
+  const { base44, entities } = createGrowthBase44({
+    sources: [safeSource],
+    artifacts: [current, mutatedHistoricalArtifact],
+    jobs: [{
+      id: 'job_immutable_historical_history',
+      artifact_id: mutatedHistoricalArtifact.id,
+      concept_id: 'original-unpaired-history',
+      platform: 'tiktok',
+      platform_content_id: mutatedHistoricalArtifact.platform_content_id,
+      state: 'sent',
+      due_at: new Date(Date.now() - 60_000).toISOString(),
+      provider_sent_at: new Date(Date.now() - 60_000).toISOString(),
+      source_lineage_snapshot: [{
+        asset_key: safeSource.asset_key,
+        source_reference: safeSource.source_reference,
+        source_sha256: safeSource.source_sha256,
+      }],
+      hook_snapshot: 'A completely different old hook',
+      render_pack_sha256: '5'.repeat(64),
+    }],
+  });
+  const handler = loadGrowthHandler(managePath, { base44, env });
+
+  const result = await invokeJson(handler, {
+    action: 'schedule',
+    artifact_id: current.id,
+    due_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    timezone: 'America/Phoenix',
+    scheduling_type: 'automatic',
+  });
+
+  assert.equal(result.status, 409);
+  assert.equal(result.body.error, 'source_cooldown_conflict');
+  assert.equal(entities.GrowthPublishJob.records.length, 1);
+  assert.equal(entities.GrowthContentPlan.records.length, 0);
 });
 
 test('owner workflow registers sources, reviews, approves, and creates one idempotent job', async () => {
@@ -1925,15 +3450,19 @@ test('a pending privacy fence makes an empty dependency snapshot safe against a 
     return snapshot;
   };
   const originalJobList = entities.GrowthPublishJob.list;
+  let dependencySnapshotBlocked = false;
   entities.GrowthPublishJob.list = async (...args) => {
     const snapshot = await originalJobList(...args);
-    assert.deepEqual(snapshot, []);
-    assert.equal(
-      entities.GrowthSourceAsset.records[0].privacy_change_pending,
-      true,
-    );
-    managerEmptyJobSnapshot.resolve();
-    await workerFinished.promise;
+    if (!dependencySnapshotBlocked) {
+      dependencySnapshotBlocked = true;
+      assert.deepEqual(snapshot, []);
+      assert.equal(
+        entities.GrowthSourceAsset.records[0].privacy_change_pending,
+        true,
+      );
+      managerEmptyJobSnapshot.resolve();
+      await workerFinished.promise;
+    }
     return snapshot;
   };
 
@@ -2429,16 +3958,15 @@ test('duplicate approved artifact rows scheduled concurrently cannot create dupl
   assert.ok(
     outcomes.every((outcome) => [200, 201, 409].includes(outcome.status)),
   );
-  assert.ok(
-    outcomes.filter((outcome) => outcome.status === 201).length <= 1,
-    'only one request may create a durable job',
-  );
-  assert.equal(entities.GrowthPublishJob.records.length, 1);
   assert.equal(
-    new Set(entities.GrowthPublishJob.records.map((job) => job.job_key)).size,
-    1,
+    outcomes.every(
+      (outcome) => outcome.body.error === 'hook_dedupe_conflict',
+    ),
+    true,
+    'duplicate same-platform hooks must fail before durable scheduling',
   );
-  assert.equal(entities.GrowthContentPlan.records.length, 1);
+  assert.equal(entities.GrowthPublishJob.records.length, 0);
+  assert.equal(entities.GrowthContentPlan.records.length, 0);
   assert.equal(
     entities.GrowthCreativeArtifact.records.every(
       (artifact) => !artifact.schedule_lock_token,
@@ -2552,6 +4080,304 @@ test('an expired exact schedule owner loses to a fresh scheduler or approval rev
   }
 });
 
+test('manager expiry durably reconciles the plan before final cancellation', async () => {
+  const artifact = await approvedArtifact({
+    id: 'artifact_expired_reservation_cleanup',
+    artifact_key: 'ig-expired-reservation-cleanup',
+    platform_content_id: 'ig-expired-reservation-cleanup',
+  });
+  const dueAt = new Date(Date.now() + 60 * 1000).toISOString();
+  const reservation = await pendingScheduleReservation(artifact, dueAt);
+  const plan = manualSeedPlan({
+    platform: artifact.platform,
+    campaign: artifact.campaign,
+    content: artifact.platform_content_id,
+    planned_publish_at: dueAt,
+    delivery_managed_by: 'buffer',
+    delivery_status: 'planned',
+  });
+  const { base44, entities } = createGrowthBase44({
+    sources: [safeSource],
+    artifacts: [artifact],
+    jobs: [reservation],
+    plans: [plan],
+  });
+  const events = [];
+  const originalJobUpdateMany = entities.GrowthPublishJob.updateMany;
+  entities.GrowthPublishJob.updateMany = async (query, operations) => {
+    if (operations?.$set?.state === 'delivery_reconcile') {
+      events.push('repair-persisted');
+    }
+    if (operations?.$set?.state === 'canceled') {
+      events.push('job-canceled');
+    }
+    return originalJobUpdateMany(query, operations);
+  };
+  const originalPlanUpdateMany = entities.GrowthContentPlan.updateMany;
+  entities.GrowthContentPlan.updateMany = async (query, operations) => {
+    if (operations?.$set?.delivery_status === 'canceled') {
+      assert.equal(
+        entities.GrowthPublishJob.records[0].state,
+        'delivery_reconcile',
+        'repair ownership must be durable before the plan cancellation CAS',
+      );
+      events.push('plan-canceled');
+    }
+    return originalPlanUpdateMany(query, operations);
+  };
+  const handler = loadGrowthHandler(managePath, { base44, env });
+
+  const result = await invokeJson(handler, {
+    action: 'schedule',
+    artifact_id: artifact.id,
+    due_at: dueAt,
+    timezone: 'America/Phoenix',
+    scheduling_type: 'automatic',
+  });
+
+  assert.equal(result.status, 400);
+  assert.equal(result.body.error, 'invalid_publish_schedule');
+  assert.deepEqual(events, [
+    'repair-persisted',
+    'plan-canceled',
+    'job-canceled',
+  ]);
+  const savedJob = entities.GrowthPublishJob.records[0];
+  assert.equal(savedJob.state, 'canceled');
+  assert.equal(savedJob.delivery_reconcile_target, undefined);
+  assert.equal(savedJob.next_retry_at, undefined);
+  assert.equal(savedJob.last_error_code, 'schedule_reservation_expired');
+  assert.equal(savedJob.lease_token, undefined);
+  assert.equal(
+    entities.GrowthContentPlan.records[0].delivery_status,
+    'canceled',
+  );
+});
+
+test('manager expiry leaves durable repair when plan cancellation loses CAS', async () => {
+  const artifact = await approvedArtifact({
+    id: 'artifact_expired_reservation_repair',
+    artifact_key: 'ig-expired-reservation-repair',
+    platform_content_id: 'ig-expired-reservation-repair',
+  });
+  const dueAt = new Date(Date.now() + 60 * 1000).toISOString();
+  const reservation = await pendingScheduleReservation(artifact, dueAt);
+  const plan = manualSeedPlan({
+    platform: artifact.platform,
+    campaign: artifact.campaign,
+    content: artifact.platform_content_id,
+    planned_publish_at: dueAt,
+    delivery_managed_by: 'buffer',
+    delivery_status: 'planned',
+  });
+  const { base44, entities } = createGrowthBase44({
+    sources: [safeSource],
+    artifacts: [artifact],
+    jobs: [reservation],
+    plans: [plan],
+  });
+  const originalPlanUpdateMany = entities.GrowthContentPlan.updateMany;
+  let cancellationAttempts = 0;
+  entities.GrowthContentPlan.updateMany = async (query, operations) => {
+    if (operations?.$set?.delivery_status === 'canceled') {
+      cancellationAttempts += 1;
+      assert.equal(
+        entities.GrowthPublishJob.records[0].state,
+        'delivery_reconcile',
+      );
+      return { success: true, updated: 0, has_more: false };
+    }
+    return originalPlanUpdateMany(query, operations);
+  };
+  const handler = loadGrowthHandler(managePath, { base44, env });
+
+  const result = await invokeJson(handler, {
+    action: 'schedule',
+    artifact_id: artifact.id,
+    due_at: dueAt,
+    timezone: 'America/Phoenix',
+    scheduling_type: 'automatic',
+  });
+
+  assert.equal(result.status, 409);
+  assert.equal(
+    result.body.error,
+    'content_plan_changed_before_delivery_update',
+  );
+  assert.equal(cancellationAttempts, 1);
+  const savedJob = entities.GrowthPublishJob.records[0];
+  assert.equal(savedJob.state, 'delivery_reconcile');
+  assert.equal(savedJob.delivery_reconcile_target, 'canceled');
+  assert.equal(savedJob.last_error_code, 'schedule_reservation_expired');
+  assert.ok(new Date(savedJob.next_retry_at).getTime() > Date.now());
+  assert.equal(savedJob.lease_token, undefined);
+  assert.equal(
+    entities.GrowthContentPlan.records[0].delivery_status,
+    'planned',
+  );
+
+  const retry = await invokeJson(handler, {
+    action: 'schedule',
+    artifact_id: artifact.id,
+    due_at: dueAt,
+    timezone: 'America/Phoenix',
+    scheduling_type: 'automatic',
+  });
+  assert.equal(retry.status, 409);
+  assert.equal(retry.body.error, 'content_plan_cancellation_pending');
+});
+
+test('source downgrade and approval revoke fence expired reservation cleanup', async (t) => {
+  for (const mode of ['source downgrade', 'approval revoke']) {
+    for (const planCas of ['success', 'lost']) {
+      await t.test(`${mode}; plan CAS ${planCas}`, async () => {
+        const suffix = `${mode.replaceAll(' ', '-')}-${planCas}`;
+        const artifact = await approvedArtifact({
+          id: `artifact_expired_dependency_${suffix}`,
+          artifact_key: `ig-expired-dependency-${suffix}`,
+          platform_content_id: `ig-expired-dependency-${suffix}`,
+        });
+        const dueAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+        const reservation = await pendingScheduleReservation(artifact, dueAt);
+        const plan = manualSeedPlan({
+          platform: artifact.platform,
+          campaign: artifact.campaign,
+          content: artifact.platform_content_id,
+          planned_publish_at: dueAt,
+          delivery_managed_by: 'buffer',
+          delivery_status: 'planned',
+        });
+        const { base44, entities } = createGrowthBase44({
+          sources: [safeSource],
+          artifacts: [artifact],
+          jobs: [reservation],
+          plans: [plan],
+        });
+        if (planCas === 'lost') {
+          const originalPlanUpdateMany = entities.GrowthContentPlan.updateMany;
+          entities.GrowthContentPlan.updateMany = async (query, operations) => {
+            if (operations?.$set?.delivery_status === 'canceled') {
+              assert.equal(
+                entities.GrowthPublishJob.records[0].state,
+                'delivery_reconcile',
+              );
+              return { success: true, updated: 0, has_more: false };
+            }
+            return originalPlanUpdateMany(query, operations);
+          };
+        }
+        const handler = loadGrowthHandler(managePath, { base44, env });
+        const result = mode === 'source downgrade'
+          ? await invokeJson(handler, {
+            action: 'register_sources',
+            sources: [{
+              ...safeSource,
+              privacy_status: 'blocked',
+              privacy_note: 'Owner withdrew this source before delivery.',
+            }],
+          })
+          : await invokeJson(handler, {
+            action: 'revoke',
+            artifact_id: artifact.id,
+            note: 'Revoke after the scheduler reservation expired.',
+          });
+
+        const savedJob = entities.GrowthPublishJob.records[0];
+        const savedPlan = entities.GrowthContentPlan.records[0];
+        const savedArtifact = entities.GrowthCreativeArtifact.records[0];
+        const savedSource = entities.GrowthSourceAsset.records[0];
+        if (planCas === 'success') {
+          assert.equal(result.status, 200);
+          assert.equal(savedJob.state, 'canceled');
+          assert.equal(savedJob.delivery_reconcile_target, undefined);
+          assert.equal(savedPlan.delivery_status, 'canceled');
+          if (mode === 'source downgrade') {
+            assert.equal(savedSource.privacy_status, 'blocked');
+            assert.equal(savedArtifact.approval_status, 'approved');
+          } else {
+            assert.equal(savedSource.privacy_status, 'safe');
+            assert.equal(savedArtifact.approval_status, 'revoked');
+          }
+        } else {
+          assert.equal(result.status, 409);
+          assert.equal(
+            result.body.error,
+            'content_plan_changed_before_delivery_update',
+          );
+          assert.equal(savedJob.state, 'delivery_reconcile');
+          assert.equal(savedJob.delivery_reconcile_target, 'canceled');
+          assert.equal(savedPlan.delivery_status, 'planned');
+          assert.equal(savedSource.privacy_status, 'safe');
+          assert.equal(savedArtifact.approval_status, 'approved');
+        }
+      });
+    }
+  }
+});
+
+test('post-measurement schedule abort uses durable cancellation before plan cleanup', async () => {
+  const artifact = await approvedArtifact({
+    id: 'artifact_post_measurement_abort',
+    artifact_key: 'ig-post-measurement-abort',
+    platform_content_id: 'ig-post-measurement-abort',
+  });
+  const { base44, entities } = createGrowthBase44({
+    sources: [safeSource],
+    artifacts: [artifact],
+  });
+  const events = [];
+  const originalJobUpdateMany = entities.GrowthPublishJob.updateMany;
+  entities.GrowthPublishJob.updateMany = async (query, operations) => {
+    if (operations?.$set?.state === 'queued') {
+      return { success: true, updated: 0, has_more: false };
+    }
+    if (operations?.$set?.state === 'delivery_reconcile') {
+      events.push('repair-persisted');
+    }
+    if (operations?.$set?.state === 'canceled') {
+      events.push('job-canceled');
+    }
+    return originalJobUpdateMany(query, operations);
+  };
+  const originalPlanUpdateMany = entities.GrowthContentPlan.updateMany;
+  entities.GrowthContentPlan.updateMany = async (query, operations) => {
+    if (operations?.$set?.delivery_status === 'canceled') {
+      assert.equal(
+        entities.GrowthPublishJob.records[0].state,
+        'delivery_reconcile',
+      );
+      events.push('plan-canceled');
+    }
+    return originalPlanUpdateMany(query, operations);
+  };
+  const handler = loadGrowthHandler(managePath, { base44, env });
+
+  const result = await invokeJson(handler, {
+    action: 'schedule',
+    artifact_id: artifact.id,
+    due_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    timezone: 'America/Phoenix',
+    scheduling_type: 'automatic',
+  });
+
+  assert.equal(result.status, 409);
+  assert.equal(result.body.error, 'publish_schedule_in_progress');
+  assert.deepEqual(events, [
+    'repair-persisted',
+    'plan-canceled',
+    'job-canceled',
+  ]);
+  assert.equal(entities.GrowthPublishJob.records[0].state, 'canceled');
+  assert.equal(
+    entities.GrowthPublishJob.records[0].last_error_code,
+    'schedule_reservation_aborted',
+  );
+  assert.equal(
+    entities.GrowthContentPlan.records[0].delivery_status,
+    'canceled',
+  );
+});
+
 test('final schedule persistence requires renewing the exact prior lock expiry', async () => {
   const artifact = await approvedArtifact({
     id: 'artifact_schedule_renewal_fence',
@@ -2614,11 +4440,7 @@ test('final schedule persistence requires renewing the exact prior lock expiry',
   );
   assert.equal(entities.GrowthPublishJob.records.length, 0);
   assert.equal(entities.GrowthPublishJob.counters.create, 0);
-  assert.equal(entities.GrowthContentPlan.records.length, 1);
-  assert.equal(
-    entities.GrowthContentPlan.records[0].delivery_status,
-    'canceled',
-  );
+  assert.equal(entities.GrowthContentPlan.records.length, 0);
   assert.equal(
     entities.GrowthCreativeArtifact.records[0].schedule_lock_token,
     'fresh-scheduler-takeover-token',
@@ -3644,4 +5466,456 @@ test('all entity schemas remain parseable JSON', () => {
   for (const file of readdirSync(resolve('base44/entities')).filter((name) => name.endsWith('.jsonc'))) {
     assert.doesNotThrow(() => JSON.parse(readFileSync(resolve('base44/entities', file), 'utf8')));
   }
+});
+
+test('a measured batch beats a stale schedule snapshot and releases the losing provisional reservation', async () => {
+  const { plan, metric } = await measuredReviewEvidence();
+  const selectedConceptIds = [
+    'fk-ce-field-funnel-01',
+    'fk-ce-clean-routes-01',
+  ];
+  const selectedSeedArtifact = measuredSeedPack.artifacts.find((artifact) => (
+    artifact.concept_id === selectedConceptIds[0]
+    && artifact.platform === 'instagram'
+  ));
+  assert.ok(selectedSeedArtifact?.source_asset_key);
+  const scheduledArtifact = await approvedArtifact({
+    id: 'artifact_schedule_build_reservation_race',
+    artifact_key: 'ig-schedule-build-reservation-race',
+    platform_content_id: 'ig-schedule-build-reservation-race',
+    concept_id: 'schedule-build-reservation-race',
+    source_asset_keys: [selectedSeedArtifact.source_asset_key],
+    hook: 'Map the clean field route',
+  });
+  const clock = controlledClock(Date.parse('2026-07-28T18:00:00.000Z'));
+  const heartbeatRevision = await growthHelpers.sha256Hex([
+    'buffer-publisher',
+    env.BUFFER_ORGANIZATION_ID,
+    env.BUFFER_INSTAGRAM_CHANNEL_ID,
+    env.BUFFER_TIKTOK_CHANNEL_ID,
+    env.GROWTH_MEDIA_ORIGIN,
+  ].join('|'));
+  let llmCalls = 0;
+  const { base44, entities } = createGrowthBase44({
+    sources: measuredSourceRegistry(),
+    artifacts: [scheduledArtifact],
+    plans: [plan],
+    metrics: [metric],
+    heartbeats: [{
+      heartbeat_key: 'buffer-publisher',
+      config_revision: heartbeatRevision,
+      observed_at: new clock.DateImpl().toISOString(),
+      status: 'ready',
+      invocation_generation: 1,
+      last_batch_inspected: 0,
+      last_batch_processed: 0,
+    }],
+    invokeLlm: async () => {
+      llmCalls += 1;
+      return measuredGeneration(selectedConceptIds);
+    },
+  });
+  const handler = loadGrowthHandler(managePath, {
+    base44,
+    env: {
+      ...env,
+      GROWTH_CONTENT_GENERATION_ENABLED: 'true',
+      GROWTH_RENDER_PACK_SHA256S: measuredSeedPackSha256,
+    },
+    dateImpl: clock.DateImpl,
+  });
+  const staleBatchSnapshotTaken = deferred();
+  const releaseScheduleSnapshot = deferred();
+  const originalBatchList = entities.GrowthContentBatch.list;
+  let heldScheduleSnapshot = false;
+  entities.GrowthContentBatch.list = async (...args) => {
+    const snapshot = await originalBatchList(...args);
+    if (!heldScheduleSnapshot) {
+      heldScheduleSnapshot = true;
+      assert.deepEqual(snapshot, []);
+      staleBatchSnapshotTaken.resolve();
+      await releaseScheduleSnapshot.promise;
+    }
+    return snapshot;
+  };
+  const schedulePromise = invokeJson(handler, {
+    action: 'schedule',
+    artifact_id: scheduledArtifact.id,
+    due_at: '2026-07-29T16:30:00.000Z',
+    timezone: 'America/Phoenix',
+    scheduling_type: 'automatic',
+  });
+  await staleBatchSnapshotTaken.promise;
+
+  let built;
+  try {
+    built = await invokeJson(handler, {
+      action: 'build_next_batch',
+      parent: {
+        platform: plan.platform,
+        campaign: plan.campaign,
+        content: plan.content,
+      },
+      target_date: '2026-07-29',
+      concept_count: 2,
+      seed_concept_ids: selectedConceptIds,
+      seed_pack: measuredSeedPack,
+    });
+  } finally {
+    releaseScheduleSnapshot.resolve();
+  }
+  const scheduled = await schedulePromise;
+
+  assert.equal(built.status, 201);
+  assert.equal(built.body.batch.state, 'ready');
+  assert.equal(llmCalls, 1);
+  assert.equal(scheduled.status, 409);
+  assert.equal(scheduled.body.error, 'source_cooldown_conflict');
+  assert.equal(
+    entities.GrowthPublishJob.records.filter(
+      (job) => job.state === 'reservation_pending',
+    ).length,
+    0,
+  );
+  assert.equal(entities.GrowthPublishJob.records.length, 1);
+  assert.equal(entities.GrowthPublishJob.records[0].state, 'canceled');
+  assert.equal(
+    entities.GrowthPublishJob.records[0].last_error_code,
+    'source_cooldown_conflict',
+  );
+  assert.equal(
+    entities.GrowthContentPlan.records.filter(
+      (candidate) => candidate.content === scheduledArtifact.platform_content_id,
+    ).length,
+    0,
+  );
+});
+
+test('same-key first-create batch race leaves one ready winner and one durable superseded row', async () => {
+  const { plan, metric } = await measuredReviewEvidence();
+  const selectedConceptIds = [
+    'fk-ce-field-funnel-01',
+    'fk-ce-clean-routes-01',
+  ];
+  let llmCalls = 0;
+  const { base44, entities } = createGrowthBase44({
+    sources: measuredSourceRegistry(),
+    plans: [plan],
+    metrics: [metric],
+    invokeLlm: async () => {
+      llmCalls += 1;
+      return measuredGeneration(selectedConceptIds);
+    },
+  });
+  const clock = controlledClock(Date.parse('2026-07-28T18:00:00.000Z'));
+  const handler = loadGrowthHandler(managePath, {
+    base44,
+    env: {
+      ...env,
+      GROWTH_CONTENT_GENERATION_ENABLED: 'true',
+      GROWTH_RENDER_PACK_SHA256S: measuredSeedPackSha256,
+    },
+    dateImpl: clock.DateImpl,
+  });
+  const request = {
+    action: 'build_next_batch',
+    parent: {
+      platform: plan.platform,
+      campaign: plan.campaign,
+      content: plan.content,
+    },
+    target_date: '2026-07-29',
+    concept_count: 2,
+    seed_concept_ids: selectedConceptIds,
+    seed_pack: measuredSeedPack,
+  };
+  const emptyReadBarriers = [deferred(), deferred()];
+  const originalBatchFilter = entities.GrowthContentBatch.filter;
+  let emptyExactReads = 0;
+  entities.GrowthContentBatch.filter = async (...args) => {
+    const [query] = args;
+    const snapshot = await originalBatchFilter(...args);
+    if (query?.batch_key && emptyExactReads < 4) {
+      assert.deepEqual(snapshot, []);
+      const phase = Math.floor(emptyExactReads / 2);
+      emptyExactReads += 1;
+      if (emptyExactReads % 2 === 0) {
+        emptyReadBarriers[phase].resolve();
+      }
+      await emptyReadBarriers[phase].promise;
+    }
+    return snapshot;
+  };
+  const bothRowsCreated = deferred();
+  const originalBatchCreate = entities.GrowthContentBatch.create;
+  let batchCreates = 0;
+  entities.GrowthContentBatch.create = async (value) => {
+    const saved = await originalBatchCreate(value);
+    batchCreates += 1;
+    if (batchCreates === 2) bothRowsCreated.resolve();
+    await bothRowsCreated.promise;
+    return saved;
+  };
+
+  const outcomes = await Promise.all([
+    invokeJson(handler, request),
+    invokeJson(handler, request),
+  ]);
+
+  assert.equal(emptyExactReads, 4);
+  assert.equal(batchCreates, 2);
+  assert.equal(llmCalls, 1);
+  assert.equal(
+    outcomes.filter((outcome) => outcome.status === 201).length,
+    1,
+  );
+  assert.equal(
+    outcomes.every((outcome) => [200, 201, 409].includes(outcome.status)),
+    true,
+  );
+  assert.equal(entities.GrowthContentBatch.records.length, 2);
+  const ready = entities.GrowthContentBatch.records.find(
+    (batch) => batch.state === 'ready',
+  );
+  const superseded = entities.GrowthContentBatch.records.find(
+    (batch) => batch.state === 'superseded',
+  );
+  assert.ok(ready);
+  assert.ok(superseded);
+  assert.equal(ready.batch_key, superseded.batch_key);
+  assert.equal(superseded.superseded_by_batch_key, ready.batch_key);
+  assert.match(superseded.superseded_at, /^\d{4}-\d{2}-\d{2}T/);
+  assert.equal(superseded.lease_token, '');
+  assert.equal(superseded.lease_expires_at, undefined);
+
+  const fetched = await invokeJson(handler, {
+    action: 'get_batch',
+    batch_key: ready.batch_key,
+  });
+  assert.equal(fetched.status, 200);
+  assert.equal(fetched.body.batch.state, 'ready');
+  assert.equal(fetched.body.pack_sha256, ready.canonical_pack_sha256);
+  assert.equal(fetched.body.render_pack.artifacts.length, 4);
+
+  const authorized = await invokeJson(handler, {
+    action: 'authorize_batch',
+    batch_key: ready.batch_key,
+    expected_pack_sha256: ready.canonical_pack_sha256,
+    inspection_acknowledged: true,
+    note: 'Exact first-create race winner reviewed by the owner.',
+  });
+  assert.equal(authorized.status, 200);
+  assert.equal(authorized.body.batch.state, 'render_authorized');
+  assert.equal(
+    entities.GrowthContentBatch.records.filter(
+      (batch) => batch.state === 'superseded',
+    ).length,
+    1,
+  );
+});
+
+test('growth batch attempt counters have schema headroom beyond 35,000 attempts', () => {
+  const schema = JSON.parse(readFileSync(
+    resolve('base44/entities/GrowthContentBatch.jsonc'),
+    'utf8',
+  ));
+  assert.ok(schema.properties.attempt_count.maximum > 35_000);
+  assert.equal(schema.properties.attempt_count.minimum, 0);
+});
+
+test('terminal retry reservation precedence uses its fresh lease time instead of its old row date', async () => {
+  const clock = controlledClock(Date.parse('2026-07-28T18:00:00.000Z'));
+  const dueAt = '2026-07-29T16:30:00.000Z';
+  const retryArtifact = await approvedArtifact({
+    id: 'artifact_terminal_retry_precedence',
+    artifact_key: 'ig-terminal-retry-precedence',
+    platform_content_id: 'ig-terminal-retry-precedence',
+    concept_id: 'terminal-retry-precedence',
+    hook: 'Retry the older field proof',
+  });
+  const freshArtifact = await approvedArtifact({
+    id: 'artifact_fresh_reservation_precedence',
+    artifact_key: 'ig-fresh-reservation-precedence',
+    platform_content_id: 'ig-fresh-reservation-precedence',
+    concept_id: 'fresh-reservation-precedence',
+    hook: 'Queue the fresh field proof',
+  });
+  const configRevision = await growthHelpers.sha256Hex([
+    'buffer',
+    env.BUFFER_ORGANIZATION_ID,
+    env.BUFFER_INSTAGRAM_CHANNEL_ID,
+    'instagram',
+    env.GROWTH_MEDIA_ORIGIN,
+  ].join('|'));
+  const sourceSnapshot = [{
+    asset_key: safeSource.asset_key,
+    source_reference: safeSource.source_reference,
+    source_sha256: safeSource.source_sha256,
+  }];
+  const terminalRequest = {
+    provider: 'buffer',
+    provider_organization_id: env.BUFFER_ORGANIZATION_ID,
+    provider_channel_id: env.BUFFER_INSTAGRAM_CHANNEL_ID,
+    provider_service: 'instagram',
+    config_revision: configRevision,
+    media_origin: env.GROWTH_MEDIA_ORIGIN,
+    artifact_id: retryArtifact.id,
+    artifact_hash: retryArtifact.approved_hash,
+    source_lineage_snapshot: sourceSnapshot,
+    hook_snapshot: retryArtifact.hook,
+    platform: 'instagram',
+    platform_content_id: retryArtifact.platform_content_id,
+    due_at: dueAt,
+    scheduling_type: 'automatic',
+    timezone: 'America/Phoenix',
+  };
+  const terminalJob = {
+    id: 'job_terminal_retry_precedence',
+    job_key: await growthHelpers.publishJobKey(terminalRequest),
+    request_hash: await growthHelpers.publishJobRequestHash(terminalRequest),
+    ...terminalRequest,
+    artifact_key: retryArtifact.artifact_key,
+    concept_id: retryArtifact.concept_id,
+    campaign: retryArtifact.campaign,
+    state: 'canceled',
+    attempt_count: 0,
+    reconciliation_count: 0,
+    lease_generation: 7,
+    last_error_code: 'owner_canceled',
+    canceled_at: '2026-01-02T00:00:00.000Z',
+    created_date: '2026-01-01T00:00:00.000Z',
+  };
+  const heartbeatRevision = await growthHelpers.sha256Hex([
+    'buffer-publisher',
+    env.BUFFER_ORGANIZATION_ID,
+    env.BUFFER_INSTAGRAM_CHANNEL_ID,
+    env.BUFFER_TIKTOK_CHANNEL_ID,
+    env.GROWTH_MEDIA_ORIGIN,
+  ].join('|'));
+  const { base44, entities } = createGrowthBase44({
+    sources: [safeSource],
+    artifacts: [retryArtifact, freshArtifact],
+    jobs: [terminalJob],
+    heartbeats: [{
+      heartbeat_key: 'buffer-publisher',
+      config_revision: heartbeatRevision,
+      observed_at: new clock.DateImpl().toISOString(),
+      status: 'ready',
+      invocation_generation: 1,
+      last_batch_inspected: 0,
+      last_batch_processed: 0,
+    }],
+  });
+  const handler = loadGrowthHandler(managePath, {
+    base44,
+    env,
+    dateImpl: clock.DateImpl,
+  });
+  const staleJobSnapshot = structuredClone(
+    entities.GrowthPublishJob.records,
+  );
+  const originalJobList = entities.GrowthPublishJob.list;
+  let dependencyReads = 0;
+  entities.GrowthPublishJob.list = async (...args) => {
+    dependencyReads += 1;
+    if (dependencyReads === 2) return structuredClone(staleJobSnapshot);
+    return originalJobList(...args);
+  };
+  const freshReservationCreated = deferred();
+  const retryReservationCreated = deferred();
+  const releaseReservations = deferred();
+  const originalJobCreate = entities.GrowthPublishJob.create;
+  entities.GrowthPublishJob.create = async (value) => {
+    const saved = await originalJobCreate(value);
+    if (
+      value?.state === 'reservation_pending'
+      && value?.artifact_id === freshArtifact.id
+    ) {
+      freshReservationCreated.resolve();
+      await releaseReservations.promise;
+    }
+    return saved;
+  };
+  const originalJobUpdateMany = entities.GrowthPublishJob.updateMany;
+  entities.GrowthPublishJob.updateMany = async (query, operations) => {
+    const result = await originalJobUpdateMany(query, operations);
+    if (
+      query?.id === terminalJob.id
+      && query?.state === 'canceled'
+      && operations?.$set?.state === 'reservation_pending'
+    ) {
+      retryReservationCreated.resolve();
+      await releaseReservations.promise;
+    }
+    return result;
+  };
+
+  const freshPromise = invokeJson(handler, {
+    action: 'schedule',
+    artifact_id: freshArtifact.id,
+    due_at: dueAt,
+    timezone: 'America/Phoenix',
+    scheduling_type: 'automatic',
+  });
+  await freshReservationCreated.promise;
+  clock.set(clock.now() + 1000);
+  entities.GrowthPublishHeartbeat.records[0].observed_at =
+    new clock.DateImpl().toISOString();
+  const retryPromise = invokeJson(handler, {
+    action: 'schedule',
+    artifact_id: retryArtifact.id,
+    due_at: dueAt,
+    timezone: 'America/Phoenix',
+    scheduling_type: 'automatic',
+    retry_terminal: true,
+  });
+  await retryReservationCreated.promise;
+
+  const freshPending = entities.GrowthPublishJob.records.find(
+    (job) => job.artifact_id === freshArtifact.id,
+  );
+  const retryPending = entities.GrowthPublishJob.records.find(
+    (job) => job.artifact_id === retryArtifact.id,
+  );
+  assert.equal(freshPending.state, 'reservation_pending');
+  assert.equal(retryPending.state, 'reservation_pending');
+  assert.ok(
+    new Date(freshPending.lease_acquired_at).getTime()
+      < new Date(retryPending.lease_acquired_at).getTime(),
+  );
+  assert.ok(
+    new Date(retryPending.created_date).getTime()
+      < new Date(freshPending.created_date).getTime(),
+  );
+  releaseReservations.resolve();
+  const [freshResult, retryResult] = await Promise.all([
+    freshPromise,
+    retryPromise,
+  ]);
+
+  assert.equal(freshResult.status, 201);
+  assert.equal(freshResult.body.job.state, 'queued');
+  assert.equal(retryResult.status, 409);
+  assert.equal(retryResult.body.error, 'source_cooldown_conflict');
+  assert.equal(
+    entities.GrowthPublishJob.records.filter((job) => job.state === 'queued')
+      .length,
+    1,
+  );
+  assert.equal(
+    entities.GrowthPublishJob.records.filter(
+      (job) => job.state === 'reservation_pending',
+    ).length,
+    0,
+  );
+  assert.equal(
+    entities.GrowthPublishJob.records.find(
+      (job) => job.artifact_id === retryArtifact.id,
+    ).state,
+    'canceled',
+  );
+  assert.deepEqual(
+    entities.GrowthContentPlan.records.map((candidate) => candidate.content),
+    [freshArtifact.platform_content_id],
+  );
 });

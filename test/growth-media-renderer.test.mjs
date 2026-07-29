@@ -14,6 +14,7 @@ import test from 'node:test';
 import {
   DETERMINISTIC_FFMPEG_CODEC_ARGS,
   DETERMINISTIC_FFMPEG_GLOBAL_ARGS,
+  buildRenderedArtifactFields,
   canonicalStringify as rendererCanonicalStringify,
   renderPack,
   snapshotVerifiedSource,
@@ -55,6 +56,112 @@ test('starter render pack provides ten importable renditions plus two fenced vid
   for (const source of pack.sources.filter((item) => item.privacy_status === 'safe')) {
     assert.match(source.source_sha256, /^[a-f0-9]{64}$/);
   }
+  assert.equal(pack.artifacts.every((item) => item.ai_generated === undefined), true);
+  assert.deepEqual(
+    validatePack(structuredClone(pack)),
+    pack,
+    'a normalized trusted pack must remain valid renderer input',
+  );
+  assert.equal(
+    createHash('sha256')
+      .update(rendererCanonicalStringify(pack))
+      .digest('hex'),
+    '144fa73c2d35cf850dacd84c16c7ace14e8e02bb6cd50495f3a915ab89e36a59',
+  );
+});
+
+test('renderer preserves exact AI provenance and rejects truthy substitutes', async () => {
+  const raw = await starterPack();
+  raw.artifacts[0].ai_generated = true;
+  const pack = validatePack(raw);
+  const artifact = pack.artifacts[0];
+  assert.equal(artifact.ai_generated, true);
+
+  const artifactFields = buildRenderedArtifactFields({
+    artifact,
+    technical: {
+      mime_type: 'video/mp4',
+      width: 1080,
+      height: 1920,
+      duration_ms: 8000,
+    },
+    mediaUrl: 'https://media.firstknock.online/sha256/example.mp4',
+    mediaSha256: 'a'.repeat(64),
+    thumbnailOffsetMs: 1000,
+  });
+  assert.equal(artifactFields.ai_generated, true);
+
+  const manualArtifact = validatePack(await starterPack()).artifacts[0];
+  assert.equal(buildRenderedArtifactFields({
+    artifact: manualArtifact,
+    technical: {
+      mime_type: 'video/mp4',
+      width: 1080,
+      height: 1920,
+      duration_ms: 8000,
+    },
+    mediaUrl: null,
+    mediaSha256: 'b'.repeat(64),
+    thumbnailOffsetMs: 1000,
+  }).ai_generated, false);
+
+  for (const invalid of ['true', 1, null]) {
+    const invalidPack = await starterPack();
+    invalidPack.artifacts[0].ai_generated = invalid;
+    assert.throws(
+      () => validatePack(invalidPack),
+      /ai_generated must be a boolean/,
+    );
+  }
+});
+
+test('growth content batches are bounded service-only provenance records', async () => {
+  const schema = JSON.parse(
+    await readFile(resolve('base44', 'entities', 'GrowthContentBatch.jsonc'), 'utf8'),
+  );
+  assert.equal(schema.name, 'GrowthContentBatch');
+  for (const operation of ['create', 'read', 'update', 'delete']) {
+    assert.equal(
+      schema.rls[operation].user_condition.id,
+      '__service_role_only__',
+    );
+  }
+  assert.deepEqual(schema.properties.state.enum, [
+    'generating',
+    'ready',
+    'render_authorized',
+    'failed',
+    'superseded',
+    'revoked',
+  ]);
+  assert.deepEqual(schema.properties.concept_count.enum, [2, 3]);
+  assert.deepEqual(schema.properties.slot_count.enum, [2, 3]);
+  assert.equal(schema.properties.slot_keys.maxItems, 3);
+  assert.equal(schema.properties.source_lineage.maxItems, 3);
+  assert.equal(schema.properties.seed_lineage.maxItems, 3);
+  assert.equal(schema.properties.canonical_pack_json.maxLength, 100000);
+  for (const hashField of [
+    'batch_key',
+    'request_hash',
+    'review_hash',
+    'evidence_hash',
+    'prompt_source_sha256',
+    'generated_hooks_sha256',
+    'seed_pack_sha256',
+    'canonical_pack_sha256',
+  ]) {
+    assert.equal(
+      schema.properties[hashField].pattern,
+      '^[a-f0-9]{64}$',
+      `${hashField} must store a complete canonical SHA-256`,
+    );
+  }
+  assert.equal(
+    Object.keys(schema.properties).some(
+      (field) => /(api.?key|worker.?secret|buffer.?token)/i.test(field),
+    ),
+    false,
+  );
 });
 
 test('safe dashboard registry stays hash-aligned with the render pack', async () => {

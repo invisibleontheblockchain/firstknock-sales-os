@@ -195,6 +195,11 @@ export function canonicalArtifactPayload(artifact) {
       })),
     media_byte_size: Number(artifact?.media_byte_size || 0),
     audio_mode: token(artifact?.audio_mode),
+    growth_batch_key: normalized(artifact?.growth_batch_key),
+    growth_batch_target_date: String(
+      artifact?.growth_batch_target_date || "",
+    ).trim().slice(0, 10),
+    growth_batch_slot_key: token(artifact?.growth_batch_slot_key),
     review_status: token(artifact?.review_status),
     privacy_cleared: artifact?.privacy_cleared === true,
     demo_labeled: artifact?.demo_labeled === true,
@@ -208,6 +213,17 @@ export async function artifactApprovalHash(artifact) {
 }
 
 export function canonicalJobRequest(job) {
+  const sourceLineageSnapshot = asArray(job?.source_lineage_snapshot)
+    .map((source) => ({
+      asset_key: token(source?.asset_key),
+      source_reference: String(source?.source_reference || "")
+        .trim()
+        .slice(0, 300),
+      source_sha256: normalized(source?.source_sha256),
+    }));
+  const hookSnapshot = compactText(job?.hook_snapshot, 300);
+  const renderPackSha256 = normalized(job?.render_pack_sha256);
+  const growthBatchKey = normalized(job?.growth_batch_key);
   return {
     provider: "buffer",
     provider_organization_id: String(job?.provider_organization_id || ""),
@@ -221,6 +237,12 @@ export function canonicalJobRequest(job) {
     due_at: timestamp(job?.due_at) || "",
     scheduling_type: token(job?.scheduling_type),
     timezone: compactText(job?.timezone, 80),
+    ...(sourceLineageSnapshot.length
+      ? { source_lineage_snapshot: sourceLineageSnapshot }
+      : {}),
+    ...(hookSnapshot ? { hook_snapshot: hookSnapshot } : {}),
+    ...(renderPackSha256 ? { render_pack_sha256: renderPackSha256 } : {}),
+    ...(growthBatchKey ? { growth_batch_key: growthBatchKey } : {}),
   };
 }
 

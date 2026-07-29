@@ -1965,6 +1965,7 @@ test('growth plans use platform as part of their lifecycle identity', async () =
 test('owner can seed, publish, and review the fixed-age growth queue', async () => {
   const plans = [];
   const metrics = [];
+  const batches = [];
   const planEntity = {
     list: async (_sort, limit, skip = 0) => structuredClone(plans.slice(skip, skip + limit)),
     filter: async (query) => structuredClone(plans.filter((plan) => (
@@ -2030,6 +2031,12 @@ test('owner can seed, publish, and review the fixed-age growth queue', async () 
       entities: {
         GrowthContentPlan: planEntity,
         GrowthContentMetric: metricEntity,
+        GrowthContentBatch: {
+          filter: async (query) => structuredClone(batches.filter((batch) => (
+            batch.parent_campaign === query.parent_campaign
+            && batch.parent_content === query.parent_content
+          ))),
+        },
         GrowthCreativeArtifact: {
           filter: async () => [],
         },
@@ -2142,6 +2149,25 @@ test('owner can seed, publish, and review the fixed-age growth queue', async () 
     undefined,
     'newer writes with older capture times must not replace the fixed-age evidence',
   );
+  batches.push({
+    id: 'batch_review_lock',
+    batch_key: 'a'.repeat(64),
+    parent_platform: 'instagram',
+    parent_campaign: first.campaign,
+    parent_content: first.content,
+    state: 'ready',
+  });
+  const lockedReview = await invoke({
+    action: 'review',
+    campaign: first.campaign,
+    content: first.content,
+    decision: 'iterate',
+    note: 'This review cannot change after it has an active downstream batch.',
+  });
+  assert.equal(lockedReview.status, 409);
+  assert.equal((await lockedReview.json()).error, 'growth_review_lineage_locked');
+  assert.equal(plans[0].review_decision, 'repeat');
+  batches.pop();
 
   metrics.push({
     ...structuredClone(metrics.find((metric) => metric.id === 'metric_7d')),

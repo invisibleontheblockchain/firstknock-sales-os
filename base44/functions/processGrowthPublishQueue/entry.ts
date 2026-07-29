@@ -229,6 +229,104 @@ async function candidateRows(
     .map(({ job }) => job);
 }
 
+async function expiredReservationRows(
+  entity: any,
+  now: Date,
+  limit: number,
+): Promise<any[]> {
+  if (limit < 1) return [];
+  const nowIso = now.toISOString();
+  return asArray(await entity.filter(
+    {
+      state: "reservation_pending",
+      lease_expires_at: { $lte: nowIso },
+    },
+    "lease_expires_at",
+    limit,
+  )).filter((job) => {
+    const expiresAt = timestamp(job?.lease_expires_at);
+    return Boolean(expiresAt)
+      && new Date(expiresAt || 0).getTime() <= now.getTime();
+  });
+}
+
+async function sweepExpiredReservation(
+  entities: any,
+  reservation: any,
+  now: Date,
+): Promise<string | null> {
+  const observedExpiry = timestamp(reservation?.lease_expires_at);
+  if (
+    !observedExpiry
+    || new Date(observedExpiry).getTime() > now.getTime()
+  ) {
+    return null;
+  }
+  const observedToken = String(reservation?.lease_token || "");
+  const observedGeneration = Number(reservation?.lease_generation || 0);
+  const retryAt = new Date(now.getTime() + 2 * 60 * 1000).toISOString();
+  const repairMessage =
+    "The scheduler reservation expired before it could be queued. "
+    + "Measurement-plan cancellation will retry.";
+
+  // Persist the repair state before touching the measurement plan so a crash
+  // cannot leave an untracked planned-delivery record behind.
+  const fenced = await entities.GrowthPublishJob.updateMany(
+    {
+      id: reservation.id,
+      state: "reservation_pending",
+      lease_token: observedToken,
+      lease_generation: observedGeneration,
+      lease_expires_at: String(reservation?.lease_expires_at || ""),
+    },
+    {
+      $set: {
+        state: "delivery_reconcile",
+        delivery_reconcile_target: "canceled",
+        next_retry_at: retryAt,
+        last_error_code: "schedule_reservation_expired",
+        last_error_message: repairMessage,
+      },
+      $unset: {
+        lease_token: true,
+        lease_acquired_at: true,
+        lease_expires_at: true,
+        lease_source_state: true,
+      },
+    },
+  );
+  if (Number(fenced?.updated || 0) !== 1) return null;
+
+  const delivery = await cancelPlatformMeasurementDelivery(
+    entities,
+    reservation,
+  ).catch(() => ({ ok: false, error: "content_plan_unavailable" }));
+  if (!delivery.ok) return "delivery_reconcile";
+
+  const finalized = await entities.GrowthPublishJob.updateMany(
+    {
+      id: reservation.id,
+      state: "delivery_reconcile",
+      lease_generation: observedGeneration,
+      next_retry_at: retryAt,
+      last_error_code: "schedule_reservation_expired",
+    },
+    {
+      $set: {
+        state: "canceled",
+        canceled_at: now.toISOString(),
+        last_error_message:
+          "The scheduler reservation expired before it could be queued.",
+      },
+      $unset: {
+        delivery_reconcile_target: true,
+        next_retry_at: true,
+      },
+    },
+  );
+  return Number(finalized?.updated || 0) === 1 ? "canceled" : "lease_lost";
+}
+
 async function configRevision(job: any): Promise<string> {
   return sha256Hex([
     "buffer",
@@ -1047,6 +1145,7 @@ type SourceReadinessState =
   | "safe"
   | "unsafe"
   | "lineage_changed"
+  | "lineage_missing"
   | "unavailable";
 
 function opaqueSourceReference(value: any): string {
@@ -1056,13 +1155,12 @@ function opaqueSourceReference(value: any): string {
     : "";
 }
 
-function renderedLineageMatchesSources(
-  artifact: any,
+function lineageMatchesSources(
+  lineageValue: any,
   sourceKeys: string[],
   groupedSources: Map<string, any[]>,
 ): boolean {
-  if (!artifact?.render_result_schema) return true;
-  const lineage = asArray(artifact?.render_source_lineage);
+  const lineage = asArray(lineageValue);
   if (
     lineage.length !== sourceKeys.length
     || new Set(sourceKeys).size !== sourceKeys.length
@@ -1089,6 +1187,7 @@ function renderedLineageMatchesSources(
 async function sourceReadinessState(
   entities: any,
   artifact: any,
+  job: any,
 ): Promise<SourceReadinessState> {
   try {
     const sourceKeys = asArray(artifact?.source_asset_keys)
@@ -1114,7 +1213,29 @@ async function sourceReadinessState(
         || token(rows[0]?.privacy_status) !== "safe";
     });
     if (unsafe) return "unsafe";
-    return renderedLineageMatchesSources(artifact, sourceKeys, grouped)
+    const jobSnapshot = asArray(job?.source_lineage_snapshot);
+    if (jobSnapshot.length) {
+      if (!lineageMatchesSources(jobSnapshot, sourceKeys, grouped)) {
+        return "lineage_changed";
+      }
+      if (
+        artifact?.render_result_schema
+        && !lineageMatchesSources(
+          artifact?.render_source_lineage,
+          sourceKeys,
+          grouped,
+        )
+      ) {
+        return "lineage_changed";
+      }
+      return "safe";
+    }
+    if (!artifact?.render_result_schema) return "lineage_missing";
+    return lineageMatchesSources(
+      artifact?.render_source_lineage,
+      sourceKeys,
+      grouped,
+    )
       ? "safe"
       : "lineage_changed";
   } catch {
@@ -1166,7 +1287,7 @@ async function preflight(
   } catch {
     return { error: "media_origin_mismatch" };
   }
-  const sourceState = await sourceReadinessState(entities, artifact);
+  const sourceState = await sourceReadinessState(entities, artifact, job);
   if (sourceState === "unavailable") {
     return {
       error: "source_privacy_clearance_unavailable",
@@ -1175,6 +1296,9 @@ async function preflight(
   }
   if (sourceState === "lineage_changed") {
     return { error: "source_render_lineage_changed" };
+  }
+  if (sourceState === "lineage_missing") {
+    return { error: "source_lineage_snapshot_missing" };
   }
   if (sourceState !== "safe") {
     return { error: "source_privacy_clearance_changed" };
@@ -1369,7 +1493,11 @@ async function processCreate(
       secrets,
     );
   }
-  const sourceState = await sourceReadinessState(entities, artifact);
+  const sourceState = await sourceReadinessState(
+    entities,
+    artifact,
+    claim.row,
+  );
   if (sourceState !== "safe") {
     return finishFailure(
       entities,
@@ -1379,13 +1507,17 @@ async function processCreate(
         outcome: sourceState === "unavailable" ? "retry" : "review",
         code: sourceState === "unavailable"
           ? "source_privacy_clearance_unavailable"
+          : sourceState === "lineage_missing"
+          ? "source_lineage_snapshot_missing"
           : sourceState === "lineage_changed"
           ? "source_render_lineage_changed"
           : "source_privacy_clearance_changed",
         message: sourceState === "unavailable"
           ? "Source privacy clearance could not be re-read before publishing."
+          : sourceState === "lineage_missing"
+          ? "The publish job has no immutable source-lineage snapshot."
           : sourceState === "lineage_changed"
-          ? "Rendered source lineage changed before provider submission."
+          ? "Registered source lineage changed before provider submission."
           : "A source was blocked or deactivated before provider submission.",
       },
       now,
@@ -1769,9 +1901,24 @@ Deno.serve(async (req: Request) => {
     const base44 = createClientFromRequest(req);
     const entities = base44.asServiceRole.entities;
     const jobEntity = entities.GrowthPublishJob;
-    const candidates = await candidateRows(jobEntity, now.getTime(), limit);
+    const expiredReservations = await expiredReservationRows(
+      jobEntity,
+      now,
+      limit,
+    );
+    const remaining = Math.max(0, limit - expiredReservations.length);
+    const candidates = remaining
+      ? await candidateRows(jobEntity, now.getTime(), remaining)
+      : [];
     const states: Record<string, number> = {};
     let processed = 0;
+
+    for (const reservation of expiredReservations) {
+      const state = await sweepExpiredReservation(entities, reservation, now);
+      if (!state) continue;
+      states[state] = (states[state] || 0) + 1;
+      processed += 1;
+    }
 
     for (const candidate of candidates) {
       const duplicate = await suppressDuplicatePublishJob(jobEntity, candidate);
@@ -1926,13 +2073,13 @@ Deno.serve(async (req: Request) => {
       entities.GrowthPublishHeartbeat,
       config,
       new Date().toISOString(),
-      candidates.length,
+      expiredReservations.length + candidates.length,
       processed,
     );
     if (!heartbeatSaved) throw new Error("publisher_heartbeat_not_persisted");
     return response({
       success: true,
-      inspected: candidates.length,
+      inspected: expiredReservations.length + candidates.length,
       processed,
       states,
     });

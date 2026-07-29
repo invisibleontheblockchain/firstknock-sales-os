@@ -35,8 +35,8 @@ duplicate creative into public posts.
 
 The repository now includes the first safe operating layer:
 
-- service-only `GrowthSourceAsset`, `GrowthCreativeArtifact`, `GrowthPublishJob`, and
-  `GrowthPublishHeartbeat` entities;
+- service-only `GrowthSourceAsset`, `GrowthCreativeArtifact`, `GrowthContentBatch`,
+  `GrowthPublishJob`, and `GrowthPublishHeartbeat` entities;
 - an executable Node/FFmpeg renderer with exact source hashes, deterministic crop/trim
   recipes, 1080x1920 H.264 exports, technical probing, full-SHA output keys, and a
   bounded render-result manifest;
@@ -47,6 +47,28 @@ The repository now includes the first safe operating layer:
   sanitized summaries;
 - optional schema-validated Instagram and TikTok draft generation behind
   `GROWTH_CONTENT_GENERATION_ENABLED`;
+- an evidence-bound daily batch compiler that accepts only a statically allowlisted
+  trusted donor pack, reloads the exact reviewed fixed-age metric, excludes Hold
+  decisions, reserves two or three distinct safe source hashes under a seven-day
+  target-date cooldown, rejects aliases of the same bytes, and emits a complete paired
+  Instagram/TikTok `growth-render-pack.v1`;
+- a durable generation lease and request hash, so an exact retry returns the stored
+  canonical pack bytes without another model call while concurrent or changed requests
+  fail closed; the request also binds the exact sanitized source summaries sent to the
+  model;
+- a reviewed-parent lineage lock: a `ready` or `render_authorized` descendant, or one
+  with an unexpired `generating` lease, prevents the parent Repeat/Iterate/Hold decision
+  from being rewritten; an unused downstream batch must be revoked before re-review;
+- generated-public-copy validation that rejects explicit URLs, `www`, bare domains,
+  domain paths, social handles, email addresses, and phone numbers before a batch can
+  become ready;
+- durable 28-day generated-hook reservations, exact Phoenix cadence slots at 9:30 AM,
+  1:30 PM, and 6:30 PM, and sent-post history that remains effective even if an
+  approval is later revoked;
+- owner-only authorization of the exact generated pack before its hosted render result
+  can use the dynamic import path; imported generated renditions remain unapproved and
+  must still pass the normal privacy, demo-label, claims, media-rights, and visual
+  inspection gates;
 - editable manual drafts when generation is disabled;
 - blocking privacy, demo-data, claims, and media-rights review;
 - fenced source safety and render-identity changes that cancel dependent queued work
@@ -57,6 +79,9 @@ The repository now includes the first safe operating layer:
   all four passed review gates;
 - scheduling bound to the approved hash, exact Buffer organization/channel, UTC due
   time, immutable media origin, and request hash;
+- a durable `reservation_pending` publish-job row created before the final global
+  source-cooldown and hook-dedupe checks, so overlapping schedulers cannot both claim
+  the same provisional capacity;
 - artifact-key compare-and-set scheduling locks plus worker-side canonical-job
   suppression, so duplicate artifact or job rows cannot produce two provider posts;
 - owner revocation fenced against those scheduling locks, with approval and lease
@@ -66,6 +91,11 @@ The repository now includes the first safe operating layer:
   report delivery ready after a recent authenticated scheduler run;
 - a pre-publish fetch that recomputes SHA-256 from the rendition bytes on the configured
   FirstKnock media origin before Buffer receives the URL;
+- an immutable source-lineage snapshot on each publish job, with source key, opaque
+  reference, and SHA-256 rechecked against the current active privacy-safe source by
+  the worker before provider submission;
+- an expired-reservation repair sweep that fences abandoned `reservation_pending` rows,
+  cancels their local measurement plans, and never contacts Buffer or fetches media;
 - a Buffer-channel identity check that rejects the wrong organization, platform,
   disconnected, locked, or paused queue before `createPost`;
 - ambiguous-create reconciliation that never blindly replays `createPost`;
@@ -90,6 +120,12 @@ previews without uploading or copying the source package. The neutral `/start` l
 path and platform-specific UTM links preserve Instagram and TikTok identity. No public
 rendition host, Buffer credentials, live scheduler, automated TikTok reach import, or
 social account is connected by this code change.
+
+The five safe starter sources are enough for only two two-concept days under the
+seven-day source cooldown. A continuous two-post daily rotation requires at least 14
+distinct safe sources; three posts daily requires 21. The compiler reports
+`insufficient_eligible_donors` when the trusted inventory is exhausted. It does not
+silently reuse a source early.
 
 TikTok reach and engagement can be entered manually in Growth Dashboard today and join
 to TikTok `/start` conversions by content ID. Automatic provider ingestion remains a
@@ -185,8 +221,10 @@ Every canonical concept contains:
 - platform-native caption and disclosure fields; and
 - an explicit privacy and claim-review state.
 
-The generator may create hook, length, framing, CTA, and format variants. It must not
-change multiple major variables inside one comparison group. It must also:
+The editorial target is to vary hook, length, framing, CTA, or format without changing
+several major variables inside one comparison group. The v1 measured compiler does not
+mechanically prove that causal constraint; the owner verifies it before authorization.
+The system and operator must also:
 
 1. avoid reusing the same source clip inside seven days;
 2. avoid near-duplicate hooks inside the active 28-day window;
@@ -196,6 +234,57 @@ change multiple major variables inside one comparison group. It must also:
 5. keep synthetic/demo claims visibly distinct from verified customer results; and
 6. never schedule an artifact that is unapproved, privacy-blocked, or missing a stable
    media URL.
+
+### Evidence-bound next batch
+
+`build_next_batch` is intentionally narrower than the free-form draft generator:
+
+1. Select one current `reviewed` Repeat or Iterate item from the fixed-age action queue.
+2. Choose a Phoenix target date and two or three concepts.
+3. Supply the exact statically allowlisted starter render pack. A generated or merely
+   authorized pack can never become a recursive seed trust root.
+4. The server reloads the canonical plan and metric, recomputes the metric fingerprint,
+   verifies the 24-hour fixed-age window, and hashes the decision, operator note, and
+   review timestamps.
+5. It selects distinct publish-candidate donor pairs, verifies their registered source
+   references and hashes, and reserves the immutable source hashes against active
+   batches and actual sent-post history inside seven days.
+6. The model receives only sanitized summaries, existing public creative context, the
+   fixed-age social metrics, and the operator interpretation. The server—not the
+   model—owns IDs, source lineage, render recipes, disclosure, CTA URLs, platforms, and
+   `ai_generated: true`. Public generated fields reject explicit URLs, `www`, bare
+   domains and domain paths, social handles, email addresses, phone numbers, digits,
+   currency, multipliers, testimonials, guarantees, and common unsupported-result
+   language before a pack can become ready.
+7. The exact canonical pack is stored in `GrowthContentBatch`. Download and inspect it,
+   then the owner may authorize that SHA-256 for rendering/import.
+8. Authorization is not content approval and does not publish. After rendering and
+   import, every rendition still starts as `draft_ready`, `pending`, and
+   `not_approved`.
+9. Each imported generated rendition retains its batch key, Phoenix target date, and
+   morning/midday/evening slot. Scheduling must use the exact reserved cadence instant;
+   the target date cannot drift after source cooldown was calculated.
+
+The reviewed parent is a lineage root, not mutable prompt text. While its descendant has
+an unexpired generation lease or is `ready` or `render_authorized`, another review is
+rejected. If that downstream batch will not be used, revoke it before changing the
+parent decision. Revoke imported rendition approvals and queued deliveries first when
+required. A batch with durable sent evidence cannot be revoked: published/sent
+timestamps, source cooldown, and hook history remain immutable operating evidence even
+if an approval is later revoked. An expired abandoned generation lease does not
+permanently lock the parent.
+
+The current decision hash binds social-platform evidence plus a human decision note.
+It does not yet bind an immutable downstream activation, paid, or retained-user
+checkpoint. Treat the note as the operator's conversion interpretation; never submit
+client-supplied conversion totals as trusted generation evidence.
+
+Repeat/Iterate is also a human-controlled editorial decision in this version. The
+compiler gives the decision and free-text major variable to the model, but it does not
+mechanically prove that an Iterate draft changed only one creative field. The owner
+must compare the downloaded donor and generated pack before authorization; downstream
+results should not be described as a clean single-variable experiment unless that
+inspection confirms it.
 
 ## Platform identity and attribution
 
@@ -291,11 +380,32 @@ idempotency key =
   provider + organization + channel + platform + platform_content_id + artifact_sha256
 ```
 
+Scheduling first persists a provisional `reservation_pending` job containing the exact
+approved artifact identity, due time, hook, generated-batch identity, and source
+key/reference/SHA-256 snapshot. With that row durable, the endpoint re-reads active
+batches, artifacts, and publish jobs and rechecks the seven-day source and 28-day hook
+reservations before promoting the row to `queued`. A provisional reservation blocks
+competing work only while its fenced lease is live.
+
+This is separate from the durable batch reservation: an active `GrowthContentBatch`
+retains its selected source keys and hashes plus generated-hook set while it is
+`generating` with a live lease, `ready`, or `render_authorized`. Scheduling therefore
+cannot race around either an in-progress compiler claim or another scheduler's
+provisional claim.
+
+The only paired-distribution exemption is exact and same-day: Instagram and TikTok
+renditions may share source and hook capacity when they have the same canonical
+`concept_id`, the same render-pack SHA-256, the same source reservation tokens, opposite
+platforms, and the same Phoenix day. This permits the intended two-platform rendition
+of one concept; it does not exempt unrelated, mutated, cross-day, or same-platform
+creative.
+
 The worker:
 
 1. leases a bounded batch of due jobs;
-2. verifies approval, exact registered source lineage, media metadata, immutable
-   origin, and fetched rendition bytes;
+2. verifies approval and rechecks the job's immutable source key/reference/SHA-256
+   snapshot against exactly one current active privacy-safe source, then verifies media
+   metadata, immutable origin, and fetched rendition bytes;
 3. creates or reconciles the provider post;
 4. stores the provider post ID and scheduled time;
 5. polls or receives status until sent or terminally failed;
@@ -304,6 +414,13 @@ The worker:
    no-provider failure or owner cancellation can become terminal; and
 8. never creates a second provider post after an ambiguous response without first
    reconciling.
+
+Before normal delivery work, the authenticated worker sweeps expired provisional
+reservations. It first fences the row into `delivery_reconcile`, then cancels the local
+platform measurement plan and finalizes the job as `canceled` or leaves a retryable
+repair state. That sweep performs no provider request and no remote-media fetch. It
+still depends on an operator deploying and invoking the recurring worker; the
+repository does not run that scheduler by itself.
 
 An owner may cancel a job locally only while it is still `queued` or `retry_wait` and
 has no provider post ID. Once a job is processing, ambiguous, or known to Buffer, the
@@ -340,12 +457,26 @@ Keep `GrowthContentPlan` as the experiment and editorial brief. Add:
   `publish_ready`, or `superseded`; and
 - reviewer, review time, and immutable reviewed hash.
 
+### GrowthContentBatch
+
+- reviewed parent identity plus exact evidence and review hashes;
+- Phoenix target date, two or three slots, and ordered source/donor lineage;
+- exact sanitized-prompt-source hash plus ordered generated-hook reservations and hash;
+- statically trusted seed-pack hash and generation request hash;
+- `generating`, `ready`, `render_authorized`, `failed`, `superseded`, `revoked`
+  lifecycle with a fenced lease and attempt count;
+- bounded canonical render-pack JSON and SHA-256; and
+- owner authorization or revocation audit fields with no provider credentials.
+
 ### GrowthPublishJob
 
 - artifact key and immutable artifact hash;
 - provider, channel, account, and scheduled time;
+- immutable source key/reference/SHA-256 lineage, hook, render-pack, and generated-batch
+  snapshots used for cooldown and worker preflight;
 - idempotency key and request hash;
-- state, attempt count, lease, retry time, and last safe error;
+- provisional `reservation_pending`, queued/delivery states, attempt count, fenced
+  lease, retry time, and last safe error;
 - a `measurement_retry` state for a sent provider post whose local publication clock
   still needs to be written;
 - a `delivery_reconcile` state and terminal target for a no-provider failure or owner
@@ -360,7 +491,7 @@ Keep `GrowthContentPlan` as the experiment and editorial brief. Add:
 - bounded inspected/processed counts; and
 - no API key, worker secret, access token, or provider credential.
 
-All four entities remain service-role-only. Owner/admin functions return aggregate or
+All five entities remain service-role-only. Owner/admin functions return aggregate or
 sanitized data and never expose provider tokens or raw private-media URLs.
 
 ## Rendering boundary
