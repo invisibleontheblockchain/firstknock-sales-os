@@ -53,7 +53,7 @@ import { validateCanvasBoundary } from '@/components/canvas/canvasPlannerUtils';
 import { fetchAllCanvasTeamMembers } from '@/components/canvas/canvasRosterPagination';
 import { buildFullAddress } from '@/components/logic/navigation';
 import { collectUnretiredOutcomes, confirmOutcomeRow } from '@/components/logic/optimisticOutcomes';
-import { isKnockActivityLog } from '@/lib/interactionLogs'; import { scopeInteractionLogsToAccount } from '@/lib/accountInteractionLogs';
+import { isKnockActivityLog } from '@/lib/interactionLogs'; import { scopeInteractionLogsToAccount } from '@/lib/accountInteractionLogs'; import { buildLogsByAddress, withDerivedStatus } from '@/components/logic/routePropertyStatus';
 import {
     buildRepRouteScope,
     buildSavedRouteQueryFilters,
@@ -1520,7 +1520,7 @@ export default function Home() {
 
     // Hydrate Saved Routes for Map Display
     const hydratedSavedRoutes = useMemo(() => {
-        const propsByHash = new Map();
+        const logsByAddress = buildLogsByAddress(logs); const propsByHash = new Map();
         effectiveProperties.forEach(p => {
             if (p.address_hash) propsByHash.set(p.address_hash, p);
             if (p.legacy_hash) propsByHash.set(p.legacy_hash, p);
@@ -1535,9 +1535,9 @@ export default function Home() {
                 const hydratedProps = Array.isArray(route.properties)
                     ? route.properties.filter(isRenderableMapPoint)
                     : [];
-                const allRouteProps = hydratedProps.length > 0 ? hydratedProps : routeHashes
+                const allRouteProps = withDerivedStatus(hydratedProps.length > 0 ? hydratedProps : routeHashes
                     .map(hash => propsByHash.get(hash))
-                    .filter(Boolean);
+                    .filter(Boolean), logsByAddress, propsByHash);
                 // Saved routes ALWAYS display their full door set — the global sold-date window
                 // must never silently trim or hide a saved route on the map/Route Command.
                 // (It once turned a 33-door route into 31 in Route Command, and a narrow window
@@ -1565,7 +1565,7 @@ export default function Home() {
                 };
             }).filter(r => r.houseCount > 0)
             .sort((a, b) => (b.competitivenessScore || 0) - (a.competitivenessScore || 0));
-    }, [savedRoutes, serverHydratedSavedRoutes, effectiveProperties, repFilter]);
+    }, [savedRoutes, serverHydratedSavedRoutes, effectiveProperties, repFilter, logs]);
 
     useEffect(() => {
         if (!hydratedSavedRoutes.length || routeStatusView === 'all') return;
