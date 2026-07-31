@@ -14,6 +14,7 @@ import AppointmentsFilterBar from '@/components/appointments/AppointmentsFilterB
 import TodayFocusBar from '@/components/appointments/TodayFocusBar';
 import { fetchCanvasCallbackRows } from '@/components/appointments/canvasCallbackRows';
 import { openInMaps } from '@/components/logic/navigation';
+import { useNavigate } from 'react-router-dom';
 
 const callbackKey = (item) => `${item.address_hash || ''}|${item.scheduled_date || item.next_eligible_date || ''}|${item.route_id || ''}`;
 const callbackLogId = (item) => (item?.notes || '').match(/callback_log:([^\]]+)/)?.[1] || (item?._source === 'interaction_log' ? String(item.id || '').replace('callback-log-', '') : null);
@@ -26,6 +27,7 @@ const safeIsoDate = (value, fallback) => {
 
 export default function Appointments() {
     const queryClient = useQueryClient();
+    const navigate = useNavigate();
     const [selectedAppointment, setSelectedAppointment] = useState(null);
     const [showAutoSchedule, setShowAutoSchedule] = useState(false);
     const [showNewForm, setShowNewForm] = useState(false);
@@ -382,7 +384,10 @@ export default function Appointments() {
             toast.error('This callback is visible, but its address is still being hydrated.');
             return;
         }
-        window.location.href = `/Home?${buildAppointmentMapParams(appointment).toString()}`;
+        // Client-side navigation keeps the app booted — a full page reload blanked
+        // the screen and re-fetched every territory query before the map appeared.
+        toast.loading('Opening the map...', { id: 'appointment-map', duration: 4000 });
+        navigate(`/Home?${buildAppointmentMapParams(appointment).toString()}`);
     };
 
     const handleRunAppointment = (appointment) => {

@@ -4,6 +4,7 @@ import { MapContainer, TileLayer } from 'react-leaflet';
 import L from '../components/map/leafletPatches';
 import AnalyzeFiltersPanel from '../components/map/AnalyzeFiltersPanel';
 import HomeUnifiedSearch from '@/components/search/HomeUnifiedSearch';
+import useAppointmentMapFocus from '@/hooks/useAppointmentMapFocus';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { storage } from '@/lib/storage';
@@ -448,7 +449,6 @@ export default function Home() {
         includeUnverifiedSales: false,
     });
     const mapRef = useRef(null);
-    const appointmentMapFocusHandledRef = useRef(false);
     const outcomeQueueRef = useRef(Promise.resolve());
     const pendingOutcomesRef = useRef(new Map());
     const showChecklistRef = useRef(false);
@@ -1656,59 +1656,10 @@ export default function Home() {
         }
     }, [savedRoutes, effectiveProperties, activeRoute]);
 
-    // Handle appointment deep links from the Appointments tab.
-    useEffect(() => {
-        const params = new URLSearchParams(window.location.search);
-        if (params.get('appointment') !== '1' || appointmentMapFocusHandledRef.current) return;
-
-        const savedRouteId = params.get('savedRoute');
-        const routeExistsHere = savedRouteId && savedRoutes.some(route => route.id === savedRouteId);
-        if (routeExistsHere && !activeRoute) return;
-
-        const focusHash = params.get('focus');
-        const hasLatLng = params.has('lat') && params.has('lng');
-        const lat = hasLatLng ? Number(params.get('lat')) : null;
-        const lng = hasLatLng ? Number(params.get('lng')) : null;
-        const hasValidLatLng = Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) > 0.0001 && Math.abs(lng) > 0.0001;
-        const address = params.get('address') || 'Appointment address';
-        const routeProps = activeRoute?.properties || activeRoute?.allProperties || [];
-        const allProps = [...routeProps, ...effectiveProperties];
-        const target = allProps.find((property) =>
-            focusHash && (
-                property.address_hash === focusHash ||
-                property.legacy_hash === focusHash ||
-                property.id === focusHash
-            )
-        ) || (hasValidLatLng ? {
-            id: focusHash || `appointment-${lat}-${lng}`,
-            address_hash: focusHash || `appointment-${lat}-${lng}`,
-            full_address: address,
-            address,
-            house_number: '',
-            street_name: address,
-            lat,
-            lng,
-            effective_status: 'CALLBACK'
-        } : null);
-
-        appointmentMapFocusHandledRef.current = true;
-        setModeRaw('analyze');
-        setShowRoutePanel(false);
-        setShowCompare(false);
-
-        const targetLat = Number(target?.lat);
-        const targetLng = Number(target?.lng);
-        if (Number.isFinite(targetLat) && Number.isFinite(targetLng) && Math.abs(targetLat) > 0.0001 && Math.abs(targetLng) > 0.0001) {
-            setSelectedProperty({ ...target, lat: targetLat, lng: targetLng });
-            if (mapRef.current) {
-                try { mapRef.current.setView([targetLat, targetLng], 18, { animate: true }); } catch { }
-            }
-            toast.success('Opened appointment on the map');
-        } else {
-            toast.error("Couldn't find this appointment on the map yet.");
-        }
-        window.history.replaceState({}, '', window.location.pathname);
-    }, [activeRoute, effectiveProperties]);
+    useAppointmentMapFocus({
+        savedRoutes, activeRoute, effectiveProperties, mapRef,
+        setMode: setModeRaw, setShowRoutePanel, setShowCompare, setSelectedProperty,
+    });
 
     // Generate routes with configurable houses per route
     const [routesGenerating, setRoutesGenerating] = useState(false);
