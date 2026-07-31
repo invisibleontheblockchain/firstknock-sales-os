@@ -12,11 +12,12 @@ import AppointmentDetail from '@/components/appointments/AppointmentDetail';
 import AutoSchedulePanel from '@/components/appointments/AutoSchedulePanel';
 import AppointmentsFilterBar from '@/components/appointments/AppointmentsFilterBar';
 import TodayFocusBar from '@/components/appointments/TodayFocusBar';
+import { fetchCanvasCallbackRows } from '@/components/appointments/canvasCallbackRows';
 import { openInMaps } from '@/components/logic/navigation';
 
 const callbackKey = (item) => `${item.address_hash || ''}|${item.scheduled_date || item.next_eligible_date || ''}|${item.route_id || ''}`;
 const callbackLogId = (item) => (item?.notes || '').match(/callback_log:([^\]]+)/)?.[1] || (item?._source === 'interaction_log' ? String(item.id || '').replace('callback-log-', '') : null);
-const isCallbackAppointment = (item) => item?._source === 'interaction_log' || item?.outcome === 'follow_up' || /callback/i.test(item?.notes || '');
+const isCallbackAppointment = (item) => item?._source === 'interaction_log' || item?._source === 'canvas_pin' || item?.outcome === 'follow_up' || /callback/i.test(item?.notes || '');
 
 const safeIsoDate = (value, fallback) => {
     const date = new Date(value || fallback || Date.now());
@@ -102,10 +103,44 @@ export default function Appointments() {
         enabled: !!user,
     });
 
-    const callbackHashes = useMemo(() => [...new Set((Array.isArray(logs) ? logs : [])
-        .filter((log) => log?.parsed_status === 'CALLBACK' && log.address_hash)
+    // Callbacks are queried on their own as well: the recent-activity window above
+    // is dominated by no-answers on a busy team, so a callback logged weeks ago
+    // would otherwise silently drop off this page.
+    const { data: callbackLogs = [] } = useQuery({
+        queryKey: ['callbackLogs-appts', tenantManagerId, userEmail],
+        queryFn: async () => {
+            const result = await base44.entities.InteractionLog.filter({ parsed_status: 'CALLBACK' }, '-created_date', 2000);
+            const rows = Array.isArray(result) ? result : (result?.items || []);
+            return rows.filter(belongsToCurrentAccount);
+        },
+        enabled: !!user,
+    });
+
+    // Every decision path that can produce a callback: Knock Mode outcomes,
+    // manager bulk "move to Callback" transitions, and imported knock history all
+    // land in InteractionLog, so one CALLBACK union covers them.
+    const decisionCallbackLogs = useMemo(() => {
+        const byId = new Map();
+        [...(Array.isArray(callbackLogs) ? callbackLogs : []), ...(Array.isArray(logs) ? logs : [])]
+            .filter((log) => log?.parsed_status === 'CALLBACK')
+            .forEach((log) => { if (log.id && !byId.has(log.id)) byId.set(log.id, log); });
+        return [...byId.values()];
+    }, [callbackLogs, logs]);
+
+    const { data: canvasCallbackRows = [] } = useQuery({
+        queryKey: ['canvasCallbacks-appts', tenantManagerId, user?.id],
+        staleTime: 1000 * 60 * 2,
+        queryFn: () => fetchCanvasCallbackRows({
+            isManager: user?.app_role !== 'rep',
+            managerId: tenantManagerId,
+        }),
+        enabled: !!user,
+    });
+
+    const callbackHashes = useMemo(() => [...new Set(decisionCallbackLogs
+        .filter((log) => log.address_hash)
         .map((log) => String(log.address_hash).trim())
-        .filter(Boolean))], [logs]);
+        .filter(Boolean))], [decisionCallbackLogs]);
 
     const { data: callbackRouteProperties = [] } = useQuery({
         queryKey: ['callbackRouteProperties-appts', user?.id, user?.team_manager_id, callbackHashes.join('|')],
@@ -161,8 +196,8 @@ export default function Appointments() {
             .map((appointment) => (appointment.notes || '').match(/callback_log:([^\]]+)/)?.[1])
             .filter(Boolean));
 
-        (Array.isArray(logs) ? logs : [])
-            .filter((log) => log?.parsed_status === 'CALLBACK' && log.address_hash && !deletedCallbackLogsRef.current.has(log.id))
+        decisionCallbackLogs
+            .filter((log) => log.address_hash && !deletedCallbackLogsRef.current.has(log.id))
             .forEach((log) => {
                 const scheduledDate = safeIsoDate(log.next_eligible_date, log.created_date);
                 const key = callbackKey({ ...log, scheduled_date: scheduledDate });
@@ -194,8 +229,15 @@ export default function Appointments() {
                 });
             });
 
+        // Canvas pins have no address_hash to dedupe against, so they are appended
+        // by their own stable pin id.
+        const existingIds = new Set(rows.map((row) => row.id));
+        (Array.isArray(canvasCallbackRows) ? canvasCallbackRows : []).forEach((row) => {
+            if (!existingIds.has(row.id)) rows.push(row);
+        });
+
         return rows;
-    }, [persistedAppointmentRows, logs, propertyByHash, routeNameById, tenantManagerId]);
+    }, [persistedAppointmentRows, decisionCallbackLogs, canvasCallbackRows, propertyByHash, routeNameById, tenantManagerId]);
 
     const stats = useMemo(() => {
         const all = appointmentRows;
@@ -314,6 +356,8 @@ export default function Appointments() {
     const handleRefresh = () => {
         queryClient.invalidateQueries({ queryKey: ['appointments'] });
         queryClient.invalidateQueries({ queryKey: ['interactionLogs-appts'] });
+        queryClient.invalidateQueries({ queryKey: ['callbackLogs-appts'] });
+        queryClient.invalidateQueries({ queryKey: ['canvasCallbacks-appts'] });
         queryClient.invalidateQueries({ queryKey: ['callbackRouteProperties-appts'] });
     };
 
@@ -354,6 +398,11 @@ export default function Appointments() {
     };
 
     const deleteAppointmentRecord = async (appointment) => {
+        // Canvas pins are owned by the Canvas campaign ledger; they are cleared in
+        // the field view, never by deleting an appointment row.
+        if (appointment._source === 'canvas_pin') {
+            throw new Error('Canvas callbacks are managed in the Canvas campaign.');
+        }
         const logId = callbackLogId(appointment);
         if (logId) deletedCallbackLogsRef.current.add(logId);
         if (appointment._source === 'interaction_log') {
@@ -388,7 +437,7 @@ export default function Appointments() {
             setSelectedAppointment(null);
             handleRefresh();
         },
-        onError: () => toast.error('Could not delete appointment'),
+        onError: (error) => toast.error(error?.message || 'Could not delete appointment'),
     });
 
     const deleteAllMutation = useMutation({
