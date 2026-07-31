@@ -4,6 +4,7 @@ import L from 'leaflet';
 import { DarkRoomClient } from '@/components/logic/neonClient';
 import { CONFIDENCE_COLORS } from '@/components/map/ConfidenceLegend';
 import CanvasZoneOverlay from './CanvasZoneOverlay';
+import StateBoundariesLayer from './StateBoundariesLayer';
 import { getCompletedPinColor } from '@/components/routes/routeRerunUtils';
 import { isSoldDateInCustomOwnershipRange, normalizeOwnershipRangeDays } from '@/components/logic/soldDateRange';
 import { routePropertyOrderFingerprint } from '@/components/logic/routeRoadContext';
@@ -597,6 +598,7 @@ const ManagerMapLayers = React.memo(function ManagerMapLayers({
 
     return (
         <>
+            <StateBoundariesLayer zoomLevel={zoomLevel} />
             <CanvasZoneOverlay routeMode={routeMode} preview={canvasZonePreview} />
 
             {renderPrecisionLayers && <>
