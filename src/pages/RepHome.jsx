@@ -43,6 +43,7 @@ import RepMapView from '@/components/rep/RepMapView';
 import CanvasFieldView from '@/components/rep/CanvasFieldView';
 import { getMyCanvasAssignments } from '@/components/canvas/canvasProductionClient';
 import RepHeader from '@/components/rep/RepHeader';
+import RepUnifiedSearch from '@/components/rep/RepUnifiedSearch';
 import PropertyCard from '@/components/rep/PropertyCard';
 import PropertyDetailSheet from '@/components/rep/PropertyDetailSheet';
 import {
@@ -1733,6 +1734,20 @@ export default function RepHome() {
 
             {/* Filter tabs + search */}
             <div className="px-3 pt-2 pb-2 space-y-2 border-b border-white/10 bg-black/70 backdrop-blur-xl shadow-[0_12px_36px_rgba(0,0,0,0.32)]">
+                {/* Account-wide customer / address search (callback handling) */}
+                <RepUnifiedSearch
+                  routeProperties={routeProperties}
+                  onOpenProperty={(property) => {
+                    const index = routeProperties.findIndex((stop) => stop.address_hash === property.address_hash);
+                    setSelectedProperty(property);
+                    setSelectedPropertyIndex(index >= 0 ? index : null);
+                  }}
+                  onLocateOnRoute={(property) => {
+                    setFocusProperty(property);
+                    setShowMap(true);
+                  }}
+                />
+
                 {/* Top Row: Segmented Control */}
                 <div className="flex bg-white/[0.04] p-0.5 rounded-xl border border-white/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
                     {[

@@ -1,33 +1,9 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { MapContainer, TileLayer } from 'react-leaflet';
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
-
-// Fix leaflet marker icons
-delete L.Icon.Default.prototype._getIconUrl;
-L.Icon.Default.mergeOptions({
-    iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
-    iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
-    shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
-});
-
-// Fix Leaflet unmount error during scroll wheel zoom
-const originalGetMapPanePos = L.Map.prototype._getMapPanePos;
-if (originalGetMapPanePos) {
-    L.Map.prototype._getMapPanePos = function () {
-        if (!this._mapPane) return L.point(0, 0);
-        return originalGetMapPanePos.call(this);
-    };
-}
-
-// Fix leaflet fast-unmount/interaction error
-const originalSetPosition = L.DomUtil.setPosition;
-if (originalSetPosition) {
-    L.DomUtil.setPosition = function (el, point) {
-        if (!el) return;
-        return originalSetPosition.call(this, el, point);
-    };
-}
+// Leaflet icon defaults and the unmount/scroll-zoom patches live in one module.
+import L from '../components/map/leafletPatches';
+import AnalyzeFiltersPanel from '../components/map/AnalyzeFiltersPanel';
+import HomeUnifiedSearch from '@/components/search/HomeUnifiedSearch';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { storage } from '@/lib/storage';
@@ -3207,84 +3183,35 @@ export default function Home() {
                 </React.Suspense>
             )}
 
+            {/* Unified customer / address / county search */}
+            <HomeUnifiedSearch
+                mapRef={mapRef}
+                properties={effectiveProperties}
+                workingAreaCenteredRef={hasCenteredAccountWorkingAreaRef}
+                onOpenProperty={(property) => {
+                    setModeRaw('analyze');
+                    setSelectedProperty(property);
+                }}
+                onRefreshProperties={() => Promise.all([
+                    queryClient.invalidateQueries({ queryKey: ['masterProperties'] }),
+                    queryClient.invalidateQueries({ queryKey: ['localProperties'] }),
+                ])}
+            />
+
             {/* Filter Panel - ANALYZE MODE */}
             {showCompare && mode === 'analyze' && (
-                <div className="fixed inset-0 z-[2000]">
-                    <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowCompare(false)} />
-                    <div
-                        className="absolute top-0 right-0 bottom-0 w-full max-w-md overflow-hidden pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] backdrop-blur-xl shadow-2xl animate-in slide-in-from-right duration-300"
-                        style={{ background: 'rgba(10, 10, 10, 0.95)', borderLeft: '1px solid rgba(255, 255, 255, 0.1)' }}
-                    >
-                        <div className="p-5 border-b flex justify-between items-center" style={{ borderColor: BRAND.charcoal }}>
-                            <h2 className="flex items-center gap-2 font-bold tracking-wide" style={{ color: BRAND.gold }}>
-                                <BarChart3 className="w-5 h-5" />
-                                ROUTE FILTERS
-                            </h2>
-                            <button onClick={() => setShowCompare(false)} className="p-4 -mr-2 hover:bg-[#333] rounded-full transition-colors">
-                                <X className="w-6 h-6" style={{ color: BRAND.offWhite }} />
-                            </button>
-                        </div>
-
-                        <div className="p-5 space-y-6 overflow-y-auto h-[calc(100%-70px)]">
-                            <div className="space-y-4">
-                                <div>
-                                    <label className="text-xs font-bold tracking-wide mb-3 block" style={{ color: BRAND.offWhite }}>
-                                        FILTER BY REP
-                                    </label>
-                                    <select
-                                        value={repFilter}
-                                        onChange={(e) => setRepFilter(e.target.value)}
-                                        className="w-full px-3 py-2 rounded-lg text-sm bg-[#1F1F1F] text-white border border-[#333]"
-                                    >
-                                        <option value="all">All Reps</option>
-                                        {uniqueReps.map(rep => (
-                                            <option key={rep} value={rep}>{rep}</option>
-                                        ))}
-                                    </select>
-                                </div>
-
-                                <div>
-                                    <label className="text-xs font-bold tracking-wide mb-3 block" style={{ color: BRAND.offWhite }}>
-                                        FILTER BY ZIP CODE
-                                    </label>
-                                    <select
-                                        value={analyzeZipFilter}
-                                        onChange={(e) => setAnalyzeZipFilter(e.target.value)}
-                                        className="w-full px-3 py-2 rounded-lg text-sm bg-[#1F1F1F] text-white border border-[#333]"
-                                    >
-                                        <option value="all">All Zip Codes</option>
-                                        {uniqueZips.map(zip => (
-                                            <option key={zip} value={zip}>{zip}</option>
-                                        ))}
-                                    </select>
-                                </div>
-
-                                {/* Sold Date Filter moved to Map Settings Panel */}
-
-                                <div>
-                                    <label className="text-xs font-bold tracking-wide mb-3 block" style={{ color: BRAND.offWhite }}>
-                                        <Filter className="w-3 h-3 inline mr-1" /> SORT BY
-                                    </label>
-                                    <div className="flex gap-2 flex-wrap">
-                                        {[{ id: 'score', label: 'SCORE' }, { id: 'houses', label: 'HOUSES' }, { id: 'distance', label: 'DISTANCE' }, { id: 'recent_sale', label: 'RECENT SALE' }].map(opt => (
-                                            <button
-                                                key={opt.id}
-                                                onClick={() => setSortBy(opt.id)}
-                                                className="px-3 py-2 rounded-lg text-xs font-bold tracking-wide transition-all"
-                                                style={{
-                                                    background: sortBy === opt.id ? BRAND.gold : BRAND.charcoal,
-                                                    color: sortBy === opt.id ? BRAND.voidBlack : BRAND.offWhite
-                                                }}
-                                            >
-                                                {opt.label}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                <AnalyzeFiltersPanel
+                    BRAND={BRAND}
+                    repFilter={repFilter}
+                    setRepFilter={setRepFilter}
+                    uniqueReps={uniqueReps}
+                    analyzeZipFilter={analyzeZipFilter}
+                    setAnalyzeZipFilter={setAnalyzeZipFilter}
+                    uniqueZips={uniqueZips}
+                    sortBy={sortBy}
+                    setSortBy={setSortBy}
+                    onClose={() => setShowCompare(false)}
+                />
             )}
 
             {/* Route Builder Settings - GENERATE MODE */}

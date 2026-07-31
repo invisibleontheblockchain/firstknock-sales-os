@@ -59,6 +59,10 @@
       "type": "string",
       "description": "H3 Resolution 9 index for spatial clustering"
     },
+    "manager_id": {
+      "type": "string",
+      "description": "Account manager id stamped on manually created leads so the owning account is recorded"
+    },
     "original_status": {
       "type": "string",
       "enum": [
@@ -93,6 +97,10 @@
     "owner_full_name": {
       "type": "string",
       "description": "Owner full name returned by BatchData owner dataset"
+    },
+    "owner_phone": {
+      "type": "string",
+      "description": "Contact phone captured when a lead is added manually from a searched address"
     },
     "description": {
       "type": "string",
