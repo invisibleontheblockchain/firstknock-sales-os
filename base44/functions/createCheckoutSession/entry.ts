@@ -310,6 +310,7 @@ async function activateTrialSubscription({
         const targetPrice = await stripe.prices.create({
             currency: 'usd',
             unit_amount: plan.amountCents,
+            tax_behavior: 'exclusive',
             recurring: { interval: 'month' },
             product_data: {
                 name: plan.productName,
@@ -327,6 +328,7 @@ async function activateTrialSubscription({
 
     const updateParams: any = {
         trial_end: 'now',
+        automatic_tax: { enabled: true },
         payment_behavior: 'pending_if_incomplete',
         proration_behavior: 'always_invoice',
         expand: ['latest_invoice.payment_intent']
@@ -510,7 +512,10 @@ Deno.serve(async (req: Request) => {
                         metadata: { subscription_tier: planId }
                     },
                     recurring: { interval: 'month' },
-                    unit_amount: plan.amountCents
+                    unit_amount: plan.amountCents,
+                    // Plan prices are pre-tax; Stripe Tax adds the customer's
+                    // sales tax on top of the listed amount.
+                    tax_behavior: 'exclusive'
                 },
                 quantity
             }],
@@ -518,6 +523,10 @@ Deno.serve(async (req: Request) => {
                 metadata,
                 ...(trialDays === 7 ? { trial_period_days: 7 } : {})
             },
+            automatic_tax: { enabled: true },
+            billing_address_collection: 'required',
+            customer_update: { address: 'auto', name: 'auto' },
+            tax_id_collection: { enabled: true },
             success_url: safeSuccessUrl,
             cancel_url: safeCancelUrl,
             payment_method_collection: 'always',
