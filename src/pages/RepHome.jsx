@@ -1733,8 +1733,9 @@ export default function RepHome() {
       }
 
             {/* Filter tabs + search */}
-            <div className="px-3 sm:px-[max(0.75rem,calc((100%-48rem)/2))] pt-2 pb-2 space-y-2 border-b border-white/10 bg-black/70 backdrop-blur-xl shadow-[0_12px_36px_rgba(0,0,0,0.32)]">
+            <div className="px-3 sm:px-[max(0.75rem,calc((100%-48rem)/2))] lg:px-4 pt-2 pb-2 space-y-2 lg:flex lg:items-center lg:gap-2 lg:space-y-0 border-b border-white/10 bg-black/70 backdrop-blur-xl shadow-[0_12px_36px_rgba(0,0,0,0.32)]">
                 {/* Account-wide customer / address search (callback handling) */}
+                <div className="lg:flex-1 lg:min-w-0">
                 <RepUnifiedSearch
                   routeProperties={routeProperties}
                   onOpenProperty={(property) => {
@@ -1747,9 +1748,10 @@ export default function RepHome() {
                     setShowMap(true);
                   }}
                 />
+                </div>
 
                 {/* Top Row: Segmented Control */}
-                <div className="flex bg-white/[0.04] p-0.5 rounded-xl border border-white/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+                <div className="flex lg:shrink-0 bg-white/[0.04] p-0.5 rounded-xl border border-white/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
                     {[
           { id: 'todo', label: `Todo ${stats.todo}` },
           { id: 'done', label: `Done ${stats.done}` },
@@ -1768,7 +1770,7 @@ export default function RepHome() {
                 </div>
 
                 {/* Bottom Row: Date Filter & Search */}
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 lg:flex-1 lg:min-w-0">
                     {/* Sold Date Filter */}
                     <div className="relative flex-1 min-w-0">
                         <select
