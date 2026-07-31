@@ -411,8 +411,8 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
                 {/* Title Row */}
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2.5 min-w-0">
-                        <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: BRAND.gold }}>
-                            <Navigation className="w-4 h-4" style={{ color: BRAND.voidBlack }} />
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[#2EEB57]/30 bg-[#2EEB57]/10">
+                            <Navigation className="h-4 w-4 text-[#39FF4A]" />
                         </div>
                         <div className="min-w-0">
                             <h2 className="text-base font-bold leading-tight truncate" style={{ color: BRAND.offWhite }}>{displayRoute.name}</h2>
@@ -429,17 +429,17 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
 
                 {/* Progress Bar */}
                 <div className="flex items-center gap-3">
-                    <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: '#222' }}>
-                        <div className="h-full rounded-full transition-all duration-500" style={{ width: `${progressPct}%`, background: BRAND.gold }} />
+                    <div className="flex-1 h-1.5 rounded-full overflow-hidden border border-white/10 bg-black/60">
+                        <div className="h-full rounded-full transition-all duration-500 shadow-[0_0_14px_rgba(46,235,87,0.55)]" style={{ width: `${progressPct}%`, background: 'linear-gradient(90deg, #2EEB57, #39FF4A)' }} />
                     </div>
-                    <span className="text-[11px] font-bold tabular-nums shrink-0" style={{ color: BRAND.gold }}>
-                        {stats.done}/{stats.total}
+                    <span className="shrink-0 font-mono text-[11px] font-black tabular-nums text-white">
+                        {stats.done}<span className="text-white/35">/{stats.total}</span>
                     </span>
                 </div>
 
                 {/* Filters + Start Route */}
-                <div className="flex flex-wrap items-center gap-2">
-                    <div className="flex min-w-[190px] flex-1 gap-1">
+                <div className="grid grid-cols-2 items-center gap-2 sm:flex sm:flex-wrap">
+                    <div className="col-span-2 grid grid-cols-3 gap-1 rounded-xl border border-white/10 bg-white/[0.04] p-1 sm:flex sm:flex-1">
                         {[
                             { id: 'all', label: 'All' },
                             { id: 'pending', label: `Todo ${stats.pending}` },
@@ -448,11 +448,11 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
                             <button
                                 key={f.id}
                                 onClick={() => setFilter(f.id)}
-                                className="px-2.5 py-1.5 rounded-lg text-[10px] font-bold tracking-wide transition-colors"
-                                style={{
-                                    background: filter === f.id ? BRAND.gold : '#1a1a1a',
-                                    color: filter === f.id ? BRAND.voidBlack : '#888'
-                                }}
+                                className={`min-h-8 rounded-lg px-2.5 text-[10px] font-black uppercase tracking-[0.08em] transition-colors sm:flex-1 ${
+                                    filter === f.id
+                                        ? 'border border-[#2EEB57]/30 bg-[#2EEB57]/12 text-[#86efac]'
+                                        : 'border border-transparent text-white/50 hover:text-white'
+                                }`}
                             >
                                 {f.label}
                             </button>
@@ -462,7 +462,7 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
                         <select
                             value={activeRouteSoldFilter}
                             onChange={(e) => setActiveRouteSoldFilter(e.target.value)}
-                            className="bg-[#1a1a1a] text-[#888] text-[10px] font-bold px-2 py-1.5 rounded-lg border-none outline-none cursor-pointer min-w-0"
+                            className="min-h-9 min-w-0 cursor-pointer rounded-xl border border-white/10 bg-white/[0.04] px-2 text-[10px] font-bold text-white/70 outline-none"
                         >
                             <option value="all">All Time</option>
                             <option value="0.25">1 Week</option>
@@ -478,7 +478,7 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
                         <select
                             value={decisionFilter}
                             onChange={(e) => setDecisionFilter(e.target.value)}
-                            className="bg-[#1a1a1a] text-[#888] text-[10px] font-bold px-2 py-1.5 rounded-lg border-none outline-none cursor-pointer min-w-0"
+                            className="min-h-9 min-w-0 cursor-pointer rounded-xl border border-white/10 bg-white/[0.04] px-2 text-[10px] font-bold text-white/70 outline-none"
                         >
                             <option value="all">All Decisions</option>
                             <option value="SOLD">Sold</option>
@@ -492,9 +492,8 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
                     <button
                         onClick={handleRouteNavigation}
                         disabled={remainingProperties.length === 0 && !hasNextNavigationBatch}
-                        className="ml-auto flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[10px] font-bold tracking-wide disabled:cursor-not-allowed disabled:opacity-40"
-                        style={{ background: BRAND.gold, color: BRAND.voidBlack }}
-                    >
+                        className="flex min-h-9 items-center justify-center gap-1.5 rounded-xl border border-[#2EEB57]/25 bg-[#2EEB57]/10 px-3 text-[10px] font-black uppercase tracking-[0.08em] text-[#86efac] transition hover:border-[#2EEB57]/45 hover:bg-[#2EEB57]/15 active:scale-95 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/5 disabled:text-white/30 sm:ml-auto"
+                        >
                         <Navigation className="w-3 h-3" />
                         {hasNextNavigationBatch ? 'NEXT BATCH' : canResumeNavigationBatch ? 'RESUME' : 'START'}
                         {hasNextNavigationBatch && (
@@ -580,39 +579,37 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
                                 key={prop.address_hash}
                                 className={`group rounded-xl overflow-hidden transition-all duration-300 border ${
                                     isExpanded 
-                                        ? 'bg-[#181818] border-yellow-500/40 shadow-[0_0_15px_rgba(255,215,0,0.1)]' 
-                                        : 'bg-[#111] border-[#1a1a1a] hover:border-white/20 hover:shadow-[0_0_10px_rgba(255,255,255,0.05)]'
+                                        ? 'bg-[#0E1510] border-[#2EEB57]/35 shadow-[0_0_18px_rgba(46,235,87,0.12)]'
+                                        : 'bg-white/[0.03] border-white/10 hover:border-white/20'
                                 }`}
                             >
                                 {/* Property Row */}
                                 <button
                                     onClick={() => setExpandedId(isExpanded ? null : prop.address_hash)}
-                                    className="w-full px-3 py-2.5 flex items-center gap-2.5 text-left"
+                                    className="w-full px-3 py-2.5 flex items-start gap-2.5 text-left"
                                 >
                                     <div
-                                        className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0"
-                                        style={{
-                                            background: isDone ? (STATUS_COLORS[currentStatus] || '#333') : BRAND.gold,
-                                            color: isDone ? '#fff' : BRAND.voidBlack,
-                                            opacity: isDone ? 0.7 : 1
-                                        }}
+                                        className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-black"
+                                        style={isDone
+                                            ? { background: (STATUS_COLORS[currentStatus] || '#333') + '22', color: STATUS_COLORS[currentStatus] || '#888', border: `1px solid ${(STATUS_COLORS[currentStatus] || '#333')}55` }
+                                            : { background: 'rgba(46,235,87,0.12)', color: '#86efac', border: '1px solid rgba(46,235,87,0.3)' }}
                                     >
                                         {isDone ? <Check className="w-3.5 h-3.5" /> : idx + 1}
                                     </div>
 
                                     <div className="flex-1 min-w-0">
                                         <div className="flex items-center gap-2">
-                                            <p className={`text-[13px] font-semibold truncate leading-tight transition-all duration-300 ${isDone ? 'line-through opacity-40' : 'group-hover:drop-shadow-[0_0_8px_rgba(255,215,0,0.5)]'}`} style={{ color: BRAND.offWhite }}>
+                                            <p className={`truncate text-[13px] font-bold leading-tight tracking-tight text-white transition-all duration-300 ${isDone ? 'line-through opacity-40' : ''}`}>
                                                 {prop.house_number} {prop.street_name}
                                             </p>
                                             {ageLabel && (
-                                                <span className="text-[9px] font-bold text-yellow-500/80 shrink-0">
+                                                <span className="shrink-0 rounded-full bg-[#2EEB57]/10 px-1.5 py-0.5 text-[9px] font-bold text-[#86efac]">
                                                     {ageLabel}
                                                 </span>
                                             )}
                                         </div>
                                         {prop.city && (
-                                            <p className="text-[10px] truncate leading-tight mt-0.5" style={{ color: '#555' }}>
+                                            <p className="mt-0.5 truncate text-[10px] leading-tight text-white/40">
                                                 {prop.city}, {prop.state} {prop.zip_code}
                                             </p>
                                         )}
@@ -640,7 +637,7 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
                                     </div>
 
                                     {currentStatus && !isExpanded && (
-                                        <span className="text-[9px] font-bold px-2 py-0.5 rounded-full shrink-0"
+                                        <span className="mt-1 shrink-0 rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-wide"
                                             style={{ background: STATUS_COLORS[currentStatus] + '20', color: STATUS_COLORS[currentStatus] }}>
                                             {outcomeShortLabel(currentStatus)}
                                         </span>
