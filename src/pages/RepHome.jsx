@@ -1924,9 +1924,9 @@ export default function RepHome() {
             if (confirm("Mark route as complete?")) completeRouteMutation.mutate(activeRoute.id);
           }}
           disabled={completeRouteMutation.isPending}
-          className="flex-1 h-12 rounded-[20px] border border-[#B6FF5C]/40 bg-gradient-to-r from-[#2EEB57] via-[#39FF4A] to-[#B6FF5C] text-black font-black text-xs tracking-[0.16em] shadow-[0_14px_34px_rgba(46,235,87,0.35)] transition-all hover:scale-[1.01] hover:shadow-[0_18px_46px_rgba(57,255,74,0.45)] active:scale-[0.98]">
+          className="flex-1 md:flex-none md:w-56 h-12 rounded-[20px] border border-white/15 bg-white/[0.08] text-white font-bold text-xs tracking-[0.16em] shadow-none transition-colors hover:bg-white/[0.14] hover:border-white/25 active:scale-[0.98]">
           
-                        ✅ Complete Route
+                        <CheckCircle2 className="mr-2 h-4 w-4 text-white/70" /> Complete Route
                     </Button>
         }
                 <button
