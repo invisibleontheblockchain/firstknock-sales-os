@@ -135,8 +135,52 @@ test('a fixed start and finish select the best orientation of one complete stree
         { lat: 0, lng: 3 },
     );
 
-    assert.deepEqual(optimized.map(({ id }) => id), ['A101', 'A103', 'A102']);
+    // Only one even-side door, so the street is walked straight through instead
+    // of passing 102 on the way out and doubling back for it.
+    assert.deepEqual(optimized.map(({ id }) => id), ['A101', 'A102', 'A103']);
     assertEveryStreetIsContiguous(optimized);
+    assertSameDoors(optimized, doors);
+});
+
+test('a sparsely covered street is walked straight through without doubling back', () => {
+    // Reported Anderson case: two odd doors deep in the neighborhood with a
+    // single even door physically between them.
+    const doors = [
+        property('FAR_ODD', 'Fairmont Rd', 535, -82.617515, 34.510632),
+        property('FAR_ODD_2', 'Fairmont Rd', 641, -82.620100, 34.512600),
+        property('MIDDLE_EVEN', 'Fairmont Rd', 620, -82.618870, 34.511637),
+    ];
+
+    const optimized = optimizeRouteByStreetSweep(
+        doors,
+        { lat: 34.500619, lng: -82.611223 },
+    );
+
+    assert.deepEqual(
+        optimized.map(({ id }) => id),
+        ['FAR_ODD', 'MIDDLE_EVEN', 'FAR_ODD_2'],
+    );
+    assertSameDoors(optimized, doors);
+});
+
+test('a densely covered street still walks one side out and the other side back', () => {
+    const doors = [
+        property('O101', 'Dense St', 101, 0, 33.4500),
+        property('O103', 'Dense St', 103, 0.0005, 33.4500),
+        property('O105', 'Dense St', 105, 0.0010, 33.4500),
+        property('E102', 'Dense St', 102, 0, 33.4520),
+        property('E104', 'Dense St', 104, 0.0005, 33.4520),
+        property('E106', 'Dense St', 106, 0.0010, 33.4520),
+    ];
+
+    const optimized = optimizeRouteByStreetSweep(doors, { lat: 33.45, lng: -0.001 });
+    const houseNumbers = optimized.map(({ house_number: number }) => number);
+
+    assert.ok(
+        JSON.stringify(houseNumbers) === JSON.stringify([101, 103, 105, 106, 104, 102])
+        || JSON.stringify(houseNumbers) === JSON.stringify([102, 104, 106, 105, 103, 101]),
+        `expected a one-side-out, other-side-back sweep, got ${houseNumbers.join(', ')}`,
+    );
     assertSameDoors(optimized, doors);
 });
 

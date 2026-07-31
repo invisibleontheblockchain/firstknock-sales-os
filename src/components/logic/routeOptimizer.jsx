@@ -6,6 +6,8 @@
  * 2. Order streets via nearest-neighbor TSP on street centroids + 2-Opt.
  * 3. Within each street, walk one side low→high then the other side high→low
  *    (or reversed, depending on which end of the street you arrive from).
+ *    Streets with only a door or two on a side are walked straight through in
+ *    geographic order so reps never pass a door and double back for it.
  * 4. Apply intra-street 2-Opt to tighten each side independently.
  *
  * This eliminates the cross-street backtracking visible as yellow lines
@@ -1254,6 +1256,42 @@ function orderStreetsByNearestNeighbor(streetGroups, startLocation) {
     return visited.map(c => c.name);
 }
 
+// A dedicated pass down one side of the street only pays off when that side has
+// enough doors. With one or two scattered doors per side (typical Precision
+// pulls) the odd-then-even U-turn makes reps walk past a door and double back.
+const DENSE_SIDE_DOOR_COUNT = 3;
+const MAX_AXIS_ORDER_DOORS = 60;
+
+/**
+ * Order sparse street doors by their position along the street itself, so the
+ * walk continues in one direction instead of skipping a door and returning.
+ */
+function orderAlongStreetAxis(props) {
+    if (props.length <= 2 || props.length > MAX_AXIS_ORDER_DOORS) return props;
+
+    // The two farthest-apart doors define the street's direction.
+    let start = props[0];
+    let end = props[1];
+    let longest = -1;
+    for (let i = 0; i < props.length; i++) {
+        for (let j = i + 1; j < props.length; j++) {
+            const span = calculateDistanceFast(props[i].lat, props[i].lng, props[j].lat, props[j].lng);
+            if (span > longest) {
+                longest = span;
+                start = props[i];
+                end = props[j];
+            }
+        }
+    }
+
+    const axisLat = end.lat - start.lat;
+    const axisLng = end.lng - start.lng;
+    if (axisLat === 0 && axisLng === 0) return props;
+
+    const projection = p => (p.lat - start.lat) * axisLat + (p.lng - start.lng) * axisLng;
+    return [...props].sort((a, b) => projection(a) - projection(b));
+}
+
 /** Walk one side of the street low→high, cross, walk the other side high→low. */
 function boustrophedonStreet(props, reverseDirection) {
     if (props.length <= 1) return props;
@@ -1266,6 +1304,13 @@ function boustrophedonStreet(props, reverseDirection) {
         const num = parseInt(p.house_number, 10);
         return !isNaN(num) && num % 2 === 0;
     });
+
+    // Sparse coverage on either side: walk the street straight through instead of
+    // committing to a full side-by-side sweep that backtracks.
+    if (odd.length < DENSE_SIDE_DOOR_COUNT || even.length < DENSE_SIDE_DOOR_COUNT) {
+        const axisOrder = orderAlongStreetAxis(props);
+        return reverseDirection ? [...axisOrder].reverse() : axisOrder;
+    }
 
     const sortByNum = (a, b) => (parseInt(a.house_number, 10) || 0) - (parseInt(b.house_number, 10) || 0);
     odd.sort(sortByNum);
