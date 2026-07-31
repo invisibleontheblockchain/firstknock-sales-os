@@ -53,7 +53,7 @@ import { validateCanvasBoundary } from '@/components/canvas/canvasPlannerUtils';
 import { fetchAllCanvasTeamMembers } from '@/components/canvas/canvasRosterPagination';
 import { buildFullAddress } from '@/components/logic/navigation';
 import { collectUnretiredOutcomes, confirmOutcomeRow } from '@/components/logic/optimisticOutcomes';
-import { isKnockActivityLog } from '@/lib/interactionLogs'; import { scopeInteractionLogsToAccount } from '@/lib/accountInteractionLogs'; import { buildLogsByAddress, withDerivedStatus } from '@/components/logic/routePropertyStatus';
+import { isKnockActivityLog } from '@/lib/interactionLogs'; import { fetchAccountInteractionLogs, scopeInteractionLogsToAccount } from '@/lib/accountInteractionLogs'; import { buildLogsByAddress, withDerivedStatus } from '@/components/logic/routePropertyStatus';
 import {
     buildRepRouteScope,
     buildSavedRouteQueryFilters,
@@ -1149,8 +1149,7 @@ export default function Home() {
         staleTime: 1000 * 60 * 2,
         queryFn: async () => {
             if (!user) return withPendingOutcomes([]);
-            const res = await base44.entities.InteractionLog.list('-created_date', 5000);
-            return withPendingOutcomes(Array.isArray(res) ? res : (res?.items || []));
+            return withPendingOutcomes(await fetchAccountInteractionLogs(user));
         },
         enabled: !!user
     });

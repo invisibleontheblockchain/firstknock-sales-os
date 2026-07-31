@@ -1,4 +1,25 @@
-import { recordBelongsToCurrentAccount } from '@/lib/accountScope';
+import { base44 } from '@/api/base44Client';
+import {
+  dedupeEntities,
+  getTenantManagerId,
+  getUserEmail,
+  recordBelongsToCurrentAccount,
+  toEntityArray,
+} from '@/lib/accountScope';
+
+// A global list('-created_date', 5000) is NOT account-scoped: an owner/admin can
+// read every account's rows, so this account's sold outcomes fall outside that
+// newest-5000 window and the map derives ELIGIBLE (route color instead of the
+// green sold pin). Query by the tenant key and the author instead.
+export async function fetchAccountInteractionLogs(user, limit = 5000) {
+  const managerId = getTenantManagerId(user);
+  const email = getUserEmail(user);
+  const groups = await Promise.all([
+    managerId ? base44.entities.InteractionLog.filter({ manager_id: managerId }, '-created_date', limit) : [],
+    email ? base44.entities.InteractionLog.filter({ created_by: email }, '-created_date', limit) : [],
+  ]);
+  return dedupeEntities(groups.flatMap(toEntityArray));
+}
 
 // Outcomes are written by the outcome service, so their created_by is a service
 // address rather than a rep email. Those rows are still owned by the account
