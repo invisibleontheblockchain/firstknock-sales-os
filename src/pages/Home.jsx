@@ -73,6 +73,7 @@ import {
 import useViewportMapProperties from '../components/map/useViewportMapProperties';
 import { reoptimizeRoute } from '@/lib/reoptimizeRouteAction';
 import { requireUsableRouteContext } from '@/lib/routeContextGuard';
+import { computeAccountWorkingArea } from '@/lib/accountWorkingArea';
 
 // The log cache is an array in some responses and { items } in others.
 function mergeLogCache(old, mutate) {
@@ -2284,88 +2285,17 @@ export default function Home() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeRouteId]);
 
-    // Account Active Working Area Resolver (Corrected 6-Tier Priority Hierarchy)
-    const computeAccountWorkingArea = useCallback(() => {
-        // Priority 1: Precision drawn boundary (fk_drawnPolygon localStorage or active drawnPolygon state)
-        let polygonToUse = drawnPolygon;
-        if (!Array.isArray(polygonToUse) || polygonToUse.length < 3) {
-            try {
-                const storedDrawn = typeof localStorage !== 'undefined' ? localStorage.getItem('fk_drawnPolygon') : null;
-                if (storedDrawn) {
-                    const parsed = JSON.parse(storedDrawn);
-                    if (Array.isArray(parsed) && parsed.length >= 3) polygonToUse = parsed;
-                }
-            } catch (e) {}
-        }
-        if (Array.isArray(polygonToUse) && polygonToUse.length >= 3) {
-            const pts = polygonToUse
-                .map(p => Array.isArray(p) ? [Number(p[0]), Number(p[1])] : [Number(p?.lat), Number(p?.lng)])
-                .filter(p => Number.isFinite(p[0]) && Number.isFinite(p[1]) && (p[0] !== 0 || p[1] !== 0));
-            if (pts.length >= 3) return { type: 'bounds', bounds: L.latLngBounds(pts) };
-        }
-
-        // Priority 2: localStorage last map position (fk_last_map_position_${userId})
-        const storageKey = (user?.id || user?.email) ? `fk_last_map_position_${user.id || user.email}` : 'fk_last_map_position';
-        if (typeof localStorage !== 'undefined') {
-            try {
-                const rawStored = localStorage.getItem(storageKey) || localStorage.getItem('fk_last_map_position');
-                if (rawStored) {
-                    const stored = JSON.parse(rawStored);
-                    if (stored && Number.isFinite(stored.lat) && Number.isFinite(stored.lng) && (stored.lat !== 0 || stored.lng !== 0)) {
-                        return { type: 'center', center: [stored.lat, stored.lng], zoom: stored.zoom || 15 };
-                    }
-                }
-            } catch (e) {}
-        }
-
-        // Priority 3: Active or most recent single saved route (single route context, not all routes)
-        if (Array.isArray(savedRoutes) && savedRoutes.length > 0) {
-            const activeOrRecent = savedRoutes.find(r => r.status !== 'COMPLETED') || savedRoutes[0];
-            if (activeOrRecent?.properties?.length > 0) {
-                const pts = activeOrRecent.properties
-                    .filter(isRenderableMapPoint)
-                    .map(p => [Number(p.lat), Number(p.lng)])
-                    .filter(p => Number.isFinite(p[0]) && Number.isFinite(p[1]) && (p[0] !== 0 || p[1] !== 0));
-                if (pts.length > 0) return { type: 'bounds', bounds: L.latLngBounds(pts) };
-            }
-        }
-
-        // Priority 4: Most recent Precision fetch job boundary
-        if (Array.isArray(precisionFetchJobs) && precisionFetchJobs.length > 0) {
-            const mostRecentJob = precisionFetchJobs[0];
-            if (Array.isArray(mostRecentJob?.polygon) && mostRecentJob.polygon.length >= 3) {
-                const pts = mostRecentJob.polygon
-                    .map(pt => [Number(pt?.lat ?? pt?.[0]), Number(pt?.lng ?? pt?.[1])])
-                    .filter(p => Number.isFinite(p[0]) && Number.isFinite(p[1]) && (p[0] !== 0 || p[1] !== 0));
-                if (pts.length >= 3) return { type: 'bounds', bounds: L.latLngBounds(pts) };
-            }
-        }
-
-        // Priority 5: availableProperties filtered to most recently active ZIP code only
-        if (Array.isArray(availableProperties) && availableProperties.length > 0) {
-            const renderableProps = availableProperties.filter(isRenderableMapPoint);
-            if (renderableProps.length > 0) {
-                const mostRecentZip = renderableProps.find(p => p.zip_code)?.zip_code;
-                const zipFilteredProps = mostRecentZip
-                    ? renderableProps.filter(p => p.zip_code === mostRecentZip)
-                    : renderableProps;
-                const pts = zipFilteredProps
-                    .map(p => [Number(p.lat), Number(p.lng)])
-                    .filter(p => Number.isFinite(p[0]) && Number.isFinite(p[1]) && (p[0] !== 0 || p[1] !== 0));
-                if (pts.length > 0) return { type: 'bounds', bounds: L.latLngBounds(pts.slice(0, 1000)) };
-            }
-        }
-
-        // Priority 6: Default fallback (continental US center)
-        return null;
-    }, [drawnPolygon, user?.id, user?.email, savedRoutes, precisionFetchJobs, availableProperties]);
+    // Account Active Working Area Resolver — see lib/accountWorkingArea.js
+    const resolveAccountWorkingArea = useCallback(() => computeAccountWorkingArea({
+        drawnPolygon, user, savedRoutes, hydratedSavedRoutes, precisionFetchJobs, availableProperties,
+    }), [drawnPolygon, user, savedRoutes, hydratedSavedRoutes, precisionFetchJobs, availableProperties]);
 
     // Initial Account Working Area Map Load Effect
     const hasCenteredAccountWorkingAreaRef = useRef(false);
     useEffect(() => {
         if (hasCenteredAccountWorkingAreaRef.current || !mapRef.current) return;
 
-        const workingArea = computeAccountWorkingArea();
+        const workingArea = resolveAccountWorkingArea();
         if (!workingArea) return;
 
         hasCenteredAccountWorkingAreaRef.current = true;
@@ -2384,7 +2314,7 @@ export default function Home() {
                 }
             } catch (e) {}
         }
-    }, [computeAccountWorkingArea]);
+    }, [resolveAccountWorkingArea]);
 
     // Determine Initial Map Center
     const [mapCenter, setMapCenter] = useState(() => {
