@@ -30,9 +30,10 @@ function getRouteBoundsBadge(route) {
     const bounds = route?.metadata?.route_bounds;
     const mode = String(route?.route_origin_mode || bounds?.mode || bounds?.origin_mode || '').toLowerCase();
     const startSource = String(bounds?.start_source || bounds?.start?.source || '').toLowerCase();
-    const isEnabled = mode === 'home_round_trip' || mode === 'current_to_home' || mode.includes('current');
+    const isEnabled = mode === 'home_round_trip' || mode === 'current_to_home' || mode === 'custom_bounds' || mode.includes('current');
 
     if (!isEnabled) return null;
+    if (mode === 'custom_bounds') return 'Custom start/finish';
     return mode === 'current_to_home' || mode.includes('current') || startSource.includes('current') || startSource.includes('gps')
         ? 'Current → home'
         : 'Home round trip';

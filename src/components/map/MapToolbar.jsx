@@ -1,11 +1,12 @@
 import React, { useCallback, useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Navigation, Locate, List, X, Filter, MapPin, Zap, Eye, EyeOff, Save, Pencil, Check, RotateCcw, Download, MoreVertical, Scissors, Ghost } from 'lucide-react';
+import { Loader2, Navigation, Locate, List, X, Filter, MapPin, Zap, Eye, EyeOff, Save, Pencil, Check, RotateCcw, Download, MoreVertical, Scissors, Ghost, Flag } from 'lucide-react';
 import { LayoutDashboard, Settings } from 'lucide-react';
 import { toast } from "sonner";
 import DataStatusIndicator from './DataStatusIndicator';
 import SplitRouteModal from '@/components/routes/SplitRouteModal';
+import RouteAnchorsDialog from '@/components/routes/RouteAnchorsDialog';
 import { exportRouteToCsv } from '@/components/routes/exportRouteCsv';
 import { FOLLOW_UP_STATUSES, getRouteOutcomeStats, getRerunHashes, getRerunProperties, buildRerunRoutePayload } from '@/components/routes/routeRerunUtils';
 import { base44 } from '@/api/base44Client';
@@ -170,6 +171,7 @@ export default function MapToolbar({
   const [editingName, setEditingName] = useState(false);
   const [draftName, setDraftName] = useState('');
   const [showSplitRouteModal, setShowSplitRouteModal] = useState(false);
+  const [showAnchorsDialog, setShowAnchorsDialog] = useState(false);
   const [showRerunMenu, setShowRerunMenu] = useState(false);
   const [rerunBusy, setRerunBusy] = useState(false);
 
@@ -252,6 +254,15 @@ export default function MapToolbar({
 
   // Switching routes must not leave the previous route's choices expanded.
   useEffect(() => { setShowOptimizeMenu(false); }, [activeRoute?.id]);
+  useEffect(() => { setShowAnchorsDialog(false); }, [activeRoute?.id]);
+
+  // ANCHORS runs through the same single-route action as Optimize, so the doors
+  // are reordered around the chosen start/finish in one step.
+  const handleApplyRouteAnchors = useCallback(async (anchors) => {
+    window.__fkSuppressMapFitUntil = Date.now() + 1500;
+    if (!onReoptimizeRoute) return;
+    await onReoptimizeRoute(activeRoute, { anchors });
+  }, [activeRoute, onReoptimizeRoute]);
 
   // "My Car" uses THIS device's GPS, so it is only meaningful for the person
   // holding the phone. A manager viewing a rep's route must never anchor it to
@@ -494,6 +505,14 @@ export default function MapToolbar({
                                   busy={reoptimizeBusy}
                                   onToggle={toggleOptimizeMenu}
                                 />
+                                <button
+                onPointerDown={(e) => {e.preventDefault();e.stopPropagation();}}
+                onClick={(e) => {e.preventDefault();e.stopPropagation();setShowAnchorsDialog(true);}}
+                className="hidden md:flex h-7 items-center gap-1 rounded-md border border-amber-400/30 bg-amber-400/10 px-2 text-[10px] font-black text-amber-300 hover:bg-amber-400/20 touch-manipulation select-none active:scale-95"
+                title="Set the start and finish point of this route">
+
+                                    <Flag className="w-2.5 h-2.5" /><span>ANCHORS</span>
+                                </button>
                                 <DropdownMenu>
                                   <DropdownMenuTrigger asChild>
                                     <button onPointerDown={(e) => e.stopPropagation()} className="md:hidden flex h-8 w-8 items-center justify-center rounded-md border border-white/10 bg-white/5 text-white touch-manipulation active:scale-95" aria-label="More route actions">
@@ -506,6 +525,9 @@ export default function MapToolbar({
                                     </DropdownMenuItem>
                                     <DropdownMenuItem onClick={(e) => {e.stopPropagation();setShowSplitRouteModal(true);}} className="focus:bg-white/10 focus:text-white">
                                       <Scissors className="mr-2 h-4 w-4" /> Split Route
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={(e) => {e.stopPropagation();setShowAnchorsDialog(true);}} className="focus:bg-white/10 focus:text-white">
+                                      <Flag className="mr-2 h-4 w-4" /> Anchors
                                     </DropdownMenuItem>
                                   </DropdownMenuContent>
                                 </DropdownMenu>
@@ -766,6 +788,14 @@ export default function MapToolbar({
           }
                 </div>
             </div>
+
+            {showAnchorsDialog && activeRoute && (
+              <RouteAnchorsDialog
+                route={activeRoute}
+                onClose={() => setShowAnchorsDialog(false)}
+                onApply={handleApplyRouteAnchors}
+              />
+            )}
 
             {showSplitRouteModal && activeRoute && (
               <SplitRouteModal

@@ -9,6 +9,10 @@
 
 import { OPTIMIZE_MODES, routeOriginModeForOptimizeMode } from './routeOriginModes';
 
+// Custom ANCHORS live in their own module (their coordinates ARE persisted), and
+// are re-exported here so callers keep a single route-update import.
+export { buildRouteAnchorsUpdate, normalizeRouteAnchor } from './routeAnchors';
+
 const normalizedEmail = (value) => String(value || '').trim().toLowerCase();
 
 /**

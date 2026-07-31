@@ -411,8 +411,10 @@ test('ASSIGN-01 the car choice is disabled for a route assigned to someone else'
 // The visible control is a convenience, not the boundary. Disabling a button
 // stops nothing on a device the actor controls, so the handler refuses on its
 // own before it ever requests GPS.
+// The handler moved out of Home.jsx into lib/reoptimizeRouteAction.js when custom
+// ANCHORS were added; the behaviour it guards is unchanged.
 test('ASSIGN-02 the handler refuses car mode itself, not just the disabled button', async () => {
-  const home = await readFile(new URL('../src/pages/Home.jsx', import.meta.url), 'utf8');
+  const home = await readFile(new URL('../src/lib/reoptimizeRouteAction.js', import.meta.url), 'utf8');
 
   const guard = home.indexOf('if (!routeBelongsToActingUser(route, user, teamMembers))');
   const capture = home.indexOf('await captureParkedCarLocation()');
@@ -422,7 +424,7 @@ test('ASSIGN-02 the handler refuses car mode itself, not just the disabled butto
 
 
 test('ASSIGN-03 Home Base delegation for another rep is unchanged', async () => {
-  const home = await readFile(new URL('../src/pages/Home.jsx', import.meta.url), 'utf8');
+  const home = await readFile(new URL('../src/lib/reoptimizeRouteAction.js', import.meta.url), 'utf8');
 
   // A car has no server-side source of truth for another person, which is why
   // car mode is stricter than fromHome. fromHome itself must not regress.
@@ -432,19 +434,18 @@ test('ASSIGN-03 Home Base delegation for another rep is unchanged', async () => 
 /* ══════════════ 6. Route-only means exactly the doors ══════════════ */
 
 test('ROUTEONLY-01 route_only passes no anchor at all', async () => {
-  const home = await readFile(new URL('../src/pages/Home.jsx', import.meta.url), 'utf8');
+  const action = await readFile(new URL('../src/lib/reoptimizeRouteAction.js', import.meta.url), 'utf8');
 
   // The previous implementation fell back to the map centre, silently anchoring
-  // the route to wherever the user happened to be looking. Scoped to the
-  // reoptimize handler: route GENERATION has its own start-location behaviour
-  // that this change deliberately does not touch.
-  const handlerStart = home.indexOf('const handleReoptimizeRoute');
-  const handler = home.slice(handlerStart, home.indexOf('const handleSaveRoute', handlerStart) + 1 || undefined);
-  assert.ok(handlerStart > 0, 'handler must exist');
+  // the route to wherever the user happened to be looking. Route GENERATION has
+  // its own start-location behaviour that this deliberately does not touch.
   assert.equal(
-    handler.includes('currentCenter.lat'), false,
-    'the map-centre fallback must be gone from the reoptimize handler'
+    action.includes('currentCenter.lat'), false,
+    'the map-centre fallback must be gone from the reoptimize action'
   );
-  assert.match(home, /const start = optimizeFromCar \? carAnchor/);
-  assert.match(home, /: null;/);
+  assert.match(action, /const start = optimizeFromCar \? carAnchor/);
+  assert.match(action, /: null;/);
+  const home = await readFile(new URL('../src/pages/Home.jsx', import.meta.url), 'utf8');
+  assert.match(home, /const handleReoptimizeRoute = useCallback\(\(route, options = \{\}\) => reoptimizeRoute\(/,
+    'Home still owns the single wiring point for the action');
 });

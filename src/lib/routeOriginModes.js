@@ -10,14 +10,20 @@ export const ROUTE_ORIGIN_MODES = Object.freeze({
     NONE: 'none',
     HOME_ROUND_TRIP: 'home_round_trip',
     CURRENT_TO_HOME: 'current_to_home',
-    CAR_ROUND_TRIP: 'car_round_trip'
+    CAR_ROUND_TRIP: 'car_round_trip',
+    // A fixed start/finish the manager typed for the route (office, trailer,
+    // meeting spot). Unlike the other anchored modes its coordinates ARE stored
+    // on the route, because the point is shared crew infrastructure, not a
+    // personal location. See lib/routeAnchors.js.
+    CUSTOM_BOUNDS: 'custom_bounds'
 });
 
 /** Modes that carry an external start/end anchor. `none` deliberately does not. */
 export const ANCHORED_ROUTE_ORIGIN_MODES = Object.freeze([
     ROUTE_ORIGIN_MODES.HOME_ROUND_TRIP,
     ROUTE_ORIGIN_MODES.CURRENT_TO_HOME,
-    ROUTE_ORIGIN_MODES.CAR_ROUND_TRIP
+    ROUTE_ORIGIN_MODES.CAR_ROUND_TRIP,
+    ROUTE_ORIGIN_MODES.CUSTOM_BOUNDS
 ]);
 
 /** Modes whose start and finish are the same point. */
@@ -55,6 +61,7 @@ export function routeAnchorMarkerLabels(mode) {
         case ROUTE_ORIGIN_MODES.CAR_ROUND_TRIP:
             return { start: 'Car • Start / Finish', end: null };
         case ROUTE_ORIGIN_MODES.CURRENT_TO_HOME:
+        case ROUTE_ORIGIN_MODES.CUSTOM_BOUNDS:
             return { start: 'Start', end: 'Finish' };
         default:
             return { start: null, end: null };

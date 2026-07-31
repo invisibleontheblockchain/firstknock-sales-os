@@ -97,10 +97,11 @@
         "none",
         "home_round_trip",
         "current_to_home",
-        "car_round_trip"
+        "car_round_trip",
+        "custom_bounds"
       ],
       "default": "none",
-      "description": "Explicit opt-in routing bounds. none preserves normal route generation behavior."
+      "description": "Explicit opt-in routing bounds. none preserves normal route generation behavior. custom_bounds is a manager-set fixed start/finish address stored in start_location/end_location."
     },
     "manager_id": {
       "type": "string",
