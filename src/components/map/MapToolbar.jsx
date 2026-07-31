@@ -171,6 +171,7 @@ export default function MapToolbar({
   const [draftName, setDraftName] = useState('');
   const [showSplitRouteModal, setShowSplitRouteModal] = useState(false);
   const [showRerunMenu, setShowRerunMenu] = useState(false);
+  const [rerunBusy, setRerunBusy] = useState(false);
 
   const handleStartRename = (e) => {
     e.stopPropagation();
@@ -283,18 +284,24 @@ export default function MapToolbar({
   ];
 
   const handleRerunCompletedRoute = async (filter, label) => {
+    if (rerunBusy) return;
     const selectedHashes = getRerunHashes(activeRoute, completedOutcomeStats, filter);
     if (selectedHashes.length === 0) {
       toast.error(`No ${label.toLowerCase()} doors found on this route`);
       return;
     }
-    const rerunProperties = getRerunProperties(activeRoute, selectedHashes);
-    const rerunRoute = await base44.entities.SavedRoute.create(buildRerunRoutePayload(activeRoute, selectedHashes, filter, label));
-    queryClient.invalidateQueries({ queryKey: ['savedRoutes'] });
-    try { localStorage.setItem('fk_selectedKnockRouteId', rerunRoute.id); } catch {}
-    setShowRerunMenu(false);
-    setActiveRoute({ ...rerunRoute, properties: rerunProperties, allProperties: rerunProperties, houseCount: selectedHashes.length });
-    toast.success(`Created rerun with ${selectedHashes.length} doors`);
+    setRerunBusy(true);
+    try {
+      const rerunProperties = getRerunProperties(activeRoute, selectedHashes);
+      const rerunRoute = await base44.entities.SavedRoute.create(buildRerunRoutePayload(activeRoute, selectedHashes, filter, label));
+      queryClient.invalidateQueries({ queryKey: ['savedRoutes'] });
+      try { localStorage.setItem('fk_selectedKnockRouteId', rerunRoute.id); } catch {}
+      setShowRerunMenu(false);
+      setActiveRoute({ ...rerunRoute, properties: rerunProperties, allProperties: rerunProperties, houseCount: selectedHashes.length });
+      toast.success(`Created rerun with ${selectedHashes.length} doors`);
+    } finally {
+      setRerunBusy(false);
+    }
   };
 
   return (
@@ -522,9 +529,10 @@ export default function MapToolbar({
                                 {rerunOptions.map(option => (
                                   <button
                                     key={option.filter}
+                                    disabled={rerunBusy}
                                     onPointerDown={(e) => {e.preventDefault();e.stopPropagation();e.nativeEvent?.stopImmediatePropagation?.();}}
                                     onClick={(e) => {e.preventDefault();e.stopPropagation();e.nativeEvent?.stopImmediatePropagation?.();handleRerunCompletedRoute(option.filter, option.label);}}
-                                    className="rounded-lg border border-white/10 bg-white/[0.04] px-2 py-2 text-left text-[10px] font-black text-white/80 hover:border-[#2EEB57]/45 hover:bg-[#2EEB57]/10">
+                                    className="rounded-lg border border-white/10 bg-white/[0.04] px-2 py-2 text-left text-[10px] font-black text-white/80 hover:border-[#2EEB57]/45 hover:bg-[#2EEB57]/10 disabled:opacity-50">
                                     <span className="block">{option.label}</span>
                                     <span className="text-[9px] text-white/40">{option.count} doors</span>
                                   </button>

@@ -43,20 +43,51 @@ export function getRouteOutcomeStats(route, logs = []) {
   return { total: routeHashes.length, knocked: latestByHash.size, byStatus, latestByHash, routeHashes };
 }
 
+function buildCanonicalAliasMap(route) {
+  const aliasMap = new Map();
+  (route?.properties || route?.allProperties || []).forEach((property) => {
+    const canonical = property?.address_hash || property?.legacy_hash || property?.id;
+    if (!canonical) return;
+    [property.address_hash, property.legacy_hash, property.id]
+      .filter(Boolean)
+      .forEach((alias) => aliasMap.set(alias, canonical));
+  });
+  return aliasMap;
+}
+
+// A completed route's property_hashes can hold multiple aliases for the same
+// door (address_hash + legacy_hash + record id). Reruns rebuild their doors by
+// hydrating each stored hash, so aliases must be collapsed to one hash per
+// property or every aliased door appears duplicated on the rerun route.
+export function dedupeRerunHashes(route, hashes) {
+  const aliasMap = buildCanonicalAliasMap(route);
+  const seen = new Set();
+  const result = [];
+  (hashes || []).forEach((hash) => {
+    if (!hash) return;
+    const canonical = aliasMap.get(hash) || hash;
+    if (seen.has(canonical)) return;
+    seen.add(canonical);
+    result.push(canonical);
+  });
+  return result;
+}
+
 export function getRerunHashes(route, stats, filter) {
-  if (filter === 'all') return stats.routeHashes;
-  return stats.routeHashes.filter((hash) => {
+  const filtered = filter === 'all' ? stats.routeHashes : stats.routeHashes.filter((hash) => {
     const status = stats.latestByHash.get(hash);
     if (filter === 'no_answer') return status === 'NO_ANSWER';
     if (filter === 'callbacks') return status === 'CALLBACK';
     if (filter === 'unsold') return !status || FOLLOW_UP_STATUSES.has(status);
     return true;
   });
+  return dedupeRerunHashes(route, filtered);
 }
 
 export function buildRerunRoutePayload(route, selectedHashes, filter, label) {
   const safeMetadata = { ...(route?.metadata || {}) };
   delete safeMetadata.route_bounds;
+  const uniqueHashes = dedupeRerunHashes(route, selectedHashes);
   return {
     name: `${route?.name || 'Completed Route'} Rerun — ${label}`,
     description: `Rerun from completed route: ${route?.name || route?.id}`,
@@ -65,11 +96,11 @@ export function buildRerunRoutePayload(route, selectedHashes, filter, label) {
     assigned_to: route?.assigned_to || null,
     assigned_to_name: route?.assigned_to_name || null,
     priority: 0,
-    property_hashes: selectedHashes,
+    property_hashes: uniqueHashes,
     metrics: {
       ...(route?.metrics || {}),
       distance: 0,
-      house_count: selectedHashes.length
+      house_count: uniqueHashes.length
     },
     start_location: null,
     route_origin_mode: 'none',

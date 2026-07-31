@@ -440,6 +440,7 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
     const [editing, setEditing] = useState(false);
     const [newName, setNewName] = useState(route.name);
     const [showRerunMenu, setShowRerunMenu] = useState(false);
+    const [rerunBusy, setRerunBusy] = useState(false);
     const queryClient = useQueryClient();
 
     const knockStats = useMemo(() => {
@@ -464,20 +465,26 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
     const outcomeStats = useMemo(() => getRouteOutcomeStats(route, logs), [route, logs]);
 
     const handleRerun = async (filter, label) => {
+        if (rerunBusy) return;
         const selectedHashes = getRerunHashes(route, outcomeStats, filter);
         if (selectedHashes.length === 0) {
             toast.error(`No ${label.toLowerCase()} doors found on this route`);
             return;
         }
 
-        const rerunProperties = getRerunProperties(route, selectedHashes);
-        const rerunRoute = await base44.entities.SavedRoute.create(buildRerunRoutePayload(route, selectedHashes, filter, label));
+        setRerunBusy(true);
+        try {
+            const rerunProperties = getRerunProperties(route, selectedHashes);
+            const rerunRoute = await base44.entities.SavedRoute.create(buildRerunRoutePayload(route, selectedHashes, filter, label));
 
-        queryClient.invalidateQueries({ queryKey: ['savedRoutes'] });
-        try { localStorage.setItem('fk_selectedKnockRouteId', rerunRoute.id); } catch {}
-        setShowRerunMenu(false);
-        toast.success(`Created rerun with ${selectedHashes.length} doors`);
-        onSelect({ ...rerunRoute, properties: rerunProperties, allProperties: rerunProperties, houseCount: selectedHashes.length, route_number: routeNumber });
+            queryClient.invalidateQueries({ queryKey: ['savedRoutes'] });
+            try { localStorage.setItem('fk_selectedKnockRouteId', rerunRoute.id); } catch {}
+            setShowRerunMenu(false);
+            toast.success(`Created rerun with ${selectedHashes.length} doors`);
+            onSelect({ ...rerunRoute, properties: rerunProperties, allProperties: rerunProperties, houseCount: selectedHashes.length, route_number: routeNumber });
+        } finally {
+            setRerunBusy(false);
+        }
     };
 
     const handleRename = async () => {
@@ -619,9 +626,10 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
                                             ].map(option => (
                                                 <button
                                                     key={option.filter}
+                                                    disabled={rerunBusy}
                                                     onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); e.nativeEvent?.stopImmediatePropagation?.(); }}
                                                     onClick={(e) => { e.preventDefault(); e.stopPropagation(); e.nativeEvent?.stopImmediatePropagation?.(); handleRerun(option.filter, option.label); }}
-                                                    className="rounded-lg border border-white/10 bg-white/[0.04] px-2 py-2 text-left text-[10px] font-black text-white/80 hover:border-[#2EEB57]/45 hover:bg-[#2EEB57]/10"
+                                                    className="rounded-lg border border-white/10 bg-white/[0.04] px-2 py-2 text-left text-[10px] font-black text-white/80 hover:border-[#2EEB57]/45 hover:bg-[#2EEB57]/10 disabled:opacity-50"
                                                 >
                                                     <span className="block">{option.label}</span>
                                                     <span className="text-[9px] text-white/40">{option.count} doors</span>
