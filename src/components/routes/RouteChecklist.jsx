@@ -26,6 +26,13 @@ const BRAND = {
     offWhite: '#E5E5E5'
 };
 
+// Native selects fall back to the OS light palette for the dropdown list, which
+// rendered white text on a white sheet. Colours are set explicitly on the
+// control and on every option so the choices stay readable on dark.
+const FILTER_SELECT_CLASS = 'min-h-9 min-w-0 cursor-pointer appearance-none rounded-xl border border-white/15 px-2 text-[10px] font-bold outline-none focus:border-[#2EEB57]/50';
+const FILTER_SELECT_STYLE = { background: '#141414', color: '#E5E5E5', colorScheme: 'dark' };
+const FILTER_OPTION_STYLE = { background: '#141414', color: '#E5E5E5' };
+
 const formatMoney = (value) => {
     const n = Number(value);
     if (!Number.isFinite(n) || n <= 0) return null;
@@ -462,31 +469,33 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
                         <select
                             value={activeRouteSoldFilter}
                             onChange={(e) => setActiveRouteSoldFilter(e.target.value)}
-                            className="min-h-9 min-w-0 cursor-pointer rounded-xl border border-white/10 bg-white/[0.04] px-2 text-[10px] font-bold text-white/70 outline-none"
+                            className={FILTER_SELECT_CLASS}
+                            style={FILTER_SELECT_STYLE}
                         >
-                            <option value="all">All Time</option>
-                            <option value="0.25">1 Week</option>
-                            <option value="0.5">2 Weeks</option>
-                            <option value="1">1 Month</option>
-                            <option value="3">3 Months</option>
-                            <option value="6">6 Months</option>
-                            <option value="9">9 Months</option>
-                            <option value="12">1 Year</option>
+                            <option value="all" style={FILTER_OPTION_STYLE}>All Time</option>
+                            <option value="0.25" style={FILTER_OPTION_STYLE}>1 Week</option>
+                            <option value="0.5" style={FILTER_OPTION_STYLE}>2 Weeks</option>
+                            <option value="1" style={FILTER_OPTION_STYLE}>1 Month</option>
+                            <option value="3" style={FILTER_OPTION_STYLE}>3 Months</option>
+                            <option value="6" style={FILTER_OPTION_STYLE}>6 Months</option>
+                            <option value="9" style={FILTER_OPTION_STYLE}>9 Months</option>
+                            <option value="12" style={FILTER_OPTION_STYLE}>1 Year</option>
                         </select>
                     )}
                     {filter === 'done' && (
                         <select
                             value={decisionFilter}
                             onChange={(e) => setDecisionFilter(e.target.value)}
-                            className="min-h-9 min-w-0 cursor-pointer rounded-xl border border-white/10 bg-white/[0.04] px-2 text-[10px] font-bold text-white/70 outline-none"
+                            className={FILTER_SELECT_CLASS}
+                            style={FILTER_SELECT_STYLE}
                         >
-                            <option value="all">All Decisions</option>
-                            <option value="SOLD">Sold</option>
-                            <option value="NO_ANSWER">No Answer</option>
-                            <option value="CALLBACK">Callback</option>
-                            <option value="HARD_NO">Not Interested</option>
-                            <option value="NOT_MOVED_IN">Not Moved In</option>
-                            <option value="DM_NOT_HOME">DM Not Home</option>
+                            <option value="all" style={FILTER_OPTION_STYLE}>All Decisions</option>
+                            <option value="SOLD" style={FILTER_OPTION_STYLE}>Sold</option>
+                            <option value="NO_ANSWER" style={FILTER_OPTION_STYLE}>No Answer</option>
+                            <option value="CALLBACK" style={FILTER_OPTION_STYLE}>Callback</option>
+                            <option value="HARD_NO" style={FILTER_OPTION_STYLE}>Not Interested</option>
+                            <option value="NOT_MOVED_IN" style={FILTER_OPTION_STYLE}>Not Moved In</option>
+                            <option value="DM_NOT_HOME" style={FILTER_OPTION_STYLE}>DM Not Home</option>
                         </select>
                     )}
                     <button
