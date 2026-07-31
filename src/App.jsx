@@ -112,7 +112,9 @@ function App() {
           </React.Suspense>
         </Router>
         <Toaster />
-        <SonnerToaster richColors closeButton />
+        {/* visibleToasts={1} keeps stacked/duplicate notifications from piling up —
+            a newer toast replaces the one on screen instead of showing beside it. */}
+        <SonnerToaster richColors closeButton visibleToasts={1} />
       </QueryClientProvider>
     </AuthProvider>
   )
