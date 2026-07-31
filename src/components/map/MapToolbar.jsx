@@ -431,8 +431,8 @@ export default function MapToolbar({
                           <Button
                             onClick={() => setShowCompare(true)}
                             size="icon"
-                            className="hidden sm:inline-flex bg-black/80 hover:bg-black backdrop-blur-md rounded-lg sm:rounded-xl h-8 w-8 sm:h-11 sm:w-11 font-bold shadow-xl border border-[#2EEB57]/40">
-                            {mode === 'generate' ? <Settings className="w-3.5 h-3.5 sm:w-5 sm:h-5 text-[#2EEB57]" /> : <Filter className="w-3.5 h-3.5 sm:w-5 sm:h-5 text-[#2EEB57]" />}
+                            className="inline-flex bg-black/80 hover:bg-black backdrop-blur-md rounded-lg sm:rounded-xl h-7 w-7 sm:h-11 sm:w-11 font-bold shadow-xl border border-[#2EEB57]/40">
+                            {mode === 'generate' ? <Settings className="w-3 h-3 sm:w-5 sm:h-5 text-[#2EEB57]" /> : <Filter className="w-3 h-3 sm:w-5 sm:h-5 text-[#2EEB57]" />}
                           </Button>
                         )}
                     </div>
