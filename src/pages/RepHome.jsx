@@ -1733,7 +1733,7 @@ export default function RepHome() {
       }
 
             {/* Filter tabs + search */}
-            <div className="px-3 pt-2 pb-2 space-y-2 border-b border-white/10 bg-black/70 backdrop-blur-xl shadow-[0_12px_36px_rgba(0,0,0,0.32)]">
+            <div className="px-3 sm:px-[max(0.75rem,calc((100%-48rem)/2))] pt-2 pb-2 space-y-2 border-b border-white/10 bg-black/70 backdrop-blur-xl shadow-[0_12px_36px_rgba(0,0,0,0.32)]">
                 {/* Account-wide customer / address search (callback handling) */}
                 <RepUnifiedSearch
                   routeProperties={routeProperties}
@@ -1759,7 +1759,7 @@ export default function RepHome() {
           <button
             key={tab.id}
             onClick={() => setFilterStatus(tab.id)}
-            className={`flex-1 py-1.5 rounded-lg text-[10px] font-black tracking-[0.1em] transition-all whitespace-nowrap ${filterStatus === tab.id ? 'bg-white text-black shadow-[0_6px_18px_rgba(255,255,255,0.12)]' : 'text-white/45 hover:text-white'}`
+            className={`flex-1 py-1.5 rounded-lg text-[10px] sm:text-[11px] font-black tracking-[0.1em] sm:tracking-[0.05em] transition-all whitespace-nowrap ${filterStatus === tab.id ? 'bg-white text-black shadow-[0_6px_18px_rgba(255,255,255,0.12)]' : 'text-white/45 hover:text-white'}`
             }>
             
                             {tab.label}
