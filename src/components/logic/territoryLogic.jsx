@@ -50,7 +50,14 @@ export const determineEffectiveStatus = (masterProp, logs) => {
 
     // Sort logs by timestamp desc
     const sortedLogs = [...decisionLogs].sort((a, b) => new Date(b.created_date).getTime() - new Date(a.created_date).getTime());
-    const latestLog = sortedLogs[0];
+    // Nobody home / decision maker away is an attempt, not a reclassification: a
+    // callback the rep could not reach on a later pass is still a callback. Only a
+    // real outcome (sale, not interested, qualified...) replaces it.
+    const isNoContact = (log) => ['NO_ANSWER', 'DM_NOT_HOME'].includes(log.parsed_status);
+    const lastClassifyingLog = sortedLogs.find(log => !isNoContact(log));
+    const latestLog = isNoContact(sortedLogs[0]) && lastClassifyingLog?.parsed_status === 'CALLBACK'
+        ? lastClassifyingLog
+        : sortedLogs[0];
 
     // HARD_NO and SOLD are permanent exclusions from routing
     if (latestLog.parsed_status === 'HARD_NO' || latestLog.parsed_status === 'SOLD') {
@@ -63,14 +70,9 @@ export const determineEffectiveStatus = (masterProp, logs) => {
         return 'NO_ANSWER';
     }
 
-    // CALLBACK - check if callback date has passed
+    // A callback stays a callback until a newer outcome reclassifies it — a due
+    // callback is work that is ready now, not an unknocked door.
     if (latestLog.parsed_status === 'CALLBACK') {
-        if (latestLog.next_eligible_date) {
-            const callbackDate = new Date(latestLog.next_eligible_date);
-            if (new Date() >= callbackDate) {
-                return 'ELIGIBLE';
-            }
-        }
         return 'CALLBACK';
     }
 

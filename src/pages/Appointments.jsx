@@ -13,6 +13,8 @@ import AutoSchedulePanel from '@/components/appointments/AutoSchedulePanel';
 import AppointmentsFilterBar from '@/components/appointments/AppointmentsFilterBar';
 import TodayFocusBar from '@/components/appointments/TodayFocusBar';
 import { fetchCanvasCallbackRows } from '@/components/appointments/canvasCallbackRows';
+import { determineEffectiveStatus } from '@/components/logic/territoryLogic';
+import { buildLogsByAddress } from '@/components/logic/routePropertyStatus';
 import { openInMaps } from '@/components/logic/navigation';
 import { useNavigate } from 'react-router-dom';
 
@@ -129,6 +131,26 @@ export default function Appointments() {
         return [...byId.values()];
     }, [callbackLogs, logs]);
 
+    // A callback that later turned into a sale or a "not interested" is no longer a
+    // callback here either: this page and the map both read the door's current
+    // classification through determineEffectiveStatus, so they always agree. One row
+    // per address — the newest callback log wins.
+    const openCallbackLogs = useMemo(() => {
+        const logsByAddress = buildLogsByAddress([
+            ...(Array.isArray(callbackLogs) ? callbackLogs : []),
+            ...(Array.isArray(logs) ? logs : []),
+        ]);
+        const byAddress = new Map();
+        decisionCallbackLogs.forEach((log) => {
+            const key = String(log.address_hash || '');
+            if (!key) return;
+            if (determineEffectiveStatus({}, logsByAddress.get(key) || [log]) !== 'CALLBACK') return;
+            const current = byAddress.get(key);
+            if (!current || new Date(log.created_date) > new Date(current.created_date)) byAddress.set(key, log);
+        });
+        return [...byAddress.values()];
+    }, [decisionCallbackLogs, callbackLogs, logs]);
+
     const { data: canvasCallbackRows = [] } = useQuery({
         queryKey: ['canvasCallbacks-appts', tenantManagerId, user?.id],
         staleTime: 1000 * 60 * 2,
@@ -139,10 +161,10 @@ export default function Appointments() {
         enabled: !!user,
     });
 
-    const callbackHashes = useMemo(() => [...new Set(decisionCallbackLogs
+    const callbackHashes = useMemo(() => [...new Set(openCallbackLogs
         .filter((log) => log.address_hash)
         .map((log) => String(log.address_hash).trim())
-        .filter(Boolean))], [decisionCallbackLogs]);
+        .filter(Boolean))], [openCallbackLogs]);
 
     const { data: callbackRouteProperties = [] } = useQuery({
         queryKey: ['callbackRouteProperties-appts', user?.id, user?.team_manager_id, callbackHashes.join('|')],
@@ -198,7 +220,7 @@ export default function Appointments() {
             .map((appointment) => (appointment.notes || '').match(/callback_log:([^\]]+)/)?.[1])
             .filter(Boolean));
 
-        decisionCallbackLogs
+        openCallbackLogs
             .filter((log) => log.address_hash && !deletedCallbackLogsRef.current.has(log.id))
             .forEach((log) => {
                 const scheduledDate = safeIsoDate(log.next_eligible_date, log.created_date);
@@ -239,7 +261,7 @@ export default function Appointments() {
         });
 
         return rows;
-    }, [persistedAppointmentRows, decisionCallbackLogs, canvasCallbackRows, propertyByHash, routeNameById, tenantManagerId]);
+    }, [persistedAppointmentRows, openCallbackLogs, canvasCallbackRows, propertyByHash, routeNameById, tenantManagerId]);
 
     const stats = useMemo(() => {
         const all = appointmentRows;
