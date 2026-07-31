@@ -2,23 +2,19 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
-import { Home as HomeIcon, Loader2, LocateFixed, Lock, MapPin, SlidersHorizontal, X, Zap } from 'lucide-react';
+import { Lock, SlidersHorizontal, X, Zap } from 'lucide-react';
 import { toast } from 'sonner';
 import { createPageUrl } from '@/utils';
 import PrecisionProUpgradeSheet from '@/components/map/PrecisionProUpgradeSheet';
 import { getCustomRangeRevealScrollTop } from '@/components/logic/customRangeReveal';
-import { geocodeAddress } from '@/lib/geocoding';
 
-const PREMIUM_RECENT_RANGES = [1 / 30, 2 / 30, 0.25, 0.5, 1];
+const PREMIUM_RECENT_RANGES = [0.5, 1];
 const FREE_PRECISION_HOME_LIMIT = 50;
 const OWNERSHIP_RANGE_MIN_DAYS = 1;
 const OWNERSHIP_RANGE_MAX_DAYS = 365;
 const DEFAULT_OWNERSHIP_RANGE_DAYS = [30, 180];
 
 const SOLD_OPTIONS = [
-  { value: 1 / 30, label: '1 day', lockedOnFree: true },
-  { value: 2 / 30, label: '2 day', lockedOnFree: true },
-  { value: 0.25, label: '1 wk', lockedOnFree: true },
   { value: 0.5, label: '2 wk', lockedOnFree: true },
   { value: 1, label: '1 mo', lockedOnFree: true },
   { value: 3, label: '3 mo' },
@@ -51,22 +47,6 @@ function formatMaxSinceRange(value) {
 
 function formatCount(value) {
   return Math.max(0, Number(value) || 0).toLocaleString();
-}
-
-function normalizeLocation(value) {
-  if (!value || value.lat === null || value.lat === undefined || value.lat === '' || value.lng === null || value.lng === undefined || value.lng === '') return null;
-  const lat = Number(value?.lat);
-  const lng = Number(value?.lng);
-  if (!Number.isFinite(lat) || lat < -90 || lat > 90 || !Number.isFinite(lng) || lng < -180 || lng > 180) return null;
-  return {
-    address: String(value?.address || 'Home Base').trim() || 'Home Base',
-    lat,
-    lng
-  };
-}
-
-function normalizedAddress(value) {
-  return String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
 }
 
 function normalizeOwnershipRangeDays(value) {
@@ -145,17 +125,6 @@ export default function PrecisionPullPanel({
   const scrollBodyRef = useRef(null);
   const customRangePanelRef = useRef(null);
   const isProPlan = proAccess;
-  const initialHomeBase = normalizeLocation(homeBase);
-  const [routeFromHomeEnabled, setRouteFromHomeEnabled] = useState(false);
-  const [startPointMode, setStartPointMode] = useState('home');
-  const [homeBaseAddress, setHomeBaseAddress] = useState(initialHomeBase?.address || String(homeBase?.address || ''));
-  const [resolvedHomeBase, setResolvedHomeBase] = useState(initialHomeBase);
-  const [homeBaseSaving, setHomeBaseSaving] = useState(false);
-  const [homeBaseError, setHomeBaseError] = useState('');
-  const [currentLocation, setCurrentLocation] = useState(null);
-  const [gpsLoading, setGpsLoading] = useState(false);
-  const [gpsError, setGpsError] = useState('');
-  const [routeOriginError, setRouteOriginError] = useState('');
 
   const goToUpgrade = () => navigate(createPageUrl('Billing') + '?plan=precision');
   const historyCriteria = selectedHistoryArea?.criteria || {};
@@ -163,109 +132,9 @@ export default function PrecisionPullPanel({
   const [ownershipMinDays, ownershipMaxDays] = normalizeOwnershipRangeDays(ownershipRangeDays);
   const isCustomRange = ownershipRangeMode === 'custom';
 
-  useEffect(() => {
-    const normalized = normalizeLocation(homeBase);
-    if (!normalized) {
-      setResolvedHomeBase(null);
-      setHomeBaseAddress(homeBase?.address ? String(homeBase.address) : '');
-      return;
-    }
-    setResolvedHomeBase(normalized);
-    setHomeBaseAddress(normalized.address);
-    setHomeBaseError('');
-  }, [homeBase?.address, homeBase?.lat, homeBase?.lng]);
-
-  const saveHomeBase = async () => {
-    if (!String(homeBaseAddress || '').trim()) {
-      setHomeBaseError('Enter your Home Base address, including city and state.');
-      return;
-    }
-
-    setHomeBaseSaving(true);
-    setHomeBaseError('');
-    setRouteOriginError('');
-    try {
-      const location = await geocodeAddress(homeBaseAddress);
-      if (onSaveHomeBase) await onSaveHomeBase(location);
-      setResolvedHomeBase(location);
-      setHomeBaseAddress(location.address);
-      toast.success('Home Base saved.');
-    } catch (error) {
-      setHomeBaseError(error?.message || 'Could not save Home Base. Please try again.');
-    } finally {
-      setHomeBaseSaving(false);
-    }
-  };
-
-  const requestCurrentLocation = useCallback(() => {
-    setStartPointMode('current');
-    setRouteOriginError('');
-    setGpsError('');
-    setCurrentLocation(null);
-
-    if (typeof navigator === 'undefined' || !navigator.geolocation) {
-      setGpsError('Current location is not supported on this device. Choose Home Base instead.');
-      return;
-    }
-
-    setGpsLoading(true);
-    navigator.geolocation.getCurrentPosition(
-      position => {
-        const lat = Number(position?.coords?.latitude);
-        const lng = Number(position?.coords?.longitude);
-        if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-          setGpsError('Your device returned an invalid location. Try again or start at Home Base.');
-          setGpsLoading(false);
-          return;
-        }
-        setCurrentLocation({
-          address: 'My current location',
-          lat,
-          lng,
-          accuracy: Number(position?.coords?.accuracy) || null
-        });
-        setGpsLoading(false);
-      },
-      error => {
-        const messages = {
-          1: 'Location permission was denied. Enable location access or start at Home Base.',
-          2: 'Your current location is unavailable. Turn on Location Services or start at Home Base.',
-          3: 'Location lookup timed out. Try again or start at Home Base.'
-        };
-        setGpsError(messages[error?.code] || 'Could not get your current location. Try again or start at Home Base.');
-        setGpsLoading(false);
-      },
-      { enableHighAccuracy: true, timeout: 12000, maximumAge: 30000 }
-    );
-  }, []);
-
   const handleGenerate = () => {
-    setRouteOriginError('');
     if (!usageReady || Number(maxProperties) <= 0) return;
-    if (!routeFromHomeEnabled) {
-      return onGenerate?.({ enabled: false });
-    }
-
-    const savedHome = normalizeLocation(resolvedHomeBase);
-    if (!savedHome) {
-      setRouteOriginError('Save a valid Home Base before generating this route.');
-      return;
-    }
-
-    const startLocation = startPointMode === 'current' ? normalizeLocation(currentLocation) : savedHome;
-    if (!startLocation) {
-      setRouteOriginError('Get your current location first, or choose Home Base as the start.');
-      return;
-    }
-
-    return onGenerate?.({
-      enabled: true,
-      mode: startPointMode === 'current' ? 'current_to_home' : 'home_round_trip',
-      // Only coordinates are needed by the optimizer. Keep the private home
-      // address out of the precision-job request and its server-side logs.
-      startLocation: { lat: startLocation.lat, lng: startLocation.lng },
-      endLocation: { lat: savedHome.lat, lng: savedHome.lng }
-    });
+    return onGenerate?.({ enabled: false });
   };
 
   const revealCustomRangePanel = useCallback(() => {
@@ -508,7 +377,7 @@ export default function PrecisionPullPanel({
               </div>
             ) : (
               <>
-                <div className="grid grid-cols-4 gap-1.5">
+                <div className="grid grid-cols-5 gap-1.5">
                   {SOLD_OPTIONS.map(option => {
                     const isLocked = !isProPlan && option.lockedOnFree;
                     const isActive = !isCustomRange && Number(soldMonths || 12) === option.value;
@@ -546,7 +415,7 @@ export default function PrecisionPullPanel({
 
                         {isLocked && hoveredLockedOption === option.value && (
                           <div className="hidden sm:block absolute bottom-full left-1/2 z-[2700] mb-2 w-64 -translate-x-1/2 rounded-xl border border-[#2EEB57]/30 bg-black p-3 text-center shadow-2xl">
-                            <p className="text-xs font-semibold text-white">Unlock 1 day, 2 day, 1 week, 2 week, and 1 month ranges with Pro</p>
+                            <p className="text-xs font-semibold text-white">Unlock 2 week and 1 month ranges with Pro</p>
                             <button
                               type="button"
                               onClick={goToUpgrade}
@@ -573,7 +442,7 @@ export default function PrecisionPullPanel({
                       setOwnershipRangeMode?.('custom');
                       revealCustomRangePanel();
                     }}
-                    className={`col-span-4 h-11 w-full rounded-xl text-xs font-extrabold transition-all flex items-center justify-center gap-1 ${
+                    className={`col-span-5 h-11 w-full rounded-xl text-xs font-extrabold transition-all flex items-center justify-center gap-1 ${
                       !isProPlan
                         ? 'bg-white/[0.03] text-gray-500 border border-white/[0.06] cursor-not-allowed grayscale opacity-50'
                         : isCustomRange
@@ -643,170 +512,8 @@ export default function PrecisionPullPanel({
             )}
             {!isProPlan && !(selectedHistoryArea && repullMode === 'max_since_last') && (
               <p className="text-[10px] text-gray-600 leading-tight">
-                Custom Range, 1 day, 2 day, 1 week, 2 week, and 1 month are available on Pro. Your current free range starts at 3 months.
+                Custom Range, 2 week, and 1 month are available on Pro. Your current free range starts at 3 months.
               </p>
-            )}
-          </div>
-
-          <div className="space-y-3 rounded-2xl border border-white/10 bg-white/[0.03] p-3 sm:p-4">
-            <label className="flex cursor-pointer items-start gap-3">
-              <input
-                type="checkbox"
-                checked={routeFromHomeEnabled}
-                onChange={event => {
-                  setRouteFromHomeEnabled(event.target.checked);
-                  setRouteOriginError('');
-                }}
-                className="mt-0.5 h-5 w-5 shrink-0 rounded border-white/20 accent-[#2EEB57]"
-              />
-              <span className="flex min-w-0 flex-1 items-start gap-2.5">
-                <HomeIcon className="mt-0.5 h-4 w-4 shrink-0 text-[#39FF4A]" />
-                <span>
-                  <span className="block text-sm font-extrabold text-white">Route from home and back</span>
-                  <span className="mt-0.5 block text-[10px] leading-snug text-gray-500">
-                    Optional. Leave this off when the route will be assigned to someone with a different Home Base.
-                  </span>
-                </span>
-              </span>
-            </label>
-
-            {routeFromHomeEnabled && (
-              <div className="space-y-4 border-t border-white/10 pt-3">
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-[10px] font-black uppercase tracking-[0.16em] text-gray-400">Home Base</p>
-                      <p className="text-[10px] text-gray-600">Saved for reuse. Address lookup uses OpenStreetMap; shared routes keep only an approximate private base point.</p>
-                    </div>
-                    {resolvedHomeBase && (
-                      <span className="shrink-0 rounded-full border border-[#2EEB57]/25 bg-[#2EEB57]/10 px-2 py-1 text-[9px] font-black text-[#39FF4A]">
-                        SAVED
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="flex flex-col gap-2 sm:flex-row">
-                    <div className="relative min-w-0 flex-1">
-                      <MapPin className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
-                      <input
-                        type="text"
-                        autoComplete="street-address"
-                        inputMode="text"
-                        value={homeBaseAddress}
-                        onChange={event => {
-                          const nextAddress = event.target.value;
-                          setHomeBaseAddress(nextAddress);
-                          setHomeBaseError('');
-                          setRouteOriginError('');
-                          if (normalizedAddress(nextAddress) !== normalizedAddress(resolvedHomeBase?.address)) {
-                            setResolvedHomeBase(null);
-                          }
-                        }}
-                        onKeyDown={event => {
-                          if (event.key === 'Enter') {
-                            event.preventDefault();
-                            saveHomeBase();
-                          }
-                        }}
-                        placeholder="123 Main St, City, State ZIP"
-                        aria-label="Home Base address"
-                        className="h-12 w-full rounded-xl border border-white/10 bg-black/40 pl-10 pr-3 text-base text-white outline-none placeholder:text-gray-700 focus:border-[#2EEB57]"
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      onClick={saveHomeBase}
-                      disabled={homeBaseSaving || !String(homeBaseAddress || '').trim()}
-                      className="flex h-12 shrink-0 items-center justify-center rounded-xl bg-white px-4 text-xs font-black text-black transition-colors hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {homeBaseSaving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> FINDING...</> : resolvedHomeBase ? 'UPDATE HOME BASE' : 'SAVE HOME BASE'}
-                    </button>
-                  </div>
-
-                  {resolvedHomeBase && (
-                    <p className="rounded-xl border border-[#2EEB57]/20 bg-[#2EEB57]/[0.06] px-3 py-2 text-[10px] leading-snug text-gray-300">
-                      <span className="font-bold text-[#39FF4A]">Using:</span> {resolvedHomeBase.address}
-                    </p>
-                  )}
-                  {homeBaseError && (
-                    <p role="alert" className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-[10px] leading-snug text-red-200">
-                      {homeBaseError}
-                    </p>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <div>
-                    <p className="text-[10px] font-black uppercase tracking-[0.16em] text-gray-400">Start at</p>
-                    <p className="text-[10px] text-gray-600">Choose where the first leg begins.</p>
-                  </div>
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                    <button
-                      type="button"
-                      aria-pressed={startPointMode === 'home'}
-                      onClick={() => {
-                        setStartPointMode('home');
-                        setGpsError('');
-                        setRouteOriginError('');
-                      }}
-                      className={`flex min-h-12 items-center gap-2 rounded-xl border px-3 py-3 text-left transition-colors ${startPointMode === 'home' ? 'border-[#2EEB57]/50 bg-[#2EEB57]/10 text-white' : 'border-white/10 bg-black/30 text-gray-400 hover:text-white'}`}
-                    >
-                      <HomeIcon className="h-4 w-4 shrink-0 text-[#39FF4A]" />
-                      <span>
-                        <span className="block text-xs font-extrabold">Home Base</span>
-                        <span className="block text-[9px] text-gray-500">Home → route → home</span>
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      aria-pressed={startPointMode === 'current'}
-                      onClick={requestCurrentLocation}
-                      disabled={gpsLoading}
-                      className={`flex min-h-12 items-center gap-2 rounded-xl border px-3 py-3 text-left transition-colors disabled:cursor-wait ${startPointMode === 'current' ? 'border-blue-400/50 bg-blue-400/10 text-white' : 'border-white/10 bg-black/30 text-gray-400 hover:text-white'}`}
-                    >
-                      {gpsLoading ? <Loader2 className="h-4 w-4 shrink-0 animate-spin text-blue-300" /> : <LocateFixed className="h-4 w-4 shrink-0 text-blue-300" />}
-                      <span>
-                        <span className="block text-xs font-extrabold">My current location</span>
-                        <span className="block text-[9px] text-gray-500">Current GPS → route → home</span>
-                      </span>
-                    </button>
-                  </div>
-
-                  {startPointMode === 'current' && (
-                    <div className="space-y-2">
-                      {gpsLoading && <p className="text-[10px] text-blue-200">Getting your current location…</p>}
-                      {!gpsLoading && currentLocation && (
-                        <p className="rounded-xl border border-blue-400/20 bg-blue-400/[0.08] px-3 py-2 text-[10px] text-blue-100">
-                          Current location ready{currentLocation.accuracy ? ` (±${Math.round(currentLocation.accuracy)}m)` : ''}.
-                        </p>
-                      )}
-                      {!gpsLoading && gpsError && (
-                        <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2">
-                          <p role="alert" className="text-[10px] leading-snug text-red-200">{gpsError}</p>
-                          <button type="button" onClick={requestCurrentLocation} className="mt-2 text-[10px] font-black text-white underline underline-offset-2">
-                            TRY GPS AGAIN
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex items-start gap-2 rounded-xl border border-white/10 bg-black/30 px-3 py-2.5">
-                  <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-[#39FF4A]" />
-                  <div>
-                    <p className="text-[10px] font-black uppercase tracking-wider text-gray-500">Finish</p>
-                    <p className="text-xs font-bold text-white">Home Base</p>
-                    <p className="mt-0.5 text-[9px] leading-snug text-gray-600">The trip to and from Home Base is included. Ordering keeps streets and subdivisions together, and estimated mileage may differ from live navigation.</p>
-                  </div>
-                </div>
-
-                {routeOriginError && (
-                  <p role="alert" className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-[10px] leading-snug text-red-200">
-                    {routeOriginError}
-                  </p>
-                )}
-              </div>
             )}
           </div>
 
@@ -830,7 +537,7 @@ export default function PrecisionPullPanel({
             </div>
           )}
           <Button
-            disabled={!usageReady || Number(maxProperties) <= 0 || generating || homeBaseSaving || (routeFromHomeEnabled && startPointMode === 'current' && gpsLoading)}
+            disabled={!usageReady || Number(maxProperties) <= 0 || generating}
             onClick={handleGenerate}
             className="w-full h-12 rounded-xl bg-[#2EEB57] hover:bg-[#39FF4A] text-black font-extrabold tracking-wide"
           >

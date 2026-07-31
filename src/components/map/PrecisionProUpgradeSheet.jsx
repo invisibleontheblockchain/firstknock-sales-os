@@ -24,7 +24,7 @@ export default function PrecisionProUpgradeSheet({ onClose, onUpgrade }) {
 
         <h3 className="text-center text-xl font-extrabold text-white">Pro Feature</h3>
         <p className="mt-2 text-center text-sm leading-relaxed text-gray-400">
-          Shorter date ranges (1 day, 2 days, 1 week, 2 weeks, 1 month) are available on the Pro plan. Upgrade to unlock faster lead targeting.
+          Shorter date ranges (2 weeks, 1 month) are available on the Pro plan. Upgrade to unlock faster lead targeting.
         </p>
 
         <Button
