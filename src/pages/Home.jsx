@@ -53,7 +53,7 @@ import { validateCanvasBoundary } from '@/components/canvas/canvasPlannerUtils';
 import { fetchAllCanvasTeamMembers } from '@/components/canvas/canvasRosterPagination';
 import { buildFullAddress } from '@/components/logic/navigation';
 import { collectUnretiredOutcomes, confirmOutcomeRow } from '@/components/logic/optimisticOutcomes';
-import { isKnockActivityLog } from '@/lib/interactionLogs';
+import { isKnockActivityLog } from '@/lib/interactionLogs'; import { scopeInteractionLogsToAccount } from '@/lib/accountInteractionLogs';
 import {
     buildRepRouteScope,
     buildSavedRouteQueryFilters,
@@ -1155,13 +1155,12 @@ export default function Home() {
         enabled: !!user
     });
 
-    // CRITICAL: Filter logs to only show interactions from this user's organization to prevent cross-account leaks
-    const logs = useMemo(() => {
-        const rawArray = Array.isArray(logsRaw) ? logsRaw : (logsRaw?.items || []);
-        if (!user) return [];
-        const validEmails = new Set([user.email, ...(teamMembers || []).map(m => m.email)].map(e => e.toLowerCase()));
-        return rawArray.filter(l => l.created_by && validEmails.has(l.created_by.toLowerCase()));
-    }, [logsRaw, user, teamMembers]);
+    // Org scoping lives in lib/accountInteractionLogs.js — see the note there on
+    // service-written outcome rows.
+    const logs = useMemo(
+        () => scopeInteractionLogsToAccount(logsRaw, user, teamMembers),
+        [logsRaw, user, teamMembers]
+    );
 
     // The checklist reads its outcomes exactly the way the knock tab does: a
     // route-scoped filter, no 5000-row global list and no org email filter on
