@@ -227,8 +227,23 @@ export default function ActiveRoutesTab({
                         <p className="text-[10px] font-black uppercase tracking-[0.24em] text-[#39FF4A]">Route Command</p>
                         <h3 className="truncate text-base font-black text-white">{savedRoutes.length} active route{savedRoutes.length === 1 ? '' : 's'}</h3>
                     </div>
-                    <div className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-[10px] font-bold text-white/60">
-                        {isMultiSelect ? `${selectedIds.size} selected` : 'Ready'}
+                    <div className="flex shrink-0 items-center gap-1.5">
+                        <div className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-[10px] font-bold text-white/60">
+                            {isMultiSelect ? `${selectedIds.size} selected` : 'Ready'}
+                        </div>
+                        {!isMultiSelect && savedRoutes.length > 0 && (
+                            <button
+                                onClick={() => {
+                                    if (confirm("Delete all routes?")) {
+                                        onDeleteAllRoutes && onDeleteAllRoutes();
+                                    }
+                                }}
+                                className="rounded-lg p-1.5 text-white/35 transition-colors hover:bg-red-500/10 hover:text-red-300"
+                                title="Delete all routes"
+                            >
+                                <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                        )}
                     </div>
                 </div>
                 <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
@@ -262,20 +277,6 @@ export default function ActiveRoutesTab({
                                     className="h-10 rounded-xl border border-[#2EEB57]/25 bg-[#2EEB57]/10 px-3 text-[10px] font-black text-[#39FF4A] hover:bg-[#2EEB57]/20"
                                 >
                                     <Merge className="mr-1 h-3.5 w-3.5" /> SELECT TO MERGE
-                                </Button>
-                            )}
-                            {savedRoutes.length > 0 && (
-                                <Button
-                                    onClick={() => {
-                                        if (confirm("Delete ALL saved routes? This cannot be undone.")) {
-                                            onDeleteAllRoutes && onDeleteAllRoutes();
-                                        }
-                                    }}
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-10 rounded-xl border border-red-500/20 bg-red-500/10 px-3 text-[10px] font-black text-red-300 hover:bg-red-500/20 hover:text-red-200"
-                                >
-                                    <Trash2 className="mr-1 h-3.5 w-3.5" /> DELETE ALL
                                 </Button>
                             )}
                         </>
