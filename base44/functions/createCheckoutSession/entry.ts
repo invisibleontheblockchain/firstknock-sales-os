@@ -310,7 +310,6 @@ async function activateTrialSubscription({
         const targetPrice = await stripe.prices.create({
             currency: 'usd',
             unit_amount: plan.amountCents,
-            tax_behavior: 'exclusive',
             recurring: { interval: 'month' },
             product_data: {
                 name: plan.productName,
@@ -328,7 +327,6 @@ async function activateTrialSubscription({
 
     const updateParams: any = {
         trial_end: 'now',
-        automatic_tax: { enabled: true },
         payment_behavior: 'pending_if_incomplete',
         proration_behavior: 'always_invoice',
         expand: ['latest_invoice.payment_intent']
