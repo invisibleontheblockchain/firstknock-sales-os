@@ -73,7 +73,7 @@ export default function RepHeader({
                         onClick={onStartNavigation}
                         disabled={navigationDisabled}
                         aria-label={`${navigationButtonLabel} route navigation${navigationBatchLabel ? `, ${navigationBatchLabel}` : ''}`}
-                        className="flex min-h-10 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-[#2EEB57]/35 bg-[#2EEB57] px-3 text-[10px] font-black uppercase tracking-[0.08em] text-black shadow-[0_0_18px_rgba(46,235,87,0.2)] transition active:scale-95 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/5 disabled:text-white/30 disabled:shadow-none"
+                        className="flex min-h-10 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-white/15 bg-white/[0.06] px-3 text-[10px] font-bold uppercase tracking-[0.08em] text-white/85 transition hover:border-white/25 hover:bg-white/[0.12] hover:text-white active:scale-95 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/5 disabled:text-white/30"
                     >
                         <Navigation className="h-3.5 w-3.5" />
                         <span>{navigationButtonLabel}</span>
