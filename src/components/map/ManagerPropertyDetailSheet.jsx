@@ -231,9 +231,11 @@ export default function ManagerPropertyDetailSheet({
                                 </div>
                                 <div className="p-3 bg-black/40 rounded-lg border border-gray-800">
                                     <p className="text-[10px] text-gray-500 uppercase mb-1 flex items-center gap-1">
-                                        <Calendar className="w-3 h-3" /> Built
+                                        <User className="w-3 h-3" /> Last Sold
                                     </p>
-                                    <p className="font-bold text-white">{builtYear || 'N/A'}</p>
+                                    <p className="font-bold text-white text-xs">
+                                        {soldDate ? format(soldDate, 'MMM d, yyyy') : '-'}
+                                    </p>
                                 </div>
                                 <div className="p-3 bg-black/40 rounded-lg border border-gray-800">
                                     <p className="text-[10px] text-gray-500 uppercase mb-1 flex items-center gap-1">
@@ -243,11 +245,9 @@ export default function ManagerPropertyDetailSheet({
                                 </div>
                                 <div className="p-3 bg-black/40 rounded-lg border border-gray-800">
                                     <p className="text-[10px] text-gray-500 uppercase mb-1 flex items-center gap-1">
-                                        <User className="w-3 h-3" /> Last Sold
+                                        <Calendar className="w-3 h-3" /> Built
                                     </p>
-                                    <p className="font-bold text-white text-xs">
-                                        {soldDate ? format(soldDate, 'MMM d, yyyy') : '-'}
-                                    </p>
+                                    <p className="font-bold text-white">{builtYear || 'N/A'}</p>
                                 </div>
                                 {beds && (
                                     <div className="p-3 bg-black/40 rounded-lg border border-gray-800">
