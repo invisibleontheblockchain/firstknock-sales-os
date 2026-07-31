@@ -1733,7 +1733,7 @@ export default function RepHome() {
       }
 
             {/* Filter tabs + search */}
-            <div className="px-3 sm:px-[max(0.75rem,calc((100%-48rem)/2))] pt-2 pb-2 space-y-2 lg:flex lg:items-center lg:gap-2 lg:space-y-0 border-b border-white/10 bg-black/70 backdrop-blur-xl shadow-[0_12px_36px_rgba(0,0,0,0.32)]">
+            <div className="border-b border-white/10 bg-black/70 px-3 py-3 shadow-[0_12px_36px_rgba(0,0,0,0.32)] backdrop-blur-xl sm:px-4 lg:grid lg:grid-cols-[minmax(520px,0.9fr)_minmax(360px,1.1fr)] lg:items-center lg:gap-4 lg:px-6">
                 {/* Account-wide customer / address search (callback handling) */}
                 <RepUnifiedSearch
                   routeProperties={routeProperties}
@@ -1749,32 +1749,34 @@ export default function RepHome() {
                 />
 
                 {/* Top Row: Segmented Control */}
-                <div className="flex lg:shrink-0 bg-white/[0.04] p-0.5 rounded-xl border border-white/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+                <div className="grid grid-cols-4 gap-1 rounded-2xl border border-white/10 bg-white/[0.045] p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_10px_30px_rgba(0,0,0,0.24)]">
                     {[
-          { id: 'todo', label: `Todo ${stats.todo}` },
-          { id: 'done', label: `Done ${stats.done}` },
-          { id: 're_knock', label: `Re-Knock ${stats.reKnock}` },
-          { id: 'all', label: 'All' }].
+          { id: 'todo', label: 'Todo', count: stats.todo },
+          { id: 'done', label: 'Done', count: stats.done },
+          { id: 're_knock', label: 'Re-Knock', count: stats.reKnock },
+          { id: 'all', label: 'All', count: routeProperties.length }].
           map((tab) =>
           <button
             key={tab.id}
             onClick={() => setFilterStatus(tab.id)}
-            className={`flex-1 py-1.5 rounded-lg text-[10px] sm:text-[11px] font-black tracking-[0.1em] sm:tracking-[0.05em] transition-all whitespace-nowrap ${filterStatus === tab.id ? 'bg-white text-black shadow-[0_6px_18px_rgba(255,255,255,0.12)]' : 'text-white/45 hover:text-white'}`
+            className={`flex h-11 min-w-0 items-center justify-center gap-1.5 rounded-xl px-2 text-[11px] font-black tracking-[0.04em] transition-all sm:text-xs lg:h-12 lg:gap-2 lg:text-sm ${filterStatus === tab.id ? 'bg-gradient-to-b from-white to-white/90 text-black shadow-[0_8px_24px_rgba(255,255,255,0.16)]' : 'text-white/55 hover:bg-white/[0.06] hover:text-white'}`
             }>
-            
-                            {tab.label}
+                            <span className="truncate">{tab.label}</span>
+                            <span className={`flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full px-1.5 text-[9px] font-black lg:h-6 lg:min-w-6 lg:text-[10px] ${filterStatus === tab.id ? 'bg-black/10 text-black/70' : 'bg-white/10 text-white/60'}`}>
+                                {tab.count}
+                            </span>
                         </button>
           )}
                 </div>
 
                 {/* Bottom Row: Date Filter & Search */}
-                <div className="flex items-center gap-2 lg:flex-1 lg:min-w-0">
+                <div className="mt-2 flex items-center gap-2 lg:mt-0 lg:min-w-0 lg:justify-end">
                     {/* Sold Date Filter */}
                     <div className="relative flex-1 min-w-0">
                         <select
               value={soldDateFilter}
               onChange={(e) => setSoldDateFilter(e.target.value)}
-              className="appearance-none w-full h-8 pl-2.5 pr-7 text-[10px] font-bold bg-white/[0.04] border border-white/10 text-white rounded-lg outline-none focus:border-[#2EEB57]/60 cursor-pointer [color-scheme:dark] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+              className="h-10 w-full cursor-pointer appearance-none rounded-xl border border-white/10 bg-white/[0.045] pl-3 pr-9 text-[11px] font-bold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] outline-none transition-colors focus:border-[#2EEB57]/60 lg:h-12 lg:text-xs [color-scheme:dark]">
               
                             <option className="bg-black text-white" value="all">Sale: All Time</option>
                             <option className="bg-black text-white" value="1w">Sale: 1 Week</option>
@@ -1793,7 +1795,7 @@ export default function RepHome() {
                             <select
               value={decisionFilter}
               onChange={(e) => setDecisionFilter(e.target.value)}
-              className="appearance-none w-full h-8 pl-2.5 pr-6 text-[10px] font-bold bg-white/[0.04] border border-white/10 text-white rounded-lg outline-none focus:border-[#2EEB57]/60 cursor-pointer [color-scheme:dark] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+              className="h-10 w-full cursor-pointer appearance-none rounded-xl border border-white/10 bg-white/[0.045] pl-3 pr-8 text-[11px] font-bold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] outline-none transition-colors focus:border-[#2EEB57]/60 lg:h-12 lg:text-xs [color-scheme:dark]">
               
                                 <option className="bg-black text-white" value="all">Decision: All</option>
                                 <option className="bg-black text-white" value="SOLD">Sold</option>
@@ -1814,7 +1816,7 @@ export default function RepHome() {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search address..."
-              className="h-8 w-full pl-7 pr-7 text-[10px] bg-white/[0.04] border border-white/10 text-white placeholder:text-white/35 focus:border-[#2EEB57]/60 rounded-lg shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]" />
+              className="h-10 w-full rounded-xl border border-white/10 bg-white/[0.045] pl-8 pr-8 text-[11px] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] placeholder:text-white/35 focus:border-[#2EEB57]/60 lg:h-12 lg:text-xs" />
             
                             {searchQuery &&
             <button onClick={() => setSearchQuery('')} className="absolute right-2.5 top-1/2 -translate-y-1/2">
