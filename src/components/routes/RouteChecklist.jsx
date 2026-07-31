@@ -40,7 +40,7 @@ const formatNumber = (value) => {
 export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, onClose, navigationApp = 'apple', activeRouteSoldFilter, setActiveRouteSoldFilter }) {
     const [latestRoute, setLatestRoute] = useState(route);
     const [expandedId, setExpandedId] = useState(null);
-    const [filter, setFilter] = useState('all');
+    const [filter, setFilter] = useState('pending');
     const [decisionFilter, setDecisionFilter] = useState('all');
     const [callbackPhone, setCallbackPhone] = useState('');
     const [selectedAction, setSelectedAction] = useState(null);
