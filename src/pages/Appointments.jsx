@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Calendar, Loader2, Plus, Zap, Clock, CheckCircle2, AlertTriangle, CalendarDays, X, Phone, Trash2 } from 'lucide-react';
+import { Calendar, Loader2, Plus, Zap, X, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import PullToRefresh from '@/components/mobile/PullToRefresh';
 import { format, isToday, isTomorrow, isThisWeek, parseISO } from 'date-fns';
@@ -10,24 +10,9 @@ import { toast } from 'sonner';
 import AppointmentCard from '@/components/appointments/AppointmentCard';
 import AppointmentDetail from '@/components/appointments/AppointmentDetail';
 import AutoSchedulePanel from '@/components/appointments/AutoSchedulePanel';
+import AppointmentsFilterBar from '@/components/appointments/AppointmentsFilterBar';
+import TodayFocusBar from '@/components/appointments/TodayFocusBar';
 import { openInMaps } from '@/components/logic/navigation';
-
-const TIME_TABS = [
-    { id: 'upcoming', label: 'Upcoming' },
-    { id: 'today', label: 'Today' },
-    { id: 'this_week', label: 'This Week' },
-    { id: 'past', label: 'Past' },
-    { id: 'all', label: 'All' },
-];
-
-const STATUS_CHIPS = [
-    { id: 'all', label: 'All' },
-    { id: 'scheduled', label: 'Scheduled' },
-    { id: 'confirmed', label: 'Confirmed' },
-    { id: 'completed', label: 'Completed' },
-    { id: 'cancelled', label: 'Cancelled' },
-    { id: 'no_show', label: 'No Show' },
-];
 
 const callbackKey = (item) => `${item.address_hash || ''}|${item.scheduled_date || item.next_eligible_date || ''}|${item.route_id || ''}`;
 const callbackLogId = (item) => (item?.notes || '').match(/callback_log:([^\]]+)/)?.[1] || (item?._source === 'interaction_log' ? String(item.id || '').replace('callback-log-', '') : null);
@@ -44,9 +29,9 @@ export default function Appointments() {
     const [showAutoSchedule, setShowAutoSchedule] = useState(false);
     const [showNewForm, setShowNewForm] = useState(false);
     const [statusFilter, setStatusFilter] = useState('all');
-    const [timeFilter, setTimeFilter] = useState('all');
+    // The page is a day-of tool first, so it opens on today's work.
+    const [timeFilter, setTimeFilter] = useState('today');
     const [sourceFilter, setSourceFilter] = useState('all');
-    const [showFilters, setShowFilters] = useState(false);
     const deletedCallbackLogsRef = React.useRef(new Set());
 
     const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me(), staleTime: 1000 * 60 * 5 });
@@ -223,6 +208,19 @@ export default function Appointments() {
             completed: all.filter(a => a.status === 'completed').length,
             noShow: all.filter(a => a.status === 'no_show').length,
             cancelled: all.filter(a => a.status === 'cancelled').length,
+        };
+    }, [appointmentRows]);
+
+    // Counts shown on the time tabs so the day's workload is visible before switching.
+    const timeCounts = useMemo(() => {
+        const now = new Date();
+        const scheduled = appointmentRows.filter(a => a.scheduled_date);
+        return {
+            today: scheduled.filter(a => isToday(parseISO(a.scheduled_date))).length,
+            upcoming: scheduled.filter(a => new Date(a.scheduled_date) >= now).length,
+            this_week: scheduled.filter(a => isThisWeek(parseISO(a.scheduled_date))).length,
+            past: scheduled.filter(a => new Date(a.scheduled_date) < now).length,
+            all: appointmentRows.length,
         };
     }, [appointmentRows]);
 
@@ -434,70 +432,55 @@ export default function Appointments() {
             <div className="px-4 md:px-8 lg:px-10 pt-4 md:pt-6 pb-2 md:pb-3 border-b border-white/[0.04] sticky top-0 z-20 backdrop-blur-xl bg-[#09090b]/90">
                 <div className="max-w-7xl mx-auto">
                     {/* Title row */}
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3 md:mb-4">
-                        <h1 className="text-lg md:text-2xl lg:text-3xl font-black text-white tracking-tight">Appointments</h1>
-                        <div className="grid grid-cols-3 sm:flex items-center gap-2 w-full sm:w-auto">
+                    <div className="flex items-center justify-between gap-2 mb-3">
+                        <div className="min-w-0">
+                            <h1 className="text-lg md:text-2xl font-black text-white tracking-tight leading-none">Appointments</h1>
+                            <p className="text-[10px] md:text-xs text-gray-500 mt-1 truncate">
+                                {format(new Date(), 'EEEE, MMM d')} • {stats.today} today
+                            </p>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
                             <Button
                                 onClick={() => { setShowNewForm(!showNewForm); setShowAutoSchedule(false); }}
-                                className="h-8 md:h-10 px-2 sm:px-3 md:px-5 text-[10px] md:text-xs font-bold rounded-lg bg-white text-black hover:bg-gray-200 gap-1.5"
+                                className="h-9 md:h-10 px-3 md:px-5 text-[10px] md:text-xs font-bold rounded-xl bg-white text-black hover:bg-gray-200 gap-1.5"
                             >
-                                <Plus className="w-3 h-3 md:w-4 md:h-4" /> New
+                                <Plus className="w-3.5 h-3.5" /> New
                             </Button>
                             <Button
                                 onClick={() => { setShowAutoSchedule(!showAutoSchedule); setShowNewForm(false); }}
-                                className="h-8 md:h-10 px-2 sm:px-3 md:px-5 text-[10px] md:text-xs font-bold rounded-lg bg-white/[0.06] hover:bg-white/[0.1] text-white border border-white/[0.08] gap-1.5"
+                                className="h-9 md:h-10 px-3 md:px-5 text-[10px] md:text-xs font-bold rounded-xl bg-white/[0.06] hover:bg-white/[0.1] text-white border border-white/[0.08] gap-1.5"
                             >
-                                <Zap className="w-3 h-3 md:w-4 md:h-4 text-yellow-400" /> <span className="md:hidden">Auto</span><span className="hidden md:inline">Auto-Schedule</span>
+                                <Zap className="w-3.5 h-3.5 text-[#39FF4A]" /> <span className="hidden sm:inline">Auto-Schedule</span><span className="sm:hidden">Auto</span>
                             </Button>
-                            <Button
+                            <button
                                 onClick={handleDeleteAllShown}
                                 disabled={deleteAllMutation.isPending || filteredAppointments.length === 0}
-                                className="h-8 md:h-10 px-2 sm:px-3 md:px-5 text-[10px] md:text-xs font-bold rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-300 border border-red-500/20 gap-1.5 disabled:opacity-35"
+                                title="Delete all shown appointments"
+                                className="h-9 w-9 md:h-10 md:w-10 shrink-0 rounded-xl flex items-center justify-center text-gray-600 hover:text-red-300 hover:bg-white/[0.06] transition-colors disabled:opacity-30 disabled:hover:text-gray-600"
                             >
-                                <Trash2 className="w-3 h-3 md:w-4 md:h-4" /> <span className="md:hidden">Delete</span><span className="hidden md:inline">Delete All</span>
-                            </Button>
+                                <Trash2 className="w-4 h-4" />
+                            </button>
                         </div>
                     </div>
 
-                    {/* Stats row - hide non-essentials on mobile */}
-                    <div className="hidden sm:flex gap-2 md:gap-3 mb-3 md:mb-4 overflow-x-auto no-scrollbar">
-                        <StatPill icon={CalendarDays} label="Upcoming" value={stats.upcoming} color="#3b82f6" />
-                        <StatPill icon={Clock} label="Today" value={stats.today} color="#eab308" />
-                        <StatPill icon={Phone} label="Callbacks" value={stats.callbacks} color="#39FF4A" />
-                        <StatPill icon={CheckCircle2} label="Done" value={stats.completed} color="#22c55e" />
-                        <StatPill icon={AlertTriangle} label="No-Show" value={stats.noShow} color="#f97316" />
-                    </div>
-
-                    {/* Time tabs - responsive */}
-                    <div className="grid grid-cols-5 gap-1 sm:flex sm:gap-2 p-1.5 sm:p-2 bg-white/[0.03] rounded-lg sm:rounded-xl border border-white/[0.05] overflow-x-auto sm:overflow-visible no-scrollbar">
-                        {TIME_TABS.map(t => (
-                            <button key={t.id} onClick={() => setTimeFilter(t.id)}
-                                className={`py-2.5 px-2 sm:px-5 rounded-lg text-[8px] sm:text-xs font-bold transition-all whitespace-nowrap text-center h-full ${timeFilter === t.id ? 'bg-white text-black shadow-sm' : 'text-gray-500 hover:text-white'}`}
-                            >{t.label}</button>
-                        ))}
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-1.5 mt-2 sm:flex sm:gap-2">
-                        {[
-                            { id: 'all', label: 'All' },
-                            { id: 'callbacks', label: 'Callbacks' },
-                            { id: 'appointments', label: 'Appointments' },
-                        ].map(source => (
-                            <button key={source.id} onClick={() => setSourceFilter(source.id)}
-                                className={`py-2 px-2 sm:px-4 rounded-lg text-[9px] sm:text-xs font-bold transition-all border ${sourceFilter === source.id ? 'bg-[#39FF4A]/15 border-[#39FF4A]/30 text-[#39FF4A]' : 'border-white/[0.04] text-gray-500 hover:text-white'}`}
-                            >{source.label}</button>
-                        ))}
-                    </div>
-
-                    {/* Status chips - wrapped, optimized mobile */}
-                    <div className="flex flex-wrap gap-2 mt-2 sm:mt-3 -mx-3 px-3 sm:mx-0 sm:px-0">
-                        {STATUS_CHIPS.map((s, idx) => (
-                            <button key={s.id} onClick={() => setStatusFilter(s.id)}
-                                className={`hidden sm:inline-flex px-3 sm:px-4 py-2 h-9 rounded-lg sm:rounded-full text-[9px] sm:text-xs font-bold transition-all border ${
-                                    statusFilter === s.id ? 'bg-white/[0.08] border-white/15 text-white' : 'border-white/[0.04] text-gray-600 hover:text-gray-400'
-                                } ${idx < 3 ? 'flex' : ''}`}
-                            >{s.label}</button>
-                        ))}
+                    <div className="space-y-2 mb-1">
+                        <TodayFocusBar
+                            stats={stats}
+                            timeFilter={timeFilter}
+                            sourceFilter={sourceFilter}
+                            onFocusToday={() => { setTimeFilter('today'); setSourceFilter('all'); setStatusFilter('all'); }}
+                            onFocusCallbacks={() => { setSourceFilter(sourceFilter === 'callbacks' ? 'all' : 'callbacks'); setTimeFilter('all'); }}
+                            onFocusStatus={(status) => { setStatusFilter(statusFilter === status ? 'all' : status); setTimeFilter('all'); }}
+                        />
+                        <AppointmentsFilterBar
+                            timeFilter={timeFilter}
+                            onTimeFilterChange={setTimeFilter}
+                            sourceFilter={sourceFilter}
+                            onSourceFilterChange={setSourceFilter}
+                            statusFilter={statusFilter}
+                            onStatusFilterChange={setStatusFilter}
+                            counts={timeCounts}
+                        />
                     </div>
                 </div>
             </div>
@@ -533,8 +516,12 @@ export default function Appointments() {
                             <div className="w-14 h-14 rounded-2xl bg-white/[0.03] border border-white/[0.06] flex items-center justify-center mx-auto mb-4">
                                 <Calendar className="w-6 h-6 text-gray-600" />
                             </div>
-                            <p className="text-sm font-bold text-gray-400 mb-1">No appointments found</p>
-                            <p className="text-xs text-gray-600">Try changing your filters or use Auto-Schedule</p>
+                            <p className="text-sm font-bold text-gray-400 mb-1">
+                                {timeFilter === 'today' ? 'Nothing booked for today' : 'No appointments found'}
+                            </p>
+                            <p className="text-xs text-gray-600">
+                                {timeFilter === 'today' ? 'Check Upcoming, or add one with New.' : 'Try changing your filters or use Auto-Schedule.'}
+                            </p>
                         </div>
                     ) : (
                         grouped.map(([dateKey, appts]) => (
@@ -576,18 +563,6 @@ export default function Appointments() {
                     onDelete={handleDeleteAppointment}
                 />
             )}
-        </div>
-    );
-}
-
-function StatPill({ icon: Icon, label, value, color }) {
-    return (
-        <div className="flex items-center gap-2 md:gap-3 px-3 md:px-5 py-2 md:py-3 rounded-xl bg-white/[0.03] border border-white/[0.05] shrink-0">
-            <Icon className="w-3.5 h-3.5 md:w-5 md:h-5" style={{ color }} />
-            <div>
-                <p className="text-sm md:text-xl font-black text-white leading-none">{value}</p>
-                <p className="text-[9px] md:text-xs text-gray-500 font-medium">{label}</p>
-            </div>
         </div>
     );
 }
