@@ -20,7 +20,12 @@ import {
  * hundreds of React-managed <CircleMarker> + <Tooltip permanent> combos.
  * This eliminates the ~15s delay when activating a route with many stops.
  */
-const DEFAULT_ROUTE_COLORS = ['#FFD700', '#ec4899', '#10b981', '#f59e0b', '#8b5cf6', '#06b6d4', '#f97316', '#ef4444', '#22c55e', '#3b82f6'];
+// Green is reserved for confirmed sales, so no route is assigned a green color.
+const DEFAULT_ROUTE_COLORS = ['#FFD700', '#ec4899', '#a855f7', '#f59e0b', '#8b5cf6', '#06b6d4', '#f97316', '#ef4444', '#e11d48', '#3b82f6'];
+
+// Confirmed sales always render in this green, whatever color their route uses.
+const SOLD_PIN_COLOR = '#2EEB57';
+const isConfirmedSale = (property) => property?.effective_status === 'SOLD';
 
 const getRouteColor = (route, routeNumber = 1) => {
     if (route?.display_color) return route.display_color;
@@ -125,17 +130,19 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, lineDashArray, setS
             });
             group.addLayer(hitbox);
 
+            const sold = isConfirmedSale(p);
             const completedColor = activeRoute.status === 'COMPLETED'
                 ? getCompletedPinColor(p.effective_status, routeColor)
                 : routeColor;
+            const baseColor = isFirst && activeRoute.status !== 'COMPLETED' ? '#FFFFFF' : completedColor;
 
             // Circle pin (canvas-rendered, fast)
             const circle = L.circleMarker(point, {
-                radius: activeRoute.status === 'COMPLETED' && (p.effective_status === 'SOLD' || p.effective_status === 'QUALIFIED') ? 7 : 5,
-                fillColor: isFirst && activeRoute.status !== 'COMPLETED' ? '#22c55e' : completedColor,
+                radius: sold || (activeRoute.status === 'COMPLETED' && p.effective_status === 'QUALIFIED') ? 7 : 5,
+                fillColor: sold ? SOLD_PIN_COLOR : baseColor,
                 fillOpacity: 1,
-                color: activeRoute.status === 'COMPLETED' && (p.effective_status === 'SOLD' || p.effective_status === 'QUALIFIED') ? '#ffffff' : '#fff',
-                weight: activeRoute.status === 'COMPLETED' && (p.effective_status === 'SOLD' || p.effective_status === 'QUALIFIED') ? 2.5 : 1.5,
+                color: '#fff',
+                weight: sold || (activeRoute.status === 'COMPLETED' && p.effective_status === 'QUALIFIED') ? 2.5 : 1.5,
             });
             circle.on('click', (e) => {
                 L.DomEvent.stopPropagation(e);
@@ -492,13 +499,15 @@ function SavedRoutesLayer({
                     hitbox.on('click', (e) => { L.DomEvent.stopPropagation(e); setActiveRoute({ ...route, route_number: globalNumber, display_color: repColor }); });
                     group.addLayer(hitbox);
 
-                    // Visible pin
+                    // Visible pin — confirmed sales stay green regardless of route color
+                    const sold = isConfirmedSale(p);
+                    const pinColor = sold ? SOLD_PIN_COLOR : repColor;
                     const circle = L.circleMarker(point, {
-                        radius: pinSize,
-                        fillColor: repColor,
-                        fillOpacity: (isUnassigned ? 0.6 : 0.8) * (mapSettings.pinOpacity || 1),
-                        color: mapSettings.fillStyle === 'outline' ? repColor : (mapSettings.pinBorderColor || '#000'),
-                        weight: mapSettings.fillStyle === 'outline' ? 2 : (mapSettings.pinBorderWidth || 1)
+                        radius: sold ? pinSize + 2 : pinSize,
+                        fillColor: pinColor,
+                        fillOpacity: sold ? 1 : (isUnassigned ? 0.6 : 0.8) * (mapSettings.pinOpacity || 1),
+                        color: sold ? '#FFFFFF' : (mapSettings.fillStyle === 'outline' ? repColor : (mapSettings.pinBorderColor || '#000')),
+                        weight: sold ? 2 : (mapSettings.fillStyle === 'outline' ? 2 : (mapSettings.pinBorderWidth || 1))
                     });
                     circle.on('click', (e) => { L.DomEvent.stopPropagation(e); setActiveRoute({ ...route, route_number: globalNumber, display_color: repColor }); });
                     group.addLayer(circle);
