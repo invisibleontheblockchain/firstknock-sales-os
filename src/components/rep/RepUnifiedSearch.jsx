@@ -1,15 +1,15 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import UnifiedMapSearch from '@/components/search/UnifiedMapSearch';
 import AddLeadFromAddressDialog from '@/components/search/AddLeadFromAddressDialog';
 import { resolveSelectedProperty } from '@/components/search/searchSelection';
+import { GLOBAL_SEARCH_EVENT, takePendingSelection } from '@/components/search/globalSearchBridge';
 
 /**
- * Unified search for the rep Home screen.
+ * Search result handler for the rep Home screen.
  *
- * Counties are not offered here: the rep surface has no persistent territory
- * map to fit them to. Customers and addresses behave the same as on the manager
- * map, and a stop that belongs to the current route also opens the route map.
+ * The search field lives in the app header; this component only reacts to
+ * selections. Customers and addresses behave the same as on the manager map,
+ * and a stop that belongs to the current route also opens the route map.
  */
 export default function RepUnifiedSearch({ routeProperties = [], onOpenProperty, onLocateOnRoute }) {
   const [leadDraft, setLeadDraft] = useState(null);
@@ -17,6 +17,11 @@ export default function RepUnifiedSearch({ routeProperties = [], onOpenProperty,
   const handleSelect = useCallback((result) => {
     if (result.type === 'address') {
       setLeadDraft(result);
+      return;
+    }
+    if (result.type === 'county') {
+      // The rep surface has no persistent territory map to fit a county to.
+      toast.info('County search is available on the manager map.');
       return;
     }
 
@@ -32,26 +37,37 @@ export default function RepUnifiedSearch({ routeProperties = [], onOpenProperty,
     if (onRoute) onLocateOnRoute?.(property);
   }, [onLocateOnRoute, onOpenProperty, routeProperties]);
 
+  useEffect(() => {
+    const onGlobalSelect = (event) => {
+      const result = event.detail?.result;
+      if (!result) return;
+      event.preventDefault();
+      handleSelect(result);
+    };
+    window.addEventListener(GLOBAL_SEARCH_EVENT, onGlobalSelect);
+    return () => window.removeEventListener(GLOBAL_SEARCH_EVENT, onGlobalSelect);
+  }, [handleSelect]);
+
+  useEffect(() => {
+    const pending = takePendingSelection();
+    if (pending) handleSelect(pending);
+    // Only a selection parked before this page loaded should replay, once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  if (!leadDraft) return null;
+
   return (
-    <>
-      <UnifiedMapSearch
-        onSelect={handleSelect}
-        enableCounties={false}
-        placeholder="Search customers or addresses…"
-      />
-      {leadDraft && (
-        <AddLeadFromAddressDialog
-          addressResult={leadDraft}
-          onCancel={() => setLeadDraft(null)}
-          onCreated={(property, { duplicate }) => {
-            setLeadDraft(null);
-            onOpenProperty?.(property);
-            toast.success(duplicate
-              ? 'This address already existed in FirstKnock — opening the existing record.'
-              : 'Lead added. Your manager can route it from the map.');
-          }}
-        />
-      )}
-    </>
+    <AddLeadFromAddressDialog
+      addressResult={leadDraft}
+      onCancel={() => setLeadDraft(null)}
+      onCreated={(property, { duplicate }) => {
+        setLeadDraft(null);
+        onOpenProperty?.(property);
+        toast.success(duplicate
+          ? 'This address already existed in FirstKnock — opening the existing record.'
+          : 'Lead added. Your manager can route it from the map.');
+      }}
+    />
   );
 }

@@ -14,6 +14,7 @@ import MarketOnboarding from '@/components/onboarding/MarketOnboarding';
 import { ThemeProvider, useTheme } from '@/components/theme/ThemeProvider';
 import { getAppRole, isManagerAccount, isRepAccount } from '@/lib/roles';
 import { clearFieldRoutesInspectionQueue } from '@/components/fieldroutes/fieldRoutesInspectionQueue';
+import GlobalSearchLauncher from '@/components/search/GlobalSearchLauncher';
 
 class ErrorBoundary extends React.Component {
   constructor(props) {super(props);this.state = { hasError: false, error: null };}
@@ -310,7 +311,8 @@ function LayoutInner({ children }) {
                     </Link>
 
                     {/* Desktop */}
-                    <div className="hidden md:flex items-center gap-2 ml-auto rounded-full border border-white/10 bg-white/[0.04] px-2 py-1.5 shadow-[0_10px_40px_rgba(0,0,0,0.35)] backdrop-blur-xl">
+                    <div className="hidden lg:flex items-center gap-2 ml-auto rounded-full border border-white/10 bg-white/[0.04] px-2 py-1.5 shadow-[0_10px_40px_rgba(0,0,0,0.35)] backdrop-blur-xl">
+                        <GlobalSearchLauncher className="h-8 w-8 text-white/70 hover:bg-white/10 hover:text-[#39FF4A]" />
                         {!isOnline && <div className="flex items-center gap-1.5 rounded-full border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-[10px] font-bold text-red-200"><div className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />OFFLINE</div>}
 
                         <Link to="/About" className="rounded-full px-3 py-1.5 text-[10px] font-bold tracking-[0.18em] text-white/60 transition-colors hover:text-white">ABOUT</Link>
@@ -324,9 +326,10 @@ function LayoutInner({ children }) {
                         <span className={`mx-1 w-1.5 h-1.5 rounded-full ${isOnline ? 'bg-[#2EEB57] shadow-[0_0_10px_rgba(46,235,87,0.9)]' : 'bg-red-500'}`} />
                     </div>
 
-                    {/* Mobile */}
-                    <div className="md:hidden flex items-center gap-2">
+                    {/* Mobile + tablet */}
+                    <div className="lg:hidden flex items-center gap-1 ml-auto">
                         {!isOnline && <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse mr-1" />}
+                        <GlobalSearchLauncher className="h-11 w-11 text-white hover:bg-slate-800" />
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                                 <Button variant="ghost" size="icon" className="text-white hover:bg-slate-800 h-11 w-11 -mr-2 rounded-full"><MoreVertical className="w-6 h-6" /></Button>

@@ -1,12 +1,15 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import UnifiedMapSearch from './UnifiedMapSearch';
 import AddLeadFromAddressDialog from './AddLeadFromAddressDialog';
 import { fitMapBounds, focusMapPoint, resolveSelectedProperty } from './searchSelection';
 import { removeSearchedAddressMarker, showSearchedAddressMarker } from './searchedAddressLayer';
+import { GLOBAL_SEARCH_EVENT, takePendingSelection } from './globalSearchBridge';
 
 /**
- * Unified search overlay for the manager map.
+ * Search result handler for the manager map.
+ *
+ * The search field itself lives in the app header; this component only reacts
+ * to selections made there.
  *
  * Selecting a result is the authoritative viewport action: the initial
  * working-area fit is marked as applied so a later data-loading effect cannot
@@ -18,7 +21,6 @@ export default function HomeUnifiedSearch({
   onOpenProperty,
   onRefreshProperties,
   workingAreaCenteredRef,
-  className = '',
 }) {
   const [leadDraft, setLeadDraft] = useState(null);
   const markerRef = useRef(null);
@@ -70,11 +72,27 @@ export default function HomeUnifiedSearch({
     onOpenProperty?.(property);
   }, [claimViewport, clearSearchedAddress, mapRef, onOpenProperty, properties]);
 
+  useEffect(() => {
+    const onGlobalSelect = (event) => {
+      const result = event.detail?.result;
+      if (!result) return;
+      // Claim the event so the launcher does not navigate away from the map.
+      event.preventDefault();
+      handleSelect(result);
+    };
+    window.addEventListener(GLOBAL_SEARCH_EVENT, onGlobalSelect);
+    return () => window.removeEventListener(GLOBAL_SEARCH_EVENT, onGlobalSelect);
+  }, [handleSelect]);
+
+  useEffect(() => {
+    const pending = takePendingSelection();
+    if (pending) handleSelect(pending);
+    // Only a selection parked before this page loaded should replay, once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <>
-      <div className={`pointer-events-auto absolute left-1/2 top-3 z-[1100] w-[min(92vw,26rem)] -translate-x-1/2 ${className}`}>
-        <UnifiedMapSearch onSelect={handleSelect} onClear={clearSearchedAddress} />
-      </div>
       {leadDraft && (
         <AddLeadFromAddressDialog
           addressResult={leadDraft}

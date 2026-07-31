@@ -15,6 +15,7 @@ export default function UnifiedMapSearch({
   onClear,
   enableCounties = true,
   className = '',
+  autoFocus = false,
   placeholder = 'Search customers, addresses, or counties…',
 }) {
   const { query, setQuery, results, groups, loading, error, geocoderError, reset, intent, minLength } =
@@ -27,6 +28,11 @@ export default function UnifiedMapSearch({
   const flatResults = useMemo(() => groups.flatMap((group) => group.items), [groups]);
 
   useEffect(() => setActiveIndex(0), [query]);
+
+  useEffect(() => {
+    if (!autoFocus) return;
+    inputRef.current?.focus();
+  }, [autoFocus]);
 
   useEffect(() => {
     if (!open) return undefined;
