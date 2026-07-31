@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { X } from 'lucide-react';
 import ChannelList from '@/components/chat/ChannelList';
 import MessageThread from '@/components/chat/MessageThread';
+import { getManagerIdForAccount } from '@/lib/roles';
 
 export default function TeamChat({ user, teamMember, onClose }) {
     const queryClient = useQueryClient();
@@ -12,7 +13,9 @@ export default function TeamChat({ user, teamMember, onClose }) {
     const [mobileView, setMobileView] = useState('channels'); // 'channels' | 'thread'
 
     const normalizeEmail = (email) => (email || '').trim().toLowerCase();
-    const teamChannel = teamMember?.manager_id || user?.team_manager_id || (user?.app_role === 'manager' ? user?.id : null);
+    // Account role can be manager/admin/owner, so resolve the owning account the
+    // same way the rest of the app does instead of matching app_role === 'manager'.
+    const teamChannel = teamMember?.manager_id || getManagerIdForAccount(user) || user?.team_manager_id || null;
 
     // Fetch team members
     const { data: teamMembers = [] } = useQuery({

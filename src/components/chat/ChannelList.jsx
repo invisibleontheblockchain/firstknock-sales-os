@@ -37,6 +37,13 @@ export default function ChannelList({
             </div>
 
             <div className="flex-1 overflow-y-auto p-2 space-y-0.5">
+                {channels.length === 0 && (
+                    <div className="px-3 py-10 text-center">
+                        <MessageCircle className="w-8 h-8 text-gray-700 mx-auto mb-3" />
+                        <p className="text-sm font-medium text-gray-400">No channels yet</p>
+                        <p className="text-xs text-gray-600 mt-1">Add teammates on the Team page to start messaging.</p>
+                    </div>
+                )}
                 {channels.map(ch => {
                     const isActive = activeChannel === ch.id;
                     const unread = unreadCounts?.[ch.id] || 0;
