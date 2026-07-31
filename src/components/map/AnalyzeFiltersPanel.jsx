@@ -1,23 +1,14 @@
 import React from 'react';
-import { BarChart3, Filter, X } from 'lucide-react';
-
-const SORT_OPTIONS = [
-  { id: 'score', label: 'SCORE' },
-  { id: 'houses', label: 'HOUSES' },
-  { id: 'distance', label: 'DISTANCE' },
-  { id: 'recent_sale', label: 'RECENT SALE' },
-];
+import { BarChart3, X, Users, Filter } from 'lucide-react';
+import { DECISION_FILTERS } from './routeDecisionFilters';
 
 export default function AnalyzeFiltersPanel({
   BRAND,
   repFilter,
   setRepFilter,
   uniqueReps,
-  analyzeZipFilter,
-  setAnalyzeZipFilter,
-  uniqueZips,
-  sortBy,
-  setSortBy,
+  decisionFilter,
+  setDecisionFilter,
   onClose,
 }) {
   return (
@@ -38,52 +29,53 @@ export default function AnalyzeFiltersPanel({
         </div>
 
         <div className="p-5 space-y-6 overflow-y-auto h-[calc(100%-70px)]">
-          <div className="space-y-4">
-            <div>
-              <label className="text-xs font-bold tracking-wide mb-3 block" style={{ color: BRAND.offWhite }}>FILTER BY REP</label>
-              <select
-                value={repFilter}
-                onChange={(event) => setRepFilter(event.target.value)}
-                className="w-full px-3 py-2 rounded-lg text-sm bg-[#1F1F1F] text-white border border-[#333]"
-              >
-                <option value="all">All Reps</option>
-                {uniqueReps.map((rep) => <option key={rep} value={rep}>{rep}</option>)}
-              </select>
-            </div>
-
-            <div>
-              <label className="text-xs font-bold tracking-wide mb-3 block" style={{ color: BRAND.offWhite }}>FILTER BY ZIP CODE</label>
-              <select
-                value={analyzeZipFilter}
-                onChange={(event) => setAnalyzeZipFilter(event.target.value)}
-                className="w-full px-3 py-2 rounded-lg text-sm bg-[#1F1F1F] text-white border border-[#333]"
-              >
-                <option value="all">All Zip Codes</option>
-                {uniqueZips.map((zip) => <option key={zip} value={zip}>{zip}</option>)}
-              </select>
-            </div>
-
-            <div>
-              <label className="text-xs font-bold tracking-wide mb-3 block" style={{ color: BRAND.offWhite }}>
-                <Filter className="w-3 h-3 inline mr-1" /> SORT BY
-              </label>
-              <div className="flex gap-2 flex-wrap">
-                {SORT_OPTIONS.map((option) => (
+          <div>
+            <label className="text-xs font-bold tracking-wide mb-1 flex items-center gap-1.5" style={{ color: BRAND.offWhite }}>
+              <Filter className="w-3.5 h-3.5" /> KNOCK DECISION
+            </label>
+            <p className="text-[11px] text-white/40 mb-3">Show only the doors with this outcome — route lines and other pins are hidden.</p>
+            <div className="grid grid-cols-2 gap-2">
+              {DECISION_FILTERS.map((option) => {
+                const active = (decisionFilter || 'all') === option.id;
+                return (
                   <button
                     key={option.id}
-                    onClick={() => setSortBy(option.id)}
-                    className="px-3 py-2 rounded-lg text-xs font-bold tracking-wide transition-all"
-                    style={{
-                      background: sortBy === option.id ? BRAND.gold : BRAND.charcoal,
-                      color: sortBy === option.id ? BRAND.voidBlack : BRAND.offWhite,
-                    }}
+                    onClick={() => setDecisionFilter(option.id)}
+                    className={`px-3 py-3 rounded-xl text-xs font-extrabold tracking-wide text-left transition-all border ${
+                      active
+                        ? 'bg-[#2EEB57]/15 border-[#2EEB57]/40 text-white'
+                        : 'bg-white/[0.04] border-white/10 text-white/60 hover:bg-white/[0.08]'
+                    }`}
                   >
                     {option.label}
                   </button>
-                ))}
-              </div>
+                );
+              })}
             </div>
           </div>
+
+          <div>
+            <label className="text-xs font-bold tracking-wide mb-3 flex items-center gap-1.5" style={{ color: BRAND.offWhite }}>
+              <Users className="w-3.5 h-3.5" /> FILTER BY REP
+            </label>
+            <select
+              value={repFilter}
+              onChange={(event) => setRepFilter(event.target.value)}
+              className="w-full px-3 py-2.5 rounded-lg text-sm bg-[#1F1F1F] text-white border border-[#333]"
+            >
+              <option value="all">All Reps</option>
+              {uniqueReps.map((rep) => <option key={rep} value={rep}>{rep}</option>)}
+            </select>
+          </div>
+
+          {(decisionFilter && decisionFilter !== 'all') && (
+            <button
+              onClick={() => setDecisionFilter('all')}
+              className="w-full px-3 py-3 rounded-xl text-xs font-bold tracking-wide bg-white/[0.04] border border-white/10 text-white/70 hover:bg-white/[0.08]"
+            >
+              CLEAR DECISION FILTER
+            </button>
+          )}
         </div>
       </div>
     </div>

@@ -69,7 +69,7 @@ const getRouteLinePoints = (route, properties) => {
     ].filter(Boolean);
 };
 
-function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, lineDashArray, setSelectedProperty }) {
+function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, lineDashArray, setSelectedProperty, decisionFilterActive }) {
     const map = useMap();
     const layerRef = useRef(null);
     const fittedRouteIdRef = useRef(null);
@@ -96,8 +96,9 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, lineDashArray, setS
         const group = L.layerGroup();
         const props = routePoints;
 
-        // 1. Route line
-        if (routeLinePoints.length > 1) {
+        // 1. Route line — suppressed while a decision filter is active so the
+        // remaining outcome pins are readable without route noise.
+        if (!decisionFilterActive && routeLinePoints.length > 1) {
             const line = L.polyline(
                 routeLinePoints.map(p => [Number(p.lat), Number(p.lng)]),
                 {
@@ -173,7 +174,7 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, lineDashArray, setS
                 layerRef.current = null;
             }
         };
-    }, [map, activeRoute, mapSettings.lineWidth, mapSettings.lineOpacity, lineDashArray, setSelectedProperty]);
+    }, [map, activeRoute, mapSettings.lineWidth, mapSettings.lineOpacity, lineDashArray, setSelectedProperty, decisionFilterActive]);
 
     return null; // Imperative layer — no React DOM output
 }
@@ -422,7 +423,7 @@ function SavedRoutesLayer({
     mode, activeRoute, zoomLevel, hydratedSavedRoutes,
     analyzeZipFilter, quickFilter, repColors, ROUTE_COLORS,
     showRouteDetails, showRouteLines, routeStatusView, pinSize, mapSettings,
-    lineDashArray, setActiveRoute, allSavedRoutes
+    lineDashArray, setActiveRoute, allSavedRoutes, decisionFilterActive
 }) {
     const map = useMap();
     const layerRef = useRef(null);
@@ -461,8 +462,9 @@ function SavedRoutesLayer({
             const isUnassigned = !route.assigned_to;
             const centerProp = route.properties[Math.floor(route.properties.length / 2)];
 
-            // Center marker with route number
-            if (isRenderableMapPoint(centerProp)) {
+            // Center marker with route number — hidden while a decision filter
+            // is active so only the matching outcome pins remain on the map.
+            if (!decisionFilterActive && isRenderableMapPoint(centerProp)) {
                 const centerPoint = [Number(centerProp.lat), Number(centerProp.lng)];
                 const centerCircle = L.circleMarker(centerPoint, {
                     radius: 14, fillColor: 'black', fillOpacity: 0.7, color: repColor, weight: 2
@@ -556,7 +558,7 @@ function SavedRoutesLayer({
             }
         };
     }, [map, mode, activeRoute, routesZoomEnabled, hydratedSavedRoutes, analyzeZipFilter, quickFilter,
-        routeStatusView, repColors, ROUTE_COLORS, showRouteDetails, showRouteLines, pinSize, mapSettings, lineDashArray, setActiveRoute, allSavedRoutes]);
+        routeStatusView, repColors, ROUTE_COLORS, showRouteDetails, showRouteLines, pinSize, mapSettings, lineDashArray, setActiveRoute, allSavedRoutes, decisionFilterActive]);
 
     return null; // Imperative layer — no React DOM output
 }
@@ -600,6 +602,7 @@ const ManagerMapLayers = React.memo(function ManagerMapLayers({
     showAllProperties,
     showRouteDetails,
     showRouteLines,
+    decisionFilterActive,
     routeStatusView,
     highlightRecentlySold,
 
@@ -649,6 +652,7 @@ const ManagerMapLayers = React.memo(function ManagerMapLayers({
                 ROUTE_COLORS={ROUTE_COLORS}
                 showRouteDetails={showRouteDetails}
                 showRouteLines={showRouteLines}
+                decisionFilterActive={decisionFilterActive}
                 routeStatusView={routeStatusView}
                 pinSize={pinSize}
                 mapSettings={mapSettings}
@@ -769,6 +773,7 @@ const ManagerMapLayers = React.memo(function ManagerMapLayers({
                     mapSettings={mapSettings}
                     lineDashArray={lineDashArray}
                     setSelectedProperty={setSelectedProperty}
+                    decisionFilterActive={decisionFilterActive}
                 />
             )}
             </>}
