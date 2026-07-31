@@ -2282,7 +2282,7 @@ export default function Home() {
         }
         return null;
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [activeRouteId]);
+    }, [activeRouteId]); const statusSyncedActiveRoute = useMemo(() => (filteredActiveRoute ? { ...filteredActiveRoute, properties: withDerivedStatus(filteredActiveRoute.properties || [], buildLogsByAddress(logs)) } : filteredActiveRoute), [filteredActiveRoute, logs]);
 
     // Account Active Working Area Resolver — see lib/accountWorkingArea.js
     const resolveAccountWorkingArea = useCallback(() => computeAccountWorkingArea({
@@ -2572,7 +2572,7 @@ export default function Home() {
                     mode={mode}
                     routeMode={routeMode}
                     canvasZonePreview={canvasZonePreview}
-                    activeRoute={filteredActiveRoute}
+                    activeRoute={statusSyncedActiveRoute}
                     zoomLevel={zoomLevel}
                     viewMode={viewMode}
                     hydratedSavedRoutes={hydratedSavedRoutes}
@@ -3110,7 +3110,7 @@ export default function Home() {
             )}
 
 
-            <ManagerPropertyDetailSheet selectedProperty={selectedProperty} setSelectedProperty={setSelectedProperty} STATUS_COLORS={STATUS_COLORS} navigationApp={navigationApp} selectedPropertyLogs={selectedPropertyLogs} handleLogResult={handleLogResult} onClearInteraction={handleDeleteInteraction} toast={toast} />
+            <ManagerPropertyDetailSheet selectedProperty={selectedProperty ? withDerivedStatus([selectedProperty], buildLogsByAddress(selectedPropertyLogs))[0] : null} setSelectedProperty={setSelectedProperty} STATUS_COLORS={STATUS_COLORS} navigationApp={navigationApp} selectedPropertyLogs={selectedPropertyLogs} handleLogResult={handleLogResult} onClearInteraction={handleDeleteInteraction} toast={toast} />
             <KnockLimitSheet
                 open={showKnockLimitSheet}
                 mode={knockGateMode}
