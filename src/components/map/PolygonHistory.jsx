@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Marker, Polygon, Tooltip } from 'react-leaflet';
 import L from 'leaflet';
 import { calculatePolygonAreaSqMiles, formatSqMiles } from '@/components/logic/geoArea';
+import { mergePulledAreas } from '@/components/map/mergePulledAreas';
 
 const STORAGE_KEY = 'fk_polygonHistory';
 const MAX_HISTORY = 20;
@@ -106,28 +107,35 @@ export default function PolygonHistory({ currentPolygon, mode, serverHistory = [
         return Array.from(byKey.values());
     }, [history, serverHistory]);
 
-    const deleteHistoryEntry = (keyToDelete) => {
-        const nextHistory = history.filter(entry => polygonKey(entry.polygon) !== keyToDelete);
+    // Overlapping pulls are dissolved into one coverage shape so repeated pulls
+    // over the same neighborhood stay readable and tappable.
+    const mergedAreas = useMemo(() => mergePulledAreas(visibleHistory), [visibleHistory]);
+
+    const deleteMergedArea = (members) => {
+        const removedKeys = new Set(members.map(entry => polygonKey(entry.polygon)));
+        const nextHistory = history.filter(entry => !removedKeys.has(polygonKey(entry.polygon)));
         setHistory(nextHistory);
         try { localStorage.setItem(STORAGE_KEY, JSON.stringify(nextHistory)); } catch {}
-        if (selectedKey === keyToDelete) setSelectedKey(null);
+        if (removedKeys.has(selectedKey)) setSelectedKey(null);
     };
 
-    if (!isBuilder || !ghostVisible || visibleHistory.length === 0) return null;
+    if (!isBuilder || !ghostVisible || mergedAreas.length === 0) return null;
 
     return (
         <>
-            {visibleHistory.map((entry, i) => {
-                const key = polygonKey(entry.polygon);
-                const selected = isBuilder && key === selectedKey;
-                const areaLabel = formatSqMiles(calculatePolygonAreaSqMiles(entry.polygon));
-                const center = polygonCenter(entry.polygon);
+            {mergedAreas.map((area, i) => {
+                const { polygon, members, newest: entry } = area;
+                const key = polygonKey(polygon);
+                const selected = isBuilder && members.some(member => polygonKey(member.polygon) === selectedKey);
+                const areaLabel = formatSqMiles(calculatePolygonAreaSqMiles(polygon));
+                const center = polygonCenter(polygon);
+                const localMembers = members.filter(member => member.source !== 'server');
 
                 return (
                     <React.Fragment key={key || i}>
                     <Polygon
                         key={`${key || i}-shape`}
-                        positions={entry.polygon}
+                        positions={polygon}
                         pathOptions={{
                             fillColor: selected ? '#FFD93D' : '#FFFFFF',
                             color: selected ? '#FFD93D' : '#FFFFFF',
@@ -139,7 +147,7 @@ export default function PolygonHistory({ currentPolygon, mode, serverHistory = [
                         }}
                         eventHandlers={isBuilder ? {
                             click: () => {
-                                setSelectedKey(key);
+                                setSelectedKey(polygonKey(entry.polygon));
                                 window.dispatchEvent(new CustomEvent('fk-select-polygon-history', { detail: entry }));
                             }
                         } : {}}
@@ -147,13 +155,14 @@ export default function PolygonHistory({ currentPolygon, mode, serverHistory = [
                         <Tooltip direction="center" className="bg-black/80 text-gray-300 text-[9px] border border-gray-700 rounded px-1.5 py-0.5 text-center">
                             <div className="font-bold text-white">{areaLabel}</div>
                             <div>{new Date(entry.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
+                            {members.length > 1 && <div className="text-gray-400">{members.length} pulls merged</div>}
                             {isBuilder && <div className="text-yellow-400 mt-0.5">Tap to select</div>}
                         </Tooltip>
                     </Polygon>
-                    {isBuilder && center && entry.source !== 'server' && (
+                    {isBuilder && center && localMembers.length > 0 && (
                         <Marker
                             position={center}
-                            icon={trashIcon(() => deleteHistoryEntry(key))}
+                            icon={trashIcon(() => deleteMergedArea(localMembers))}
                             interactive={true}
                             zIndexOffset={1000}
                         />
