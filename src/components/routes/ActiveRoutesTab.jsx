@@ -645,10 +645,10 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
                                     <button
                                         onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
                                         onClick={(e) => { e.preventDefault(); e.stopPropagation(); onSelect(); }}
-                                        className="flex h-11 items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/[0.06] text-[11px] font-bold text-white/85 shadow-none hover:border-white/25 hover:bg-white/[0.12] hover:text-white md:h-9"
+                                        className="flex h-11 items-center justify-center gap-2 rounded-xl border border-[#2EEB57]/25 bg-[#2EEB57]/10 text-[11px] font-black text-[#86efac] shadow-none hover:border-[#2EEB57]/45 hover:bg-[#2EEB57]/15 md:h-9"
                                         title="Start this route"
                                     >
-                                        <Play className="h-4 w-4" /> START ROUTE
+                                        <Play className="h-4 w-4 fill-[#86efac]" /> START ROUTE
                                     </button>
                                     {onSplit && (
                                         <button
