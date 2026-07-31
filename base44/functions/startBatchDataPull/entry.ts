@@ -10,7 +10,7 @@ import {
     requestedOrder,
     resolveEffectiveCount,
     selectOwnedPrecisionJobs
-} from '../_shared/precisionOrderSafety.js';
+} from '../../shared/precisionOrderSafety.js';
 
 const FREE_PROPERTY_CAP = 50;
 const PAID_PROPERTY_CAP = 1000;

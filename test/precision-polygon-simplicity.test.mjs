@@ -34,7 +34,7 @@ import {
   countDistinctPolygonVertices,
   findPolygonSelfIntersection,
   normalizePrecisionPolygon
-} from '../base44/functions/_shared/precisionOrderSafety.js';
+} from '../base44/shared/precisionOrderSafety.js';
 
 /* ── Valid geometry: every one of these must still be accepted ── */
 

@@ -10,7 +10,7 @@ import {
     requestedOrder,
     resolveEffectiveCount,
     selectOwnedPrecisionJobs
-} from '../_shared/precisionOrderSafety.js';
+} from '../../shared/precisionOrderSafety.js';
 
 const FREE_AREA_LIMIT_SQ_MI = 40;
 const PAID_AREA_LIMIT_SQ_MI = 300;

@@ -1,6 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 import { neon } from 'npm:@neondatabase/serverless@0.9.0';
-import { findPolygonSelfIntersection } from '../_shared/precisionOrderSafety.js';
+import { findPolygonSelfIntersection } from '../../shared/precisionOrderSafety.js';
 
 const BATCHDATA_API_KEY = Deno.env.get('BATCH_DATA_API_KEY');
 const DATABASE_URL = Deno.env.get('DATABASE_URL');

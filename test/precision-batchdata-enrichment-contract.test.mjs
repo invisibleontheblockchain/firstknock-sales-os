@@ -34,7 +34,7 @@ import test from 'node:test';
 import vm from 'node:vm';
 import ts from 'typescript';
 
-import { findPolygonSelfIntersection } from '../base44/functions/_shared/precisionOrderSafety.js';
+import { findPolygonSelfIntersection } from '../base44/shared/precisionOrderSafety.js';
 
 const PROCESSOR = 'base44/functions/processFetchChunk/entry.ts';
 

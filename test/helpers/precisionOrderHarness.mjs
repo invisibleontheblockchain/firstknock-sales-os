@@ -52,14 +52,14 @@ export function readSource(path) {
 /**
  * The sandbox strips `import` statements, so anything a production handler
  * imports must be supplied as a global. This evaluates the REAL shared module
- * (`base44/functions/_shared/precisionOrderSafety.js`) and exposes its
+ * (`base44/shared/precisionOrderSafety.js`) and exposes its
  * exports — it is not a reimplementation, and a change to the shared module is
  * therefore visible to every test that drives a handler.
  */
 let sharedContractCache = null;
 export function loadSharedOrderSafety() {
   if (sharedContractCache) return sharedContractCache;
-  const source = readSource('base44/functions/_shared/precisionOrderSafety.js');
+  const source = readSource('base44/shared/precisionOrderSafety.js');
   const names = [
     ...[...source.matchAll(/^export (?:async )?function (\w+)/gm)].map((m) => m[1]),
     ...[...source.matchAll(/^export const (\w+)/gm)].map((m) => m[1])
@@ -72,7 +72,7 @@ export function loadSharedOrderSafety() {
       __collect: (value) => { collected = value; },
       JSON, Number, String, Boolean, Array, Object, Set, Map, Math, Date, Error, console
     },
-    { filename: 'base44/functions/_shared/precisionOrderSafety.js' }
+    { filename: 'base44/shared/precisionOrderSafety.js' }
   );
   assert.ok(collected, 'the shared order-safety module did not expose its bindings');
   sharedContractCache = collected;

@@ -20,7 +20,7 @@ const previewPath = 'base44/functions/previewBatchDataArea/entry.ts';
 // sandbox below strips imports, so the REAL module is evaluated once and its
 // exports supplied as globals. This is the production module, not a stub.
 function loadPrecisionOrderSafetyGlobals() {
-  const safetySource = readSource('base44/functions/_shared/precisionOrderSafety.js');
+  const safetySource = readSource('base44/shared/precisionOrderSafety.js');
   const names = [
     ...[...safetySource.matchAll(/^export (?:async )?function (\w+)/gm)].map((m) => m[1]),
     ...[...safetySource.matchAll(/^export const (\w+)/gm)].map((m) => m[1])

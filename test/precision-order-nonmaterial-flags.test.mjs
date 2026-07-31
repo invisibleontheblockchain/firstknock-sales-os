@@ -15,7 +15,7 @@
 // IF ANY OF THESE FIELDS LATER BECOMES AN INPUT TO provider fetching,
 // filtering, deduplication, persistence, or route eligibility, THIS TEST MUST
 // BE CHANGED — and the field must then be added to COMPARED_ORDER_FIELDS in
-// base44/functions/_shared/precisionOrderSafety.js, or a job that cannot prove
+// base44/shared/precisionOrderSafety.js, or a job that cannot prove
 // it must be classified `one_unverifiable`.
 //
 // This file failing is the signal that the assumption no longer holds. Do not
@@ -38,7 +38,7 @@ import {
   plain,
   runStartPath
 } from './helpers/precisionOrderHarness.mjs';
-import { findPolygonSelfIntersection } from '../base44/functions/_shared/precisionOrderSafety.js';
+import { findPolygonSelfIntersection } from '../base44/shared/precisionOrderSafety.js';
 
 const NON_MATERIAL_FIELDS = ['force_full_refresh', 'include_unresolved_followups', 'pull_mode'];
 
