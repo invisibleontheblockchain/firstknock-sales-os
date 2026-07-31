@@ -8,7 +8,6 @@ import { DarkRoomClient } from '@/components/logic/neonClient';
 import PropertyHistory from '@/components/rep/PropertyHistory';
 import QuickMarkButtons from '@/components/rep/QuickMarkButtons';
 import { buildFullAddress, openInMaps } from '@/components/logic/navigation';
-import ConfidenceBadge from '@/components/map/ConfidenceBadge';
 import { parseOptionalSaleAmount } from '@/components/analytics/salesManagement';
 
 function numberValue(...values) {
@@ -158,9 +157,21 @@ export default function ManagerPropertyDetailSheet({
 
                 {/* Header */}
                 <div className="px-5 py-4 border-b border-gray-800 flex items-center justify-between bg-[#0A0A0A]">
-                    <div>
+                    <div className="min-w-0">
                         <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">PROPERTY DETAILS</p>
-                        <h3 className="font-bold text-lg text-white truncate max-w-[200px]">{selectedProperty.house_number} {selectedProperty.street_name}</h3>
+                        <h3 className="font-bold text-lg text-white truncate max-w-[220px]">{selectedProperty.house_number} {selectedProperty.street_name}</h3>
+                        <div className="mt-1.5 flex items-center gap-2 flex-wrap">
+                            <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-bold text-white border border-white/10"
+                                style={{ background: `${STATUS_COLORS[selectedProperty.effective_status] || '#333'}` }}>
+                                <HomeIcon className="w-3 h-3" />
+                                {selectedProperty.effective_status}
+                            </span>
+                            {selectedProperty.next_eligible_date && (
+                                <span className="text-[10px] font-bold text-gray-400">
+                                    Eligible {format(new Date(selectedProperty.next_eligible_date), 'MMM d')}
+                                </span>
+                            )}
+                        </div>
                     </div>
                     <Button 
                         variant="ghost" 
@@ -174,36 +185,6 @@ export default function ManagerPropertyDetailSheet({
 
                 <ScrollArea className="flex-1">
                     <div className="p-6 space-y-6">
-                        {/* Status Badge */}
-                        <div className="flex items-center justify-between p-4 bg-black rounded-xl border border-gray-800">
-                            <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-full flex items-center justify-center" 
-                                    style={{ background: STATUS_COLORS[selectedProperty.effective_status] || '#333' }}>
-                                    <HomeIcon className="w-5 h-5 text-white" />
-                                </div>
-                                <div>
-                                    <p className="text-xs text-gray-400">Current Status</p>
-                                    <p className="font-bold text-white">{selectedProperty.effective_status}</p>
-                                </div>
-                            </div>
-                            {selectedProperty.next_eligible_date && (
-                                <div className="text-right">
-                                    <p className="text-xs text-gray-400">Eligible</p>
-                                    <p className="font-bold text-white text-xs">
-                                        {format(new Date(selectedProperty.next_eligible_date), 'MMM d')}
-                                    </p>
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Confidence Tier */}
-                        {selectedProperty.sale_confidence && (
-                            <div className="flex items-center justify-between p-3 bg-black/60 rounded-xl border border-gray-800">
-                                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Data Confidence</span>
-                                <ConfidenceBadge confidence={selectedProperty.sale_confidence} />
-                            </div>
-                        )}
-
                         {/* Intel Grid */}
                         <div>
                             <h4 className="text-xs font-bold text-gray-500 uppercase mb-3 flex items-center gap-2">
