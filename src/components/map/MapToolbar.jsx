@@ -1,8 +1,7 @@
 import React, { useCallback, useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Navigation, Locate, List, X, Filter, MapPin, Zap, Eye, EyeOff, Save, Pencil, Check, RotateCcw, Download, MoreVertical, Scissors, Ghost, Flag, Trash2 } from 'lucide-react';
-import { clearPolygonHistory } from '@/components/map/PolygonHistory';
+import { Loader2, Navigation, Locate, List, X, Filter, MapPin, Zap, Eye, EyeOff, Save, Pencil, Check, RotateCcw, Download, MoreVertical, Scissors, Ghost, Flag } from 'lucide-react';
 import { LayoutDashboard, Settings } from 'lucide-react';
 import { toast } from "sonner";
 import DataStatusIndicator from './DataStatusIndicator';
@@ -426,21 +425,6 @@ export default function MapToolbar({
                             aria-label={showGhostAreas ? 'Hide previous Precision areas' : 'Show previous Precision areas'}
                             className={`inline-flex bg-black/80 hover:bg-black backdrop-blur-md border shadow-xl h-8 w-8 sm:h-11 sm:w-11 rounded-lg sm:rounded-xl transition-all ${showGhostAreas ? 'border-[#2EEB57]/60 text-[#39FF4A]' : 'border-gray-800 text-white/55'}`}>
                             <Ghost className="w-3.5 h-3.5 sm:w-5 sm:h-5" />
-                          </Button>
-                        )}
-                        {mode === 'generate' && routeMode === 'precision' && !activeRoute && showGhostAreas && (
-                          <Button
-                            onClick={() => {
-                              if (!window.confirm('Clear all previously pulled areas from this map?')) return;
-                              clearPolygonHistory();
-                              window.dispatchEvent(new CustomEvent('fk-polygon-history-updated'));
-                              toast.success('Cleared pulled areas');
-                            }}
-                            size="icon"
-                            title="Clear previously pulled areas"
-                            aria-label="Clear previously pulled areas"
-                            className="inline-flex bg-black/80 hover:bg-black backdrop-blur-md border border-gray-800 text-white/45 hover:text-red-400 shadow-xl h-8 w-8 sm:h-11 sm:w-11 rounded-lg sm:rounded-xl transition-all">
-                            <Trash2 className="w-3.5 h-3.5 sm:w-5 sm:h-5" />
                           </Button>
                         )}
                         {!drawingMode && (

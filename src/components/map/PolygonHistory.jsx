@@ -44,17 +44,20 @@ function polygonCenter(polygon = []) {
     };
 }
 
-function trashIcon(onDelete) {
+function trashIcon(onDelete, label) {
     const container = document.createElement('button');
     container.type = 'button';
-    container.className = 'w-8 h-8 rounded-full bg-red-500/90 border border-white/40 shadow-xl flex items-center justify-center text-white hover:bg-red-400';
-    container.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>';
+    container.title = `Clear this pulled area (${label})`;
+    container.setAttribute('aria-label', `Clear this pulled area (${label})`);
+    container.className = 'flex h-9 w-9 items-center justify-center rounded-full border border-red-400/60 bg-black/85 text-red-300 shadow-[0_6px_20px_rgba(0,0,0,0.55)] backdrop-blur-sm transition-colors hover:border-red-400 hover:bg-red-500 hover:text-white active:scale-95';
+    container.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>';
     L.DomEvent.disableClickPropagation(container);
     L.DomEvent.on(container, 'click', (event) => {
         L.DomEvent.stop(event);
+        if (!window.confirm(`Clear this pulled area (${label}) from the map?`)) return;
         onDelete();
     });
-    return L.divIcon({ html: container, className: '', iconSize: [32, 32], iconAnchor: [16, 16] });
+    return L.divIcon({ html: container, className: '', iconSize: [36, 36], iconAnchor: [18, 18] });
 }
 
 export default function PolygonHistory({ currentPolygon, mode, serverHistory = [] }) {
@@ -162,7 +165,7 @@ export default function PolygonHistory({ currentPolygon, mode, serverHistory = [
                     {isBuilder && center && localMembers.length > 0 && (
                         <Marker
                             position={center}
-                            icon={trashIcon(() => deleteMergedArea(localMembers))}
+                            icon={trashIcon(() => deleteMergedArea(localMembers), areaLabel)}
                             interactive={true}
                             zIndexOffset={1000}
                         />
