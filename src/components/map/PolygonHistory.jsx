@@ -5,7 +5,12 @@ import { calculatePolygonAreaSqMiles, formatSqMiles } from '@/components/logic/g
 import { mergePulledAreas } from '@/components/map/mergePulledAreas';
 
 const STORAGE_KEY = 'fk_polygonHistory';
+const HIDDEN_KEY = 'fk_polygonHistoryHidden';
 const MAX_HISTORY = 20;
+
+function readHiddenKeys() {
+    try { return new Set(JSON.parse(localStorage.getItem(HIDDEN_KEY) || '[]')); } catch { return new Set(); }
+}
 
 function polygonKey(polygon = []) {
     const first = polygon[0] || {};
@@ -62,6 +67,7 @@ function trashIcon(onDelete, label) {
 
 export default function PolygonHistory({ currentPolygon, mode, serverHistory = [] }) {
     const [history, setHistory] = useState([]);
+    const [hiddenKeys, setHiddenKeys] = useState(() => readHiddenKeys());
     const [selectedKey, setSelectedKey] = useState(null);
     const [ghostVisible, setGhostVisible] = useState(() => {
         try { return localStorage.getItem('fk_showGhostAreas') === 'true'; } catch { return false; }
@@ -96,7 +102,7 @@ export default function PolygonHistory({ currentPolygon, mode, serverHistory = [
         [...serverHistory, ...history].forEach((entry) => {
             if (!entry?.polygon || entry.polygon.length < 3) return;
             const key = polygonKey(entry.polygon);
-            if (!key) return;
+            if (!key || hiddenKeys.has(key)) return;
             const existing = byKey.get(key);
             const existingTime = new Date(existing?.last_pull_date || existing?.updated_at || existing?.date || 0).getTime();
             const incomingTime = new Date(entry.last_pull_date || entry.updated_at || entry.date || 0).getTime();
@@ -108,17 +114,22 @@ export default function PolygonHistory({ currentPolygon, mode, serverHistory = [
             });
         });
         return Array.from(byKey.values());
-    }, [history, serverHistory]);
+    }, [history, serverHistory, hiddenKeys]);
 
     // Overlapping pulls are dissolved into one coverage shape so repeated pulls
     // over the same neighborhood stay readable and tappable.
     const mergedAreas = useMemo(() => mergePulledAreas(visibleHistory), [visibleHistory]);
 
+    // Server-sourced pulls cannot be deleted remotely, so a cleared area is also
+    // remembered locally as hidden to keep the map view clean.
     const deleteMergedArea = (members) => {
         const removedKeys = new Set(members.map(entry => polygonKey(entry.polygon)));
         const nextHistory = history.filter(entry => !removedKeys.has(polygonKey(entry.polygon)));
         setHistory(nextHistory);
         try { localStorage.setItem(STORAGE_KEY, JSON.stringify(nextHistory)); } catch {}
+        const nextHidden = new Set([...hiddenKeys, ...removedKeys]);
+        setHiddenKeys(nextHidden);
+        try { localStorage.setItem(HIDDEN_KEY, JSON.stringify(Array.from(nextHidden))); } catch {}
         if (removedKeys.has(selectedKey)) setSelectedKey(null);
     };
 
@@ -132,7 +143,6 @@ export default function PolygonHistory({ currentPolygon, mode, serverHistory = [
                 const selected = isBuilder && members.some(member => polygonKey(member.polygon) === selectedKey);
                 const areaLabel = formatSqMiles(calculatePolygonAreaSqMiles(polygon));
                 const center = polygonCenter(polygon);
-                const localMembers = members.filter(member => member.source !== 'server');
 
                 return (
                     <React.Fragment key={key || i}>
@@ -162,10 +172,10 @@ export default function PolygonHistory({ currentPolygon, mode, serverHistory = [
                             {isBuilder && <div className="text-yellow-400 mt-0.5">Tap to select</div>}
                         </Tooltip>
                     </Polygon>
-                    {isBuilder && center && localMembers.length > 0 && (
+                    {isBuilder && center && (
                         <Marker
                             position={center}
-                            icon={trashIcon(() => deleteMergedArea(localMembers), areaLabel)}
+                            icon={trashIcon(() => deleteMergedArea(members), areaLabel)}
                             interactive={true}
                             zIndexOffset={1000}
                         />
