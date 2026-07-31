@@ -185,6 +185,9 @@ function ViewportCulledPins({
 }) {
     const map = useMap();
     const [viewBounds, setViewBounds] = React.useState(null);
+    // Padded box already rendered. Leaflet re-projects existing markers for free on
+    // zoom/pan, so we only rebuild the pin layer once the view leaves that box.
+    const renderedBoxRef = useRef(null);
 
     // Listen for map move/zoom to update visible pins safely deferring heavy math
     React.useEffect(() => {
@@ -192,17 +195,33 @@ function ViewportCulledPins({
 
         const updateBounds = () => {
             const b = map.getBounds();
-            setViewBounds({
+            const next = {
                 north: b.getNorth(), south: b.getSouth(),
                 east: b.getEast(), west: b.getWest()
-            });
+            };
+            const latBuffer = (next.north - next.south) * 0.15;
+            const lngBuffer = (next.east - next.west) * 0.15;
+            renderedBoxRef.current = {
+                north: next.north + latBuffer, south: next.south - latBuffer,
+                east: next.east + lngBuffer, west: next.west - lngBuffer
+            };
+            setViewBounds(next);
+        };
+
+        const isInsideRenderedBox = () => {
+            const box = renderedBoxRef.current;
+            if (!box) return false;
+            const b = map.getBounds();
+            return b.getNorth() <= box.north && b.getSouth() >= box.south
+                && b.getEast() <= box.east && b.getWest() >= box.west;
         };
 
         const debouncedUpdate = () => {
             if (timeoutId) clearTimeout(timeoutId);
             timeoutId = setTimeout(() => {
+                if (isInsideRenderedBox()) return;
                 updateBounds();
-            }, 150);
+            }, 120);
         };
 
         updateBounds(); // initial
@@ -219,9 +238,13 @@ function ViewportCulledPins({
 
     const MAX_VISIBLE_PINS = 5000;
 
+    // Only the zoom *band* matters here — using the raw zoom level would rebuild
+    // every pin on each zoom step even though nothing about the set changes.
+    const pinsZoomEnabled = zoomLevel >= 13;
+
     const visiblePins = useMemo(() => {
         if (!viewBounds) return [];
-        if (viewMode !== 'pins' || zoomLevel < 13 || activeRoute || !(mode === 'generate' || showAllProperties)) {
+        if (viewMode !== 'pins' || !pinsZoomEnabled || activeRoute || !(mode === 'generate' || showAllProperties)) {
             return [];
         }
 
@@ -281,7 +304,7 @@ function ViewportCulledPins({
             filtered.push(p);
         }
         return filtered;
-    }, [viewBounds, viewMode, zoomLevel, activeRoute, mode, showAllProperties, effectiveProperties,
+    }, [viewBounds, viewMode, pinsZoomEnabled, activeRoute, mode, showAllProperties, effectiveProperties,
         assignedHashes, zipCodeFilter, drawnPolygon, soldDateFilter, ownershipRangeDays, ownershipRangeReferenceDate, quickFilter, subMonths, isPointInPolygon]);
 
     const oneMonthAgo = useMemo(() => subMonths(new Date(), 1), [subMonths]);
@@ -396,6 +419,8 @@ function SavedRoutesLayer({
 }) {
     const map = useMap();
     const layerRef = useRef(null);
+    // Zoom band only — rebuilding these layers on every zoom step made zooming stutter.
+    const routesZoomEnabled = zoomLevel >= 8;
 
     useEffect(() => {
         if (!map) return;
@@ -409,7 +434,7 @@ function SavedRoutesLayer({
         // Only show saved route overlays in Routes mode. Builder/draw mode stays visually clean,
         // while selecting an individual route still shows it through ActiveRouteLayer.
         const activeRouteHasMapPoints = activeRoute?.properties?.some(isRenderableMapPoint);
-        if (activeRouteHasMapPoints || mode !== 'analyze' || zoomLevel < 8) return;
+        if (activeRouteHasMapPoints || mode !== 'analyze' || !routesZoomEnabled) return;
 
         const group = L.layerGroup();
 
@@ -521,7 +546,7 @@ function SavedRoutesLayer({
                 layerRef.current = null;
             }
         };
-    }, [map, mode, activeRoute, zoomLevel, hydratedSavedRoutes, analyzeZipFilter, quickFilter,
+    }, [map, mode, activeRoute, routesZoomEnabled, hydratedSavedRoutes, analyzeZipFilter, quickFilter,
         routeStatusView, repColors, ROUTE_COLORS, showRouteDetails, showRouteLines, pinSize, mapSettings, lineDashArray, setActiveRoute, allSavedRoutes]);
 
     return null; // Imperative layer — no React DOM output
