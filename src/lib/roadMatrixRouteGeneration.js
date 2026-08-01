@@ -8,17 +8,21 @@
  * order on one shared road matrix, so the user no longer has to generate a
  * weaker route and press Optimize afterwards.
  *
- * Every failure path — timeout, rate limit, unsnapped door, >100 doors, no
- * improvement, backend unavailable — leaves that route exactly as the continuity
- * optimizer produced it. A whole-run time budget stops the pass from holding the
- * generation overlay open when the routing engine is slow.
+ * Every failure path — timeout, rate limit, unsnapped door, a route beyond the
+ * supported optimization size, no improvement, backend unavailable — leaves that
+ * route exactly as the continuity optimizer produced it. A whole-run time budget
+ * stops the pass from holding the generation overlay open when the routing engine
+ * is slow.
  */
 
 import { buildPersistedRoadRoutingMetadata } from '@/components/logic/routeRoadContext';
 import { isValidRoutePoint } from '@/lib/routeBounds';
 import { tryRoadMatrixOptimize } from '@/lib/roadMatrixOptimize';
 
-const ROAD_MATRIX_RUN_BUDGET_MS = 30000;
+// Large routes assemble their matrix from several OSRM blocks, so a single route
+// can legitimately take ~15s. Budget for that rather than skipping the road pass
+// (and shipping an unmeasured order) on the biggest routes.
+const ROAD_MATRIX_RUN_BUDGET_MS = 60000;
 
 /**
  * The whole generation tail: stamp the continuity provenance each route was

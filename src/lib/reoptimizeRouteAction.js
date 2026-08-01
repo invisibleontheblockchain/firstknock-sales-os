@@ -152,13 +152,30 @@ export async function reoptimizeRoute(route, options = {}, deps = {}) {
         // real driving-distance matrix, prices BOTH today's continuity order and
         // a road-aware street sweep with that same matrix, and only returns a
         // result when the road-aware order beats the route's current order.
-        // Every failure mode (timeout, rate limit, unsnapped door, >100 doors,
-        // no improvement) returns null and the existing local path runs instead.
+        // Every failure mode (timeout, rate limit, unsnapped door, a route beyond
+        // the supported size, no improvement) returns null and the existing local
+        // path runs instead.
         toast.loading('Checking real road distances...', { id: TOAST_ID });
         const roadMatrixResult = await tryRoadMatrixOptimize(routeProperties, {
             start: isValidRoutePoint(start) ? start : null,
             end: isValidRoutePoint(end) ? end : null,
         });
+
+        // A route whose saved order was already validated on a real road matrix
+        // must not be re-ordered by the straight-line fallback: that is exactly how
+        // Anderson's 449-minute route was replaced by a 454.6-minute one. Either the
+        // road pipeline found something faster, or this route stays as it is.
+        const savedRoadRouting = route.metadata?.routing;
+        if (!roadMatrixResult
+            && !usingCustomAnchors
+            && savedRoadRouting?.road_aware === true
+            && savedRoadRouting?.fallback !== true) {
+            toast.success('Already optimized on real road distances — no faster order found.', {
+                id: TOAST_ID,
+                duration: 4000
+            });
+            return;
+        }
 
         let routingContext = null;
         let roadAware = true;

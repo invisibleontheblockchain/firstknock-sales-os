@@ -14,7 +14,12 @@
 
 import { base44 } from '@/api/base44Client';
 
-const MAX_ROAD_MATRIX_DOORS = 100;
+// The product ceiling for one road-aware optimization request, mirroring the
+// backend's MAX_ROUTE_MATRIX_POINTS. It is NOT the OSRM per-request coordinate
+// limit: the backend assembles larger routes from matrix blocks. Before chunking
+// existed this was 100, which is how a 183-door route skipped OSRM — and with it
+// the never-worse gate — while still being labelled optimized.
+const MAX_ROAD_MATRIX_DOORS = 250;
 
 const propertyKey = (property) => String(property.address_hash || property.legacy_hash || property.id || '');
 

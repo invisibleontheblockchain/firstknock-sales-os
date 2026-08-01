@@ -13,7 +13,7 @@ import {
     createMatrixMetricFns,
     DEFAULT_OSRM_BASE_URL,
     fetchRoadMatrix,
-    MAX_MATRIX_COORDINATES,
+    MAX_ROUTE_MATRIX_POINTS,
     ROAD_MATRIX_VERSION
 } from '../../shared/roadMatrix.js';
 import {
@@ -73,9 +73,9 @@ export default async function (req: Request): Promise<Response> {
                 code: 'TOO_FEW_PROPERTIES'
             }, { status: 400 });
         }
-        if (properties.length > MAX_MATRIX_COORDINATES) {
+        if (properties.length > MAX_ROUTE_MATRIX_POINTS) {
             return Response.json({
-                error: `Road matrix limit is ${MAX_MATRIX_COORDINATES} properties per request.`,
+                error: `Road matrix limit is ${MAX_ROUTE_MATRIX_POINTS} properties per route.`,
                 code: 'TOO_MANY_PROPERTIES'
             }, { status: 400 });
         }
@@ -159,7 +159,10 @@ export default async function (req: Request): Promise<Response> {
                     strategy: 'canonical_street_subdivision_continuity',
                     road_network_used: false,
                     fallback: true,
+                    fallback_status: 'continuity_fallback',
                     fallback_reason: 'road_matrix_unavailable',
+                    matrix_point_count: properties.length,
+                    matrix_block_count: 0,
                     road_matrix_error: matrixError,
                     road_matrix_ms: matrixMs,
                     optimality_status: 'unmeasured_fallback',
@@ -233,6 +236,11 @@ export default async function (req: Request): Promise<Response> {
                 road_matrix_ms: matrixMs,
                 road_matrix_snapped: matrix.snapped,
                 road_matrix_unresolved_legs: unresolved.count,
+                matrix_point_count: matrix.pointCount,
+                matrix_block_count: matrix.blocks,
+                matrix_unresolved_count: 0,
+                fallback_status: 'none',
+                fallback_reason: null,
                 // Backward-compatible fields the clients already read.
                 input_measured: round(current?.distance),
                 continuity_measured: round(bestContinuity?.distance),
