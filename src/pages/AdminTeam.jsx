@@ -844,7 +844,16 @@ export default function AdminTeam() {
                             <TeamActivityTrend logs={logs} />
                             <TeamOutcomeBreakdown logs={logs} />
                         </div>
-                        <TeamLeaderboard members={analyticsMembers} logs={logs} routes={routes} />
+                        <TeamLeaderboard
+                            members={analyticsMembers}
+                            logs={logs}
+                            routes={routes}
+                            onSelectRep={(member) => {
+                                if (!member) return;
+                                setSelectedRep(member);
+                                setActiveTab('roster');
+                            }}
+                        />
                     </TabsContent>
 
                     {/* ROSTER TAB */}

@@ -6,7 +6,7 @@ import { Trophy, Flame, Target, Clock } from 'lucide-react';
 import { AreaChart, Area, ResponsiveContainer } from 'recharts';
 import { isKnockActivityLog } from '@/lib/interactionLogs';
 
-export default function TeamLeaderboard({ members, logs, routes }) {
+export default function TeamLeaderboard({ members, logs, routes, onSelectRep }) {
     const [period, setPeriod] = useState('all'); // 'week', 'month', 'all'
 
     // Process Data for Leaderboard
@@ -70,7 +70,11 @@ export default function TeamLeaderboard({ members, logs, routes }) {
     }, [members, logs, period]);
 
     const MetricCard = ({ rank, rep, type }) => (
-        <div className="flex items-center justify-between p-2 md:p-3 bg-[#1F1F1F] rounded-lg border border-gray-800 mb-1.5 md:mb-2">
+        <div
+            role={onSelectRep ? 'button' : undefined}
+            onClick={onSelectRep ? () => onSelectRep(members.find(m => m.id === rep.id)) : undefined}
+            className={`flex items-center justify-between p-2 md:p-3 bg-[#1F1F1F] rounded-lg border border-gray-800 mb-1.5 md:mb-2 ${onSelectRep ? 'cursor-pointer transition-colors hover:border-yellow-500/40 hover:bg-[#262626]' : ''}`}
+        >
             <div className="flex items-center gap-2 md:gap-3 min-w-0">
                 <div className={`w-5 h-5 md:w-6 md:h-6 flex items-center justify-center rounded-full font-bold text-[10px] md:text-xs shrink-0 ${
                     rank === 1 ? 'bg-yellow-500 text-black' : 
