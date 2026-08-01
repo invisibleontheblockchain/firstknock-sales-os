@@ -838,6 +838,7 @@ export default function AdminTeam() {
                             <UserActivityHeatmap
                                 members={analyticsMembers}
                                 managerId={managerId}
+                                mobileCardLayout
                             />
                         )}
                         <div className="grid grid-cols-1 xl:grid-cols-[1.15fr,0.85fr] gap-3 md:gap-6">
