@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Loader2, MapPin, Search, User, X, Landmark } from 'lucide-react';
+import { History, Loader2, MapPin, Search, User, X, Landmark } from 'lucide-react';
 import useUnifiedMapSearch from './useUnifiedMapSearch';
 import UnifiedSearchResultRow from './UnifiedSearchResultRow';
+import { addRecentSearch, clearRecentSearches, loadRecentSearches } from './recentSearches';
 
 const TYPE_ICONS = { record: User, address: MapPin, county: Landmark };
 
@@ -27,6 +28,8 @@ export default function UnifiedMapSearch({
     useUnifiedMapSearch({ enableCounties });
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [recent, setRecent] = useState(() => loadRecentSearches());
+  const [showRecent, setShowRecent] = useState(true);
   const inputRef = useRef(null);
   const containerRef = useRef(null);
   const panelRef = useRef(null);
@@ -64,6 +67,7 @@ export default function UnifiedMapSearch({
   const choose = useCallback((result) => {
     if (!result) return;
     setOpen(false);
+    setRecent(addRecentSearch(result));
     // Collapsing the field reveals the map and the selected property card,
     // which matters most on a phone with the keyboard open.
     inputRef.current?.blur();
@@ -92,7 +96,8 @@ export default function UnifiedMapSearch({
     }
   };
 
-  const showPanel = open && intent.usable;
+  const showHistory = open && !intent.usable && !query.trim() && showRecent && recent.length > 0;
+  const showPanel = (open && intent.usable) || showHistory;
   const [panelRect, setPanelRect] = useState(null);
 
   useEffect(() => {
@@ -120,7 +125,8 @@ export default function UnifiedMapSearch({
         )}
         <input
           ref={inputRef}
-          type="search"
+          /* type="text" — the native search input adds its own clear button, which duplicated ours. */
+          type="text"
           role="combobox"
           aria-expanded={showPanel}
           aria-controls="unified-map-search-results"
@@ -136,6 +142,17 @@ export default function UnifiedMapSearch({
         />
         <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1">
           {loading && <Loader2 className="h-4 w-4 animate-spin text-[#39FF4A]" />}
+          {!query && recent.length > 0 && (
+            <button
+              type="button"
+              aria-label={showRecent ? 'Hide recent searches' : 'Show recent searches'}
+              aria-pressed={showRecent}
+              onClick={() => { setShowRecent((value) => !value); setOpen(true); inputRef.current?.focus(); }}
+              className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-white/10 ${showRecent ? 'text-[#39FF4A]' : 'text-white/45 hover:text-white'}`}
+            >
+              <History className="h-4 w-4" />
+            </button>
+          )}
           {query && (
             <button
               type="button"
@@ -157,6 +174,24 @@ export default function UnifiedMapSearch({
           style={portalResults && panelRect ? { left: panelRect.left, top: panelRect.top, width: panelRect.width } : undefined}
           className={`${portalResults ? 'fixed z-[3500]' : 'absolute left-0 right-0 top-[calc(100%+6px)] z-[1200]'} max-h-[min(60vh,26rem)] overflow-y-auto overscroll-contain rounded-xl border border-white/12 bg-[#050505]/97 shadow-[0_24px_70px_rgba(0,0,0,0.7)] backdrop-blur-2xl`}
         >
+          {showHistory && (
+            <section>
+              <div className="sticky top-0 flex items-center justify-between bg-[#050505]/95 px-3 py-1.5">
+                <p className="text-[9px] font-black uppercase tracking-[0.16em] text-white/40">Recently viewed</p>
+                <button type="button" onClick={() => setRecent(clearRecentSearches())} className="text-[9px] font-bold uppercase tracking-[0.12em] text-white/35 hover:text-white">Clear</button>
+              </div>
+              {recent.map((result, index) => (
+                <UnifiedSearchResultRow
+                  key={`recent-${result.id || result.formatted_address || index}`}
+                  result={result}
+                  Icon={TYPE_ICONS[result.type] || MapPin}
+                  active={false}
+                  onSelect={() => choose(result)}
+                  onHover={() => {}}
+                />
+              ))}
+            </section>
+          )}
           {emptyMessage && (
             <p className="px-3 py-4 text-[11px] leading-relaxed text-white/55" aria-live="polite">{emptyMessage}</p>
           )}
