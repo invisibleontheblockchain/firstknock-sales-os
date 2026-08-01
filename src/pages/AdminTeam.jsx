@@ -14,6 +14,7 @@ import { Users, UserPlus, Map, CheckCircle2, AlertCircle, X, Key, Sparkles, Tren
 import { createPageUrl } from '../utils';
 import { toast } from "sonner";
 import TeamMemberCard from "@/components/team/TeamMemberCard";
+import CreateTeamDialog from "@/components/team/CreateTeamDialog";
 import RepPerformanceDetail from "@/components/team/RepPerformanceDetail";
 import TeamLeaderboard from '@/components/team/TeamLeaderboard';
 import TeamAnalyticsSummary from '@/components/analytics/team/TeamAnalyticsSummary';
@@ -683,7 +684,7 @@ export default function AdminTeam() {
                             <DialogTrigger asChild>
                                 <Button
                                     variant="outline"
-                                    className="h-10 flex-1 min-w-[calc(50%-0.25rem)] border-yellow-500/50 text-yellow-500 hover:bg-yellow-500/10 font-bold text-xs lg:h-9 lg:min-w-0 lg:flex-none lg:text-sm"
+                                    className="h-10 flex-1 border-yellow-500/50 text-yellow-500 hover:bg-yellow-500/10 font-bold text-xs lg:h-9 lg:min-w-0 lg:flex-none lg:text-sm"
                                 >
                                     <Shield className="w-4 h-4 mr-1.5" /> Switch Role
                                 </Button>
@@ -714,33 +715,6 @@ export default function AdminTeam() {
                                 </div>
                             </DialogContent>
                         </Dialog>
-                        <Dialog open={isCreateTeamOpen} onOpenChange={setIsCreateTeamOpen}>
-                            <DialogTrigger asChild>
-                                <Button 
-                                    className="h-10 flex-1 min-w-[calc(50%-0.25rem)] bg-gray-800 text-gray-300 font-bold hover:bg-gray-700 hover:text-white border border-gray-700 text-xs lg:h-9 lg:min-w-0 lg:flex-none lg:text-sm"
-                                >
-                                    <Key className="w-4 h-4 mr-1.5" /> Create Team
-                                </Button>
-                            </DialogTrigger>
-                            <DialogContent className="bg-[#111] border-gray-800 text-white sm:max-w-md">
-                                <DialogHeader>
-                                    <DialogTitle>Name Your Team</DialogTitle>
-                                </DialogHeader>
-                                <div className="space-y-4 py-2">
-                                    <p className="text-sm text-gray-400">Enter the team name reps will see when they join.</p>
-                                    <Input
-                                        value={newTeamName}
-                                        onChange={(e) => setNewTeamName(e.target.value)}
-                                        placeholder="e.g. Charleston Sales Team"
-                                        className="bg-black border-gray-700 text-white"
-                                    />
-                                    <Button onClick={handleCreateTeam} disabled={!newTeamName.trim() || createCodeMutation.isPending} className="w-full bg-yellow-500 text-black hover:bg-yellow-400 font-black">
-                                        {createCodeMutation.isPending ? 'Creating...' : 'Create Team'}
-                                    </Button>
-                                </div>
-                            </DialogContent>
-                        </Dialog>
-
                         {/* Code Created Success Dialog */}
                         <Dialog open={!!createdCode} onOpenChange={(open) => !open && setCreatedCode(null)}>
                             <DialogContent className="bg-[#111] border-gray-800 text-white sm:max-w-md">
@@ -775,7 +749,7 @@ export default function AdminTeam() {
                             </DialogContent>
                         </Dialog>
 
-                        <Button onClick={handleAddSeat} className="h-10 w-full bg-yellow-500 text-black font-bold hover:bg-yellow-400 text-xs lg:h-9 lg:w-auto lg:text-sm">
+                        <Button onClick={handleAddSeat} className="h-10 flex-1 bg-yellow-500 text-black font-bold hover:bg-yellow-400 text-xs lg:h-9 lg:w-auto lg:text-sm">
                             <UserPlus className="w-4 h-4 mr-1.5" /> Add Rep
                         </Button>
                     </div>
@@ -1100,7 +1074,15 @@ export default function AdminTeam() {
                                     </CardTitle>
                                     <CardDescription className="text-gray-400 text-[10px] md:text-sm">Manage invite codes.</CardDescription>
                                 </div>
-                                <div className="flex gap-2 w-full md:w-auto">
+                                <div className="flex flex-wrap gap-2 w-full md:w-auto">
+                                    <CreateTeamDialog
+                                        open={isCreateTeamOpen}
+                                        onOpenChange={setIsCreateTeamOpen}
+                                        teamName={newTeamName}
+                                        onTeamNameChange={setNewTeamName}
+                                        onCreate={handleCreateTeam}
+                                        isPending={createCodeMutation.isPending}
+                                    />
                                     <Button onClick={handleAddSeat} size="sm" className="bg-yellow-500 text-black hover:bg-yellow-400 text-[10px] md:text-xs h-7 md:h-8 flex-1 md:flex-none font-bold">
                                         {isOpeningSeatBilling ? 'Opening...' : 'Add Seat'}
                                     </Button>
