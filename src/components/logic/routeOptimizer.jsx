@@ -24,6 +24,12 @@ import {
     optimizeRouteWithBounds
 } from '@/lib/routeBounds';
 import { normalizeRouteOriginMode } from '@/lib/routeOriginModes';
+import {
+    BLOCK_SEQUENCING_LIMITS,
+    selectBestBlockOrderCandidate,
+    selectDiverseSeedBlockIndexes,
+    summarizeRouteTail
+} from './routeBlockSequencing';
 
 function cleanAreaLabel(value) {
     if (value === undefined || value === null) return '';
@@ -1490,7 +1496,8 @@ function contextAwareNearestNeighbor(
     blocks,
     startLocation,
     endLocation,
-    routingContext
+    routingContext,
+    forcedFirstBlock = null
 ) {
     const remaining = [...blocks].sort((first, second) => compareStableKeys(first.key, second.key));
     const ordered = [];
@@ -1515,8 +1522,16 @@ function contextAwareNearestNeighbor(
         [finalBlock] = remaining.splice(finalIndex, 1);
     }
 
+    // Multi-start search: the caller may pin which block the sweep opens with so
+    // several candidate macro orders can be generated from the same road costs.
+    // A block already reserved as the finish is never also used as the start.
     let firstIndex = 0;
-    if (isValidRoutePoint(startLocation)) {
+    const forcedIndex = forcedFirstBlock
+        ? remaining.findIndex(block => block.key === forcedFirstBlock.key)
+        : -1;
+    if (forcedIndex >= 0) {
+        ordered.push(remaining.splice(forcedIndex, 1)[0]);
+    } else if (isValidRoutePoint(startLocation)) {
         let firstDistance = Infinity;
         remaining.forEach((block, index) => {
             const distance = minimumDistanceFromPoint(startLocation, block, routingContext);
@@ -1547,7 +1562,7 @@ function contextAwareNearestNeighbor(
             }
         });
     }
-    ordered.push(remaining.splice(firstIndex, 1)[0]);
+    if (ordered.length === 0) ordered.push(remaining.splice(firstIndex, 1)[0]);
 
     while (remaining.length > 0) {
         const current = ordered[ordered.length - 1];
@@ -1570,6 +1585,102 @@ function contextAwareNearestNeighbor(
     }
 
     if (finalBlock) ordered.push(finalBlock);
+    return ordered;
+}
+
+function blockOrderSignature(blocks) {
+    return blocks.map(block => String(block.key)).join('>');
+}
+
+/** Door-level leg costs for one oriented block order, in route order. */
+function blockOrderLegDistances(blocks, orientations, routingContext) {
+    const doors = blocks.flatMap((block, index) => block.variants[orientations[index]]);
+    const legs = [];
+    for (let index = 0; index < doors.length - 1; index++) {
+        legs.push(routingDistance(doors[index], doors[index + 1], routingContext));
+    }
+    return legs;
+}
+
+/** Complete-route cost plus end-of-route concentration for one block order. */
+function evaluateBlockOrder(blocks, startLocation, endLocation, routingContext) {
+    const { cost, orientations } = streetBlockOrderCost(
+        blocks,
+        startLocation,
+        endLocation,
+        true,
+        routingContext
+    );
+    return {
+        order: blocks,
+        cost,
+        tail: summarizeRouteTail(blockOrderLegDistances(blocks, orientations, routingContext))
+    };
+}
+
+/**
+ * Improve one candidate block order with whole-block reversal and relocation.
+ * Every move is scored on the complete route, never on the next leg alone, so a
+ * repair cannot simply push the expensive stretch somewhere else.
+ */
+function refineBlockOrder(order, startLocation, endLocation, routingContext, passLimit) {
+    let ordered = order;
+    let currentCost = streetBlockOrderCost(
+        ordered,
+        startLocation,
+        endLocation,
+        false,
+        routingContext
+    );
+    for (let pass = 0; pass < passLimit; pass++) {
+        let bestCost = currentCost;
+        let bestOrder = null;
+        for (let start = 0; start < ordered.length - 1; start++) {
+            for (let finish = start + 1; finish < ordered.length; finish++) {
+                const candidate = [
+                    ...ordered.slice(0, start),
+                    ...ordered.slice(start, finish + 1).reverse(),
+                    ...ordered.slice(finish + 1)
+                ];
+                const candidateCost = streetBlockOrderCost(
+                    candidate,
+                    startLocation,
+                    endLocation,
+                    false,
+                    routingContext
+                );
+                if (candidateCost + 0.000001 < bestCost) {
+                    bestCost = candidateCost;
+                    bestOrder = candidate;
+                }
+            }
+        }
+        // Or-opt: relocate a single street block. Reversal moves alone cannot
+        // rescue a block that greedy nearest-neighbor stranded — the route
+        // otherwise walks away and bounces back for it many stops later.
+        for (let from = 0; from < ordered.length; from++) {
+            for (let to = 0; to <= ordered.length; to++) {
+                if (to === from || to === from + 1) continue;
+                const candidate = [...ordered];
+                const [moved] = candidate.splice(from, 1);
+                candidate.splice(to > from ? to - 1 : to, 0, moved);
+                const candidateCost = streetBlockOrderCost(
+                    candidate,
+                    startLocation,
+                    endLocation,
+                    false,
+                    routingContext
+                );
+                if (candidateCost + 0.000001 < bestCost) {
+                    bestCost = candidateCost;
+                    bestOrder = candidate;
+                }
+            }
+        }
+        if (!bestOrder) break;
+        ordered = bestOrder;
+        currentCost = bestCost;
+    }
     return ordered;
 }
 
@@ -1612,7 +1723,9 @@ function optimizeStreetBlockOrder(blocks, startLocation = null, endLocation = nu
             ? reversed
             : spatiallySorted;
     }
-    let ordered = typeof routingContext?.distanceBetween === 'function'
+    const costOnlyContext = routingContext?.costOnly === true;
+    const canSeedFromRoutingContext = typeof routingContext?.distanceBetween === 'function';
+    const seededOrder = canSeedFromRoutingContext
         ? contextAwareNearestNeighbor(
             stableBlocks,
             startLocation,
@@ -1631,68 +1744,62 @@ function optimizeStreetBlockOrder(blocks, startLocation = null, endLocation = nu
     // every reversal otherwise turns ~100 street blocks into millions of
     // synchronous road-cost lookups even though nearest-neighbor already used
     // the road graph and every street/access group remains atomic.
-    const refinementBlockLimit = routingContext?.costOnly === true ? 40 : 120;
-    const refinementPassLimit = routingContext?.costOnly === true ? 2 : 5;
-    if (ordered.length <= refinementBlockLimit) {
-        let currentCost = streetBlockOrderCost(
-            ordered,
-            startLocation,
-            endLocation,
-            false,
-            routingContext
-        );
-        for (let pass = 0; pass < refinementPassLimit; pass++) {
-            let bestCost = currentCost;
-            let bestOrder = null;
-            for (let start = 0; start < ordered.length - 1; start++) {
-                for (let finish = start + 1; finish < ordered.length; finish++) {
-                    const candidate = [
-                        ...ordered.slice(0, start),
-                        ...ordered.slice(start, finish + 1).reverse(),
-                        ...ordered.slice(finish + 1)
-                    ];
-                    const candidateCost = streetBlockOrderCost(
-                        candidate,
-                        startLocation,
-                        endLocation,
-                        false,
-                        routingContext
-                    );
-                    if (candidateCost + 0.000001 < bestCost) {
-                        bestCost = candidateCost;
-                        bestOrder = candidate;
-                    }
-                }
-            }
-            // Or-opt: relocate a single street block. Reversal moves alone cannot
-            // rescue a block that greedy nearest-neighbor stranded — the route
-            // otherwise walks away and bounces back for it many stops later.
-            for (let from = 0; from < ordered.length; from++) {
-                for (let to = 0; to <= ordered.length; to++) {
-                    if (to === from || to === from + 1) continue;
-                    const candidate = [...ordered];
-                    const [moved] = candidate.splice(from, 1);
-                    candidate.splice(to > from ? to - 1 : to, 0, moved);
-                    const candidateCost = streetBlockOrderCost(
-                        candidate,
-                        startLocation,
-                        endLocation,
-                        false,
-                        routingContext
-                    );
-                    if (candidateCost + 0.000001 < bestCost) {
-                        bestCost = candidateCost;
-                        bestOrder = candidate;
-                    }
-                }
-            }
-            if (!bestOrder) break;
-            ordered = bestOrder;
-            currentCost = bestCost;
-        }
+    const refinementBlockLimit = costOnlyContext ? 40 : 120;
+    const refinementPassLimit = costOnlyContext ? 2 : 5;
+    if (seededOrder.length > refinementBlockLimit) return seededOrder;
+
+    // Multi-start: one greedy seed is what stranded an expensive group of blocks
+    // at the end of the verified Mesquite route. Several deterministic diverse
+    // starts are refined with the same cost function and the best complete route
+    // wins, so a bad opening choice can no longer decide the whole sweep.
+    const seedBudget = costOnlyContext
+        ? BLOCK_SEQUENCING_LIMITS.maxCostOnlySeedCandidates
+        : BLOCK_SEQUENCING_LIMITS.maxSeedCandidates;
+    const refinedBudget = costOnlyContext
+        ? BLOCK_SEQUENCING_LIMITS.maxCostOnlyRefinedCandidates
+        : BLOCK_SEQUENCING_LIMITS.maxRefinedCandidates;
+    const multiStartBlockLimit = costOnlyContext
+        ? BLOCK_SEQUENCING_LIMITS.maxCostOnlyMultiStartBlocks
+        : BLOCK_SEQUENCING_LIMITS.maxMultiStartBlocks;
+
+    const seedOrders = [seededOrder];
+    if (canSeedFromRoutingContext && stableBlocks.length <= multiStartBlockLimit) {
+        selectDiverseSeedBlockIndexes(stableBlocks, seedBudget).forEach((seedIndex) => {
+            seedOrders.push(contextAwareNearestNeighbor(
+                stableBlocks,
+                startLocation,
+                endLocation,
+                routingContext,
+                stableBlocks[seedIndex]
+            ));
+        });
     }
 
-    return ordered;
+    const seenSignatures = new Set();
+    const refinedCandidates = seedOrders
+        .filter((candidate) => {
+            const signature = blockOrderSignature(candidate);
+            if (seenSignatures.has(signature)) return false;
+            seenSignatures.add(signature);
+            return true;
+        })
+        .map(candidate => ({
+            order: candidate,
+            cost: streetBlockOrderCost(candidate, startLocation, endLocation, false, routingContext)
+        }))
+        .sort((first, second) => (
+            first.cost - second.cost
+            || compareStableKeys(blockOrderSignature(first.order), blockOrderSignature(second.order))
+        ))
+        .slice(0, Math.max(1, refinedBudget))
+        .map(({ order }) => evaluateBlockOrder(
+            refineBlockOrder(order, startLocation, endLocation, routingContext, refinementPassLimit),
+            startLocation,
+            endLocation,
+            routingContext
+        ));
+
+    return selectBestBlockOrderCandidate(refinedCandidates)?.order || seededOrder;
 }
 
 function flattenOrientedStreetBlocks(
