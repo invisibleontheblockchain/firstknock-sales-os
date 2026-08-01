@@ -16,7 +16,7 @@ import { base44 } from '@/api/base44Client';
 import { optimizeRouteByStreetSweep } from '@/components/logic/routeOptimizer';
 import {
     buildPersistedRoadRoutingMetadata,
-    createRouteContinuityContext,
+    createRouteRoadContext,
 } from '@/components/logic/routeRoadContext';
 import { haversineDistanceMiles, isValidRoutePoint } from '@/lib/routeBounds';
 import { captureParkedCarLocation, isLowAccuracyCapture, lowAccuracyConfirmationMessage } from '@/lib/parkedCarLocation';
@@ -141,8 +141,23 @@ export async function reoptimizeRoute(route, options = {}, deps = {}) {
         const routeOriginMode = usingCustomAnchors
             ? (start || end ? ROUTE_ORIGIN_MODES.CUSTOM_BOUNDS : ROUTE_ORIGIN_MODES.NONE)
             : routeOriginModeForOptimizeMode(optimizeMode);
-        const routingContext = createRouteContinuityContext(routeProperties);
+        // Optimize is an explicit, user-initiated action, so unlike route
+        // GENERATION it can afford to load the real street network and order the
+        // doors by actual driving distance. createRouteRoadContext degrades to the
+        // synchronous continuity context on every failure path (point limits, no
+        // routable roads, network unavailable), so a slow or offline road service
+        // still produces exactly today's route rather than an error.
+        toast.loading('Loading road distances...', { id: TOAST_ID });
+        const routingContext = await createRouteRoadContext(routeProperties, {
+            startLocation: isValidRoutePoint(start) ? start : null,
+            endLocation: isValidRoutePoint(end) ? end : null,
+        });
         requireUsableRouteContext(routingContext);
+        // Cost-only mode prices street blocks by a single representative door, so
+        // only full mode can measure a whole door order.
+        const roadAware = routingContext.roadAware === true
+            && routingContext.costOnly !== true
+            && typeof routingContext.distanceBetween === 'function';
         const optimized = optimizeRouteByStreetSweep(routeProperties, start, end, routingContext);
         if (!optimized || optimized.length === 0) { toast.error('Optimization produced no results.', { id: TOAST_ID }); return; }
         const optimizedHashes = optimized.map(propertyKey).filter(Boolean);
@@ -162,7 +177,12 @@ export async function reoptimizeRoute(route, options = {}, deps = {}) {
             candidateOrder: optimized,
             start: isValidRoutePoint(start) ? start : null,
             end: isValidRoutePoint(end) ? end : null,
-            distanceFn: (from, to) => haversineDistanceMiles(from, to)
+            // Both sides must be measured with the objective the order was built
+            // for. Judging a road-aware order by straight-line distance can reject
+            // a genuinely shorter drive, which would silently discard the gain.
+            distanceFn: roadAware
+                ? (from, to) => routingContext.distanceBetween(from, to)
+                : (from, to) => haversineDistanceMiles(from, to)
         });
         const appliedProperties = objective.applyCandidate ? optimized : routeProperties;
         const appliedHashes = appliedProperties.map(propertyKey).filter(Boolean);
@@ -215,9 +235,10 @@ export async function reoptimizeRoute(route, options = {}, deps = {}) {
                 ? 'Route anchors set. The door order was rebuilt around your start and finish.'
                 : 'Route anchors cleared.')
             : optimizeSuccessMessage(optimizeMode, { alreadyOptimal: !objective.applyCandidate });
+        const estimateLabel = roadAware ? 'road-distance estimate' : 'street-continuity estimate';
         const msg = objective.applyCandidate && savedMiles > 0
-            ? `${base} Saved ~${savedMiles} estimated miles (${newDistanceRounded} mi street-continuity estimate).`
-            : `${base} (${newDistanceRounded} mi street-continuity estimate)`;
+            ? `${base} Saved ~${savedMiles} estimated miles (${newDistanceRounded} mi ${estimateLabel}).`
+            : `${base} (${newDistanceRounded} mi ${estimateLabel})`;
         toast.success(msg, { id: TOAST_ID, duration: 4000 });
     } catch (e) {
         console.error('Re-optimize error:', e);
