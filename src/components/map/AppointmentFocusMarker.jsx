@@ -16,7 +16,7 @@ export default function AppointmentFocusMarker({ property, onSelect }) {
 
   const icon = useMemo(() => L.divIcon({
     className: '',
-    html: '<div style="width:18px;height:18px;border-radius:50%;background:#39FF4A;border:3px solid #000;box-shadow:0 0 14px rgba(57,255,74,0.75)"></div>',
+    html: '<div style="width:18px;height:18px;border-radius:50%;background:#FFFFFF;border:3px solid #000;box-shadow:0 0 14px rgba(255,255,255,0.8)"></div>',
     iconSize: [18, 18],
     iconAnchor: [9, 9],
   }), []);

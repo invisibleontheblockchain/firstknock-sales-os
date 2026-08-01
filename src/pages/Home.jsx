@@ -2948,7 +2948,7 @@ export default function Home() {
             )}
 
 
-            <ManagerPropertyDetailSheet selectedProperty={selectedProperty ? withDerivedStatus([selectedProperty], buildLogsByAddress(selectedPropertyLogs))[0] : null} setSelectedProperty={setSelectedProperty} STATUS_COLORS={STATUS_COLORS} navigationApp={navigationApp} selectedPropertyLogs={selectedPropertyLogs} handleLogResult={handleLogResult} onClearInteraction={handleDeleteInteraction} toast={toast} />
+            <ManagerPropertyDetailSheet selectedProperty={selectedProperty ? withDerivedStatus([selectedProperty], buildLogsByAddress(selectedPropertyLogs))[0] : null} setSelectedProperty={(next) => { setSelectedProperty(next); if (!next) setAppointmentPin(null); }} STATUS_COLORS={STATUS_COLORS} navigationApp={navigationApp} selectedPropertyLogs={selectedPropertyLogs} handleLogResult={handleLogResult} onClearInteraction={handleDeleteInteraction} toast={toast} />
             <KnockLimitSheet
                 open={showKnockLimitSheet}
                 mode={knockGateMode}
