@@ -18,6 +18,7 @@ export default function useAppointmentMapFocus({
   setShowRoutePanel,
   setShowCompare,
   setSelectedProperty,
+  setAppointmentPin,
 }) {
   const handledRef = useRef(false);
 
@@ -58,7 +59,11 @@ export default function useAppointmentMapFocus({
     const targetLat = Number(target?.lat);
     const targetLng = Number(target?.lng);
     if (Number.isFinite(targetLat) && Number.isFinite(targetLng) && Math.abs(targetLat) > 0.0001 && Math.abs(targetLng) > 0.0001) {
-      setSelectedProperty({ ...target, lat: targetLat, lng: targetLng });
+      const focused = { ...target, lat: targetLat, lng: targetLng };
+      setSelectedProperty(focused);
+      // The pin outlives the detail card so the door stays clickable on the map
+      // even when its route is not loaded.
+      setAppointmentPin?.(focused);
       let attempts = 0;
       const zoomToAppointment = () => {
         if (mapRef.current?._mapPane) {
@@ -68,7 +73,6 @@ export default function useAppointmentMapFocus({
         if (attempts++ < 20) setTimeout(zoomToAppointment, 200);
       };
       zoomToAppointment();
-      toast.success('Opened appointment on the map');
     } else {
       toast.error("Couldn't find this appointment on the map yet.");
     }

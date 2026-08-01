@@ -4,7 +4,7 @@ import { MapContainer, TileLayer } from 'react-leaflet';
 import L from '../components/map/leafletPatches';
 import AnalyzeFiltersPanel from '../components/map/AnalyzeFiltersPanel';
 import HomeUnifiedSearch from '@/components/search/HomeUnifiedSearch';
-import useAppointmentMapFocus from '@/hooks/useAppointmentMapFocus';
+import useAppointmentMapFocus from '@/hooks/useAppointmentMapFocus'; import AppointmentFocusMarker from '@/components/map/AppointmentFocusMarker';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { storage } from '@/lib/storage';
@@ -185,7 +185,7 @@ export default function Home() {
     const [drawShape, setDrawShape] = useState('circle');
     const [drawSizeMiles, setDrawSizeMiles] = useState(5);
     const [showTimingPanel, setShowTimingPanel] = useState(false);
-    const [selectedProperty, setSelectedProperty] = useState(null);
+    const [selectedProperty, setSelectedProperty] = useState(null); const [appointmentPin, setAppointmentPin] = useState(null);
     const [zoomLevel, setZoomLevel] = useState(15);
     const [showMapSettings, setShowMapSettings] = useState(false);
     const [showZipOverlay, setShowZipOverlay] = useState(false);
@@ -1499,7 +1499,7 @@ export default function Home() {
 
     useAppointmentMapFocus({
         savedRoutes, activeRoute, effectiveProperties, mapRef,
-        setMode: setModeRaw, setShowRoutePanel, setShowCompare, setSelectedProperty,
+        setMode: setModeRaw, setShowRoutePanel, setShowCompare, setSelectedProperty, setAppointmentPin,
     });
 
     // Generate routes with configurable houses per route
@@ -2371,7 +2371,7 @@ export default function Home() {
                         zIndex={100}
                     />
                 )}
-                <LocationMarker autoCenter={false} userLocation={userLocation} />
+                <LocationMarker autoCenter={false} userLocation={userLocation} /><AppointmentFocusMarker property={appointmentPin} onSelect={setSelectedProperty} />
                 <DarkRoomManager />
 
 
