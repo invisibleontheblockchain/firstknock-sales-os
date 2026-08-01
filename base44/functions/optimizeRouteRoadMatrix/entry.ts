@@ -127,6 +127,9 @@ export default async function (req: Request): Promise<Response> {
         // and the road-aware order only wins when it actually measures better.
         const continuityMeasured = measureOrder(continuityOrder, distanceBetween);
         const roadMeasured = measureOrder(roadOrder, distanceBetween);
+        // The request body carries the properties in their CURRENT saved order, so
+        // callers can judge the road-aware candidate against what the user has now.
+        const inputMeasured = measureOrder(properties, distanceBetween);
         const comparable = Number.isFinite(continuityMeasured) && Number.isFinite(roadMeasured);
         const acceptRoadAware = comparable && roadMeasured + 0.0001 < continuityMeasured;
         const selectedOrder = acceptRoadAware ? roadOrder : continuityOrder;
@@ -149,6 +152,7 @@ export default async function (req: Request): Promise<Response> {
                 road_matrix_ms: matrixMs,
                 road_matrix_snapped: matrix.snapped,
                 road_matrix_unresolved_legs: unresolved.count,
+                input_measured: Number.isFinite(inputMeasured) ? Math.round(inputMeasured * 1000) / 1000 : null,
                 continuity_measured: comparable ? Math.round(continuityMeasured * 1000) / 1000 : null,
                 road_aware_measured: comparable ? Math.round(roadMeasured * 1000) / 1000 : null,
                 improvement: comparable

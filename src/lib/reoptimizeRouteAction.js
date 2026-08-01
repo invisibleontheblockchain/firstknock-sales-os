@@ -20,6 +20,7 @@ import {
 } from '@/components/logic/routeRoadContext';
 import { haversineDistanceMiles, isValidRoutePoint } from '@/lib/routeBounds';
 import { captureParkedCarLocation, isLowAccuracyCapture, lowAccuracyConfirmationMessage } from '@/lib/parkedCarLocation';
+import { tryRoadMatrixOptimize } from '@/lib/roadMatrixOptimize';
 import { requireUsableRouteContext } from '@/lib/routeContextGuard';
 import { OPTIMIZE_MODES, ROUTE_ORIGIN_MODES, resolveOptimizeMode, routeOriginModeForOptimizeMode } from '@/lib/routeOriginModes';
 import {
@@ -147,18 +148,37 @@ export async function reoptimizeRoute(route, options = {}, deps = {}) {
         // synchronous continuity context on every failure path (point limits, no
         // routable roads, network unavailable), so a slow or offline road service
         // still produces exactly today's route rather than an error.
-        toast.loading('Loading road distances...', { id: TOAST_ID });
-        const routingContext = await createRouteRoadContext(routeProperties, {
-            startLocation: isValidRoutePoint(start) ? start : null,
-            endLocation: isValidRoutePoint(end) ? end : null,
+        // OSRM ROAD-MATRIX BETA: try the backend optimizer first. It fetches a
+        // real driving-distance matrix, prices BOTH today's continuity order and
+        // a road-aware street sweep with that same matrix, and only returns a
+        // result when the road-aware order beats the route's current order.
+        // Every failure mode (timeout, rate limit, unsnapped door, >100 doors,
+        // no improvement) returns null and the existing local path runs instead.
+        toast.loading('Checking real road distances...', { id: TOAST_ID });
+        const roadMatrixResult = await tryRoadMatrixOptimize(routeProperties, {
+            start: isValidRoutePoint(start) ? start : null,
+            end: isValidRoutePoint(end) ? end : null,
         });
-        requireUsableRouteContext(routingContext);
-        // Cost-only mode prices street blocks by a single representative door, so
-        // only full mode can measure a whole door order.
-        const roadAware = routingContext.roadAware === true
-            && routingContext.costOnly !== true
-            && typeof routingContext.distanceBetween === 'function';
-        const optimized = optimizeRouteByStreetSweep(routeProperties, start, end, routingContext);
+
+        let routingContext = null;
+        let roadAware = true;
+        let optimized;
+        if (roadMatrixResult) {
+            optimized = roadMatrixResult.order;
+        } else {
+            toast.loading('Loading road distances...', { id: TOAST_ID });
+            routingContext = await createRouteRoadContext(routeProperties, {
+                startLocation: isValidRoutePoint(start) ? start : null,
+                endLocation: isValidRoutePoint(end) ? end : null,
+            });
+            requireUsableRouteContext(routingContext);
+            // Cost-only mode prices street blocks by a single representative door, so
+            // only full mode can measure a whole door order.
+            roadAware = routingContext.roadAware === true
+                && routingContext.costOnly !== true
+                && typeof routingContext.distanceBetween === 'function';
+            optimized = optimizeRouteByStreetSweep(routeProperties, start, end, routingContext);
+        }
         if (!optimized || optimized.length === 0) { toast.error('Optimization produced no results.', { id: TOAST_ID }); return; }
         const optimizedHashes = optimized.map(propertyKey).filter(Boolean);
         const expectedHashes = new Set(hashes);
@@ -172,7 +192,7 @@ export async function reoptimizeRoute(route, options = {}, deps = {}) {
         // Compare the CURRENT order against the CANDIDATE order under the SAME
         // anchors. Comparing a stored metric from a previous mode would report the
         // gap between two anchors as optimizer savings.
-        const objective = compareRouteObjective({
+        const objective = roadMatrixResult ? roadMatrixResult.objective : compareRouteObjective({
             currentOrder: routeProperties,
             candidateOrder: optimized,
             start: isValidRoutePoint(start) ? start : null,
@@ -188,7 +208,9 @@ export async function reoptimizeRoute(route, options = {}, deps = {}) {
         const appliedHashes = appliedProperties.map(propertyKey).filter(Boolean);
         const newDistanceRounded = Math.round(objective.appliedDistance * 100) / 100;
         const existingMetadata = { ...(route.metadata || {}) };
-        const routingMetadata = buildPersistedRoadRoutingMetadata(routingContext, null, appliedHashes);
+        const routingMetadata = roadMatrixResult
+            ? roadMatrixResult.routingMetadata
+            : buildPersistedRoadRoutingMetadata(routingContext, null, appliedHashes);
         const routeUpdate = usingCustomAnchors
             ? buildRouteAnchorsUpdate({
                 start,
