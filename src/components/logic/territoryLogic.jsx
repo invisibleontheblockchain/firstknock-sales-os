@@ -417,7 +417,7 @@ export const getPropertyResultSummary = (logs) => {
         latestResult: latest,
         // Administrative workflow moves ("Workflow update - moved to Todo") are
         // bookkeeping, not something the rep said at the door — never quote them.
-        resultText: latest.workflow_action || latest.counts_as_knock === false ? null : latest.raw_input_text,
+        resultText: (latest.workflow_action || latest.counts_as_knock === false) ? null : latest.raw_input_text,
         status: latest.parsed_status,
         date: latest.created_date
     };
