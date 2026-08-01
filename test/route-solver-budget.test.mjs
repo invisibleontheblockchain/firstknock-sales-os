@@ -136,45 +136,39 @@ test('BUDGET-04 runtime no longer inverts with door count', () => {
  * not just by its runtime. Ceilings are the previously approved routes: lowering
  * the budget for speed must fail here rather than quietly ship worse routes.
  */
-test('BUDGET-05 the shipped budget holds the approved Charlotte route quality', () => {
-    // 346.2min is the previously approved Charlotte route. 900k steps returned
-    // 355.4min, so this is the assertion that pins the budget decision itself:
-    // trading the budget back down for speed must fail here, loudly.
-    const { fixture, metrics } = loadFixture('charlotte95');
-    const doors = canonical(fixture.properties);
-    const best = [metrics.durationBetween, metrics.distanceBetween]
-        .map(distanceBetween => roadAwareStreetSweep(doors, { distanceBetween }))
-        .reduce((winner, order) => (
-            routeMinutes(order, metrics) < routeMinutes(winner, metrics) ? order : winner
-        ));
+// Ceilings are the BEST VALIDATED routes at the shipped 16M budget, not claims of
+// proven optima. Each is the better of the two sweeps, exactly as the deployed
+// function selects. At 4M these read 345.1 / 437.5 / 61.4, so trading the budget
+// back down for speed fails here instead of quietly shipping worse routes.
+const QUALITY_FLOORS = [
+    { name: 'charlotte95', ceilingMinutes: 340.5 },
+    { name: 'anderson183', ceilingMinutes: 430.0 },
+    { name: 'mesquite58', ceilingMinutes: 61.4 }
+];
 
-    assert.equal(
-        new Set(best.map(door => door.address_hash)).size,
-        fixture.point_count,
-        'Charlotte must keep every door'
-    );
-    assert.ok(
-        routeMinutes(best, metrics) <= 346.2,
-        `Charlotte regressed to ${routeMinutes(best, metrics).toFixed(1)}min, ceiling 346.2min`
-    );
-});
+for (const { name, ceilingMinutes } of QUALITY_FLOORS) {
+    test(`BUDGET-05 ${name} stays at or under its validated ${ceilingMinutes}min route`, () => {
+        const { fixture, metrics } = loadFixture(name);
+        const doors = canonical(fixture.properties);
+        const best = [metrics.durationBetween, metrics.distanceBetween]
+            .map(distanceBetween => roadAwareStreetSweep(doors, { distanceBetween }))
+            .reduce((winner, order) => (
+                routeMinutes(order, metrics) < routeMinutes(winner, metrics) ? order : winner
+            ));
+        const minutes = routeMinutes(best, metrics);
 
-test('BUDGET-05b Anderson stays under its original route', () => {
-    // Anderson's 449min ceiling is already met well below the shipped budget, so
-    // it is checked cheaply rather than paying for another full-budget pass.
-    const { fixture, metrics } = loadFixture('anderson183');
-    const doors = canonical(fixture.properties);
-    const order = roadAwareStreetSweep(doors, {
-        distanceBetween: metrics.distanceBetween,
-        refinementStepBudget: 900_000
+        assert.equal(
+            new Set(best.map(door => door.address_hash)).size,
+            fixture.point_count,
+            `${name} must keep every door exactly once`
+        );
+        // Tolerance covers float summation only, not a quality regression.
+        assert.ok(
+            minutes <= ceilingMinutes + 0.05,
+            `${name} regressed to ${minutes.toFixed(1)}min, ceiling ${ceilingMinutes}min`
+        );
     });
-
-    assert.equal(new Set(order.map(door => door.address_hash)).size, fixture.point_count);
-    assert.ok(
-        routeMinutes(order, metrics) <= 449,
-        `Anderson regressed to ${routeMinutes(order, metrics).toFixed(1)}min, ceiling 449min`
-    );
-});
+}
 
 test('BUDGET-06 the wall-clock cutoff never decides a result at the shipped budget', () => {
     // REFINEMENT_SAFETY_MS is wall-clock, so if it ever bound, identical inputs

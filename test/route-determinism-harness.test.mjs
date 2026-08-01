@@ -160,11 +160,12 @@ for (const name of FIXTURES) {
     });
 }
 
-// One fixture carries the production-budget pin, and it is the cheapest one: a
-// full-budget generation pass costs ~31s on Charlotte and this test needs two.
-// BUDGET-03 covers budget-exhaustion determinism directly and cheaply.
+// Charlotte carries the production-budget pin: it is the fixture that actually
+// EXHAUSTS the shipped budget (Mesquite converges well before spending it), so it
+// is where budget-order drift would surface. Affordable again now that the matrix
+// accessor is an indexed lookup — a full-budget pass costs ~8s, not ~31s.
 test('DET the shipped step budget is itself deterministic', () => {
-    for (const name of ['mesquite58']) {
+    for (const name of ['charlotte95']) {
         const { fixture, metrics } = loadFixture(name);
         // stepBudget=null -> the production REFINEMENT_STEP_BUDGET default.
         const baseline = generate(fixture.properties, metrics, null, null).winner;

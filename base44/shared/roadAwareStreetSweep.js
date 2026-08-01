@@ -30,17 +30,22 @@ export const REFINED_SEED_COUNT = 3;
 // inverted cliff: Charlotte 95 cost ~16.9s while Anderson 183 skipped refinement
 // entirely at 36ms.
 // Quality-first budget: deliver the best validated route on the first Create
-// Route press rather than a faster, meaningfully worse one. Measured per sweep on
-// the frozen fixtures through the production matrix accessor:
-//   Charlotte 95   900k 355.4min/4.4s   2M 350.8min/8.5s   4M 345.1min/15.6s
-//   Anderson 183   900k 437.5min/~3.6s                     4M 437.5min/15.4s
-//   Mesquite 58    900k  61.4min/~1.6s                     4M  61.4min/6.3s
-// 900k was ~9min worse than the approved 346.2min Charlotte route, so 4M is the
-// shipped default: it beats that route at 345.1min for ~31s of solver time per
-// route (two sweeps). Cost here is dominated by the metric lookup, not the DP —
-// raw indexed lookups run the same search ~14x faster, so making the accessor
-// index-based is the way to buy more depth, not a bigger budget.
-export const REFINEMENT_STEP_BUDGET = 4_000_000;
+// Route press rather than a faster, meaningfully worse one.
+//
+// Measured per ROUTE (both sweeps) on the frozen fixtures, after the matrix
+// accessor became an indexed lookup (that change made ~10M lookups 23x cheaper
+// and is what makes this depth affordable):
+//   budget   Charlotte      Anderson       Charlotte/route  Anderson/route
+//   4M       345.1 min      437.5 min      2.3 s            2.1 s
+//   8M       342.9 min      435.4 min      3.9 s            4.0 s
+//   16M      340.5 min      430.0 min      7.8 s            7.9 s   <- shipped
+//   32M      339.3 min      428.4 min      7.5 s            15.5 s
+// 16M is the quality/time knee: it saves 4.6min on Charlotte and 7.5min on
+// Anderson against 4M, while 32M buys only ~1.2/1.6min more for up to double the
+// Anderson time. Mesquite converges at 61.4min from 4M up, so extra depth there
+// is simply unspent. Deeper search is affordable now because lookup overhead was
+// removed — do not raise this to compensate for a slow metric path.
+export const REFINEMENT_STEP_BUDGET = 16_000_000;
 export const SCREENING_STEP_BUDGET = 300_000;
 // Emergency cutoff only, so a pathological matrix cannot hang a request. It must
 // stay far above the step budget's expected runtime: this cutoff is wall-clock,
