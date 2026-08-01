@@ -573,7 +573,6 @@ export default function MapToolbar({
                             {setActiveRouteSoldFilter &&
             <select value={activeRouteSoldFilter} onChange={(e) => {e.stopPropagation();setActiveRouteSoldFilter(e.target.value);}} onPointerDown={(e) => e.stopPropagation()} className={routeSelectClass} style={routeSelectStyle}>
                                     <option value="all" style={routeOptionStyle}>Dates</option>
-                                    <option value="0.25" style={routeOptionStyle}>1W</option>
                                     <option value="0.5" style={routeOptionStyle}>2W</option>
                                     <option value="1" style={routeOptionStyle}>1M</option>
                                     <option value="3" style={routeOptionStyle}>3M</option>
@@ -585,8 +584,6 @@ export default function MapToolbar({
                             {setActiveRoutePriceFilter &&
             <select value={activeRoutePriceFilter} onChange={(e) => {e.stopPropagation();setActiveRoutePriceFilter(e.target.value);}} onPointerDown={(e) => e.stopPropagation()} className={routeSelectAccentClass} style={routeSelectAccentStyle}>
                                     <option value="all" style={routeOptionAccentStyle}>Price</option>
-                                    <option value="50000" style={routeOptionAccentStyle}>&gt;$50K</option>
-                                    <option value="100000" style={routeOptionAccentStyle}>&gt;$100K</option>
                                     <option value="200000" style={routeOptionAccentStyle}>&gt;$200K</option>
                                     <option value="300000" style={routeOptionAccentStyle}>&gt;$300K</option>
                                     <option value="500000" style={routeOptionAccentStyle}>&gt;$500K</option>
