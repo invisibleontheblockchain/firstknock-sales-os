@@ -19,7 +19,6 @@ import {
 } from '../components/logic/routeOptimizer';
 import { optimizeLargeRoutesAsync } from '../components/logic/largeRouteOptimizer';
 import {
-    buildPersistedRoadRoutingMetadata,
     createRouteContinuityContext,
     routePropertyOrderFingerprint,
 } from '../components/logic/routeRoadContext';
@@ -72,7 +71,7 @@ import {
 } from '../components/map/mapAttribution';
 import useViewportMapProperties from '../components/map/useViewportMapProperties';
 import { reoptimizeRoute } from '@/lib/reoptimizeRouteAction';
-import { requireUsableRouteContext } from '@/lib/routeContextGuard';
+import { buildRoadAwareGeneratedRoutes } from '@/lib/roadMatrixRouteGeneration'; import { requireUsableRouteContext } from '@/lib/routeContextGuard';
 import { computeAccountWorkingArea } from '@/lib/accountWorkingArea';
 
 // Pure polygon/precision-context helpers live in components/map/homeMapHelpers.js
@@ -1848,22 +1847,12 @@ export default function Home() {
             const rawGenerated = largeRouteResult
                 ? largeRouteResult.routes
                 : await new Promise(resolve => setTimeout(() => resolve(generateOptimizedRoutes(workingSet, housesPerRoute, start, logs, { streetCooldownDays, useStreetSweep: routeConfig.walkingPattern === 'street_sweep', minimizeTurns: routeConfig.minimizeTurns, use2Opt: effectiveUse2Opt, walkingPattern: routeConfig.walkingPattern, returnToStart: !preparedRouteBounds.enabled && routeConfig.returnToStart, endLocation: end, routeOriginMode, excludeTerminal: routeConfig.excludeTerminal, routingContext }, learnedWeights)), 50));
-            const generated = Array.isArray(rawGenerated)
-                ? rawGenerated.map(route => {
-                    if (!routingContext) return route;
-                    return {
-                        ...route,
-                        metadata: {
-                            ...(route.metadata || {}),
-                            ...buildPersistedRoadRoutingMetadata(
-                                routingContext,
-                                null,
-                                route.properties
-                            )
-                        }
-                    };
-                })
-                : rawGenerated;
+            // ROAD-AWARE BY DEFAULT: the continuity candidate is re-priced through the
+            // same backend OSRM pipeline the Optimize button uses, and the road order is
+            // kept only when it measures better on one shared matrix. Every failure path
+            // (timeout, rate limit, >100 doors, no gain) keeps the continuity route.
+            const roadMatrixPass = await buildRoadAwareGeneratedRoutes({ rawGenerated, routingContext, onStage: setGenerationStage });
+            const generated = roadMatrixPass.routes;
             const generatedDoorCount = Array.isArray(generated) ? generated.reduce((sum, route) => sum + (route.properties?.length || route.houseCount || 0), 0) : 0;
             console.log(`[RoutePipeline] after_route_command routes=${generated?.length || 0} doors=${generatedDoorCount} elapsed_ms=${Math.round(performance.now() - optStart)}`);
             if (!generated || generated.length === 0) { toast.dismiss('build-routes'); setGenerationError(`Optimizer returned 0 routes from ${finalCount.toLocaleString()} properties. Try relaxing filters or pulling fresh data.`); return false; }
@@ -1921,7 +1910,7 @@ export default function Home() {
                 ? `Built ${generated.length} ${routeWord} (${totalHouses.toLocaleString()} doors${requestedText})` + (skippedDueToAssigned > 0 ? ` — ${skippedDueToAssigned} already assigned` : '')
                 : toastMsg;
 
-            toast.success(finalToastMsg, { id: 'build-routes', duration: 5000 });
+            toast.success(finalToastMsg + (roadMatrixPass.appliedCount > 0 ? ` — real road distances saved ~${roadMatrixPass.savedMiles} mi` : ''), { id: 'build-routes', duration: 5000 });
             lastGeneratedRouteBoundsRef.current = preparedRouteBounds.enabled ? preparedRouteBounds : null;
             if (preparedRouteBounds.enabled) preparePrecisionRouteBounds({ enabled: false });
             return true;
@@ -1996,22 +1985,9 @@ export default function Home() {
             const rawGenerated = largeRouteResult
                 ? largeRouteResult.routes
                 : generateOptimizedRoutes(workingSet, housesPerRoute, start, logs, { streetCooldownDays, useStreetSweep: routeConfig.walkingPattern === 'street_sweep', minimizeTurns: routeConfig.minimizeTurns, use2Opt: effectiveUse2Opt, walkingPattern: routeConfig.walkingPattern, returnToStart: !reorderBounds.enabled && routeConfig.returnToStart, endLocation: end, routeOriginMode, excludeTerminal: routeConfig.excludeTerminal, routingContext }, learnedWeights);
-            const generated = Array.isArray(rawGenerated)
-                ? rawGenerated.map(route => {
-                    if (!routingContext) return route;
-                    return {
-                        ...route,
-                        metadata: {
-                            ...(route.metadata || {}),
-                            ...buildPersistedRoadRoutingMetadata(
-                                routingContext,
-                                null,
-                                route.properties
-                            )
-                        }
-                    };
-                })
-                : rawGenerated;
+            // Reorder runs the identical road-aware pipeline as Create Route.
+            const roadMatrixPass = await buildRoadAwareGeneratedRoutes({ rawGenerated, routingContext, onStage: setGenerationStage });
+            const generated = roadMatrixPass.routes;
             setRoutes(generated);
             let savedRecords = [];
             if (generated.length > 0) {

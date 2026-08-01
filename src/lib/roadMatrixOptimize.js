@@ -18,6 +18,35 @@ const MAX_ROAD_MATRIX_DOORS = 100;
 
 const propertyKey = (property) => String(property.address_hash || property.legacy_hash || property.id || '');
 
+/**
+ * The persisted `routing` provenance block for a road-matrix order.
+ *
+ * A route whose order came from OSRM must not keep the aerial continuity block
+ * written by buildPersistedRoadRoutingMetadata — that left records claiming both
+ * `osrm:driving` and `engine: aerial-fallback`, with a fingerprint from an
+ * earlier order, which made the record impossible to audit.
+ */
+export function buildRoadMatrixRoutingBlock(meta = {}) {
+    return {
+        engine: meta.road_matrix_source || 'osrm:driving',
+        status: 'ok',
+        road_aware: meta.road_network_used === true,
+        mode: 'road_matrix',
+        cost_only: false,
+        distance_estimate: 'road',
+        objective: meta.objective || null,
+        supplied_point_count: meta.road_matrix_snapped ?? null,
+        snapped_point_count: meta.road_matrix_snapped ?? null,
+        unresolved_leg_count: meta.road_matrix_unresolved_legs ?? 0,
+        matrix_version: meta.road_matrix_version || null,
+        matrix_cache_key: meta.road_matrix_cache_key || null,
+        matrix_ms: meta.road_matrix_ms ?? null,
+        fallback: meta.fallback === true,
+        property_order_fingerprint: meta.property_order_fingerprint || null,
+        optimized_at: new Date().toISOString()
+    };
+}
+
 export async function tryRoadMatrixOptimize(routeProperties, { start = null, end = null } = {}) {
     if (!Array.isArray(routeProperties)
         || routeProperties.length < 2
@@ -65,7 +94,11 @@ export async function tryRoadMatrixOptimize(routeProperties, { start = null, end
                 appliedDistance: roadMiles,
                 estimatedSavings: savings
             },
-            routingMetadata: { ...meta, source: 'optimizeRouteRoadMatrix' }
+            routingMetadata: {
+                ...meta,
+                source: 'optimizeRouteRoadMatrix',
+                routing: buildRoadMatrixRoutingBlock(meta)
+            }
         };
     } catch (error) {
         console.warn('[roadMatrixOptimize] Road-matrix backend unavailable; using local optimize path', error);
