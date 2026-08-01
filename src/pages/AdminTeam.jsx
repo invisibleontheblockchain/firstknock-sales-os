@@ -20,7 +20,6 @@ import TeamAnalyticsSummary from '@/components/analytics/team/TeamAnalyticsSumma
 import TeamActivityTrend from '@/components/analytics/team/TeamActivityTrend';
 import TeamOutcomeBreakdown from '@/components/analytics/team/TeamOutcomeBreakdown';
 import UserActivityHeatmap from '@/components/analytics/team/UserActivityHeatmap';
-import SalesEditor from '@/components/analytics/SalesEditor';
 import { getManagerIdForAccount, isManagerAccount, isRepAccount } from '@/lib/roles';
 import { isKnockActivityLog } from '@/lib/interactionLogs';
 import { fetchAllAnalyticsPages } from '@/lib/analyticsDateFilter';
@@ -628,24 +627,24 @@ export default function AdminTeam() {
         <div className="max-w-7xl mx-auto space-y-4 md:space-y-8">
                 
                 {/* Header Section */}
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                    <div className="w-full md:w-auto flex justify-between items-center">
-                        <div className="flex flex-col">
-                            <h1 className="text-base md:text-3xl font-extrabold tracking-tight text-white flex items-center gap-2 md:gap-3">
-                            <Shield className="w-4 h-4 md:w-8 md:h-8 text-yellow-500" />
-                            {canManageTeam ? 'Team Command Center' : 'Team'}
+                <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-3 lg:gap-4">
+                    <div className="w-full lg:w-auto flex justify-between items-center gap-3">
+                        <div className="flex flex-col min-w-0">
+                            <h1 className="text-lg lg:text-3xl font-extrabold tracking-tight text-white flex items-center gap-2 lg:gap-3">
+                            <Shield className="w-5 h-5 lg:w-8 lg:h-8 text-yellow-500 shrink-0" />
+                            <span className="truncate">{canManageTeam ? 'Team Command Center' : 'Team'}</span>
                             </h1>
-                            <p className="hidden md:block text-gray-400 text-sm mt-1">
+                            <p className="hidden lg:block text-gray-400 text-sm mt-1">
                                 {canManageTeam
                                     ? 'See adoption, field activity, routes, and team performance.'
                                     : 'See your team and shared performance.'}
                             </p>
                         </div>
-                        {/* Mobile Team Filter */}
-                        <div className="md:hidden">
+                        {/* Mobile + tablet Team Filter */}
+                        <div className="lg:hidden shrink-0">
                             {inviteCodes.length > 0 && (
                                 <Select value={activeTeamCode} onValueChange={setActiveTeamCode}>
-                                    <SelectTrigger className="h-8 bg-black border-yellow-500/30 text-yellow-500 w-[110px] font-bold text-[10px]">
+                                    <SelectTrigger className="h-9 bg-black border-yellow-500/30 text-yellow-500 w-[124px] font-bold text-[11px]">
                                         <SelectValue placeholder="All Teams" />
                                     </SelectTrigger>
                                     <SelectContent className="bg-[#111] border-gray-800 text-white">
@@ -661,7 +660,7 @@ export default function AdminTeam() {
                         </div>
                     </div>
                     
-                    <div className="hidden md:flex items-center gap-3">
+                    <div className="hidden lg:flex items-center gap-3">
                         {/* Desktop Team Code Filter Dropdown */}
                         {inviteCodes.length > 0 && (
                             <Select value={activeTeamCode} onValueChange={setActiveTeamCode}>
@@ -679,14 +678,14 @@ export default function AdminTeam() {
                             </Select>
                         )}
                     </div>
-                    <div className={`${canManageTeam ? 'flex' : 'hidden'} w-full md:w-auto gap-2`}>
+                    <div className={`${canManageTeam ? 'flex' : 'hidden'} w-full flex-wrap items-center gap-2 lg:w-auto lg:flex-nowrap`}>
                         <Dialog open={isRoleSwitchOpen} onOpenChange={(open) => { setIsRoleSwitchOpen(open); if (!open) setRoleSwitchMemberId(''); }}>
                             <DialogTrigger asChild>
                                 <Button
                                     variant="outline"
-                                    className="flex-1 md:flex-none h-9 border-yellow-500/50 text-yellow-500 hover:bg-yellow-500/10 font-bold text-[10px] md:text-sm"
+                                    className="h-10 flex-1 min-w-[calc(50%-0.25rem)] border-yellow-500/50 text-yellow-500 hover:bg-yellow-500/10 font-bold text-xs lg:h-9 lg:min-w-0 lg:flex-none lg:text-sm"
                                 >
-                                    <Shield className="w-3 h-3 md:w-4 md:h-4 mr-1 md:mr-2" /> Switch Role
+                                    <Shield className="w-4 h-4 mr-1.5" /> Switch Role
                                 </Button>
                             </DialogTrigger>
                             <DialogContent className="bg-[#111] border-gray-800 text-white sm:max-w-md">
@@ -718,9 +717,9 @@ export default function AdminTeam() {
                         <Dialog open={isCreateTeamOpen} onOpenChange={setIsCreateTeamOpen}>
                             <DialogTrigger asChild>
                                 <Button 
-                                    className="flex-1 md:flex-none h-9 bg-gray-800 text-gray-300 font-bold hover:bg-gray-700 hover:text-white border border-gray-700 text-[10px] md:text-sm"
+                                    className="h-10 flex-1 min-w-[calc(50%-0.25rem)] bg-gray-800 text-gray-300 font-bold hover:bg-gray-700 hover:text-white border border-gray-700 text-xs lg:h-9 lg:min-w-0 lg:flex-none lg:text-sm"
                                 >
-                                    <Key className="w-3 h-3 md:w-4 md:h-4 mr-1 md:mr-2" /> Create Team
+                                    <Key className="w-4 h-4 mr-1.5" /> Create Team
                                 </Button>
                             </DialogTrigger>
                             <DialogContent className="bg-[#111] border-gray-800 text-white sm:max-w-md">
@@ -776,8 +775,8 @@ export default function AdminTeam() {
                             </DialogContent>
                         </Dialog>
 
-                        <Button onClick={handleAddSeat} className="flex-1 md:flex-none h-10 md:h-9 bg-yellow-500 text-black font-bold hover:bg-yellow-400 text-xs md:text-sm">
-                            <UserPlus className="w-4 h-4 mr-2" /> Add Rep
+                        <Button onClick={handleAddSeat} className="h-10 w-full bg-yellow-500 text-black font-bold hover:bg-yellow-400 text-xs lg:h-9 lg:w-auto lg:text-sm">
+                            <UserPlus className="w-4 h-4 mr-1.5" /> Add Rep
                         </Button>
                     </div>
                 </div>
@@ -872,14 +871,6 @@ export default function AdminTeam() {
                             <TeamOutcomeBreakdown logs={logs} />
                         </div>
                         <TeamLeaderboard members={analyticsMembers} logs={logs} routes={routes} />
-                        {canManageTeam && (
-                            <SalesEditor
-                                logs={logs}
-                                members={filteredTeamMembers}
-                                routes={routes}
-                                currentUser={user}
-                            />
-                        )}
                     </TabsContent>
 
                     {/* ROSTER TAB */}
