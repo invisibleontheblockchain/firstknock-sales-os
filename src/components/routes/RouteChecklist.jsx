@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Check, X, Navigation, Mic, MapPin, User, DollarSign, Ruler, Building2, ChevronUp, History, Loader2 } from 'lucide-react';
+import { Check, X, Navigation, Mic, MapPin, User, DollarSign, Ruler, Building2, ChevronUp, History, Loader2, RotateCcw } from 'lucide-react';
 import { getPropertyResultSummary } from '../logic/territoryLogic';
 import PropertyHistory from '@/components/rep/PropertyHistory';
 import HouseNoteField from '@/components/routes/HouseNoteField';
@@ -13,6 +13,13 @@ import {
     outcomeTint,
     latestOutcomeNote
 } from '../logic/outcomeStatus';
+import {
+    CHECKLIST_STAGES,
+    STAGE_DECISION_OPTIONS,
+    checklistStageFor,
+    summarizeChecklistStages
+} from '../logic/checklistStages';
+import { getWorkflowBucketFromLogs } from '../logic/routeBulkActions';
 import { buildFullAddress, getRouteNavigationPlan, openInMaps, openNavigationBatch } from '../logic/navigation';
 import { getNavigationSessionProgress, selectRemainingTodoStops } from '../logic/routeNavigation';
 import { parseOptionalSaleAmount } from '../analytics/salesManagement';
@@ -48,7 +55,7 @@ const formatNumber = (value) => {
 export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, onClose, navigationApp = 'apple', activeRouteSoldFilter, setActiveRouteSoldFilter }) {
     const [latestRoute, setLatestRoute] = useState(route);
     const [expandedId, setExpandedId] = useState(null);
-    const [filter, setFilter] = useState('pending');
+    const [filter, setFilter] = useState(CHECKLIST_STAGES.TODO);
     const [decisionFilter, setDecisionFilter] = useState('all');
     const [callbackPhone, setCallbackPhone] = useState('');
     const [selectedAction, setSelectedAction] = useState(null);
@@ -152,27 +159,43 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
         return statusMap;
     }, [propertyData]);
 
+    // A stop's stage comes from its outcome and, when a manager has explicitly
+    // moved it, from the workflow bucket on its newest log.
+    const propertyStages = useMemo(() => {
+        const stageMap = {};
+        visibleRouteProperties.forEach(p => {
+            stageMap[p.address_hash] = checklistStageFor(
+                propertyStatuses[p.address_hash],
+                getWorkflowBucketFromLogs(logsByProperty.get(p.address_hash) || [])
+            );
+        });
+        return stageMap;
+    }, [visibleRouteProperties, propertyStatuses, logsByProperty]);
+
+    const stageDecisionOptions = STAGE_DECISION_OPTIONS[filter] || null;
+
+    // Switching stages clears a decision filter that the new stage cannot show,
+    // otherwise the list would look empty for no visible reason.
+    useEffect(() => {
+        setDecisionFilter('all');
+    }, [filter]);
+
     const filteredProperties = useMemo(() => {
         return visibleRouteProperties.filter(p => {
-            const status = propertyStatuses[p.address_hash];
-            if (filter === 'pending') return !status || status === 'ELIGIBLE';
-            if (filter === 'done') {
-                if (!status || status === 'ELIGIBLE') return false;
-                return decisionFilter === 'all' || status === decisionFilter;
-            }
-            return true;
+            if (filter === 'all') return true;
+            if (propertyStages[p.address_hash] !== filter) return false;
+            if (decisionFilter === 'all') return true;
+            return propertyStatuses[p.address_hash] === decisionFilter;
         });
-    }, [visibleRouteProperties, propertyStatuses, filter, decisionFilter]);
+    }, [visibleRouteProperties, propertyStages, propertyStatuses, filter, decisionFilter]);
 
-    const stats = useMemo(() => {
-        let pending = 0, done = 0;
-        visibleRouteProperties.forEach(p => {
-            const status = propertyStatuses[p.address_hash];
-            if (!status || status === 'ELIGIBLE') pending++;
-            else done++;
-        });
-        return { pending, done, total: visibleRouteProperties.length };
-    }, [visibleRouteProperties, propertyStatuses]);
+    const stats = useMemo(
+        () => summarizeChecklistStages(
+            visibleRouteProperties,
+            (property) => propertyStages[property.address_hash]
+        ),
+        [visibleRouteProperties, propertyStages]
+    );
 
     const remainingProperties = useMemo(
         () => selectRemainingTodoStops(visibleRouteProperties, propertyStatuses),
@@ -410,7 +433,8 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
         recognition.start();
     };
 
-    const progressPct = stats.total > 0 ? (stats.done / stats.total) * 100 : 0;
+    const completedPct = stats.total > 0 ? (stats.completed / stats.total) * 100 : 0;
+    const followUpPct = stats.total > 0 ? (stats.followup / stats.total) * 100 : 0;
 
     return (
         <div className="h-full flex flex-col pt-[calc(env(safe-area-inset-top)+0.5rem)]" style={{ background: BRAND.voidBlack }}>
@@ -435,23 +459,26 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
                     </button>
                 </div>
 
-                {/* Progress Bar */}
+                {/* Progress Bar — completed is solid, follow-ups are shown as
+                    started-but-open so the bar never overstates the day */}
                 <div className="flex items-center gap-3">
-                    <div className="flex-1 h-1.5 rounded-full overflow-hidden border border-white/10 bg-black/60">
-                        <div className="h-full rounded-full transition-all duration-500 shadow-[0_0_14px_rgba(46,235,87,0.55)]" style={{ width: `${progressPct}%`, background: 'linear-gradient(90deg, #2EEB57, #39FF4A)' }} />
+                    <div className="flex flex-1 h-1.5 rounded-full overflow-hidden border border-white/10 bg-black/60">
+                        <div className="h-full transition-all duration-500 shadow-[0_0_14px_rgba(46,235,87,0.55)]" style={{ width: `${completedPct}%`, background: 'linear-gradient(90deg, #2EEB57, #39FF4A)' }} />
+                        <div className="h-full transition-all duration-500" style={{ width: `${followUpPct}%`, background: 'rgba(255,215,0,0.55)' }} />
                     </div>
                     <span className="shrink-0 font-mono text-[11px] font-black tabular-nums text-white">
-                        {stats.done}<span className="text-white/35">/{stats.total}</span>
+                        {stats.completed}<span className="text-white/35">/{stats.total}</span>
                     </span>
                 </div>
 
                 {/* Filters + Start Route */}
                 <div className="grid grid-cols-2 items-center gap-2 sm:flex sm:flex-wrap">
-                    <div className="col-span-2 grid grid-cols-3 gap-1 rounded-xl border border-white/10 bg-white/[0.04] p-1 sm:flex sm:flex-1">
+                    <div className="col-span-2 grid grid-cols-4 gap-1 rounded-xl border border-white/10 bg-white/[0.04] p-1 sm:flex sm:flex-1">
                         {[
                             { id: 'all', label: 'All' },
-                            { id: 'pending', label: `Todo ${stats.pending}` },
-                            { id: 'done', label: `Done ${stats.done}` }
+                            { id: CHECKLIST_STAGES.TODO, label: `Todo ${stats.todo}` },
+                            { id: CHECKLIST_STAGES.FOLLOW_UP, label: `Return ${stats.followup}` },
+                            { id: CHECKLIST_STAGES.COMPLETED, label: `Done ${stats.completed}` }
                         ].map(f => (
                             <button
                                 key={f.id}
@@ -483,7 +510,7 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
                             <option value="12" style={FILTER_OPTION_STYLE}>1 Year</option>
                         </select>
                     )}
-                    {filter === 'done' && (
+                    {stageDecisionOptions && (
                         <select
                             value={decisionFilter}
                             onChange={(e) => setDecisionFilter(e.target.value)}
@@ -491,12 +518,11 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
                             style={FILTER_SELECT_STYLE}
                         >
                             <option value="all" style={FILTER_OPTION_STYLE}>All Decisions</option>
-                            <option value="SOLD" style={FILTER_OPTION_STYLE}>Sold</option>
-                            <option value="NO_ANSWER" style={FILTER_OPTION_STYLE}>No Answer</option>
-                            <option value="CALLBACK" style={FILTER_OPTION_STYLE}>Callback</option>
-                            <option value="HARD_NO" style={FILTER_OPTION_STYLE}>Not Interested</option>
-                            <option value="NOT_MOVED_IN" style={FILTER_OPTION_STYLE}>Not Moved In</option>
-                            <option value="DM_NOT_HOME" style={FILTER_OPTION_STYLE}>DM Not Home</option>
+                            {stageDecisionOptions.map(option => (
+                                <option key={option.value} value={option.value} style={FILTER_OPTION_STYLE}>
+                                    {option.label}
+                                </option>
+                            ))}
                         </select>
                     )}
                     <button
@@ -545,11 +571,27 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
             {/* Property List */}
             <ScrollArea className="flex-1">
                 <div className="px-3 py-2 space-y-1.5">
+                    {filteredProperties.length === 0 && (
+                        <p className="px-2 py-8 text-center text-[11px] font-semibold text-white/40">
+                            {filter === CHECKLIST_STAGES.TODO
+                                ? 'Every stop on this route has been knocked.'
+                                : filter === CHECKLIST_STAGES.FOLLOW_UP
+                                    ? 'No stops need another visit right now.'
+                                    : filter === CHECKLIST_STAGES.COMPLETED
+                                        ? 'No stops are fully completed yet.'
+                                        : 'No stops match this filter.'}
+                        </p>
+                    )}
                     {filteredProperties.map((prop, idx) => {
                         const propData = propertyData[prop.address_hash] || {};
                         const currentStatus = propertyStatuses[prop.address_hash];
                         const isExpanded = expandedId === prop.address_hash;
-                        const isDone = currentStatus && currentStatus !== 'ELIGIBLE';
+                        const stage = propertyStages[prop.address_hash];
+                        // Only a terminal outcome is retired visually. A stop
+                        // awaiting another visit keeps its number and full
+                        // contrast so it still reads as work.
+                        const isDone = stage === CHECKLIST_STAGES.COMPLETED;
+                        const needsReturn = stage === CHECKLIST_STAGES.FOLLOW_UP;
                         const ownerName = prop.owner_full_name || prop.owner_name || prop.ownerFullName;
                         const valueLabel = formatMoney(
                             prop.price ??
@@ -602,9 +644,11 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
                                         className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-black"
                                         style={isDone
                                             ? { background: (STATUS_COLORS[currentStatus] || '#333') + '22', color: STATUS_COLORS[currentStatus] || '#888', border: `1px solid ${(STATUS_COLORS[currentStatus] || '#333')}55` }
-                                            : { background: 'rgba(46,235,87,0.12)', color: '#86efac', border: '1px solid rgba(46,235,87,0.3)' }}
+                                            : needsReturn
+                                                ? { background: 'rgba(255,215,0,0.12)', color: BRAND.gold, border: '1px solid rgba(255,215,0,0.35)' }
+                                                : { background: 'rgba(46,235,87,0.12)', color: '#86efac', border: '1px solid rgba(46,235,87,0.3)' }}
                                     >
-                                        {isDone ? <Check className="w-3.5 h-3.5" /> : idx + 1}
+                                        {isDone ? <Check className="w-3.5 h-3.5" /> : needsReturn ? <RotateCcw className="w-3.5 h-3.5" /> : idx + 1}
                                     </div>
 
                                     <div className="flex-1 min-w-0">
@@ -647,10 +691,18 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
                                     </div>
 
                                     {currentStatus && !isExpanded && (
-                                        <span className="mt-1 shrink-0 rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-wide"
-                                            style={{ background: STATUS_COLORS[currentStatus] + '20', color: STATUS_COLORS[currentStatus] }}>
-                                            {outcomeShortLabel(currentStatus)}
-                                        </span>
+                                        <div className="mt-1 flex shrink-0 flex-col items-end gap-1">
+                                            <span className="rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-wide"
+                                                style={{ background: STATUS_COLORS[currentStatus] + '20', color: STATUS_COLORS[currentStatus] }}>
+                                                {outcomeShortLabel(currentStatus)}
+                                            </span>
+                                            {needsReturn && (
+                                                <span className="rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-wide"
+                                                    style={{ background: 'rgba(255,215,0,0.14)', color: BRAND.gold }}>
+                                                    Return
+                                                </span>
+                                            )}
+                                        </div>
                                     )}
                                 </button>
 
