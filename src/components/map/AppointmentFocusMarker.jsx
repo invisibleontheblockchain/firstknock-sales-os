@@ -31,7 +31,7 @@ export default function AppointmentFocusMarker({ property, onSelect }) {
       eventHandlers={{ click: () => onSelect?.(property) }}
     >
       <Tooltip direction="top" offset={[0, -12]}>
-        {property.full_address || property.address || 'Appointment'}
+        {property.full_address || property.address || 'Selected door'}
       </Tooltip>
     </Marker>
   );

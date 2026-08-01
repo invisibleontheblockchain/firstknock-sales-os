@@ -2729,7 +2729,7 @@ export default function Home() {
                 workingAreaCenteredRef={hasCenteredAccountWorkingAreaRef}
                 onOpenProperty={(property) => {
                     setModeRaw('analyze');
-                    setSelectedProperty(property);
+                    /* Focus pin (shared with appointment links) keeps the searched door individually clickable after its card closes. */ setSelectedProperty(property); setAppointmentPin(property);
                 }}
                 onRefreshProperties={() => Promise.all([
                     queryClient.invalidateQueries({ queryKey: ['masterProperties'] }),
