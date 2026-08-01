@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Loader2, MapPin, Search, User, X, Landmark } from 'lucide-react';
 import useUnifiedMapSearch from './useUnifiedMapSearch';
 import UnifiedSearchResultRow from './UnifiedSearchResultRow';
@@ -17,6 +18,10 @@ export default function UnifiedMapSearch({
   className = '',
   autoFocus = false,
   placeholder = 'Search customers, addresses, or counties…',
+  showLeadingIcon = true,
+  // The header field lives inside a low z-index bar, so its dropdown must be
+  // portaled to the body or map overlays paint on top of it.
+  portalResults = false,
 }) {
   const { query, setQuery, results, groups, loading, error, geocoderError, reset, intent, minLength } =
     useUnifiedMapSearch({ enableCounties });
@@ -24,6 +29,7 @@ export default function UnifiedMapSearch({
   const [activeIndex, setActiveIndex] = useState(0);
   const inputRef = useRef(null);
   const containerRef = useRef(null);
+  const panelRef = useRef(null);
 
   const flatResults = useMemo(() => groups.flatMap((group) => group.items), [groups]);
 
@@ -37,7 +43,8 @@ export default function UnifiedMapSearch({
   useEffect(() => {
     if (!open) return undefined;
     const onPointerDown = (event) => {
-      if (!containerRef.current?.contains(event.target)) setOpen(false);
+      const inside = containerRef.current?.contains(event.target) || panelRef.current?.contains(event.target);
+      if (!inside) setOpen(false);
     };
     document.addEventListener('mousedown', onPointerDown);
     document.addEventListener('touchstart', onPointerDown);
@@ -86,6 +93,21 @@ export default function UnifiedMapSearch({
   };
 
   const showPanel = open && intent.usable;
+  const [panelRect, setPanelRect] = useState(null);
+
+  useEffect(() => {
+    if (!portalResults || !showPanel) return undefined;
+    const measure = () => {
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (rect) setPanelRect({ left: rect.left, top: rect.bottom + 6, width: rect.width });
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, [portalResults, showPanel]);
+
+  const renderPanel = (node) => (portalResults ? createPortal(node, document.body) : node);
+
   const emptyMessage = !loading && results.length === 0 && intent.usable
     ? (error || `No customers or leads found for “${query.trim()}”. Search their address to locate or add them.`)
     : '';
@@ -93,7 +115,9 @@ export default function UnifiedMapSearch({
   return (
     <div ref={containerRef} className={`relative ${className}`}>
       <div className="relative">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#39FF4A]" />
+        {showLeadingIcon && (
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#39FF4A]" />
+        )}
         <input
           ref={inputRef}
           type="search"
@@ -108,7 +132,7 @@ export default function UnifiedMapSearch({
           onFocus={() => setOpen(true)}
           onKeyDown={onKeyDown}
           placeholder={placeholder}
-          className="h-11 w-full rounded-xl border border-white/12 bg-black/80 pl-9 pr-16 text-sm text-white shadow-[0_10px_30px_rgba(0,0,0,0.45)] outline-none backdrop-blur-xl placeholder:text-white/35 focus:border-[#2EEB57]/60"
+          className={`h-11 w-full rounded-xl border border-white/12 bg-black/80 ${showLeadingIcon ? 'pl-9' : 'pl-3'} pr-16 text-sm text-white shadow-[0_10px_30px_rgba(0,0,0,0.45)] outline-none backdrop-blur-xl placeholder:text-white/35 focus:border-[#2EEB57]/60`}
         />
         <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1">
           {loading && <Loader2 className="h-4 w-4 animate-spin text-[#39FF4A]" />}
@@ -125,11 +149,13 @@ export default function UnifiedMapSearch({
         </div>
       </div>
 
-      {showPanel && (
+      {showPanel && renderPanel(
         <div
+          ref={panelRef}
           id="unified-map-search-results"
           role="listbox"
-          className="absolute left-0 right-0 top-[calc(100%+6px)] z-[1200] max-h-[min(60vh,26rem)] overflow-y-auto overscroll-contain rounded-xl border border-white/12 bg-[#050505]/97 shadow-[0_24px_70px_rgba(0,0,0,0.7)] backdrop-blur-2xl"
+          style={portalResults && panelRect ? { left: panelRect.left, top: panelRect.top, width: panelRect.width } : undefined}
+          className={`${portalResults ? 'fixed z-[3500]' : 'absolute left-0 right-0 top-[calc(100%+6px)] z-[1200]'} max-h-[min(60vh,26rem)] overflow-y-auto overscroll-contain rounded-xl border border-white/12 bg-[#050505]/97 shadow-[0_24px_70px_rgba(0,0,0,0.7)] backdrop-blur-2xl`}
         >
           {emptyMessage && (
             <p className="px-3 py-4 text-[11px] leading-relaxed text-white/55" aria-live="polite">{emptyMessage}</p>

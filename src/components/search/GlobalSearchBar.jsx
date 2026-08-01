@@ -1,4 +1,5 @@
 import React from 'react';
+import { Search } from 'lucide-react';
 import UnifiedMapSearch from './UnifiedMapSearch';
 import useGlobalSearchSelect from './useGlobalSearchSelect';
 
@@ -10,10 +11,15 @@ export default function GlobalSearchBar({ className = '' }) {
   const handleSelect = useGlobalSearchSelect();
 
   return (
-    <UnifiedMapSearch
-      className={className}
-      onSelect={handleSelect}
-      placeholder="Search customers, addresses, or counties…"
-    />
+    <div className={`flex items-center gap-2 ${className}`}>
+      <Search className="h-5 w-5 shrink-0 text-white" aria-hidden="true" />
+      <UnifiedMapSearch
+        className="flex-1"
+        onSelect={handleSelect}
+        showLeadingIcon={false}
+        portalResults
+        placeholder="Search customers, addresses, or counties…"
+      />
+    </div>
   );
 }
