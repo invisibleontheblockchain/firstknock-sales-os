@@ -29,25 +29,25 @@ export const REFINED_SEED_COUNT = 3;
 // The previous "refine below 120 blocks, refine nothing above" rule produced an
 // inverted cliff: Charlotte 95 cost ~16.9s while Anderson 183 skipped refinement
 // entirely at 36ms.
-// Quality-first budget. Measured on the frozen fixtures, route quality is still
-// improving at 4M, so the default is set at the knee of the curve rather than at
-// the cheapest setting that felt fast:
-//   Charlotte 95   900k 355.4min  4M 345.1  16M 340.5  32M 339.3
-//   Anderson 183   900k 437.5min  4M 437.5  16M 430.0  32M 428.4
-//   Mesquite 58    900k  61.4min  4M  61.4  16M  61.4 (converged, budget unspent)
-// 16M costs ~5s per sweep at the 250-door client cap (~12s for both sweeps),
-// which buys the best validated route inside one Create Route press. 32M doubles
-// that for a further 0.4%, and its ~9s sweeps leave too little headroom under
-// REFINEMENT_SAFETY_MS, whose wall-clock cutoff would make results
-// machine-dependent if it ever bound.
-export const REFINEMENT_STEP_BUDGET = 16_000_000;
+// Quality-first budget: deliver the best validated route on the first Create
+// Route press rather than a faster, meaningfully worse one. Measured per sweep on
+// the frozen fixtures through the production matrix accessor:
+//   Charlotte 95   900k 355.4min/4.4s   2M 350.8min/8.5s   4M 345.1min/15.6s
+//   Anderson 183   900k 437.5min/~3.6s                     4M 437.5min/15.4s
+//   Mesquite 58    900k  61.4min/~1.6s                     4M  61.4min/6.3s
+// 900k was ~9min worse than the approved 346.2min Charlotte route, so 4M is the
+// shipped default: it beats that route at 345.1min for ~31s of solver time per
+// route (two sweeps). Cost here is dominated by the metric lookup, not the DP —
+// raw indexed lookups run the same search ~14x faster, so making the accessor
+// index-based is the way to buy more depth, not a bigger budget.
+export const REFINEMENT_STEP_BUDGET = 4_000_000;
 export const SCREENING_STEP_BUDGET = 300_000;
-// Emergency cutoff only. The step budget is what makes runtime predictable; this
-// exists so a pathological matrix cannot hang a request, and it is set far above
-// the step budget's expected runtime so it never decides a normal result. Worst
-// measured sweep at the shipped budget is ~5.9s (250 doors), so this keeps ~3.4x
-// headroom and stays out of the way of normal results.
-export const REFINEMENT_SAFETY_MS = 20_000;
+// Emergency cutoff only, so a pathological matrix cannot hang a request. It must
+// stay far above the step budget's expected runtime: this cutoff is wall-clock,
+// so if it ever bound, identical inputs could return different routes on
+// different hardware. Worst measured sweep at the shipped budget is ~15.6s, so
+// 20s would have bound routinely — hence the much larger ceiling.
+export const REFINEMENT_SAFETY_MS = 90_000;
 
 const STREET_SUFFIX_CANONICAL = new Map([
     ['ALY', 'ALY'], ['ALLEY', 'ALY'],
