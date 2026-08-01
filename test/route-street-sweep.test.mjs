@@ -211,6 +211,24 @@ test('a geographically wide street remains one block instead of being split by c
     assert.equal(streetRuns(optimized).filter((street) => street === 'Longview Ave').length, 1);
 });
 
+test('same-named doors half a mile apart are not forced adjacent past nearer doors', () => {
+    // Reported Mesquite case (Eastbrook Dr / Flamingo Way): two doors share a
+    // street name but sit ~0.7 mi apart with other streets' doors in between.
+    // Forcing them adjacent made the route march past a nearer door and circle
+    // back for it. Without a road-network segment key vouching for continuity,
+    // the far segments may be walked as separate blocks in geographic order.
+    const doors = [
+        property('A1', 'Split Rd', 100, -112.000),
+        property('B1', 'Between Ct', 200, -111.995, 33.45001),
+        property('A2', 'Split Rd', 300, -111.988),
+    ];
+
+    const optimized = optimizeRouteByStreetSweep(doors, { lat: 33.45, lng: -112.005 });
+
+    assert.deepEqual(optimized.map(({ id }) => id), ['A1', 'B1', 'A2']);
+    assertSameDoors(optimized, doors);
+});
+
 test('canonical street suffixes do not collapse Oak Drive and Oak Lane together', () => {
     const doors = [
         property('DR1', 'Oak Drive', 101, -112.010),

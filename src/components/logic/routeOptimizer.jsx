@@ -1347,10 +1347,41 @@ function applyIntraStreet2Opt(props) {
     return props;
 }
 
+// Two doors that share a street name but sit nearly half a mile apart are not
+// one walkable street to a rep — forcing them adjacent makes the route march
+// away past other doors and circle back (the reported Mesquite Eastbrook Dr /
+// Flamingo Way bounce). Split only on gaps decisively larger than a dense long
+// avenue's door spacing (~0.35 mi in the wide-street regression fixture), so
+// genuinely continuous streets always remain one atomic block.
+const STREET_SPLIT_GAP_MILES = 0.4;
+
+function splitStreetGroupByGaps(props, groupKey) {
+    // A road-network segment key is ground truth that these doors sit on one
+    // connected road — never second-guess it with the aerial gap heuristic.
+    if (String(groupKey).includes('|SEGMENT:')) return [props];
+    if (props.length <= 1 || props.length > MAX_AXIS_ORDER_DOORS) return [props];
+    const ordered = orderAlongStreetAxis(props);
+    const pieces = [];
+    let current = [ordered[0]];
+    for (let i = 1; i < ordered.length; i++) {
+        const gap = calculateDistanceFast(
+            ordered[i - 1].lat, ordered[i - 1].lng,
+            ordered[i].lat, ordered[i].lng
+        );
+        if (gap > STREET_SPLIT_GAP_MILES) {
+            pieces.push(current);
+            current = [];
+        }
+        current.push(ordered[i]);
+    }
+    pieces.push(current);
+    return pieces;
+}
+
 function buildStreetSweepBlocks(properties, routingContext = null) {
     return [...groupByStreet(properties, routingContext).entries()]
         .sort(([firstKey], [secondKey]) => compareStableKeys(firstKey, secondKey))
-        .map(([key, props]) => {
+        .flatMap(([key, allProps]) => splitStreetGroupByGaps(allProps, key).map((props, pieceIndex, pieces) => {
         const forward = applyIntraStreet2Opt(
             boustrophedonStreet([...props], false)
         );
@@ -1358,13 +1389,13 @@ function buildStreetSweepBlocks(properties, routingContext = null) {
             props.map(property => accessGroupKey(property, routingContext)).filter(Boolean)
         )].sort();
         return {
-            key,
+            key: pieces.length > 1 ? `${key}#${pieceIndex}` : key,
             lat: props.reduce((sum, property) => sum + property.lat, 0) / props.length,
             lng: props.reduce((sum, property) => sum + property.lng, 0) / props.length,
             accessKey: accessKeys.length === 1 ? accessKeys[0] : '',
             variants: [forward, [...forward].reverse()]
         };
-    });
+    }));
 }
 
 function streetBlockOrderCost(
@@ -1620,6 +1651,28 @@ function optimizeStreetBlockOrder(blocks, startLocation = null, endLocation = nu
                         ...ordered.slice(start, finish + 1).reverse(),
                         ...ordered.slice(finish + 1)
                     ];
+                    const candidateCost = streetBlockOrderCost(
+                        candidate,
+                        startLocation,
+                        endLocation,
+                        false,
+                        routingContext
+                    );
+                    if (candidateCost + 0.000001 < bestCost) {
+                        bestCost = candidateCost;
+                        bestOrder = candidate;
+                    }
+                }
+            }
+            // Or-opt: relocate a single street block. Reversal moves alone cannot
+            // rescue a block that greedy nearest-neighbor stranded — the route
+            // otherwise walks away and bounces back for it many stops later.
+            for (let from = 0; from < ordered.length; from++) {
+                for (let to = 0; to <= ordered.length; to++) {
+                    if (to === from || to === from + 1) continue;
+                    const candidate = [...ordered];
+                    const [moved] = candidate.splice(from, 1);
+                    candidate.splice(to > from ? to - 1 : to, 0, moved);
                     const candidateCost = streetBlockOrderCost(
                         candidate,
                         startLocation,
