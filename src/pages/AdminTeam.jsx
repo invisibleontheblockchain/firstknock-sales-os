@@ -833,13 +833,13 @@ export default function AdminTeam() {
 
                     {/* ANALYTICS TAB */}
                     <TabsContent value="analytics" className="space-y-3 md:space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        <TeamAnalyticsSummary members={analyticsMembers} logs={logs} routes={routes} />
                         {canManageTeam && (
                             <UserActivityHeatmap
                                 members={analyticsMembers}
                                 managerId={managerId}
                             />
                         )}
-                        <TeamAnalyticsSummary members={analyticsMembers} logs={logs} routes={routes} />
                         <div className="grid grid-cols-1 xl:grid-cols-[1.15fr,0.85fr] gap-3 md:gap-6">
                             <TeamActivityTrend logs={logs} />
                             <TeamOutcomeBreakdown logs={logs} />
