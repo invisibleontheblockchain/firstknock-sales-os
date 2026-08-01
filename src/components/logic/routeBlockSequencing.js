@@ -184,11 +184,34 @@ export function summarizeRouteTail(legDistances) {
 }
 
 /**
+ * Count streets that are left and later re-entered.
+ *
+ * A street split into several blocks (a long avenue, or a name reused across a
+ * neighborhood) may be cheaper to interleave with its neighbors, but a rep
+ * experiences that as leaving a street and coming back to it. Blocks carry the
+ * street identity in the part of their key before the piece suffix.
+ */
+export function countStreetReentries(order) {
+    const streets = (Array.isArray(order) ? order : [])
+        .map(block => String(block?.key ?? '').split('#')[0]);
+    const lastSeen = new Map();
+    let reentries = 0;
+    streets.forEach((street, index) => {
+        const previous = lastSeen.get(street);
+        if (previous !== undefined && previous !== index - 1) reentries += 1;
+        lastSeen.set(street, index);
+    });
+    return reentries;
+}
+
+/**
  * Deterministically choose the winning candidate order.
  *
- * Complete-route cost decides. Only when two candidates are effectively tied
- * does the cheaper end-of-route stretch win, and an identical tail falls back to
- * the candidate's block-key signature so the result never depends on evaluation
+ * Street continuity outranks raw distance: an order that leaves and re-enters a
+ * street can never win on cost alone, because that is the rep-facing workflow the
+ * mail-carrier sweep exists to protect. Among orders with equal continuity the
+ * complete-route cost decides, then the cheaper end-of-route stretch, and
+ * finally the block-key signature so the result never depends on evaluation
  * order.
  *
  * @param {Array<{order: Array<{key: string}>, cost: number, tail: {excessMiles: number}}>} candidates
@@ -199,7 +222,16 @@ export function selectBestBlockOrderCandidate(candidates) {
     if (usable.length === 0) return null;
 
     const signature = candidate => candidate.order.map(block => String(block.key)).join('>');
+    const reentriesOf = candidate => (
+        Number.isFinite(candidate.reentries) ? candidate.reentries : countStreetReentries(candidate.order)
+    );
     return usable.reduce((best, candidate) => {
+        const candidateReentries = reentriesOf(candidate);
+        const bestReentries = reentriesOf(best);
+        if (candidateReentries !== bestReentries) {
+            return candidateReentries < bestReentries ? candidate : best;
+        }
+
         const tolerance = BLOCK_SEQUENCING_WEIGHTS.equalCostToleranceMiles;
         if (candidate.cost + tolerance < best.cost) return candidate;
         if (best.cost + tolerance < candidate.cost) return best;
