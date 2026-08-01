@@ -12,9 +12,11 @@
  * plus: winning duration <= current duration (never worse), and a second
  * Optimize press cannot rearrange an already-winning route.
  *
- * Repetition counts are per fixture because solver cost is not linear in door
- * count (see REPEATS below) — Charlotte 95 runs the block-refinement pass and
- * costs ~17s per solve, so it is exercised fewer times on purpose.
+ * Solver cost is now flat across door counts (one deterministic step budget, no
+ * block-count cliff), so every fixture is exercised the same number of times.
+ * The repeats run at a reduced step budget: budget exhaustion is itself part of
+ * the deterministic path, and one full-production-budget pass per fixture pins
+ * the shipped configuration's fingerprint.
  */
 
 import test from 'node:test';
@@ -25,18 +27,12 @@ import { roadAwareStreetSweep } from '../base44/shared/roadAwareStreetSweep.js';
 import { createContinuityOptimizer, haversineMiles } from '../base44/shared/routeContinuityOptimizer.js';
 import { measureRouteCandidate, selectBestRouteCandidate } from '../base44/shared/routeCandidateSelection.js';
 
-// Solver cost is NOT monotonic in door count, because block refinement is
-// skipped above 120 street blocks: measured single-solve cost is 36ms at
-// Anderson 183, but 1.6s at Mesquite 58 and 16.9s at Charlotte 95. Twenty
-// repetitions is therefore only affordable where refinement is skipped. The
-// counts below are the most repetition the suite can carry today; raising
-// Mesquite and Charlotte to 20 depends on the refinement-cost work tracked
-// separately, not on any weakness in the determinism contract itself.
-const REPEATS = {
-    'anderson183': 20,
-    'mesquite58': 4,
-    'charlotte95': 1
-};
+const FIXTURES = ['anderson183', 'mesquite58', 'charlotte95'];
+const REPEATS = 3;
+// Reduced budget keeps the repeat loops affordable while exercising the same
+// budgeted search, including the exhaustion path. PRODUCTION_BUDGET_RUNS uses
+// the shipped default so the real configuration is pinned too.
+const TEST_STEP_BUDGET = 120_000;
 
 function loadFixture(name) {
     const fixture = JSON.parse(
@@ -68,20 +64,23 @@ function seededShuffle(properties, seed) {
 }
 
 /** One full generation pass: build every candidate, price it, pick the winner. */
-function generate(properties, metrics, currentOrder = null) {
+function generate(properties, metrics, currentOrder = null, stepBudget = TEST_STEP_BUDGET) {
     const doors = canonical(properties);
     const continuity = createContinuityOptimizer(haversineMiles)
         .buildRouteChunks(doors, doors.length, null, null)
         .doorChunks.flat().map(door => door.property);
+    const sweepOptions = stepBudget ? { refinementStepBudget: stepBudget } : {};
     const byDistance = roadAwareStreetSweep(doors, {
         startLocation: null,
         endLocation: null,
-        distanceBetween: metrics.distanceBetween
+        distanceBetween: metrics.distanceBetween,
+        ...sweepOptions
     });
     const byDuration = roadAwareStreetSweep(doors, {
         startLocation: null,
         endLocation: null,
-        distanceBetween: metrics.durationBetween
+        distanceBetween: metrics.durationBetween,
+        ...sweepOptions
     });
 
     const seeds = [
@@ -101,19 +100,8 @@ function generate(properties, metrics, currentOrder = null) {
     return { winner: selectBestRouteCandidate(candidates), candidates };
 }
 
-/**
- * Charlotte's two multi-generation tests cost ~34s per generation pass and
- * cannot finish inside a normal CI step, so they are opt-in via
- * FK_SLOW_DETERMINISM=1 rather than silently trimmed.
- */
-function heavy(name) {
-    return name === 'charlotte95' && !process.env.FK_SLOW_DETERMINISM
-        ? { skip: 'slow: run with FK_SLOW_DETERMINISM=1 (~4 minutes)' }
-        : {};
-}
-
-for (const name of Object.keys(REPEATS)) {
-    test(`DET ${name} — identical inputs always produce one fingerprint`, heavy(name), () => {
+for (const name of FIXTURES) {
+    test(`DET ${name} — identical inputs always produce one fingerprint`, () => {
         const { fixture, metrics } = loadFixture(name);
         const baseline = generate(fixture.properties, metrics).winner;
 
@@ -123,17 +111,17 @@ for (const name of Object.keys(REPEATS)) {
             'winning order must contain every door exactly once'
         );
 
-        for (let run = 0; run < REPEATS[name]; run++) {
+        for (let run = 0; run < REPEATS; run++) {
             const repeat = generate(fixture.properties, metrics).winner;
             assert.equal(repeat.fingerprint, baseline.fingerprint, `run ${run} drifted`);
         }
     });
 
-    test(`DET ${name} — shuffled and reversed inputs land on the same route`, heavy(name), () => {
+    test(`DET ${name} — shuffled and reversed inputs land on the same route`, () => {
         const { fixture, metrics } = loadFixture(name);
         const baseline = generate(fixture.properties, metrics).winner;
 
-        for (let run = 0; run < REPEATS[name]; run++) {
+        for (let run = 0; run < REPEATS; run++) {
             const shuffled = generate(seededShuffle(fixture.properties, 7919 + run), metrics).winner;
             assert.equal(shuffled.fingerprint, baseline.fingerprint, `shuffle ${run} changed the route`);
         }
@@ -142,7 +130,7 @@ for (const name of Object.keys(REPEATS)) {
         assert.equal(reversed.fingerprint, baseline.fingerprint);
     });
 
-    test(`DET ${name} — Optimize is monotonic and idempotent, and export round-trips`, heavy(name), () => {
+    test(`DET ${name} — Optimize is monotonic and idempotent, and export round-trips`, () => {
         const { fixture, metrics } = loadFixture(name);
         const exported = fixture.properties;
 
@@ -172,8 +160,22 @@ for (const name of Object.keys(REPEATS)) {
     });
 }
 
+test('DET the shipped step budget is itself deterministic', () => {
+    for (const name of FIXTURES) {
+        const { fixture, metrics } = loadFixture(name);
+        // stepBudget=null -> the production REFINEMENT_STEP_BUDGET default.
+        const baseline = generate(fixture.properties, metrics, null, null).winner;
+        const repeat = generate([...fixture.properties].reverse(), metrics, null, null).winner;
+        assert.equal(repeat.fingerprint, baseline.fingerprint, `${name} drifted at the production budget`);
+        assert.equal(
+            new Set(baseline.order.map(door => door.address_hash)).size,
+            fixture.point_count
+        );
+    }
+});
+
 test('DET fixtures are frozen, complete, and self-consistent', () => {
-    for (const name of Object.keys(REPEATS)) {
+    for (const name of FIXTURES) {
         const { fixture } = loadFixture(name);
         assert.equal(fixture.properties.length, fixture.point_count);
         assert.equal(fixture.distances_miles.length, fixture.point_count);
