@@ -457,8 +457,8 @@ export default function MapToolbar({
                                     <button onClick={() => setEditingName(false)} className="p-0.5 text-gray-500"><X className="w-3 h-3" /></button>
                                 </div> :
 
-            <button onClick={handleStartRename} className="group/name flex items-center gap-1 min-w-0 shrink" title="Rename">
-                                    <span className="text-[11px] md:text-xs font-bold text-white truncate max-w-[90px] md:max-w-[160px]">{activeRoute.route_number && (!activeRoute.name || /^Route\s+\d+$/i.test(activeRoute.name)) ? `Route ${activeRoute.route_number}` : activeRoute.name}</span>
+            <button onClick={handleStartRename} className="group/name flex items-center gap-1 min-w-0 flex-1 md:flex-none" title="Rename">
+                                    <span className="block text-[11px] md:text-xs font-bold text-white truncate w-full md:w-auto md:max-w-[160px]">{activeRoute.route_number && (!activeRoute.name || /^Route\s+\d+$/i.test(activeRoute.name)) ? `Route ${activeRoute.route_number}` : activeRoute.name}</span>
                                     <Pencil className="w-2.5 h-2.5 text-gray-600 opacity-0 group-hover/name:opacity-100 shrink-0" />
                                 </button>
             }
@@ -485,12 +485,6 @@ export default function MapToolbar({
                 
                                     <Scissors className="w-2.5 h-2.5" /><span>SPLIT ROUTE</span>
                                 </button>
-                                <OptimizeRouteTrigger
-                                  variant="mobile"
-                                  open={showOptimizeMenu}
-                                  busy={reoptimizeBusy}
-                                  onToggle={toggleOptimizeMenu}
-                                />
                                 <button
                 onPointerDown={(e) => {e.preventDefault();e.stopPropagation();}}
                 onClick={handleExportActiveRouteCsv}
@@ -591,6 +585,13 @@ export default function MapToolbar({
                                     <option value="1000000" style={routeOptionAccentStyle}>&gt;$1M</option>
                                 </select>
             }
+
+                            <OptimizeRouteTrigger
+                              variant="mobile"
+                              open={showOptimizeMenu}
+                              busy={reoptimizeBusy}
+                              onToggle={toggleOptimizeMenu}
+                            />
 
                             {(activeRouteSoldFilter && activeRouteSoldFilter !== 'all' || activeRoutePriceFilter && activeRoutePriceFilter !== 'all') &&
             <button

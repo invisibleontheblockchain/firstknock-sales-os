@@ -346,9 +346,12 @@ test('MENU-05 the trigger keeps its original position at each breakpoint', async
   // The button, not the handler's definition further up the file.
   const exportButton = toolbar.indexOf('onClick={handleExportActiveRouteCsv}');
   const desktopTrigger = toolbar.indexOf('variant="desktop"');
+  const priceFilter = toolbar.indexOf('setActiveRoutePriceFilter(e.target.value)');
 
   assert.ok(mobileTrigger > 0 && exportButton > 0 && desktopTrigger > 0, 'all three present');
-  assert.ok(mobileTrigger < exportButton, 'mobile Optimize precedes Export, as at PR #76');
+  // Mobile Optimize now sits in the filter row, immediately after the price
+  // filter, so Dates / Price / Optimize read as one control strip.
+  assert.ok(mobileTrigger > priceFilter, 'mobile Optimize follows the price filter');
   assert.ok(desktopTrigger > exportButton, 'desktop Optimize follows Export, as at PR #76');
 });
 
