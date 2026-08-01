@@ -15,7 +15,8 @@ import { createMatrixMetricFns } from '../base44/shared/roadMatrix.js';
 import {
     roadAwareStreetSweep,
     REFINEMENT_STEP_BUDGET,
-    SCREENING_STEP_BUDGET
+    SCREENING_STEP_BUDGET,
+    REFINEMENT_SAFETY_MS
 } from '../base44/shared/roadAwareStreetSweep.js';
 
 function loadFixture(name) {
@@ -39,6 +40,14 @@ function canonical(properties) {
 
 function fingerprint(order) {
     return order.map(door => door.address_hash).join('>');
+}
+
+function routeMinutes(order, metrics) {
+    let minutes = 0;
+    for (let index = 0; index < order.length - 1; index++) {
+        minutes += metrics.durationBetween(order[index], order[index + 1]);
+    }
+    return minutes;
 }
 
 test('BUDGET-01 the source carries no block-count refinement cliff', () => {
@@ -117,5 +126,55 @@ test('BUDGET-04 runtime no longer inverts with door count', () => {
     assert.ok(
         slowest <= Math.max(fastest, 50) * 10,
         `solver cost must stay within one order of magnitude across sizes: ${JSON.stringify(timings)}`
+    );
+});
+
+/**
+ * The shipped budget is a product decision — deliver the best validated route on
+ * the first Create Route press — so it is guarded by the route quality it buys,
+ * not just by its runtime. Ceilings are the previously approved routes: lowering
+ * the budget for speed must fail here rather than quietly ship worse routes.
+ */
+test('BUDGET-05 the shipped budget holds the approved route quality', () => {
+    const ceilings = {
+        charlotte95: 346.2,
+        anderson183: 449.0,
+        mesquite58: 62.4
+    };
+
+    for (const [name, ceiling] of Object.entries(ceilings)) {
+        const { fixture, metrics } = loadFixture(name);
+        const doors = canonical(fixture.properties);
+        const best = [metrics.durationBetween, metrics.distanceBetween]
+            .map(distanceBetween => roadAwareStreetSweep(doors, { distanceBetween }))
+            .reduce((winner, order) => (
+                routeMinutes(order, metrics) < routeMinutes(winner, metrics) ? order : winner
+            ));
+
+        assert.equal(
+            new Set(best.map(door => door.address_hash)).size,
+            fixture.point_count,
+            `${name} must keep every door`
+        );
+        assert.ok(
+            routeMinutes(best, metrics) <= ceiling,
+            `${name} regressed to ${routeMinutes(best, metrics).toFixed(1)}min, ceiling ${ceiling}min`
+        );
+    }
+});
+
+test('BUDGET-06 the wall-clock cutoff never decides a result at the shipped budget', () => {
+    // REFINEMENT_SAFETY_MS is wall-clock, so if it ever bound, identical inputs
+    // could return different routes on different hardware. The shipped step
+    // budget must finish the largest fixture well inside it.
+    const { fixture, metrics } = loadFixture('anderson183');
+    const doors = canonical(fixture.properties);
+    const startedAt = Date.now();
+    roadAwareStreetSweep(doors, { distanceBetween: metrics.durationBetween });
+    const elapsed = Date.now() - startedAt;
+
+    assert.ok(
+        elapsed * 2 < REFINEMENT_SAFETY_MS,
+        `sweep took ${elapsed}ms against a ${REFINEMENT_SAFETY_MS}ms safety cutoff — too little headroom`
     );
 });

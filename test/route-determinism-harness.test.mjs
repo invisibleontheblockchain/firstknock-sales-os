@@ -160,10 +160,11 @@ for (const name of FIXTURES) {
     });
 }
 
-// One fixture carries the production-budget pin: a full-budget generation pass
-// costs ~15s, and BUDGET-0x already covers the budgeted path at every size.
+// One fixture carries the production-budget pin. Charlotte is the one that
+// actually exhausts the shipped budget (Mesquite converges before spending it),
+// so it is the fixture where budget-order drift could surface.
 test('DET the shipped step budget is itself deterministic', () => {
-    for (const name of ['mesquite58']) {
+    for (const name of ['charlotte95']) {
         const { fixture, metrics } = loadFixture(name);
         // stepBudget=null -> the production REFINEMENT_STEP_BUDGET default.
         const baseline = generate(fixture.properties, metrics, null, null).winner;
