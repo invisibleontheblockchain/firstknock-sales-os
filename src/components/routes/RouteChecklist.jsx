@@ -4,6 +4,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Check, X, Navigation, Mic, MapPin, User, DollarSign, Ruler, Building2, ChevronUp, History, Loader2 } from 'lucide-react';
 import { getPropertyResultSummary } from '../logic/territoryLogic';
 import PropertyHistory from '@/components/rep/PropertyHistory';
+import HouseNoteField from '@/components/routes/HouseNoteField';
 import {
     OUTCOME_OPTIONS as STATUS_OPTIONS,
     OUTCOME_COLORS as STATUS_COLORS,
@@ -664,71 +665,6 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
                                             </div>
                                         )}
 
-                                        {/* Add Details — same affordance as the knock tab; the note
-                                            persists as InteractionLog.description */}
-                                        <div className="space-y-2">
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    if (detailsOpen) flushHouseNote(prop);
-                                                    setDetailsOpenHash(detailsOpen ? null : prop.address_hash);
-                                                }}
-                                                aria-expanded={detailsOpen}
-                                                aria-controls={`house-note-panel-${prop.address_hash}`}
-                                                className="w-full flex items-center justify-between rounded-xl border border-[#2EEB57]/35 bg-[#2EEB57]/10 px-3 py-2.5 text-left active:scale-[0.99] transition-all"
-                                            >
-                                                <span className="flex items-center gap-2">
-                                                    <span className="text-[10px] font-black uppercase tracking-[0.18em] text-white">
-                                                        Add Details
-                                                    </span>
-                                                    {/* Never colour alone: the state is named, not just tinted. */}
-                                                    {noteBadge && (
-                                                        <span
-                                                            className="rounded-full px-1.5 py-0.5 text-[9px] font-bold"
-                                                            style={noteState === 'error'
-                                                                ? { background: 'rgba(255,107,107,0.15)', color: '#FF6B6B' }
-                                                                : { background: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.7)' }}
-                                                        >
-                                                            {noteBadge}
-                                                        </span>
-                                                    )}
-                                                </span>
-                                                <ChevronUp className={`w-4 h-4 text-white transition-transform ${detailsOpen ? '' : 'rotate-180'}`} />
-                                            </button>
-
-                                            {detailsOpen && (
-                                                <div id={`house-note-panel-${prop.address_hash}`} className="space-y-1">
-                                                    <textarea
-                                                        id={`house-note-${prop.address_hash}`}
-                                                        value={houseNotes[prop.address_hash] ?? savedNote}
-                                                        onChange={(e) => handleNoteChange(prop, e.target.value)}
-                                                        onBlur={() => flushHouseNote(prop)}
-                                                        placeholder="Gate code, who decides, best time to return..."
-                                                        rows={3}
-                                                        autoFocus
-                                                        className="selectable-text w-full resize-none rounded-xl border border-[#2EEB57]/25 bg-black/70 p-3 text-[12px] text-white outline-none focus:border-[#39FF4A]"
-                                                    />
-                                                    <p
-                                                        className="text-[9px]"
-                                                        role={noteState === 'error' ? 'alert' : undefined}
-                                                        style={{ color: noteState === 'error' ? '#FF6B6B' : '#555' }}
-                                                    >
-                                                        {noteState === 'error'
-                                                            ? `Not saved — ${noteError[prop.address_hash] || 'the server rejected this note'}`
-                                                            : noteState === 'saving'
-                                                                ? 'Saving...'
-                                                                : 'Saved automatically to this house.'}
-                                                    </p>
-                                                </div>
-                                            )}
-
-                                            {!detailsOpen && savedNote && (
-                                                <p className="truncate px-1 text-[10px] italic" style={{ color: '#777' }}>
-                                                    "{savedNote}"
-                                                </p>
-                                            )}
-                                        </div>
-
                                         {/* Voice + Label */}
                                         <div className="flex items-center justify-between">
                                             <span className="text-[10px] font-bold uppercase" style={{ color: '#555' }}>Log outcome</span>
@@ -815,6 +751,24 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
                                                 ))}
                                             </div>
                                         )}
+
+                                        {/* Add Details — sits under Log outcome so the decision grid
+                                            stays the first thing in reach */}
+                                        <HouseNoteField
+                                            property={prop}
+                                            open={detailsOpen}
+                                            onToggle={() => {
+                                                if (detailsOpen) flushHouseNote(prop);
+                                                setDetailsOpenHash(detailsOpen ? null : prop.address_hash);
+                                            }}
+                                            value={houseNotes[prop.address_hash] ?? savedNote}
+                                            savedNote={savedNote}
+                                            noteState={noteState}
+                                            noteBadge={noteBadge}
+                                            noteError={noteError[prop.address_hash]}
+                                            onChange={handleNoteChange}
+                                            onFlush={flushHouseNote}
+                                        />
 
                                         {/* History — collapsed so a long log never buries the outcome grid */}
                                         {houseLogs.length > 0 && (

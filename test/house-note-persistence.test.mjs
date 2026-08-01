@@ -66,7 +66,7 @@ test('notes are trimmed so whitespace is not mistaken for content', () => {
 // The knock tab is the source of truth for status colour; the checklist must
 // not carry its own near-duplicate palette.
 test('the checklist renders outcomes from the shared status source', () => {
-  const checklist = readSource('src/components/routes/RouteChecklist.jsx');
+  const checklist = [readSource('src/components/routes/RouteChecklist.jsx'), readSource('src/components/routes/HouseNoteField.jsx')].join('\n');
 
   assert.match(checklist, /from '\.\.\/logic\/outcomeStatus'/);
   assert.doesNotMatch(checklist, /const STATUS_OPTIONS = \[/);
@@ -102,10 +102,10 @@ test('every outcome carries a text label alongside its colour', () => {
 
 // The note is keyed by the canonical property id, never by list position.
 test('the checklist keys note drafts and history by address_hash', () => {
-  const checklist = readSource('src/components/routes/RouteChecklist.jsx');
+  const checklist = [readSource('src/components/routes/RouteChecklist.jsx'), readSource('src/components/routes/HouseNoteField.jsx')].join('\n');
 
   assert.match(checklist, /houseNotes\[prop\.address_hash\]/);
-  assert.match(checklist, /onChange=\{\(e\) => handleNoteChange\(prop, e\.target\.value\)\}/);
+  assert.match(checklist, /onChange=\{\(e\) => onChange\(property, e\.target\.value\)\}/);
   assert.match(checklist, /const addressHash = property\.address_hash/);
   assert.match(checklist, /logsByProperty\.get\(property\?\.address_hash\)/);
   assert.doesNotMatch(checklist, /houseNotes\[idx\]|houseNotes\[index\]/);
@@ -140,7 +140,7 @@ test('clearing a house note empties it rather than falling back to an old outcom
 // Parity: the knock tab puts the note behind an Add Details toggle rather than
 // leaving a textarea open on every row.
 test('the note sits behind an Add Details button, like the knock tab', () => {
-  const checklist = readSource('src/components/routes/RouteChecklist.jsx');
+  const checklist = [readSource('src/components/routes/RouteChecklist.jsx'), readSource('src/components/routes/HouseNoteField.jsx')].join('\n');
   const knock = readSource('src/components/rep/PropertyDetailSheet.jsx');
 
   assert.match(knock, />\s*Add Details\s*</);
@@ -148,26 +148,26 @@ test('the note sits behind an Add Details button, like the knock tab', () => {
 
   // The toggle is per house and announced, and the field only exists when open.
   assert.match(checklist, /setDetailsOpenHash\(detailsOpen \? null : prop\.address_hash\)/);
-  assert.match(checklist, /aria-expanded=\{detailsOpen\}/);
-  assert.match(checklist, /aria-controls=\{`house-note-panel-\$\{prop\.address_hash\}`\}/);
-  assert.match(checklist, /\{detailsOpen && \([\s\S]{0,400}?<textarea/);
+  assert.match(checklist, /aria-expanded=\{open\}/);
+  assert.match(checklist, /aria-controls=\{`house-note-panel-\$\{property\.address_hash\}`\}/);
+  assert.match(checklist, /\{open && \([\s\S]{0,400}?<textarea/);
 });
 
 // A collapsed row still has to show that a note exists, without relying on colour.
 test('a saved note is visible while Add Details is collapsed', () => {
-  const checklist = readSource('src/components/routes/RouteChecklist.jsx');
+  const checklist = [readSource('src/components/routes/RouteChecklist.jsx'), readSource('src/components/routes/HouseNoteField.jsx')].join('\n');
 
   assert.match(checklist, /\{noteBadge\}/);
-  assert.match(checklist, /\{!detailsOpen && savedNote &&/);
+  assert.match(checklist, /\{!open && savedNote &&/);
 });
 
 // Autosave: the rep types and walks away. The note must commit on a pause, on
 // blur, and when the panel closes — never only on a button they may not press.
 test('notes autosave on a pause and flush before they can be lost', () => {
-  const checklist = readSource('src/components/routes/RouteChecklist.jsx');
+  const checklist = [readSource('src/components/routes/RouteChecklist.jsx'), readSource('src/components/routes/HouseNoteField.jsx')].join('\n');
 
   assert.match(checklist, /noteTimersRef\.current\[addressHash\] = setTimeout\(/);
-  assert.match(checklist, /onBlur=\{\(\) => flushHouseNote\(prop\)\}/);
+  assert.match(checklist, /onBlur=\{\(\) => onFlush\(property\)\}/);
   assert.match(checklist, /if \(detailsOpen\) flushHouseNote\(prop\);/);
   // Pending timers are cleared on unmount rather than firing into a dead tree.
   assert.match(checklist, /return \(\) => Object\.values\(timers\)\.forEach\(clearTimeout\)/);
@@ -175,20 +175,20 @@ test('notes autosave on a pause and flush before they can be lost', () => {
 
 // The interface must never claim a note was stored when the write failed.
 test('a failed note save is reported, not swallowed', () => {
-  const checklist = readSource('src/components/routes/RouteChecklist.jsx');
+  const checklist = [readSource('src/components/routes/RouteChecklist.jsx'), readSource('src/components/routes/HouseNoteField.jsx')].join('\n');
 
   assert.match(checklist, /\[addressHash\]: 'error'/);
   assert.match(checklist, /role=\{noteState === 'error' \? 'alert' : undefined\}/);
   // The server's own reason is shown; a rejected write must not be blamed on
   // the rep's connection.
   assert.match(checklist, /error\?\.response\?\.data\?\.error/);
-  assert.match(checklist, /Not saved — \$\{noteError\[prop\.address_hash\]/);
+  assert.match(checklist, /Not saved — \$\{noteError \|\|/);
   assert.doesNotMatch(checklist, /check your connection/);
 });
 
 // The note is written by its own non-metered server action, never as an outcome.
 test('the note save path is separate from outcome logging', () => {
-  const checklist = readSource('src/components/routes/RouteChecklist.jsx');
+  const checklist = [readSource('src/components/routes/RouteChecklist.jsx'), readSource('src/components/routes/HouseNoteField.jsx')].join('\n');
   const server = readSource('base44/functions/recordKnockOutcome/entry.ts');
 
   assert.match(checklist, /action: 'save_house_note'/);
@@ -238,7 +238,7 @@ test('workflow helpers read the latest decision, not the latest note', () => {
 
 // A rejected write must not leave the interface claiming the note was saved.
 test('a failed outcome keeps the note draft instead of reporting success', () => {
-  const checklist = readSource('src/components/routes/RouteChecklist.jsx');
+  const checklist = [readSource('src/components/routes/RouteChecklist.jsx'), readSource('src/components/routes/HouseNoteField.jsx')].join('\n');
 
   assert.match(checklist, /if \(saved === false\) return false;\s*\n\s*clearHouseNote\(property\.address_hash\)/);
 });
