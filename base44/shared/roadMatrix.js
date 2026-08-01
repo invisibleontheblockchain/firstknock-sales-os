@@ -131,6 +131,23 @@ export function createMatrixDistanceFn(points, matrix) {
     return { distanceBetween, unresolved };
 }
 
+/**
+ * Both objectives from ONE matrix response: driving duration (the primary
+ * objective) and driving distance (the tie-break), sharing one unresolved-leg
+ * counter so a partially unsnapped matrix is visible to the caller.
+ */
+export function createMatrixMetricFns(points, matrix) {
+    const distance = createMatrixDistanceFn(points, { distances: matrix.distances });
+    const duration = matrix.durations
+        ? createMatrixDistanceFn(points, { distances: matrix.durations })
+        : null;
+    return {
+        distanceBetween: matrix.distances ? distance.distanceBetween : null,
+        durationBetween: duration ? duration.distanceBetween : null,
+        unresolved: distance.unresolved
+    };
+}
+
 /** Sum a road-matrix objective over an ordered door list. */
 export function measureOrder(order, distanceBetween) {
     let total = 0;

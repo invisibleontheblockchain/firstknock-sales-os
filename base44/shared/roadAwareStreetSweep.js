@@ -13,6 +13,13 @@ import { haversineMiles, isValidPoint } from './routeContinuityOptimizer.js';
 const DENSE_SIDE_DOOR_COUNT = 3;
 const MAX_AXIS_ORDER_DOORS = 60;
 export const STREET_SPLIT_GAP_MILES = 0.4;
+// Greedy nearest-neighbour from a single seed strands whole sections of a route
+// (the Kannapolis audit lost ~3% that way, because the best answer runs the
+// territory in the opposite overall direction). Below this block count every
+// block is tried as the seed and the cheapest refined result wins; the limit
+// keeps the pass inside the synchronous request budget.
+export const MULTI_START_BLOCK_LIMIT = 40;
+export const REFINED_SEED_COUNT = 3;
 
 const STREET_SUFFIX_CANONICAL = new Map([
     ['ALY', 'ALY'], ['ALLEY', 'ALY'],
@@ -163,7 +170,8 @@ export function roadAwareStreetSweep(properties, options = {}) {
     const {
         distanceBetween = null,
         startLocation = null,
-        endLocation = null
+        endLocation = null,
+        multiStartBlockLimit = MULTI_START_BLOCK_LIMIT
     } = options;
 
     if (!Array.isArray(properties) || properties.length === 0) return [];
@@ -275,7 +283,7 @@ export function roadAwareStreetSweep(properties, options = {}) {
         return best;
     }
 
-    function nearestNeighborBlocks(blocks) {
+    function nearestNeighborBlocks(blocks, forcedFirstKey = null) {
         const remaining = [...blocks].sort((first, second) => compareStableKeys(first.key, second.key));
         const ordered = [];
         let finalBlock = null;
@@ -295,7 +303,10 @@ export function roadAwareStreetSweep(properties, options = {}) {
         }
 
         let firstIndex = 0;
-        if (isValidPoint(startLocation)) {
+        if (forcedFirstKey !== null) {
+            const forcedIndex = remaining.findIndex((block) => block.key === forcedFirstKey);
+            if (forcedIndex >= 0) firstIndex = forcedIndex;
+        } else if (isValidPoint(startLocation)) {
             let firstDistance = Infinity;
             remaining.forEach((block, index) => {
                 const distance = Math.min(...block.variants.map((variant) => cost(startLocation, variant[0])));
@@ -366,7 +377,40 @@ export function roadAwareStreetSweep(properties, options = {}) {
         return ordered;
     }
 
-    const blocks = refineBlockOrder(nearestNeighborBlocks(buildBlocks()));
+    // Deterministic multi-start: seed from every block (in canonical key order),
+    // refine each, and keep the cheapest. Ties keep the earlier canonical seed,
+    // so the winner never depends on input array order or iteration timing.
+    const allBlocks = buildBlocks();
+    const seedKeys = allBlocks.length <= multiStartBlockLimit
+        ? [...allBlocks].sort((first, second) => compareStableKeys(first.key, second.key)).map((block) => block.key)
+        : [null];
+
+    // Screen every seed with the cheap greedy pass, then spend the expensive
+    // reversal/relocation refinement only on the most promising few. Refining
+    // all seeds exceeds the function CPU budget on a 30+ block route.
+    const screened = seedKeys
+        .map((seedKey) => {
+            const greedy = nearestNeighborBlocks(allBlocks, seedKey);
+            return { seedKey, greedy, cost: blockOrderCost(greedy) };
+        })
+        .sort((first, second) => (
+            Math.abs(first.cost - second.cost) > 0.000001
+                ? first.cost - second.cost
+                : compareStableKeys(String(first.seedKey), String(second.seedKey))
+        ))
+        .slice(0, REFINED_SEED_COUNT);
+
+    let blocks = null;
+    let bestCost = Infinity;
+    screened.forEach(({ greedy }) => {
+        const candidate = refineBlockOrder(greedy);
+        const candidateCost = blockOrderCost(candidate);
+        if (candidateCost + 0.000001 < bestCost) {
+            bestCost = candidateCost;
+            blocks = candidate;
+        }
+    });
+
     const { orientations } = blockOrderCost(blocks, true);
     return blocks.flatMap((block, index) => block.variants[orientations[index]]);
 }

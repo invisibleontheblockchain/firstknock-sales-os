@@ -10,13 +10,22 @@ import {
 import { roadAwareStreetSweep } from '../../shared/roadAwareStreetSweep.js';
 import {
     buildRoadMatrixCacheKey,
-    createMatrixDistanceFn,
+    createMatrixMetricFns,
     DEFAULT_OSRM_BASE_URL,
     fetchRoadMatrix,
     MAX_MATRIX_COORDINATES,
-    measureOrder,
     ROAD_MATRIX_VERSION
 } from '../../shared/roadMatrix.js';
+import {
+    DURATION_TIE_TOLERANCE_MINUTES,
+    measureRouteCandidate,
+    OBJECTIVE_VERSION,
+    selectBestRouteCandidate
+} from '../../shared/routeCandidateSelection.js';
+
+// Bump when candidate generation or the objective changes, so a stored route can
+// be told apart from one produced by an older solver.
+const OPTIMIZER_VERSION = 'road_matrix_multistart_v2';
 
 function readSecret(name) {
     try {
@@ -25,6 +34,22 @@ function readSecret(name) {
     } catch {
         return '';
     }
+}
+
+const propertyIdentity = (property) => String(property?.address_hash || property?.id || '');
+
+/** Order-independent identity of the property SET being optimized. */
+function propertySetFingerprint(properties) {
+    return routePropertyOrderFingerprint(
+        [...properties].sort((first, second) => (
+            propertyIdentity(first) < propertyIdentity(second) ? -1 : 1
+        ))
+    );
+}
+
+function exactOnce(order, expectedCount) {
+    return order.length === expectedCount
+        && new Set(order.map(propertyIdentity)).size === expectedCount;
 }
 
 export default async function (req: Request): Promise<Response> {
@@ -62,13 +87,31 @@ export default async function (req: Request): Promise<Response> {
                 invalid_property_index: invalidIndex
             }, { status: 400 });
         }
+        if (!exactOnce(properties, properties.length)) {
+            return Response.json({
+                error: 'The submitted route contains duplicate or unidentified properties.',
+                code: 'DUPLICATE_PROPERTIES'
+            }, { status: 400 });
+        }
 
-        const housesPerRoute = properties.length;
+        // Canonical input: candidate GENERATION never sees the caller's array
+        // order, so a shuffled or reversed request cannot change the winner. The
+        // request order is preserved separately as the current-route candidate.
+        const canonicalProperties = [...properties].sort((first, second) => (
+            propertyIdentity(first) < propertyIdentity(second) ? -1 : 1
+        ));
+        const setFingerprint = propertySetFingerprint(properties);
         const cacheKey = await buildRoadMatrixCacheKey(properties, profile);
+        const solverStartedAt = Date.now();
 
-        // Candidate A — today's shipping behavior, straight-line continuity.
+        // Candidate — straight-line continuity, the fallback path's answer.
         const continuity = createContinuityOptimizer(haversineMiles);
-        const continuityChunks = continuity.buildRouteChunks(properties, housesPerRoute, startLocation, endLocation);
+        const continuityChunks = continuity.buildRouteChunks(
+            canonicalProperties,
+            canonicalProperties.length,
+            startLocation,
+            endLocation
+        );
         if (!verifyExactOnceDoors(continuityChunks.doorChunks, properties.length)) {
             throw new Error('Continuity candidate failed its exact-once property invariant.');
         }
@@ -88,79 +131,143 @@ export default async function (req: Request): Promise<Response> {
         }
         const matrixMs = Date.now() - matrixStartedAt;
 
-        // Fallback: never block route creation on the routing engine.
+        const baseMetadata = {
+            property_set_fingerprint: setFingerprint,
+            start_constraint: startLocation,
+            end_constraint: endLocation,
+            return_to_start: false,
+            routing_profile: profile,
+            matrix_provider: 'osrm',
+            road_matrix_version: ROAD_MATRIX_VERSION,
+            road_matrix_cache_key: cacheKey,
+            optimizer_version: OPTIMIZER_VERSION,
+            objective_version: OBJECTIVE_VERSION,
+            duration_tie_tolerance_minutes: DURATION_TIE_TOLERANCE_MINUTES
+        };
+
+        // Fallback: never block route creation on the routing engine. The caller
+        // must not overwrite a verified road-aware order with this — `fallback`
+        // and `road_network_used: false` say so explicitly.
         if (!matrix) {
             return Response.json({
                 success: true,
                 selected: 'continuity',
-                order: continuityOrder.map((property) => property.address_hash || property.id),
+                order: continuityOrder.map(propertyIdentity),
                 property_count: continuityOrder.length,
                 routing_metadata: {
+                    ...baseMetadata,
                     strategy: 'canonical_street_subdivision_continuity',
                     road_network_used: false,
                     fallback: true,
                     fallback_reason: 'road_matrix_unavailable',
                     road_matrix_error: matrixError,
-                    road_matrix_version: ROAD_MATRIX_VERSION,
-                    road_matrix_cache_key: cacheKey,
                     road_matrix_ms: matrixMs,
+                    optimality_status: 'unmeasured_fallback',
+                    selected_candidate_type: 'continuity',
                     property_order_fingerprint: routePropertyOrderFingerprint(continuityOrder),
                     exact_once_verified: true
                 }
             });
         }
 
-        const { distanceBetween, unresolved } = createMatrixDistanceFn(properties, matrix);
+        const { distanceBetween, durationBetween, unresolved } = createMatrixMetricFns(properties, matrix);
 
-        // Candidate B — the shipped street sweep, priced with real road distances.
-        const roadOrder = roadAwareStreetSweep(properties, {
-            distanceBetween,
-            startLocation,
-            endLocation
-        });
-        const roadIdentities = new Set(roadOrder.map((property) => property.address_hash || property.id));
-        if (roadOrder.length !== properties.length || roadIdentities.size !== properties.length) {
-            throw new Error('Road-aware candidate failed its exact-once property invariant.');
+        // Both objectives get their own sweep, so the duration winner is not
+        // limited to whatever the distance-priced sweep happened to produce.
+        const sweepOptions = { startLocation, endLocation };
+        const roadDistanceOrder = roadAwareStreetSweep(canonicalProperties, { ...sweepOptions, distanceBetween });
+        const roadDurationOrder = durationBetween
+            ? roadAwareStreetSweep(canonicalProperties, { ...sweepOptions, distanceBetween: durationBetween })
+            : null;
+
+        const rawCandidates = [
+            // The route the caller has right now — always in the running, so the
+            // acceptance gate is monotonic by construction.
+            { type: 'current', order: properties, is_current: true },
+            { type: 'continuity', order: continuityOrder },
+            { type: 'road_aware', order: roadDistanceOrder },
+            ...(roadDurationOrder ? [{ type: 'road_aware', order: roadDurationOrder }] : [])
+        ];
+        // Whole-route direction. Only safe with no fixed anchors: with a start or
+        // finish anchor the reversed order changes legs this measurement excludes.
+        const withReversals = (!startLocation && !endLocation)
+            ? rawCandidates.flatMap((candidate) => [
+                candidate,
+                { ...candidate, is_current: false, order: [...candidate.order].reverse() }
+            ])
+            : rawCandidates;
+
+        const candidates = withReversals
+            .filter((candidate) => exactOnce(candidate.order, properties.length))
+            .map((candidate) => measureRouteCandidate(candidate, { distanceBetween, durationBetween }));
+        if (candidates.length !== withReversals.length) {
+            throw new Error('A route candidate failed its exact-once property invariant.');
         }
 
-        // Accept/reject: both candidates are measured with the SAME road matrix,
-        // and the road-aware order only wins when it actually measures better.
-        const continuityMeasured = measureOrder(continuityOrder, distanceBetween);
-        const roadMeasured = measureOrder(roadOrder, distanceBetween);
-        // The request body carries the properties in their CURRENT saved order, so
-        // callers can judge the road-aware candidate against what the user has now.
-        const inputMeasured = measureOrder(properties, distanceBetween);
-        const comparable = Number.isFinite(continuityMeasured) && Number.isFinite(roadMeasured);
-        const acceptRoadAware = comparable && roadMeasured + 0.0001 < continuityMeasured;
-        const selectedOrder = acceptRoadAware ? roadOrder : continuityOrder;
+        const winner = selectBestRouteCandidate(candidates);
+        if (!winner) {
+            throw new Error('No route candidate could be measured on the road matrix.');
+        }
+        const current = candidates.find((candidate) => candidate.is_current);
+        const bestRoadAware = candidates
+            .filter((candidate) => candidate.type === 'road_aware')
+            .sort((first, second) => (first.distance ?? Infinity) - (second.distance ?? Infinity))[0] || null;
+        const bestContinuity = candidates.find((candidate) => candidate.type === 'continuity') || null;
+        const round = (value) => (Number.isFinite(value) ? Math.round(value * 1000) / 1000 : null);
 
         return Response.json({
             success: true,
-            selected: acceptRoadAware ? 'road_aware' : 'continuity',
-            order: selectedOrder.map((property) => property.address_hash || property.id),
-            property_count: selectedOrder.length,
+            // 'current' tells the caller the saved order already won — leave it alone.
+            selected: winner.is_current ? 'current' : winner.type,
+            order: winner.order.map(propertyIdentity),
+            property_count: winner.order.length,
             routing_metadata: {
-                strategy: acceptRoadAware
+                ...baseMetadata,
+                strategy: winner.type === 'road_aware'
                     ? 'road_matrix_street_subdivision_continuity'
                     : 'canonical_street_subdivision_continuity',
-                road_network_used: acceptRoadAware,
+                road_network_used: winner.type === 'road_aware',
                 fallback: false,
                 objective: matrix.objective,
-                road_matrix_version: ROAD_MATRIX_VERSION,
-                road_matrix_cache_key: cacheKey,
                 road_matrix_source: matrix.source,
                 road_matrix_ms: matrixMs,
                 road_matrix_snapped: matrix.snapped,
                 road_matrix_unresolved_legs: unresolved.count,
-                input_measured: Number.isFinite(inputMeasured) ? Math.round(inputMeasured * 1000) / 1000 : null,
-                continuity_measured: comparable ? Math.round(continuityMeasured * 1000) / 1000 : null,
-                road_aware_measured: comparable ? Math.round(roadMeasured * 1000) / 1000 : null,
-                improvement: comparable
-                    ? Math.round((continuityMeasured - roadMeasured) * 1000) / 1000
-                    : null,
+                // Backward-compatible fields the clients already read.
+                input_measured: round(current?.distance),
+                continuity_measured: round(bestContinuity?.distance),
+                road_aware_measured: round(
+                    winner.type === 'road_aware' && !winner.is_current
+                        ? winner.distance
+                        : bestRoadAware?.distance
+                ),
+                improvement: round(
+                    Number.isFinite(current?.distance) && Number.isFinite(winner.distance)
+                        ? current.distance - winner.distance
+                        : null
+                ),
+                current_route_distance: round(current?.distance),
+                current_route_duration: round(current?.duration),
+                winning_route_distance: round(winner.distance),
+                winning_route_duration: round(winner.duration),
+                distance_improvement: round(
+                    Number.isFinite(current?.distance) && Number.isFinite(winner.distance)
+                        ? current.distance - winner.distance
+                        : null
+                ),
+                duration_improvement: round(
+                    Number.isFinite(current?.duration) && Number.isFinite(winner.duration)
+                        ? current.duration - winner.duration
+                        : null
+                ),
+                candidate_count: candidates.length,
+                // Deterministic best-of-search, not a proven global optimum.
+                optimality_status: 'best_validated_candidate',
+                selected_candidate_type: winner.is_current ? 'current' : winner.type,
+                solver_runtime_ms: Date.now() - solverStartedAt,
                 street_block_count: continuityChunks.streetBlocks.length,
                 access_block_count: continuityChunks.accessBlocks.length,
-                property_order_fingerprint: routePropertyOrderFingerprint(selectedOrder),
+                property_order_fingerprint: winner.fingerprint,
                 exact_once_verified: true
             }
         });

@@ -79,13 +79,19 @@ export async function tryRoadMatrixOptimize(routeProperties, { start = null, end
         if (order.length !== routeProperties.length || new Set(order).size !== routeProperties.length) return null;
 
         const meta = data.routing_metadata || {};
-        const roadMiles = Number(meta.road_aware_measured);
+        const roadMiles = Number.isFinite(Number(meta.winning_route_distance))
+            ? Number(meta.winning_route_distance)
+            : Number(meta.road_aware_measured);
         const baseline = Number.isFinite(Number(meta.input_measured))
             ? Number(meta.input_measured)
             : Number(meta.continuity_measured);
         if (!Number.isFinite(roadMiles) || !Number.isFinite(baseline)) return null;
         const savings = baseline - roadMiles;
-        if (!(savings > 0)) return null;
+        // Driving time is the primary objective, so a candidate that saves
+        // minutes is adopted even when the mileage is a wash. The backend gate
+        // already refused to return anything worse than the current order.
+        const durationGain = Number(meta.duration_improvement);
+        if (!(savings > 0) && !(durationGain > 0)) return null;
 
         return {
             order,
