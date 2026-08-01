@@ -2,6 +2,8 @@ import React from 'react';
 import { Check, Navigation, User, DollarSign, Ruler } from 'lucide-react';
 import { formatPropertyAge } from '@/utils';
 import { buildFullAddress, openInMaps } from '@/components/logic/navigation';
+import { isNewConstruction } from '@/lib/newConstruction';
+import NewBuildBadge from '@/components/rep/NewBuildBadge';
 
 const STATUS_COLORS = {
   ELIGIBLE: '#FFFFFF',
@@ -59,6 +61,7 @@ export default function PropertyCard({
   const yearBuilt = Number(property.year_built || property.yearBuilt) || null;
   const addressLabel = `${property.house_number || ''} ${property.street_name || ''}`.trim() || 'route stop';
   const isReKnock = property.workflow_bucket === 'RE_KNOCK' && !isDone;
+  const isNewBuild = isNewConstruction(property);
 
   return (
     <div
@@ -110,7 +113,7 @@ export default function PropertyCard({
                                 {property.city}, {property.state} {property.zip_code}
                             </p>
               }
-                            {(ownerName || valueLabel || sqftLabel || yearBuilt) &&
+                            {(ownerName || valueLabel || sqftLabel || yearBuilt || isNewBuild) &&
               <div className="mt-1 flex flex-wrap items-center gap-1 text-[8.5px] font-bold leading-tight text-white/45">
                                     {ownerName &&
                 <span className="inline-flex max-w-full items-start gap-1 rounded-full bg-white/5 px-1.5 py-0.5">
@@ -123,6 +126,7 @@ export default function PropertyCard({
                                             <DollarSign className="h-2.5 w-2.5" />{valueLabel}
                                         </span>
                 }
+                                    {isNewBuild && <NewBuildBadge />}
                                     {sqftLabel &&
                 <span className="inline-flex items-center gap-1 rounded-full bg-white/5 px-1.5 py-0.5">
                                             <Ruler className="h-2.5 w-2.5" />{sqftLabel} sqft

@@ -25,6 +25,8 @@ import { getNavigationSessionProgress, selectRemainingTodoStops } from '../logic
 import { parseOptionalSaleAmount } from '../analytics/salesManagement';
 import { isBusinessOwnedProperty } from '../logic/ownerType';
 import { formatPropertyAge } from '@/utils';
+import { isNewConstruction } from '@/lib/newConstruction';
+import NewBuildBadge from '@/components/rep/NewBuildBadge';
 import { base44 } from '@/api/base44Client';
 
 const BRAND = {
@@ -610,6 +612,7 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
                         );
                         const sqftLabel = formatNumber(prop.sqft || prop.squareFootage);
                         const yearBuilt = Number(prop.year_built || prop.yearBuilt) || null;
+                        const isNewBuild = isNewConstruction(prop);
                         const soldDate = prop.sold_date || prop.soldDate || prop.lastSoldDate || prop.last_sold_date || prop.saleDate || prop.sale_date;
                         const ageLabel = formatPropertyAge(soldDate);
                         const houseLogs = logsForProperty(prop);
@@ -667,7 +670,7 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
                                                 {prop.city}, {prop.state} {prop.zip_code}
                                             </p>
                                         )}
-                                        {(ownerName || valueLabel || sqftLabel || yearBuilt) && (
+                                        {(ownerName || valueLabel || sqftLabel || yearBuilt || isNewBuild) && (
                                             <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[9px] font-bold text-white/45">
                                                 {ownerName && (
                                                     <span className="inline-flex max-w-[140px] items-center gap-1 truncate rounded-full bg-white/5 px-1.5 py-0.5">
@@ -680,6 +683,7 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
                                                         <DollarSign className="h-2.5 w-2.5" />{valueLabel}
                                                     </span>
                                                 )}
+                                                {isNewBuild && <NewBuildBadge />}
                                                 {sqftLabel && (
                                                     <span className="inline-flex items-center gap-1 rounded-full bg-white/5 px-1.5 py-0.5">
                                                         <Ruler className="h-2.5 w-2.5" />{sqftLabel} sqft
