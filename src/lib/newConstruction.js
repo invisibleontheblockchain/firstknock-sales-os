@@ -1,31 +1,19 @@
 /**
  * New-construction detection.
  *
- * A door is treated as a new build when the structure is a year old or newer AND
- * the record carries no prior ownership transfer. The transfer check matters:
- * a 2025 house that has already changed hands is a resale, not a new build, so
- * year alone would mislabel it.
+ * A door is treated as a new build when the structure was finished this calendar
+ * year or last one. Sale history is deliberately NOT consulted: Precision pulls
+ * are built from recently-sold homes, so almost every record carries a sale date
+ * and price. Gating on that hid the badge on exactly the brand-new builds reps
+ * care about. Year built is the signal the field actually uses.
+ *
+ * This is a derived display rule, so it applies to every route already in the
+ * system as well as newly generated ones — nothing is stored per property.
  */
-
-// Field aliases mirror the ones the property cards already resolve, so a record
-// coming from Neon, a CSV import or BatchData is judged the same way.
-const SALE_DATE_FIELDS = [
-    'sold_date', 'soldDate', 'lastSoldDate', 'last_sold_date', 'saleDate', 'sale_date'
-];
-const SALE_PRICE_FIELDS = [
-    'sale_price', 'last_sale_price', 'lastSoldPrice', 'last_sold_price', 'sale_amount', 'saleAmount'
-];
 
 export function getYearBuilt(property) {
     const year = Number(property?.year_built ?? property?.yearBuilt);
     return Number.isInteger(year) && year > 1700 ? year : null;
-}
-
-function hasOwnershipTransfer(property) {
-    if (!property) return false;
-    // Any recorded transfer date or price means the home has sold before.
-    return SALE_DATE_FIELDS.some(field => Boolean(property[field]))
-        || SALE_PRICE_FIELDS.some(field => Number(property[field]) > 0);
 }
 
 export function isNewConstruction(property, now = new Date()) {
@@ -33,6 +21,5 @@ export function isNewConstruction(property, now = new Date()) {
     if (yearBuilt === null) return false;
     // Built this year or last year. Permits and assessor year-built values lag,
     // so a one-year window catches homes finished late in the prior year.
-    if (yearBuilt < now.getFullYear() - 1) return false;
-    return !hasOwnershipTransfer(property);
+    return yearBuilt >= now.getFullYear() - 1;
 }
