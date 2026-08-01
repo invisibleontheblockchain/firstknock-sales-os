@@ -15,6 +15,7 @@ import { ThemeProvider, useTheme } from '@/components/theme/ThemeProvider';
 import { getAppRole, isManagerAccount, isRepAccount } from '@/lib/roles';
 import { clearFieldRoutesInspectionQueue } from '@/components/fieldroutes/fieldRoutesInspectionQueue';
 import GlobalSearchLauncher from '@/components/search/GlobalSearchLauncher';
+import GlobalSearchBar from '@/components/search/GlobalSearchBar';
 
 class ErrorBoundary extends React.Component {
   constructor(props) {super(props);this.state = { hasError: false, error: null };}
@@ -304,15 +305,19 @@ function LayoutInner({ children }) {
             {!isRoleSelectPage &&
       <header className={`px-4 pt-[env(safe-area-inset-top)] pb-0 z-20 shadow-md bg-black ${isPageActive('RepHome') ? 'border-b border-transparent' : 'border-b border-slate-800'}`}>
                 <div className="flex items-center w-full h-16 pt-0">
-                    <Link to="/" className="flex items-center mr-auto group shrink-0 text-white">
+                    <Link to="/" className="flex items-center group shrink-0 text-white">
                         <span className="relative block h-12 w-[152px] overflow-hidden">
                             <img src="https://media.base44.com/images/public/695eb764b077190880be21de/80866e548_ChatGPTImageJul1202611_48_19AM.png" alt="FirstKnock" className="h-[102px] w-auto max-w-none -translate-y-[23px] object-contain" />
                         </span>
                     </Link>
 
+                    {/* Desktop expanded search — sits ~1in right of the logo, no overlay */}
+                    <div className="hidden lg:block ml-24 mr-auto w-[26rem] max-w-[32vw]">
+                        <GlobalSearchBar />
+                    </div>
+
                     {/* Desktop */}
                     <div className="hidden lg:flex items-center gap-2 ml-auto rounded-full border border-white/10 bg-white/[0.04] px-2 py-1.5 shadow-[0_10px_40px_rgba(0,0,0,0.35)] backdrop-blur-xl">
-                        <GlobalSearchLauncher className="h-8 w-8 text-white/70 hover:bg-white/10 hover:text-[#39FF4A]" />
                         {!isOnline && <div className="flex items-center gap-1.5 rounded-full border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-[10px] font-bold text-red-200"><div className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />OFFLINE</div>}
 
                         <Link to="/About" className="rounded-full px-3 py-1.5 text-[10px] font-bold tracking-[0.18em] text-white/60 transition-colors hover:text-white">ABOUT</Link>

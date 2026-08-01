@@ -1,9 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Search, X } from 'lucide-react';
-import { createPageUrl } from '@/utils';
 import UnifiedMapSearch from './UnifiedMapSearch';
-import { dispatchGlobalSearchSelection, parkPendingSelection } from './globalSearchBridge';
+import useGlobalSearchSelect from './useGlobalSearchSelect';
 
 /**
  * Header magnifying-glass button available on every screen.
@@ -23,13 +22,7 @@ export default function GlobalSearchLauncher({ className = '' }) {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [open]);
 
-  const handleSelect = useCallback((result) => {
-    setOpen(false);
-    if (dispatchGlobalSearchSelection(result)) return;
-    // No page on this screen can show the result — park it and open the map.
-    parkPendingSelection(result);
-    window.location.href = createPageUrl('Home');
-  }, []);
+  const handleSelect = useGlobalSearchSelect(useCallback(() => setOpen(false), []));
 
   return (
     <>
