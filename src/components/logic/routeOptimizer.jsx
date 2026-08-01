@@ -26,6 +26,7 @@ import {
 import { normalizeRouteOriginMode } from '@/lib/routeOriginModes';
 import {
     BLOCK_SEQUENCING_LIMITS,
+    countStreetReentries,
     selectBestBlockOrderCandidate,
     selectDiverseSeedBlockIndexes,
     summarizeRouteTail
@@ -1614,6 +1615,7 @@ function evaluateBlockOrder(blocks, startLocation, endLocation, routingContext) 
     return {
         order: blocks,
         cost,
+        reentries: countStreetReentries(blocks),
         tail: summarizeRouteTail(blockOrderLegDistances(blocks, orientations, routingContext))
     };
 }
