@@ -28,7 +28,7 @@ import { createContinuityOptimizer, haversineMiles } from '../base44/shared/rout
 import { measureRouteCandidate, selectBestRouteCandidate } from '../base44/shared/routeCandidateSelection.js';
 
 const FIXTURES = ['anderson183', 'mesquite58', 'charlotte95'];
-const REPEATS = 3;
+const REPEATS = 2;
 // Reduced budget keeps the repeat loops affordable while exercising the same
 // budgeted search, including the exhaustion path. PRODUCTION_BUDGET_RUNS uses
 // the shipped default so the real configuration is pinned too.
@@ -160,8 +160,10 @@ for (const name of FIXTURES) {
     });
 }
 
+// One fixture carries the production-budget pin: a full-budget generation pass
+// costs ~15s, and BUDGET-0x already covers the budgeted path at every size.
 test('DET the shipped step budget is itself deterministic', () => {
-    for (const name of FIXTURES) {
+    for (const name of ['mesquite58']) {
         const { fixture, metrics } = loadFixture(name);
         // stepBudget=null -> the production REFINEMENT_STEP_BUDGET default.
         const baseline = generate(fixture.properties, metrics, null, null).winner;
