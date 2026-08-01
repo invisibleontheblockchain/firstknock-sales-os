@@ -312,7 +312,7 @@ function LayoutInner({ children }) {
                     </Link>
 
                     {/* Desktop expanded search — sits ~1in right of the logo, no overlay */}
-                    <div className="hidden lg:block ml-24 mr-auto w-[26rem] max-w-[32vw]">
+                    <div className="hidden lg:block ml-24 mr-auto w-[31rem] max-w-[38vw]">
                         <GlobalSearchBar />
                     </div>
 
