@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { MapContainer, TileLayer, CircleMarker, Circle, Polyline, Tooltip, useMap, Marker, LayerGroup } from 'react-leaflet';
+import { MapContainer, TileLayer, CircleMarker, Circle, Polyline, Tooltip, useMap, LayerGroup } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { routePropertyOrderFingerprint } from '@/components/logic/routeRoadContext';
@@ -32,12 +32,10 @@ import { Navigation, X, Locate, ChevronUp, ChevronDown } from 'lucide-react';
 
 const BRAND = { gold: '#2EEB57', voidBlack: '#0A0A0F' };
 const CANVAS_RENDERER = L.canvas({ padding: 0.5 });
-const TOUCH_TARGET_ICON = L.divIcon({
-    className: 'fk-property-touch-target',
-    html: '<div style="width:56px;height:56px;border-radius:9999px;background:transparent;touch-action:manipulation;"></div>',
-    iconSize: [56, 56],
-    iconAnchor: [28, 28]
-});
+// Thumb-sized hit area drawn into the shared canvas. A DOM marker per door is
+// what made zooming stutter: every pin was an element the browser had to
+// re-transform on each animation frame.
+const TOUCH_TARGET_RADIUS = 22;
 
 function isRoutePoint(point) {
     if (!point || point.lat === null || point.lat === undefined || point.lat === '' || point.lng === null || point.lng === undefined || point.lng === '') return false;
@@ -95,8 +93,8 @@ function MapRefCapture({ mapRef }) {
         map.options.wheelDebounceTime = 35;
         map.options.zoomDelta = 1;
         map.options.zoomSnap = 0.25;
-        map.options.zoomAnimationThreshold = 6;
-        map.options.easeLinearity = 0.18;
+        map.options.zoomAnimationThreshold = 4;
+        map.options.easeLinearity = 0.25;
     }, [map]);
 
     return null;
@@ -143,12 +141,13 @@ function PropertyPinLayer({ properties, nearbyHashes, onSelectProperty }) {
         const fieldRoutes = getFieldRoutesPinStyle(p);
         return (
             <LayerGroup key={p.address_hash}>
-                <Marker
-                    position={[p.lat, p.lng]}
-                    icon={TOUCH_TARGET_ICON}
-                    zIndexOffset={1000}
+                <CircleMarker
+                    center={[p.lat, p.lng]}
+                    radius={TOUCH_TARGET_RADIUS}
+                    renderer={CANVAS_RENDERER}
                     eventHandlers={{ click: () => onSelectProperty(p) }}
                     bubblingMouseEvents={false}
+                    pathOptions={{ fillOpacity: 0, opacity: 0, weight: 0 }}
                 />
                 {fieldRoutes && (
                     <CircleMarker
@@ -366,10 +365,10 @@ export default function RepMapView({
                     attributionControl
                     preferCanvas={true}
                     zoomAnimation={true}
-                    fadeAnimation={true}
+                    fadeAnimation={false}
                     markerZoomAnimation={false}
-                    zoomAnimationThreshold={6}
-                    easeLinearity={0.18}
+                    zoomAnimationThreshold={4}
+                    easeLinearity={0.25}
                     inertia={true}
                     inertiaDeceleration={3000}
                     tapTolerance={24}
@@ -381,10 +380,10 @@ export default function RepMapView({
                         attribution=""
                         maxNativeZoom={19}
                         maxZoom={22}
-                        updateWhenZooming={true}
+                        updateWhenZooming={false}
                         updateWhenIdle={false}
-                        updateInterval={80}
-                        keepBuffer={3}
+                        updateInterval={120}
+                        keepBuffer={2}
                     />
 
                     {/* GPS Position */}
