@@ -2904,7 +2904,7 @@ export default function Home() {
                         properties={effectiveProperties}
                         logs={logs}
                         routes={savedRoutes}
-                        teamMembers={teamMembers}
+                        teamMembers={teamMembers} onSelectRoute={(routeId) => { const target = hydratedSavedRoutes.find(r => r.id === routeId); if (!target) return toast.error("Route data is still loading"); setActiveRoute(target); setPreviewRoute(null); setShowDashboard(false); }}
                         onClose={() => setShowDashboard(false)}
                     />
                 </React.Suspense>

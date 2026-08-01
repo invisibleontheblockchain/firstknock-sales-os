@@ -1,7 +1,7 @@
 import React from 'react';
-import { Route as RouteIcon, Flame, Clock } from 'lucide-react';
+import { Route as RouteIcon, Flame, Clock, ChevronRight } from 'lucide-react';
 
-export default function CommandRoutePulse({ routeCounts, bestRoutes, activeRoutes }) {
+export default function CommandRoutePulse({ routeCounts, bestRoutes, activeRoutes, onSelectRoute }) {
     return (
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 lg:gap-4">
             {/* Route overview + best performing routes */}
@@ -30,7 +30,12 @@ export default function CommandRoutePulse({ routeCounts, bestRoutes, activeRoute
                 ) : (
                     <div className="mt-2 space-y-1.5">
                         {bestRoutes.map((r, idx) => (
-                            <div key={r.id} className="flex items-center gap-3 rounded-xl border border-white/[0.06] bg-black/40 px-3 py-2">
+                            <button
+                                key={r.id}
+                                type="button"
+                                onClick={() => onSelectRoute?.(r.id)}
+                                className="flex w-full items-center gap-3 rounded-xl border border-white/[0.06] bg-black/40 px-3 py-2 text-left transition-colors hover:border-[#2EEB57]/40 hover:bg-[#2EEB57]/[0.06] active:scale-[0.99]"
+                            >
                                 <span className="font-mono text-[11px] font-black text-white/30">{idx + 1}</span>
                                 <div className="min-w-0 flex-1">
                                     <p className="truncate text-[12px] font-bold text-white">{r.name}</p>
@@ -40,7 +45,8 @@ export default function CommandRoutePulse({ routeCounts, bestRoutes, activeRoute
                                     <p className="font-mono text-[12px] font-black tabular-nums text-[#39FF4A]">{r.sales} sales</p>
                                     <p className="text-[9px] font-bold text-white/35">{r.knocks} knocks · {r.conversion}%</p>
                                 </div>
-                            </div>
+                                <ChevronRight className="h-3.5 w-3.5 shrink-0 text-white/25" />
+                            </button>
                         ))}
                     </div>
                 )}
@@ -61,7 +67,12 @@ export default function CommandRoutePulse({ routeCounts, bestRoutes, activeRoute
                 ) : (
                     <div className="mt-3 max-h-[260px] space-y-2 overflow-y-auto pr-1">
                         {activeRoutes.map(route => (
-                            <div key={route.id} className="rounded-xl border border-white/[0.06] bg-black/40 p-3">
+                            <button
+                                key={route.id}
+                                type="button"
+                                onClick={() => onSelectRoute?.(route.id)}
+                                className="w-full rounded-xl border border-white/[0.06] bg-black/40 p-3 text-left transition-colors hover:border-[#2EEB57]/40 hover:bg-[#2EEB57]/[0.06] active:scale-[0.99]"
+                            >
                                 <div className="flex items-start justify-between gap-2">
                                     <div className="min-w-0">
                                         <p className="truncate text-[12px] font-bold text-white">{route.name}</p>
@@ -76,7 +87,7 @@ export default function CommandRoutePulse({ routeCounts, bestRoutes, activeRoute
                                     />
                                 </div>
                                 <p className="mt-1.5 text-[9px] font-bold text-white/35">{route.done} of {route.total} doors knocked</p>
-                            </div>
+                            </button>
                         ))}
                     </div>
                 )}

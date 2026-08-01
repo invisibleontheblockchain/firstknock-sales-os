@@ -17,7 +17,7 @@ const TIME_FILTERS = [
 
 const SALE_STATUSES = ['SOLD', 'QUALIFIED'];
 
-export default function CommandCenterDashboard({ logs, routes, teamMembers = [], onClose }) {
+export default function CommandCenterDashboard({ logs, routes, teamMembers = [], onSelectRoute, onClose }) {
     const [timeFilter, setTimeFilter] = useState('30d');
 
     const stats = useMemo(() => {
@@ -192,6 +192,7 @@ export default function CommandCenterDashboard({ logs, routes, teamMembers = [],
                         routeCounts={stats.routeCounts}
                         bestRoutes={stats.bestRoutes}
                         activeRoutes={stats.activeRoutes}
+                        onSelectRoute={onSelectRoute}
                     />
                 </div>
             </div>

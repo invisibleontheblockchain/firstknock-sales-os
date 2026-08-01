@@ -19,6 +19,9 @@ export default function CommandStatusMix({ data, total }) {
             <div className="flex items-center gap-2">
                 <PieChartIcon className="h-4 w-4 text-[#39FF4A]" />
                 <span className="text-[10px] font-black uppercase tracking-[0.16em] text-white lg:text-[11px]">Outcome Mix</span>
+                <span className="ml-auto rounded-full bg-white/[0.06] px-2 py-0.5 font-mono text-[9px] font-bold tabular-nums text-white/60">
+                    {total.toLocaleString()} knocks
+                </span>
             </div>
 
             <div className="relative mt-3 min-h-[170px] flex-1">
@@ -34,9 +37,9 @@ export default function CommandStatusMix({ data, total }) {
                                     data={data}
                                     cx="50%"
                                     cy="50%"
-                                    innerRadius={48}
-                                    outerRadius={70}
-                                    paddingAngle={3}
+                                    innerRadius={0}
+                                    outerRadius={78}
+                                    paddingAngle={1}
                                     dataKey="value"
                                     stroke="none"
                                 >
@@ -45,12 +48,6 @@ export default function CommandStatusMix({ data, total }) {
                                 <RechartsTooltip content={<ChartTooltip />} />
                             </PieChart>
                         </ResponsiveContainer>
-                        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                            <div className="text-center">
-                                <p className="font-mono text-xl font-black tabular-nums text-white">{total.toLocaleString()}</p>
-                                <p className="text-[8px] font-black uppercase tracking-[0.2em] text-white/40">Knocks</p>
-                            </div>
-                        </div>
                     </>
                 )}
             </div>
