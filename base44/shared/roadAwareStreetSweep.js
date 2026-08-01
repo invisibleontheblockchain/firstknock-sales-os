@@ -21,6 +21,21 @@ export const STREET_SPLIT_GAP_MILES = 0.4;
 export const MULTI_START_BLOCK_LIMIT = 40;
 export const REFINED_SEED_COUNT = 3;
 
+// Refinement cost is budgeted in DP steps, never in wall-clock time and never by
+// a block-count threshold. Pricing one candidate block order costs ~blocks DP
+// steps, so a step budget bounds solver time the same way at 20 blocks and at
+// 200 — and, because the budget is consumed in a fixed exploration order, the
+// same input always spends it on the same candidates and returns the same route.
+// The previous "refine below 120 blocks, refine nothing above" rule produced an
+// inverted cliff: Charlotte 95 cost ~16.9s while Anderson 183 skipped refinement
+// entirely at 36ms.
+export const REFINEMENT_STEP_BUDGET = 900_000;
+export const SCREENING_STEP_BUDGET = 300_000;
+// Emergency cutoff only. The step budget is what makes runtime predictable; this
+// exists so a pathological matrix cannot hang a request, and it is set far above
+// the step budget's expected runtime so it never decides a normal result.
+export const REFINEMENT_SAFETY_MS = 20_000;
+
 const STREET_SUFFIX_CANONICAL = new Map([
     ['ALY', 'ALY'], ['ALLEY', 'ALY'],
     ['AVE', 'AVE'], ['AVENUE', 'AVE'],
@@ -171,7 +186,9 @@ export function roadAwareStreetSweep(properties, options = {}) {
         distanceBetween = null,
         startLocation = null,
         endLocation = null,
-        multiStartBlockLimit = MULTI_START_BLOCK_LIMIT
+        multiStartBlockLimit = MULTI_START_BLOCK_LIMIT,
+        refinementStepBudget = REFINEMENT_STEP_BUDGET,
+        refinedSeedCount = REFINED_SEED_COUNT
     } = options;
 
     if (!Array.isArray(properties) || properties.length === 0) return [];
@@ -336,43 +353,72 @@ export function roadAwareStreetSweep(properties, options = {}) {
         return ordered;
     }
 
-    function refineBlockOrder(blocks) {
+    /**
+     * Reversal + relocation refinement under a deterministic step budget.
+     * Every candidate it returns has been fully priced, so an exhausted budget
+     * degrades the search depth — never the validity of the result.
+     */
+    function refineBlockOrder(blocks, budget) {
         let ordered = blocks;
-        if (ordered.length > 120) return ordered;
+        if (ordered.length < 3) return ordered;
         let currentCost = blockOrderCost(ordered);
+
+        // Returns null once the budget is spent, which unwinds the search and
+        // hands back the best order priced so far.
+        const price = (candidate) => {
+            if (budget.steps <= 0) return null;
+            budget.steps -= candidate.length;
+            budget.evaluations++;
+            if (budget.evaluations % 512 === 0 && Date.now() > budget.deadline) {
+                budget.steps = 0;
+                budget.safetyCutoff = true;
+                return null;
+            }
+            return blockOrderCost(candidate);
+        };
+
         for (let pass = 0; pass < 5; pass++) {
             let bestCost = currentCost;
             let bestOrder = null;
-            for (let start = 0; start < ordered.length - 1; start++) {
+            let exhausted = false;
+
+            for (let start = 0; start < ordered.length - 1 && !exhausted; start++) {
                 for (let finish = start + 1; finish < ordered.length; finish++) {
                     const candidate = [
                         ...ordered.slice(0, start),
                         ...ordered.slice(start, finish + 1).reverse(),
                         ...ordered.slice(finish + 1)
                     ];
-                    const candidateCost = blockOrderCost(candidate);
+                    const candidateCost = price(candidate);
+                    if (candidateCost === null) { exhausted = true; break; }
                     if (candidateCost + 0.000001 < bestCost) {
                         bestCost = candidateCost;
                         bestOrder = candidate;
                     }
                 }
             }
-            for (let from = 0; from < ordered.length; from++) {
+            for (let from = 0; from < ordered.length && !exhausted; from++) {
                 for (let to = 0; to <= ordered.length; to++) {
                     if (to === from || to === from + 1) continue;
                     const candidate = [...ordered];
                     const [moved] = candidate.splice(from, 1);
                     candidate.splice(to > from ? to - 1 : to, 0, moved);
-                    const candidateCost = blockOrderCost(candidate);
+                    const candidateCost = price(candidate);
+                    if (candidateCost === null) { exhausted = true; break; }
                     if (candidateCost + 0.000001 < bestCost) {
                         bestCost = candidateCost;
                         bestOrder = candidate;
                     }
                 }
             }
-            if (!bestOrder) break;
-            ordered = bestOrder;
-            currentCost = bestCost;
+
+            // A better order found before the budget ran out is still a fully
+            // measured improvement, so keep it rather than discarding the pass.
+            if (bestOrder) {
+                ordered = bestOrder;
+                currentCost = bestCost;
+            }
+            if (exhausted || !bestOrder) break;
         }
         return ordered;
     }
@@ -381,8 +427,19 @@ export function roadAwareStreetSweep(properties, options = {}) {
     // refine each, and keep the cheapest. Ties keep the earlier canonical seed,
     // so the winner never depends on input array order or iteration timing.
     const allBlocks = buildBlocks();
-    const seedKeys = allBlocks.length <= multiStartBlockLimit
-        ? [...allBlocks].sort((first, second) => compareStableKeys(first.key, second.key)).map((block) => block.key)
+    // Screening one seed costs ~blocks² transition lookups, so the number of
+    // seeds screened is budgeted the same deterministic way as refinement
+    // instead of being switched off wholesale past a block-count threshold.
+    const screenableSeeds = Math.min(
+        allBlocks.length,
+        multiStartBlockLimit,
+        Math.max(1, Math.floor(SCREENING_STEP_BUDGET / Math.max(1, allBlocks.length * allBlocks.length)))
+    );
+    const seedKeys = screenableSeeds > 1
+        ? [...allBlocks]
+            .sort((first, second) => compareStableKeys(first.key, second.key))
+            .map((block) => block.key)
+            .slice(0, screenableSeeds)
         : [null];
 
     // Screen every seed with the cheap greedy pass, then spend the expensive
@@ -398,12 +455,23 @@ export function roadAwareStreetSweep(properties, options = {}) {
                 ? first.cost - second.cost
                 : compareStableKeys(String(first.seedKey), String(second.seedKey))
         ))
-        .slice(0, REFINED_SEED_COUNT);
+        .slice(0, Math.max(1, refinedSeedCount));
 
-    let blocks = null;
+    // One shared pool, drawn in screened order: the strongest seed refines to
+    // convergence first and later seeds spend whatever remains. Splitting the
+    // pool evenly instead starved every seed and cost Charlotte ~10 minutes of
+    // route quality. Order is fixed, so the pool is always spent identically.
+    const budget = {
+        steps: refinementStepBudget,
+        evaluations: 0,
+        safetyCutoff: false,
+        deadline: Date.now() + REFINEMENT_SAFETY_MS
+    };
+
+    let blocks = screened[0].greedy;
     let bestCost = Infinity;
     screened.forEach(({ greedy }) => {
-        const candidate = refineBlockOrder(greedy);
+        const candidate = refineBlockOrder(greedy, budget);
         const candidateCost = blockOrderCost(candidate);
         if (candidateCost + 0.000001 < bestCost) {
             bestCost = candidateCost;
