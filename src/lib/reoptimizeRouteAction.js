@@ -20,6 +20,7 @@ import {
 } from '@/components/logic/routeRoadContext';
 import { haversineDistanceMiles, isValidRoutePoint } from '@/lib/routeBounds';
 import { captureParkedCarLocation, isLowAccuracyCapture, lowAccuracyConfirmationMessage } from '@/lib/parkedCarLocation';
+import { startOptimizeProgress } from '@/lib/optimizeProgressToast';
 import { tryRoadMatrixOptimize } from '@/lib/roadMatrixOptimize';
 import { requireUsableRouteContext } from '@/lib/routeContextGuard';
 import { OPTIMIZE_MODES, ROUTE_ORIGIN_MODES, resolveOptimizeMode, routeOriginModeForOptimizeMode } from '@/lib/routeOriginModes';
@@ -91,6 +92,9 @@ export async function reoptimizeRoute(route, options = {}, deps = {}) {
         { id: TOAST_ID }
     );
     const savedView = mapRef?.current ? { center: mapRef.current.getCenter(), zoom: mapRef.current.getZoom() } : null;
+    // Ticks the elapsed seconds through the long road phases so the wait never
+    // looks like a hang. Stopped in `finally`, so no path leaves it running.
+    let progress = null;
     try {
         const hashes = (route.property_hashes || (route.properties || []).map(propertyKey)).filter(Boolean);
         const routePropsByHash = new Map((route.properties || route.allProperties || []).map(p => [propertyKey(p), p]));
@@ -155,7 +159,10 @@ export async function reoptimizeRoute(route, options = {}, deps = {}) {
         // Every failure mode (timeout, rate limit, unsnapped door, a route beyond
         // the supported size, no improvement) returns null and the existing local
         // path runs instead.
-        toast.loading('Checking real road distances...', { id: TOAST_ID });
+        progress = startOptimizeProgress({
+            id: TOAST_ID,
+            label: `Checking real road distances for ${routeProperties.length} doors...`
+        });
         const roadMatrixResult = await tryRoadMatrixOptimize(routeProperties, {
             start: isValidRoutePoint(start) ? start : null,
             end: isValidRoutePoint(end) ? end : null,
@@ -183,7 +190,7 @@ export async function reoptimizeRoute(route, options = {}, deps = {}) {
         if (roadMatrixResult) {
             optimized = roadMatrixResult.order;
         } else {
-            toast.loading('Loading road distances...', { id: TOAST_ID });
+            progress.update('Loading road distances...');
             routingContext = await createRouteRoadContext(routeProperties, {
                 startLocation: isValidRoutePoint(start) ? start : null,
                 endLocation: isValidRoutePoint(end) ? end : null,
@@ -194,6 +201,11 @@ export async function reoptimizeRoute(route, options = {}, deps = {}) {
             roadAware = routingContext.roadAware === true
                 && routingContext.costOnly !== true
                 && typeof routingContext.distanceBetween === 'function';
+            // This local sweep is synchronous and blocks the main thread, so the
+            // ticker cannot repaint during it. Yield one frame first, otherwise the
+            // last message the user sees is whatever was on screen before it began.
+            progress.update('Building the best door order...');
+            await new Promise(resolve => requestAnimationFrame(() => resolve()));
             optimized = optimizeRouteByStreetSweep(routeProperties, start, end, routingContext);
         }
         if (!optimized || optimized.length === 0) { toast.error('Optimization produced no results.', { id: TOAST_ID }); return; }
@@ -285,5 +297,7 @@ export async function reoptimizeRoute(route, options = {}, deps = {}) {
             e?.message || 'Failed to re-optimize route. The existing route was left unchanged.',
             { id: TOAST_ID, duration: 6000 }
         );
+    } finally {
+        progress?.stop();
     }
 }
