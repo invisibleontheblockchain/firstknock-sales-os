@@ -385,9 +385,12 @@ function ViewportCulledPins({
                 group.addLayer(ring);
             }
 
+            // Callback pins render slightly smaller than other outcome pins.
+            const isCallback = effectiveColorStatus === 'CALLBACK';
+
             // Visible pin
             const circle = L.circleMarker([p.lat, p.lng], {
-                radius: isRecentlySold ? pinSize + 4 : (isUnvisited ? Math.max(2, pinSize - 2) : pinSize),
+                radius: isRecentlySold ? pinSize + 4 : (isUnvisited ? Math.max(2, pinSize - 2) : (isCallback ? pinSize * 0.9 : pinSize)),
                 fillColor,
                 fillOpacity: isRecentlySold ? 1 : (isUnvisited ? 0.3 : ((mode === 'generate' ? 0.9 : 0.5) * mapSettings.pinOpacity)),
                 color: isRecentlySold ? '#FFFFFF' : (mapSettings.fillStyle === 'outline' ? fillColor : (isUnvisited ? 'transparent' : (mapSettings.pinBorderColor || '#000'))),
