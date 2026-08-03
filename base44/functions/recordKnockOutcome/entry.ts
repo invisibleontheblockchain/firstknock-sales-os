@@ -41,6 +41,7 @@ const WORKFLOW_TRANSITIONS: Record<string, {
 const EXEMPT_EMAILS = new Set([
     'christian@nativepest.com',
     'kevin@reefenvironmental.com',
+    'kevin@reifenvironmental.com',
     'christian@nativepestmanagement.com',
     'keven@reefenvironmental.com',
     'justinhoskins44@gmail.com'

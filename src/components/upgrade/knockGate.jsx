@@ -13,6 +13,7 @@ export const CARD_ON_FILE_THRESHOLD = 25;
 const EXEMPT_EMAILS = [
   'christian@nativepest.com',
   'kevin@reefenvironmental.com',
+  'kevin@reifenvironmental.com',
   'christian@nativepestmanagement.com',
   'keven@reefenvironmental.com',
   'justinhoskins44@gmail.com',

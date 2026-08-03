@@ -131,7 +131,8 @@ function stripeTimestampIso(value) {
 }
 
 function betaPrecisionEvidence(user) {
-    if (user?.email?.toLowerCase() === 'baysecurity@gmail.com') {
+    const grantEmail = user?.email?.toLowerCase();
+    if (grantEmail === 'baysecurity@gmail.com' || grantEmail === 'kevin@reifenvironmental.com') {
         return {
             kind: 'beta',
             paidAccess: true,
