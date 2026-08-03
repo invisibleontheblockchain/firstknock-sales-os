@@ -28,6 +28,26 @@ function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+// Starting a pull issues many platform reads at once, so a short burst can trip
+// the app-wide request limit and surface as a failed import. Transient rate
+// limits are retried with backoff; every other error still fails immediately.
+function isRateLimitError(error) {
+    const status = Number(error?.status ?? error?.response?.status);
+    if (status === 429) return true;
+    return /rate limit/i.test(String(error?.message || ''));
+}
+
+async function withRateLimitRetry(action, attempts = 4) {
+    for (let attempt = 1; ; attempt += 1) {
+        try {
+            return await action();
+        } catch (error) {
+            if (attempt >= attempts || !isRateLimitError(error)) throw error;
+            await sleep(250 * 2 ** (attempt - 1));
+        }
+    }
+}
+
 async function withPrecisionUsageLock(userId, action) {
     const databaseUrl = Deno.env.get('DATABASE_URL');
     if (!databaseUrl) throw new Error('Precision usage locking is unavailable.');
@@ -359,7 +379,7 @@ function asArray(value) {
 async function listAll(entity, filter, sort = '-created_date', pageSize = 500) {
     const records = [];
     for (let skip = 0; skip < 20000; skip += pageSize) {
-        const page = await entity.filter(filter, sort, pageSize, skip);
+        const page = await withRateLimitRetry(() => entity.filter(filter, sort, pageSize, skip));
         const items = asArray(page);
         records.push(...items);
         if (items.length < pageSize) return records;
@@ -639,11 +659,11 @@ Deno.serve(async (req) => {
         // the pull and be offered for resume.
         const activeQueries = [];
         for (const activeStatus of ACTIVE_PRECISION_STATUSES) {
-            activeQueries.push(base44.asServiceRole.entities.FetchJob.filter(
-                { precision_usage_user_id: user.id, status: activeStatus }, '-created_date', 20));
+            activeQueries.push(withRateLimitRetry(() => base44.asServiceRole.entities.FetchJob.filter(
+                { precision_usage_user_id: user.id, status: activeStatus }, '-created_date', 20)));
             if (user?.email) {
-                activeQueries.push(base44.asServiceRole.entities.FetchJob.filter(
-                    { user_email: user.email, status: activeStatus }, '-created_date', 20));
+                activeQueries.push(withRateLimitRetry(() => base44.asServiceRole.entities.FetchJob.filter(
+                    { user_email: user.email, status: activeStatus }, '-created_date', 20)));
             }
         }
         const activeById = new Map();
