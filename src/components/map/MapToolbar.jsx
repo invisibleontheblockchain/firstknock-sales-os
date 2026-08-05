@@ -209,9 +209,14 @@ export default function MapToolbar({
     else toast.error('No route stops to export');
   };
 
-  const handleSplitRoutesCreated = async (count) => {
+  const handleSplitRoutesCreated = async (result) => {
     queryClient.invalidateQueries({ queryKey: ['savedRoutes'] });
-    toast.success(`Created ${count} split route batches`);
+    if (result?.sourceArchived && activeRoute?.id === result.sourceRouteId) {
+      setActiveRoute?.(null);
+      try { localStorage.removeItem('fk_selectedKnockRouteId'); } catch {}
+    }
+    const count = Number(result?.count || 0);
+    toast.success(`Created ${count} optimized route${count === 1 ? '' : 's'}. Assign them when ready.`);
   };
 
   const handleSaveVisibleFilteredRoute = async () => {
@@ -243,6 +248,11 @@ export default function MapToolbar({
   };
 
   const isCompletedRoute = activeRoute?.status === 'COMPLETED';
+  const canSplitActiveRoute = Boolean(
+    activeRoute
+    && !['COMPLETED', 'ARCHIVED'].includes(String(activeRoute.status || '').toUpperCase())
+    && (activeRoute.houseCount || activeRoute.properties?.length || activeRoute.property_hashes?.length || 0) > 1
+  );
   const completedOutcomeStats = React.useMemo(() => getRouteOutcomeStats(activeRoute, logs), [activeRoute, logs]);
   const rerunOptions = [
     { filter: 'all', label: 'All Doors', count: completedOutcomeStats.total },
@@ -428,14 +438,14 @@ export default function MapToolbar({
                             )}
 
                             <div className="ml-auto flex items-center gap-1 shrink-0">
-                                <button
+                            {canSplitActiveRoute && <button
                 onPointerDown={(e) => {e.preventDefault();e.stopPropagation();}}
                 onClick={(e) => {e.preventDefault();e.stopPropagation();setShowSplitRouteModal(true);}}
                 className="hidden md:flex h-7 items-center gap-1 rounded-md bg-[#2EEB57] px-2 text-[10px] font-black text-black hover:bg-[#39FF4A] touch-manipulation select-none active:scale-95"
-                title="Split route into daily batches">
-                
+                title="Create smaller optimized routes">
+
                                     <Scissors className="w-2.5 h-2.5" /><span>SPLIT ROUTE</span>
-                                </button>
+                                </button>}
                                 <button
                 onPointerDown={(e) => {window.__fkSuppressMapFitUntil = Date.now() + 1500;e.preventDefault();e.stopPropagation();e.nativeEvent?.stopImmediatePropagation?.();}}
                 onTouchStart={(e) => {window.__fkSuppressMapFitUntil = Date.now() + 1500;e.stopPropagation();e.nativeEvent?.stopImmediatePropagation?.();}}
@@ -472,9 +482,11 @@ export default function MapToolbar({
                                     <DropdownMenuItem onClick={handleExportActiveRouteCsv} className="focus:bg-white/10 focus:text-white">
                                       <Download className="mr-2 h-4 w-4" /> Export CSV
                                     </DropdownMenuItem>
-                                    <DropdownMenuItem onClick={(e) => {e.stopPropagation();setShowSplitRouteModal(true);}} className="focus:bg-white/10 focus:text-white">
-                                      <Scissors className="mr-2 h-4 w-4" /> Split Route
-                                    </DropdownMenuItem>
+                                    {canSplitActiveRoute && (
+                                      <DropdownMenuItem onClick={(e) => {e.stopPropagation();setShowSplitRouteModal(true);}} className="focus:bg-white/10 focus:text-white">
+                                        <Scissors className="mr-2 h-4 w-4" /> Create smaller routes
+                                      </DropdownMenuItem>
+                                    )}
                                   </DropdownMenuContent>
                                 </DropdownMenu>
                                 <button onPointerDown={(e) => {e.preventDefault();e.stopPropagation();}} onClick={(e) => {e.preventDefault();e.stopPropagation();setActiveRoute(null);}} className="flex items-center gap-1 h-8 md:h-6 px-2 md:px-2 rounded-md border border-white/10 text-[10px] font-bold text-gray-300 hover:text-white hover:bg-white/10 shrink-0 touch-manipulation active:scale-95">
@@ -725,11 +737,11 @@ export default function MapToolbar({
                 </div>
             </div>
 
-            {showSplitRouteModal && activeRoute && (
+            {showSplitRouteModal && canSplitActiveRoute && activeRoute && (
               <SplitRouteModal
                 route={activeRoute}
-                teamMembers={teamMembers}
                 managerId={activeRoute.manager_id || user?.id}
+                replaceSource={hydratedSavedRoutes.some((savedRoute) => savedRoute.id === activeRoute.id)}
                 onClose={() => setShowSplitRouteModal(false)}
                 onCreated={handleSplitRoutesCreated}
               />
