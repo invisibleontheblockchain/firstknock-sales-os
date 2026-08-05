@@ -26,4 +26,17 @@ if (originalSetPosition) {
   };
 }
 
+// Leaflet can retain one scheduled Canvas redraw after React has removed the
+// renderer. Ignore that stale frame once its map or 2D context is gone.
+const originalCanvasRedraw = L.Canvas.prototype._redraw;
+if (originalCanvasRedraw) {
+  L.Canvas.prototype._redraw = function patchedCanvasRedraw() {
+    if (!this._map || !this._ctx) {
+      this._redrawRequest = null;
+      return undefined;
+    }
+    return originalCanvasRedraw.call(this);
+  };
+}
+
 export default L;

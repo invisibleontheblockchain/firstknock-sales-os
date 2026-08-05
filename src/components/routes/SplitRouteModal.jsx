@@ -19,6 +19,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { base44 } from '@/api/base44Client';
 import { CARTO_ATTRIBUTION } from '@/components/map/mapAttribution';
+import '@/components/map/leafletPatches';
 import {
   buildOptimizedSplitPlan,
   buildSplitRouteRecords,
@@ -101,10 +102,18 @@ function FitSplitPreview({ routes }) {
   const signature = points.map((point) => point.join(',')).join('|');
 
   useEffect(() => {
-    if (!points.length) return;
-    if (points.length === 1) map.setView(points[0], 16, { animate: false });
-    else map.fitBounds(points, { padding: [18, 18], maxZoom: 16, animate: false });
-    window.setTimeout(() => map.invalidateSize({ animate: false }), 0);
+    if (!points.length) return undefined;
+
+    const frameId = window.requestAnimationFrame(() => {
+      if (!map?._loaded || !map?._container?.isConnected || !map?._mapPane) return;
+      if (points.length === 1) map.setView(points[0], 16, { animate: false });
+      else map.fitBounds(points, { padding: [18, 18], maxZoom: 16, animate: false });
+      if (map._loaded && map._container?.isConnected && map._mapPane) {
+        map.invalidateSize({ animate: false, pan: false });
+      }
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
   }, [map, signature]);
 
   return null;
@@ -125,7 +134,7 @@ function SplitMapPreview({ routes }) {
         zoomControl={false}
         scrollWheelZoom={false}
         attributionControl
-        preferCanvas
+        preferCanvas={false}
       >
         <TileLayer
           url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
