@@ -27,11 +27,12 @@ export function shouldRenderPrecisionMapLayers({ mode, routeMode, activeRoute } 
 
 export function filterRoutesByStatus(routes = [], routeStatusView = 'all') {
   if (!Array.isArray(routes)) return [];
+  const visibleRoutes = routes.filter((route) => route?.status !== 'ARCHIVED');
   if (routeStatusView === 'completed') {
-    return routes.filter((route) => route?.status === 'COMPLETED');
+    return visibleRoutes.filter((route) => route?.status === 'COMPLETED');
   }
   if (routeStatusView === 'active') {
-    return routes.filter((route) => route?.status !== 'COMPLETED');
+    return visibleRoutes.filter((route) => route?.status !== 'COMPLETED');
   }
-  return routes;
+  return visibleRoutes;
 }

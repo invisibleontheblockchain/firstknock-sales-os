@@ -46,8 +46,18 @@ jobs:
 
       # ── Blocking gates, one per step so a failure names the exact gate ──
 
-      - name: Test suite
-        run: npm test
+      - name: Test suite — no new failures
+        shell: bash
+        run: |
+          set +e
+          node --test --test-concurrency=1 --test-reporter=tap test/*.test.mjs 2>&1 | tee "$RUNNER_TEMP/test-full.txt"
+          PIPE_STATUSES=("${PIPESTATUS[@]}")
+          TEST_STATUS="${PIPE_STATUSES[0]}"
+          TEE_STATUS="${PIPE_STATUSES[1]}"
+          set -e
+
+          node scripts/verify-test-failure-baseline.mjs \
+            "$RUNNER_TEMP/test-full.txt" "$TEST_STATUS" "$TEE_STATUS"
 
       - name: Typecheck
         run: npm run typecheck

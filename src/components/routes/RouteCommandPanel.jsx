@@ -10,7 +10,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { generateOptimizedRoutes } from "@/components/logic/routeOptimizer";
 import { createRouteContinuityContext } from "@/components/logic/routeRoadContext";
 import {
-    Navigation, X, BarChart3, User, Shield, MapPin, Flame, Plus, Clock, CheckCircle2, ChevronRight, Zap, Trash2, Scissors, Pencil, Check, RefreshCw, Play, Home
+    Navigation, X, BarChart3, User, Shield, MapPin, Flame, Plus, Clock, CheckCircle2, ChevronRight, Zap, Trash2, Scissors, Pencil, Check, Play, Home
 } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { toast } from "sonner";
@@ -23,6 +23,14 @@ const BRAND = {
     charcoal: '#1F1F1F',
     offWhite: '#E5E5E5'
 };
+
+const isOperationalRoute = (route) => !['ARCHIVED'].includes(
+    String(route?.status || '').toUpperCase()
+);
+
+const canSplitRoute = (route) => isOperationalRoute(route)
+    && !['COMPLETED'].includes(String(route?.status || '').toUpperCase())
+    && (route?.houseCount || route?.properties?.length || route?.property_hashes?.length || 0) > 1;
 
 function getRouteBoundsBadge(route) {
     const bounds = route?.metadata?.route_bounds;
@@ -74,6 +82,10 @@ export default function RouteCommandPanel({
     const [activeTab, setActiveTab] = useState(generatedRoutes.length > 0 ? 'new' : 'active');
     const [splitRoute, setSplitRoute] = useState(null);
     const queryClient = useQueryClient();
+    const operationalSavedRoutes = useMemo(
+        () => savedRoutes.filter(isOperationalRoute),
+        [savedRoutes]
+    );
 
     useEffect(() => {
         if (generatedRoutes.length === 0 && activeTab === 'new') setActiveTab('active');
@@ -82,9 +94,9 @@ export default function RouteCommandPanel({
     // Build a global route number map: route.id → #1, #2, #3...
     const routeNumberMap = useMemo(() => {
         const map = new Map();
-        savedRoutes.forEach((r, i) => map.set(r.id, i + 1));
+        operationalSavedRoutes.forEach((r, i) => map.set(r.id, i + 1));
         return map;
-    }, [savedRoutes]);
+    }, [operationalSavedRoutes]);
 
     // Group saved routes by status
     const routesByStatus = useMemo(() => {
@@ -94,20 +106,20 @@ export default function RouteCommandPanel({
             PENDING: [],
             COMPLETED: []
         };
-        savedRoutes.forEach(r => {
+        operationalSavedRoutes.forEach(r => {
             const status = r.status || 'PENDING';
             if (groups[status]) groups[status].push(r);
             else groups.PENDING.push(r);
         });
         return groups;
-    }, [savedRoutes]);
+    }, [operationalSavedRoutes]);
 
     // Group saved routes by rep
     const routesByRep = useMemo(() => {
         const groups = { unassigned: [] };
         teamMembers.forEach(m => groups[m.id] = { member: m, routes: [] });
 
-        savedRoutes.forEach(r => {
+        operationalSavedRoutes.forEach(r => {
             if (r.assigned_to && groups[r.assigned_to]) {
                 groups[r.assigned_to].routes.push(r);
             } else {
@@ -115,11 +127,16 @@ export default function RouteCommandPanel({
             }
         });
         return groups;
-    }, [savedRoutes, teamMembers]);
+    }, [operationalSavedRoutes, teamMembers]);
 
-    const handleSplitRoutesCreated = async (count) => {
+    const handleSplitRoutesCreated = async (result) => {
         queryClient.invalidateQueries({ queryKey: ['savedRoutes'] });
-        toast.success(`Created ${count} split route batches`);
+        if (result?.sourceArchived && activeRouteId === result.sourceRouteId) {
+            try { localStorage.removeItem('fk_selectedKnockRouteId'); } catch {}
+            onSelectRoute?.(null);
+        }
+        const count = Number(result?.count || 0);
+        toast.success(`Created ${count} optimized route${count === 1 ? '' : 's'}. Assign them when ready.`);
     };
 
     return (
@@ -140,7 +157,7 @@ export default function RouteCommandPanel({
                         </h2>
                         <p className="text-[10px] mt-1" style={{ color: '#666' }}>
                             {generatedRoutes.length > 0 && <span className="text-yellow-500 font-bold mr-2">{generatedRoutes.length} New</span>}
-                            {savedRoutes.length} Active Campaigns
+                            {operationalSavedRoutes.length} Active Campaigns
                         </p>
                     </div>
                     <button
@@ -408,7 +425,7 @@ export default function RouteCommandPanel({
                         {/* ACTIVE ROUTES TAB */}
                         {activeTab === 'active' && (
                             <ActiveRoutesTab
-                                savedRoutes={savedRoutes}
+                                savedRoutes={operationalSavedRoutes}
                                 routesByStatus={routesByStatus}
                                 repColors={repColors}
                                 onSelectRoute={selectRouteForMapAndKnock}
@@ -455,7 +472,7 @@ export default function RouteCommandPanel({
                                                                      logs={logs}
                                                                      onReoptimize={onReoptimizeRoute}
                                                                      routeConfig={routeConfig}
-                                                                     onSplit={() => setSplitRoute(route)}
+                                                                     onSplit={canSplitRoute(route) ? () => setSplitRoute(route) : undefined}
                                                                      />
                                                             ))}
                                                         </div>
@@ -484,7 +501,7 @@ export default function RouteCommandPanel({
                                                 logs={logs}
                                                 onReoptimize={onReoptimizeRoute}
                                                 routeConfig={routeConfig}
-                                                onSplit={() => setSplitRoute(route)}
+                                                onSplit={canSplitRoute(route) ? () => setSplitRoute(route) : undefined}
                                             />
                                         ))}
                                     </div>
@@ -506,8 +523,8 @@ export default function RouteCommandPanel({
             {splitRoute && (
                 <SplitRouteModal
                     route={splitRoute}
-                    teamMembers={teamMembers}
                     managerId={splitRoute.manager_id}
+                    replaceSource
                     onClose={() => setSplitRoute(null)}
                     onCreated={handleSplitRoutesCreated}
                 />
@@ -843,7 +860,7 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
                             onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
                             onClick={(e) => { e.preventDefault(); e.stopPropagation(); onSplit(); }}
                             className="flex h-11 items-center justify-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.04] px-3 text-[10px] font-black text-white/70 hover:bg-white/10 hover:text-white md:h-9"
-                            title="Split route into daily batches"
+                            title="Create smaller optimized routes"
                         >
                             <Scissors className="h-4 w-4" /> SPLIT
                         </button>

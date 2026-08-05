@@ -178,7 +178,7 @@ export default function ListPage() {
         },
         enabled: userReady,
     });
-    const savedRoutes = toEntityArray(savedRoutesRaw);
+    const savedRoutes = toEntityArray(savedRoutesRaw).filter((route) => route.status !== 'ARCHIVED');
 
     const { data: hydratedRoutes = [], isLoading: hydratedRoutesLoading } = useQuery({
         queryKey: ['analyticsHydratedRoutes', savedRoutes.map(route => route.id).join(','), userEmail, tenantManagerId],

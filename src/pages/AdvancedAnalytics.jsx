@@ -81,7 +81,7 @@ export default function AdvancedAnalytics() {
         queryFn: () => fetchCurrentAccountRows(base44.entities.SavedRoute, '-created_date', 500),
         enabled: userReady,
     });
-    const savedRoutes = toEntityArray(savedRoutesRaw);
+    const savedRoutes = toEntityArray(savedRoutesRaw).filter((route) => route.status !== 'ARCHIVED');
 
     const { data: logsRaw = [], isLoading: logsLoading } = useQuery({
         queryKey: ['interactionLogs', 'advancedAnalytics', tenantManagerId, userEmail],
