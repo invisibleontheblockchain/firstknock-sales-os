@@ -181,12 +181,9 @@ for (const [label, polygon] of [
   });
 }
 
-// NOTE: a self-intersecting ("bow-tie") polygon was previously listed here as
-// unusual-but-legal. That was wrong, and was asserted without provider evidence.
-// BatchData's geometry engine rejects a crossing boundary before running any
-// search, so such a pull fails with an opaque provider 500 after a reservation
-// has already been taken. The case now lives in
-// test/precision-polygon-simplicity.test.mjs as a REJECTION case.
+// Self-intersecting freehand input is covered by the focused simplicity suite.
+// It is repaired before persistence because BatchData cannot search the raw
+// crossing geometry.
 test('POLY-02 every unusual-but-legal polygon still succeeds, with geometry untouched', async () => {
   const stillValid = [
     ['closed ring', [...SQUARE_MILE_POLYGON, SQUARE_MILE_POLYGON[0]]],

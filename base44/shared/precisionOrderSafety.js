@@ -66,11 +66,11 @@ const MAX_LONGITUDE = 180;
 /**
  * Validates and normalizes a drawn ring.
  *
- * Geometry is conserved exactly: no reordering, no rewinding, no dedupe, no
- * automatic closure, and no change to centroid, area or hash behaviour. The
- * only change is that an unusable vertex now REJECTS the polygon instead of
- * being dropped, which used to turn an N-point ring into a different
- * (N-1)-point ring with a different identity, silently.
+ * Valid geometry is conserved exactly: no reordering, rewinding, dedupe, or
+ * closure change. Freehand rings that cross themselves are deterministically
+ * untangled before use because BatchData cannot consume crossing geometry.
+ * Unusable coordinates still reject the whole polygon rather than silently
+ * changing its identity.
  */
 /**
  * Precision polygons must be SIMPLE rings — no edge may cross another.
@@ -85,9 +85,9 @@ const MAX_LONGITUDE = 180;
  * already been taken. Rejecting the geometry up front turns that into a clear,
  * actionable 400 before anything is reserved or spent.
  *
- * The polygon is never repaired: no reordering, untangling, hull-fitting or
- * point removal. A crossing boundary is returned to the user to redraw, because
- * any automatic repair would silently change the area they asked for.
+ * Valid polygons are never changed. Crossed freehand traces are untangled before
+ * use; this is required because the provider cannot execute a search against the
+ * raw crossing geometry.
  */
 
 // Cross products are in squared degrees; vertices ~1e-2 apart give ~1e-4, so
@@ -180,26 +180,78 @@ export function countDistinctPolygonVertices(points) {
     return new Set(comparisonRing(points).map((point) => `${point.lat},${point.lng}`)).size;
 }
 
-export function findPolygonSelfIntersection(points) {
+function findPolygonSelfIntersectionDetail(points) {
     const ring = comparisonRing(points);
-    if (ring.length < 4) return null; // a triangle cannot self-intersect
+    if (ring.length < 4) return null;
 
     const total = ring.length;
     const edge = (index) => [ring[index], ring[(index + 1) % total]];
-
     for (let i = 0; i < total; i += 1) {
         for (let j = i + 1; j < total; j += 1) {
-            // Adjacent edges legitimately share an endpoint. The first and last
-            // edges are adjacent too, because the ring is closed.
             const adjacent = j === i + 1 || (i === 0 && j === total - 1);
             if (adjacent) continue;
-
             const [p1, q1] = edge(i);
             const [p2, q2] = edge(j);
-            if (segmentsIntersect(p1, q1, p2, q2)) return intersectionPoint(p1, q1, p2, q2);
+            if (segmentsIntersect(p1, q1, p2, q2)) {
+                return { i, j, point: intersectionPoint(p1, q1, p2, q2) };
+            }
         }
     }
     return null;
+}
+
+export function findPolygonSelfIntersection(points) {
+    return findPolygonSelfIntersectionDetail(points)?.point || null;
+}
+
+function convexHull(points) {
+    const sorted = [...points].sort((a, b) => a.lng - b.lng || a.lat - b.lat);
+    const turn = (a, b, c) => (b.lng - a.lng) * (c.lat - a.lat) - (b.lat - a.lat) * (c.lng - a.lng);
+    const half = [];
+    for (const point of sorted) {
+        while (half.length >= 2 && turn(half[half.length - 2], half[half.length - 1], point) <= 0) half.pop();
+        half.push(point);
+    }
+    const lower = half.slice(0, -1);
+    half.length = 0;
+    for (let index = sorted.length - 1; index >= 0; index -= 1) {
+        const point = sorted[index];
+        while (half.length >= 2 && turn(half[half.length - 2], half[half.length - 1], point) <= 0) half.pop();
+        half.push(point);
+    }
+    return [...lower, ...half.slice(0, -1)];
+}
+
+/**
+ * Repairs freehand loops without changing any already-simple polygon.
+ * 2-opt reversal removes normal drawing loops while retaining every corner.
+ * A convex hull is the bounded fallback for pinches/overlaps that cannot be
+ * untangled, ensuring the provider always receives a simple usable boundary.
+ */
+export function repairPolygonSelfIntersections(points) {
+    if (!findPolygonSelfIntersection(points)) return { points, repaired: false };
+
+    const seen = new Set();
+    let repaired = comparisonRing(points).filter((point) => {
+        const key = `${point.lat},${point.lng}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
+    const maxPasses = Math.min(64, Math.max(1, repaired.length * 2));
+    for (let pass = 0; pass < maxPasses; pass += 1) {
+        const crossing = findPolygonSelfIntersectionDetail(repaired);
+        if (!crossing) return { points: repaired, repaired: true };
+        const reversed = repaired.slice(crossing.i + 1, crossing.j + 1).reverse();
+        repaired = [
+            ...repaired.slice(0, crossing.i + 1),
+            ...reversed,
+            ...repaired.slice(crossing.j + 1)
+        ];
+    }
+
+    const hull = convexHull(repaired);
+    return { points: hull.length >= 3 ? hull : repaired, repaired: true };
 }
 
 export function normalizePrecisionPolygon(input) {
@@ -239,20 +291,19 @@ export function normalizePrecisionPolygon(input) {
         return { ok: false, code: 'invalid_polygon', message: 'At least 3 distinct polygon points are required.' };
     }
 
-    // The provider rejects a crossing boundary before it runs any search, so
-    // catch it here rather than surfacing an opaque provider 500 after a
-    // reservation has been taken. The polygon is never auto-repaired.
-    const intersection = findPolygonSelfIntersection(points);
-    if (intersection) {
+    // BatchData cannot consume a crossing ring. Freehand input is therefore
+    // untangled before hashing, reservation, persistence, or provider use.
+    // Already-simple polygons remain byte-for-byte unchanged.
+    const repaired = repairPolygonSelfIntersections(points);
+    if (findPolygonSelfIntersection(repaired.points)) {
         return {
             ok: false,
             code: 'self_intersecting_polygon',
-            message: 'Your drawn area crosses itself. Redraw the boundary without overlapping lines.',
-            intersection
+            message: 'The selected area could not be converted into a usable boundary.'
         };
     }
 
-    return { ok: true, points };
+    return { ok: true, points: repaired.points, repaired: repaired.repaired };
 }
 
 /* ───────────────────────────── count ───────────────────────────── */

@@ -18,8 +18,8 @@
 // "unusual-but-legal polygons" and REQUIRED it to succeed. That contract was
 // asserted without provider evidence and is contradicted by the provider.
 //
-// The polygon is never auto-repaired. No reordering, untangling, hull-fitting
-// or point removal: any of those would silently change the area the user drew.
+// Valid polygons stay byte-identical. Crossed freehand traces are repaired
+// before reservation so normal drawing jitter cannot block Precision generation.
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -111,14 +111,15 @@ test('POLYSIMP-01 every valid polygon is accepted, geometry untouched', () => {
   }
 });
 
-test('POLYSIMP-02 every self-intersecting polygon is rejected', () => {
+test('POLYSIMP-02 every self-intersecting polygon is repaired into a simple ring', () => {
   for (const [label, polygon] of INVALID) {
     assert.notEqual(findPolygonSelfIntersection(polygon), null, `${label} must be detected`);
 
     const result = normalizePrecisionPolygon(polygon);
-    assert.equal(result.ok, false, `${label} must be rejected`);
-    assert.equal(result.code, 'self_intersecting_polygon', `${label}: wrong error code`);
-    assert.match(result.message, /crosses itself/i);
+    assert.equal(result.ok, true, `${label} must be accepted after repair`);
+    assert.equal(result.repaired, true, `${label}: repair must be disclosed`);
+    assert.equal(findPolygonSelfIntersection(result.points), null, `${label}: repaired ring must be simple`);
+    assert.ok(result.points.length >= 3, `${label}: repaired ring must remain usable`);
   }
 });
 
@@ -147,32 +148,26 @@ test('POLYSIMP-05 a triangle can never self-intersect', () => {
 
 /* ══════════════ 2. Both start paths, same contract ══════════════ */
 
-test('POLYSIMP-06 both start endpoints reject a crossing polygon with the same 400', async () => {
+test('POLYSIMP-06 both start endpoints accept the same repaired crossing polygon', async () => {
   const [, bowTie] = INVALID[0];
 
   for (const [name, path] of START_PATHS) {
     const result = await runStartPath(path, { body: orderBody({ polygon: bowTie }) });
 
-    assert.equal(result.status, 400, `${name} must reject with 400`);
-    assert.equal(result.body.error, 'self_intersecting_polygon', `${name}: wrong error code`);
-    assert.match(result.body.message, /crosses itself/i, `${name}: message must be actionable`);
-
-    // The raw provider exception must never reach the user.
-    const serialized = JSON.stringify(result.body);
-    for (const leak of ['search_phase_execution_exception', 'query_shard_exception', 'shard']) {
-      assert.equal(serialized.includes(leak), false, `${name} must not leak "${leak}"`);
-    }
+    assert.equal(result.status, 200, `${name} must accept repaired freehand input`);
+    assert.ok(result.createdJob, `${name}: a FetchJob must be created`);
+    assert.equal(findPolygonSelfIntersection(result.createdJob.polygon), null, `${name}: stored polygon must be simple`);
   }
 });
 
-test('POLYSIMP-07 no FetchJob or reservation is created for a crossing polygon', async () => {
+test('POLYSIMP-07 a repaired crossing polygon reserves only after it is usable', async () => {
   const [, bowTie] = INVALID[0];
 
   for (const [name, path] of START_PATHS) {
     const result = await runStartPath(path, { body: orderBody({ polygon: bowTie }) });
 
-    assert.equal(result.status, 400, `${name} must reject`);
-    assert.equal(result.createdJob, null, `${name} must not create a FetchJob`);
+    assert.equal(result.status, 200, `${name} must start`);
+    assert.ok(result.createdJob.precision_usage_reserved > 0, `${name}: usable repaired input reserves normally`);
   }
 });
 
@@ -396,7 +391,7 @@ test('POLYSIMP-16 a dense valid freehand ring is accepted unchanged', () => {
   assert.deepEqual(result.points[499], ring[499]);
 });
 
-test('POLYSIMP-17 a dense ring with one small crossing loop is rejected', () => {
+test('POLYSIMP-17 a dense ring with one small crossing loop is repaired', () => {
   const ring = denseFreehandRing(500);
 
   // Introduce a small loop: swap two nearby vertices so their edges cross.
@@ -407,5 +402,8 @@ test('POLYSIMP-17 a dense ring with one small crossing loop is rejected', () => 
     findPolygonSelfIntersection(looped), null,
     'a single crossing loop in a dense ring must still be detected'
   );
-  assert.equal(normalizePrecisionPolygon(looped).code, 'self_intersecting_polygon');
+  const result = normalizePrecisionPolygon(looped);
+  assert.equal(result.ok, true);
+  assert.equal(result.repaired, true);
+  assert.equal(findPolygonSelfIntersection(result.points), null);
 });

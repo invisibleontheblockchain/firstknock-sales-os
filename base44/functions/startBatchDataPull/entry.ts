@@ -514,8 +514,8 @@ Deno.serve(async (req) => {
         if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
         const body = await req.json().catch(() => ({}));
-        // 5.3 Polygon input integrity. Geometry itself is untouched: no
-        // reordering, rewinding, dedupe, closure, centroid, area or hash change.
+        // 5.3 Polygon input integrity. Valid geometry remains untouched;
+        // crossed freehand traces are untangled before identity is computed.
         const polygonResult = normalizePrecisionPolygon(body.polygon);
         if (!polygonResult.ok) {
             return Response.json({ error: polygonResult.code, message: polygonResult.message }, { status: 400 });
