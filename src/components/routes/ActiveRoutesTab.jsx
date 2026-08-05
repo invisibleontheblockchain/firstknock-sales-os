@@ -26,6 +26,10 @@ const isRerunRoute = (route) => Boolean(
     (route?.name || '').includes(' Rerun — ')
 );
 
+const canSplitRoute = (route) => !['COMPLETED', 'ARCHIVED'].includes(
+    String(route?.status || '').toUpperCase()
+) && (route?.houseCount || route?.properties?.length || route?.property_hashes?.length || 0) > 1;
+
 function getRouteBoundsBadge(route) {
     const bounds = route?.metadata?.route_bounds;
     const mode = String(route?.route_origin_mode || bounds?.mode || bounds?.origin_mode || '').toLowerCase();
@@ -431,7 +435,7 @@ function RouteSection({ title, icon, routes, repColors, onSelectRoute, activeRou
                     isSelected={selectedIds.has(route.id)}
                     onToggleSelect={() => onToggleSelect(route.id)}
                     isMultiSelect={isMultiSelect}
-                    onSplit={() => onSplitRoute?.(route)}
+                    onSplit={canSplitRoute(route) ? () => onSplitRoute?.(route) : undefined}
                 />
             ))}
         </div>
@@ -655,7 +659,7 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
                                             onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
                                             onClick={(e) => { e.preventDefault(); e.stopPropagation(); onSplit(); }}
                                             className="flex h-11 items-center justify-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.04] px-3 text-[10px] font-black text-white/70 hover:bg-white/10 hover:text-white md:h-9"
-                                            title="Split route into daily batches"
+                                            title="Create smaller optimized routes"
                                         >
                                             <Scissors className="h-4 w-4" /> SPLIT
                                         </button>

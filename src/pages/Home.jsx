@@ -9,7 +9,7 @@ import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { storage } from '@/lib/storage';
 
-import { Loader2, X, BarChart3, Filter } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { toast } from "sonner";
 import { determineEffectiveStatus, isPointInPolygon } from '../components/logic/territoryLogic';
 import { subMonths, subDays, isAfter, parseISO } from 'date-fns';
@@ -41,7 +41,7 @@ import { GpsMapLayer as GpsTrackerMapLayers, GpsHud as GpsTrackerHud } from '../
 import ManagerPropertyDetailSheet from '../components/map/ManagerPropertyDetailSheet';
 import MapDrawTool from '../components/map/MapDrawTool';
 import ManagerMapLayers from '../components/map/ManagerMapLayers';
-import { isRenderableMapPoint } from '../components/map/mapLayerVisibility.js';
+import { filterRoutesByStatus, isRenderableMapPoint } from '../components/map/mapLayerVisibility.js';
 import MapToolbar from '../components/map/MapToolbar';
 import ZipCodeOverlay from '../components/map/ZipCodeOverlay';
 import PolygonHistory from '../components/map/PolygonHistory';
@@ -64,11 +64,6 @@ import {
 import { BRAND, DEFAULT_STATUS_COLORS, COLOR_SCHEME_MAP, LINE_DASH_MAP, ROUTE_COLORS } from '../components/map/homeMapConstants';
 
 import { LocationMarker, MapRefHandler, MapController } from '../components/map/MapHelpers';
-import MapAttributionControl from '../components/map/MapAttributionControl';
-import {
-    CARTO_ATTRIBUTION,
-    ESRI_IMAGERY_ATTRIBUTION,
-} from '../components/map/mapAttribution';
 import useViewportMapProperties from '../components/map/useViewportMapProperties';
 import { reoptimizeRoute } from '@/lib/reoptimizeRouteAction';
 import { buildRoadAwareGeneratedRoutes } from '@/lib/roadMatrixRouteGeneration'; import { requireUsableRouteContext } from '@/lib/routeContextGuard';
@@ -647,7 +642,11 @@ export default function Home() {
         },
         enabled: !!user?.id
     });
-    const savedRoutes = Array.isArray(savedRoutesRaw) ? savedRoutesRaw : (savedRoutesRaw?.items || []);
+    const allSavedRoutes = Array.isArray(savedRoutesRaw) ? savedRoutesRaw : (savedRoutesRaw?.items || []);
+    const savedRoutes = useMemo(
+        () => filterRoutesByStatus(allSavedRoutes, 'all'),
+        [allSavedRoutes]
+    );
     const [serverHydratedSavedRoutes, setServerHydratedSavedRoutes] = useState([]);
     const { data: precisionFetchJobsRaw = [] } = useQuery({
         queryKey: ['precisionFetchJobs', user?.email],
@@ -677,7 +676,7 @@ export default function Home() {
             });
         };
 
-        savedRoutes.forEach((route) => {
+        allSavedRoutes.forEach((route) => {
             const polygon = getRouteHistoryPolygon(route);
             const precisionArea = route?.metadata?.precision_area || {};
             addEntry(polygon, {
@@ -725,7 +724,7 @@ export default function Home() {
             .filter((entry) => entry.polygon?.length >= 3)
             .sort((a, b) => new Date(b.last_pull_date || b.date || 0) - new Date(a.last_pull_date || a.date || 0))
             .slice(0, 20);
-    }, [savedRoutes, precisionFetchJobs]);
+    }, [allSavedRoutes, precisionFetchJobs]);
 
     // Identify properties already assigned to saved routes
     const assignedHashes = useMemo(() => {
@@ -1371,7 +1370,10 @@ export default function Home() {
             if (p.legacy_hash) propsByHash.set(p.legacy_hash, p);
         });
 
-        const routesForDisplay = serverHydratedSavedRoutes.length > 0 ? serverHydratedSavedRoutes : savedRoutes;
+        const routesForDisplay = filterRoutesByStatus(
+            serverHydratedSavedRoutes.length > 0 ? serverHydratedSavedRoutes : savedRoutes,
+            'all'
+        );
 
         return routesForDisplay
             .filter(r => repFilter === 'all' || (r.assigned_to_name && r.assigned_to_name.includes(repFilter)))

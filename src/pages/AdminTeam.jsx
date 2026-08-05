@@ -114,7 +114,8 @@ export default function AdminTeam() {
         queryFn: async () => {
             if (!managerId) return [];
             const res = await base44.entities.SavedRoute.filter({ manager_id: managerId }, '-created_date', 200);
-            return Array.isArray(res) ? res : (res?.items || []);
+            const rows = Array.isArray(res) ? res : (res?.items || []);
+            return rows.filter((route) => route.status !== 'ARCHIVED');
         },
         enabled: !!managerId
     });

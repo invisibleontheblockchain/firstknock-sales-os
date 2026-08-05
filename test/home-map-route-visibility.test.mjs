@@ -28,15 +28,17 @@ test('the main Routes map remains visible after using the Canvas builder', () =>
   }), true);
 });
 
-test('saved-route status defaults can show every route without hiding past work', () => {
+test('saved-route status views hide archived source routes without hiding completed work', () => {
   const routes = [
     { id: 'active', status: 'ACTIVE' },
     { id: 'pending', status: 'PENDING' },
+    { id: 'legacy-without-status' },
     { id: 'done', status: 'COMPLETED' },
+    { id: 'archived-source', status: 'ARCHIVED' },
   ];
 
-  assert.deepEqual(filterRoutesByStatus(routes, 'all'), routes);
-  assert.deepEqual(filterRoutesByStatus(routes, 'active').map(route => route.id), ['active', 'pending']);
+  assert.deepEqual(filterRoutesByStatus(routes, 'all').map(route => route.id), ['active', 'pending', 'legacy-without-status', 'done']);
+  assert.deepEqual(filterRoutesByStatus(routes, 'active').map(route => route.id), ['active', 'pending', 'legacy-without-status']);
   assert.deepEqual(filterRoutesByStatus(routes, 'completed').map(route => route.id), ['done']);
 });
 
@@ -55,6 +57,7 @@ test('Home map has discovery, legacy-hash, visibility, and camera recovery paths
   const toolbar = source('src/components/map/MapToolbar.jsx');
 
   assert.match(home, /buildSavedRouteQueryFilters\(savedRouteScope\)/);
+  assert.match(home, /filterRoutesByStatus\(allSavedRoutes, 'all'\)/);
   assert.match(home, /if \(p\.legacy_hash\) propsByHash\.set\(p\.legacy_hash, p\)/);
   assert.match(home, /savedRouteOverviewPoints/);
   assert.match(home, /fitBounds\(bounds, \{ padding: \[50, 50\], maxZoom: 16, animate: false \}\)/);
