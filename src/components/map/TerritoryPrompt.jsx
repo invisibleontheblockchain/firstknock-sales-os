@@ -13,6 +13,16 @@ import { FREE_PRECISION_PROPERTY_LIMIT } from '@/lib/precisionUsage';
 import { usePrecisionUsage } from '@/hooks/usePrecisionUsage';
 import { normalizeOwnershipRangeDays as normalizeStrictOwnershipRangeDays } from '@/components/logic/soldDateRange';
 import { validateCanvasBoundary } from '@/components/canvas/canvasPlannerUtils';
+import { normalizeHistoryPolygon } from '@/components/map/homeMapHelpers';
+import { normalizePrecisionPolygon } from '../../../base44/shared/precisionOrderSafety.js';
+
+function canonicalResponsePolygon(serverPolygon, fallbackPolygon = []) {
+  for (const candidate of [serverPolygon, fallbackPolygon]) {
+    const normalized = normalizePrecisionPolygon(normalizeHistoryPolygon(candidate));
+    if (normalized.ok) return normalized.points;
+  }
+  return [];
+}
 
 function formatWholeNumber(value) {
   const number = Math.max(0, Math.round(Number(value) || 0));
@@ -302,8 +312,9 @@ export default function TerritoryPrompt({
             job.ownership_range_mode ?? jobMetadata.ownership_range_mode
           ) === 'custom' && resumedOwnershipRangeDays ? 'custom' : 'quick';
           const resumedRouteBounds = jobMetadata.route_bounds || { enabled: false };
+          const resumedPolygon = canonicalResponsePolygon(job.polygon);
           pullIntentRef.current[job.id] = {
-            polygon: job.polygon || [],
+            polygon: resumedPolygon,
             requestedCount: Number(jobMetadata.requested_properties ?? job.total_expected ?? 0) || null,
             soldMonths: Number(job.sold_months || 12),
             ownershipRangeMode: resumedOwnershipRangeMode,
@@ -314,9 +325,9 @@ export default function TerritoryPrompt({
           };
           await onRouteBoundsPrepared?.(resumedRouteBounds);
           rememberActivePrecisionJob(job.id);
-          if (Array.isArray(job.polygon) && job.polygon.length >= 3) {
+          if (resumedPolygon.length >= 3) {
             try { localStorage.setItem('fk_drawnPolygonQueried', 'true'); } catch {}
-            setDrawnPolygon(job.polygon, true);
+            setDrawnPolygon(resumedPolygon, true);
           }
           setFetchMonths(Number(job.sold_months || 12));
           setOwnershipRangeMode(resumedOwnershipRangeMode);
@@ -656,7 +667,7 @@ export default function TerritoryPrompt({
             ...d,
             job_id: d.job_id || d.fetch_job_id || d.id || jobId,
             requested_properties: intendedCount || requestedCount,
-            polygon: intent.polygon || d.polygon || [],
+            polygon: canonicalResponsePolygon(d.polygon, intent.polygon),
             diagnostics: {
               ...diagnostics,
               ownership_range_mode: completedOwnershipRangeMode,
@@ -788,9 +799,10 @@ export default function TerritoryPrompt({
         : recoveryOwnershipRangeMode;
       const pollingOwnershipRangeDays = resumedExistingJob ? responseOwnershipRangeDays : recoveryOwnershipRangeDays;
       const recoveryRouteBounds = data.route_bounds || recoveryMetadata.route_bounds || { enabled: false };
+      const recoveryPolygon = canonicalResponsePolygon(data.polygon, jobToRecover.polygon);
       await onRouteBoundsPrepared?.(recoveryRouteBounds);
       pullIntentRef.current[data.job_id] = {
-        polygon: resumedExistingJob ? (data.polygon || []) : (jobToRecover.polygon || []),
+        polygon: recoveryPolygon,
         requestedCount: Number(
           resumedExistingJob
             ? (data.requested_properties ?? data.total_expected ?? 0)
@@ -803,9 +815,12 @@ export default function TerritoryPrompt({
         maxHomeValue: resumedExistingJob ? (data.max_price ?? null) : (recoveryMetadata.filters?.max_price ?? null),
         routeBounds: recoveryRouteBounds
       };
-      if (resumedExistingJob && Array.isArray(data.polygon) && data.polygon.length >= 3) {
+      if (recoveryPolygon.length >= 3) {
         try { localStorage.setItem('fk_drawnPolygonQueried', 'true'); } catch {}
-        setDrawnPolygon(data.polygon, true);
+        setDrawnPolygon(recoveryPolygon, true);
+      }
+      if (data.polygon_repaired === true) {
+        toast.info('FirstKnock cleaned up overlapping boundary lines. The map now shows the exact area being imported.');
       }
       rememberActivePrecisionJob(data.job_id);
       startPolling(data.job_id);
@@ -865,7 +880,8 @@ export default function TerritoryPrompt({
         return;
       }
 
-      savePolygonToHistory(drawnPolygon, {
+      const previewPolygon = canonicalResponsePolygon(d.polygon, drawnPolygon);
+      savePolygonToHistory(previewPolygon, {
         previewed_at: new Date().toISOString(),
         criteria: {
           requested_properties: d.requested_properties ?? safeRequestedPropertyCount,
@@ -877,8 +893,11 @@ export default function TerritoryPrompt({
         }
       });
       localStorage.setItem('fk_drawnPolygonQueried', 'true');
-      setDrawnPolygon(drawnPolygon, true);
+      setDrawnPolygon(previewPolygon, true);
       window.dispatchEvent(new CustomEvent('fk-polygon-history-updated'));
+      if (d.polygon_repaired === true) {
+        toast.info('FirstKnock cleaned up overlapping boundary lines. The map now shows the exact area that will be imported.');
+      }
       toast.success(`Preview ready: up to ${(d.returned_property_count ?? safeRequestedPropertyCount).toLocaleString()} homes can be requested. Final count depends on sold homes in the area.`);
     } catch (e) {
       const msg = e.response?.data?.message || e.message;
@@ -1064,8 +1083,9 @@ export default function TerritoryPrompt({
         const serverOwnershipRangeDays = normalizeOwnershipRangeDays(data.ownership_range_days);
         const serverOwnershipRangeMode = data.ownership_range_mode === 'custom' && serverOwnershipRangeDays ? 'custom' : 'quick';
         const serverSoldMonths = Number(data.sold_months || 12);
+        const resumedPolygon = canonicalResponsePolygon(data.polygon);
         pullIntentRef.current[data.job_id] = {
-          polygon: data.polygon || [],
+          polygon: resumedPolygon,
           requestedCount: Number(data.requested_properties || data.total_expected || 0) || null,
           soldMonths: serverSoldMonths,
           ownershipRangeMode: serverOwnershipRangeMode,
@@ -1074,9 +1094,9 @@ export default function TerritoryPrompt({
           maxHomeValue: data.max_price ?? null,
           routeBounds: resumedRouteBounds
         };
-        if (Array.isArray(data.polygon) && data.polygon.length >= 3) {
+        if (resumedPolygon.length >= 3) {
           try { localStorage.setItem('fk_drawnPolygonQueried', 'true'); } catch {}
-          setDrawnPolygon(data.polygon, true);
+          setDrawnPolygon(resumedPolygon, true);
         }
         setPulling(true);
         setPullPct(0);
@@ -1092,10 +1112,11 @@ export default function TerritoryPrompt({
       }
       const startedRequestedCount = Number(data.requested_properties ?? effectiveRequestedPropertyCount) || effectiveRequestedPropertyCount;
       const startedRouteBounds = data.route_bounds || routeBounds || { enabled: false };
+      const startedPolygon = canonicalResponsePolygon(data.polygon, drawnPolygon);
       await onRouteBoundsPrepared?.(startedRouteBounds);
       if (data.job_id) {
         pullIntentRef.current[data.job_id] = {
-          polygon: drawnPolygon,
+          polygon: startedPolygon,
           requestedCount: effectiveRequestedPropertyCount,
           serverRequestedCount: startedRequestedCount,
           soldMonths: effectiveSoldMonths,
@@ -1107,7 +1128,7 @@ export default function TerritoryPrompt({
           limitedByFreeHomeCap: data.limited_by_free_home_cap === true
         };
       }
-      savePolygonToHistory(drawnPolygon, {
+      savePolygonToHistory(startedPolygon, {
         last_pull_date: new Date().toISOString(),
         job_id: data.job_id,
         repull_mode: isPreviousAreaPull ? repullMode : 'new_area',
@@ -1124,7 +1145,7 @@ export default function TerritoryPrompt({
         }
       });
       localStorage.setItem('fk_drawnPolygonQueried', 'true');
-      setDrawnPolygon(drawnPolygon, true);
+      setDrawnPolygon(startedPolygon, true);
       window.dispatchEvent(new CustomEvent('fk-polygon-history-updated'));
       setPulling(true);
       setPullPct(0);
@@ -1135,6 +1156,9 @@ export default function TerritoryPrompt({
       rememberActivePrecisionJob(data.job_id);
       startPolling(data.job_id);
       setShowPrecisionPullPanel(false);
+      if (data.polygon_repaired === true) {
+        toast.info('FirstKnock cleaned up overlapping boundary lines before importing. The map now shows the exact area being used.');
+      }
       toast.success(`Property import started for up to ${startedRequestedCount.toLocaleString()} homes. Routes will build automatically.`);
     } catch (e) {
       const errCode = e.response?.data?.error;

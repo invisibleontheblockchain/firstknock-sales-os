@@ -90,13 +90,6 @@ async function startProcessor(base44, jobId, expectedChunk = 0, processorToken =
     await Promise.race([invokePromise, sleep(PROCESSOR_START_WAIT_MS)]);
 }
 
-function normalizePolygon(input) {
-    if (!Array.isArray(input)) return [];
-    return input
-        .map(point => ({ lat: Number(point.lat), lng: Number(point.lng) }))
-        .filter(point => Number.isFinite(point.lat) && Number.isFinite(point.lng));
-}
-
 function normalizeRoutePoint(input) {
     if (!input || input.lat === null || input.lat === undefined || input.lat === '' || input.lng === null || input.lng === undefined || input.lng === '') {
         return null;
@@ -618,11 +611,16 @@ Deno.serve(async (req) => {
             return Response.json({ error: 'Could not resolve county/FIPS for this area. Please redraw inside a supported US county.' }, { status: 400 });
         }
 
+        const requestedPolygonHash = await polygonHash(polygon);
+
         if (body.dry_run === true) {
             return Response.json({
                 success: true,
                 dry_run: true,
                 provider: 'batchdata',
+                polygon,
+                polygon_hash: requestedPolygonHash,
+                polygon_repaired: polygonResult.repaired === true,
                 fips_code: fips.fips_code,
                 count_mode: countMode,
                 requested_properties: requestedProperties,
@@ -647,8 +645,6 @@ Deno.serve(async (req) => {
                 route_bounds: routeBounds
             });
         }
-
-        const requestedPolygonHash = await polygonHash(polygon);
 
         const startResult = await withPrecisionUsageLock(user.id, async () => {
         // 5.2 / 5.6 Active-job resolution.
@@ -676,6 +672,9 @@ Deno.serve(async (req) => {
         const activeJobs = selectOwnedPrecisionJobs([...activeById.values()], user);
 
         let activeDecision = { outcome: 'zero', count: 0, job: null, mismatched_fields: [], unprovable_fields: [] };
+        let activeCanonicalPolygon = null;
+        let activePolygonHash = null;
+        let activePolygonRepaired = false;
         if (activeJobs.length > 0) {
             // The target an identical order would resolve to, treating the active
             // job's own reservation as available - otherwise a job would always
@@ -690,10 +689,13 @@ Deno.serve(async (req) => {
                 enteredCount: requestedValue,
                 lockedRemaining: compatibilityRemaining
             });
-            let activePolygonHash = null;
-            if (activeJobs.length === 1 && !activeJobs[0].polygon_hash
-                && Array.isArray(activeJobs[0].polygon) && activeJobs[0].polygon.length >= 3) {
-                activePolygonHash = await polygonHash(normalizePolygon(activeJobs[0].polygon));
+            if (activeJobs.length === 1 && Array.isArray(activeJobs[0].polygon) && activeJobs[0].polygon.length >= 3) {
+                const activePolygonResult = normalizePrecisionPolygon(activeJobs[0].polygon);
+                if (activePolygonResult.ok) {
+                    activeCanonicalPolygon = activePolygonResult.points;
+                    activePolygonHash = await polygonHash(activeCanonicalPolygon);
+                    activePolygonRepaired = activePolygonResult.repaired === true;
+                }
             }
             activeDecision = classifyActivePrecisionJobs(activeJobs, requestedOrder({
                 polygon_hash: requestedPolygonHash,
@@ -708,7 +710,10 @@ Deno.serve(async (req) => {
                 route_bounds: routeBounds,
                 repull_mode: body.repull_mode || 'new_area',
                 previous_pull_date: body.previous_pull_date || null
-            }), { polygonHash: activePolygonHash });
+            }), {
+                polygonHash: activePolygonHash,
+                preferPolygonHash: activePolygonRepaired
+            });
         }
 
         if (activeDecision.outcome === 'one_exact_match') {
@@ -720,7 +725,9 @@ Deno.serve(async (req) => {
                 criteria_match: 'exact',
                 job_id: resumed.id,
                 message: 'An identical data pull is already running. Resuming that exact request.',
-                polygon: resumed.polygon || [],
+                polygon: activeCanonicalPolygon || resumed.polygon || [],
+                polygon_hash: activePolygonHash || resumed.polygon_hash || null,
+                polygon_repaired: activePolygonRepaired || resumed.dry_run_metadata?.polygon_repaired === true,
                 requested_properties: resumedOrder.effective_count,
                 sold_months: resumedOrder.sold_months,
                 min_price: resumedOrder.min_price,
@@ -831,6 +838,7 @@ Deno.serve(async (req) => {
             estimated_cost: Number((reservedProperties * 0.01).toFixed(2)),
             dry_run_metadata: {
                 county_resolution: fips,
+                ...(polygonResult.repaired ? { polygon_repaired: true } : {}),
                 requested_properties: reservedProperties,
                 requested_properties_before_cap: effectiveTarget.entered_count,
                 limited_by_free_home_cap: lockedLimitedByFreeHomeCap,
@@ -920,6 +928,9 @@ Deno.serve(async (req) => {
             status: 'started',
             job_id: job.id,
             provider: 'batchdata',
+            polygon,
+            polygon_hash: requestedPolygonHash,
+            polygon_repaired: polygonResult.repaired === true,
             active_job_outcome: 'zero',
             count_mode: countMode,
             requested_properties: reservedProperties,

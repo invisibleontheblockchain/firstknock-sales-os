@@ -9,7 +9,7 @@ import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { storage } from '@/lib/storage';
 
-import { Loader2, X, BarChart3, Filter } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { toast } from "sonner";
 import { determineEffectiveStatus, isPointInPolygon } from '../components/logic/territoryLogic';
 import { subMonths, subDays, isAfter, parseISO } from 'date-fns';
@@ -64,11 +64,6 @@ import {
 import { BRAND, DEFAULT_STATUS_COLORS, COLOR_SCHEME_MAP, LINE_DASH_MAP, ROUTE_COLORS } from '../components/map/homeMapConstants';
 
 import { LocationMarker, MapRefHandler, MapController } from '../components/map/MapHelpers';
-import MapAttributionControl from '../components/map/MapAttributionControl';
-import {
-    CARTO_ATTRIBUTION,
-    ESRI_IMAGERY_ATTRIBUTION,
-} from '../components/map/mapAttribution';
 import useViewportMapProperties from '../components/map/useViewportMapProperties';
 import { reoptimizeRoute } from '@/lib/reoptimizeRouteAction';
 import { buildRoadAwareGeneratedRoutes } from '@/lib/roadMatrixRouteGeneration'; import { requireUsableRouteContext } from '@/lib/routeContextGuard';
@@ -88,7 +83,6 @@ import {
     normalizeOwnershipRangeDays,
     normalizeRouteBoundsIntent,
     persistPrecisionJobContext,
-    polygonHistoryKey,
     precisionCandidateRank,
     readPersistedPrecisionJobContext,
 } from '../components/map/homeMapHelpers';
@@ -661,7 +655,8 @@ export default function Home() {
         const byKey = new Map();
         const addEntry = (polygon, entry = {}) => {
             if (!polygon || polygon.length < 3) return;
-            const key = polygonHistoryKey(polygon);
+            const key = exactPolygonKey(polygon);
+            if (!key) return;
             const existing = byKey.get(key);
             const existingTime = new Date(existing?.last_pull_date || existing?.date || 0).getTime();
             const incomingTime = new Date(entry.last_pull_date || entry.date || 0).getTime();
@@ -1573,18 +1568,18 @@ export default function Home() {
             const activeFetchJobId = currentBatchDataJobIdRef.current || currentBatchDataJobId;
             const currentJobPolygon = normalizeHistoryPolygon(currentBatchDataPolygonRef.current);
             const normalizedUiPolygon = normalizeHistoryPolygon(rawUiGenerationPolygon);
-            const activeGenerationPolygon = normalizedUiPolygon.length > 2
-                ? normalizedUiPolygon
-                : (activeFetchJobId && currentJobPolygon.length > 2 ? currentJobPolygon : null);
+            const activeGenerationPolygon = activeFetchJobId && currentJobPolygon.length > 2
+                ? currentJobPolygon
+                : (normalizedUiPolygon.length > 2 ? normalizedUiPolygon : null);
             console.log(`[generateRoutes] Polygon source: job=${currentJobPolygon.length}, state=${Array.isArray(drawnPolygon) ? drawnPolygon.length : 0}, draft=${Array.isArray(draftPolygon) ? draftPolygon.length : 0}, stored=${Array.isArray(storedPolygon) ? storedPolygon.length : 0}`);
             const activeCustomOwnershipRangeDays = activeFetchJobId
                 ? normalizeOwnershipRangeDays(currentBatchDataOwnershipRangeDaysRef.current)
                 : null;
             const activePolygonKey = activeGenerationPolygon
-                ? (activeCustomOwnershipRangeDays ? exactPolygonKey(activeGenerationPolygon) : polygonHistoryKey(activeGenerationPolygon))
+                ? exactPolygonKey(activeGenerationPolygon)
                 : null;
             const currentJobPolygonKey = currentJobPolygon.length > 2
-                ? (activeCustomOwnershipRangeDays ? exactPolygonKey(currentJobPolygon) : polygonHistoryKey(currentJobPolygon))
+                ? exactPolygonKey(currentJobPolygon)
                 : null;
             const requestedPrecisionCount = activeFetchJobId ? currentBatchDataRequestedCountRef.current : null;
             const isCurrentBatchDataRun = !!activeFetchJobId && !!activeGenerationPolygon && !!activePolygonKey && activePolygonKey === currentJobPolygonKey;
