@@ -6,6 +6,9 @@ import { base44 } from '@/api/base44Client';
 import { motion, AnimatePresence } from "framer-motion";
 import AssistantMessage from '@/components/help/AssistantMessage';
 
+const PRECISION_PLAN_QUESTION = /precision|build mode|area pull|zip code|pricing tier|free plan|pro plan/i;
+const PRECISION_PLAN_ANSWER = 'Precision Pro is $99 per user per month and includes unlimited ZIP codes, unlimited route creation, and up to 1,000 Precision homes per monthly billing period after payment clears. The Free Plan also has unlimited ZIP codes and includes up to 50 homes on the initial Precision generation.';
+
 export default function AiAssistant() {
     const path = typeof window !== 'undefined' ? window.location.pathname : '';
     const isMapPage = path.endsWith('Home') || path === '/' || path.endsWith('RepHome');
@@ -36,8 +39,10 @@ export default function AiAssistant() {
         setIsLoading(true);
 
         try {
-            const res = await base44.functions.invoke('askAssistant', { question: userMsg });
-            setMessages(prev => [...prev, { role: 'system', content: res.data.answer }]);
+            const answer = PRECISION_PLAN_QUESTION.test(userMsg)
+                ? PRECISION_PLAN_ANSWER
+                : (await base44.functions.invoke('askAssistant', { question: userMsg })).data.answer;
+            setMessages(prev => [...prev, { role: 'system', content: answer }]);
         } catch (error) {
             console.error(error);
             setMessages(prev => [...prev, { role: 'system', content: "Sorry, I'm having trouble connecting right now. Please try again." }]);
