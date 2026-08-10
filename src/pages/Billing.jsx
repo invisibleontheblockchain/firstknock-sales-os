@@ -17,38 +17,17 @@ const PLANS = [
     isPopular: true,
     subtitle: 'For targeted property acquisition before routing.',
     includedFeatures: [
-      'Freehand area preview before using paid credits',
-      'Properties counter shows how many records remain',
-      'Paid pulls import real property records into territory',
-      'Best for targeted recently-sold/new-homeowner campaigns'
+      'Up to 1,000 Precision homes per monthly billing period after payment clears',
+      'Free accounts remain limited to 50 total single-family Precision homes',
+      'A card or free trial alone does not unlock the 1,000-home allowance',
+      'Freehand area preview before using Precision homes'
     ],
     features: [
       'Precision Mode at $99 per user per month',
       'Targeted property acquisition',
-      'Freehand area pulls and property imports',
+      'Recently-sold and new-homeowner filters',
       'Advanced Filters & Property Intel',
       'Priority Support'
-    ]
-  },
-  {
-    id: 'canvas',
-    name: 'Canvas Mode',
-    price: 19,
-    unit: '/rep/mo',
-    isPopular: false,
-    subtitle: 'For massive door-knocking teams working assigned routes.',
-    includedFeatures: [
-      'Per-rep pricing scales with your field team',
-      'Route builder, dispatch, Knock tab, and Checklist sync',
-      'GPS proof, outcomes, team progress, and route switching',
-      'No paid property pull required for route execution'
-    ],
-    features: [
-      'Canvas Mode at $19 per rep per month',
-      'AI-Optimized Walking Routes',
-      'Live GPS Tracking & Proof of Visit',
-      'Team Management & Dispatch',
-      'No paid property pull required'
     ]
   }
 ];
@@ -75,24 +54,6 @@ export default function Billing() {
     refetch: refetchPrecisionUsage
   } = usePrecisionUsage(user);
 
-  const {
-    data: teamMembersRaw = [],
-    isError: isTeamMembersError,
-    isFetching: isTeamMembersFetching,
-    isSuccess: isTeamMembersSuccess,
-    refetch: refetchTeamMembers
-  } = useQuery({
-    queryKey: ['teamMembersForBilling', user?.id],
-    queryFn: () => base44.entities.TeamMember.filter({ manager_id: user.id }, '-created_date', 500),
-    enabled: !!user?.id
-  });
-  const teamMembers = Array.isArray(teamMembersRaw) ? teamMembersRaw : (teamMembersRaw?.items || []);
-
-  const activeRepCount = Math.max(
-    1,
-    teamMembers.filter((member) => member.role === 'rep' && member.status !== 'inactive').length
-  );
-
   const handleSubscribe = async (planId, trialDays = 0) => {
     // Check if running in iframe (preview mode)
     if (window.self !== window.top) {
@@ -107,7 +68,7 @@ export default function Billing() {
       
       const res = await base44.functions.invoke('createCheckoutSession', {
         planId,
-        quantity: planId === 'canvas' ? activeRepCount : 1,
+        quantity: 1,
         successUrl: window.location.origin + '/Billing?success=true',
         cancelUrl: window.location.origin + '/Billing?canceled=true',
         trialDays: trialDays
@@ -147,7 +108,7 @@ export default function Billing() {
       const res = await base44.functions.invoke('createCheckoutSession', {
         action: 'activate_trial',
         planId,
-        quantity: planId === 'canvas' ? activeRepCount : 1,
+        quantity: 1,
         returnUrl: window.location.origin + '/Billing?billing_return=true'
       });
       const result = res?.data || res;
@@ -190,7 +151,7 @@ export default function Billing() {
     const params = new URLSearchParams(window.location.search);
     let refreshTimer;
     if (params.get('success') === 'true') {
-      toast.success("Stripe checkout is complete. Your subscription is being updated.", { duration: 6000 });
+      toast.success("Checkout is complete. The 1,000-home Precision allowance unlocks after Stripe confirms the $99 payment.", { duration: 7000 });
       window.history.replaceState({}, '', window.location.pathname);
       refetchUser();
       refetchPrecisionUsage();
@@ -218,9 +179,7 @@ export default function Billing() {
   }, [refetchPrecisionUsage, refetchUser]);
 
   const { isTrialing, isActive, needsPaymentRecovery, hasSubscription: isSubscribed } = getBillingState(user);
-  const billingReadyForPlan = (planId) => isUserLoaded && (
-    planId !== 'canvas' || (isTeamMembersSuccess && !isTeamMembersFetching)
-  );
+  const billingReadyForPlan = () => isUserLoaded;
 
   const handleManageSubscription = async () => {
     try {
@@ -246,8 +205,23 @@ export default function Billing() {
                 <div className="text-center space-y-2 sm:space-y-3">
                     <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight">FirstKnock Plans</h1>
                     <p className="text-sm sm:text-base text-gray-400 max-w-2xl mx-auto">
-                        Canvas is $19 per rep/month for high-volume teams. Precision is $99 per user/month for paid targeted property discovery.
+                        Precision is $99 per user each month for targeted property discovery.
                     </p>
+                </div>
+
+                <div className="mx-auto grid w-full max-w-3xl gap-3 sm:grid-cols-2">
+                    <div className="rounded-xl border border-white/10 bg-white/[0.04] p-4">
+                        <p className="text-xs font-extrabold uppercase tracking-wider text-white">Knock decisions</p>
+                        <p className="mt-2 text-sm leading-relaxed text-gray-400">
+                            Free accounts must add a valid card after 25 logged decisions to keep logging. Adding a card does not purchase Precision.
+                        </p>
+                    </div>
+                    <div className="rounded-xl border border-yellow-500/30 bg-yellow-500/[0.07] p-4">
+                        <p className="text-xs font-extrabold uppercase tracking-wider text-yellow-400">Precision unlock</p>
+                        <p className="mt-2 text-sm leading-relaxed text-gray-300">
+                            The $99 payment must successfully clear before up to 1,000 Precision homes unlock for the monthly billing period. A trial or card on file alone remains at the free 50-home total limit.
+                        </p>
+                    </div>
                 </div>
 
                 {/* Current Usage — hidden on mobile to save space */}
@@ -289,7 +263,7 @@ export default function Billing() {
         }
 
                 {/* Combined Pricing Cards */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 max-w-5xl mx-auto gap-4 sm:gap-6">
+                <div className="mx-auto grid max-w-3xl grid-cols-1 gap-4 sm:gap-6">
                     {PLANS.map((plan) => (
                         <div key={plan.id} className={`relative rounded-2xl p-5 sm:p-6 border ${plan.isPopular ? 'border-yellow-500 bg-gray-900/80 shadow-[0_0_30px_rgba(255,215,0,0.1)]' : 'border-gray-800 bg-[#111]'} backdrop-blur-sm flex flex-col`}>
                             {plan.isPopular && (
@@ -320,11 +294,6 @@ export default function Billing() {
                                     <span className="text-4xl sm:text-4xl font-extrabold text-white">${plan.price}</span>
                                     <span className="text-gray-400 text-sm sm:text-sm">{plan.unit}</span>
                                 </div>
-                                {plan.id === 'canvas' && (
-                                    <p className="text-xs text-purple-300 mt-3">
-                                        Billing for {activeRepCount} active rep{activeRepCount === 1 ? '' : 's'} today.
-                                    </p>
-                                )}
                                 {plan.id === 'precision' && (
                                     <div className="mt-3 rounded-xl bg-black/30 border border-white/10 p-3 text-left">
                                         {precisionUsage && !isPrecisionUsageError && !isPrecisionUsageFetching ? (
@@ -368,28 +337,6 @@ export default function Billing() {
                                     </li>
                                 ))}
                             </ul>
-
-                            {plan.id === 'canvas'
-                              && isUserLoaded
-                              && (!isSubscribed || shouldShowTrialActivation(user, plan.id))
-                              && !billingReadyForPlan(plan.id) && (
-                                <div className="rounded-lg border border-gray-700 bg-gray-900/60 px-3 py-3 text-center text-xs text-gray-300">
-                                    {isTeamMembersError ? (
-                                        <>
-                                            <p>We could not verify your active rep count, so Canvas checkout is paused.</p>
-                                            <button
-                                                type="button"
-                                                onClick={() => refetchTeamMembers()}
-                                                className="mt-2 font-semibold text-yellow-400 hover:text-yellow-300"
-                                            >
-                                                Retry seat check
-                                            </button>
-                                        </>
-                                    ) : (
-                                        <p>Verifying your active rep count before checkout…</p>
-                                    )}
-                                </div>
-                            )}
 
                             {billingReadyForPlan(plan.id) && !isSubscribed && (
                                 <div className="flex flex-col gap-3 sm:gap-3">
