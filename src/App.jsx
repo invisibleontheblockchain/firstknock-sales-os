@@ -6,8 +6,8 @@ import { queryClientInstance } from '@/lib/query-client'
 import NavigationTracker from '@/lib/NavigationTracker'
 import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
 import PageNotFound from './lib/PageNotFound';
-import { AuthProvider, useAuth } from '@/lib/AuthContext';
-import UserNotRegisteredError from '@/components/UserNotRegisteredError';
+import { AuthProvider } from '@/lib/AuthContext';
+import ProtectedRoute from '@/components/ProtectedRoute';
 import Layout from './Layout.jsx';
 
 // Phase 5 — code-splitting: every page in ./pages is its own lazy-loaded chunk.
@@ -45,52 +45,38 @@ function PrivateHqAliasRedirect() {
   );
 }
 
-const AuthenticatedApp = () => {
-  const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
+const AUTH_PAGE_KEYS = new Set(['Login', 'Register', 'ForgotPassword', 'ResetPassword']);
 
-  // Show loading spinner while checking app public settings or auth
-  if (isLoadingPublicSettings || isLoadingAuth) {
-    return (
-      <div className="fixed inset-0 flex items-center justify-center">
-        <div className="w-8 h-8 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin"></div>
-      </div>
-    );
-  }
+const RoutedApp = () => (
+  <Routes>
+    <Route path="/login" element={<Pages.Login />} />
+    <Route path="/register" element={<Pages.Register />} />
+    <Route path="/forgot-password" element={<Pages.ForgotPassword />} />
+    <Route path="/reset-password" element={<Pages.ResetPassword />} />
 
-  // Handle authentication errors
-  if (authError) {
-    if (authError.type === 'user_not_registered') {
-      return <UserNotRegisteredError />;
-    } else if (authError.type === 'auth_required') {
-      // Redirect to login automatically
-      navigateToLogin();
-      return null;
-    }
-  }
-
-  // Render the main app
-  return (
-    <Routes>
+    <Route element={<ProtectedRoute />}>
       <Route path="/" element={
         <LayoutWrapper currentPageName={mainPageKey}>
           <MainPage />
         </LayoutWrapper>
       } />
-      {Object.entries(Pages).map(([path, Page]) => (
-        <Route
-          key={path}
-          path={`/${path}`}
-          element={
-            <LayoutWrapper currentPageName={path}>
-              <Page />
-            </LayoutWrapper>
-          }
-        />
-      ))}
+      {Object.entries(Pages)
+        .filter(([path]) => !AUTH_PAGE_KEYS.has(path))
+        .map(([path, Page]) => (
+          <Route
+            key={path}
+            path={`/${path}`}
+            element={
+              <LayoutWrapper currentPageName={path}>
+                <Page />
+              </LayoutWrapper>
+            }
+          />
+        ))}
       <Route path="*" element={<PageNotFound />} />
-    </Routes>
-  );
-};
+    </Route>
+  </Routes>
+);
 
 
 function App() {
@@ -108,7 +94,7 @@ function App() {
               <div className="w-8 h-8 border-4 border-slate-700 border-t-yellow-500 rounded-full animate-spin"></div>
             </div>
           }>
-            <AuthenticatedApp />
+            <RoutedApp />
           </React.Suspense>
         </Router>
         <Toaster />
