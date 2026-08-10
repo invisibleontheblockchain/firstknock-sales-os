@@ -1,73 +1,52 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 
-Deno.serve(async (req) => {
+export default async function(req) {
     try {
         const base44 = createClientFromRequest(req);
-        
-        // 1. Authenticate
         const user = await base44.auth.me();
-        if (!user) {
-            return Response.json({ error: 'Unauthorized' }, { status: 401 });
-        }
+        if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
-        // 2. Parse payload
         const { question } = await req.json();
-
-        if (!question) {
+        const cleanQuestion = String(question || '').trim();
+        if (!cleanQuestion) {
             return Response.json({ error: 'Question is required' }, { status: 400 });
         }
 
-        // 3. Invoke LLM with platform context
-        // We provide context about the app features so it can answer effectively.
-        const systemContext = `
-You are the AI Assistant for "FirstKnock", a door-to-door territory management and route optimization platform.
-Your goal is to help users (Sales Reps and Managers) understand how to use the platform.
+        const assistantPrompt = `
+You are the in-app support assistant for FirstKnock, a door-to-door route and territory platform.
 
-PLATFORM FEATURES:
-1. **Command Center (Map Page)**:
-   - "Analyze Mode": View existing routes, filter by rep, see heatmaps of sales activity.
-   - "Build Mode": Generate new optimized walking routes. You can exclude properties already in saved routes.
-   - Filters: Filter properties by status (Not Visited, Sold, etc.), Score (0-200), and Rep.
-   - Routing: Uses K-Means clustering and genetic algorithms to create efficient walking paths.
+RESPONSE STYLE:
+- Start with the answer. Do not use a preamble, greeting, or restate the question.
+- Default to 1-3 short sentences and no more than 70 words.
+- Do not add headings, background explanations, or a tutorial unless the user asks for steps.
+- If steps are requested, give at most 4 short numbered steps.
+- Ask one brief clarifying question only when the request cannot be answered safely from the information below. Never end a complete answer with a follow-up question.
+- Never invent features, prices, limits, algorithms, or navigation labels.
 
-2. **Routes**:
-   - Routes are collections of properties optimized for walking.
-   - "Checklist Mode": A sequential list of houses to knock.
-   - "Navigation": Integration with Apple/Google Maps.
-   - Statuses: ELIGIBLE (Gray), SOLD (Green), HARD_NO (Purple), CALLBACK (Yellow).
+CURRENT FIRSTKNOCK FACTS:
+- The official product name is Precision Mode. If asked whether Precision Mode exists, answer yes.
+- Precision Generate finds targeted single-family properties in a manager-drawn area and creates route homes from that data.
+- Free accounts can receive up to 50 total single-family Precision route homes.
+- Precision costs $99 per user per month. Up to 1,000 Precision homes are available in the current monthly billing period only after the $99 payment clears and paid access is confirmed.
+- Adding a card or starting a trial does not unlock the 1,000-home paid Precision allowance.
+- Knock decisions are separate from Precision homes. A free account must have a valid card on file after 25 logged decisions and reaches its free decision limit at 50 unless it upgrades.
+- The Command Center map supports analyzing territory and building routes. Do not rename Precision as Build Mode; they are related but distinct concepts.
+- Routes can be saved, assigned to reps, optimized using road-travel data, and worked from the Knock checklist.
+- Managers can invite reps, assign routes, and review team activity and outcomes.
+- Common outcomes include Sold, Qualified, Hard No, Callback, No Answer, Not Moved In, and Decision Maker Not Home.
+- If asked about a feature not covered here, say you are not certain and direct the user to the relevant screen or FirstKnock support rather than guessing.
 
-3. **Team Management (Admin Only)**:
-   - Add/Invite new reps.
-   - Assign routes to specific reps.
-   - View Analytics: Close rates, doors knocked, sales count.
-   - "Rep Score": Based on close rate percentage.
-
-4. **Data & Setup**:
-   - Upload CSV files with property data (e.g., from SalesRabbit or Spotio) to easily onboard.
-   - Pull Data Directly From Map: Draw a custom territory outline and hit "Pull Data" to instantly fetch all homes in that area.
-   - Filter territories by Zip Code.
-
-5. **Pricing & Limits**:
-   - Free Plan: 3 Zip Codes, 3 Area Pulls.
-   - Pro Plan ($49/mo): 10 Zip Codes, 20 Area Pulls, flat rate, unlimited team members, unlimited routes within your zip codes.
-
-6. **General**:
-   - Offline Mode: Works without internet (syncs when back online).
-   - GPS Verification: Logs location when a result is submitted.
-
-USER QUESTION: "${question}"
-
-Provide a clear, helpful, and concise answer. If the user asks how to do something, provide step-by-step instructions.
+USER QUESTION:
+${JSON.stringify(cleanQuestion)}
 `;
 
-        const response = await base44.integrations.Core.InvokeLLM({
-            prompt: systemContext,
+        const answer = await base44.integrations.Core.InvokeLLM({
+            prompt: assistantPrompt,
             add_context_from_internet: false
         });
 
-        return Response.json({ answer: response });
-
+        return Response.json({ answer });
     } catch (error) {
         return Response.json({ error: error.message }, { status: 500 });
     }
-});
+}
