@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Send, X, Bot } from 'lucide-react';
+import { Send, X, MessageSquareText, CircleUserRound } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { motion, AnimatePresence } from "framer-motion";
 import AssistantMessage from '@/components/help/AssistantMessage';
@@ -50,89 +50,92 @@ export default function AiAssistant() {
 
     return (
         <>
-            {/* Toggle Button */}
             {!isOpen && (
                 <motion.button
                     initial={{ scale: 0 }}
                     animate={{ scale: 1 }}
-                    whileHover={{ scale: 1.1 }}
-                    whileTap={{ scale: 0.9 }}
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
                     onClick={() => setIsOpen(true)}
-                    className="fixed bottom-20 md:bottom-24 right-4 z-50 flex h-12 w-12 items-center justify-center rounded-full border border-primary/40 bg-primary text-primary-foreground shadow-[0_10px_35px_rgba(46,235,87,0.35)] md:bottom-24 md:h-14 md:w-14"
+                    aria-label="Open FirstKnock AI"
+                    className="fixed bottom-20 right-4 z-50 flex h-12 w-12 items-center justify-center rounded-full border border-[color:var(--primary)] bg-black text-[color:var(--primary)] shadow-[0_10px_32px_rgba(0,0,0,0.7)] md:bottom-24 md:h-14 md:w-14"
                 >
-                    <Bot className="w-6 h-6 md:w-8 md:h-8" />
-                    <div className="absolute -top-1 -right-1 w-3 h-3 md:w-4 md:h-4 bg-red-500 rounded-full animate-pulse" />
+                    <MessageSquareText className="h-6 w-6 md:h-7 md:w-7" />
                 </motion.button>
             )}
 
-            {/* Chat Window */}
             <AnimatePresence>
                 {isOpen && (
                     <motion.div
-                        initial={{ opacity: 0, y: 20, scale: 0.95 }}
+                        initial={{ opacity: 0, y: 16, scale: 0.98 }}
                         animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, y: 20, scale: 0.95 }}
-                        className="fixed bottom-20 right-4 z-50 flex h-[60vh] max-h-[600px] w-[calc(100vw-32px)] flex-col overflow-hidden rounded-2xl border border-primary/25 bg-card shadow-[0_24px_80px_rgba(0,0,0,0.65)] md:bottom-24 md:h-[500px] md:w-[400px]"
+                        exit={{ opacity: 0, y: 16, scale: 0.98 }}
+                        className="fixed bottom-20 right-3 z-50 flex h-[calc(100dvh-9rem)] min-h-[460px] max-h-[860px] w-[calc(100vw-24px)] flex-col overflow-hidden rounded-md border border-white/10 bg-black shadow-[0_28px_90px_rgba(0,0,0,0.8)] sm:right-5 sm:w-[430px] md:bottom-20"
                     >
-                        {/* Header */}
-                        <div className="flex items-center justify-between border-b border-primary/20 bg-primary p-4">
-                            <div className="flex items-center gap-2 font-bold text-primary-foreground">
-                                <Bot className="w-6 h-6" />
-                                <span>FirstKnock AI</span>
+                        <div className="flex h-[88px] shrink-0 items-center justify-between border-b-[3px] border-[color:var(--primary)] bg-gradient-to-r from-[#171717] to-[#101010] px-6">
+                            <div className="flex items-center gap-4 text-white">
+                                <MessageSquareText className="h-7 w-7 text-white/35" strokeWidth={1.5} />
+                                <span className="font-heading text-[28px] font-medium tracking-tight">FirstKnock AI</span>
                             </div>
-                            <button 
+                            <button
                                 onClick={() => setIsOpen(false)}
-                                className="rounded-full p-1 text-primary-foreground transition-colors hover:bg-black/10"
+                                aria-label="Close FirstKnock AI"
+                                className="flex h-10 w-10 items-center justify-center text-white/35 transition-colors hover:text-white"
                             >
-                                <X className="w-5 h-5" />
+                                <X className="h-6 w-6" strokeWidth={1.5} />
                             </button>
                         </div>
 
-                        {/* Messages */}
-                        <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-[#0A0A0A]">
+                        <div className="flex-1 space-y-6 overflow-y-auto bg-black px-5 py-8">
                             {messages.map((msg, idx) => (
-                                <div 
-                                    key={idx} 
-                                    className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                                >
-                                    <div 
-                                        className={`max-w-[84%] rounded-2xl p-3 text-sm ${
-                                            msg.role === 'user'
-                                                ? 'rounded-tr-none bg-primary font-medium text-primary-foreground'
-                                                : 'rounded-tl-none border border-border bg-muted text-foreground'
-                                        }`}
+                                <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'items-start justify-start gap-3'}`}>
+                                    {msg.role !== 'user' && (
+                                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#292929] text-white/70">
+                                            <CircleUserRound className="h-6 w-6" strokeWidth={1.8} />
+                                        </div>
+                                    )}
+                                    <div className={msg.role === 'user'
+                                        ? 'max-w-[84%] rounded-xl border border-white/10 bg-gradient-to-br from-[#2B2B2B] to-[#181818] px-4 py-3 text-base leading-relaxed text-white/90 shadow-[0_8px_24px_rgba(0,0,0,0.35)]'
+                                        : 'max-w-[82%] pt-0.5 text-base leading-relaxed text-white/70'}
                                     >
                                         {msg.role === 'user' ? msg.content : <AssistantMessage content={msg.content} />}
                                     </div>
                                 </div>
                             ))}
                             {isLoading && (
-                                <div className="flex justify-start">
-                                    <div className="bg-[#222] p-3 rounded-2xl rounded-tl-none border border-gray-800 flex gap-1">
-                                        <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce" />
-                                        <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce delay-75" />
-                                        <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce delay-150" />
+                                <div className="flex items-center gap-3">
+                                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#292929] text-white/70">
+                                        <CircleUserRound className="h-6 w-6" strokeWidth={1.8} />
+                                    </div>
+                                    <div className="flex gap-1.5 py-3">
+                                        <div className="h-1.5 w-1.5 animate-bounce rounded-full bg-white/30" />
+                                        <div className="h-1.5 w-1.5 animate-bounce rounded-full bg-white/30 delay-75" />
+                                        <div className="h-1.5 w-1.5 animate-bounce rounded-full bg-white/30 delay-150" />
                                     </div>
                                 </div>
                             )}
                             <div ref={messagesEndRef} />
                         </div>
 
-                        {/* Input */}
-                        <form onSubmit={handleSubmit} className="p-3 bg-[#111] border-t border-gray-800 flex gap-2">
-                            <Input
-                                value={input}
-                                onChange={(e) => setInput(e.target.value)}
-                                placeholder="How do I create a route?"
-                                className="border-border bg-muted text-foreground focus:border-primary"
-                            />
-                            <Button 
-                                type="submit" 
-                                disabled={isLoading || !input.trim()}
-                                className="bg-primary text-primary-foreground hover:bg-accent"
-                            >
-                                <Send className="w-4 h-4" />
-                            </Button>
+                        <form onSubmit={handleSubmit} className="shrink-0 border-t border-white/10 bg-black p-3">
+                            <div className="relative">
+                                <Input
+                                    value={input}
+                                    onChange={(e) => setInput(e.target.value)}
+                                    placeholder="How do I create a route?"
+                                    className="h-14 rounded-xl border-white/10 bg-gradient-to-r from-[#171717] to-[#202020] pl-4 pr-14 text-base text-white placeholder:text-white/45 focus-visible:ring-1 focus-visible:ring-[color:var(--primary)]"
+                                />
+                                <Button
+                                    type="submit"
+                                    variant="ghost"
+                                    size="icon"
+                                    disabled={isLoading || !input.trim()}
+                                    aria-label="Send message"
+                                    className="absolute right-2 top-1/2 h-10 w-10 -translate-y-1/2 text-[color:var(--primary)] hover:bg-transparent hover:text-[color:var(--primary)]"
+                                >
+                                    <Send className="h-6 w-6" strokeWidth={1.8} />
+                                </Button>
+                            </div>
                         </form>
                     </motion.div>
                 )}
