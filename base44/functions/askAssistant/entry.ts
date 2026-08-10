@@ -3,7 +3,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 // The model occasionally appends an unsolicited pricing "Pro-Tip" quoting a $49
 // Pro Plan that does not exist. Drop any sentence/line that states a price or
 // plan name other than the verified $99 Precision price.
-const BAD_PRICING = /(\$(?!99\b)\d+)|pro plan/i;
+const BAD_PRICING = /(\$(?!99\b)\d+)|pro plan|unlimited (team|member|rep|seat|user)|(no|without) (extra|additional) (per-user |per user )?(cost|fee)/i;
 
 function stripIncorrectPricing(answer) {
     const text = String(answer || '');
@@ -60,6 +60,7 @@ CURRENT FIRSTKNOCK FACTS (AUTHORITATIVE):
 - The Command Center map supports analyzing territory and building routes. Precision Mode must never be renamed Build Mode.
 - Routes can be saved, assigned to reps, optimized using real road-travel data, and worked from the Knock checklist.
 - Managers can invite reps, assign routes, and review team activity and outcomes.
+- Team size is NOT unlimited and reps are NOT free. Each team member requires a paid seat on the manager's subscription, billed per user per month. An invite code only works once a seat has been paid for.
 - Common outcomes include Sold, Qualified, Hard No, Callback, No Answer, Not Moved In, and Decision Maker Not Home.
 
 PRECISION ANSWER RULES:
@@ -68,7 +69,9 @@ PRECISION ANSWER RULES:
 - Never claim FirstKnock uses K-Means clustering or genetic algorithms.
 - Never claim either plan limits ZIP codes or includes 3 area pulls, 20 area pulls, or any other area-pull allowance not listed here.
 - Never quote a $49 plan or call paid Precision the Pro Plan. The current paid Precision price is $99 per user per month.
-- If asked about a feature not covered here, say you are not certain and direct the user to the relevant screen or FirstKnock support rather than guessing.
+- Never say team members, seats, reps, or users are unlimited, free, or included at no extra cost. Seats are paid per user per month.
+- Never append a promotional "Pro-Tip", upsell, or pricing aside to an answer that was not about pricing.
+- Answer ONLY from the authoritative facts above. If a detail is not stated there, say you are not certain and point the user to the relevant screen or FirstKnock support. Never fill a gap with a plausible guess.
 
 USER QUESTION:
 ${JSON.stringify(cleanQuestion)}
