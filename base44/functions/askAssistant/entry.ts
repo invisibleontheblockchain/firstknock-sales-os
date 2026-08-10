@@ -1,5 +1,23 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 
+// The model occasionally appends an unsolicited pricing "Pro-Tip" quoting a $49
+// Pro Plan that does not exist. Drop any sentence/line that states a price or
+// plan name other than the verified $99 Precision price.
+const BAD_PRICING = /(\$(?!99\b)\d+)|pro plan/i;
+
+function stripIncorrectPricing(answer) {
+    const text = String(answer || '');
+    const kept = text
+        .split('\n')
+        .map((line) => line
+            .split(/(?<=[.!?])\s+/)
+            .filter((sentence) => !BAD_PRICING.test(sentence))
+            .join(' ')
+            .trim())
+        .filter((line, index, lines) => line || (index > 0 && lines[index - 1]));
+    return kept.join('\n').trim();
+}
+
 export default async function(req) {
     try {
         const base44 = createClientFromRequest(req);
@@ -61,7 +79,7 @@ ${JSON.stringify(cleanQuestion)}
             add_context_from_internet: false
         });
 
-        return Response.json({ answer });
+        return Response.json({ answer: stripIncorrectPricing(answer) });
     } catch (error) {
         return Response.json({ error: error.message }, { status: 500 });
     }
