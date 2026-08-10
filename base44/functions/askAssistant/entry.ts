@@ -37,6 +37,13 @@ export default async function(req) {
             });
         }
 
+        const teamQuestion = /team member|teammate|add (a )?(rep|user|member)|invite|seat|roster|team section|team management/i.test(cleanQuestion);
+        if (teamQuestion) {
+            return Response.json({
+                answer: 'Team members are not unlimited or free. Each rep needs a paid seat on your subscription, billed per user per month, and an invite code only works after that seat is paid for.\n\n1. Open the Team page.\n2. Add the seat to your subscription in Plans.\n3. Create an invite code and send it to the rep.\n4. Once they redeem it, assign them routes from the Command Center.'
+            });
+        }
+
         const assistantPrompt = `
 You are the in-app support assistant for FirstKnock, a door-to-door route and territory platform.
 
