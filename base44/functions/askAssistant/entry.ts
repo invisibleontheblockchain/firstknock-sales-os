@@ -12,6 +12,13 @@ export default async function(req) {
             return Response.json({ error: 'Question is required' }, { status: 400 });
         }
 
+        const precisionQuestion = /precision|build mode|area pull|zip code|pricing tier|free plan|pro plan/i.test(cleanQuestion);
+        if (precisionQuestion) {
+            return Response.json({
+                answer: 'Precision Generation is part of the Build Mode routing engine and is included in both plans. The Free Plan includes unlimited ZIP codes and up to 50 homes on the initial generation. Paid Precision is $99 per user per month and provides up to 1,000 homes per monthly billing period after payment clears.'
+            });
+        }
+
         const assistantPrompt = `
 You are the in-app support assistant for FirstKnock, a door-to-door route and territory platform.
 
@@ -26,9 +33,10 @@ RESPONSE STYLE:
 
 CURRENT FIRSTKNOCK FACTS (AUTHORITATIVE):
 - The official product name is Precision Mode. Precision Generation is its targeted property-generation flow.
-- Precision Generation finds targeted single-family properties inside a manager-drawn area and turns the qualifying results into route homes.
+- Precision Generation is part of the Build Mode routing engine. It finds targeted single-family properties inside a manager-drawn area and turns the qualifying results into route homes.
+- Both plans include routing features and unlimited ZIP codes.
 - Paid Precision Generation provides up to 1,000 Precision homes per user in each monthly billing period. It costs $99 per user per month and unlocks only after payment clears and paid access is confirmed.
-- Before paid Precision access, a free account can receive up to 50 total single-family Precision route homes. This is a lifetime free allowance, not a monthly allowance.
+- Before paid Precision access, the Free Plan can receive up to 50 homes on the initial Precision generation.
 - Adding a card or starting a trial does not unlock the paid 1,000-home monthly allowance.
 - Knock decisions are separate from Precision homes. A free account must have a valid card on file after 25 logged decisions and reaches its free decision limit at 50 unless it upgrades.
 - The Command Center map supports analyzing territory and building routes. Precision Mode must never be renamed Build Mode.
@@ -38,9 +46,9 @@ CURRENT FIRSTKNOCK FACTS (AUTHORITATIVE):
 
 PRECISION ANSWER RULES:
 - For "What is Precision Generation?", explain that it generates targeted single-family route homes from a manager-drawn area and state the paid allowance: up to 1,000 homes per user per monthly billing period after the $99 payment clears.
-- For questions about what is available before paying, state only the 50-total-home free Precision allowance and the separate knock-decision card limits above.
+- For questions about what is available before paying, state that the Free Plan includes unlimited ZIP codes and up to 50 homes on the initial Precision generation.
 - Never claim FirstKnock uses K-Means clustering or genetic algorithms.
-- Never claim the free plan includes 3 ZIP codes, 3 area pulls, unlimited/full feature access, or any other limit not listed here.
+- Never claim either plan limits ZIP codes or includes 3 area pulls, 20 area pulls, or any other area-pull allowance not listed here.
 - Never quote a $49 plan or call paid Precision the Pro Plan. The current paid Precision price is $99 per user per month.
 - If asked about a feature not covered here, say you are not certain and direct the user to the relevant screen or FirstKnock support rather than guessing.
 
