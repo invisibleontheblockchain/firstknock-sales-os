@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Send, X, Bot } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { motion, AnimatePresence } from "framer-motion";
+import AssistantMessage from '@/components/help/AssistantMessage';
 
 export default function AiAssistant() {
     const path = typeof window !== 'undefined' ? window.location.pathname : '';
@@ -57,7 +58,7 @@ export default function AiAssistant() {
                     whileHover={{ scale: 1.1 }}
                     whileTap={{ scale: 0.9 }}
                     onClick={() => setIsOpen(true)}
-                    className="fixed bottom-20 md:bottom-24 right-4 z-50 w-12 h-12 md:w-14 md:h-14 rounded-full shadow-2xl flex items-center justify-center bg-gradient-to-br from-yellow-400 to-yellow-600 text-black border-2 border-yellow-200"
+                    className="fixed bottom-20 md:bottom-24 right-4 z-50 flex h-12 w-12 items-center justify-center rounded-full border border-primary/40 bg-primary text-primary-foreground shadow-[0_10px_35px_rgba(46,235,87,0.35)] md:bottom-24 md:h-14 md:w-14"
                 >
                     <Bot className="w-6 h-6 md:w-8 md:h-8" />
                     <div className="absolute -top-1 -right-1 w-3 h-3 md:w-4 md:h-4 bg-red-500 rounded-full animate-pulse" />
@@ -71,17 +72,17 @@ export default function AiAssistant() {
                         initial={{ opacity: 0, y: 20, scale: 0.95 }}
                         animate={{ opacity: 1, y: 0, scale: 1 }}
                         exit={{ opacity: 0, y: 20, scale: 0.95 }}
-                        className="fixed bottom-20 md:bottom-24 right-4 z-50 w-[calc(100vw-32px)] md:w-[400px] h-[60vh] md:h-[500px] max-h-[600px] bg-[#111] border border-yellow-500/30 rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+                        className="fixed bottom-20 right-4 z-50 flex h-[60vh] max-h-[600px] w-[calc(100vw-32px)] flex-col overflow-hidden rounded-2xl border border-primary/25 bg-card shadow-[0_24px_80px_rgba(0,0,0,0.65)] md:bottom-24 md:h-[500px] md:w-[400px]"
                     >
                         {/* Header */}
-                        <div className="p-4 bg-gradient-to-r from-yellow-500 to-yellow-600 flex items-center justify-between">
-                            <div className="flex items-center gap-2 text-black font-bold">
+                        <div className="flex items-center justify-between border-b border-primary/20 bg-primary p-4">
+                            <div className="flex items-center gap-2 font-bold text-primary-foreground">
                                 <Bot className="w-6 h-6" />
                                 <span>FirstKnock AI</span>
                             </div>
                             <button 
                                 onClick={() => setIsOpen(false)}
-                                className="p-1 rounded-full hover:bg-black/10 text-black transition-colors"
+                                className="rounded-full p-1 text-primary-foreground transition-colors hover:bg-black/10"
                             >
                                 <X className="w-5 h-5" />
                             </button>
@@ -95,13 +96,13 @@ export default function AiAssistant() {
                                     className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
                                 >
                                     <div 
-                                        className={`max-w-[80%] p-3 rounded-2xl text-sm ${
-                                            msg.role === 'user' 
-                                                ? 'bg-yellow-500 text-black rounded-tr-none font-medium' 
-                                                : 'bg-[#222] text-white rounded-tl-none border border-gray-800'
+                                        className={`max-w-[84%] rounded-2xl p-3 text-sm ${
+                                            msg.role === 'user'
+                                                ? 'rounded-tr-none bg-primary font-medium text-primary-foreground'
+                                                : 'rounded-tl-none border border-border bg-muted text-foreground'
                                         }`}
                                     >
-                                        {msg.content}
+                                        {msg.role === 'user' ? msg.content : <AssistantMessage content={msg.content} />}
                                     </div>
                                 </div>
                             ))}
@@ -123,12 +124,12 @@ export default function AiAssistant() {
                                 value={input}
                                 onChange={(e) => setInput(e.target.value)}
                                 placeholder="How do I create a route?"
-                                className="bg-[#222] border-gray-700 text-white focus:border-yellow-500"
+                                className="border-border bg-muted text-foreground focus:border-primary"
                             />
                             <Button 
                                 type="submit" 
                                 disabled={isLoading || !input.trim()}
-                                className="bg-yellow-500 text-black hover:bg-yellow-400"
+                                className="bg-primary text-primary-foreground hover:bg-accent"
                             >
                                 <Send className="w-4 h-4" />
                             </Button>
