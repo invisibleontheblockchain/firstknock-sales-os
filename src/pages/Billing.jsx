@@ -376,9 +376,21 @@ export default function Billing() {
                     ))}
                 </div>
 
-                {isUserLoaded && (!isSubscribed || isTrialing) && (
+                {isUserLoaded && (
                     <p className="text-center text-xs sm:text-xs text-gray-500 mt-3 sm:mt-4">
                         Secure payments via Stripe. Cancel anytime.
+                        {isSubscribed && (
+                            <>
+                                {' '}
+                                <button
+                                    type="button"
+                                    onClick={handleManageSubscription}
+                                    className="text-yellow-500 hover:text-yellow-400 underline font-semibold"
+                                >
+                                    Cancel subscription
+                                </button>
+                            </>
+                        )}
                     </p>
                 )}
 
