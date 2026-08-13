@@ -868,6 +868,12 @@ Deno.serve(async (req) => {
                 precision_usage_period_start: lockedEntitlement.periodStart,
                 free_property_cap: FREE_PROPERTY_CAP,
                 count_mode: countMode,
+                // "Max available" is a drain, not a quantity: the processor must
+                // keep paging until BatchData has nothing left inside the drawn
+                // area. The numeric target stays only as the billing reservation.
+                // Metered accounts never drain — they stop at their allowance.
+                drain_until_exhausted: countMode === 'max_available'
+                    && lockedPaidPropertyLimit >= UNLIMITED_PROPERTY_CAP,
                 repull_mode: body.repull_mode || 'new_area',
                 previous_pull_date: body.previous_pull_date || null,
                 force_full_refresh: body.force_full_refresh === true,

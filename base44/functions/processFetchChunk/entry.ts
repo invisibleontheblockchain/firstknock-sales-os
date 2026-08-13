@@ -1412,6 +1412,13 @@ async function fetchBatchDataRecordsForMode(job, mode, requested, onProgress = n
     };
 }
 
+// A "max available" pull on an uncapped account drains the area: it stops only
+// when the provider returns an empty page, never because a record count was
+// reached. Metered pulls keep their numeric allowance as the stop condition.
+function drainsUntilExhausted(job) {
+    return job?.dry_run_metadata?.drain_until_exhausted === true;
+}
+
 function requestedPropertyTarget(job) {
     // Uncapped on purpose: a "max available" pull passes its full allowance and
     // must keep paging until the provider has nothing left inside the area.
@@ -1665,8 +1672,13 @@ Deno.serve(async (req) => {
         // Resume where the previous chunk stopped, and only ask for the records
         // still missing from the target so a chained pull cannot overshoot.
         const requestedTarget = requestedPropertyTarget(job);
+        const drainMode = drainsUntilExhausted(job);
         const deliveredBefore = await countPersistedPrecisionProperties(job.id).catch(() => 0);
-        const remainingTarget = Math.max(1, requestedTarget - deliveredBefore);
+        // A draining pull always asks for a full chunk: there is no remaining
+        // count to subtract, only pages left to read.
+        const remainingTarget = drainMode
+            ? CHUNK_MAX_SELECTED
+            : Math.max(1, requestedTarget - deliveredBefore);
         const resumeSkip = Math.max(0, Number(job.current_offset) || 0);
         const batchFetch = Array.isArray(body.synthetic_records)
             ? { records: body.synthetic_records, attempts: [{ mode: 'synthetic_records', count: body.synthetic_records.length }], mode_used: 'synthetic_records' }
@@ -1845,7 +1857,9 @@ Deno.serve(async (req) => {
         );
         const providerExhausted = Array.isArray(body.synthetic_records)
             || (batchFetch.attempts || []).some(attempt => attempt.provider_exhausted === true);
-        const moreWorkAvailable = !providerExhausted && settledUsageCount < requestedTarget && nextSkip > resumeSkip;
+        const moreWorkAvailable = !providerExhausted
+            && (drainMode || settledUsageCount < requestedTarget)
+            && nextSkip > resumeSkip;
 
         if (moreWorkAvailable) {
             const nextChunk = (job.chunk_number || 0) + 1;
