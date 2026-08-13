@@ -194,6 +194,27 @@ function splitStreetGroupByGaps(props) {
 }
 
 /**
+ * The canonical street-block decomposition: group by street, then split where a
+ * spatial gap proves the pieces are disconnected.
+ *
+ * Exported because the road matrix has to bound its coordinates by the SAME
+ * blocks the solver reorders. If the matrix grouped doors any other way, a leg
+ * the solver prices between two blocks could land inside one matrix group and
+ * silently become an aerial estimate.
+ *
+ * Cost-free: grouping and gap splitting use haversine only, never the matrix.
+ */
+export function buildStreetBlocks(properties) {
+    if (!Array.isArray(properties) || properties.length === 0) return [];
+    return [...groupByStreet(properties).entries()]
+        .sort(([firstKey], [secondKey]) => compareStableKeys(firstKey, secondKey))
+        .flatMap(([key, allProps]) => splitStreetGroupByGaps(allProps).map((doors, pieceIndex, pieces) => ({
+            key: pieces.length > 1 ? `${key}#${pieceIndex}` : key,
+            doors
+        })));
+}
+
+/**
  * Road-aware street sweep.
  * @param {Array} properties doors to order
  * @param {object} options { distanceBetween, startLocation, endLocation }
@@ -246,17 +267,15 @@ export function roadAwareStreetSweep(properties, options = {}) {
     }
 
     function buildBlocks() {
-        return [...groupByStreet(properties).entries()]
-            .sort(([firstKey], [secondKey]) => compareStableKeys(firstKey, secondKey))
-            .flatMap(([key, allProps]) => splitStreetGroupByGaps(allProps).map((props, pieceIndex, pieces) => {
-                const forward = intraStreet2Opt(boustrophedonStreet([...props], false));
-                return {
-                    key: pieces.length > 1 ? `${key}#${pieceIndex}` : key,
-                    lat: forward.reduce((sum, p) => sum + Number(p.lat), 0) / forward.length,
-                    lng: forward.reduce((sum, p) => sum + Number(p.lng), 0) / forward.length,
-                    variants: [forward, [...forward].reverse()]
-                };
-            }));
+        return buildStreetBlocks(properties).map(({ key, doors }) => {
+            const forward = intraStreet2Opt(boustrophedonStreet([...doors], false));
+            return {
+                key,
+                lat: forward.reduce((sum, p) => sum + Number(p.lat), 0) / forward.length,
+                lng: forward.reduce((sum, p) => sum + Number(p.lng), 0) / forward.length,
+                variants: [forward, [...forward].reverse()]
+            };
+        });
     }
 
     /** DP over block orientations for a fixed block sequence. */

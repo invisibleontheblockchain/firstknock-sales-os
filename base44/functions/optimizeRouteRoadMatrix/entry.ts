@@ -10,12 +10,16 @@ import {
 import { roadAwareStreetSweep } from '../../shared/roadAwareStreetSweep.js';
 import {
     buildRoadMatrixCacheKey,
-    createMatrixMetricFns,
     DEFAULT_OSRM_BASE_URL,
     fetchRoadMatrix,
-    MAX_ROUTE_MATRIX_POINTS,
     ROAD_MATRIX_VERSION
 } from '../../shared/roadMatrix.js';
+import {
+    createTieredMatrixMetricFns,
+    MAX_TIERED_ROUTE_DOORS,
+    planTieredRoadMatrix,
+    TIER_BLOCK
+} from '../../shared/roadMatrixTiers.js';
 import {
     DURATION_TIE_TOLERANCE_MINUTES,
     measureRouteCandidate,
@@ -76,9 +80,9 @@ export default async function (req: Request): Promise<Response> {
                 code: 'TOO_FEW_PROPERTIES'
             }, { status: 400 });
         }
-        if (properties.length > MAX_ROUTE_MATRIX_POINTS) {
+        if (properties.length > MAX_TIERED_ROUTE_DOORS) {
             return Response.json({
-                error: `Road matrix limit is ${MAX_ROUTE_MATRIX_POINTS} properties per route.`,
+                error: `Road matrix limit is ${MAX_TIERED_ROUTE_DOORS} properties per route.`,
                 code: 'TOO_MANY_PROPERTIES'
             }, { status: 400 });
         }
@@ -119,8 +123,12 @@ export default async function (req: Request): Promise<Response> {
             seenAnchorKeys.add(key);
             anchorPoints.push(anchor);
         });
-        const anchorsInMatrix = properties.length + anchorPoints.length <= MAX_ROUTE_MATRIX_POINTS;
-        const matrixPoints = anchorsInMatrix ? [...properties, ...anchorPoints] : properties;
+        // How many coordinates this route can afford to price. Beyond the proven
+        // door limit the matrix is bounded at the street-block level rather than
+        // abandoned, so a large route is still ordered on real road distances.
+        const plan = planTieredRoadMatrix(properties, anchorPoints);
+        const anchorsInMatrix = plan.ok && plan.anchorsIncluded;
+        const matrixPoints = plan.ok ? plan.matrixPoints : properties;
         const cacheKey = await buildRoadMatrixCacheKey(matrixPoints, profile);
         const solverStartedAt = Date.now();
 
@@ -138,16 +146,18 @@ export default async function (req: Request): Promise<Response> {
         const continuityOrder = continuityChunks.doorChunks.flat().map((door) => door.property);
 
         let matrix = null;
-        let matrixError = '';
+        let matrixError = plan.ok ? '' : `Road matrix could not be bounded: ${plan.code}.`;
         const matrixStartedAt = Date.now();
-        try {
-            matrix = await fetchRoadMatrix(matrixPoints, {
-                baseUrl: readSecret('OSRM_BASE_URL') || DEFAULT_OSRM_BASE_URL,
-                profile,
-                timeoutMs
-            });
-        } catch (error) {
-            matrixError = error.message;
+        if (plan.ok) {
+            try {
+                matrix = await fetchRoadMatrix(matrixPoints, {
+                    baseUrl: readSecret('OSRM_BASE_URL') || DEFAULT_OSRM_BASE_URL,
+                    profile,
+                    timeoutMs
+                });
+            } catch (error) {
+                matrixError = error.message;
+            }
         }
         const matrixMs = Date.now() - matrixStartedAt;
 
@@ -161,6 +171,10 @@ export default async function (req: Request): Promise<Response> {
             matrix_provider: 'osrm',
             road_matrix_version: ROAD_MATRIX_VERSION,
             road_matrix_cache_key: cacheKey,
+            // The tier a route was measured at, so a stored order can never
+            // claim more precision than the matrix behind it actually had.
+            matrix_tier: plan.ok ? plan.tier : null,
+            matrix_street_block_count: plan.ok ? plan.blockCount : null,
             optimizer_version: OPTIMIZER_VERSION,
             objective_version: OBJECTIVE_VERSION,
             duration_tie_tolerance_minutes: DURATION_TIE_TOLERANCE_MINUTES
@@ -181,7 +195,7 @@ export default async function (req: Request): Promise<Response> {
                     road_network_used: false,
                     fallback: true,
                     fallback_status: 'continuity_fallback',
-                    fallback_reason: 'road_matrix_unavailable',
+                    fallback_reason: plan.ok ? 'road_matrix_unavailable' : plan.code.toLowerCase(),
                     matrix_point_count: properties.length,
                     matrix_block_count: 0,
                     road_matrix_error: matrixError,
@@ -194,7 +208,12 @@ export default async function (req: Request): Promise<Response> {
             });
         }
 
-        const { distanceBetween, durationBetween, unresolved } = createMatrixMetricFns(matrixPoints, matrix);
+        const {
+            distanceBetween,
+            durationBetween,
+            unresolved,
+            intraBlockLegCount
+        } = createTieredMatrixMetricFns(matrix, plan);
 
         // Both objectives get their own sweep, so the duration winner is not
         // limited to whatever the distance-priced sweep happened to produce.
@@ -265,6 +284,10 @@ export default async function (req: Request): Promise<Response> {
                 road_matrix_ms: matrixMs,
                 road_matrix_snapped: matrix.snapped,
                 road_matrix_unresolved_legs: unresolved.count,
+                // Block tier prices between blocks on the road network and walks
+                // each street segment in house order, so these legs are aerial.
+                intra_block_aerial_leg_count: intraBlockLegCount.count,
+                distance_estimate: plan.tier === TIER_BLOCK ? 'road_block_tier' : 'road',
                 matrix_point_count: matrix.pointCount,
                 matrix_block_count: matrix.blocks,
                 matrix_unresolved_count: 0,
@@ -299,7 +322,9 @@ export default async function (req: Request): Promise<Response> {
                 ),
                 candidate_count: candidates.length,
                 // Deterministic best-of-search, not a proven global optimum.
-                optimality_status: 'best_validated_candidate',
+                optimality_status: plan.tier === TIER_BLOCK
+                    ? 'best_validated_candidate_block_tier'
+                    : 'best_validated_candidate',
                 selected_candidate_type: winner.is_current ? 'current' : winner.type,
                 solver_runtime_ms: Date.now() - solverStartedAt,
                 street_block_count: continuityChunks.streetBlocks.length,

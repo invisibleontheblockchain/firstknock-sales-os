@@ -15,11 +15,13 @@
 import { base44 } from '@/api/base44Client';
 
 // The product ceiling for one road-aware optimization request, mirroring the
-// backend's MAX_ROUTE_MATRIX_POINTS. It is NOT the OSRM per-request coordinate
-// limit: the backend assembles larger routes from matrix blocks. Before chunking
-// existed this was 100, which is how a 183-door route skipped OSRM — and with it
-// the never-worse gate — while still being labelled optimized.
-const MAX_ROAD_MATRIX_DOORS = 250;
+// backend's MAX_TIERED_ROUTE_DOORS. It is NOT the OSRM per-request coordinate
+// limit: the backend assembles larger routes from matrix blocks, and past 250
+// doors it bounds the matrix at the street-block level instead of giving up.
+// Every earlier version of this number was a silent cliff — a route above it
+// skipped OSRM, and with it the never-worse gate, while still being labelled
+// optimized (that is how a 183-door route shipped an unmeasured order).
+const MAX_ROAD_MATRIX_DOORS = 2500;
 
 const propertyKey = (property) => String(property.address_hash || property.legacy_hash || property.id || '');
 
@@ -38,7 +40,12 @@ export function buildRoadMatrixRoutingBlock(meta = {}) {
         road_aware: meta.road_network_used === true,
         mode: 'road_matrix',
         cost_only: false,
-        distance_estimate: 'road',
+        // 'road' when every leg was priced door-to-door, 'road_block_tier' when a
+        // large route was priced between street blocks with house-order legs
+        // inside them. Never claim more than the matrix measured.
+        distance_estimate: meta.distance_estimate || 'road',
+        matrix_tier: meta.matrix_tier || null,
+        intra_block_aerial_leg_count: meta.intra_block_aerial_leg_count ?? 0,
         objective: meta.objective || null,
         supplied_point_count: meta.road_matrix_snapped ?? null,
         snapped_point_count: meta.road_matrix_snapped ?? null,
