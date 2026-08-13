@@ -8,9 +8,11 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildStreetBlocks } from '../base44/shared/roadAwareStreetSweep.js';
+import { buildStreetBlocks, roadAwareStreetSweep } from '../base44/shared/roadAwareStreetSweep.js';
 import { MAX_ROUTE_MATRIX_POINTS } from '../base44/shared/roadMatrix.js';
+import { haversineMiles } from '../base44/shared/routeContinuityOptimizer.js';
 import {
+    BLOCK_TIER_REFINEMENT_STEP_BUDGET,
     createTieredMatrixMetricFns,
     MAX_TIERED_ROUTE_DOORS,
     planTieredRoadMatrix,
@@ -179,4 +181,49 @@ test('TIER-10 the door ceiling is a refusal, never a silent aerial order', () =>
     assert.equal(plan.ok, false);
     assert.equal(plan.code, 'ROUTE_EXCEEDS_TIERED_DOOR_LIMIT');
     assert.equal(plan.limit, MAX_TIERED_ROUTE_DOORS);
+});
+
+test('TIER-11 a ceiling-sized block-tier route is bounded by steps, not wall clock', () => {
+    // 200 blocks / 2,400 doors — the largest route the tier accepts. With the
+    // door tier's 16M budget this measured 78.8s per sweep at only 120 blocks,
+    // against the sweep's 90s wall-clock safety cutoff. If wall clock ever became
+    // the binding limit, identical input could return different routes on
+    // different hardware, so the block tier caps refinement depth instead.
+    const properties = doors(200, 12);
+    const plan = planTieredRoadMatrix(properties, []);
+    assert.equal(plan.ok, true);
+    assert.equal(plan.tier, TIER_BLOCK);
+
+    // Geometric costs, unlike the endpoint-encoding stub above: this test is
+    // about the ORDER the bounded search produces, so legs must be comparable.
+    const geoMatrix = {
+        distances: plan.matrixPoints.map((from) => plan.matrixPoints.map((to) => haversineMiles(from, to))),
+        durations: null,
+        objective: 'distance_miles',
+        pointCount: plan.matrixPoints.length
+    };
+    const metrics = createTieredMatrixMetricFns(geoMatrix, plan);
+    const startedAt = Date.now();
+    const order = roadAwareStreetSweep(properties, {
+        distanceBetween: metrics.distanceBetween,
+        refinementStepBudget: BLOCK_TIER_REFINEMENT_STEP_BUDGET
+    });
+    const elapsedMs = Date.now() - startedAt;
+
+    assert.equal(order.length, properties.length);
+    assert.equal(new Set(order.map((door) => door.address_hash)).size, properties.length);
+    // Generously above the ~14s measured, far below the 90s cutoff the budget
+    // exists to keep out of play.
+    assert.ok(elapsedMs < 60000, `block-tier sweep took ${elapsedMs}ms`);
+
+    const measure = (sequence) => sequence
+        .slice(1)
+        .reduce((total, door, index) => total + metrics.distanceBetween(sequence[index], door), 0);
+    const unordered = [...properties].sort((first, second) => (
+        first.address_hash < second.address_hash ? -1 : 1
+    ));
+    assert.ok(
+        measure(order) < measure(unordered) * 0.6,
+        'the swept order must be far shorter than an unordered one'
+    );
 });

@@ -33,6 +33,25 @@ export const TIER_BLOCK = 'block';
 // (grouping, boustrophedon, intra-street 2-opt) and response size.
 export const MAX_TIERED_ROUTE_DOORS = 2500;
 
+// Refinement depth for the block tier, in the same deterministic DP steps the
+// sweep budgets all of its other work in.
+//
+// The door tier keeps its tuned 16M budget — those fixtures spend it and get
+// measurable quality for it. A block-tier route has many more blocks, and one
+// that does not converge spends the whole pool: measured at 120 blocks / 1,440
+// doors that was 78.8s for a single sweep, and a request runs two (distance and
+// duration) against a 90s wall-clock safety cutoff. Letting wall clock be the
+// binding limit is the one outcome the sweep must avoid, because identical input
+// could then return different routes on different hardware.
+//
+// Measured on a 120-block grid territory:
+//   16,000,000 steps -> 78.8s, 102.6 mi
+//    2,000,000 steps -> 13.1s, 102.6 mi   <- shipped
+//      500,000 steps ->  4.1s, 102.6 mi
+// The depth above 2M was unspent value on that route, so this buys bounded,
+// hardware-independent runtime for no measured quality loss.
+export const BLOCK_TIER_REFINEMENT_STEP_BUDGET = 2_000_000;
+
 const coordinateKey = (point) => `${Number(point?.lat).toFixed(6)},${Number(point?.lng).toFixed(6)}`;
 
 // 20 mph — the pace a rep actually covers a residential street segment at,

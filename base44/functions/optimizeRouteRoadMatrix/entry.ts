@@ -15,6 +15,7 @@ import {
     ROAD_MATRIX_VERSION
 } from '../../shared/roadMatrix.js';
 import {
+    BLOCK_TIER_REFINEMENT_STEP_BUDGET,
     createTieredMatrixMetricFns,
     MAX_TIERED_ROUTE_DOORS,
     planTieredRoadMatrix,
@@ -217,7 +218,15 @@ export default async function (req: Request): Promise<Response> {
 
         // Both objectives get their own sweep, so the duration winner is not
         // limited to whatever the distance-priced sweep happened to produce.
-        const sweepOptions = { startLocation, endLocation };
+        // Block-tier routes cap refinement depth so the deterministic step budget
+        // — not the wall-clock safety cutoff — stays the binding limit.
+        const sweepOptions = {
+            startLocation,
+            endLocation,
+            ...(plan.tier === TIER_BLOCK
+                ? { refinementStepBudget: BLOCK_TIER_REFINEMENT_STEP_BUDGET }
+                : {})
+        };
         const roadDistanceOrder = roadAwareStreetSweep(canonicalProperties, { ...sweepOptions, distanceBetween });
         const roadDurationOrder = durationBetween
             ? roadAwareStreetSweep(canonicalProperties, { ...sweepOptions, distanceBetween: durationBetween })
