@@ -39,4 +39,8 @@ if (originalCanvasRedraw) {
   };
 }
 
+// Touch-friendly hit detection: give every canvas-rendered pin and route line
+// ~12px of extra tap slop so small markers are easy to tap on mobile.
+L.Canvas.mergeOptions({ tolerance: 12 });
+
 export default L;

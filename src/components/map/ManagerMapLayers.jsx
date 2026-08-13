@@ -535,18 +535,29 @@ function SavedRoutesLayer({
                 });
             }
 
-            // Route line
+            // Route line — tappable to select the route (with a wide invisible
+            // hit line underneath so it's easy to tap on mobile)
             const routeLinePoints = getRouteLinePoints(route, route.properties);
             if (showRouteLines && routeLinePoints.length > 1) {
-                const line = L.polyline(
-                    routeLinePoints.map(p => [Number(p.lat), Number(p.lng)]),
-                    {
-                        color: repColor,
-                        weight: mapSettings.lineWidth || 3,
-                        opacity: mapSettings.lineOpacity || 0.7,
-                        dashArray: lineDashArray || null
-                    }
-                );
+                const lineLatLngs = routeLinePoints.map(p => [Number(p.lat), Number(p.lng)]);
+                const selectRoute = (e) => { L.DomEvent.stopPropagation(e); setActiveRoute({ ...route, route_number: globalNumber, display_color: repColor }); };
+
+                const hitLine = L.polyline(lineLatLngs, {
+                    color: 'transparent',
+                    weight: 26,
+                    opacity: 0,
+                    interactive: true
+                });
+                hitLine.on('click', selectRoute);
+                group.addLayer(hitLine);
+
+                const line = L.polyline(lineLatLngs, {
+                    color: repColor,
+                    weight: mapSettings.lineWidth || 3,
+                    opacity: mapSettings.lineOpacity || 0.7,
+                    dashArray: lineDashArray || null
+                });
+                line.on('click', selectRoute);
                 group.addLayer(line);
             }
         });
