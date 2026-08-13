@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { classifyQuery, groupResults, rankResults, MIN_SEARCH_LENGTH } from './searchQuery';
 import { searchInternalRecords } from './internalSearchClient';
-import { searchCounties, searchExternalAddresses } from './geoSearchService';
+import { searchCities, searchCounties, searchExternalAddresses } from './geoSearchService';
 
 const DEBOUNCE_MS = 300;
 const CACHE_TTL_MS = 60_000;
@@ -21,6 +21,8 @@ export default function useUnifiedMapSearch({
   searchInternal = searchInternalRecords,
   searchAddresses = searchExternalAddresses,
   searchCountyAreas = searchCounties,
+  searchCityAreas = searchCities,
+  enableCities = true,
   debounceMs = DEBOUNCE_MS,
 } = {}) {
   const [query, setQuery] = useState('');
@@ -99,6 +101,16 @@ export default function useUnifiedMapSearch({
         })());
       }
 
+      if (enableCities && intent.searchCity) {
+        tasks.push((async () => {
+          try {
+            collected.push(...await searchCityAreas(intent.query, { signal: controller.signal }));
+          } catch (geoError) {
+            if (geoError?.name !== 'AbortError') externalError = 'City lookup is unavailable right now.';
+          }
+        })());
+      }
+
       if (enableCounties && intent.searchCounty) {
         tasks.push((async () => {
           try {
@@ -126,7 +138,7 @@ export default function useUnifiedMapSearch({
       clearTimeout(timer);
       controller.abort();
     };
-  }, [debounceMs, enableCounties, enableExternalAddresses, intent, limit, searchAddresses, searchCountyAreas, searchInternal]);
+  }, [debounceMs, enableCities, enableCounties, enableExternalAddresses, intent, limit, searchAddresses, searchCityAreas, searchCountyAreas, searchInternal]);
 
   return {
     query,

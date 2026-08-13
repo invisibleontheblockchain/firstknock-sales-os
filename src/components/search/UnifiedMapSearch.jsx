@@ -1,11 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { History, Loader2, MapPin, Search, User, X, Landmark } from 'lucide-react';
+import { History, Loader2, MapPin, Search, User, X, Landmark, Building2 } from 'lucide-react';
 import useUnifiedMapSearch from './useUnifiedMapSearch';
 import UnifiedSearchResultRow from './UnifiedSearchResultRow';
 import { addRecentSearch, clearRecentSearches, loadRecentSearches } from './recentSearches';
 
-const TYPE_ICONS = { record: User, address: MapPin, county: Landmark };
+const TYPE_ICONS = { record: User, address: MapPin, city: Building2, county: Landmark };
 
 /**
  * Shared search field for the manager and rep Home screens.

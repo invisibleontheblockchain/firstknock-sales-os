@@ -47,6 +47,11 @@ export function classifyQuery(rawQuery) {
     usable,
     searchInternal: usable,
     searchCounty: usable && county,
+    // A city lookup needs a place-like query. "Charlotte, NC" and a bare
+    // single word qualify; a two-word person name ("Amanda Whitfield") does
+    // not, so contact names still never reach the geocoder.
+    searchCity: usable && !county && !hasHouseNumber && !hasStreetSuffix && !hasZip
+      && (hasStateCode || /,/.test(query) || tokens.length === 1),
     // "Amanda" is never geocoded. "Amanda Lane" is, because a street suffix is
     // a real address signal even without a house number.
     searchAddress: usable && !county && (hasHouseNumber || hasStreetSuffix || hasZip || (hasStateCode && tokens.length > 1)),
@@ -63,7 +68,7 @@ function matchStrength(candidate, normalizedQuery) {
   return value.split(' ').some((word) => word.startsWith(normalizedQuery)) ? 2 : 0;
 }
 
-const TYPE_BASE = { record: 600, address: 300, county: 200 };
+const TYPE_BASE = { record: 600, address: 300, city: 250, county: 200 };
 
 export function scoreResult(result, normalizedQuery) {
   const base = TYPE_BASE[result?.type] || 0;
@@ -78,6 +83,7 @@ export function scoreResult(result, normalizedQuery) {
 export function resultKey(result) {
   if (result?.type === 'record') return `record:${result.address_hash || result.id || result.formatted_address}`;
   if (result?.type === 'county') return `county:${normalizeSearchText(result.name)}`;
+  if (result?.type === 'city') return `city:${normalizeSearchText(result.name)}`;
   return `address:${normalizeSearchText(result.formatted_address)}`;
 }
 
@@ -104,6 +110,7 @@ export function groupResults(results) {
   const groups = [
     { id: 'record', label: 'Customers & Leads', items: [] },
     { id: 'address', label: 'Addresses', items: [] },
+    { id: 'city', label: 'Cities', items: [] },
     { id: 'county', label: 'Counties', items: [] },
   ];
   for (const result of results || []) {

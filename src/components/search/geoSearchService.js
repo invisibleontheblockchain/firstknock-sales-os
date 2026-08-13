@@ -57,6 +57,33 @@ export async function searchExternalAddresses(query, options = {}) {
     .filter(Boolean);
 }
 
+export async function searchCities(query, options = {}) {
+  // featureType=city keeps the provider from returning streets or POIs, so a
+  // city hit is always a place the camera can frame by its bounding box.
+  const rows = await queryNominatim(query, { ...options, limit: 5, featureType: 'city' });
+  return rows
+    .map((row) => {
+      const lat = Number(row.lat);
+      const lng = Number(row.lon);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+      const address = row.address || {};
+      const city = address.city || address.town || address.village || row.name;
+      const state = address.state || '';
+      if (!city) return null;
+      return {
+        type: 'city',
+        source: 'external',
+        // State is always shown so Charlotte NC and Charlotte MI stay distinct.
+        name: [city, state].filter(Boolean).join(', '),
+        formatted_address: row.display_name,
+        lat,
+        lng,
+        bounds: parseBounds(row.boundingbox),
+      };
+    })
+    .filter(Boolean);
+}
+
 export async function searchCounties(query, options = {}) {
   const rows = await queryNominatim(query, { ...options, limit: 5 });
   return rows

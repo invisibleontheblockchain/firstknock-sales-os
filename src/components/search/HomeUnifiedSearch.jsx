@@ -37,14 +37,15 @@ export default function HomeUnifiedSearch({
   }, [workingAreaCenteredRef]);
 
   const handleSelect = useCallback((result) => {
-    if (result.type === 'county') {
+    if (result.type === 'county' || result.type === 'city') {
       claimViewport();
-      // County navigation only moves the camera — routes, territories, markers
+      // Place navigation only moves the camera — routes, territories, markers
       // and filters are left exactly as they were.
+      const isCity = result.type === 'city';
       const fitted = result.bounds
-        ? fitMapBounds(mapRef, result.bounds, { padding: [40, 40], maxZoom: 12 })
-        : focusMapPoint(mapRef, result, 10);
-      if (!fitted) toast.error('That county could not be located on the map.');
+        ? fitMapBounds(mapRef, result.bounds, { padding: [40, 40], maxZoom: isCity ? 13 : 12 })
+        : focusMapPoint(mapRef, result, isCity ? 12 : 10);
+      if (!fitted) toast.error(`That ${isCity ? 'city' : 'county'} could not be located on the map.`);
       return;
     }
 
