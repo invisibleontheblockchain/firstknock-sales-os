@@ -73,6 +73,14 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, lineDashArray, setS
     const map = useMap();
     const layerRef = useRef(null);
     const fittedRouteIdRef = useRef(null);
+    const [zoom, setZoom] = React.useState(() => (map ? map.getZoom() : 0));
+
+    React.useEffect(() => {
+        if (!map) return;
+        const onZoom = () => setZoom(map.getZoom());
+        map.on('zoomend', onZoom);
+        return () => map.off('zoomend', onZoom);
+    }, [map]);
 
     useEffect(() => {
         if (!map || !activeRoute?.properties?.length) return;
@@ -95,6 +103,13 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, lineDashArray, setS
 
         const group = L.layerGroup();
         const props = routePoints;
+
+        // Stop numbers turning a big route into a black smear. On a 500+ door
+        // route the labels overlap into solid text at normal zoom, so they only
+        // appear once the doors are far enough apart to read them. Pins and the
+        // route line always show; tapping a pin still gives its exact position.
+        const showNumbers = props.length <= 150
+            || (props.length <= 600 ? zoom >= 15 : zoom >= 17);
 
         // 1. Route line — suppressed while a decision filter is active so the
         // remaining outcome pins are readable without route noise.
@@ -152,6 +167,7 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, lineDashArray, setS
             group.addLayer(circle);
 
             // Number label (lightweight DivIcon marker)
+            if (!showNumbers) return;
             const label = L.marker(point, {
                 icon: L.divIcon({
                     className: '',
@@ -174,7 +190,7 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, lineDashArray, setS
                 layerRef.current = null;
             }
         };
-    }, [map, activeRoute, mapSettings.lineWidth, mapSettings.lineOpacity, lineDashArray, setSelectedProperty, decisionFilterActive]);
+    }, [map, activeRoute, zoom, mapSettings.lineWidth, mapSettings.lineOpacity, lineDashArray, setSelectedProperty, decisionFilterActive]);
 
     return null; // Imperative layer — no React DOM output
 }
