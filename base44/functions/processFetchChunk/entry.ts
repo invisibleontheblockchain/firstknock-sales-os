@@ -8,6 +8,13 @@ const BATCHDATA_BASE = 'https://api.batchdata.com/api/v1/property/search';
 const BATCHDATA_MAX_TAKE = 100;
 const BATCHDATA_REQUEST_TIMEOUT_MS = 20 * 1000;
 const BATCHDATA_PROGRESS_UPDATE_MS = 1500;
+// Per-invocation provider scan budget. When it runs out, the chunk persists its
+// offset and chains the next invocation, so a 24k-record area completes across
+// many chunks instead of stopping at an arbitrary scan ceiling.
+const CHUNK_SCAN_BUDGET_MS = 30 * 1000;
+// Selection ceiling per invocation. Writes are per-record, so this bounds how
+// long the Neon write phase of one chunk can take.
+const CHUNK_MAX_SELECTED = 750;
 const PIPELINE_LOCK_TTL_MS = 8 * 60 * 1000;
 const DEFAULT_ROUTE_TYPE_FILTERS = {
     propertyTypes: ['Single Family'],
@@ -1096,7 +1103,7 @@ async function batchDataFetchWithRetry(requestBody) {
     throw new Error('Rate limit exceeded after 3 retries.');
 }
 
-async function fetchBatchDataRecordsForMode(job, mode, requested, onProgress = null) {
+async function fetchBatchDataRecordsForMode(job, mode, requested, onProgress = null, startSkip = 0, budgetMs = CHUNK_SCAN_BUDGET_MS) {
     const selected = [];
     const selectedHashes = new Set();
     const excludedRouteHashes = getExcludedRouteHashes(job);
@@ -1108,17 +1115,23 @@ async function fetchBatchDataRecordsForMode(job, mode, requested, onProgress = n
     // nothing returns records: [], and the non-custom path returns at most a
     // capped rejected sample, so both would under-report.
     const ledger = createDiagnosticLedger();
-    let skip = 0;
+    let skip = Math.max(0, Number(startSkip) || 0);
     let reviewed = 0;
     let totalRecordCount = null;
     let skippedExistingRoute = 0;
     let skippedDuplicate = 0;
     let skippedRouteType = 0;
     const skippedRouteTypeBreakdown = {};
-    const maxReviewed = Math.min(1000, Math.max(BATCHDATA_MAX_TAKE, requested * 50));
+    // There is no scan ceiling any more: "max available" means keep paging the
+    // provider until it runs out. A single invocation cannot page 24k records
+    // inside the request budget, so each invocation scans for `budgetMs`, then
+    // the caller persists `next_skip` and chains another invocation.
+    let providerExhausted = false;
+    const deadline = Date.now() + Math.max(5000, Number(budgetMs) || CHUNK_SCAN_BUDGET_MS);
 
-    while (selected.length < requested && reviewed < maxReviewed) {
-        const take = Math.min(BATCHDATA_MAX_TAKE, maxReviewed - reviewed);
+    while (selected.length < requested && !providerExhausted && Date.now() < deadline) {
+        const take = BATCHDATA_MAX_TAKE;
+        const maxReviewed = null;
         const requestBody = buildBatchDataRequest(job, skip, take, mode);
         if (typeof onProgress === 'function') {
             await onProgress({
@@ -1188,14 +1201,14 @@ async function fetchBatchDataRecordsForMode(job, mode, requested, onProgress = n
             }).catch(() => {});
         }
 
-        if (list.length < take) break;
-        if (totalRecordCount !== null && reviewed >= totalRecordCount) break;
+        if (list.length < take) providerExhausted = true;
+        else if (totalRecordCount !== null && skip + list.length >= totalRecordCount) providerExhausted = true;
+        // Always advance past the page just reviewed, even when the target was
+        // met mid-page: a resumed chunk must never re-request the same offset.
         skip += take;
     }
 
-    const scanLimitReached = selected.length < requested
-        && reviewed >= maxReviewed
-        && (totalRecordCount === null || reviewed < totalRecordCount);
+    const budgetExhausted = selected.length < requested && !providerExhausted;
 
     return {
         // Custom date mismatches are job-scoped, not a reason to deactivate an
@@ -1211,16 +1224,29 @@ async function fetchBatchDataRecordsForMode(job, mode, requested, onProgress = n
         skipped_duplicate: skippedDuplicate,
         skipped_route_type: skippedRouteType,
         skipped_route_type_breakdown: skippedRouteTypeBreakdown,
-        max_reviewed: maxReviewed,
-        scan_limit_reached: scanLimitReached,
+        next_skip: skip,
+        provider_exhausted: providerExhausted,
+        budget_exhausted: budgetExhausted,
+        scan_limit_reached: false,
         page_timings: pageTimings,
         totalRecordCount,
         ...ledger.snapshot()
     };
 }
 
-async function fetchBatchDataRecords(job, onProgress = null) {
-    const requested = Math.min(Math.max(Number(job.estimated_record_count || job.total_expected || 1000), 1), 1000);
+function requestedPropertyTarget(job) {
+    // Uncapped on purpose: a "max available" pull passes its full allowance and
+    // must keep paging until the provider has nothing left inside the area.
+    return Math.max(1, Math.floor(Number(job.estimated_record_count || job.total_expected || 1000)));
+}
+
+async function fetchBatchDataRecords(job, onProgress = null, options = {}) {
+    const target = Number.isFinite(Number(options.requested))
+        ? Math.max(1, Math.floor(Number(options.requested)))
+        : requestedPropertyTarget(job);
+    const requested = Math.min(target, CHUNK_MAX_SELECTED);
+    const startSkip = Math.max(0, Number(options.startSkip) || 0);
+    const budgetMs = Number(options.budgetMs) || CHUNK_SCAN_BUDGET_MS;
     const modes = ['broad_polygon'];
     const attempts = [];
     let fallback = [];
@@ -1228,8 +1254,8 @@ async function fetchBatchDataRecords(job, onProgress = null) {
     let fallbackActive = 0;
 
     for (const mode of modes) {
-        const result = await fetchBatchDataRecordsForMode(job, mode, requested, onProgress);
-        attempts.push({ mode, count: result.records.length, reviewed: result.reviewed, active: result.active, rejected_samples: result.rejected_samples, skipped_existing_route: result.skipped_existing_route, skipped_duplicate: result.skipped_duplicate, skipped_route_type: result.skipped_route_type, skipped_route_type_breakdown: result.skipped_route_type_breakdown, max_reviewed: result.max_reviewed, scan_limit_reached: result.scan_limit_reached, page_timings: result.page_timings, total: result.totalRecordCount });
+        const result = await fetchBatchDataRecordsForMode(job, mode, requested, onProgress, startSkip, budgetMs);
+        attempts.push({ mode, count: result.records.length, reviewed: result.reviewed, active: result.active, rejected_samples: result.rejected_samples, skipped_existing_route: result.skipped_existing_route, skipped_duplicate: result.skipped_duplicate, skipped_route_type: result.skipped_route_type, skipped_route_type_breakdown: result.skipped_route_type_breakdown, next_skip: result.next_skip, provider_exhausted: result.provider_exhausted, budget_exhausted: result.budget_exhausted, scan_limit_reached: result.scan_limit_reached, page_timings: result.page_timings, total: result.totalRecordCount, provider_fields: result.provider_fields, enrichment: result.enrichment, route_outcomes: result.route_outcomes });
         if (result.active >= requested) return { records: result.records, attempts, mode_used: mode };
         if (result.active > fallbackActive || (fallback.length === 0 && result.records.length > 0)) {
             fallback = result.records;
@@ -1458,9 +1484,15 @@ Deno.serve(async (req) => {
             };
             await base44.asServiceRole.entities.FetchJob.update(job.id, update).catch(() => {});
         };
+        // Resume where the previous chunk stopped, and only ask for the records
+        // still missing from the target so a chained pull cannot overshoot.
+        const requestedTarget = requestedPropertyTarget(job);
+        const deliveredBefore = await countPersistedPrecisionProperties(job.id).catch(() => 0);
+        const remainingTarget = Math.max(1, requestedTarget - deliveredBefore);
+        const resumeSkip = Math.max(0, Number(job.current_offset) || 0);
         const batchFetch = Array.isArray(body.synthetic_records)
             ? { records: body.synthetic_records, attempts: [{ mode: 'synthetic_records', count: body.synthetic_records.length }], mode_used: 'synthetic_records' }
-            : await fetchBatchDataRecords(job, updateScanProgress);
+            : await fetchBatchDataRecords(job, updateScanProgress, { requested: remainingTarget, startSkip: resumeSkip });
         const rawRecords = batchFetch.records;
         const seen = new Set();
         const excludedRouteHashes = getExcludedRouteHashes(job);
@@ -1625,6 +1657,66 @@ Deno.serve(async (req) => {
             return Response.json({ success: true, status: 'cancelled', job_id: job.id, active: activeCount });
         }
 
+        // ── Chunk continuation ────────────────────────────────────────────
+        // The provider still has pages inside this area and the target is not
+        // met, so persist the offset and chain the next invocation instead of
+        // completing (and instead of settling the usage reservation).
+        const nextSkip = (batchFetch.attempts || []).reduce(
+            (max, attempt) => Math.max(max, Number(attempt.next_skip) || 0),
+            resumeSkip
+        );
+        const providerExhausted = Array.isArray(body.synthetic_records)
+            || (batchFetch.attempts || []).some(attempt => attempt.provider_exhausted === true);
+        const moreWorkAvailable = !providerExhausted && settledUsageCount < requestedTarget && nextSkip > resumeSkip;
+
+        if (moreWorkAvailable) {
+            const nextChunk = (job.chunk_number || 0) + 1;
+            const scanDenominator = Number(providerTotal) > 0 ? Number(providerTotal) : null;
+            const chunkPct = scanDenominator
+                ? Math.min(95, Math.max(8, Math.round((nextSkip / scanDenominator) * 95)))
+                : Math.min(95, Math.max(8, Math.round((settledUsageCount / Math.max(1, requestedTarget)) * 95)));
+            await base44.asServiceRole.entities.FetchJob.update(job.id, {
+                status: 'running',
+                phase: 'batchdata_scanning',
+                progress_pct: chunkPct,
+                current_offset: nextSkip,
+                chunk_number: nextChunk,
+                total_fetched: (job.total_fetched || 0) + (reviewedCount || rawRecords.length),
+                total_inserted: (job.total_inserted || 0) + result.inserted,
+                total_existed: (job.total_existed || 0) + result.existed,
+                total_updated: (job.total_updated || 0) + result.updated,
+                total_api_calls: (job.total_api_calls || 0) + batchDataApiCalls,
+                total_batchdata_calls: (job.total_batchdata_calls || 0) + batchDataApiCalls,
+                zip_codes_found: zipCodes,
+                chunk_timings: [...(job.chunk_timings || []), Math.round((Date.now() - new Date(startedAt).getTime()) / 1000)],
+                dry_run_metadata: {
+                    ...(job.dry_run_metadata || {}),
+                    completion_reason: 'chunk_in_progress',
+                    batchdata_summary: batchdataSummary
+                },
+                error_log: errorLog
+            });
+            await releasePipelineLock(base44, lockId);
+            lockId = null;
+            const chain = base44.asServiceRole.functions.invoke('processFetchChunk', {
+                job_id: job.id,
+                expected_chunk: nextChunk,
+                processor_token: job.dry_run_metadata?.processor_token
+            }).catch(chainError => {
+                console.warn(`[processFetchChunk] chunk chain failed for ${job.id}: ${chainError.message}`);
+            });
+            await Promise.race([chain, sleep(250)]);
+            return Response.json({
+                success: true,
+                status: 'chunk_complete',
+                job_id: job.id,
+                next_offset: nextSkip,
+                delivered: settledUsageCount,
+                requested: requestedTarget,
+                active: activeCount
+            });
+        }
+
         await base44.asServiceRole.entities.FetchJob.update(job.id, {
             status: 'completed',
             phase: 'complete',
@@ -1634,10 +1726,11 @@ Deno.serve(async (req) => {
             precision_usage_count: settledUsageCount,
             precision_usage_recorded_at: completedAt,
             ...(integrityWarning ? { error_message: integrityWarning } : {}),
-            total_fetched: reviewedCount || rawRecords.length,
-            total_inserted: result.inserted,
-            total_existed: result.existed,
-            total_updated: result.updated,
+            current_offset: nextSkip,
+            total_fetched: (job.total_fetched || 0) + (reviewedCount || rawRecords.length),
+            total_inserted: (job.total_inserted || 0) + result.inserted,
+            total_existed: (job.total_existed || 0) + result.existed,
+            total_updated: (job.total_updated || 0) + result.updated,
             total_api_calls: (job.total_api_calls || 0) + batchDataApiCalls,
             total_batchdata_calls: (job.total_batchdata_calls || 0) + batchDataApiCalls,
             completed_sub_circles: 1,
