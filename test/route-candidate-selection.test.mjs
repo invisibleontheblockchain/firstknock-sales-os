@@ -84,6 +84,49 @@ test('SEL-05 the winner is independent of candidate arrival order', () => {
     });
 });
 
+test('SEL-07 the anchor legs are part of the score, so a route starts at the door nearest home', () => {
+    // Home sits next to C. Door-to-door the two directions are identical
+    // (1+1 miles each way), so before anchor legs were measured the saved order
+    // won the tie and the rep drove past the whole territory to start at A.
+    const H = door('H', 35.421, -80.621);
+    const anchored = { 'H|A': [5, 10], 'A|H': [5, 10], 'H|C': [0.1, 0.2], 'C|H': [0.1, 0.2] };
+    const anchoredMetric = (slot) => (from, to) => {
+        const key = `${from.address_hash}|${to.address_hash}`;
+        return (anchored[key] || LEGS[key] || [null, null])[slot];
+    };
+    const options = {
+        distanceBetween: anchoredMetric(0),
+        durationBetween: anchoredMetric(1),
+        startLocation: H,
+        endLocation: H
+    };
+    const current = measureRouteCandidate({ type: 'current', order: [A, B, C], is_current: true }, options);
+    const fromHome = measureRouteCandidate({ type: 'road_aware', order: [C, B, A] }, options);
+    // 5 + 1 + 1 + 0.1 vs 0.1 + 1 + 1 + 5 is a tie in TOTAL, but the doors alone
+    // are also a tie — what matters is that both anchor legs are counted.
+    assert.equal(current.distance, 7.1);
+    assert.equal(fromHome.distance, 7.1);
+
+    // One-way home start: only the drive out is anchored, and starting at the
+    // near door is now measurably better.
+    const oneWay = { ...options, endLocation: null };
+    const outFromA = measureRouteCandidate({ type: 'current', order: [A, B, C], is_current: true }, oneWay);
+    const outFromC = measureRouteCandidate({ type: 'road_aware', order: [C, B, A] }, oneWay);
+    assert.equal(outFromA.distance, 7);
+    assert.equal(outFromC.distance, 2.1);
+    assert.equal(selectBestRouteCandidate([outFromA, outFromC]).fingerprint, outFromC.fingerprint);
+});
+
+test('SEL-08 an unpriceable anchor leg makes the candidate unmeasured, never partially scored', () => {
+    const H = door('H', 1, 1);
+    const candidate = measureRouteCandidate({ type: 'road_aware', order: [A, B, C] }, {
+        distanceBetween: metric(0),
+        durationBetween: metric(1),
+        startLocation: H
+    });
+    assert.equal(candidate.distance, null);
+});
+
 test('SEL-06 unmeasurable candidates lose to measured ones and never win alone', () => {
     const unmeasurable = measure({ type: 'road_aware', order: [A, door('Z', 1, 1), C] });
     assert.equal(unmeasurable.distance, null);

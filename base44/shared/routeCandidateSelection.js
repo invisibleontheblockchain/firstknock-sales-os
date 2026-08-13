@@ -28,14 +28,39 @@ export const OBJECTIVE_VERSION = 'duration_primary_distance_tiebreak_v1';
 
 /**
  * Price one candidate order on the shared matrix.
- * Door-to-door legs only — external start/finish anchors are not in the matrix,
- * so including them would make candidates unmeasurable rather than comparable.
+ *
+ * When a start/finish anchor is given it MUST be part of the same matrix, and its
+ * legs are included in the score. Measuring door-to-door legs only made the
+ * anchor invisible to the objective: "optimize from Home" then generated an
+ * order that began at the door nearest home but scored no better than the saved
+ * order, so the incumbent won every time and the route still started at a far
+ * door. An anchor that cannot be priced is dropped rather than guessed, so every
+ * candidate is still scored on exactly the same legs.
  */
-export function measureRouteCandidate(candidate, { distanceBetween, durationBetween = null } = {}) {
+function measureWithAnchors(order, metricFn, start, end) {
+    if (typeof metricFn !== 'function') return null;
+    const doors = measureOrder(order, metricFn);
+    if (!Number.isFinite(doors) || order.length === 0) return doors;
+    let total = doors;
+    for (const [from, to] of [[start, order[0]], [order[order.length - 1], end]]) {
+        if (!from || !to) continue;
+        const leg = metricFn(from, to);
+        if (!Number.isFinite(leg)) return null;
+        total += leg;
+    }
+    return total;
+}
+
+export function measureRouteCandidate(candidate, {
+    distanceBetween,
+    durationBetween = null,
+    startLocation = null,
+    endLocation = null
+} = {}) {
     const order = candidate.order || [];
-    const distance = measureOrder(order, distanceBetween);
+    const distance = measureWithAnchors(order, distanceBetween, startLocation, endLocation);
     const duration = typeof durationBetween === 'function'
-        ? measureOrder(order, durationBetween)
+        ? measureWithAnchors(order, durationBetween, startLocation, endLocation)
         : null;
     return {
         ...candidate,

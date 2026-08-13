@@ -38,6 +38,9 @@ function readSecret(name) {
 
 const propertyIdentity = (property) => String(property?.address_hash || property?.id || '');
 
+/** Matrix identity of a point — the same 6-decimal key the matrix indexes by. */
+const coordinateIdentity = (point) => `${Number(point?.lat).toFixed(6)},${Number(point?.lng).toFixed(6)}`;
+
 /** Order-independent identity of the property SET being optimized. */
 function propertySetFingerprint(properties) {
     return routePropertyOrderFingerprint(
@@ -101,7 +104,24 @@ export default async function (req: Request): Promise<Response> {
             propertyIdentity(first) < propertyIdentity(second) ? -1 : 1
         ));
         const setFingerprint = propertySetFingerprint(properties);
-        const cacheKey = await buildRoadMatrixCacheKey(properties, profile);
+        // The anchors go INTO the matrix, so the drive from the start point and
+        // back to the finish point is priced by the same road engine as every
+        // door leg. Without them in the matrix the objective could not see the
+        // anchor at all, and "optimize from Home" scored an order starting at the
+        // nearest door no better than one starting on the far side of the
+        // territory — so the saved order kept winning the tie.
+        const anchorPoints = [];
+        const seenAnchorKeys = new Set(properties.map(coordinateIdentity));
+        [startLocation, endLocation].forEach((anchor) => {
+            if (!anchor) return;
+            const key = coordinateIdentity(anchor);
+            if (seenAnchorKeys.has(key)) return;
+            seenAnchorKeys.add(key);
+            anchorPoints.push(anchor);
+        });
+        const anchorsInMatrix = properties.length + anchorPoints.length <= MAX_ROUTE_MATRIX_POINTS;
+        const matrixPoints = anchorsInMatrix ? [...properties, ...anchorPoints] : properties;
+        const cacheKey = await buildRoadMatrixCacheKey(matrixPoints, profile);
         const solverStartedAt = Date.now();
 
         // Candidate — straight-line continuity, the fallback path's answer.
@@ -121,7 +141,7 @@ export default async function (req: Request): Promise<Response> {
         let matrixError = '';
         const matrixStartedAt = Date.now();
         try {
-            matrix = await fetchRoadMatrix(properties, {
+            matrix = await fetchRoadMatrix(matrixPoints, {
                 baseUrl: readSecret('OSRM_BASE_URL') || DEFAULT_OSRM_BASE_URL,
                 profile,
                 timeoutMs
@@ -135,6 +155,7 @@ export default async function (req: Request): Promise<Response> {
             property_set_fingerprint: setFingerprint,
             start_constraint: startLocation,
             end_constraint: endLocation,
+            anchor_legs_measured: Boolean((startLocation || endLocation) && anchorsInMatrix),
             return_to_start: false,
             routing_profile: profile,
             matrix_provider: 'osrm',
@@ -173,7 +194,7 @@ export default async function (req: Request): Promise<Response> {
             });
         }
 
-        const { distanceBetween, durationBetween, unresolved } = createMatrixMetricFns(properties, matrix);
+        const { distanceBetween, durationBetween, unresolved } = createMatrixMetricFns(matrixPoints, matrix);
 
         // Both objectives get their own sweep, so the duration winner is not
         // limited to whatever the distance-priced sweep happened to produce.
@@ -191,9 +212,10 @@ export default async function (req: Request): Promise<Response> {
             { type: 'road_aware', order: roadDistanceOrder },
             ...(roadDurationOrder ? [{ type: 'road_aware', order: roadDurationOrder }] : [])
         ];
-        // Whole-route direction. Only safe with no fixed anchors: with a start or
-        // finish anchor the reversed order changes legs this measurement excludes.
-        const withReversals = (!startLocation && !endLocation)
+        // Whole-route direction. Safe whenever the measurement covers every leg
+        // that reversing would change — with an anchor that means the anchor legs
+        // must be in the matrix too.
+        const withReversals = (!startLocation && !endLocation) || anchorsInMatrix
             ? rawCandidates.flatMap((candidate) => [
                 candidate,
                 { ...candidate, is_current: false, order: [...candidate.order].reverse() }
@@ -202,7 +224,14 @@ export default async function (req: Request): Promise<Response> {
 
         const candidates = withReversals
             .filter((candidate) => exactOnce(candidate.order, properties.length))
-            .map((candidate) => measureRouteCandidate(candidate, { distanceBetween, durationBetween }));
+            .map((candidate) => measureRouteCandidate(candidate, {
+                distanceBetween,
+                durationBetween,
+                // Anchors only score when they are in this matrix; otherwise every
+                // candidate is scored door-to-door, as before.
+                startLocation: anchorsInMatrix ? startLocation : null,
+                endLocation: anchorsInMatrix ? endLocation : null
+            }));
         if (candidates.length !== withReversals.length) {
             throw new Error('A route candidate failed its exact-once property invariant.');
         }
