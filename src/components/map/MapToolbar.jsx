@@ -1,7 +1,7 @@
 import React, { useCallback, useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Navigation, Locate, List, X, Filter, MapPin, Zap, Eye, EyeOff, Save, Pencil, Check, RotateCcw, Download, MoreVertical, Scissors, Ghost, Flag } from 'lucide-react';
+import { Loader2, Navigation, Locate, List, X, Filter, MapPin, Zap, Eye, EyeOff, Save, Pencil, Check, RotateCcw, Download, MoreVertical, Scissors, Ghost, Flag, Trash2 } from 'lucide-react';
 import { LayoutDashboard, Settings } from 'lucide-react';
 import { toast } from "sonner";
 import DataStatusIndicator from './DataStatusIndicator';
@@ -81,6 +81,7 @@ export default function MapToolbar({
 
   // Route Optimization
   onReoptimizeRoute,
+  onDeleteRoute,
   startLocation,
   onSaveHomeBase,
 
@@ -540,6 +541,15 @@ export default function MapToolbar({
 
                                     <Flag className="w-2.5 h-2.5" /><span>ANCHORS</span>
                                 </button>
+                                {onDeleteRoute && (
+                                  <button
+                                    onPointerDown={(e) => {e.preventDefault();e.stopPropagation();}}
+                                    onClick={(e) => {e.preventDefault();e.stopPropagation();onDeleteRoute(activeRoute);}}
+                                    className="hidden md:flex h-7 items-center gap-1 rounded-md border border-red-500/40 bg-red-500/10 px-2 text-[10px] font-black text-red-400 hover:bg-red-500/20 touch-manipulation select-none active:scale-95"
+                                    title="Delete this route">
+                                    <Trash2 className="w-2.5 h-2.5" /><span>DELETE</span>
+                                  </button>
+                                )}
                                 <DropdownMenu>
                                   <DropdownMenuTrigger asChild>
                                     <button onPointerDown={(e) => e.stopPropagation()} className="md:hidden flex h-8 w-8 items-center justify-center rounded-md border border-white/10 bg-white/5 text-white touch-manipulation active:scale-95" aria-label="More route actions">
@@ -558,6 +568,11 @@ export default function MapToolbar({
                                     <DropdownMenuItem onClick={(e) => {e.stopPropagation();setShowAnchorsDialog(true);}} className="focus:bg-white/10 focus:text-white">
                                       <Flag className="mr-2 h-4 w-4" /> Anchors
                                     </DropdownMenuItem>
+                                    {onDeleteRoute && (
+                                      <DropdownMenuItem onClick={(e) => {e.stopPropagation();onDeleteRoute(activeRoute);}} className="text-red-400 focus:bg-red-500/15 focus:text-red-300">
+                                        <Trash2 className="mr-2 h-4 w-4" /> Delete route
+                                      </DropdownMenuItem>
+                                    )}
                                   </DropdownMenuContent>
                                 </DropdownMenu>
                                 <button onPointerDown={(e) => {e.preventDefault();e.stopPropagation();}} onClick={(e) => {e.preventDefault();e.stopPropagation();setActiveRoute(null);}} className="flex items-center gap-1 h-8 md:h-6 px-2 md:px-2 rounded-md border border-white/10 text-[10px] font-bold text-gray-300 hover:text-white hover:bg-white/10 shrink-0 touch-manipulation active:scale-95">

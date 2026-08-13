@@ -65,7 +65,7 @@ import { BRAND, DEFAULT_STATUS_COLORS, COLOR_SCHEME_MAP, LINE_DASH_MAP, ROUTE_CO
 
 import { LocationMarker, MapRefHandler, MapController } from '../components/map/MapHelpers';
 import useViewportMapProperties from '../components/map/useViewportMapProperties';
-import { reoptimizeRoute } from '@/lib/reoptimizeRouteAction';
+import { reoptimizeRoute } from '@/lib/reoptimizeRouteAction'; import { deleteSavedRoute } from '@/lib/deleteRouteAction';
 import { buildRoadAwareGeneratedRoutes } from '@/lib/roadMatrixRouteGeneration'; import { requireUsableRouteContext } from '@/lib/routeContextGuard';
 import { computeAccountWorkingArea } from '@/lib/accountWorkingArea';
 
@@ -2440,7 +2440,7 @@ export default function Home() {
                 routeStatusView={routeStatusView}
                 setRouteStatusView={setRouteStatusView}
                 onSaveFilteredRoute={handleSaveFilteredRoute}
-                onReoptimizeRoute={handleReoptimizeRoute}
+                onReoptimizeRoute={handleReoptimizeRoute} onDeleteRoute={(route) => deleteSavedRoute({ route, queryClient, activeRoute, setActiveRoute })}
                 startLocation={startLocation} onSaveHomeBase={handleSaveHomeBase}
                 hasMlsData={hasMlsData}
                 logs={logs}
@@ -2621,20 +2621,7 @@ export default function Home() {
                                 toast.error("Failed to delete routes");
                             }
                         }}
-                        onDeleteRoute={async (route) => {
-                            if (confirm(`Delete route "${route.name}"?`)) {
-                                try {
-                                    await base44.entities.SavedRoute.delete(route.id);
-                                    queryClient.invalidateQueries({ queryKey: ['savedRoutes'] });
-                                    if (activeRoute && activeRoute.id === route.id) {
-                                        setActiveRoute(null);
-                                    }
-                                    toast.success("Route deleted");
-                                } catch (e) {
-                                    toast.error("Failed to delete route");
-                                }
-                            }
-                        }}
+                        onDeleteRoute={(route) => deleteSavedRoute({ route, queryClient, activeRoute, setActiveRoute })}
                         onReplaceRoutes={(newRoutes) => setRoutes(newRoutes)}
                         onClose={() => setShowRoutePanel(false)}
                         activeRouteId={activeRoute?.id}
