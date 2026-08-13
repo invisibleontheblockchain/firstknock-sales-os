@@ -244,7 +244,15 @@ function ViewportCulledPins({
         };
     }, [map]);
 
-    const MAX_VISIBLE_PINS = 5000;
+    // Load shedding. Every rendered pin is a Canvas layer that Leaflet hit-tests
+    // on each mouse move and re-projects on each pan, so the ceiling scales with
+    // zoom: wide views draw a readable sample, street-level views draw detail.
+    // A flat 5,000 cap is what made a 16k-property territory unusable. Banded so
+    // the layer only rebuilds when the budget actually changes.
+    const MAX_VISIBLE_PINS = React.useMemo(
+        () => (zoomLevel >= 16 ? 4000 : zoomLevel >= 14 ? 2000 : 1000),
+        [zoomLevel]
+    );
 
     // Only the zoom *band* matters here — using the raw zoom level would rebuild
     // every pin on each zoom step even though nothing about the set changes.
@@ -312,7 +320,7 @@ function ViewportCulledPins({
             filtered.push(p);
         }
         return filtered;
-    }, [viewBounds, viewMode, pinsZoomEnabled, activeRoute, mode, showAllProperties, effectiveProperties,
+    }, [viewBounds, viewMode, pinsZoomEnabled, activeRoute, mode, showAllProperties, effectiveProperties, MAX_VISIBLE_PINS,
         assignedHashes, zipCodeFilter, drawnPolygon, soldDateFilter, ownershipRangeDays, ownershipRangeReferenceDate, quickFilter, subMonths, isPointInPolygon]);
 
     const oneMonthAgo = useMemo(() => subMonths(new Date(), 1), [subMonths]);
@@ -331,6 +339,7 @@ function ViewportCulledPins({
         if (visiblePins.length === 0) return;
 
         const group = L.layerGroup();
+        const denseView = visiblePins.length > 1200;
 
         visiblePins.forEach(p => {
             let isRecentlySold = false;
@@ -355,23 +364,15 @@ function ViewportCulledPins({
                 fillColor = STATUS_COLORS[effectiveColorStatus] || STATUS_COLORS.OTHER;
             }
             
-            // Transparent hitbox for mobile tapping
-            const hitbox = L.circleMarker([p.lat, p.lng], {
-                radius: 20,
-                color: 'transparent',
-                fillColor: 'transparent',
-                interactive: true,
-                stroke: false
-            });
-            hitbox.on('click', (e) => {
-                L.DomEvent.stopPropagation(e);
-                setSelectedProperty(p);
-            });
-            group.addLayer(hitbox);
+            // No separate transparent hitbox layer: leafletPatches gives every
+            // canvas pin ~12px of tap slop, so a second layer per pin only
+            // doubled the layers Leaflet hit-tests on every mouse move.
 
-            // Confidence ring: subtle outer glow for verified/high leads in any color scheme
+            // Confidence ring: subtle outer glow for verified/high leads in any color scheme.
+            // Skipped on dense views — a third layer per pin is what tips large
+            // territories into unusable pan/zoom lag.
             const conf = p.sale_confidence;
-            const showConfRing = !useConfidenceColors && !isRecentlySold && !isUnvisited && conf && (conf === 'high' || conf === 'verified');
+            const showConfRing = !denseView && !useConfidenceColors && !isRecentlySold && !isUnvisited && conf && (conf === 'high' || conf === 'verified');
             if (showConfRing) {
                 const ringColor = CONFIDENCE_COLORS[conf];
                 const ring = L.circleMarker([p.lat, p.lng], {
@@ -448,6 +449,8 @@ function SavedRoutesLayer({
         if (activeRouteHasMapPoints || mode !== 'analyze' || !routesZoomEnabled) return;
 
         const group = L.layerGroup();
+        const MAX_ROUTE_DETAIL_PINS = 4000;
+        let detailPinsDrawn = 0;
 
         const filteredRoutes = filterRoutesByStatus(hydratedSavedRoutes, routeStatusView).filter(route => {
             if (mode === 'generate') return true;
@@ -496,13 +499,15 @@ function SavedRoutesLayer({
                         if (quickFilter === 'rejected' && p.effective_status !== 'HARD_NO') return;
                     }
 
-                    // Transparent hitbox for tapping
+                    // Detail-pin budget: past this point the route lines and center
+                    // markers still show the whole territory, but drawing every
+                    // door of every saved route is what freezes a large account.
+                    if (detailPinsDrawn >= MAX_ROUTE_DETAIL_PINS) return;
+                    detailPinsDrawn++;
+
+                    // No separate transparent hitbox: the global 12px canvas tap
+                    // slop covers tapping without doubling the layer count.
                     const point = [Number(p.lat), Number(p.lng)];
-                    const hitbox = L.circleMarker(point, {
-                        radius: 20, color: 'transparent', fillColor: 'transparent', interactive: true, stroke: false
-                    });
-                    hitbox.on('click', (e) => { L.DomEvent.stopPropagation(e); setActiveRoute({ ...route, route_number: globalNumber, display_color: repColor }); });
-                    group.addLayer(hitbox);
 
                     // Visible pin — confirmed sales stay green regardless of route color
                     const sold = isConfirmedSale(p);
