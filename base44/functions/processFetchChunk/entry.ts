@@ -946,7 +946,7 @@ function jsonText(value, fallback) {
 }
 
 const WRITE_COLUMN_TYPES = [
-    ['address_hash', 'text'], ['legacy_hash', 'text'], ['full_address', 'text'], ['house_number', 'int'],
+    ['address_hash', 'text'], ['legacy_hash', 'text'], ['full_address', 'text'], ['house_number', 'text'],
     ['street_name', 'text'], ['city', 'text'], ['state', 'text'], ['zip_code', 'text'],
     ['lat', 'double precision'], ['lng', 'double precision'], ['owner_full_name', 'text'],
     ['owner_occupied', 'boolean'], ['corporate_owned', 'boolean'], ['investor_owned', 'boolean'],
@@ -965,7 +965,12 @@ function toWriteRow(p, job, customOwnershipRange, existing) {
     if (!existing) {
         return {
             address_hash: p.address_hash, legacy_hash: p.legacy_hash ?? null, full_address: p.full_address ?? null,
-            house_number: p.house_number || null, street_name: p.street_name || null, city: p.city || null,
+            // properties.house_number is TEXT in Neon. Sending an int[] made
+            // COALESCE(t.house_number, p.house_number) mix integer and text.
+            house_number: p.house_number === null || p.house_number === undefined || p.house_number === ''
+                ? null
+                : String(p.house_number),
+            street_name: p.street_name || null, city: p.city || null,
             state: p.state || null, zip_code: p.zip_code || null, lat: p.lat, lng: p.lng,
             owner_full_name: p.owner_full_name || null, owner_occupied: p.owner_occupied ?? null,
             corporate_owned: p.corporate_owned ?? null, investor_owned: p.investor_owned ?? null,
@@ -1031,7 +1036,7 @@ async function insertNewProperties(sql, rows) {
             t.beds, t.baths, t.sqft, t.lot_size, t.year_built, t.price, t.sold_date, t.sale_type,
             t.property_type, t.data_source, t.sale_confidence, t.original_status, t.raw_payload, NOW()
         FROM UNNEST(
-            ${c[0]}::text[], ${c[1]}::text[], ${c[2]}::text[], ${c[3]}::int[], ${c[4]}::text[], ${c[5]}::text[],
+            ${c[0]}::text[], ${c[1]}::text[], ${c[2]}::text[], ${c[3]}::text[], ${c[4]}::text[], ${c[5]}::text[],
             ${c[6]}::text[], ${c[7]}::text[], ${c[8]}::double precision[], ${c[9]}::double precision[],
             ${c[10]}::text[], ${c[11]}::boolean[], ${c[12]}::boolean[], ${c[13]}::boolean[],
             ${c[14]}::double precision[], ${c[15]}::double precision[], ${c[16]}::double precision[],
@@ -1082,7 +1087,7 @@ async function updateExistingProperties(sql, rows) {
             raw_payload = t.raw_payload,
             updated_at = NOW()
         FROM UNNEST(
-            ${c[0]}::text[], ${c[1]}::text[], ${c[2]}::text[], ${c[3]}::int[], ${c[4]}::text[], ${c[5]}::text[],
+            ${c[0]}::text[], ${c[1]}::text[], ${c[2]}::text[], ${c[3]}::text[], ${c[4]}::text[], ${c[5]}::text[],
             ${c[6]}::text[], ${c[7]}::text[], ${c[8]}::double precision[], ${c[9]}::double precision[],
             ${c[10]}::text[], ${c[11]}::boolean[], ${c[12]}::boolean[], ${c[13]}::boolean[],
             ${c[14]}::double precision[], ${c[15]}::double precision[], ${c[16]}::double precision[],
