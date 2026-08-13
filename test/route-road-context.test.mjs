@@ -112,7 +112,7 @@ function largeCostOnlyFixture() {
   return { doors, roadNetwork };
 }
 
-function manyBlockCostOnlyFixture(blockCount = 41) {
+function manyBlockCostOnlyFixture(blockCount = 41, doorCount = 501) {
   const elements = [];
   for (let index = 0; index <= blockCount; index += 1) {
     elements.push(node(`chain-node-${index}`, 35, -82 + index * 0.0001));
@@ -124,7 +124,7 @@ function manyBlockCostOnlyFixture(blockCount = 41) {
       `Block ${index} Street`,
     ));
   }
-  const doors = Array.from({ length: 501 }, (_, index) => {
+  const doors = Array.from({ length: doorCount }, (_, index) => {
     const block = index % blockCount;
     return {
       ...property(
@@ -487,7 +487,7 @@ test('large-route safety limits and road fallbacks are explicit and auditable', 
   assert.equal(metadata.routing.block_to_block_road_cost_fallback_count, 1);
 });
 
-test('street and neighborhood continuity stays available through the 10,000-door route limit without road data', async () => {
+test('street and neighborhood continuity stays available at any door count without road data', async () => {
   for (const size of [43, 501, 5001, 10000]) {
     const doors = Array.from({ length: size }, (_, index) => {
       const streetIndex = index % 20;
@@ -516,7 +516,9 @@ test('street and neighborhood continuity stays available through the 10,000-door
 
     assert.equal(context.mode, 'fallback');
     assert.equal(context.roadAware, false);
-    assert.equal(fetchCalls, size <= 5000 ? 1 : 0);
+    // Door count alone no longer refuses a road request — a 25k-door pull must
+    // still attempt road-aware costs and only fall back when roads are absent.
+    assert.equal(fetchCalls, 1);
 
     const routes = generateOptimizedRoutes(
       doors,
@@ -545,6 +547,25 @@ test('street and neighborhood continuity stays available through the 10,000-door
       ));
     assert.equal(new Set(neighborhoodRuns).size, neighborhoodRuns.length);
   }
+});
+
+test('25,000 doors stay road-aware in cost-only mode with block-bounded work', async () => {
+  const { doors, roadNetwork } = manyBlockCostOnlyFixture(400, 25000);
+  const context = await createRouteRoadContext(doors, {
+    fetchRoadNetwork: async () => roadNetwork,
+  });
+
+  assert.equal(context.roadAware, true, 'a 25k-door pull must not fall back to aerial distance');
+  assert.equal(context.costOnly, true);
+  assert.equal(context.mode, 'cost-only');
+  assert.equal(context.diagnostics.originalPointCount, 25000);
+  assert.equal(context.diagnostics.representativeBlockCount, 400);
+  // Road work is paid per street block, so door count cannot inflate it.
+  assert.ok(context.distanceBetween(doors[0], doors.at(-1)) > 0);
+  assert.ok(
+    context.diagnostics.dijkstraRunCount <= 400,
+    `dijkstra work was not block-bounded: ${context.diagnostics.dijkstraRunCount}`,
+  );
 });
 
 test('cost-only refinement stays bounded as the number of street blocks grows', async () => {

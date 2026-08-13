@@ -7,9 +7,14 @@ import { fetchRouteRoadNetwork } from './routeRoadNetworkSource';
 import { canonicalStreetRoutingKey } from './routeOptimizer';
 
 const METERS_PER_MILE = 1609.344;
+// Full mode routes door-to-door eagerly, so it stays deliberately small.
+// Cost-only mode collapses every door onto its street block first, so its work
+// scales with block count — not door count. Keeping the door ceiling high and
+// the block ceiling as the real safety bound lets a 25k-door pull stay
+// road-aware instead of silently dropping to aerial distance (the "zigzag").
 const DEFAULT_MAX_FULL_ROUTE_POINTS = 500;
-const DEFAULT_MAX_COST_ONLY_POINTS = 5000;
-const DEFAULT_MAX_COST_ONLY_BLOCKS = 300;
+const DEFAULT_MAX_COST_ONLY_POINTS = 250000;
+const DEFAULT_MAX_COST_ONLY_BLOCKS = 4000;
 const ROUTE_HIGHWAY_FILTER = DEFAULT_ROUTABLE_HIGHWAYS.join('|');
 const INVALID_AREA_LABELS = new Set([
   '-',
