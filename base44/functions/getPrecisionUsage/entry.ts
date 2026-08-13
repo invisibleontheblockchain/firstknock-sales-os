@@ -3,6 +3,10 @@ import Stripe from 'npm:stripe@14.14.0';
 
 const FREE_PROPERTY_LIMIT = 50;
 const PAID_PROPERTY_LIMIT = 1000;
+// Mirrors the temporary uncapped grant in startBatchDataPull so the usage meter
+// reports the same allowance the pull path will actually honor.
+const UNLIMITED_PROPERTY_LIMIT = 1000000;
+const UNLIMITED_PRECISION_EMAIL = 'invisibleontheblockchain@gmail.com';
 const RECONCILIATION_VERSION = 2;
 const PRECISION_PRICE_FLOOR_CENTS = 9900;
 
@@ -30,6 +34,19 @@ function betaTimestampIso(value: any) {
 
 function betaPrecisionEvidence(user: any) {
     const grantEmail = user?.email?.toLowerCase();
+    if (grantEmail === UNLIMITED_PRECISION_EMAIL) {
+        return {
+            kind: 'beta',
+            paidAccess: true,
+            proAccess: true,
+            limit: UNLIMITED_PROPERTY_LIMIT,
+            precisionLimit: UNLIMITED_PROPERTY_LIMIT,
+            subscriptionId: 'owner_unlimited_grant',
+            invoiceId: null,
+            periodStart: new Date(2026, 0, 1).toISOString(),
+            periodEnd: new Date(2030, 0, 1).toISOString()
+        };
+    }
     if (grantEmail === 'baysecurity@gmail.com' || grantEmail === 'kevin@reifenvironmental.com') {
         return {
             kind: 'beta',

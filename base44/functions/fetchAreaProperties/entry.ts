@@ -16,6 +16,11 @@ const FREE_AREA_LIMIT_SQ_MI = 40;
 const PAID_AREA_LIMIT_SQ_MI = 300;
 const FREE_PROPERTY_CAP = 50;
 const PAID_PROPERTY_CAP = 1000;
+// Mirrors the temporary uncapped grant in startBatchDataPull. This path resumes
+// an interrupted import, so without the same grant a large owner pull would be
+// clamped back to 1,000 on retry.
+const UNLIMITED_PROPERTY_CAP = 1000000;
+const UNLIMITED_PRECISION_EMAIL = 'invisibleontheblockchain@gmail.com';
 const PROCESSOR_START_WAIT_MS = 900;
 const PRECISION_PRICE_FLOOR_CENTS = 9900;
 const DEFAULT_ROUTE_TYPE_FILTERS = {
@@ -73,6 +78,18 @@ function trialPrecisionEvidence(subscription, userId) {
 }
 
 async function resolvePrecisionEntitlement(user) {
+    if (user?.email?.toLowerCase() === UNLIMITED_PRECISION_EMAIL) {
+        return {
+            kind: 'beta',
+            paidAccess: true,
+            proAccess: true,
+            precisionLimit: UNLIMITED_PROPERTY_CAP,
+            subscriptionId: 'owner_unlimited_grant',
+            invoiceId: null,
+            periodStart: new Date(2026, 0, 1).toISOString(),
+            periodEnd: new Date(2030, 0, 1).toISOString()
+        };
+    }
     const secret = Deno.env.get('STRIPE_SECRET_KEY');
     if (!secret) throw new Error('Stripe billing verification is unavailable.');
     const stripe = new Stripe(secret);
@@ -379,6 +396,7 @@ async function getPrecisionJobs(base44, user) {
 
 async function getPrecisionAllowance(base44, user, entitlement) {
     if (entitlement.kind === 'unmetered') return { used: 0, reserved: 0, remaining: PAID_PROPERTY_CAP, trialUsed: 0, lifetimeUsed: 0 };
+    if (entitlement.kind === 'beta') return { used: 0, reserved: 0, remaining: entitlement.precisionLimit, trialUsed: 0, lifetimeUsed: 0 };
     const jobs = await getPrecisionJobs(base44, user);
     const periodStart = asTimestamp(entitlement.periodStart);
     const periodEnd = asTimestamp(entitlement.periodEnd);
@@ -458,7 +476,7 @@ Deno.serve(async (req) => {
         const routeHomeStats = await getPrecisionRouteHomeStats(base44, user);
         const existingRouteHomes = routeHomeStats.count;
         const allowance = await getPrecisionAllowance(base44, user, entitlement);
-        const paidPropertyLimit = PAID_PROPERTY_CAP;
+        const paidPropertyLimit = entitlement.kind === 'beta' ? entitlement.precisionLimit : PAID_PROPERTY_CAP;
         const paidPropertiesUsed = hasPaidPrecisionCapacity ? allowance.used + allowance.reserved : null;
         const paidPropertiesRemaining = hasPaidPrecisionCapacity
             ? allowance.remaining
@@ -755,7 +773,7 @@ Deno.serve(async (req) => {
             pull_mode: 'new_area',
             user_email: user.email,
             precision_usage_user_id: user.id,
-            precision_usage_kind: lockedEntitlement.kind === 'paid' ? 'paid' : lockedEntitlement.kind === 'unmetered' ? 'unmetered' : 'trial',
+            precision_usage_kind: lockedEntitlement.kind === 'paid' || lockedEntitlement.kind === 'beta' ? 'paid' : lockedEntitlement.kind === 'unmetered' ? 'unmetered' : 'trial',
             ...(lockedEntitlement.subscriptionId ? { precision_subscription_id: lockedEntitlement.subscriptionId } : {}),
             ...(lockedEntitlement.invoiceId ? { precision_invoice_id: lockedEntitlement.invoiceId } : {}),
             ...(lockedEntitlement.periodStart ? { precision_usage_period_start: lockedEntitlement.periodStart } : {}),

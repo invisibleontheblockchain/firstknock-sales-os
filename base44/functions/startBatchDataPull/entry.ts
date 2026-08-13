@@ -14,6 +14,14 @@ import {
 
 const FREE_PROPERTY_CAP = 50;
 const PAID_PROPERTY_CAP = 1000;
+// TEMPORARY marketing grant (full-metro Charlotte pull). This one account has no
+// practical property cap. The ceiling is a large finite number rather than
+// Infinity/MAX_SAFE_INTEGER because the reservation, expected-count and progress
+// math all persist this value on the FetchJob. Delete this constant and the
+// UNLIMITED_PRECISION_EMAIL branch in betaPrecisionEvidence to restore the
+// normal 1,000-properties-per-period paid cap.
+const UNLIMITED_PROPERTY_CAP = 1000000;
+const UNLIMITED_PRECISION_EMAIL = 'invisibleontheblockchain@gmail.com';
 const PROCESSOR_START_WAIT_MS = 900;
 const PRECISION_PRICE_FLOOR_CENTS = 9900;
 const DEFAULT_ROUTE_TYPE_FILTERS = {
@@ -152,6 +160,19 @@ function stripeTimestampIso(value) {
 
 function betaPrecisionEvidence(user) {
     const grantEmail = user?.email?.toLowerCase();
+    if (grantEmail === UNLIMITED_PRECISION_EMAIL) {
+        return {
+            kind: 'beta',
+            paidAccess: true,
+            proAccess: true,
+            limit: UNLIMITED_PROPERTY_CAP,
+            precisionLimit: UNLIMITED_PROPERTY_CAP,
+            subscriptionId: 'owner_unlimited_grant',
+            invoiceId: null,
+            periodStart: new Date(2026, 0, 1).toISOString(),
+            periodEnd: new Date(2030, 0, 1).toISOString()
+        };
+    }
     if (grantEmail === 'baysecurity@gmail.com' || grantEmail === 'kevin@reifenvironmental.com') {
         return {
             kind: 'beta',
