@@ -11,10 +11,15 @@ const BATCHDATA_PROGRESS_UPDATE_MS = 1500;
 // Per-invocation provider scan budget. When it runs out, the chunk persists its
 // offset and chains the next invocation, so a 24k-record area completes across
 // many chunks instead of stopping at an arbitrary scan ceiling.
-const CHUNK_SCAN_BUDGET_MS = 30 * 1000;
-// Selection ceiling per invocation. Writes are per-record, so this bounds how
-// long the Neon write phase of one chunk can take.
-const CHUNK_MAX_SELECTED = 750;
+const CHUNK_SCAN_BUDGET_MS = 45 * 1000;
+// Selection ceiling per invocation. Raised now that the Neon write is batched:
+// one chunk writes thousands of records in a handful of round trips.
+const CHUNK_MAX_SELECTED = 2500;
+// Provider pages are capped at 100 records each and are independent, so fetch a
+// wave of them concurrently instead of walking offsets one request at a time.
+const PAGE_CONCURRENCY = 5;
+// Records per set-based write statement.
+const WRITE_BATCH_SIZE = 250;
 const PIPELINE_LOCK_TTL_MS = 8 * 60 * 1000;
 const DEFAULT_ROUTE_TYPE_FILTERS = {
     propertyTypes: ['Single Family'],
@@ -934,122 +939,279 @@ function withSubdivisionInRawPayload(rawPayload, subdivisionName) {
     }
 }
 
-async function writePropertiesToNeon(sql, properties, job, excludedRouteHashes = new Set()) {
-    let inserted = 0, existed = 0, updated = 0;
-    const customOwnershipRange = getCustomOwnershipRange(job);
+function jsonText(value, fallback) {
+    if (typeof value === 'string') return value;
+    if (value === null || value === undefined) return JSON.stringify(fallback ?? {});
+    return JSON.stringify(value);
+}
 
-    for (const p of properties) {
-        const isInSavedRoute = excludedRouteHashes.has(p.address_hash);
-        const existingRows = await sql`
-            SELECT
-                p.id,
-                p.sold_date,
-                p.sale_confidence,
-                p.original_status,
-                COALESCE(
-                    p.raw_payload -> 'property' ->> 'subdivision_name',
-                    p.raw_payload ->> 'subdivision_name',
-                    p.raw_payload ->> 'subdivisionName',
-                    to_jsonb(p) ->> 'subdivision_name'
-                ) AS existing_subdivision_name,
-                p.owner_full_name,
-                p.owner_occupied,
-                p.corporate_owned,
-                p.investor_owned,
-                p.beds,
-                p.baths,
-                p.sqft,
-                p.lot_size,
-                p.year_built,
-                p.price
-            FROM properties p
-            WHERE p.address_hash = ${p.address_hash}
-            LIMIT 1
-        `;
-        const soldDate = toNullableDate(p.sold_date);
-        const rawPayload = p.raw_payload || JSON.stringify(p);
+const WRITE_COLUMN_TYPES = [
+    ['address_hash', 'text'], ['legacy_hash', 'text'], ['full_address', 'text'], ['house_number', 'int'],
+    ['street_name', 'text'], ['city', 'text'], ['state', 'text'], ['zip_code', 'text'],
+    ['lat', 'double precision'], ['lng', 'double precision'], ['owner_full_name', 'text'],
+    ['owner_occupied', 'boolean'], ['corporate_owned', 'boolean'], ['investor_owned', 'boolean'],
+    ['beds', 'double precision'], ['baths', 'double precision'], ['sqft', 'double precision'],
+    ['lot_size', 'double precision'], ['year_built', 'int'], ['price', 'double precision'],
+    ['sold_date', 'timestamptz'], ['sale_type', 'text'], ['property_type', 'text'], ['data_source', 'text'],
+    ['sale_confidence', 'text'], ['original_status', 'text'], ['raw_payload', 'jsonb']
+];
 
-        if (existingRows.length === 0) {
-            const created = await sql`
-                INSERT INTO properties (
-                    address_hash, legacy_hash, full_address, house_number, street_name, city, state, zip_code,
-                    lat, lng, owner_full_name, owner_occupied, corporate_owned, investor_owned, beds, baths, sqft, lot_size, year_built, price,
-                    sold_date, sale_type, property_type, data_source, sale_confidence, original_status, raw_payload, updated_at
-                ) VALUES (
-                    ${p.address_hash}, ${p.legacy_hash}, ${p.full_address}, ${p.house_number || null}, ${p.street_name || null},
-                    ${p.city || null}, ${p.state || null}, ${p.zip_code || null}, ${p.lat}, ${p.lng}, ${p.owner_full_name || null},
-                    ${p.owner_occupied}, ${p.corporate_owned}, ${p.investor_owned},
-                    ${p.beds || null}, ${p.baths || null}, ${p.sqft || null}, ${p.lot_size || null}, ${p.year_built || null},
-                    ${p.price || null}, ${soldDate}, ${p.sale_type}, ${p.property_type}, ${p.data_source}, ${p.sale_confidence},
-                    ${p.original_status}, ${rawPayload}, NOW()
-                ) RETURNING id
-            `;
-            await sql`
-                INSERT INTO workspace_properties (property_id, user_email, fetch_job_id, route_active, status, updated_at)
-                VALUES (${created[0].id}, ${job.user_email || 'unknown'}, ${job.id}, ${p.route_active !== false}, ${p.original_status}, NOW())
-                ON CONFLICT (property_id, user_email)
-                DO UPDATE SET
-                    fetch_job_id = CASE WHEN ${isInSavedRoute} THEN workspace_properties.fetch_job_id ELSE EXCLUDED.fetch_job_id END,
-                    route_active = EXCLUDED.route_active,
-                    status = EXCLUDED.status,
-                    updated_at = NOW()
-            `;
-            inserted++;
-            continue;
-        }
+// One provider row -> one flat write row. Every batched statement below reads
+// from these same columns, so the per-row decisions stay in JS while the
+// database work becomes set-based.
+function toWriteRow(p, job, customOwnershipRange, existing) {
+    const soldDate = toNullableDate(p.sold_date);
+    const rawPayload = jsonText(p.raw_payload, p);
+    if (!existing) {
+        return {
+            address_hash: p.address_hash, legacy_hash: p.legacy_hash ?? null, full_address: p.full_address ?? null,
+            house_number: p.house_number || null, street_name: p.street_name || null, city: p.city || null,
+            state: p.state || null, zip_code: p.zip_code || null, lat: p.lat, lng: p.lng,
+            owner_full_name: p.owner_full_name || null, owner_occupied: p.owner_occupied ?? null,
+            corporate_owned: p.corporate_owned ?? null, investor_owned: p.investor_owned ?? null,
+            beds: p.beds || null, baths: p.baths || null, sqft: p.sqft || null, lot_size: p.lot_size || null,
+            year_built: p.year_built || null, price: p.price || null, sold_date: soldDate,
+            sale_type: p.sale_type ?? null, property_type: p.property_type ?? null, data_source: p.data_source ?? null,
+            sale_confidence: p.sale_confidence ?? null, original_status: p.original_status ?? null,
+            raw_payload: rawPayload
+        };
+    }
+    const existingSubdivisionName = normalizeSubdivisionName(existing.existing_subdivision_name);
+    return {
+        ...toWriteRow(p, job, customOwnershipRange, null),
+        raw_payload: jsonText(
+            withSubdivisionInRawPayload(rawPayload, p.subdivision_name || existingSubdivisionName),
+            p
+        )
+    };
+}
 
-        const existing = existingRows[0];
-        existed++;
-        const existingDate = existing.sold_date ? new Date(existing.sold_date).getTime() : 0;
-        const incomingDate = soldDate ? new Date(soldDate).getTime() : 0;
-        const existingSubdivisionName = normalizeSubdivisionName(existing.existing_subdivision_name);
-        const updateRawPayload = withSubdivisionInRawPayload(
-            rawPayload,
-            p.subdivision_name || existingSubdivisionName
-        );
-        const mustPersistCustomSoldDate = !!customOwnershipRange && incomingDate > 0 && incomingDate !== existingDate;
-        const hasNewMetadata =
-            (!existingSubdivisionName && p.subdivision_name) ||
-            (!existing.owner_full_name && p.owner_full_name) ||
-            (p.owner_occupied !== null && p.owner_occupied !== existing.owner_occupied) ||
-            (p.corporate_owned !== null && p.corporate_owned !== existing.corporate_owned) ||
-            (p.investor_owned !== null && p.investor_owned !== existing.investor_owned) ||
-            (!existing.beds && p.beds) ||
-            (!existing.baths && p.baths) ||
-            (!existing.sqft && p.sqft) ||
-            (!existing.lot_size && p.lot_size) ||
-            (!existing.year_built && p.year_built) ||
-            (!existing.price && p.price);
-        const shouldUpdate = mustPersistCustomSoldDate || incomingDate > existingDate || hasNewMetadata || p.sale_confidence !== existing.sale_confidence || p.original_status !== existing.original_status;
+function shouldUpdateExisting(p, existing, customOwnershipRange, soldDate) {
+    const existingDate = existing.sold_date ? new Date(existing.sold_date).getTime() : 0;
+    const incomingDate = soldDate ? new Date(soldDate).getTime() : 0;
+    const existingSubdivisionName = normalizeSubdivisionName(existing.existing_subdivision_name);
+    const mustPersistCustomSoldDate = !!customOwnershipRange && incomingDate > 0 && incomingDate !== existingDate;
+    const hasNewMetadata =
+        (!existingSubdivisionName && p.subdivision_name) ||
+        (!existing.owner_full_name && p.owner_full_name) ||
+        (p.owner_occupied !== null && p.owner_occupied !== existing.owner_occupied) ||
+        (p.corporate_owned !== null && p.corporate_owned !== existing.corporate_owned) ||
+        (p.investor_owned !== null && p.investor_owned !== existing.investor_owned) ||
+        (!existing.beds && p.beds) ||
+        (!existing.baths && p.baths) ||
+        (!existing.sqft && p.sqft) ||
+        (!existing.lot_size && p.lot_size) ||
+        (!existing.year_built && p.year_built) ||
+        (!existing.price && p.price);
+    return mustPersistCustomSoldDate
+        || incomingDate > existingDate
+        || !!hasNewMetadata
+        || p.sale_confidence !== existing.sale_confidence
+        || p.original_status !== existing.original_status;
+}
 
-        if (shouldUpdate) {
-            await sql`
-                UPDATE properties SET
-                    legacy_hash = COALESCE(${p.legacy_hash}, legacy_hash), full_address = COALESCE(${p.full_address}, full_address),
-                    house_number = COALESCE(${p.house_number || null}, house_number), street_name = COALESCE(${p.street_name || null}, street_name),
-                    city = COALESCE(${p.city || null}, city), state = COALESCE(${p.state || null}, state), zip_code = COALESCE(${p.zip_code || null}, zip_code),
-                    lat = COALESCE(${p.lat}, lat), lng = COALESCE(${p.lng}, lng), owner_full_name = COALESCE(${p.owner_full_name || null}, owner_full_name),
-                    owner_occupied = COALESCE(${p.owner_occupied}, owner_occupied), corporate_owned = COALESCE(${p.corporate_owned}, corporate_owned),
-                    investor_owned = COALESCE(${p.investor_owned}, investor_owned),
-                    beds = COALESCE(${p.beds || null}, beds), baths = COALESCE(${p.baths || null}, baths), sqft = COALESCE(${p.sqft || null}, sqft),
-                    lot_size = COALESCE(${p.lot_size || null}, lot_size), year_built = COALESCE(${p.year_built || null}, year_built), price = COALESCE(${p.price || null}, price),
-                    sold_date = COALESCE(${soldDate}, sold_date), sale_type = COALESCE(${p.sale_type}, sale_type), property_type = COALESCE(${p.property_type}, property_type),
-                    data_source = ${p.data_source}, sale_confidence = ${p.sale_confidence}, original_status = ${p.original_status}, raw_payload = ${updateRawPayload}, updated_at = NOW()
-                WHERE id = ${existing.id}
-            `;
-            updated++;
-        }
+function unnestColumns(rows) {
+    // Positional arrays for UNNEST(...) AS t(...), in WRITE_COLUMN_TYPES order.
+    return WRITE_COLUMN_TYPES.map(([name]) => rows.map(row => row[name]));
+}
 
+async function insertNewProperties(sql, rows) {
+    if (rows.length === 0) return 0;
+    const c = unnestColumns(rows);
+    const insertedRows = await sql`
+        INSERT INTO properties (
+            address_hash, legacy_hash, full_address, house_number, street_name, city, state, zip_code,
+            lat, lng, owner_full_name, owner_occupied, corporate_owned, investor_owned, beds, baths, sqft,
+            lot_size, year_built, price, sold_date, sale_type, property_type, data_source, sale_confidence,
+            original_status, raw_payload, updated_at
+        )
+        SELECT
+            t.address_hash, t.legacy_hash, t.full_address, t.house_number, t.street_name, t.city, t.state,
+            t.zip_code, t.lat, t.lng, t.owner_full_name, t.owner_occupied, t.corporate_owned, t.investor_owned,
+            t.beds, t.baths, t.sqft, t.lot_size, t.year_built, t.price, t.sold_date, t.sale_type,
+            t.property_type, t.data_source, t.sale_confidence, t.original_status, t.raw_payload, NOW()
+        FROM UNNEST(
+            ${c[0]}::text[], ${c[1]}::text[], ${c[2]}::text[], ${c[3]}::int[], ${c[4]}::text[], ${c[5]}::text[],
+            ${c[6]}::text[], ${c[7]}::text[], ${c[8]}::double precision[], ${c[9]}::double precision[],
+            ${c[10]}::text[], ${c[11]}::boolean[], ${c[12]}::boolean[], ${c[13]}::boolean[],
+            ${c[14]}::double precision[], ${c[15]}::double precision[], ${c[16]}::double precision[],
+            ${c[17]}::double precision[], ${c[18]}::int[], ${c[19]}::double precision[], ${c[20]}::timestamptz[],
+            ${c[21]}::text[], ${c[22]}::text[], ${c[23]}::text[], ${c[24]}::text[], ${c[25]}::text[], ${c[26]}::jsonb[]
+        ) AS t(
+            address_hash, legacy_hash, full_address, house_number, street_name, city, state, zip_code,
+            lat, lng, owner_full_name, owner_occupied, corporate_owned, investor_owned, beds, baths, sqft,
+            lot_size, year_built, price, sold_date, sale_type, property_type, data_source, sale_confidence,
+            original_status, raw_payload
+        )
+        ON CONFLICT (address_hash) DO NOTHING
+        RETURNING id
+    `;
+    return insertedRows.length;
+}
+
+async function updateExistingProperties(sql, rows) {
+    if (rows.length === 0) return 0;
+    const c = unnestColumns(rows);
+    const updatedRows = await sql`
+        UPDATE properties p SET
+            legacy_hash = COALESCE(t.legacy_hash, p.legacy_hash),
+            full_address = COALESCE(t.full_address, p.full_address),
+            house_number = COALESCE(t.house_number, p.house_number),
+            street_name = COALESCE(t.street_name, p.street_name),
+            city = COALESCE(t.city, p.city),
+            state = COALESCE(t.state, p.state),
+            zip_code = COALESCE(t.zip_code, p.zip_code),
+            lat = COALESCE(t.lat, p.lat),
+            lng = COALESCE(t.lng, p.lng),
+            owner_full_name = COALESCE(t.owner_full_name, p.owner_full_name),
+            owner_occupied = COALESCE(t.owner_occupied, p.owner_occupied),
+            corporate_owned = COALESCE(t.corporate_owned, p.corporate_owned),
+            investor_owned = COALESCE(t.investor_owned, p.investor_owned),
+            beds = COALESCE(t.beds, p.beds),
+            baths = COALESCE(t.baths, p.baths),
+            sqft = COALESCE(t.sqft, p.sqft),
+            lot_size = COALESCE(t.lot_size, p.lot_size),
+            year_built = COALESCE(t.year_built, p.year_built),
+            price = COALESCE(t.price, p.price),
+            sold_date = COALESCE(t.sold_date, p.sold_date),
+            sale_type = COALESCE(t.sale_type, p.sale_type),
+            property_type = COALESCE(t.property_type, p.property_type),
+            data_source = t.data_source,
+            sale_confidence = t.sale_confidence,
+            original_status = t.original_status,
+            raw_payload = t.raw_payload,
+            updated_at = NOW()
+        FROM UNNEST(
+            ${c[0]}::text[], ${c[1]}::text[], ${c[2]}::text[], ${c[3]}::int[], ${c[4]}::text[], ${c[5]}::text[],
+            ${c[6]}::text[], ${c[7]}::text[], ${c[8]}::double precision[], ${c[9]}::double precision[],
+            ${c[10]}::text[], ${c[11]}::boolean[], ${c[12]}::boolean[], ${c[13]}::boolean[],
+            ${c[14]}::double precision[], ${c[15]}::double precision[], ${c[16]}::double precision[],
+            ${c[17]}::double precision[], ${c[18]}::int[], ${c[19]}::double precision[], ${c[20]}::timestamptz[],
+            ${c[21]}::text[], ${c[22]}::text[], ${c[23]}::text[], ${c[24]}::text[], ${c[25]}::text[], ${c[26]}::jsonb[]
+        ) AS t(
+            address_hash, legacy_hash, full_address, house_number, street_name, city, state, zip_code,
+            lat, lng, owner_full_name, owner_occupied, corporate_owned, investor_owned, beds, baths, sqft,
+            lot_size, year_built, price, sold_date, sale_type, property_type, data_source, sale_confidence,
+            original_status, raw_payload
+        )
+        WHERE p.address_hash = t.address_hash
+        RETURNING p.id
+    `;
+    return updatedRows.length;
+}
+
+// Set-based workspace link. Split by lock state because ON CONFLICT DO UPDATE
+// can only read EXCLUDED for listed columns, and locked rows must keep the
+// fetch_job_id that first claimed them for a saved route.
+async function linkWorkspaceProperties(sql, links, job, keepExistingJobId) {
+    if (links.length === 0) return;
+    const hashes = links.map(l => l.address_hash);
+    const active = links.map(l => l.route_active);
+    const statuses = links.map(l => l.status);
+    const userEmail = job.user_email || 'unknown';
+    if (keepExistingJobId) {
         await sql`
             INSERT INTO workspace_properties (property_id, user_email, fetch_job_id, route_active, status, updated_at)
-            VALUES (${existing.id}, ${job.user_email || 'unknown'}, ${job.id}, ${p.route_active !== false}, ${p.original_status}, NOW())
-            ON CONFLICT (property_id, user_email)
-            DO UPDATE SET
-                fetch_job_id = CASE WHEN ${isInSavedRoute} THEN workspace_properties.fetch_job_id ELSE EXCLUDED.fetch_job_id END,
+            SELECT p.id, ${userEmail}, ${job.id}, t.route_active, t.status, NOW()
+            FROM UNNEST(${hashes}::text[], ${active}::boolean[], ${statuses}::text[])
+                AS t(address_hash, route_active, status)
+            JOIN properties p ON p.address_hash = t.address_hash
+            ON CONFLICT (property_id, user_email) DO UPDATE SET
                 route_active = EXCLUDED.route_active,
                 status = EXCLUDED.status,
                 updated_at = NOW()
         `;
+        return;
+    }
+    await sql`
+        INSERT INTO workspace_properties (property_id, user_email, fetch_job_id, route_active, status, updated_at)
+        SELECT p.id, ${userEmail}, ${job.id}, t.route_active, t.status, NOW()
+        FROM UNNEST(${hashes}::text[], ${active}::boolean[], ${statuses}::text[])
+            AS t(address_hash, route_active, status)
+        JOIN properties p ON p.address_hash = t.address_hash
+        ON CONFLICT (property_id, user_email) DO UPDATE SET
+            fetch_job_id = EXCLUDED.fetch_job_id,
+            route_active = EXCLUDED.route_active,
+            status = EXCLUDED.status,
+            updated_at = NOW()
+    `;
+}
+
+async function writePropertyBatch(sql, properties, job, excludedRouteHashes, customOwnershipRange) {
+    const hashes = properties.map(p => p.address_hash);
+    const existingRows = await sql`
+        SELECT
+            p.address_hash,
+            p.id,
+            p.sold_date,
+            p.sale_confidence,
+            p.original_status,
+            COALESCE(
+                p.raw_payload -> 'property' ->> 'subdivision_name',
+                p.raw_payload ->> 'subdivision_name',
+                p.raw_payload ->> 'subdivisionName',
+                to_jsonb(p) ->> 'subdivision_name'
+            ) AS existing_subdivision_name,
+            p.owner_full_name,
+            p.owner_occupied,
+            p.corporate_owned,
+            p.investor_owned,
+            p.beds,
+            p.baths,
+            p.sqft,
+            p.lot_size,
+            p.year_built,
+            p.price
+        FROM properties p
+        WHERE p.address_hash = ANY(${hashes}::text[])
+    `;
+    const existingByHash = new Map(existingRows.map(row => [row.address_hash, row]));
+
+    const toInsert = [];
+    const toUpdate = [];
+    const lockedLinks = [];
+    const openLinks = [];
+    let existed = 0;
+
+    for (const p of properties) {
+        const existing = existingByHash.get(p.address_hash) || null;
+        if (existing) {
+            existed++;
+            if (shouldUpdateExisting(p, existing, customOwnershipRange, toNullableDate(p.sold_date))) {
+                toUpdate.push(toWriteRow(p, job, customOwnershipRange, existing));
+            }
+        } else {
+            toInsert.push(toWriteRow(p, job, customOwnershipRange, null));
+        }
+        const link = {
+            address_hash: p.address_hash,
+            route_active: p.route_active !== false,
+            status: p.original_status ?? null
+        };
+        if (excludedRouteHashes.has(p.address_hash)) lockedLinks.push(link);
+        else openLinks.push(link);
+    }
+
+    const inserted = await insertNewProperties(sql, toInsert);
+    const updated = await updateExistingProperties(sql, toUpdate);
+    await linkWorkspaceProperties(sql, openLinks, job, false);
+    await linkWorkspaceProperties(sql, lockedLinks, job, true);
+
+    return { inserted, existed, updated };
+}
+
+async function writePropertiesToNeon(sql, properties, job, excludedRouteHashes = new Set()) {
+    let inserted = 0, existed = 0, updated = 0;
+    const customOwnershipRange = getCustomOwnershipRange(job);
+
+    // Batched on purpose. The previous row-at-a-time loop cost three sequential
+    // round trips per property, which dominated the runtime of a large pull.
+    for (let start = 0; start < properties.length; start += WRITE_BATCH_SIZE) {
+        const batch = properties.slice(start, start + WRITE_BATCH_SIZE);
+        const batchResult = await writePropertyBatch(sql, batch, job, excludedRouteHashes, customOwnershipRange);
+        inserted += batchResult.inserted;
+        existed += batchResult.existed;
+        updated += batchResult.updated;
     }
 
     if (properties.length > 0) {
@@ -1132,7 +1294,6 @@ async function fetchBatchDataRecordsForMode(job, mode, requested, onProgress = n
     while (selected.length < requested && !providerExhausted && Date.now() < deadline) {
         const take = BATCHDATA_MAX_TAKE;
         const maxReviewed = null;
-        const requestBody = buildBatchDataRequest(job, skip, take, mode);
         if (typeof onProgress === 'function') {
             await onProgress({
                 event: 'page_start',
@@ -1149,37 +1310,51 @@ async function fetchBatchDataRecordsForMode(job, mode, requested, onProgress = n
             }).catch(() => {});
         }
         const pageStartedAt = Date.now();
-        const payload = await batchDataFetchWithRetry(requestBody);
-        const list = extractBatchDataRecords(payload);
+        // Offsets are deterministic and the pages are independent, so request a
+        // wave of them at once. One 100-record page per round trip cannot cover
+        // a 24k-record area inside any sane budget.
+        const waveSkips = [];
+        for (let offset = 0; offset < PAGE_CONCURRENCY; offset++) waveSkips.push(skip + offset * take);
+        const wave = await Promise.all(waveSkips.map(pageSkip =>
+            batchDataFetchWithRetry(buildBatchDataRequest(job, pageSkip, take, mode))
+                .then(payload => ({
+                    pageSkip,
+                    list: extractBatchDataRecords(payload),
+                    total: extractBatchDataTotal(payload)
+                }))
+        ));
         const pageElapsedMs = Date.now() - pageStartedAt;
-        pageTimings.push({ skip, take, returned: list.length, elapsed_ms: pageElapsedMs });
-        if (totalRecordCount === null) totalRecordCount = extractBatchDataTotal(payload);
-        reviewed += list.length;
-        ledger.observeProviderPage(list);
 
-        for (const raw of list) {
-            const mapped = mapBatchDataProperty(raw, job);
-            ledger.observeMapped(mapped);
-            if (mapped && mapped.route_active !== false) {
-                if (excludedRouteHashes.has(mapped.address_hash)) {
-                    skippedExistingRoute++;
-                    continue;
+        for (const page of wave) {
+            pageTimings.push({ skip: page.pageSkip, take, returned: page.list.length, elapsed_ms: pageElapsedMs });
+            if (totalRecordCount === null && page.total) totalRecordCount = page.total;
+            reviewed += page.list.length;
+            ledger.observeProviderPage(page.list);
+            if (page.list.length < take) providerExhausted = true;
+
+            for (const raw of page.list) {
+                const mapped = mapBatchDataProperty(raw, job);
+                ledger.observeMapped(mapped);
+                if (mapped && mapped.route_active !== false) {
+                    if (excludedRouteHashes.has(mapped.address_hash)) {
+                        skippedExistingRoute++;
+                        continue;
+                    }
+                    if (selectedHashes.has(mapped.address_hash)) {
+                        skippedDuplicate++;
+                        continue;
+                    }
+                    const typeEligibility = routeTypeEligibility(mapped, routeTypeFilters);
+                    if (!typeEligibility.eligible) {
+                        skippedRouteType++;
+                        skippedRouteTypeBreakdown[typeEligibility.reason] = (skippedRouteTypeBreakdown[typeEligibility.reason] || 0) + 1;
+                        continue;
+                    }
+                    selectedHashes.add(mapped.address_hash);
+                    selected.push(raw);
+                } else if (rejectedSamples.length < Math.min(10, Math.max(requested, 2))) {
+                    rejectedSamples.push(raw);
                 }
-                if (selectedHashes.has(mapped.address_hash)) {
-                    skippedDuplicate++;
-                    continue;
-                }
-                const typeEligibility = routeTypeEligibility(mapped, routeTypeFilters);
-                if (!typeEligibility.eligible) {
-                    skippedRouteType++;
-                    skippedRouteTypeBreakdown[typeEligibility.reason] = (skippedRouteTypeBreakdown[typeEligibility.reason] || 0) + 1;
-                    continue;
-                }
-                selectedHashes.add(mapped.address_hash);
-                selected.push(raw);
-                if (selected.length >= requested) break;
-            } else if (rejectedSamples.length < Math.min(10, Math.max(requested, 2))) {
-                rejectedSamples.push(raw);
             }
         }
 
@@ -1201,11 +1376,10 @@ async function fetchBatchDataRecordsForMode(job, mode, requested, onProgress = n
             }).catch(() => {});
         }
 
-        if (list.length < take) providerExhausted = true;
-        else if (totalRecordCount !== null && skip + list.length >= totalRecordCount) providerExhausted = true;
-        // Always advance past the page just reviewed, even when the target was
-        // met mid-page: a resumed chunk must never re-request the same offset.
-        skip += take;
+        // Always advance past every page just reviewed, even when the target was
+        // met mid-wave: a resumed chunk must never re-request the same offset.
+        skip += PAGE_CONCURRENCY * take;
+        if (totalRecordCount !== null && skip >= totalRecordCount) providerExhausted = true;
     }
 
     const budgetExhausted = selected.length < requested && !providerExhausted;
