@@ -1330,7 +1330,11 @@ async function fetchBatchDataRecordsForMode(job, mode, requested, onProgress = n
             if (totalRecordCount === null && page.total) totalRecordCount = page.total;
             reviewed += page.list.length;
             ledger.observeProviderPage(page.list);
-            if (page.list.length < take) providerExhausted = true;
+            // Only an EMPTY page proves the area is exhausted. A short page is
+            // not proof: "max available" must keep walking offsets until the
+            // provider genuinely has nothing left, or until its reported total
+            // is reached (checked after the wave advances the offset).
+            if (page.list.length === 0) providerExhausted = true;
 
             for (const raw of page.list) {
                 const mapped = mapBatchDataProperty(raw, job);
