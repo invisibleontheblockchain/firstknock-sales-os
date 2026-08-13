@@ -7,6 +7,9 @@ import { toast } from "sonner";
 import DataStatusIndicator from './DataStatusIndicator';
 import SplitRouteModal from '@/components/routes/SplitRouteModal';
 import RouteAnchorsDialog from '@/components/routes/RouteAnchorsDialog';
+import HomeBaseDialog from '@/components/routes/HomeBaseDialog';
+import { OPTIMIZE_MODES } from '@/lib/routeOriginModes';
+import { isValidRoutePoint } from '@/lib/routeBounds';
 import { exportRouteToCsv } from '@/components/routes/exportRouteCsv';
 import { FOLLOW_UP_STATUSES, getRouteOutcomeStats, getRerunHashes, getRerunProperties, buildRerunRoutePayload } from '@/components/routes/routeRerunUtils';
 import { base44 } from '@/api/base44Client';
@@ -79,6 +82,7 @@ export default function MapToolbar({
   // Route Optimization
   onReoptimizeRoute,
   startLocation,
+  onSaveHomeBase,
 
   // MLS data flag
   hasMlsData,
@@ -281,14 +285,31 @@ export default function MapToolbar({
     [activeRoute, user, teamMembers]
   );
 
+  const [showHomeBaseDialog, setShowHomeBaseDialog] = useState(false);
+
+  const runOptimize = useCallback(async (mode, extra = {}) => {
+    setReoptimizeBusy(true);
+    try { await onReoptimizeRoute(activeRoute, { mode, ...extra }); }
+    finally { setReoptimizeBusy(false); }
+  }, [activeRoute, onReoptimizeRoute]);
+
+  // Optimizing from home needs a Home Base. Rather than refusing the click, ask
+  // for it here and optimize with the address the moment it is saved.
   const handleSelectOptimizeMode = useCallback(async (mode) => {
     window.__fkSuppressMapFitUntil = Date.now() + 1500;
     if (!onReoptimizeRoute || reoptimizeBusy) return;
     setShowOptimizeMenu(false);
-    setReoptimizeBusy(true);
-    try { await onReoptimizeRoute(activeRoute, { mode }); }
-    finally { setReoptimizeBusy(false); }
-  }, [activeRoute, onReoptimizeRoute, reoptimizeBusy]);
+    if (
+      mode === OPTIMIZE_MODES.HOME_ROUND_TRIP
+      && !isValidRoutePoint(user?.home_base)
+      && typeof onSaveHomeBase === 'function'
+      && routeBelongsToActingUser(activeRoute, user, teamMembers)
+    ) {
+      setShowHomeBaseDialog(true);
+      return;
+    }
+    await runOptimize(mode);
+  }, [activeRoute, onReoptimizeRoute, onSaveHomeBase, reoptimizeBusy, runOptimize, teamMembers, user]);
 
   const isCompletedRoute = activeRoute?.status === 'COMPLETED';
   const canSplitActiveRoute = Boolean(
@@ -800,6 +821,19 @@ export default function MapToolbar({
           }
                 </div>
             </div>
+
+            {showHomeBaseDialog && activeRoute && (
+              <HomeBaseDialog
+                homeBase={user?.home_base || null}
+                title="Set your Home Base"
+                onClose={() => setShowHomeBaseDialog(false)}
+                onSave={async (point) => {
+                  const homeBase = await onSaveHomeBase(point);
+                  setShowHomeBaseDialog(false);
+                  await runOptimize(OPTIMIZE_MODES.HOME_ROUND_TRIP, { homeBase: homeBase || point });
+                }}
+              />
+            )}
 
             {showAnchorsDialog && activeRoute && (
               <RouteAnchorsDialog

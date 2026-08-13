@@ -3,8 +3,9 @@ import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { X, Sun, Moon, Globe, Mountain, Eye, EyeOff, RotateCcw, Save, Navigation, Target, Users } from 'lucide-react';
+import { X, Sun, Moon, Globe, Mountain, Eye, EyeOff, RotateCcw, Save, Navigation, Target, Users, Home } from 'lucide-react';
 import { hasCanvasAccess } from '@/lib/canvasAccess';
+import HomeBaseDialog from '@/components/routes/HomeBaseDialog';
 
 /* ── constants ── */
 const REP_COLOR_OPTIONS = ['#FFD700','#ef4444','#22c55e','#3b82f6','#ec4899','#f97316','#8b5cf6','#06b6d4','#eab308','#14b8a6'];
@@ -63,8 +64,10 @@ export default function MapSettingsPanel({
   highlightRecentlySold, setHighlightRecentlySold,
   showZipOverlay = false, setShowZipOverlay,
   routeMode = 'precision', setRouteMode,
+  homeBase = null, onSaveHomeBase,
   user,
 }) {
+  const [showHomeBase, setShowHomeBase] = useState(false);
   // Local buffered state
   const [local, setLocal] = useState({
     mapSettings: mapSettings || {},
@@ -256,6 +259,27 @@ export default function MapSettingsPanel({
                 </div>
               </div>
 
+              {/* Home Base — the start/finish used by "Optimize from Home" */}
+              {onSaveHomeBase && (
+                <div>
+                  <SectionLabel>Home Base</SectionLabel>
+                  <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
+                    <p className="text-xs font-semibold text-gray-300 truncate">
+                      {homeBase?.address || (homeBase ? `${Number(homeBase.lat).toFixed(4)}, ${Number(homeBase.lng).toFixed(4)}` : 'Not set')}
+                    </p>
+                    <p className="mt-1 text-[9px] leading-relaxed text-gray-600">
+                      Used when you optimize a route from home — it starts at the closest door to this address and finishes at the closest door on the way back.
+                    </p>
+                    <button
+                      onClick={() => setShowHomeBase(true)}
+                      className="mt-3 flex h-9 w-full items-center justify-center gap-2 rounded-lg bg-[#2EEB57] text-[10px] font-black uppercase tracking-wider text-black hover:bg-[#39FF4A]"
+                    >
+                      <Home className="w-3.5 h-3.5" /> {homeBase ? 'Change Home Base' : 'Set Home Base'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* Navigation Provider */}
               <div>
                 <SectionLabel>Navigation App</SectionLabel>
@@ -442,6 +466,14 @@ export default function MapSettingsPanel({
             <Save className="w-4 h-4 mr-2" /> Save Settings
           </Button>
         </div>
+
+        {showHomeBase && (
+          <HomeBaseDialog
+            homeBase={homeBase}
+            onClose={() => setShowHomeBase(false)}
+            onSave={onSaveHomeBase}
+          />
+        )}
       </div>
     </div>
   );

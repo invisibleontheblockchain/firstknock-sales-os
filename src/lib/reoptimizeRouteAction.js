@@ -113,7 +113,12 @@ export async function reoptimizeRoute(route, options = {}, deps = {}) {
             || assignedMember?.user_id === user?.id
             || Boolean(assignedMember?.email && user?.email
                 && String(assignedMember.email).toLowerCase() === String(user.email).toLowerCase());
-        let requestedHomeBase = routeBelongsToCurrentUser ? user?.home_base : null;
+        // A Home Base captured in this click (the prompt shown when none was set
+        // yet) is authoritative: the cached `user` object in this closure can
+        // still be the pre-save copy.
+        let requestedHomeBase = isValidRoutePoint(options.homeBase)
+            ? options.homeBase
+            : routeBelongsToCurrentUser ? user?.home_base : null;
         if (optimizeFromHome && !routeBelongsToCurrentUser) {
             try {
                 const response = await base44.functions.invoke('getRouteHomeBase', { route_id: route.id });
@@ -172,9 +177,15 @@ export async function reoptimizeRoute(route, options = {}, deps = {}) {
         // must not be re-ordered by the straight-line fallback: that is exactly how
         // Anderson's 449-minute route was replaced by a 454.6-minute one. Either the
         // road pipeline found something faster, or this route stays as it is.
+        // ...but only when the ANCHORS are unchanged. Choosing HOME on a route
+        // previously optimized without a start/finish used to stop here and
+        // report "already optimized", so the requested Home anchor was never
+        // applied and nothing moved on screen.
         const savedRoadRouting = route.metadata?.routing;
+        const anchorModeUnchanged = (route.route_origin_mode || ROUTE_ORIGIN_MODES.NONE) === routeOriginMode;
         if (!roadMatrixResult
             && !usingCustomAnchors
+            && anchorModeUnchanged
             && savedRoadRouting?.road_aware === true
             && savedRoadRouting?.fallback !== true) {
             toast.success('Already optimized on real road distances — no faster order found.', {
