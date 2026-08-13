@@ -117,6 +117,37 @@ test('SEL-07 the anchor legs are part of the score, so a route starts at the doo
     assert.equal(selectBestRouteCandidate([outFromA, outFromC]).fingerprint, outFromC.fingerprint);
 });
 
+test('SEL-09 a home round trip ties both directions, so the nearest door wins the start', () => {
+    // Home sits beside C. Loop cost is identical either way, which is exactly the
+    // tie that used to leave the route opening at the far door A.
+    const H = door('H', 35.421, -80.621);
+    const anchored = { 'H|A': [5, 10], 'A|H': [5, 10], 'H|C': [0.1, 0.2], 'C|H': [0.1, 0.2] };
+    const anchoredMetric = (slot) => (from, to) => {
+        const key = `${from.address_hash}|${to.address_hash}`;
+        return (anchored[key] || LEGS[key] || [null, null])[slot];
+    };
+    const options = {
+        distanceBetween: anchoredMetric(0),
+        durationBetween: anchoredMetric(1),
+        startLocation: H,
+        endLocation: H
+    };
+    const startsFar = measureRouteCandidate({ type: 'current', order: [A, B, C], is_current: true }, options);
+    const startsNear = measureRouteCandidate({ type: 'road_aware', order: [C, B, A] }, options);
+    assert.equal(startsFar.distance, startsNear.distance);
+    assert.equal(selectBestRouteCandidate([startsFar, startsNear]).fingerprint, startsNear.fingerprint);
+    // Idempotent: once it starts near, re-optimizing keeps it.
+    const nearIsCurrent = { ...startsNear, is_current: true };
+    const farIsRival = { ...startsFar, is_current: false };
+    assert.equal(selectBestRouteCandidate([farIsRival, nearIsCurrent]).fingerprint, nearIsCurrent.fingerprint);
+});
+
+test('SEL-10 the nearest-start tie-break never outvotes a real distance saving', () => {
+    const far = { type: 'road_aware', order: [A, B], fingerprint: 'f1', duration: 10, distance: 3, startLeg: 5 };
+    const nearButLonger = { type: 'road_aware', order: [B, A], fingerprint: 'f2', duration: 10, distance: 9, startLeg: 0.1 };
+    assert.ok(compareRouteCandidates(far, nearButLonger) < 0);
+});
+
 test('SEL-08 an unpriceable anchor leg makes the candidate unmeasured, never partially scored', () => {
     const H = door('H', 1, 1);
     const candidate = measureRouteCandidate({ type: 'road_aware', order: [A, B, C] }, {

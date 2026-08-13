@@ -24,6 +24,22 @@ import { measureOrder } from './roadMatrix.js';
 export const DURATION_TIE_TOLERANCE_MINUTES = 0.1;
 export const DISTANCE_TIE_TOLERANCE_MILES = 0.001;
 
+/**
+ * Price the drive from the start anchor to the first door.
+ *
+ * A home round trip costs the same driven either way, so "start at the door next
+ * to home" and "start on the far side of the territory" are an exact tie in total
+ * miles — and the tie used to be settled by keeping the saved order, which is how
+ * an optimize-from-home route ended up opening with one of its furthest doors.
+ * This is the tie-break only: it can never outvote a real duration or distance
+ * difference, so it cannot make a route longer.
+ */
+function measureStartLeg(order, metricFn, start) {
+    if (!start || !order.length || typeof metricFn !== 'function') return null;
+    const leg = metricFn(start, order[0]);
+    return Number.isFinite(leg) ? leg : null;
+}
+
 export const OBJECTIVE_VERSION = 'duration_primary_distance_tiebreak_v1';
 
 /**
@@ -66,6 +82,7 @@ export function measureRouteCandidate(candidate, {
         ...candidate,
         distance: Number.isFinite(distance) ? distance : null,
         duration: Number.isFinite(duration) ? duration : null,
+        startLeg: measureStartLeg(order, distanceBetween, startLocation),
         fingerprint: routePropertyOrderFingerprint(order)
     };
 }
@@ -82,6 +99,12 @@ export function compareRouteCandidates(a, b) {
     }
     if (Number.isFinite(a.distance) && Number.isFinite(b.distance)) {
         const gap = a.distance - b.distance;
+        if (Math.abs(gap) > DISTANCE_TIE_TOLERANCE_MILES) return gap < 0 ? -1 : 1;
+    }
+
+    // Same total drive: begin at the door nearest the start anchor.
+    if (Number.isFinite(a.startLeg) && Number.isFinite(b.startLeg)) {
+        const gap = a.startLeg - b.startLeg;
         if (Math.abs(gap) > DISTANCE_TIE_TOLERANCE_MILES) return gap < 0 ? -1 : 1;
     }
 
