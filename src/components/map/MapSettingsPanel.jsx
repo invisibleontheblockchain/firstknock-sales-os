@@ -167,8 +167,11 @@ export default function MapSettingsPanel({
         </div>
 
         {/* Content */}
-        <ScrollArea className="flex-1 min-h-0">
-          <div className="p-4 space-y-5">
+        {/* Radix lays its scroll content out as a table, which lets wide rows
+            grow past the sheet and run off the right edge of a phone screen.
+            Forcing the content wrapper to block keeps everything inside. */}
+        <ScrollArea className="flex-1 min-h-0 w-full [&>div>div]:!block">
+          <div className="w-full max-w-full overflow-x-hidden p-4 space-y-5">
 
             {/* ═══════════ APPEARANCE TAB ═══════════ */}
             {tab === 'appearance' && (<>
@@ -213,7 +216,7 @@ export default function MapSettingsPanel({
               {/* Map Style */}
               <div>
                 <SectionLabel>Map Style</SectionLabel>
-                <div className="grid grid-cols-4 gap-2">
+                <div className="grid grid-cols-2 gap-2 min-[400px]:grid-cols-4">
                   {MAP_STYLES.map(s => {
                     const Icon = s.icon;
                     const active = local.mapTheme === s.id;
@@ -282,7 +285,7 @@ export default function MapSettingsPanel({
                       <Slider value={[(ms.pinOpacity || 0.85) * 100]} onValueChange={([v]) => updMs('pinOpacity', v / 100)} min={20} max={100} step={5} className="w-full" />
                     </Row>
                     <Row label="Fill Style">
-                      <div className="flex gap-1.5">
+                      <div className="flex flex-wrap gap-1.5">
                         {['solid','outline','glow'].map(s => (
                           <button key={s} onClick={() => updMs('fillStyle', s)}
                             className={`px-3 py-1.5 rounded-lg text-[10px] font-bold border transition-all ${(ms.fillStyle||'solid') === s ? 'bg-white/10 border-white/20 text-white' : 'bg-transparent border-white/[0.06] text-gray-500'}`}
@@ -450,13 +453,13 @@ export default function MapSettingsPanel({
 /* ── helper: row ── */
 function Row({ label, sub = null, value = null, children }) {
   return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <div>
+    <div className="w-full min-w-0 space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0">
           <span className="text-xs font-semibold text-gray-300">{label}</span>
           {sub && <p className="text-[9px] text-gray-600">{sub}</p>}
         </div>
-        {value && <span className="text-[10px] font-bold text-gray-400">{value}</span>}
+        {value && <span className="shrink-0 text-[10px] font-bold text-gray-400">{value}</span>}
       </div>
       {children}
     </div>
