@@ -434,8 +434,64 @@ function SavedRoutesLayer({
     // Zoom band only — rebuilding these layers on every zoom step made zooming stutter.
     const routesZoomEnabled = zoomLevel >= 8;
 
+    // Viewport culling. Routes mode used to draw every door, number label and
+    // line of every saved route in the account at once, which is what spiked the
+    // load the moment Routes was opened. Same padded-box + debounce approach as
+    // the property pin layer: rebuild only when the view leaves the drawn box.
+    const [viewBox, setViewBox] = React.useState(null);
+    const renderedBoxRef = useRef(null);
+
+    React.useEffect(() => {
+        let timeoutId = null;
+
+        const paddedBox = () => {
+            const b = map.getBounds();
+            const latPad = (b.getNorth() - b.getSouth()) * 0.25;
+            const lngPad = (b.getEast() - b.getWest()) * 0.25;
+            return {
+                north: b.getNorth() + latPad, south: b.getSouth() - latPad,
+                east: b.getEast() + lngPad, west: b.getWest() - lngPad
+            };
+        };
+
+        const update = () => {
+            const box = paddedBox();
+            renderedBoxRef.current = box;
+            setViewBox(box);
+        };
+
+        const insideRenderedBox = () => {
+            const box = renderedBoxRef.current;
+            if (!box) return false;
+            const b = map.getBounds();
+            return b.getNorth() <= box.north && b.getSouth() >= box.south
+                && b.getEast() <= box.east && b.getWest() >= box.west;
+        };
+
+        const debouncedUpdate = () => {
+            if (timeoutId) clearTimeout(timeoutId);
+            timeoutId = setTimeout(() => {
+                if (insideRenderedBox()) return;
+                update();
+            }, 120);
+        };
+
+        update();
+        map.on('moveend', debouncedUpdate);
+        map.on('zoomend', debouncedUpdate);
+        return () => {
+            if (timeoutId) clearTimeout(timeoutId);
+            map.off('moveend', debouncedUpdate);
+            map.off('zoomend', debouncedUpdate);
+        };
+    }, [map]);
+
     useEffect(() => {
-        if (!map) return;
+        if (!map || !viewBox) return;
+        const inView = (p) => (
+            Number(p.lat) >= viewBox.south && Number(p.lat) <= viewBox.north
+            && Number(p.lng) >= viewBox.west && Number(p.lng) <= viewBox.east
+        );
 
         // Clean up previous layer
         if (layerRef.current) {
@@ -453,6 +509,9 @@ function SavedRoutesLayer({
         let detailPinsDrawn = 0;
 
         const filteredRoutes = filterRoutesByStatus(hydratedSavedRoutes, routeStatusView).filter(route => {
+            // Off-screen routes contribute nothing visible, so they are skipped
+            // entirely — pins, number label and lines.
+            if (!route.properties.some(p => isRenderableMapPoint(p) && inView(p))) return false;
             if (mode === 'generate') return true;
             if (analyzeZipFilter === 'all') return true;
             return route.properties.some(p => p.zip_code === analyzeZipFilter);
@@ -493,6 +552,7 @@ function SavedRoutesLayer({
             if (showRouteDetails) {
                 route.properties.forEach(p => {
                     if (!isRenderableMapPoint(p)) return;
+                    if (!inView(p)) return;
                     if (quickFilter !== 'all') {
                         if (quickFilter === 'eligible' && p.effective_status !== 'ELIGIBLE' && p.effective_status !== 'NO_ANSWER') return;
                         if (quickFilter === 'sold' && p.effective_status !== 'SOLD' && p.effective_status !== 'QUALIFIED') return;
@@ -576,7 +636,7 @@ function SavedRoutesLayer({
                 layerRef.current = null;
             }
         };
-    }, [map, mode, activeRoute, routesZoomEnabled, hydratedSavedRoutes, analyzeZipFilter, quickFilter,
+    }, [map, viewBox, mode, activeRoute, routesZoomEnabled, hydratedSavedRoutes, analyzeZipFilter, quickFilter,
         routeStatusView, repColors, ROUTE_COLORS, showRouteDetails, showRouteLines, pinSize, mapSettings, lineDashArray, setActiveRoute, allSavedRoutes, decisionFilterActive]);
 
     return null; // Imperative layer — no React DOM output
