@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.23';
+import { asArray, sleep, timestampMs } from '../../shared/fetchJobSweep.ts';
 
 // Sweeps stalled Precision jobs and hands exact usage settlement back to the
 // processor. A watchdog must never release a reservation itself: the worker
@@ -8,19 +9,6 @@ const PROCESSOR_RECOVERY_WAIT_MS = 900;
 const QUERY_LIMIT = 50;
 const TERMINAL_PAGE_SIZE = 500;
 const TERMINAL_SCAN_LIMIT = 20000;
-
-function sleep(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-function asArray(result) {
-    return Array.isArray(result) ? result : (result?.items || []);
-}
-
-function timestampMs(value) {
-    const parsed = value ? new Date(value).getTime() : NaN;
-    return Number.isFinite(parsed) ? parsed : 0;
-}
 
 function reservedUsage(job) {
     return Math.max(0, Math.floor(Number(job?.precision_usage_reserved || 0)));
