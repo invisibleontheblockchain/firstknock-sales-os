@@ -1463,7 +1463,9 @@ Deno.serve(async (req) => {
         targetJobId = body.job_id ? String(body.job_id) : null;
 
         if (body.self_test === true) {
-            return Response.json({ success: true, active_provider: 'batchdata', rentcast_active: false, batchdata_polygon_search: true, dataset_scope: observedDatasetScope(), has_batchdata_key: !!BATCHDATA_API_KEY, has_database_url: !!DATABASE_URL });
+            // Scan contract is reported so a stale deployment cannot be mistaken
+            // for the draining pager: an old bundle simply omits these fields.
+            return Response.json({ success: true, active_provider: 'batchdata', rentcast_active: false, batchdata_polygon_search: true, dataset_scope: observedDatasetScope(), has_batchdata_key: !!BATCHDATA_API_KEY, has_database_url: !!DATABASE_URL, scan_contract: { scan_ceiling: null, page_concurrency: PAGE_CONCURRENCY, page_take: BATCHDATA_MAX_TAKE, chunk_max_selected: CHUNK_MAX_SELECTED, chunk_scan_budget_ms: CHUNK_SCAN_BUDGET_MS } });
         }
 
         if (body.request_preview === true) {
