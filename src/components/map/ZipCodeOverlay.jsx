@@ -1,10 +1,43 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { GeoJSON, Tooltip } from 'react-leaflet';
+import { GeoJSON, Tooltip, useMap, useMapEvents } from 'react-leaflet';
 
 /**
  * Draws real zip code boundary polygons from OpenDataDE GeoJSON files.
  * Falls back to convex-hull approximation if real boundaries can't be loaded.
+ *
+ * Refreshed styling: the polygons are non-interactive so they can never swallow a
+ * tap meant for a property pin, the fill is light enough to read street detail
+ * through, and the permanent ZIP labels only appear once the map is zoomed in far
+ * enough for them not to pile on top of each other.
  */
+const LABEL_MIN_ZOOM = 9;
+
+const BOUNDARY_STYLE = (color) => ({
+    color,
+    weight: 1.5,
+    opacity: 0.85,
+    fillColor: color,
+    fillOpacity: 0.05,
+    dashArray: '8,6',
+});
+
+function ZipLabel({ zip, count }) {
+    return (
+        <Tooltip permanent direction="center" className="zip-label-tooltip">
+            <span style={{ color: '#fff', fontWeight: 800, fontSize: '12px', letterSpacing: '0.5px' }}>{zip}</span>
+            <br />
+            <span style={{ color: '#999', fontSize: '9px', fontWeight: 600 }}>{count.toLocaleString()} homes</span>
+        </Tooltip>
+    );
+}
+
+/** Current zoom, so labels can be hidden when the view is too wide for them. */
+function useZoomLevel() {
+    const map = useMap();
+    const [zoom, setZoom] = useState(() => map.getZoom());
+    useMapEvents({ zoomend: () => setZoom(map.getZoom()) });
+    return zoom;
+}
 
 const ZIP_COLORS = [
     '#FFD700', '#3b82f6', '#22c55e', '#ef4444', '#8b5cf6',
@@ -52,7 +85,7 @@ async function fetchStateZipBoundaries(stateAbbr) {
     }
 }
 
-function FallbackZipPolygons({ zipGroups }) {
+function FallbackZipPolygons({ zipGroups, showLabels }) {
     return (
         <>
             {zipGroups.map((z, idx) => {
@@ -61,6 +94,7 @@ function FallbackZipPolygons({ zipGroups }) {
                 return (
                     <GeoJSON
                         key={z.zip}
+                        interactive={false}
                         data={{
                             type: 'Feature',
                             geometry: {
@@ -69,23 +103,9 @@ function FallbackZipPolygons({ zipGroups }) {
                             },
                             properties: { zip: z.zip, count: z.count }
                         }}
-                        style={() => ({
-                            color,
-                            weight: 2,
-                            fillColor: color,
-                            fillOpacity: 0.08,
-                            dashArray: '6,4'
-                        })}
+                        style={() => BOUNDARY_STYLE(color)}
                     >
-                        <Tooltip permanent direction="center" className="zip-label-tooltip">
-                            <span style={{ color, fontWeight: 800, fontSize: '13px', textShadow: '0 0 6px rgba(0,0,0,0.9)', letterSpacing: '0.5px' }}>
-                                {z.zip}
-                            </span>
-                            <br />
-                            <span style={{ color: '#999', fontSize: '9px', fontWeight: 600 }}>
-                                {z.count.toLocaleString()} homes
-                            </span>
-                        </Tooltip>
+                        {showLabels && <ZipLabel zip={z.zip} count={z.count} />}
                     </GeoJSON>
                 );
             })}
@@ -93,27 +113,15 @@ function FallbackZipPolygons({ zipGroups }) {
     );
 }
 
-function RealBoundaryFeature({ feature, color, count }) {
+function RealBoundaryFeature({ feature, color, count, showLabel }) {
     return (
-        <GeoJSON
-            data={feature}
-            style={() => ({
-                color,
-                weight: 2,
-                fillColor: color,
-                fillOpacity: 0.08,
-                dashArray: '6,4'
-            })}
-        >
-            <Tooltip permanent direction="center" className="zip-label-tooltip">
-                <span style={{ color, fontWeight: 800, fontSize: '13px', textShadow: '0 0 6px rgba(0,0,0,0.9)', letterSpacing: '0.5px' }}>
-                    {feature.properties.ZCTA5CE10 || feature.properties.ZCTA5CE20 || feature.properties.zip || '?'}
-                </span>
-                <br />
-                <span style={{ color: '#999', fontSize: '9px', fontWeight: 600 }}>
-                    {count.toLocaleString()} homes
-                </span>
-            </Tooltip>
+        <GeoJSON data={feature} interactive={false} style={() => BOUNDARY_STYLE(color)}>
+            {showLabel && (
+                <ZipLabel
+                    zip={feature.properties.ZCTA5CE10 || feature.properties.ZCTA5CE20 || feature.properties.zip || '?'}
+                    count={count}
+                />
+            )}
         </GeoJSON>
     );
 }
@@ -121,6 +129,8 @@ function RealBoundaryFeature({ feature, color, count }) {
 export default function ZipCodeOverlay({ properties = [] }) {
     const [realBoundaries, setRealBoundaries] = useState(null);
     const [loadFailed, setLoadFailed] = useState(false);
+    const zoom = useZoomLevel();
+    const showLabels = zoom >= LABEL_MIN_ZOOM;
 
     // Group properties by zip and compute stats
     const { zipGroups, states, zipCountMap } = useMemo(() => {
@@ -203,6 +213,7 @@ export default function ZipCodeOverlay({ properties = [] }) {
                             feature={feature}
                             color={color}
                             count={count}
+                            showLabel={showLabels}
                         />
                     );
                 })}
@@ -211,5 +222,5 @@ export default function ZipCodeOverlay({ properties = [] }) {
     }
 
     // Fallback to convex hull
-    return <FallbackZipPolygons zipGroups={zipGroups} />;
+    return <FallbackZipPolygons zipGroups={zipGroups} showLabels={showLabels} />;
 }

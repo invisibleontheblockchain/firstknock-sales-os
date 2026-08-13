@@ -3,9 +3,11 @@ import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { X, Sun, Moon, Globe, Mountain, Eye, EyeOff, RotateCcw, Save, Navigation, Target, Users, Home } from 'lucide-react';
-import { hasCanvasAccess } from '@/lib/canvasAccess';
+import { X, Sun, Moon, Globe, Mountain, Eye, EyeOff, RotateCcw, Save, Navigation, Home, SlidersHorizontal } from 'lucide-react';
 import HomeBaseDialog from '@/components/routes/HomeBaseDialog';
+import MapThemePicker from '@/components/map/MapThemePicker';
+import MapOverlayToggles from '@/components/map/MapOverlayToggles';
+import { getBoundaryOverlays, setBoundaryOverlay } from '@/components/map/boundaryOverlayPrefs';
 
 /* ── constants ── */
 const REP_COLOR_OPTIONS = ['#FFD700','#ef4444','#22c55e','#3b82f6','#ec4899','#f97316','#8b5cf6','#06b6d4','#eab308','#14b8a6'];
@@ -62,23 +64,19 @@ export default function MapSettingsPanel({
   mapSettings, setMapSettings,
   soldDateFilter, setSoldDateFilter,
   highlightRecentlySold, setHighlightRecentlySold,
-  showZipOverlay = false, setShowZipOverlay,
-  routeMode = 'precision', setRouteMode,
   homeBase = null, onSaveHomeBase,
-  user,
 }) {
+  // Boundary overlays are per-device display prefs, applied live.
+  const [overlays, setOverlays] = useState(getBoundaryOverlays);
+  const toggleOverlay = (name) => (value) => setOverlays(setBoundaryOverlay(name, value));
   const [showHomeBase, setShowHomeBase] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
   // Local buffered state
   const [local, setLocal] = useState({
     mapSettings: mapSettings || {},
     pinSize, showRouteLines, showRouteDetails, showAllProperties,
     mapTheme, navigationApp, quickFilter,
-    soldDateFilter, highlightRecentlySold, showZipOverlay,
-    routeMode: (() => {
-      let selected = routeMode;
-      try { selected = localStorage.getItem('fk_routeMode') || routeMode; } catch {}
-      return selected === 'canvas' && !hasCanvasAccess(user) ? 'precision' : selected;
-    })(),
+    soldDateFilter, highlightRecentlySold,
   });
 
   const upd = (key, val) => setLocal(p => ({ ...p, [key]: val }));
@@ -94,18 +92,12 @@ export default function MapSettingsPanel({
   };
   const setLiveShowAll = (v) => { upd('showAllProperties', v); setShowAllProperties?.(v); };
   const setLiveHighlight = (v) => { upd('highlightRecentlySold', v); setHighlightRecentlySold?.(v); };
-  const setLiveZip = (v) => { upd('showZipOverlay', v); setShowZipOverlay?.(v); };
-  const setLiveRouteMode = (v) => {
-    if (v === 'canvas' && !hasCanvasAccess(user)) return;
-    if (setRouteMode?.(v) === false) return;
-    upd('routeMode', v);
-    try { localStorage.setItem('fk_routeMode', v); } catch {}
-    window.dispatchEvent(new CustomEvent('fk-route-mode-changed', { detail: { routeMode: v } }));
+  // A theme is the dots, the paths, and the colour scheme applied together.
+  const applyTheme = (theme) => {
+    setLocal(p => ({ ...p, mapSettings: { ...p.mapSettings, ...theme.settings }, pinSize: theme.pinSize }));
   };
 
   const handleSave = () => {
-    const safeRouteMode = local.routeMode === 'canvas' && !hasCanvasAccess(user) ? 'precision' : local.routeMode;
-    if (safeRouteMode !== routeMode && setRouteMode?.(safeRouteMode) === false) return;
     setMapSettings?.(local.mapSettings);
     setPinSize?.(local.pinSize);
     setShowRouteLines?.(local.showRouteLines);
@@ -114,10 +106,6 @@ export default function MapSettingsPanel({
     setMapTheme?.(local.mapTheme);
     setNavigationApp?.(local.navigationApp);
     setHighlightRecentlySold?.(local.highlightRecentlySold);
-    setShowZipOverlay?.(local.showZipOverlay);
-    if (safeRouteMode === routeMode) setRouteMode?.(safeRouteMode);
-    try { localStorage.setItem('fk_routeMode', safeRouteMode); } catch {}
-    window.dispatchEvent(new CustomEvent('fk-route-mode-changed', { detail: { routeMode: safeRouteMode } }));
     try { localStorage.setItem('fk_navigation_app', local.navigationApp); } catch {}
     window.dispatchEvent(new CustomEvent('fk-navigation-app-changed', { detail: { navigationApp: local.navigationApp } }));
     onClose();
@@ -128,7 +116,7 @@ export default function MapSettingsPanel({
       mapSettings: { pinShape:'circle', colorScheme:'default', lineStyle:'dashed', lineWidth:2, lineOpacity:0.5, pinOpacity:0.85, pinBorderWidth:1, pinBorderColor:'#000', showLabels:false, labelType:'number', glowEffect:false, fillStyle:'solid' },
       pinSize:4, showRouteLines:false, showRouteDetails:true, showAllProperties:false,
       mapTheme:'dark', navigationApp:'apple', quickFilter:'all',
-      soldDateFilter:null, highlightRecentlySold:false, showZipOverlay:false, routeMode:'precision',
+      soldDateFilter:null, highlightRecentlySold:false,
     });
   };
 
@@ -137,10 +125,9 @@ export default function MapSettingsPanel({
     setLiveShowAll(false);
     setLiveHighlight(false);
     setLiveSoldDateFilter(null);
-    setLiveZip(false);
+    setOverlays(setBoundaryOverlay('zip', false));
+    setOverlays(setBoundaryOverlay('county', false));
   };
-
-  const activeScheme = COLOR_SCHEMES.find(s => s.id === (ms.colorScheme || 'default')) || COLOR_SCHEMES[0];
 
   /* ── tab state ── */
   const [tab, setTab] = useState('appearance');
@@ -186,77 +173,20 @@ export default function MapSettingsPanel({
             {/* ═══════════ APPEARANCE TAB ═══════════ */}
             {tab === 'appearance' && (<>
 
-              {/* Labels */}
+              {/* Navigation Provider — first, because it drives every Navigate button */}
               <div>
-                <SectionLabel>Overlays</SectionLabel>
-                <div className="space-y-3 rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
-                  <Row label="Builder Mode" sub="Choose Precision data pulls or Canvas territories">
-                    <div className="grid grid-cols-2 gap-2">
-                      {[
-                        { id: 'precision', label: 'Precision', icon: Target, active: 'bg-yellow-500 text-black border-yellow-400' },
-                        { id: 'canvas', label: 'Canvas', icon: Users, active: 'bg-purple-600 text-white border-purple-500' },
-                      ].map(opt => {
-                        const Icon = opt.icon;
-                        const active = local.routeMode === opt.id;
-                        const unavailable = opt.id === 'canvas' && !hasCanvasAccess(user);
-                        return (
-                          <button
-                            key={opt.id}
-                            onClick={() => setLiveRouteMode(opt.id)}
-                            disabled={unavailable}
-                            title={unavailable ? 'An active Canvas plan is required' : undefined}
-                            className={`flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-black transition-all ${active ? opt.active : 'border-white/[0.06] bg-black/20 text-gray-500 hover:text-white hover:border-white/15'} ${unavailable ? 'cursor-not-allowed opacity-40 hover:text-gray-500 hover:border-white/[0.06]' : ''}`}
-                          >
-                            <Icon className="w-3.5 h-3.5" />
-                            {opt.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </Row>
-                  {!hasCanvasAccess(user) && (
-                    <p className="text-[10px] text-amber-300/80">Canvas requires an active Canvas subscription with verified billing.</p>
-                  )}
-                  <div className="border-t border-white/[0.04] my-2" />
-                  {setShowZipOverlay && (
-                    <Row label="Zip Boundaries">
-                      <Switch checked={local.showZipOverlay} onCheckedChange={setLiveZip} />
-                    </Row>
-                  )}
-                  <Row label="Pin Labels">
-                    <Switch checked={ms.showLabels || false} onCheckedChange={v => updMs('showLabels', v)} />
-                  </Row>
-                  {ms.showLabels && (
-                    <Row label="Content">
-                      <div className="flex gap-1">
-                        {['number','address','status'].map(opt => (
-                          <button key={opt} onClick={() => updMs('labelType', opt)}
-                            className={`px-3 py-1.5 rounded-lg text-[10px] font-bold border transition-all ${(ms.labelType||'number') === opt ? 'bg-white/10 border-white/20 text-white' : 'border-white/[0.06] text-gray-500'}`}
-                          >{opt === 'number' ? 'House #' : opt === 'address' ? 'Street' : 'Status'}</button>
-                        ))}
-                      </div>
-                    </Row>
-                  )}
+                <SectionLabel>Navigation App</SectionLabel>
+                <div className="grid grid-cols-2 gap-2 rounded-xl border border-white/[0.06] bg-white/[0.02] p-2">
+                  {[{ id:'apple', label:'Apple Maps' }, { id:'google', label:'Google Maps' }].map(opt => (
+                    <button key={opt.id} onClick={() => { upd('navigationApp', opt.id); setNavigationApp?.(opt.id); try { localStorage.setItem('fk_navigation_app', opt.id); } catch {} window.dispatchEvent(new CustomEvent('fk-navigation-app-changed', { detail: { navigationApp: opt.id } })); }}
+                      className={`flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold transition-all border ${local.navigationApp === opt.id ? 'bg-white/10 border-white/20 text-white' : 'bg-black/20 border-white/[0.04] text-gray-500 hover:border-white/10'}`}
+                    >
+                      <Navigation className="w-3.5 h-3.5" />
+                      {opt.label}
+                    </button>
+                  ))}
                 </div>
-              </div>
-
-              {/* Map Style */}
-              <div>
-                <SectionLabel>Map Style</SectionLabel>
-                <div className="grid grid-cols-4 gap-2">
-                  {MAP_STYLES.map(s => {
-                    const Icon = s.icon;
-                    const active = local.mapTheme === s.id;
-                    return (
-                      <button key={s.id} onClick={() => upd('mapTheme', s.id)}
-                        className={`flex flex-col items-center gap-1.5 py-3 rounded-xl text-[10px] font-bold transition-all border ${active ? 'bg-white/10 border-white/20 text-white' : 'bg-white/[0.02] border-white/[0.04] text-gray-500 hover:border-white/10'}`}
-                      >
-                        <Icon className="w-4 h-4" />
-                        {s.label}
-                      </button>
-                    );
-                  })}
-                </div>
+                <p className="mt-2 text-[9px] text-gray-600 leading-relaxed">Used by Route Checklist and Knock tab navigation buttons.</p>
               </div>
 
               {/* Home Base — the start/finish used by "Optimize from Home" */}
@@ -280,58 +210,96 @@ export default function MapSettingsPanel({
                 </div>
               )}
 
-              {/* Navigation Provider */}
+              {/* Map Style */}
               <div>
-                <SectionLabel>Navigation App</SectionLabel>
-                <div className="grid grid-cols-2 gap-2 rounded-xl border border-white/[0.06] bg-white/[0.02] p-2">
-                  {[{ id:'apple', label:'Apple Maps' }, { id:'google', label:'Google Maps' }].map(opt => (
-                    <button key={opt.id} onClick={() => { upd('navigationApp', opt.id); setNavigationApp?.(opt.id); try { localStorage.setItem('fk_navigation_app', opt.id); } catch {} window.dispatchEvent(new CustomEvent('fk-navigation-app-changed', { detail: { navigationApp: opt.id } })); }}
-                      className={`flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold transition-all border ${local.navigationApp === opt.id ? 'bg-white/10 border-white/20 text-white' : 'bg-black/20 border-white/[0.04] text-gray-500 hover:border-white/10'}`}
-                    >
-                      <Navigation className="w-3.5 h-3.5" />
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-                <p className="mt-2 text-[9px] text-gray-600 leading-relaxed">Used by Route Checklist and Knock tab navigation buttons.</p>
-              </div>
-
-              {/* Pin Settings */}
-              <div>
-                <SectionLabel>Property Dots</SectionLabel>
-                <div className="space-y-4 rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
-                  <Row label="Show route dots">
-                    <Switch checked={local.showRouteDetails} onCheckedChange={v => upd('showRouteDetails', v)} />
-                  </Row>
-                  <Row label="Dot size" value={`${local.pinSize}px`}>
-                    <Slider value={[local.pinSize]} onValueChange={([v]) => upd('pinSize', v)} min={2} max={14} step={1} className="w-full" />
-                  </Row>
-                  <Row label="Dot opacity" value={`${Math.round((ms.pinOpacity || 0.85) * 100)}%`}>
-                    <Slider value={[(ms.pinOpacity || 0.85) * 100]} onValueChange={([v]) => updMs('pinOpacity', v / 100)} min={20} max={100} step={5} className="w-full" />
-                  </Row>
-                  <Row label="Fill Style">
-                    <div className="flex gap-1.5">
-                      {['solid','outline','glow'].map(s => (
-                        <button key={s} onClick={() => updMs('fillStyle', s)}
-                          className={`px-3 py-1.5 rounded-lg text-[10px] font-bold border transition-all ${(ms.fillStyle||'solid') === s ? 'bg-white/10 border-white/20 text-white' : 'bg-transparent border-white/[0.06] text-gray-500'}`}
-                        >{s}</button>
-                      ))}
-                    </div>
-                  </Row>
-                  <Row label="Border" value={`${ms.pinBorderWidth || 1}px`}>
-                    <Slider value={[ms.pinBorderWidth || 1]} onValueChange={([v]) => updMs('pinBorderWidth', v)} min={0} max={4} step={0.5} className="w-full" />
-                  </Row>
+                <SectionLabel>Map Style</SectionLabel>
+                <div className="grid grid-cols-4 gap-2">
+                  {MAP_STYLES.map(s => {
+                    const Icon = s.icon;
+                    const active = local.mapTheme === s.id;
+                    return (
+                      <button key={s.id} onClick={() => upd('mapTheme', s.id)}
+                        className={`flex flex-col items-center gap-1.5 py-3 rounded-xl text-[10px] font-bold transition-all border ${active ? 'bg-white/10 border-white/20 text-white' : 'bg-white/[0.02] border-white/[0.04] text-gray-500 hover:border-white/10'}`}
+                      >
+                        <Icon className="w-4 h-4" />
+                        {s.label}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
-              {/* Route Lines */}
+              {/* Overlays — boundaries and labels, side by side */}
               <div>
-                <SectionLabel>Route Paths</SectionLabel>
-                <div className="space-y-4 rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
-                  <Row label="Show paths">
-                    <Switch checked={local.showRouteLines} onCheckedChange={v => upd('showRouteLines', v)} />
-                  </Row>
-                  {local.showRouteLines && (<>
+                <SectionLabel>Overlays</SectionLabel>
+                <MapOverlayToggles
+                  showZipOverlay={overlays.zip}
+                  onToggleZip={toggleOverlay('zip')}
+                  showCountyOverlay={overlays.county}
+                  onToggleCounty={toggleOverlay('county')}
+                  showLabels={ms.showLabels || false}
+                  onToggleLabels={v => updMs('showLabels', v)}
+                  labelType={ms.labelType}
+                  onChangeLabelType={v => updMs('labelType', v)}
+                />
+              </div>
+
+              {/* Pin Themes — dots, paths, and colours as one matched set */}
+              <div>
+                <SectionLabel>Pin Theme</SectionLabel>
+                <MapThemePicker mapSettings={ms} pinSize={local.pinSize} onApply={applyTheme} />
+              </div>
+
+              {/* The show/hide switches that belong with the theme */}
+              <div className="space-y-3 rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
+                <Row label="Show route dots">
+                  <Switch checked={local.showRouteDetails} onCheckedChange={v => upd('showRouteDetails', v)} />
+                </Row>
+                <div className="border-t border-white/[0.04]" />
+                <Row label="Show route paths">
+                  <Switch checked={local.showRouteLines} onCheckedChange={v => upd('showRouteLines', v)} />
+                </Row>
+              </div>
+
+              {/* Fine-tuning, collapsed by default so a theme is the normal path */}
+              <button
+                onClick={() => setShowAdvanced(v => !v)}
+                className="flex w-full items-center justify-between rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-gray-400 hover:text-white"
+              >
+                <span className="flex items-center gap-2"><SlidersHorizontal className="h-3.5 w-3.5" /> Fine-tune dots &amp; paths</span>
+                <span className="text-sm">{showAdvanced ? '−' : '+'}</span>
+              </button>
+
+              {showAdvanced && (<>
+                {/* Dots */}
+                <div>
+                  <SectionLabel>Property Dots</SectionLabel>
+                  <div className="space-y-4 rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
+                    <Row label="Dot size" value={`${local.pinSize}px`}>
+                      <Slider value={[local.pinSize]} onValueChange={([v]) => upd('pinSize', v)} min={2} max={14} step={1} className="w-full" />
+                    </Row>
+                    <Row label="Dot opacity" value={`${Math.round((ms.pinOpacity || 0.85) * 100)}%`}>
+                      <Slider value={[(ms.pinOpacity || 0.85) * 100]} onValueChange={([v]) => updMs('pinOpacity', v / 100)} min={20} max={100} step={5} className="w-full" />
+                    </Row>
+                    <Row label="Fill Style">
+                      <div className="flex gap-1.5">
+                        {['solid','outline','glow'].map(s => (
+                          <button key={s} onClick={() => updMs('fillStyle', s)}
+                            className={`px-3 py-1.5 rounded-lg text-[10px] font-bold border transition-all ${(ms.fillStyle||'solid') === s ? 'bg-white/10 border-white/20 text-white' : 'bg-transparent border-white/[0.06] text-gray-500'}`}
+                          >{s}</button>
+                        ))}
+                      </div>
+                    </Row>
+                    <Row label="Border" value={`${ms.pinBorderWidth || 1}px`}>
+                      <Slider value={[ms.pinBorderWidth || 1]} onValueChange={([v]) => updMs('pinBorderWidth', v)} min={0} max={4} step={0.5} className="w-full" />
+                    </Row>
+                  </div>
+                </div>
+
+                {/* Paths */}
+                <div>
+                  <SectionLabel>Route Paths</SectionLabel>
+                  <div className="space-y-4 rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
                     <Row label="Pattern">
                       <div className="flex gap-1">
                         {LINE_STYLES.map(ls => (
@@ -349,24 +317,24 @@ export default function MapSettingsPanel({
                     <Row label="Opacity" value={`${Math.round((ms.lineOpacity || 0.5) * 100)}%`}>
                       <Slider value={[(ms.lineOpacity || 0.5) * 100]} onValueChange={([v]) => updMs('lineOpacity', v / 100)} min={10} max={100} step={5} className="w-full" />
                     </Row>
-                  </>)}
+                  </div>
                 </div>
-              </div>
 
-              {/* Color Scheme */}
-              <div>
-                <SectionLabel>Color Scheme</SectionLabel>
-                <div className="space-y-2">
-                  {COLOR_SCHEMES.map(scheme => (
-                    <button key={scheme.id} onClick={() => updMs('colorScheme', scheme.id)}
-                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all border ${(ms.colorScheme||'default') === scheme.id ? 'bg-white/[0.06] border-white/15' : 'bg-white/[0.02] border-white/[0.04] hover:border-white/10'}`}
-                    >
-                      <div className="flex gap-1">{Object.values(scheme.colors).slice(0, 4).map((c, i) => <div key={i} className="w-3.5 h-3.5 rounded-full" style={{ background: c }} />)}</div>
-                      <span className={`text-xs font-bold ${(ms.colorScheme||'default') === scheme.id ? 'text-white' : 'text-gray-500'}`}>{scheme.label}</span>
-                    </button>
-                  ))}
+                {/* Status colours */}
+                <div>
+                  <SectionLabel>Color Scheme</SectionLabel>
+                  <div className="space-y-2">
+                    {COLOR_SCHEMES.map(scheme => (
+                      <button key={scheme.id} onClick={() => updMs('colorScheme', scheme.id)}
+                        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all border ${(ms.colorScheme||'default') === scheme.id ? 'bg-white/[0.06] border-white/15' : 'bg-white/[0.02] border-white/[0.04] hover:border-white/10'}`}
+                      >
+                        <div className="flex gap-1">{Object.values(scheme.colors).slice(0, 4).map((c, i) => <div key={i} className="w-3.5 h-3.5 rounded-full" style={{ background: c }} />)}</div>
+                        <span className={`text-xs font-bold ${(ms.colorScheme||'default') === scheme.id ? 'text-white' : 'text-gray-500'}`}>{scheme.label}</span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              </>)}
 
               {/* Team Colors */}
               {teamMembers.length > 0 && (

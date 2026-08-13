@@ -43,7 +43,7 @@ import MapDrawTool from '../components/map/MapDrawTool';
 import ManagerMapLayers from '../components/map/ManagerMapLayers';
 import { filterRoutesByStatus, isRenderableMapPoint } from '../components/map/mapLayerVisibility.js';
 import MapToolbar from '../components/map/MapToolbar';
-import ZipCodeOverlay from '../components/map/ZipCodeOverlay';
+import BoundaryOverlays from '../components/map/BoundaryOverlays';
 import PolygonHistory from '../components/map/PolygonHistory';
 import KnockLimitSheet from '@/components/upgrade/KnockLimitSheet';
 import { createOutcomeIdempotencyKey, getOutcomeGateFromError } from '@/components/upgrade/knockGate';
@@ -182,7 +182,6 @@ export default function Home() {
     const [selectedProperty, setSelectedProperty] = useState(null); const [appointmentPin, setAppointmentPin] = useState(null);
     const [zoomLevel, setZoomLevel] = useState(15);
     const [showMapSettings, setShowMapSettings] = useState(false);
-    const [showZipOverlay, setShowZipOverlay] = useState(false);
     const [navigationApp, setNavigationApp] = useState('apple');
 
     // Persisted Map Settings
@@ -2383,10 +2382,8 @@ export default function Home() {
                     darkRoom={darkRoom}
                 />
 
-                {/* Zip Code Overlay */}
-                {showZipOverlay && (
-                    <ZipCodeOverlay properties={effectiveProperties} />
-                )}
+                {/* ZIP + county boundary lines (toggled in Map Settings) */}
+                <BoundaryOverlays properties={effectiveProperties} />
 
                 {/* Previous drawn area history */}
                 {routeMode === 'precision' && !drawingMode && !showRoutePanel && !filteredActiveRoute && (
@@ -2867,11 +2864,7 @@ export default function Home() {
                         setSoldDateFilter={setSoldDateFilter}
                         highlightRecentlySold={highlightRecentlySold}
                         setHighlightRecentlySold={setHighlightRecentlySold}
-                        showZipOverlay={showZipOverlay}
-                        setShowZipOverlay={setShowZipOverlay}
-                        routeMode={routeMode}
-                        setRouteMode={requestRouteModeChange} homeBase={user?.home_base || null} onSaveHomeBase={handleSaveHomeBase}
-                        user={user}
+                        homeBase={user?.home_base || null} onSaveHomeBase={handleSaveHomeBase}
                     />
                 </React.Suspense>
             )}
