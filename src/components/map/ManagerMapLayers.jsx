@@ -127,7 +127,7 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, lineDashArray, setS
             });
             hitbox.on('click', (e) => {
                 L.DomEvent.stopPropagation(e);
-                setSelectedProperty(p);
+                setSelectedProperty({ ...p, route_position: num });
             });
             group.addLayer(hitbox);
 
@@ -147,7 +147,7 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, lineDashArray, setS
             });
             circle.on('click', (e) => {
                 L.DomEvent.stopPropagation(e);
-                setSelectedProperty(p);
+                setSelectedProperty({ ...p, route_position: num });
             });
             group.addLayer(circle);
 

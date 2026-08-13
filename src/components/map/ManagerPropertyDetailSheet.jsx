@@ -159,7 +159,12 @@ export default function ManagerPropertyDetailSheet({
                 <div className="px-5 py-4 border-b border-gray-800 flex items-center justify-between bg-[#0A0A0A]">
                     <div className="min-w-0">
                         <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">PROPERTY DETAILS</p>
-                        <h3 className="font-bold text-lg text-white truncate max-w-[220px]">{selectedProperty.house_number} {selectedProperty.street_name}</h3>
+                        <h3 className="font-bold text-lg text-white truncate max-w-[220px] flex items-center gap-2">
+                            {Number.isFinite(Number(selectedProperty.route_position)) && selectedProperty.route_position > 0 && (
+                                <span className="shrink-0 inline-flex items-center rounded-full bg-[#2EEB57]/15 border border-[#2EEB57]/40 px-2 py-0.5 text-xs font-black text-[#39FF4A]">#{selectedProperty.route_position}</span>
+                            )}
+                            <span className="truncate">{selectedProperty.house_number} {selectedProperty.street_name}</span>
+                        </h3>
                         <div className="mt-1.5 flex items-center gap-2 flex-wrap">
                             <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-bold text-white border border-white/10"
                                 style={{ background: `${STATUS_COLORS[selectedProperty.effective_status] || '#333'}` }}>
