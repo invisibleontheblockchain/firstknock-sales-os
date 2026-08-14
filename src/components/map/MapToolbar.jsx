@@ -513,7 +513,7 @@ export default function MapToolbar({
                                     <button
                                       onPointerDown={(e) => {e.preventDefault();e.stopPropagation();}}
                                       onClick={(e) => {e.preventDefault();e.stopPropagation();setShowSplitRouteModal(true);}}
-                                      className="hidden md:flex h-7 items-center gap-1 rounded-md bg-[#2EEB57] px-2 text-[10px] font-black text-black hover:bg-[#39FF4A] touch-manipulation select-none active:scale-95"
+                                      className="hidden lg:flex h-7 items-center gap-1 rounded-md bg-[#2EEB57] px-2 text-[10px] font-black text-black hover:bg-[#39FF4A] touch-manipulation select-none active:scale-95"
                                       title="Create smaller optimized routes"
                                     >
                                       <Scissors className="w-2.5 h-2.5" /><span>SPLIT ROUTE</span>
@@ -522,7 +522,7 @@ export default function MapToolbar({
                                 <button
                 onPointerDown={(e) => {e.preventDefault();e.stopPropagation();}}
                 onClick={handleExportActiveRouteCsv}
-                className="hidden md:flex h-7 px-2 text-[10px] font-bold bg-white hover:bg-gray-200 text-black rounded-md items-center gap-1 touch-manipulation select-none active:scale-95"
+                className="hidden lg:flex h-7 px-2 text-[10px] font-bold bg-white hover:bg-gray-200 text-black rounded-md items-center gap-1 touch-manipulation select-none active:scale-95"
                 title="Export route as CSV">
 
                                     <Download className="w-2.5 h-2.5" /><span>EXPORT</span>
@@ -536,7 +536,7 @@ export default function MapToolbar({
                                 <button
                 onPointerDown={(e) => {e.preventDefault();e.stopPropagation();}}
                 onClick={(e) => {e.preventDefault();e.stopPropagation();setShowAnchorsDialog(true);}}
-                className="hidden md:flex h-7 items-center gap-1 rounded-md border border-amber-400/30 bg-amber-400/10 px-2 text-[10px] font-black text-amber-300 hover:bg-amber-400/20 touch-manipulation select-none active:scale-95"
+                className="hidden lg:flex h-7 items-center gap-1 rounded-md border border-amber-400/30 bg-amber-400/10 px-2 text-[10px] font-black text-amber-300 hover:bg-amber-400/20 touch-manipulation select-none active:scale-95"
                 title="Set the start and finish point of this route">
 
                                     <Flag className="w-2.5 h-2.5" /><span>ANCHORS</span>
@@ -545,14 +545,14 @@ export default function MapToolbar({
                                   <button
                                     onPointerDown={(e) => {e.preventDefault();e.stopPropagation();}}
                                     onClick={(e) => {e.preventDefault();e.stopPropagation();onDeleteRoute(activeRoute);}}
-                                    className="hidden md:flex h-7 items-center gap-1 rounded-md border border-red-500/40 bg-red-500/10 px-2 text-[10px] font-black text-red-400 hover:bg-red-500/20 touch-manipulation select-none active:scale-95"
+                                    className="hidden lg:flex h-7 items-center gap-1 rounded-md border border-red-500/40 bg-red-500/10 px-2 text-[10px] font-black text-red-400 hover:bg-red-500/20 touch-manipulation select-none active:scale-95"
                                     title="Delete this route">
                                     <Trash2 className="w-2.5 h-2.5" /><span>DELETE</span>
                                   </button>
                                 )}
                                 <DropdownMenu>
                                   <DropdownMenuTrigger asChild>
-                                    <button onPointerDown={(e) => e.stopPropagation()} className="md:hidden flex h-8 w-8 items-center justify-center rounded-md border border-white/10 bg-white/5 text-white touch-manipulation active:scale-95" aria-label="More route actions">
+                                    <button onPointerDown={(e) => e.stopPropagation()} className="lg:hidden flex h-8 w-8 items-center justify-center rounded-md border border-white/10 bg-white/5 text-white touch-manipulation active:scale-95" aria-label="More route actions">
                                       <MoreVertical className="h-4 w-4" />
                                     </button>
                                   </DropdownMenuTrigger>
