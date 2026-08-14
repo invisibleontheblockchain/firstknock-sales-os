@@ -29,3 +29,13 @@ export function resolvePinSize(pinSize, propertyCount) {
     if (isPinSizeUserSet()) return size;
     return Number(propertyCount) > DENSE_PIN_THRESHOLD ? Math.min(size, DENSE_PIN_SIZE) : size;
 }
+
+// Street-level zoom spreads the doors far apart, so a dense-mode 2px dot ends up
+// a speck lost against the imagery. The dot grows back as the crowding that made
+// it small disappears; wide views keep the small dot.
+export function zoomAdjustedPinSize(pinSize, zoomLevel) {
+    const size = Number(pinSize) || 4;
+    const z = Number(zoomLevel) || 0;
+    const bump = z >= 19 ? 4 : z >= 18 ? 3 : z >= 17 ? 2 : z >= 16 ? 1 : 0;
+    return size + bump;
+}

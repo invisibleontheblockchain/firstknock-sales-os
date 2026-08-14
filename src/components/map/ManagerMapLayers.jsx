@@ -8,7 +8,7 @@ import StateBoundariesLayer from './StateBoundariesLayer';
 import { getCompletedPinColor } from '@/components/routes/routeRerunUtils';
 import { isSoldDateInCustomOwnershipRange, normalizeOwnershipRangeDays } from '@/components/logic/soldDateRange';
 import { routePropertyOrderFingerprint } from '@/components/logic/routeRoadContext';
-import { resolvePinSize } from './densePinSize';
+import { resolvePinSize, zoomAdjustedPinSize } from './densePinSize';
 import {
     filterRoutesByStatus,
     isRenderableMapPoint,
@@ -433,6 +433,8 @@ function ViewportCulledPins({
 
         const group = L.layerGroup();
         const denseView = visiblePins.length > 1200;
+        // Dots grow back at street-level zoom so they don't vanish into the map.
+        const dotSize = zoomAdjustedPinSize(pinSize, zoomLevel);
 
         visiblePins.forEach(p => {
             let isRecentlySold = false;
@@ -469,7 +471,7 @@ function ViewportCulledPins({
             if (showConfRing) {
                 const ringColor = CONFIDENCE_COLORS[conf];
                 const ring = L.circleMarker([p.lat, p.lng], {
-                    radius: pinSize + 3,
+                    radius: dotSize + 3,
                     fillColor: 'transparent',
                     fillOpacity: 0,
                     color: ringColor,
@@ -487,7 +489,7 @@ function ViewportCulledPins({
             // which read as "most of my pins are missing" on a dense territory.
             // Every pin now draws at the same size and strength as worked doors.
             const circle = L.circleMarker([p.lat, p.lng], {
-                radius: isRecentlySold ? pinSize + 4 : (isCallback ? pinSize * 0.9 : pinSize),
+                radius: isRecentlySold ? dotSize + 4 : (isCallback ? dotSize * 0.9 : dotSize),
                 fillColor,
                 fillOpacity: isRecentlySold ? 1 : (0.9 * mapSettings.pinOpacity),
                 color: isRecentlySold ? '#FFFFFF' : (mapSettings.fillStyle === 'outline' ? fillColor : (mapSettings.pinBorderColor || '#000')),
@@ -509,7 +511,7 @@ function ViewportCulledPins({
                 layerRef.current = null;
             }
         };
-    }, [fastPinsMap, visiblePins, highlightRecentlySold, oneMonthAgo, STATUS_COLORS, pinSize, mapSettings, mode, setSelectedProperty]);
+    }, [fastPinsMap, visiblePins, highlightRecentlySold, oneMonthAgo, STATUS_COLORS, pinSize, zoomLevel, mapSettings, mode, setSelectedProperty]);
 
     return null; // Imperative layer — no React DOM output
 }
@@ -604,6 +606,9 @@ function SavedRoutesLayer({
         // Every door of every visible route renders — a low budget meant only a
         // fraction of a dense territory's pins appeared.
         const MAX_ROUTE_DETAIL_PINS = 40000;
+        // Same street-level growth as the property pins, so route doors stay
+        // visible instead of shrinking into the imagery when fully zoomed in.
+        const routeDotSize = zoomAdjustedPinSize(pinSize, zoomLevel);
 
         const filteredRoutes = filterRoutesByStatus(hydratedSavedRoutes, routeStatusView).filter(route => {
             // Off-screen routes contribute nothing visible, so they are skipped
@@ -679,7 +684,7 @@ function SavedRoutesLayer({
                     const sold = isConfirmedSale(p);
                     const pinColor = sold ? SOLD_PIN_COLOR : repColor;
                     const circle = L.circleMarker(point, {
-                        radius: sold ? pinSize + 2 : pinSize,
+                        radius: sold ? routeDotSize + 2 : routeDotSize,
                         fillColor: pinColor,
                         fillOpacity: sold ? 1 : (isUnassigned ? 0.6 : 0.8) * (mapSettings.pinOpacity || 1),
                         color: sold ? '#FFFFFF' : (mapSettings.fillStyle === 'outline' ? repColor : (mapSettings.pinBorderColor || '#000')),
