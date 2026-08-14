@@ -136,6 +136,18 @@ const GpsLayer = React.memo(function GpsLayer({ position, accuracy }) {
 });
 
 function PropertyPinLayer({ properties, nearbyHashes, onSelectProperty }) {
+    // Same rule as the manager map: zoomed out, route doors sit on top of each
+    // other, so the dot and its white ring shrink instead of merging into one
+    // solid blob. Only the band is tracked so pinching doesn't rebuild pins.
+    const map = useMap();
+    const [wideView, setWideView] = useState(() => (map ? map.getZoom() < 16 : false));
+    useEffect(() => {
+        if (!map) return undefined;
+        const onZoom = () => setWideView(map.getZoom() < 16);
+        map.on('zoomend', onZoom);
+        return () => map.off('zoomend', onZoom);
+    }, [map]);
+
     return properties?.map((p, idx) => {
         const isNearby = nearbyHashes.has(p.address_hash);
         const color = getOutcomeDotColor(p);
@@ -166,7 +178,7 @@ function PropertyPinLayer({ properties, nearbyHashes, onSelectProperty }) {
                 )}
                 <CircleMarker
                     center={[p.lat, p.lng]}
-                    radius={isNearby ? 8 : 6}
+                    radius={wideView ? (isNearby ? 4 : 3) : (isNearby ? 8 : 6)}
                     renderer={CANVAS_RENDERER}
                     eventHandlers={{ click: () => onSelectProperty(p) }}
                     bubblingMouseEvents={false}
@@ -174,7 +186,7 @@ function PropertyPinLayer({ properties, nearbyHashes, onSelectProperty }) {
                         fillColor: color,
                         fillOpacity: 1,
                         color: '#fff',
-                        weight: isNearby ? 2 : 1
+                        weight: wideView ? 0.5 : (isNearby ? 2 : 1)
                     }}
                 >
                     <Tooltip direction="top" offset={[0, -5]} className="route-number-tooltip">
