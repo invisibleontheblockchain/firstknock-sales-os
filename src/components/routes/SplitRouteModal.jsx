@@ -5,21 +5,15 @@ import {
   Home,
   Loader2,
   Map as MapIcon,
+  Maximize2,
   Route as RouteIcon,
   Scissors,
+  Shuffle,
   X,
 } from 'lucide-react';
-import {
-  CircleMarker,
-  MapContainer,
-  Polyline,
-  TileLayer,
-  useMap,
-} from 'react-leaflet';
 import { Button } from '@/components/ui/button';
 import { base44 } from '@/api/base44Client';
-import { CARTO_ATTRIBUTION } from '@/components/map/mapAttribution';
-import '@/components/map/leafletPatches';
+import SplitRoutePreviewMap, { previewColor } from './SplitRoutePreviewMap';
 import {
   buildOptimizedSplitPlan,
   buildSplitRouteRecords,
@@ -27,15 +21,6 @@ import {
   routeMembershipMatches,
   splitRouteCreationMatchesPlan,
 } from './splitRouteUtils';
-
-const ROUTE_COLORS = [
-  '#39FF4A', '#60A5FA', '#F59E0B', '#F472B6', '#A78BFA',
-  '#22D3EE', '#FB7185', '#84CC16', '#F97316', '#2DD4BF',
-];
-
-function previewColor(index) {
-  return ROUTE_COLORS[index % ROUTE_COLORS.length];
-}
 
 function defaultMaximum(totalHomes) {
   if (totalHomes <= 1) return 1;
@@ -94,77 +79,6 @@ function sourceArchivedForOperation(source, operationId, createdRoutes) {
     && expectedIds.every((id, index) => id === persistedIds[index]);
 }
 
-function FitSplitPreview({ routes }) {
-  const map = useMap();
-  const points = useMemo(() => routes.flatMap((route) => (
-    route.stops.map((stop) => [Number(stop.lat), Number(stop.lng)])
-  )), [routes]);
-  const signature = points.map((point) => point.join(',')).join('|');
-
-  useEffect(() => {
-    if (!points.length) return undefined;
-
-    const frameId = window.requestAnimationFrame(() => {
-      if (!map?._loaded || !map?._container?.isConnected || !map?._mapPane) return;
-      if (points.length === 1) map.setView(points[0], 16, { animate: false });
-      else map.fitBounds(points, { padding: [18, 18], maxZoom: 16, animate: false });
-      if (map._loaded && map._container?.isConnected && map._mapPane) {
-        map.invalidateSize({ animate: false, pan: false });
-      }
-    });
-
-    return () => window.cancelAnimationFrame(frameId);
-  }, [map, signature]);
-
-  return null;
-}
-
-function SplitMapPreview({ routes }) {
-  const firstStop = routes[0]?.stops?.[0];
-  const center = firstStop
-    ? [Number(firstStop.lat), Number(firstStop.lng)]
-    : [39.5, -98.35];
-
-  return (
-    <div className="h-56 overflow-hidden rounded-2xl border border-white/10 bg-[#111] sm:h-64">
-      <MapContainer
-        center={center}
-        zoom={13}
-        className="h-full w-full"
-        zoomControl={false}
-        scrollWheelZoom={false}
-        attributionControl
-        preferCanvas={false}
-      >
-        <TileLayer
-          url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-          attribution={CARTO_ATTRIBUTION}
-        />
-        <FitSplitPreview routes={routes} />
-        {routes.map((route, routeIndex) => {
-          const color = previewColor(routeIndex);
-          const positions = route.stops.map((stop) => [Number(stop.lat), Number(stop.lng)]);
-          return (
-            <React.Fragment key={route.code}>
-              {positions.length > 1 && (
-                <Polyline positions={positions} pathOptions={{ color, opacity: 0.72, weight: 3 }} />
-              )}
-              {positions.map((position, stopIndex) => (
-                <CircleMarker
-                  key={`${route.code}-${stopIndex}`}
-                  center={position}
-                  radius={3.5}
-                  pathOptions={{ color: '#070707', fillColor: color, fillOpacity: 1, weight: 1 }}
-                />
-              ))}
-            </React.Fragment>
-          );
-        })}
-      </MapContainer>
-    </div>
-  );
-}
-
 function routeCountCopy(plan) {
   if (!plan) return '';
   const sizeCopy = plan.minHomes === plan.maxHomes
@@ -187,6 +101,8 @@ export default function SplitRouteModal({
   // only commits after a short pause. Recomputing on every keystroke is what
   // made this input feel laggy and made the preview map flicker.
   const [valueDraft, setValueDraft] = useState(() => String(defaultMaximum(totalHomes)));
+  const [variant, setVariant] = useState(0);
+  const [isPreviewExpanded, setIsPreviewExpanded] = useState(false);
   const [routeNames, setRouteNames] = useState([]);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
@@ -200,16 +116,16 @@ export default function SplitRouteModal({
   const planResult = useMemo(() => {
     try {
       return {
-        plan: buildOptimizedSplitPlan({ route, sizingMode, value: requestedValue }),
+        plan: buildOptimizedSplitPlan({ route, sizingMode, value: requestedValue, variant }),
         error: '',
       };
     } catch (error) {
       return { plan: null, error: error?.message || 'This route could not be divided.' };
     }
-  }, [route, sizingMode, requestedValue]);
+  }, [route, sizingMode, requestedValue, variant]);
   const plan = planResult.plan;
   const planSignature = plan
-    ? `${route?.id || route?.name || 'route'}:${sizingMode}:${requestedValue}:${plan.routeCount}`
+    ? `${route?.id || route?.name || 'route'}:${sizingMode}:${requestedValue}:${variant}:${plan.routeCount}`
     : '';
 
   useEffect(() => {
@@ -568,13 +484,34 @@ export default function SplitRouteModal({
 
               <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
                 <section className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <MapIcon className="h-4 w-4 text-[#39FF4A]" />
-                    <p className="text-xs font-black text-white">Geographic preview</p>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <MapIcon className="h-4 w-4 text-[#39FF4A]" />
+                      <p className="text-xs font-black text-white">Geographic preview</p>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        disabled={isSaving}
+                        onClick={() => setVariant((current) => current + 1)}
+                        className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-2.5 text-[10px] font-black text-white/75 hover:bg-white/10 hover:text-white disabled:opacity-30"
+                      >
+                        <Shuffle className="h-3.5 w-3.5 text-[#39FF4A]" /> New areas
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIsPreviewExpanded(true)}
+                        className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-2.5 text-[10px] font-black text-white/75 hover:bg-white/10 hover:text-white"
+                      >
+                        <Maximize2 className="h-3.5 w-3.5 text-[#39FF4A]" /> Enlarge
+                      </button>
+                    </div>
                   </div>
-                  <SplitMapPreview routes={plan.routes} />
+                  <div className="h-56 overflow-hidden rounded-2xl border border-white/10 bg-[#111] sm:h-64">
+                    <SplitRoutePreviewMap routes={plan.routes} />
+                  </div>
                   <p className="text-[10px] leading-relaxed text-white/40">
-                    Colors show which homes stay together. Distance is an estimated between-home route before a rep or starting point is assigned.
+                    Colors show which homes stay together. Zoom in to inspect, or tap New areas to regroup the homes. Distance is an estimated between-home route before a rep or starting point is assigned.
                   </p>
                 </section>
 
@@ -641,6 +578,38 @@ export default function SplitRouteModal({
               : `Create ${plan?.routeCount || 0} Routes`}
           </Button>
         </div>
+
+        {isPreviewExpanded && plan && (
+          <div className="fixed inset-0 z-[5100] flex flex-col bg-[#050505]">
+            <div className="flex items-center justify-between gap-2 border-b border-white/10 px-4 py-3">
+              <div className="min-w-0">
+                <p className="text-sm font-black text-white">Geographic preview</p>
+                <p className="truncate text-[11px] text-white/45">{routeCountCopy(plan)}</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={isSaving}
+                  onClick={() => setVariant((current) => current + 1)}
+                  className="inline-flex h-11 items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3 text-xs font-black text-white/80 hover:bg-white/10 hover:text-white disabled:opacity-30"
+                >
+                  <Shuffle className="h-4 w-4 text-[#39FF4A]" /> New areas
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsPreviewExpanded(false)}
+                  className="flex h-11 w-11 items-center justify-center rounded-full hover:bg-white/10"
+                  aria-label="Close enlarged preview"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+            </div>
+            <div className="flex-1">
+              <SplitRoutePreviewMap routes={plan.routes} />
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

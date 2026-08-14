@@ -287,16 +287,31 @@ function sizingFor(totalHomes, sizingMode, rawValue) {
   };
 }
 
+function rotateSweepForVariant(orderedStops, variant, routeCount) {
+  const total = orderedStops.length;
+  const steps = Number(variant) | 0;
+  if (!steps || total < 2 || routeCount < 2) return orderedStops;
+  const step = Math.max(1, Math.floor(total / routeCount / 2));
+  const offset = ((steps * step) % total + total) % total;
+  if (offset === 0) return orderedStops;
+  return [...orderedStops.slice(offset), ...orderedStops.slice(0, offset)];
+}
+
 /**
  * Build a deterministic, geographically ordered and exactly balanced preview.
  * This function performs no writes.
  */
-export function buildOptimizedSplitPlan({ route, sizingMode = 'max_homes', value = 25 }) {
+export function buildOptimizedSplitPlan({ route, sizingMode = 'max_homes', value = 25, variant = 0 }) {
   const sourceStops = normalizeStopsForPlanning(route);
   const sizing = sizingFor(sourceStops.length, sizingMode, value);
   const routingContext = createRouteContinuityContext(sourceStops);
-  const globallyOrdered = optimizeRouteByStreetSweep(sourceStops, null, null, routingContext);
-  assertExactMembership(sourceStops, globallyOrdered, 'Route optimization');
+  const sweptOrder = optimizeRouteByStreetSweep(sourceStops, null, null, routingContext);
+  assertExactMembership(sourceStops, sweptOrder, 'Route optimization');
+  // Alternate arrangements rotate the optimized sweep before grouping. Every
+  // home is still assigned exactly once and groups stay contiguous along the
+  // sweep, but the cut points land in different places each time.
+  const globallyOrdered = rotateSweepForVariant(sweptOrder, variant, sizing.routeCount);
+  assertExactMembership(sourceStops, globallyOrdered, 'Route arrangement');
 
   const sizes = chooseBalancedGroupSizes(globallyOrdered, sizing.routeCount, routingContext);
   if (sizes.length !== sizing.routeCount || sizes.reduce((sum, size) => sum + size, 0) !== sourceStops.length) {
