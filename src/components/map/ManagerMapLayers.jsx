@@ -343,7 +343,7 @@ function ViewportCulledPins({
     // A flat 5,000 cap is what made a 16k-property territory unusable. Banded so
     // the layer only rebuilds when the budget actually changes.
     const MAX_VISIBLE_PINS = React.useMemo(
-        () => (zoomLevel >= 16 ? 4000 : zoomLevel >= 14 ? 2000 : 1000),
+        () => (zoomLevel >= 16 ? 30000 : zoomLevel >= 14 ? 25000 : 20000),
         [zoomLevel]
     );
 
