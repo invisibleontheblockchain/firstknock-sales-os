@@ -2,9 +2,17 @@
   "name": "Referral",
   "type": "object",
   "properties": {
+    "referrer_user_id": {
+      "type": "string",
+      "description": "Stable user ID of the referral partner"
+    },
     "referrer_email": {
       "type": "string",
       "description": "Email of the user who referred"
+    },
+    "referred_user_id": {
+      "type": "string",
+      "description": "Stable user ID of the referred customer"
     },
     "referred_email": {
       "type": "string",
@@ -32,7 +40,7 @@
     "commission_amount": {
       "type": "number",
       "default": 0,
-      "description": "Commission earned from this referral in dollars"
+      "description": "Legacy one-time commission value; recurring earnings are stored in ReferralCommission"
     },
     "subscription_tier": {
       "type": "string",
@@ -56,17 +64,24 @@
     "status"
   ],
   "rls": {
-    "create": true,
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
     "read": {
       "$or": [
         {
-          "referrer_email": "{{user.email}}"
+          "data.referrer_user_id": "{{user.id}}"
         },
         {
-          "referred_email": "{{user.email}}"
+          "data.referred_user_id": "{{user.id}}"
         },
         {
-          "created_by": "{{user.email}}"
+          "data.referrer_email": "{{user.email}}"
+        },
+        {
+          "data.referred_email": "{{user.email}}"
         },
         {
           "user_condition": {
