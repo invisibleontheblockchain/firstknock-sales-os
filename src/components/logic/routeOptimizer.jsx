@@ -26,6 +26,7 @@ import {
 import { normalizeRouteOriginMode } from '@/lib/routeOriginModes';
 import { partitionPropertiesIntoZones } from './routeZonePartition';
 import { refineBlockSequence } from './blockSequenceRefinement';
+import { resolveNeighborhoodPockets } from './streetBlockTopology';
 
 function cleanAreaLabel(value) {
     if (value === undefined || value === null) return '';
@@ -1797,9 +1798,19 @@ function flattenOrientedStreetBlocks(
 }
 
 function buildAccessSweepBlocks(streetBlocks, routingContext = null) {
+    // Streets sharing a real entrance group by that entrance. Without a road
+    // graph, a compact shared subdivision name is the next best pocket signal —
+    // otherwise each street is independent and the order may leave a
+    // neighborhood and double back into it later.
+    const pockets = resolveNeighborhoodPockets(streetBlocks);
     const grouped = new Map();
     streetBlocks.forEach((block) => {
-        const key = block.accessKey ? `ACCESS:${block.accessKey}` : `STREET:${block.key}`;
+        const pocket = pockets.get(block.key);
+        const key = block.accessKey
+            ? `ACCESS:${block.accessKey}`
+            : pocket
+                ? `POCKET:${pocket}`
+                : `STREET:${block.key}`;
         if (!grouped.has(key)) grouped.set(key, []);
         grouped.get(key).push(block);
     });
