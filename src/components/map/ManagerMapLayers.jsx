@@ -162,7 +162,7 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, lineDashArray, setS
         // Numbers appear as soon as the doors are far enough apart to read them.
         // A route that fits the screen at zoom 14 was previously numberless until
         // you zoomed two more steps, which read as "the numbers don't work".
-        const showNumbers = props.length <= 150 ? zoom >= 13 : props.length <= 600 ? zoom >= 14 : zoom >= 15;
+        const showNumbers = props.length <= 150 ? zoom >= 15 : props.length <= 600 ? zoom >= 16 : zoom >= 17;
         const numberFontSize = zoom >= 17 ? 11 : zoom >= 15 ? 10 : 9;
         // Zoomed out the doors sit on top of each other, so the route reads as a
         // bright blob. Fade the dots and the line back until the view is close
@@ -198,7 +198,7 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, lineDashArray, setS
         );
         // Number labels are DOM markers, far heavier than canvas dots, so they
         // get their own budget on top of the zoom gate.
-        const MAX_NUMBER_LABELS = 400;
+        const MAX_NUMBER_LABELS = 150;
         let labelsDrawn = 0;
 
         props.forEach((p, idx) => {
@@ -343,7 +343,7 @@ function ViewportCulledPins({
     // A flat 5,000 cap is what made a 16k-property territory unusable. Banded so
     // the layer only rebuilds when the budget actually changes.
     const MAX_VISIBLE_PINS = React.useMemo(
-        () => (zoomLevel >= 16 ? 30000 : zoomLevel >= 14 ? 25000 : 20000),
+        () => (zoomLevel >= 16 ? 12000 : zoomLevel >= 14 ? 8000 : 5000),
         [zoomLevel]
     );
 
@@ -605,7 +605,7 @@ function SavedRoutesLayer({
         const group = L.layerGroup();
         // Every door of every visible route renders — a low budget meant only a
         // fraction of a dense territory's pins appeared.
-        const MAX_ROUTE_DETAIL_PINS = 40000;
+        const MAX_ROUTE_DETAIL_PINS = 8000;
         // Same street-level growth as the property pins, so route doors stay
         // visible instead of shrinking into the imagery when fully zoomed in.
         const routeDotSize = zoomAdjustedPinSize(pinSize, zoomLevel);
@@ -627,7 +627,7 @@ function SavedRoutesLayer({
         // meant one large route consumed it all and every other visible route
         // rendered with no door pins at all.
         const perRoutePinBudget = Math.max(
-            5000,
+            1500,
             Math.floor(MAX_ROUTE_DETAIL_PINS / Math.max(1, filteredRoutes.length))
         );
 
