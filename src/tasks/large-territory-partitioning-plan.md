@@ -104,6 +104,35 @@ proxy:
 5. **Cross-territory validation**: no gaps, no overlaps, contiguous neighbours,
    report boundary cost.
 
+## Stage 1 progress
+
+Done: `base44/shared/routingUnits.js` — the single authority for
+homes -> street blocks -> road-topology pockets. Runtime-agnostic ESM (no Deno,
+no browser, no network) so both backend functions and `src` can consume it.
+Blocks delegate to `buildStreetBlocks` so a block is never redefined. Pockets
+come from bridge topology: every bridge edge is a candidate throat and the
+smaller side is the pocket, which covers cul-de-sacs, dead-end stubs,
+single-entrance subdivisions and bridge enclaves under one rule. Pocket ids are
+FNV-1a hashes of the claimed edge set, so they are stable across runs and
+independent of input order. A protected pocket collapses to ONE routing unit.
+Tests: `test/routing-units.test.mjs` (7/7).
+
+16,000-home simulation (`buildRoutingUnits` + `routingUnitWorkload`, no road
+network so units == street blocks):
+
+| density | units | model ms | routes by units | routes by doors | routes | binding | avg doors/route | avg units/route |
+|---|---|---|---|---|---|---|---|---|
+| dense | 1,143 | 125 | 5 | 14 | 14 | doors | 1,143 | 82 |
+| sparse | 5,334 | 73 | 23 | 14 | 23 | routing units | 696 | 232 |
+
+This is the point of the whole exercise: the same 16,000 homes need 14 routes
+dense and 23 sparse, decided by road complexity rather than a fixed homes/route
+number.
+
+Remaining in Stage 1: rewire `generateRoutesBackend`, the splitters and
+`routeRoadContext` onto this model (acceptance criterion 3), which is where
+generated route output can change and needs its own verification.
+
 Verification per stage: exact-once invariant, `test/route-scale-benchmark.mjs`
 re-run, plus the existing `route-street-sweep`, `road-matrix-tiers`,
 `generate-routes-backend-continuity`, and `route-zone-partition` suites.
