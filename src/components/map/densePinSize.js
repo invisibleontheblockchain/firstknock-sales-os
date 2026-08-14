@@ -24,10 +24,12 @@ export function isPinSizeUserSet() {
     try { return localStorage.getItem(USER_SET_KEY) === 'true'; } catch { return false; }
 }
 
-export function resolvePinSize(pinSize, propertyCount) {
+export function resolvePinSize(pinSize) {
     const size = Number(pinSize) || 4;
+    // Dense dots are the map default at any property count. Only moving the Dot
+    // size slider opts out of it.
     if (isPinSizeUserSet()) return size;
-    return Number(propertyCount) > DENSE_PIN_THRESHOLD ? Math.min(size, DENSE_PIN_SIZE) : size;
+    return Math.min(size, DENSE_PIN_SIZE);
 }
 
 // Street-level zoom spreads the doors far apart, so a dense-mode 2px dot ends up

@@ -181,7 +181,7 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, lineDashArray, setS
                     // satellite imagery and the outcome pins underneath it.
                     color: routeColor,
                     weight: Math.min(wideView ? 2 : 3, mapSettings.lineWidth || 2),
-                    opacity: Math.min(veryWideView ? 0.3 : wideView ? 0.4 : 0.55, mapSettings.lineOpacity || 0.55),
+                    opacity: Math.min(veryWideView ? 0.25 : wideView ? 0.32 : 0.45, mapSettings.lineOpacity || 0.45),
                     dashArray: lineDashArray || null,
                 }
             );
@@ -222,9 +222,9 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, lineDashArray, setS
             // a path rather than a wall of bright dots.
             const emphasized = sold || (activeRoute.status === 'COMPLETED' && p.effective_status === 'QUALIFIED');
             const circle = L.circleMarker(point, {
-                radius: emphasized ? 5 : (veryWideView ? 2.5 : wideView ? 3 : 3.5),
+                radius: emphasized ? 4.5 : (veryWideView ? 2 : wideView ? 2.5 : 3),
                 fillColor: sold ? SOLD_PIN_COLOR : baseColor,
-                fillOpacity: emphasized ? 1 : 0.9,
+                fillOpacity: emphasized ? 0.95 : 0.7,
                 // The white ring is what makes a zoomed-out route glow, so plain
                 // stops drop it until the doors are readable.
                 color: emphasized ? '#fff' : (wideView ? 'transparent' : '#fff'),
@@ -822,8 +822,8 @@ const ManagerMapLayers = React.memo(function ManagerMapLayers({
     darkRoom,
 }) {
     const renderPrecisionLayers = shouldRenderPrecisionMapLayers({ mode, routeMode, activeRoute });
-    // Dense territories draw a smaller dot unless the user picked a size.
-    const effectivePinSize = resolvePinSize(pinSize, effectiveProperties?.length);
+    // Dense dots are the default unless the user picked a size.
+    const effectivePinSize = resolvePinSize(pinSize);
 
     return (
         <>
