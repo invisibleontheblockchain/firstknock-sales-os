@@ -186,8 +186,8 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, pinSize, lineDashAr
                     // see the walking order between houses, so the line keeps a
                     // minimum opacity even when the user's line settings are low.
                     color: routeColor,
-                    weight: 2,
-                    opacity: Math.max(0.6, mapSettings.lineOpacity || 0),
+                    weight: 2.5,
+                    opacity: Math.max(0.75, mapSettings.lineOpacity || 0),
                     dashArray: lineDashArray || null,
                 }
             );
