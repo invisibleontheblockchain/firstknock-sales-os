@@ -235,7 +235,9 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, pinSize, lineDashAr
             const circle = L.circleMarker(point, {
                 radius: emphasized ? activeDotSize + 1.5 : activeDotSize,
                 fillColor: sold ? SOLD_PIN_COLOR : baseColor,
-                fillOpacity: 1,
+                // Zoomed out the stops sit on top of each other, so plain doors
+                // dim back and only sales / first stop stay at full strength.
+                fillOpacity: emphasized || isFirst ? 1 : (veryWideView ? 0.5 : wideView ? 0.65 : 1),
                 // The white ring is what makes a zoomed-out route glow, so plain
                 // stops drop it until the doors are readable.
                 color: emphasized ? '#fff' : (wideView ? 'transparent' : '#fff'),
