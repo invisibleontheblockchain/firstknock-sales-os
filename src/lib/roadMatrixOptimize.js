@@ -23,6 +23,13 @@ import { base44 } from '@/api/base44Client';
 // optimized (that is how a 183-door route shipped an unmeasured order).
 const MAX_ROAD_MATRIX_DOORS = 2500;
 
+// A large route is assembled from many OSRM matrix blocks, so a slow or
+// rate-limited road service can leave the request outstanding for minutes with
+// nothing on screen but a ticking toast. Optimize is interactive, so the wait
+// gets a ceiling: past it the attempt is abandoned and the caller runs the
+// existing local path, which is exactly what every other failure mode does.
+const ROAD_MATRIX_DEADLINE_MS = 45000;
+
 const propertyKey = (property) => String(property.address_hash || property.legacy_hash || property.id || '');
 
 /**
@@ -59,7 +66,11 @@ export function buildRoadMatrixRoutingBlock(meta = {}) {
     };
 }
 
-export async function tryRoadMatrixOptimize(routeProperties, { start = null, end = null } = {}) {
+export async function tryRoadMatrixOptimize(routeProperties, {
+    start = null,
+    end = null,
+    deadlineMs = ROAD_MATRIX_DEADLINE_MS
+} = {}) {
     if (!Array.isArray(routeProperties)
         || routeProperties.length < 2
         || routeProperties.length > MAX_ROAD_MATRIX_DOORS) return null;
@@ -82,7 +93,17 @@ export async function tryRoadMatrixOptimize(routeProperties, { start = null, end
         if (start) payload.start_location = { lat: start.lat, lng: start.lng };
         if (end) payload.end_location = { lat: end.lat, lng: end.lng };
 
-        const response = await base44.functions.invoke('optimizeRouteRoadMatrix', payload);
+        let deadlineTimer = null;
+        const response = await Promise.race([
+            base44.functions.invoke('optimizeRouteRoadMatrix', payload),
+            new Promise((resolve) => {
+                deadlineTimer = setTimeout(() => resolve(null), deadlineMs);
+            })
+        ]).finally(() => clearTimeout(deadlineTimer));
+        if (!response) {
+            console.warn(`[roadMatrixOptimize] Road matrix exceeded ${deadlineMs}ms; using local optimize path`);
+            return null;
+        }
         const data = response?.data || response;
         // Any winner other than the caller's current order is an order the backend
         // measured strictly better on ONE shared road matrix — including a
