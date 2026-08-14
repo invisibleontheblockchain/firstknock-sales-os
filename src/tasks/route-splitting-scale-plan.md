@@ -32,6 +32,9 @@ Each zone is ~`housesPerRoute` doors, so street/block counts land under the 500-
 - Add a regression test asserting each generated route's bounding-box diagonal shrinks vs. today on a large fixture (Charlotte 95 / Anderson 183), and that no route spans more than one zone.
 - Run `test/route-street-sweep`, `route-anderson-never-worse`, `route-solver-budget`, `route-determinism-harness` before/after.
 
+**Per-zone road matrix — already correct, keep it that way.**
+`src/lib/roadMatrixRouteGeneration.js` loops route-by-route and calls `tryRoadMatrixOptimize` (→ `optimizeRouteRoadMatrix` backend) once per route, with a whole-run budget. There is no global cross-zone matrix anywhere in generation. Phase 1 therefore keeps the right shape: geo-cluster on lat/lng (no routing engine), then one small road matrix per rep zone. Add a test asserting the per-route call count equals the route count so a future refactor cannot collapse it into one giant matrix.
+
 **Phase 4 — Call-site check (small).**
 Confirm `src/pages/Home.jsx` and `src/pages/ZipCodeExplorer.jsx` pass `housesPerRoute` (not a raw route count) into `generateOptimizedRoutes`; `K` derives from it, so a wrong unit silently produces the wrong zone count.
 
