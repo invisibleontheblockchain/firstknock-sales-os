@@ -172,8 +172,6 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, pinSize, lineDashAr
         // Zoomed out the doors sit on top of each other, so the route reads as a
         // bright blob. Fade the dots and the line back until the view is close
         // enough for individual stops to mean something.
-        const wideView = zoom < 15;
-        const veryWideView = zoom < 13;
 
         // 1. Route line — suppressed while a decision filter is active so the
         // remaining outcome pins are readable without route noise.
@@ -188,8 +186,8 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, pinSize, lineDashAr
                     // see the walking order between houses, so the line keeps a
                     // minimum opacity even when the user's line settings are low.
                     color: routeColor,
-                    weight: wideView ? 1.5 : 2,
-                    opacity: Math.max(veryWideView ? 0.4 : wideView ? 0.5 : 0.6, mapSettings.lineOpacity || 0),
+                    weight: 2,
+                    opacity: Math.max(0.6, mapSettings.lineOpacity || 0),
                     dashArray: lineDashArray || null,
                 }
             );
@@ -231,17 +229,19 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, pinSize, lineDashAr
             const emphasized = sold || (activeRoute.status === 'COMPLETED' && p.effective_status === 'QUALIFIED');
             // Same dense dot size as the Routes-mode pins, so a 10k-door route
             // reads as pin detail instead of a solid yellow blob when zoomed out.
-            const activeDotSize = zoomAdjustedPinSize(pinSize, zoom);
+            // Floor of 3px: a 2px dense dot with no zoom bump disappeared at wide
+            // views, which is what made an active route look like it wasn't there.
+            const activeDotSize = Math.max(3, zoomAdjustedPinSize(pinSize, zoom));
             const circle = L.circleMarker(point, {
                 radius: emphasized ? activeDotSize + 1.5 : activeDotSize,
                 fillColor: sold ? SOLD_PIN_COLOR : baseColor,
                 // Zoomed out the stops sit on top of each other, so plain doors
                 // dim back and only sales / first stop stay at full strength.
-                fillOpacity: emphasized || isFirst ? 1 : (veryWideView ? 0.5 : wideView ? 0.65 : 1),
-                // The white ring is what makes a zoomed-out route glow, so plain
-                // stops drop it until the doors are readable.
-                color: emphasized ? '#fff' : (wideView ? 'transparent' : '#fff'),
-                weight: emphasized ? 1.5 : (wideView ? 0 : 1),
+                // Route stops keep the same solid look at every zoom — dimming
+                // them made a zoomed-out route read as missing entirely.
+                fillOpacity: 1,
+                color: '#fff',
+                weight: emphasized ? 1.5 : 1,
             });
             circle.on('click', (e) => {
                 L.DomEvent.stopPropagation(e);
