@@ -5,6 +5,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { routePropertyOrderFingerprint } from '@/components/logic/routeRoadContext';
 import MapAttributionControl from '@/components/map/MapAttributionControl';
+import { DEFAULT_PIN_THEME } from '@/components/map/mapPinThemes';
 import { ESRI_IMAGERY_ATTRIBUTION } from '@/components/map/mapAttribution';
 
 // Fix Leaflet unmount error during scroll wheel zoom
@@ -212,9 +213,11 @@ export default function RepMapView({
 
     const [mapSettings] = useState(() => {
         try {
-            const saved = localStorage.getItem('fk_mapSettings_v2');
-            return saved ? JSON.parse(saved) : {};
-        } catch(e) { return {}; }
+            // Same key + same default look as the manager map, so a rep's map
+            // never renders with a different theme than the one shipped.
+            const saved = localStorage.getItem('fk_mapSettings_v4');
+            return saved ? JSON.parse(saved) : { ...DEFAULT_PIN_THEME.settings };
+        } catch(e) { return { ...DEFAULT_PIN_THEME.settings }; }
     });
 
     const LINE_DASH_MAP = {
