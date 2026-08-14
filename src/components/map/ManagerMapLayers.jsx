@@ -184,9 +184,12 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, pinSize, lineDashAr
                     // Deliberately restrained: the selected route used to draw at
                     // +2 weight and a 0.6 opacity floor, which washed out the
                     // satellite imagery and the outcome pins underneath it.
+                    // Thin and faint on purpose, but always visible: reps need to
+                    // see the walking order between houses, so the line keeps a
+                    // minimum opacity even when the user's line settings are low.
                     color: routeColor,
-                    weight: Math.min(wideView ? 2 : 3, mapSettings.lineWidth || 2),
-                    opacity: Math.min(veryWideView ? 0.25 : wideView ? 0.32 : 0.45, mapSettings.lineOpacity || 0.45),
+                    weight: wideView ? 1.5 : 2,
+                    opacity: Math.max(veryWideView ? 0.4 : wideView ? 0.5 : 0.6, mapSettings.lineOpacity || 0),
                     dashArray: lineDashArray || null,
                 }
             );
