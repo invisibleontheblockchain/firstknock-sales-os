@@ -8,7 +8,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { generateOptimizedRoutes } from "@/components/logic/routeOptimizer";
-import { createRouteContinuityContext } from "@/components/logic/routeRoadContext";
+import { createRouteRoadContext } from "@/components/logic/routeRoadContext";
 import {
     Navigation, X, BarChart3, User, Shield, MapPin, Flame, Plus, Clock, CheckCircle2, ChevronRight, Zap, Trash2, Scissors, Pencil, Check, Play, Home
 } from 'lucide-react';
@@ -271,7 +271,7 @@ export default function RouteCommandPanel({
                                                             />
                                                         ) : (
                                                             <Button
-                                                                onClick={() => {
+                                                                onClick={async () => {
                                                                     const baseRoutes = (filteredRoutes && filteredRoutes.length > 0) ? filteredRoutes : generatedRoutes;
                                                                     const seen = new Set();
                                                                     const allProps = [];
@@ -315,7 +315,7 @@ export default function RouteCommandPanel({
                                                                     const mergeEnd = sharedRouteBounds
                                                                         ? (firstRoute.endLocation || firstRoute.end_location)
                                                                         : null;
-                                                                    const routingContext = createRouteContinuityContext(allProps);
+                                                                    const routingContext = await createRouteRoadContext(allProps);
                                                                     const merged = generateOptimizedRoutes(
                                                                         allProps,
                                                                         allProps.length,
@@ -547,9 +547,9 @@ function SplitRouteButton({ route, onReplaceRoutes }) {
                     {splitOptions.filter(n => n < totalHouses).map(n => (
                         <Button
                             key={n}
-                            onClick={() => {
+                            onClick={async () => {
                                 const perRoute = Math.ceil(totalHouses / n);
-                                const routingContext = createRouteContinuityContext(route.properties);
+                                const routingContext = await createRouteRoadContext(route.properties);
                                 const splits = generateOptimizedRoutes(
                                     route.properties, perRoute, null, [],
                                     { minimizeTurns: true, use2Opt: true, walkingPattern: 'nearest', excludeTerminal: false, preserveInputMembership: true, routingContext }

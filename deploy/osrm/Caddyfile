@@ -1,0 +1,76 @@
+# TLS termination + auth in front of OSRM and VROOM.
+#
+# Why this exists: the FirstKnock app is served over HTTPS. Browsers block
+# plaintext requests from an HTTPS page, so pointing the app at
+# http://<droplet-ip>:5000 fails in every user's browser while working perfectly
+# from curl on the droplet. Caddy gets a real certificate automatically.
+#
+# Auth note: OSRM_TOKEN ships to the browser, so treat it as obfuscation, not a
+# secret. It stops drive-by scanners finding free compute; it does not stop a
+# determined user of the app. If abuse shows up, move these calls behind a
+# base44 backend function and keep the token server-side.
+
+{
+	email infra@firstknock.com
+	servers {
+		timeouts {
+			read_body 30s
+			write 120s
+			idle 180s
+		}
+	}
+}
+
+{$OSRM_DOMAIN} {
+	encode zstd gzip
+
+	# Large /table POST bodies are expected; anything past this is not us.
+	request_body {
+		max_size 8MB
+	}
+
+	@preflight method OPTIONS
+	handle @preflight {
+		header {
+			Access-Control-Allow-Origin "{$APP_ORIGIN}"
+			Access-Control-Allow-Methods "GET, POST, OPTIONS"
+			Access-Control-Allow-Headers "Content-Type, Authorization"
+			Access-Control-Max-Age "86400"
+		}
+		respond 204
+	}
+
+	@unauthorized not header Authorization "Bearer {$OSRM_TOKEN}"
+	handle @unauthorized {
+		respond "Unauthorized" 401
+	}
+
+	handle /vroom* {
+		uri strip_prefix /vroom
+		reverse_proxy vroom:3000
+	}
+
+	handle {
+		header {
+			Access-Control-Allow-Origin "{$APP_ORIGIN}"
+			Vary "Origin"
+			-Server
+		}
+		reverse_proxy osrm:5000 {
+			# A full-USA /table over a few hundred coordinates is not fast.
+			# This ceiling must stay above the client's own /table timeout or
+			# Caddy will cut off requests OSRM would have completed.
+			transport http {
+				response_header_timeout 120s
+			}
+		}
+	}
+
+	log {
+		output file /data/access.log {
+			roll_size 10MB
+			roll_keep 3
+		}
+		format json
+	}
+}

@@ -1,0 +1,128 @@
+# FirstKnock production routing stack — single droplet, full-USA OSRM MLD + VROOM.
+#
+#   docker compose -f docker-compose.osrm.yml up -d
+#
+# Expects, on the host:
+#   /opt/osrm/data/map.osrm*   the MLD artifacts built by build-usa-graph.sh
+#   /opt/osrm/.env             OSRM_DOMAIN, OSRM_TOKEN, APP_ORIGIN (see .env.example)
+#
+# Caddy terminates TLS on a real hostname. That is not optional: the FirstKnock
+# app is served over HTTPS, and a browser refuses to call http://<ip>:5000 from an
+# HTTPS page (mixed content). Talking to the droplet IP directly works from curl
+# and fails silently in every user's browser.
+
+services:
+  osrm:
+    # GHCR, not Docker Hub: osrm/osrm-backend on Docker Hub is frozen at v5.25.0
+    # (last push July 2021). Tags here are arch+distro qualified by design.
+    # Pin the exact version — the serving binary must match the one that built
+    # the artifacts, or osrm-routed rejects them on a data-version mismatch.
+    image: ghcr.io/project-osrm/osrm-backend:v26.8.0-amd64-debian
+    container_name: osrm
+    restart: unless-stopped
+    command: >
+      osrm-routed
+        --algorithm mld
+        --max-table-size 8000
+        --max-viaroute-size 1000
+        --max-matching-size 100
+        --max-trip-size 100
+        --threads 4
+        /data/map.osrm
+    volumes:
+      - ./data:/data:ro
+    expose:
+      - "5000"
+    healthcheck:
+      # Mooresville NC 28115 — stops 1 and 2 of Charlotte-Precision-Route-1.
+      # Real coordinates inside a real FirstKnock service area, so a passing
+      # healthcheck also proves the graph covers territory that is actually sold.
+      test:
+        - CMD-SHELL
+        - >-
+          curl -sf "http://127.0.0.1:5000/route/v1/driving/-80.790018,35.593459;-80.788777,35.594156?overview=false"
+          | grep -q '"code":"Ok"'
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 180s
+    deploy:
+      resources:
+        limits:
+          memory: 26G
+    logging: &default_logging
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  vroom:
+    image: ghcr.io/vroom-project/vroom-docker:v1.15.0
+    container_name: vroom
+    restart: unless-stopped
+    depends_on:
+      osrm:
+        condition: service_healthy
+    environment:
+      # VROOM reaches OSRM over HTTP on the compose network — never linked
+      # in-process via libosrm. Keeps both independently restartable and keeps
+      # the horizontal-scaling path open.
+      VROOM_ROUTER: osrm
+    volumes:
+      - ./vroom-conf:/conf:ro
+    expose:
+      - "3000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf -X POST http://127.0.0.1:3000 -H 'Content-Type: application/json' -d '{\"vehicles\":[{\"id\":1,\"start\":[-80.790018,35.593459]}],\"jobs\":[{\"id\":1,\"location\":[-80.788777,35.594156]}]}' | grep -q '\"code\":0'"]
+      interval: 60s
+      timeout: 15s
+      retries: 3
+      start_period: 60s
+    logging: *default_logging
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: caddy
+    restart: unless-stopped
+    depends_on:
+      - osrm
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      OSRM_DOMAIN: ${OSRM_DOMAIN:?set OSRM_DOMAIN in .env}
+      OSRM_TOKEN: ${OSRM_TOKEN:?set OSRM_TOKEN in .env}
+      APP_ORIGIN: ${APP_ORIGIN:-https://firstknock.online}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    logging: *default_logging
+
+  watchdog:
+    image: docker:28-cli
+    container_name: osrm-watchdog
+    restart: unless-stopped
+    depends_on:
+      - osrm
+    environment:
+      ALERT_WEBHOOK: ${ALERT_WEBHOOK:-}
+      DO_API_TOKEN: ${DO_API_TOKEN:-}
+      DO_DROPLET_ID: ${DO_DROPLET_ID:-}
+      DISK_ALERT_GB: ${DISK_ALERT_GB:-15}
+    volumes:
+      # The watchdog restarts sibling containers, so it needs the host socket.
+      # This is a privilege boundary: anything that can write here is root on the
+      # host. The mounted script is read-only and is the only thing that runs.
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./watchdog.sh:/watchdog.sh:ro
+      - ./data:/data:ro
+    # Mounted script, not an inline heredoc. An inline compose command would let
+    # $FAILURES and $((...)) be eaten by compose variable interpolation before the
+    # shell ever sees them.
+    entrypoint: ["/bin/sh", "/watchdog.sh"]
+    logging: *default_logging
+
+volumes:
+  caddy_data:
+  caddy_config:

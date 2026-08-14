@@ -1,0 +1,14 @@
+# VROOM -> OSRM wiring. HTTP, not libosrm: keeps both services independently
+# restartable and leaves the horizontal-scaling path open for Phase 2.
+cliArgs:
+  geometry: false
+  planmode: false
+  threads: 4
+  limit: 1048576
+  logdir: /conf
+  router: osrm
+
+routingServers:
+  car:
+    host: osrm
+    port: 5000
