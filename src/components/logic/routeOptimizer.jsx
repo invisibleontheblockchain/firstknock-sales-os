@@ -1695,10 +1695,13 @@ function refineStreetBlockOrder(ordered, startLocation, endLocation, routingCont
         pairCost,
         startCost,
         endCost,
-        windowSize: costOnly ? 40 : 60,
-        overlap: costOnly ? 12 : 20,
-        maxPasses: costOnly ? 3 : 4,
-        stepBudget: costOnly ? 120000 : 250000
+        // Cost-only contexts pay a road-graph lookup per distinct block pair, so
+        // that tier is deliberately narrower: smaller windows explore fewer pairs
+        // and keep total road work bounded as the block count grows.
+        windowSize: costOnly ? 24 : 60,
+        overlap: costOnly ? 8 : 20,
+        maxPasses: costOnly ? 2 : 4,
+        stepBudget: costOnly ? 20000 : 250000
     });
     // Refinement may only reorder. Fail closed rather than let a future change
     // silently drop or duplicate a sweep block.
