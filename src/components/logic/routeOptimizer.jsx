@@ -1469,6 +1469,21 @@ function streetBlockOrderCost(
     return { cost: finalCost, orientations };
 }
 
+/** Total travel of a finished door sequence, including any fixed start/finish. */
+function doorSequenceCost(doors, startLocation, endLocation, routingContext) {
+    if (doors.length === 0) return 0;
+    let total = isValidRoutePoint(startLocation)
+        ? routingDistance(startLocation, doors[0], routingContext)
+        : 0;
+    for (let index = 0; index < doors.length - 1; index++) {
+        total += routingDistance(doors[index], doors[index + 1], routingContext);
+    }
+    if (isValidRoutePoint(endLocation)) {
+        total += routingDistance(doors[doors.length - 1], endLocation, routingContext);
+    }
+    return total;
+}
+
 function minimumBlockTransitionDistance(firstBlock, secondBlock, routingContext) {
     let bestDistance = Infinity;
     firstBlock.variants.forEach((firstVariant) => {
@@ -1980,33 +1995,32 @@ function mailCarrierOrderSingleCluster(
     if (validProperties.length === 0) return [];
 
     const streetBlocks = buildStreetSweepBlocks(validProperties, routingContext);
+    const sweepStreetBlocks = () => flattenOrientedStreetBlocks(
+        optimizeStreetBlockOrder(streetBlocks, startLocation, endLocation, routingContext),
+        startLocation,
+        endLocation,
+        routingContext
+    );
+
     const accessBlocks = buildAccessSweepBlocks(streetBlocks, routingContext);
-    if (accessBlocks.length === 1 && streetBlocks.length > 1) {
-        const orderedStreetBlocks = optimizeStreetBlockOrder(
-            streetBlocks,
-            startLocation,
-            endLocation,
-            routingContext
-        );
-        return flattenOrientedStreetBlocks(
-            orderedStreetBlocks,
-            startLocation,
-            endLocation,
-            routingContext
-        );
-    }
-    const orderedBlocks = optimizeStreetBlockOrder(
-        accessBlocks,
+    if (accessBlocks.length === 1 && streetBlocks.length > 1) return sweepStreetBlocks();
+
+    const grouped = flattenOrientedStreetBlocks(
+        optimizeStreetBlockOrder(accessBlocks, startLocation, endLocation, routingContext),
         startLocation,
         endLocation,
         routingContext
     );
-    return flattenOrientedStreetBlocks(
-        orderedBlocks,
-        startLocation,
-        endLocation,
-        routingContext
-    );
+    // Grouping streets into pockets keeps a neighborhood contiguous, but an
+    // atomic pocket can also force a longer walk than sweeping streets freely.
+    // Only keep the pocket sweep when it actually travels less; a pocket signal
+    // must never cost the rep distance.
+    if (!accessBlocks.some(block => String(block.key).startsWith('POCKET:'))) return grouped;
+    const streetSweep = sweepStreetBlocks();
+    return doorSequenceCost(streetSweep, startLocation, endLocation, routingContext)
+        + 0.000001 < doorSequenceCost(grouped, startLocation, endLocation, routingContext)
+        ? streetSweep
+        : grouped;
 }
 
 /** Full mail-carrier ordering with every normalized street kept contiguous. */
