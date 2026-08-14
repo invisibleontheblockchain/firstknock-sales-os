@@ -111,6 +111,11 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, lineDashArray, setS
         // route line always show; tapping a pin still gives its exact position.
         const showNumbers = props.length <= 600 ? zoom >= 16 : zoom >= 17;
         const numberFontSize = zoom >= 18 ? 10 : 9;
+        // Zoomed out the doors sit on top of each other, so the route reads as a
+        // bright blob. Fade the dots and the line back until the view is close
+        // enough for individual stops to mean something.
+        const wideView = zoom < 15;
+        const veryWideView = zoom < 13;
 
         // 1. Route line — suppressed while a decision filter is active so the
         // remaining outcome pins are readable without route noise.
@@ -122,8 +127,8 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, lineDashArray, setS
                     // +2 weight and a 0.6 opacity floor, which washed out the
                     // satellite imagery and the outcome pins underneath it.
                     color: routeColor,
-                    weight: Math.min(3, mapSettings.lineWidth || 2),
-                    opacity: Math.min(0.55, mapSettings.lineOpacity || 0.55),
+                    weight: Math.min(wideView ? 2 : 3, mapSettings.lineWidth || 2),
+                    opacity: Math.min(veryWideView ? 0.3 : wideView ? 0.4 : 0.55, mapSettings.lineOpacity || 0.55),
                     dashArray: lineDashArray || null,
                 }
             );
@@ -162,11 +167,13 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, lineDashArray, setS
             // a path rather than a wall of bright dots.
             const emphasized = sold || (activeRoute.status === 'COMPLETED' && p.effective_status === 'QUALIFIED');
             const circle = L.circleMarker(point, {
-                radius: emphasized ? 5 : 3.5,
+                radius: emphasized ? 5 : (veryWideView ? 2 : wideView ? 2.5 : 3.5),
                 fillColor: sold ? SOLD_PIN_COLOR : baseColor,
-                fillOpacity: emphasized ? 1 : 0.85,
-                color: '#fff',
-                weight: emphasized ? 1.5 : 1,
+                fillOpacity: emphasized ? 1 : (veryWideView ? 0.45 : wideView ? 0.6 : 0.85),
+                // The white ring is what makes a zoomed-out route glow, so plain
+                // stops drop it until the doors are readable.
+                color: emphasized ? '#fff' : (wideView ? 'transparent' : '#fff'),
+                weight: emphasized ? 1.5 : (wideView ? 0 : 1),
             });
             circle.on('click', (e) => {
                 L.DomEvent.stopPropagation(e);
@@ -174,12 +181,17 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, lineDashArray, setS
             });
             group.addLayer(circle);
 
-            // Number label (lightweight DivIcon marker)
-            if (!showNumbers) return;
+            // Number label (lightweight DivIcon marker).
+            // A sale always shows its stop number, at any zoom — there are few of
+            // them, they never crowd the map, and knowing which stop sold is the
+            // whole point of looking at a worked route.
+            if (!showNumbers && !sold) return;
+            const labelColor = sold ? SOLD_PIN_COLOR : 'rgba(255,255,255,0.9)';
+            const labelSize = sold ? Math.max(11, numberFontSize) : numberFontSize;
             const label = L.marker(point, {
                 icon: L.divIcon({
                     className: '',
-                    html: `<div style="color:rgba(255,255,255,0.9);font-weight:600;font-size:${numberFontSize}px;text-shadow:0 1px 2px #000;pointer-events:none;transform:translate(-50%,-100%);white-space:nowrap">${num}</div>`,
+                    html: `<div style="color:${labelColor};font-weight:${sold ? 800 : 600};font-size:${labelSize}px;text-shadow:0 1px 3px #000;pointer-events:none;transform:translate(-50%,-100%);white-space:nowrap">${num}</div>`,
                     iconSize: [0, 0],
                     iconAnchor: [0, 5],
                 }),
