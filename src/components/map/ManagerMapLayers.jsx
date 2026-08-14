@@ -222,9 +222,9 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, lineDashArray, setS
             // a path rather than a wall of bright dots.
             const emphasized = sold || (activeRoute.status === 'COMPLETED' && p.effective_status === 'QUALIFIED');
             const circle = L.circleMarker(point, {
-                radius: emphasized ? 5 : (veryWideView ? 2 : wideView ? 2.5 : 3.5),
+                radius: emphasized ? 5 : (veryWideView ? 2.5 : wideView ? 3 : 3.5),
                 fillColor: sold ? SOLD_PIN_COLOR : baseColor,
-                fillOpacity: emphasized ? 1 : (veryWideView ? 0.45 : wideView ? 0.6 : 0.85),
+                fillOpacity: emphasized ? 1 : 0.9,
                 // The white ring is what makes a zoomed-out route glow, so plain
                 // stops drop it until the doors are readable.
                 color: emphasized ? '#fff' : (wideView ? 'transparent' : '#fff'),
@@ -483,12 +483,15 @@ function ViewportCulledPins({
             const isCallback = effectiveColorStatus === 'CALLBACK';
 
             // Visible pin
+            // Unvisited doors used to render smaller, borderless and at 0.3 opacity,
+            // which read as "most of my pins are missing" on a dense territory.
+            // Every pin now draws at the same size and strength as worked doors.
             const circle = L.circleMarker([p.lat, p.lng], {
-                radius: isRecentlySold ? pinSize + 4 : (isUnvisited ? Math.max(2, pinSize - 2) : (isCallback ? pinSize * 0.9 : pinSize)),
+                radius: isRecentlySold ? pinSize + 4 : (isCallback ? pinSize * 0.9 : pinSize),
                 fillColor,
-                fillOpacity: isRecentlySold ? 1 : (isUnvisited ? 0.3 : ((mode === 'generate' ? 0.9 : 0.5) * mapSettings.pinOpacity)),
-                color: isRecentlySold ? '#FFFFFF' : (mapSettings.fillStyle === 'outline' ? fillColor : (isUnvisited ? 'transparent' : (mapSettings.pinBorderColor || '#000'))),
-                weight: isRecentlySold ? 2 : (mapSettings.fillStyle === 'outline' ? 2 : (isUnvisited ? 0 : mapSettings.pinBorderWidth))
+                fillOpacity: isRecentlySold ? 1 : (0.9 * mapSettings.pinOpacity),
+                color: isRecentlySold ? '#FFFFFF' : (mapSettings.fillStyle === 'outline' ? fillColor : (mapSettings.pinBorderColor || '#000')),
+                weight: isRecentlySold ? 2 : (mapSettings.fillStyle === 'outline' ? 2 : mapSettings.pinBorderWidth)
             });
             circle.on('click', (e) => {
                 L.DomEvent.stopPropagation(e);
@@ -598,7 +601,9 @@ function SavedRoutesLayer({
         if (activeRouteHasMapPoints || mode !== 'analyze' || !routesZoomEnabled) return;
 
         const group = L.layerGroup();
-        const MAX_ROUTE_DETAIL_PINS = 4000;
+        // Every door of every visible route renders — a low budget meant only a
+        // fraction of a dense territory's pins appeared.
+        const MAX_ROUTE_DETAIL_PINS = 40000;
 
         const filteredRoutes = filterRoutesByStatus(hydratedSavedRoutes, routeStatusView).filter(route => {
             // Off-screen routes contribute nothing visible, so they are skipped
@@ -617,7 +622,7 @@ function SavedRoutesLayer({
         // meant one large route consumed it all and every other visible route
         // rendered with no door pins at all.
         const perRoutePinBudget = Math.max(
-            300,
+            5000,
             Math.floor(MAX_ROUTE_DETAIL_PINS / Math.max(1, filteredRoutes.length))
         );
 
