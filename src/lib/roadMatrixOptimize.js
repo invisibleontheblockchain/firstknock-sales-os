@@ -84,7 +84,16 @@ export async function tryRoadMatrixOptimize(routeProperties, { start = null, end
 
         const response = await base44.functions.invoke('optimizeRouteRoadMatrix', payload);
         const data = response?.data || response;
-        if (data?.selected !== 'road_aware' || !Array.isArray(data.order)) return null;
+        // Any winner other than the caller's current order is an order the backend
+        // measured strictly better on ONE shared road matrix — including a
+        // reversed or continuity-shaped candidate. Requiring the 'road_aware'
+        // label discarded those, which is why routes kept their zig-zag order
+        // even though OSRM had already priced a shorter one.
+        if (!data?.success
+            || data.selected === 'current'
+            // Aerial fallback orders are unmeasured — never adopt one.
+            || data.routing_metadata?.fallback === true
+            || !Array.isArray(data.order)) return null;
 
         const byKey = new Map(routeProperties.map((property) => [propertyKey(property), property]));
         const order = data.order.map((hash) => byKey.get(String(hash))).filter(Boolean);
