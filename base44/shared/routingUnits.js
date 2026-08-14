@@ -12,8 +12,9 @@
 // can consume the SAME representation:
 //   - street blocks delegate to `buildStreetBlocks`, the definition the road
 //     matrix already groups by, so a block is never redefined here
-//   - pockets come from ROAD TOPOLOGY (terminal/dead-end branches and
-//     single-entrance bridge pockets), not from provider labels
+//   - pockets delegate to `findProtectedTerminalBranches` in
+//     `streetTopologyCore.js`, the detector Canvas territory deployment is
+//     validated against, so pocket detection exists in exactly one place
 //
 // Determinism is a hard requirement: every id and every ordering is derived
 // from canonical sorted keys, never from input array order or iteration timing,
@@ -22,6 +23,14 @@
 
 import { buildStreetBlocks } from './roadAwareStreetSweep.js';
 import { haversineMiles, isValidPoint } from './routeContinuityOptimizer.js';
+// Pockets are detected by the shared topology core — the same detector Canvas
+// territory deployment uses — so "protected pocket" means one thing everywhere.
+import {
+    compareIds,
+    edgeIdFor,
+    findProtectedTerminalBranches,
+    stableHash as topologyHash
+} from './streetTopologyCore.js';
 
 // The measured ceiling. A route stays road-priced at block tier only while its
 // units plus its anchors fit inside MAX_ROUTE_MATRIX_POINTS (250), so the
@@ -50,16 +59,6 @@ function compareKeys(left, right) {
     return 0;
 }
 
-/** FNV-1a over a canonical string — stable across runs and platforms. */
-function stableHash(value) {
-    let hash = 2166136261;
-    const text = String(value);
-    for (let index = 0; index < text.length; index += 1) {
-        hash = Math.imul(hash ^ text.charCodeAt(index), 16777619);
-    }
-    return (hash >>> 0).toString(16).padStart(8, '0');
-}
-
 function pointFrom(value) {
     const lat = Number(value?.lat ?? value?.latitude);
     const lng = Number(value?.lng ?? value?.lon ?? value?.longitude);
@@ -68,174 +67,88 @@ function pointFrom(value) {
     return { lat, lng };
 }
 
-function edgeKey(firstNodeId, secondNodeId) {
-    return compareKeys(firstNodeId, secondNodeId) <= 0
-        ? `${firstNodeId}|${secondNodeId}`
-        : `${secondNodeId}|${firstNodeId}`;
-}
-
 /**
- * Undirected routable graph from an OSM-shaped road network.
- * Edges are keyed canonically, so the graph is identical regardless of the order
- * elements arrive in.
+ * Undirected routable graph from an OSM-shaped road network, in the shape the
+ * shared topology core expects (`nodeMap` keeps tags so `noexit` and
+ * turning-circle signals still reach the detector).
+ * Edges are keyed canonically by `edgeIdFor`, so the graph is identical
+ * regardless of the order elements arrive in.
  */
-function buildRoadGraph(roadNetwork, allowedHighways) {
+function buildTopologyGraph(roadNetwork, allowedHighways) {
     const allowed = new Set(allowedHighways);
-    const nodes = new Map();
-    const edges = new Map();
-    const adjacency = new Map();
+    const nodeMap = new Map();
+    const edgeMap = new Map();
 
     (roadNetwork?.elements || []).forEach((element) => {
         if (element?.type !== 'node') return;
         const point = pointFrom(element);
-        if (point) nodes.set(String(element.id), point);
+        if (!point) return;
+        const id = String(element.id);
+        nodeMap.set(id, { id, ...point, tags: element.tags || {} });
     });
 
     (roadNetwork?.elements || []).forEach((element) => {
         if (element?.type !== 'way' || !allowed.has(element?.tags?.highway)) return;
-        const wayNodes = (element.nodes || []).map(String).filter((id) => nodes.has(id));
+        const wayNodes = (element.nodes || []).map(String).filter((id) => nodeMap.has(id));
         for (let index = 0; index < wayNodes.length - 1; index += 1) {
             const from = wayNodes[index];
             const to = wayNodes[index + 1];
             if (from === to) continue;
-            const key = edgeKey(from, to);
-            if (edges.has(key)) continue;
-            edges.set(key, { key, from, to });
-            if (!adjacency.has(from)) adjacency.set(from, new Set());
-            if (!adjacency.has(to)) adjacency.set(to, new Set());
-            adjacency.get(from).add(key);
-            adjacency.get(to).add(key);
+            const id = edgeIdFor(from, to);
+            if (edgeMap.has(id)) continue;
+            edgeMap.set(id, { id, nodeIds: [from, to].sort(compareIds) });
         }
     });
 
-    return { nodes, edges, adjacency };
-}
-
-const otherEnd = (edge, nodeId) => (edge.from === nodeId ? edge.to : edge.from);
-
-/**
- * Bridge edges via iterative Tarjan low-link. Iterative because a residential
- * graph is deep enough to blow a recursive stack.
- */
-function findBridgeKeys(graph) {
-    const discovery = new Map();
-    const low = new Map();
-    const bridges = new Set();
-    let counter = 0;
-
-    [...graph.adjacency.keys()].sort(compareKeys).forEach((rootId) => {
-        if (discovery.has(rootId)) return;
-        const stack = [{ nodeId: rootId, parentEdgeKey: null, pending: null }];
-        while (stack.length > 0) {
-            const frame = stack[stack.length - 1];
-            if (frame.pending === null) {
-                counter += 1;
-                discovery.set(frame.nodeId, counter);
-                low.set(frame.nodeId, counter);
-                frame.pending = [...(graph.adjacency.get(frame.nodeId) || [])].sort(compareKeys);
-            }
-            if (frame.pending.length === 0) {
-                stack.pop();
-                const parent = stack[stack.length - 1];
-                if (parent && frame.parentEdgeKey) {
-                    low.set(parent.nodeId, Math.min(low.get(parent.nodeId), low.get(frame.nodeId)));
-                    if (low.get(frame.nodeId) > discovery.get(parent.nodeId)) {
-                        bridges.add(frame.parentEdgeKey);
-                    }
-                }
-                continue;
-            }
-            const nextEdgeKey = frame.pending.pop();
-            if (nextEdgeKey === frame.parentEdgeKey) continue;
-            const neighborId = otherEnd(graph.edges.get(nextEdgeKey), frame.nodeId);
-            if (discovery.has(neighborId)) {
-                low.set(frame.nodeId, Math.min(low.get(frame.nodeId), discovery.get(neighborId)));
-                continue;
-            }
-            stack.push({ nodeId: neighborId, parentEdgeKey: nextEdgeKey, pending: null });
-        }
-    });
-
-    return bridges;
-}
-
-/** Edges reachable from `startNodeId` without crossing `blockedEdgeKey`. */
-function reachableEdgeKeys(graph, startNodeId, blockedEdgeKey) {
-    const seenNodes = new Set([startNodeId]);
-    const reached = new Set();
-    const queue = [startNodeId];
-    while (queue.length > 0) {
-        const nodeId = queue.shift();
-        [...(graph.adjacency.get(nodeId) || [])].sort(compareKeys).forEach((key) => {
-            if (key === blockedEdgeKey) return;
-            reached.add(key);
-            const neighborId = otherEnd(graph.edges.get(key), nodeId);
-            if (seenNodes.has(neighborId)) return;
-            seenNodes.add(neighborId);
-            queue.push(neighborId);
-        });
-    }
-    return reached;
+    return { nodeMap, edgeMap };
 }
 
 /**
- * Protected pockets: an area that can only be entered and left through one
- * throat, so a route that leaves it mid-way pays the throat twice.
+ * Protected pockets: areas that can only be entered and left through one throat,
+ * so a route that leaves one mid-way pays that throat twice — cul-de-sacs,
+ * dead-end stubs, and single-entrance enclaves.
  *
- * Every bridge edge is a candidate throat. The side of the bridge that does not
- * contain the rest of the network is the pocket — which covers cul-de-sacs and
- * dead-end stubs (the degenerate one-edge case) and single-entrance
- * subdivisions and bridge-connected enclaves (the many-edge case) with one
- * rule instead of three.
- *
- * Pockets are emitted smallest-first and an edge is claimed by the smallest
- * pocket containing it, so nested pockets resolve to their innermost unit.
+ * The detection itself is NOT implemented here. It delegates to the shared
+ * topology core, which is the Canvas-validated detector, so a pocket found
+ * during generation is the same pocket found during optimization. An edge is
+ * claimed by the first branch that contains it, so pockets stay disjoint.
  */
 function findTopologyPockets(graph) {
-    const bridges = [...findBridgeKeys(graph)].sort(compareKeys);
-    const candidates = [];
-
-    bridges.forEach((bridgeKey) => {
-        const bridge = graph.edges.get(bridgeKey);
-        const fromSide = reachableEdgeKeys(graph, bridge.from, bridgeKey);
-        const toSide = reachableEdgeKeys(graph, bridge.to, bridgeKey);
-        // The pocket is the smaller side plus the throat itself. Equal sides
-        // mean neither side is an enclave, so there is nothing to protect.
-        if (fromSide.size === toSide.size) return;
-        const inner = fromSide.size < toSide.size ? fromSide : toSide;
-        const edgeKeys = [...inner, bridgeKey].sort(compareKeys);
-        candidates.push({ throatEdgeKey: bridgeKey, edgeKeys });
-    });
-
-    candidates.sort((first, second) => (
-        first.edgeKeys.length - second.edgeKeys.length
-        || compareKeys(first.throatEdgeKey, second.throatEdgeKey)
-    ));
+    const edgeIds = [...graph.edgeMap.keys()].sort(compareIds);
+    const branches = findProtectedTerminalBranches(
+        edgeIds,
+        graph.edgeMap,
+        graph.nodeMap,
+        // No polygon here: this model is territory-wide, so there is no clipped
+        // boundary to exempt and no operator-declared barrier set.
+        new Set(),
+        new Set()
+    );
 
     const pocketByEdgeKey = new Map();
     const pockets = [];
-    candidates.forEach((candidate) => {
-        const unclaimed = candidate.edgeKeys.filter((key) => !pocketByEdgeKey.has(key));
+    branches.forEach((branch) => {
+        const unclaimed = branch.edgeIds.filter((edgeId) => !pocketByEdgeKey.has(edgeId));
         if (unclaimed.length === 0) return;
-        // The id is a hash of the claimed edge set, so the same geography always
+        // The id hashes the claimed edge set, so identical geography always
         // produces the same pocket id regardless of discovery order.
-        const id = `pocket:${stableHash(candidate.edgeKeys.join(','))}`;
-        const pocket = {
+        const id = `pocket:${topologyHash(branch.edgeIds.join(','))}`;
+        pockets.push({
             id,
-            throatEdgeKey: candidate.throatEdgeKey,
-            edgeKeys: candidate.edgeKeys,
-            edgeCount: candidate.edgeKeys.length
-        };
-        pockets.push(pocket);
-        unclaimed.forEach((key) => pocketByEdgeKey.set(key, id));
+            edgeKeys: branch.edgeIds,
+            edgeCount: branch.edgeIds.length,
+            terminalNodeIds: branch.terminalNodeIds,
+            throatNodeIds: branch.throatNodeIds
+        });
+        unclaimed.forEach((edgeId) => pocketByEdgeKey.set(edgeId, id));
     });
 
     return { pockets, pocketByEdgeKey };
 }
 
 function distanceToEdgeMeters(point, edge, nodes) {
-    const start = nodes.get(edge.from);
-    const end = nodes.get(edge.to);
+    const start = nodes.get(edge.nodeIds[0]);
+    const end = nodes.get(edge.nodeIds[1]);
     if (!start || !end) return Infinity;
     const referenceLatitude = (start.lat + end.lat) / 2;
     const scale = Math.cos(referenceLatitude * Math.PI / 180);
@@ -273,7 +186,7 @@ function pocketForBlock(doors, graph, pocketByEdgeKey, maxSnapMeters) {
         let bestKey = '';
         let bestDistance = maxSnapMeters;
         pocketEdgeKeys.forEach((key) => {
-            const distance = distanceToEdgeMeters(point, graph.edges.get(key), graph.nodes);
+            const distance = distanceToEdgeMeters(point, graph.edgeMap.get(key), graph.nodeMap);
             if (distance + 1e-9 < bestDistance) {
                 bestDistance = distance;
                 bestKey = key;
@@ -315,9 +228,9 @@ export function buildRoutingUnits(properties, options = {}) {
 
     const roadNetwork = options.roadNetwork || null;
     const graph = roadNetwork
-        ? buildRoadGraph(roadNetwork, options.allowedHighways || ROUTABLE_HIGHWAYS)
+        ? buildTopologyGraph(roadNetwork, options.allowedHighways || ROUTABLE_HIGHWAYS)
         : null;
-    const topology = graph && graph.edges.size > 0
+    const topology = graph && graph.edgeMap.size > 0
         ? findTopologyPockets(graph)
         : { pockets: [], pocketByEdgeKey: new Map() };
 

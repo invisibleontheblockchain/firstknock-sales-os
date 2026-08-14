@@ -95,7 +95,7 @@ test('UNIT-02 a cul-de-sac gets a pocket id from topology, not from a label', ()
     const pocketBlocks = model.blocks.filter((block) => block.pocketId);
     assert.ok(pocketBlocks.length >= 1, 'the cul-de-sac block must be protected');
     pocketBlocks.forEach((block) => {
-        assert.match(block.pocketId, /^pocket:[0-9a-f]{8}$/);
+        assert.match(block.pocketId, /^pocket:[0-9a-f]{16}$/);
         assert.ok(
             block.doors.every((item) => item.street_name === 'Quiet Ct'),
             'only the cul-de-sac doors belong to the pocket'
