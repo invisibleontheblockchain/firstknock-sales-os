@@ -475,13 +475,29 @@ function buildBatchDataRequest(job, skip = 0, take = 500, mode = 'strict_polygon
         };
     }
 
+    // The price range is sent on BOTH provider fields on purpose.
+    //
+    // `valuation.estimatedValue` alone was not enough: BatchData returns no
+    // valuation object at all for these polygon results (0 of 2,495 rows on job
+    // 6a7e528d), so the local gate falls through to the recorded sale amount and
+    // rejected 17% of the records AFTER they were paid for. `intel.lastSoldPrice`
+    // is the field the provider actually populates and honors as search criteria
+    // (verified live: a $100k floor cut a 254-record area to 238), so bounding it
+    // here means the sub-range homes are never returned or billed.
+    const lastSoldPrice = {};
+    if (minPrice) lastSoldPrice.min = minPrice;
+    if (maxPrice) lastSoldPrice.max = maxPrice;
+
     const searchCriteria = {
         address: {
             geoLocationPolygon: {
                 geoPoints: closePolygon(job.polygon || [])
             }
         },
-        intel: { lastSoldDate: soldDateRange }
+        intel: {
+            lastSoldDate: soldDateRange,
+            ...(Object.keys(lastSoldPrice).length > 0 ? { lastSoldPrice } : {})
+        }
     };
 
     // Precision routes should only contain residential single-family homes.
@@ -504,7 +520,18 @@ function extractBatchDataRecords(payload) {
 }
 
 function extractBatchDataTotal(payload) {
-    return Number(payload?.results?.totalRecordCount ?? payload?.totalRecordCount ?? payload?.meta?.totalRecordCount ?? 0) || null;
+    // `results.meta.results.resultsFound` is where this provider version reports
+    // the true match count. Without it every job recorded provider_total=null, so
+    // the pager could only stop on an empty page — walking offsets past the end of
+    // the area and spending API calls to learn nothing.
+    return Number(
+        payload?.results?.meta?.results?.resultsFound
+        ?? payload?.meta?.results?.resultsFound
+        ?? payload?.results?.totalRecordCount
+        ?? payload?.totalRecordCount
+        ?? payload?.meta?.totalRecordCount
+        ?? 0
+    ) || null;
 }
 
 function normalizeBatchDataAddress(record) {
