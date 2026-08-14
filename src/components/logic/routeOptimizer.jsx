@@ -1500,8 +1500,8 @@ function doorSequenceCost(doors, startLocation, endLocation, routingContext) {
 
 function minimumBlockTransitionDistance(firstBlock, secondBlock, routingContext) {
     let bestDistance = Infinity;
-    firstBlock.variants.forEach((firstVariant, orientation) => {
-        const exit = blockExitDoor(firstBlock, orientation);
+    firstBlock.variants.forEach((firstVariant) => {
+        const exit = firstVariant[firstVariant.length - 1];
         secondBlock.variants.forEach((secondVariant) => {
             const entry = secondVariant[0];
             bestDistance = Math.min(bestDistance, routingDistance(exit, entry, routingContext));
@@ -1518,8 +1518,8 @@ function minimumDistanceFromPoint(point, block, routingContext) {
 
 function minimumDistanceToPoint(block, point, routingContext) {
     return Math.min(
-        ...block.variants.map((variant, orientation) => (
-            routingDistance(blockExitDoor(block, orientation), point, routingContext)
+        ...block.variants.map((variant) => (
+            routingDistance(variant[variant.length - 1], point, routingContext)
         ))
     );
 }

@@ -130,8 +130,6 @@ function interleavedPocketNeighborhood(streetsPerPocket, doorCount) {
       id: `door-${index}`,
       address_hash: `door-${index}`,
       street_name: street.name,
-      // Ground truth from the fixture, never read by the optimizer.
-      expected_pocket: street.pocket,
       house_number: index + 1,
       city: 'Testville',
       state: 'AZ',
@@ -147,9 +145,9 @@ function interleavedPocketNeighborhood(streetsPerPocket, doorCount) {
 }
 
 /** Every access unit must occupy one unbroken run of the route. */
-function reenteredUnits(properties, keyOf) {
+function reenteredUnits(properties, context) {
   const runs = properties
-    .map(property => keyOf(property))
+    .map(property => context.accessGroupKey(property))
     .filter((key, index, keys) => index === 0 || key !== keys[index - 1]);
   const seen = new Set();
   const reentered = new Set();
@@ -178,7 +176,7 @@ test('1,000 doors keep road-derived pockets and enter each unit exactly once', a
   const [route] = generateOptimizedRoutes(doors, 2000, null, [], { routingContext: context });
   assert.equal(route.properties.length, doors.length);
   assert.deepEqual(
-    reenteredUnits(route.properties, door => door.expected_pocket),
+    reenteredUnits(route.properties, context),
     [],
     'a protected unit was left and re-entered later',
   );
@@ -192,5 +190,5 @@ test('a dead-end unit is priced as out-and-back, not as a through street', async
 
   assert.equal(context.mode, 'full');
   const [route] = generateOptimizedRoutes(doors, 100, null, [], { routingContext: context });
-  assert.deepEqual(reenteredUnits(route.properties, door => door.street_name), []);
+  assert.deepEqual(reenteredUnits(route.properties, context), []);
 });
