@@ -9,7 +9,7 @@
 
 const USER_SET_KEY = 'fk_pinSizeUserSet_v1';
 
-export const DENSE_PIN_THRESHOLD = 1000;
+export const DENSE_PIN_THRESHOLD = 200;
 export const DENSE_PIN_SIZE = 2;
 
 export function markPinSizeUserSet() {
