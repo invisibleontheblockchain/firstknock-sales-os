@@ -581,7 +581,7 @@ export default function SplitRouteModal({
 
         {isPreviewExpanded && plan && (
           <div className="fixed inset-0 z-[5100] flex flex-col bg-[#050505]">
-            <div className="flex items-center justify-between gap-2 border-b border-white/10 px-4 py-3">
+            <div className="flex items-center justify-between gap-2 border-b border-white/10 px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))]">
               <div className="min-w-0">
                 <p className="text-sm font-black text-white">Geographic preview</p>
                 <p className="truncate text-[11px] text-white/45">{routeCountCopy(plan)}</p>
