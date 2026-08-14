@@ -28,6 +28,10 @@ const DEFAULT_ROUTE_COLORS = ['#FFD700', '#ec4899', '#a855f7', '#f59e0b', '#8b5c
 const SOLD_PIN_COLOR = '#2EEB57';
 const isConfirmedSale = (property) => property?.effective_status === 'SOLD';
 
+// Route styling only changes at these zoom boundaries. Quantizing keeps a
+// pinch-zoom from rebuilding every stop on each intermediate level.
+const zoomStyleBand = (z) => (z >= 17 ? 17 : z >= 15 ? 15 : z >= 14 ? 14 : z >= 13 ? 13 : 12);
+
 const getRouteColor = (route, routeNumber = 1) => {
     if (route?.display_color) return route.display_color;
     return DEFAULT_ROUTE_COLORS[(Math.max(1, routeNumber) - 1) % DEFAULT_ROUTE_COLORS.length];
@@ -74,7 +78,10 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, lineDashArray, setS
     const map = useMap();
     const layerRef = useRef(null);
     const fittedRouteIdRef = useRef(null);
-    const [zoom, setZoom] = React.useState(() => (map ? map.getZoom() : 0));
+    // Only the styling *band* is tracked, never the raw zoom level: every stop
+    // and label is rebuilt when this changes, so reacting to each zoom step is
+    // what made zooming stutter. All thresholds below are band boundaries.
+    const [zoom, setZoom] = React.useState(() => zoomStyleBand(map ? map.getZoom() : 0));
     // Padded box already drawn. Leaflet re-projects existing layers for free, so
     // the route only rebuilds once the view leaves that box — same approach as
     // the property pin and saved route layers.
@@ -95,7 +102,7 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, lineDashArray, setS
             };
             renderedBoxRef.current = box;
             setViewBox(box);
-            setZoom(map.getZoom());
+            setZoom(zoomStyleBand(map.getZoom()));
         };
 
         const insideRenderedBox = () => {
@@ -111,7 +118,7 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, lineDashArray, setS
             timeoutId = setTimeout(() => {
                 // A zoom change alters pin/label styling, so it always rebuilds;
                 // panning inside the drawn box costs nothing.
-                if (map.getZoom() === zoom && insideRenderedBox()) return;
+                if (zoomStyleBand(map.getZoom()) === zoom && insideRenderedBox()) return;
                 update();
             }, 120);
         };
@@ -592,7 +599,6 @@ function SavedRoutesLayer({
 
         const group = L.layerGroup();
         const MAX_ROUTE_DETAIL_PINS = 4000;
-        let detailPinsDrawn = 0;
 
         const filteredRoutes = filterRoutesByStatus(hydratedSavedRoutes, routeStatusView).filter(route => {
             // Off-screen routes contribute nothing visible, so they are skipped
@@ -607,7 +613,16 @@ function SavedRoutesLayer({
         const routeNumberMap = new Map();
         (allSavedRoutes || hydratedSavedRoutes).forEach((r, i) => routeNumberMap.set(r.id, i + 1));
 
+        // The detail-pin budget is shared per route. A single first-come budget
+        // meant one large route consumed it all and every other visible route
+        // rendered with no door pins at all.
+        const perRoutePinBudget = Math.max(
+            300,
+            Math.floor(MAX_ROUTE_DETAIL_PINS / Math.max(1, filteredRoutes.length))
+        );
+
         filteredRoutes.forEach((route, routeIdx) => {
+            let detailPinsDrawn = 0;
             const globalNumber = routeNumberMap.get(route.id) || (routeIdx + 1);
             const repColor = getRouteColor(route, globalNumber);
             const isUnassigned = !route.assigned_to;
@@ -648,7 +663,7 @@ function SavedRoutesLayer({
                     // Detail-pin budget: past this point the route lines and center
                     // markers still show the whole territory, but drawing every
                     // door of every saved route is what freezes a large account.
-                    if (detailPinsDrawn >= MAX_ROUTE_DETAIL_PINS) return;
+                    if (detailPinsDrawn >= perRoutePinBudget) return;
                     detailPinsDrawn++;
 
                     // No separate transparent hitbox: the global 12px canvas tap
