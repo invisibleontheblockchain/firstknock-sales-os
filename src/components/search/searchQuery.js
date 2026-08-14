@@ -47,11 +47,11 @@ export function classifyQuery(rawQuery) {
     usable,
     searchInternal: usable,
     searchCounty: usable && county,
-    // A city lookup needs a place-like query. "Charlotte, NC" and a bare
-    // single word qualify; a two-word person name ("Amanda Whitfield") does
-    // not, so contact names still never reach the geocoder.
+    // A city lookup needs a place-like query: no house number, street suffix or
+    // ZIP. Multi-word place names ("Myrtle Beach", "New York") qualify, and the
+    // provider's city featureType returns nothing for a person's name.
     searchCity: usable && !county && !hasHouseNumber && !hasStreetSuffix && !hasZip
-      && (hasStateCode || /,/.test(query) || tokens.length === 1),
+      && tokens.length <= 4,
     // "Amanda" is never geocoded. "Amanda Lane" is, because a street suffix is
     // a real address signal even without a house number.
     searchAddress: usable && !county && (hasHouseNumber || hasStreetSuffix || hasZip || (hasStateCode && tokens.length > 1)),
