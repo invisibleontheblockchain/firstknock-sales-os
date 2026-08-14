@@ -27,6 +27,12 @@ import { createMatrixMetricFns, MAX_ROUTE_MATRIX_POINTS } from './roadMatrix.js'
 
 export const TIER_DOOR = 'door';
 export const TIER_BLOCK = 'block';
+// Third tier, for routes with more street blocks than the matrix can carry.
+// Blocks are grouped into neighbourhood clusters so the legs BETWEEN
+// neighbourhoods — the ones that decide whether a rep drives 15 minutes away and
+// back — stay road-priced. Without it those routes dropped to a pure aerial
+// order, which is precisely the back-and-forth this tier removes.
+export const TIER_CLUSTER = 'cluster';
 
 // Hard product ceiling for one road-aware request. Block-tier work is bounded by
 // BLOCK count, not door count, so this only guards the linear per-door passes
@@ -80,6 +86,49 @@ function selectBlockRepresentative(doors) {
 }
 
 /**
+ * Group street blocks into at most `maxClusters` geographic clusters.
+ *
+ * Deterministic k-d bisection: the largest remaining cluster is split at the
+ * median of its wider axis until the cluster budget is met. No randomness and no
+ * iteration-order dependence, so the same route always builds the same clusters
+ * — and therefore hits the same matrix cache key.
+ */
+function partitionBlocksIntoClusters(entries, maxClusters) {
+    let clusters = [entries];
+    while (clusters.length < maxClusters) {
+        let targetIndex = -1;
+        let targetSize = 1;
+        clusters.forEach((cluster, index) => {
+            if (cluster.length > targetSize) {
+                targetSize = cluster.length;
+                targetIndex = index;
+            }
+        });
+        if (targetIndex === -1) break;
+
+        const cluster = clusters[targetIndex];
+        const lats = cluster.map((entry) => Number(entry.representative.lat));
+        const lngs = cluster.map((entry) => Number(entry.representative.lng));
+        const axis = (Math.max(...lats) - Math.min(...lats)) >= (Math.max(...lngs) - Math.min(...lngs))
+            ? 'lat'
+            : 'lng';
+        const sorted = [...cluster].sort((first, second) => {
+            const delta = Number(first.representative[axis]) - Number(second.representative[axis]);
+            if (delta !== 0) return delta;
+            return coordinateKey(first.representative) < coordinateKey(second.representative) ? -1 : 1;
+        });
+        const middle = Math.floor(sorted.length / 2);
+        clusters = [
+            ...clusters.slice(0, targetIndex),
+            sorted.slice(0, middle),
+            sorted.slice(middle),
+            ...clusters.slice(targetIndex + 1)
+        ].filter((group) => group.length > 0);
+    }
+    return clusters;
+}
+
+/**
  * Decide which coordinates the matrix should carry for this route.
  *
  * @returns {object} `{ ok: true, tier, matrixPoints, blockCount, doorCount,
@@ -110,13 +159,51 @@ export function planTieredRoadMatrix(properties, anchorPoints = []) {
     }
 
     const blocks = buildStreetBlocks(properties);
-    if (blocks.length + anchorPoints.length > MAX_ROUTE_MATRIX_POINTS) {
+    const blockBudget = MAX_ROUTE_MATRIX_POINTS - anchorPoints.length;
+    if (blockBudget < 2) {
         return {
             ok: false,
             code: 'STREET_BLOCKS_EXCEED_MATRIX_LIMIT',
             doorCount,
             blockCount: blocks.length,
             limit: MAX_ROUTE_MATRIX_POINTS
+        };
+    }
+    if (blocks.length > blockBudget) {
+        // Too many blocks to price one by one — cluster them rather than
+        // abandoning the matrix and shipping an unmeasured aerial order.
+        const entries = blocks.map((block) => ({
+            block,
+            representative: selectBlockRepresentative(block.doors)
+        }));
+        const clusters = partitionBlocksIntoClusters(entries, blockBudget);
+        const clusterRepresentativeByCoordKey = new Map();
+        const clusterKeyByCoordKey = new Map();
+        const clusterRepresentatives = [];
+        clusters.forEach((cluster, index) => {
+            const representative = selectBlockRepresentative(
+                cluster.map((entry) => entry.representative)
+            );
+            clusterRepresentatives.push(representative);
+            const clusterKey = `cluster:${index}`;
+            cluster.forEach((entry) => entry.block.doors.forEach((door) => {
+                const key = coordinateKey(door);
+                if (clusterRepresentativeByCoordKey.has(key)) return;
+                clusterRepresentativeByCoordKey.set(key, representative);
+                clusterKeyByCoordKey.set(key, clusterKey);
+            }));
+        });
+
+        return {
+            ok: true,
+            tier: TIER_CLUSTER,
+            anchorsIncluded: true,
+            matrixPoints: [...clusterRepresentatives, ...anchorPoints],
+            doorCount,
+            blockCount: blocks.length,
+            clusterCount: clusters.length,
+            representativeByCoordKey: clusterRepresentativeByCoordKey,
+            blockKeyByCoordKey: clusterKeyByCoordKey
         };
     }
 

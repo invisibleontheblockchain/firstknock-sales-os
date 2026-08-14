@@ -19,7 +19,7 @@ import {
     createTieredMatrixMetricFns,
     MAX_TIERED_ROUTE_DOORS,
     planTieredRoadMatrix,
-    TIER_BLOCK
+    TIER_DOOR
 } from '../../shared/roadMatrixTiers.js';
 import {
     DURATION_TIE_TOLERANCE_MINUTES,
@@ -223,7 +223,9 @@ export default async function (req: Request): Promise<Response> {
         const sweepOptions = {
             startLocation,
             endLocation,
-            ...(plan.tier === TIER_BLOCK
+            // Every non-door tier (block and cluster) caps refinement depth so the
+            // deterministic step budget stays the binding limit.
+            ...(plan.tier !== TIER_DOOR
                 ? { refinementStepBudget: BLOCK_TIER_REFINEMENT_STEP_BUDGET }
                 : {})
         };
@@ -296,7 +298,7 @@ export default async function (req: Request): Promise<Response> {
                 // Block tier prices between blocks on the road network and walks
                 // each street segment in house order, so these legs are aerial.
                 intra_block_aerial_leg_count: intraBlockLegCount.count,
-                distance_estimate: plan.tier === TIER_BLOCK ? 'road_block_tier' : 'road',
+                distance_estimate: plan.tier === TIER_DOOR ? 'road' : 'road_block_tier',
                 matrix_point_count: matrix.pointCount,
                 matrix_block_count: matrix.blocks,
                 matrix_unresolved_count: 0,
@@ -331,9 +333,9 @@ export default async function (req: Request): Promise<Response> {
                 ),
                 candidate_count: candidates.length,
                 // Deterministic best-of-search, not a proven global optimum.
-                optimality_status: plan.tier === TIER_BLOCK
-                    ? 'best_validated_candidate_block_tier'
-                    : 'best_validated_candidate',
+                optimality_status: plan.tier === TIER_DOOR
+                    ? 'best_validated_candidate'
+                    : 'best_validated_candidate_block_tier',
                 selected_candidate_type: winner.is_current ? 'current' : winner.type,
                 solver_runtime_ms: Date.now() - solverStartedAt,
                 street_block_count: continuityChunks.streetBlocks.length,
