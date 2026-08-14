@@ -175,15 +175,32 @@ Measured against the two committed route exports:
 
 | | Route 1 (Mooresville) | Route 2 (Belmont) |
 |---|---|---|
-| doors | 9,089 | 6,562 |
-| street blocks | 5,354 | 3,814 |
+| doors | 10,000 | 6,965 |
+| street blocks | 5,511 | 3,940 |
 | OSRM requests | **33** | **33** |
-| cells fetched | 897k | 456k |
-| dense equivalent | 28.7M (32x) | 14.5M (32x) |
-| tile diameter | 6.6 mi median | 4.5 mi median |
+| cells fetched | 950k | 486k |
+| dense equivalent | 30.4M (32x) | 15.5M (32x) |
+| tile diameter | 6.5 mi median | 4.6 mi median |
 
 Distances inside a ~6-mile tile — more than a full day's territory — are exact
 road distances. Only longer hops are approximated.
+
+Request count is a **step function of street-block count, not linear in doors**.
+k-d tiling splits in halves, so tiles land on powers of two: `tiles =
+2^ceil(log2(blocks / 180))`. Both exports above sit in the same 32-tile bucket
+despite a 40% difference in size, so do not extrapolate a requests-per-door
+ratio from them — it will mis-predict on any other dataset.
+
+| Street blocks | Tiles | OSRM requests |
+|---|---|---|
+| ≤ 180 | 1 | 2 |
+| ≤ 1,440 | 8 | 9 |
+| ≤ 5,760 | 32 | 33 |
+| ≤ 23,040 | 128 | 129 |
+| > 23,040 | — | returns null, falls back to Overpass/aerial (`MAX_TILES` = 240) |
+
+At the observed ~1.8 doors per block, that ceiling is roughly 41,000 doors in a
+single generation. Above it the context declines rather than degrading silently.
 
 ### Coverage of the five precision generation paths
 
