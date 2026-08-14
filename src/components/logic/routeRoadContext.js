@@ -899,4 +899,8 @@ export function buildPersistedRoadRoutingMetadata(
 export const routeRoadContextInternals = Object.freeze({
   explicitAreaLabel,
   routeBoundsPolygon,
+  // Exposed so the Stage 1 baseline can compare this path's street-block
+  // partition against the shared routing-unit model door for door.
+  buildCostOnlyBlockPlan,
+  propertyIdentity,
 });

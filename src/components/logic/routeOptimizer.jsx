@@ -2072,6 +2072,13 @@ export function optimizeRouteByStreetSweep(
     return mailCarrierOrder(properties, startLocation, endLocation, routingContext);
 }
 
+// Exposed so the Stage 1 baseline can compare this path's street-block
+// partition against the shared routing-unit model door for door.
+export const routeOptimizerInternals = Object.freeze({
+    buildStreetSweepBlocks,
+    buildAccessSweepBlocks
+});
+
 // Re-export lead scoring for external consumers
 export { batchScoreProperties, ownershipDurationScore, SCORING_CONSTANTS } from './leadScoring';
 
