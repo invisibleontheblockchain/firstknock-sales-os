@@ -167,7 +167,7 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, pinSize, lineDashAr
         // you zoomed two more steps, which read as "the numbers don't work".
         // One zoom step earlier than before at every size — reps were having to
         // zoom past the useful working view before stop numbers appeared.
-        const showNumbers = props.length <= 150 ? zoom >= 13 : props.length <= 600 ? zoom >= 14 : zoom >= 15;
+        const showNumbers = props.length <= 150 ? zoom >= 12 : props.length <= 600 ? zoom >= 13 : zoom >= 14;
         const numberFontSize = zoom >= 17 ? 11 : zoom >= 15 ? 10 : 9;
         // Zoomed out the doors sit on top of each other, so the route reads as a
         // bright blob. Fade the dots and the line back until the view is close
