@@ -75,16 +75,59 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, lineDashArray, setS
     const layerRef = useRef(null);
     const fittedRouteIdRef = useRef(null);
     const [zoom, setZoom] = React.useState(() => (map ? map.getZoom() : 0));
+    // Padded box already drawn. Leaflet re-projects existing layers for free, so
+    // the route only rebuilds once the view leaves that box — same approach as
+    // the property pin and saved route layers.
+    const [viewBox, setViewBox] = React.useState(null);
+    const renderedBoxRef = useRef(null);
 
     React.useEffect(() => {
         if (!map) return;
-        const onZoom = () => setZoom(map.getZoom());
-        map.on('zoomend', onZoom);
-        return () => map.off('zoomend', onZoom);
-    }, [map]);
+        let timeoutId = null;
+
+        const update = () => {
+            const b = map.getBounds();
+            const latPad = (b.getNorth() - b.getSouth()) * 0.25;
+            const lngPad = (b.getEast() - b.getWest()) * 0.25;
+            const box = {
+                north: b.getNorth() + latPad, south: b.getSouth() - latPad,
+                east: b.getEast() + lngPad, west: b.getWest() - lngPad
+            };
+            renderedBoxRef.current = box;
+            setViewBox(box);
+            setZoom(map.getZoom());
+        };
+
+        const insideRenderedBox = () => {
+            const box = renderedBoxRef.current;
+            if (!box) return false;
+            const b = map.getBounds();
+            return b.getNorth() <= box.north && b.getSouth() >= box.south
+                && b.getEast() <= box.east && b.getWest() >= box.west;
+        };
+
+        const debouncedUpdate = () => {
+            if (timeoutId) clearTimeout(timeoutId);
+            timeoutId = setTimeout(() => {
+                // A zoom change alters pin/label styling, so it always rebuilds;
+                // panning inside the drawn box costs nothing.
+                if (map.getZoom() === zoom && insideRenderedBox()) return;
+                update();
+            }, 120);
+        };
+
+        update();
+        map.on('moveend', debouncedUpdate);
+        map.on('zoomend', debouncedUpdate);
+        return () => {
+            if (timeoutId) clearTimeout(timeoutId);
+            map.off('moveend', debouncedUpdate);
+            map.off('zoomend', debouncedUpdate);
+        };
+    }, [map, zoom]);
 
     useEffect(() => {
-        if (!map || !activeRoute?.properties?.length) return;
+        if (!map || !viewBox || !activeRoute?.properties?.length) return;
 
         const routePoints = activeRoute.properties.filter(isRenderableMapPoint);
         const routeLinePoints = getRouteLinePoints(activeRoute, routePoints);
@@ -138,26 +181,28 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, lineDashArray, setS
             group.addLayer(line);
         }
 
-        // 2. Property pins with number labels (DivIcon — much lighter than Tooltip permanent)
+        // 2. Property pins with number labels.
+        // Off-screen stops are skipped entirely: on a large route, drawing every
+        // door plus a DOM label for each is what makes panning and zooming crawl.
+        // The route line above still shows the full shape of the territory.
+        const inView = (p) => (
+            Number(p.lat) >= viewBox.south && Number(p.lat) <= viewBox.north
+            && Number(p.lng) >= viewBox.west && Number(p.lng) <= viewBox.east
+        );
+        // Number labels are DOM markers, far heavier than canvas dots, so they
+        // get their own budget on top of the zoom gate.
+        const MAX_NUMBER_LABELS = 400;
+        let labelsDrawn = 0;
+
         props.forEach((p, idx) => {
             const isFirst = idx === 0;
             const num = idx + 1;
-
-            // Transparent hitbox for mobile tapping
             const point = [Number(p.lat), Number(p.lng)];
-            const hitbox = L.circleMarker(point, {
-                radius: 20,
-                color: 'transparent',
-                fillColor: 'transparent',
-                interactive: true,
-                stroke: false
-            });
-            hitbox.on('click', (e) => {
-                L.DomEvent.stopPropagation(e);
-                setSelectedProperty({ ...p, route_position: num });
-            });
-            group.addLayer(hitbox);
+            if (!inView(p)) return;
 
+            // No separate transparent hitbox layer: leafletPatches gives every
+            // canvas pin ~12px of tap slop, so a second layer per stop only
+            // doubled the layers Leaflet hit-tests on every mouse move.
             const sold = isConfirmedSale(p);
             const completedColor = activeRoute.status === 'COMPLETED'
                 ? getCompletedPinColor(p.effective_status, routeColor)
@@ -189,6 +234,8 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, lineDashArray, setS
             // them, they never crowd the map, and knowing which stop sold is the
             // whole point of looking at a worked route.
             if (!showNumbers && !sold) return;
+            if (labelsDrawn >= MAX_NUMBER_LABELS) return;
+            labelsDrawn++;
             const labelColor = sold ? SOLD_PIN_COLOR : 'rgba(255,255,255,0.9)';
             const labelSize = sold ? Math.max(11, numberFontSize) : numberFontSize;
             const label = L.marker(point, {
@@ -213,7 +260,7 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, lineDashArray, setS
                 layerRef.current = null;
             }
         };
-    }, [map, activeRoute, zoom, mapSettings.lineWidth, mapSettings.lineOpacity, lineDashArray, setSelectedProperty, decisionFilterActive]);
+    }, [map, viewBox, activeRoute, zoom, mapSettings.lineWidth, mapSettings.lineOpacity, lineDashArray, setSelectedProperty, decisionFilterActive]);
 
     return null; // Imperative layer — no React DOM output
 }
