@@ -8,6 +8,7 @@ import HomeBaseDialog from '@/components/routes/HomeBaseDialog';
 import MapThemePicker from '@/components/map/MapThemePicker';
 import MapOverlayToggles from '@/components/map/MapOverlayToggles';
 import { getBoundaryOverlays, setBoundaryOverlay } from '@/components/map/boundaryOverlayPrefs';
+import { markPinSizeUserSet, clearPinSizeUserSet } from '@/components/map/densePinSize';
 
 /* ── constants ── */
 const REP_COLOR_OPTIONS = ['#FFD700','#ef4444','#22c55e','#3b82f6','#ec4899','#f97316','#8b5cf6','#06b6d4','#eab308','#14b8a6'];
@@ -93,7 +94,10 @@ export default function MapSettingsPanel({
   const setLiveShowAll = (v) => { upd('showAllProperties', v); setShowAllProperties?.(v); };
   const setLiveHighlight = (v) => { upd('highlightRecentlySold', v); setHighlightRecentlySold?.(v); };
   // A theme is the dots, the paths, and the colour scheme applied together.
+  // Picking one is an explicit dot-size choice, so it overrides the automatic
+  // dense-territory size the map applies on its own.
   const applyTheme = (theme) => {
+    markPinSizeUserSet();
     setLocal(p => ({ ...p, mapSettings: { ...p.mapSettings, ...theme.settings }, pinSize: theme.pinSize }));
   };
 
@@ -112,6 +116,9 @@ export default function MapSettingsPanel({
   };
 
   const handleReset = () => {
+    // Back to defaults includes handing dot sizing back to the automatic
+    // dense-territory rule.
+    clearPinSizeUserSet();
     setLocal({
       mapSettings: { pinShape:'circle', colorScheme:'default', lineStyle:'dashed', lineWidth:2, lineOpacity:0.5, pinOpacity:0.85, pinBorderWidth:1, pinBorderColor:'#000', showLabels:false, labelType:'number', glowEffect:false, fillStyle:'solid' },
       pinSize:4, showRouteLines:false, showRouteDetails:true, showAllProperties:false,
@@ -279,7 +286,7 @@ export default function MapSettingsPanel({
                   <SectionLabel>Property Dots</SectionLabel>
                   <div className="space-y-4 rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
                     <Row label="Dot size" value={`${local.pinSize}px`}>
-                      <Slider value={[local.pinSize]} onValueChange={([v]) => upd('pinSize', v)} min={2} max={14} step={1} className="w-full" />
+                      <Slider value={[local.pinSize]} onValueChange={([v]) => { markPinSizeUserSet(); upd('pinSize', v); }} min={2} max={14} step={1} className="w-full" />
                     </Row>
                     <Row label="Dot opacity" value={`${Math.round((ms.pinOpacity || 0.85) * 100)}%`}>
                       <Slider value={[(ms.pinOpacity || 0.85) * 100]} onValueChange={([v]) => updMs('pinOpacity', v / 100)} min={20} max={100} step={5} className="w-full" />

@@ -8,6 +8,7 @@ import StateBoundariesLayer from './StateBoundariesLayer';
 import { getCompletedPinColor } from '@/components/routes/routeRerunUtils';
 import { isSoldDateInCustomOwnershipRange, normalizeOwnershipRangeDays } from '@/components/logic/soldDateRange';
 import { routePropertyOrderFingerprint } from '@/components/logic/routeRoadContext';
+import { resolvePinSize } from './densePinSize';
 import {
     filterRoutesByStatus,
     isRenderableMapPoint,
@@ -104,12 +105,12 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, lineDashArray, setS
         const group = L.layerGroup();
         const props = routePoints;
 
-        // Stop numbers turning a big route into a black smear. On a 500+ door
-        // route the labels overlap into solid text at normal zoom, so they only
-        // appear once the doors are far enough apart to read them. Pins and the
+        // Stop numbers turning a route into a black smear. Labels overlap into
+        // solid text at normal zoom, so they stay hidden until the doors are far
+        // enough apart to read, and they render small even then. Pins and the
         // route line always show; tapping a pin still gives its exact position.
-        const showNumbers = props.length <= 150
-            || (props.length <= 600 ? zoom >= 15 : zoom >= 17);
+        const showNumbers = props.length <= 600 ? zoom >= 16 : zoom >= 17;
+        const numberFontSize = zoom >= 18 ? 10 : 9;
 
         // 1. Route line — suppressed while a decision filter is active so the
         // remaining outcome pins are readable without route noise.
@@ -117,9 +118,12 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, lineDashArray, setS
             const line = L.polyline(
                 routeLinePoints.map(p => [Number(p.lat), Number(p.lng)]),
                 {
+                    // Deliberately restrained: the selected route used to draw at
+                    // +2 weight and a 0.6 opacity floor, which washed out the
+                    // satellite imagery and the outcome pins underneath it.
                     color: routeColor,
-                    weight: mapSettings.lineWidth ? mapSettings.lineWidth + 2 : 4,
-                    opacity: mapSettings.lineOpacity ? Math.max(0.6, mapSettings.lineOpacity) : 0.8,
+                    weight: Math.min(3, mapSettings.lineWidth || 2),
+                    opacity: Math.min(0.55, mapSettings.lineOpacity || 0.55),
                     dashArray: lineDashArray || null,
                 }
             );
@@ -153,12 +157,16 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, lineDashArray, setS
             const baseColor = isFirst && activeRoute.status !== 'COMPLETED' ? '#FFFFFF' : completedColor;
 
             // Circle pin (canvas-rendered, fast)
+            // Emphasis is reserved for outcomes that matter (sales, qualified) —
+            // ordinary stops stay small with a thin ring so a long route reads as
+            // a path rather than a wall of bright dots.
+            const emphasized = sold || (activeRoute.status === 'COMPLETED' && p.effective_status === 'QUALIFIED');
             const circle = L.circleMarker(point, {
-                radius: sold || (activeRoute.status === 'COMPLETED' && p.effective_status === 'QUALIFIED') ? 7 : 5,
+                radius: emphasized ? 5 : 3.5,
                 fillColor: sold ? SOLD_PIN_COLOR : baseColor,
-                fillOpacity: 1,
+                fillOpacity: emphasized ? 1 : 0.85,
                 color: '#fff',
-                weight: sold || (activeRoute.status === 'COMPLETED' && p.effective_status === 'QUALIFIED') ? 2.5 : 1.5,
+                weight: emphasized ? 1.5 : 1,
             });
             circle.on('click', (e) => {
                 L.DomEvent.stopPropagation(e);
@@ -171,9 +179,9 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, lineDashArray, setS
             const label = L.marker(point, {
                 icon: L.divIcon({
                     className: '',
-                    html: `<div style="color:#fff;font-weight:bold;font-size:11px;text-shadow:0 1px 3px #000,0 0 5px #000;pointer-events:none;transform:translate(-50%,-100%);white-space:nowrap">${num}</div>`,
+                    html: `<div style="color:rgba(255,255,255,0.9);font-weight:600;font-size:${numberFontSize}px;text-shadow:0 1px 2px #000;pointer-events:none;transform:translate(-50%,-100%);white-space:nowrap">${num}</div>`,
                     iconSize: [0, 0],
-                    iconAnchor: [0, 6],
+                    iconAnchor: [0, 5],
                 }),
                 interactive: false,
                 keyboard: false,
@@ -727,6 +735,8 @@ const ManagerMapLayers = React.memo(function ManagerMapLayers({
     darkRoom,
 }) {
     const renderPrecisionLayers = shouldRenderPrecisionMapLayers({ mode, routeMode, activeRoute });
+    // Dense territories draw a smaller dot unless the user picked a size.
+    const effectivePinSize = resolvePinSize(pinSize, effectiveProperties?.length);
 
     return (
         <>
@@ -749,7 +759,7 @@ const ManagerMapLayers = React.memo(function ManagerMapLayers({
                 showRouteLines={showRouteLines}
                 decisionFilterActive={decisionFilterActive}
                 routeStatusView={routeStatusView}
-                pinSize={pinSize}
+                pinSize={effectivePinSize}
                 mapSettings={mapSettings}
                 lineDashArray={lineDashArray}
                 setActiveRoute={setActiveRoute}
@@ -842,7 +852,7 @@ const ManagerMapLayers = React.memo(function ManagerMapLayers({
                 ownershipRangeReferenceDate={ownershipRangeReferenceDate}
                 quickFilter={quickFilter}
                 highlightRecentlySold={highlightRecentlySold}
-                pinSize={pinSize}
+                pinSize={effectivePinSize}
                 mapSettings={mapSettings}
                 STATUS_COLORS={STATUS_COLORS}
                 setSelectedProperty={setSelectedProperty}
