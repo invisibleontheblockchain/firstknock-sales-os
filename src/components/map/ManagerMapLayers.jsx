@@ -224,7 +224,7 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, lineDashArray, setS
             const circle = L.circleMarker(point, {
                 radius: emphasized ? 4.5 : (veryWideView ? 2 : wideView ? 2.5 : 3),
                 fillColor: sold ? SOLD_PIN_COLOR : baseColor,
-                fillOpacity: emphasized ? 0.95 : 0.7,
+                fillOpacity: 1,
                 // The white ring is what makes a zoomed-out route glow, so plain
                 // stops drop it until the doors are readable.
                 color: emphasized ? '#fff' : (wideView ? 'transparent' : '#fff'),
@@ -491,7 +491,7 @@ function ViewportCulledPins({
             const circle = L.circleMarker([p.lat, p.lng], {
                 radius: isRecentlySold ? dotSize + 4 : (isCallback ? dotSize * 0.9 : dotSize),
                 fillColor,
-                fillOpacity: isRecentlySold ? 1 : (0.9 * mapSettings.pinOpacity),
+                fillOpacity: isRecentlySold ? 1 : (mapSettings.pinOpacity || 1),
                 color: isRecentlySold ? '#FFFFFF' : (mapSettings.fillStyle === 'outline' ? fillColor : (mapSettings.pinBorderColor || '#000')),
                 weight: isRecentlySold ? 2 : (mapSettings.fillStyle === 'outline' ? 2 : mapSettings.pinBorderWidth)
             });
@@ -686,7 +686,7 @@ function SavedRoutesLayer({
                     const circle = L.circleMarker(point, {
                         radius: sold ? routeDotSize + 2 : routeDotSize,
                         fillColor: pinColor,
-                        fillOpacity: sold ? 1 : (isUnassigned ? 0.6 : 0.8) * (mapSettings.pinOpacity || 1),
+                        fillOpacity: sold ? 1 : (mapSettings.pinOpacity || 1),
                         color: sold ? '#FFFFFF' : (mapSettings.fillStyle === 'outline' ? repColor : (mapSettings.pinBorderColor || '#000')),
                         weight: sold ? 2 : (mapSettings.fillStyle === 'outline' ? 2 : (mapSettings.pinBorderWidth || 1))
                     });
