@@ -7,11 +7,12 @@
 // intent. This separate flag is set only when the Dot size slider is moved, and
 // once set the user's choice always wins.
 
-// v2: the v1 flag was set by earlier builds (theme picker, older settings saves)
-// on devices whose owner never touched the slider, so dense mode never applied
-// there. Bumping the key resets every device to the dense default while still
-// letting a deliberate slider move win from now on.
-const USER_SET_KEY = 'fk_pinSizeUserSet_v2';
+// The key is bumped whenever dense mode must be re-applied everywhere: devices
+// that picked up the flag from an older build (theme picker, settings saves, an
+// incidental slider touch) keep opting themselves out of dense mode forever. A
+// new key resets every device to the dense default, while a deliberate slider
+// move from now on still wins.
+const USER_SET_KEY = 'fk_pinSizeUserSet_v3';
 
 export const DENSE_PIN_THRESHOLD = 200;
 export const DENSE_PIN_SIZE = 2;
