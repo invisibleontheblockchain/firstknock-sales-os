@@ -83,6 +83,12 @@ export const PIN_THEMES = [
   },
 ];
 
+/**
+ * The theme every app starts on. Dense is the default because real territories
+ * are thousands of doors, where a bigger dot turns the map into one solid mass.
+ */
+export const DEFAULT_PIN_THEME = PIN_THEMES.find((theme) => theme.id === 'dense');
+
 /** The theme whose every setting matches the current state, or null when tuned by hand. */
 export function matchPinTheme(mapSettings = {}, pinSize = null) {
   return PIN_THEMES.find((theme) => (

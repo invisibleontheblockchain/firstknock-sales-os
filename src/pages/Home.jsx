@@ -40,7 +40,7 @@ import { hydrateRoutesForMap } from '@/components/logic/routeHydration';
 import { GpsMapLayer as GpsTrackerMapLayers, GpsHud as GpsTrackerHud } from '../components/map/GpsTracker';
 import ManagerPropertyDetailSheet from '../components/map/ManagerPropertyDetailSheet';
 import MapDrawTool from '../components/map/MapDrawTool';
-import ManagerMapLayers from '../components/map/ManagerMapLayers';
+import ManagerMapLayers from '../components/map/ManagerMapLayers'; import { DEFAULT_PIN_THEME } from '../components/map/mapPinThemes';
 import { filterRoutesByStatus, isRenderableMapPoint } from '../components/map/mapLayerVisibility.js';
 import MapToolbar from '../components/map/MapToolbar';
 import BoundaryOverlays from '../components/map/BoundaryOverlays';
@@ -191,8 +191,8 @@ export default function Home() {
         return saved ? JSON.parse(saved) : true;
     });
     const [pinSize, setPinSize] = useState(() => {
-        const saved = localStorage.getItem('fk_pinSize_v2');
-        return saved ? JSON.parse(saved) : 4;
+        const saved = localStorage.getItem('fk_pinSize_v3');
+        return saved ? JSON.parse(saved) : DEFAULT_PIN_THEME.pinSize;
     });
     const [showRouteLines, setShowRouteLines] = useState(() => {
         const saved = localStorage.getItem('fk_showRouteLines_v2');
@@ -233,20 +233,14 @@ export default function Home() {
     };
     const routeModeHydratedUserRef = useRef(null);
     const [mapSettings, setMapSettings] = useState(() => {
-        const saved = localStorage.getItem('fk_mapSettings_v3');
+        // v4: the default look is now the Dense theme, so the key is bumped to
+        // roll it out to devices still holding the old saved defaults.
+        const saved = localStorage.getItem('fk_mapSettings_v4');
         return saved ? JSON.parse(saved) : {
             pinShape: 'circle',
-            colorScheme: 'default',
-            lineStyle: 'solid',
-            lineWidth: 3,
-            lineOpacity: 0.8,
-            pinOpacity: 0.85,
-            pinBorderWidth: 1,
-            pinBorderColor: '#000',
             showLabels: false,
             labelType: 'number',
-            glowEffect: false,
-            fillStyle: 'solid',
+            ...DEFAULT_PIN_THEME.settings,
         };
     });
 
@@ -254,10 +248,10 @@ export default function Home() {
         try {
             localStorage.setItem('fk_mapTheme_v2', mapTheme);
             localStorage.setItem('fk_showRouteDetails_v2', JSON.stringify(showRouteDetails));
-            localStorage.setItem('fk_pinSize_v2', JSON.stringify(pinSize));
+            localStorage.setItem('fk_pinSize_v3', JSON.stringify(pinSize));
             localStorage.setItem('fk_showRouteLines_v2', JSON.stringify(showRouteLines));
             localStorage.setItem('fk_routeStatusView', routeStatusView);
-            localStorage.setItem('fk_mapSettings_v3', JSON.stringify(mapSettings));
+            localStorage.setItem('fk_mapSettings_v4', JSON.stringify(mapSettings));
         } catch (e) {
             // Ignore quota errors in preview if any
         }

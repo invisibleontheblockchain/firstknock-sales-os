@@ -6,6 +6,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { X, Sun, Moon, Globe, Mountain, Eye, EyeOff, RotateCcw, Save, Navigation, Home, SlidersHorizontal } from 'lucide-react';
 import HomeBaseDialog from '@/components/routes/HomeBaseDialog';
 import MapThemePicker from '@/components/map/MapThemePicker';
+import { DEFAULT_PIN_THEME } from '@/components/map/mapPinThemes';
 import MapOverlayToggles from '@/components/map/MapOverlayToggles';
 import { getBoundaryOverlays, setBoundaryOverlay } from '@/components/map/boundaryOverlayPrefs';
 import { markPinSizeUserSet, clearPinSizeUserSet } from '@/components/map/densePinSize';
@@ -120,8 +121,8 @@ export default function MapSettingsPanel({
     // dense-territory rule.
     clearPinSizeUserSet();
     setLocal({
-      mapSettings: { pinShape:'circle', colorScheme:'default', lineStyle:'dashed', lineWidth:2, lineOpacity:0.5, pinOpacity:0.85, pinBorderWidth:1, pinBorderColor:'#000', showLabels:false, labelType:'number', glowEffect:false, fillStyle:'solid' },
-      pinSize:4, showRouteLines:false, showRouteDetails:true, showAllProperties:false,
+      mapSettings: { pinShape:'circle', showLabels:false, labelType:'number', ...DEFAULT_PIN_THEME.settings },
+      pinSize:DEFAULT_PIN_THEME.pinSize, showRouteLines:false, showRouteDetails:true, showAllProperties:false,
       mapTheme:'dark', navigationApp:'apple', quickFilter:'all',
       soldDateFilter:null, highlightRecentlySold:false,
     });
