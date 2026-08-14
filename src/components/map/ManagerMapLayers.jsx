@@ -30,7 +30,10 @@ const isConfirmedSale = (property) => property?.effective_status === 'SOLD';
 
 // Route styling only changes at these zoom boundaries. Quantizing keeps a
 // pinch-zoom from rebuilding every stop on each intermediate level.
-const zoomStyleBand = (z) => (z >= 17 ? 17 : z >= 15 ? 15 : z >= 14 ? 14 : z >= 13 ? 13 : 12);
+// A 16 band is required, not cosmetic: without it a zoom of 16 quantized down to
+// 15, so any threshold written as `zoom >= 16` never fired until 17 and numbers
+// appeared a full step later than intended.
+const zoomStyleBand = (z) => (z >= 17 ? 17 : z >= 16 ? 16 : z >= 15 ? 15 : z >= 14 ? 14 : z >= 13 ? 13 : 12);
 
 const getRouteColor = (route, routeNumber = 1) => {
     if (route?.display_color) return route.display_color;
@@ -162,7 +165,9 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, pinSize, lineDashAr
         // Numbers appear as soon as the doors are far enough apart to read them.
         // A route that fits the screen at zoom 14 was previously numberless until
         // you zoomed two more steps, which read as "the numbers don't work".
-        const showNumbers = props.length <= 150 ? zoom >= 15 : props.length <= 600 ? zoom >= 16 : zoom >= 17;
+        // One zoom step earlier than before at every size — reps were having to
+        // zoom past the useful working view before stop numbers appeared.
+        const showNumbers = props.length <= 150 ? zoom >= 14 : props.length <= 600 ? zoom >= 15 : zoom >= 16;
         const numberFontSize = zoom >= 17 ? 11 : zoom >= 15 ? 10 : 9;
         // Zoomed out the doors sit on top of each other, so the route reads as a
         // bright blob. Fade the dots and the line back until the view is close
