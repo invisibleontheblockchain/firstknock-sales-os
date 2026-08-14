@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { MapContainer, TileLayer } from 'react-leaflet';
+import { MapContainer } from 'react-leaflet'; import BaseMapTiles from '@/components/map/BaseMapTiles';
 // Leaflet icon defaults and the unmount/scroll-zoom patches live in one module.
 import L from '../components/map/leafletPatches';
 import AnalyzeFiltersPanel from '../components/map/AnalyzeFiltersPanel';
@@ -2271,34 +2271,14 @@ export default function Home() {
                 zoomControl={false}
                 attributionControl
                 preferCanvas={true}
-                wheelPxPerZoomLevel={120}
-                wheelDebounceTime={150}
+                wheelPxPerZoomLevel={80} zoomSnap={1} zoomDelta={1}
+                wheelDebounceTime={40} maxZoom={20}
                 zoomAnimation={true}
                 markerZoomAnimation={true}
                 fadeAnimation={true}
             >
                 <MapRefHandler mapRef={mapRef} />
-                <TileLayer
-                    key={`basemap-${mapTheme}`}
-                    url={
-                        mapTheme === 'satellite'
-                            ? "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-                            : mapTheme === 'hybrid'
-                                ? "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-                                : mapTheme === 'light'
-                                    ? "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
-                                    : "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-                    }
-                    attribution=""
-                />
-                {(mapTheme === 'hybrid' || mapTheme === 'satellite') && (
-                    <TileLayer
-                        key={`basemap-labels-${mapTheme}`}
-                        url="https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png"
-                        attribution=""
-                        zIndex={100}
-                    />
-                )}
+                <BaseMapTiles mapTheme={mapTheme} />
                 <LocationMarker autoCenter={false} userLocation={userLocation} /><AppointmentFocusMarker property={appointmentPin} onSelect={setSelectedProperty} />
                 <DarkRoomManager />
 
