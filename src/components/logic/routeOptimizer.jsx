@@ -25,6 +25,7 @@ import {
 } from '@/lib/routeBounds';
 import { normalizeRouteOriginMode } from '@/lib/routeOriginModes';
 import { partitionPropertiesIntoZones } from './routeZonePartition';
+import { refineBlockSequence } from './blockSequenceRefinement';
 
 function cleanAreaLabel(value) {
     if (value === undefined || value === null) return '';
@@ -1580,6 +1581,139 @@ function contextAwareNearestNeighbor(
     return ordered;
 }
 
+/**
+ * Delta-cost adapters for block refinement. Transition costs are memoized so a
+ * road-aware context pays for each distinct block pair at most once, which is
+ * what makes refinement affordable at every route size.
+ */
+function createBlockCostAdapters(startLocation, endLocation, routingContext) {
+    const pairCache = new Map();
+    const startCache = new Map();
+    const endCache = new Map();
+    const hasStart = isValidRoutePoint(startLocation);
+    const hasEnd = isValidRoutePoint(endLocation);
+    return {
+        pairCost(first, second) {
+            const cacheKey = `${first.key}\u0000${second.key}`;
+            let cost = pairCache.get(cacheKey);
+            if (cost === undefined) {
+                cost = minimumBlockTransitionDistance(first, second, routingContext);
+                pairCache.set(cacheKey, cost);
+            }
+            return cost;
+        },
+        startCost(block) {
+            if (!hasStart) return 0;
+            let cost = startCache.get(block.key);
+            if (cost === undefined) {
+                cost = minimumDistanceFromPoint(startLocation, block, routingContext);
+                startCache.set(block.key, cost);
+            }
+            return cost;
+        },
+        endCost(block) {
+            if (!hasEnd) return 0;
+            let cost = endCache.get(block.key);
+            if (cost === undefined) {
+                cost = minimumDistanceToPoint(block, endLocation, routingContext);
+                endCache.set(block.key, cost);
+            }
+            return cost;
+        }
+    };
+}
+
+/**
+ * Exhaustive reversal + relocation search scored by the exact orientation-aware
+ * DP cost. This is the highest-quality pass and stays in place for the block
+ * counts it can afford; every recorded route baseline comes from it.
+ */
+function exactRefineBlockOrder(ordered, startLocation, endLocation, routingContext, passLimit) {
+    let currentCost = streetBlockOrderCost(ordered, startLocation, endLocation, false, routingContext);
+    for (let pass = 0; pass < passLimit; pass++) {
+        let bestCost = currentCost;
+        let bestOrder = null;
+        for (let start = 0; start < ordered.length - 1; start++) {
+            for (let finish = start + 1; finish < ordered.length; finish++) {
+                const candidate = [
+                    ...ordered.slice(0, start),
+                    ...ordered.slice(start, finish + 1).reverse(),
+                    ...ordered.slice(finish + 1)
+                ];
+                const candidateCost = streetBlockOrderCost(candidate, startLocation, endLocation, false, routingContext);
+                if (candidateCost + 0.000001 < bestCost) {
+                    bestCost = candidateCost;
+                    bestOrder = candidate;
+                }
+            }
+        }
+        // Or-opt: relocate a single street block. Reversal moves alone cannot
+        // rescue a block that greedy nearest-neighbor stranded — the route
+        // otherwise walks away and bounces back for it many stops later.
+        for (let from = 0; from < ordered.length; from++) {
+            for (let to = 0; to <= ordered.length; to++) {
+                if (to === from || to === from + 1) continue;
+                const candidate = [...ordered];
+                const [moved] = candidate.splice(from, 1);
+                candidate.splice(to > from ? to - 1 : to, 0, moved);
+                const candidateCost = streetBlockOrderCost(candidate, startLocation, endLocation, false, routingContext);
+                if (candidateCost + 0.000001 < bestCost) {
+                    bestCost = candidateCost;
+                    bestOrder = candidate;
+                }
+            }
+        }
+        if (!bestOrder) break;
+        ordered = bestOrder;
+        currentCost = bestCost;
+    }
+    return ordered;
+}
+
+function refineStreetBlockOrder(ordered, startLocation, endLocation, routingContext) {
+    if (ordered.length < 2) return ordered;
+    const costOnly = routingContext?.costOnly === true;
+    // Small sequences keep the exact search — it outperforms the windowed
+    // approximation on real routes. Larger sequences previously got no
+    // refinement at all, and that is the gap the windowed pass closes.
+    const exactBlockLimit = costOnly ? 40 : 120;
+    if (ordered.length <= exactBlockLimit) {
+        return exactRefineBlockOrder(
+            ordered,
+            startLocation,
+            endLocation,
+            routingContext,
+            costOnly ? 2 : 5
+        );
+    }
+    const { pairCost, startCost, endCost } = createBlockCostAdapters(
+        startLocation,
+        endLocation,
+        routingContext
+    );
+    const refined = refineBlockSequence(ordered, {
+        pairCost,
+        startCost,
+        endCost,
+        windowSize: costOnly ? 40 : 60,
+        overlap: costOnly ? 12 : 20,
+        maxPasses: costOnly ? 3 : 4,
+        stepBudget: costOnly ? 120000 : 250000
+    });
+    // Refinement may only reorder. Fail closed rather than let a future change
+    // silently drop or duplicate a sweep block.
+    if (refined.length !== ordered.length) {
+        console.warn('[routeOptimizer] Block refinement changed membership; keeping seed order.');
+        return ordered;
+    }
+    // The refinement metric prices the cheapest entry/exit pairing per
+    // transition. Confirm against the exact orientation-aware DP cost so a
+    // refined order can never ship worse than the seed order.
+    const seedCost = streetBlockOrderCost(ordered, startLocation, endLocation, false, routingContext);
+    const refinedCost = streetBlockOrderCost(refined, startLocation, endLocation, false, routingContext);
+    return refinedCost + 0.000001 < seedCost ? refined : ordered;
+}
+
 function optimizeStreetBlockOrder(blocks, startLocation = null, endLocation = null, routingContext = null) {
     if (blocks.length <= 1) return [...blocks];
 
@@ -1603,7 +1737,7 @@ function optimizeStreetBlockOrder(blocks, startLocation = null, endLocation = nu
             return compareStableKeys(first.key, second.key);
         });
         const reversed = [...spatiallySorted].reverse();
-        return streetBlockOrderCost(
+        const seeded = streetBlockOrderCost(
             reversed,
             startLocation,
             endLocation,
@@ -1618,6 +1752,9 @@ function optimizeStreetBlockOrder(blocks, startLocation = null, endLocation = nu
         )
             ? reversed
             : spatiallySorted;
+        // The row-bucket spatial sort is only a seed. Shipping it raw is what
+        // left very large routes with no distance-aware ordering at all.
+        return refineStreetBlockOrder(seeded, startLocation, endLocation, routingContext);
     }
     let ordered = typeof routingContext?.distanceBetween === 'function'
         ? contextAwareNearestNeighbor(
@@ -1633,73 +1770,11 @@ function optimizeStreetBlockOrder(blocks, startLocation = null, endLocation = nu
             max2OptStops: 300
         });
 
-    // Refine smaller routes using the true entry and exit doors of each whole
-    // sweep. Cost-only contexts intentionally use a lower bound: evaluating
-    // every reversal otherwise turns ~100 street blocks into millions of
-    // synchronous road-cost lookups even though nearest-neighbor already used
-    // the road graph and every street/access group remains atomic.
-    const refinementBlockLimit = routingContext?.costOnly === true ? 40 : 120;
-    const refinementPassLimit = routingContext?.costOnly === true ? 2 : 5;
-    if (ordered.length <= refinementBlockLimit) {
-        let currentCost = streetBlockOrderCost(
-            ordered,
-            startLocation,
-            endLocation,
-            false,
-            routingContext
-        );
-        for (let pass = 0; pass < refinementPassLimit; pass++) {
-            let bestCost = currentCost;
-            let bestOrder = null;
-            for (let start = 0; start < ordered.length - 1; start++) {
-                for (let finish = start + 1; finish < ordered.length; finish++) {
-                    const candidate = [
-                        ...ordered.slice(0, start),
-                        ...ordered.slice(start, finish + 1).reverse(),
-                        ...ordered.slice(finish + 1)
-                    ];
-                    const candidateCost = streetBlockOrderCost(
-                        candidate,
-                        startLocation,
-                        endLocation,
-                        false,
-                        routingContext
-                    );
-                    if (candidateCost + 0.000001 < bestCost) {
-                        bestCost = candidateCost;
-                        bestOrder = candidate;
-                    }
-                }
-            }
-            // Or-opt: relocate a single street block. Reversal moves alone cannot
-            // rescue a block that greedy nearest-neighbor stranded — the route
-            // otherwise walks away and bounces back for it many stops later.
-            for (let from = 0; from < ordered.length; from++) {
-                for (let to = 0; to <= ordered.length; to++) {
-                    if (to === from || to === from + 1) continue;
-                    const candidate = [...ordered];
-                    const [moved] = candidate.splice(from, 1);
-                    candidate.splice(to > from ? to - 1 : to, 0, moved);
-                    const candidateCost = streetBlockOrderCost(
-                        candidate,
-                        startLocation,
-                        endLocation,
-                        false,
-                        routingContext
-                    );
-                    if (candidateCost + 0.000001 < bestCost) {
-                        bestCost = candidateCost;
-                        bestOrder = candidate;
-                    }
-                }
-            }
-            if (!bestOrder) break;
-            ordered = bestOrder;
-            currentCost = bestCost;
-        }
-    }
-
-    return ordered;
+    // Refinement now runs at every scale. The previous 40/120-block limit meant
+    // any larger route shipped raw greedy nearest-neighbor order, stranding
+    // isolated blocks the rep had to double back for. Budgeted delta-cost
+    // windows keep the work bounded without reintroducing that cliff.
+    return refineStreetBlockOrder(ordered, startLocation, endLocation, routingContext);
 }
 
 function flattenOrientedStreetBlocks(
