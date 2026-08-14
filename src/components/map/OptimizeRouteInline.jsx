@@ -84,8 +84,8 @@ export function OptimizeRouteTrigger({ variant, open = false, busy = false, onTo
                 : undefined}
             onClick={toggle}
             className={mobile
-                ? 'md:hidden flex h-6 shrink-0 items-center gap-0.5 rounded-lg bg-[#111] px-2 text-[10px] font-extrabold text-[#39FF4A] border border-[#2EEB57]/30 hover:bg-[#222] touch-manipulation select-none active:scale-95 disabled:opacity-50'
-                : 'hidden md:flex h-7 px-2 text-[10px] font-bold bg-[#111] hover:bg-[#222] text-[#39FF4A] border border-[#2EEB57]/30 rounded-md items-center gap-1 touch-manipulation select-none active:scale-95 disabled:opacity-50'}
+                ? 'lg:hidden flex h-6 shrink-0 items-center gap-0.5 rounded-lg bg-[#111] px-2 text-[10px] font-extrabold text-[#39FF4A] border border-[#2EEB57]/30 hover:bg-[#222] touch-manipulation select-none active:scale-95 disabled:opacity-50'
+                : 'hidden lg:flex h-7 px-2 text-[10px] font-bold bg-[#111] hover:bg-[#222] text-[#39FF4A] border border-[#2EEB57]/30 rounded-md items-center gap-1 touch-manipulation select-none active:scale-95 disabled:opacity-50'}
             title="Optimize">
 
             <Zap className={mobile ? 'w-3 h-3' : 'w-2.5 h-2.5'} /><span>OPTIMIZE</span><span aria-hidden="true">{open ? '▴' : '▾'}</span>
