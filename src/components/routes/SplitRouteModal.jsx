@@ -183,9 +183,19 @@ export default function SplitRouteModal({
   const totalHomes = getRouteStops(route).length;
   const [sizingMode, setSizingMode] = useState('max_homes');
   const [requestedValue, setRequestedValue] = useState(() => defaultMaximum(totalHomes));
+  // The plan rebuild + map refit is heavy, so typing updates a local field and
+  // only commits after a short pause. Recomputing on every keystroke is what
+  // made this input feel laggy and made the preview map flicker.
+  const [valueDraft, setValueDraft] = useState(() => String(defaultMaximum(totalHomes)));
   const [routeNames, setRouteNames] = useState([]);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
+
+  useEffect(() => {
+    if (valueDraft === String(requestedValue)) return undefined;
+    const timeoutId = setTimeout(() => setRequestedValue(valueDraft), 250);
+    return () => clearTimeout(timeoutId);
+  }, [valueDraft, requestedValue]);
 
   const planResult = useMemo(() => {
     try {
@@ -218,13 +228,13 @@ export default function SplitRouteModal({
 
   const switchSizingMode = (nextMode) => {
     if (nextMode === sizingMode) return;
-    if (plan) {
-      setRequestedValue(nextMode === 'route_count'
+    const nextValue = plan
+      ? (nextMode === 'route_count'
         ? plan.routeCount
-        : Math.min(Math.ceil(plan.totalHomes / plan.routeCount), plan.totalHomes - 1));
-    } else {
-      setRequestedValue(nextMode === 'route_count' ? 2 : defaultMaximum(totalHomes));
-    }
+        : Math.min(Math.ceil(plan.totalHomes / plan.routeCount), plan.totalHomes - 1))
+      : (nextMode === 'route_count' ? 2 : defaultMaximum(totalHomes));
+    setRequestedValue(nextValue);
+    setValueDraft(String(nextValue));
     setSizingMode(nextMode);
     setSaveError('');
   };
@@ -523,10 +533,10 @@ export default function SplitRouteModal({
                 type="number"
                 min={sizingMode === 'route_count' ? 2 : 1}
                 max={sizingMode === 'route_count' ? Math.max(totalHomes, 2) : Math.max(totalHomes - 1, 1)}
-                value={requestedValue}
+                value={valueDraft}
                 disabled={isSaving}
                 onChange={(event) => {
-                  setRequestedValue(event.target.value);
+                  setValueDraft(event.target.value);
                   setSaveError('');
                 }}
                 className="h-12 w-full rounded-xl border border-white/10 bg-white/5 px-3 text-base font-black text-white outline-none focus:border-[#39FF4A]"
