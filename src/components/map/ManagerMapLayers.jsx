@@ -231,9 +231,15 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, pinSize, lineDashAr
             // reads as pin detail instead of a solid yellow blob when zoomed out.
             // Floor of 3px: a 2px dense dot with no zoom bump disappeared at wide
             // views, which is what made an active route look like it wasn't there.
-            // Soloed route stops render ~20% smaller than territory pins so a
-            // selected route reads as a path instead of a chain of fat dots.
-            const activeDotSize = Math.max(2.5, zoomAdjustedPinSize(pinSize, zoom) * 0.8);
+            // Soloed route stops render smaller than territory pins so a selected
+            // route reads as a path instead of a chain of fat dots. Wide views of
+            // a big route pack thousands of doors into a few hundred pixels, so
+            // the dot (and its white ring) shrink further there — that overlap is
+            // what turned a soloed route into one solid yellow blob.
+            const wideView = zoom < 14;
+            const activeDotSize = wideView
+                ? Math.max(1.2, zoomAdjustedPinSize(pinSize, zoom) * 0.5)
+                : Math.max(2.5, zoomAdjustedPinSize(pinSize, zoom) * 0.8);
             const circle = L.circleMarker(point, {
                 radius: emphasized ? activeDotSize + 1.5 : activeDotSize,
                 fillColor: sold ? SOLD_PIN_COLOR : baseColor,
@@ -243,7 +249,7 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, pinSize, lineDashAr
                 // them made a zoomed-out route read as missing entirely.
                 fillOpacity: 1,
                 color: '#fff',
-                weight: emphasized ? 1.5 : 1,
+                weight: emphasized ? 1.5 : (wideView ? 0.4 : 1),
             });
             circle.on('click', (e) => {
                 L.DomEvent.stopPropagation(e);
