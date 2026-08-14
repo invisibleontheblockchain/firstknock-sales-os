@@ -24,6 +24,7 @@ import {
     optimizeRouteWithBounds
 } from '@/lib/routeBounds';
 import { normalizeRouteOriginMode } from '@/lib/routeOriginModes';
+import { partitionPropertiesIntoZones } from './routeZonePartition';
 
 function cleanAreaLabel(value) {
     if (value === undefined || value === null) return '';
@@ -743,8 +744,14 @@ export function generateOptimizedRoutes(
 
     console.log(`[routeOptimizer] Scoring done in ${Date.now() - t0}ms`);
 
-    // MAIL CARRIER: Geographic cluster pre-separation happens inside mailCarrierOrder.
-    let clustered = scored.map(p => ({ ...p, cluster: 0 }));
+    // Zone first, order second. Slicing one global street sequence by count made
+    // adjacent reps order-neighbors instead of neighbors, so the doors are
+    // partitioned into contiguous zones (one per route) before any ordering runs.
+    // Reorder-style callers hand in an already-fixed sequence and must not be
+    // re-zoned into several routes.
+    let clustered = preserveGlobalChunkOrder
+        ? scored.map(p => ({ ...p, cluster: 0 }))
+        : partitionPropertiesIntoZones(scored, housesPerRoute);
 
     // Generate routes
     const routes = [];
