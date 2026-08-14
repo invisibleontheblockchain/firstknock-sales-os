@@ -387,6 +387,7 @@ function costOnlyContext({
   roadContext,
   blockPlan,
   polygon,
+  protectedGroups,
   proxyMetadata = null,
   snappedRepresentativeCount,
 }) {
@@ -445,7 +446,9 @@ function costOnlyContext({
     representativeBlockCount: blockPlan.blockCount,
     representativePointCount: blockPlan.representatives.length,
     snappedRepresentativeCount,
-    accessGrouping: 'provider-area-only',
+    accessGrouping: 'osm-topology-and-provider-area',
+    accessTopologyStatus: protectedGroups.status,
+    accessTopology: Object.freeze({ ...protectedGroups.diagnostics }),
     geometryPersisted: false,
     roadNetworkSource: proxyMetadata?.source || 'injected-or-browser-road-network',
     roadNetworkCacheStatus: proxyMetadata?.cache_status || null,
@@ -506,11 +509,15 @@ function costOnlyContext({
     },
     accessGroupKey(property) {
       const representative = representativeFor(property);
-      return explicitAccessKey(property, {
+      const explicit = explicitAccessKey(property, {
         roadComponentKey() {
           return roadContext.roadComponentKey(representative);
         },
       });
+      if (explicit) return explicit;
+      // Dead-end and single-entrance detection is topology, so it is valid at
+      // every route size. Only door-level pairwise routing is rationed here.
+      return protectedGroups.keyByProperty.get(propertyIdentity(representative)) || '';
     },
     diagnostics: Object.freeze(diagnostics),
   });
@@ -731,6 +738,14 @@ export async function createRouteRoadContext(properties, options = {}) {
         roadContext,
         blockPlan,
         polygon,
+        // Fed block representatives, not every door: this pass scales with the
+        // road network, so it is not what the door-count cap exists to ration.
+        protectedGroups: buildProtectedAccessGroups({
+          properties: blockPlan.representatives,
+          roadNetwork,
+          polygon,
+          roadContext,
+        }),
         proxyMetadata: roadNetwork?._route_proxy || null,
         snappedRepresentativeCount,
       });

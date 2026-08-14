@@ -1402,9 +1402,25 @@ function buildStreetSweepBlocks(properties, routingContext = null) {
             lat: props.reduce((sum, property) => sum + property.lat, 0) / props.length,
             lng: props.reduce((sum, property) => sum + property.lng, 0) / props.length,
             accessKey: accessKeys.length === 1 ? accessKeys[0] : '',
+            outAndBack: accessKeys.length === 1 && isProtectedPocketKey(accessKeys[0]),
             variants: [forward, [...forward].reverse()]
         };
     }));
+}
+
+/** True for units the road graph proved sit behind a single entrance. */
+function isProtectedPocketKey(accessKey) {
+    return String(accessKey || '').startsWith('osm-access:');
+}
+
+/**
+ * Where the rep is standing when a unit is finished. A through street is exited
+ * at its far end, but a dead end or single-entrance pocket is exited through the
+ * entrance it was entered by, so the next stop must be measured from there.
+ */
+function blockExitDoor(block, orientation) {
+    const doors = block.variants[orientation];
+    return block.outAndBack ? doors[0] : doors[doors.length - 1];
 }
 
 function streetBlockOrderCost(
@@ -1432,10 +1448,9 @@ function streetBlockOrderCost(
         for (let orientation = 0; orientation < 2; orientation++) {
             const firstDoor = blocks[blockIndex].variants[orientation][0];
             for (let previousOrientation = 0; previousOrientation < 2; previousOrientation++) {
-                const previousDoors = blocks[blockIndex - 1].variants[previousOrientation];
-                const previousLastDoor = previousDoors[previousDoors.length - 1];
+                const previousExitDoor = blockExitDoor(blocks[blockIndex - 1], previousOrientation);
                 const candidateCost = costs[blockIndex - 1][previousOrientation]
-                    + routingDistance(previousLastDoor, firstDoor, routingContext);
+                    + routingDistance(previousExitDoor, firstDoor, routingContext);
                 if (candidateCost + 0.000000001 < costs[blockIndex][orientation]) {
                     costs[blockIndex][orientation] = candidateCost;
                     previous[blockIndex][orientation] = previousOrientation;
@@ -1447,8 +1462,7 @@ function streetBlockOrderCost(
     let finalOrientation = 0;
     let finalCost = Infinity;
     for (let orientation = 0; orientation < 2; orientation++) {
-        const finalDoors = blocks[blocks.length - 1].variants[orientation];
-        const finalDoor = finalDoors[finalDoors.length - 1];
+        const finalDoor = blockExitDoor(blocks[blocks.length - 1], orientation);
         const candidateCost = costs[blocks.length - 1][orientation]
             + (isValidRoutePoint(endLocation)
                 ? routingDistance(finalDoor, endLocation, routingContext)
@@ -1486,8 +1500,8 @@ function doorSequenceCost(doors, startLocation, endLocation, routingContext) {
 
 function minimumBlockTransitionDistance(firstBlock, secondBlock, routingContext) {
     let bestDistance = Infinity;
-    firstBlock.variants.forEach((firstVariant) => {
-        const exit = firstVariant[firstVariant.length - 1];
+    firstBlock.variants.forEach((firstVariant, orientation) => {
+        const exit = blockExitDoor(firstBlock, orientation);
         secondBlock.variants.forEach((secondVariant) => {
             const entry = secondVariant[0];
             bestDistance = Math.min(bestDistance, routingDistance(exit, entry, routingContext));
@@ -1504,8 +1518,8 @@ function minimumDistanceFromPoint(point, block, routingContext) {
 
 function minimumDistanceToPoint(block, point, routingContext) {
     return Math.min(
-        ...block.variants.map((variant) => (
-            routingDistance(variant[variant.length - 1], point, routingContext)
+        ...block.variants.map((variant, orientation) => (
+            routingDistance(blockExitDoor(block, orientation), point, routingContext)
         ))
     );
 }
@@ -1847,6 +1861,7 @@ function buildAccessSweepBlocks(streetBlocks, routingContext = null) {
                 lat: forward.reduce((sum, property) => sum + property.lat, 0) / forward.length,
                 lng: forward.reduce((sum, property) => sum + property.lng, 0) / forward.length,
                 accessKey: blocks[0].accessKey,
+                outAndBack: isProtectedPocketKey(blocks[0].accessKey),
                 variants: [forward, [...forward].reverse()]
             };
         });
