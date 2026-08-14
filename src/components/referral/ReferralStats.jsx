@@ -4,9 +4,9 @@ import { DollarSign, Users, TrendingUp, Clock } from 'lucide-react';
 export default function ReferralStats({ stats, accent }) {
     const items = [
         { label: 'Balance', value: `$${(stats.balance || 0).toFixed(0)}`, icon: DollarSign, color: '#22c55e' },
-        { label: 'Total Earned', value: `$${(stats.total_earned || 0).toFixed(0)}`, icon: TrendingUp, color: accent },
+        { label: 'This Month', value: `$${(stats.current_month_commission || 0).toFixed(0)}`, icon: TrendingUp, color: accent },
         { label: 'Referrals', value: stats.total_referrals || 0, icon: Users, color: '#3b82f6' },
-        { label: 'Subscribed', value: stats.subscribed || 0, icon: Clock, color: '#f59e0b' },
+        { label: 'Active Customers', value: stats.active_customers || 0, icon: Clock, color: '#f59e0b' },
     ];
 
     return (

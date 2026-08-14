@@ -1,5 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import Stripe from 'npm:stripe@14.14.0';
+import { recordReferralInvoice } from '../../shared/referralLedger.js';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') || '');
 const endpointSecret = Deno.env.get('STRIPE_WEBHOOK_SECRET');
@@ -373,6 +374,8 @@ Deno.serve(async (req: Request) => {
                         });
                         if (paidConfirmed) {
                             await syncInviteCode(base44, userId, quantity);
+                            const paidUser = await getCurrentUser(base44, userId);
+                            await recordReferralInvoice(base44, paidUser, subscription, currentInvoice);
                             console.log(`Confirmed paid subscription invoice for user ${userId} with ${quantity} seats`);
                         } else {
                             console.log(`Ignored zero-dollar or trial invoice for user ${userId}`);

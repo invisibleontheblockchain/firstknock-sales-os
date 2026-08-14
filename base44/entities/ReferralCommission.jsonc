@@ -1,0 +1,99 @@
+{
+  "name": "ReferralCommission",
+  "type": "object",
+  "properties": {
+    "referrer_user_id": {
+      "type": "string"
+    },
+    "referrer_email": {
+      "type": "string"
+    },
+    "referred_user_id": {
+      "type": "string"
+    },
+    "referred_email": {
+      "type": "string"
+    },
+    "referral_id": {
+      "type": "string"
+    },
+    "referral_code": {
+      "type": "string"
+    },
+    "stripe_invoice_id": {
+      "type": "string",
+      "description": "Stripe invoice ID used to prevent duplicate revenue entries"
+    },
+    "stripe_subscription_id": {
+      "type": "string"
+    },
+    "revenue_cents": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Actual positive amount paid on the Stripe invoice"
+    },
+    "currency": {
+      "type": "string"
+    },
+    "paid_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "commission_month": {
+      "type": "string",
+      "description": "UTC calendar month in YYYY-MM format"
+    },
+    "payout_status": {
+      "type": "string",
+      "enum": [
+        "unpaid",
+        "paid"
+      ],
+      "default": "unpaid"
+    },
+    "payout_date": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "referrer_user_id",
+    "referred_user_id",
+    "referral_id",
+    "stripe_invoice_id",
+    "revenue_cents",
+    "currency",
+    "paid_at",
+    "commission_month",
+    "payout_status"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "$or": [
+        {
+          "data.referrer_user_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

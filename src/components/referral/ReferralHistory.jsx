@@ -44,9 +44,6 @@ export default function ReferralHistory({ referrals, accent }) {
                                 </div>
                             </div>
                             <div className="flex items-center gap-2 shrink-0">
-                                {ref.commission_amount > 0 && (
-                                    <span className="text-sm font-bold text-green-400">${ref.commission_amount}</span>
-                                )}
                                 <Badge className={`text-[9px] ${config.color}`}>
                                     {config.label}
                                 </Badge>
