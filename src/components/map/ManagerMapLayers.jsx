@@ -74,7 +74,7 @@ const getRouteLinePoints = (route, properties) => {
     ].filter(Boolean);
 };
 
-function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, lineDashArray, setSelectedProperty, decisionFilterActive }) {
+function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, pinSize, lineDashArray, setSelectedProperty, decisionFilterActive }) {
     const map = useMap();
     const layerRef = useRef(null);
     const fittedRouteIdRef = useRef(null);
@@ -221,8 +221,11 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, lineDashArray, setS
             // ordinary stops stay small with a thin ring so a long route reads as
             // a path rather than a wall of bright dots.
             const emphasized = sold || (activeRoute.status === 'COMPLETED' && p.effective_status === 'QUALIFIED');
+            // Same dense dot size as the Routes-mode pins, so a 10k-door route
+            // reads as pin detail instead of a solid yellow blob when zoomed out.
+            const activeDotSize = zoomAdjustedPinSize(pinSize, zoom);
             const circle = L.circleMarker(point, {
-                radius: emphasized ? 4.5 : (veryWideView ? 2 : wideView ? 2.5 : 3),
+                radius: emphasized ? activeDotSize + 1.5 : activeDotSize,
                 fillColor: sold ? SOLD_PIN_COLOR : baseColor,
                 fillOpacity: 1,
                 // The white ring is what makes a zoomed-out route glow, so plain
@@ -267,7 +270,7 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, lineDashArray, setS
                 layerRef.current = null;
             }
         };
-    }, [map, viewBox, activeRoute, zoom, mapSettings.lineWidth, mapSettings.lineOpacity, lineDashArray, setSelectedProperty, decisionFilterActive]);
+    }, [map, viewBox, activeRoute, zoom, pinSize, mapSettings.lineWidth, mapSettings.lineOpacity, lineDashArray, setSelectedProperty, decisionFilterActive]);
 
     return null; // Imperative layer — no React DOM output
 }
@@ -605,7 +608,7 @@ function SavedRoutesLayer({
         const group = L.layerGroup();
         // Every door of every visible route renders — a low budget meant only a
         // fraction of a dense territory's pins appeared.
-        const MAX_ROUTE_DETAIL_PINS = 8000;
+        const MAX_ROUTE_DETAIL_PINS = 40000;
         // Same street-level growth as the property pins, so route doors stay
         // visible instead of shrinking into the imagery when fully zoomed in.
         const routeDotSize = zoomAdjustedPinSize(pinSize, zoomLevel);
@@ -627,7 +630,7 @@ function SavedRoutesLayer({
         // meant one large route consumed it all and every other visible route
         // rendered with no door pins at all.
         const perRoutePinBudget = Math.max(
-            1500,
+            15000,
             Math.floor(MAX_ROUTE_DETAIL_PINS / Math.max(1, filteredRoutes.length))
         );
 
@@ -963,6 +966,7 @@ const ManagerMapLayers = React.memo(function ManagerMapLayers({
                     activeRoute={activeRoute}
                     BRAND={BRAND}
                     mapSettings={mapSettings}
+                    pinSize={effectivePinSize}
                     lineDashArray={lineDashArray}
                     setSelectedProperty={setSelectedProperty}
                     decisionFilterActive={decisionFilterActive}

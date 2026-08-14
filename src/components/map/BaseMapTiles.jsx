@@ -18,8 +18,12 @@ const LABEL_URL = "https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{
 // - maxNativeZoom lets deep zoom scale the provider's sharpest tile rather than
 //   requesting a level that does not exist and rendering nothing.
 const TILE_PERF = {
-    keepBuffer: 4,
-    updateWhenZooming: false,
+    keepBuffer: 3,
+    // Zooming out used to leave the whole screen black until the animation
+    // landed, because Leaflet waited for idle before requesting the new grid.
+    // Requesting while zooming keeps imagery on screen the whole way.
+    updateWhenZooming: true,
+    updateWhenIdle: false,
     maxNativeZoom: 19,
     maxZoom: 20,
 };
