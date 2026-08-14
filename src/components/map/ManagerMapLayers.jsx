@@ -109,8 +109,11 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, lineDashArray, setS
         // solid text at normal zoom, so they stay hidden until the doors are far
         // enough apart to read, and they render small even then. Pins and the
         // route line always show; tapping a pin still gives its exact position.
-        const showNumbers = props.length <= 600 ? zoom >= 16 : zoom >= 17;
-        const numberFontSize = zoom >= 18 ? 10 : 9;
+        // Numbers appear as soon as the doors are far enough apart to read them.
+        // A route that fits the screen at zoom 14 was previously numberless until
+        // you zoomed two more steps, which read as "the numbers don't work".
+        const showNumbers = props.length <= 150 ? zoom >= 13 : props.length <= 600 ? zoom >= 14 : zoom >= 15;
+        const numberFontSize = zoom >= 17 ? 11 : zoom >= 15 ? 10 : 9;
         // Zoomed out the doors sit on top of each other, so the route reads as a
         // bright blob. Fade the dots and the line back until the view is close
         // enough for individual stops to mean something.
