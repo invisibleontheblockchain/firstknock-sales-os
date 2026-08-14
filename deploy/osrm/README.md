@@ -111,7 +111,7 @@ ride in the URL, which is why `MAX_COORDS_PER_REQUEST` is 200.
 | `Caddyfile` | TLS, bearer auth, CORS. |
 | `watchdog.sh` | T1→T4 escalation ladder. Mounted read-only, not an inline compose command. |
 | `vroom-conf/config.yml` | VROOM → OSRM over HTTP. |
-| `.env.example` | Copy to `.env` and fill in. |
+| `env.example` | Copy to `.env` and fill in. Not `.env.example` — `.gitignore` matches `.env.*`. |
 | `validate.sh` | Pre-cutover suite. Run before pointing the app at the endpoint. |
 
 ---
@@ -123,7 +123,7 @@ ride in the URL, which is why `MAX_COORDS_PER_REQUEST` is 200.
 mkdir -p /opt/osrm/data && cd /opt/osrm
 git clone https://github.com/invisibleontheblockchain/firstknock-sales-os.git /tmp/fk
 cp -r /tmp/fk/deploy/osrm/* /opt/osrm/
-cp .env.example .env && vi .env          # OSRM_DOMAIN + OSRM_TOKEN are required
+cp env.example .env && vi .env           # OSRM_DOMAIN + OSRM_TOKEN are required
 
 # Point DNS at this droplet BEFORE starting — Caddy needs it to get a certificate.
 # Artifacts arrive here from the build droplet:

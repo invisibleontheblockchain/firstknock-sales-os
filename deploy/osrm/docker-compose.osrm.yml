@@ -4,7 +4,7 @@
 #
 # Expects, on the host:
 #   /opt/osrm/data/map.osrm*   the MLD artifacts built by build-usa-graph.sh
-#   /opt/osrm/.env             OSRM_DOMAIN, OSRM_TOKEN, APP_ORIGIN (see .env.example)
+#   /opt/osrm/.env             OSRM_DOMAIN, OSRM_TOKEN, APP_ORIGIN (see env.example)
 #
 # Caddy terminates TLS on a real hostname. That is not optional: the FirstKnock
 # app is served over HTTPS, and a browser refuses to call http://<ip>:5000 from an
