@@ -273,6 +273,9 @@ async function main() {
             ...roadOptions,
             optimizeRoute,
             measurePath: measure,
+            // The old sweep competes as one candidate, priced on the same order
+            // the door-exact old model above is sliced from.
+            legacySweepOrder: fullOrder.order,
             verifyCandidates: verifyCandidatesFor(routeCount),
             cacheStats: cache.stats
         });
@@ -286,10 +289,12 @@ async function main() {
                 selected_candidate: report.selected_candidate,
                 candidate_ranking: (report.candidates || []).map((candidate) => ({
                     id: candidate.id,
+                    policy_id: candidate.policy_id ?? null,
                     surrogate_road_miles: candidate.surrogate_road_miles,
                     combined_verified_road_miles: candidate.combined_verified_road_miles,
                     verified: candidate.verified,
-                    growth_capacity_relaxations: candidate.growth_capacity_relaxations ?? null
+                    balance_valid: candidate.balance?.balance_valid ?? null,
+                    balance_relaxations: candidate.balance?.balance_relaxations ?? null
                 })),
                 combined_verified_road_miles: report.combined_verified_road_miles,
                 verified_road_miles_per_route: report.verified_road_miles_per_route,
@@ -299,10 +304,22 @@ async function main() {
                 max_deviation_pct: report.max_deviation_pct,
                 ...mileageShape(routeMiles),
                 balance_tolerance: report.balance_tolerance,
+                balance_policy_id: report.selected_balance_policy,
                 capacity_per_route: report.capacity_per_route,
                 min_homes_allowed: report.min_homes_allowed,
+                max_homes_allowed: report.max_homes_allowed,
                 target_homes_per_route: report.target_homes_per_route,
-                growth_capacity_relaxations: winner?.growth_capacity_relaxations ?? null,
+                routes_below_min: report.routes_below_min,
+                routes_above_max: report.routes_above_max,
+                balance_relaxations: report.balance_relaxations,
+                balance_valid: report.balance_valid,
+                balance_relaxation_mode: report.balance_relaxation_mode,
+                atom_forced_capacity: report.atom_forced_capacity,
+                distinct_partition_count: report.distinct_partition_count,
+                duplicate_candidates: report.duplicate_candidates,
+                viable_candidate_count: report.viable_candidate_count,
+                extra_seeds_generated: report.extra_seeds_generated,
+                growth_bound_relaxations: winner?.growth_bound_relaxations ?? null,
                 atom_count: atoms.length,
                 atom_levels: report.atom_levels || built.telemetry?.atom_levels || null,
                 road_requests: report.road_requests,
@@ -358,12 +375,21 @@ function printReport(path) {
         console.log(`| ${result.route_name} | ${result.requested_route_count} | ${cell(old.combined_verified_road_miles) || old.code} | ${cell(next.combined_verified_road_miles) || next.code} | ${cell(result.miles_saved)} | ${cell(result.improvement_pct)}% | ${old.ok ? `${old.min_homes}–${old.max_homes}` : '—'} / ${next.ok ? `${next.min_homes}–${next.max_homes}` : '—'} | ${cell(old.street_blocks_shared_across_routes)} / ${cell(next.street_blocks_shared_across_routes)} | ${cell(old.pockets_shared_across_routes)} / ${cell(next.pockets_shared_across_routes)} | ${cell(old.foreign_neighbour_rate_pct)}% / ${cell(next.foreign_neighbour_rate_pct)}% | ${cell(next.selected_candidate)} | ${cell(old.runtime_s)} / ${cell(next.runtime_s)} |`);
     });
 
-    console.log('\n### Balance policy as K rises\n');
-    console.log('| K | Target homes | Allowed range | Achieved | Max dev % | Relaxations |');
-    console.log('|---|---|---|---|---|---|');
+    console.log('\n### Balance contract as K rises\n');
+    console.log('| K | Policy | Target | Allowed | Achieved | Below min | Above max | Relaxations | Valid | Relax mode |');
+    console.log('|---|---|---|---|---|---|---|---|---|---|');
     results.filter((result) => result.new.ok).forEach((result) => {
         const next = result.new;
-        console.log(`| ${result.requested_route_count} | ${next.target_homes_per_route} | ${next.min_homes_allowed}–${next.capacity_per_route} | ${next.min_homes}–${next.max_homes} | ${next.max_deviation_pct}% | ${next.growth_capacity_relaxations} |`);
+        console.log(`| ${result.requested_route_count} | ${next.balance_policy_id} | ${next.target_homes_per_route} | ${next.min_homes_allowed}–${next.max_homes_allowed} | ${next.min_homes}–${next.max_homes} | ${next.routes_below_min} | ${next.routes_above_max} | ${next.balance_relaxations} | ${next.balance_valid ? 'yes' : 'NO'} | ${next.balance_relaxation_mode ? 'YES' : 'no'} |`);
+    });
+
+    console.log('\n### Portfolio breadth\n');
+    console.log('| K | Candidates | Viable | Distinct memberships | Duplicates | Extra seeds | Old sweep candidate |');
+    console.log('|---|---|---|---|---|---|---|');
+    results.filter((result) => result.new.ok).forEach((result) => {
+        const next = result.new;
+        const legacy = (next.candidate_ranking || []).find((candidate) => String(candidate.id).startsWith('legacy_sweep'));
+        console.log(`| ${result.requested_route_count} | ${next.partitioner_report?.candidate_count ?? '—'} | ${next.viable_candidate_count} | ${next.distinct_partition_count} | ${next.duplicate_candidates} | ${next.extra_seeds_generated ? 'yes' : 'no'} | ${legacy ? `${legacy.verified ? legacy.combined_verified_road_miles : 'ranked'}` : '—'} |`);
     });
 
     console.log('\n### Route mileage shape (one bad route check)\n');

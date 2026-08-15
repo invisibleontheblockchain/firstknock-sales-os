@@ -102,7 +102,10 @@ export function computeSplitQualityMetrics(input = {}) {
         runtimeMs = null,
         roadRequestCount = null,
         cacheStats = null,
-        candidates = []
+        candidates = [],
+        balance = null,
+        balanceBounds = null,
+        diversity = null
     } = input;
 
     const homesPerRoute = routes.map((route) => route.doorCount);
@@ -140,6 +143,20 @@ export function computeSplitQualityMetrics(input = {}) {
         max_deviation_pct: target > 0 && deviations.length
             ? round((Math.max(...deviations) / target) * 100, 1)
             : 0,
+        // Balance contract — declared bounds and BOTH kinds of violation, so an
+        // under-filled route can never again be reported as balanced.
+        balance_policy_id: balance?.policy_id ?? null,
+        balance_tolerance: balanceBounds?.tolerance ?? null,
+        min_homes_allowed: balance?.min_homes_allowed ?? null,
+        max_homes_allowed: balance?.max_homes_allowed ?? null,
+        routes_below_min: balance?.routes_below_min ?? null,
+        routes_above_max: balance?.routes_above_max ?? null,
+        balance_relaxations: balance?.balance_relaxations ?? null,
+        worst_under_fill_homes: balance?.worst_under_fill_homes ?? null,
+        worst_over_fill_homes: balance?.worst_over_fill_homes ?? null,
+        balance_valid: balance?.balance_valid ?? null,
+        balance_bounds_widened_to_whole_homes: balanceBounds?.band_widened_to_whole_homes ?? null,
+        balance_bounds_widened_for_feasibility: balanceBounds?.band_widened_for_feasibility ?? null,
         // Mileage — independently measured, or explicitly absent.
         combined_verified_road_miles: allMeasured
             ? round(routeMiles.reduce((sum, miles) => sum + miles, 0), 3)
@@ -162,7 +179,15 @@ export function computeSplitQualityMetrics(input = {}) {
         runtime_ms: runtimeMs,
         road_requests: roadRequestCount,
         road_pair_cache_hit_rate_pct: cacheStats?.pair_cache_hit_rate_pct ?? null,
-        candidate_count: candidates.length,
+        // Portfolio breadth: distinct memberships actually searched, not the
+        // number of strategies that were run.
+        candidate_count: diversity?.candidate_count ?? candidates.length,
+        viable_candidate_count: diversity?.viable_candidate_count ?? null,
+        distinct_partition_count: diversity?.distinct_partition_count ?? null,
+        duplicate_candidates: diversity?.duplicate_candidates ?? null,
+        extra_seeds_generated: diversity?.extra_seeds_generated ?? null,
+        balance_policies_tried: diversity?.balance_policies_tried ?? null,
+        legacy_sweep_candidate_included: diversity?.legacy_sweep_candidate_included ?? null,
         candidates
     };
 }

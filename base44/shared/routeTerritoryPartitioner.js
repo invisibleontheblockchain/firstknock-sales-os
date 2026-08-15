@@ -50,6 +50,13 @@ import { buildSplitAtoms } from './splitAtoms.js';
 import { computeSplitQualityMetrics } from './splitQualityMetrics.js';
 import { coordinateKey, compareKeys } from './roadAwareGrouping.js';
 import { fetchRoadCostRows, MAX_ROUTE_MATRIX_POINTS } from './roadMatrix.js';
+import {
+    BALANCE_POLICIES,
+    DEFAULT_BALANCE_POLICY_ID,
+    resolveBalanceBounds,
+    evaluateBalance
+} from './splitBalanceContract.js';
+import { buildLegacySweepMembership } from './legacySweepCandidate.js';
 
 export const SPLIT_PARTITIONER_VERSION = 'road_territory_partitioner_v1';
 
@@ -161,7 +168,7 @@ function selectSeeds(atoms, cost, routeCount, firstIndex) {
  * counted, because losing a home would be a far worse failure than an uneven day.
  */
 function growRegions(atoms, cost, seeds, options) {
-    const { capacity, loadPenalty } = options;
+    const { capacity, loadPenalty, minLoad = 0 } = options;
     const routeCount = seeds.length;
     const regionOf = new Array(atoms.length).fill(-1);
     const members = seeds.map((seedIndex) => [seedIndex]);
@@ -181,6 +188,17 @@ function growRegions(atoms, cost, seeds, options) {
     let unassigned = atoms.length - routeCount;
     let relaxations = 0;
     while (unassigned > 0) {
+        // The lower bound is enforced HERE, not only in refinement. While any
+        // region sits under its minimum, only under-filled regions may take the
+        // next atom. Without this, growth could abandon a seed region at one or
+        // two homes, refinement had no reason to fill it (a 1-home route is a
+        // very short tour, which the surrogate likes), and the report still
+        // called the split balanced.
+        const needy = new Set();
+        for (let region = 0; region < routeCount; region += 1) {
+            if (load[region] < minLoad) needy.add(region);
+        }
+
         let chosenAtom = -1;
         let chosenRegion = -1;
         let chosenScore = Infinity;
@@ -195,7 +213,8 @@ function growRegions(atoms, cost, seeds, options) {
                 const miles = bestCost[atom * routeCount + region];
                 if (!Number.isFinite(miles)) continue;
                 const score = miles * (1 + loadPenalty * (load[region] / capacity));
-                const fits = load[region] + doors <= capacity;
+                const fits = load[region] + doors <= capacity
+                    && (needy.size === 0 || needy.has(region));
                 if (fits && score < chosenScore - 1e-12) {
                     chosenScore = score;
                     chosenAtom = atom;
@@ -423,8 +442,17 @@ function refineBoundaries(atoms, rows, neighbours, partition, options) {
     };
 }
 
-/** The portfolio. Each entry is a legitimate whole-territory partition strategy. */
-function candidateStrategies(atoms, cost) {
+/**
+ * Seed strategies. Each is a legitimate whole-territory partition strategy, and
+ * each is later crossed with every balance policy to form the portfolio.
+ *
+ * `includeExtraSeeds` is used only when the portfolio has been measured to
+ * collapse — at K<=5 on Route 1I the four base strategies produced just two
+ * distinct memberships, so the search was half as wide as it appeared. Extra
+ * anchors are generated in response to measured duplication, never speculatively,
+ * because every additional distinct candidate costs a refinement pass.
+ */
+function candidateStrategies(atoms, cost, { includeExtraSeeds = false } = {}) {
     const canonicalFirst = atoms
         .map((atom, index) => ({ index, key: coordinateKey(atom.representative) }))
         .sort((first, second) => compareKeys(first.key, second.key))[0].index;
@@ -432,18 +460,33 @@ function candidateStrategies(atoms, cost) {
     // everything else is highest, i.e. the most peripheral place in the
     // territory. Seeding from a periphery instead of a corner produces a
     // genuinely different partition, not a rotation of the same one.
-    const peripheralFirst = atoms
+    const byPeriphery = atoms
         .map((_, index) => ({
             index,
             total: atoms.reduce((sum, __, other) => sum + (other === index ? 0 : cost(index, other)), 0)
         }))
-        .sort((first, second) => second.total - first.total || first.index - second.index)[0].index;
+        .sort((first, second) => second.total - first.total || first.index - second.index);
+    const peripheralFirst = byPeriphery[0].index;
 
-    return [
+    const base = [
         { id: 'topology_first', firstSeed: canonicalFirst, loadPenalty: 0.05 },
         { id: 'balanced_road_growth', firstSeed: canonicalFirst, loadPenalty: 0.35 },
         { id: 'peripheral_seeds', firstSeed: peripheralFirst, loadPenalty: 0.2 },
         { id: 'balance_led', firstSeed: peripheralFirst, loadPenalty: 0.7 }
+    ];
+    if (!includeExtraSeeds) return base;
+
+    // Distinct anchors, deliberately far from the two the base set already uses:
+    // the second and third most peripheral atoms, and the most CENTRAL one, which
+    // grows regions outward from the middle instead of inward from an edge.
+    const secondPeripheral = byPeriphery[Math.min(1, byPeriphery.length - 1)].index;
+    const thirdPeripheral = byPeriphery[Math.min(2, byPeriphery.length - 1)].index;
+    const centralFirst = byPeriphery[byPeriphery.length - 1].index;
+    return [
+        ...base,
+        { id: 'second_periphery', firstSeed: secondPeripheral, loadPenalty: 0.15 },
+        { id: 'third_periphery', firstSeed: thirdPeripheral, loadPenalty: 0.45 },
+        { id: 'central_outward', firstSeed: centralFirst, loadPenalty: 0.25 }
     ];
 }
 
@@ -494,6 +537,32 @@ async function verifyCandidate(members, atoms, options) {
 }
 
 /**
+ * Which balance policies this run competes over.
+ *
+ * `balanceTolerance` stays supported as a single custom policy so controlled
+ * single-variable experiments (the K=5 diagnosis) keep working unchanged.
+ */
+function resolveRequestedPolicies(options) {
+    if (Number.isFinite(Number(options.balanceTolerance))) {
+        return [{ id: 'custom', tolerance: Math.max(0, Number(options.balanceTolerance)) }];
+    }
+    const requested = Array.isArray(options.balancePolicies) ? options.balancePolicies : null;
+    if (!requested || requested.length === 0) return BALANCE_POLICIES;
+    const resolved = requested
+        .map((entry) => (typeof entry === 'string'
+            ? BALANCE_POLICIES.find((policy) => policy.id === entry)
+            : entry))
+        .filter((policy) => policy && Number.isFinite(Number(policy.tolerance)));
+    return resolved.length > 0 ? resolved : BALANCE_POLICIES;
+}
+
+/** Membership identity, independent of which route got which label. */
+const membershipSignature = (members) => members
+    .map((list) => list.join(','))
+    .sort()
+    .join('|');
+
+/**
  * Partition a territory into exactly K route memberships.
  *
  * @param {Array} doors every home in the source route
@@ -532,62 +601,154 @@ export async function partitionRouteTerritories(doors, routeCount, options = {})
     const neighbours = buildNeighbours(atoms.length, cost);
 
     const doorCount = atoms.reduce((sum, atom) => sum + atom.doorCount, 0);
-    const target = doorCount / routeCount;
-    const tolerance = Number.isFinite(Number(options.balanceTolerance))
-        ? Math.max(0, Number(options.balanceTolerance))
-        : DEFAULT_BALANCE_TOLERANCE;
     const largestAtom = atoms.reduce((max, atom) => Math.max(max, atom.doorCount), 0);
-    const capacity = Math.max(largestAtom, Math.ceil(target * (1 + tolerance)));
-    const minLoad = Math.max(1, Math.floor(target * (1 - tolerance)));
+    const policies = resolveRequestedPolicies(options);
+    const legacyOrder = Array.isArray(options.legacySweepOrder) && options.legacySweepOrder.length === doors.length
+        ? options.legacySweepOrder
+        : null;
 
     const attempted = [];
-    for (const strategy of candidateStrategies(atoms, cost)) {
-        const seeds = selectSeeds(atoms, cost, routeCount, strategy.firstSeed);
-        if (seeds.length !== routeCount) {
-            attempted.push({ id: strategy.id, ok: false, code: 'SEEDING_INCOMPLETE' });
-            continue;
+    const bySignature = new Map();
+
+    /** Build one candidate, price it, and score it against its balance contract. */
+    const runCandidate = (id, bounds, produce) => {
+        const produced = produce();
+        if (!produced.ok) {
+            attempted.push({ id, policy_id: bounds.policy_id, ok: false, code: produced.code });
+            return;
         }
-        const grown = growRegions(atoms, cost, seeds, { capacity, loadPenalty: strategy.loadPenalty });
-        if (!grown.ok) {
-            attempted.push({ id: strategy.id, ok: false, code: grown.code });
-            continue;
+        const members = produced.members;
+        if (members.length !== routeCount || members.some((list) => list.length === 0)) {
+            attempted.push({ id, policy_id: bounds.policy_id, ok: false, code: 'PARTITION_LOST_A_ROUTE' });
+            return;
         }
-        const refined = refineBoundaries(atoms, rows, neighbours, grown, { capacity, minLoad });
-        if (refined.members.length !== routeCount || refined.members.some((list) => list.length === 0)) {
-            attempted.push({ id: strategy.id, ok: false, code: 'PARTITION_LOST_A_ROUTE' });
-            continue;
-        }
+        const signature = membershipSignature(members);
+        const homesPerRoute = members.map((list) => list.reduce((sum, index) => sum + atoms[index].doorCount, 0));
         attempted.push({
-            id: strategy.id,
+            id,
+            policy_id: bounds.policy_id,
             ok: true,
-            members: refined.members,
-            surrogate_road_miles: Math.round(refined.surrogateMiles * 1000) / 1000,
-            growth_capacity_relaxations: grown.relaxations,
-            refinement: refined.stats
+            members,
+            signature,
+            duplicate_of: bySignature.get(signature) || null,
+            surrogate_road_miles: Math.round(
+                members.reduce((sum, list) => sum + surrogateMiles(list, rows), 0) * 1000
+            ) / 1000,
+            homes_per_route: homesPerRoute,
+            balance: evaluateBalance(homesPerRoute, bounds),
+            bounds,
+            growth_bound_relaxations: produced.relaxations ?? null,
+            refinement: produced.refinement || null
         });
+        if (!bySignature.has(signature)) bySignature.set(signature, id);
+    };
+
+    /** Every seed strategy crossed with every balance policy, plus the old sweep. */
+    const runPortfolio = (strategies) => {
+        policies.forEach((policy) => {
+            const bounds = resolveBalanceBounds(doorCount, routeCount, policy, { largestAtomHomes: largestAtom });
+            if (!bounds.feasible) {
+                attempted.push({ id: `policy_${bounds.policy_id}`, policy_id: bounds.policy_id, ok: false, code: 'BALANCE_BOUNDS_INFEASIBLE' });
+                return;
+            }
+            // An atom holding more homes than the band allows cannot be divided,
+            // so capacity has to admit it. That is reported as its own condition
+            // rather than folded into the balance numbers.
+            const capacity = Math.max(largestAtom, bounds.max_homes_allowed);
+            const minLoad = bounds.min_homes_allowed;
+
+            strategies.forEach((strategy) => runCandidate(`${strategy.id}@${bounds.policy_id}`, bounds, () => {
+                const seeds = selectSeeds(atoms, cost, routeCount, strategy.firstSeed);
+                if (seeds.length !== routeCount) return { ok: false, code: 'SEEDING_INCOMPLETE' };
+                const grown = growRegions(atoms, cost, seeds, { capacity, minLoad, loadPenalty: strategy.loadPenalty });
+                if (!grown.ok) return { ok: false, code: grown.code };
+                const refined = refineBoundaries(atoms, rows, neighbours, grown, { capacity, minLoad });
+                return { ok: true, members: refined.members, relaxations: grown.relaxations, refinement: refined.stats };
+            }));
+
+            // The old sweep-slice split as one more competitor, so the system can
+            // never knowingly ship a higher-mileage split than the old model.
+            if (legacyOrder) {
+                runCandidate(`legacy_sweep@${bounds.policy_id}`, bounds, () => {
+                    const legacy = buildLegacySweepMembership(atoms, legacyOrder, routeCount, bounds);
+                    return legacy.ok ? { ok: true, members: legacy.members, relaxations: 0 } : legacy;
+                });
+            }
+        });
+    };
+
+    runPortfolio(candidateStrategies(atoms, cost));
+    // Extra anchors ONLY when the portfolio is measured to have collapsed into
+    // too few distinct memberships — not whenever more candidates might be nice.
+    const viableBefore = attempted.filter((candidate) => candidate.ok).length;
+    let extraSeedsGenerated = false;
+    if (bySignature.size < Math.min(4, viableBefore)) {
+        extraSeedsGenerated = true;
+        runPortfolio(candidateStrategies(atoms, cost, { includeExtraSeeds: true }).slice(4));
     }
 
-    const viable = attempted.filter((candidate) => candidate.ok)
+    const okCandidates = attempted.filter((candidate) => candidate.ok);
+    const diversity = {
+        candidate_count: attempted.length,
+        viable_candidate_count: okCandidates.length,
+        distinct_partition_count: bySignature.size,
+        duplicate_candidates: okCandidates.filter((candidate) => candidate.duplicate_of).length,
+        extra_seeds_generated: extraSeedsGenerated,
+        balance_policies_tried: policies.map((policy) => policy.id),
+        legacy_sweep_candidate_included: Boolean(legacyOrder)
+    };
+    const summarize = (candidate) => ({
+        id: candidate.id,
+        policy_id: candidate.policy_id,
+        ok: candidate.ok,
+        code: candidate.code || null,
+        surrogate_road_miles: candidate.surrogate_road_miles ?? null,
+        homes_per_route: candidate.homes_per_route ?? null,
+        balance: candidate.balance ?? null,
+        duplicate_of: candidate.duplicate_of ?? null
+    });
+
+    // VALIDITY FIRST. A lower-mileage but invalidly imbalanced candidate must
+    // never beat a balanced one, so invalid candidates are removed before mileage
+    // is even consulted. Shipping an invalid split requires the caller to enter
+    // relaxation mode explicitly, and the report says so.
+    const balanceValid = okCandidates.filter((candidate) => candidate.balance.balance_valid);
+    const relaxationMode = balanceValid.length === 0;
+    if (relaxationMode && options.allowBalanceRelaxation !== true) {
+        return {
+            ok: false,
+            code: 'NO_BALANCE_VALID_PARTITION',
+            diversity,
+            candidates: attempted.map(summarize)
+        };
+    }
+
+    const seenSignatures = new Set();
+    const pool = (relaxationMode ? okCandidates : balanceValid)
         .sort((first, second) => first.surrogate_road_miles - second.surrogate_road_miles
-            || compareKeys(first.id, second.id));
-    if (viable.length === 0) {
-        return { ok: false, code: 'NO_VIABLE_PARTITION', candidates: attempted };
+            || compareKeys(first.id, second.id))
+        .filter((candidate) => {
+            if (seenSignatures.has(candidate.signature)) return false; // same membership, already paid for
+            seenSignatures.add(candidate.signature);
+            return true;
+        });
+    if (pool.length === 0) {
+        return { ok: false, code: 'NO_VIABLE_PARTITION', diversity, candidates: attempted.map(summarize) };
     }
 
     // Only the strongest surrogate finalists are paid for in frozen-solver runs
     // and real measurements; the winner among them is chosen on measured miles.
     const verifyCount = Math.max(1, Math.min(
         Number.isFinite(Number(options.verifyCandidates)) ? Number(options.verifyCandidates) : 2,
-        viable.length
+        pool.length
     ));
     let winner = null;
     const candidateReport = [];
-    for (const candidate of viable.slice(0, verifyCount)) {
+    for (const candidate of pool.slice(0, verifyCount)) {
         const verified = await verifyCandidate(candidate.members, atoms, options);
         candidateReport.push({
-            id: candidate.id,
-            surrogate_road_miles: candidate.surrogate_road_miles,
-            growth_capacity_relaxations: candidate.growth_capacity_relaxations,
+            ...summarize(candidate),
+            growth_bound_relaxations: candidate.growth_bound_relaxations,
             refinement: candidate.refinement,
             verified: verified.ok,
             verification_code: verified.ok ? null : verified.code,
@@ -597,19 +758,24 @@ export async function partitionRouteTerritories(doors, routeCount, options = {})
         });
         if (!verified.ok) continue;
         if (!winner || verified.combinedVerifiedRoadMiles < winner.combinedVerifiedRoadMiles - 1e-9) {
-            winner = { ...verified, id: candidate.id, surrogate: candidate.surrogate_road_miles };
+            winner = { ...verified, id: candidate.id, candidate };
         }
     }
-    viable.slice(verifyCount).forEach((candidate) => candidateReport.push({
-        id: candidate.id,
-        surrogate_road_miles: candidate.surrogate_road_miles,
+    pool.slice(verifyCount).forEach((candidate) => candidateReport.push({
+        ...summarize(candidate),
         verified: false,
         verification_code: 'NOT_SELECTED_FOR_VERIFICATION',
         combined_verified_road_miles: null
     }));
+    attempted.filter((candidate) => !candidate.ok).forEach((candidate) => candidateReport.push({
+        ...summarize(candidate),
+        verified: false,
+        verification_code: candidate.code,
+        combined_verified_road_miles: null
+    }));
 
     if (!winner) {
-        return { ok: false, code: 'NO_VERIFIED_PARTITION', candidates: candidateReport };
+        return { ok: false, code: 'NO_VERIFIED_PARTITION', diversity, candidates: candidateReport };
     }
 
     const report = computeSplitQualityMetrics({
@@ -621,11 +787,17 @@ export async function partitionRouteTerritories(doors, routeCount, options = {})
         runtimeMs: Date.now() - startedAt,
         roadRequestCount: table.requestCount,
         cacheStats: typeof options.cacheStats === 'function' ? options.cacheStats() : null,
-        candidates: candidateReport
+        candidates: candidateReport,
+        balance: winner.candidate.balance,
+        balanceBounds: winner.candidate.bounds,
+        diversity
     });
     // Contract, re-checked on the way out rather than assumed from the algorithm.
     if (!report.exact_once || !report.route_count_exact || report.door_count_out !== doorCount) {
         return { ok: false, code: 'SPLIT_INVARIANT_VIOLATED', report };
+    }
+    if (!report.balance_valid && !relaxationMode) {
+        return { ok: false, code: 'BALANCE_CONTRACT_VIOLATED', report };
     }
 
     return {
@@ -638,9 +810,10 @@ export async function partitionRouteTerritories(doors, routeCount, options = {})
             ...report,
             partitioner_version: SPLIT_PARTITIONER_VERSION,
             selected_candidate: winner.id,
-            balance_tolerance: tolerance,
-            capacity_per_route: capacity,
-            min_homes_allowed: minLoad,
+            selected_balance_policy: winner.candidate.policy_id,
+            balance_relaxation_mode: relaxationMode,
+            capacity_per_route: Math.max(largestAtom, winner.candidate.bounds.max_homes_allowed),
+            atom_forced_capacity: largestAtom > winner.candidate.bounds.max_homes_allowed,
             ...built.telemetry
         }
     };
