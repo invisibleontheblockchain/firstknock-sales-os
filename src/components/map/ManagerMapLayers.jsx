@@ -208,8 +208,12 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, pinSize, lineDashAr
             && Number(p.lng) >= viewBox.west && Number(p.lng) <= viewBox.east
         );
         // Number labels are DOM markers, far heavier than canvas dots, so they
-        // get their own budget on top of the zoom gate.
-        const MAX_NUMBER_LABELS = 150;
+        // get their own budget on top of the zoom gate. A full Precision route is
+        // 1,000 doors and every stop number has to be there — a 150 label budget
+        // silently numbered only part of the route, which read as "half the
+        // numbers are missing". Viewport culling above keeps the drawn count to
+        // what is actually on screen.
+        const MAX_NUMBER_LABELS = 1000;
         let labelsDrawn = 0;
 
         props.forEach((p, idx) => {
