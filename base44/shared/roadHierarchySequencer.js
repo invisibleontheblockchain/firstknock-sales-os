@@ -64,6 +64,10 @@ export const HIERARCHY_REFINEMENT_STEP_BUDGET = 2_000_000;
 export const DEFAULT_WINDOW_DOORS = 92;
 const CLUSTER_ORDER_REFINEMENT_PASSES = 5;
 
+// Independent starting solutions tried at level 1 before a unit order is accepted.
+// Reads an already-fetched matrix, so the only cost is CPU inside a fixed budget.
+export const DEFAULT_ORDER_SEEDS = 8;
+
 const coordinateKey = (point) => `${Number(point?.lat).toFixed(6)},${Number(point?.lng).toFixed(6)}`;
 const compareKeys = (first, second) => (first < second ? -1 : first > second ? 1 : 0);
 
@@ -162,7 +166,13 @@ export function partitionBlocksByDoorBudget(entries, { maxDoors = MAX_CLUSTER_DO
  * where a "unit" is a neighbourhood instead of a street. Every comparison it
  * makes goes through `cost`, which is a real road matrix lookup.
  */
-export function orderUnitsByRoadCost(units, { cost, startLocation = null, endLocation = null, stepBudget = 200_000 } = {}) {
+export function orderUnitsByRoadCost(units, {
+    cost,
+    startLocation = null,
+    endLocation = null,
+    stepBudget = 200_000,
+    seedCount = DEFAULT_ORDER_SEEDS
+} = {}) {
     if (units.length <= 2) return [...units];
 
     const pathCost = (order) => {
@@ -174,37 +184,87 @@ export function orderUnitsByRoadCost(units, { cost, startLocation = null, endLoc
         return total;
     };
 
-    const remaining = [...units].sort((first, second) => (
+    // Canonical order, so seed selection and every tie-break below are independent
+    // of the caller's array order: the same territory always yields the same route.
+    const canonical = [...units].sort((first, second) => (
         compareKeys(coordinateKey(first.representative), coordinateKey(second.representative))
     ));
-    const ordered = [];
-    let seedIndex = 0;
+
+    /** Greedy nearest-neighbour chain from one starting unit, priced on roads. */
+    const nearestNeighbourFrom = (seedIndex) => {
+        const remaining = [...canonical];
+        const ordered = [remaining.splice(seedIndex, 1)[0]];
+        while (remaining.length > 0) {
+            const current = ordered[ordered.length - 1];
+            let bestIndex = 0;
+            let bestCost = Infinity;
+            remaining.forEach((candidate, index) => {
+                const value = cost(current.representative, candidate.representative);
+                if (value + 1e-9 < bestCost) {
+                    bestCost = value;
+                    bestIndex = index;
+                }
+            });
+            ordered.push(remaining.splice(bestIndex, 1)[0]);
+        }
+        return ordered;
+    };
+
+    // WHICH unit the route starts from is not a local decision — it changes the
+    // whole chain that follows, and a single seed traps the search in whatever
+    // local minimum that one chain sits in. So several widely separated starts are
+    // tried and the finalists compared on real road cost for the COMPLETE path.
+    //
+    // This is free in OSRM terms: the matrix these lookups read is already fetched,
+    // so extra seeds spend CPU only. When the manager has set a start anchor there
+    // is nothing to search — the route must begin nearest that anchor, and honouring
+    // it outranks any mileage the search could find by ignoring it.
+    let seedIndices;
     if (isValidPoint(startLocation)) {
-        let seedCost = Infinity;
-        remaining.forEach((unit, index) => {
+        let anchorSeed = 0;
+        let anchorCost = Infinity;
+        canonical.forEach((unit, index) => {
             const candidate = cost(startLocation, unit.representative);
-            if (candidate + 1e-9 < seedCost) {
-                seedCost = candidate;
-                seedIndex = index;
+            if (candidate + 1e-9 < anchorCost) {
+                anchorCost = candidate;
+                anchorSeed = index;
             }
         });
-    }
-    ordered.push(remaining.splice(seedIndex, 1)[0]);
-    while (remaining.length > 0) {
-        const current = ordered[ordered.length - 1];
-        let bestIndex = 0;
-        let bestCost = Infinity;
-        remaining.forEach((candidate, index) => {
-            const value = cost(current.representative, candidate.representative);
-            if (value + 1e-9 < bestCost) {
-                bestCost = value;
-                bestIndex = index;
-            }
-        });
-        ordered.push(remaining.splice(bestIndex, 1)[0]);
+        seedIndices = [anchorSeed];
+    } else {
+        // Evenly spaced over the canonical order, which is sorted by latitude then
+        // longitude: the extremes are territory-boundary units and the interior
+        // samples are spread across it. No geography is special-cased.
+        const seeds = Math.max(1, Math.min(Number(seedCount) || 1, canonical.length));
+        seedIndices = [...new Set(
+            Array.from({ length: seeds }, (_, slot) => Math.min(
+                canonical.length - 1,
+                Math.round((slot * (canonical.length - 1)) / Math.max(1, seeds - 1))
+            ))
+        )];
     }
 
-    let best = ordered;
+    // The refinement pool is divided across seeds, so trying more starts costs the
+    // same total deterministic work rather than multiplying solver time.
+    const perSeedBudget = Math.max(20_000, Math.floor(stepBudget / seedIndices.length));
+    let best = null;
+    let bestCost = Infinity;
+    seedIndices.forEach((seedIndex) => {
+        const refined = refineUnitOrder(nearestNeighbourFrom(seedIndex), pathCost, perSeedBudget);
+        if (refined.cost + 1e-9 < bestCost) {
+            bestCost = refined.cost;
+            best = refined.order;
+        }
+    });
+    return best;
+}
+
+/**
+ * Reversal + relocation refinement of a unit order under a deterministic step
+ * budget. Every acceptance is decided by `pathCost`, which is road-priced.
+ */
+function refineUnitOrder(seedOrder, pathCost, stepBudget) {
+    let best = seedOrder;
     let bestCost = pathCost(best);
     let steps = stepBudget;
     for (let pass = 0; pass < CLUSTER_ORDER_REFINEMENT_PASSES; pass += 1) {
@@ -241,7 +301,7 @@ export function orderUnitsByRoadCost(units, { cost, startLocation = null, endLoc
         if (!improvedOrder) break;
         best = improvedOrder;
     }
-    return best;
+    return { order: best, cost: bestCost };
 }
 
 /**
