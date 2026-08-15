@@ -88,6 +88,22 @@ export function resolveBalanceBounds(doorCount, routeCount, policy = {}, context
         feasibilityWidened = true;
     }
 
+    // ELIGIBILITY BAND — the second, wider band, and why it exists.
+    //
+    // Route sizes can only change in atom-sized steps, so when atoms are coarse
+    // relative to the target there may be NO partition inside the declared band:
+    // 64 homes into 3 routes with 8-home blocks can only produce multiples of 8,
+    // and 21.3 is not one of them. Refusing every candidate there would just mean
+    // "no split", so a candidate that misses the declared band by less than one
+    // atom is still eligible to compete — and is reported as missing the band.
+    //
+    // The slack can never halve a rep's day: the eligibility floor never drops
+    // below half the declared minimum. That is the hard guarantee that makes a
+    // 1-home route at K=100 impossible rather than merely unlikely.
+    const slack = Math.max(0, largestAtomHomes - 1);
+    const eligibleMin = Math.max(1, Math.ceil(minAllowed / 2), minAllowed - slack);
+    const eligibleMax = maxAllowed + slack;
+
     return {
         contract_version: BALANCE_CONTRACT_VERSION,
         policy_id: policy.id || 'custom',
@@ -99,6 +115,9 @@ export function resolveBalanceBounds(doorCount, routeCount, policy = {}, context
         band_widened_for_feasibility: feasibilityWidened,
         band_widened_for_atom_indivisibility: atomWidened,
         largest_atom_homes: largestAtomHomes,
+        eligible_min_homes: eligibleMin,
+        eligible_max_homes: eligibleMax,
+        atom_granularity_slack_homes: slack,
         feasible: minAllowed >= 1 && minAllowed <= maxAllowed && maxAllowed * routeCount >= doorCount
     };
 }
@@ -137,6 +156,15 @@ export function evaluateBalance(homesPerRoute = [], bounds = {}) {
         worst_over_fill_homes: above.length ? Math.max(...above) - maxAllowed : 0,
         max_deviation_homes: Math.round(maxDeviation * 100) / 100,
         max_deviation_pct: target > 0 ? Math.round((maxDeviation / target) * 1000) / 10 : 0,
-        balance_valid: below.length === 0 && above.length === 0
+        // Inside the declared band: the split is balanced, full stop.
+        balance_valid: below.length === 0 && above.length === 0,
+        // Inside the atom-granularity band: allowed to compete, reported as
+        // missing the declared band. Outside it: never a finalist.
+        balance_eligible: counts.length > 0 && counts.every((count) => (
+            count >= (Number(bounds.eligible_min_homes) || minAllowed)
+            && count <= (Number(bounds.eligible_max_homes) || maxAllowed)
+        )),
+        eligible_min_homes: Number(bounds.eligible_min_homes) || minAllowed,
+        eligible_max_homes: Number(bounds.eligible_max_homes) || maxAllowed
     };
 }

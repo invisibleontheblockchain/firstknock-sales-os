@@ -177,17 +177,50 @@ test('SPLIT-03 sweep-slicing fragments streets; the partitioner does not, at equ
     assert.ok(countSharedStreets(sliced.routes) > 0, 'expected sweep-slicing to fragment streets');
 });
 
-test('SPLIT-04 balance stays inside tolerance without being forced to exact equality', async () => {
+test('SPLIT-04 the balance contract is enforced on both sides and reported in full', async () => {
     const doors = makeTerritory({ streetsPerBank: 10, doorsPerStreet: 10 }); // 200 homes
     const result = await partitionRouteTerritories(doors, 5, baseOptions);
     assert.equal(result.ok, true);
     assert.equal(result.report.homes_per_route.reduce((sum, count) => sum + count, 0), doors.length);
-    assert.ok(result.report.max_homes <= result.report.capacity_per_route);
-    assert.ok(result.report.min_homes > 0);
-    // Tolerance is a band, not equality: the report must publish the deviation
-    // actually achieved so a tolerance change is benchmarkable.
-    assert.equal(result.report.balance_tolerance, 0.06);
-    assert.ok(Number.isFinite(result.report.max_deviation_pct));
+
+    // Balance policy is chosen by competition, so the report must name the policy
+    // that won rather than a hard-coded tolerance.
+    assert.ok(['tight', 'moderate', 'loose'].includes(result.report.selected_balance_policy));
+    assert.deepEqual(result.report.balance_policies_tried, ['tight', 'moderate', 'loose']);
+
+    // Both bounds, both actuals, and both kinds of violation are published, and
+    // "relaxations" counts under-fill as well as over-fill.
+    ['min_homes_allowed', 'max_homes_allowed', 'routes_below_min', 'routes_above_max', 'balance_relaxations']
+        .forEach((field) => assert.equal(typeof result.report[field], 'number', `${field} missing`));
+    assert.equal(
+        result.report.balance_relaxations,
+        result.report.routes_below_min + result.report.routes_above_max
+    );
+    assert.equal(result.report.balance_valid, result.report.balance_relaxations === 0);
+
+    // A finalist is never outside the eligibility band, whichever tier it came from.
+    assert.ok(['in_declared_band', 'within_atom_granularity_slack'].includes(result.report.balance_selection_tier));
+    assert.ok(result.report.min_homes >= result.report.eligible_min_homes);
+    assert.ok(result.report.max_homes <= result.report.eligible_max_homes);
+    // The hard guarantee: no rep ever gets less than half the declared minimum.
+    assert.ok(result.report.min_homes >= Math.ceil(result.report.min_homes_allowed / 2));
+});
+
+test('SPLIT-09 severe under-fill is refused, not reported as balanced', async () => {
+    const doors = makeTerritory({ streetsPerBank: 10, doorsPerStreet: 10 }); // 200 homes
+    for (const routeCount of [10, 20, 40]) {
+        const result = await partitionRouteTerritories(doors, routeCount, baseOptions);
+        assert.equal(result.ok, true, `K=${routeCount} failed: ${result.code}`);
+        const target = doors.length / routeCount;
+        // The pre-fix failure mode: a 1–2 home route while the report claimed
+        // zero relaxations. Half the target is the floor no split may cross.
+        assert.ok(
+            result.report.min_homes >= Math.ceil(result.report.min_homes_allowed / 2),
+            `K=${routeCount} produced a ${result.report.min_homes}-home route against target ${target}`
+        );
+        assert.ok(result.report.min_homes >= result.report.eligible_min_homes);
+        if (result.report.balance_relaxations > 0) assert.equal(result.report.balance_valid, false);
+    }
 });
 
 test('SPLIT-05 granularity follows K: natural units at low K, blocks and doors at high K', async () => {

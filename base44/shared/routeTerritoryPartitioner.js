@@ -188,16 +188,31 @@ function growRegions(atoms, cost, seeds, options) {
     let unassigned = atoms.length - routeCount;
     let relaxations = 0;
     while (unassigned > 0) {
-        // The lower bound is enforced HERE, not only in refinement. While any
-        // region sits under its minimum, only under-filled regions may take the
-        // next atom. Without this, growth could abandon a seed region at one or
-        // two homes, refinement had no reason to fill it (a 1-home route is a
-        // very short tour, which the surrogate likes), and the report still
-        // called the split balanced.
+        // The lower bound is enforced HERE, not only in refinement. Without it
+        // growth could abandon a seed region at one or two homes, refinement had
+        // no reason to fill it (a 1-home route is a very short tour, which the
+        // surrogate likes), and the report still called the split balanced.
+        //
+        // It is enforced as a RESERVE, not as a fill-everyone-first phase. Homes
+        // are handed out on road proximity as before, and under-filled regions get
+        // exclusive claim only once the homes still unassigned are no more than
+        // what those regions need to reach their floor. Restricting earlier than
+        // that measurably distorts the split — an unconditional needy-first phase
+        // grows one blob to its floor before any other region starts, and cost
+        // Route 1I 19.5 miles at K=2.
         const needy = new Set();
+        let totalDeficit = 0;
+        let doorsUnassigned = 0;
         for (let region = 0; region < routeCount; region += 1) {
-            if (load[region] < minLoad) needy.add(region);
+            if (load[region] < minLoad) {
+                needy.add(region);
+                totalDeficit += minLoad - load[region];
+            }
         }
+        for (let atom = 0; atom < atoms.length; atom += 1) {
+            if (regionOf[atom] < 0) doorsUnassigned += atoms[atom].doorCount;
+        }
+        const reserveForNeedy = needy.size > 0 && doorsUnassigned <= totalDeficit;
 
         let chosenAtom = -1;
         let chosenRegion = -1;
@@ -214,7 +229,7 @@ function growRegions(atoms, cost, seeds, options) {
                 if (!Number.isFinite(miles)) continue;
                 const score = miles * (1 + loadPenalty * (load[region] / capacity));
                 const fits = load[region] + doors <= capacity
-                    && (needy.size === 0 || needy.has(region));
+                    && (!reserveForNeedy || needy.has(region));
                 if (fits && score < chosenScore - 1e-12) {
                     chosenScore = score;
                     chosenAtom = atom;
@@ -712,19 +727,30 @@ export async function partitionRouteTerritories(doors, routeCount, options = {})
     // never beat a balanced one, so invalid candidates are removed before mileage
     // is even consulted. Shipping an invalid split requires the caller to enter
     // relaxation mode explicitly, and the report says so.
+    // Two tiers, tried in order. Candidates inside the declared band always win
+    // outright; only if none exists do candidates that miss the band by less than
+    // one indivisible atom compete, and that is recorded as the selection tier.
+    // Anything outside even that band is never a finalist.
     const balanceValid = okCandidates.filter((candidate) => candidate.balance.balance_valid);
-    const relaxationMode = balanceValid.length === 0;
-    if (relaxationMode && options.allowBalanceRelaxation !== true) {
+    const balanceEligible = okCandidates.filter((candidate) => candidate.balance.balance_eligible);
+    const selectionTier = balanceValid.length > 0
+        ? 'in_declared_band'
+        : (balanceEligible.length > 0 ? 'within_atom_granularity_slack' : 'none');
+    const relaxationMode = selectionTier !== 'in_declared_band';
+    if (selectionTier === 'none' && options.allowBalanceRelaxation !== true) {
         return {
             ok: false,
             code: 'NO_BALANCE_VALID_PARTITION',
             diversity,
+            balance_selection_tier: selectionTier,
             candidates: attempted.map(summarize)
         };
     }
 
     const seenSignatures = new Set();
-    const pool = (relaxationMode ? okCandidates : balanceValid)
+    const pool = (selectionTier === 'in_declared_band'
+        ? balanceValid
+        : (selectionTier === 'within_atom_granularity_slack' ? balanceEligible : okCandidates))
         .sort((first, second) => first.surrogate_road_miles - second.surrogate_road_miles
             || compareKeys(first.id, second.id))
         .filter((candidate) => {
@@ -811,7 +837,10 @@ export async function partitionRouteTerritories(doors, routeCount, options = {})
             partitioner_version: SPLIT_PARTITIONER_VERSION,
             selected_candidate: winner.id,
             selected_balance_policy: winner.candidate.policy_id,
+            balance_selection_tier: selectionTier,
             balance_relaxation_mode: relaxationMode,
+            eligible_min_homes: winner.candidate.bounds.eligible_min_homes,
+            eligible_max_homes: winner.candidate.bounds.eligible_max_homes,
             capacity_per_route: Math.max(largestAtom, winner.candidate.bounds.max_homes_allowed),
             atom_forced_capacity: largestAtom > winner.candidate.bounds.max_homes_allowed,
             ...built.telemetry

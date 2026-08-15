@@ -64,7 +64,15 @@ export function buildLegacySweepMembership(atoms, sequencedDoors, routeCount, bo
         suffixDoors[index] = suffixDoors[index + 1] + doorsOf(order[index]);
     }
 
-    const { min_homes_allowed: minAllowed, max_homes_allowed: maxAllowed } = bounds;
+    // Cutting is guarded by the ELIGIBILITY band, not the declared band. A sweep
+    // order is fixed, so the only sizes available are sums of consecutive atoms:
+    // 40 homes into 3 routes of 4-home atoms can only be 12/12/16, which no
+    // declared band around 13.3 contains. Guarding on the declared band would
+    // simply delete the old model from the portfolio for arithmetic reasons. The
+    // cut is still scored against the declared band afterwards, like every other
+    // candidate, so it earns no leniency at selection time.
+    const minAllowed = Number(bounds.eligible_min_homes) || bounds.min_homes_allowed;
+    const maxAllowed = Number(bounds.eligible_max_homes) || bounds.max_homes_allowed;
     const members = [];
     let cursor = 0;
     for (let route = 0; route < routeCount; route += 1) {
@@ -74,22 +82,22 @@ export function buildLegacySweepMembership(atoms, sequencedDoors, routeCount, bo
         while (cursor < order.length) {
             const remainingAfterTaking = suffixDoors[cursor + 1];
             const nextDoors = doors + doorsOf(order[cursor]);
-            const canStop = run.length > 0
-                && doors >= minAllowed
-                && remainingAfterTaking + doorsOf(order[cursor]) >= routesLeftAfter * minAllowed;
             // Taking this atom must not overflow us, and must leave the routes
-            // after us enough homes to reach their own minimum.
-            const canTake = nextDoors <= maxAllowed
-                && remainingAfterTaking >= routesLeftAfter * minAllowed
-                && (routesLeftAfter === 0 || remainingAfterTaking <= routesLeftAfter * maxAllowed);
+            // after us enough homes to reach their own minimum. The last route
+            // takes whatever is left — it has nobody to hand homes to.
+            const canTake = routesLeftAfter === 0
+                || (nextDoors <= maxAllowed && remainingAfterTaking >= routesLeftAfter * minAllowed);
             if (!canTake) {
-                if (canStop || run.length > 0) break;
+                if (run.length > 0) break;
                 return { ok: false, code: 'LEGACY_SWEEP_CANNOT_SATISFY_BALANCE' };
             }
             run.push(order[cursor]);
             doors = nextDoors;
             cursor += 1;
-            if (routesLeftAfter > 0 && doors >= bounds.target_homes_per_route) break;
+            // Close the run at the target, unless the routes after us could not
+            // hold everything that would be left — then keep taking.
+            const wouldOverwhelmTheRest = suffixDoors[cursor] > routesLeftAfter * maxAllowed;
+            if (routesLeftAfter > 0 && doors >= bounds.target_homes_per_route && !wouldOverwhelmTheRest) break;
         }
         if (run.length === 0) return { ok: false, code: 'LEGACY_SWEEP_PRODUCED_EMPTY_ROUTE' };
         members.push(run.sort((first, second) => first - second));
