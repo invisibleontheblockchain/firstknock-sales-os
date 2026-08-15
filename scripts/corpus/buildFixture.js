@@ -26,6 +26,16 @@ import { describeDoorGeography, haversineMiles, territoryBounds } from './territ
 export const FIXTURE_SCHEMA_VERSION = 'corpus_fixture_v1';
 
 /**
+ * Version of the door-selection rule (`selectTerritoryDoors`): deterministic
+ * nearest-to-centre, address-hash tiebreak, never padded outward.
+ *
+ * Recorded next to both checksums so that a benchmark which moves months from now can
+ * be attributed to a specific layer — cleaner, eligible pool, selection rule, road
+ * network, or solver — instead of being argued about.
+ */
+export const SELECTION_RULE_VERSION = 'nearest_to_centre_v1';
+
+/**
  * Fields a fixture door keeps. Everything else in the source row is discarded:
  * `key` is a stable pseudonym, not the production hash, so the fixture cannot be
  * joined back to a customer record.
@@ -55,6 +65,22 @@ export function fixtureChecksum(doors) {
         .sort()
         .join('\n');
     return `sha256:${createHash('sha256').update(canonical).digest('hex')}`;
+}
+
+/**
+ * Checksum over the ELIGIBLE population: every clean door in the extraction box,
+ * before selection. Pairs with the fixture checksum to separate two different causes
+ * of a moved benchmark — a changed door pool (cleaner or upstream data) versus a
+ * changed choice of doors from an unchanged pool (selection rule).
+ */
+export function eligiblePopulationChecksum(cleanRows) {
+    return fixtureChecksum(cleanRows.map((row) => ({
+        street_name: row.street_name,
+        house_number: row.house_number,
+        zip_code: row.zip_code ?? null,
+        lat: round6(row.lat),
+        lng: round6(row.lng)
+    })));
 }
 
 /**
@@ -117,6 +143,13 @@ export function buildFixture(spec, rawRows, measurements, engine) {
             cleaning: {
                 rule_version: CLEANING_RULE_VERSION,
                 removed: cleaned.removed
+            },
+            selection: {
+                rule_version: SELECTION_RULE_VERSION,
+                eligible_population_checksum: eligiblePopulationChecksum(cleaned.doors),
+                eligible_door_count: cleaned.doors.length,
+                selected_door_count: doors.length,
+                used_entire_eligible_population: doors.length === cleaned.doors.length
             },
             geometry: {
                 bbox: {
