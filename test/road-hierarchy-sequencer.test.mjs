@@ -142,7 +142,13 @@ test('no order-affecting decision is priced aerially, and barrier crossings coll
     );
 });
 
-test('a cluster whose matrix fails is reported as degraded, never as optimized', async () => {
+// The three tests below pin the policy that replaced "degrade and label it":
+// an ordering decision is either priced on the road network or it is not made at
+// all. Substituting straight-line distance is what let the old optimizer report a
+// route as road-optimized while parts of its order had never seen a road, so each
+// unavailable-road-cost path must FAIL and leave the caller's existing route alone.
+
+test('a cluster whose matrix fails refuses to sequence rather than guessing', async () => {
     const doors = buildRiverTerritory();
     let matrixCalls = 0;
     const result = await sequenceRoadHierarchy(doors, {
@@ -154,26 +160,38 @@ test('a cluster whose matrix fails is reported as degraded, never as optimized',
         }
     });
 
-    assert.equal(result.ok, true);
-    assert.equal(result.telemetry.degraded, true);
-    assert.equal(result.telemetry.clusters_degraded_to_aerial, 1);
-    assert.ok(result.telemetry.aerial_priced_legs > 0);
-    assert.ok(result.telemetry.road_aware_leg_pct < 100);
-    assert.ok(result.telemetry.degraded_cluster_reasons.some((reason) => reason.includes('osrm 429')));
-    // Still a complete route: degradation is reported, not thrown away.
-    assert.equal(result.order.length, doors.length);
+    assert.equal(result.ok, false, 'doors must not be ordered without road costs');
+    assert.equal(result.code, 'CLUSTER_ROAD_COST_UNAVAILABLE');
+    assert.ok(result.reasons.some((reason) => reason.includes('osrm 429')), 'the real cause must be reported');
+    assert.equal(result.order, undefined, 'no order may be returned from a failed sequencing');
 });
 
-test('a losing cluster order is not hidden when level 1 cannot be priced', async () => {
+test('an unpriceable window order fails instead of falling back to straight lines', async () => {
     const doors = buildRiverTerritory();
     const result = await sequenceRoadHierarchy(doors, {
         fetchMatrix: async (points) => {
-            // Level 1 is the first call; failing it means cluster order was aerial.
+            // Both level-1 strategies (block order, then window order) are refused.
             if (points.length < 60) throw new Error('cluster matrix unavailable');
             return fixtureMatrix(points);
         }
     });
-    assert.equal(result.ok, true);
-    assert.equal(result.telemetry.cluster_order_road_priced, false);
-    assert.equal(result.telemetry.degraded, true);
+    assert.equal(result.ok, false);
+    assert.equal(result.code, 'WINDOW_ORDER_MATRIX_UNAVAILABLE');
+});
+
+test('a single unresolvable road pair fails the whole sequencing', async () => {
+    // The subtlest version of the old lie: the matrix arrives, but one cell has no
+    // road value. Reaching for haversine there is invisible in every count, so the
+    // route would still claim to be road-optimized.
+    const doors = buildRiverTerritory();
+    const result = await sequenceRoadHierarchy(doors, {
+        fetchMatrix: async (points) => {
+            const matrix = fixtureMatrix(points);
+            matrix.distances[0][points.length - 1] = null;
+            return matrix;
+        }
+    });
+    assert.equal(result.ok, false, 'one unresolved pair must not be quietly approximated');
+    assert.equal(result.code, 'UNRESOLVED_ROAD_COST');
+    assert.ok(result.level, 'the level that could not be priced must be named');
 });

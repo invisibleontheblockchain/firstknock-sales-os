@@ -35,9 +35,10 @@
 // Nothing here is tuned to a particular city. The inputs are doors and a road
 // engine; the topology decides the shape.
 
-import { haversineMiles, isValidPoint } from './routeContinuityOptimizer.js';
+import { isValidPoint } from './routeContinuityOptimizer.js';
 import { buildStreetBlocks, roadAwareStreetSweep } from './roadAwareStreetSweep.js';
 import { createMatrixMetricFns, fetchRoadMatrix, MAX_ROUTE_MATRIX_POINTS } from './roadMatrix.js';
+import { osrmCounters, resetOsrmCounters } from './osrmDispatcher.js';
 
 export const HIERARCHY_VERSION = 'road_hierarchy_v1';
 
@@ -243,6 +244,32 @@ export function orderUnitsByRoadCost(units, { cost, startLocation = null, endLoc
     return best;
 }
 
+/**
+ * Raised when a road distance needed to DECIDE order cannot be resolved.
+ *
+ * The previous generation of this optimizer substituted straight-line distance at
+ * exactly this point, which is how a route came to be labelled road-optimized
+ * while parts of its order had never been priced on a road. An unresolvable pair
+ * now fails the sequencing; the caller keeps the existing route rather than
+ * receiving a confident guess.
+ */
+class UnresolvedRoadCostError extends Error {
+    constructor(level) {
+        super(`Road cost unresolved while deciding order at ${level}.`);
+        this.name = 'UnresolvedRoadCostError';
+        this.level = level;
+    }
+}
+
+/** Wrap a matrix lookup so an unresolved pair fails instead of falling back. */
+function strictRoadCost(distanceBetween, level) {
+    return (from, to) => {
+        const value = distanceBetween(from, to);
+        if (!Number.isFinite(value)) throw new UnresolvedRoadCostError(level);
+        return value;
+    };
+}
+
 /** Unique matrix coordinates for one cluster: its doors plus its two ports. */
 function clusterMatrixPoints(doors, entryPort, exitPort) {
     const points = [];
@@ -314,7 +341,21 @@ export async function sequenceRoadHierarchy(properties, options = {}) {
         intra_cluster_road_priced_legs: 0,
         cluster_seam_legs: 0,
         aerial_priced_legs: 0,
-        degraded: false
+        degraded: false,
+        // What the road-awareness cost, so the bill is reported, not guessed at.
+        road_pairs_requested: 0,
+        osrm_requests: 0,
+        osrm_retries: 0,
+        osrm_rate_limited: 0,
+        osrm_peak_concurrency: 0
+    };
+    resetOsrmCounters();
+    const startedAt = Date.now();
+    // Unique road pairs this route asked for, matrix by matrix — the quantity the
+    // hierarchy exists to keep small (a flat 1,000-door matrix would be 1,000,000).
+    const accountMatrix = (pointCount) => {
+        telemetry.matrix_request_count += 1;
+        telemetry.road_pairs_requested += pointCount * pointCount;
     };
 
     // ---- Level 1: the order of STREET BLOCKS, priced on the road network. ----
@@ -342,12 +383,9 @@ export async function sequenceRoadHierarchy(properties, options = {}) {
         // then only straddle a barrier if the road network says crossing is cheap.
         try {
             const blockMatrix = await fetchMatrix(blockPoints, { baseUrl, profile, timeoutMs });
-            telemetry.matrix_request_count += 1;
+            accountMatrix(blockPoints.length);
             const { distanceBetween } = createMatrixMetricFns(blockPoints, blockMatrix);
-            const cost = (from, to) => {
-                const value = distanceBetween(from, to);
-                return Number.isFinite(value) ? value : haversineMiles(from, to);
-            };
+            const cost = strictRoadCost(distanceBetween, 'street_block_order');
             const orderedEntries = orderUnitsByRoadCost(entries, { cost, startLocation, endLocation });
             orderedClusters = [];
             let window = [];
@@ -366,6 +404,9 @@ export async function sequenceRoadHierarchy(properties, options = {}) {
             telemetry.cluster_order_road_priced = true;
             telemetry.window_grouping_road_priced = true;
         } catch (error) {
+            if (error instanceof UnresolvedRoadCostError) {
+                return { ok: false, code: 'UNRESOLVED_ROAD_COST', level: error.level };
+            }
             telemetry.degraded_cluster_reasons.push(`block_order_matrix: ${error.message}`);
         }
     }
@@ -384,20 +425,21 @@ export async function sequenceRoadHierarchy(properties, options = {}) {
         }
         try {
             const windowMatrix = await fetchMatrix(windowPoints, { baseUrl, profile, timeoutMs });
-            telemetry.matrix_request_count += 1;
+            accountMatrix(windowPoints.length);
             const { distanceBetween } = createMatrixMetricFns(windowPoints, windowMatrix);
-            const cost = (from, to) => {
-                const value = distanceBetween(from, to);
-                return Number.isFinite(value) ? value : haversineMiles(from, to);
-            };
+            const cost = strictRoadCost(distanceBetween, 'window_order');
             orderedClusters = orderUnitsByRoadCost(geometric, { cost, startLocation, endLocation });
             telemetry.cluster_order_road_priced = true;
         } catch (error) {
-            // Window order decides whether the rep drives across town and back, so
-            // an unusable matrix here is a real degradation, not a detail.
-            telemetry.degraded = true;
-            telemetry.degraded_cluster_reasons.push(`window_order_aerial: ${error.message}`);
-            orderedClusters = orderUnitsByRoadCost(geometric, { cost: haversineMiles, startLocation, endLocation });
+            // Window order decides whether the rep drives across town and back. With
+            // no usable road matrix there is no honest order to return, so the
+            // sequencing fails and the caller keeps the route it already had.
+            return {
+                ok: false,
+                code: error instanceof UnresolvedRoadCostError ? 'UNRESOLVED_ROAD_COST' : 'WINDOW_ORDER_MATRIX_UNAVAILABLE',
+                level: error.level || 'window_order',
+                reason: error.message
+            };
         }
     }
 
@@ -443,7 +485,7 @@ export async function sequenceRoadHierarchy(properties, options = {}) {
         if (points.length <= MAX_ROUTE_MATRIX_POINTS) {
             try {
                 const matrix = await fetchMatrix(points, { baseUrl, profile, timeoutMs });
-                telemetry.matrix_request_count += 1;
+                accountMatrix(points.length);
                 const { distanceBetween } = createMatrixMetricFns(points, matrix);
                 sequenced = roadAwareStreetSweep(doors, {
                     distanceBetween,
@@ -463,14 +505,16 @@ export async function sequenceRoadHierarchy(properties, options = {}) {
         }
 
         if (!sequenced) {
-            telemetry.clusters_degraded_to_aerial += 1;
-            telemetry.aerial_priced_legs += doors.length - 1;
-            telemetry.degraded = true;
-            sequenced = roadAwareStreetSweep(doors, {
-                startLocation: isValidPoint(entryPort) ? entryPort : null,
-                endLocation: isValidPoint(exitPort) ? exitPort : null,
-                refinementStepBudget: perClusterBudget
-            });
+            // Sequencing these doors without a road matrix would decide their order
+            // on straight-line distance. Fail instead: a route the rep can trust is
+            // worth more than a route delivered on time.
+            return {
+                ok: false,
+                code: 'CLUSTER_ROAD_COST_UNAVAILABLE',
+                clusterIndex: index,
+                doorCount: doors.length,
+                reasons: telemetry.degraded_cluster_reasons
+            };
         }
         order.push(...sequenced);
     }
@@ -485,6 +529,17 @@ export async function sequenceRoadHierarchy(properties, options = {}) {
         ) / 10
         : 0;
     if (!telemetry.cluster_order_road_priced) telemetry.degraded = true;
+
+    const osrm = osrmCounters();
+    telemetry.osrm_requests = osrm.requests;
+    telemetry.osrm_retries = osrm.retries;
+    telemetry.osrm_rate_limited = osrm.rateLimited;
+    telemetry.osrm_peak_concurrency = osrm.peakInFlight;
+    telemetry.osrm_max_concurrency_cap = osrm.maxConcurrent;
+    telemetry.sequencing_ms = Date.now() - startedAt;
+    // By construction there is no aerial path to an ordering decision left: every
+    // exit above this line is a failure, not a substitution.
+    telemetry.order_affecting_aerial_decisions = telemetry.aerial_priced_legs;
 
     return { ok: true, order, telemetry };
 }

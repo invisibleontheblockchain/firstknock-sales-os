@@ -37,12 +37,19 @@ const queue = [];
 let inFlight = 0;
 let lastDispatchAt = 0;
 
+// What the road-awareness actually costs, so an optimization can report its own
+// bill instead of it being guessed at. Counted here because this is the only
+// place OSRM is reached from.
+const counters = { requests: 0, retries: 0, rateLimited: 0, transportFailures: 0, peakInFlight: 0 };
+
 function pump() {
     if (inFlight >= MAX_CONCURRENT_REQUESTS) return;
     const next = queue.shift();
     if (!next) return;
 
     inFlight += 1;
+    counters.requests += 1;
+    if (inFlight > counters.peakInFlight) counters.peakInFlight = inFlight;
     const wait = Math.max(0, lastDispatchAt + MIN_DISPATCH_SPACING_MS - Date.now());
     lastDispatchAt = Date.now() + wait;
     sleep(wait)
@@ -92,6 +99,7 @@ export async function fetchOsrmJson(url, { timeoutMs = 20000 } = {}) {
                     clearTimeout(timer);
                 }
                 if (response.status === 429 || response.status >= 500) {
+                    if (response.status === 429) counters.rateLimited += 1;
                     throw new RetryableOsrmError(`OSRM request failed with status ${response.status}.`);
                 }
                 if (!response.ok) {
@@ -106,6 +114,7 @@ export async function fetchOsrmJson(url, { timeoutMs = 20000 } = {}) {
         } catch (error) {
             lastError = error;
             if (!error?.retryable || attempt === MAX_ATTEMPTS) throw error;
+            counters.retries += 1;
             await sleep(RETRY_BASE_DELAY_MS * attempt);
         }
     }
@@ -115,4 +124,20 @@ export async function fetchOsrmJson(url, { timeoutMs = 20000 } = {}) {
 /** Test seam: current queue pressure, so a test can prove the cap is respected. */
 export function osrmDispatcherState() {
     return { inFlight, queued: queue.length, maxConcurrent: MAX_CONCURRENT_REQUESTS };
+}
+
+/**
+ * Snapshot the request bill. Call `resetOsrmCounters()` at the start of one
+ * optimization and read this at the end to report exactly what that route cost.
+ */
+export function osrmCounters() {
+    return { ...counters, maxConcurrent: MAX_CONCURRENT_REQUESTS };
+}
+
+export function resetOsrmCounters() {
+    counters.requests = 0;
+    counters.retries = 0;
+    counters.rateLimited = 0;
+    counters.transportFailures = 0;
+    counters.peakInFlight = 0;
 }
