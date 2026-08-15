@@ -68,8 +68,16 @@ const CLUSTER_ORDER_REFINEMENT_PASSES = 5;
 // Reads an already-fetched matrix, so the only cost is CPU inside a fixed budget.
 export const DEFAULT_ORDER_SEEDS = 8;
 
-const coordinateKey = (point) => `${Number(point?.lat).toFixed(6)},${Number(point?.lng).toFixed(6)}`;
-const compareKeys = (first, second) => (first < second ? -1 : first > second ? 1 : 0);
+// Representative selection and the canonical key helpers live with the grouping
+// layer: both levels must agree on them, or the same territory could group one way
+// and be ordered another.
+import {
+    compareKeys,
+    coordinateKey,
+    groupBlocksByRoadAccess,
+    selectRepresentative as selectGroupRepresentative
+} from './roadAwareGrouping.js';
+import { fetchRoadCostRows } from './roadMatrix.js';
 
 /** Doors carried by a group of block entries. */
 const doorCountOf = (cluster) => cluster.reduce((total, entry) => total + entry.block.doors.length, 0);
@@ -79,21 +87,7 @@ const doorCountOf = (cluster) => cluster.reduce((total, entry) => total + entry.
  * broken by coordinate key. Deterministic, so the same route always builds the
  * same clusters and therefore reuses the same matrix cache entries.
  */
-function selectRepresentative(points) {
-    const centroid = points.reduce(
-        (total, point) => ({
-            lat: total.lat + Number(point.lat) / points.length,
-            lng: total.lng + Number(point.lng) / points.length
-        }),
-        { lat: 0, lng: 0 }
-    );
-    return [...points].sort((first, second) => {
-        const firstDistance = (Number(first.lat) - centroid.lat) ** 2 + (Number(first.lng) - centroid.lng) ** 2;
-        const secondDistance = (Number(second.lat) - centroid.lat) ** 2 + (Number(second.lng) - centroid.lng) ** 2;
-        if (Math.abs(firstDistance - secondDistance) > 1e-18) return firstDistance - secondDistance;
-        return compareKeys(coordinateKey(first), coordinateKey(second));
-    })[0];
-}
+const selectRepresentative = selectGroupRepresentative;
 
 /**
  * Split block entries into geographic clusters until every cluster's DOOR count
@@ -473,10 +467,19 @@ export async function sequenceRoadHierarchy(properties, options = {}) {
 
     if (!orderedClusters) {
         // Too many street blocks for one matrix (a wide 1,000-door territory), or
-        // that matrix failed. Windows are then cut geometrically and only their
-        // ORDER is road-priced. Grouping without road detail is an approximation
-        // that can straddle a barrier, so it is reported explicitly — this route is
-        // road-priced but not road-grouped.
+        // that matrix failed. The windows are then grouped on MEASURED ROAD
+        // DISTANCE to spread access seeds — not on a lat/lng box, which is what
+        // used to lock both banks of a barrier into one window and leave the
+        // solver no legal way to avoid the crossing.
+        // MEASURED, not assumed: grouping these windows by road distance to spread
+        // access seeds (see roadAwareGrouping.js) was tried on the 1,000-door
+        // Charlotte route and made the route WORSE — 417.9 road miles against
+        // 379.8 for this geometric cut, because nearest-seed groups are
+        // road-coherent but sprawling, and the extra travel inside them costs more
+        // than the barrier crossings it removes. It did cut the longest hop
+        // (10.8 mi -> 7.9 mi), so the seam is real and worth repairing; it is not
+        // worth repairing by replacing the decomposition wholesale. Windows stay
+        // geometric until a grouping strategy beats this number on measured miles.
         const geometric = partitionBlocksByDoorBudget(entries, { maxDoors: maxWindowDoors });
         const windowPoints = [...geometric.map((cluster) => cluster.representative), ...anchorPoints];
         telemetry.window_grouping_road_priced = false;

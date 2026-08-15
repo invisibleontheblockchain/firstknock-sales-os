@@ -184,6 +184,70 @@ export async function fetchRoadMatrix(points, options = {}) {
     };
 }
 
+/**
+ * Road costs from every source to every destination — a RECTANGULAR table.
+ *
+ * The square matrix above is bounded at 250 coordinates because its request count
+ * grows as ceil(N/46)^2. Grouping asks a different question: "how far is each of
+ * 400+ street blocks from each of 20 candidate access points, by road?" That is
+ * S x D, not N x N, so it costs ceil(S/46) * ceil(D/46) requests — 9 x 1 for 400
+ * blocks against 20 seeds. Cheap enough to make the GROUPING decision road-priced
+ * instead of geometric, which is the whole point of asking.
+ *
+ * Distances are miles. Throws on any unresolved cell, so a caller can never group
+ * blocks on a partially known road network.
+ */
+export async function fetchRoadCostRows(sources, destinations, options = {}) {
+    const {
+        baseUrl = DEFAULT_OSRM_BASE_URL,
+        profile = 'driving',
+        timeoutMs = 20000
+    } = options;
+
+    if (!Array.isArray(sources) || sources.length < 1) throw new Error('Road cost rows need at least one source.');
+    if (!Array.isArray(destinations) || destinations.length < 1) {
+        throw new Error('Road cost rows need at least one destination.');
+    }
+    if (destinations.length > MAX_ROUTE_MATRIX_POINTS) {
+        throw new Error(`Road cost destinations limit is ${MAX_ROUTE_MATRIX_POINTS}.`);
+    }
+
+    const sourceRanges = chunkRanges(sources.length, MATRIX_CHUNK_SIZE);
+    const destinationRanges = chunkRanges(destinations.length, MATRIX_CHUNK_SIZE);
+    const rows = Array.from({ length: sources.length }, () => new Array(destinations.length).fill(null));
+
+    const requests = sourceRanges.flatMap((sourceRange) => destinationRanges.map(async (destinationRange) => {
+        const sourcePoints = sources.slice(sourceRange.start, sourceRange.end);
+        const destinationPoints = destinations.slice(destinationRange.start, destinationRange.end);
+        const blockPoints = [...sourcePoints, ...destinationPoints];
+        const sourceIndexes = sourcePoints.map((_, index) => index);
+        const destinationIndexes = destinationPoints.map((_, index) => index + sourcePoints.length);
+        const url = `${String(baseUrl).replace(/\/+$/, '')}/table/v1/${profile}/`
+            + `${blockPoints.map(coordinateParam).join(';')}`
+            + `?annotations=distance&sources=${sourceIndexes.join(';')}&destinations=${destinationIndexes.join(';')}`;
+
+        const payload = await fetchOsrmJson(url, { timeoutMs });
+        const distances = Array.isArray(payload.distances) ? payload.distances : null;
+        if (!distances) throw new Error('OSRM table response contained no distances.');
+        distances.forEach((row, rowIndex) => row.forEach((meters, columnIndex) => {
+            rows[sourceRange.start + rowIndex][destinationRange.start + columnIndex] = Number.isFinite(meters)
+                ? meters * METERS_TO_MILES
+                : null;
+        }));
+    }));
+    await Promise.all(requests);
+
+    const unresolved = rows.reduce(
+        (total, row) => total + row.filter((value) => !Number.isFinite(value)).length,
+        0
+    );
+    if (unresolved > 0) {
+        throw new Error(`Road cost rows are incomplete: ${unresolved} unresolved cells.`);
+    }
+
+    return { rows, requestCount: sourceRanges.length * destinationRanges.length };
+}
+
 const NOT_IN_MATRIX = -1;
 
 /**
