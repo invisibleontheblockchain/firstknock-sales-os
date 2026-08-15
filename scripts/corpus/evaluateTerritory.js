@@ -46,6 +46,51 @@ export function toFixtureDoor(row) {
 }
 
 /**
+ * Keep only records that describe a real, distinct door.
+ *
+ * The production store contains import residue that would silently wreck a
+ * mileage benchmark: in one metro bbox, 66,045 rows reduce to 14,233 distinct
+ * address hashes and 12,044 distinct coordinates, including a single truncated
+ * CSV hash ("Unknown Street", house number 0) repeated thousands of times and
+ * stacked on one point. A fixture built from that would measure geocoding failure
+ * rather than geography — 1,000 "doors" occupying 0.011 sq mi.
+ *
+ * So a door must have a named street, a real house number, a unique address
+ * identity, and its own coordinate. Deduping by coordinate is deliberate: several
+ * hundred addresses sharing one point is a geocoding artifact, not a real stack of
+ * homes, and the solver's real duplicate-coordinate behaviour is covered by its
+ * own unit test rather than by silently inflating every fixture.
+ *
+ * (Recorded as a separate production concern, not fixed here: these records are
+ * also eligible for real Precision routes.)
+ */
+export function dedupeRealDoors(rows) {
+    const seenIdentity = new Set();
+    const seenCoordinate = new Set();
+    const doors = [];
+
+    for (const row of rows) {
+        if (!Number.isFinite(row.lat) || !Number.isFinite(row.lng)) continue;
+        const street = String(row.street_name || '').trim();
+        if (!street || /unknown/i.test(street)) continue;
+        if (!Number.isFinite(row.house_number) || row.house_number <= 0) continue;
+        if (!row.address_hash) continue;
+
+        const identity = `${street.toLowerCase()}|${row.house_number}|${row.zip_code || row.zip || ''}`;
+        if (seenIdentity.has(identity) || seenIdentity.has(row.address_hash)) continue;
+        const coordinate = `${row.lat.toFixed(6)},${row.lng.toFixed(6)}`;
+        if (seenCoordinate.has(coordinate)) continue;
+
+        seenIdentity.add(identity);
+        seenIdentity.add(row.address_hash);
+        seenCoordinate.add(coordinate);
+        doors.push(row);
+    }
+
+    return doors;
+}
+
+/**
  * Pick the densest compact door set inside a seed area.
  *
  * @param {Array} rows real MasterProperty rows already restricted to the seed bbox
@@ -53,7 +98,7 @@ export function toFixtureDoor(row) {
  *   its real count rather than being padded, so its character survives.
  */
 export function selectTerritoryDoors(rows, targetDoors = 1000) {
-    const usable = rows.filter((row) => Number.isFinite(row.lat) && Number.isFinite(row.lng) && row.street_name && row.address_hash);
+    const usable = dedupeRealDoors(rows);
     if (!usable.length) return [];
 
     const cells = new Map();
