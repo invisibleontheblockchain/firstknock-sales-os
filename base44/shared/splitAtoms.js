@@ -135,6 +135,7 @@ export function buildSplitAtoms(doors, routeCount, options = {}) {
     const atoms = [];
     let unitsSubdivided = 0;
     let blocksSubdivided = 0;
+    let feasibilitySubdivisions = 0;
 
     model.units.forEach((unit) => {
         const unitBlocks = unit.blockKeys.map((key) => blockByKey.get(key)).filter(Boolean);
@@ -211,6 +212,7 @@ export function buildSplitAtoms(doors, routeCount, options = {}) {
             isProtected: source.protected,
             pocketId: source.pocketId
         })));
+        feasibilitySubdivisions += 1;
         if (source.level !== ATOM_LEVEL_DOOR_GROUP) blocksSubdivided += 1;
     }
     if (atoms.length < requestedRoutes) {
@@ -240,6 +242,11 @@ export function buildSplitAtoms(doors, routeCount, options = {}) {
                 block: ordered.filter((atom) => atom.level === ATOM_LEVEL_BLOCK).length,
                 door_group: ordered.filter((atom) => atom.level === ATOM_LEVEL_DOOR_GROUP).length
             },
+            atom_granularity_used: ordered.some((atom) => atom.level === ATOM_LEVEL_DOOR_GROUP)
+                ? ATOM_LEVEL_DOOR_GROUP
+                : (ordered.some((atom) => atom.level === ATOM_LEVEL_BLOCK) ? ATOM_LEVEL_BLOCK : ATOM_LEVEL_UNIT),
+            atoms_subdivided_to_feasibility: unitsSubdivided + blocksSubdivided + feasibilitySubdivisions,
+            feasibility_subdivisions: feasibilitySubdivisions,
             protected_atom_count: ordered.filter((atom) => atom.protected).length,
             units_subdivided: unitsSubdivided,
             blocks_subdivided: blocksSubdivided,

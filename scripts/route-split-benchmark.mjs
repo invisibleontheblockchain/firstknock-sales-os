@@ -322,6 +322,10 @@ async function main() {
                 growth_bound_relaxations: winner?.growth_bound_relaxations ?? null,
                 atom_count: atoms.length,
                 atom_levels: report.atom_levels || built.telemetry?.atom_levels || null,
+                atom_granularity_used: report.atom_granularity_used || built.telemetry?.atom_granularity_used || null,
+                atoms_subdivided_to_feasibility: report.atoms_subdivided_to_feasibility
+                    ?? built.telemetry?.atoms_subdivided_to_feasibility
+                    ?? null,
                 road_requests: report.road_requests,
                 partitioner_report: report,
                 ...structuralMetrics(groups, atoms, neighbours),
@@ -375,12 +379,13 @@ function printReport(path) {
         console.log(`| ${result.route_name} | ${result.requested_route_count} | ${cell(old.combined_verified_road_miles) || old.code} | ${cell(next.combined_verified_road_miles) || next.code} | ${cell(result.miles_saved)} | ${cell(result.improvement_pct)}% | ${old.ok ? `${old.min_homes}–${old.max_homes}` : '—'} / ${next.ok ? `${next.min_homes}–${next.max_homes}` : '—'} | ${cell(old.street_blocks_shared_across_routes)} / ${cell(next.street_blocks_shared_across_routes)} | ${cell(old.pockets_shared_across_routes)} / ${cell(next.pockets_shared_across_routes)} | ${cell(old.foreign_neighbour_rate_pct)}% / ${cell(next.foreign_neighbour_rate_pct)}% | ${cell(next.selected_candidate)} | ${cell(old.runtime_s)} / ${cell(next.runtime_s)} |`);
     });
 
-    console.log('\n### Balance contract as K rises\n');
-    console.log('| K | Policy | Target | Allowed | Achieved | Below min | Above max | Relaxations | Valid | Relax mode |');
-    console.log('|---|---|---|---|---|---|---|---|---|---|');
+    console.log('\n### Strict validity and scale-aware granularity\n');
+    console.log('| K | Target | Allowed | Achieved | Granularity | Subdivided | Below/above | True relaxations | Exact K | Exact-once | Verified miles |');
+    console.log('|---|---|---|---|---|---|---|---|---|---|---|');
     results.filter((result) => result.new.ok).forEach((result) => {
         const next = result.new;
-        console.log(`| ${result.requested_route_count} | ${next.balance_policy_id} | ${next.target_homes_per_route} | ${next.min_homes_allowed}–${next.max_homes_allowed} | ${next.min_homes}–${next.max_homes} | ${next.routes_below_min} | ${next.routes_above_max} | ${next.balance_relaxations} | ${next.balance_valid ? 'yes' : 'NO'} | ${next.balance_relaxation_mode ? 'YES' : 'no'} |`);
+        const report = next.partitioner_report || {};
+        console.log(`| ${result.requested_route_count} | ${next.target_homes_per_route} | ${next.min_homes_allowed}–${next.max_homes_allowed} | ${next.min_homes}–${next.max_homes} | ${next.atom_granularity_used} | ${next.atoms_subdivided_to_feasibility} | ${next.routes_below_min}/${next.routes_above_max} | ${next.balance_relaxations} | ${report.route_count_exact ? 'yes' : 'NO'} | ${report.exact_once ? 'yes' : 'NO'} | ${next.combined_verified_road_miles} |`);
     });
 
     console.log('\n### Portfolio breadth\n');

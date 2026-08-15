@@ -73,8 +73,11 @@ export const SPLIT_PARTITIONER_VERSION = 'road_territory_partitioner_v1';
  */
 export const DEFAULT_BALANCE_TOLERANCE = 0.06;
 
-/** Atom-to-atom table ceiling. Beyond this the road table stops being affordable. */
-export const MAX_SPLIT_ATOMS = 700;
+/**
+ * Atom-to-atom table ceiling. The 800-atom bound admits the finest scale needed
+ * by a 1,000-home / K=100 split while still bounding the dense road table.
+ */
+export const MAX_SPLIT_ATOMS = 800;
 
 /** Road-nearest neighbours kept per atom — the adjacency refinement works over. */
 const NEIGHBOURS_PER_ATOM = 6;

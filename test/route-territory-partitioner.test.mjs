@@ -233,6 +233,9 @@ test('SPLIT-05 granularity follows K: natural units at low K, blocks and doors a
     // At K=50 (target 4 homes) a 10-home street block cannot stay whole.
     assert.ok(high.telemetry.blocks_subdivided > 0);
     assert.equal(low.telemetry.blocks_subdivided, 0);
+    assert.equal(low.telemetry.atom_granularity_used, 'unit');
+    assert.equal(high.telemetry.atom_granularity_used, 'door_group');
+    assert.ok(high.telemetry.atoms_subdivided_to_feasibility > 0);
 });
 
 test('SPLIT-06 unmeasurable road cost fails the split instead of guessing', async () => {

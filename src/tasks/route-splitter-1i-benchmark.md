@@ -7,65 +7,38 @@ road measurement per route, same atom set for structural metrics.
     node scripts/route-split-benchmark.mjs test/fixtures/charlotte-route-1i-barrier-1000.json \
          --k=2,3,5,10,20,50,100 --out=/tmp/bench-1i.ndjson
 
-## Result curve
+## Final strict-validity curve
 
-| K | Old mi | New mi | Δ mi | Δ % | Homes old/new | Blocks split old/new | Pockets old/new | Interleave old/new | Winner | Runtime old/new s |
-|---|---|---|---|---|---|---|---|---|---|---|
-| 2 | 510.336 | **477.731** | −32.605 | −6.4% | 500–500 / 483–517 | 0 / 0 | 0 / 0 | 2.9% / 3.3% | balance_led | 26.4 / 59.7 |
-| 3 | 474.684 | **474.478** | −0.206 | −0.0% | 333–334 / 301–354 | 0 / 0 | 0 / 0 | 6.5% / 3.4% | balanced_road_growth | 33.2 / 87.8 |
-| 5 | **468.177** | 470.291 | +2.114 | +0.5% | 200–200 / 165–212 | 2 / 0 | 0 / 0 | 7.1% / 8.8% | balanced_road_growth | 33.4 / 129.5 |
-| 10 | 472.912 | **441.156** | −31.756 | −6.7% | 100–100 / 73–106 | 3 / 0 | 0 / 0 | 14.7% / 10.9% | balanced_road_growth | 46.6 / 234.1 |
-| 20 | 476.640 | **431.348** | −45.292 | −9.5% | 50–50 / 29–53 | 8 / 0 | 0 / 0 | 24.3% / 21.0% | balance_led | 17.4 / 90.0 |
-| 50 | 461.668 | **413.596** | −48.072 | −10.4% | 20–20 / 2–22 | 17 / 0 | 0 / 0 | 41.2% / 30.3% | balance_led | 18.4 / 37.2 |
-| 100 | 422.761 | **408.180** | −14.581 | −3.4% | 10–10 / 1–11 | 33 / 2 | 0 / 0 | 55.4% / 53.6% | peripheral_seeds | 29.4 / 47.3 |
+Every winning finalist satisfies `exact K + exact-once + declared balance` before
+verified mileage is considered. Balance relaxation mode is off throughout.
 
-New wins 6 of 7 K values. Repeated-area entries (pockets shared across routes) are
-0 for both engines at every K except new K=100 (2 blocks), because the atom model
-makes pocket splitting structurally impossible until atoms must be subdivided.
-Road cost for the whole run: 400,000 unique pairs, 3,507,154 pair requests served,
-**43.3% pair cache hit rate**, 1,710 matrices.
+| K | Target | Allowed | Actual | Deepest granularity | Parents subdivided | Below/above | True relaxations | Exact K / once | Old mi | New mi | Saved | Winner |
+|---|---:|---:|---:|---|---:|---:|---:|---|---:|---:|---:|---|
+| 2 | 500 | 470–530 | 483–517 | unit | 0 | 0 / 0 | 0 | yes / yes | 510.336 | **477.731** | 32.605 | balance_led@moderate |
+| 3 | 333.33 | 326–340 | 330–336 | unit | 0 | 0 / 0 | 0 | yes / yes | 474.684 | **471.413** | 3.271 | peripheral_seeds@tight |
+| 5 | 200 | 196–204 | 197–203 | unit | 0 | 0 / 0 | 0 | yes / yes | 468.177 | **465.791** | 2.386 | balanced_road_growth@tight |
+| 10 | 100 | 94–106 | 95–106 | unit | 0 | 0 / 0 | 0 | yes / yes | 472.912 | **454.621** | 18.291 | balance_led@moderate |
+| 20 | 50 | 47–53 | 47–53 | door group | 8 | 0 / 0 | 0 | yes / yes | 476.640 | **446.012** | 30.628 | balance_led@moderate |
+| 50 | 20 | 18–22 | 18–22 | door group | 168 | 0 / 0 | 0 | yes / yes | 461.668 | **452.987** | 8.681 | topology_first@moderate |
+| 100 | 10 | 8–12 | 8–12 | door group | 168 | 0 / 0 | 0 | yes / yes | 422.761 | **400.175** | 22.586 | balance_led@loose |
 
-## Route mileage shape (guards against buying a total with one terrible route)
+The scale transition is explicit: K=2–10 keep all 664 natural units intact;
+K=20 descends selectively to 8 door-group atoms; K=50/100 descend to 179
+door-group atoms after subdividing 168 oversized unit/block parents. The resulting
+759-atom table remains under the bounded 800-atom ceiling. No workload-contract
+relaxation was used to admit high-K candidates.
+
+## Final high-K route-mileage shape
 
 | K | Old short / med / p90 / long | New short / med / p90 / long |
 |---|---|---|
-| 2 | 243.1 / 255.2 / 264.8 / 267.3 | 226.4 / 238.9 / 248.8 / **251.3** |
-| 3 | 149.5 / 151.8 / 169.1 / 173.4 | 124.9 / 160.4 / 183.4 / 189.2 |
-| 5 | 71.5 / 98.0 / 108.5 / **114.7** | 68.0 / 87.7 / 126.6 / 141.6 |
-| 10 | 30.0 / 44.3 / 60.7 / 70.5 | 27.9 / 45.2 / 56.4 / **59.3** |
-| 20 | 11.7 / 22.5 / 35.0 / 40.6 | 10.3 / 19.6 / 29.2 / 40.1 |
-| 50 | 2.2 / 8.5 / 14.1 / 22.5 | 0.2 / 7.7 / 13.5 / 20.0 |
-| 100 | 0.9 / 3.4 / 7.0 / 17.7 | 0.0 / 3.6 / 7.5 / **9.7** |
+| 50 | 2.246 / 8.544 / 14.103 / 22.516 | 3.306 / 8.178 / 14.775 / 25.396 |
+| 100 | 0.915 / 3.382 / 7.004 / 17.650 | 0.390 / 3.054 / 8.025 / 13.301 |
 
-## FLAG — the 6% balance band is enforced on ONE side only
+## Historical K=5 diagnosis (before the strict balance contract)
 
-| K | Target | Allowed range | Achieved | Max dev | Reported relaxations |
-|---|---|---|---|---|---|
-| 2 | 500 | 470–530 | 483–517 | 3.4% | 0 |
-| 3 | 333.3 | 313–354 | 301–354 | 9.7% | 0 |
-| 5 | 200 | 188–212 | 165–212 | 17.5% | 0 |
-| 10 | 100 | 94–106 | 73–106 | 27% | 0 |
-| 20 | 50 | 47–53 | 29–53 | 42% | 0 |
-| 50 | 20 | 18–22 | **2**–22 | 90% | 0 |
-| 100 | 10 | 9–11 | **1**–11 | 90% | 0 |
-
-6% does **not** collapse into exact equality at high K — the opposite happens:
-
-* `capacity = ceil(target × 1.06)` is enforced during growth, and every fallback
-  past it is counted. That is why the max column always respects the band.
-* `minLoad = floor(target × 0.94)` is enforced **only** inside refinement, which
-  rejects moves that would drain a route. Growth itself can leave a seed region
-  holding almost nothing, and refinement has no incentive to fill it: the
-  surrogate objective rewards short tours, and a 1-home route is a very short tour.
-* The relaxation counter therefore reports 0 while routes sit far under the floor.
-  "0 relaxations" currently means "no capacity overflow", not "in band".
-
-Under-fill is a real product defect at high K (a 1-home route at K=100), and the
-report is currently misleading about it. Not changed yet — measured and flagged, as
-agreed. Fix before cutover: enforce/attempt the floor during growth, and count
-under-fill as its own relaxation class instead of hiding inside a cap counter.
-
-## K=5 diagnosis (controlled counterfactuals, not tuning for "5")
+This section is retained as provenance only. Its one-sided balance findings and
+follow-up recommendations are superseded by the final strict-validity curve above.
 
     node scripts/route-k5-diagnosis.mjs test/fixtures/charlotte-route-1i-barrier-1000.json \
          --k=5 --tolerances=0,0.02,0.06,0.12 --old-ndjson=/tmp/bench-1i.ndjson
@@ -129,9 +102,9 @@ must be benchmarked across the whole K curve before adoption:
 
 ## Status
 
+* Route 1I is complete: all seven K values pass strict balance, exact-K,
+  exact-once, and independent road-mileage verification.
 * No production cutover. `SplitRouteModal` still uses the old splitter.
+* Route 1J has not been hydrated or benchmarked.
 * Pre-existing unrelated failures still present: DEP-02 / DEP-03 in
   `test/route-module-dependencies.test.mjs`.
-* Next: hydrate a real 1,000-door Route 1J population from the Precision/Neon path
-  (the committed Ashley Circle fixture is a 16-stop probe and is not a substitute),
-  then repeat this curve.
