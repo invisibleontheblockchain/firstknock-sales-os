@@ -29,7 +29,10 @@
 import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { partitionRouteTerritories, DEFAULT_BALANCE_TOLERANCE } from '../base44/shared/routeTerritoryPartitioner.js';
 import { buildSplitAtoms } from '../base44/shared/splitAtoms.js';
-import { sequenceFrozenRoute } from '../base44/shared/frozenRouteSequencer.js';
+import {
+    DEFAULT_DECOMPOSITION_PORTFOLIO,
+    sequenceBestDecomposition
+} from '../base44/shared/roadDecompositionPortfolio.js';
 import { measureRoadPath } from '../base44/shared/roadPathMeasure.js';
 import { createRoadCostCache } from '../base44/shared/roadCostCache.js';
 
@@ -187,13 +190,14 @@ async function main() {
         .filter((value) => Number.isFinite(value) && value >= 2 && value <= doors.length);
 
     const cache = createRoadCostCache({ measurePath: measureRoadPath });
+    const frozenBaseline = DEFAULT_DECOMPOSITION_PORTFOLIO.filter((candidate) => candidate.mandatory);
+    const portfolio = frozenBaseline.length > 0 ? frozenBaseline : DEFAULT_DECOMPOSITION_PORTFOLIO.slice(0, 1);
     const roadOptions = { fetchMatrix: cache.fetchMatrix, measurePath: cache.measurePath };
 
-    // Both engines order every route through this one facade, so the comparison is
-    // between memberships and nothing else.
     const optimizeRoute = async (group) => {
-        const sequenced = await sequenceFrozenRoute(group, roadOptions);
-        return { order: sequenced.ok ? sequenced.order : null, code: sequenced.code || null, path: sequenced.path };
+        if (group.length < 2) return { order: [...group] };
+        const sequenced = await sequenceBestDecomposition(group, { ...roadOptions, portfolio });
+        return { order: sequenced.ok ? sequenced.order : null, code: sequenced.code || null };
     };
     const measure = async (order) => (order.length < 2
         ? { ok: true, totalMiles: 0 }

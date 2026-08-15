@@ -6,20 +6,21 @@
 // existing preview-then-create flow, so a split can be inspected and rejected.
 //
 // The frozen solver is used unmodified: each produced route is sequenced by
-// `sequenceBestDecomposition` (the frozen Precision entry point) on its own homes,
-// and then measured INDEPENDENTLY by `measureRoadPath`. The partitioner selects
-// its winner on those measured miles, so no candidate can be chosen on its own
-// estimate. Only the frozen baseline decomposition runs per route: a full
+// `sequenceFrozenRoute` — the shared facade over BOTH frozen ordering paths, the
+// decomposition portfolio for large routes and the exact road matrix for small
+// ones — and then measured INDEPENDENTLY by `measureRoadPath`. The partitioner
+// selects its winner on those measured miles, so no candidate can be chosen on its
+// own estimate. Only the frozen baseline decomposition runs per route: a full
 // portfolio per route would multiply K by the portfolio size, and the baseline is
 // the production default the freeze record designates.
+//
+// The facade matters at high K: at K=100 a 1,000-home territory produces ten-home
+// routes, which the portfolio path refuses outright.
 
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 import { secrets } from 'base44:runtime';
 import { partitionRouteTerritories } from '../../shared/routeTerritoryPartitioner.js';
-import {
-    DEFAULT_DECOMPOSITION_PORTFOLIO,
-    sequenceBestDecomposition
-} from '../../shared/roadDecompositionPortfolio.js';
+import { sequenceFrozenRoute } from '../../shared/frozenRouteSequencer.js';
 import { measureRoadPath } from '../../shared/roadPathMeasure.js';
 import { DEFAULT_OSRM_BASE_URL } from '../../shared/roadMatrix.js';
 import { MAX_HOMES_PER_ROUTE } from '../../shared/routingBudgets.js';
@@ -99,31 +100,13 @@ export default async function (req: Request): Promise<Response> {
         }
 
         const baseUrl = readSecret('OSRM_BASE_URL') || DEFAULT_OSRM_BASE_URL;
-        const roadOptions = { baseUrl, profile, timeoutMs };
-        // The frozen baseline decomposition, taken from the frozen portfolio
-        // rather than restated here, so this path cannot drift from production.
-        const frozenBaseline = DEFAULT_DECOMPOSITION_PORTFOLIO.filter((candidate) => candidate.mandatory);
-        const portfolio = frozenBaseline.length > 0 ? frozenBaseline : DEFAULT_DECOMPOSITION_PORTFOLIO.slice(0, 1);
+        const roadOptions = { baseUrl, profile, timeoutMs, measurePath: measureRoadPath };
 
         const optimizeRoute = async (doors) => {
-            // A one-home route has exactly one order and nothing to sequence.
-            if (doors.length < 2) return { order: [...doors] };
-            const sequenced = await sequenceBestDecomposition(doors, {
-                ...roadOptions,
-                portfolio,
-                measurePath: measureRoadPath
-            });
-            if (!sequenced.ok || !Array.isArray(sequenced.order)) {
-                return { order: null, metadata: { code: sequenced.code || 'FROZEN_SOLVER_FAILED' } };
-            }
-            return {
-                order: sequenced.order,
-                metadata: {
-                    decomposition: sequenced.best?.id || null,
-                    solver_verified_road_miles: sequenced.best?.verified_road_miles ?? null,
-                    degraded: sequenced.telemetry?.degraded ?? null
-                }
-            };
+            const sequenced = await sequenceFrozenRoute(doors, roadOptions);
+            return sequenced.ok
+                ? { order: sequenced.order, metadata: sequenced.metadata || null }
+                : { order: null, metadata: { code: sequenced.code || 'FROZEN_SOLVER_FAILED' } };
         };
 
         const measurePath = async (order) => {
