@@ -99,28 +99,71 @@ grouping). So the next problem is **not** "make grouping road-aware" — it is
 
 `coarseBlockOrder` stays OFF. Nothing from 1I ships on 1I alone.
 
-## Next research target — compactness-constrained, barrier-aware decomposition
+## PRODUCTION-FROZEN — barrier-aware compactness repair (2026-08-15)
 
-Repair specific decomposition mistakes instead of globally reclustering:
+The research target below was met. Barrier repair passes the acceptance bar and is
+the frozen reference behavior for the initial Precision Generation solver.
 
-`compact geometric windows` → `measure internal road coherence` →
-`detect aerial-near / road-far splits` → `repair only those memberships` →
-`re-balance neighbouring windows` → `run the unchanged proven optimizer`
+**The conclusion that matters:** we did **not** globally replace compact grouping
+with road grouping. We preserved compact geographic decomposition and selectively
+repaired only windows where real road evidence proved the grouping crossed a
+barrier. Candidate acceptance remains independently verified real road mileage, so
+the repair is never chosen unless it actually produces the shorter valid route.
 
-Route 1I window 0 is the first target: identify its two road-access components,
-decide which complete street blocks belong on each side, move the minimum block
-set across neighbouring window boundaries, preserve block/pocket atomicity,
-re-solve, measure the whole route independently.
+### Route 1I (1,000 doors — permanent barrier regression)
 
-Scoreboard: geometric 519.691 · coarse road grouping 511.590 · barrier repair `?`
-— success recovers the barrier mileage *without* coarse grouping's worse top-10.
+Fixture: `test/fixtures/charlotte-route-1i-barrier-1000.json` (unordered door set,
+checksummed, routing attributes only). Re-measure with
+`node scripts/route-barrier-freeze-benchmark.mjs`.
 
-Track per candidate: total miles, p95, p99, longest, top-10 total,
-barrier-straddling windows before/after, moved blocks, window compactness
-before/after, road diameter vs aerial diameter, requests, runtime.
-Rejection rule unchanged: no improvement in independently measured total road
-mileage → rejected. Then 1J and the other real Precision fixtures before
-production is even discussed.
+| | geometric | coarse road grouping | **barrier repair** |
+|---|---|---|---|
+| verified road miles | 518.296 | 511.590 | **502.840** |
+| longest leg | 11.927 | 11.666 | **6.033** |
+| p95 / p99 | 1.750 / 3.491 | 1.657 / 3.490 | 1.693 / 3.491 |
+| top-10 transition total | 50.325 | 53.351 | **42.536** |
+| legs > 5 mi | 3 | 4 | **1** |
+| windows | 16 | 11 | 16 |
+| accepted | no | no | **yes** |
+
+Repair scope: **1 of 16 windows straddling · 2 street blocks · 3 doors moved.**
+Exact-once, zero aerial ordering decisions, 100% road-priced legs.
+(The 518.296 baseline replaces the earlier 519.691 pre-hotspot figure; coarse
+reproduced 511.590 exactly, confirming the harness rather than the drift.)
+
+### Generalization on unrelated real routes
+
+| route | doors | geometric | barrier repair | straddles found |
+|---|---|---|---|---|
+| Charlotte 1J | 1,000 | 358.285 | **354.704** | 1 |
+| Salisbury | 382 | 616.589 | **602.954** | 3 (p99 11.961 → 8.387) |
+| East Valley | 488 | 327.798 | 327.798 (identical order retained) | 0 |
+| Mesquite | 58 | exact small-route tier, unchanged | — | n/a |
+
+East Valley is the important negative result: with no barrier present the repair
+detects nothing, changes nothing, and costs nothing beyond the coherence check. A
+solver that leaves good routes alone is the requirement, not a side effect.
+
+### Barrier-repair telemetry (documented contract)
+
+`barrierWindowRepair` reports, and `roadHierarchySequencer` merges into route
+telemetry: `barrier_windows_checked`, `barrier_straddling_windows`,
+`barrier_blocks_moved`, `barrier_doors_moved`, `barrier_repair_passes`,
+`repair_matrix_requests`, `repair_road_pairs`. The strategy label is
+`barrier_repaired_geometric_windows` **only when blocks actually moved**; a
+detected-nothing route keeps `geometric_windows`, so the stored strategy can never
+claim a repair that did not happen. Unresolvable road cost during repair fails the
+sequencing — the caller keeps the route it already had.
+
+### Frozen Precision contract
+
+up to 1,000 homes → ONE initial route → real-road ordering only → exact-once →
+compact topology → barrier repair where justified → seam/hotspot refinement →
+independent final road verification → **fail rather than guess**.
+
+Future solver changes require a benchmarked regression or a newly demonstrated
+failure class — not visual preference or speculative tuning. `coarseBlockOrder`
+stays OFF (kept as research infrastructure only).
 
 ## Route-size bug found during this work
 
