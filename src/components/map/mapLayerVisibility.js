@@ -25,6 +25,14 @@ export function shouldRenderPrecisionMapLayers({ mode, routeMode, activeRoute } 
   return routeMode !== 'canvas' || mode === 'analyze' || Boolean(activeRoute);
 }
 
+export function shouldRenderPrecisionPropertyPins({ routeMode } = {}) {
+  // Canvas is territory-first: it has no property inventory of its own, so the
+  // Precision property pins are not its data and must stay out of its map.
+  // Saved routes and a selected route are still owned by
+  // shouldRenderPrecisionMapLayers above.
+  return routeMode !== 'canvas';
+}
+
 export function filterRoutesByStatus(routes = [], routeStatusView = 'all') {
   if (!Array.isArray(routes)) return [];
   const visibleRoutes = routes.filter((route) => route?.status !== 'ARCHIVED');

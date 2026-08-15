@@ -44,6 +44,9 @@ test('Canvas territory overlays render once while saved routes remain visible ou
   assert.equal((managerLayers.match(/<CanvasZoneOverlay\b[^>]*\/>/g) || []).length, 1);
   assert.match(managerLayers, /shouldRenderPrecisionMapLayers/);
   assert.match(visibility, /routeMode !== 'canvas' \|\| mode === 'analyze' \|\| Boolean\(activeRoute\)/);
+  // Precision property pins are Precision-only inventory: Canvas must never draw them.
+  assert.match(visibility, /export function shouldRenderPrecisionPropertyPins/);
+  assert.match(managerLayers, /shouldRenderPrecisionPropertyPins\(\{ routeMode \}\) && <ViewportCulledPins/);
   assert.doesNotMatch(drawTool, /CanvasZoneOverlay/);
   assert.doesNotMatch(overlay, /localStorage|sessionStorage/);
   assert.match(overlay, /CanvasCampaignMapLayers/);

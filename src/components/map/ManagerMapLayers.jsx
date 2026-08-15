@@ -14,6 +14,7 @@ import {
     filterRoutesByStatus,
     isRenderableMapPoint,
     shouldRenderPrecisionMapLayers,
+    shouldRenderPrecisionPropertyPins,
 } from './mapLayerVisibility.js';
 
 /**
@@ -907,8 +908,8 @@ const ManagerMapLayers = React.memo(function ManagerMapLayers({
                 ))}
             </LayerGroup>
 
-            {/* USER PROPERTIES PIN LAYER */}
-            <ViewportCulledPins
+            {/* USER PROPERTIES PIN LAYER — Precision inventory only, never in Canvas */}
+            {shouldRenderPrecisionPropertyPins({ routeMode }) && <ViewportCulledPins
                 viewMode={viewMode}
                 zoomLevel={zoomLevel}
                 activeRoute={activeRoute}
@@ -930,7 +931,7 @@ const ManagerMapLayers = React.memo(function ManagerMapLayers({
                 isPointInPolygon={isPointInPolygon}
                 subMonths={subMonths}
                 mapRef={mapRef}
-            />
+            />}
 
             {/* Preview Route (hover/tap from list) */}
             {previewRoute && !activeRoute && (
