@@ -39,6 +39,7 @@ import { isValidPoint } from './routeContinuityOptimizer.js';
 import { buildStreetBlocks, roadAwareStreetSweep } from './roadAwareStreetSweep.js';
 import { createMatrixMetricFns, fetchRoadMatrix, MAX_ROUTE_MATRIX_POINTS } from './roadMatrix.js';
 import { osrmCounters, resetOsrmCounters } from './osrmDispatcher.js';
+import { refineWindowSeams } from './roadSeamRefinement.js';
 
 export const HIERARCHY_VERSION = 'road_hierarchy_v1';
 
@@ -522,8 +523,11 @@ export async function sequenceRoadHierarchy(properties, options = {}) {
         Math.floor(refinementStepBudget / orderedClusters.length)
     );
     const order = [];
+    // Where each window begins in the final door order — the seams level 3 repairs.
+    const seamBoundaries = [];
     for (let index = 0; index < orderedClusters.length; index += 1) {
         const cluster = orderedClusters[index];
+        if (index > 0) seamBoundaries.push(order.length);
         const doors = cluster.entries.flatMap((entry) => entry.block.doors);
         // Ports: arrive from the door actually reached last, leave toward the next
         // cluster's representative (its own solve then refines that seam). Without
@@ -582,6 +586,27 @@ export async function sequenceRoadHierarchy(properties, options = {}) {
         order.push(...sequenced);
     }
 
+    // ---- Level 3: seam repair, on each boundary's own exact door matrix. ----
+    //
+    // The window order and each window's interior are already road-priced, but the
+    // BOUNDARY between two windows was never optimized as a unit: doors a few
+    // hundred feet apart can sit either side of a cut and be visited an entire
+    // window apart. Each seam is re-solved with its neighbouring doors pinned, so
+    // an accepted repair provably shortens the whole route by the amount measured.
+    const seamRefined = await refineWindowSeams(order, seamBoundaries, {
+        startLocation,
+        endLocation,
+        fetchMatrix,
+        baseUrl,
+        profile,
+        timeoutMs,
+        refinementStepBudget: perClusterBudget
+    });
+    const finalOrder = seamRefined.order;
+    Object.assign(telemetry, seamRefined.telemetry);
+    telemetry.matrix_request_count += seamRefined.telemetry.seam_matrix_requests;
+    telemetry.road_pairs_requested += seamRefined.telemetry.seam_road_pairs_requested;
+
     telemetry.cluster_seam_legs = Math.max(0, orderedClusters.length - 1);
     const decisionLegs = telemetry.intra_cluster_road_priced_legs
         + telemetry.cluster_seam_legs
@@ -604,5 +629,5 @@ export async function sequenceRoadHierarchy(properties, options = {}) {
     // exit above this line is a failure, not a substitution.
     telemetry.order_affecting_aerial_decisions = telemetry.aerial_priced_legs;
 
-    return { ok: true, order, telemetry };
+    return { ok: true, order: finalOrder, telemetry };
 }
