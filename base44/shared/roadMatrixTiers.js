@@ -202,7 +202,8 @@ export function planTieredRoadMatrix(properties, anchorPoints = []) {
             doorCount,
             blockCount: 0,
             representativeByCoordKey: new Map(),
-            blockKeyByCoordKey: new Map()
+            blockKeyByCoordKey: new Map(),
+            streetBlockKeyByCoordKey: new Map()
         };
     }
 
@@ -224,6 +225,14 @@ export function planTieredRoadMatrix(properties, anchorPoints = []) {
         const clusters = partitionBlocksIntoClusters(entries, blockBudget);
         const clusterRepresentativeByCoordKey = new Map();
         const clusterKeyByCoordKey = new Map();
+        // The TRUE street block a door belongs to, kept beside its cluster key.
+        // A cluster spans several streets, so "same matrix unit" and "same street
+        // segment" are different questions at this tier — and only the second one
+        // is a leg the rep walks in house-number order anyway. Telemetry has to be
+        // able to tell them apart, otherwise a cluster-tier route reports the same
+        // clean numbers as a block-tier one while pricing real cross-street
+        // decisions with straight-line distance.
+        const streetBlockKeyByCoordKey = new Map();
         const clusterRepresentatives = [];
         clusters.forEach((cluster, index) => {
             const representative = selectBlockRepresentative(
@@ -236,6 +245,7 @@ export function planTieredRoadMatrix(properties, anchorPoints = []) {
                 if (clusterRepresentativeByCoordKey.has(key)) return;
                 clusterRepresentativeByCoordKey.set(key, representative);
                 clusterKeyByCoordKey.set(key, clusterKey);
+                streetBlockKeyByCoordKey.set(key, entry.block.key);
             }));
         });
 
@@ -248,7 +258,8 @@ export function planTieredRoadMatrix(properties, anchorPoints = []) {
             blockCount: blocks.length,
             clusterCount: clusters.length,
             representativeByCoordKey: clusterRepresentativeByCoordKey,
-            blockKeyByCoordKey: clusterKeyByCoordKey
+            blockKeyByCoordKey: clusterKeyByCoordKey,
+            streetBlockKeyByCoordKey
         };
     }
 
@@ -277,7 +288,10 @@ export function planTieredRoadMatrix(properties, anchorPoints = []) {
         doorCount,
         blockCount: blocks.length,
         representativeByCoordKey,
-        blockKeyByCoordKey
+        blockKeyByCoordKey,
+        // At the block tier the matrix unit IS the street block, so the two views
+        // are the same map.
+        streetBlockKeyByCoordKey: blockKeyByCoordKey
     };
 }
 
@@ -292,19 +306,38 @@ export function planTieredRoadMatrix(properties, anchorPoints = []) {
 export function createTieredMatrixMetricFns(matrix, plan) {
     const base = createMatrixMetricFns(plan.matrixPoints, matrix);
     if (plan.tier === TIER_DOOR) {
-        return { ...base, intraBlockLegCount: { count: 0 } };
+        return {
+            ...base,
+            intraBlockLegCount: { count: 0 },
+            aerialEvaluationCounts: { sameStreetBlock: 0, crossStreetSameUnit: 0 }
+        };
     }
 
     const intraBlockLegCount = { count: 0 };
+    // Candidate-search telemetry, split by what the aerial value actually decided.
+    // sameStreetBlock legs are walked in house-number order regardless, so they
+    // are not a decision. crossStreetSameUnit legs ARE a decision the objective
+    // makes on straight-line distance — that count is the honest measure of how
+    // much of the sequencing was judged without roads.
+    const aerialEvaluationCounts = { sameStreetBlock: 0, crossStreetSameUnit: 0 };
     const resolve = (point) => plan.representativeByCoordKey.get(coordinateKey(point)) || point;
     const blockOf = (point) => plan.blockKeyByCoordKey.get(coordinateKey(point));
+    const streetBlockOf = (point) => plan.streetBlockKeyByCoordKey?.get(coordinateKey(point));
+
+    const countAerialEvaluation = (from, to) => {
+        intraBlockLegCount.count += 1;
+        const fromStreet = streetBlockOf(from);
+        const toStreet = streetBlockOf(to);
+        if (fromStreet !== undefined && fromStreet === toStreet) aerialEvaluationCounts.sameStreetBlock += 1;
+        else aerialEvaluationCounts.crossStreetSameUnit += 1;
+    };
 
     const tiered = (metric) => (metric
         ? (from, to) => {
             const fromBlock = blockOf(from);
             const toBlock = blockOf(to);
             if (fromBlock !== undefined && fromBlock === toBlock) {
-                intraBlockLegCount.count += 1;
+                countAerialEvaluation(from, to);
                 return haversineMiles(from, to);
             }
             return metric(resolve(from), resolve(to));
@@ -312,6 +345,7 @@ export function createTieredMatrixMetricFns(matrix, plan) {
         : null);
 
     return {
+        aerialEvaluationCounts,
         // Duration keeps its own units: an intra-block leg is converted from
         // miles at a walking-to-door pace so the two objectives stay comparable.
         distanceBetween: tiered(base.distanceBetween),
@@ -320,7 +354,7 @@ export function createTieredMatrixMetricFns(matrix, plan) {
                 const fromBlock = blockOf(from);
                 const toBlock = blockOf(to);
                 if (fromBlock !== undefined && fromBlock === toBlock) {
-                    intraBlockLegCount.count += 1;
+                    countAerialEvaluation(from, to);
                     return haversineMiles(from, to) * INTRA_BLOCK_MINUTES_PER_MILE;
                 }
                 return base.durationBetween(resolve(from), resolve(to));
@@ -329,4 +363,52 @@ export function createTieredMatrixMetricFns(matrix, plan) {
         unresolved: base.unresolved,
         intraBlockLegCount
     };
+}
+
+/**
+ * Classify the legs of ONE final ordered route — not the millions of candidate
+ * evaluations the search made along the way.
+ *
+ * `intraBlockLegCount` counts evaluations, so on a 1,000-door route it reads in
+ * the millions and says nothing about the route that was actually stored. This
+ * answers the question a manager cares about: of the 999 legs the rep will
+ * drive, how many were priced on the road network, how many on straight-line
+ * distance, and of those, how many were a real cross-street decision.
+ *
+ * @returns {object} `{ legCount, roadLegs, aerialSameStreetBlockLegs,
+ *   aerialCrossStreetLegs }`
+ */
+export function classifyFinalRouteLegs(order, plan) {
+    const counts = {
+        legCount: 0,
+        roadLegs: 0,
+        aerialSameStreetBlockLegs: 0,
+        aerialCrossStreetLegs: 0
+    };
+    if (!Array.isArray(order) || order.length < 2 || !plan?.ok) return counts;
+    if (plan.tier === TIER_DOOR) {
+        counts.legCount = order.length - 1;
+        counts.roadLegs = counts.legCount;
+        return counts;
+    }
+
+    const unitOf = (point) => plan.blockKeyByCoordKey.get(coordinateKey(point));
+    const streetBlockOf = (point) => plan.streetBlockKeyByCoordKey?.get(coordinateKey(point));
+    for (let index = 0; index < order.length - 1; index += 1) {
+        const from = order[index];
+        const to = order[index + 1];
+        counts.legCount += 1;
+        const fromUnit = unitOf(from);
+        if (fromUnit === undefined || fromUnit !== unitOf(to)) {
+            counts.roadLegs += 1;
+            continue;
+        }
+        const fromStreet = streetBlockOf(from);
+        if (fromStreet !== undefined && fromStreet === streetBlockOf(to)) {
+            counts.aerialSameStreetBlockLegs += 1;
+        } else {
+            counts.aerialCrossStreetLegs += 1;
+        }
+    }
+    return counts;
 }

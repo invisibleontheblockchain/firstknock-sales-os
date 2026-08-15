@@ -1,0 +1,33 @@
+{
+  "_comment": "Real production route, not a synthetic benchmark. Charlotte Precision Route 1J (SavedRoute 6a7e7a1c3efa45ba79c806bf, 1,000 doors) stops 200-215 exactly as the optimizer stored them, with the coordinates hydrated from the canonical property store. This is the route from the field screenshot: it reported matrix_tier 'cluster', status 'ok', fallback false, while 6,608,356 aerial evaluations priced its sequencing. Two observable defects live in this window: the 206 -> 207 jump between ZIP 28278 and 28208, and the 210 -> 211 -> 212 -> 213 backtrack (east to 4814 Ashley, back west to Eaton/Airport, then east again to Airline).",
+  "route_id": "6a7e7a1c3efa45ba79c806bf",
+  "route_name": "Charlotte Precision Route 1J",
+  "door_count": 1000,
+  "stored_routing_metadata": {
+    "matrix_tier": "cluster",
+    "matrix_point_count": 250,
+    "distance_estimate": "road_block_tier",
+    "intra_block_aerial_leg_count": 6608356,
+    "winning_route_distance": 299.67,
+    "fallback": false,
+    "status": "ok"
+  },
+  "stops": [
+    { "stop": 200, "address_hash": "9519 WALKERS FERRY RD|28214", "street_name": "Walkers Ferry Rd", "zip_code": "28214", "lat": 35.220031, "lng": -80.978095 },
+    { "stop": 201, "address_hash": "10004 DILLARD VALLEY RD|28214", "street_name": "Dillard Valley Rd", "zip_code": "28214", "lat": 35.214093, "lng": -80.977842 },
+    { "stop": 202, "address_hash": "8752 PINE TREE CIR|28278", "street_name": "Pine Tree Cir", "zip_code": "28278", "lat": 35.20542829, "lng": -80.97812915 },
+    { "stop": 203, "address_hash": "4829 MOUNT OLIVE CHURCH RD|28278", "street_name": "Mount Olive Church Rd", "zip_code": "28278", "lat": 35.209086, "lng": -80.981834 },
+    { "stop": 204, "address_hash": "5524 MOUNT OLIVE CHURCH RD|28278", "street_name": "Mount Olive Church Rd", "zip_code": "28278", "lat": 35.205359, "lng": -80.975791 },
+    { "stop": 205, "address_hash": "5621 MOUNT OLIVE CHURCH RD|28278", "street_name": "Mount Olive Church Rd", "zip_code": "28278", "lat": 35.204008, "lng": -80.973831 },
+    { "stop": 206, "address_hash": "9023 DIXIE RIVER RD|28278", "street_name": "Dixie River Rd", "zip_code": "28278", "lat": 35.201557589, "lng": -80.97605569 },
+    { "stop": 207, "address_hash": "5000 ASHLEY CIR|28208", "street_name": "Ashley Cir", "zip_code": "28208", "lat": 35.210177, "lng": -80.927615 },
+    { "stop": 208, "address_hash": "4910 ASHLEY CIR|28208", "street_name": "Ashley Cir", "zip_code": "28208", "lat": 35.210067, "lng": -80.926878 },
+    { "stop": 209, "address_hash": "4820 ASHLEY CIR|28208", "street_name": "Ashley Cir", "zip_code": "28208", "lat": 35.209841, "lng": -80.925529 },
+    { "stop": 210, "address_hash": "4814 ASHLEY CIR|28208", "street_name": "Ashley Cir", "zip_code": "28208", "lat": 35.209701, "lng": -80.925264 },
+    { "stop": 211, "address_hash": "5333 EATON CIR|28208", "street_name": "Eaton Cir", "zip_code": "28208", "lat": 35.210109, "lng": -80.927077 },
+    { "stop": 212, "address_hash": "5325 AIRPORT DR|28208", "street_name": "Airport Dr", "zip_code": "28208", "lat": 35.2103, "lng": -80.928368 },
+    { "stop": 213, "address_hash": "5313 AIRLINE ST|28208", "street_name": "Airline St", "zip_code": "28208", "lat": 35.210888, "lng": -80.925935 },
+    { "stop": 214, "address_hash": "4330 CONNELLY CIR|28208", "street_name": "Connelly Cir", "zip_code": "28208", "lat": 35.222488, "lng": -80.914553 },
+    { "stop": 215, "address_hash": "2723 CAPITOL DR|28208", "street_name": "Capitol Dr", "zip_code": "28208", "lat": 35.21813, "lng": -80.91329 }
+  ]
+}

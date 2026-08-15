@@ -16,6 +16,7 @@ import {
 } from '../../shared/roadMatrix.js';
 import {
     BLOCK_TIER_REFINEMENT_STEP_BUDGET,
+    classifyFinalRouteLegs,
     createTieredMatrixMetricFns,
     MAX_TIERED_ROUTE_DOORS,
     planTieredRoadMatrix,
@@ -213,7 +214,8 @@ export default async function (req: Request): Promise<Response> {
             distanceBetween,
             durationBetween,
             unresolved,
-            intraBlockLegCount
+            intraBlockLegCount,
+            aerialEvaluationCounts
         } = createTieredMatrixMetricFns(matrix, plan);
 
         // Both objectives get their own sweep, so the duration winner is not
@@ -277,6 +279,14 @@ export default async function (req: Request): Promise<Response> {
         const bestContinuity = candidates.find((candidate) => candidate.type === 'continuity') || null;
         const round = (value) => (Number.isFinite(value) ? Math.round(value * 1000) / 1000 : null);
 
+        // What the STORED route is actually made of, as opposed to what the search
+        // evaluated. A cluster-tier unit spans several streets, so a leg between
+        // two different streets inside one unit was sequenced on straight-line
+        // distance — that is a material degradation and the route is not allowed
+        // to describe itself as fully road-optimized while it has any.
+        const finalLegs = classifyFinalRouteLegs(winner.order, plan);
+        const roadAwareDegraded = finalLegs.aerialCrossStreetLegs > 0;
+
         return Response.json({
             success: true,
             // 'current' tells the caller the saved order already won — leave it alone.
@@ -295,15 +305,37 @@ export default async function (req: Request): Promise<Response> {
                 road_matrix_ms: matrixMs,
                 road_matrix_snapped: matrix.snapped,
                 road_matrix_unresolved_legs: unresolved.count,
-                // Block tier prices between blocks on the road network and walks
-                // each street segment in house order, so these legs are aerial.
+                // CANDIDATE-SEARCH telemetry. This counts straight-line
+                // evaluations made while searching for an order, so it reads in
+                // the millions on a large route and must never be read as a count
+                // of legs in the stored route — that is `final_route_*` below.
                 intra_block_aerial_leg_count: intraBlockLegCount.count,
-                distance_estimate: plan.tier === TIER_DOOR ? 'road' : 'road_block_tier',
+                aerial_evaluation_same_street_block: aerialEvaluationCounts.sameStreetBlock,
+                aerial_evaluation_cross_street_same_unit: aerialEvaluationCounts.crossStreetSameUnit,
+                // FINAL-ROUTE telemetry: the legs the rep will actually drive.
+                final_route_leg_count: finalLegs.legCount,
+                final_route_road_legs: finalLegs.roadLegs,
+                final_route_aerial_same_street_block_legs: finalLegs.aerialSameStreetBlockLegs,
+                final_route_aerial_cross_street_legs: finalLegs.aerialCrossStreetLegs,
+                // Honest self-description. A cluster-tier route whose final legs
+                // include cross-street aerial sequencing is road-INFORMED, not
+                // road-optimized, and says so here rather than reporting clean.
+                road_aware_degraded: roadAwareDegraded,
+                road_aware_degradation_reason: roadAwareDegraded
+                    ? 'aerial_cross_street_sequencing_within_matrix_unit'
+                    : null,
+                distance_estimate: plan.tier === TIER_DOOR
+                    ? 'road'
+                    : roadAwareDegraded
+                        ? 'road_partial_aerial_sequencing'
+                        : 'road_block_tier',
                 matrix_point_count: matrix.pointCount,
                 matrix_block_count: matrix.blocks,
                 matrix_unresolved_count: 0,
-                fallback_status: 'none',
-                fallback_reason: null,
+                fallback_status: roadAwareDegraded ? 'aerial_intra_unit_sequencing' : 'none',
+                fallback_reason: roadAwareDegraded
+                    ? 'cluster_tier_intra_unit_legs_priced_aerially'
+                    : null,
                 // Backward-compatible fields the clients already read.
                 input_measured: round(current?.distance),
                 continuity_measured: round(bestContinuity?.distance),
@@ -335,7 +367,9 @@ export default async function (req: Request): Promise<Response> {
                 // Deterministic best-of-search, not a proven global optimum.
                 optimality_status: plan.tier === TIER_DOOR
                     ? 'best_validated_candidate'
-                    : 'best_validated_candidate_block_tier',
+                    : roadAwareDegraded
+                        ? 'best_validated_candidate_degraded_aerial_intra_unit'
+                        : 'best_validated_candidate_block_tier',
                 selected_candidate_type: winner.is_current ? 'current' : winner.type,
                 solver_runtime_ms: Date.now() - solverStartedAt,
                 street_block_count: continuityChunks.streetBlocks.length,
