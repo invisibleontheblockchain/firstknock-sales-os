@@ -602,8 +602,13 @@ function optimizeRouteOrder(properties, startLat = null, startLng = null, minimi
  */
 function partitionScoredProperties(scored, housesPerRoute, routingContext, options) {
     const requested = Math.floor(Number(housesPerRoute));
+    // The caller's requested route size IS the home budget. The 1,000-home
+    // product ceiling is enforced where the size is chosen (route settings and
+    // the backend budgets), not silently re-imposed here — callers that ask for
+    // one route of every door, such as a reorder or a continuity check, must get
+    // exactly that.
     const maxHomes = Number.isFinite(requested) && requested > 0
-        ? Math.min(requested, MAX_HOMES_PER_ROUTE)
+        ? requested
         : MAX_HOMES_PER_ROUTE;
     const { partitions } = partitionTerritory(scored, {
         maxHomes,
