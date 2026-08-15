@@ -133,53 +133,95 @@ export function describeBarriers(features, geography) {
 }
 
 /**
- * Measure how much the road network stretches short aerial gaps.
+ * The aerial separation band a barrier measurement is taken across, and the
+ * absolute road excess that counts as a limited crossing.
  *
- * This is the physical definition of a barrier and the reason the corpus exists:
- * a territory is barrier-shaped when pairs of doors that LOOK adjacent are not
- * reachable that way. Metres of mapped stream cannot express that — nearly every
- * developed bbox contains streams — so the classification asks the road network
- * directly, on near pairs only, where a detour is unambiguous.
+ * WHY A BAND AND NOT NEAREST NEIGHBOURS (this was measured wrong once)
+ * The first version of this measurement compared each door to its NEAREST
+ * neighbour and scored the road/aerial RATIO. On real doors those neighbours sit
+ * 35-140 ft apart, so driving around one ordinary block — half a mile of
+ * perfectly normal road — scored as a 72x detour. Every territory in the
+ * shortlist came back "severed", including a 2,252-door/sq-mi grid with one pond
+ * in the bbox. A ratio over a distance smaller than a house frontage measures
+ * block geometry, not severance.
  *
- * `sampleRoadPairs(pairs)` must return road miles per pair in order. It is given
- * real coordinates and returns real network distance; nothing about any candidate
- * ordering is involved, so this stays input-side evidence.
- *
- * @returns {Promise<object>} `{ ok, detour_median, detour_p95, severe_detour_pct, pairs }`
+ * So severance is measured where a decomposition actually has to decide: pairs a
+ * quarter-mile apart, the scale of a window cut. And it is scored in ABSOLUTE
+ * excess road miles, because what costs a route is the extra driving, not the
+ * multiple. Two doors 0.25 mi apart that cost 1.1 mi of road are behind
+ * something; the same ratio on touching doors is a street.
  */
-export async function measureDetourProfile(doors, sampleRoadPairs, { pairCount = 120, maxAerialMiles = 0.35 } = {}) {
-    // Deterministic near-pair sample: every door's nearest neighbour that is close
-    // enough for a detour to mean something, taken in a stable stride so a rerun
-    // measures the identical pairs.
+export const DETOUR_BAND_MIN_MILES = 0.1;
+export const DETOUR_BAND_MAX_MILES = 0.5;
+export const DETOUR_BAND_TARGET_MILES = 0.25;
+export const LIMITED_CROSSING_EXCESS_MILES = 0.75;
+export const MIN_MEASURED_BAND_PAIRS = 20;
+
+/**
+ * Measure how far the road network stretches quarter-mile aerial gaps.
+ *
+ * A barrier is what makes two doors aerially near and road-far, and only the road
+ * network can report that — metres of mapped stream cannot, because nearly every
+ * developed bbox contains streams and ponds. So the classification asks OSRM
+ * directly, over a deterministic sample of pairs inside the separation band.
+ *
+ * `sampleRoadPairs(pairs)` must return road miles per pair in order. It receives
+ * real coordinates and returns real network distance; no candidate ordering is
+ * involved, so this stays input-side evidence that cannot be tuned by a result.
+ *
+ * @returns {Promise<object>} `{ ok, pairs, excess_median_miles, excess_p95_miles,
+ *   limited_crossing_pct, detour_median, detour_p95 }`
+ */
+export async function measureDetourProfile(doors, sampleRoadPairs, {
+    pairCount = 120,
+    minAerialMiles = DETOUR_BAND_MIN_MILES,
+    maxAerialMiles = DETOUR_BAND_MAX_MILES,
+    targetAerialMiles = DETOUR_BAND_TARGET_MILES
+} = {}) {
+    // Deterministic band sample: a stable stride of anchors, each paired with the
+    // door closest to the target separation. A rerun measures the identical pairs.
     const stride = Math.max(1, Math.floor(doors.length / pairCount));
     const pairs = [];
     for (let i = 0; i < doors.length && pairs.length < pairCount; i += stride) {
         const from = doors[i];
         let best = null;
-        let bestMiles = Infinity;
+        let bestGap = Infinity;
         for (const other of doors) {
             if (other === from) continue;
             const miles = haversineMiles(from, other);
-            if (miles > 0 && miles < bestMiles) { bestMiles = miles; best = other; }
+            if (miles < minAerialMiles || miles > maxAerialMiles) continue;
+            const gap = Math.abs(miles - targetAerialMiles);
+            if (gap < bestGap) { bestGap = gap; best = { to: other, aerialMiles: miles }; }
         }
-        if (best && bestMiles <= maxAerialMiles) pairs.push({ from, to: best, aerialMiles: bestMiles });
+        if (best) pairs.push({ from, to: best.to, aerialMiles: best.aerialMiles });
     }
-    if (!pairs.length) return { ok: false, error: 'NO_NEAR_PAIRS' };
+    if (!pairs.length) return { ok: false, error: 'NO_BAND_PAIRS' };
 
     const roadMiles = await sampleRoadPairs(pairs);
-    const ratios = pairs
-        .map((pair, index) => (Number.isFinite(roadMiles[index]) && pair.aerialMiles > 0 ? roadMiles[index] / pair.aerialMiles : null))
-        .filter((value) => Number.isFinite(value) && value >= 1)
-        .sort((a, b) => a - b);
-    if (ratios.length < Math.min(20, pairs.length / 2)) return { ok: false, error: 'INSUFFICIENT_ROAD_PAIRS' };
+    const measured = pairs
+        .map((pair, index) => (Number.isFinite(roadMiles[index]) && roadMiles[index] >= pair.aerialMiles
+            ? { excess: roadMiles[index] - pair.aerialMiles, ratio: roadMiles[index] / pair.aerialMiles }
+            : null))
+        .filter(Boolean);
+    // A percentile over a handful of pairs is not a measurement. Below this the
+    // profile reports failure and the territory keeps its density class, rather
+    // than earning a barrier label from three lucky pairs.
+    if (measured.length < MIN_MEASURED_BAND_PAIRS) return { ok: false, error: 'INSUFFICIENT_ROAD_PAIRS' };
 
+    const excess = measured.map((m) => m.excess).sort((a, b) => a - b);
+    const ratios = measured.map((m) => m.ratio).sort((a, b) => a - b);
     return {
         ok: true,
-        pairs: ratios.length,
+        pairs: measured.length,
+        band_min_miles: minAerialMiles,
+        band_max_miles: maxAerialMiles,
+        excess_median_miles: round(excess[Math.floor(excess.length / 2)]),
+        excess_p95_miles: round(excess[Math.floor(excess.length * 0.95)]),
+        // A quarter-mile neighbour that costs an extra 0.75 mi of road is reached
+        // through a constrained crossing, not along the street in front of it.
+        limited_crossing_pct: pct(measured.filter((m) => m.excess >= LIMITED_CROSSING_EXCESS_MILES).length, measured.length),
         detour_median: round(ratios[Math.floor(ratios.length / 2)]),
-        detour_p95: round(ratios[Math.floor(ratios.length * 0.95)]),
-        // A neighbour that costs more than 4x its aerial gap is behind something.
-        severe_detour_pct: pct(ratios.filter((value) => value >= 4).length, ratios.length)
+        detour_p95: round(ratios[Math.floor(ratios.length * 0.95)])
     };
 }
 
@@ -205,21 +247,29 @@ export function classifyGeography(geography, barriers, detour = null) {
     const terminalHeavy = g.terminal_street_door_pct >= 34;
     const fewStreetsManyDoors = g.distinct_streets > 0 && g.door_count / g.distinct_streets >= 22;
 
-    // Barrier classes require MEASURED severance, not merely mapped water or road.
-    // The detour profile says a barrier is present; the OSM counts then say which
-    // kind it is, and water wins ties because a river is crossed at bridges only
-    // while a motorway usually has more crossings per mile.
-    const severed = detour?.ok === true && (detour.detour_p95 >= 3 || detour.severe_detour_pct >= 8);
-    if (severed && !verySparse) {
-        const waterEvidence = b.water_body_count >= 3 || b.waterway_meters_per_sq_mi >= 1500;
-        const motorwayEvidence = b.motorway_meters_per_sq_mi >= 400;
-        if (waterEvidence && (!motorwayEvidence || b.water_body_count >= 8)) {
-            reasons.push(`road detour p95 ${detour.detour_p95}x aerial with ${detour.severe_detour_pct}% of near neighbours past 4x, against ${b.water_body_count} water bodies and ${b.waterway_meters_per_sq_mi} m/sq mi waterway`);
+    // Barrier classes require MEASURED severance in absolute road miles, not merely
+    // mapped water or road, and not a ratio taken across touching doors. The detour
+    // profile says a constrained crossing is present; the OSM counts then say which
+    // kind it is. Water wins ties because a river is crossed at bridges only, while
+    // a motorway usually offers more crossings per mile of barrier.
+    const severed = detour?.ok === true
+        && detour.excess_p95_miles >= LIMITED_CROSSING_EXCESS_MILES
+        && detour.limited_crossing_pct >= 15;
+    if (severed) {
+        const evidence = `quarter-mile neighbours cost +${detour.excess_p95_miles} mi of road at p95 with ${detour.limited_crossing_pct}% past +${LIMITED_CROSSING_EXCESS_MILES} mi`;
+        const waterEvidence = b.waterway_meters_per_sq_mi >= 1500 || b.water_body_count >= 8;
+        const motorwayEvidence = b.motorway_meters_per_sq_mi >= 1000 || b.railway_meters_per_sq_mi >= 1000;
+        if (waterEvidence && !motorwayEvidence) {
+            reasons.push(`${evidence}, against ${b.water_body_count} water bodies and ${b.waterway_meters_per_sq_mi} m/sq mi waterway`);
             return { geography: 'river_lake_barrier', rationale: reasons.join('; ') };
         }
-        if (motorwayEvidence) {
-            reasons.push(`road detour p95 ${detour.detour_p95}x aerial with ${detour.severe_detour_pct}% of near neighbours past 4x, against ${b.motorway_meters_per_sq_mi} m/sq mi of motorway/trunk`);
+        if (motorwayEvidence && !waterEvidence) {
+            reasons.push(`${evidence}, against ${b.motorway_meters_per_sq_mi} m/sq mi motorway/trunk and ${b.railway_meters_per_sq_mi} m/sq mi railway`);
             return { geography: 'highway_separated', rationale: reasons.join('; ') };
+        }
+        if (waterEvidence && motorwayEvidence) {
+            reasons.push(`${evidence}, with both water (${b.water_body_count} bodies, ${b.waterway_meters_per_sq_mi} m/sq mi) and corridor (${b.motorway_meters_per_sq_mi} m/sq mi motorway, ${b.railway_meters_per_sq_mi} m/sq mi railway) barriers`);
+            return { geography: 'mixed_geography', rationale: reasons.join('; ') };
         }
     }
     if (fewStreetsManyDoors && terminalHeavy) {

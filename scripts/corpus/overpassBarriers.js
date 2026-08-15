@@ -63,7 +63,15 @@ export async function fetchBarrierFeatures(bounds, { attempts = 3 } = {}) {
             });
             if (!response.ok) throw new Error(`${host} -> ${response.status}`);
             const payload = await response.json();
-            return { ok: true, ...reduceFeatures(payload.elements || []) };
+            // The OSM base timestamp is recorded with every fixture: if a benchmark
+            // improves from 354 to 351 miles six months from now, the map data may
+            // have changed rather than the solver, and only this stamp can tell them
+            // apart.
+            return {
+                ok: true,
+                ...reduceFeatures(payload.elements || []),
+                osmDataTimestamp: payload.osm3s?.timestamp_osm_base || null
+            };
         } catch (error) {
             lastError = error;
             await sleep(2000 * (attempt + 1));
