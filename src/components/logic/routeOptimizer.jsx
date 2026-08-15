@@ -612,6 +612,16 @@ function partitionScoredProperties(scored, housesPerRoute, routingContext, optio
         : MAX_HOMES_PER_ROUTE;
     const { partitions } = partitionTerritory(scored, {
         maxHomes,
+        // HOW MANY ROUTES the user gets is a product decision, and the only
+        // currency for it is homes. Street-block count is a road-MATRIX limit,
+        // and the matrix already has its own answer for a route with more blocks
+        // than it can price one-by-one: the block and cluster tiers
+        // (`planTieredRoadMatrix`). Budgeting blocks here instead turned that
+        // technical ceiling into a second, invisible route-splitting rule — a
+        // 1,000-home Precision pull came back as several routes purely because it
+        // contained more than 240 street blocks. Blocks are still reported per
+        // partition (`blockCount`, `matrixTier`), just never a reason to cut.
+        maxBlocks: Number.POSITIVE_INFINITY,
         routingContext,
         territoryPolygon: options?.territoryPolygon || null,
         roadNetwork: options?.roadNetwork || null
