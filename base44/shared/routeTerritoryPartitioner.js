@@ -267,6 +267,101 @@ function growRegions(atoms, cost, seeds, options) {
 }
 
 /**
+ * Repair workload bounds before mileage refinement.
+ *
+ * Growth follows road proximity and can consume the last conveniently-sized atom
+ * before every region reaches its floor. This phase permits only balance-improving
+ * moves, choosing the road-nearest legal donor atom. Mileage refinement runs only
+ * after every route is in band, so it can never buy mileage with an unfair day.
+ */
+function repairBalance(atoms, cost, partition, { minLoad, capacity }) {
+    const regionOf = [...partition.regionOf];
+    const members = partition.members.map((list) => [...list]);
+    const load = [...partition.load];
+    let moves = 0;
+    let guard = atoms.length * 4;
+    const violation = (value) => Math.max(0, minLoad - value) + Math.max(0, value - capacity);
+    const totalViolation = () => load.reduce((sum, value) => sum + violation(value), 0);
+
+    while (guard > 0 && totalViolation() > 0) {
+        guard -= 1;
+        let best = null;
+
+        // Prefer one-atom transfers that reduce total homes outside the band.
+        for (let donor = 0; donor < members.length; donor += 1) {
+            if (members[donor].length <= 1) continue;
+            for (let recipient = 0; recipient < members.length; recipient += 1) {
+                if (recipient === donor) continue;
+                for (const atom of members[donor]) {
+                    const doors = atoms[atom].doorCount;
+                    const before = violation(load[donor]) + violation(load[recipient]);
+                    const after = violation(load[donor] - doors) + violation(load[recipient] + doors);
+                    const improvement = before - after;
+                    if (improvement <= 0) continue;
+                    const roadGap = members[recipient].reduce((nearest, other) => Math.min(nearest, cost(atom, other)), Infinity);
+                    if (!best || improvement > best.improvement
+                        || (improvement === best.improvement && roadGap < best.roadGap)) {
+                        best = { type: 'move', atom, donor, recipient, doors, improvement, roadGap };
+                    }
+                }
+            }
+        }
+
+        // Coarse atoms can require exchanging a larger donor atom for a smaller
+        // recipient atom. The exchange is still accepted only when it reduces the
+        // declared workload violation.
+        if (!best) {
+            for (let firstRegion = 0; firstRegion < members.length; firstRegion += 1) {
+                for (let secondRegion = firstRegion + 1; secondRegion < members.length; secondRegion += 1) {
+                    for (const firstAtom of members[firstRegion]) {
+                        for (const secondAtom of members[secondRegion]) {
+                            const firstDoors = atoms[firstAtom].doorCount;
+                            const secondDoors = atoms[secondAtom].doorCount;
+                            const before = violation(load[firstRegion]) + violation(load[secondRegion]);
+                            const nextFirst = load[firstRegion] - firstDoors + secondDoors;
+                            const nextSecond = load[secondRegion] - secondDoors + firstDoors;
+                            const improvement = before - violation(nextFirst) - violation(nextSecond);
+                            if (improvement <= 0) continue;
+                            const roadGap = cost(firstAtom, secondAtom);
+                            if (!best || improvement > best.improvement
+                                || (improvement === best.improvement && roadGap < best.roadGap)) {
+                                best = {
+                                    type: 'swap', firstRegion, secondRegion, firstAtom, secondAtom,
+                                    firstDoors, secondDoors, improvement, roadGap
+                                };
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if (!best) break;
+
+        if (best.type === 'move') {
+            members[best.donor] = members[best.donor].filter((index) => index !== best.atom);
+            members[best.recipient].push(best.atom);
+            load[best.donor] -= best.doors;
+            load[best.recipient] += best.doors;
+            regionOf[best.atom] = best.recipient;
+        } else {
+            members[best.firstRegion] = members[best.firstRegion].filter((index) => index !== best.firstAtom);
+            members[best.secondRegion] = members[best.secondRegion].filter((index) => index !== best.secondAtom);
+            members[best.firstRegion].push(best.secondAtom);
+            members[best.secondRegion].push(best.firstAtom);
+            load[best.firstRegion] += best.secondDoors - best.firstDoors;
+            load[best.secondRegion] += best.firstDoors - best.secondDoors;
+            regionOf[best.firstAtom] = best.secondRegion;
+            regionOf[best.secondAtom] = best.firstRegion;
+        }
+        members.forEach((list) => list.sort((a, b) => a - b));
+        moves += 1;
+    }
+
+    const valid = load.every((value) => value >= minLoad && value <= capacity);
+    return { ok: valid, regionOf, members, load, relaxations: partition.relaxations, balanceRepairs: moves };
+}
+
+/**
  * The road-priced surrogate for one route: a nearest-neighbour tour over its
  * atoms with a bounded 2-opt pass, in real driving miles. Used ONLY to compare
  * candidate moves — never reported as the route's mileage, which always comes
@@ -653,6 +748,7 @@ export async function partitionRouteTerritories(doors, routeCount, options = {})
             balance: evaluateBalance(homesPerRoute, bounds),
             bounds,
             growth_bound_relaxations: produced.relaxations ?? null,
+            balance_repair_moves: produced.balanceRepairs ?? 0,
             refinement: produced.refinement || null
         });
         if (!bySignature.has(signature)) bySignature.set(signature, id);
@@ -677,8 +773,16 @@ export async function partitionRouteTerritories(doors, routeCount, options = {})
                 if (seeds.length !== routeCount) return { ok: false, code: 'SEEDING_INCOMPLETE' };
                 const grown = growRegions(atoms, cost, seeds, { capacity, minLoad, loadPenalty: strategy.loadPenalty });
                 if (!grown.ok) return { ok: false, code: grown.code };
-                const refined = refineBoundaries(atoms, rows, neighbours, grown, { capacity, minLoad });
-                return { ok: true, members: refined.members, relaxations: grown.relaxations, refinement: refined.stats };
+                const repaired = repairBalance(atoms, cost, grown, { capacity, minLoad });
+                if (!repaired.ok) return { ok: false, code: 'BALANCE_REPAIR_FAILED' };
+                const refined = refineBoundaries(atoms, rows, neighbours, repaired, { capacity, minLoad });
+                return {
+                    ok: true,
+                    members: refined.members,
+                    relaxations: grown.relaxations,
+                    balanceRepairs: repaired.balanceRepairs,
+                    refinement: refined.stats
+                };
             }));
 
             // The old sweep-slice split as one more competitor, so the system can
@@ -737,7 +841,7 @@ export async function partitionRouteTerritories(doors, routeCount, options = {})
         ? 'in_declared_band'
         : (balanceEligible.length > 0 ? 'within_atom_granularity_slack' : 'none');
     const relaxationMode = selectionTier !== 'in_declared_band';
-    if (selectionTier === 'none' && options.allowBalanceRelaxation !== true) {
+    if (selectionTier !== 'in_declared_band' && options.allowBalanceRelaxation !== true) {
         return {
             ok: false,
             code: 'NO_BALANCE_VALID_PARTITION',

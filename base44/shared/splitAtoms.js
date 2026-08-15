@@ -43,11 +43,12 @@ export const SPLIT_ATOM_VERSION = 'split_atoms_v1';
  * The largest share of one route's target workload a single atom may hold.
  *
  * An atom bigger than this cannot be packed into balanced routes and, worse,
- * leaves refinement nothing to move: with one atom per route every boundary is
- * frozen. Half a route guarantees at least two movable pieces per route while
- * still keeping natural units whole whenever the requested size allows it.
+ * leaves refinement nothing to move. A tenth of a route gives the balance repair
+ * enough whole-home increments to satisfy the declared band instead of relying on
+ * atom-granularity relaxation. At very high K the two-home floor keeps the 1,000-
+ * door road table under its 700-atom ceiling.
  */
-export const MAX_ATOM_SHARE_OF_ROUTE = 0.5;
+export const MAX_ATOM_SHARE_OF_ROUTE = 0.1;
 
 export const ATOM_LEVEL_UNIT = 'unit';
 export const ATOM_LEVEL_BLOCK = 'block';
@@ -129,7 +130,7 @@ export function buildSplitAtoms(doors, routeCount, options = {}) {
     const blockByKey = new Map(model.blocks.map((block) => [block.key, block]));
     const targetDoorsPerRoute = valid.length / requestedRoutes;
     const share = Number(options.maxAtomShare) > 0 ? Number(options.maxAtomShare) : MAX_ATOM_SHARE_OF_ROUTE;
-    const maxAtomDoors = Math.max(1, Math.floor(targetDoorsPerRoute * share));
+    const maxAtomDoors = Math.max(2, Math.floor(targetDoorsPerRoute * share));
 
     const atoms = [];
     let unitsSubdivided = 0;
