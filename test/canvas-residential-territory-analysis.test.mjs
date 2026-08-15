@@ -147,6 +147,54 @@ test('partitions preclassified units into deterministic connected zones without 
   assert.equal(first.zones.flatMap((zone) => zone.work_unit_ids).filter((id) => id === 'b').length, 1);
 });
 
+test('minutes workload basis is opt-in and preserves every ownership guarantee', () => {
+  // Four equal-door units. The last two are ~20x longer, so they carry the same
+  // door count but a materially longer walk.
+  const streets = [
+    unit('a', -82.00000, -81.99995, { weight: 10 }),
+    unit('b', -81.99995, -81.99990, { weight: 10 }),
+    unit('c', -81.99990, -81.99890, { weight: 10 }),
+    unit('d', -81.99890, -81.99790, { weight: 10 }),
+  ];
+
+  const byCount = partitionCanvasResidentialTerritories({ street_units: streets, area_count: 2 });
+  const byMinutes = partitionCanvasResidentialTerritories({
+    street_units: streets,
+    area_count: 2,
+    workload_basis: 'minutes',
+  });
+
+  assert.equal(byCount.ok, true);
+  assert.equal(byMinutes.ok, true);
+
+  for (const result of [byCount, byMinutes]) {
+    assert.equal(result.zones.length, 2);
+    assert.equal(result.qa.connected_zones, true);
+    assert.equal(result.qa.exclusive_work_unit_coverage, true);
+    assert.equal(result.qa.protected_units_intact, true);
+    assert.deepEqual(
+      result.zones.flatMap((zone) => zone.work_unit_ids).sort(),
+      ['a', 'b', 'c', 'd'],
+    );
+  }
+});
+
+test('minutes workload stays deterministic under input reordering', () => {
+  const streets = [
+    unit('a', -82.004, -82.003, { weight: 5 }),
+    unit('b', -82.003, -82.002, { weight: 9 }),
+    unit('c', -82.002, -82.001, { weight: 2 }),
+    unit('d', -82.001, -82, { weight: 7 }),
+  ];
+  const options = { area_count: 2, workload_basis: 'minutes' };
+
+  const first = partitionCanvasResidentialTerritories({ street_units: streets, ...options });
+  const reordered = partitionCanvasResidentialTerritories({ street_units: [...streets].reverse(), ...options });
+
+  assert.equal(first.ok, true);
+  assert.deepEqual(reordered.zones, first.zones);
+});
+
 test('uses shared permitted transit units for connectivity but never owns them', () => {
   const streets = [
     unit('knock-a', -82.003, -82.002, { weight: 4 }),

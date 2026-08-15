@@ -9,6 +9,12 @@ name: Pull Request
 
 on:
   pull_request:
+  # Gate main directly as well. Without this the workflow only ever ran on pull
+  # requests, so main accumulated failures nobody was told about and the
+  # KNOWN_TEST_FAILURES baseline drifted away from reality unnoticed. The two
+  # merge-base steps below are inherently pull-request-relative and skip here.
+  push:
+    branches: [main]
 
 permissions:
   contents: read
@@ -72,6 +78,7 @@ jobs:
         run: npm run validate:artifact
 
       - name: Whitespace and conflict-marker check
+        if: github.event_name == 'pull_request'
         run: |
           BASE_SHA="$(git merge-base "origin/${{ github.base_ref }}" HEAD)"
           echo "Merge base: $BASE_SHA"
@@ -109,6 +116,7 @@ jobs:
       # published as an informational baseline.
 
       - name: Lint — no new diagnostics
+        if: github.event_name == 'pull_request'
         run: |
           set -euo pipefail
           BASE_SHA="$(git merge-base "origin/${{ github.base_ref }}" HEAD)"

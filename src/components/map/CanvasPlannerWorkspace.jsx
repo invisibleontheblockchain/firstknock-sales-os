@@ -31,6 +31,13 @@ import {
   getCanvasResidentialRoleCounts,
   getCanvasZoneResidentialOpportunity,
 } from '@/components/canvas/canvasResidentialPresentation';
+import {
+  formatCanvasFieldHours,
+  formatCanvasOpportunityRange,
+  formatCanvasStreetMiles,
+  recommendCanvasAreaCount,
+  summarizeCanvasPlanWorkload,
+} from '@/components/canvas/canvasWorkloadModel';
 import { canvasZoneLoggedCount, getCanvasOutcome } from '@/components/canvas/canvasOutcomeUtils';
 import { createPageUrl } from '@/utils';
 
@@ -59,6 +66,35 @@ function StepLabel({ number, children }) {
 
 function Metric({ label, value }) {
   return <div className="rounded-xl border border-white/10 bg-black/30 p-2.5"><p className="text-[9px] font-bold uppercase text-gray-500">{label}</p><p className="mt-1 text-sm font-black text-white">{value}</p></div>;
+}
+
+// A Census block housing count is not a door list, so this never renders a lone
+// confident number. Range first, expected and confidence underneath.
+function OpportunityMetric({ summary, confidencePercent }) {
+  const range = formatCanvasOpportunityRange(summary);
+  return <div className="rounded-xl border border-white/10 bg-black/30 p-2.5">
+    <p className="text-[9px] font-bold uppercase text-gray-500">Estimated homes</p>
+    <p className="mt-1 text-sm font-black text-white">{range || 'Analyzing'}</p>
+    {summary && <p className="mt-0.5 text-[9px] leading-tight text-gray-500">Expected {Math.round(summary.expected).toLocaleString()}{typeof confidencePercent === 'number' ? ` · ${confidencePercent}% confidence` : ''}</p>}
+  </div>;
+}
+
+function PlanEvidenceReport({ workload, uncertainCount, releaseId, recommendation, onUseRecommendation }) {
+  const miles = formatCanvasStreetMiles(workload?.eligible_street_miles);
+  const hours = formatCanvasFieldHours(workload?.estimated_hours);
+  const rows = [
+    ['Eligible streets', miles || 'Pending geometry'],
+    ['Est. field work', hours || 'Pending'],
+    ['Needs review', `${uncertainCount} ${uncertainCount === 1 ? 'pocket' : 'pockets'}`],
+    ['Evidence release', releaseId ? String(releaseId).slice(0, 18) : 'Unreleased'],
+  ];
+  return <div className="space-y-2">
+    <div className="grid grid-cols-2 gap-1.5 rounded-xl border border-white/10 bg-black/20 p-2 text-[9px]">
+      {rows.map(([label, value]) => <span key={label} className="flex items-baseline justify-between gap-2 rounded-lg bg-white/[0.03] px-2 py-1.5"><span className="text-gray-500">{label}</span><span className="font-black text-gray-200">{value}</span></span>)}
+    </div>
+    {workload && workload.has_street_geometry === false && <p className="text-[9px] leading-relaxed text-gray-500">Field-work hours count door attempts only. Walking time appears once the evidence release carries street geometry.</p>}
+    {recommendation && <button type="button" onClick={() => onUseRecommendation(recommendation.count)} className="w-full rounded-xl border border-purple-400/25 bg-purple-500/10 px-3 py-2 text-left text-[10px] leading-relaxed text-purple-100 hover:bg-purple-500/20">Suggested: <span className="font-black">{recommendation.count} areas</span> based on your usual {recommendation.basis === 'field_hours' ? 'field hours' : 'doors'} per area. Tap to use — you can still choose any number.</button>}
+  </div>;
 }
 
 function TruthRow({ icon: Icon, tone = 'idle', title, detail }) {
@@ -251,6 +287,10 @@ export default function CanvasPlannerWorkspace(props) {
     teamMembersReady,
     requestedAreaCount,
     changeRequestedAreaCount,
+    // Organisation sizing targets. Absent these there is nothing honest to
+    // recommend, so no suggestion is rendered rather than a made-up one.
+    targetFieldHoursPerArea = 0,
+    targetDoorsPerArea = 0,
     requestedZoneCount,
     roadFetchStatus,
     roadFetchError,
@@ -339,6 +379,17 @@ export default function CanvasPlannerWorkspace(props) {
   const globalAreaSqMiles = getCanvasBoundaryAreaSqMiles(polygon);
   const opportunitySummary = getCanvasResidentialOpportunitySummary(residentialAnalysis);
   const roleCounts = getCanvasResidentialRoleCounts(residentialAnalysis);
+  const planWorkload = useMemo(
+    () => (residentialAnalysis ? summarizeCanvasPlanWorkload(residentialAnalysis) : null),
+    [residentialAnalysis],
+  );
+  // A suggestion, never a constraint. Absent an organisation target there is
+  // nothing honest to recommend, so nothing is shown.
+  const areaCountRecommendation = useMemo(() => (planWorkload ? recommendCanvasAreaCount(planWorkload, {
+    target_hours_per_area: targetFieldHoursPerArea,
+    target_doors_per_area: targetDoorsPerArea,
+    expected_opportunities: opportunitySummary?.expected ?? 0,
+  }) : null), [planWorkload, targetFieldHoursPerArea, targetDoorsPerArea, opportunitySummary]);
   const networkTruth = roadTruth(roadFetchStatus, roadFetchError);
   const showFooter = buildView || Boolean(plan && !deployed);
   const assignmentDisabled = mutationsLocked || !plan;
@@ -349,7 +400,7 @@ export default function CanvasPlannerWorkspace(props) {
     <div className={`min-h-0 flex-1 space-y-4 overflow-y-auto p-4 ${showFooter ? 'pb-36' : 'pb-6'}`}>
       {buildView ? <>
         <section className="space-y-3"><StepLabel number="1">Draw the work area</StepLabel><div><label htmlFor={nameId} className="text-[10px] font-bold uppercase text-gray-500">Area plan name · optional</label><Input id={nameId} maxLength={200} disabled={mutationsLocked} value={sessionName} onChange={(event) => changeSessionName(event.target.value)} className="mt-1 h-11 border-white/10 bg-[#151520] font-bold text-white" /></div><div className="grid grid-cols-2 gap-2"><Button disabled={mutationsLocked} onClick={onDraw} className="h-10 bg-purple-600 text-white hover:bg-purple-500"><Pencil className="h-4 w-4" /> {hasDrawnArea ? 'Redraw area' : 'Draw area'}</Button><Button disabled={!hasDrawnArea || mutationsLocked} onClick={onClearPolygon} className="h-10 border border-white/10 bg-white/10 text-white">Clear</Button></div><TruthRow icon={MapPin} tone={polygon.length ? 'good' : 'idle'} title={polygon.length ? 'Work boundary ready' : 'Draw one freehand boundary'} detail={polygon.length ? `${formatCanvasArea(globalAreaSqMiles)} selected. This boundary—not a house list—is the source of truth.` : 'Outline the entire cold area your team may work.'} /><TruthRow icon={Network} {...networkTruth} />{roadFetchStatus === 'loading' && <div className="rounded-xl border border-blue-400/20 bg-blue-500/[0.07] p-3"><div className="flex items-center justify-between text-[10px] font-black text-blue-100"><span>Residential evidence analysis</span><span>{Number(roadFetchProgress?.percent || 0).toFixed(0)}%</span></div><div className="mt-2 h-1.5 overflow-hidden rounded-full bg-black/30"><div className="h-full rounded-full bg-blue-400 transition-[width]" style={{ width: `${Math.max(2, Math.min(100, Number(roadFetchProgress?.percent || 0)))}%` }} /></div><p className="mt-2 text-[10px] leading-relaxed text-blue-100/70">Canvas will preview only after the signed evidence snapshot is complete. Partial tiles never become territories.</p>{serverAnalysisJobId && <Button disabled={cancellingServerAnalysis} onClick={() => cancelResidentialAnalysis()} className="mt-2 h-8 w-full border border-white/10 bg-white/5 text-white">{cancellingServerAnalysis ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null} Cancel analysis</Button>}</div>}{['unavailable', 'empty'].includes(roadFetchStatus) && <Button disabled={mutationsLocked} onClick={refreshRoadData} className="h-10 w-full border border-white/10 bg-white/5 text-white"><RefreshCw className="h-4 w-4" /> Retry residential analysis</Button>}</section>
-        <section className="space-y-3"><StepLabel number="2">Choose the number of areas</StepLabel><p className="text-[11px] leading-relaxed text-gray-400">This only controls how many connected work areas Canvas creates. Assign reps later in Areas & Assignments.</p><div className="space-y-2 rounded-2xl border border-white/10 bg-white/[0.03] p-3"><NumberOfAreas value={requestedAreaCount} disabled={mutationsLocked} onChange={changeRequestedAreaCount} /><p className="text-[10px] leading-relaxed text-gray-500">After the first preview, this updates the colored split automatically without downloading the evidence again.</p></div><div className="grid grid-cols-2 gap-2"><Metric label="Selected boundary" value={globalAreaSqMiles > 0 ? formatCanvasArea(globalAreaSqMiles) : 'Draw first'} /><Metric label="Likely homes" value={opportunitySummary ? Math.round(opportunitySummary.expected).toLocaleString() : 'Analyzing'} /></div>{residentialAnalysis && <div className="grid grid-cols-2 gap-1.5 rounded-xl border border-white/10 bg-black/20 p-2 text-[9px]"><span className="rounded-lg bg-green-500/10 px-2 py-1.5 text-green-200">Residential streets {roleCounts.knock}</span><span className="rounded-lg bg-amber-500/10 px-2 py-1.5 text-amber-200">Needs review {roleCounts.uncertain}</span><span className="rounded-lg bg-slate-500/10 px-2 py-1.5 text-slate-300">Transit {roleCounts.transit_only}</span><span className="rounded-lg bg-slate-700/30 px-2 py-1.5 text-slate-400">Excluded {roleCounts.excluded}</span></div>}<ClassificationReview unresolvedCount={unresolvedClassificationCount} selectedUnit={selectedClassificationUnit} role={classificationRole} setRole={setClassificationRole} opportunityCount={classificationOpportunityCount} setOpportunityCount={setClassificationOpportunityCount} reason={classificationReason} setReason={setClassificationReason} saving={classificationSaving} disabled={mutationsLocked} onSave={applyClassificationReview} /><p className="rounded-xl border border-blue-400/15 bg-blue-500/[0.07] p-3 text-[10px] leading-relaxed text-blue-100">Canvas balances residential opportunity—not square miles—keeps areas connected, protects cul-de-sacs, and gives fields or commercial land zero knocking workload.</p>{requestedZoneCount >= 100 && <p className="rounded-xl border border-blue-400/20 bg-blue-500/10 p-3 text-[10px] leading-relaxed text-blue-100">Large subdivision plan: Canvas stops safely if the verified street topology cannot support this many connected areas.</p>}{generationBlockers.length > 0 && <IssueList title="Before preview" issues={generationBlockers} />}<Button disabled={mutationsLocked || generationBlockers.length > 0} onClick={() => generatePlan()} className="h-12 w-full bg-purple-600 font-black text-white hover:bg-purple-500 disabled:bg-gray-800 disabled:text-gray-500">{generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />} {generating ? 'Balancing residential work...' : plan ? 'Update area preview' : `Preview ${requestedZoneCount} ${requestedZoneCount === 1 ? 'area' : 'areas'}`}</Button>{generating && <p className="text-center text-[10px] leading-relaxed text-blue-200">Canvas is verifying connected ownership and protected street groups.</p>}<PlannerFailureNotice failure={planGenerationError} onUseAreaCount={changeRequestedAreaCount} onRetry={() => generatePlan()} /></section>
+        <section className="space-y-3"><StepLabel number="2">Choose the number of areas</StepLabel><p className="text-[11px] leading-relaxed text-gray-400">This only controls how many connected work areas Canvas creates. Assign reps later in Areas & Assignments.</p><div className="space-y-2 rounded-2xl border border-white/10 bg-white/[0.03] p-3"><NumberOfAreas value={requestedAreaCount} disabled={mutationsLocked} onChange={changeRequestedAreaCount} /><p className="text-[10px] leading-relaxed text-gray-500">After the first preview, this updates the colored split automatically without downloading the evidence again.</p></div><div className="grid grid-cols-2 gap-2"><Metric label="Selected boundary" value={globalAreaSqMiles > 0 ? formatCanvasArea(globalAreaSqMiles) : 'Draw first'} /><OpportunityMetric summary={opportunitySummary} confidencePercent={planWorkload?.confidence_percent ?? null} /></div>{residentialAnalysis && <div className="grid grid-cols-2 gap-1.5 rounded-xl border border-white/10 bg-black/20 p-2 text-[9px]"><span className="rounded-lg bg-green-500/10 px-2 py-1.5 text-green-200">Residential streets {roleCounts.knock}</span><span className="rounded-lg bg-amber-500/10 px-2 py-1.5 text-amber-200">Needs review {roleCounts.uncertain}</span><span className="rounded-lg bg-slate-500/10 px-2 py-1.5 text-slate-300">Transit {roleCounts.transit_only}</span><span className="rounded-lg bg-slate-700/30 px-2 py-1.5 text-slate-400">Excluded {roleCounts.excluded}</span></div>}{residentialAnalysis && <PlanEvidenceReport workload={planWorkload} uncertainCount={roleCounts.uncertain} releaseId={residentialAnalysis?.release_id} recommendation={areaCountRecommendation} onUseRecommendation={changeRequestedAreaCount} />}<ClassificationReview unresolvedCount={unresolvedClassificationCount} selectedUnit={selectedClassificationUnit} role={classificationRole} setRole={setClassificationRole} opportunityCount={classificationOpportunityCount} setOpportunityCount={setClassificationOpportunityCount} reason={classificationReason} setReason={setClassificationReason} saving={classificationSaving} disabled={mutationsLocked} onSave={applyClassificationReview} /><p className="rounded-xl border border-blue-400/15 bg-blue-500/[0.07] p-3 text-[10px] leading-relaxed text-blue-100">Canvas balances residential opportunity—not square miles—keeps areas connected, protects cul-de-sacs, and gives fields or commercial land zero knocking workload.</p>{requestedZoneCount >= 100 && <p className="rounded-xl border border-blue-400/20 bg-blue-500/10 p-3 text-[10px] leading-relaxed text-blue-100">Large subdivision plan: Canvas stops safely if the verified street topology cannot support this many connected areas.</p>}{generationBlockers.length > 0 && <IssueList title="Before preview" issues={generationBlockers} />}<Button disabled={mutationsLocked || generationBlockers.length > 0} onClick={() => generatePlan()} className="h-12 w-full bg-purple-600 font-black text-white hover:bg-purple-500 disabled:bg-gray-800 disabled:text-gray-500">{generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />} {generating ? 'Balancing residential work...' : plan ? 'Update area preview' : `Preview ${requestedZoneCount} ${requestedZoneCount === 1 ? 'area' : 'areas'}`}</Button>{generating && <p className="text-center text-[10px] leading-relaxed text-blue-200">Canvas is verifying connected ownership and protected street groups.</p>}<PlannerFailureNotice failure={planGenerationError} onUseAreaCount={changeRequestedAreaCount} onRetry={() => generatePlan()} /></section>
         {zones.length > 0 && <section className="space-y-3"><StepLabel number="3">Review and save</StepLabel><PlanSummary plan={plan} boundaryAreaSqMiles={globalAreaSqMiles} staleReason={planStaleReason} residentialAnalysis={residentialAnalysis} />{planTooComplex && <IssueList title="Plan is too complex to save" issues={[planComplexityStatus.message]} />}<AreaPreviewList zones={zones} selectedZoneNumber={selectedZoneNumber} setSelectedZoneNumber={setSelectedZoneNumber} compact={compact} residentialAnalysis={residentialAnalysis} /><p className="text-[11px] leading-relaxed text-gray-500">Save this residential street split as a reusable area plan. No rep is assigned and nothing is sent from the builder.</p></section>}
       </> : <>
         <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-3"><div className="flex items-center justify-between gap-3"><div><p className="text-xs font-black text-white">Canvas Areas</p><p className="mt-1 text-[10px] leading-relaxed text-gray-500">Open a saved plan, assign any number of its areas, save partial progress, and send only when every area is covered.</p></div><Button disabled={campaignIndexLoading} onClick={refreshCampaignIndex} size="icon" className="h-8 w-8 shrink-0 bg-white/10 text-white">{campaignIndexLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}</Button></div></section>

@@ -578,7 +578,48 @@ function connectedComponents(ids, neighbors) {
   return components.sort((left, right) => compareIds(left[0], right[0]));
 }
 
+// Workload in estimated minutes:
+//   expected opportunities × attempt time + walking time + MDU/site overhead
+//
+// Selecting this basis changes what the partitioner balances, so it changes
+// results for the same evidence. That makes it an ALGORITHM VERSION change, not
+// a tunable — it is opt-in via `workload_basis: 'minutes'` and the default stays
+// opportunity count so already-deployed plans stay reproducible.
+export const CANVAS_PARTITION_WORKLOAD_DEFAULTS = Object.freeze({
+  attempt_minutes: 3.5,
+  walk_meters_per_minute: 60,
+  mdu_site_overhead_minutes: 12,
+});
+
+function segmentMeters(start, end) {
+  const from = pointFrom(start);
+  const to = pointFrom(end);
+  if (!from || !to) return 0;
+  const latitude = (from.lat + to.lat) / 2;
+  const projectedFrom = projectMeters(from, latitude);
+  const projectedTo = projectMeters(to, latitude);
+  return Math.hypot(projectedTo.x - projectedFrom.x, projectedTo.y - projectedFrom.y);
+}
+
+function unitStreetMeters(unit) {
+  const declared = Number(unit?.length_meters ?? unit?.street_length_meters);
+  if (Number.isFinite(declared) && declared > 0) return declared;
+  const segments = Array.isArray(unit?.segments) ? unit.segments : [];
+  return segments.reduce((sum, segment) => sum + segmentMeters(segment?.start, segment?.end), 0);
+}
+
+function unitWorkloadMinutes(unit, model = CANVAS_PARTITION_WORKLOAD_DEFAULTS) {
+  const expected = Math.max(0, Number(unit?.opportunity?.expected ?? unit?.opportunity_expected ?? 0));
+  const pace = Math.max(1, Number(model.walk_meters_per_minute) || 1);
+  const mduSites = Number(unit?.mdu_site_count ?? unit?.mdu_sites) || (unit?.is_mdu === true ? 1 : 0);
+  return expected * (Number(model.attempt_minutes) || 0)
+    + unitStreetMeters(unit) / pace
+    + Math.max(0, mduSites) * (Number(model.mdu_site_overhead_minutes) || 0);
+}
+
 function workload(unit) {
+  const weight = Number(unit?.workload_weight);
+  if (Number.isFinite(weight) && weight > 0) return weight;
   return Math.max(1, Number(unit.opportunity?.expected ?? unit.opportunity_expected ?? 0));
 }
 
@@ -977,7 +1018,7 @@ function protectedGroupIds(unit) {
   ].map(canonicalId).filter(Boolean))].sort(compareIds);
 }
 
-function buildResidentialOwnershipAtoms(knockUnits, unitNeighbors) {
+function buildResidentialOwnershipAtoms(knockUnits, unitNeighbors, weighting = null) {
   const parent = new Map(knockUnits.map((unit) => [unit.id, unit.id]));
   const find = (id) => {
     let root = parent.get(id);
@@ -1024,6 +1065,15 @@ function buildResidentialOwnershipAtoms(knockUnits, unitNeighbors) {
         expected: members.reduce((sum, unit) => sum + Number(unit?.opportunity?.expected ?? unit?.opportunity_expected ?? 0), 0),
         high: members.reduce((sum, unit) => sum + Number(unit?.opportunity?.high ?? unit?.opportunity_high ?? 0), 0),
       },
+      // Members are id-sorted above, so this sum is order-stable and the
+      // partition stays deterministic for a fixed evidence release.
+      ...(weighting ? {
+        workload_minutes: members.reduce((sum, unit) => sum + unitWorkloadMinutes(unit, weighting), 0),
+        workload_weight: Math.max(
+          Number.EPSILON,
+          members.reduce((sum, unit) => sum + unitWorkloadMinutes(unit, weighting), 0),
+        ),
+      } : {}),
     };
   }).sort((left, right) => compareIds(left.id, right.id));
   const atomNeighbors = new Map(atoms.map((atom) => [atom.id, new Set()]));
@@ -1069,7 +1119,12 @@ export function partitionCanvasResidentialTerritories(input = {}) {
       qa: { connected_zones: false, protected_units_intact: true, exclusive_work_unit_coverage: true },
     };
   }
-  const { atoms, atomNeighbors } = buildResidentialOwnershipAtoms(knockUnits, neighbors);
+  // Default stays opportunity count. `workload_basis: 'minutes'` opts into the
+  // time-based objective and is an algorithm-version change (see the constant).
+  const weighting = String(input.workload_basis ?? '') === 'minutes'
+    ? { ...CANVAS_PARTITION_WORKLOAD_DEFAULTS, ...(input.workload_model || {}) }
+    : null;
+  const { atoms, atomNeighbors } = buildResidentialOwnershipAtoms(knockUnits, neighbors, weighting);
   const atomById = new Map(atoms.map((atom) => [atom.id, atom]));
   const atomIds = atoms.map((atom) => atom.id);
   const components = connectedComponents(atomIds, atomNeighbors);
