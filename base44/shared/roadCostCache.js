@@ -25,10 +25,42 @@
 // same miles and the verification /route calls are otherwise re-bought per
 // candidate.
 
-import { fetchRoadMatrix, roadPointKey } from './roadMatrix.js';
+import {
+    fetchRoadMatrix,
+    roadPointKey,
+    ROAD_MATRIX_VERSION,
+    DEFAULT_OSRM_BASE_URL
+} from './roadMatrix.js';
+
+// Cache schema version. Bumped whenever the stored shape or the meaning of a key
+// changes, so an old entry can never be served to new key semantics.
+const ROAD_COST_CACHE_SCHEMA = 'road_cost_cache_v1';
+
+/**
+ * The full identity of a road-cost QUESTION. A hit must mean "exactly this
+ * question was already asked", not "a similar coordinate set was asked", so every
+ * input capable of changing road truth belongs in the key: the cache schema, the
+ * matrix/engine version, the routing profile, the engine endpoint, and the
+ * annotation mode. Two candidates asking the same coordinates of a different
+ * profile, a different OSRM deployment or a different annotation set are asking
+ * different questions and must not share cached values.
+ *
+ * Coordinate identity itself comes from roadPointKey — the same rounding the
+ * matrix indexes by — so a key can never mean a different place than the lookup.
+ */
+const questionIdentity = (options = {}) => [
+    ROAD_COST_CACHE_SCHEMA,
+    ROAD_MATRIX_VERSION,
+    options.profile || 'driving',
+    String(options.baseUrl || DEFAULT_OSRM_BASE_URL).replace(/\/+$/, ''),
+    // fetchRoadMatrix asks for distance AND duration, and readBlock only serves a
+    // block when both are known. A caller narrowing the annotation set is asking a
+    // different question, so it is keyed as one.
+    options.annotations || 'distance,duration'
+].join('#');
 
 /** Ordered key for a measured path: the miles depend on the ORDER, not the set. */
-const measureRoadPathKey = (stops, profile) => [profile, ...stops.map(roadPointKey)].join('>');
+const measureRoadPathKey = (stops, identity) => [identity, ...stops.map(roadPointKey)].join('>');
 
 // Pair-store ceiling. A 1,000-door candidate touches roughly 200k pairs, so a
 // full portfolio would exceed a function's memory if every pair were kept
@@ -73,16 +105,25 @@ export function createRoadCostCache(deps = {}) {
         measure_memo_hits: 0
     };
 
-    const pairKey = (profile, fromKey, toKey) => `${profile}|${fromKey}|${toKey}`;
+    // Road costs are DIRECTED. One-way streets, divided roads, turn restrictions
+    // and ramps all make A->B and B->A legitimately different, so the two are
+    // never canonicalized into one key — the direction is part of the pair.
+    const pairKey = (identity, fromKey, toKey) => `${identity}|${fromKey}|${toKey}`;
 
-    const pairCache = {
+    /**
+     * A pair-store view bound to ONE road-cost question. The matrix layer only
+     * knows the profile, so the rest of the identity (engine endpoint, annotation
+     * mode, schema and engine version) is bound here rather than threaded through
+     * it. Views share the counters and the stores; they never share key space.
+     */
+    const pairCacheFor = (identity) => ({
         /**
          * Whole-block read. A block is only served locally when EVERY one of its
          * pairs is already known in both objectives — a partially known block is
          * fetched in full, because splitting it into per-pair requests would cost
          * more OSRM calls than it saves.
          */
-        readBlock(profile, sources, destinations) {
+        readBlock(_profile, sources, destinations) {
             counters.blocks_requested += 1;
             const sourceKeys = sources.map(roadPointKey);
             const destinationKeys = destinations.map(roadPointKey);
@@ -92,7 +133,7 @@ export function createRoadCostCache(deps = {}) {
                 const meterRow = [];
                 const secondRow = [];
                 for (let column = 0; column < destinationKeys.length; column += 1) {
-                    const key = pairKey(profile, sourceKeys[row], destinationKeys[column]);
+                    const key = pairKey(identity, sourceKeys[row], destinationKeys[column]);
                     if (!pairMeters.has(key) || !pairSeconds.has(key)) return null;
                     meterRow.push(pairMeters.get(key));
                     secondRow.push(pairSeconds.get(key));
@@ -106,7 +147,7 @@ export function createRoadCostCache(deps = {}) {
         },
 
         /** Record a fetched block's pairs, exactly as the engine returned them. */
-        writeBlock(profile, sources, destinations, distances, durations) {
+        writeBlock(_profile, sources, destinations, distances, durations) {
             const sourceKeys = sources.map(roadPointKey);
             const destinationKeys = destinations.map(roadPointKey);
             counters.pairs_fetched += sourceKeys.length * destinationKeys.length;
@@ -120,22 +161,27 @@ export function createRoadCostCache(deps = {}) {
                         counters.pair_stores_skipped_at_ceiling += 1;
                         continue;
                     }
-                    const key = pairKey(profile, sourceKeys[row], destinationKeys[column]);
+                    const key = pairKey(identity, sourceKeys[row], destinationKeys[column]);
                     pairMeters.set(key, meters);
                     pairSeconds.set(key, seconds);
                 }
             }
         }
-    };
+    });
 
-    /** Coordinate-SET key: order-independent, so a reordered ask reuses a matrix. */
-    const matrixKey = (points, profile) => [profile, ...points.map(roadPointKey).sort()].join('|');
+    /**
+     * Coordinate-SET key: order-independent, so a reordered ask reuses a matrix.
+     * The sorted key list is a MULTISET — repeated coordinates are kept, never
+     * deduplicated — because a 46-point matrix with a repeated coordinate is not
+     * the same question as the 45-point matrix without it.
+     */
+    const matrixKey = (points, identity) => [identity, ...points.map(roadPointKey).sort()].join('|');
 
     return {
         async fetchMatrix(points, options = {}) {
             counters.matrix_calls += 1;
-            const profile = options.profile || 'driving';
-            const key = matrixKey(points, profile);
+            const identity = questionIdentity(options);
+            const key = matrixKey(points, identity);
             const memoized = matrixMemo.get(key);
             // The memo is keyed by the coordinate SET, so a reuse must be re-indexed
             // against THIS caller's point order before its lookups mean anything.
@@ -149,7 +195,7 @@ export function createRoadCostCache(deps = {}) {
                     return reused;
                 }
             }
-            const matrix = await fetchMatrixImpl(points, { ...options, pairCache });
+            const matrix = await fetchMatrixImpl(points, { ...options, pairCache: pairCacheFor(identity) });
             matrixMemo.set(key, { ...matrix, points: [...points] });
             return matrix;
         },
@@ -159,7 +205,7 @@ export function createRoadCostCache(deps = {}) {
                 throw new Error('Road cost cache was created without a path measurer.');
             }
             counters.measure_calls += 1;
-            const key = measureRoadPathKey(stops, options.profile || 'driving');
+            const key = measureRoadPathKey(stops, questionIdentity(options));
             if (measureMemo.has(key)) {
                 counters.measure_memo_hits += 1;
                 return measureMemo.get(key);
@@ -175,6 +221,8 @@ export function createRoadCostCache(deps = {}) {
             const totalPairs = counters.pairs_served_from_cache + counters.pairs_fetched;
             return {
                 ...counters,
+                cache_schema: ROAD_COST_CACHE_SCHEMA,
+                road_matrix_version: ROAD_MATRIX_VERSION,
                 unique_road_pairs: pairMeters.size,
                 unique_matrices: matrixMemo.size,
                 pair_cache_hit_rate_pct: totalPairs > 0
