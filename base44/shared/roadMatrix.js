@@ -122,8 +122,25 @@ export async function fetchRoadMatrix(points, options = {}) {
         timeoutMs = 20000
     } = options;
 
-    if (!Array.isArray(points) || points.length < 2) {
-        throw new Error('A road matrix needs at least two coordinates.');
+    if (!Array.isArray(points) || points.length < 1) {
+        throw new Error('A road matrix needs at least one coordinate.');
+    }
+    // A window can decompose onto a boundary that leaves ONE coordinate to price
+    // (a coarse group of a single block, a seam run of one door). OSRM rejects a
+    // one-coordinate table outright with 400 invalid options, which killed
+    // optimization for every route that happened to cut that way. The only cell
+    // such a matrix can contain is the point against itself, which is zero, so it
+    // is answered locally instead of failing the route over a known value.
+    if (points.length === 1) {
+        return {
+            distances: [[0]],
+            durations: [[0]],
+            objective: 'distance_miles',
+            snapped: 1,
+            source: 'local:single_point',
+            blocks: 0,
+            pointCount: 1
+        };
     }
     if (points.length > MAX_ROUTE_MATRIX_POINTS) {
         throw new Error(`Road matrix limit is ${MAX_ROUTE_MATRIX_POINTS} coordinates per route.`);

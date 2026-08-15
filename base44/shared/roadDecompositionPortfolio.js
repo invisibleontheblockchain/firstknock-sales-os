@@ -61,8 +61,8 @@ export const DEFAULT_DECOMPOSITION_PORTFOLIO = [
     { id: 'coarse_road_ordered_windows_92_offset_46', options: { coarseBlockOrder: true, windowOffsetDoors: 46 } },
     { id: 'windows_138', options: { windowDoors: 138 } },
     { id: 'windows_69', options: { windowDoors: 69 } },
-    { id: 'windows_46', options: { windowDoors: 46 } },
-    { id: 'windows_34', options: { windowDoors: 34 } }
+    { id: 'windows_60', options: { windowDoors: 60 } },
+    { id: 'windows_80', options: { windowDoors: 80 } }
 ];
 
 /** The candidate that must always run, whatever the budget allows. */

@@ -1,5 +1,7 @@
 import React from 'react';
 import { Loader2, AlertTriangle } from 'lucide-react';
+import RouteGenerationPhaseList from './RouteGenerationPhaseList';
+import { phaseFromStage } from './routeGenerationPhases';
 
 /**
  * Full-screen overlay shown while routes are being generated.
@@ -44,8 +46,8 @@ export default function RouteGenerationOverlay({ visible, stage = 'Preparing dat
                         {error || stage}
                     </div>
                     {!isError && (
-                        <div className="text-[10px] text-white/40 mt-3 tracking-wide">
-                            This may take a few seconds...
+                        <div className="mt-4 border-t border-white/10 pt-4">
+                            <RouteGenerationPhaseList phaseId={phaseFromStage(stage)} />
                         </div>
                     )}
                     {isError && onDismiss && (

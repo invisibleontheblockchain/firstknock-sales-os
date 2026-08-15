@@ -98,6 +98,19 @@ test('MTX-05 a block whose shape does not match its request is rejected', async 
     await assert.rejects(fetchRoadMatrix(points(183)), /did not match its requested source\/destination shape/);
 });
 
+// A window can decompose onto a boundary that leaves ONE coordinate in a chunk.
+// OSRM rejects a one-coordinate table outright (400, invalid options), which
+// killed optimization for every route that happened to cut that way. A single
+// point is trivially zero cost from itself, so it must be answered locally.
+test('MTX-07 a single-point matrix is answered locally instead of calling the road service', async () => {
+    const calls = stubOsrm();
+    const matrix = await fetchRoadMatrix(points(1));
+    assert.equal(calls.length, 0, 'a one-point matrix must not hit the road service');
+    assert.equal(matrix.pointCount, 1);
+    assert.deepEqual(matrix.distances, [[0]]);
+    assert.deepEqual(matrix.durations, [[0]]);
+});
+
 test('MTX-06 the product size limit is stated in route terms, not request terms', async () => {
     stubOsrm();
     assert.ok(MAX_ROUTE_MATRIX_POINTS > MAX_MATRIX_COORDINATES);

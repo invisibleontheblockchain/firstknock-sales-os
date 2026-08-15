@@ -29,7 +29,7 @@ const ROAD_MATRIX_RUN_BUDGET_MS = 60000;
  * built with, then run the road-matrix pass over the result. Both Create Route
  * and Reorder call this so neither can drift into a different optimizer.
  */
-export async function buildRoadAwareGeneratedRoutes({ rawGenerated, routingContext = null, onStage } = {}) {
+export async function buildRoadAwareGeneratedRoutes({ rawGenerated, routingContext = null, onStage, onPhase } = {}) {
     const continuityRoutes = Array.isArray(rawGenerated)
         ? rawGenerated.map((route) => (routingContext
             ? {
@@ -42,11 +42,15 @@ export async function buildRoadAwareGeneratedRoutes({ rawGenerated, routingConte
             : route))
         : rawGenerated;
 
-    onStage?.('Checking real road distances...');
+    // One road-optimization call per route covers street ordering, boundary and
+    // transition refinement, and the independent final measurement, so the phase
+    // reported here is the one the work is actually inside.
+    onPhase?.('verify');
+    onStage?.('Verifying real road mileage...');
     return applyRoadMatrixToGeneratedRoutes(continuityRoutes, {
         onProgress: ({ index, total }) => onStage?.(total > 1
-            ? `Checking real road distances (${index}/${total})...`
-            : 'Checking real road distances...')
+            ? `Verifying route ${index} of ${total} on real roads...`
+            : 'Verifying real road mileage...')
     });
 }
 
