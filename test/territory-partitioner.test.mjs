@@ -365,6 +365,77 @@ test('PART-13 validation catches unit gaps and overlaps, not just door counts', 
     assert.ok(withOverlap.duplicatedDoorCount > 0);
 });
 
+// ---------------------------------------------------------------------------
+// Generation wiring: caller-supplied topology, the merge pass, and the drawn
+// territory boundary.
+// ---------------------------------------------------------------------------
+
+/** Two streets behind one entrance, plus two unrelated pairs. */
+function accessGroupedDoors() {
+    return [
+        { ...door('Gateway Way', 101, 35.2000, -80.8500), access: 'NEIGHBORHOOD_A' },
+        { ...door('Gateway Way', 103, 35.2000, -80.8495), access: 'NEIGHBORHOOD_A' },
+        { ...door('Interior Loop', 301, 35.2004, -80.8492), access: 'NEIGHBORHOOD_A' },
+        { ...door('Interior Loop', 303, 35.2004, -80.8488), access: 'NEIGHBORHOOD_A' },
+        { ...door('Separate Court', 201, 35.2020, -80.8460), access: 'DEAD_END_B' },
+        { ...door('Separate Court', 203, 35.2020, -80.8456), access: 'DEAD_END_B' },
+        { ...door('Next Street', 401, 35.2040, -80.8430), access: 'NEIGHBORHOOD_C' },
+        { ...door('Next Street', 403, 35.2040, -80.8426), access: 'NEIGHBORHOOD_C' }
+    ];
+}
+
+const accessRoutingContext = { accessGroupKey: (property) => property.access };
+
+test('PART-15 an access group that fits the budget is never split, and merging keeps the route count minimal', () => {
+    const doors = accessGroupedDoors();
+    const result = partitionTerritory(doors, {
+        routingContext: accessRoutingContext,
+        maxHomes: 4
+    });
+
+    // 8 doors against a 4-home budget needs 2 routes. Bisection alone emits
+    // 2 / 4 / 2, so the merge pass is what keeps this at the minimum.
+    assert.equal(result.partitions.length, 2);
+    assert.ok(result.stats.mergeCount > 0, 'the lopsided bisection must be merged back down');
+    result.partitions.forEach((partition) => {
+        assert.ok(partition.doorCount <= 4, `partition ${partition.index} has ${partition.doorCount} homes`);
+        assert.equal(partition.withinBudget, true);
+    });
+
+    const owners = result.partitions.filter((partition) => (
+        partition.doors.some((item) => item.access === 'NEIGHBORHOOD_A')
+    ));
+    assert.equal(owners.length, 1, 'the four-door access group stays in one partition');
+    assert.equal(owners[0].doorCount, 4);
+    assert.equal(result.validation.ok, true);
+
+    const reversed = partitionTerritory([...doors].reverse(), {
+        routingContext: accessRoutingContext,
+        maxHomes: 4
+    });
+    assert.deepEqual(reversed.diagnostics.signatures, result.diagnostics.signatures);
+});
+
+test('PART-16 the drawn territory boundary is not mistaken for a dead end', () => {
+    const doors = culDeSacDoors();
+    const network = culDeSacNetwork();
+    const unbounded = partitionTerritory(doors, { roadNetwork: network });
+    assert.ok(unbounded.stats.pocketCount > 0, 'the stub reads as a pocket when no boundary is given');
+
+    // The stub's terminal node sits below 35.1975, so this polygon clips it: the
+    // road leaves the territory there rather than ending there.
+    const territoryPolygon = [
+        { lat: 35.1975, lng: -80.8520 },
+        { lat: 35.1975, lng: -80.8420 },
+        { lat: 35.2030, lng: -80.8420 },
+        { lat: 35.2030, lng: -80.8520 }
+    ];
+    const bounded = partitionTerritory(doors, { roadNetwork: network, territoryPolygon });
+    assert.equal(bounded.stats.pocketCount, 0, 'a clipped road must not be protected as a pocket');
+    assert.equal(bounded.stats.doorCount, doors.length);
+    assert.equal(bounded.validation.ok, true);
+});
+
 test('PART-14 the balanced result is still deterministic under input shuffling', () => {
     const doors = unevenTerritory();
     const forward = partitionTerritory(doors);
