@@ -227,6 +227,51 @@ partitioner -> global validation -> OSRM dispatcher -> honest routing status ->
 wire generation through -> full regression suite. Nothing outside these steps
 changes without flagging it first.
 
+## The architectural rule (locked in)
+
+> **OSRM matrix capacity is measured in BLOCKS. Partitioning may use ROUTING
+> UNITS to keep topology together, but a final route must be validated by its
+> actual block count before choosing its matrix tier.**
+
+- **Routing units determine legal partition boundaries.** A cut may only land on
+  a unit boundary, so a protected pocket stays one atomic unit even when it spans
+  several blocks.
+- **Block count determines matrix capacity and tier.** Before a partition goes
+  anywhere near OSRM, its real block count is fed through the tier rule
+  (`predictMatrixTier`) and the resulting tier is recorded.
+
+The two are never treated as interchangeable.
+
+## Step 2 status: complete (partitioner only — nothing wired)
+
+`base44/shared/territoryPartitioner.js`, `partitionTerritory(properties, options)`:
+
+- Partitions over routing units from `buildRoutingUnits`; cuts land on unit
+  boundaries only.
+- Enforces both ceilings: 1,000 homes (product) and 240 blocks (derived
+  technical). Whichever binds first decides.
+- Deterministic k-d bisection on the wider axis (longitude scaled by
+  cos(latitude)), split at `floor(n/2)` of a fully ordered list so both sides are
+  always non-empty and identical centroids still terminate; ties broken by unit
+  key. Each partition carries a `signature` hashed from its unit set.
+- Pockets stay atomic. A single atomic unit that cannot fit is kept whole and
+  records an explicit override (`unit_exceeds_home_budget` /
+  `unit_exceeds_block_budget`) with the unit key, pocket id, count and limit.
+  Only a single-unit partition may ever be above budget.
+- Exactly-once is validated across the WHOLE set by multiset comparison of door
+  identities against the model inventory, and **throws** on violation.
+- Every partition reports `matrixTier`, `matrixTierOk`, `roadReady`, and
+  `withinBudget`.
+
+`predictMatrixTier` was extracted and exported from `roadMatrixTiers.js` so the
+partitioner validates tiers with the SAME rule the matrix planner uses;
+`planTieredRoadMatrix` now consumes it, and no threshold is restated.
+
+Not in step 2, by scope: no generation wiring, no OSRM dispatch, no balancing
+beyond what median bisection gives, and **no polygon-aware topology** — the
+boundary exemption (requirement 8) needs `buildRoutingUnits` to accept a polygon
+and is deferred rather than half-wired.
+
 ## Step 1 status: complete
 
 - `base44/shared/routingBudgets.js` created as the single source of limits.

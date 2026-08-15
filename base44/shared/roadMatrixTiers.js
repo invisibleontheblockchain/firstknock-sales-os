@@ -129,6 +129,55 @@ function partitionBlocksIntoClusters(entries, maxClusters) {
 }
 
 /**
+ * The tier rule, as a pure predicate over counts.
+ *
+ * Extracted so a caller can ask "what tier would this route get?" WITHOUT
+ * building a matrix — the territory partitioner validates every partition this
+ * way before it is allowed to proceed. It is exported precisely so the
+ * thresholds are not restated anywhere else: `planTieredRoadMatrix` below is its
+ * only other consumer, so the plan and the prediction can never disagree.
+ *
+ * Pass `blockCount: null` when blocks have not been built yet; the answer is
+ * then `tier: null, needsBlockCount: true` for any route above the door tier.
+ *
+ * @returns {object} `{ ok: true, tier, blockBudget, anchorsIncluded }` or
+ *   `{ ok: false, code, ... }`.
+ */
+export function predictMatrixTier({ doorCount, blockCount = null, anchorCount = 0 }) {
+    if (doorCount > MAX_TIERED_ROUTE_DOORS) {
+        return { ok: false, code: 'ROUTE_EXCEEDS_TIERED_DOOR_LIMIT', doorCount, limit: MAX_TIERED_ROUTE_DOORS };
+    }
+    if (doorCount <= MAX_ROUTE_MATRIX_POINTS) {
+        return {
+            ok: true,
+            tier: TIER_DOOR,
+            blockBudget: null,
+            anchorsIncluded: doorCount + anchorCount <= MAX_ROUTE_MATRIX_POINTS
+        };
+    }
+
+    const blockBudget = MAX_ROUTE_MATRIX_POINTS - anchorCount;
+    if (blockCount === null) {
+        return { ok: true, tier: null, needsBlockCount: true, blockBudget };
+    }
+    if (blockBudget < 2) {
+        return {
+            ok: false,
+            code: 'STREET_BLOCKS_EXCEED_MATRIX_LIMIT',
+            doorCount,
+            blockCount,
+            limit: MAX_ROUTE_MATRIX_POINTS
+        };
+    }
+    return {
+        ok: true,
+        tier: blockCount > blockBudget ? TIER_CLUSTER : TIER_BLOCK,
+        blockBudget,
+        anchorsIncluded: true
+    };
+}
+
+/**
  * Decide which coordinates the matrix should carry for this route.
  *
  * @returns {object} `{ ok: true, tier, matrixPoints, blockCount, doorCount,
@@ -138,14 +187,13 @@ function partitionBlocksIntoClusters(entries, maxClusters) {
  */
 export function planTieredRoadMatrix(properties, anchorPoints = []) {
     const doorCount = properties.length;
-    if (doorCount > MAX_TIERED_ROUTE_DOORS) {
-        return { ok: false, code: 'ROUTE_EXCEEDS_TIERED_DOOR_LIMIT', doorCount, limit: MAX_TIERED_ROUTE_DOORS };
-    }
+    const doorDecision = predictMatrixTier({ doorCount, anchorCount: anchorPoints.length });
+    if (!doorDecision.ok) return doorDecision;
 
-    if (doorCount <= MAX_ROUTE_MATRIX_POINTS) {
+    if (doorDecision.tier === TIER_DOOR) {
         // Proven path, unchanged: every door in the matrix, and the anchors too
         // whenever they still fit beside them.
-        const anchorsIncluded = doorCount + anchorPoints.length <= MAX_ROUTE_MATRIX_POINTS;
+        const { anchorsIncluded } = doorDecision;
         return {
             ok: true,
             tier: TIER_DOOR,
@@ -159,17 +207,14 @@ export function planTieredRoadMatrix(properties, anchorPoints = []) {
     }
 
     const blocks = buildStreetBlocks(properties);
-    const blockBudget = MAX_ROUTE_MATRIX_POINTS - anchorPoints.length;
-    if (blockBudget < 2) {
-        return {
-            ok: false,
-            code: 'STREET_BLOCKS_EXCEED_MATRIX_LIMIT',
-            doorCount,
-            blockCount: blocks.length,
-            limit: MAX_ROUTE_MATRIX_POINTS
-        };
-    }
-    if (blocks.length > blockBudget) {
+    const decision = predictMatrixTier({
+        doorCount,
+        blockCount: blocks.length,
+        anchorCount: anchorPoints.length
+    });
+    if (!decision.ok) return decision;
+    const { blockBudget } = decision;
+    if (decision.tier === TIER_CLUSTER) {
         // Too many blocks to price one by one — cluster them rather than
         // abandoning the matrix and shipping an unmeasured aerial order.
         const entries = blocks.map((block) => ({
