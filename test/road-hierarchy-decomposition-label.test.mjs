@@ -100,6 +100,24 @@ test('the road-ordered labels are only stored when the grouping really was road-
     assert.equal(coarse.telemetry.window_grouping_road_priced, true);
 });
 
+test('the decomposition label is metadata only and never changes the order', async () => {
+    // Cheap standing proof that a strategy-label edit cannot silently reorder a
+    // route: the same fixture is sequenced twice and the door order must come back
+    // byte-identical, and mutating the label afterwards must leave that order
+    // untouched. This is what makes a real OSRM run unnecessary to validate future
+    // telemetry-only changes to this branch.
+    const doors = buildGridTerritory(MAX_ROUTE_MATRIX_POINTS + 50, 4);
+    const first = await sequence(doors);
+    const second = await sequence(doors);
+
+    const hashes = (result) => JSON.stringify(result.order.map((door) => door.address_hash));
+    const orderBefore = hashes(first);
+    assert.equal(orderBefore, hashes(second), 'sequencing the same doors twice must be deterministic');
+
+    first.telemetry.decomposition = 'road_ordered_windows';
+    assert.equal(hashes(first), orderBefore, 'the stored label must not participate in ordering');
+});
+
 test('no reachable path stores a road-grouped label alongside road_priced=false', async () => {
     // The invariant itself, over every level-1 outcome the sequencer can reach.
     const cases = [

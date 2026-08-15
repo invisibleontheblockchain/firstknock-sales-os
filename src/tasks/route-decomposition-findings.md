@@ -66,6 +66,62 @@ route per 1,000-home Precision pull, unresolved road cost fails instead of
 guessing, seam refinement, hotspot refinement, independent final road
 measurement, lowest verified mileage wins.
 
+## Frozen finding — Route 1I (1,000 doors, Charlotte): compactness vs road connectivity
+
+The 11.927-mile transition in Route 1I was traced to decomposition, not to macro
+ordering and not to the start/end cut (both were proven optimal). Window 0
+contained two pieces that are **aerial-near / road-far**: Ventana Ct and Quaker Rd
+sit 2.202 mi apart in the air and 11.927 mi apart to drive — a barrier straddle
+the intra-window solver cannot escape, because both doors are its members.
+
+Experiment A (`coarseBlockOrder`, single variable, deterministic across two runs):
+
+| | geometric baseline | coarse road-ordered |
+|---|---|---|
+| total road miles (pre-hotspot) | 519.691 | **511.590** |
+| longest leg | 11.927 (aerial 2.202) | 11.666 (aerial 9.022) |
+| p90 / p95 | 1.238 / 1.753 | 1.170 / 1.657 |
+| legs > 1 mi | 138 | 130 |
+| legs > 5 mi | 3 | **4** |
+| top-10 transition total | 50.706 | **53.351** |
+| windows | 16 | 11 |
+
+Ventana and Quaker land 194 stops apart under coarse grouping, so the barrier
+class is genuinely removed. The surviving longest leg is a **different failure
+class**: 9.0 mi aerial driven in 11.7 mi is a real long haul to an isolated
+pocket, not a barrier mistake. 1I therefore is not a pure barrier fixture.
+
+**The lesson, frozen:** geometric decomposition preserves compactness but can
+straddle road barriers; pure road grouping respects access but sprawls and worsens
+the tail (same direction as 1J's 386.0 mi and the earlier 417.9 mi road-access
+grouping). So the next problem is **not** "make grouping road-aware" — it is
+**road-aware barrier separation that preserves compactness**.
+
+`coarseBlockOrder` stays OFF. Nothing from 1I ships on 1I alone.
+
+## Next research target — compactness-constrained, barrier-aware decomposition
+
+Repair specific decomposition mistakes instead of globally reclustering:
+
+`compact geometric windows` → `measure internal road coherence` →
+`detect aerial-near / road-far splits` → `repair only those memberships` →
+`re-balance neighbouring windows` → `run the unchanged proven optimizer`
+
+Route 1I window 0 is the first target: identify its two road-access components,
+decide which complete street blocks belong on each side, move the minimum block
+set across neighbouring window boundaries, preserve block/pocket atomicity,
+re-solve, measure the whole route independently.
+
+Scoreboard: geometric 519.691 · coarse road grouping 511.590 · barrier repair `?`
+— success recovers the barrier mileage *without* coarse grouping's worse top-10.
+
+Track per candidate: total miles, p95, p99, longest, top-10 total,
+barrier-straddling windows before/after, moved blocks, window compactness
+before/after, road diameter vs aerial diameter, requests, runtime.
+Rejection rule unchanged: no improvement in independently measured total road
+mileage → rejected. Then 1J and the other real Precision fixtures before
+production is even discussed.
+
 ## Route-size bug found during this work
 
 A window whose coordinate chunk contained a **single point** made the routing
