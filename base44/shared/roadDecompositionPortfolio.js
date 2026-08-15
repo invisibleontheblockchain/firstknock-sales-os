@@ -32,6 +32,7 @@
 // coordinate, city, route name or fixture is referenced anywhere in this file.
 
 import { sequenceRoadHierarchy, DEFAULT_WINDOW_DOORS, MAX_CLUSTER_DOORS } from './roadHierarchySequencer.js';
+import { createRoadCostCache } from './roadCostCache.js';
 
 /**
  * The portfolio. Ordered cheapest-signal-first so a time budget truncates the
@@ -160,6 +161,7 @@ export async function sequenceBestDecomposition(properties, options = {}) {
         measurePath = null,
         ...sequencerOptions
     } = options;
+    const { fetchMatrix, ...restSequencerOptions } = sequencerOptions;
 
     // Without an independent measurer there is no honest way to compare two
     // decompositions, so the portfolio does not run at all — the caller keeps the
@@ -168,9 +170,22 @@ export async function sequenceBestDecomposition(properties, options = {}) {
         return { ok: false, code: 'PORTFOLIO_REQUIRES_MEASURED_PATH' };
     }
 
+    // Candidates differ only in how the SAME doors are grouped, so most of the road
+    // truth one candidate buys is the truth the next one needs — above all the
+    // street-block matrix, which is the identical coordinate set for every
+    // candidate. One shared cache for the whole portfolio means the second and
+    // later attempts pay only for what is genuinely new. It changes cost, never
+    // values: a hit returns the engine's own meters, so a cached candidate measures
+    // exactly what a cold one would.
+    const cache = createRoadCostCache({
+        fetchMatrix: fetchMatrix || undefined,
+        measurePath
+    });
+
     const startedAt = Date.now();
     const candidates = [];
     let best = null;
+    let spentPairs = { fetched: 0, cached: 0, matrixHits: 0, blocksCached: 0 };
 
     for (let index = 0; index < portfolio.length; index += 1) {
         const candidate = portfolio[index];
@@ -181,7 +196,31 @@ export async function sequenceBestDecomposition(properties, options = {}) {
             continue;
         }
 
-        const result = await runCandidate(candidate, properties, { ...sequencerOptions, measurePath });
+        const result = await runCandidate(candidate, properties, {
+            ...restSequencerOptions,
+            fetchMatrix: cache.fetchMatrix,
+            measurePath: cache.measurePath
+        });
+        // What this candidate cost INCREMENTALLY, which is the only cost figure that
+        // describes a portfolio honestly: a candidate that measures 39s alone can be
+        // much cheaper once the road truth it needs is already paid for.
+        const spent = cache.stats();
+        Object.assign(result, {
+            pairs_fetched: spent.pairs_fetched - spentPairs.fetched,
+            pairs_served_from_cache: spent.pairs_served_from_cache - spentPairs.cached,
+            matrix_memo_hits: spent.matrix_memo_hits - spentPairs.matrixHits,
+            blocks_served_from_cache: spent.blocks_served_from_cache - spentPairs.blocksCached
+        });
+        const candidatePairs = result.pairs_fetched + result.pairs_served_from_cache;
+        result.pair_cache_hit_rate_pct = candidatePairs > 0
+            ? Math.round((result.pairs_served_from_cache / candidatePairs) * 1000) / 10
+            : 0;
+        spentPairs = {
+            fetched: spent.pairs_fetched,
+            cached: spent.pairs_served_from_cache,
+            matrixHits: spent.matrix_memo_hits,
+            blocksCached: spent.blocks_served_from_cache
+        };
         candidates.push(result);
         onCandidate?.({ index: index + 1, total: portfolio.length, id: candidate.id, result });
         // The ONLY selection rule. Ties keep the earlier candidate, which keeps the
@@ -207,6 +246,10 @@ export async function sequenceBestDecomposition(properties, options = {}) {
             decomposition_candidates_run: candidates.filter((entry) => entry.ok).length,
             decomposition_candidates_total: portfolio.length,
             decomposition_portfolio_ms: Date.now() - startedAt,
+            // Cost of the whole generation, not of one attempt: unique pairs bought,
+            // how much of the demand was answered from work already paid for, and
+            // how many engine requests that reuse removed.
+            road_cost_cache: cache.stats(),
             baseline_decomposition_miles: baseline ? baseline.verified_road_miles : null,
             decomposition_miles_saved_vs_baseline: baseline
                 ? round(baseline.verified_road_miles - best.verified_road_miles)

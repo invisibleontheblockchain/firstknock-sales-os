@@ -29,6 +29,13 @@ function coordinateKey(point) {
 }
 
 /**
+ * The canonical identity of a coordinate for road-cost purposes. Exported so a
+ * cache keys pairs by exactly the same identity the matrix indexes them by — two
+ * different rounding rules would let a "hit" answer for a different place.
+ */
+export { coordinateKey as roadPointKey };
+
+/**
  * Stable cache key for a coordinate set. Order-independent so reordering,
  * reopening or exporting the same route reuses one matrix.
  */
@@ -62,7 +69,7 @@ function chunkRanges(count, size) {
  * Sources and destinations are addressed by position inside the request, so the
  * caller can map the response back onto the canonical property indexes.
  */
-async function fetchMatrixBlock(points, sourceRange, destinationRange, { baseUrl, profile, timeoutMs }) {
+async function fetchMatrixBlock(points, sourceRange, destinationRange, { baseUrl, profile, timeoutMs, pairCache = null }) {
     const sameRange = sourceRange.start === destinationRange.start
         && sourceRange.end === destinationRange.end;
     const sourcePoints = points.slice(sourceRange.start, sourceRange.end);
@@ -87,6 +94,16 @@ async function fetchMatrixBlock(points, sourceRange, destinationRange, { baseUrl
         };
     }
 
+    // Candidates competing over the same doors ask for many of the same pairs. A
+    // block whose every pair was already bought is answered from what we paid for,
+    // with the engine's own meters and seconds — never an approximation, so a
+    // cache-served block prices identically to a fetched one.
+    const lookupDestinations = sameRange ? sourcePoints : destinationPoints;
+    const cached = pairCache?.readBlock(profile, sourcePoints, lookupDestinations);
+    if (cached) {
+        return { sourceRange, destinationRange, ...cached, servedFromCache: true };
+    }
+
     const sources = sourcePoints.map((_, index) => index);
     const destinations = sameRange
         ? sources
@@ -102,6 +119,7 @@ async function fetchMatrixBlock(points, sourceRange, destinationRange, { baseUrl
     if (!distances && !durations) {
         throw new Error('OSRM table response contained no distances or durations.');
     }
+    pairCache?.writeBlock(profile, sourcePoints, lookupDestinations, distances, durations);
     return { sourceRange, destinationRange, distances, durations };
 }
 
@@ -119,7 +137,10 @@ export async function fetchRoadMatrix(points, options = {}) {
     const {
         baseUrl = DEFAULT_OSRM_BASE_URL,
         profile = 'driving',
-        timeoutMs = 20000
+        timeoutMs = 20000,
+        // Optional generation-scoped store of pairs already bought from the engine
+        // (see roadCostCache.js). Absent, every block is fetched exactly as before.
+        pairCache = null
     } = options;
 
     if (!Array.isArray(points) || points.length < 1) {
@@ -160,7 +181,7 @@ export async function fetchRoadMatrix(points, options = {}) {
     // Every block is handed over at once; the dispatcher, not this function,
     // decides how many reach OSRM simultaneously.
     const blocks = await Promise.all(blockRequests.map(({ sourceRange, destinationRange }) => (
-        fetchMatrixBlock(points, sourceRange, destinationRange, { baseUrl, profile, timeoutMs })
+        fetchMatrixBlock(points, sourceRange, destinationRange, { baseUrl, profile, timeoutMs, pairCache })
     )));
     blocks.forEach((block) => {
         const rows = block.sourceRange.end - block.sourceRange.start;
@@ -212,6 +233,9 @@ export async function fetchRoadMatrix(points, options = {}) {
         snapped: count,
         source: `osrm:${profile}`,
         blocks: blockRequests.length,
+        // Blocks answered from pairs already bought, so the saving is reported
+        // rather than inferred from a request count that no longer explains itself.
+        cachedBlocks: blocks.filter((block) => block.servedFromCache).length,
         pointCount: count
     };
 }
