@@ -349,16 +349,42 @@ function buildProtectedGroups(segments, byEndpoint) {
 
 /* ────────────────────────────── evidence ────────────────────────────── */
 
-function associateToSegment(point, segments, streetName, contextualMethod = null) {
+// A sidewalk is not an address. OSM maps footways as separate ways running
+// closer to the front door than the street centreline, so a naive nearest-road
+// sweep attaches most houses to the pavement outside them.
+//
+// Measured on Capitol Hill before this filter: 528 of 733 knockable units (72%)
+// were footways, carrying 3,945 of 5,048 doors. The door TOTAL was right — the
+// classifier promotes any unit holding residential evidence, so nothing was
+// lost — but the ownership geometry was wrong. A rep would have been handed
+// pavement segments rather than blockfaces, and adjacency, cul-de-sac grouping
+// and exclusive ownership all key off these units. Doors may only be owned by a
+// way that can itself hold an address.
+const ADDRESSABLE_ROAD_CLASSES = new Set([
+  'residential', 'living_street', 'service', 'unclassified', 'tertiary',
+  'secondary', 'primary', 'tertiary_link', 'secondary_link', 'primary_link',
+  'trunk', 'trunk_link', 'track', 'unknown',
+]);
+
+function associateToSegment(point, segments, streetName, contextualMethod = null, addressable = false) {
   let best = null;
+  let bestNamed = null;
   for (const segment of segments) {
+    if (addressable && !ADDRESSABLE_ROAD_CLASSES.has(segment.road_class)) continue;
     const points = segment._coordPoints;
     for (let index = 1; index < points.length; index += 1) {
       const distance = pointToSegmentMeters(point, points[index - 1], points[index]);
       if (distance > MAX_ASSOCIATION_METERS) continue;
       if (!best || distance < best.distance) best = { segment, distance };
+      // A matching street name beats proximity outright, so the nearest
+      // *named* match is tracked separately from the nearest anything.
+      if (streetName && segment._streetName === streetName
+        && (!bestNamed || distance < bestNamed.distance)) {
+        bestNamed = { segment, distance };
+      }
     }
   }
+  if (bestNamed) best = bestNamed;
   if (!best) return null;
   // A matching street name is far stronger than proximity, and the contract
   // ranks it first. Without one this stays `nearest_road`, the weakest method.
@@ -398,7 +424,7 @@ function buildEvidence(ways, taggedNodes, segments, nodeCoords, provenanceOf) {
         address_key: `${tags['addr:housenumber']}-${normalizeStreetName(tags['addr:street']) || 'unknown'}`,
         unit_keys: tags['addr:unit'] ? [String(tags['addr:unit'])] : [],
         occupancy: occupancyOf(tags),
-      }, associateToSegment(point, segments, street));
+      }, associateToSegment(point, segments, street, null, true));
     } else if (tags.barrier) {
       push(`node/${node.id}`, 'barrier', {
         barrier_type: String(tags.barrier).slice(0, 80),
@@ -424,7 +450,7 @@ function buildEvidence(ways, taggedNodes, segments, nodeCoords, provenanceOf) {
       const use = buildingUseOf(tags);
       if (!use) continue;
       const street = normalizeStreetName(tags['addr:street']);
-      const association = associateToSegment(centroid, segments, street);
+      const association = associateToSegment(centroid, segments, street, null, true);
       push(`way/${way.id}`, 'building', {
         building_use: use,
         ...(Number.parseInt(tags['building:units'], 10) > 0 ? { unit_count: Number.parseInt(tags['building:units'], 10) } : {}),
