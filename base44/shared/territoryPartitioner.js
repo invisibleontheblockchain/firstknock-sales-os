@@ -26,6 +26,7 @@ import { MAX_BLOCKS_PER_ROUTE, MAX_HOMES_PER_ROUTE, ROUTE_ANCHOR_ALLOWANCE } fro
 import { predictMatrixTier, TIER_BLOCK, TIER_DOOR } from './roadMatrixTiers.js';
 import { stableHash } from './streetTopologyCore.js';
 import { balancePartitions } from './territoryBalance.js';
+import { mergePartitions } from './territoryPartitionMerge.js';
 import {
     buildPartitionDiagnostics,
     formatPartitionDiagnostics,
@@ -193,9 +194,10 @@ function describePartition(group, index, budgets) {
  * Partition a territory into route-sized partitions.
  *
  * @param {Array} properties every door in the territory
- * @param {object} options `{ roadNetwork, anchorCount, maxHomes, maxBlocks,
- *   allowedHighways, maxSnapMeters, balance }`. `balance: false` skips the soft
- *   evening-out pass; it never changes validity either way.
+ * @param {object} options `{ roadNetwork, routingContext, territoryPolygon,
+ *   anchorCount, maxHomes, maxBlocks, allowedHighways, maxSnapMeters, balance,
+ *   merge }`. `balance: false` skips the soft evening-out pass and
+ *   `merge: false` skips the combine pass; neither changes validity either way.
  * @returns {object} `{ partitions, units, model, validation, diagnostics,
  *   balance, overrides, budgets, stats }`. Each partition carries `unitKeys`, `blockKeys`, `doors`,
  *   `doorCount`, `blockCount`, `protectedUnitCount`, `withinBudget`,
@@ -215,12 +217,24 @@ export function partitionTerritory(properties, options = {}) {
 
     const model = buildRoutingUnits(properties, {
         roadNetwork: options.roadNetwork || null,
+        // Topology inputs: the drawn boundary keeps the territory edge from
+        // reading as a dead end, and a caller that already resolved road
+        // topology supplies its access groups rather than having them re-derived.
+        territoryPolygon: options.territoryPolygon || null,
+        routingContext: options.routingContext || null,
         allowedHighways: options.allowedHighways,
         maxSnapMeters: options.maxSnapMeters
     });
 
     const units = describeUnits(model);
-    const cut = partitionUnits(units, budgets);
+    // Bisection always halves, so it can emit more partitions than the budget
+    // needs. The merge pass combines neighbours while both budgets still hold —
+    // it only ever joins whole units, so no pocket can be split by it.
+    const cutRaw = partitionUnits(units, budgets);
+    const merge = options.merge === false
+        ? { groups: cutRaw, merges: [] }
+        : mergePartitions(cutRaw, budgets);
+    const cut = merge.groups;
     // Balance runs AFTER the territory is already cut into valid partitions, so
     // it can only even out sizes — it can never be the reason a partition
     // becomes invalid or a pocket gets split. Route COUNT is decided by the cut
@@ -251,6 +265,7 @@ export function partitionTerritory(properties, options = {}) {
         validation,
         diagnostics,
         balance,
+        merge,
         overrides: partitions.flatMap((partition) => partition.overrides),
         stats: {
             partitionCount: partitions.length,
@@ -266,6 +281,7 @@ export function partitionTerritory(properties, options = {}) {
             maxBlocksPerPartition: blockCounts.length ? Math.max(...blockCounts) : 0,
             partitionsWithinBudget: partitions.filter((partition) => partition.withinBudget).length,
             roadReadyPartitions: partitions.filter((partition) => partition.roadReady).length,
+            mergeCount: merge.merges.length,
             balanceMoves: balance.moves.length,
             balanceLimitedBy: balance.limitedBy
         }

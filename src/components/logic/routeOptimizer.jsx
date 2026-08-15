@@ -24,7 +24,10 @@ import {
     optimizeRouteWithBounds
 } from '@/lib/routeBounds';
 import { normalizeRouteOriginMode } from '@/lib/routeOriginModes';
-import { partitionPropertiesIntoZones } from './routeZonePartition';
+// Route boundaries have exactly one authority. Relative import keeps the shared
+// module runtime-agnostic (no bundler alias needed on the backend side).
+import { partitionTerritory } from '../../../base44/shared/territoryPartitioner.js';
+import { MAX_HOMES_PER_ROUTE } from '../../../base44/shared/routingBudgets.js';
 import { refineBlockSequence } from './blockSequenceRefinement';
 import { resolveNeighborhoodPockets } from './streetBlockTopology';
 
@@ -589,6 +592,38 @@ function optimizeRouteOrder(properties, startLat = null, startLng = null, minimi
 }
 
 /**
+ * Route membership, decided by the ONE shared authority.
+ *
+ * The partitioner cuts on routing-unit boundaries, so an access group or road
+ * pocket that fits a route is never split across two; it enforces the home and
+ * block ceilings and validates exactly-once across the whole territory (it
+ * throws rather than return a set that lost or duplicated a door). Ordering runs
+ * afterwards, inside a partition, and may not move a door between partitions.
+ */
+function partitionScoredProperties(scored, housesPerRoute, routingContext, options) {
+    const requested = Math.floor(Number(housesPerRoute));
+    const maxHomes = Number.isFinite(requested) && requested > 0
+        ? Math.min(requested, MAX_HOMES_PER_ROUTE)
+        : MAX_HOMES_PER_ROUTE;
+    const { partitions } = partitionTerritory(scored, {
+        maxHomes,
+        routingContext,
+        territoryPolygon: options?.territoryPolygon || null,
+        roadNetwork: options?.roadNetwork || null
+    });
+    // Doors come back as the same objects that went in, so identity is an exact
+    // lookup — no key derivation to drift.
+    const clusterByDoor = new Map();
+    partitions.forEach((partition, index) => {
+        partition.doors.forEach(door => clusterByDoor.set(door, index));
+    });
+    return scored.map(property => ({
+        ...property,
+        cluster: clusterByDoor.has(property) ? clusterByDoor.get(property) : 0
+    }));
+}
+
+/**
  * Generate optimized routes with clustering
  * @param {Array} properties - All properties to route
  * @param {Number} housesPerRoute - Target houses per route (default 50)
@@ -746,14 +781,14 @@ export function generateOptimizedRoutes(
 
     console.log(`[routeOptimizer] Scoring done in ${Date.now() - t0}ms`);
 
-    // Zone first, order second. Slicing one global street sequence by count made
-    // adjacent reps order-neighbors instead of neighbors, so the doors are
-    // partitioned into contiguous zones (one per route) before any ordering runs.
+    // Topology first, then partition, then order. The previous geographic zoner
+    // decided route membership before any street or pocket was consulted, which
+    // is how a four-door access group ended up split across two routes.
     // Reorder-style callers hand in an already-fixed sequence and must not be
-    // re-zoned into several routes.
+    // re-partitioned into several routes.
     let clustered = preserveGlobalChunkOrder
         ? scored.map(p => ({ ...p, cluster: 0 }))
-        : partitionPropertiesIntoZones(scored, housesPerRoute);
+        : partitionScoredProperties(scored, housesPerRoute, effectiveRoutingContext, options);
 
     // Generate routes
     const routes = [];
@@ -776,11 +811,17 @@ export function generateOptimizedRoutes(
         );
         console.log(`[routeOptimizer] Mail carrier done in ${Date.now() - t1}ms (${orderedProps.length} ordered)`);
 
-        const orderedChunks = splitOrderedPropertiesByRoutingBoundaries(
-            orderedProps,
-            housesPerRoute,
-            effectiveRoutingContext
-        );
+        // The partitioner already decided this route's membership, so ordering is
+        // not allowed to introduce a new route boundary. Only the preserve-order
+        // path — which is handed one fixed global sequence instead of partitions
+        // — still cuts here, and it cuts at access and street boundaries.
+        const orderedChunks = preserveGlobalChunkOrder
+            ? splitOrderedPropertiesByRoutingBoundaries(
+                orderedProps,
+                housesPerRoute,
+                effectiveRoutingContext
+            )
+            : [orderedProps];
         const useRoadMetrics = effectiveRoutingContext?.costOnly !== true
             && typeof effectiveRoutingContext?.distanceBetween === 'function';
 

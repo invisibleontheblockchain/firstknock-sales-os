@@ -119,15 +119,17 @@ function buildTopologyGraph(roadNetwork, allowedHighways) {
  * during generation is the same pocket found during optimization. An edge is
  * claimed by the first branch that contains it, so pockets stay disjoint.
  */
-function findTopologyPockets(graph) {
+function findTopologyPockets(graph, boundaryNodeIds) {
     const edgeIds = [...graph.edgeMap.keys()].sort(compareIds);
     const branches = findProtectedTerminalBranches(
         edgeIds,
         graph.edgeMap,
         graph.nodeMap,
-        // No polygon here: this model is territory-wide, so there is no clipped
-        // boundary to exempt and no operator-declared barrier set.
-        new Set(),
+        // Nodes where the routable graph leaves the drawn territory are exempt.
+        // Without that exemption a road that merely stops at the edge of the
+        // fetched data reads as a dead end, gets protected as a fake pocket, and
+        // blocks legitimate cuts along the territory boundary.
+        boundaryNodeIds,
         new Set()
     );
 
@@ -150,6 +152,63 @@ function findTopologyPockets(graph) {
     });
 
     return { pockets, pocketByEdgeKey };
+}
+
+function normalizePolygon(polygon) {
+    const ring = (Array.isArray(polygon) ? polygon : []).map(pointFrom).filter(Boolean);
+    return ring.length >= 3 ? ring : null;
+}
+
+function isInsidePolygon(point, ring) {
+    let inside = false;
+    for (let index = 0, previous = ring.length - 1; index < ring.length; previous = index, index += 1) {
+        const current = ring[index];
+        const last = ring[previous];
+        if ((current.lat > point.lat) !== (last.lat > point.lat)) {
+            const crossing = current.lng
+                + ((point.lat - current.lat) / (last.lat - current.lat)) * (last.lng - current.lng);
+            if (point.lng < crossing) inside = !inside;
+        }
+    }
+    return inside;
+}
+
+/**
+ * Nodes where the routable graph leaves the drawn territory. Passed to the
+ * pocket detector as boundary nodes so the territory edge is never mistaken for
+ * a dead end. No polygon means no exemptions, exactly as before.
+ */
+function boundaryNodeIdsFor(graph, polygon) {
+    const ring = normalizePolygon(polygon);
+    if (!ring) return new Set();
+    const boundary = new Set();
+    graph.nodeMap.forEach((node, id) => {
+        if (!isInsidePolygon(node, ring)) boundary.add(id);
+    });
+    return boundary;
+}
+
+/**
+ * The access group a street block belongs to according to the caller's routing
+ * context — the frontend's road-derived topology, which the street sweep already
+ * treats as atomic. Only an unambiguous single key counts, so a block straddling
+ * two groups (or missing a key on any door) stays a unit of its own.
+ */
+function accessUnitKeyForBlock(doors, routingContext) {
+    if (typeof routingContext?.accessGroupKey !== 'function') return '';
+    const keys = new Set();
+    for (const door of doors) {
+        let value = '';
+        try {
+            value = String(routingContext.accessGroupKey(door) ?? '').trim();
+        } catch {
+            return '';
+        }
+        if (!value) return '';
+        keys.add(value);
+        if (keys.size > 1) return '';
+    }
+    return keys.size === 1 ? `access:${[...keys][0]}` : '';
 }
 
 function distanceToEdgeMeters(point, edge, nodes) {
@@ -215,7 +274,11 @@ function pocketForBlock(doors, graph, pocketByEdgeKey, maxSnapMeters) {
  * The shared model.
  *
  * @param {Array} properties doors to model
- * @param {object} options `{ roadNetwork, allowedHighways, maxSnapMeters }`
+ * @param {object} options `{ roadNetwork, allowedHighways, maxSnapMeters,
+ *   territoryPolygon, routingContext }`. `territoryPolygon` exempts the drawn
+ *   boundary from dead-end detection. `routingContext` lets a caller that
+ *   already resolved road topology (the frontend route context) supply its
+ *   access groups instead of re-deriving them from a road graph.
  * @returns {object} `{ units, blocks, pockets, pocketProvenance, unitCount,
  *   doorCount, budget }` where `units` are the authoritative routing units: a
  *   protected pocket is ONE unit (its blocks travel together), and every other
@@ -225,11 +288,13 @@ function pocketForBlock(doors, graph, pocketByEdgeKey, maxSnapMeters) {
 export function buildRoutingUnits(properties, options = {}) {
     const validProperties = (Array.isArray(properties) ? properties : [])
         .filter((property) => isValidPoint(property));
+    const routingContext = options.routingContext || null;
     const blocks = buildStreetBlocks(validProperties).map((block) => ({
         key: block.key,
         doors: block.doors,
         doorCount: block.doors.length,
-        pocketId: ''
+        pocketId: '',
+        accessUnitKey: accessUnitKeyForBlock(block.doors, routingContext)
     }));
 
     const roadNetwork = options.roadNetwork || null;
@@ -237,7 +302,7 @@ export function buildRoutingUnits(properties, options = {}) {
         ? buildTopologyGraph(roadNetwork, options.allowedHighways || ROUTABLE_HIGHWAYS)
         : null;
     const topology = graph && graph.edgeMap.size > 0
-        ? findTopologyPockets(graph)
+        ? findTopologyPockets(graph, boundaryNodeIdsFor(graph, options.territoryPolygon))
         : { pockets: [], pocketByEdgeKey: new Map() };
 
     if (graph && topology.pockets.length > 0) {
@@ -257,8 +322,9 @@ export function buildRoutingUnits(properties, options = {}) {
     const unitByKey = new Map();
     blocks.forEach((block) => {
         // A protected pocket is one unit: this is what stops a partitioner from
-        // cutting a cul-de-sac across two routes.
-        const unitKey = block.pocketId || `block:${block.key}`;
+        // cutting a cul-de-sac across two routes. A caller-supplied access group
+        // is atomic for the same reason, and road topology wins when both exist.
+        const unitKey = block.pocketId || block.accessUnitKey || `block:${block.key}`;
         if (!unitByKey.has(unitKey)) {
             unitByKey.set(unitKey, {
                 key: unitKey,
