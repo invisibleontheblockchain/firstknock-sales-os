@@ -60,8 +60,14 @@ test('Home wires Base44 limit and skip through the paginated Canvas roster loade
 
 test('Canvas toolbar labels the planner handoff honestly without changing Precision actions', () => {
   const toolbar = readFileSync(new URL('../src/components/map/MapToolbar.jsx', import.meta.url), 'utf8');
-  const canvasStart = toolbar.indexOf("routeMode === 'canvas' && mode === 'generate'");
+  const canvasStart = toolbar.indexOf("routeMode === 'canvas' && !activeRoute ?");
   const precisionStart = toolbar.indexOf("{mode === 'generate' && !activeRoute", canvasStart);
+
+  // Locate both anchors before slicing. A missing anchor used to yield an empty
+  // slice, so every assertion below failed against '' and reported a label
+  // problem when the real cause was a renamed condition.
+  assert.ok(canvasStart >= 0, 'Canvas toolbar branch not found — the render condition was renamed');
+  assert.ok(precisionStart > canvasStart, 'Precision toolbar branch must follow the Canvas branch');
   const canvasActions = toolbar.slice(canvasStart, precisionStart);
 
   assert.match(canvasActions, /NEW AREA/);
