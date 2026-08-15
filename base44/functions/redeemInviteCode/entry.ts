@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+import { writeAcquisitionMilestone } from '../_shared/acquisitionMilestones.js';
 
 const CLAIM_EXISTING_ACTION = 'claim_existing';
 
@@ -106,7 +107,19 @@ async function claimExistingMembership(service, user) {
         team_manager_id: selectedManagerId
     };
     if (member.invite_code) userUpdates.team_invite_code = member.invite_code;
+    const roleChanged = normalized(user?.app_role) !== 'rep'
+        || currentManagerId !== selectedManagerId;
     await service.entities.User.update(user.id, userUpdates);
+    if (roleChanged) {
+        await writeAcquisitionMilestone(service, {
+            eventName: 'role_selected',
+            eventKey: `role_${user.id}_rep`,
+            user: { ...user, ...userUpdates },
+            manager: selected.manager,
+            workspaceManagerId: selectedManagerId,
+            evidenceId: member.id
+        });
+    }
 
     return {
         success: true,
@@ -247,6 +260,31 @@ Deno.serve(async (req) => {
                 used_count: (validCode.used_count || 0) + 1
             });
         }
+
+        await writeAcquisitionMilestone(service, {
+            eventName: 'role_selected',
+            eventKey: `role_${user.id}_rep`,
+            user: {
+                ...user,
+                app_role: validCode.role,
+                team_manager_id: managerId
+            },
+            manager,
+            workspaceManagerId: managerId,
+            evidenceId: member.id
+        });
+        await writeAcquisitionMilestone(service, {
+            eventName: 'invite_redeemed',
+            eventKey: `invite_redeemed_${member.id}`,
+            user: {
+                ...user,
+                app_role: validCode.role,
+                team_manager_id: managerId
+            },
+            manager,
+            workspaceManagerId: managerId,
+            evidenceId: member.id
+        });
 
         return Response.json({
             success: true,

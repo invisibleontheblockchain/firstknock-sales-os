@@ -10,8 +10,11 @@ const testDir = dirname(fileURLToPath(import.meta.url));
 const rootDir = resolve(testDir, '..');
 const readSource = (path) => readFileSync(resolve(rootDir, path), 'utf8');
 
-function loadHandler(base44) {
-  const path = 'base44/functions/redeemInviteCode/entry.ts';
+function loadHandler(
+  base44,
+  milestoneWriter = async () => null,
+  path = 'base44/functions/redeemInviteCode/entry.ts',
+) {
   const transpiled = ts.transpileModule(readSource(path), {
     compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
     fileName: path,
@@ -25,6 +28,7 @@ function loadHandler(base44) {
   vm.runInNewContext(executable, {
     console,
     createClientFromRequest: () => base44,
+    writeAcquisitionMilestone: milestoneWriter,
     Deno: { serve: (registeredHandler) => { handler = registeredHandler; } },
     Request,
     Response,
@@ -125,7 +129,11 @@ test('invite redemption writes the authenticated User tenant link with service r
     ],
   });
 
-  const { response, data } = await invoke(loadHandler(base44), { code: ' join12 ' });
+  const milestones = [];
+  const { response, data } = await invoke(loadHandler(
+    base44,
+    async (_service, payload) => milestones.push(structuredClone(payload)),
+  ), { code: ' join12 ' });
 
   assert.equal(response.status, 200);
   assert.equal(data.success, true);
@@ -139,6 +147,10 @@ test('invite redemption writes the authenticated User tenant link with service r
   assert.equal(state.createdMembers[0].manager_id, 'manager_1');
   assert.equal(state.members.find((member) => member.id === 'old_member').manager_id, 'old_manager');
   assert.deepEqual(state.codeUpdates, [{ id: 'code_1', updates: { used_count: 1 } }]);
+  assert.deepEqual(
+    milestones.map((milestone) => milestone.eventName),
+    ['role_selected', 'invite_redeemed'],
+  );
 });
 
 test('returning rep claims a manager-created email roster record without client-selected tenant input', async () => {
@@ -156,7 +168,11 @@ test('returning rep claims a manager-created email roster record without client-
     }],
   });
 
-  const { response, data } = await invoke(loadHandler(base44), {
+  const milestones = [];
+  const { response, data } = await invoke(loadHandler(
+    base44,
+    async (_service, payload) => milestones.push(structuredClone(payload)),
+  ), {
     action: 'claim_existing',
     manager_id: 'attacker_manager',
     team_member_id: 'attacker_member',
@@ -171,6 +187,10 @@ test('returning rep claims a manager-created email roster record without client-
     updates: { app_role: 'rep', team_manager_id: 'manager_1', team_invite_code: 'OLD123' },
   }]);
   assert.equal(state.authUpdates.length, 0);
+  assert.deepEqual(
+    milestones.map((milestone) => milestone.eventName),
+    ['role_selected'],
+  );
 });
 
 test('already-linked returning rep remains claimable without mutable creator metadata', async () => {
@@ -187,12 +207,20 @@ test('already-linked returning rep remains claimable without mutable creator met
     }],
   });
 
-  const { response, data } = await invoke(loadHandler(base44), { action: 'claim_existing' });
+  const milestones = [];
+  const { response, data } = await invoke(loadHandler(
+    base44,
+    async (_service, payload) => milestones.push(structuredClone(payload)),
+  ), { action: 'claim_existing' });
 
   assert.equal(response.status, 200);
   assert.equal(data.manager_id, 'manager_1');
   assert.equal(state.memberUpdates.length, 0);
   assert.equal(state.userUpdates[0].updates.team_manager_id, 'manager_1');
+  assert.deepEqual(
+    milestones.map((milestone) => milestone.eventName),
+    ['role_selected'],
+  );
 });
 
 test('claim-existing rejects an untrusted email-only roster record', async () => {
@@ -255,6 +283,47 @@ test('invite redemption rejects legacy manager or admin role codes', async () =>
     assert.equal(state.memberUpdates.length, 0);
     assert.equal(state.userUpdates.length, 0);
   }
+});
+
+test('manager role selection emits one milestone only when the role is first assigned', async () => {
+  const user = { id: 'manager_new', email: 'new.manager@example.com' };
+  const updates = [];
+  const milestones = [];
+  const base44 = {
+    auth: { me: async () => structuredClone(user) },
+    asServiceRole: {
+      entities: {
+        User: {
+          get: async () => structuredClone(user),
+          update: async (_id, value) => {
+            updates.push(structuredClone(value));
+            Object.assign(user, structuredClone(value));
+            return structuredClone(user);
+          },
+        },
+        TeamMember: { filter: async () => [] },
+      },
+    },
+  };
+  const handler = loadHandler(
+    base44,
+    async (_service, payload) => milestones.push(structuredClone(payload)),
+    'base44/functions/createManagerWorkspace/entry.ts',
+  );
+
+  const first = await handler(new Request('https://firstknock.online/api/create-manager', {
+    method: 'POST',
+  }));
+  const reused = await handler(new Request('https://firstknock.online/api/create-manager', {
+    method: 'POST',
+  }));
+
+  assert.equal(first.status, 200);
+  assert.equal(reused.status, 200);
+  assert.deepEqual(updates, [{ app_role: 'manager' }]);
+  assert.equal(milestones.length, 1);
+  assert.equal(milestones[0].eventName, 'role_selected');
+  assert.equal(milestones[0].workspaceManagerId, user.id);
 });
 
 test('RoleSelect delegates both rep claims and manager workspace role writes to trusted functions', () => {

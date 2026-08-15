@@ -1,0 +1,125 @@
+{
+  "name": "AcquisitionEvent",
+  "type": "object",
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "maxLength": 80,
+      "description": "Client-generated idempotency key for one acquisition event"
+    },
+    "event_name": {
+      "type": "string",
+      "enum": [
+        "landing_viewed",
+        "signup_cta_clicked",
+        "auth_completed",
+        "role_selected",
+        "invite_redeemed",
+        "invited_rep_activated",
+        "workspace_activated",
+        "paid_conversion"
+      ]
+    },
+    "anonymous_id": {
+      "type": "string",
+      "maxLength": 80,
+      "description": "Pseudonymous browser or server-subject identifier with no embedded direct identifier"
+    },
+    "session_id": {
+      "type": "string",
+      "maxLength": 80,
+      "description": "Pseudonymous browser session or server-event identifier used for deduplication"
+    },
+    "user_id": {
+      "type": "string",
+      "description": "Authenticated FirstKnock user ID when the event is tied to an account"
+    },
+    "workspace_manager_id": {
+      "type": "string",
+      "description": "Manager workspace that receives acquisition credit for this milestone"
+    },
+    "source": {
+      "type": "string",
+      "maxLength": 120
+    },
+    "medium": {
+      "type": "string",
+      "maxLength": 120
+    },
+    "campaign": {
+      "type": "string",
+      "maxLength": 120
+    },
+    "content": {
+      "type": "string",
+      "maxLength": 120
+    },
+    "term": {
+      "type": "string",
+      "maxLength": 120
+    },
+    "landing_path": {
+      "type": "string",
+      "maxLength": 300
+    },
+    "referrer_host": {
+      "type": "string",
+      "maxLength": 160
+    },
+    "cta_variant": {
+      "type": "string",
+      "maxLength": 80
+    },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "is_authenticated": {
+      "type": "boolean",
+      "default": false
+    },
+    "trust_source": {
+      "type": "string",
+      "enum": [
+        "client_diagnostic",
+        "authenticated_bridge",
+        "trusted_product_function",
+        "stripe_webhook"
+      ]
+    },
+    "evidence_id": {
+      "type": "string",
+      "maxLength": 160,
+      "description": "Trusted product or provider record used as milestone evidence"
+    }
+  },
+  "required": [
+    "event_id",
+    "event_name",
+    "anonymous_id",
+    "session_id",
+    "occurred_at"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "id": "__service_role_only__"
+      }
+    },
+    "read": {
+      "user_condition": {
+        "id": "__service_role_only__"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "id": "__service_role_only__"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "id": "__service_role_only__"
+      }
+    }
+  }
+}

@@ -24,6 +24,8 @@
     "validate:dependencies": "npm audit --audit-level=high",
     "validate:backend": "node scripts/validate-backend.mjs",
     "validate:artifact": "node scripts/validate-artifact.mjs",
+    "prospects": "node scripts/prospecting/cli.mjs",
+    "prospects:dry-run": "node scripts/prospecting/cli.mjs dry-run",
     "validate": "npm run lint && npm run typecheck && npm run validate:dependencies && npm test && npm run validate:backend && npm run build && npm run validate:artifact",
     "preview": "vite preview",
     "mobile:build": "vite build && cap sync"

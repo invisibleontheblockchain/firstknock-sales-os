@@ -1,0 +1,104 @@
+name: firstknock-osrm
+
+services:
+  osrm:
+    image: ${OSRM_IMAGE:?Set OSRM_IMAGE in osrm.env}
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "/opt/firstknock/start-osrm.sh"]
+    environment:
+      DISABLE_ACCESS_LOGGING: "1"
+      OSRM_API_PROFILE: ${OSRM_API_PROFILE:-foot}
+      OSRM_BUILD_FINGERPRINT: ${OSRM_BUILD_FINGERPRINT:?Set OSRM_BUILD_FINGERPRINT in osrm.env}
+      OSRM_COVERAGE_ID: ${OSRM_COVERAGE_ID:-us-50-states-dc}
+      OSRM_DATA_VERSION: ${OSRM_DATA_VERSION:?Set OSRM_DATA_VERSION in osrm.env}
+      OSRM_DATASET_BASE: ${OSRM_DATASET_BASE:-us.osrm}
+      OSRM_DEFAULT_RADIUS_METERS: ${OSRM_DEFAULT_RADIUS_METERS:-150}
+      OSRM_EXPECTED_IMAGE: ${OSRM_IMAGE:?Set OSRM_IMAGE in osrm.env}
+      OSRM_MAX_ROUTE_SIZE: ${OSRM_MAX_ROUTE_SIZE:-100}
+      OSRM_MAX_TABLE_SIZE: ${OSRM_MAX_TABLE_SIZE:-100}
+      OSRM_PROFILE_FILE: ${OSRM_PROFILE_FILE:-foot.lua}
+      OSRM_THREADS: ${OSRM_THREADS:-8}
+    expose:
+      - "5000"
+    networks:
+      - routing
+    logging:
+      driver: json-file
+      options:
+        max-file: "3"
+        max-size: 10m
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 30s
+    tmpfs:
+      - /tmp
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    volumes:
+      - type: bind
+        source: ./scripts/start-osrm.sh
+        target: /opt/firstknock/start-osrm.sh
+        read_only: true
+      - type: bind
+        source: ${OSRM_DATA_DIR:?Set OSRM_DATA_DIR in osrm.env}
+        target: /data
+        read_only: true
+
+  gateway:
+    image: nginx:1.30.4-alpine@sha256:97d490c12ba55b4946b01546d1c3ed324e8d41ab1c9fcb2a616aa470620e5b46
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "/opt/firstknock/start-gateway.sh"]
+    depends_on:
+      - osrm
+    environment:
+      NGINX_ENVSUBST_FILTER: ^OSRM_
+      OSRM_API_PROFILE: ${OSRM_API_PROFILE:-foot}
+      OSRM_BUILD_FINGERPRINT: ${OSRM_BUILD_FINGERPRINT:?Set OSRM_BUILD_FINGERPRINT in osrm.env}
+      OSRM_COVERAGE_ID: ${OSRM_COVERAGE_ID:-us-50-states-dc}
+      OSRM_DATA_VERSION: ${OSRM_DATA_VERSION:?Set OSRM_DATA_VERSION in osrm.env}
+      OSRM_GATEWAY_TOKEN: ${OSRM_GATEWAY_TOKEN:?Set OSRM_GATEWAY_TOKEN in osrm.env}
+    ports:
+      - "${OSRM_GATEWAY_BIND:-127.0.0.1}:${OSRM_GATEWAY_PORT:-8080}:8080"
+    networks:
+      - routing
+    logging:
+      driver: json-file
+      options:
+        max-file: "3"
+        max-size: 10m
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 15s
+    tmpfs:
+      - /etc/nginx/conf.d
+      - /tmp
+      - /var/run
+    volumes:
+      - type: bind
+        source: ./scripts/start-gateway.sh
+        target: /opt/firstknock/start-gateway.sh
+        read_only: true
+      - type: bind
+        source: ./nginx/default.conf.template
+        target: /etc/nginx/templates/default.conf.template
+        read_only: true
+      - type: volume
+        source: matrix-cache
+        target: /var/cache/nginx
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/healthz || exit 1"]
+      interval: 15s
+      timeout: 3s
+      retries: 4
+      start_period: ${OSRM_HEALTH_START_PERIOD:-10m}
+
+networks:
+  routing:
+    internal: true
+
+volumes:
+  matrix-cache:

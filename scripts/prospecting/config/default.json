@@ -1,0 +1,42 @@
+{
+  "markets": [
+    "Phoenix, Arizona",
+    "Dallas, Texas",
+    "Provo, Utah",
+    "Salt Lake City, Utah"
+  ],
+  "companyKeywords": [
+    "pest control",
+    "pest management",
+    "exterminator"
+  ],
+  "employeeRanges": [
+    "5,30",
+    "31,75"
+  ],
+  "decisionMakerTitles": [
+    "Owner",
+    "Founder",
+    "President",
+    "Chief Executive Officer",
+    "General Manager",
+    "Vice President of Sales",
+    "Head of Sales",
+    "Director of Sales",
+    "Sales Manager",
+    "Field Operations",
+    "Canvassing Manager"
+  ],
+  "decisionMakerSeniorities": [
+    "owner",
+    "founder",
+    "c_suite",
+    "vp",
+    "head",
+    "director",
+    "manager"
+  ],
+  "maxCompanies": 100,
+  "verifier": "none",
+  "suppressionFile": "scripts/prospecting/output/suppression.csv"
+}

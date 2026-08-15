@@ -1,0 +1,88 @@
+{
+  "matches": [
+    {
+      "id": "person-ready",
+      "first_name": "Jordan",
+      "last_name": "Example",
+      "title": "Owner",
+      "email": "jordan@desertpest.example",
+      "email_status": "verified",
+      "verification_status": "deliverable",
+      "verifier_provider": "fixture",
+      "verified_at": "2026-08-01T00:00:00.000Z",
+      "residential_evidence": "Residential pest-control services page",
+      "residential_evidence_url": "https://desertpest.example/residential",
+      "d2d_evidence": "Canvassing representative job listing",
+      "d2d_evidence_url": "https://desertpest.example/careers/canvassing",
+      "organization_id": "org-ready",
+      "target_company_id": "org-ready",
+      "person_organization_id": "org-ready",
+      "current_employer_confirmed": true,
+      "organization": {
+        "id": "org-ready",
+        "name": "Desert Pest Example",
+        "primary_domain": "desertpest.example",
+        "website_url": "https://desertpest.example",
+        "estimated_num_employees": 18,
+        "city": "Phoenix",
+        "state": "Arizona",
+        "country": "United States",
+        "industry": "pest control"
+      }
+    },
+    {
+      "id": "person-review",
+      "first_name": "Taylor",
+      "last_name": "Example",
+      "title": "Director of Sales",
+      "email": "taylor@metrobug.example",
+      "email_status": "verified",
+      "verification_status": "catch_all",
+      "verifier_provider": "fixture",
+      "residential_evidence": "Residential pest-control services page",
+      "residential_evidence_url": "https://metrobug.example/residential",
+      "d2d_evidence": "Field sales role listing",
+      "d2d_evidence_url": "https://metrobug.example/careers/field-sales",
+      "organization_id": "org-review",
+      "target_company_id": "org-review",
+      "person_organization_id": "org-review",
+      "current_employer_confirmed": true,
+      "organization": {
+        "id": "org-review",
+        "name": "Metro Bug Example",
+        "primary_domain": "metrobug.example",
+        "estimated_num_employees": 42,
+        "city": "Dallas",
+        "state": "Texas",
+        "country": "United States"
+      }
+    },
+    {
+      "id": "person-rejected",
+      "first_name": "Casey",
+      "last_name": "Example",
+      "title": "Founder",
+      "email": "casey@gmail.com",
+      "email_status": "verified",
+      "verification_status": "deliverable",
+      "verifier_provider": "fixture",
+      "residential_evidence": "Residential pest-control services page",
+      "residential_evidence_url": "https://wasatchpest.example/residential",
+      "d2d_evidence": "Summer sales representative job listing",
+      "d2d_evidence_url": "https://wasatchpest.example/careers/summer-sales",
+      "organization_id": "org-rejected",
+      "target_company_id": "org-rejected",
+      "person_organization_id": "org-rejected",
+      "current_employer_confirmed": true,
+      "organization": {
+        "id": "org-rejected",
+        "name": "Wasatch Pest Example",
+        "primary_domain": "wasatchpest.example",
+        "estimated_num_employees": 12,
+        "city": "Provo",
+        "state": "Utah",
+        "country": "United States"
+      }
+    }
+  ]
+}

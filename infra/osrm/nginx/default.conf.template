@@ -1,0 +1,89 @@
+map $http_authorization $osrm_authorized {
+    default 0;
+    "Bearer ${OSRM_GATEWAY_TOKEN}" 1;
+}
+
+map $host $osrm_global_key {
+    default "firstknock-osrm";
+}
+
+limit_conn_zone $binary_remote_addr zone=osrm_connections:10m;
+limit_req_zone $binary_remote_addr zone=osrm_requests:10m rate=20r/s;
+limit_conn_zone $osrm_global_key zone=osrm_global_connections:10m;
+limit_req_zone $osrm_global_key zone=osrm_global_requests:10m rate=20r/s;
+
+proxy_cache_path /var/cache/nginx/osrm
+    levels=1:2
+    keys_zone=osrm_cache:20m
+    max_size=5g
+    inactive=7d
+    use_temp_path=off;
+
+# Deliberately omit request URIs because they contain property coordinates.
+log_format osrm_safe '$remote_addr $request_method $status '
+                     'request_time=$request_time upstream_time=$upstream_response_time '
+                     'cache=$upstream_cache_status';
+
+upstream osrm_backend {
+    server osrm:5000;
+    keepalive 32;
+}
+
+server {
+    listen 8080;
+    server_name _;
+    server_tokens off;
+
+    access_log /dev/stdout osrm_safe;
+    # Nginx appends the full request line to request-scoped errors. Discard the
+    # runtime error log so coordinate URLs cannot escape through rare failures.
+    error_log /dev/null emerg;
+
+    location = /healthz {
+        # Process liveness only; nationwide coverage is a promotion-gate test.
+        access_log off;
+        limit_conn osrm_connections 4;
+        limit_req zone=osrm_requests burst=5 nodelay;
+        proxy_connect_timeout 1s;
+        proxy_read_timeout 2s;
+        proxy_pass http://osrm_backend/nearest/v1/${OSRM_API_PROFILE}/-77.0280,38.8983?number=1;
+    }
+
+    location ~ ^/(table|route)/v1/${OSRM_API_PROFILE}/ {
+        if ($request_method != GET) {
+            return 405;
+        }
+
+        if ($osrm_authorized = 0) {
+            return 401;
+        }
+
+        limit_conn osrm_connections 16;
+        limit_conn osrm_global_connections 16;
+        limit_req zone=osrm_requests burst=20 nodelay;
+        limit_req zone=osrm_global_requests burst=20 nodelay;
+
+        proxy_connect_timeout 1s;
+        proxy_send_timeout 6s;
+        proxy_read_timeout 6s;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Authorization "";
+
+        proxy_cache osrm_cache;
+        proxy_cache_key "precision-v1:${OSRM_BUILD_FINGERPRINT}:${OSRM_COVERAGE_ID}:${OSRM_API_PROFILE}:$request_uri";
+        proxy_cache_lock on;
+        proxy_cache_lock_timeout 6s;
+        proxy_cache_valid 200 7d;
+
+        add_header X-OSRM-Cache $upstream_cache_status always;
+        add_header X-OSRM-Build-Fingerprint "${OSRM_BUILD_FINGERPRINT}" always;
+        add_header X-OSRM-Coverage "${OSRM_COVERAGE_ID}" always;
+        add_header X-OSRM-Data-Version "${OSRM_DATA_VERSION}" always;
+        proxy_pass http://osrm_backend;
+    }
+
+    location / {
+        return 404;
+    }
+}

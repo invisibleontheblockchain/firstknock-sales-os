@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+import { writeAcquisitionMilestone } from '../_shared/acquisitionMilestones.js';
 
 function asArray(value: any) {
     return Array.isArray(value) ? value : (value?.items || []);
@@ -46,6 +47,14 @@ Deno.serve(async (req: Request) => {
 
         await base44.asServiceRole.entities.User.update(user.id, {
             app_role: 'manager'
+        });
+        await writeAcquisitionMilestone(base44.asServiceRole, {
+            eventName: 'role_selected',
+            eventKey: `role_${user.id}_manager`,
+            user: { ...user, app_role: 'manager' },
+            manager: user,
+            workspaceManagerId: user.id,
+            evidenceId: user.id
         });
         return Response.json({ success: true, role: 'manager', reused: false });
     } catch (error: any) {

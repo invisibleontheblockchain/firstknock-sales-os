@@ -29,3 +29,12 @@ dist-ssr
 
 .env
 base44/.app.jsonc
+
+# Local OSRM extracts and generated routing graphs
+infra/osrm/data/
+infra/osrm/osrm.env
+
+# Local scratch and generated audit artifacts
+tmp/
+outputs/
+.tmp-*

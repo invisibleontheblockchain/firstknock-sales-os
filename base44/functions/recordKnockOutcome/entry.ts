@@ -1,5 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 import Stripe from 'npm:stripe@14.14.0';
+import { writeAcquisitionMilestone } from '../_shared/acquisitionMilestones.js';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') || '');
 const CARD_REQUIRED_AFTER = 25;
@@ -258,7 +259,7 @@ async function resolveActorAndBillingUser(base44: any, authenticatedUser: any) {
     );
 
     const billingUser = await base44.asServiceRole.entities.User.get(teamManagerId).catch(() => null);
-    if (!billingUser) {
+    if (!billingUser || memberships.length < 1) {
         return { actor, billingUser: actor, managerId: actor.id, teamMember: null };
     }
     return { actor, billingUser, managerId: teamManagerId, teamMember: memberships[0] || null };
@@ -769,6 +770,23 @@ async function recordOne(base44: any, authenticatedUser: any, body: any, clearDe
                 'outcome_counter_verification_failed',
                 'The outcome was saved but its counter is still reconciling. Retry with the same action.'
             );
+        }
+        if (
+            countsTowardLimit
+            && protectedState.count === 0
+            && nextCount === 1
+            && String(actor.id) !== String(managerId)
+            && teamMember?.id
+        ) {
+            await writeAcquisitionMilestone(base44.asServiceRole, {
+                eventName: 'invited_rep_activated',
+                eventKey: `rep_activated_${actor.id}`,
+                user: verifiedUser,
+                manager: billingUser,
+                workspaceManagerId: managerId,
+                evidenceId: created?.id || key,
+                occurredAt: created?.created_date || new Date().toISOString()
+            });
         }
         return {
             success: true,

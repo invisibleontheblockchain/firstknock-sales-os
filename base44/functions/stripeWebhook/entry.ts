@@ -104,6 +104,82 @@ async function buildSubscriptionPeriodUpdates(_base44: any, _userId: string, sub
     };
 }
 
+async function buildFirstPaidUpdates(
+    base44: any,
+    userId: string,
+    subscription: any,
+    invoice: any,
+    paidConfirmed: boolean
+) {
+    if (!paidConfirmed || !invoice?.id || !subscription?.id) return {};
+    const currentUser = await getCurrentUser(base44, userId);
+    if (currentUser?.first_paid_at) return {};
+    const paidAt = stripeTimestampIso(
+        invoice?.status_transitions?.paid_at || invoice?.created
+    ) || new Date().toISOString();
+    return {
+        first_paid_at: paidAt,
+        first_paid_subscription_id: subscription.id,
+        first_paid_invoice_id: invoice.id
+    };
+}
+
+async function hashedAcquisitionIdentifier(kind: string, value: any) {
+    const bytes = new TextEncoder().encode(`${kind}:${String(value || '')}`);
+    const digest = await crypto.subtle.digest('SHA-256', bytes);
+    const hex = [...new Uint8Array(digest)]
+        .map((byte) => byte.toString(16).padStart(2, '0'))
+        .join('');
+    return `${kind}_${hex.slice(0, 48)}`;
+}
+
+async function recordPaidConversion(
+    base44: any,
+    userId: string,
+    subscription: any,
+    invoice: any
+) {
+    try {
+        const user = await getCurrentUser(base44, userId);
+        if (!user?.first_paid_at) return;
+        const events = base44.asServiceRole.entities.AcquisitionEvent;
+        if (!events?.filter || !events?.create) return;
+        const existingRaw = await events.filter({
+            event_name: 'paid_conversion',
+            user_id: userId
+        }, '-created_date', 1);
+        const existing = Array.isArray(existingRaw)
+            ? existingRaw
+            : Array.isArray(existingRaw?.items) ? existingRaw.items : [];
+        if (existing.length) return;
+        const touch = user.acquisition_first_touch || {};
+        const safeUserId = String(userId).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64);
+        const firstSubscriptionId = user.first_paid_subscription_id || subscription?.id || userId;
+        await events.create({
+            event_id: `paid_${safeUserId}`.slice(0, 80),
+            event_name: 'paid_conversion',
+            anonymous_id: await hashedAcquisitionIdentifier('account', userId),
+            session_id: await hashedAcquisitionIdentifier('stripe', firstSubscriptionId),
+            user_id: userId,
+            workspace_manager_id: userId,
+            source: touch.source || 'unknown',
+            medium: touch.medium || 'unknown',
+            campaign: touch.campaign || 'unassigned',
+            content: touch.content || 'unassigned',
+            term: touch.term || '',
+            landing_path: touch.landing_path || '/',
+            referrer_host: touch.referrer_host || '',
+            cta_variant: '',
+            occurred_at: user.first_paid_at,
+            is_authenticated: true,
+            trust_source: 'stripe_webhook',
+            evidence_id: String(user.first_paid_invoice_id || invoice?.id || '').slice(0, 160)
+        });
+    } catch (error: any) {
+        console.warn('Paid conversion event write skipped:', error?.message || error);
+    }
+}
+
 function stripeResourceId(resource: any) {
     if (!resource) return null;
     return typeof resource === 'string' ? resource : resource.id || null;
@@ -257,6 +333,13 @@ Deno.serve(async (req: Request) => {
                             subscriptionTier,
                             paidConfirmed
                         );
+                        const firstPaidUpdates = await buildFirstPaidUpdates(
+                            base44,
+                            userId,
+                            sub,
+                            latestInvoice,
+                            paidConfirmed
+                        );
 
                         await base44.asServiceRole.entities.User.update(userId, {
                             ...cardUpdates,
@@ -265,12 +348,14 @@ Deno.serve(async (req: Request) => {
                             subscription_tier: subscriptionTier,
                             subscription_paid_confirmed: paidConfirmed,
                             ...(paidConfirmed ? { subscription_paid_confirmed_at: new Date().toISOString() } : {}),
+                            ...firstPaidUpdates,
                             ...periodUpdates,
                             total_seats: quantity
                         });
 
                         if (paidConfirmed) {
                             await syncInviteCode(base44, userId, quantity);
+                            await recordPaidConversion(base44, userId, sub, latestInvoice);
                         }
                         console.log(`Successfully processed checkout.session.completed for user ${userId}`);
                     } else {
@@ -309,6 +394,13 @@ Deno.serve(async (req: Request) => {
                             subscriptionTier,
                             paidConfirmed
                         );
+                        const firstPaidUpdates = await buildFirstPaidUpdates(
+                            base44,
+                            userId,
+                            subscription,
+                            latestInvoice,
+                            paidConfirmed
+                        );
                          await base44.asServiceRole.entities.User.update(userId, {
                            subscription_id: subscription.id,
                            subscription_status: status,
@@ -316,6 +408,7 @@ Deno.serve(async (req: Request) => {
                            ...(paidConfirmed
                                ? { subscription_paid_confirmed: true, subscription_paid_confirmed_at: new Date().toISOString() }
                                : { subscription_paid_confirmed: false }),
+                           ...firstPaidUpdates,
                            subscription_plan_id: planId,
                            subscription_tier: subscriptionTier,
                            ...periodUpdates,
@@ -324,6 +417,7 @@ Deno.serve(async (req: Request) => {
 
                         if (paidConfirmed) {
                             await syncInviteCode(base44, userId, quantity);
+                            await recordPaidConversion(base44, userId, subscription, latestInvoice);
                         }
                         console.log(`Successfully updated subscription for user ${userId}. Status: ${status}`);
                     } else {
@@ -360,6 +454,13 @@ Deno.serve(async (req: Request) => {
                             subscriptionTier,
                             paidConfirmed
                         );
+                        const firstPaidUpdates = await buildFirstPaidUpdates(
+                            base44,
+                            userId,
+                            subscription,
+                            currentInvoice,
+                            paidConfirmed
+                        );
                         await base44.asServiceRole.entities.User.update(userId, {
                             subscription_id: subscription.id,
                             subscription_status: subscription.status,
@@ -367,12 +468,14 @@ Deno.serve(async (req: Request) => {
                             ...(paidConfirmed
                                 ? { subscription_paid_confirmed: true, subscription_paid_confirmed_at: new Date().toISOString() }
                                 : { subscription_paid_confirmed: false }),
+                            ...firstPaidUpdates,
                             ...cardUpdates,
                             ...periodUpdates,
                             total_seats: quantity
                         });
                         if (paidConfirmed) {
                             await syncInviteCode(base44, userId, quantity);
+                            await recordPaidConversion(base44, userId, subscription, currentInvoice);
                             console.log(`Confirmed paid subscription invoice for user ${userId} with ${quantity} seats`);
                         } else {
                             console.log(`Ignored zero-dollar or trial invoice for user ${userId}`);

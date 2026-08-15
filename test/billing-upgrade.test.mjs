@@ -43,6 +43,9 @@ function loadBackendHandler(path, { base44, stripeApi }) {
     },
     Request,
     Response,
+    TextEncoder,
+    Uint8Array,
+    crypto: globalThis.crypto,
     URL,
     Stripe: makeStripeClass(stripeApi)
   }, { filename: path });
@@ -85,40 +88,60 @@ function makeTrial({ id = 'sub_trial', amount = 9900, tier = 'precision', custom
   };
 }
 
-function makeBase44(user, { updateMe, getUser, updateUser, teamMembers = [], savedRoutes = [], fetchJobs = [], updateFetchJob, onRouteDelete } = {}) {
+function makeBase44(user, {
+  updateMe,
+  getUser,
+  updateUser,
+  teamMembers = [],
+  savedRoutes = [],
+  fetchJobs = [],
+  updateFetchJob,
+  onRouteDelete,
+  acquisitionEvents,
+} = {}) {
   const matches = (record, filter) => Object.entries(filter || {}).every(([key, value]) => record[key] === value);
+  const entities = {
+    User: {
+      get: getUser || (async () => user),
+      update: updateUser || (async (_id, updates) => updateMe?.(updates))
+    },
+    SavedRoute: {
+      filter: async () => savedRoutes,
+      delete: async (id) => onRouteDelete?.(id)
+    },
+    FetchJob: {
+      filter: async (filter, _sort, limit = 500, skip = 0) => fetchJobs.filter((job) => matches(job, filter)).slice(skip, skip + limit),
+      update: async (id, updates) => {
+        const job = fetchJobs.find((candidate) => candidate.id === id);
+        if (job) Object.assign(job, updates);
+        await updateFetchJob?.(id, updates);
+      }
+    },
+    InviteCode: {
+      filter: async () => [],
+      create: async () => {},
+      update: async () => {}
+    },
+    TeamMember: {
+      filter: async () => teamMembers
+    }
+  };
+  if (acquisitionEvents) {
+    entities.AcquisitionEvent = {
+      filter: async (filter) => acquisitionEvents.filter((event) => matches(event, filter)),
+      create: async (value) => {
+        acquisitionEvents.push(structuredClone(value));
+        return structuredClone(value);
+      },
+    };
+  }
   return {
     auth: {
       me: async () => user,
       updateMe: updateMe || (async () => {})
     },
     asServiceRole: {
-      entities: {
-        User: {
-          get: getUser || (async () => user),
-          update: updateUser || (async (_id, updates) => updateMe?.(updates))
-        },
-        SavedRoute: {
-          filter: async () => savedRoutes,
-          delete: async (id) => onRouteDelete?.(id)
-        },
-        FetchJob: {
-          filter: async (filter, _sort, limit = 500, skip = 0) => fetchJobs.filter((job) => matches(job, filter)).slice(skip, skip + limit),
-          update: async (id, updates) => {
-            const job = fetchJobs.find((candidate) => candidate.id === id);
-            if (job) Object.assign(job, updates);
-            await updateFetchJob?.(id, updates);
-          }
-        },
-        InviteCode: {
-          filter: async () => [],
-          create: async () => {},
-          update: async () => {}
-        },
-        TeamMember: {
-          filter: async () => teamMembers
-        }
-      }
+      entities
     }
   };
 }
@@ -635,7 +658,97 @@ test('webhook rejects $0 trial invoices and accepts a positive active invoice', 
     assert.equal(userUpdates.length, 1);
     assert.equal(userUpdates[0].subscription_paid_confirmed, scenario.expectedPaid);
     assert.equal(!!userUpdates[0].precision_usage_period_start, scenario.expectedPaid);
+    assert.equal(!!userUpdates[0].first_paid_at, scenario.expectedPaid);
+    assert.equal(!!userUpdates[0].first_paid_invoice_id, scenario.expectedPaid);
   }
+});
+
+test('first paid conversion stays immutable across renewal and keeps first invoice evidence', async () => {
+  const firstStart = Math.floor(Date.now() / 1000) - 2592000;
+  const renewalStart = Math.floor(Date.now() / 1000);
+  const invoiceFor = (id, start) => ({
+    id,
+    subscription: 'sub_paid_history',
+    status: 'paid',
+    amount_paid: 9900,
+    created: start,
+    status_transitions: { paid_at: start },
+    period_start: start,
+    period_end: start + 2592000,
+    lines: {
+      data: [{
+        subscription: 'sub_paid_history',
+        period: { start, end: start + 2592000 },
+      }],
+    },
+  });
+  const firstInvoice = invoiceFor('in_first_paid', firstStart);
+  const subscription = {
+    ...makeTrial({ id: 'sub_paid_history' }),
+    status: 'active',
+    trial_end: null,
+    current_period_start: firstStart,
+    current_period_end: firstStart + 2592000,
+    latest_invoice: firstInvoice,
+  };
+  const user = {
+    id: 'user_paid_history',
+    email: 'paid@example.com',
+    subscription_id: subscription.id,
+    acquisition_first_touch: {
+      source: 'instagram',
+      medium: 'organic_social',
+      campaign: '1000-users',
+      content: 'ig-paid',
+      landing_path: '/instagram',
+    },
+  };
+  const acquisitionEvents = [];
+  const base44 = makeBase44(user, {
+    acquisitionEvents,
+    updateUser: async (_id, updates) => {
+      Object.assign(user, structuredClone(updates));
+      return structuredClone(user);
+    },
+  });
+  let webhookEvent = {
+    type: 'invoice.paid',
+    id: 'evt_first_paid',
+    data: { object: firstInvoice },
+  };
+  const stripeApi = {
+    webhooks: { constructEventAsync: async () => webhookEvent },
+    subscriptions: { retrieve: async () => subscription },
+  };
+  const handler = loadBackendHandler('base44/functions/stripeWebhook/entry.ts', { base44, stripeApi });
+  const invokeWebhook = () => handler(new Request('https://app.example.com/webhook', {
+    method: 'POST',
+    headers: { 'stripe-signature': 'sig_test' },
+    body: '{}',
+  }));
+
+  assert.equal((await invokeWebhook()).status, 200);
+  const firstPaidAt = user.first_paid_at;
+
+  const renewalInvoice = invoiceFor('in_renewal_paid', renewalStart);
+  subscription.current_period_start = renewalStart;
+  subscription.current_period_end = renewalStart + 2592000;
+  subscription.latest_invoice = renewalInvoice;
+  webhookEvent = {
+    type: 'invoice.paid',
+    id: 'evt_renewal_paid',
+    data: { object: renewalInvoice },
+  };
+  assert.equal((await invokeWebhook()).status, 200);
+
+  assert.equal(user.first_paid_at, firstPaidAt);
+  assert.equal(user.first_paid_subscription_id, 'sub_paid_history');
+  assert.equal(user.first_paid_invoice_id, 'in_first_paid');
+  assert.equal(acquisitionEvents.length, 1);
+  assert.equal(acquisitionEvents[0].occurred_at, firstPaidAt);
+  assert.equal(acquisitionEvents[0].evidence_id, 'in_first_paid');
+  assert.match(acquisitionEvents[0].anonymous_id, /^account_[a-f0-9]{48}$/);
+  assert.equal(acquisitionEvents[0].anonymous_id.includes(user.id), false);
 });
 
 test('subscription update webhooks read current Stripe state instead of stale event state', async () => {
