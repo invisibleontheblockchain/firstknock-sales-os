@@ -39,6 +39,12 @@
       "type": "string",
       "maxLength": 2048
     },
+    "media_path_prefix": {
+      "type": "string",
+      "maxLength": 1024,
+      "pattern": "^/(?:[A-Za-z0-9][A-Za-z0-9._~-]*/)+$",
+      "description": "Immutable app-specific public media pathname namespace captured at scheduling time"
+    },
     "artifact_id": {
       "type": "string",
       "maxLength": 160
@@ -160,6 +166,14 @@
         "sent"
       ]
     },
+    "provider_scheduling_type": {
+      "type": "string",
+      "enum": [
+        "automatic",
+        "notification"
+      ],
+      "description": "Publishing mode confirmed by Buffer; production social jobs must remain automatic"
+    },
     "provider_post_id": {
       "type": "string",
       "maxLength": 300
@@ -179,6 +193,106 @@
     "provider_response_hash": {
       "type": "string",
       "pattern": "^[a-f0-9]{64}$"
+    },
+    "metrics_published_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Authoritative publication clock used for fixed-age metric checkpoints"
+    },
+    "metrics_next_checkpoint_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Next time the sent job is eligible for a Buffer metric checkpoint attempt"
+    },
+    "metrics_sync_completed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Time the D30 checkpoint was captured or durably marked for review"
+    },
+    "metrics_sync_attempt_count": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1000000,
+      "default": 0
+    },
+    "provider_metrics_updated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Latest normalized Buffer metric refresh time observed for this post"
+    },
+    "provider_metrics_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "Hash of the normalized, allowlisted Buffer count metrics and provider identity"
+    },
+    "metrics_checkpoints": {
+      "type": "array",
+      "maxItems": 4,
+      "description": "Durable D1/D3/D7/D30 capture or review-needed outcomes",
+      "items": {
+        "type": "object",
+        "properties": {
+          "snapshot_days": {
+            "type": "integer",
+            "enum": [
+              1,
+              3,
+              7,
+              30
+            ]
+          },
+          "due_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "window_closes_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "captured",
+              "review_needed"
+            ]
+          },
+          "recorded_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "metric_id": {
+            "type": "string",
+            "maxLength": 160
+          },
+          "snapshot_captured_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "snapshot_fingerprint": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "provider_metrics_updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "provider_metrics_hash": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "error_code": {
+            "type": "string",
+            "maxLength": 120
+          }
+        },
+        "required": [
+          "snapshot_days",
+          "due_at",
+          "window_closes_at",
+          "status",
+          "recorded_at"
+        ]
+      }
     },
     "attempt_count": {
       "type": "integer",
@@ -221,6 +335,7 @@
         "scheduled",
         "sending",
         "measurement_retry",
+        "sent",
         "delivery_reconcile"
       ]
     },
@@ -276,6 +391,7 @@
     "provider_service",
     "config_revision",
     "media_origin",
+    "media_path_prefix",
     "artifact_id",
     "artifact_key",
     "artifact_hash",

@@ -34,8 +34,8 @@ function text(value: any, max = 300): string {
   return String(value || "").trim().replace(/\s+/g, " ").slice(0, max);
 }
 
-function wholeNumber(value: any): number | null {
-  if (value === undefined || value === null || value === "") return 0;
+function wholeNumber(value: any): number | null | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
   const parsed = Number(value);
   if (
     !Number.isSafeInteger(parsed)
@@ -80,6 +80,85 @@ function latestMetric(records: any[]): any | null {
   ))[0] || null;
 }
 
+function bufferManagedPlan(plan: any): boolean {
+  return normalized(plan?.delivery_managed_by) === "buffer"
+    || normalized(plan?.sprint) === "content-engine";
+}
+
+async function bufferManualRepairGate(
+  entities: any,
+  {
+    platform,
+    campaign,
+    content,
+    snapshotDays,
+    requestedPublishedAt,
+  }: {
+    platform: string;
+    campaign: string;
+    content: string;
+    snapshotDays: number;
+    requestedPublishedAt?: string;
+  },
+): Promise<{ allowed: boolean; error?: string }> {
+  const planRows = asArray(await entities.GrowthContentPlan.filter(
+    { campaign, content },
+    "-updated_date",
+    50,
+  )).filter((plan) => (
+    metricPlatform(plan) === platform
+    && bufferManagedPlan(plan)
+  ));
+  if (!planRows.length) return { allowed: true };
+
+  const publishedClocks = new Set(
+    planRows
+      .map((plan) => optionalTimestamp(plan?.published_at))
+      .filter(Boolean),
+  );
+  if (publishedClocks.size > 1) {
+    return { allowed: false, error: "content_plan_conflict" };
+  }
+  const publishedAt = [...publishedClocks][0];
+  if (!publishedAt) {
+    return { allowed: false, error: "buffer_checkpoint_still_collecting" };
+  }
+  if (requestedPublishedAt && requestedPublishedAt !== publishedAt) {
+    return { allowed: false, error: "buffer_checkpoint_identity_mismatch" };
+  }
+
+  const exactJobs = asArray(await entities.GrowthPublishJob.filter(
+    {
+      provider: "buffer",
+      platform,
+      platform_content_id: content,
+    },
+    "-updated_date",
+    50,
+  )).filter((job) => (
+    token(job?.campaign, "1000-users") === campaign
+    && optionalTimestamp(job?.metrics_published_at) === publishedAt
+  ));
+  if (exactJobs.length > 1) {
+    return { allowed: false, error: "buffer_checkpoint_conflict" };
+  }
+  const exactJob = exactJobs[0];
+  if (!exactJob) {
+    return { allowed: false, error: "buffer_checkpoint_still_collecting" };
+  }
+
+  const exactCheckpoints = asArray(exactJob?.metrics_checkpoints).filter(
+    (checkpoint) => Number(checkpoint?.snapshot_days) === snapshotDays,
+  );
+  if (exactCheckpoints.length > 1) {
+    return { allowed: false, error: "buffer_checkpoint_conflict" };
+  }
+  if (normalized(exactCheckpoints[0]?.status) !== "review_needed") {
+    return { allowed: false, error: "buffer_checkpoint_still_collecting" };
+  }
+  return { allowed: true };
+}
+
 function metricPlatform(metric: any): string {
   const platform = token(metric?.platform);
   return PLATFORMS.has(platform) ? platform : "instagram";
@@ -97,6 +176,20 @@ function snapshotPayload(metric: any): string {
   };
   for (const field of METRIC_FIELDS) {
     values[field] = Math.max(0, Number(metric?.[field] || 0));
+  }
+  const observedFields = Array.isArray(metric?.observed_metric_fields)
+    ? metric.observed_metric_fields
+    : normalized(metric?.metric_source) === "buffer"
+      && Array.isArray(metric?.provider_observed_metric_types)
+    ? metric.provider_observed_metric_types
+    : null;
+  if (observedFields) {
+    const observed = new Set(
+      observedFields.map((field: any) => normalized(field)),
+    );
+    values.observed_fields = METRIC_FIELDS.filter(
+      (field) => observed.has(field),
+    );
   }
   return JSON.stringify(values);
 }
@@ -183,8 +276,20 @@ Deno.serve(async (req: Request) => {
       if (value === null) {
         return response({ error: "invalid_content_metric", field }, 400);
       }
-      metricValues[field] = value;
+      if (value !== undefined) metricValues[field] = value;
     }
+    if (
+      !Object.prototype.hasOwnProperty.call(metricValues, "reach")
+      && !Object.prototype.hasOwnProperty.call(metricValues, "views")
+    ) {
+      return response({
+        error: "invalid_content_metric",
+        field: "reach_or_views",
+      }, 400);
+    }
+    const observedMetricFields = METRIC_FIELDS.filter(
+      (field) => Object.prototype.hasOwnProperty.call(metricValues, field),
+    );
     const metric = {
       platform,
       campaign,
@@ -196,11 +301,24 @@ Deno.serve(async (req: Request) => {
       snapshot_days: snapshotDays,
       snapshot_captured_at: capturedAt,
       ...metricValues,
+      observed_metric_fields: observedMetricFields,
     };
     const fingerprint = await sha256(snapshotPayload(metric));
     const completeMetric = { ...metric, snapshot_fingerprint: fingerprint };
 
-    const entity = base44.asServiceRole.entities.GrowthContentMetric;
+    const entities = base44.asServiceRole.entities;
+    const repairGate = await bufferManualRepairGate(entities, {
+      platform,
+      campaign,
+      content,
+      snapshotDays,
+      requestedPublishedAt: publishedAt,
+    });
+    if (!repairGate.allowed) {
+      return response({ error: repairGate.error }, 409);
+    }
+
+    const entity = entities.GrowthContentMetric;
     const existingRecords = asArray(await entity.filter(
       { campaign, content, snapshot_days: snapshotDays },
       "-snapshot_captured_at",
@@ -230,13 +348,18 @@ Deno.serve(async (req: Request) => {
         metric: { ...existing, platform },
       });
     }
-    const saved = existing?.id
+    // Provider evidence is immutable. A manual repair becomes a newer,
+    // provider-free checkpoint row instead of partially overwriting a Buffer
+    // row and leaving stale provider IDs or hashes attached to manual values.
+    const repairsAutomatedRow = existing?.id
+      && normalized(existing?.metric_source) === "buffer";
+    const saved = existing?.id && !repairsAutomatedRow
       ? await entity.update(existing.id, completeMetric)
       : await entity.create(completeMetric);
 
     return response({
       success: true,
-      created: !existing?.id,
+      created: !existing?.id || repairsAutomatedRow,
       idempotent: false,
       metric: saved || { ...completeMetric, id: existing?.id },
     });

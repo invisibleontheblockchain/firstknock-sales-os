@@ -12,6 +12,7 @@
       "enum": [
         "landing_viewed",
         "signup_cta_clicked",
+        "content_assist_reported",
         "auth_completed",
         "role_selected",
         "invite_redeemed",
@@ -57,6 +58,21 @@
     "term": {
       "type": "string",
       "maxLength": 120
+    },
+    "reported_content_id": {
+      "type": "string",
+      "maxLength": 120,
+      "description": "Optional visitor-selected post that assisted a generic profile-link journey; never replaces raw content attribution"
+    },
+    "reported_content_method": {
+      "type": "string",
+      "enum": [
+        "visitor_self_report"
+      ]
+    },
+    "reported_content_at": {
+      "type": "string",
+      "format": "date-time"
     },
     "landing_path": {
       "type": "string",

@@ -89,18 +89,14 @@ class DatabaseInserter:
         }
     
     def _get_connection_string(self) -> str:
-        """Get database connection string from environment or default."""
-        # Try environment variable first
-        conn_str = os.getenv('DATABASE_URL') or os.getenv('NEON_DATABASE_URL')
+        """Get the database connection string from the server environment."""
+        conn_str = (os.getenv('DATABASE_URL') or os.getenv('NEON_DATABASE_URL') or '').strip()
         
         if conn_str:
             return conn_str
         
-        # Default Neon connection (from existing codebase)
-        return (
-            "postgresql://neondb_owner:npg_jsLScDO6w9mf@"
-            "ep-fragrant-bush-ahixbnax-pooler.c-3.us-east-1.aws.neon.tech/"
-            "neondb?sslmode=require"
+        raise RuntimeError(
+            'DATABASE_URL or NEON_DATABASE_URL must be configured before database insertion.'
         )
     
     def connect(self):
@@ -477,8 +473,8 @@ Examples:
   # Insert with custom batch size
   python insert_to_database.py --input data/scraped --batch-size 500
   
-  # Insert with custom database URL
-  DATABASE_URL="postgresql://..." python insert_to_database.py --input data/scraped
+  # Insert with a database URL supplied through the environment
+  DATABASE_URL="<database-connection-string>" python insert_to_database.py --input data/scraped
         '''
     )
     

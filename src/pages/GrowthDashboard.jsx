@@ -62,14 +62,16 @@ function paceNumber(value, digits = 1) {
   });
 }
 
-function MetricCard({ label, value, helper, icon: Icon, color }) {
+function MetricCard({ label, value, helper, icon: Icon, color, available = true }) {
   return (
     <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
       <div className="flex items-center justify-between gap-3">
         <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">{label}</p>
         <Icon className="h-4 w-4" style={{ color }} />
       </div>
-      <p className="mt-3 text-3xl font-black text-white">{Number(value || 0).toLocaleString()}</p>
+      <p className="mt-3 text-3xl font-black text-white">
+        {available ? Number(value || 0).toLocaleString() : '—'}
+      </p>
       <p className="mt-1 text-xs text-white/45">{helper}</p>
     </div>
   );
@@ -81,6 +83,8 @@ function PaceRow({
   required,
   ratio,
   observedAvailable,
+  lowerBound28,
+  unavailableDetail,
   accent,
 }) {
   const percentage = Number.isFinite(ratio) ? Math.max(0, ratio * 100) : 0;
@@ -93,7 +97,11 @@ function PaceRow({
             {label}
           </p>
           <p className="mt-1 text-sm font-black tabular-nums text-white">
-            {observedAvailable ? `${paceNumber(observed)} / week` : '—'}
+            {observedAvailable
+              ? `${paceNumber(observed)} / week`
+              : Number.isFinite(lowerBound28)
+                ? `${Number(lowerBound28).toLocaleString()} / 28d lower bound`
+                : '—'}
           </p>
         </div>
         <div className="shrink-0 text-right">
@@ -124,7 +132,7 @@ function PaceRow({
       <p className="mt-2 text-[11px] text-white/55">
         {observedAvailable
           ? `${Math.round(percentage)}% of the weekly planning requirement`
-          : 'Waiting for current plan-backed evidence'}
+          : unavailableDetail || 'Waiting for current plan-backed evidence'}
       </p>
     </div>
   );
@@ -134,6 +142,7 @@ function PathToGoalCard({ pace }) {
   const observed = pace.observed_weekly_proxy_28d;
   const constraint = getGrowthPaceStatus(pace);
   const hasCompleteWindow = pace.weekly_proxy_available;
+  const coverage = pace.measurement_coverage || {};
   const sampleMature = pace.measured_content_assets >= MIN_OBSERVED_CONTENT_ASSETS
     && pace.observation_window_complete;
 
@@ -180,7 +189,7 @@ function PathToGoalCard({ pace }) {
                 <span className="text-base text-white/30"> / {pace.goal_users.toLocaleString()}</span>
               </p>
               <p className="mt-4 text-[11px] font-black uppercase tracking-[0.16em] text-white/60">
-                Baseline reach still required
+                Baseline cumulative post reach still required
               </p>
               <p className="mt-2 text-2xl font-black tabular-nums" style={{ color: PACE_ACCENT }}>
                 {Math.ceil(pace.required_total_reach).toLocaleString()}
@@ -192,15 +201,19 @@ function PathToGoalCard({ pace }) {
 
             <div className="grid gap-3 sm:grid-cols-2">
               <PaceRow
-                label="Plan-backed reach"
+                label={pace.reach_proxy_available
+                  ? 'Instagram cumulative post reach — conservative'
+                  : 'Instagram cumulative post reach lower bound'}
                 observed={observed.reach}
                 required={pace.target_weekly.reach}
                 ratio={pace.pace_ratio.reach}
-                observedAvailable={hasCompleteWindow}
+                observedAvailable={pace.reach_proxy_available}
+                lowerBound28={pace.observed_totals_28d.reach}
+                unavailableDetail={`Instagram reach coverage ${Number(coverage.reach_observed_assets || 0).toLocaleString()}/${Number(coverage.reach_expected_due_assets || 0).toLocaleString()} due Instagram assets; weekly reach pace is withheld until complete`}
                 accent={PACE_ACCENT}
               />
               <PaceRow
-                label="Mature assets"
+                label="Published checkpoints due"
                 observed={observed.content_assets}
                 required={pace.target_weekly.content_assets}
                 ratio={pace.pace_ratio.content_assets}
@@ -232,19 +245,29 @@ function PathToGoalCard({ pace }) {
                 <p className="font-black text-white">{constraint.title}</p>
                 <p className="mt-1 text-xs leading-relaxed text-white/60">{constraint.detail}</p>
               </div>
-              <span className="shrink-0 rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-white/60">
-                {sampleMature
-                  ? `${pace.measured_content_assets} mature assets · descriptive`
-                  : `${pace.measured_content_assets}/${MIN_OBSERVED_CONTENT_ASSETS} mature assets`}
-              </span>
+              <div className="flex shrink-0 flex-col items-end gap-1.5">
+                <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-white/60">
+                  {sampleMature
+                    ? `${pace.measured_content_assets} captured assets · descriptive`
+                    : `${pace.measured_content_assets}/${MIN_OBSERVED_CONTENT_ASSETS} captured assets`}
+                </span>
+                <span className="text-[10px] font-bold text-white/40">
+                  28d checkpoints {Number(coverage.captured_assets || 0)}/{Number(coverage.expected_due_assets || 0)}
+                  {' · '}Instagram reach {Number(coverage.reach_observed_assets || 0)}/{Number(coverage.reach_expected_due_assets || 0)}
+                </span>
+              </div>
             </div>
           </div>
         </>
       )}
 
       <p className="mt-4 text-xs leading-relaxed text-white/60">
-        Weekly observed values are canonical, plan-backed last-28-day totals divided by
-        four. The retained value is a gross social-attributed signup-cohort
+        Weekly values use plan-backed last-28-day totals divided by four. Asset pace counts
+        every Instagram and TikTok checkpoint that became due. The conservative reach row
+        uses Instagram cumulative post reach only; each account may repeat across posts, so
+        it is not unique campaign reach. TikTok views stay diagnostic and are never added to
+        reach. Captured and reach-observed coverage stay separate. The retained
+        value is a gross social-attributed signup-cohort
         contribution, not net growth in the rolling active-user stock. FirstKnock keeps
         ETA off until weekly stock history can support one.
       </p>
@@ -252,11 +275,18 @@ function PathToGoalCard({ pace }) {
   );
 }
 
-function FunnelStage({ label, value, helper }) {
+function FunnelStage({
+  label,
+  value,
+  helper,
+  available = true,
+}) {
   return (
     <div className="min-w-0 flex-1 rounded-xl border border-white/10 bg-black/40 p-3">
       <p className="text-[9px] font-black uppercase tracking-[0.16em] text-white/35">{label}</p>
-      <p className="mt-2 text-xl font-black text-white">{Number(value || 0).toLocaleString()}</p>
+      <p className="mt-2 text-xl font-black text-white">
+        {available ? Number(value || 0).toLocaleString() : '—'}
+      </p>
       <p className="mt-1 truncate text-[10px] text-white/35">{helper}</p>
     </div>
   );
@@ -278,13 +308,83 @@ function NumberField({ label, value, onChange }) {
   );
 }
 
+function optionalMetricValue(value) {
+  return String(value ?? '').trim() === '' ? undefined : Number(value);
+}
+
+function hasMetricValue(value) {
+  if (value === null || value === undefined || value === '') return false;
+  return Number.isFinite(Number(value));
+}
+
+function optionalCount(value) {
+  return hasMetricValue(value) ? Number(value).toLocaleString() : '—';
+}
+
+function optionalPercent(value, digits = 0) {
+  return hasMetricValue(value) ? percent(value, digits) : '—';
+}
+
+function isInconclusiveConversion(row) {
+  return String(row?.conversion_conclusion || '').startsWith('inconclusive_');
+}
+
 function signalFor(row) {
-  if (!row.reach) return { label: 'Add reach', className: 'border-white/10 bg-white/5 text-white/45' };
-  if (!row.landing_sessions) return { label: 'Link', className: 'border-blue-400/25 bg-blue-400/10 text-blue-200' };
-  if (!row.signup_cta_sessions) return { label: 'Landing', className: 'border-amber-400/25 bg-amber-400/10 text-amber-200' };
-  if (!row.signups) return { label: 'Signup', className: 'border-orange-400/25 bg-orange-400/10 text-orange-200' };
-  if (!row.activated_users) return { label: 'Activation', className: 'border-fuchsia-400/25 bg-fuchsia-400/10 text-fuchsia-200' };
+  if (row?.conversion_conclusion === 'inconclusive_no_declared_link') {
+    return { label: 'Social only', className: 'border-cyan-400/25 bg-cyan-400/10 text-cyan-200' };
+  }
+  if (isInconclusiveConversion(row)) {
+    return { label: 'Evidence incomplete', className: 'border-amber-400/25 bg-amber-400/10 text-amber-200' };
+  }
+  if (!hasMetricValue(row.reach)) {
+    return { label: 'Reach unavailable', className: 'border-white/10 bg-white/5 text-white/45' };
+  }
+  if (Number(row.reach) === 0) {
+    return { label: 'Add reach', className: 'border-white/10 bg-white/5 text-white/45' };
+  }
+  if (!row.signups && row.self_reported_signup_assists) {
+    return { label: 'Assist only', className: 'border-cyan-400/25 bg-cyan-400/10 text-cyan-200' };
+  }
+  if (!hasMetricValue(row.landing_sessions)) {
+    return { label: 'Conversion unavailable', className: 'border-white/10 bg-white/5 text-white/45' };
+  }
+  if (Number(row.landing_sessions) === 0) return { label: 'Link', className: 'border-blue-400/25 bg-blue-400/10 text-blue-200' };
+  if (!hasMetricValue(row.signup_cta_sessions)) {
+    return { label: 'CTA unavailable', className: 'border-white/10 bg-white/5 text-white/45' };
+  }
+  if (Number(row.signup_cta_sessions) === 0) return { label: 'Landing', className: 'border-amber-400/25 bg-amber-400/10 text-amber-200' };
+  if (!hasMetricValue(row.signups)) {
+    return { label: 'Signup unavailable', className: 'border-white/10 bg-white/5 text-white/45' };
+  }
+  if (Number(row.signups) === 0) return { label: 'Signup', className: 'border-orange-400/25 bg-orange-400/10 text-orange-200' };
+  if (!hasMetricValue(row.activated_users)) {
+    return { label: 'Activation unavailable', className: 'border-white/10 bg-white/5 text-white/45' };
+  }
+  if (Number(row.activated_users) === 0) return { label: 'Activation', className: 'border-fuchsia-400/25 bg-fuchsia-400/10 text-fuchsia-200' };
   return { label: 'Scale', className: 'border-green-400/25 bg-green-400/10 text-green-200' };
+}
+
+function attributionLabel(row) {
+  const labels = {
+    static_bio: 'Platform-level bio',
+    source_inferred_or_unassigned: 'Platform-level source',
+    declared_content_link: 'Declared content link',
+    social_evidence_only: 'Social evidence only',
+    visitor_assist_only: 'Visitor assist only',
+    post_exposure_only: 'Post exposure only',
+  };
+  return labels[row?.attribution_method] || 'Evidence not classified';
+}
+
+function conversionConclusionLabel(value) {
+  const labels = {
+    exact_declared_link: 'Declared-link conversion cohort',
+    observed_declared_link: 'Declared-link conversion cohort',
+    inconclusive_no_declared_link: 'No post conversion claim · review social evidence',
+    inconclusive_missing_timestamps: 'Conversion conclusion inconclusive · timing incomplete',
+  };
+  if (!value) return 'Conversion conclusion unavailable';
+  return labels[value] || String(value).replaceAll('_', ' ');
 }
 
 export default function GrowthDashboard() {
@@ -342,15 +442,15 @@ export default function GrowthDashboard() {
             : undefined),
         snapshot_days: Number(snapshot.snapshot_days),
         snapshot_captured_at: new Date().toISOString(),
-        reach: Number(snapshot.reach || 0),
-        views: Number(snapshot.views || 0),
-        shares: Number(snapshot.shares || 0),
-        saves: Number(snapshot.saves || 0),
-        comments: Number(snapshot.comments || 0),
-        follows: Number(snapshot.follows || 0),
-        profile_visits: Number(snapshot.profile_visits || 0),
-        link_clicks: Number(snapshot.link_clicks || 0),
-        dm_intents: Number(snapshot.dm_intents || 0),
+        reach: optionalMetricValue(snapshot.reach),
+        views: optionalMetricValue(snapshot.views),
+        shares: optionalMetricValue(snapshot.shares),
+        saves: optionalMetricValue(snapshot.saves),
+        comments: optionalMetricValue(snapshot.comments),
+        follows: optionalMetricValue(snapshot.follows),
+        profile_visits: optionalMetricValue(snapshot.profile_visits),
+        link_clicks: optionalMetricValue(snapshot.link_clicks),
+        dm_intents: optionalMetricValue(snapshot.dm_intents),
       });
       return response?.data || response;
     },
@@ -365,7 +465,11 @@ export default function GrowthDashboard() {
         growth_admin_required: 'Owner or admin access is required',
         stale_content_snapshot: 'A newer snapshot already exists for this checkpoint',
         content_snapshot_conflict: 'This checkpoint already has different values at the same capture time',
-        invalid_content_metric: 'Use whole, non-negative numbers for every social metric',
+        content_plan_conflict: 'Conflicting content plans must be resolved before repairing this checkpoint',
+        buffer_checkpoint_conflict: 'Conflicting Buffer checkpoint evidence must be resolved before manual repair',
+        buffer_checkpoint_identity_mismatch: 'This repair does not match the Buffer publication clock. Refresh the queue before retrying',
+        buffer_checkpoint_still_collecting: 'Buffer is still responsible for this checkpoint. Manual repair unlocks only after the worker marks it for review',
+        invalid_content_metric: 'Enter reach or views, using whole non-negative numbers',
         invalid_content_metric_timestamp: 'Check the publication and snapshot dates',
       };
       toast.error(
@@ -390,6 +494,7 @@ export default function GrowthDashboard() {
     },
     onError: (mutationError) => {
       const code = mutationError?.response?.data?.error;
+      const policyReasons = mutationError?.response?.data?.reason_codes || [];
       const messages = {
         fixed_age_snapshot_required: 'The canonical fixed-age snapshot is required first',
         fixed_age_snapshot_window_missed: 'This fixed-age window closed; reschedule a fresh experiment instead of using late cumulative analytics',
@@ -400,6 +505,16 @@ export default function GrowthDashboard() {
         provider_managed_publication: 'Buffer owns publication for this content-engine plan; refresh to see its delivery state',
         growth_review_lineage_locked: 'This decision already has an active downstream batch. Revoke that batch before changing its evidence lineage',
         growth_batch_lineage_conflict: 'Too many downstream batch records exist for this decision; repair the lineage before reviewing it again',
+        invalid_growth_decision_policy: 'The decision policy changed. Refresh the queue before reviewing this evidence',
+        growth_decision_policy_stale: 'The fixed-age or comparison evidence changed. Refresh before deciding',
+        growth_decision_not_supported: policyReasons.includes('repeat_social_only_override_required')
+          ? 'Repeat needs a separate nontrivial social-only override note'
+          : policyReasons.includes('repeat_positive_exact_outcome_required')
+            ? 'Repeat needs a positive exact activation, mature retained user, or paid user'
+            : policyReasons.includes('hold_three_comparable_snapshots_required')
+              ? 'Hold needs three comparable fixed-age snapshots'
+              : 'This decision is not supported by the current fixed-age evidence',
+        invalid_growth_decision_override: 'The Repeat override is allowed only for social-only evidence',
         invalid_published_at: 'The publication time is invalid',
         growth_admin_required: 'Owner or admin access is required',
       };
@@ -419,18 +534,41 @@ export default function GrowthDashboard() {
   const pace = buildGrowthPaceFromReport(report);
   const retainedActive = Number(totals.retained_active_users_30d || 0);
   const remaining = pace.remaining_users;
-  const reach28 = platformMetric('reach');
+  const reach28 = Number(
+    socialWindow?.[`${platform}_cumulative_post_reach`]
+      ?? socialWindow?.[`${platform}_reach`]
+      ?? 0,
+  );
+  const views28 = platformMetric('views');
+  const reachObservedAssets28 = platformMetric('reach_observed_assets');
+  const viewsObservedAssets28 = platformMetric('views_observed_assets');
+  const contentAssets28 = platformMetric('content_assets');
+  const linkClicks28 = platformMetric('link_clicks');
+  const dmIntents28 = platformMetric('dm_intents');
+  const ownedIntents28 = platformMetric('owned_intents');
+  const ownedIntentObservedAssets28 = platformMetric('owned_intents_observed_assets');
+  const ownedIntentCompleteAssets28 = platformMetric('owned_intents_complete_assets');
   const landings28 = platformMetric('landing_sessions');
   const cta28 = platformMetric('signup_cta_sessions');
   const signups28 = platformMetric('signups');
   const activatedWorkspaces28 = platformMetric('activated_workspaces');
   const activated28 = platformMetric('activated_users');
+  const paidUsers28 = platformMetric('paid_users');
   const activeRepRoster28 = platformMetric('active_rep_roster');
   const joinedReps28 = platformMetric('joined_reps');
   const activatedReps28 = platformMetric('activated_reps');
   const repIdentityConflicts = Number(
     totals?.instagram_rep_identity_conflicts || 0,
   ) + Number(totals?.tiktok_rep_identity_conflicts || 0);
+  const intentCoverage = contentAssets28 > 0
+    ? `${ownedIntentCompleteAssets28.toLocaleString()}/${contentAssets28.toLocaleString()} full-field assets`
+    : 'no measured assets';
+  const intentCoverageState = contentAssets28 > 0
+    && ownedIntentCompleteAssets28 === contentAssets28
+    ? 'complete'
+    : ownedIntentObservedAssets28 > 0
+    ? 'partial'
+    : 'unavailable';
 
   const updateSnapshot = (field, value) => {
     setSnapshot((current) => ({ ...current, [field]: value }));
@@ -477,6 +615,13 @@ export default function GrowthDashboard() {
 
   const prepareQueueSnapshot = (item, snapshotDays) => {
     if (!item || !snapshotDays) return;
+    if (
+      item.delivery_managed_by === 'buffer'
+      && item.snapshot_manual_entry_allowed !== true
+    ) {
+      toast.info('Buffer is still collecting this checkpoint. Manual repair is not available yet.');
+      return;
+    }
     const itemPlatform = item.platform || 'instagram';
     setPlatform(itemPlatform);
     setCampaign(item.campaign);
@@ -514,7 +659,7 @@ export default function GrowthDashboard() {
     });
   };
 
-  const saveGrowthDecision = (item, decision, note) => {
+  const saveGrowthDecision = (item, decision, note, overrideNote = '') => {
     manageContentPlan.mutate({
       action: 'review',
       platform: item.platform || 'instagram',
@@ -522,6 +667,12 @@ export default function GrowthDashboard() {
       content: item.content,
       decision,
       note,
+      decision_policy_id: item.decision_policy_id,
+      expected_social_evidence_hash: item.social_evidence_hash,
+      expected_snapshot_captured_at: item.fixed_snapshot_captured_at,
+      expected_comparable_fixed_age_snapshots:
+        item.comparable_fixed_age_snapshots,
+      ...(overrideNote.trim() ? { override_note: overrideNote } : {}),
     });
   };
 
@@ -540,6 +691,11 @@ export default function GrowthDashboard() {
       'medium',
       'campaign',
       'content_id',
+      'attribution_granularity',
+      'attribution_method',
+      'conversion_evidence',
+      'conversion_conclusion',
+      'post_conversion_eligible',
       'format',
       'hook',
       'planned_publish_at',
@@ -561,11 +717,21 @@ export default function GrowthDashboard() {
       'dm_intents',
       'landing_sessions',
       'signup_cta_sessions',
+      'self_reported_landing_assists',
+      'self_reported_signup_cta_assists',
+      'self_reported_signup_assists',
+      'self_reported_activated_workspace_assists',
+      'self_reported_paid_assists',
+      'self_reported_assist_method',
       'signups',
       'acquired_users',
       'activated_workspaces',
       'activated_users',
       'paid_users',
+      'retention_mature',
+      'retention_eligible_users',
+      'retained_users',
+      'retention_rate',
       'active_rep_roster',
       'joined_reps',
       'activated_reps',
@@ -644,7 +810,7 @@ export default function GrowthDashboard() {
             </div>
             <h1 className="mt-2 text-3xl font-black tracking-tight sm:text-4xl">1,000-user growth system</h1>
             <p className="mt-2 max-w-3xl text-sm text-white/55">
-              Enter each Instagram or TikTok analytics snapshot once. FirstKnock joins reach to anonymous landing sessions, signup clicks, activated manager workspaces, their active rep rosters, first rep outcomes, and paid users.
+              Buffer captures fresh fixed-age reach and view checkpoints automatically. Manual entry unlocks for a Buffer-managed asset only after the exact worker checkpoint is marked for review. FirstKnock joins that exposure evidence to anonymous landing sessions, signup clicks, activated manager workspaces, their active rep rosters, first rep outcomes, and paid users.
             </p>
           </div>
           <Button
@@ -701,16 +867,21 @@ export default function GrowthDashboard() {
             color={accent}
           />
           <MetricCard
-            label={`${platformLabel} reach · 28d`}
+            label={`${platformLabel} cumulative post reach · 28d`}
             value={reach28}
-            helper={`${platformMetric('content_assets').toLocaleString()} measured assets`}
+            available={reachObservedAssets28 > 0}
+            helper={`${viewsObservedAssets28
+              ? `${views28.toLocaleString()} views`
+              : 'Views unavailable'} · ${platformMetric('content_assets').toLocaleString()} measured assets`}
             icon={Eye}
             color="#60a5fa"
           />
           <MetricCard
             label={`${platformLabel} signups · 28d`}
             value={signups28}
-            helper={`${percent(reach28 ? signups28 / reach28 : 0, 2)} of reach`}
+            helper={reachObservedAssets28
+              ? `${percent(reach28 ? signups28 / reach28 : 0, 2)} signups per cumulative post reach`
+              : 'Reach unavailable'}
             icon={BarChart3}
             color="#facc15"
           />
@@ -726,9 +897,19 @@ export default function GrowthDashboard() {
         <section className="rounded-2xl border border-white/10 bg-[#0b0b0b] p-5 sm:p-6">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
             <FunnelStage
-              label="Reach"
+              label="Cumulative post reach"
               value={reach28}
-              helper={platform === 'instagram' ? 'Instagram Insights' : 'TikTok analytics'}
+              available={reachObservedAssets28 > 0}
+              helper={reachObservedAssets28 > 0
+                ? `${platform === 'instagram' ? 'Instagram Insights' : 'TikTok analytics'} · ${reachObservedAssets28.toLocaleString()}/${contentAssets28.toLocaleString()} assets`
+                : 'Reach metrics unavailable'}
+            />
+            <span className="hidden text-white/20 lg:block">→</span>
+            <FunnelStage
+              label="Owned intent"
+              value={ownedIntents28}
+              available={ownedIntentObservedAssets28 > 0}
+              helper={`${linkClicks28.toLocaleString()} link + ${dmIntents28.toLocaleString()} DM · ${intentCoverageState} ${intentCoverage}`}
             />
             <span className="hidden text-white/20 lg:block">→</span>
             <FunnelStage
@@ -753,6 +934,12 @@ export default function GrowthDashboard() {
               label="Signup cohort activated"
               value={activatedWorkspaces28}
               helper={`${activated28.toLocaleString()} total users`}
+            />
+            <span className="hidden text-white/20 lg:block">→</span>
+            <FunnelStage
+              label="Paid"
+              value={paidUsers28}
+              helper={`${percent(activatedWorkspaces28 ? paidUsers28 / activatedWorkspaces28 : 0)} of activated workspaces`}
             />
           </div>
         </section>
@@ -955,7 +1142,11 @@ export default function GrowthDashboard() {
             <Button
               type="button"
               onClick={() => saveSnapshot.mutate()}
-              disabled={!contentId.trim() || saveSnapshot.isPending}
+              disabled={
+                !contentId.trim()
+                || (snapshot.reach === '' && snapshot.views === '')
+                || saveSnapshot.isPending
+              }
               style={{ background: accent, color: accentText }}
               className="mt-4 w-full font-black"
             >
@@ -968,9 +1159,9 @@ export default function GrowthDashboard() {
         <section className="overflow-hidden rounded-2xl border border-white/10 bg-[#0b0b0b]">
           <div className="flex flex-col gap-3 border-b border-white/10 p-5 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="text-lg font-black">Content → conversion</h2>
+              <h2 className="text-lg font-black">Content → conversion evidence</h2>
               <p className="mt-1 text-xs text-white/45">
-                Compare the exact stage that each Instagram or TikTok asset wins or loses.
+                Reach and views are post-level. Conversions are post-associated only when a controlled link preserves the content ID; static profile-link traffic stays platform-level, and visitor selections appear only as assists. Ordinary posts without a declared clickable handoff have no post conversion claim, but review can still proceed from their social evidence.
               </p>
             </div>
             <Button
@@ -985,25 +1176,29 @@ export default function GrowthDashboard() {
             </Button>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1220px] text-left text-sm">
+            <table className="w-full min-w-[1750px] text-left text-sm">
               <thead className="bg-white/[0.03] text-[10px] uppercase tracking-[0.14em] text-white/40">
                 <tr>
                   <th className="px-5 py-3">Content ID</th>
                   <th className="px-4 py-3">Signal</th>
                   <th className="px-4 py-3 text-right">Reach</th>
+                  <th className="px-4 py-3 text-right">Views</th>
                   <th className="px-4 py-3 text-right">Landed</th>
                   <th className="px-4 py-3 text-right">CTA</th>
+                  <th className="px-4 py-3 text-right">Assist L / S / A</th>
                   <th className="px-4 py-3 text-right">Signups</th>
                   <th className="px-4 py-3 text-right">Activated</th>
                   <th className="px-4 py-3 text-right">Rep loop I / J / A</th>
                   <th className="px-4 py-3 text-right">Reach → signup</th>
                   <th className="px-4 py-3 text-right">Signup → workspace</th>
-                  <th className="px-5 py-3 text-right">First paid</th>
+                  <th className="px-4 py-3 text-right">First paid</th>
+                  <th className="px-4 py-3 text-right">Retained / eligible</th>
+                  <th className="px-5 py-3 text-right">30d retention</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/[0.06]">
                 {isLoading ? (
-                  <tr><td colSpan={11} className="px-5 py-10 text-center text-white/40">Loading funnel…</td></tr>
+                  <tr><td colSpan={15} className="px-5 py-10 text-center text-white/40">Loading funnel…</td></tr>
                 ) : report?.by_content?.length ? (
                   report.by_content.map((row) => {
                     const signal = signalFor(row);
@@ -1017,34 +1212,95 @@ export default function GrowthDashboard() {
                             </span>
                           </div>
                           <p className="mt-1 max-w-[260px] truncate text-[10px] text-white/35">{row.hook || row.campaign}</p>
+                          <p className="mt-1 text-[9px] font-bold uppercase tracking-wider text-white/25">
+                            {attributionLabel(row)}
+                          </p>
+                          <p
+                            className={`mt-1 max-w-[290px] text-[9px] font-bold ${
+                              row.conversion_conclusion === 'inconclusive_no_declared_link'
+                                ? 'text-cyan-200/75'
+                                : isInconclusiveConversion(row)
+                                  ? 'text-amber-200/75'
+                                  : 'text-white/30'
+                            }`}
+                            title={row.conversion_conclusion || 'conversion conclusion unavailable'}
+                          >
+                            {conversionConclusionLabel(row.conversion_conclusion)}
+                          </p>
                         </td>
                         <td className="px-4 py-3">
                           <span className={`inline-flex rounded-full border px-2 py-1 text-[9px] font-black uppercase tracking-wider ${signal.className}`}>
                             {signal.label}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-right font-bold">{Number(row.reach || 0).toLocaleString()}</td>
-                        <td className="px-4 py-3 text-right font-bold">{row.landing_sessions}</td>
-                        <td className="px-4 py-3 text-right font-bold">{row.signup_cta_sessions}</td>
-                        <td className="px-4 py-3 text-right font-bold">{row.signups}</td>
-                        <td className="px-4 py-3 text-right font-bold">{row.activated_users}</td>
+                        <td className="px-4 py-3 text-right font-bold">
+                          {row.reach_observed && hasMetricValue(row.reach)
+                            ? Number(row.reach || 0).toLocaleString()
+                            : '—'}
+                        </td>
+                        <td className="px-4 py-3 text-right font-bold">
+                          {row.views_observed && hasMetricValue(row.views)
+                            ? Number(row.views || 0).toLocaleString()
+                            : '—'}
+                        </td>
+                        <td className="px-4 py-3 text-right font-bold">{optionalCount(row.landing_sessions)}</td>
+                        <td className="px-4 py-3 text-right font-bold">{optionalCount(row.signup_cta_sessions)}</td>
+                        <td
+                          className="px-4 py-3 text-right font-bold text-cyan-100/80"
+                          title="Visitor-reported landing / signup / activated-workspace assists. Excluded from winner decisions."
+                        >
+                          {optionalCount(row.self_reported_landing_assists)} / {optionalCount(row.self_reported_signup_assists)} / {optionalCount(row.self_reported_activated_workspace_assists)}
+                        </td>
+                        <td className="px-4 py-3 text-right font-bold">{optionalCount(row.signups)}</td>
+                        <td className="px-4 py-3 text-right font-bold">{optionalCount(row.activated_users)}</td>
                         <td
                           className="px-4 py-3 text-right font-bold"
                           title="Active roster seats / joined rep accounts / reps with a first outcome"
                         >
-                          {Number(row.active_rep_roster || 0)} / {Number(row.joined_reps || 0)} / {Number(row.activated_reps || 0)}
+                          {optionalCount(row.active_rep_roster)} / {optionalCount(row.joined_reps)} / {optionalCount(row.activated_reps)}
                         </td>
-                        <td className="px-4 py-3 text-right text-white/55">{percent(row.reach_to_signup_rate, 2)}</td>
-                        <td className="px-4 py-3 text-right text-white/55">{percent(row.activation_rate)}</td>
-                        <td className="px-5 py-3 text-right font-bold">{row.paid_users}</td>
+                        <td className="px-4 py-3 text-right text-white/55">
+                          {row.reach_to_signup_rate === null
+                            || !hasMetricValue(row.reach_to_signup_rate)
+                            ? '—'
+                            : optionalPercent(row.reach_to_signup_rate, 2)}
+                        </td>
+                        <td className="px-4 py-3 text-right text-white/55">{optionalPercent(row.activation_rate)}</td>
+                        <td className="px-4 py-3 text-right font-bold">{optionalCount(row.paid_users)}</td>
+                        <td className="px-4 py-3 text-right font-bold">
+                          {row.retention_mature === true
+                            && hasMetricValue(row.retained_users)
+                            && hasMetricValue(row.retention_eligible_users)
+                            ? `${optionalCount(row.retained_users)} / ${optionalCount(row.retention_eligible_users)}`
+                            : '—'}
+                        </td>
+                        <td
+                          className="px-5 py-3 text-right"
+                          title={row.retention_mature === true
+                            ? 'Thirty-day retention window is mature for this content cohort.'
+                            : 'Thirty-day retention window is not mature; unavailable retention values are not zeros.'}
+                        >
+                          <p className="font-bold text-white/70">
+                            {row.retention_mature === true
+                              ? optionalPercent(row.retention_rate, 1)
+                              : '—'}
+                          </p>
+                          <p className="mt-0.5 text-[8px] font-black uppercase tracking-wider text-white/30">
+                            {row.retention_mature === true
+                              ? 'Mature'
+                              : row.retention_mature === false
+                                ? 'Maturing'
+                                : 'Maturity —'}
+                          </p>
+                        </td>
                       </tr>
                     );
                   })
                 ) : (
                   <tr>
-                    <td colSpan={11} className="px-5 py-10 text-center">
+                    <td colSpan={15} className="px-5 py-10 text-center">
                       <p className="font-semibold text-white/60">No measured content yet</p>
-                      <p className="mt-1 text-xs text-white/35">Create a tracked link and save the first platform snapshot.</p>
+                      <p className="mt-1 text-xs text-white/35">Create a tracked link; Buffer will capture the first fixed-age platform snapshot after publication.</p>
                     </td>
                   </tr>
                 )}
@@ -1057,7 +1313,7 @@ export default function GrowthDashboard() {
           <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-5">
             <h3 className="font-black">How to diagnose the leak</h3>
             <ol className="mt-3 space-y-2 text-sm text-white/55">
-              <li>1. Reach but no landing sessions: distribution, CTA, or link placement.</li>
+              <li>1. Cumulative post reach but no landing sessions: distribution, CTA, or link placement.</li>
               <li>2. Landings but no signup clicks: promise, proof, or page clarity.</li>
               <li>3. Clicks but no accounts: authentication or signup friction.</li>
               <li>4. Accounts but no activation: onboarding or product-value friction.</li>
@@ -1068,7 +1324,7 @@ export default function GrowthDashboard() {
           <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-5">
             <h3 className="font-black">Measurement boundary</h3>
             <p className="mt-3 text-sm leading-relaxed text-white/55">
-              Reach and engagement are copied from the matching Instagram Insights or TikTok analytics checkpoint. Anonymous FirstKnock events use rotating pseudonymous session IDs and store no names, emails, or contact fields. Signup, activation, active roster-seat counts, and paid status come from authenticated product records; this report returns aggregate counts rather than rep contact details.
+              Reach and engagement come from the matching Buffer checkpoint or owner-entered Instagram/TikTok analytics snapshot. Aggregate reach is cumulative post reach: canonical per-post reach summed across assets, where the same account may appear more than once; it is not unique campaign reach. TikTok views are reported separately and are never converted into reach. Anonymous events use rotating pseudonymous session IDs and store no names, emails, or contact fields. Signup, activation, roster-seat, and paid milestones come from authenticated product records, but their content association remains a client-declared first touch. Static bio visits are never distributed across posts. The optional landing-page question records a separate visitor-reported assist and cannot trigger Repeat, Iterate, or Hold evidence.
             </p>
             <a
               href="https://www.facebook.com/help/instagram/788388387972460"

@@ -1,23 +1,33 @@
 import { createClientFromRequest } from "npm:@base44/sdk@0.8.31";
 import {
-  MAX_SOCIAL_POST_TEXT,
   artifactApprovalHash,
   asArray,
   canonicalStringify,
   compactText,
+  constantTimeEqual,
   isContentAddressedMediaUrl,
   isPublicHttpsUrl,
   isStablePublicHttpsUrl,
+  mediaUrlMatchesDeliveryKey,
+  mediaUrlUsesNamespace,
   normalized,
+  normalizeMediaPathPrefix,
   platformTrackedUrl,
   publishJobKey,
   publishJobRequestHash,
   safeProviderError,
   sha256Hex,
   socialPostText,
+  socialPostTextLimit,
   timestamp,
   token,
 } from "../_shared/growthContentEngine.js";
+import {
+  evaluateGrowthDecisionSufficiency,
+  GROWTH_DECISION_POLICY_ID,
+  GROWTH_REVIEW_SCHEMA_VERSION,
+  normalizeGrowthDecisionOverrideNote,
+} from "../_shared/growthDecisionSufficiency.js";
 
 const MAX_BODY_BYTES = 200_000;
 const MAX_SOURCE_BATCH = 50;
@@ -34,14 +44,64 @@ const HOOK_DEDUPE_DAYS = 28;
 const MAX_BATCH_TARGET_DAYS = 90;
 const NEXT_BATCH_PROFILE = "measured-next-batch-v1";
 const FEATURE_EXPLAINER_VIDEO_PROFILE = "feature_explainer_video_v1";
+const FEATURE_EXPLAINER_SOURCE_KINDS = new Set(["video", "image"]);
+const SCHEDULED_GENERATION_ACTION = "run_scheduled_generation";
+const SCHEDULED_GENERATION_ACTOR_ID = "growth-generation-scheduler";
+const SCHEDULED_GENERATION_HANDOFF_SCHEMA = "growth-generation-handoff.v1";
+const SCHEDULED_GENERATION_LEAD_DAYS = 1;
+const SCHEDULED_GENERATION_MAX_ATTEMPTS = 3;
+const SCHEDULED_GENERATION_REQUEST_FIELDS = new Set([
+  "action",
+  "seed_pack",
+]);
 const NEXT_BATCH_PROFILES = new Set([
   NEXT_BATCH_PROFILE,
   FEATURE_EXPLAINER_VIDEO_PROFILE,
 ]);
 const NEXT_BATCH_SCHEMA = "growth-next-batch.v1";
 const NEXT_BATCH_TIMEZONE = "America/Phoenix";
+const BATCH_INPUT_REVIEWED = "reviewed_evidence";
+const BATCH_INPUT_BOOTSTRAP = "audited_seed_bootstrap";
+const REVIEW_SCHEMA_VERSION = GROWTH_REVIEW_SCHEMA_VERSION;
+const CONVERSION_EVIDENCE_SCHEMA = "growth-conversion-evidence.v2";
+const DECLARED_CLICKABLE_HANDOFFS = new Set([
+  "story_link",
+  "dm_reply",
+  "comment_reply",
+]);
+const BOOTSTRAP_POLICY_VERSION = "audited-seed-bootstrap-v1";
+const MAX_BOOTSTRAP_BATCHES = 7;
+const BOOTSTRAP_CONCEPT_PRIORITY = new Map([
+  "fk-rs-rerun-followups-01",
+  "fk-rs-generation-settings-01",
+  "fk-rs-outcome-controls-01",
+  "fk-rs-add-details-01",
+  "fk-rs-route-command-01",
+  "fk-rs-merge-routes-01",
+  "fk-rs-analytics-date-01",
+  "fk-rs-manager-funnel-01",
+  "fk-rs-bulk-reknock-01",
+  "fk-rs-manager-comparison-01",
+  "fk-rs-route-start-finish-01",
+  "fk-rs-refresh-area-01",
+  "fk-rs-property-styling-01",
+  "fk-rs-sale-correction-01",
+].map((conceptId, index) => [conceptId, index]));
 const NEXT_BATCH_DISCLOSURE =
   "DEMO DATA - no customer result or performance promise.";
+const PRODUCTION_GROWTH_CAMPAIGN = "1000-users";
+const TIKTOK_FEATURE_DISCLOSURE = "Product demo.";
+const AUDITED_BOOTSTRAP_INSTAGRAM_DISCLOSURES = new Set([
+  "FIRSTKNOCK PRODUCT DEMO - NO CUSTOMER RESULT.",
+  "DEMO DATA - NO CUSTOMER RESULT OR PERFORMANCE PROMISE.",
+  "DEMO SETTINGS - FIRSTKNOCK PRODUCT VIEW.",
+]);
+const TIKTOK_FEATURE_SECTION_LIMITS = Object.freeze({
+  problem: 280,
+  visible_feature_behavior: 400,
+  practical_benefit: 280,
+  cta_label: 80,
+});
 const NEXT_BATCH_SLOTS = ["morning", "midday", "evening"];
 const PLATFORMS = new Set(["instagram", "tiktok"]);
 const FORMATS = new Set(["video", "photo", "carousel"]);
@@ -57,16 +117,82 @@ const SCHEDULE_CUTOFF_MS = 10 * 60 * 1000;
 const SCHEDULE_LOCK_MS = 5 * 60 * 1000;
 const SOURCE_PRIVACY_FENCE_MS = 10 * 60 * 1000;
 const WORKER_HEARTBEAT_KEY = "buffer-publisher";
-const WORKER_HEARTBEAT_MAX_AGE_MS = 3 * 60 * 1000;
+// The production scheduler runs every five minutes. Three missed ticks make the
+// publisher unavailable without making ordinary scheduler jitter look like an outage.
+const WORKER_HEARTBEAT_MAX_AGE_MS = 15 * 60 * 1000;
 const RENDER_RESULT_SCHEMA = "growth-render-result.v1";
-const RENDER_PROFILE_ID = "firstknock-h264-bitexact-v2";
+const RENDER_PROFILE_ID = "firstknock-h264-bitexact-v3";
 const MAX_MEDIA_BYTES = 250 * 1024 * 1024;
 const AUDIO_MODES = new Set(["silent", "baked_owned_or_licensed"]);
+const PROCEDURAL_AUDIO_RECIPE = "firstknock-procedural-ui-v1";
 const ACTIVE_BATCH_STATES = new Set([
   "generating",
   "ready",
   "render_authorized",
 ]);
+const CONTENT_METRIC_FIELDS = [
+  "reach",
+  "views",
+  "shares",
+  "saves",
+  "comments",
+  "follows",
+  "profile_visits",
+  "link_clicks",
+  "dm_intents",
+];
+const OWNED_INTENT_FIELDS = ["link_clicks", "dm_intents"];
+const CONVERSION_EVIDENCE_FIELDS = [
+  "schema_version",
+  "platform",
+  "campaign",
+  "content",
+  "cohort_start_at",
+  "cutoff_at",
+  "snapshot_days",
+  "snapshot_captured_at",
+  "social_evidence_hash",
+  "owned_intent_observed_fields",
+  "link_clicks",
+  "dm_intents",
+  "owned_intents",
+  "attribution_method",
+  "post_conversion_eligible",
+  "conversion_conclusion",
+  "conversion_counters_available",
+  "landing_sessions",
+  "signup_cta_sessions",
+  "auth_completed",
+  "signups",
+  "activated_workspaces",
+  "activated_users",
+  "activated_reps",
+  "paid_users",
+  "activation_timing_complete",
+  "paid_timing_complete",
+  "first_activation_at",
+  "last_activation_at",
+  "retention_window_days",
+  "retention_mature",
+  "retention_eligible_users",
+  "retained_users",
+  "retention_rate",
+];
+const CONVERSION_EVIDENCE_DOWNSTREAM_FIELDS = [
+  "landing_sessions",
+  "signup_cta_sessions",
+  "auth_completed",
+  "signups",
+  "activated_workspaces",
+  "activated_users",
+  "activated_reps",
+  "paid_users",
+];
+const CONVERSION_EVIDENCE_SOCIAL_COUNTER_FIELDS = [
+  "link_clicks",
+  "dm_intents",
+  "owned_intents",
+];
 
 function response(data: any, status = 200): Response {
   return Response.json(data, {
@@ -83,6 +209,17 @@ function canManageGrowth(user: any): boolean {
 
 function canApproveGrowth(user: any): boolean {
   return user?.is_owner === true;
+}
+
+function scheduledGenerationSecret(
+  req: Request,
+): { configured: string; supplied: string } {
+  const configured = String(
+    Deno.env.get("GROWTH_GENERATION_WORKER_SECRET") || "",
+  );
+  const authorization = String(req.headers.get("authorization") || "");
+  const supplied = authorization.match(/^Bearer ([^\s]+)$/i)?.[1] || "";
+  return { configured, supplied };
 }
 
 function configuredMediaOrigin(): string {
@@ -103,6 +240,12 @@ function configuredMediaOrigin(): string {
   } catch {
     return "";
   }
+}
+
+function configuredMediaPathPrefix(): string {
+  return normalizeMediaPathPrefix(
+    Deno.env.get("GROWTH_MEDIA_PATH_PREFIX"),
+  );
 }
 
 function configuredSha256Allowlist(keys: string[]): Set<string> {
@@ -135,15 +278,6 @@ function configuredRenderEnvironmentHashes(): Set<string> {
     "GROWTH_RENDER_ENVIRONMENT_SHA256",
     "GROWTH_RENDER_ENVIRONMENT_SHA256S",
   ]);
-}
-
-function mediaUsesOrigin(value: any, origin: string): boolean {
-  if (!origin || !isStablePublicHttpsUrl(value)) return false;
-  try {
-    return new URL(String(value)).origin === origin;
-  } catch {
-    return false;
-  }
 }
 
 function cleanStringList(value: any, maxItems: number, itemMax: number): string[] {
@@ -342,6 +476,7 @@ function normalizeDraft(
     || normalizedRenderSourceLineage.length
   );
   const providerText = socialPostText({
+    platform,
     caption,
     disclosure,
     cta_label: ctaLabel,
@@ -362,7 +497,7 @@ function normalizeDraft(
     || !ctaLabel
     || !isPublicHttpsUrl(ctaUrl)
     || !providerText
-    || providerText.length > MAX_SOCIAL_POST_TEXT
+    || providerText.length > socialPostTextLimit(platform)
     || width > 20000
     || height > 20000
     || durationMs > 3600000
@@ -459,15 +594,34 @@ function normalizeDraft(
   };
 }
 
-function artifactMediaReady(artifact: any): boolean {
+function artifactMediaReady(
+  artifact: any,
+  mediaOrigin = configuredMediaOrigin(),
+  mediaPathPrefix = configuredMediaPathPrefix(),
+): boolean {
   if (
     !isStablePublicHttpsUrl(artifact?.media_url)
     || !isContentAddressedMediaUrl(artifact?.media_url, artifact?.media_sha256)
+    || !mediaUrlUsesNamespace(
+      artifact?.media_url,
+      mediaOrigin,
+      mediaPathPrefix,
+    )
+    || (
+      artifact?.render_delivery_key
+      && !mediaUrlMatchesDeliveryKey(
+        artifact?.media_url,
+        artifact?.media_sha256,
+        artifact?.render_delivery_key,
+        mediaOrigin,
+        mediaPathPrefix,
+      )
+    )
     || !/^[a-f0-9]{64}$/.test(normalized(artifact?.media_sha256))
     || !MIME_TYPES.has(normalized(artifact?.mime_type))
     || artifact?.provider_text !== socialPostText(artifact)
     || !artifact?.provider_text
-    || artifact.provider_text.length > MAX_SOCIAL_POST_TEXT
+    || artifact.provider_text.length > socialPostTextLimit(artifact?.platform)
     || Number(artifact?.width || 0) < 1
     || Number(artifact?.height || 0) < 1
   ) {
@@ -498,6 +652,7 @@ function normalizeRenderImportItem(value: any, context: any): any | null {
   const deliveryKey = String(value?.delivery_key || "").trim();
   const byteSize = Number(value?.byte_size);
   const audioMode = token(value?.qc?.audio_mode);
+  const audioRecipe = token(value?.qc?.audio_recipe);
   const artifactFields = value?.artifact_fields;
   const trustedArtifact = context.packArtifact;
   const sourceAssetKeys = cleanTokenList(artifactFields?.source_asset_keys);
@@ -521,12 +676,6 @@ function normalizeRenderImportItem(value: any, context: any): any | null {
     null,
     artifactFields?.ai_generated === true ? "draft_ready" : "manual",
   );
-  let parsedMediaUrl;
-  try {
-    parsedMediaUrl = new URL(String(value?.media_url || ""));
-  } catch {
-    return null;
-  }
   if (
     !draft
     || !lineage
@@ -580,9 +729,13 @@ function normalizeRenderImportItem(value: any, context: any): any | null {
     || !/^[a-f0-9]{64}$/.test(renderEnvironmentSha256)
     || !/^[a-f0-9]{64}$/.test(mediaSha256)
     || deliveryKey !== `sha256/${mediaSha256}-${artifactKey}.mp4`
-    || parsedMediaUrl.pathname !== `/${deliveryKey}`
-    || !mediaUsesOrigin(draft.media_url, context.mediaOrigin)
-    || !isContentAddressedMediaUrl(draft.media_url, mediaSha256)
+    || !mediaUrlMatchesDeliveryKey(
+      draft.media_url,
+      mediaSha256,
+      deliveryKey,
+      context.mediaOrigin,
+      context.mediaPathPrefix,
+    )
     || value?.video_codec !== "h264"
     || value?.pixel_format !== "yuv420p"
     || value?.frame_rate !== 30
@@ -602,7 +755,18 @@ function normalizeRenderImportItem(value: any, context: any): any | null {
     || value?.qc?.disclosure_burned_in !== true
     || value?.qc?.hook_first_frame !== true
     || value?.qc?.third_party_watermark !== false
-    || audioMode !== "silent"
+    || audioMode !== context.expectedAudioMode
+    || (
+      audioMode === "baked_owned_or_licensed"
+      && (
+        audioRecipe !== context.expectedAudioRecipe
+        || value?.qc?.procedural_audio_generated !== true
+      )
+    )
+    || (
+      audioMode === "silent"
+      && value?.qc?.procedural_audio_generated === true
+    )
     || value?.qc?.ready_for_human_review !== true
     || lineage.length !== sourceAssetKeys.length
     || lineage[0]?.source_reference
@@ -787,6 +951,7 @@ function publisherEnvironment(): any {
     Deno.env.get("BUFFER_ORGANIZATION_ID") || "",
   ).trim();
   const mediaOrigin = configuredMediaOrigin();
+  const mediaPathPrefix = configuredMediaPathPrefix();
   const instagramChannelId = String(
     Deno.env.get("BUFFER_INSTAGRAM_CHANNEL_ID") || "",
   ).trim();
@@ -797,13 +962,15 @@ function publisherEnvironment(): any {
     && hasApiKey
     && hasWorkerSecret
     && Boolean(organizationId)
-    && Boolean(mediaOrigin);
+    && Boolean(mediaOrigin)
+    && Boolean(mediaPathPrefix);
   return {
     publishingEnabled,
     hasApiKey,
     hasWorkerSecret,
     organizationId,
     mediaOrigin,
+    mediaPathPrefix,
     instagramChannelId,
     tiktokChannelId,
     publisherReady,
@@ -817,6 +984,7 @@ async function publisherHeartbeatRevision(environment: any): Promise<string> {
     environment?.instagramChannelId || "",
     environment?.tiktokChannelId || "",
     environment?.mediaOrigin || "",
+    environment?.mediaPathPrefix || "",
   ].join("|"));
 }
 
@@ -864,14 +1032,21 @@ async function publicCapabilities(user: any, heartbeatEntity: any): Promise<any>
       generationConfigured && renderPackConfigured,
     media_rendering: "manifest_import",
     immutable_media_origin_configured: Boolean(environment.mediaOrigin),
+    immutable_media_path_prefix_configured:
+      Boolean(environment.mediaPathPrefix),
+    immutable_media_namespace_configured:
+      Boolean(environment.mediaOrigin && environment.mediaPathPrefix),
     trusted_render_pack_configured: renderPackConfigured,
     trusted_render_environment_configured: renderEnvironmentConfigured,
     render_result_import_ready:
       Boolean(environment.mediaOrigin)
+      && Boolean(environment.mediaPathPrefix)
       && renderPackConfigured
       && renderEnvironmentConfigured,
     authorized_batch_import_ready:
-      Boolean(environment.mediaOrigin) && renderEnvironmentConfigured,
+      Boolean(environment.mediaOrigin)
+      && Boolean(environment.mediaPathPrefix)
+      && renderEnvironmentConfigured,
     publishing_environment_ready: environment.publisherReady,
     worker_healthy: heartbeat.ready,
     worker_last_seen_at: heartbeat.observedAt,
@@ -880,13 +1055,17 @@ async function publicCapabilities(user: any, heartbeatEntity: any): Promise<any>
       delivery: publisherReady && instagramConfigured
         ? "buffer"
         : "not_configured",
-      attribution: "configured",
+      platform_tracking: "configured",
+      post_attribution: "declared_link_or_visitor_assist",
+      static_bio_attribution: "platform_only",
     },
     tiktok: {
       delivery: publisherReady && tiktokConfigured
         ? "buffer"
         : "not_configured",
-      attribution: "configured",
+      platform_tracking: "configured",
+      post_attribution: "declared_link_or_visitor_assist",
+      static_bio_attribution: "platform_only",
     },
     planning_timezone: "America/Phoenix",
     approval_policy: "owner_only",
@@ -908,6 +1087,7 @@ function safeJob(job: any): any {
     scheduling_type: job?.scheduling_type,
     state: job?.state,
     provider_status: job?.provider_status,
+    provider_scheduling_type: job?.provider_scheduling_type,
     provider_post_id: job?.provider_post_id,
     provider_due_at: job?.provider_due_at,
     provider_sent_at: job?.provider_sent_at,
@@ -1338,7 +1518,7 @@ function socialMeasurementPlan(artifact: any, dueAt: string): any {
     hook: artifact.hook,
     script: artifact.provider_text,
     cta_label: artifact.cta_label,
-    cta_channel: "caption_url",
+    cta_channel: platform === "tiktok" ? "bio" : "caption_url",
     primary_metric: `${platformLabel} activated users`,
     hypothesis: `${artifact.pillar} content on ${platformLabel} will convert qualified organic reach into FirstKnock activation.`,
     comparison_group: token(`${artifact.pillar}-${artifact.format}`),
@@ -1937,6 +2117,16 @@ function batchContentProfile(batch: any): string {
   return token(batch.content_profile);
 }
 
+function batchInputMode(batch: any): string {
+  if (
+    !batch
+    || !Object.prototype.hasOwnProperty.call(batch, "batch_input_mode")
+  ) {
+    return BATCH_INPUT_REVIEWED;
+  }
+  return token(batch.batch_input_mode);
+}
+
 function cloneJson(value: any): any {
   return JSON.parse(JSON.stringify(value));
 }
@@ -1974,6 +2164,13 @@ function validBatchTargetDate(value: any, nowMs = Date.now()): string {
   return dateKey;
 }
 
+function scheduledGenerationTargetDate(nowMs = Date.now()): string {
+  const todayMs = phoenixDateStart(phoenixDateKey(nowMs));
+  return todayMs
+    ? phoenixDateKey(todayMs + SCHEDULED_GENERATION_LEAD_DAYS * DAY_MS)
+    : "";
+}
+
 function batchSlotDueAt(targetDate: any, slotValue: any): string {
   const dateKey = String(targetDate || "").trim();
   const slot = token(slotValue);
@@ -1986,8 +2183,24 @@ function batchSlotDueAt(targetDate: any, slotValue: any): string {
   return new Date(`${dateKey}T${localTime}-07:00`).toISOString();
 }
 
+function metricObservedFields(metric: any): string[] | null {
+  const manualFields = Array.isArray(metric?.observed_metric_fields)
+    ? metric.observed_metric_fields
+    : null;
+  const providerFields = normalized(metric?.metric_source) === "buffer"
+      && Array.isArray(metric?.provider_observed_metric_types)
+    ? metric.provider_observed_metric_types
+    : null;
+  const observedFields = manualFields || providerFields;
+  if (!observedFields) return null;
+  const observed = new Set(
+    observedFields.map((field: any) => normalized(field)),
+  );
+  return CONTENT_METRIC_FIELDS.filter((field) => observed.has(field));
+}
+
 function batchSnapshotPayload(metric: any): string {
-  return JSON.stringify({
+  const payload: any = {
     campaign: token(metric?.campaign, "1000-users"),
     content: token(metric?.content),
     snapshot_days: Number(metric?.snapshot_days || 7),
@@ -2002,7 +2215,367 @@ function batchSnapshotPayload(metric: any): string {
     profile_visits: Number(metric?.profile_visits || 0),
     link_clicks: Number(metric?.link_clicks || 0),
     dm_intents: Number(metric?.dm_intents || 0),
+  };
+  const observedFields = metricObservedFields(metric);
+  if (observedFields) payload.observed_fields = observedFields;
+  return JSON.stringify(payload);
+}
+
+function exactNonNegativeInteger(value: any): number | null {
+  return typeof value === "number"
+      && Number.isSafeInteger(value)
+      && value >= 0
+    ? value
+    : null;
+}
+
+function reviewedPlatformNativeExposure(metric: any): {
+  fields: string[];
+  values: { reach: number | null; views: number | null };
+} {
+  const observedFields = metricObservedFields(metric)
+    || CONTENT_METRIC_FIELDS.filter(
+      (field) => Object.prototype.hasOwnProperty.call(metric || {}, field),
+    );
+  const fields = ["reach", "views"].filter((field) => (
+    observedFields.includes(field)
+    && exactNonNegativeInteger(metric?.[field]) !== null
+  ));
+  return {
+    fields,
+    values: {
+      reach: fields.includes("reach")
+        ? exactNonNegativeInteger(metric?.reach)
+        : null,
+      views: fields.includes("views")
+        ? exactNonNegativeInteger(metric?.views)
+        : null,
+    },
+  };
+}
+
+async function validatedStoredDecisionPolicy(
+  plan: any,
+  metric: any,
+  {
+    decision,
+    evidenceHash,
+    snapshotDays,
+    reviewedSnapshotAt,
+    conversionEvidence,
+    conversionEvidenceHash,
+    conversionCutoffAt,
+    reviewedAt,
+  }: any,
+): Promise<any> {
+  if (
+    token(plan?.review_schema_version) !== REVIEW_SCHEMA_VERSION
+    || normalized(plan?.review_decision_policy_id)
+      !== GROWTH_DECISION_POLICY_ID
+    || exactNonNegativeInteger(
+      plan?.review_comparable_fixed_age_snapshots,
+    ) !== 0
+    || !Array.isArray(plan?.review_decision_policy_reason_codes)
+    || !exactSha256(plan?.review_decision_policy_evidence_hash)
+    || !exactSha256(plan?.review_identity_hash)
+  ) {
+    return { error: "reviewed_parent_decision_policy_stale" };
+  }
+
+  const storedOverrideNote = plan?.review_decision_override_note;
+  const overrideNote = normalizeGrowthDecisionOverrideNote(
+    storedOverrideNote,
+  );
+  const overrideHash = exactSha256(plan?.review_decision_override_hash);
+  if (
+    (
+      storedOverrideNote !== undefined
+      && storedOverrideNote !== null
+      && String(storedOverrideNote) !== overrideNote
+    )
+    || (
+      overrideNote
+        ? !overrideHash
+          || await sha256Hex(overrideNote) !== overrideHash
+        : Boolean(overrideHash)
+    )
+  ) {
+    return { error: "reviewed_parent_decision_policy_stale" };
+  }
+
+  const exposure = reviewedPlatformNativeExposure(metric);
+  const policy = evaluateGrowthDecisionSufficiency({
+    decision,
+    fixed_age_snapshot_valid: true,
+    social_evidence_hash: evidenceHash,
+    snapshot_days: snapshotDays,
+    snapshot_captured_at: reviewedSnapshotAt,
+    observed_platform_native_exposure_fields: exposure.fields,
+    platform_native_exposure: exposure.values,
+    conversion_evidence: conversionEvidence,
+    comparable_fixed_age_snapshots: 0,
+    override_note: overrideNote,
+    override_hash: overrideHash,
   });
+  if (!policy.supported) {
+    return { error: "reviewed_parent_decision_not_supported" };
+  }
+
+  const policyEvidenceHash = await sha256Hex(
+    canonicalStringify(policy.evidence),
+  );
+  if (
+    policy.policy_id !== GROWTH_DECISION_POLICY_ID
+    || canonicalStringify(plan.review_decision_policy_reason_codes)
+      !== canonicalStringify(policy.reason_codes)
+    || exactSha256(plan.review_decision_policy_evidence_hash)
+      !== policyEvidenceHash
+    || String(plan?.review_decision_override_note || "")
+      !== (policy.override_note || "")
+    || exactSha256(plan?.review_decision_override_hash)
+      !== (policy.override_hash || "")
+  ) {
+    return { error: "reviewed_parent_decision_policy_stale" };
+  }
+
+  const reviewIdentityHash = await sha256Hex(canonicalStringify({
+    review_schema_version: REVIEW_SCHEMA_VERSION,
+    evidence_hash: evidenceHash,
+    conversion_evidence_hash: conversionEvidenceHash,
+    conversion_cutoff_at: conversionCutoffAt,
+    decision,
+    decision_note: String(plan?.review_note || ""),
+    reviewed_at: reviewedAt,
+    review_snapshot_captured_at: reviewedSnapshotAt,
+    decision_policy_id: policy.policy_id,
+    decision_policy_reason_codes: policy.reason_codes,
+    decision_policy_evidence_hash: policyEvidenceHash,
+    decision_override_note: policy.override_note || "",
+    decision_override_hash: policy.override_hash || "",
+  }));
+  if (exactSha256(plan?.review_identity_hash) !== reviewIdentityHash) {
+    return { error: "reviewed_parent_decision_policy_stale" };
+  }
+
+  return {
+    policyId: policy.policy_id,
+    reasonCodes: policy.reason_codes,
+    policyEvidenceHash,
+    comparableFixedAgeSnapshots: 0,
+    overrideNote: policy.override_note || "",
+    overrideHash: policy.override_hash || "",
+    reviewIdentityHash,
+  };
+}
+
+async function validatedStoredConversionEvidence(
+  plan: any,
+  metric: any,
+  {
+    platform,
+    campaign,
+    content,
+    publishedAt,
+    snapshotDays,
+    reviewedSnapshotAt,
+    evidenceHash,
+    reviewedAt,
+    windowClosesAt,
+  }: any,
+): Promise<any | null> {
+  const raw = plan?.review_conversion_evidence;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  if (
+    canonicalStringify(Object.keys(raw).sort())
+      !== canonicalStringify([...CONVERSION_EVIDENCE_FIELDS].sort())
+  ) {
+    return null;
+  }
+  const cohortStartAt = timestamp(raw?.cohort_start_at);
+  const cutoffAt = timestamp(raw?.cutoff_at);
+  const storedCutoffAt = timestamp(plan?.review_conversion_cutoff_at);
+  const cohortStartMs = cohortStartAt
+    ? new Date(cohortStartAt).getTime()
+    : 0;
+  const cutoffMs = cutoffAt ? new Date(cutoffAt).getTime() : 0;
+  const snapshotMs = new Date(reviewedSnapshotAt || 0).getTime();
+  const reviewedMs = new Date(reviewedAt || 0).getTime();
+  const windowCloseMs = new Date(windowClosesAt || 0).getTime();
+  const exactHandoff = DECLARED_CLICKABLE_HANDOFFS.has(
+    normalized(plan?.cta_channel),
+  );
+  const expectedAttributionMethod = exactHandoff
+    ? "declared_content_link"
+    : "social_evidence_only";
+  const expectedConclusion = exactHandoff
+    ? "exact_declared_link"
+    : "inconclusive_no_declared_link";
+  if (
+    raw?.schema_version !== CONVERSION_EVIDENCE_SCHEMA
+    || raw?.platform !== platform
+    || raw?.campaign !== campaign
+    || raw?.content !== content
+    || raw?.cohort_start_at !== cohortStartAt
+    || cohortStartAt !== publishedAt
+    || raw?.cutoff_at !== cutoffAt
+    || cutoffAt !== reviewedSnapshotAt
+    || raw?.snapshot_days !== snapshotDays
+    || raw?.snapshot_captured_at !== reviewedSnapshotAt
+    || exactSha256(raw?.social_evidence_hash) !== evidenceHash
+    || raw?.attribution_method !== expectedAttributionMethod
+    || raw?.post_conversion_eligible !== exactHandoff
+    || raw?.conversion_conclusion !== expectedConclusion
+    || raw?.conversion_counters_available !== exactHandoff
+    || !cohortStartAt
+    || !cutoffAt
+    || storedCutoffAt !== cutoffAt
+    || !Number.isFinite(cohortStartMs)
+    || !Number.isFinite(snapshotMs)
+    || !Number.isFinite(reviewedMs)
+    || !Number.isFinite(windowCloseMs)
+    || cutoffMs < cohortStartMs
+    || cutoffMs > reviewedMs
+    || cutoffMs > windowCloseMs
+  ) {
+    return null;
+  }
+  const rawObservedFields = raw?.owned_intent_observed_fields;
+  if (!Array.isArray(rawObservedFields)) return null;
+  const metricFields = metricObservedFields(metric)
+    || CONTENT_METRIC_FIELDS.filter(
+      (field) => Object.prototype.hasOwnProperty.call(metric || {}, field),
+    );
+  const expectedObservedFields = OWNED_INTENT_FIELDS.filter(
+    (field) => metricFields.includes(field),
+  );
+  if (
+    canonicalStringify(rawObservedFields)
+      !== canonicalStringify(expectedObservedFields)
+    || new Set(rawObservedFields).size !== rawObservedFields.length
+  ) {
+    return null;
+  }
+  for (const field of CONVERSION_EVIDENCE_SOCIAL_COUNTER_FIELDS) {
+    if (exactNonNegativeInteger(raw?.[field]) === null) return null;
+  }
+  const metricLinkClicks = Object.prototype.hasOwnProperty.call(
+    metric || {},
+    "link_clicks",
+  )
+    ? exactNonNegativeInteger(metric?.link_clicks)
+    : 0;
+  const metricDmIntents = Object.prototype.hasOwnProperty.call(
+    metric || {},
+    "dm_intents",
+  )
+    ? exactNonNegativeInteger(metric?.dm_intents)
+    : 0;
+  if (
+    metricLinkClicks === null
+    || metricDmIntents === null
+    || raw.link_clicks !== (
+      expectedObservedFields.includes("link_clicks") ? metricLinkClicks : 0
+    )
+    || raw.dm_intents !== (
+      expectedObservedFields.includes("dm_intents") ? metricDmIntents : 0
+    )
+    || raw.owned_intents !== raw.link_clicks + raw.dm_intents
+  ) {
+    return null;
+  }
+  const expectedRetentionMature = cutoffMs
+    >= cohortStartMs + 30 * DAY_MS;
+  if (
+    raw?.retention_window_days !== 30
+    || raw?.retention_mature !== expectedRetentionMature
+  ) {
+    return null;
+  }
+  if (exactHandoff) {
+    for (const field of CONVERSION_EVIDENCE_DOWNSTREAM_FIELDS) {
+      if (exactNonNegativeInteger(raw?.[field]) === null) return null;
+    }
+    const retentionEligibleUsers = exactNonNegativeInteger(
+      raw?.retention_eligible_users,
+    );
+    const retainedUsers = exactNonNegativeInteger(raw?.retained_users);
+    const retentionRate = typeof raw?.retention_rate === "number"
+        && Number.isFinite(raw.retention_rate)
+        && raw.retention_rate >= 0
+        && raw.retention_rate <= 1
+      ? raw.retention_rate
+      : null;
+    if (
+      raw?.activation_timing_complete !== true
+      || raw?.paid_timing_complete !== true
+      || retentionEligibleUsers === null
+      || retainedUsers === null
+      || retainedUsers > retentionEligibleUsers
+      || (
+        !expectedRetentionMature
+        && (
+          retentionEligibleUsers !== 0
+          || retainedUsers !== 0
+          || raw?.retention_rate !== null
+        )
+      )
+      || (
+        retentionEligibleUsers === 0
+          ? raw?.retention_rate !== null
+          : retentionRate === null
+            || retentionRate !== retainedUsers / retentionEligibleUsers
+      )
+    ) {
+      return null;
+    }
+    const activatedUsers = exactNonNegativeInteger(raw?.activated_users);
+    const firstActivationAt = timestamp(raw?.first_activation_at);
+    const lastActivationAt = timestamp(raw?.last_activation_at);
+    if (
+      raw?.first_activation_at !== firstActivationAt
+      || raw?.last_activation_at !== lastActivationAt
+      || (
+        activatedUsers === 0
+          ? firstActivationAt !== null || lastActivationAt !== null
+          : !firstActivationAt
+            || !lastActivationAt
+            || new Date(firstActivationAt).getTime() < cohortStartMs
+            || new Date(firstActivationAt).getTime()
+              > new Date(lastActivationAt).getTime()
+            || new Date(lastActivationAt).getTime() > cutoffMs
+      )
+    ) {
+      return null;
+    }
+  } else {
+    const unavailableFields = [
+      ...CONVERSION_EVIDENCE_DOWNSTREAM_FIELDS,
+      "first_activation_at",
+      "last_activation_at",
+      "retention_eligible_users",
+      "retained_users",
+      "retention_rate",
+    ];
+    if (
+      raw?.activation_timing_complete !== false
+      || raw?.paid_timing_complete !== false
+      || unavailableFields.some((field) => raw?.[field] !== null)
+    ) {
+      return null;
+    }
+  }
+  const conversionEvidenceHash = await sha256Hex(canonicalStringify(raw));
+  if (
+    conversionEvidenceHash
+      !== exactSha256(plan?.review_conversion_evidence_hash)
+  ) {
+    return null;
+  }
+  return {
+    evidence: raw,
+    conversionEvidenceHash,
+    conversionCutoffAt: cutoffAt,
+  };
 }
 
 function newestBatchMetric(records: any[]): {
@@ -2109,13 +2682,40 @@ async function loadReviewedBatchEvidence(
   ) {
     return { error: "reviewed_parent_evidence_stale", status: 409 };
   }
-  const reviewHash = await sha256Hex(canonicalStringify({
-    evidence_hash: evidenceHash,
+  const conversion = await validatedStoredConversionEvidence(
+    plan,
+    metric,
+    {
+      platform,
+      campaign,
+      content,
+      publishedAt,
+      snapshotDays,
+      reviewedSnapshotAt,
+      evidenceHash,
+      reviewedAt,
+      windowClosesAt: new Date(closeMs).toISOString(),
+    },
+  );
+  if (!conversion) {
+    return {
+      error: "reviewed_parent_conversion_evidence_stale",
+      status: 409,
+    };
+  }
+  const policy = await validatedStoredDecisionPolicy(plan, metric, {
     decision,
-    decision_note: String(plan?.review_note || ""),
-    reviewed_at: reviewedAt,
-    review_snapshot_captured_at: reviewedSnapshotAt,
-  }));
+    evidenceHash,
+    snapshotDays,
+    reviewedSnapshotAt,
+    conversionEvidence: conversion.evidence,
+    conversionEvidenceHash: conversion.conversionEvidenceHash,
+    conversionCutoffAt: conversion.conversionCutoffAt,
+    reviewedAt,
+  });
+  if (policy?.error) {
+    return { error: policy.error, status: 409 };
+  }
   return {
     platform,
     campaign,
@@ -2124,23 +2724,260 @@ async function loadReviewedBatchEvidence(
     metric,
     decision,
     evidenceHash,
-    reviewHash,
+    reviewHash: policy.reviewIdentityHash,
+    reviewSchemaVersion: REVIEW_SCHEMA_VERSION,
+    decisionPolicyId: policy.policyId,
+    decisionPolicyReasonCodes: policy.reasonCodes,
+    decisionPolicyEvidenceHash: policy.policyEvidenceHash,
+    comparableFixedAgeSnapshots: policy.comparableFixedAgeSnapshots,
+    decisionOverrideNote: policy.overrideNote,
+    decisionOverrideHash: policy.overrideHash,
+    conversionEvidence: conversion.evidence,
+    conversionEvidenceHash: conversion.conversionEvidenceHash,
+    conversionCutoffAt: conversion.conversionCutoffAt,
     reviewedAt,
     reviewedSnapshotAt,
+  };
+}
+
+function scheduledGenerationParent(value: any): any | null {
+  const platform = normalizedMeasurementPlatform(value?.platform);
+  const campaign = token(value?.campaign);
+  const content = token(value?.content);
+  if (
+    !PLATFORMS.has(platform)
+    || campaign !== PRODUCTION_GROWTH_CAMPAIGN
+    || !content
+  ) {
+    return null;
+  }
+  return { platform, campaign, content };
+}
+
+function scheduledBatchParent(batch: any): any | null {
+  return scheduledGenerationParent({
+    platform: batch?.parent_platform,
+    campaign: batch?.parent_campaign,
+    content: batch?.parent_content,
+  });
+}
+
+function batchDecisionPolicyMatches(batch: any, evidence: any): boolean {
+  return token(batch?.review_schema_version) === REVIEW_SCHEMA_VERSION
+    && normalized(batch?.decision_policy_id) === evidence.decisionPolicyId
+    && canonicalStringify(batch?.decision_policy_reason_codes)
+      === canonicalStringify(evidence.decisionPolicyReasonCodes)
+    && exactSha256(batch?.decision_policy_evidence_hash)
+      === evidence.decisionPolicyEvidenceHash
+    && exactNonNegativeInteger(batch?.comparable_fixed_age_snapshots)
+      === evidence.comparableFixedAgeSnapshots
+    && String(batch?.decision_override_note || "")
+      === evidence.decisionOverrideNote
+    && exactSha256(batch?.decision_override_hash)
+      === evidence.decisionOverrideHash;
+}
+
+async function prepareScheduledGenerationRequest(
+  body: any,
+  planEntity: any,
+  metricEntity: any,
+  batchEntity: any,
+  sourceEntity: any,
+): Promise<any> {
+  if (
+    !body
+    || typeof body !== "object"
+    || Array.isArray(body)
+    || Object.keys(body).some(
+      (field) => !SCHEDULED_GENERATION_REQUEST_FIELDS.has(field),
+    )
+  ) {
+    return { error: "invalid_scheduled_generation_request", status: 400 };
+  }
+  const seedPack = body?.seed_pack?.pack || body?.seed_pack;
+  if (!seedPack || typeof seedPack !== "object" || Array.isArray(seedPack)) {
+    return { error: "scheduled_generation_seed_pack_required", status: 400 };
+  }
+  const targetDate = scheduledGenerationTargetDate();
+  if (!targetDate) {
+    return { error: "scheduled_generation_target_date_unavailable", status: 503 };
+  }
+
+  const allBatches = await listAllDependencies(
+    batchEntity,
+    "Growth content batches",
+  );
+  const targetRows = allBatches.filter((batch) => (
+    String(batch?.target_date || "") === targetDate
+    && token(batch?.state) !== "superseded"
+  ));
+  if (targetRows.length > 1) {
+    return { error: "scheduled_generation_date_conflict", status: 409 };
+  }
+
+  const existing = targetRows[0];
+  let parent: any | null = null;
+  if (existing) {
+    const state = token(existing?.state);
+    if (state === "revoked") {
+      return { error: "scheduled_generation_date_revoked", status: 409 };
+    }
+    const slotKeys = cleanTokenList(existing?.slot_keys, 3);
+    const seedConceptIds = cleanTokenList(existing?.seed_concept_ids, 3);
+    parent = scheduledBatchParent(existing);
+    if (
+      !parent
+      || batchInputMode(existing) !== BATCH_INPUT_REVIEWED
+      || batchContentProfile(existing) !== FEATURE_EXPLAINER_VIDEO_PROFILE
+      || Number(existing?.concept_count || 0) !== 2
+      || Number(existing?.slot_count || 0) !== 2
+      || canonicalStringify(slotKeys)
+        !== canonicalStringify(NEXT_BATCH_SLOTS.slice(0, 2))
+      || seedConceptIds.length !== 2
+      || new Set(seedConceptIds).size !== 2
+      || token(existing?.timezone) !== token(NEXT_BATCH_TIMEZONE)
+      || !["generating", "ready", "render_authorized", "failed"].includes(state)
+    ) {
+      return { error: "scheduled_generation_date_incompatible", status: 409 };
+    }
+    if (
+      state === "failed"
+      && Number(existing?.attempt_count || 0) >= SCHEDULED_GENERATION_MAX_ATTEMPTS
+    ) {
+      return { error: "scheduled_generation_attempts_exhausted", status: 409 };
+    }
+  } else {
+    const plans = await listAllDependencies(
+      planEntity,
+      "Growth content plans",
+    );
+    const candidates = plans.filter((plan) => (
+      scheduledGenerationParent(plan)
+      && Boolean(timestamp(plan?.published_at))
+      && token(plan?.delivery_status) !== "canceled"
+      && ["repeat", "iterate"].includes(token(plan?.review_decision))
+      && Boolean(timestamp(plan?.reviewed_at))
+      && Boolean(timestamp(plan?.review_snapshot_captured_at))
+      && Boolean(exactSha256(plan?.review_evidence_hash))
+      && Boolean(exactSha256(plan?.review_conversion_evidence_hash))
+      && Boolean(timestamp(plan?.review_conversion_cutoff_at))
+    )).sort((left, right) => (
+      new Date(timestamp(right?.reviewed_at) || 0).getTime()
+        - new Date(timestamp(left?.reviewed_at) || 0).getTime()
+      || String(right?.updated_date || "").localeCompare(
+        String(left?.updated_date || ""),
+      )
+      || String(right?.created_date || "").localeCompare(
+        String(left?.created_date || ""),
+      )
+      || String(right?.id || "").localeCompare(String(left?.id || ""))
+    ));
+    if (!candidates.length) {
+      return { error: "scheduled_generation_reviewed_parent_required", status: 409 };
+    }
+    const latestReviewedAt = timestamp(candidates[0]?.reviewed_at);
+    const latestParents = new Map<string, any>();
+    for (const candidate of candidates) {
+      if (timestamp(candidate?.reviewed_at) !== latestReviewedAt) break;
+      const candidateParent = scheduledGenerationParent(candidate);
+      if (!candidateParent) continue;
+      latestParents.set(
+        `${candidateParent.platform}|${candidateParent.campaign}|${candidateParent.content}`,
+        candidateParent,
+      );
+    }
+    if (latestParents.size !== 1) {
+      return { error: "scheduled_generation_parent_conflict", status: 409 };
+    }
+    parent = latestParents.values().next().value || null;
+  }
+
+  const evidence = await loadReviewedBatchEvidence(
+    planEntity,
+    metricEntity,
+    parent,
+  );
+  if (evidence?.error) {
+    return { error: evidence.error, status: evidence.status || 409 };
+  }
+  const batchKey = await sha256Hex(canonicalStringify({
+    schema: NEXT_BATCH_SCHEMA,
+    parent: {
+      platform: evidence.platform,
+      campaign: evidence.campaign,
+      content: evidence.content,
+    },
+    review_schema_version: evidence.reviewSchemaVersion,
+    review_hash: evidence.reviewHash,
+    decision_policy_id: evidence.decisionPolicyId,
+    decision_policy_evidence_hash: evidence.decisionPolicyEvidenceHash,
+    conversion_evidence_hash: evidence.conversionEvidenceHash,
+    conversion_cutoff_at: evidence.conversionCutoffAt,
+    target_date: targetDate,
+    content_profile: FEATURE_EXPLAINER_VIDEO_PROFILE,
+  }));
+  if (existing && exactSha256(existing?.batch_key) !== batchKey) {
+    return { error: "scheduled_generation_existing_batch_stale", status: 409 };
+  }
+  if (
+    existing
+    && ["ready", "render_authorized"].includes(token(existing?.state))
+  ) {
+    const seedPackSha256 = await sha256Hex(canonicalStringify(seedPack));
+    if (
+      !configuredRenderPackHashes().has(seedPackSha256)
+      || exactSha256(existing?.seed_pack_sha256) !== seedPackSha256
+    ) {
+      return { error: "scheduled_generation_seed_pack_conflict", status: 409 };
+    }
+    const current = await validateCurrentBatch(
+      existing,
+      planEntity,
+      metricEntity,
+      sourceEntity,
+    );
+    if (!current.ok) {
+      return { error: current.error, status: 409 };
+    }
+    return { existing, pack: current.pack };
+  }
+
+  return {
+    request: {
+      action: "build_next_batch",
+      parent,
+      target_date: targetDate,
+      concept_count: 2,
+      content_profile: FEATURE_EXPLAINER_VIDEO_PROFILE,
+      seed_pack: body.seed_pack,
+    },
   };
 }
 
 function safeBatch(batch: any): any {
   return {
     id: batch?.id,
+    batch_input_mode: batchInputMode(batch),
     batch_key: batch?.batch_key,
     request_hash: batch?.request_hash,
     parent_platform: batch?.parent_platform,
     parent_campaign: batch?.parent_campaign,
     parent_content: batch?.parent_content,
     review_hash: batch?.review_hash,
+    review_schema_version: batch?.review_schema_version,
+    decision_policy_id: batch?.decision_policy_id,
+    decision_policy_reason_codes: Array.isArray(
+      batch?.decision_policy_reason_codes,
+    ) ? batch.decision_policy_reason_codes : [],
+    decision_policy_evidence_hash: batch?.decision_policy_evidence_hash,
+    comparable_fixed_age_snapshots: batch?.comparable_fixed_age_snapshots,
+    decision_override_hash: batch?.decision_override_hash,
     evidence_hash: batch?.evidence_hash,
+    conversion_evidence_hash: batch?.conversion_evidence_hash,
+    conversion_cutoff_at: batch?.conversion_cutoff_at,
     review_decision: batch?.review_decision,
+    bootstrap_policy_version: batch?.bootstrap_policy_version,
+    bootstrap_authorized_at: batch?.bootstrap_authorized_at,
     target_date: batch?.target_date,
     content_profile: batchContentProfile(batch),
     timezone: batch?.timezone,
@@ -2159,6 +2996,40 @@ function safeBatch(batch: any): any {
     failed_at: batch?.failed_at,
     last_error_code: batch?.last_error_code,
     last_error_message: safeProviderError(batch?.last_error_message, ""),
+  };
+}
+
+function scheduledGenerationHandoff(batch: any): any {
+  return {
+    schema_version: SCHEDULED_GENERATION_HANDOFF_SCHEMA,
+    state: "unrendered_ready",
+    state_scope: "scheduled_generation_output",
+    batch_key: exactSha256(batch?.batch_key),
+    target_date: String(batch?.target_date || ""),
+    canonical_concept_count: Number(batch?.concept_count || 0),
+    planned_rendition_count: Number(batch?.pack_artifact_count || 0),
+    review_schema_version: token(batch?.review_schema_version),
+    decision_policy_id: normalized(batch?.decision_policy_id),
+    decision_policy_evidence_hash: exactSha256(
+      batch?.decision_policy_evidence_hash,
+    ),
+    decision_policy_reason_codes: Array.isArray(
+      batch?.decision_policy_reason_codes,
+    ) ? batch.decision_policy_reason_codes : [],
+    decision_policy_supported: true,
+    rendered_media_created_by_invocation: 0,
+    creative_artifacts_created_by_invocation: 0,
+    publish_jobs_created_by_invocation: 0,
+    requires_human_approval: true,
+    external_pipeline_gates: [
+      "owner_pack_authorization",
+      "render_media",
+      "host_and_verify_media",
+      "import_render_result",
+      "rendition_review",
+      "owner_rendition_approval",
+      "schedule_activation",
+    ],
   };
 }
 
@@ -2205,7 +3076,7 @@ function seedDonorPool(renderPack: any, contentProfile = NEXT_BATCH_PROFILE): {
       || token(source?.rights_status) !== "firstknock_owned"
       || (
         videoFeatureExplainer
-        && token(source?.media_kind) !== "video"
+        && !FEATURE_EXPLAINER_SOURCE_KINDS.has(token(source?.media_kind))
       )
     ) {
       continue;
@@ -2470,7 +3341,7 @@ function batchReservationActive(batch: any, nowMs = Date.now()): boolean {
 function batchReservedHooks(batch: any): string[] {
   const stored = cleanStringList(
     batch?.generated_hook_reservations,
-    3,
+    6,
     120,
   );
   if (stored.length) return stored;
@@ -2490,19 +3361,25 @@ function batchReservedHooks(batch: any): string[] {
 
 function packConceptHooks(pack: any): string[] | null {
   const orderedConcepts: string[] = [];
-  const hooksByConcept = new Map<string, string>();
+  const orderedHooks: string[] = [];
+  const conceptByHookSignature = new Map<string, string>();
   const platformsByConcept = new Map<string, Set<string>>();
   for (const artifact of asArray(pack?.artifacts)) {
     const conceptId = token(artifact?.concept_id);
     const platform = token(artifact?.platform);
     const hook = compactText(artifact?.hook, 120);
     if (!conceptId || !PLATFORMS.has(platform) || !hook) return null;
-    if (!hooksByConcept.has(conceptId)) {
+    if (!platformsByConcept.has(conceptId)) {
       orderedConcepts.push(conceptId);
-      hooksByConcept.set(conceptId, hook);
       platformsByConcept.set(conceptId, new Set());
-    } else if (hooksByConcept.get(conceptId) !== hook) {
-      return null;
+    }
+    const hookSignature = hookTokens(hook).join(" ");
+    if (!hookSignature) return null;
+    const priorConcept = conceptByHookSignature.get(hookSignature);
+    if (priorConcept && priorConcept !== conceptId) return null;
+    if (!priorConcept) {
+      conceptByHookSignature.set(hookSignature, conceptId);
+      orderedHooks.push(hook);
     }
     const platforms = platformsByConcept.get(conceptId);
     if (platforms?.has(platform)) return null;
@@ -2517,7 +3394,7 @@ function packConceptHooks(pack: any): string[] | null {
   ) {
     return null;
   }
-  return orderedConcepts.map((conceptId) => hooksByConcept.get(conceptId) || "");
+  return orderedHooks;
 }
 
 function batchArtifactProvenanceMap(
@@ -2651,8 +3528,14 @@ async function currentDonorSources(
       || (
         contentProfile === FEATURE_EXPLAINER_VIDEO_PROFILE
         && (
-          token(sources[index]?.media_kind) !== "video"
-          || token(donors[index]?.source?.media_kind) !== "video"
+          !FEATURE_EXPLAINER_SOURCE_KINDS.has(
+            token(sources[index]?.media_kind),
+          )
+          || !FEATURE_EXPLAINER_SOURCE_KINDS.has(
+            token(donors[index]?.source?.media_kind),
+          )
+          || token(sources[index]?.media_kind)
+            !== token(donors[index]?.source?.media_kind)
         )
       )
     ) {
@@ -2668,6 +3551,7 @@ function chooseDonors(
   requestedConceptIds: string[],
   parentContent: string,
   reservedSources: Set<string>,
+  conceptPriority: Map<string, number> | null = null,
 ): { donors?: any[]; error?: string; eligible?: number } {
   const eligible = pool.filter((donor) => (
     donorSourceReservationTokens(donor).every(
@@ -2709,7 +3593,12 @@ function chooseDonors(
       token(right.instagram?.platform_content_id),
       token(right.tiktok?.platform_content_id),
     ].includes(parentContent) ? 0 : 1;
+    const leftPriority = conceptPriority?.get(left.conceptId)
+      ?? Number.MAX_SAFE_INTEGER;
+    const rightPriority = conceptPriority?.get(right.conceptId)
+      ?? Number.MAX_SAFE_INTEGER;
     return leftMatches - rightMatches
+      || leftPriority - rightPriority
       || left.conceptId.localeCompare(right.conceptId);
   });
   const selected: any[] = [];
@@ -3226,6 +4115,12 @@ function normalizeGeneratedConcepts(
           visibleFeatureBehavior,
           practicalBenefit,
         ];
+        const normalizedVariant = {
+          problem,
+          visible_feature_behavior: visibleFeatureBehavior,
+          practical_benefit: practicalBenefit,
+          cta_label: ctaLabel,
+        };
         if (
           !ctaLabel
           || sections.some((section) => hookTokens(section).length < 4)
@@ -3234,16 +4129,26 @@ function normalizeGeneratedConcepts(
           || [...sections, ctaLabel].some(unsafeGeneratedText)
           || [...sections, ctaLabel].some(unsafeGeneratedClaim)
           || unsafeGeneratedQuantification(practicalBenefit)
+          || (
+            platform === "tiktok"
+            && (
+              problem.length > TIKTOK_FEATURE_SECTION_LIMITS.problem
+              || visibleFeatureBehavior.length
+                > TIKTOK_FEATURE_SECTION_LIMITS.visible_feature_behavior
+              || practicalBenefit.length
+                > TIKTOK_FEATURE_SECTION_LIMITS.practical_benefit
+              || ctaLabel.length > TIKTOK_FEATURE_SECTION_LIMITS.cta_label
+            )
+          )
+          || featureExplainerProviderCaption(
+            normalizedVariant,
+            "https://firstknock.online/start",
+            platform,
+          ).length > socialPostTextLimit(platform)
         ) {
           return null;
         }
-        normalizedVariants[platform] = {
-          problem,
-          visible_feature_behavior: visibleFeatureBehavior,
-          practical_benefit: practicalBenefit,
-          caption: sections.join("\n\n"),
-          cta_label: ctaLabel,
-        };
+        normalizedVariants[platform] = normalizedVariant;
         continue;
       }
       const caption = String(variant?.caption || "").trim();
@@ -3255,6 +4160,13 @@ function normalizeGeneratedConcepts(
         || unsafeGeneratedText(ctaLabel)
         || unsafeGeneratedClaim(caption)
         || unsafeGeneratedClaim(ctaLabel)
+        || socialPostText({
+          platform,
+          caption,
+          disclosure: generatedDisclosure(platform),
+          cta_label: ctaLabel,
+          cta_url: "https://firstknock.online/start",
+        }).length > socialPostTextLimit(platform)
       ) {
         return null;
       }
@@ -3274,16 +4186,26 @@ function normalizeGeneratedConcepts(
   return normalizedConcepts;
 }
 
+function generatedDisclosure(platform: string): string {
+  return token(platform) === "tiktok"
+    ? TIKTOK_FEATURE_DISCLOSURE
+    : NEXT_BATCH_DISCLOSURE;
+}
+
 function featureExplainerProviderCaption(
   variant: any,
   ctaUrl: string,
+  platform: string,
 ): string {
+  const isTikTok = token(platform) === "tiktok";
   return [
     compactText(variant?.problem, 280),
     compactText(variant?.visible_feature_behavior, 400),
     compactText(variant?.practical_benefit, 280),
-    NEXT_BATCH_DISCLOSURE,
-    `${compactText(variant?.cta_label, 80)}: ${ctaUrl}`,
+    generatedDisclosure(platform),
+    isTikTok
+      ? compactText(variant?.cta_label, 80)
+      : `${compactText(variant?.cta_label, 80)}: ${ctaUrl}`,
   ].filter(Boolean).join("\n\n");
 }
 
@@ -3320,6 +4242,7 @@ function generatedRenderPack(
         ? featureExplainerProviderCaption(
           generated.variants[platform],
           ctaUrl,
+          platform,
         )
         : generated.variants[platform].caption;
       artifacts.push({
@@ -3341,7 +4264,7 @@ function generatedRenderPack(
         cta_label: generated.variants[platform].cta_label,
         cta_url: ctaUrl,
         overlay_cta: generated.overlay_cta,
-        disclosure: NEXT_BATCH_DISCLOSURE,
+        disclosure: generatedDisclosure(platform),
         render: cloneJson(donorArtifact?.render),
       });
     }
@@ -3349,6 +4272,25 @@ function generatedRenderPack(
   return {
     schema_version: "growth-render-pack.v1",
     batch_id: batchId,
+    template: cloneJson(seedPack.template),
+    output: cloneJson(seedPack.output),
+    sources,
+    artifacts,
+  };
+}
+
+function auditedBootstrapRenderPack(
+  seedPack: any,
+  donors: any[],
+): any | null {
+  const sources = donors.map((donor) => cloneJson(donor.source));
+  const artifacts = donors.flatMap((donor) => [
+    cloneJson(donor.instagram),
+    cloneJson(donor.tiktok),
+  ]);
+  return {
+    schema_version: "growth-render-pack.v1",
+    batch_id: token(seedPack?.batch_id),
     template: cloneJson(seedPack.template),
     output: cloneJson(seedPack.output),
     sources,
@@ -3365,6 +4307,43 @@ function batchGenerationPrompt(
 ): string {
   const featureExplainer =
     contentProfile === FEATURE_EXPLAINER_VIDEO_PROFILE;
+  const conversion = evidence?.conversionEvidence || {};
+  const conversionContext = {
+    schema_version: conversion?.schema_version || null,
+    review_schema_version: evidence?.reviewSchemaVersion,
+    evidence_sha256: evidence?.conversionEvidenceHash,
+    cohort_start_at: conversion?.cohort_start_at || null,
+    cutoff_at: evidence?.conversionCutoffAt,
+    attribution_method: conversion?.attribution_method || null,
+    conversion_conclusion: conversion?.conversion_conclusion || null,
+    post_conversion_eligible: conversion?.post_conversion_eligible === true,
+    conversion_counters_available:
+      conversion?.conversion_counters_available === true,
+    owned_intent_observed_fields:
+      asArray(conversion?.owned_intent_observed_fields),
+    link_clicks: conversion?.link_clicks ?? null,
+    dm_intents: conversion?.dm_intents ?? null,
+    owned_intents: conversion?.owned_intents ?? null,
+    landing_sessions: conversion?.landing_sessions ?? null,
+    signup_cta_sessions: conversion?.signup_cta_sessions ?? null,
+    auth_completed: conversion?.auth_completed ?? null,
+    signups: conversion?.signups ?? null,
+    activated_workspaces: conversion?.activated_workspaces ?? null,
+    activated_users: conversion?.activated_users ?? null,
+    activated_reps: conversion?.activated_reps ?? null,
+    paid_users: conversion?.paid_users ?? null,
+    activation_timing_complete:
+      conversion?.activation_timing_complete === true,
+    paid_timing_complete: conversion?.paid_timing_complete === true,
+    first_activation_at: conversion?.first_activation_at ?? null,
+    last_activation_at: conversion?.last_activation_at ?? null,
+    retention_window_days: conversion?.retention_window_days ?? null,
+    retention_mature: conversion?.retention_mature === true,
+    retention_eligible_users:
+      conversion?.retention_eligible_users ?? null,
+    retained_users: conversion?.retained_users ?? null,
+    retention_rate: conversion?.retention_rate ?? null,
+  };
   const sourceContext = donors.map((donor, index) => ({
     donor_concept_id: donor.conceptId,
     ...(featureExplainer
@@ -3384,6 +4363,9 @@ context below.
 Reviewed direction: ${evidence.decision}
 Winning hook or variable: ${compactText(evidence?.plan?.hook, 300)}
 Major variable: ${compactText(evidence?.plan?.major_variable, 160)}
+INTERNAL-ONLY frozen conversion evidence (never quote, paraphrase, imply, or expose in
+public copy):
+${JSON.stringify(conversionContext)}
 Audited video donor context:
 ${JSON.stringify(sourceContext)}
 
@@ -3397,8 +4379,14 @@ fields in this semantic order:
    performance promise;
 4. cta_label: a short action inviting the viewer to inspect FirstKnock.
 
-The server assembles those fields into the final caption, then adds the fixed DEMO
-disclosure and exact tracked CTA URL. Do not return a URL or disclosure. Derive all public
+The server assembles those fields into the final caption. Instagram receives the fixed
+DEMO disclosure and tracked CTA URL. TikTok receives the shorter "Product demo."
+disclosure and CTA label; its tracked URL remains on the artifact for the controlled
+profile link because raw organic caption URLs are not a reliable clickable handoff.
+Buffer currently permits 2,200-character TikTok descriptions. For every TikTok variant,
+problem must be at most 280 characters, visible_feature_behavior at most 400 characters,
+practical_benefit at most 280 characters, and cta_label at most 80 characters. Do not
+return a URL or disclosure. Derive all public
 product statements only from safe_source_summary and the audited prior hook/captions in
 the supplied donor context. Each hook must be 4-7 words. Use 1-6 short overlay lines and
 a practical shot list that edits the inherited source video rather than inventing new
@@ -3429,12 +4417,17 @@ Winning hook or variable: ${compactText(evidence?.plan?.hook, 300)}
 Major variable: ${compactText(evidence?.plan?.major_variable, 160)}
 Internal fixed-age metrics (context only; never quote these in public copy):
 ${JSON.stringify(metricContext)}
+INTERNAL-ONLY frozen conversion evidence (never quote, paraphrase, imply, or expose in
+public copy):
+${JSON.stringify(conversionContext)}
 Trusted donor context:
 ${JSON.stringify(sourceContext)}
 
 Return exactly one concept for every donor_concept_id, in the same order, and exactly one
 Instagram plus one TikTok variant for each concept. Each hook must be 4-7 words. Use 1-6
 short overlay lines, a practical shot list, one overlay CTA, and platform-native captions.
+Keep each TikTok caption plus the server-added "Product demo." disclosure and CTA label
+within 2,200 characters; do not return a URL.
 For Repeat, preserve the proven problem/benefit pattern without copying the old hook. For
 Iterate, change only the named major variable while preserving the rest of the pattern.
 Never invent customer results, performance numbers, testimonials, names, addresses,
@@ -3853,37 +4846,332 @@ async function markBatchFailed(
   );
 }
 
-function featureExplainerPackContract(pack: any): boolean {
+function featureExplainerPackContractError(
+  pack: any,
+  auditedBootstrap = false,
+): string {
   const sources = asArray(pack?.sources);
   const artifacts = asArray(pack?.artifacts);
-  return (
-    sources.length === 2
-    && sources.every((source) => token(source?.media_kind) === "video")
-    && artifacts.length === 4
-    && artifacts.every((artifact) => {
-      const ctaLabel = compactText(artifact?.cta_label, 80);
-      const ctaUrl = String(artifact?.cta_url || "").trim();
-      const blocks = String(artifact?.caption || "")
-        .split(/\n{2,}/)
-        .map((value) => value.trim())
-        .filter(Boolean);
-      return token(artifact?.format) === "video"
-        && token(artifact?.distribution_state) === "publish_candidate"
-        && blocks.length === 5
-        && blocks.slice(0, 3).every(
-          (section) => hookTokens(section).length >= 4,
+  if (sources.length !== 2) return "source_count";
+  if (sources.some((source) => (
+    !FEATURE_EXPLAINER_SOURCE_KINDS.has(token(source?.media_kind))
+  ))) {
+    return "source_kind";
+  }
+  if (artifacts.length !== 4) return "artifact_count";
+  for (const artifact of artifacts) {
+    const platform = token(artifact?.platform);
+    const isTikTok = platform === "tiktok";
+    const ctaLabel = compactText(artifact?.cta_label, 80);
+    const ctaUrl = String(artifact?.cta_url || "").trim();
+    const blocks = String(artifact?.caption || "")
+      .split(/\n{2,}/)
+      .map((value) => value.trim())
+      .filter(Boolean);
+    if (token(artifact?.format) !== "video") return "artifact_format";
+    if (
+      token(artifact?.distribution_state) !== "publish_candidate"
+    ) {
+      return "distribution_state";
+    }
+    if (blocks.length !== 5) return "caption_blocks";
+    if (blocks.slice(0, 3).some(
+      (section) => hookTokens(section).length < 4,
+    )) {
+      return "caption_section_length";
+    }
+    if (!/\bfirstknock\b/i.test(blocks[1])) return "feature_grounding";
+    if (blocks.slice(0, 3).some(
+      (section) => unsafeGeneratedText(section)
+        || unsafeGeneratedClaim(section),
+    )) {
+      return "caption_safety";
+    }
+    const artifactDisclosure = compactText(artifact?.disclosure, 300);
+    if (
+      auditedBootstrap
+      && !(
+        (isTikTok && artifactDisclosure === TIKTOK_FEATURE_DISCLOSURE)
+        || (
+          !isTikTok
+          && AUDITED_BOOTSTRAP_INSTAGRAM_DISCLOSURES.has(
+            artifactDisclosure,
+          )
         )
-        && /\bfirstknock\b/i.test(blocks[1])
-        && blocks.slice(0, 3).every(
-          (section) => !unsafeGeneratedText(section)
-            && !unsafeGeneratedClaim(section),
-        )
-        && !unsafeGeneratedQuantification(blocks[2])
-        && blocks[3] === NEXT_BATCH_DISCLOSURE
-        && blocks[4] === `${ctaLabel}: ${ctaUrl}`
-        && socialPostText(artifact) === artifact.caption;
-    })
+      )
+    ) {
+      return "disclosure_policy";
+    }
+    if (
+      blocks[3] !== (
+        auditedBootstrap
+          ? artifactDisclosure
+          : generatedDisclosure(platform)
+      )
+    ) {
+      return "disclosure";
+    }
+    if (
+      blocks[4] !== (isTikTok ? ctaLabel : `${ctaLabel}: ${ctaUrl}`)
+    ) {
+      return "cta";
+    }
+    if (socialPostText(artifact) !== artifact.caption) return "post_text";
+    if (artifact.caption.length > socialPostTextLimit(platform)) {
+      return "platform_length";
+    }
+  }
+  return "";
+}
+
+function featureExplainerPackContract(
+  pack: any,
+  auditedBootstrap = false,
+): boolean {
+  return !featureExplainerPackContractError(pack, auditedBootstrap);
+}
+
+function bootstrapBatchIdentity(batch: any): any {
+  return {
+    schema: NEXT_BATCH_SCHEMA,
+    batch_input_mode: BATCH_INPUT_BOOTSTRAP,
+    bootstrap_policy_version: BOOTSTRAP_POLICY_VERSION,
+    content_profile: FEATURE_EXPLAINER_VIDEO_PROFILE,
+    campaign: PRODUCTION_GROWTH_CAMPAIGN,
+    target_date: String(batch?.target_date || ""),
+    seed_pack_sha256: exactSha256(batch?.seed_pack_sha256),
+    seed_concept_ids: cleanTokenList(batch?.seed_concept_ids, 2),
+  };
+}
+
+function bootstrapAuthorizationPayload(batch: any): any {
+  return {
+    batch_key: exactSha256(batch?.batch_key),
+    ...bootstrapBatchIdentity(batch),
+    seed_artifact_keys: cleanTokenList(batch?.seed_artifact_keys, 4),
+    source_lineage: asArray(batch?.source_lineage),
+    authorized_by: String(batch?.bootstrap_authorized_by || ""),
+    authorized_at: timestamp(batch?.bootstrap_authorized_at) || "",
+    authorization_note: String(batch?.bootstrap_authorization_note || ""),
+    acknowledgement: true,
+  };
+}
+
+function bootstrapRequestPayload(batch: any): any {
+  return {
+    batch_key: exactSha256(batch?.batch_key),
+    bootstrap_authorization_hash: exactSha256(
+      batch?.bootstrap_authorization_hash,
+    ),
+    seed_pack_batch_id: token(batch?.seed_pack_batch_id),
+    seed_artifact_keys: cleanTokenList(batch?.seed_artifact_keys, 4),
+    seed_lineage: asArray(batch?.seed_lineage),
+    source_lineage: asArray(batch?.source_lineage),
+    prompt_source_sha256: exactSha256(batch?.prompt_source_sha256),
+  };
+}
+
+async function bootstrapBatchTrustIsValid(
+  batch: any,
+  pack: any,
+): Promise<boolean> {
+  const seedConceptIds = cleanTokenList(batch?.seed_concept_ids, 2);
+  const seedArtifactKeys = cleanTokenList(batch?.seed_artifact_keys, 4);
+  const sourceKeys = cleanTokenList(batch?.source_asset_keys, 2);
+  const seedLineage = asArray(batch?.seed_lineage);
+  const expectedBatchKey = await sha256Hex(canonicalStringify(
+    bootstrapBatchIdentity(batch),
+  ));
+  const expectedAuthorizationHash = await sha256Hex(canonicalStringify(
+    bootstrapAuthorizationPayload(batch),
+  ));
+  const expectedRequestHash = await sha256Hex(canonicalStringify(
+    bootstrapRequestPayload(batch),
+  ));
+  const expectedPackId = token(batch?.seed_pack_batch_id);
+  const artifacts = asArray(pack?.artifacts);
+  const packArtifactKeys = artifacts.map(
+    (artifact) => token(artifact?.artifact_key),
   );
+  const packConceptIds = [
+    ...new Set(artifacts.map((artifact) => token(artifact?.concept_id))),
+  ];
+  const packSourceKeys = asArray(pack?.sources).map(
+    (source) => token(source?.asset_key),
+  );
+  const lineageArtifactKeys = seedLineage.flatMap((item) => [
+    token(item?.instagram_artifact_key),
+    token(item?.tiktok_artifact_key),
+  ]);
+  return batchInputMode(batch) === BATCH_INPUT_BOOTSTRAP
+    && token(batch?.bootstrap_policy_version) === BOOTSTRAP_POLICY_VERSION
+    && batchContentProfile(batch) === FEATURE_EXPLAINER_VIDEO_PROFILE
+    && Number(batch?.concept_count || 0) === 2
+    && Number(batch?.slot_count || 0) === 2
+    && cleanTokenList(batch?.slot_keys, 2).join("|") === "morning|midday"
+    && seedConceptIds.length === 2
+    && seedArtifactKeys.length === 4
+    && sourceKeys.length === 2
+    && seedLineage.length === 2
+    && new Set(seedLineage.map((item) => token(item?.concept_id))).size === 2
+    && new Set(
+      seedLineage.map((item) => token(item?.source_asset_key)),
+    ).size === 2
+    && canonicalStringify(
+      seedLineage.map((item) => token(item?.concept_id)),
+    ) === canonicalStringify(seedConceptIds)
+    && canonicalStringify(
+      seedLineage.map((item) => token(item?.source_asset_key)),
+    ) === canonicalStringify(sourceKeys)
+    && canonicalStringify(lineageArtifactKeys)
+      === canonicalStringify(seedArtifactKeys)
+    && canonicalStringify(packArtifactKeys)
+      === canonicalStringify(seedArtifactKeys)
+    && canonicalStringify(packConceptIds)
+      === canonicalStringify(seedConceptIds)
+    && canonicalStringify(packSourceKeys) === canonicalStringify(sourceKeys)
+    && exactSha256(batch?.batch_key) === expectedBatchKey
+    && exactSha256(batch?.bootstrap_authorization_hash)
+      === expectedAuthorizationHash
+    && exactSha256(batch?.request_hash) === expectedRequestHash
+    && configuredRenderPackHashes().has(
+      exactSha256(batch?.seed_pack_sha256),
+    )
+    && String(batch?.bootstrap_authorized_by || "").length > 0
+    && Boolean(timestamp(batch?.bootstrap_authorized_at))
+    && compactText(batch?.bootstrap_authorization_note, 500).length >= 10
+    && token(pack?.batch_id) === expectedPackId
+    && featureExplainerPackContract(pack, true)
+    && artifacts.every((artifact) => {
+      const platform = token(artifact?.platform);
+      const artifactKey = token(artifact?.artifact_key);
+      return token(artifact?.campaign) === PRODUCTION_GROWTH_CAMPAIGN
+        && artifact?.ai_generated !== true
+        && token(artifact?.platform_content_id) === artifactKey
+        && String(artifact?.cta_url || "") === platformTrackedUrl(
+          platform,
+          PRODUCTION_GROWTH_CAMPAIGN,
+          artifactKey,
+        );
+    });
+}
+
+function isProductionGrowthCampaign(value: any): boolean {
+  return token(value) === PRODUCTION_GROWTH_CAMPAIGN;
+}
+
+async function productionBatchScheduleReadiness(
+  artifactEntity: any,
+  sourceEntity: any,
+  batch: any,
+  targetArtifact: any,
+  nowMs = Date.now(),
+): Promise<{ ok: boolean; error?: string; artifacts?: any[] }> {
+  const batchKey = exactSha256(batch?.batch_key);
+  const pack = storedPack(batch);
+  const provenance = batchArtifactProvenanceMap(batch, pack);
+  const targetDate = String(batch?.target_date || "").trim();
+  if (
+    !batchKey
+    || batchContentProfile(batch) !== FEATURE_EXPLAINER_VIDEO_PROFILE
+    || Number(batch?.concept_count || 0) !== 2
+    || !featureExplainerPackContract(
+      pack,
+      batchInputMode(batch) === BATCH_INPUT_BOOTSTRAP,
+    )
+    || !provenance
+    || provenance.size !== 4
+    || !phoenixDateStart(targetDate)
+  ) {
+    return { ok: false, error: "production_batch_required" };
+  }
+  const artifacts = asArray(await artifactEntity.filter(
+    { growth_batch_key: batchKey },
+    "artifact_key",
+    20,
+  )).filter((artifact) => (
+    exactSha256(artifact?.growth_batch_key) === batchKey
+  ));
+  if (artifacts.length !== 4) {
+    return { ok: false, error: "production_batch_incomplete" };
+  }
+  const byKey = new Map<string, any>();
+  const byConcept = new Map<string, any[]>();
+  for (const artifact of artifacts) {
+    const artifactKey = token(artifact?.artifact_key);
+    const conceptId = token(artifact?.concept_id);
+    const platform = token(artifact?.platform);
+    const expected = provenance.get(artifactKey);
+    const approvedHash = await artifactApprovalHash(artifact);
+    const dueAt = batchSlotDueAt(
+      artifact?.growth_batch_target_date,
+      artifact?.growth_batch_slot_key,
+    );
+    const dueMs = new Date(dueAt || 0).getTime();
+    if (
+      !artifactKey
+      || byKey.has(artifactKey)
+      || !conceptId
+      || !PLATFORMS.has(platform)
+      || !expected
+      || token(artifact?.campaign) !== PRODUCTION_GROWTH_CAMPAIGN
+      || token(artifact?.format) !== "video"
+      || exactSha256(artifact?.render_pack_sha256)
+        !== exactSha256(batch?.canonical_pack_sha256)
+      || exactSha256(artifact?.growth_batch_key) !== expected.growth_batch_key
+      || artifact?.growth_batch_target_date !== expected.growth_batch_target_date
+      || token(artifact?.growth_batch_slot_key)
+        !== expected.growth_batch_slot_key
+      || artifact?.approval_status !== "approved"
+      || artifact?.review_status !== "passed"
+      || !artifact?.approved_hash
+      || artifact.approved_hash !== approvedHash
+      || artifact?.privacy_cleared !== true
+      || artifact?.demo_labeled !== true
+      || artifact?.claims_supported !== true
+      || artifact?.media_rights_confirmed !== true
+      || !artifactMediaReady(artifact)
+      || !Number.isFinite(dueMs)
+      || dueMs < nowMs + MIN_SCHEDULE_LEAD_MS
+      || dueMs > nowMs + MAX_SCHEDULE_LEAD_MS
+    ) {
+      return { ok: false, error: "production_batch_not_schedulable" };
+    }
+    const sourceKeys = cleanTokenList(artifact?.source_asset_keys);
+    const sources = await sourcesForArtifact(sourceEntity, sourceKeys);
+    if (
+      !sourcesAreSafe(sources, sourceKeys.length)
+      || !renderLineageMatchesSources(artifact, sources)
+    ) {
+      return { ok: false, error: "production_batch_not_schedulable" };
+    }
+    byKey.set(artifactKey, artifact);
+    if (!byConcept.has(conceptId)) byConcept.set(conceptId, []);
+    byConcept.get(conceptId)?.push(artifact);
+  }
+  if (
+    byKey.size !== provenance.size
+    || byConcept.size !== 2
+    || (
+      targetArtifact?.id
+      && (
+        !byConcept.has(token(targetArtifact?.concept_id))
+        || !artifacts.some((artifact) => (
+          String(artifact?.id || "") === String(targetArtifact.id)
+        ))
+      )
+    )
+    || [...byConcept.values()].some((pair) => (
+      pair.length !== 2
+      || new Set(pair.map((artifact) => token(artifact?.platform))).size !== 2
+      || !pair.some((artifact) => token(artifact?.platform) === "instagram")
+      || !pair.some((artifact) => token(artifact?.platform) === "tiktok")
+      || new Set(pair.map((artifact) => token(artifact?.growth_batch_slot_key))).size !== 1
+    ))
+  ) {
+    return { ok: false, error: "production_batch_incomplete" };
+  }
+  return { ok: true, artifacts };
 }
 
 async function validateCurrentBatch(
@@ -3893,30 +5181,46 @@ async function validateCurrentBatch(
   sourceEntity: any,
 ): Promise<{ ok: boolean; error?: string; evidence?: any; pack?: any }> {
   const contentProfile = batchContentProfile(batch);
+  const inputMode = batchInputMode(batch);
   if (!NEXT_BATCH_PROFILES.has(contentProfile)) {
     return { ok: false, error: "growth_batch_profile_conflict" };
+  }
+  if (![BATCH_INPUT_REVIEWED, BATCH_INPUT_BOOTSTRAP].includes(inputMode)) {
+    return { ok: false, error: "growth_batch_input_mode_conflict" };
   }
   if (!(await storedPackIsValid(batch))) {
     return { ok: false, error: "growth_batch_storage_conflict" };
   }
-  const evidence = await loadReviewedBatchEvidence(
-    planEntity,
-    metricEntity,
-    {
-      platform: batch?.parent_platform,
-      campaign: batch?.parent_campaign,
-      content: batch?.parent_content,
-    },
-  );
-  if (
-    evidence?.error
-    || evidence.reviewHash !== exactSha256(batch?.review_hash)
-    || evidence.evidenceHash !== exactSha256(batch?.evidence_hash)
-    || evidence.decision !== token(batch?.review_decision)
-  ) {
-    return { ok: false, error: "growth_batch_evidence_stale" };
-  }
   const pack = storedPack(batch);
+  let evidence: any = null;
+  if (inputMode === BATCH_INPUT_REVIEWED) {
+    evidence = await loadReviewedBatchEvidence(
+      planEntity,
+      metricEntity,
+      {
+        platform: batch?.parent_platform,
+        campaign: batch?.parent_campaign,
+        content: batch?.parent_content,
+      },
+    );
+    if (
+      evidence?.error
+      || evidence.reviewHash !== exactSha256(batch?.review_hash)
+      || evidence.evidenceHash !== exactSha256(batch?.evidence_hash)
+      || token(batch?.review_schema_version) !== REVIEW_SCHEMA_VERSION
+      || evidence.reviewSchemaVersion !== token(batch?.review_schema_version)
+      || !batchDecisionPolicyMatches(batch, evidence)
+      || evidence.conversionEvidenceHash
+        !== exactSha256(batch?.conversion_evidence_hash)
+      || evidence.conversionCutoffAt
+        !== timestamp(batch?.conversion_cutoff_at)
+      || evidence.decision !== token(batch?.review_decision)
+    ) {
+      return { ok: false, error: "growth_batch_evidence_stale" };
+    }
+  } else if (!(await bootstrapBatchTrustIsValid(batch, pack))) {
+    return { ok: false, error: "growth_batch_bootstrap_stale" };
+  }
   const packSources = asArray(pack?.sources);
   const sourceKeys = cleanTokenList(batch?.source_asset_keys, 3);
   const conceptCount = Number(batch?.concept_count || 0);
@@ -3939,9 +5243,14 @@ async function validateCurrentBatch(
     && (
       conceptCount !== 2
       || currentSources.some(
-        (source) => token(source?.media_kind) !== "video",
+        (source) => (
+          !FEATURE_EXPLAINER_SOURCE_KINDS.has(token(source?.media_kind))
+        ),
       )
-      || !featureExplainerPackContract(pack)
+      || !featureExplainerPackContract(
+        pack,
+        inputMode === BATCH_INPUT_BOOTSTRAP,
+      )
     )
   ) {
     return { ok: false, error: "growth_batch_profile_conflict" };
@@ -3958,20 +5267,25 @@ async function validateCurrentBatch(
         !== localReference(packSources[index]?.source_reference)
       || exactSha256(currentSources[index]?.source_sha256)
         !== exactSha256(packSources[index]?.source_sha256)
+      || (
+        contentProfile === FEATURE_EXPLAINER_VIDEO_PROFILE
+        && token(currentSources[index]?.media_kind)
+          !== token(packSources[index]?.media_kind)
+      )
     ) {
       return { ok: false, error: "growth_batch_source_lineage_changed" };
     }
   }
   const storedHooks = cleanStringList(
     batch?.generated_hook_reservations,
-    3,
+    6,
     120,
   );
   const packHooks = packConceptHooks(pack);
   if (
     !packHooks
     || !batchArtifactProvenanceMap(batch, pack)
-    || storedHooks.length !== Number(batch?.concept_count || 0)
+    || storedHooks.length !== packHooks.length
     || canonicalStringify(storedHooks) !== canonicalStringify(packHooks)
     || exactSha256(batch?.generated_hooks_sha256)
       !== await sha256Hex(canonicalStringify(storedHooks))
@@ -4070,22 +5384,57 @@ Deno.serve(async (req: Request) => {
     if (req.method === "OPTIONS") return new Response(null, { status: 204 });
     if (req.method !== "POST") return response({ error: "method_not_allowed" }, 405);
 
-    const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
-    if (!user?.id) return response({ error: "unauthorized" }, 401);
-    if (!canManageGrowth(user)) {
-      return response({ error: "growth_admin_required" }, 403);
+    let body = await readBody(req);
+    let action = token(body?.action);
+    const scheduledGeneration = action === SCHEDULED_GENERATION_ACTION;
+    let user: any;
+    if (scheduledGeneration) {
+      const auth = scheduledGenerationSecret(req);
+      if (auth.configured.length < 32) {
+        return response({ error: "growth_generation_worker_not_configured" }, 503);
+      }
+      if (
+        !auth.supplied
+        || !constantTimeEqual(auth.configured, auth.supplied)
+      ) {
+        return response({ error: "worker_unauthorized" }, 401);
+      }
+      if (
+        normalized(Deno.env.get("GROWTH_SCHEDULED_GENERATION_ENABLED"))
+          !== "true"
+      ) {
+        return response({ error: "growth_scheduled_generation_disabled" }, 503);
+      }
+      if (
+        normalized(Deno.env.get("GROWTH_CONTENT_GENERATION_ENABLED"))
+          !== "true"
+      ) {
+        return response({ error: "content_generation_not_configured" }, 503);
+      }
+      user = {
+        id: SCHEDULED_GENERATION_ACTOR_ID,
+        role: "admin",
+        is_owner: false,
+      };
     }
 
-    const body = await readBody(req);
-    const action = token(body?.action);
+    const base44 = createClientFromRequest(req);
+    if (!scheduledGeneration) {
+      user = await base44.auth.me();
+      if (!user?.id) return response({ error: "unauthorized" }, 401);
+      if (!canManageGrowth(user)) {
+        return response({ error: "growth_admin_required" }, 403);
+      }
+    }
     if (
       [
         "approve",
         "revoke",
         "schedule",
+        "preflight_batch_activation",
         "cancel_job",
         "resolve_job",
+        "build_audited_bootstrap_batch",
         "authorize_batch",
         "revoke_batch",
       ].includes(action)
@@ -4101,6 +5450,35 @@ Deno.serve(async (req: Request) => {
     const planEntity = base44.asServiceRole.entities.GrowthContentPlan;
     const metricEntity = base44.asServiceRole.entities.GrowthContentMetric;
     const batchEntity = base44.asServiceRole.entities.GrowthContentBatch;
+
+    if (scheduledGeneration) {
+      const prepared = await prepareScheduledGenerationRequest(
+        body,
+        planEntity,
+        metricEntity,
+        batchEntity,
+        sourceEntity,
+      );
+      if (prepared?.error) {
+        return response(
+          { error: prepared.error },
+          prepared.status || 409,
+        );
+      }
+      if (prepared?.existing) {
+        return response({
+          success: true,
+          idempotent: true,
+          scheduled_generation: true,
+          batch: safeBatch(prepared.existing),
+          pack_sha256: prepared.existing.canonical_pack_sha256,
+          render_pack: prepared.pack,
+          generation_handoff: scheduledGenerationHandoff(prepared.existing),
+        });
+      }
+      body = prepared.request;
+      action = "build_next_batch";
+    }
 
     if (action === "list") {
       const [sources, artifacts, jobs, batches, capabilities] = await Promise.all([
@@ -4149,6 +5527,63 @@ Deno.serve(async (req: Request) => {
         artifacts: asArray(artifacts),
         jobs: asArray(jobs).map(safeJob),
         batches: asArray(batches).map(safeBatch),
+      });
+    }
+
+    if (action === "preflight_batch_activation") {
+      const batchKey = exactSha256(body?.batch_key);
+      if (!batchKey) return response({ error: "production_batch_required" }, 400);
+      const rows = await exactBatchRows(batchEntity, batchKey);
+      if (rows.length !== 1 || token(rows[0]?.state) !== "render_authorized") {
+        return response({ error: "production_batch_required" }, 409);
+      }
+      const batch = rows[0];
+      const current = await validateCurrentBatch(
+        batch,
+        planEntity,
+        metricEntity,
+        sourceEntity,
+      );
+      if (!current.ok) {
+        return response({ error: current.error || "production_batch_required" }, 409);
+      }
+      const packArtifacts = asArray(current.pack?.artifacts);
+      const targetArtifact = packArtifacts[0] || {};
+      const readiness = await productionBatchScheduleReadiness(
+        artifactEntity,
+        sourceEntity,
+        batch,
+        targetArtifact,
+      );
+      if (!readiness.ok) return response({ error: readiness.error }, 409);
+      const publishEnvironment = publisherEnvironment();
+      if (
+        !publishEnvironment.publisherReady
+        || !publishEnvironment.instagramChannelId
+        || !publishEnvironment.tiktokChannelId
+      ) {
+        return response({ error: "publishing_not_configured" }, 503);
+      }
+      const heartbeat = await recentWorkerHeartbeat(
+        heartbeatEntity,
+        publishEnvironment,
+      );
+      if (!heartbeat.ready) {
+        return response({ error: "publisher_worker_unavailable" }, 503);
+      }
+      return response({
+        success: true,
+        batch: safeBatch(batch),
+        artifacts: (readiness.artifacts || []).map((artifact) => ({
+          id: artifact.id,
+          artifact_key: artifact.artifact_key,
+          concept_id: artifact.concept_id,
+          platform: artifact.platform,
+          due_at: batchSlotDueAt(
+            artifact?.growth_batch_target_date,
+            artifact?.growth_batch_slot_key,
+          ),
+        })),
       });
     }
 
@@ -4450,6 +5885,502 @@ Deno.serve(async (req: Request) => {
       return response({ success: true, created, updated, total: sources.length });
     }
 
+    if (action === "build_audited_bootstrap_batch") {
+      if (normalized(Deno.env.get("GROWTH_CONTENT_GENERATION_ENABLED")) !== "true") {
+        return response({ error: "content_generation_not_configured" }, 503);
+      }
+      const targetDate = validBatchTargetDate(body?.target_date);
+      const note = compactText(body?.authorization_note, 500);
+      const requestedContentProfile = token(body?.content_profile);
+      const requestedConceptCount = body?.concept_count === undefined
+        ? 2
+        : Number(body?.concept_count);
+      if (
+        !targetDate
+        || body?.bootstrap_acknowledged !== true
+        || note.length < 10
+        || requestedConceptCount !== 2
+        || (
+          requestedContentProfile
+          && requestedContentProfile !== FEATURE_EXPLAINER_VIDEO_PROFILE
+        )
+        || body?.seed_concept_ids !== undefined
+      ) {
+        return response({ error: "invalid_bootstrap_batch_request" }, 400);
+      }
+      const seedPack = body?.seed_pack?.pack || body?.seed_pack;
+      const seedPackSha256 = await sha256Hex(canonicalStringify(seedPack));
+      const allowedSeedHashes = configuredRenderPackHashes();
+      if (!allowedSeedHashes.size) {
+        return response({ error: "trusted_seed_pack_not_configured" }, 503);
+      }
+      if (!allowedSeedHashes.has(seedPackSha256)) {
+        return response({ error: "untrusted_seed_render_pack" }, 409);
+      }
+      const seed = seedDonorPool(
+        seedPack,
+        FEATURE_EXPLAINER_VIDEO_PROFILE,
+      );
+      if (seed.error || !seed.donors) {
+        return response({
+          error: seed.error === "seed_pack_has_no_safe_donors"
+            ? "insufficient_eligible_video_donors"
+            : seed.error || "invalid_seed_render_pack",
+          required_donors: 2,
+          eligible_donors: 0,
+        }, seed.error === "invalid_seed_render_pack" ? 400 : 409);
+      }
+      if (seed.donors.length < 2) {
+        return response({
+          error: "insufficient_eligible_video_donors",
+          required_donors: 2,
+          eligible_donors: seed.donors.length,
+        }, 409);
+      }
+      const [
+        allBatches,
+        reservationArtifacts,
+        reservationJobs,
+      ] = await Promise.all([
+        listAllDependencies(batchEntity, "Growth content batches"),
+        listAllDependencies(artifactEntity, "Growth creative artifacts"),
+        listAllDependencies(jobEntity, "Growth publish jobs"),
+      ]);
+      const sameDateRows = allBatches.filter((batch) => (
+        batchInputMode(batch) === BATCH_INPUT_BOOTSTRAP
+        && String(batch?.target_date || "") === targetDate
+        && token(batch?.state) !== "superseded"
+      )).sort(batchOrder);
+      if (sameDateRows.length > 1) {
+        return response({ error: "bootstrap_daily_batch_conflict" }, 409);
+      }
+      const prior = sameDateRows[0];
+      if (
+        prior
+        && (
+          token(prior?.bootstrap_policy_version) !== BOOTSTRAP_POLICY_VERSION
+          || exactSha256(prior?.seed_pack_sha256) !== seedPackSha256
+          || batchContentProfile(prior) !== FEATURE_EXPLAINER_VIDEO_PROFILE
+        )
+      ) {
+        return response({ error: "bootstrap_daily_batch_conflict" }, 409);
+      }
+      if (
+        prior
+        && ["revoked", "superseded"].includes(token(prior?.state))
+      ) {
+        return response({
+          error: `growth_batch_${token(prior?.state)}`,
+        }, 409);
+      }
+      const authorizedBy = String(user?.id || "").slice(0, 160);
+      if (
+        prior
+        && (
+          String(prior?.bootstrap_authorization_note || "") !== note
+          || String(prior?.bootstrap_authorized_by || "") !== authorizedBy
+        )
+      ) {
+        return response({ error: "bootstrap_authorization_conflict" }, 409);
+      }
+      if (
+        prior
+        && ["ready", "render_authorized"].includes(token(prior?.state))
+      ) {
+        const current = await validateCurrentBatch(
+          prior,
+          planEntity,
+          metricEntity,
+          sourceEntity,
+        );
+        if (!current.ok) return response({ error: current.error }, 409);
+        return response({
+          success: true,
+          idempotent: true,
+          batch: safeBatch(prior),
+          pack_sha256: prior.canonical_pack_sha256,
+          render_pack: current.pack,
+        });
+      }
+      const bootstrapRows = allBatches.filter((batch) => (
+        batchInputMode(batch) === BATCH_INPUT_BOOTSTRAP
+        && token(batch?.bootstrap_policy_version) === BOOTSTRAP_POLICY_VERSION
+        && exactSha256(batch?.seed_pack_sha256) === seedPackSha256
+        && !["revoked", "superseded"].includes(token(batch?.state))
+      ));
+      if (!prior && bootstrapRows.length >= MAX_BOOTSTRAP_BATCHES) {
+        return response({
+          error: "bootstrap_batch_limit_reached",
+          maximum_batches: MAX_BOOTSTRAP_BATCHES,
+        }, 409);
+      }
+      const priorBatchKey = exactSha256(prior?.batch_key);
+      const reservedSources = activeBatchReservations(
+        allBatches,
+        targetDate,
+        priorBatchKey,
+      );
+      for (const sourceToken of contentSourceReservations(
+        reservationArtifacts,
+        reservationJobs,
+        targetDate,
+      )) {
+        reservedSources.add(sourceToken);
+      }
+      const selected = chooseDonors(
+        seed.donors,
+        2,
+        prior ? cleanTokenList(prior?.seed_concept_ids, 2) : [],
+        "",
+        reservedSources,
+        BOOTSTRAP_CONCEPT_PRIORITY,
+      );
+      if (selected.error || !selected.donors) {
+        return response({
+          error: [
+            "insufficient_eligible_donors",
+            "seed_donor_unavailable",
+          ].includes(String(selected.error || ""))
+            ? "insufficient_eligible_video_donors"
+            : selected.error || "insufficient_eligible_video_donors",
+          required_donors: 2,
+          eligible_donors: Number(selected.eligible || 0),
+          source_cooldown_days: SOURCE_COOLDOWN_DAYS,
+        }, 409);
+      }
+      const donors = selected.donors;
+      const currentSources = await currentDonorSources(
+        sourceEntity,
+        donors,
+        FEATURE_EXPLAINER_VIDEO_PROFILE,
+      );
+      if (!currentSources) {
+        return response({ error: "seed_donor_source_unavailable" }, 409);
+      }
+      const sourceKeys = donors.map((donor) => donor.sourceKey);
+      const promptSources = batchPromptSourceSnapshot(sourceKeys, currentSources);
+      if (promptSources.some((source) => !source.safe_source_summary)) {
+        return response({ error: "seed_donor_summary_unavailable" }, 409);
+      }
+      const promptSourceSha256 = await sha256Hex(
+        canonicalStringify(promptSources),
+      );
+      const sourceLineage = exactDonorSources(donors);
+      const seedLineage = donorLineage(donors);
+      const seedArtifactKeys = seedLineage.flatMap((lineage) => [
+        lineage.instagram_artifact_key,
+        lineage.tiktok_artifact_key,
+      ]);
+      const identityFields = {
+        target_date: targetDate,
+        seed_pack_sha256: seedPackSha256,
+        seed_concept_ids: donors.map((donor) => donor.conceptId),
+      };
+      const batchKey = await sha256Hex(canonicalStringify(
+        bootstrapBatchIdentity(identityFields),
+      ));
+      if (prior && exactSha256(prior?.batch_key) !== batchKey) {
+        return response({ error: "bootstrap_daily_batch_conflict" }, 409);
+      }
+      const authorizedAt = prior
+        ? timestamp(prior?.bootstrap_authorized_at) || ""
+        : new Date().toISOString();
+      if (!authorizedAt) {
+        return response({ error: "bootstrap_authorization_conflict" }, 409);
+      }
+      const fields: any = {
+        batch_input_mode: BATCH_INPUT_BOOTSTRAP,
+        batch_key: batchKey,
+        bootstrap_policy_version: BOOTSTRAP_POLICY_VERSION,
+        bootstrap_authorized_by: authorizedBy,
+        bootstrap_authorized_at: authorizedAt,
+        bootstrap_authorization_note: note,
+        target_date: targetDate,
+        content_profile: FEATURE_EXPLAINER_VIDEO_PROFILE,
+        timezone: NEXT_BATCH_TIMEZONE,
+        concept_count: 2,
+        slot_count: 2,
+        slot_keys: NEXT_BATCH_SLOTS.slice(0, 2),
+        source_asset_keys: sourceKeys,
+        source_lineage: sourceLineage,
+        prompt_source_sha256: promptSourceSha256,
+        seed_pack_batch_id: token(seedPack?.batch_id),
+        seed_pack_sha256: seedPackSha256,
+        seed_concept_ids: donors.map((donor) => donor.conceptId),
+        seed_artifact_keys: seedArtifactKeys,
+        seed_lineage: seedLineage,
+      };
+      fields.bootstrap_authorization_hash = await sha256Hex(
+        canonicalStringify(bootstrapAuthorizationPayload(fields)),
+      );
+      fields.request_hash = await sha256Hex(
+        canonicalStringify(bootstrapRequestPayload(fields)),
+      );
+      if (
+        prior
+        && (
+          exactSha256(prior?.bootstrap_authorization_hash)
+            !== fields.bootstrap_authorization_hash
+          || exactSha256(prior?.request_hash) !== fields.request_hash
+        )
+      ) {
+        return response({ error: "bootstrap_authorization_conflict" }, 409);
+      }
+      const renderPack = auditedBootstrapRenderPack(
+        seedPack,
+        donors,
+      );
+      const generatedHooks = renderPack ? packConceptHooks(renderPack) : null;
+      if (!renderPack) {
+        return response({ error: "invalid_audited_bootstrap_caption" }, 409);
+      }
+      if (!generatedHooks) {
+        return response({ error: "invalid_audited_bootstrap_hooks" }, 409);
+      }
+      const bootstrapContractError = featureExplainerPackContractError(
+        renderPack,
+        true,
+      );
+      if (bootstrapContractError) {
+        return response({
+          error: "invalid_audited_bootstrap_contract",
+          contract_failure: bootstrapContractError,
+        }, 409);
+      }
+      const generatedHooksSha256 = await sha256Hex(
+        canonicalStringify(generatedHooks),
+      );
+      const canonicalPackJson = canonicalStringify(renderPack);
+      const canonicalPackSha256 = await sha256Hex(canonicalPackJson);
+      if (
+        canonicalPackJson.length > 100_000
+        || asArray(renderPack?.artifacts).length !== 4
+      ) {
+        return response({ error: "generated_batch_too_large" }, 409);
+      }
+      const claim = await claimNextBatch(batchEntity, fields, user);
+      if (claim.error) {
+        return response({
+          error: claim.error,
+          ...(claim.retry_at ? { retry_at: claim.retry_at } : {}),
+        }, claim.status || 409);
+      }
+      if (claim.idempotent) {
+        const current = await validateCurrentBatch(
+          claim.batch,
+          planEntity,
+          metricEntity,
+          sourceEntity,
+        );
+        if (!current.ok) return response({ error: current.error }, 409);
+        return response({
+          success: true,
+          idempotent: true,
+          batch: safeBatch(claim.batch),
+          pack_sha256: claim.batch.canonical_pack_sha256,
+          render_pack: current.pack,
+        });
+      }
+      const reservation = await enforceBatchReservation(
+        batchEntity,
+        claim.batch,
+        claim.leaseToken,
+        claim.leaseGeneration,
+      );
+      if (!reservation.ok) {
+        return response({ error: reservation.error }, 409);
+      }
+      const capRows = (await listAllDependencies(
+        batchEntity,
+        "Growth content batches",
+      )).filter((batch) => (
+        batchInputMode(batch) === BATCH_INPUT_BOOTSTRAP
+        && token(batch?.bootstrap_policy_version) === BOOTSTRAP_POLICY_VERSION
+        && exactSha256(batch?.seed_pack_sha256) === seedPackSha256
+        && !["revoked", "superseded"].includes(token(batch?.state))
+      )).sort(batchOrder);
+      const capIndex = capRows.findIndex(
+        (batch) => String(batch?.id || "") === String(claim.batch.id),
+      );
+      if (capIndex < 0 || capIndex >= MAX_BOOTSTRAP_BATCHES) {
+        const limitedAt = new Date().toISOString();
+        const policyWinner = capRows[MAX_BOOTSTRAP_BATCHES - 1];
+        await batchEntity.updateMany(
+          {
+            id: claim.batch.id,
+            state: "generating",
+            lease_generation: claim.leaseGeneration,
+            lease_token: claim.leaseToken,
+          },
+          {
+            $set: {
+              state: "superseded",
+              superseded_by_batch_key:
+                exactSha256(policyWinner?.batch_key) || batchKey,
+              superseded_at: limitedAt,
+              state_changed_at: limitedAt,
+              lease_token: "",
+            },
+            $unset: { lease_expires_at: true },
+          },
+        );
+        return response({
+          error: "bootstrap_batch_limit_reached",
+          maximum_batches: MAX_BOOTSTRAP_BATCHES,
+        }, 409);
+      }
+      const [
+        freshSources,
+        freshArtifacts,
+        freshBatches,
+        freshJobs,
+      ] = await Promise.all([
+        currentDonorSources(
+          sourceEntity,
+          donors,
+          FEATURE_EXPLAINER_VIDEO_PROFILE,
+        ),
+        listAllDependencies(artifactEntity, "Growth creative artifacts"),
+        listAllDependencies(batchEntity, "Growth content batches"),
+        listAllDependencies(jobEntity, "Growth publish jobs"),
+      ]);
+      const freshPromptSources = freshSources
+        ? batchPromptSourceSnapshot(sourceKeys, freshSources)
+        : [];
+      const freshPromptSourceSha256 = freshSources
+        ? await sha256Hex(canonicalStringify(freshPromptSources))
+        : "";
+      if (
+        !configuredRenderPackHashes().has(seedPackSha256)
+        || !freshSources
+        || freshPromptSourceSha256 !== promptSourceSha256
+      ) {
+        await markBatchFailed(
+          batchEntity,
+          claim.batch,
+          claim.leaseToken,
+          claim.leaseGeneration,
+          "growth_batch_inputs_changed",
+          "The audited seed allowlist or trusted source lineage changed.",
+        );
+        return response({ error: "growth_batch_inputs_changed" }, 409);
+      }
+      const freshPublishedSources = contentSourceReservations(
+        freshArtifacts,
+        freshJobs,
+        targetDate,
+      );
+      if (donors.some((donor) => (
+        donorSourceReservationTokens(donor).some(
+          (sourceToken) => freshPublishedSources.has(sourceToken),
+        )
+      ))) {
+        await markBatchFailed(
+          batchEntity,
+          claim.batch,
+          claim.leaseToken,
+          claim.leaseGeneration,
+          "source_cooldown_conflict",
+          "A selected source was published during bootstrap.",
+        );
+        return response({ error: "source_cooldown_conflict" }, 409);
+      }
+      const freshHistoricalHooks = historicalBatchHooks(
+        freshArtifacts,
+        freshBatches,
+        targetDate,
+        batchKey,
+        freshJobs,
+      );
+      if (generatedHooks.some((hook) => (
+        freshHistoricalHooks.some(
+          (priorHook) => hookSimilarity(hook, priorHook) >= 0.75,
+        )
+      ))) {
+        await markBatchFailed(
+          batchEntity,
+          claim.batch,
+          claim.leaseToken,
+          claim.leaseGeneration,
+          "growth_batch_hook_conflict",
+          "A current 28-day hook reservation conflicts with this bootstrap.",
+        );
+        return response({ error: "growth_batch_hook_conflict" }, 409);
+      }
+      const hookReservationAt = new Date().toISOString();
+      const hookReservation = await batchEntity.updateMany(
+        {
+          id: claim.batch.id,
+          state: "generating",
+          request_hash: fields.request_hash,
+          bootstrap_authorization_hash:
+            fields.bootstrap_authorization_hash,
+          lease_generation: claim.leaseGeneration,
+          lease_token: claim.leaseToken,
+          lease_expires_at: { $gt: hookReservationAt },
+        },
+        {
+          $set: {
+            generated_hook_reservations: generatedHooks,
+            generated_hooks_sha256: generatedHooksSha256,
+          },
+        },
+      );
+      if (Number(hookReservation?.updated || 0) !== 1) {
+        return response({ error: "growth_batch_lease_expired" }, 409);
+      }
+      const finalReservation = await enforceBatchReservation(
+        batchEntity,
+        claim.batch,
+        claim.leaseToken,
+        claim.leaseGeneration,
+      );
+      if (!finalReservation.ok) {
+        return response({ error: finalReservation.error }, 409);
+      }
+      const readyAt = new Date().toISOString();
+      const finalized = await batchEntity.updateMany(
+        {
+          id: claim.batch.id,
+          state: "generating",
+          request_hash: fields.request_hash,
+          bootstrap_authorization_hash:
+            fields.bootstrap_authorization_hash,
+          prompt_source_sha256: promptSourceSha256,
+          generated_hooks_sha256: generatedHooksSha256,
+          lease_generation: claim.leaseGeneration,
+          lease_token: claim.leaseToken,
+          lease_expires_at: { $gt: readyAt },
+        },
+        {
+          $set: {
+            state: "ready",
+            pack_schema_version: "growth-render-pack.v1",
+            pack_artifact_count: renderPack.artifacts.length,
+            canonical_pack_json: canonicalPackJson,
+            canonical_pack_sha256: canonicalPackSha256,
+            ready_at: readyAt,
+            state_changed_at: readyAt,
+            lease_token: "",
+            last_error_code: "",
+            last_error_message: "",
+          },
+          $unset: { lease_expires_at: true },
+        },
+      );
+      if (Number(finalized?.updated || 0) !== 1) {
+        return response({ error: "growth_batch_finalize_contended" }, 409);
+      }
+      const saved = await batchEntity.get(claim.batch.id);
+      return response({
+        success: true,
+        idempotent: false,
+        batch: safeBatch(saved),
+        pack_sha256: canonicalPackSha256,
+        render_pack: renderPack,
+      }, 201);
+    }
+
     if (action === "build_next_batch") {
       if (normalized(Deno.env.get("GROWTH_CONTENT_GENERATION_ENABLED")) !== "true") {
         return response({ error: "content_generation_not_configured" }, 503);
@@ -4533,7 +6464,12 @@ Deno.serve(async (req: Request) => {
           campaign: evidence.campaign,
           content: evidence.content,
         },
+        review_schema_version: evidence.reviewSchemaVersion,
         review_hash: evidence.reviewHash,
+        decision_policy_id: evidence.decisionPolicyId,
+        decision_policy_evidence_hash: evidence.decisionPolicyEvidenceHash,
+        conversion_evidence_hash: evidence.conversionEvidenceHash,
+        conversion_cutoff_at: evidence.conversionCutoffAt,
         target_date: targetDate,
       };
       if (requestedContentProfile) {
@@ -4626,6 +6562,12 @@ Deno.serve(async (req: Request) => {
       ]);
       const requestHash = await sha256Hex(canonicalStringify({
         batch_key: batchKey,
+        review_schema_version: evidence.reviewSchemaVersion,
+        review_hash: evidence.reviewHash,
+        decision_policy_id: evidence.decisionPolicyId,
+        decision_policy_evidence_hash: evidence.decisionPolicyEvidenceHash,
+        conversion_evidence_hash: evidence.conversionEvidenceHash,
+        conversion_cutoff_at: evidence.conversionCutoffAt,
         generation_profile: contentProfile,
         ...(requestedContentProfile ? { content_profile: contentProfile } : {}),
         concept_count: conceptCount,
@@ -4637,13 +6579,26 @@ Deno.serve(async (req: Request) => {
         prompt_source_sha256: promptSourceSha256,
       }));
       const fields = {
+        batch_input_mode: BATCH_INPUT_REVIEWED,
         batch_key: batchKey,
         request_hash: requestHash,
         parent_platform: evidence.platform,
         parent_campaign: evidence.campaign,
         parent_content: evidence.content,
         review_hash: evidence.reviewHash,
+        review_schema_version: evidence.reviewSchemaVersion,
+        decision_policy_id: evidence.decisionPolicyId,
+        decision_policy_reason_codes: evidence.decisionPolicyReasonCodes,
+        decision_policy_evidence_hash: evidence.decisionPolicyEvidenceHash,
+        comparable_fixed_age_snapshots:
+          evidence.comparableFixedAgeSnapshots,
+        ...(evidence.decisionOverrideNote ? {
+          decision_override_note: evidence.decisionOverrideNote,
+          decision_override_hash: evidence.decisionOverrideHash,
+        } : {}),
         evidence_hash: evidence.evidenceHash,
+        conversion_evidence_hash: evidence.conversionEvidenceHash,
+        conversion_cutoff_at: evidence.conversionCutoffAt,
         review_decision: evidence.decision,
         reviewed_at: evidence.reviewedAt,
         review_snapshot_captured_at: evidence.reviewedSnapshotAt,
@@ -4670,12 +6625,19 @@ Deno.serve(async (req: Request) => {
         }, claim.status || 409);
       }
       if (claim.idempotent) {
+        if (!batchDecisionPolicyMatches(claim.batch, evidence)) {
+          return response({ error: "growth_batch_evidence_stale" }, 409);
+        }
         return response({
           success: true,
           idempotent: true,
+          ...(scheduledGeneration ? { scheduled_generation: true } : {}),
           batch: safeBatch(claim.batch),
           pack_sha256: claim.batch.canonical_pack_sha256,
           render_pack: claim.renderPack,
+          ...(scheduledGeneration
+            ? { generation_handoff: scheduledGenerationHandoff(claim.batch) }
+            : {}),
         });
       }
       const reservation = await enforceBatchReservation(
@@ -4811,6 +6773,13 @@ Deno.serve(async (req: Request) => {
         freshEvidence?.error
         || freshEvidence.reviewHash !== evidence.reviewHash
         || freshEvidence.evidenceHash !== evidence.evidenceHash
+        || freshEvidence.reviewSchemaVersion !== evidence.reviewSchemaVersion
+        || freshEvidence.decisionPolicyId !== evidence.decisionPolicyId
+        || freshEvidence.decisionPolicyEvidenceHash
+          !== evidence.decisionPolicyEvidenceHash
+        || freshEvidence.conversionEvidenceHash
+          !== evidence.conversionEvidenceHash
+        || freshEvidence.conversionCutoffAt !== evidence.conversionCutoffAt
         || !freshSources
         || freshPromptSourceSha256 !== promptSourceSha256
       ) {
@@ -4873,6 +6842,11 @@ Deno.serve(async (req: Request) => {
           state: "generating",
           request_hash: requestHash,
           review_hash: evidence.reviewHash,
+          review_schema_version: evidence.reviewSchemaVersion,
+          decision_policy_id: evidence.decisionPolicyId,
+          decision_policy_evidence_hash: evidence.decisionPolicyEvidenceHash,
+          conversion_evidence_hash: evidence.conversionEvidenceHash,
+          conversion_cutoff_at: evidence.conversionCutoffAt,
           lease_generation: claim.leaseGeneration,
           lease_token: claim.leaseToken,
           lease_expires_at: { $gt: hookReservationAt },
@@ -4903,6 +6877,11 @@ Deno.serve(async (req: Request) => {
           state: "generating",
           request_hash: requestHash,
           review_hash: evidence.reviewHash,
+          review_schema_version: evidence.reviewSchemaVersion,
+          decision_policy_id: evidence.decisionPolicyId,
+          decision_policy_evidence_hash: evidence.decisionPolicyEvidenceHash,
+          conversion_evidence_hash: evidence.conversionEvidenceHash,
+          conversion_cutoff_at: evidence.conversionCutoffAt,
           prompt_source_sha256: promptSourceSha256,
           generated_hooks_sha256: generatedHooksSha256,
           lease_generation: claim.leaseGeneration,
@@ -4932,9 +6911,13 @@ Deno.serve(async (req: Request) => {
       return response({
         success: true,
         idempotent: false,
+        ...(scheduledGeneration ? { scheduled_generation: true } : {}),
         batch: safeBatch(saved),
         pack_sha256: canonicalPackSha256,
         render_pack: renderPack,
+        ...(scheduledGeneration
+          ? { generation_handoff: scheduledGenerationHandoff(saved) }
+          : {}),
       }, 201);
     }
 
@@ -5021,7 +7004,12 @@ Deno.serve(async (req: Request) => {
           id: batch.id,
           state: "ready",
           canonical_pack_sha256: expectedPackSha256,
-          review_hash: batch.review_hash,
+          ...(batchInputMode(batch) === BATCH_INPUT_BOOTSTRAP
+            ? {
+              bootstrap_authorization_hash:
+                batch.bootstrap_authorization_hash,
+            }
+            : { review_hash: batch.review_hash }),
         },
         {
           $set: {
@@ -5127,6 +7115,7 @@ Deno.serve(async (req: Request) => {
 
     if (action === "import_render_result") {
       const mediaOrigin = configuredMediaOrigin();
+      const mediaPathPrefix = configuredMediaPathPrefix();
       const allowedPackHashes = configuredRenderPackHashes();
       const allowedRenderEnvironmentHashes =
         configuredRenderEnvironmentHashes();
@@ -5136,6 +7125,8 @@ Deno.serve(async (req: Request) => {
       const packArtifacts = asArray(renderPack?.artifacts);
       const packSources = asArray(renderPack?.sources);
       const packSha256 = normalized(renderResult?.pack_sha256);
+      const expectedAudioMode = token(renderPack?.output?.audio_mode);
+      const expectedAudioRecipe = token(renderPack?.output?.audio_recipe);
       const templateId = token(renderResult?.template?.id);
       const templateVersion = compactText(renderResult?.template?.version, 80);
       const renderProfileId = token(renderResult?.renderer?.profile_id);
@@ -5179,6 +7170,7 @@ Deno.serve(async (req: Request) => {
       );
       if (
         !mediaOrigin
+        || !mediaPathPrefix
         || !allowedRenderEnvironmentHashes.size
         || renderResult?.schema_version !== RENDER_RESULT_SCHEMA
         || !token(renderResult?.batch_id)
@@ -5191,6 +7183,15 @@ Deno.serve(async (req: Request) => {
         || token(renderPack?.template?.id) !== templateId
         || compactText(renderPack?.template?.version, 80) !== templateVersion
         || renderProfileId !== RENDER_PROFILE_ID
+        || !AUDIO_MODES.has(expectedAudioMode)
+        || (
+          expectedAudioMode === "baked_owned_or_licensed"
+          && expectedAudioRecipe !== PROCEDURAL_AUDIO_RECIPE
+        )
+        || (
+          expectedAudioMode === "silent"
+          && Boolean(expectedAudioRecipe)
+        )
         || !/^[a-f0-9]{64}$/.test(renderEnvironmentSha256)
         || !allowedRenderEnvironmentHashes.has(renderEnvironmentSha256)
         || Object.values(renderEnvironment).some((value) => (
@@ -5273,6 +7274,7 @@ Deno.serve(async (req: Request) => {
         };
         return normalizeRenderImportItem(item, {
           mediaOrigin,
+          mediaPathPrefix,
           packSha256,
           templateId,
           templateVersion,
@@ -5280,6 +7282,8 @@ Deno.serve(async (req: Request) => {
           renderEnvironmentSha256,
           packArtifact,
           packSource,
+          expectedAudioMode,
+          expectedAudioRecipe,
           expectedRenderInputSha256: await sha256Hex(
             canonicalStringify(recipe),
           ),
@@ -5553,7 +7557,8 @@ Return exactly one variant for each requested platform. A variant is caption, ho
 4-7 word overlay lines, and a practical shot list; it is not rendered media. Never
 invent customer outcomes, performance numbers, names, addresses, emails, account
 identifiers, or testimonials. Label demo data in disclosure copy. Use one clear CTA.
-TikTok and Instagram copy should feel native but convey the same concept.`;
+TikTok and Instagram copy should feel native but convey the same concept. Keep TikTok
+provider text within its 2,200-character limit after disclosure and CTA assembly.`;
 
       const generated = await base44.integrations.Core.InvokeLLM({
         prompt,
@@ -6067,6 +8072,24 @@ TikTok and Instagram copy should feel native but convey the same concept.`;
       ) {
         return response({ error: "growth_batch_schedule_slot_mismatch" }, 409);
       }
+      if (isProductionGrowthCampaign(artifact?.campaign)) {
+        if (schedulingType !== "automatic") {
+          return response({ error: "production_batch_automatic_required" }, 409);
+        }
+        if (!batchTrust.batch) {
+          return response({ error: "production_batch_required" }, 409);
+        }
+        const productionReadiness = await productionBatchScheduleReadiness(
+          artifactEntity,
+          sourceEntity,
+          batchTrust.batch,
+          artifact,
+          nowMs,
+        );
+        if (!productionReadiness.ok) {
+          return response({ error: productionReadiness.error }, 409);
+        }
+      }
       const [
         scheduleBatches,
         scheduleArtifacts,
@@ -6135,6 +8158,7 @@ TikTok and Instagram copy should feel native but convey the same concept.`;
       }
       const providerOrganizationId = publishEnvironment.organizationId;
       const mediaOrigin = publishEnvironment.mediaOrigin;
+      const mediaPathPrefix = publishEnvironment.mediaPathPrefix;
       const providerChannelId = artifact.platform === "tiktok"
         ? publishEnvironment.tiktokChannelId
         : publishEnvironment.instagramChannelId;
@@ -6142,7 +8166,12 @@ TikTok and Instagram copy should feel native but convey the same concept.`;
         !providerOrganizationId
         || !providerChannelId
         || !mediaOrigin
-        || !mediaUsesOrigin(artifact.media_url, mediaOrigin)
+        || !mediaPathPrefix
+        || !mediaUrlUsesNamespace(
+          artifact.media_url,
+          mediaOrigin,
+          mediaPathPrefix,
+        )
       ) {
         return response({ error: "publishing_not_configured" }, 503);
       }
@@ -6152,6 +8181,7 @@ TikTok and Instagram copy should feel native but convey the same concept.`;
         providerChannelId,
         artifact.platform,
         mediaOrigin,
+        mediaPathPrefix,
       ].join("|"));
       const request = {
         provider: "buffer",
@@ -6160,6 +8190,7 @@ TikTok and Instagram copy should feel native but convey the same concept.`;
         provider_service: artifact.platform,
         config_revision: configRevision,
         media_origin: mediaOrigin,
+        media_path_prefix: mediaPathPrefix,
         artifact_id: artifact.id,
         artifact_hash: approvedHash,
         source_lineage_snapshot: sourceLineageSnapshot,
@@ -6306,6 +8337,7 @@ TikTok and Instagram copy should feel native but convey the same concept.`;
           provider_service: artifact.platform,
           config_revision: configRevision,
           media_origin: mediaOrigin,
+          media_path_prefix: mediaPathPrefix,
           artifact_id: artifact.id,
           artifact_key: artifact.artifact_key,
           artifact_hash: approvedHash,

@@ -2,10 +2,18 @@
   "name": "GrowthContentBatch",
   "type": "object",
   "properties": {
+    "batch_input_mode": {
+      "type": "string",
+      "enum": [
+        "reviewed_evidence",
+        "audited_seed_bootstrap"
+      ],
+      "description": "Trust input used to build the batch; older rows without this field use reviewed_evidence"
+    },
     "batch_key": {
       "type": "string",
       "pattern": "^[a-f0-9]{64}$",
-      "description": "Deterministic identity for one reviewed parent decision, content profile, and Phoenix target date"
+      "description": "Deterministic identity for one reviewed-evidence or audited-bootstrap input, content profile, and Phoenix target date"
     },
     "request_hash": {
       "type": "string",
@@ -32,10 +40,71 @@
       "pattern": "^[a-f0-9]{64}$",
       "description": "Hash binding the exact evidence, decision, operator note, and review timestamps"
     },
+    "review_schema_version": {
+      "type": "string",
+      "enum": [
+        "growth-review.v2",
+        "growth-review.v3"
+      ],
+      "description": "Reviewed-evidence contract; required by the server for reviewed_evidence batches"
+    },
+    "decision_policy_id": {
+      "type": "string",
+      "enum": [
+        "growth-decision-sufficiency.v1"
+      ]
+    },
+    "decision_policy_reason_codes": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 8,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": [
+          "base_social_evidence_supported",
+          "iterate_supported_by_social_evidence",
+          "repeat_supported_by_exact_activation",
+          "repeat_supported_by_mature_retention",
+          "repeat_supported_by_paid_outcome",
+          "repeat_supported_by_social_only_override",
+          "hold_supported_by_three_comparable_snapshots"
+        ]
+      }
+    },
+    "decision_policy_evidence_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "comparable_fixed_age_snapshots": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 25000,
+      "description": "Frozen server-counted comparison input copied from the reviewed parent"
+    },
+    "decision_override_note": {
+      "type": "string",
+      "minLength": 24,
+      "maxLength": 500
+    },
+    "decision_override_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
     "evidence_hash": {
       "type": "string",
       "pattern": "^[a-f0-9]{64}$",
       "description": "Canonical fixed-age social evidence hash used by the reviewed parent"
+    },
+    "conversion_evidence_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "Canonical SHA-256 of the exact post-eligible funnel frozen with the reviewed parent"
+    },
+    "conversion_cutoff_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Report generation cutoff bound into this reviewed-evidence batch"
     },
     "review_decision": {
       "type": "string",
@@ -51,6 +120,29 @@
     "review_snapshot_captured_at": {
       "type": "string",
       "format": "date-time"
+    },
+    "bootstrap_policy_version": {
+      "type": "string",
+      "enum": [
+        "audited-seed-bootstrap-v1"
+      ]
+    },
+    "bootstrap_authorized_by": {
+      "type": "string",
+      "maxLength": 160
+    },
+    "bootstrap_authorized_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "bootstrap_authorization_note": {
+      "type": "string",
+      "maxLength": 500
+    },
+    "bootstrap_authorization_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "Hash binding the exact owner authorization, audited seed, selected donor lineage, and target date"
     },
     "target_date": {
       "type": "string",
@@ -152,7 +244,7 @@
     "generated_hook_reservations": {
       "type": "array",
       "minItems": 2,
-      "maxItems": 3,
+      "maxItems": 6,
       "uniqueItems": true,
       "items": {
         "type": "string",
@@ -349,14 +441,6 @@
   "required": [
     "batch_key",
     "request_hash",
-    "parent_platform",
-    "parent_campaign",
-    "parent_content",
-    "review_hash",
-    "evidence_hash",
-    "review_decision",
-    "reviewed_at",
-    "review_snapshot_captured_at",
     "target_date",
     "timezone",
     "concept_count",

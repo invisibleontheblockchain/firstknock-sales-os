@@ -1,5 +1,6 @@
 const TOKEN_MAX = 120;
 export const MAX_SOCIAL_POST_TEXT = 2200;
+export const TIKTOK_SOCIAL_POST_TEXT_LIMIT = 2200;
 
 export function normalized(value) {
   return String(value || "").trim().toLowerCase();
@@ -106,20 +107,34 @@ export function platformTrackedUrl(platform, campaign, contentId) {
   return url.toString();
 }
 
+export function socialPostTextLimit(platform) {
+  return token(platform) === "tiktok"
+    ? TIKTOK_SOCIAL_POST_TEXT_LIMIT
+    : MAX_SOCIAL_POST_TEXT;
+}
+
 export function socialPostText(artifact) {
   const caption = String(artifact?.caption || "").trim();
   const disclosure = compactText(artifact?.disclosure, 500);
   const ctaLabel = compactText(artifact?.cta_label, 160);
   const ctaUrl = String(artifact?.cta_url || "").trim().slice(0, 2048);
+  const isTikTok = token(artifact?.platform) === "tiktok";
   const blocks = caption ? [caption] : [];
   const captionNormalized = normalized(caption);
   if (disclosure && !captionNormalized.includes(normalized(disclosure))) {
     blocks.push(disclosure);
   }
-  const cta = [ctaLabel, ctaUrl].filter(Boolean).join(": ");
-  const ctaAlreadyPresent = ctaUrl
-    ? caption.includes(ctaUrl)
-    : ctaLabel && captionNormalized.includes(normalized(ctaLabel));
+  // Buffer currently permits 2,200-character TikTok descriptions. Keep the
+  // tracked URL on the artifact for the controlled bio because raw organic
+  // caption URLs are not a reliable clickable handoff.
+  const cta = isTikTok
+    ? ctaLabel
+    : [ctaLabel, ctaUrl].filter(Boolean).join(": ");
+  const ctaAlreadyPresent = isTikTok
+    ? ctaLabel && captionNormalized.includes(normalized(ctaLabel))
+    : ctaUrl
+      ? caption.includes(ctaUrl)
+      : ctaLabel && captionNormalized.includes(normalized(ctaLabel));
   if (cta && !ctaAlreadyPresent) blocks.push(cta);
   return blocks.join("\n\n");
 }
@@ -224,6 +239,7 @@ export function canonicalJobRequest(job) {
   const hookSnapshot = compactText(job?.hook_snapshot, 300);
   const renderPackSha256 = normalized(job?.render_pack_sha256);
   const growthBatchKey = normalized(job?.growth_batch_key);
+  const mediaPathPrefix = String(job?.media_path_prefix || "");
   return {
     provider: "buffer",
     provider_organization_id: String(job?.provider_organization_id || ""),
@@ -231,6 +247,7 @@ export function canonicalJobRequest(job) {
     provider_service: token(job?.provider_service),
     config_revision: normalized(job?.config_revision),
     media_origin: String(job?.media_origin || ""),
+    ...(mediaPathPrefix ? { media_path_prefix: mediaPathPrefix } : {}),
     artifact_hash: normalized(job?.artifact_hash),
     platform: token(job?.platform),
     platform_content_id: token(job?.platform_content_id),
@@ -251,6 +268,7 @@ export async function publishJobRequestHash(job) {
 }
 
 export async function publishJobKey(job) {
+  const mediaPathPrefix = String(job?.media_path_prefix || "");
   return sha256Hex(canonicalStringify({
     provider: "buffer",
     provider_organization_id: String(job?.provider_organization_id || ""),
@@ -259,6 +277,7 @@ export async function publishJobKey(job) {
     platform_content_id: token(job?.platform_content_id),
     artifact_hash: normalized(job?.artifact_hash),
     media_origin: String(job?.media_origin || ""),
+    ...(mediaPathPrefix ? { media_path_prefix: mediaPathPrefix } : {}),
   }));
 }
 
@@ -266,6 +285,74 @@ export function isStablePublicHttpsUrl(value) {
   if (!isPublicHttpsUrl(value)) return false;
   const url = new URL(String(value || "").trim());
   return !url.search && url.href.length <= 2048;
+}
+
+export function normalizeMediaPathPrefix(value) {
+  const prefix = String(value || "").trim();
+  if (
+    !prefix
+    || prefix.length > 1024
+    || prefix.includes("%")
+    || prefix.includes("\\")
+    || prefix.includes("?")
+    || prefix.includes("#")
+    || !/^\/(?:[A-Za-z0-9][A-Za-z0-9._~-]*\/)+$/.test(prefix)
+  ) {
+    return "";
+  }
+  const segments = prefix.split("/").filter(Boolean);
+  return segments.some((segment) => segment === "." || segment === "..")
+    ? ""
+    : prefix;
+}
+
+export function mediaUrlUsesNamespace(value, origin, pathPrefix) {
+  const expectedOrigin = String(origin || "");
+  const expectedPrefix = normalizeMediaPathPrefix(pathPrefix);
+  if (!expectedOrigin || !expectedPrefix || !isStablePublicHttpsUrl(value)) {
+    return false;
+  }
+  try {
+    const url = new URL(String(value).trim());
+    if (
+      url.origin !== expectedOrigin
+      || !url.pathname.startsWith(expectedPrefix)
+      || url.pathname.includes("%")
+    ) {
+      return false;
+    }
+    const filename = url.pathname.slice(expectedPrefix.length);
+    return Boolean(filename)
+      && !filename.includes("/")
+      && /^[A-Za-z0-9][A-Za-z0-9._~-]*$/.test(filename);
+  } catch {
+    return false;
+  }
+}
+
+export function mediaUrlMatchesDeliveryKey(
+  value,
+  sha256,
+  deliveryKey,
+  origin,
+  pathPrefix,
+) {
+  const digest = normalized(sha256);
+  const key = String(deliveryKey || "").trim();
+  if (
+    !/^[a-f0-9]{64}$/.test(digest)
+    || !/^sha256\/[A-Za-z0-9][A-Za-z0-9._~-]*$/.test(key)
+    || !key.startsWith(`sha256/${digest}-`)
+    || !key.endsWith(".mp4")
+    || !mediaUrlUsesNamespace(value, origin, pathPrefix)
+    || !isContentAddressedMediaUrl(value, digest)
+  ) {
+    return false;
+  }
+  const basename = key.slice("sha256/".length);
+  const url = new URL(String(value).trim());
+  const filename = url.pathname.slice(normalizeMediaPathPrefix(pathPrefix).length);
+  return filename.endsWith(basename);
 }
 
 export function isContentAddressedMediaUrl(value, sha256) {

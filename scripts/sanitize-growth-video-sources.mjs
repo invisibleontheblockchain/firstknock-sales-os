@@ -362,6 +362,7 @@ function normalizeAsset(value, index) {
       'output_duration_ms',
       'short_source_fit',
       'apply_default_crop',
+      'crop',
       'privacy_masks',
       'release_state',
     ]),
@@ -423,6 +424,25 @@ function normalizeAsset(value, index) {
   if (value.release_state !== RELEASE_GATE) {
     fail(`${label}.release_state must preserve the visual-review release gate`);
   }
+  const applyDefaultCrop = exactBoolean(
+    value.apply_default_crop,
+    `${label}.apply_default_crop`,
+  );
+  const crop = value.crop == null
+    ? null
+    : normalizeRectangle(value.crop, `${label}.crop`);
+  if (applyDefaultCrop && crop) {
+    fail(`${label} cannot combine apply_default_crop with a custom crop`);
+  }
+  if (
+    crop
+    && (
+      crop.x + crop.width > rawSource.width
+      || crop.y + crop.height > rawSource.height
+    )
+  ) {
+    fail(`${label}.crop exceeds the expected raw bounds`);
+  }
   return {
     pilot_slot: token(value.pilot_slot, `${label}.pilot_slot`),
     raw_source: rawSource,
@@ -439,10 +459,8 @@ function normalizeAsset(value, index) {
     trim,
     output_duration_ms: outputDurationMs,
     short_source_fit: shortSourceFit,
-    apply_default_crop: exactBoolean(
-      value.apply_default_crop,
-      `${label}.apply_default_crop`,
-    ),
+    apply_default_crop: applyDefaultCrop,
+    ...(crop ? { crop } : {}),
     privacy_masks: privacyMasks,
     release_state: RELEASE_GATE,
   };
@@ -892,9 +910,11 @@ export function validateAssetAgainstProbe(asset, probe, outputProfile) {
   ) {
     fail(`${asset.safe_derived_asset_key} trim exceeds the verified raw duration`);
   }
-  const crop = outputProfile.default_crop;
+  const crop = asset.crop || (
+    asset.apply_default_crop ? outputProfile.default_crop : null
+  );
   if (
-    asset.apply_default_crop
+    crop
     && (
       crop.x + crop.width > probe.width
       || crop.y + crop.height > probe.height
@@ -943,8 +963,10 @@ export function buildSanitizedVideoFilter(asset, outputProfile) {
       + `:enable='gte(n,${relativeStartFrame})*lt(n,${relativeEndFrame})'`,
     );
   }
-  if (asset.apply_default_crop) {
-    const crop = outputProfile.default_crop;
+  const crop = asset.crop || (
+    asset.apply_default_crop ? outputProfile.default_crop : null
+  );
+  if (crop) {
     filters.push(
       `crop=w=${crop.width}:h=${crop.height}:x=${crop.x}:y=${crop.y}`,
     );
@@ -1314,6 +1336,7 @@ async function sanitizeOneAsset({
       output_duration_ms: asset.output_duration_ms,
       short_source_fit: asset.short_source_fit,
       apply_default_crop: asset.apply_default_crop,
+      ...(asset.crop ? { crop: asset.crop } : {}),
       ...(asset.apply_default_crop
         ? { default_crop: outputProfile.default_crop }
         : {}),

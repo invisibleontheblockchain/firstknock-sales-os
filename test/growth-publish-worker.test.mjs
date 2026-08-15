@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
-  createGrowthBase44,
+  createGrowthBase44 as createGrowthBase44Harness,
   growthHelpers,
   invokeJson,
   loadGrowthHandler,
@@ -12,6 +13,9 @@ const workerPath = 'base44/functions/processGrowthPublishQueue/entry.ts';
 const managePath = 'base44/functions/manageGrowthContentEngine/entry.ts';
 const workerSecret = 'worker-secret-that-is-at-least-32-characters';
 const apiKey = 'buffer-api-token-sentinel-never-persist';
+const mediaOrigin = 'https://media.firstknock.online';
+const mediaPathPrefix = '/files/public/app-firstknock/';
+const mediaNamespace = `${mediaOrigin}${mediaPathPrefix}`;
 const env = {
   GROWTH_PUBLISH_WORKER_SECRET: workerSecret,
   GROWTH_PUBLISH_ENABLED: 'true',
@@ -19,8 +23,34 @@ const env = {
   BUFFER_ORGANIZATION_ID: 'org_firstknock',
   BUFFER_INSTAGRAM_CHANNEL_ID: 'channel_instagram',
   BUFFER_TIKTOK_CHANNEL_ID: 'channel_tiktok',
-  GROWTH_MEDIA_ORIGIN: 'https://media.firstknock.online',
+  GROWTH_MEDIA_ORIGIN: mediaOrigin,
+  GROWTH_MEDIA_PATH_PREFIX: mediaPathPrefix,
 };
+
+function createGrowthBase44(options = {}) {
+  const resolved = { ...options };
+  if (resolved.heartbeats === undefined) {
+    resolved.heartbeats = [{
+      heartbeat_key: 'buffer-publisher',
+      config_revision: createHash('sha256')
+        .update([
+          'buffer-publisher',
+          env.BUFFER_ORGANIZATION_ID,
+          env.BUFFER_INSTAGRAM_CHANNEL_ID,
+          env.BUFFER_TIKTOK_CHANNEL_ID,
+          env.GROWTH_MEDIA_ORIGIN,
+          env.GROWTH_MEDIA_PATH_PREFIX,
+        ].join('|'))
+        .digest('hex'),
+      observed_at: new Date().toISOString(),
+      status: 'ready',
+      invocation_generation: 1,
+      last_batch_inspected: 0,
+      last_batch_processed: 0,
+    }];
+  }
+  return createGrowthBase44Harness(resolved);
+}
 const mediaBytes = new TextEncoder().encode('firstknock-approved-media-fixture-v1');
 const mediaSha256 = await growthHelpers.sha256BytesHex(mediaBytes);
 const sourceSha256 = 'a'.repeat(64);
@@ -64,7 +94,8 @@ async function fixture(overrides = {}) {
     cta_url: 'https://firstknock.online',
     disclosure: 'Demo data shown.',
     ai_generated: true,
-    media_url: `https://media.firstknock.online/sha256/${mediaSha256}-route-proof.mp4`,
+    media_url:
+      `${mediaNamespace}base44_opaque_${mediaSha256}-route-proof.mp4`,
     media_sha256: mediaSha256,
     mime_type: 'video/mp4',
     width: 1080,
@@ -87,6 +118,7 @@ async function fixture(overrides = {}) {
     env.BUFFER_INSTAGRAM_CHANNEL_ID,
     'instagram',
     env.GROWTH_MEDIA_ORIGIN,
+    env.GROWTH_MEDIA_PATH_PREFIX,
   ].join('|'));
   const request = {
     provider: 'buffer',
@@ -95,6 +127,7 @@ async function fixture(overrides = {}) {
     provider_service: 'instagram',
     config_revision: configRevision,
     media_origin: env.GROWTH_MEDIA_ORIGIN,
+    media_path_prefix: env.GROWTH_MEDIA_PATH_PREFIX,
     artifact_id: artifact.id,
     artifact_hash: artifact.approved_hash,
     platform: 'instagram',
@@ -175,6 +208,7 @@ async function tiktokFixture(overrides = {}) {
     env.BUFFER_TIKTOK_CHANNEL_ID,
     'tiktok',
     env.GROWTH_MEDIA_ORIGIN,
+    env.GROWTH_MEDIA_PATH_PREFIX,
   ].join('|'));
   const job = {
     ...original.job,
@@ -200,6 +234,7 @@ function bufferPost(fx, overrides = {}) {
     id: 'buffer_post_1',
     channelId: fx.job.provider_channel_id,
     channelService: fx.job.provider_service,
+    schedulingType: fx.job.scheduling_type,
     status: 'scheduled',
     dueAt: fx.dueAt,
     sentAt: null,
@@ -223,6 +258,8 @@ function measurementPlan(fx, overrides = {}) {
     campaign: fx.artifact.campaign,
     content: fx.artifact.platform_content_id,
     sprint: 'content-engine',
+    format: 'reel',
+    cta_label: fx.artifact.cta_label,
     planned_publish_at: fx.dueAt,
     delivery_managed_by: 'buffer',
     delivery_status: 'planned',
@@ -269,7 +306,254 @@ function withApprovedMedia(bufferFetch, bytes = mediaBytes, channelOverrides = {
   };
 }
 
-test('new publish lineage fields are conditional so legacy request hashes remain stable', async () => {
+const dayMs = 24 * 60 * 60 * 1000;
+
+async function sentMetricsFixture({
+  publishedAt = new Date(Date.now() - dayMs - 60_000).toISOString(),
+  checkpoints = [],
+  job = {},
+} = {}) {
+  const fx = await fixture();
+  const providerPostId = job.provider_post_id || 'buffer_post_metrics_1';
+  fx.job = {
+    ...fx.job,
+    state: 'sent',
+    provider_status: 'sent',
+    provider_post_id: providerPostId,
+    provider_sent_at: publishedAt,
+    provider_external_link: 'https://www.instagram.com/p/metrics-1/',
+    metrics_published_at: publishedAt,
+    metrics_next_checkpoint_at: new Date(
+      new Date(publishedAt).getTime()
+        + ([1, 3, 7, 30].find(
+          (days) => !checkpoints.some(
+            (checkpoint) => checkpoint.snapshot_days === days,
+          ),
+        ) || 30) * dayMs,
+    ).toISOString(),
+    metrics_checkpoints: checkpoints,
+    metrics_sync_attempt_count: 0,
+    ...job,
+  };
+  return {
+    ...fx,
+    publishedAt,
+    plan: measurementPlan(fx, {
+      platform: fx.job.platform,
+      published_at: publishedAt,
+      delivery_status: 'published',
+    }),
+  };
+}
+
+function bufferMetricsPost(fx, overrides = {}) {
+  return {
+    id: fx.job.provider_post_id,
+    channelId: fx.job.provider_channel_id,
+    channelService: fx.job.provider_service,
+    status: 'sent',
+    sentAt: fx.job.provider_sent_at,
+    metricsUpdatedAt: new Date().toISOString(),
+    metrics: [
+      { type: 'reach', name: 'Reach', value: 120, unit: 'count' },
+      { type: 'views', name: 'Views', value: 450, unit: 'count' },
+      { type: 'shares', name: 'Shares', value: 7, unit: 'count' },
+      { type: 'saves', name: 'Saves', value: 8, unit: 'count' },
+      { type: 'comments', name: 'Comments', value: 9, unit: 'count' },
+      { type: 'follows', name: 'Follows', value: 10, unit: 'count' },
+      { type: 'clicks', name: 'Clicks', value: 11, unit: 'count' },
+    ],
+    ...overrides,
+  };
+}
+
+function bufferMetricsFetch(fx, overrides = {}, onQuery) {
+  return async (url, options) => {
+    assert.equal(String(url), 'https://api.buffer.com');
+    assert.equal(options.headers.authorization, `Bearer ${apiKey}`);
+    const query = JSON.parse(String(options.body || '{}')).query;
+    assert.match(query, /metricsUpdatedAt/);
+    assert.match(query, /metrics\s*\{/);
+    assert.doesNotMatch(query, /createPost|assets\s*\{|channel\(input:|posts\(first:/);
+    onQuery?.(query);
+    return Response.json({
+      data: { post: bufferMetricsPost(fx, overrides) },
+    });
+  };
+}
+
+function metricFingerprintPayload(metric) {
+  const metricFields = [
+    'reach',
+    'views',
+    'shares',
+    'saves',
+    'comments',
+    'follows',
+    'profile_visits',
+    'link_clicks',
+    'dm_intents',
+  ];
+  const payload = {
+    campaign: String(metric.campaign || '1000-users').trim().toLowerCase(),
+    content: String(metric.content || '').trim().toLowerCase(),
+    snapshot_days: Number(metric.snapshot_days || 7),
+    snapshot_captured_at: new Date(metric.snapshot_captured_at).toISOString(),
+    published_at: metric.published_at
+      ? new Date(metric.published_at).toISOString()
+      : '',
+  };
+  for (const field of metricFields) {
+    payload[field] = Math.max(0, Number(metric[field] || 0));
+  }
+  const manualFields = Array.isArray(metric.observed_metric_fields)
+    ? metric.observed_metric_fields
+    : null;
+  const providerFields = String(metric.metric_source || '').trim().toLowerCase() === 'buffer'
+      && Array.isArray(metric.provider_observed_metric_types)
+    ? metric.provider_observed_metric_types
+    : null;
+  const observedFields = manualFields || providerFields;
+  if (observedFields) {
+    const observed = new Set(
+      observedFields.map((field) => String(field || '').trim().toLowerCase()),
+    );
+    payload.observed_fields = metricFields.filter((field) => observed.has(field));
+  }
+  return JSON.stringify(payload);
+}
+
+async function testProviderMetricsHash(
+  fx,
+  metricsUpdatedAt,
+  values,
+  observedTypes = [
+    'comments',
+    'follows',
+    'reach',
+    'saves',
+    'shares',
+    'views',
+  ],
+) {
+  return growthHelpers.sha256Hex(growthHelpers.canonicalStringify({
+    provider: 'buffer',
+    provider_post_id: fx.job.provider_post_id,
+    provider_channel_id: fx.job.provider_channel_id,
+    provider_channel_service: fx.job.provider_service,
+    metrics_updated_at: metricsUpdatedAt,
+    observed_metric_types: observedTypes,
+    metrics: values,
+  }));
+}
+
+async function resealStoredMetric(fx, metric) {
+  const observedTypes = Array.isArray(metric.provider_observed_metric_types)
+    ? metric.provider_observed_metric_types
+    : [];
+  const providerValues = {};
+  for (const field of observedTypes) {
+    if (Object.hasOwn(metric, field)) providerValues[field] = metric[field];
+  }
+  metric.provider_metrics_hash = await testProviderMetricsHash(
+    fx,
+    metric.provider_metrics_updated_at,
+    providerValues,
+    observedTypes,
+  );
+  metric.snapshot_fingerprint = createHash('sha256')
+    .update(metricFingerprintPayload(metric))
+    .digest('hex');
+  return metric;
+}
+
+async function exactStoredMetric(fx, {
+  id = 'metric_from_lost_fence',
+  days = 1,
+  capturedAt = new Date(
+    new Date(fx.publishedAt).getTime() + days * dayMs + 60_000,
+  ).toISOString(),
+  observedTypes = [
+    'comments',
+    'follows',
+    'reach',
+    'saves',
+    'shares',
+    'views',
+  ],
+  values = {
+    reach: 120,
+    views: 450,
+    shares: 7,
+    saves: 8,
+    comments: 9,
+    follows: 10,
+  },
+  overrides = {},
+} = {}) {
+  const metric = {
+    id,
+    platform: fx.job.platform,
+    campaign: fx.job.campaign,
+    content: fx.job.platform_content_id,
+    format: fx.plan.format,
+    hook: String(fx.job.hook_snapshot || '').trim().replace(/\s+/g, ' ').slice(0, 300),
+    cta_variant: String(fx.plan.cta_label || '').trim().replace(/\s+/g, ' ').slice(0, 120),
+    published_at: fx.publishedAt,
+    snapshot_days: days,
+    snapshot_captured_at: capturedAt,
+    ...values,
+    metric_source: 'buffer',
+    provider_post_id: String(fx.job.provider_post_id || '').slice(0, 300),
+    provider_channel_id: String(fx.job.provider_channel_id || '').slice(0, 300),
+    provider_metrics_updated_at: capturedAt,
+    provider_observed_metric_types: [...observedTypes],
+    artifact_key: String(fx.job.artifact_key || '').slice(0, 120),
+    concept_id: String(fx.job.concept_id || '').slice(0, 120),
+    ...(/^[a-f0-9]{64}$/.test(
+      String(fx.job.growth_batch_key || '').trim().toLowerCase(),
+    )
+      ? { growth_batch_key: String(fx.job.growth_batch_key).trim().toLowerCase() }
+      : {}),
+    ...overrides,
+  };
+  return resealStoredMetric(fx, metric);
+}
+
+function checkpointRecord(publishedAt, days, status = 'captured') {
+  const dueAt = new Date(new Date(publishedAt).getTime() + days * dayMs).toISOString();
+  return {
+    snapshot_days: days,
+    due_at: dueAt,
+    window_closes_at: new Date(new Date(dueAt).getTime() + dayMs).toISOString(),
+    status,
+    recorded_at: dueAt,
+    ...(status === 'captured'
+      ? {
+        metric_id: `metric_${days}`,
+        snapshot_captured_at: dueAt,
+        snapshot_fingerprint: String(days).padStart(64, 'a').slice(-64),
+        provider_metrics_updated_at: dueAt,
+        provider_metrics_hash: String(days).padStart(64, 'b').slice(-64),
+      }
+      : { error_code: 'test_review_needed' }),
+  };
+}
+
+function fixedDateAt(isoValue) {
+  const fixedMs = new Date(isoValue).getTime();
+  return class FixedDate extends Date {
+    constructor(value) {
+      super(value === undefined ? fixedMs : value);
+    }
+
+    static now() {
+      return fixedMs;
+    }
+  };
+}
+
+test('new immutable fields are conditional and media namespaces bind request hashes', async () => {
   const legacyRequest = {
     provider: 'buffer',
     provider_organization_id: 'org_firstknock',
@@ -297,6 +581,7 @@ test('new publish lineage fields are conditional so legacy request hashes remain
       hook_snapshot: '   ',
       render_pack_sha256: '',
       growth_batch_key: '',
+      media_path_prefix: '',
     }),
     legacyHash,
   );
@@ -306,6 +591,7 @@ test('new publish lineage fields are conditional so legacy request hashes remain
     hook_snapshot: 'One area. One clean route.',
     render_pack_sha256: 'c'.repeat(64),
     growth_batch_key: 'd'.repeat(64),
+    media_path_prefix: env.GROWTH_MEDIA_PATH_PREFIX,
   };
   const boundHash = await growthHelpers.publishJobRequestHash(boundRequest);
   assert.notEqual(boundHash, legacyHash);
@@ -319,6 +605,13 @@ test('new publish lineage fields are conditional so legacy request hashes remain
     }),
     boundHash,
   );
+  assert.notEqual(
+    await growthHelpers.publishJobRequestHash({
+      ...boundRequest,
+      media_path_prefix: '/files/public/different-app/',
+    }),
+    boundHash,
+  );
 });
 
 test('publish-job schema admits reservation_pending but the worker never claims it', async () => {
@@ -329,6 +622,11 @@ test('publish-job schema admits reservation_pending but the worker never claims 
   assert.equal(
     schema.properties.state.enum.includes('reservation_pending'),
     true,
+  );
+  assert.equal(schema.required.includes('media_path_prefix'), true);
+  assert.match(
+    env.GROWTH_MEDIA_PATH_PREFIX,
+    new RegExp(schema.properties.media_path_prefix.pattern),
   );
   const fx = await fixture({
     job: {
@@ -551,6 +849,19 @@ test('worker rejects missing configuration and bad secrets before storage or pro
   assert.equal(clientCreates, 0);
   assert.equal(fetches, 0);
   assert.equal(entities.GrowthPublishJob.counters.filter, 0);
+
+  handler = loadGrowthHandler(workerPath, {
+    base44,
+    env: { ...env, GROWTH_MEDIA_PATH_PREFIX: '' },
+    onClientCreate: () => { clientCreates += 1; },
+    fetchImpl: async () => { fetches += 1; },
+  });
+  result = await invokeJson(handler, {}, { secret: workerSecret });
+  assert.equal(result.status, 503);
+  assert.equal(result.body.error, 'buffer_not_configured');
+  assert.equal(clientCreates, 0);
+  assert.equal(fetches, 0);
+  assert.equal(entities.GrowthPublishJob.counters.filter, 0);
 });
 
 test('disabled kill switch performs no entity or provider work', async () => {
@@ -648,6 +959,86 @@ test('artifact tampering after approval blocks provider access', async () => {
   assert.equal(entities.GrowthPublishJob.records[0].state, 'failed');
   assert.equal(entities.GrowthPublishJob.records[0].last_error_code, 'artifact_approval_changed');
   assert.equal(entities.GrowthContentPlan.records[0].delivery_status, 'canceled');
+});
+
+test('shared-origin media from another Base44 app namespace fails closed', async () => {
+  const fx = await fixture();
+  fx.artifact.media_url = [
+    env.GROWTH_MEDIA_ORIGIN,
+    '/files/public/another-app/',
+    `opaque_${mediaSha256}-route-proof.mp4`,
+  ].join('');
+  fx.artifact.approved_hash =
+    await growthHelpers.artifactApprovalHash(fx.artifact);
+  fx.job.artifact_hash = fx.artifact.approved_hash;
+  fx.job.request_hash = await growthHelpers.publishJobRequestHash(fx.job);
+  fx.job.job_key = await growthHelpers.publishJobKey(fx.job);
+  const { base44, entities } = createGrowthBase44({
+    sources: [source],
+    artifacts: [fx.artifact],
+    jobs: [fx.job],
+    plans: [measurementPlan(fx)],
+  });
+  let fetches = 0;
+  const handler = loadGrowthHandler(workerPath, {
+    base44,
+    env,
+    fetchImpl: async () => {
+      fetches += 1;
+      throw new Error('cross-app media must fail before network access');
+    },
+  });
+
+  const result = await invokeJson(handler, {}, { secret: workerSecret });
+
+  assert.equal(result.status, 200);
+  assert.equal(fetches, 0);
+  assert.equal(entities.GrowthPublishJob.records[0].state, 'failed');
+  assert.equal(
+    entities.GrowthPublishJob.records[0].last_error_code,
+    'media_namespace_mismatch',
+  );
+  assert.equal(entities.GrowthContentPlan.records[0].delivery_status, 'canceled');
+});
+
+test('immutable publish-job namespace drift cannot bypass request hashing', async () => {
+  const fx = await fixture();
+  fx.job.media_path_prefix = '/files/public/another-app/';
+  fx.job.config_revision = await growthHelpers.sha256Hex([
+    'buffer',
+    env.BUFFER_ORGANIZATION_ID,
+    env.BUFFER_INSTAGRAM_CHANNEL_ID,
+    'instagram',
+    fx.job.media_origin,
+    fx.job.media_path_prefix,
+  ].join('|'));
+  fx.job.request_hash = await growthHelpers.publishJobRequestHash(fx.job);
+  fx.job.job_key = await growthHelpers.publishJobKey(fx.job);
+  const { base44, entities } = createGrowthBase44({
+    sources: [source],
+    artifacts: [fx.artifact],
+    jobs: [fx.job],
+    plans: [measurementPlan(fx)],
+  });
+  let fetches = 0;
+  const handler = loadGrowthHandler(workerPath, {
+    base44,
+    env,
+    fetchImpl: async () => {
+      fetches += 1;
+      throw new Error('namespace drift must fail before network access');
+    },
+  });
+
+  const result = await invokeJson(handler, {}, { secret: workerSecret });
+
+  assert.equal(result.status, 200);
+  assert.equal(fetches, 0);
+  assert.equal(entities.GrowthPublishJob.records[0].state, 'failed');
+  assert.equal(
+    entities.GrowthPublishJob.records[0].last_error_code,
+    'publish_job_configuration_changed',
+  );
 });
 
 test('approval revoked after the earlier worker check is fenced before createPost', async () => {
@@ -1734,6 +2125,7 @@ test('mismatched create successes fail closed while retaining the provider id', 
   const cases = [
     ['channel', (fx) => ({ channelId: 'wrong_channel' })],
     ['channel service', () => ({ channelService: 'tiktok' })],
+    ['publishing mode', () => ({ schedulingType: 'notification' })],
     ['time', (fx) => ({
       dueAt: new Date(new Date(fx.dueAt).getTime() + 60 * 1000).toISOString(),
     })],
@@ -1907,6 +2299,14 @@ test('a typed terminal rejection can be re-reviewed and retried through the mana
       schedule_lock_token: '',
     },
   });
+  fx.artifact.campaign = 'provider-retry-test';
+  fx.artifact.provider_text = growthHelpers.socialPostText(fx.artifact);
+  fx.artifact.approved_hash =
+    await growthHelpers.artifactApprovalHash(fx.artifact);
+  fx.job.campaign = fx.artifact.campaign;
+  fx.job.artifact_hash = fx.artifact.approved_hash;
+  fx.job.job_key = await growthHelpers.publishJobKey(fx.job);
+  fx.job.request_hash = await growthHelpers.publishJobRequestHash(fx.job);
   const { base44, entities } = createGrowthBase44({
     sources: [source],
     artifacts: [fx.artifact],
@@ -2883,6 +3283,7 @@ test('measurement_retry repairs from durable sent evidence despite source and co
     oldChannelId,
     'instagram',
     env.GROWTH_MEDIA_ORIGIN,
+    env.GROWTH_MEDIA_PATH_PREFIX,
   ].join('|'));
   const cases = [
     {
@@ -3006,4 +3407,1001 @@ test('an expired measurement-retry lease recovers to local measurement repair', 
   assert.equal(entities.GrowthContentPlan.records[0].published_at, sentAt);
   assert.equal(entities.GrowthContentPlan.records[0].delivery_status, 'published');
   assert.equal(providerFetches, 0);
+});
+
+test('fresh Buffer count metrics preserve plan dimensions and ignore generic clicks', async () => {
+  const fx = await sentMetricsFixture();
+  fx.plan.format = 'carousel';
+  fx.plan.cta_label = 'SEE THE FEATURE';
+  const metricsUpdatedAt = new Date().toISOString();
+  const { base44, entities } = createGrowthBase44({
+    jobs: [fx.job],
+    plans: [fx.plan],
+  });
+  let queries = 0;
+  const handler = loadGrowthHandler(workerPath, {
+    base44,
+    env,
+    fetchImpl: bufferMetricsFetch(
+      fx,
+      {
+        metricsUpdatedAt,
+        metrics: [
+          { type: 'reach', name: 'Reach', value: 123, unit: 'count' },
+          { type: 'views', name: 'Views', value: 456, unit: 'count' },
+          { type: 'shares', name: 'Shares', value: 7, unit: 'count' },
+          { type: 'saves', name: 'Saves', value: 8, unit: 'count' },
+          { type: 'comments', name: 'Comments', value: 9, unit: 'count' },
+          { type: 'follows', name: 'Follows', value: 10, unit: 'count' },
+          { type: 'clicks', name: 'Clicks', value: 11, unit: 'count' },
+          { type: 'impressions', name: 'Impressions', value: 999, unit: 'count' },
+          { type: 'engagementRate', name: 'Engagement', value: 42, unit: 'percentage' },
+        ],
+      },
+      () => { queries += 1; },
+    ),
+  });
+
+  const result = await invokeJson(handler, {}, { secret: workerSecret });
+
+  assert.equal(result.status, 200);
+  assert.equal(result.body.states.sent, 1);
+  assert.equal(queries, 1);
+  assert.equal(entities.GrowthSourceAsset.counters.filter, 0);
+  assert.equal(entities.GrowthCreativeArtifact.counters.get, 0);
+  assert.equal(entities.GrowthContentMetric.records.length, 1);
+  const metric = entities.GrowthContentMetric.records[0];
+  assert.equal(metric.platform, 'instagram');
+  assert.equal(metric.campaign, fx.job.campaign);
+  assert.equal(metric.content, fx.job.platform_content_id);
+  assert.equal(metric.snapshot_days, 1);
+  assert.ok(
+    new Date(metric.snapshot_captured_at).getTime()
+      >= new Date(fx.publishedAt).getTime() + dayMs,
+  );
+  assert.equal(metric.reach, 123);
+  assert.equal(metric.views, 456);
+  assert.equal(metric.shares, 7);
+  assert.equal(metric.saves, 8);
+  assert.equal(metric.comments, 9);
+  assert.equal(metric.follows, 10);
+  assert.equal(metric.link_clicks, undefined);
+  assert.equal(metric.profile_visits, undefined);
+  assert.equal(metric.dm_intents, undefined);
+  assert.deepEqual(
+    metric.provider_observed_metric_types,
+    ['comments', 'follows', 'reach', 'saves', 'shares', 'views'],
+  );
+  assert.equal(metric.format, 'carousel');
+  assert.equal(metric.cta_variant, 'SEE THE FEATURE');
+  assert.equal(metric.metric_source, 'buffer');
+  assert.equal(metric.provider_post_id, fx.job.provider_post_id);
+  assert.equal(metric.provider_channel_id, fx.job.provider_channel_id);
+  assert.equal(metric.provider_metrics_updated_at, metricsUpdatedAt);
+  assert.match(metric.provider_metrics_hash, /^[a-f0-9]{64}$/);
+  assert.equal(
+    metric.snapshot_fingerprint,
+    createHash('sha256').update(metricFingerprintPayload(metric)).digest('hex'),
+  );
+  const savedJob = entities.GrowthPublishJob.records[0];
+  assert.equal(savedJob.state, 'sent');
+  assert.equal(savedJob.attempt_count, 0);
+  assert.equal(savedJob.metrics_sync_attempt_count, 1);
+  assert.equal(savedJob.metrics_checkpoints.length, 1);
+  assert.equal(savedJob.metrics_checkpoints[0].status, 'captured');
+  assert.equal(savedJob.metrics_checkpoints[0].snapshot_days, 1);
+  assert.equal(
+    savedJob.provider_metrics_hash,
+    metric.provider_metrics_hash,
+  );
+  assert.equal(
+    savedJob.metrics_next_checkpoint_at,
+    new Date(new Date(fx.publishedAt).getTime() + 3 * dayMs).toISOString(),
+  );
+
+  const jobSchema = JSON.parse(
+    readFileSync('base44/entities/GrowthPublishJob.jsonc', 'utf8'),
+  );
+  const metricSchema = JSON.parse(
+    readFileSync('base44/entities/GrowthContentMetric.jsonc', 'utf8'),
+  );
+  assert.ok(jobSchema.properties.lease_source_state.enum.includes('sent'));
+  assert.deepEqual(
+    jobSchema.properties.metrics_checkpoints.items.properties.status.enum,
+    ['captured', 'review_needed'],
+  );
+  assert.equal(
+    metricSchema.properties.metric_source.enum.includes('buffer'),
+    true,
+  );
+});
+
+test('stale Buffer refresh evidence retries inside the D1 window and later captures once fresh', async () => {
+  const fx = await sentMetricsFixture();
+  const dueAt = new Date(new Date(fx.publishedAt).getTime() + dayMs).toISOString();
+  const staleUpdatedAt = new Date(new Date(dueAt).getTime() - 1000).toISOString();
+  const freshUpdatedAt = new Date().toISOString();
+  const { base44, entities } = createGrowthBase44({
+    jobs: [fx.job],
+    plans: [fx.plan],
+  });
+  let reads = 0;
+  const handler = loadGrowthHandler(workerPath, {
+    base44,
+    env,
+    fetchImpl: async (...args) => {
+      reads += 1;
+      return bufferMetricsFetch(fx, {
+        metricsUpdatedAt: reads === 1 ? staleUpdatedAt : freshUpdatedAt,
+      })(...args);
+    },
+  });
+
+  let result = await invokeJson(handler, {}, { secret: workerSecret });
+
+  assert.equal(result.status, 200);
+  assert.equal(entities.GrowthContentMetric.records.length, 0);
+  let savedJob = entities.GrowthPublishJob.records[0];
+  assert.equal(savedJob.state, 'sent');
+  assert.equal(savedJob.metrics_checkpoints.length, 0);
+  assert.equal(savedJob.last_error_code, 'buffer_metrics_refresh_stale');
+  assert.equal(savedJob.provider_metrics_updated_at, staleUpdatedAt);
+  assert.match(savedJob.provider_metrics_hash, /^[a-f0-9]{64}$/);
+  assert.ok(new Date(savedJob.metrics_next_checkpoint_at).getTime() > Date.now());
+
+  savedJob.metrics_next_checkpoint_at = new Date(Date.now() - 1000).toISOString();
+  result = await invokeJson(handler, {}, { secret: workerSecret });
+
+  assert.equal(result.status, 200);
+  assert.equal(reads, 2);
+  assert.equal(entities.GrowthContentMetric.records.length, 1);
+  savedJob = entities.GrowthPublishJob.records[0];
+  assert.equal(savedJob.metrics_checkpoints[0].status, 'captured');
+  assert.equal(savedJob.provider_metrics_updated_at, freshUpdatedAt);
+});
+
+test('an exact provider checkpoint is adopted before any advanced Buffer read', async () => {
+  const fx = await sentMetricsFixture();
+  const existingMetric = await exactStoredMetric(fx);
+  const { base44, entities } = createGrowthBase44({
+    jobs: [fx.job],
+    plans: [fx.plan],
+    metrics: [existingMetric],
+  });
+  let reads = 0;
+  const handler = loadGrowthHandler(workerPath, {
+    base44,
+    env,
+    fetchImpl: async () => {
+      reads += 1;
+      throw new Error('an exact local checkpoint must win before Buffer');
+    },
+  });
+
+  let result = await invokeJson(handler, {}, { secret: workerSecret });
+  assert.equal(result.status, 200);
+  assert.equal(entities.GrowthContentMetric.records.length, 1);
+  assert.equal(entities.GrowthContentMetric.counters.create, 0);
+  assert.equal(entities.GrowthContentMetric.counters.update, 0);
+  assert.equal(entities.GrowthPublishJob.records[0].metrics_checkpoints[0].metric_id,
+    'metric_from_lost_fence');
+
+  Object.assign(entities.GrowthPublishJob.records[0], {
+    metrics_checkpoints: [],
+    metrics_next_checkpoint_at: new Date(Date.now() - 1000).toISOString(),
+  });
+  result = await invokeJson(handler, {}, { secret: workerSecret });
+
+  assert.equal(result.status, 200);
+  assert.equal(reads, 0);
+  assert.equal(entities.GrowthContentMetric.records.length, 1);
+  assert.equal(entities.GrowthContentMetric.counters.create, 0);
+  assert.equal(entities.GrowthPublishJob.records[0].metrics_checkpoints.length, 1);
+});
+
+test('an orphaned in-window checkpoint is recovered after its final-read tolerance', async () => {
+  const publishedAt = '2026-03-01T00:00:00.000Z';
+  const invokedAt = '2026-03-03T00:11:00.000Z';
+  const fx = await sentMetricsFixture({ publishedAt });
+  const existingMetric = await exactStoredMetric(fx, {
+    capturedAt: '2026-03-02T12:00:00.000Z',
+  });
+  const { base44, entities } = createGrowthBase44({
+    jobs: [fx.job],
+    plans: [fx.plan],
+    metrics: [existingMetric],
+  });
+  let providerReads = 0;
+  const handler = loadGrowthHandler(workerPath, {
+    base44,
+    env,
+    dateImpl: fixedDateAt(invokedAt),
+    fetchImpl: async () => {
+      providerReads += 1;
+      throw new Error('an overdue orphan must reconcile before Buffer');
+    },
+  });
+
+  const result = await invokeJson(handler, {}, { secret: workerSecret });
+
+  assert.equal(result.status, 200);
+  assert.equal(providerReads, 0);
+  assert.equal(entities.GrowthContentMetric.counters.create, 0);
+  const savedJob = entities.GrowthPublishJob.records[0];
+  assert.equal(savedJob.metrics_checkpoints.length, 1);
+  assert.equal(savedJob.metrics_checkpoints[0].status, 'captured');
+  assert.equal(savedJob.metrics_checkpoints[0].metric_id, existingMetric.id);
+  assert.equal(
+    savedJob.metrics_checkpoints[0].snapshot_captured_at,
+    existingMetric.snapshot_captured_at,
+  );
+  assert.equal(savedJob.last_error_code, '');
+  assert.equal(
+    savedJob.metrics_next_checkpoint_at,
+    '2026-03-04T00:00:00.000Z',
+  );
+});
+
+test('a future-dated orphan row cannot be adopted early', async () => {
+  const publishedAt = '2026-03-01T00:00:00.000Z';
+  const invokedAt = '2026-03-02T00:01:00.000Z';
+  const fx = await sentMetricsFixture({ publishedAt });
+  const futureMetric = await exactStoredMetric(fx, {
+    capturedAt: '2026-03-02T00:07:00.000Z',
+  });
+  const { base44, entities } = createGrowthBase44({
+    jobs: [fx.job],
+    plans: [fx.plan],
+    metrics: [futureMetric],
+  });
+  let providerReads = 0;
+  const handler = loadGrowthHandler(workerPath, {
+    base44,
+    env,
+    dateImpl: fixedDateAt(invokedAt),
+    fetchImpl: async () => {
+      providerReads += 1;
+      throw new Error('future local evidence must fail before Buffer');
+    },
+  });
+
+  const result = await invokeJson(handler, {}, { secret: workerSecret });
+
+  assert.equal(result.status, 200);
+  assert.equal(providerReads, 0);
+  const checkpoint = entities.GrowthPublishJob.records[0].metrics_checkpoints[0];
+  assert.equal(checkpoint.status, 'review_needed');
+  assert.equal(checkpoint.error_code, 'content_snapshot_conflict');
+});
+
+test('orphan checkpoint recovery rejects every non-exact candidate without Buffer', async (t) => {
+  const publishedAt = '2026-03-01T00:00:00.000Z';
+  const invokedAt = '2026-03-03T00:11:00.000Z';
+  const cases = [
+    {
+      name: 'manual row',
+      mutate: async (metric, fx) => {
+        delete metric.metric_source;
+        metric.observed_metric_fields = [...metric.provider_observed_metric_types];
+        await resealStoredMetric(fx, metric);
+      },
+    },
+    {
+      name: 'duplicate automated rows',
+      rows: async (metric) => [
+        metric,
+        { ...structuredClone(metric), id: 'duplicate_metric' },
+      ],
+    },
+    {
+      name: 'plan format mismatch',
+      mutate: async (metric) => {
+        metric.format = 'carousel';
+      },
+    },
+    {
+      name: 'plan CTA mismatch',
+      mutate: async (metric) => {
+        metric.cta_variant = 'A different CTA';
+      },
+    },
+    {
+      name: 'hook mismatch',
+      mutate: async (metric) => {
+        metric.hook = 'A different hook';
+      },
+    },
+    {
+      name: 'artifact attribution mismatch',
+      mutate: async (metric) => {
+        metric.artifact_key = 'different-artifact';
+      },
+    },
+    {
+      name: 'concept attribution mismatch',
+      mutate: async (metric) => {
+        metric.concept_id = 'different-concept';
+      },
+    },
+    {
+      name: 'unexpected batch attribution',
+      mutate: async (metric) => {
+        metric.growth_batch_key = 'd'.repeat(64);
+      },
+    },
+    {
+      name: 'provider post mismatch',
+      mutate: async (metric) => {
+        metric.provider_post_id = 'different-provider-post';
+      },
+    },
+    {
+      name: 'provider channel mismatch',
+      mutate: async (metric) => {
+        metric.provider_channel_id = 'different-provider-channel';
+      },
+    },
+    {
+      name: 'immutable job request mismatch',
+      mutate: async (_metric, fx) => {
+        fx.job.provider_organization_id = 'different-provider-org';
+      },
+    },
+    {
+      name: 'publication clock mismatch',
+      mutate: async (metric, fx) => {
+        metric.published_at = '2026-03-01T00:00:01.000Z';
+        await resealStoredMetric(fx, metric);
+      },
+    },
+    {
+      name: 'capture before due',
+      mutate: async (metric, fx) => {
+        metric.snapshot_captured_at = '2026-03-01T23:59:59.000Z';
+        metric.provider_metrics_updated_at = metric.snapshot_captured_at;
+        await resealStoredMetric(fx, metric);
+      },
+    },
+    {
+      name: 'capture after close',
+      mutate: async (metric, fx) => {
+        metric.snapshot_captured_at = '2026-03-03T00:00:01.000Z';
+        metric.provider_metrics_updated_at = metric.snapshot_captured_at;
+        await resealStoredMetric(fx, metric);
+      },
+    },
+    {
+      name: 'observed field missing',
+      mutate: async (metric, fx) => {
+        delete metric.reach;
+        await resealStoredMetric(fx, metric);
+      },
+    },
+    {
+      name: 'unobserved generic field present',
+      mutate: async (metric, fx) => {
+        metric.profile_visits = 0;
+        await resealStoredMetric(fx, metric);
+      },
+    },
+    {
+      name: 'observed types are not canonical',
+      mutate: async (metric, fx) => {
+        metric.provider_observed_metric_types.reverse();
+        await resealStoredMetric(fx, metric);
+      },
+    },
+    {
+      name: 'invalid observed value',
+      mutate: async (metric, fx) => {
+        metric.views = -1;
+        await resealStoredMetric(fx, metric);
+      },
+    },
+    {
+      name: 'provider evidence hash mismatch',
+      mutate: async (metric) => {
+        metric.provider_metrics_hash = 'f'.repeat(64);
+      },
+    },
+    {
+      name: 'snapshot fingerprint mismatch',
+      mutate: async (metric) => {
+        metric.snapshot_fingerprint = 'f'.repeat(64);
+      },
+    },
+  ];
+
+  for (const item of cases) {
+    await t.test(item.name, async () => {
+      const fx = await sentMetricsFixture({ publishedAt });
+      const metric = await exactStoredMetric(fx, {
+        capturedAt: '2026-03-02T00:01:00.000Z',
+      });
+      await item.mutate?.(metric, fx);
+      const metrics = item.rows ? await item.rows(metric, fx) : [metric];
+      const { base44, entities } = createGrowthBase44({
+        jobs: [fx.job],
+        plans: [fx.plan],
+        metrics,
+      });
+      let providerReads = 0;
+      const handler = loadGrowthHandler(workerPath, {
+        base44,
+        env,
+        dateImpl: fixedDateAt(invokedAt),
+        fetchImpl: async () => {
+          providerReads += 1;
+          throw new Error('a conflicting orphan must fail before Buffer');
+        },
+      });
+
+      const result = await invokeJson(handler, {}, { secret: workerSecret });
+
+      assert.equal(result.status, 200);
+      assert.equal(providerReads, 0);
+      assert.equal(entities.GrowthContentMetric.counters.create, 0);
+      assert.equal(entities.GrowthContentMetric.records.length, metrics.length);
+      const savedJob = entities.GrowthPublishJob.records[0];
+      assert.equal(savedJob.metrics_checkpoints.length, 1);
+      assert.equal(savedJob.metrics_checkpoints[0].status, 'review_needed');
+      assert.equal(
+        savedJob.metrics_checkpoints[0].error_code,
+        'content_snapshot_conflict',
+      );
+      assert.equal(savedJob.last_error_code, 'content_snapshot_conflict');
+    });
+  }
+});
+
+test('create-race adoption uses the same exact plan-dimension contract', async (t) => {
+  const cases = [
+    { name: 'exact row', expectedStatus: 'captured' },
+    {
+      name: 'format mismatch',
+      expectedStatus: 'review_needed',
+      mutate: (metric) => { metric.format = 'carousel'; },
+    },
+    {
+      name: 'CTA mismatch',
+      expectedStatus: 'review_needed',
+      mutate: (metric) => { metric.cta_variant = 'A different CTA'; },
+    },
+    {
+      name: 'hook mismatch',
+      expectedStatus: 'review_needed',
+      mutate: (metric) => { metric.hook = 'A different hook'; },
+    },
+  ];
+  for (const item of cases) {
+    await t.test(item.name, async () => {
+      const fx = await sentMetricsFixture();
+      const metricsUpdatedAt = new Date().toISOString();
+      const racedMetric = await exactStoredMetric(fx, {
+        id: 'metric_from_create_race',
+        capturedAt: metricsUpdatedAt,
+      });
+      item.mutate?.(racedMetric);
+      const { base44, entities } = createGrowthBase44({
+        jobs: [fx.job],
+        plans: [fx.plan],
+      });
+      entities.GrowthContentMetric.create = async () => {
+        entities.GrowthContentMetric.counters.create += 1;
+        entities.GrowthContentMetric.records.push(structuredClone(racedMetric));
+        throw new Error('simulated unique checkpoint race');
+      };
+      let providerReads = 0;
+      const handler = loadGrowthHandler(workerPath, {
+        base44,
+        env,
+        fetchImpl: bufferMetricsFetch(
+          fx,
+          { metricsUpdatedAt },
+          () => { providerReads += 1; },
+        ),
+      });
+
+      const result = await invokeJson(handler, {}, { secret: workerSecret });
+
+      assert.equal(result.status, 200);
+      assert.equal(providerReads, 1);
+      assert.equal(entities.GrowthContentMetric.counters.create, 1);
+      assert.equal(entities.GrowthContentMetric.records.length, 1);
+      const checkpoint = entities.GrowthPublishJob.records[0].metrics_checkpoints[0];
+      assert.equal(checkpoint.status, item.expectedStatus);
+      if (item.expectedStatus === 'captured') {
+        assert.equal(checkpoint.metric_id, racedMetric.id);
+      } else {
+        assert.equal(checkpoint.error_code, 'content_snapshot_conflict');
+      }
+    });
+  }
+});
+
+test('D1, D3, D7, and D30 advance cumulatively and terminal D30 stops all scans', async () => {
+  const publishedAt = '2026-01-01T00:00:00.000Z';
+  const fx = await sentMetricsFixture({ publishedAt });
+  const { base44, entities } = createGrowthBase44({
+    jobs: [fx.job],
+    plans: [fx.plan],
+  });
+  let reads = 0;
+
+  for (const days of [1, 3, 7, 30]) {
+    const nowAt = new Date(
+      new Date(publishedAt).getTime() + days * dayMs + 60 * 60 * 1000,
+    ).toISOString();
+    const handler = loadGrowthHandler(workerPath, {
+      base44,
+      env,
+      dateImpl: fixedDateAt(nowAt),
+      fetchImpl: bufferMetricsFetch(
+        fx,
+        { metricsUpdatedAt: nowAt },
+        () => { reads += 1; },
+      ),
+    });
+    const result = await invokeJson(handler, {}, { secret: workerSecret });
+    assert.equal(result.status, 200);
+    assert.equal(result.body.states.sent, 1);
+    assert.deepEqual(
+      entities.GrowthPublishJob.records[0].metrics_checkpoints.map(
+        (checkpoint) => checkpoint.snapshot_days,
+      ),
+      [1, 3, 7, 30].filter((value) => value <= days),
+    );
+  }
+
+  const savedJob = entities.GrowthPublishJob.records[0];
+  assert.equal(savedJob.state, 'sent');
+  assert.ok(savedJob.metrics_sync_completed_at);
+  assert.equal(savedJob.metrics_checkpoints.length, 4);
+  assert.ok(savedJob.metrics_checkpoints.every(
+    (checkpoint) => checkpoint.status === 'captured',
+  ));
+  assert.equal(entities.GrowthContentMetric.records.length, 4);
+  assert.equal(reads, 4);
+
+  const terminalHandler = loadGrowthHandler(workerPath, {
+    base44,
+    env,
+    dateImpl: fixedDateAt('2026-02-02T00:00:00.000Z'),
+    fetchImpl: async () => {
+      throw new Error('terminal D30 must not query Buffer');
+    },
+  });
+  const terminalResult = await invokeJson(
+    terminalHandler,
+    {},
+    { secret: workerSecret },
+  );
+  assert.equal(terminalResult.status, 200);
+  assert.equal(terminalResult.body.inspected, 0);
+  assert.equal(terminalResult.body.processed, 0);
+  assert.equal(reads, 4);
+});
+
+test('all missed fixed-age windows become durable review-needed checkpoints without fabricated metrics', async () => {
+  const publishedAt = new Date(Date.now() - 32 * dayMs).toISOString();
+  const fx = await sentMetricsFixture({ publishedAt });
+  const { base44, entities } = createGrowthBase44({
+    jobs: [fx.job],
+    plans: [fx.plan],
+  });
+  const handler = loadGrowthHandler(workerPath, {
+    base44,
+    env,
+    fetchImpl: async () => {
+      throw new Error('closed metric windows must not query Buffer');
+    },
+  });
+
+  const result = await invokeJson(handler, {}, { secret: workerSecret });
+
+  assert.equal(result.status, 200);
+  assert.equal(entities.GrowthContentMetric.records.length, 0);
+  const savedJob = entities.GrowthPublishJob.records[0];
+  assert.equal(savedJob.state, 'sent');
+  assert.ok(savedJob.metrics_sync_completed_at);
+  assert.deepEqual(
+    savedJob.metrics_checkpoints.map((checkpoint) => checkpoint.snapshot_days),
+    [1, 3, 7, 30],
+  );
+  assert.ok(savedJob.metrics_checkpoints.every(
+    (checkpoint) => (
+      checkpoint.status === 'review_needed'
+      && checkpoint.error_code === 'buffer_metrics_checkpoint_window_missed'
+    ),
+  ));
+});
+
+test('missing metrics at the grace boundary become review-needed without a zero snapshot', async () => {
+  const publishedAt = '2026-03-01T00:00:00.000Z';
+  const closeAt = '2026-03-03T00:00:00.000Z';
+  const fx = await sentMetricsFixture({ publishedAt });
+  const { base44, entities } = createGrowthBase44({
+    jobs: [fx.job],
+    plans: [fx.plan],
+  });
+  const handler = loadGrowthHandler(workerPath, {
+    base44,
+    env,
+    dateImpl: fixedDateAt(closeAt),
+    fetchImpl: bufferMetricsFetch(fx, {
+      metricsUpdatedAt: null,
+      metrics: null,
+    }),
+  });
+
+  const result = await invokeJson(handler, {}, { secret: workerSecret });
+
+  assert.equal(result.status, 200);
+  assert.equal(entities.GrowthContentMetric.records.length, 0);
+  const savedJob = entities.GrowthPublishJob.records[0];
+  assert.equal(savedJob.state, 'sent');
+  assert.equal(savedJob.metrics_checkpoints.length, 1);
+  assert.equal(savedJob.metrics_checkpoints[0].snapshot_days, 1);
+  assert.equal(savedJob.metrics_checkpoints[0].status, 'review_needed');
+  assert.equal(savedJob.metrics_checkpoints[0].error_code, 'buffer_metrics_unavailable');
+  assert.equal(
+    savedJob.metrics_next_checkpoint_at,
+    '2026-03-04T00:00:00.000Z',
+  );
+});
+
+test('a final provider refresh survives five-minute cron jitter when its evidence is in-window', async () => {
+  const publishedAt = '2026-03-01T00:00:00.000Z';
+  const invokedAt = '2026-03-03T00:05:00.000Z';
+  const metricsUpdatedAt = '2026-03-02T23:59:00.000Z';
+  const fx = await sentMetricsFixture({ publishedAt });
+  const { base44, entities } = createGrowthBase44({
+    jobs: [fx.job],
+    plans: [fx.plan],
+  });
+  let reads = 0;
+  const handler = loadGrowthHandler(workerPath, {
+    base44,
+    env,
+    dateImpl: fixedDateAt(invokedAt),
+    fetchImpl: bufferMetricsFetch(
+      fx,
+      { metricsUpdatedAt },
+      () => { reads += 1; },
+    ),
+  });
+
+  const result = await invokeJson(handler, {}, { secret: workerSecret });
+
+  assert.equal(result.status, 200);
+  assert.equal(reads, 1);
+  assert.equal(entities.GrowthContentMetric.records.length, 1);
+  assert.equal(
+    entities.GrowthContentMetric.records[0].snapshot_captured_at,
+    metricsUpdatedAt,
+  );
+  const savedJob = entities.GrowthPublishJob.records[0];
+  assert.equal(savedJob.metrics_checkpoints[0].status, 'captured');
+  assert.equal(savedJob.metrics_checkpoints[0].snapshot_days, 1);
+  assert.notEqual(
+    savedJob.metrics_checkpoints[0].error_code,
+    'buffer_metrics_checkpoint_window_missed',
+  );
+});
+
+test('comments without observed reach or views never create a fabricated exposure checkpoint', async () => {
+  const fx = await sentMetricsFixture();
+  const { base44, entities } = createGrowthBase44({
+    jobs: [fx.job],
+    plans: [fx.plan],
+  });
+  const handler = loadGrowthHandler(workerPath, {
+    base44,
+    env,
+    fetchImpl: bufferMetricsFetch(fx, {
+      metrics: [
+        { type: 'comments', name: 'Comments', value: 4, unit: 'count' },
+        { type: 'shares', name: 'Shares', value: 2, unit: 'count' },
+      ],
+    }),
+  });
+
+  const result = await invokeJson(handler, {}, { secret: workerSecret });
+
+  assert.equal(result.status, 200);
+  assert.equal(entities.GrowthContentMetric.records.length, 0);
+  const savedJob = entities.GrowthPublishJob.records[0];
+  assert.equal(savedJob.state, 'sent');
+  assert.equal(savedJob.metrics_checkpoints.length, 0);
+  assert.equal(
+    savedJob.last_error_code,
+    'buffer_metrics_exposure_unavailable',
+  );
+  assert.ok(new Date(savedJob.metrics_next_checkpoint_at).getTime() > Date.now());
+});
+
+test('provider evidence hashes distinguish an absent exposure metric from a reported zero', async () => {
+  const fx = await sentMetricsFixture();
+  const dueMs = new Date(fx.publishedAt).getTime() + dayMs;
+  const staleUpdatedAt = new Date(dueMs - 1000).toISOString();
+  const { base44, entities } = createGrowthBase44({
+    jobs: [fx.job],
+    plans: [fx.plan],
+  });
+  let reads = 0;
+  const handler = loadGrowthHandler(workerPath, {
+    base44,
+    env,
+    fetchImpl: async (...args) => {
+      reads += 1;
+      return bufferMetricsFetch(fx, {
+        metricsUpdatedAt: staleUpdatedAt,
+        metrics: reads === 1
+          ? [{ type: 'views', name: 'Views', value: 0, unit: 'count' }]
+          : [
+            { type: 'reach', name: 'Reach', value: 0, unit: 'count' },
+            { type: 'views', name: 'Views', value: 0, unit: 'count' },
+          ],
+      })(...args);
+    },
+  });
+
+  let result = await invokeJson(handler, {}, { secret: workerSecret });
+  assert.equal(result.status, 200);
+  const viewsOnlyHash =
+    entities.GrowthPublishJob.records[0].provider_metrics_hash;
+  assert.match(viewsOnlyHash, /^[a-f0-9]{64}$/);
+  entities.GrowthPublishJob.records[0].metrics_next_checkpoint_at =
+    new Date(Date.now() - 1000).toISOString();
+
+  result = await invokeJson(handler, {}, { secret: workerSecret });
+
+  assert.equal(result.status, 200);
+  assert.equal(reads, 2);
+  const reachReportedZeroHash =
+    entities.GrowthPublishJob.records[0].provider_metrics_hash;
+  assert.match(reachReportedZeroHash, /^[a-f0-9]{64}$/);
+  assert.notEqual(reachReportedZeroHash, viewsOnlyHash);
+  assert.equal(entities.GrowthContentMetric.records.length, 0);
+});
+
+test('snapshot fingerprints distinguish an absent exposure metric from a provider-observed zero', async () => {
+  const fx = await sentMetricsFixture();
+  const metricsUpdatedAt = new Date().toISOString();
+  const captureMetric = async (metrics) => {
+    const { base44, entities } = createGrowthBase44({
+      jobs: [structuredClone(fx.job)],
+      plans: [structuredClone(fx.plan)],
+    });
+    const handler = loadGrowthHandler(workerPath, {
+      base44,
+      env,
+      fetchImpl: bufferMetricsFetch(fx, { metricsUpdatedAt, metrics }),
+    });
+
+    const result = await invokeJson(handler, {}, { secret: workerSecret });
+    assert.equal(result.status, 200);
+    assert.equal(entities.GrowthContentMetric.records.length, 1);
+    return entities.GrowthContentMetric.records[0];
+  };
+
+  const viewsOnly = await captureMetric([
+    { type: 'views', name: 'Views', value: 0, unit: 'count' },
+  ]);
+  const reachReportedZero = await captureMetric([
+    { type: 'reach', name: 'Reach', value: 0, unit: 'count' },
+    { type: 'views', name: 'Views', value: 0, unit: 'count' },
+  ]);
+
+  assert.deepEqual(viewsOnly.provider_observed_metric_types, ['views']);
+  assert.deepEqual(
+    reachReportedZero.provider_observed_metric_types,
+    ['reach', 'views'],
+  );
+  assert.notEqual(
+    viewsOnly.snapshot_fingerprint,
+    reachReportedZero.snapshot_fingerprint,
+  );
+  for (const metric of [viewsOnly, reachReportedZero]) {
+    assert.equal(
+      metric.snapshot_fingerprint,
+      createHash('sha256').update(metricFingerprintPayload(metric)).digest('hex'),
+    );
+  }
+});
+
+test('sent metric reads fail closed when active Buffer identity or immutable job config drifts', async (t) => {
+  const cases = [
+    {
+      name: 'active channel differs',
+      job: { provider_channel_id: 'retired_instagram_channel' },
+    },
+    {
+      name: 'active organization differs',
+      job: { provider_organization_id: 'retired_buffer_org' },
+    },
+    {
+      name: 'immutable config revision differs',
+      job: { config_revision: 'f'.repeat(64) },
+    },
+  ];
+  for (const item of cases) {
+    await t.test(item.name, async () => {
+      const fx = await sentMetricsFixture({ job: item.job });
+      const { base44, entities } = createGrowthBase44({
+        jobs: [fx.job],
+        plans: [fx.plan],
+      });
+      let providerReads = 0;
+      const handler = loadGrowthHandler(workerPath, {
+        base44,
+        env,
+        fetchImpl: async () => {
+          providerReads += 1;
+          throw new Error('configuration drift must fail before Buffer');
+        },
+      });
+
+      const result = await invokeJson(handler, {}, { secret: workerSecret });
+
+      assert.equal(result.status, 200);
+      assert.equal(providerReads, 0);
+      assert.equal(entities.GrowthContentMetric.records.length, 0);
+      const savedJob = entities.GrowthPublishJob.records[0];
+      assert.equal(savedJob.state, 'sent');
+      assert.equal(savedJob.provider_post_id, fx.job.provider_post_id);
+      assert.equal(savedJob.metrics_checkpoints[0].status, 'review_needed');
+      assert.equal(
+        savedJob.metrics_checkpoints[0].error_code,
+        'buffer_metrics_configuration_mismatch',
+      );
+    });
+  }
+});
+
+test('a metrics-only provider identity mismatch is recorded for review while delivery remains sent', async () => {
+  const fx = await sentMetricsFixture();
+  const { base44, entities } = createGrowthBase44({
+    jobs: [fx.job],
+    plans: [fx.plan],
+  });
+  const handler = loadGrowthHandler(workerPath, {
+    base44,
+    env,
+    fetchImpl: bufferMetricsFetch(fx, {
+      channelId: 'different_channel',
+    }),
+  });
+
+  const result = await invokeJson(handler, {}, { secret: workerSecret });
+
+  assert.equal(result.status, 200);
+  assert.equal(entities.GrowthContentMetric.records.length, 0);
+  const savedJob = entities.GrowthPublishJob.records[0];
+  assert.equal(savedJob.state, 'sent');
+  assert.equal(savedJob.provider_post_id, fx.job.provider_post_id);
+  assert.equal(savedJob.provider_status, 'sent');
+  assert.equal(savedJob.metrics_checkpoints[0].status, 'review_needed');
+  assert.equal(
+    savedJob.metrics_checkpoints[0].error_code,
+    'buffer_metrics_provider_mismatch',
+  );
+});
+
+test('concurrent metric workers share the sent-job lease and create only one checkpoint', async () => {
+  const fx = await sentMetricsFixture();
+  const { base44, entities } = createGrowthBase44({
+    jobs: [fx.job],
+    plans: [fx.plan],
+  });
+  const enteredProvider = deferred();
+  const releaseProvider = deferred();
+  let reads = 0;
+  const handler = loadGrowthHandler(workerPath, {
+    base44,
+    env,
+    fetchImpl: async (...args) => {
+      reads += 1;
+      enteredProvider.resolve();
+      await releaseProvider.promise;
+      return bufferMetricsFetch(fx)(...args);
+    },
+  });
+
+  const first = invokeJson(handler, {}, { secret: workerSecret });
+  await enteredProvider.promise;
+  const second = await invokeJson(handler, {}, { secret: workerSecret });
+  releaseProvider.resolve();
+  const firstResult = await first;
+
+  assert.equal(firstResult.status, 200);
+  assert.equal(second.status, 200);
+  assert.equal(second.body.processed, 0);
+  assert.equal(reads, 1);
+  assert.equal(entities.GrowthContentMetric.records.length, 1);
+  assert.equal(entities.GrowthPublishJob.records[0].state, 'sent');
+  assert.equal(entities.GrowthPublishJob.records[0].metrics_checkpoints.length, 1);
+});
+
+test('Buffer error bodies and API credentials are never persisted by metric retries', async () => {
+  const fx = await sentMetricsFixture();
+  const { base44, entities } = createGrowthBase44({
+    jobs: [fx.job],
+    plans: [fx.plan],
+  });
+  const handler = loadGrowthHandler(workerPath, {
+    base44,
+    env,
+    fetchImpl: async () => Response.json({
+      data: { post: null },
+      errors: [{
+        message: `${workerSecret} ${apiKey}`,
+        extensions: { code: apiKey },
+      }],
+    }),
+  });
+
+  const result = await invokeJson(handler, {}, { secret: workerSecret });
+
+  assert.equal(result.status, 200);
+  const persisted = JSON.stringify({
+    jobs: entities.GrowthPublishJob.records,
+    metrics: entities.GrowthContentMetric.records,
+    response: result.body,
+  });
+  assert.doesNotMatch(persisted, new RegExp(workerSecret));
+  assert.doesNotMatch(persisted, new RegExp(apiKey));
+  assert.equal(
+    entities.GrowthPublishJob.records[0].last_error_code,
+    'buffer_metrics_provider_error',
+  );
+  assert.equal(entities.GrowthPublishJob.records[0].state, 'sent');
+});
+
+test('the Buffer timeout remains armed through response-body parsing', async () => {
+  const fx = await sentMetricsFixture();
+  const { base44, entities } = createGrowthBase44({
+    jobs: [fx.job],
+    plans: [fx.plan],
+  });
+  let timerHandle;
+  let clearCalls = 0;
+  let bodyReads = 0;
+  const setTimeoutImpl = (callback) => {
+    timerHandle = { active: true, callback };
+    return timerHandle;
+  };
+  const clearTimeoutImpl = (handle) => {
+    handle.active = false;
+    clearCalls += 1;
+  };
+  const handler = loadGrowthHandler(workerPath, {
+    base44,
+    env,
+    setTimeoutImpl,
+    clearTimeoutImpl,
+    fetchImpl: async (_url, options) => ({
+      status: 200,
+      headers: new Headers(),
+      json: async () => {
+        bodyReads += 1;
+        assert.equal(timerHandle.active, true);
+        timerHandle.callback();
+        assert.equal(options.signal.aborted, true);
+        throw new Error('simulated stalled response body');
+      },
+    }),
+  });
+
+  const result = await invokeJson(handler, {}, { secret: workerSecret });
+
+  assert.equal(result.status, 200);
+  assert.equal(bodyReads, 1);
+  assert.equal(clearCalls, 1);
+  assert.equal(timerHandle.active, false);
+  assert.equal(entities.GrowthContentMetric.records.length, 0);
+  assert.equal(
+    entities.GrowthPublishJob.records[0].last_error_code,
+    'provider_invalid_response',
+  );
 });

@@ -1,0 +1,225 @@
+name: Growth Content Generator
+
+# Prepares tomorrow's two-concept FirstKnock video manifest from the reviewed
+# conversion evidence and allowlisted donor pack. It never renders, approves,
+# schedules, or publishes content.
+#
+# The workflow is inert until all three repository secrets are configured:
+#   GROWTH_GENERATION_WORKER_URL
+#   GROWTH_GENERATION_WORKER_SECRET
+#   GROWTH_SCHEDULED_GENERATION_ENABLED=true
+#
+# The Base44 function independently requires the same enable flag, its worker
+# secret, the global generation flag, and an allowlisted canonical seed-pack SHA.
+
+on:
+  schedule:
+    # 00:15 America/Phoenix. The server owns the date calculation and prepares
+    # the following Phoenix day so review has a full operating window.
+    - cron: '15 7 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: firstknock-growth-generator-production
+  cancel-in-progress: false
+
+jobs:
+  invoke:
+    name: Prepare guarded daily unrendered video manifest
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      WORKER_URL: ${{ secrets.GROWTH_GENERATION_WORKER_URL }}
+      WORKER_SECRET: ${{ secrets.GROWTH_GENERATION_WORKER_SECRET }}
+      GENERATION_ENABLED: ${{ secrets.GROWTH_SCHEDULED_GENERATION_ENABLED }}
+      SEED_PACK_PATH: config/growth-media/firstknock-weekly-rights-safe-seed.json
+
+    steps:
+      - name: Check production scheduler configuration
+        id: configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$WORKER_URL" || -z "$WORKER_SECRET" || "$GENERATION_ENABLED" != "true" ]]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Growth generator inactive::Configure the exact worker URL, a 32-character worker secret, and the explicit true enable flag."
+            exit 0
+          fi
+          if [[ "$WORKER_URL" != "https://firstknock.online/api/functions/manageGrowthContentEngine" ]]; then
+            echo "::error title=Invalid growth generator URL::The endpoint must be the exact FirstKnock production manageGrowthContentEngine function URL."
+            exit 1
+          fi
+          if (( ${#WORKER_SECRET} < 32 )); then
+            echo "::error title=Invalid growth generator secret::The worker secret must contain at least 32 characters."
+            exit 1
+          fi
+          echo "configured=true" >> "$GITHUB_OUTPUT"
+
+      - name: Check out the pinned donor pack
+        if: steps.configuration.outputs.configured == 'true'
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Build bounded generation request
+        if: steps.configuration.outputs.configured == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          REQUEST_PATH="$RUNNER_TEMP/growth-generation-request.json"
+          node - "$SEED_PACK_PATH" "$REQUEST_PATH" <<'NODE'
+          const fs = require('node:fs');
+          const [seedPath, requestPath] = process.argv.slice(2);
+          const stat = fs.statSync(seedPath);
+          if (stat.size < 1 || stat.size > 150000) {
+            throw new Error('The checked-in donor pack is outside the bounded request envelope.');
+          }
+          const pack = JSON.parse(fs.readFileSync(seedPath, 'utf8'));
+          if (
+            pack?.schema_version !== 'growth-render-pack.v1'
+            || typeof pack?.batch_id !== 'string'
+            || !Array.isArray(pack?.sources)
+            || !Array.isArray(pack?.artifacts)
+          ) {
+            throw new Error('The checked-in donor pack is not a growth-render-pack.v1 payload.');
+          }
+          fs.writeFileSync(requestPath, JSON.stringify({
+            action: 'run_scheduled_generation',
+            seed_pack: pack,
+          }));
+          NODE
+
+      - name: Invoke guarded generation worker
+        if: steps.configuration.outputs.configured == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          REQUEST_PATH="$RUNNER_TEMP/growth-generation-request.json"
+          RESPONSE_PATH="$RUNNER_TEMP/growth-generation-response.json"
+          HTTP_STATUS="$(
+            curl \
+              --silent \
+              --show-error \
+              --max-time 300 \
+              --max-filesize 262144 \
+              --request POST \
+              --header "Authorization: Bearer $WORKER_SECRET" \
+              --header "Content-Type: application/json" \
+              --data-binary "@$REQUEST_PATH" \
+              --output "$RESPONSE_PATH" \
+              --write-out '%{http_code}' \
+              "$WORKER_URL"
+          )"
+          if [[ "$HTTP_STATUS" != "200" && "$HTTP_STATUS" != "201" ]]; then
+            echo "::error title=Growth generator failed::The production worker returned HTTP $HTTP_STATUS."
+            exit 1
+          fi
+          node - "$RESPONSE_PATH" <<'NODE'
+          const fs = require('node:fs');
+          const path = process.argv[2];
+          let body;
+          try {
+            body = JSON.parse(fs.readFileSync(path, 'utf8'));
+          } catch {
+            console.error('::error title=Growth generator failed::The worker response was not valid JSON.');
+            process.exit(1);
+          }
+          const artifacts = Array.isArray(body?.render_pack?.artifacts)
+            ? body.render_pack.artifacts
+            : [];
+          const handoff = body?.generation_handoff;
+          const externalPipelineGates = [
+            'owner_pack_authorization',
+            'render_media',
+            'host_and_verify_media',
+            'import_render_result',
+            'rendition_review',
+            'owner_rendition_approval',
+            'schedule_activation',
+          ];
+          const supportedPolicyReasons = new Set([
+            'base_social_evidence_supported',
+            'iterate_supported_by_social_evidence',
+            'repeat_supported_by_exact_activation',
+            'repeat_supported_by_mature_retention',
+            'repeat_supported_by_paid_outcome',
+            'repeat_supported_by_social_only_override',
+          ]);
+          const policyReasons = Array.isArray(
+            body?.batch?.decision_policy_reason_codes,
+          ) ? body.batch.decision_policy_reason_codes : [];
+          const policyReasonsValid = policyReasons.length >= 2
+            && policyReasons.length <= 8
+            && new Set(policyReasons).size === policyReasons.length
+            && policyReasons.every((reason) => supportedPolicyReasons.has(reason))
+            && JSON.stringify(policyReasons)
+              === JSON.stringify([...policyReasons].sort());
+          const conceptIds = [...new Set(artifacts.map((artifact) => artifact?.concept_id))];
+          const pairsAreComplete = conceptIds.length === 2 && conceptIds.every((conceptId) => {
+            const pair = artifacts.filter((artifact) => artifact?.concept_id === conceptId);
+            return pair.length === 2
+              && new Set(pair.map((artifact) => artifact?.platform)).size === 2
+              && pair.every((artifact) => artifact?.format === 'video')
+              && pair.some((artifact) => artifact?.platform === 'instagram')
+              && pair.some((artifact) => artifact?.platform === 'tiktok');
+          });
+          if (
+            body?.success !== true
+            || body?.scheduled_generation !== true
+            || typeof body?.idempotent !== 'boolean'
+            || body?.batch?.batch_input_mode !== 'reviewed_evidence'
+            || body?.batch?.content_profile !== 'feature_explainer_video_v1'
+            || body?.batch?.review_schema_version !== 'growth-review.v3'
+            || body?.batch?.decision_policy_id
+              !== 'growth-decision-sufficiency.v1'
+            || !/^[a-f0-9]{64}$/.test(
+              body?.batch?.decision_policy_evidence_hash || '',
+            )
+            || !policyReasonsValid
+            || body?.batch?.concept_count !== 2
+            || body?.batch?.pack_artifact_count !== 4
+            || body?.batch?.timezone !== 'America/Phoenix'
+            || !['ready', 'render_authorized'].includes(body?.batch?.state)
+            || !/^\d{4}-\d{2}-\d{2}$/.test(body?.batch?.target_date || '')
+            || handoff?.schema_version !== 'growth-generation-handoff.v1'
+            || handoff?.state !== 'unrendered_ready'
+            || handoff?.state_scope !== 'scheduled_generation_output'
+            || handoff?.batch_key !== body?.batch?.batch_key
+            || handoff?.target_date !== body?.batch?.target_date
+            || handoff?.canonical_concept_count !== 2
+            || handoff?.planned_rendition_count !== 4
+            || handoff?.review_schema_version !== 'growth-review.v3'
+            || handoff?.decision_policy_id
+              !== 'growth-decision-sufficiency.v1'
+            || handoff?.decision_policy_evidence_hash
+              !== body.batch.decision_policy_evidence_hash
+            || JSON.stringify(handoff?.decision_policy_reason_codes)
+              !== JSON.stringify(policyReasons)
+            || handoff?.decision_policy_supported !== true
+            || handoff?.rendered_media_created_by_invocation !== 0
+            || handoff?.creative_artifacts_created_by_invocation !== 0
+            || handoff?.publish_jobs_created_by_invocation !== 0
+            || handoff?.requires_human_approval !== true
+            || JSON.stringify(handoff?.external_pipeline_gates)
+              !== JSON.stringify(externalPipelineGates)
+            || artifacts.length !== 4
+            || !pairsAreComplete
+          ) {
+            console.error('::error title=Growth generator failed::The worker did not return one bounded two-concept review batch.');
+            process.exit(1);
+          }
+          const summary = [
+            '### Growth content generator',
+            '',
+            `- target date: **${body.batch.target_date}** (America/Phoenix)`,
+            `- canonical concepts: **${conceptIds.length}**`,
+            `- planned platform rendition recipes: **${artifacts.length}**`,
+            `- decision policy: **${handoff.decision_policy_id} (supported)**`,
+            `- rendered media created by this run: **${handoff.rendered_media_created_by_invocation}**`,
+            `- handoff state: **${handoff.state}**`,
+            `- idempotent retry: **${body.idempotent}**`,
+            '- next gates: **owner pack authorization, rendering, hosting, import, rendition review, owner approval, then scheduling**',
+          ];
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${summary.join('\n')}\n`);
+          NODE

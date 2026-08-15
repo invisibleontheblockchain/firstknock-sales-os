@@ -1,0 +1,389 @@
+{
+  "schema_version": "firstknock-video-sanitize-plan.v1",
+  "plan_id": "firstknock-weekly-rights-safe-8-donor-2026-07",
+  "purpose": "Create exactly eight first-party, non-map replacement video donors covering four days within the private 14-concept, seven-day weekly pack.",
+  "source_policy": {
+    "raw_assets_are_private": true,
+    "raw_assets_are_publishable": false,
+    "copy_raw_assets_into_repository": false,
+    "mask_coordinate_space": "raw_source_pixels",
+    "mask_timing_space": "raw_source_milliseconds",
+    "frame_selection_is_authoritative": true,
+    "required_release_gate": "blocked_until_sanitized_derivative_hash_and_frame_review"
+  },
+  "output_profile": {
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "video_codec": "h264",
+    "pixel_format": "yuv420p",
+    "audio_mode": "replace_silent_source",
+    "default_crop": {
+      "x": 0,
+      "y": 210,
+      "width": 1206,
+      "height": 2178
+    }
+  },
+  "conditional_exclusions": [
+    {
+      "safe_derived_asset_key": "video-weekly-route-start-finish-rights-safe-v1",
+      "failure_action": "exclude_donor",
+      "reason": "Exclude if OpenStreetMap, OSM, the generic address field, coordinates, a real location, or device UI enters any kept pixel."
+    },
+    {
+      "safe_derived_asset_key": "video-weekly-route-command-overview-rights-safe-v1",
+      "failure_action": "exclude_donor",
+      "reason": "Exclude if any route card, route title, representative name, customer result, map, or satellite imagery enters any kept pixel."
+    },
+    {
+      "safe_derived_asset_key": "video-weekly-merge-routes-rights-safe-v1",
+      "failure_action": "exclude_donor",
+      "reason": "Exclude if a route card, representative name, route metric, map, or satellite transition enters any kept pixel."
+    },
+    {
+      "safe_derived_asset_key": "video-weekly-bulk-reknock-rights-safe-v1",
+      "failure_action": "exclude_donor",
+      "reason": "Exclude if an address, owner or entity name, property result, or post-update row enters any kept pixel at or after the authoritative hard end."
+    },
+    {
+      "safe_derived_asset_key": "video-weekly-outcome-controls-rights-safe-v1",
+      "failure_action": "exclude_donor",
+      "reason": "Exclude if the stop address, property chips, map buttons, keyboard, operating-system prompt, or saved outcome enters any kept pixel."
+    },
+    {
+      "safe_derived_asset_key": "video-weekly-add-details-rights-safe-v1",
+      "failure_action": "exclude_donor",
+      "reason": "Exclude if the address, a phone value, a map button, keyboard, property chip, note content, or photo content enters any kept pixel."
+    },
+    {
+      "safe_derived_asset_key": "video-weekly-property-styling-rights-safe-v1",
+      "failure_action": "exclude_donor",
+      "reason": "Exclude if Apple Maps, Google Maps, Satellite, Hybrid, map imagery, geography, team data, or a private label enters any kept pixel."
+    },
+    {
+      "safe_derived_asset_key": "video-weekly-refresh-area-rights-safe-v1",
+      "failure_action": "exclude_donor",
+      "reason": "Exclude if the private quota panel, property-count settings, map imagery, geography, or any account-specific value enters any kept pixel."
+    }
+  ],
+  "assets": [
+    {
+      "pilot_slot": "day-1-video-1",
+      "raw_source": {
+        "filename": "ScreenRecording_07-14-2026 12-52-33_1.MP4",
+        "bytes": 23719508,
+        "sha256": "6dfd45792727d8f271a903658607ca52c51696cae2be1f973ceafde7807fa8ad",
+        "duration_ms": 12852,
+        "width": 1206,
+        "height": 2622,
+        "codec": "hevc",
+        "raw_privacy_status": "crop_required_openstreetmap_and_address"
+      },
+      "safe_derived_asset_key": "video-weekly-route-start-finish-rights-safe-v1",
+      "title": "Set the route start and finish",
+      "feature_summary": "Shows choosing Home Base or current location for the first leg and returning to Home Base, without exposing map-provider text or a location.",
+      "rights_status": "firstknock_owned",
+      "trim": {
+        "start_ms": 6102,
+        "end_ms": 7318,
+        "hard_end": true,
+        "reject_frames_at_or_after_end": true,
+        "start_frame_inclusive": 365,
+        "start_pts_ms": 6101.667,
+        "end_frame_exclusive": 438,
+        "end_pts_exclusive_ms": 7318.333
+      },
+      "output_duration_ms": 8000,
+      "short_source_fit": "freeze_last_frame",
+      "apply_default_crop": false,
+      "crop": {
+        "x": 100,
+        "y": 1150,
+        "width": 1006,
+        "height": 1472
+      },
+      "privacy_masks": [],
+      "release_state": "blocked_until_sanitized_derivative_hash_and_frame_review"
+    },
+    {
+      "pilot_slot": "day-1-video-2",
+      "raw_source": {
+        "filename": "ScreenRecording_07-10-2026 11-00-22_1.MP4",
+        "bytes": 12740894,
+        "sha256": "8e98c72b0d80c05fca7cfdea5c45b5cff596c9911755f3b3babc7a8f80a1acd0",
+        "duration_ms": 7030,
+        "width": 1206,
+        "height": 2622,
+        "codec": "hevc",
+        "raw_privacy_status": "crop_and_hard_end_required_route_cards"
+      },
+      "safe_derived_asset_key": "video-weekly-route-command-overview-rights-safe-v1",
+      "title": "See Route Command at a glance",
+      "feature_summary": "Shows the Route Command tabs, demo route count, Select to Merge, Delete All, and queued count without exposing any route card.",
+      "rights_status": "firstknock_owned",
+      "trim": {
+        "start_ms": 2200,
+        "end_ms": 3000,
+        "hard_end": true,
+        "reject_frames_at_or_after_end": true,
+        "start_frame_inclusive": 132,
+        "start_pts_ms": 2200,
+        "end_frame_exclusive": 180,
+        "end_pts_exclusive_ms": 3000
+      },
+      "output_duration_ms": 6000,
+      "short_source_fit": "freeze_last_frame",
+      "apply_default_crop": false,
+      "crop": {
+        "x": 0,
+        "y": 180,
+        "width": 995,
+        "height": 850
+      },
+      "privacy_masks": [],
+      "release_state": "blocked_until_sanitized_derivative_hash_and_frame_review"
+    },
+    {
+      "pilot_slot": "day-2-video-1",
+      "raw_source": {
+        "filename": "ScreenRecording_07-14-2026 10-12-24_1.MP4",
+        "bytes": 36922261,
+        "sha256": "5474d38298dc59cb1ad49a51bb8f60bd6c7edd4ded88a65e7dc463cf49f50db4",
+        "duration_ms": 15337,
+        "width": 1206,
+        "height": 2622,
+        "codec": "hevc",
+        "raw_privacy_status": "crop_and_hard_end_required_route_cards_and_map"
+      },
+      "safe_derived_asset_key": "video-weekly-merge-routes-rights-safe-v1",
+      "title": "Select routes to merge",
+      "feature_summary": "Shows merge mode moving from zero selected routes to two selected routes and the bounded Merge action without exposing route cards.",
+      "rights_status": "firstknock_owned",
+      "trim": {
+        "start_ms": 5001,
+        "end_ms": 10801,
+        "hard_end": true,
+        "reject_frames_at_or_after_end": true,
+        "start_frame_inclusive": 299,
+        "start_pts_ms": 5001.667,
+        "end_frame_exclusive": 647,
+        "end_pts_exclusive_ms": 10801.667
+      },
+      "output_duration_ms": 5800,
+      "short_source_fit": "none",
+      "apply_default_crop": false,
+      "crop": {
+        "x": 0,
+        "y": 170,
+        "width": 1206,
+        "height": 700
+      },
+      "privacy_masks": [],
+      "release_state": "blocked_until_sanitized_derivative_hash_and_frame_review"
+    },
+    {
+      "pilot_slot": "day-2-video-2",
+      "raw_source": {
+        "filename": "ScreenRecording_07-23-2026 16-31-35_1.MP4",
+        "bytes": 24640095,
+        "sha256": "9bc911880146fb57f0dedae3ec0414cec42deb4fc5bd4d1f617738b8f27ec4d6",
+        "duration_ms": 13468,
+        "width": 1206,
+        "height": 2622,
+        "codec": "hevc",
+        "raw_privacy_status": "crop_and_hard_end_required_private_property_rows"
+      },
+      "safe_derived_asset_key": "video-weekly-bulk-reknock-rights-safe-v1",
+      "title": "Move selected stops to Re-Knock",
+      "feature_summary": "Shows selecting demo stops in bulk, choosing Re-Knock, and the bounded updating state without exposing any property row.",
+      "rights_status": "firstknock_owned",
+      "trim": {
+        "start_ms": 500,
+        "end_ms": 5350,
+        "hard_end": true,
+        "reject_frames_at_or_after_end": true,
+        "start_frame_inclusive": 30,
+        "start_pts_ms": 500,
+        "end_frame_exclusive": 321,
+        "end_pts_exclusive_ms": 5351.667
+      },
+      "output_duration_ms": 5000,
+      "short_source_fit": "freeze_last_frame",
+      "apply_default_crop": false,
+      "crop": {
+        "x": 0,
+        "y": 816,
+        "width": 1206,
+        "height": 480
+      },
+      "privacy_masks": [],
+      "release_state": "blocked_until_sanitized_derivative_hash_and_frame_review"
+    },
+    {
+      "pilot_slot": "day-3-video-1",
+      "raw_source": {
+        "filename": "ScreenRecording_07-22-2026 16-36-18_1.MP4",
+        "bytes": 19217674,
+        "sha256": "203469253a58c56ceaeb8db58f82563b44fe9f8e31e2b749f9568a382e41babb",
+        "duration_ms": 8175,
+        "width": 1206,
+        "height": 2622,
+        "codec": "hevc",
+        "raw_privacy_status": "crop_and_hard_end_required_address_map_buttons_and_keyboard"
+      },
+      "safe_derived_asset_key": "video-weekly-outcome-controls-rights-safe-v1",
+      "title": "Choose a door-knock outcome",
+      "feature_summary": "Shows the six available outcome controls and Add Details without selecting or saving an outcome.",
+      "rights_status": "firstknock_owned",
+      "trim": {
+        "start_ms": 1300,
+        "end_ms": 1700,
+        "hard_end": true,
+        "reject_frames_at_or_after_end": true,
+        "start_frame_inclusive": 78,
+        "start_pts_ms": 1300,
+        "end_frame_exclusive": 102,
+        "end_pts_exclusive_ms": 1700
+      },
+      "output_duration_ms": 6000,
+      "short_source_fit": "freeze_last_frame",
+      "apply_default_crop": false,
+      "crop": {
+        "x": 40,
+        "y": 1060,
+        "width": 1124,
+        "height": 700
+      },
+      "privacy_masks": [],
+      "release_state": "blocked_until_sanitized_derivative_hash_and_frame_review"
+    },
+    {
+      "pilot_slot": "day-3-video-2",
+      "raw_source": {
+        "filename": "ScreenRecording_07-23-2026 19-27-18_1.MP4",
+        "bytes": 15767498,
+        "sha256": "02c07db2de72a9c4843efcd7e26b3c871a647c520dc35e67617cd3009d7927d1",
+        "duration_ms": 7568,
+        "width": 1206,
+        "height": 2622,
+        "codec": "hevc",
+        "raw_privacy_status": "crop_mask_and_hard_end_required_address_phone_and_map_buttons"
+      },
+      "safe_derived_asset_key": "video-weekly-add-details-rights-safe-v1",
+      "title": "Open the optional stop details",
+      "feature_summary": "Shows Add Details expanding to reveal the quick-note, callback date and time, and Photo Proof controls without saving data.",
+      "rights_status": "firstknock_owned",
+      "trim": {
+        "start_ms": 2600,
+        "end_ms": 4600,
+        "hard_end": true,
+        "reject_frames_at_or_after_end": true,
+        "start_frame_inclusive": 155,
+        "start_pts_ms": 2600,
+        "end_frame_exclusive": 275,
+        "end_pts_exclusive_ms": 4600
+      },
+      "output_duration_ms": 6000,
+      "short_source_fit": "freeze_last_frame",
+      "apply_default_crop": false,
+      "crop": {
+        "x": 40,
+        "y": 850,
+        "width": 1124,
+        "height": 870
+      },
+      "privacy_masks": [
+        {
+          "id": "phone-field",
+          "effect": "opaque_brand_black",
+          "x": 55,
+          "y": 1390,
+          "width": 565,
+          "height": 170,
+          "start_ms": 2600,
+          "end_ms": 4600,
+          "start_frame_inclusive": 155,
+          "end_frame_exclusive": 275
+        }
+      ],
+      "release_state": "blocked_until_sanitized_derivative_hash_and_frame_review"
+    },
+    {
+      "pilot_slot": "day-4-video-1",
+      "raw_source": {
+        "filename": "ScreenRecording_07-22-2026 16-42-44_1.MP4",
+        "bytes": 83162247,
+        "sha256": "f33067c2fe9dde73e5887cb16707ceec0b7b98ee87fb931a84012d7e9a5d268a",
+        "duration_ms": 38842,
+        "width": 1206,
+        "height": 2622,
+        "codec": "hevc",
+        "raw_privacy_status": "crop_and_hard_end_required_map_brands_and_imagery"
+      },
+      "safe_derived_asset_key": "video-weekly-property-styling-rights-safe-v1",
+      "title": "Style property dots and route paths",
+      "feature_summary": "Shows the property-dot size, opacity and fill controls followed by route-path pattern, thickness and color-scheme controls.",
+      "rights_status": "firstknock_owned",
+      "trim": {
+        "start_ms": 4000,
+        "end_ms": 4850,
+        "hard_end": true,
+        "reject_frames_at_or_after_end": true,
+        "start_frame_inclusive": 240,
+        "start_pts_ms": 4000,
+        "end_frame_exclusive": 291,
+        "end_pts_exclusive_ms": 4850
+      },
+      "output_duration_ms": 8000,
+      "short_source_fit": "freeze_last_frame",
+      "apply_default_crop": false,
+      "crop": {
+        "x": 56,
+        "y": 720,
+        "width": 1124,
+        "height": 1100
+      },
+      "privacy_masks": [],
+      "release_state": "blocked_until_sanitized_derivative_hash_and_frame_review"
+    },
+    {
+      "pilot_slot": "day-4-video-2",
+      "raw_source": {
+        "filename": "ScreenRecording_07-21-2026 16-40-03_1.mov",
+        "bytes": 14651136,
+        "sha256": "b0fbab553630e023a83a6ce91adbe7ca4c782c0d03a0de548d290330f569adc2",
+        "duration_ms": 10965,
+        "width": 1206,
+        "height": 2622,
+        "codec": "h264",
+        "raw_privacy_status": "crop_and_hard_end_required_private_quota_and_map"
+      },
+      "safe_derived_asset_key": "video-weekly-refresh-area-rights-safe-v1",
+      "title": "Refresh a previously worked area",
+      "feature_summary": "Shows Fill Gaps, Max Since Last, and the option to include unresolved follow-ups while excluding private quota and account settings.",
+      "rights_status": "firstknock_owned",
+      "trim": {
+        "start_ms": 8498.333,
+        "end_ms": 10515,
+        "hard_end": true,
+        "reject_frames_at_or_after_end": true,
+        "start_frame_inclusive": 505,
+        "start_pts_ms": 8498.333,
+        "end_frame_exclusive": 617,
+        "end_pts_exclusive_ms": 10515
+      },
+      "output_duration_ms": 8000,
+      "short_source_fit": "freeze_last_frame",
+      "apply_default_crop": false,
+      "crop": {
+        "x": 80,
+        "y": 920,
+        "width": 1040,
+        "height": 410
+      },
+      "privacy_masks": [],
+      "release_state": "blocked_until_sanitized_derivative_hash_and_frame_review"
+    }
+  ]
+}

@@ -1,0 +1,218 @@
+{
+  "schema_version": "firstknock-video-sanitize-plan.v1",
+  "plan_id": "firstknock-video-supplement-3-donor-2026-07",
+  "purpose": "Create three additional privacy-reviewed feature-video donors without changing the approved pilot registry.",
+  "source_policy": {
+    "raw_assets_are_private": true,
+    "raw_assets_are_publishable": false,
+    "copy_raw_assets_into_repository": false,
+    "mask_coordinate_space": "raw_source_pixels",
+    "mask_timing_space": "raw_source_milliseconds",
+    "frame_selection_is_authoritative": true,
+    "required_release_gate": "blocked_until_sanitized_derivative_hash_and_frame_review"
+  },
+  "output_profile": {
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "video_codec": "h264",
+    "pixel_format": "yuv420p",
+    "audio_mode": "replace_silent_source",
+    "default_crop": {
+      "x": 0,
+      "y": 210,
+      "width": 1206,
+      "height": 2178
+    }
+  },
+  "conditional_exclusions": [
+    {
+      "safe_derived_asset_key": "video-supplement-remove-accidental-sale-safe-v1",
+      "failure_action": "exclude_donor",
+      "reason": "Exclude the donor if any property identifier enters a kept pixel outside the fixed opaque property mask, or if the final frame advances beyond the bounded delete-confirmation workflow."
+    },
+    {
+      "safe_derived_asset_key": "video-supplement-add-details-fields-safe-v1",
+      "failure_action": "exclude_donor",
+      "reason": "Exclude the donor if the moving address, phone, or property-detail regions enter a kept pixel outside their frame-bounded opaque masks, or if the edit implies that a note or photo was saved."
+    },
+    {
+      "safe_derived_asset_key": "video-supplement-bulk-reknock-safe-v1",
+      "failure_action": "exclude_donor",
+      "reason": "Exclude the donor if any demo address or property detail enters a kept pixel outside the fixed opaque list mask, or if the mask obscures the bulk-selection controls or Re-Knock confirmation."
+    }
+  ],
+  "assets": [
+    {
+      "pilot_slot": "supplement-video-1",
+      "raw_source": {
+        "filename": "ScreenRecording_07-23-2026 16-27-07_1.MP4",
+        "bytes": 28251490,
+        "sha256": "96d2eaed66255c19bf01fdea6b713aaf703e19e7fc2a63127a662664e90cc8fc",
+        "duration_ms": 13418.333,
+        "width": 1206,
+        "height": 2622,
+        "codec": "hevc",
+        "raw_privacy_status": "redaction_required_private_property_identifier"
+      },
+      "safe_derived_asset_key": "video-supplement-remove-accidental-sale-safe-v1",
+      "title": "Remove an accidental sale",
+      "feature_summary": "Shows the Edit sale screen, choosing Delete, and confirming removal of an accidental entry.",
+      "rights_status": "firstknock_owned",
+      "trim": {
+        "start_ms": 5513.333,
+        "end_ms": 12101.667,
+        "hard_end": true,
+        "reject_frames_at_or_after_end": true,
+        "start_frame_inclusive": 330,
+        "start_pts_ms": 5513.333,
+        "end_frame_exclusive": 725,
+        "end_pts_exclusive_ms": 12101.667
+      },
+      "output_duration_ms": 6588,
+      "short_source_fit": "none",
+      "apply_default_crop": true,
+      "privacy_masks": [
+        {
+          "id": "sale-property-identifier",
+          "effect": "opaque_brand_black",
+          "x": 45,
+          "y": 675,
+          "width": 1115,
+          "height": 300,
+          "start_ms": 5513.333,
+          "end_ms": 12101.667,
+          "start_frame_inclusive": 330,
+          "end_frame_exclusive": 725
+        }
+      ],
+      "release_state": "blocked_until_sanitized_derivative_hash_and_frame_review"
+    },
+    {
+      "pilot_slot": "supplement-video-2",
+      "raw_source": {
+        "filename": "ScreenRecording_07-23-2026 19-27-18_1.MP4",
+        "bytes": 15767498,
+        "sha256": "02c07db2de72a9c4843efcd7e26b3c871a647c520dc35e67617cd3009d7927d1",
+        "duration_ms": 7568.333,
+        "width": 1206,
+        "height": 2622,
+        "codec": "hevc",
+        "raw_privacy_status": "redaction_required_private_address_and_phone"
+      },
+      "safe_derived_asset_key": "video-supplement-add-details-fields-safe-v1",
+      "title": "Open the details fields for a stop",
+      "feature_summary": "Shows Add Details expanding to reveal the quick-note, phone, callback date and time, and Photo Proof fields; it does not show a note or photo being saved.",
+      "rights_status": "firstknock_owned",
+      "trim": {
+        "start_ms": 1500,
+        "end_ms": 6868.333,
+        "hard_end": true,
+        "reject_frames_at_or_after_end": true,
+        "start_frame_inclusive": 89,
+        "start_pts_ms": 1500,
+        "end_frame_exclusive": 411,
+        "end_pts_exclusive_ms": 6868.333
+      },
+      "output_duration_ms": 5368,
+      "short_source_fit": "none",
+      "apply_default_crop": true,
+      "privacy_masks": [
+        {
+          "id": "stop-address-before-scroll",
+          "effect": "opaque_brand_black",
+          "x": 270,
+          "y": 690,
+          "width": 520,
+          "height": 180,
+          "start_ms": 1500,
+          "end_ms": 2550,
+          "start_frame_inclusive": 89,
+          "end_frame_exclusive": 152
+        },
+        {
+          "id": "stop-address-after-scroll",
+          "effect": "opaque_brand_black",
+          "x": 270,
+          "y": 440,
+          "width": 520,
+          "height": 150,
+          "start_ms": 2550,
+          "end_ms": 6868.333,
+          "start_frame_inclusive": 152,
+          "end_frame_exclusive": 411
+        },
+        {
+          "id": "stop-phone-after-scroll",
+          "effect": "opaque_brand_black",
+          "x": 55,
+          "y": 1390,
+          "width": 565,
+          "height": 170,
+          "start_ms": 2550,
+          "end_ms": 6868.333,
+          "start_frame_inclusive": 152,
+          "end_frame_exclusive": 411
+        },
+        {
+          "id": "stop-property-detail-chip",
+          "effect": "opaque_brand_black",
+          "x": 50,
+          "y": 2025,
+          "width": 805,
+          "height": 145,
+          "start_ms": 1500,
+          "end_ms": 6868.333,
+          "start_frame_inclusive": 89,
+          "end_frame_exclusive": 411
+        }
+      ],
+      "release_state": "blocked_until_sanitized_derivative_hash_and_frame_review"
+    },
+    {
+      "pilot_slot": "supplement-video-3",
+      "raw_source": {
+        "filename": "ScreenRecording_07-23-2026 16-31-35_1.MP4",
+        "bytes": 24640095,
+        "sha256": "9bc911880146fb57f0dedae3ec0414cec42deb4fc5bd4d1f617738b8f27ec4d6",
+        "duration_ms": 13468.333,
+        "width": 1206,
+        "height": 2622,
+        "codec": "hevc",
+        "raw_privacy_status": "redaction_required_persistent_demo_property_data"
+      },
+      "safe_derived_asset_key": "video-supplement-bulk-reknock-safe-v1",
+      "title": "Move selected stops to Re-Knock",
+      "feature_summary": "Shows selecting completed demo stops in bulk and choosing Re-Knock; captions must not treat the persistent demo data as a customer result.",
+      "rights_status": "firstknock_owned",
+      "trim": {
+        "start_ms": 500,
+        "end_ms": 5551.667,
+        "hard_end": true,
+        "reject_frames_at_or_after_end": true,
+        "start_frame_inclusive": 30,
+        "start_pts_ms": 500,
+        "end_frame_exclusive": 333,
+        "end_pts_exclusive_ms": 5551.667
+      },
+      "output_duration_ms": 5051,
+      "short_source_fit": "none",
+      "apply_default_crop": true,
+      "privacy_masks": [
+        {
+          "id": "demo-property-list",
+          "effect": "opaque_brand_black",
+          "x": 215,
+          "y": 1320,
+          "width": 905,
+          "height": 1068,
+          "start_ms": 500,
+          "end_ms": 5551.667,
+          "start_frame_inclusive": 30,
+          "end_frame_exclusive": 333
+        }
+      ],
+      "release_state": "blocked_until_sanitized_derivative_hash_and_frame_review"
+    }
+  ]
+}

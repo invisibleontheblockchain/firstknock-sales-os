@@ -19,7 +19,7 @@ created an account and never used the product.
 ## The measurable path
 
 ```text
-Instagram reach
+Instagram cumulative post reach
   -> landing session
   -> signup CTA session
   -> manager signup
@@ -33,7 +33,9 @@ Instagram reach
 
 Definitions:
 
-- **Reach:** unique Instagram accounts that saw an asset.
+- **Per-asset reach:** unique platform accounts that saw one asset.
+- **Cumulative post reach:** canonical per-asset reach summed across assets. The same
+  account may appear in more than one asset, so this is not unique campaign reach.
 - **Landing session:** a deduplicated pseudonymous session that loaded `/instagram`.
 - **Signup CTA session:** a deduplicated session that clicked the primary signup CTA.
 - **Manager signup:** an attributed account that successfully created a manager workspace.
@@ -47,8 +49,10 @@ Definitions:
 - **Retained active user:** a verified active manager or rep in the rolling 30-day window.
 - **First paid conversion:** the first verified positive Stripe payment for a workspace.
 
-Use reach, not views, as the upstream rate denominator. Views can include repeat plays;
-reach represents unique accounts. See [Instagram Insights](https://www.facebook.com/help/instagram/788388387972460).
+Use per-asset reach, not views, as the upstream exposure denominator. Views can include
+repeat plays; reach represents unique accounts within an asset. Never add TikTok views to
+reach or present summed post reach as unique campaign people. See
+[Instagram Insights](https://www.facebook.com/help/instagram/788388387972460).
 
 ## Base-case planning model
 
@@ -57,8 +61,8 @@ FirstKnock medians after 30 to 50 assets.
 
 | Step | Assumption | Planning result |
 |---|---:|---:|
-| Instagram reach | - | 476,667 |
-| Owned intent / reach | 0.6% | 2,860 |
+| Instagram cumulative post reach | - | 476,667 |
+| Owned intent / cumulative post reach | 0.6% | 2,860 |
 | Manager signup / intent | 25% | 715 |
 | Workspace activation / signup | 35% | 250 |
 | Activated users / workspace | 5 | 1,250 gross |
@@ -66,28 +70,30 @@ FirstKnock medians after 30 to 50 assets.
 
 Over 50 operating weeks, the initial targets are:
 
-- 9,533 accounts reached per week
+- 9,533 Instagram cumulative post reach per week
 - 5 activated workspaces per week
 - 20 retained active users added per week
 - 5 feed assets per week
 
-Treat this as a forecast to update, not a promise. The workbook recalculates the required
-reach and content volume from actual conversion rates.
+Treat this as a planning scenario to update, not a forecast or promise. The workbook can
+recalculate the required reach and content volume only from mature, complete evidence.
 
 The in-product **Path to 1,000** control mirrors this as a rolling 50-week planning
 scenario. Its goal progress uses the all-channel rolling-30-day retained-active stock.
-Its observed Instagram rows use only canonical, mature `1000-users` assets backed by the
-published content plan; unplanned assets, other campaigns, and `ig-release-smoke` are
-excluded.
+Its conservative reach row uses only canonical, mature Instagram `1000-users` assets
+backed by the published content plan; unplanned assets, other campaigns, and
+`ig-release-smoke` are excluded. Publishing cadence and attributed activation/retention
+remain combined across Instagram and TikTok. TikTok views stay a separate diagnostic.
 
-After a complete observation window, the weekly observed values are the plan-backed
-last-28-day totals divided by four:
+After a complete observation window, the weekly values are the plan-backed last-28-day
+totals divided by four:
 
-- mature Instagram reach whose authoritative fixed-age checkpoint became due in the
-  window;
-- canonical content assets whose fixed-age checkpoint became due in the window;
+- Instagram cumulative post reach only when every published Instagram fixed-age
+  checkpoint due in the window has canonical evidence and an observed reach field;
+- every Instagram and TikTok content asset whose fixed-age checkpoint became due in the window,
+  tracked separately from captured checkpoints and reach-observed checkpoints;
 - activated manager workspaces whose accounts were created in the window; and
-- Instagram-attributed users created in the window who currently satisfy the rolling
+- social-attributed users created in the window who currently satisfy the rolling
   retained-active rule.
 
 That last value is a **gross signup-cohort contribution**, not net growth in the
@@ -131,12 +137,17 @@ creatives. UTM values are case-sensitive. See [Google campaign URL guidance](htt
 
 FirstKnock preserves:
 
-- immutable first touch, which credits the creative that acquired the account;
+- immutable first touch, which credits a creative only when the click preserved its
+  content ID and otherwise credits the platform-level `ig-bio` bucket;
 - mutable last touch, which shows the latest tracked visit before conversion; and
 - manager-level attribution for trusted active roster members in that manager's workspace.
 
 Do not claim organic view-through attribution. If someone watches a Reel and later types
-the domain directly, recover influence only through self-report.
+the domain directly, recover influence only through self-report. The `/start` landing
+page may ask which recent confirmed Buffer demo brought the visitor there. That answer
+is a separately labeled `visitor_self_report` assist: it does not overwrite `ig-bio`,
+does not become a declared content-link conversion, and does not qualify a creative for
+Repeat/Iterate/Hold.
 
 ## Per-asset operating procedure
 
@@ -158,16 +169,19 @@ work.
 1. Open **Next Publish** in the `/GrowthDashboard` growth action queue.
 2. Review the planned audience, hook, brief, hypothesis, CTA, and comparison group.
 3. Copy the queue's matching tracked `/instagram` link.
-4. Put that exact link in the Story sticker, bio slot, or originating DM reply.
-5. Publish the asset, then select **Mark published** so every checkpoint is calculated
-   from the real publish time.
+4. Put that exact link in the Story sticker or originating DM reply. Keep the permanent
+   profile link on `ig-bio`; rotating the bio to one post ID would mislabel visitors
+   motivated by other posts.
+5. For a manual plan, publish the asset and select **Mark published**. For a
+   Buffer-managed content-engine plan, do not mark it manually; Buffer confirmation
+   starts the checkpoint clock from the provider's sent time.
 
 ### At fixed snapshot ages
 
-Capture the canonical cumulative Instagram Insights snapshot seven days after the
-recorded publish time. The queue identifies the next scheduled, due, or overdue
-seven-day checkpoint. Optional 1-day and 3-day reads provide an early signal, and an
-optional 30-day follow-up supports the retention review. At each captured age, record:
+The worker captures cumulative Buffer analytics at D1, D3, D7, and D30. The queue shows
+the exact checkpoint as collecting while Buffer owns it. Manual entry stays locked
+unless that same publish job and checkpoint age has a durable `review_needed` outcome.
+For a manual plan or an unlocked repair, record:
 
 - reach
 - views
@@ -176,14 +190,12 @@ optional 30-day follow-up supports the retention review. At each captured age, r
 - link clicks
 - qualified DM intents
 
-Use **Add Instagram snapshot** from the queue so the campaign, content ID, and snapshot
-age are locked to the planned asset. A 1-day or 3-day read is an early signal only: it
-never clears the canonical 7-day checkpoint. The manual snapshot form can also record a
-30-day follow-up. Each fixed age remains a separate checkpoint; re-entering the same
-campaign, content ID, and age updates only that checkpoint.
+Use the queue's repair action so the campaign, content ID, and snapshot age remain locked
+to the exact `review_needed` checkpoint. A D1 or D3 read is an early signal only and
+never clears the canonical D7 checkpoint. Each fixed age remains separate.
 
-The headline reach and content-conversion table use only a mature canonical checkpoint.
-An early read stays visible in the queue but cannot inflate official reach, measured-asset
+The headline cumulative post reach and content-conversion table use only a mature canonical
+checkpoint. An early read stays visible in the queue but cannot inflate official reach, measured-asset
 counts, or a decision. After an early checkpoint is saved, the queue advances to the next
 missing eligible read rather than repeatedly overwriting it.
 
@@ -196,18 +208,32 @@ schedule instead of treating Instagram as the permanent historical database. See
 When the queue moves an asset to **Decision Due**, read the fixed-age snapshot beside its
 joined product-conversion evidence. Enter a specific learning note, then choose:
 
-- **Repeat:** preserve the concept because it produced meaningful product outcomes or
-  clearly won its comparable group.
-- **Iterate:** keep the concept but change one named major variable at the next execution.
-- **Hold:** stop allocating a slot for now.
+- **Repeat:** preserve the concept only when the bounded content cohort has a positive
+  exact activation, a positive mature retained-user outcome, or a paid user. For an
+  ordinary social-only post, Repeat requires a separate nontrivial override note; that
+  exception is not a conversion claim.
+- **Iterate:** keep the concept but change one named major variable. The canonical social
+  checkpoint alone supports this choice.
+- **Hold:** stop allocating a slot only after three comparable canonical fixed-age
+  snapshots.
 
-The decision is bound to the Instagram checkpoint used for the review. If that checkpoint
-changes, the queue marks the decision stale and requires a new note and decision. Product
-conversion counters remain live, so revisit them during the weekly and optional 30-day
-reviews. **Hold** remains
-locked until at least three completed assets in the same comparison group have comparable
-fixed-age snapshots from the same campaign and checkpoint age. Early reads and a single
-outlier are never sufficient evidence to hold a concept.
+Generic bio conversions remain platform-level and visitor-reported assists remain
+directional. Neither is exact post-conversion evidence. When a controlled clickable
+handoff did not preserve the content ID, base the post decision on mature fixed-age
+platform evidence and mark the conversion conclusion inconclusive.
+
+The server enforces `growth-decision-sufficiency.v1`. Its base gate requires the canonical
+fixed-age checkpoint plus at least one explicitly observed platform-native exposure field
+(`reach` or `views`). It recomputes the decision from frozen
+`growth-conversion-evidence.v2`, never turns `null` conversion or retention values into
+zero, and rejects stale checkpoint or comparison counts sent by the dashboard.
+
+The saved `growth-review.v3` identity binds the policy ID, canonical policy-evidence hash,
+reason codes, and—only for a social-only Repeat—the separate override note and its hash.
+If the checkpoint changes, the queue marks the decision stale and requires a new note and
+decision. **Hold** stays locked until three snapshots share platform, campaign,
+comparison group, checkpoint age, an observed exposure field, and a verified canonical
+fingerprint. Early reads and a single outlier are never sufficient.
 
 ### Product outcomes
 
@@ -224,13 +250,28 @@ The dashboard joins that snapshot to:
 Export the content conversion CSV after the Monday snapshot update. The join key is the
 campaign plus content ID, so spelling consistency is part of the measurement system.
 
+## Starting the first measured week
+
+Normal content generation requires a current fixed-age Repeat or Iterate decision. For
+the first week only, the owner can use Content Engine's **Start audited week** flow with
+the exact allowlisted rights-safe weekly seed. It creates two deterministic
+feature-explainer concepts and four Instagram/TikTok video posts for one Phoenix day
+without calling an LLM or inventing prior performance evidence.
+
+Use the flow once per planned day, up to seven non-revoked days. Every pack still
+requires download inspection, exact-pack authorization, rendering, hosting, import,
+four review gates, owner approval, and explicit four-post activation. When fixed-age
+results mature, switch to Repeat/Iterate batches; the bootstrap hard-stops after seven
+days.
+
 ## Daily operating cadence
 
 Each publishing day:
 
 1. Open the growth action queue.
 2. Publish the exact **Next Publish** asset and mark its real publish time.
-3. Capture any **Snapshot checkpoint** that is due or overdue.
+3. Let Buffer collect due checkpoints; repair only a checkpoint explicitly marked for
+   review.
 4. Resolve **Decision Due** items with a note and one Repeat/Iterate/Hold decision.
 5. Copy the tracked link from the queue for every Story sticker or manual DM reply.
 
@@ -240,17 +281,22 @@ Do not wait for Monday to capture a checkpoint that is due today.
 
 Every Monday:
 
-1. Clear every due or overdue seven-day Instagram checkpoint.
+1. Resolve every D7 checkpoint explicitly marked for review; leave collecting Buffer
+   checkpoints locked.
 2. Open `/GrowthDashboard` and read **Path to 1,000**.
-3. Compare observed reach, mature assets, activated workspaces, and gross retained-cohort
-   contribution per week with the required 50-week planning pace.
+3. Compare combined published assets due, activated workspaces, and gross retained-cohort
+   contribution with the required pace. Compare conservative Instagram cumulative post
+   reach only at complete Instagram coverage; otherwise read it as a lower bound and fix
+   missing checkpoints or reach fields first. Never substitute TikTok views.
 4. Read the funnel left to right and identify the earliest material constraint.
 5. Export the content conversion CSV and update the operating workbook.
-6. Review the `Weekly Scorecard` and `Lead Funnel`.
-7. Resolve every **Decision Due** item with its evidence-bound note.
-8. Compare fixed-age medians within format and comparison group after at least three
+6. Reconcile the platform-level `ig-bio` row and the separate visitor-assist columns;
+   never distribute either into canonical post conversions.
+7. Review the `Weekly Scorecard` and `Lead Funnel`.
+8. Resolve every **Decision Due** item with its evidence-bound note.
+9. Compare fixed-age medians within format and comparison group after at least three
    comparable executions.
-9. Assign the next sprint slots to Repeat concepts and one-variable Iterations; leave
+10. Assign the next sprint slots to Repeat concepts and one-variable Iterations; leave
    Hold concepts out until new evidence justifies revisiting them.
 
 Use the optional 30-day snapshot to revisit the seven-day decision against retained-user
@@ -273,9 +319,17 @@ Scale concepts that create activated workspaces and retained users, not merely l
 
 ## Metric trust and privacy boundaries
 
-- Reach, views, shares, saves, clicks, and DM intent are owner-entered Instagram snapshots.
+- Reach, views, shares, saves, and comments come from the exact Buffer checkpoint when
+  available. Owner-entered values are a repair path only after that checkpoint is
+  explicitly `review_needed`; click and DM intent fields may still require owner repair
+  evidence.
+- Aggregate reach is cumulative post reach, not unique campaign reach. TikTok views are
+  reported separately and never added to or converted into reach.
 - Landing and CTA counts are pseudonymous diagnostic telemetry. They can guide conversion
   work but are not billing, authorization, or security evidence.
+- Static-bio journeys remain platform-level. A visitor-selected recent video is a
+  self-reported assist and is excluded from canonical post conversion rates and creative
+  decision counts.
 - Role assignment, invite redemption, activation, and payment milestones are written only
   by trusted backend paths or derived from trusted product records.
 - Anonymous and session identifiers are hashed before storage. Reports expose no names,
@@ -293,21 +347,24 @@ Scale concepts that create activated workspaces and retained users, not merely l
 Release through the existing Base44-connected GitHub flow from the latest `main` branch.
 Do not publish an old checkout wholesale.
 
-1. Open a PR that contains only the acquisition changes and preserves newer production
+1. Generate the local-only `growth-production-activation-handoff.v1` described in
+   [`RENDERER_RUNBOOK.md`](./RENDERER_RUNBOOK.md). Confirm its local media evidence
+   passes and every external authorization remains explicit.
+2. Open a PR that contains only the acquisition changes and preserves newer production
    routing behavior.
-2. Run `npm test`, `npm run typecheck`, `npm run build`,
+3. Run `npm test`, `npm run typecheck`, `npm run build`,
    `npm run validate:backend`, and `npm run validate:artifact`.
-3. Merge only after checks pass and confirm Base44 received the new `main` commit.
-4. In the existing Base44 app, verify the new entities and functions, then publish once.
-5. Signed out, open:
+4. Merge only after checks pass and confirm Base44 received the new `main` commit.
+5. In the existing Base44 app, verify the new entities and functions, then publish once.
+6. Signed out, open:
 
    ```text
    /instagram?utm_source=instagram&utm_medium=organic_social&utm_campaign=1000-users&utm_content=ig-release-smoke
    ```
 
-6. Confirm the public landing page renders, CTA returns through authentication, a manager
+7. Confirm the public landing page renders, CTA returns through authentication, a manager
    workspace can be created, and `ig-release-smoke` appears in the owner dashboard.
-7. Add a small Instagram snapshot for the smoke-test content ID, verify the funnel row,
+8. Add a small Instagram snapshot for the smoke-test content ID, verify the funnel row,
    then exclude that ID from operating decisions.
 
 ## First content sprint

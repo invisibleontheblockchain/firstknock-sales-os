@@ -1,6 +1,5 @@
 import { createClientFromRequest } from "npm:@base44/sdk@0.8.31";
 import {
-  MAX_SOCIAL_POST_TEXT,
   artifactApprovalHash,
   asArray,
   canonicalStringify,
@@ -8,12 +7,16 @@ import {
   isContentAddressedMediaUrl,
   isPublicHttpsUrl,
   isStablePublicHttpsUrl,
+  mediaUrlMatchesDeliveryKey,
+  mediaUrlUsesNamespace,
   normalized,
+  normalizeMediaPathPrefix,
   publishJobRequestHash,
   safeProviderError,
   sha256BytesHex,
   sha256Hex,
   socialPostText,
+  socialPostTextLimit,
   timestamp,
   token,
 } from "../_shared/growthContentEngine.js";
@@ -37,6 +40,48 @@ const MEDIA_REQUEST_TIMEOUT_MS = 45 * 1000;
 const MAX_MEDIA_BYTES = 250 * 1024 * 1024;
 const STATE_SCAN_LIMIT = 100;
 const WORKER_HEARTBEAT_KEY = "buffer-publisher";
+const DAY_MS = 24 * 60 * 60 * 1000;
+const SNAPSHOT_GRACE_MS = DAY_MS;
+const METRIC_RETRY_MS = 2 * 60 * 60 * 1000;
+const METRIC_FINAL_READ_TOLERANCE_MS = 10 * 60 * 1000;
+const METRIC_CHECKPOINT_DAYS = [1, 3, 7, 30];
+const MAX_CONTENT_METRIC = 1_000_000_000;
+const CONTENT_FORMATS = new Set([
+  "reel",
+  "carousel",
+  "story",
+  "collab",
+  "live",
+  "other",
+]);
+const BUFFER_COUNT_METRIC_TYPES = new Set([
+  "reach",
+  "views",
+  "shares",
+  "saves",
+  "comments",
+  "follows",
+]);
+const BUFFER_METRIC_REQUEST_CODES = new Set([
+  "provider_network_error",
+  "provider_invalid_response",
+  "provider_rate_limited",
+  "provider_authorization_failed",
+  "provider_server_error",
+  "provider_request_rejected",
+  "provider_post_missing",
+]);
+const CONTENT_METRIC_FIELDS = [
+  "reach",
+  "views",
+  "shares",
+  "saves",
+  "comments",
+  "follows",
+  "profile_visits",
+  "link_clicks",
+  "dm_intents",
+];
 
 function response(data: any, status = 200): Response {
   return Response.json(data, {
@@ -63,6 +108,9 @@ function configuration(): any | null {
     Deno.env.get("BUFFER_TIKTOK_CHANNEL_ID") || "",
   ).trim();
   const rawMediaOrigin = String(Deno.env.get("GROWTH_MEDIA_ORIGIN") || "").trim();
+  const mediaPathPrefix = normalizeMediaPathPrefix(
+    Deno.env.get("GROWTH_MEDIA_PATH_PREFIX"),
+  );
   let mediaOrigin = "";
   try {
     const url = new URL(rawMediaOrigin);
@@ -83,6 +131,7 @@ function configuration(): any | null {
     !apiKey
     || !organizationId
     || !mediaOrigin
+    || !mediaPathPrefix
     || (!instagramChannelId && !tiktokChannelId)
   ) {
     return null;
@@ -93,6 +142,7 @@ function configuration(): any | null {
     instagramChannelId,
     tiktokChannelId,
     mediaOrigin,
+    mediaPathPrefix,
   };
 }
 
@@ -107,6 +157,7 @@ async function publisherHeartbeatRevision(config: any): Promise<string> {
     config?.instagramChannelId || "",
     config?.tiktokChannelId || "",
     config?.mediaOrigin || "",
+    config?.mediaPathPrefix || "",
   ].join("|"));
 }
 
@@ -156,17 +207,32 @@ function cleanSecrets(value: any, secrets: string[]): string {
   return safeProviderError(output);
 }
 
-function artifactMediaReady(artifact: any): boolean {
+function artifactMediaReady(artifact: any, config: any): boolean {
   if (
     !isStablePublicHttpsUrl(artifact?.media_url)
     || !isContentAddressedMediaUrl(artifact?.media_url, artifact?.media_sha256)
+    || !mediaUrlUsesNamespace(
+      artifact?.media_url,
+      config?.mediaOrigin,
+      config?.mediaPathPrefix,
+    )
+    || (
+      artifact?.render_delivery_key
+      && !mediaUrlMatchesDeliveryKey(
+        artifact?.media_url,
+        artifact?.media_sha256,
+        artifact?.render_delivery_key,
+        config?.mediaOrigin,
+        config?.mediaPathPrefix,
+      )
+    )
     || !/^[a-f0-9]{64}$/.test(normalized(artifact?.media_sha256))
     || !MIME_TYPES.has(normalized(artifact?.mime_type))
     || Number(artifact?.width || 0) < 1
     || Number(artifact?.height || 0) < 1
     || artifact?.provider_text !== socialPostText(artifact)
     || !artifact?.provider_text
-    || artifact.provider_text.length > MAX_SOCIAL_POST_TEXT
+    || artifact.provider_text.length > socialPostTextLimit(artifact?.platform)
   ) {
     return false;
   }
@@ -177,7 +243,52 @@ function artifactMediaReady(artifact: any): boolean {
     && String(artifact?.mime_type || "").startsWith("image/");
 }
 
+function metricCheckpointDays(job: any): Set<number> {
+  return new Set(
+    asArray(job?.metrics_checkpoints)
+      .filter((checkpoint) => (
+        ["captured", "review_needed"].includes(token(checkpoint?.status))
+      ))
+      .map((checkpoint) => Number(checkpoint?.snapshot_days || 0))
+      .filter((days) => METRIC_CHECKPOINT_DAYS.includes(days)),
+  );
+}
+
+function inferredNextMetricCheckpointAt(job: any): string {
+  const publishedAt = timestamp(
+    job?.metrics_published_at || job?.provider_sent_at,
+  );
+  if (!publishedAt) return "";
+  const completed = metricCheckpointDays(job);
+  const nextDays = METRIC_CHECKPOINT_DAYS.find((days) => !completed.has(days));
+  if (!nextDays) return "";
+  return new Date(new Date(publishedAt).getTime() + nextDays * DAY_MS)
+    .toISOString();
+}
+
+function metricScheduleFields(publishedValue: any): any {
+  const publishedAt = timestamp(publishedValue);
+  if (!publishedAt) return {};
+  return {
+    metrics_published_at: publishedAt,
+    metrics_next_checkpoint_at: new Date(
+      new Date(publishedAt).getTime() + DAY_MS,
+    ).toISOString(),
+    metrics_checkpoints: [],
+    metrics_sync_attempt_count: 0,
+  };
+}
+
 function dueForProcessing(job: any, nowMs: number): boolean {
+  if (job?.state === "sent") {
+    if (timestamp(job?.metrics_sync_completed_at)) return false;
+    const nextCheckpointMs = new Date(
+      job?.metrics_next_checkpoint_at
+      || inferredNextMetricCheckpointAt(job)
+      || 0,
+    ).getTime();
+    return Number.isFinite(nextCheckpointMs) && nextCheckpointMs <= nowMs;
+  }
   const nextRetryMs = new Date(job?.next_retry_at || 0).getTime();
   if (Number.isFinite(nextRetryMs) && nextRetryMs > nowMs) return false;
   if (job?.state !== "processing") return true;
@@ -200,6 +311,7 @@ async function candidateRows(
     ["sending", "next_retry_at"],
     ["scheduled", "next_retry_at"],
     ["approval_wait", "next_retry_at"],
+    ["sent", "metrics_next_checkpoint_at"],
   ];
   const pages = await Promise.all(scans.map(async ([state, sort], priority) => (
     asArray(await entity.filter({ state }, sort, STATE_SCAN_LIMIT))
@@ -213,6 +325,7 @@ async function candidateRows(
       || new Date(
         left.job?.schedule_cutoff_at
         || left.job?.next_retry_at
+        || left.job?.metrics_next_checkpoint_at
         || left.job?.lease_expires_at
         || left.job?.created_date
         || 0,
@@ -220,6 +333,7 @@ async function candidateRows(
         - new Date(
           right.job?.schedule_cutoff_at
           || right.job?.next_retry_at
+          || right.job?.metrics_next_checkpoint_at
           || right.job?.lease_expires_at
           || right.job?.created_date
           || 0,
@@ -334,6 +448,7 @@ async function configRevision(job: any): Promise<string> {
     String(job?.provider_channel_id || ""),
     token(job?.provider_service),
     String(job?.media_origin || ""),
+    String(job?.media_path_prefix || ""),
   ].join("|"));
 }
 
@@ -405,7 +520,10 @@ async function claimJob(entity: any, job: any, now: Date): Promise<any | null> {
   const increments: any = {
     lease_generation: 1,
   };
-  if (job?.state !== "delivery_reconcile") increments.attempt_count = 1;
+  if (!["delivery_reconcile", "sent"].includes(job?.state)) {
+    increments.attempt_count = 1;
+  }
+  if (job?.state === "sent") increments.metrics_sync_attempt_count = 1;
   if (job?.state === "create_reconcile") increments.reconciliation_count = 1;
   const result = await entity.updateMany(
     {
@@ -447,10 +565,13 @@ async function recoverExpiredLease(entity: any, job: any, now: Date): Promise<bo
   const sourceState = token(job?.lease_source_state);
   const deliveryOnly = sourceState === "delivery_reconcile";
   const measurementOnly = sourceState === "measurement_retry";
+  const metricsOnly = sourceState === "sent";
   const recoveryState = deliveryOnly
     ? "delivery_reconcile"
     : measurementOnly
       ? "measurement_retry"
+      : metricsOnly
+        ? "sent"
       : "create_reconcile";
   const result = await entity.updateMany(
     {
@@ -464,18 +585,24 @@ async function recoverExpiredLease(entity: any, job: any, now: Date): Promise<bo
       $set: {
         state: recoveryState,
         next_retry_at: now.toISOString(),
-        last_error_code: deliveryOnly || measurementOnly
+        last_error_code: deliveryOnly || measurementOnly || metricsOnly
           ? token(
             job?.last_error_code,
-            deliveryOnly ? "delivery_failed" : "content_plan_unavailable",
+            deliveryOnly
+              ? "delivery_failed"
+              : measurementOnly
+                ? "content_plan_unavailable"
+                : "buffer_metrics_retry",
           )
           : "expired_ambiguous_lease",
-        last_error_message: deliveryOnly || measurementOnly
+        last_error_message: deliveryOnly || measurementOnly || metricsOnly
           ? safeProviderError(
             job?.last_error_message,
             deliveryOnly
               ? "Measurement-plan cancellation will retry."
-              : "The published post's measurement clock will retry.",
+              : measurementOnly
+                ? "The published post's measurement clock will retry."
+                : "The published post's metric checkpoint will retry.",
           )
           : "A prior provider attempt ended without a durable result.",
         lease_token: "",
@@ -513,7 +640,7 @@ function providerState(providerStatus: string): string {
 }
 
 function postFields(): string {
-  return `id channelId channelService status dueAt sentAt externalLink text createdAt updatedAt
+  return `id channelId channelService status schedulingType dueAt sentAt externalLink text createdAt updatedAt
     assets { source mimeType type }
     error { message supportUrl }`;
 }
@@ -552,6 +679,25 @@ function postQuery(providerPostId: string): string {
   return `query {
     post(input:{id:${JSON.stringify(providerPostId)}}) {
       ${postFields()}
+    }
+  }`;
+}
+
+function postMetricsQuery(providerPostId: string): string {
+  return `query {
+    post(input:{id:${JSON.stringify(providerPostId)}}) {
+      id
+      channelId
+      channelService
+      status
+      sentAt
+      metricsUpdatedAt
+      metrics {
+        type
+        name
+        value
+        unit
+      }
     }
   }`;
 }
@@ -596,7 +742,8 @@ async function bufferRequest(
 ): Promise<any> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-  let providerResponse: Response;
+  let providerResponse: Response | null = null;
+  let document: any = null;
   try {
     providerResponse = await fetch(BUFFER_API_URL, {
       method: "POST",
@@ -608,8 +755,22 @@ async function bufferRequest(
       body: JSON.stringify({ query }),
       signal: controller.signal,
     });
+    document = await providerResponse.json();
   } catch {
+    return {
+      ok: false,
+      outcome: operation === "create" ? "ambiguous" : "retry",
+      code: providerResponse
+        ? "provider_invalid_response"
+        : "provider_network_error",
+      message: providerResponse
+        ? "The provider response body was unreadable or timed out."
+        : "The provider request did not return a confirmable response.",
+    };
+  } finally {
     clearTimeout(timeoutId);
+  }
+  if (!providerResponse) {
     return {
       ok: false,
       outcome: operation === "create" ? "ambiguous" : "retry",
@@ -617,23 +778,14 @@ async function bufferRequest(
       message: "The provider request did not return a confirmable response.",
     };
   }
-  clearTimeout(timeoutId);
 
   const retryAfter = Math.max(
     30,
-    Math.min(4 * 60 * 60, Number(providerResponse.headers.get("retry-after") || 30)),
+    Math.min(
+      4 * 60 * 60,
+      Number(providerResponse.headers.get("retry-after") || 30),
+    ),
   );
-  let document: any = null;
-  try {
-    document = await providerResponse.json();
-  } catch {
-    return {
-      ok: false,
-      outcome: operation === "create" ? "ambiguous" : "retry",
-      code: "provider_invalid_response",
-      message: "The provider returned an unreadable response.",
-    };
-  }
   if (
     operation === "create"
     && document?.data?.createPost?.__typename === "PostActionSuccess"
@@ -818,16 +970,20 @@ async function verifyApprovedMediaBytes(
     return {
       ok: false,
       outcome: "review",
-      code: "media_origin_mismatch",
-      message: "Approved media is not on the configured immutable media origin.",
+      code: "media_namespace_mismatch",
+      message: "Approved media is not in the configured immutable media namespace.",
     };
   }
-  if (mediaUrl.origin !== config.mediaOrigin) {
+  if (!mediaUrlUsesNamespace(
+    mediaUrl.href,
+    config.mediaOrigin,
+    config.mediaPathPrefix,
+  )) {
     return {
       ok: false,
       outcome: "review",
-      code: "media_origin_mismatch",
-      message: "Approved media is not on the configured immutable media origin.",
+      code: "media_namespace_mismatch",
+      message: "Approved media is not in the configured immutable media namespace.",
     };
   }
   const controller = new AbortController();
@@ -861,18 +1017,22 @@ async function verifyApprovedMediaBytes(
         message: "Approved media must not redirect away from its immutable URL.",
       };
     }
-    let finalOrigin = "";
+    let finalUrl = "";
     try {
-      finalOrigin = new URL(mediaResponse.url || mediaUrl.href).origin;
+      finalUrl = new URL(mediaResponse.url || mediaUrl.href).href;
     } catch {
-      finalOrigin = "";
+      finalUrl = "";
     }
-    if (finalOrigin !== config.mediaOrigin) {
+    if (!mediaUrlUsesNamespace(
+      finalUrl,
+      config.mediaOrigin,
+      config.mediaPathPrefix,
+    )) {
       return {
         ok: false,
         outcome: "review",
         code: "media_redirect_blocked",
-        message: "The approved media redirected away from the immutable media origin.",
+        message: "The approved media redirected away from its immutable media namespace.",
       };
     }
     if (!mediaResponse.ok) {
@@ -950,6 +1110,7 @@ function exactPostMatches(post: any, artifact: any, job: any): boolean {
     && PROVIDER_STATUSES.has(token(post?.status))
     && String(post?.channelId || "") === String(job?.provider_channel_id || "")
     && token(post?.channelService) === token(job?.provider_service)
+    && token(post?.schedulingType) === token(job?.scheduling_type)
     && expectedDueAt === actualDueAt
     && String(post?.text || "") === String(artifact?.provider_text || "")
     && sources.includes(String(artifact?.media_url || ""));
@@ -963,6 +1124,11 @@ function providerFields(post: any, now: Date): any {
   return {
     state,
     provider_status: PROVIDER_STATUSES.has(providerStatus) ? providerStatus : "error",
+    provider_scheduling_type: ["automatic", "notification"].includes(
+      token(post?.schedulingType),
+    )
+      ? token(post?.schedulingType)
+      : undefined,
     provider_post_id: String(post?.id || "").slice(0, 300),
     provider_due_at: timestamp(post?.dueAt) || undefined,
     provider_sent_at: timestamp(post?.sentAt) || undefined,
@@ -1005,7 +1171,7 @@ async function syncPlatformPublication(
   artifact: any,
   post: any,
   now: Date,
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{ ok: boolean; error?: string; publishedAt?: string }> {
   const platform = token(artifact?.platform);
   if (!SOCIAL_PLATFORMS.has(platform) || token(post?.status) !== "sent") {
     return { ok: true };
@@ -1031,7 +1197,7 @@ async function syncPlatformPublication(
     && plans[0]?.delivery_status === "published"
     && !authoritativeSentAt
   ) {
-    return { ok: true };
+    return { ok: true, publishedAt: existingPublishedAt };
   }
   const publishedAt = authoritativeSentAt || now.toISOString();
   if (
@@ -1039,7 +1205,7 @@ async function syncPlatformPublication(
     && plans[0]?.delivery_managed_by === "buffer"
     && plans[0]?.delivery_status === "published"
   ) {
-    return { ok: true };
+    return { ok: true, publishedAt };
   }
   const updated = await entities.GrowthContentPlan.updateMany(
     {
@@ -1058,15 +1224,15 @@ async function syncPlatformPublication(
     const latest = await entities.GrowthContentPlan.get(plans[0].id)
       .catch(() => null);
     if (
-      timestamp(latest?.published_at) === publishedAt
+        timestamp(latest?.published_at) === publishedAt
       && latest?.delivery_managed_by === "buffer"
       && latest?.delivery_status === "published"
-    ) {
-      return { ok: true };
+      ) {
+        return { ok: true, publishedAt };
     }
     return { ok: false, error: "content_plan_changed_before_publish" };
   }
-  return { ok: true };
+  return { ok: true, publishedAt };
 }
 
 async function cancelPlatformMeasurementDelivery(
@@ -1130,7 +1296,12 @@ async function measurementAwareFields(
     post,
     now,
   ).catch(() => ({ ok: false, error: "content_plan_unavailable" }));
-  if (measurement.ok) return fields;
+  if (measurement.ok) {
+    return {
+      ...fields,
+      ...metricScheduleFields(measurement.publishedAt || fields.provider_sent_at),
+    };
+  }
   return {
     ...fields,
     state: "measurement_retry",
@@ -1255,6 +1426,7 @@ async function preflight(
     || String(job?.provider_organization_id || "") !== config.organizationId
     || String(job?.provider_channel_id || "") !== channelFor(config, job.platform)
     || String(job?.media_origin || "") !== config.mediaOrigin
+    || String(job?.media_path_prefix || "") !== config.mediaPathPrefix
     || await configRevision(job) !== job?.config_revision
     || await publishJobRequestHash(job) !== job?.request_hash
   ) {
@@ -1263,6 +1435,13 @@ async function preflight(
   const artifact = await entities.GrowthCreativeArtifact.get(job.artifact_id)
     .catch(() => null);
   if (!artifact?.id) return { error: "creative_artifact_not_found" };
+  if (!mediaUrlUsesNamespace(
+    artifact?.media_url,
+    config.mediaOrigin,
+    config.mediaPathPrefix,
+  )) {
+    return { error: "media_namespace_mismatch" };
+  }
   const approvalHash = await artifactApprovalHash(artifact);
   if (
     artifact?.approval_status !== "approved"
@@ -1276,16 +1455,9 @@ async function preflight(
     || artifact?.demo_labeled !== true
     || artifact?.claims_supported !== true
     || artifact?.media_rights_confirmed !== true
-    || !artifactMediaReady(artifact)
+    || !artifactMediaReady(artifact, config)
   ) {
     return { error: "artifact_approval_changed" };
-  }
-  try {
-    if (new URL(String(artifact?.media_url || "")).origin !== config.mediaOrigin) {
-      return { error: "media_origin_mismatch" };
-    }
-  } catch {
-    return { error: "media_origin_mismatch" };
   }
   const sourceState = await sourceReadinessState(entities, artifact, job);
   if (sourceState === "unavailable") {
@@ -1442,6 +1614,7 @@ async function processMeasurementRetry(
       state: "sent",
       provider_status: "sent",
       ...(sentAt ? { provider_sent_at: sentAt } : {}),
+      ...metricScheduleFields(measurement.publishedAt || sentAt),
       next_retry_at: undefined,
       last_error_code: "",
       last_error_message: "",
@@ -1461,6 +1634,1091 @@ async function processMeasurementRetry(
     fields,
   );
   return saved ? fields.state : "lease_lost";
+}
+
+function contentMetricPlatform(metric: any): string {
+  const platform = token(metric?.platform);
+  return SOCIAL_PLATFORMS.has(platform) ? platform : "instagram";
+}
+
+function contentMetricObservedFields(metric: any): string[] | null {
+  const manualFields = Array.isArray(metric?.observed_metric_fields)
+    ? metric.observed_metric_fields
+    : null;
+  const providerFields = normalized(metric?.metric_source) === "buffer"
+      && Array.isArray(metric?.provider_observed_metric_types)
+    ? metric.provider_observed_metric_types
+    : null;
+  const observedFields = manualFields || providerFields;
+  if (!observedFields) return null;
+  const observed = new Set(
+    observedFields.map((field: any) => normalized(field)),
+  );
+  return CONTENT_METRIC_FIELDS.filter((field) => observed.has(field));
+}
+
+function contentMetricSnapshotPayload(metric: any): string {
+  // This intentionally matches upsertGrowthContentMetric's historical
+  // fingerprint byte-for-byte when observation metadata is absent. Platform
+  // remains part of the lookup key.
+  const payload: any = {
+    campaign: token(metric?.campaign, "1000-users"),
+    content: token(metric?.content),
+    snapshot_days: Number(metric?.snapshot_days || 7),
+    snapshot_captured_at: timestamp(metric?.snapshot_captured_at) || "",
+    published_at: timestamp(metric?.published_at) || "",
+  };
+  for (const field of CONTENT_METRIC_FIELDS) {
+    payload[field] = Math.max(0, Number(metric?.[field] || 0));
+  }
+  const observedFields = contentMetricObservedFields(metric);
+  if (observedFields) payload.observed_fields = observedFields;
+  return JSON.stringify(payload);
+}
+
+async function contentMetricFingerprint(metric: any): Promise<string> {
+  return sha256Hex(contentMetricSnapshotPayload(metric));
+}
+
+function hasOwn(value: any, field: string): boolean {
+  return Object.prototype.hasOwnProperty.call(value || {}, field);
+}
+
+function compactMetricText(value: any, max: number): string {
+  return String(value || "").trim().replace(/\s+/g, " ").slice(0, max);
+}
+
+function automatedMetricDimensions(
+  job: any,
+  format: string,
+  ctaVariant: string,
+): any {
+  const growthBatchKey = normalized(job?.growth_batch_key);
+  return {
+    format: CONTENT_FORMATS.has(token(format)) ? token(format) : "other",
+    hook: compactMetricText(job?.hook_snapshot, 300),
+    cta_variant: compactMetricText(ctaVariant, 120),
+    artifact_key: String(job?.artifact_key || "").slice(0, 120),
+    concept_id: String(job?.concept_id || "").slice(0, 120),
+    ...(/^[a-f0-9]{64}$/.test(growthBatchKey)
+      ? { growth_batch_key: growthBatchKey }
+      : {}),
+  };
+}
+
+function normalizedBufferCountMetrics(post: any): {
+  ok: boolean;
+  code?: string;
+  values?: Record<string, number>;
+  observedTypes?: string[];
+} {
+  const values: Record<string, number> = {};
+  const seen = new Map<string, number>();
+  for (const metric of asArray(post?.metrics)) {
+    const type = token(metric?.type);
+    if (!BUFFER_COUNT_METRIC_TYPES.has(type)) continue;
+    if (token(metric?.unit) !== "count") {
+      return { ok: false, code: "buffer_metrics_invalid_count_unit" };
+    }
+    const value = Number(metric?.value);
+    if (
+      !Number.isSafeInteger(value)
+      || value < 0
+      || value > MAX_CONTENT_METRIC
+    ) {
+      return { ok: false, code: "buffer_metrics_invalid_count_value" };
+    }
+    if (seen.has(type) && seen.get(type) !== value) {
+      return { ok: false, code: "buffer_metrics_conflicting_count" };
+    }
+    seen.set(type, value);
+    values[type] = value;
+  }
+  if (!seen.size) return { ok: false, code: "buffer_metrics_unavailable" };
+  if (!seen.has("reach") && !seen.has("views")) {
+    return { ok: false, code: "buffer_metrics_exposure_unavailable" };
+  }
+  return {
+    ok: true,
+    values,
+    observedTypes: [...seen.keys()].sort(),
+  };
+}
+
+function bufferMetricRequestErrorCode(value: any): string {
+  const code = token(value);
+  return BUFFER_METRIC_REQUEST_CODES.has(code)
+    ? code
+    : "buffer_metrics_provider_error";
+}
+
+async function normalizedProviderMetricsHash(
+  job: any,
+  metricsUpdatedAt: string,
+  values: Record<string, number>,
+  observedTypes: string[],
+): Promise<string> {
+  return sha256Hex(canonicalStringify({
+    provider: "buffer",
+    provider_post_id: String(job?.provider_post_id || ""),
+    provider_channel_id: String(job?.provider_channel_id || ""),
+    provider_channel_service: token(job?.provider_service),
+    metrics_updated_at: metricsUpdatedAt,
+    observed_metric_types: observedTypes,
+    metrics: values,
+  }));
+}
+
+async function exactAutomatedMetricCheckpoint(
+  metric: any,
+  job: any,
+  checkpoint: {
+    days: number;
+    dueAt: string;
+    closeAt: string;
+    dueMs: number;
+    closeMs: number;
+  },
+  publishedAt: string,
+  format: string,
+  ctaVariant: string,
+  observedAt: Date,
+): Promise<{
+  ok: boolean;
+  metric?: any;
+  providerMetricsUpdatedAt?: string;
+  providerMetricsHash?: string;
+}> {
+  const platform = token(job?.platform);
+  const campaign = token(job?.campaign, "1000-users");
+  const content = token(job?.platform_content_id);
+  const window = checkpointTimes(publishedAt, checkpoint.days);
+  if (
+    !metric?.id
+    || job?.provider !== "buffer"
+    || !SOCIAL_PLATFORMS.has(platform)
+    || !campaign
+    || !content
+    || token(job?.provider_service) !== platform
+    || !String(job?.provider_organization_id || "")
+    || timestamp(job?.provider_sent_at) !== publishedAt
+    || timestamp(job?.metrics_published_at) !== publishedAt
+    || await configRevision(job) !== job?.config_revision
+    || await publishJobRequestHash(job) !== job?.request_hash
+    || checkpoint.dueAt !== window.dueAt
+    || checkpoint.closeAt !== window.closeAt
+    || checkpoint.dueMs !== window.dueMs
+    || checkpoint.closeMs !== window.closeMs
+    || metric.platform !== platform
+    || metric.campaign !== campaign
+    || metric.content !== content
+    || metric.snapshot_days !== checkpoint.days
+    || metric.metric_source !== "buffer"
+    || hasOwn(metric, "observed_metric_fields")
+    || String(metric.provider_post_id || "")
+      !== String(job?.provider_post_id || "").slice(0, 300)
+    || String(metric.provider_channel_id || "")
+      !== String(job?.provider_channel_id || "").slice(0, 300)
+  ) {
+    return { ok: false };
+  }
+
+  const dimensions = automatedMetricDimensions(job, format, ctaVariant);
+  for (const field of [
+    "format",
+    "hook",
+    "cta_variant",
+    "artifact_key",
+    "concept_id",
+  ]) {
+    if (!hasOwn(metric, field) || metric[field] !== dimensions[field]) {
+      return { ok: false };
+    }
+  }
+  const expectsGrowthBatchKey = hasOwn(dimensions, "growth_batch_key");
+  if (
+    hasOwn(metric, "growth_batch_key") !== expectsGrowthBatchKey
+    || (
+      expectsGrowthBatchKey
+      && metric.growth_batch_key !== dimensions.growth_batch_key
+    )
+  ) {
+    return { ok: false };
+  }
+
+  const metricPublishedAt = timestamp(metric?.published_at);
+  const capturedAt = timestamp(metric?.snapshot_captured_at);
+  const metricsUpdatedAt = timestamp(metric?.provider_metrics_updated_at);
+  const capturedMs = new Date(capturedAt || 0).getTime();
+  if (
+    !metricPublishedAt
+    || metricPublishedAt !== publishedAt
+    || String(metric.published_at || "") !== metricPublishedAt
+    || !capturedAt
+    || String(metric.snapshot_captured_at || "") !== capturedAt
+    || !metricsUpdatedAt
+    || String(metric.provider_metrics_updated_at || "") !== metricsUpdatedAt
+    || capturedAt !== metricsUpdatedAt
+    || capturedMs < checkpoint.dueMs
+    || capturedMs > checkpoint.closeMs
+    || capturedMs > observedAt.getTime() + 5 * 60 * 1000
+  ) {
+    return { ok: false };
+  }
+
+  if (
+    !hasOwn(metric, "provider_observed_metric_types")
+    || !Array.isArray(metric.provider_observed_metric_types)
+  ) {
+    return { ok: false };
+  }
+  const observedTypes = metric.provider_observed_metric_types;
+  if (observedTypes.length < 1 || observedTypes.length > BUFFER_COUNT_METRIC_TYPES.size) {
+    return { ok: false };
+  }
+  const canonicalObservedTypes = observedTypes.map((value: any) => token(value));
+  const sortedObservedTypes = [...canonicalObservedTypes].sort();
+  if (
+    observedTypes.some(
+      (value: any, index: number) => value !== canonicalObservedTypes[index],
+    )
+    || canonicalStringify(canonicalObservedTypes)
+      !== canonicalStringify(sortedObservedTypes)
+    || new Set(canonicalObservedTypes).size !== canonicalObservedTypes.length
+    || canonicalObservedTypes.some(
+      (value: string) => !BUFFER_COUNT_METRIC_TYPES.has(value),
+    )
+    || (
+      !canonicalObservedTypes.includes("reach")
+      && !canonicalObservedTypes.includes("views")
+    )
+  ) {
+    return { ok: false };
+  }
+
+  const observedSet = new Set(canonicalObservedTypes);
+  const values: Record<string, number> = {};
+  for (const field of CONTENT_METRIC_FIELDS) {
+    const expectedField = observedSet.has(field);
+    if (hasOwn(metric, field) !== expectedField) {
+      return { ok: false };
+    }
+    if (!expectedField) continue;
+    const value = metric[field];
+    if (
+      typeof value !== "number"
+      || !Number.isSafeInteger(value)
+      || value < 0
+      || value > MAX_CONTENT_METRIC
+    ) {
+      return { ok: false };
+    }
+    values[field] = value;
+  }
+
+  const storedProviderHash = String(metric?.provider_metrics_hash || "");
+  if (
+    !/^[a-f0-9]{64}$/.test(storedProviderHash)
+    || storedProviderHash !== await normalizedProviderMetricsHash(
+      job,
+      metricsUpdatedAt,
+      values,
+      canonicalObservedTypes,
+    )
+  ) {
+    return { ok: false };
+  }
+  const storedFingerprint = String(metric?.snapshot_fingerprint || "");
+  if (
+    !/^[a-f0-9]{64}$/.test(storedFingerprint)
+    || storedFingerprint !== await contentMetricFingerprint(metric)
+  ) {
+    return { ok: false };
+  }
+  return {
+    ok: true,
+    metric,
+    providerMetricsUpdatedAt: metricsUpdatedAt,
+    providerMetricsHash: storedProviderHash,
+  };
+}
+
+async function existingAutomatedMetricCheckpoint(
+  entity: any,
+  job: any,
+  checkpoint: {
+    days: number;
+    dueAt: string;
+    closeAt: string;
+    dueMs: number;
+    closeMs: number;
+  },
+  publishedAt: string,
+  format: string,
+  ctaVariant: string,
+  observedAt: Date,
+): Promise<{
+  state: "none" | "exact" | "conflict";
+  metric?: any;
+  providerMetricsUpdatedAt?: string;
+  providerMetricsHash?: string;
+}> {
+  const platform = token(job?.platform);
+  const campaign = token(job?.campaign, "1000-users");
+  const content = token(job?.platform_content_id);
+  const rows = asArray(await entity.filter(
+    { campaign, content, snapshot_days: checkpoint.days },
+    "-snapshot_captured_at",
+    50,
+  )).filter((record) => contentMetricPlatform(record) === platform);
+  if (!rows.length) return { state: "none" };
+  if (rows.length !== 1) return { state: "conflict" };
+  const exact = await exactAutomatedMetricCheckpoint(
+    rows[0],
+    job,
+    checkpoint,
+    publishedAt,
+    format,
+    ctaVariant,
+    observedAt,
+  );
+  return exact.ok
+    ? {
+      state: "exact",
+      metric: exact.metric,
+      providerMetricsUpdatedAt: exact.providerMetricsUpdatedAt,
+      providerMetricsHash: exact.providerMetricsHash,
+    }
+    : { state: "conflict" };
+}
+
+function validatedMetricsCheckpoints(job: any): {
+  ok: boolean;
+  records: any[];
+} {
+  const records = asArray(job?.metrics_checkpoints);
+  if (records.length > METRIC_CHECKPOINT_DAYS.length) {
+    return { ok: false, records };
+  }
+  const seen = new Set<number>();
+  for (const record of records) {
+    const days = Number(record?.snapshot_days || 0);
+    if (
+      !METRIC_CHECKPOINT_DAYS.includes(days)
+      || seen.has(days)
+      || !["captured", "review_needed"].includes(token(record?.status))
+      || !timestamp(record?.due_at)
+      || !timestamp(record?.window_closes_at)
+      || !timestamp(record?.recorded_at)
+    ) {
+      return { ok: false, records };
+    }
+    seen.add(days);
+  }
+  return {
+    ok: true,
+    records: [...records].sort(
+      (left, right) => Number(left?.snapshot_days || 0)
+        - Number(right?.snapshot_days || 0),
+    ),
+  };
+}
+
+function checkpointTimes(publishedAt: string, snapshotDays: number): {
+  dueAt: string;
+  closeAt: string;
+  dueMs: number;
+  closeMs: number;
+} {
+  const publishedMs = new Date(publishedAt).getTime();
+  const dueMs = publishedMs + snapshotDays * DAY_MS;
+  const closeMs = dueMs + SNAPSHOT_GRACE_MS;
+  return {
+    dueAt: new Date(dueMs).toISOString(),
+    closeAt: new Date(closeMs).toISOString(),
+    dueMs,
+    closeMs,
+  };
+}
+
+function nextMetricCheckpoint(
+  publishedAt: string,
+  records: any[],
+): { days: number; dueAt: string; closeAt: string; dueMs: number; closeMs: number }
+  | null {
+  const recorded = new Set(records.map((record) => Number(record?.snapshot_days || 0)));
+  const days = METRIC_CHECKPOINT_DAYS.find((value) => !recorded.has(value));
+  if (!days) return null;
+  const times = checkpointTimes(publishedAt, days);
+  return { days, ...times };
+}
+
+function reviewNeededCheckpoint(
+  checkpoint: {
+    days: number;
+    dueAt: string;
+    closeAt: string;
+  },
+  now: Date,
+  errorCode: string,
+  providerEvidence: any = {},
+): any {
+  return {
+    snapshot_days: checkpoint.days,
+    due_at: checkpoint.dueAt,
+    window_closes_at: checkpoint.closeAt,
+    status: "review_needed",
+    recorded_at: now.toISOString(),
+    error_code: token(errorCode, "buffer_metrics_checkpoint_missed"),
+    ...(timestamp(providerEvidence?.provider_metrics_updated_at)
+      ? {
+        provider_metrics_updated_at: timestamp(
+          providerEvidence.provider_metrics_updated_at,
+        ),
+      }
+      : {}),
+    ...(/^[a-f0-9]{64}$/.test(normalized(providerEvidence?.provider_metrics_hash))
+      ? { provider_metrics_hash: normalized(providerEvidence.provider_metrics_hash) }
+      : {}),
+  };
+}
+
+function metricsProgressFields(
+  publishedAt: string,
+  records: any[],
+  now: Date,
+): any {
+  const next = nextMetricCheckpoint(publishedAt, records);
+  return next
+    ? {
+      state: "sent",
+      metrics_published_at: publishedAt,
+      metrics_checkpoints: records,
+      metrics_next_checkpoint_at: next.dueAt,
+    }
+    : {
+      state: "sent",
+      metrics_published_at: publishedAt,
+      metrics_checkpoints: records,
+      metrics_sync_completed_at: now.toISOString(),
+    };
+}
+
+async function automatedMetricUpsert(
+  entity: any,
+  job: any,
+  checkpoint: {
+    days: number;
+    dueAt: string;
+    closeAt: string;
+    dueMs: number;
+    closeMs: number;
+  },
+  publishedAt: string,
+  capturedAt: string,
+  metricsUpdatedAt: string,
+  providerMetricsHash: string,
+  values: Record<string, number>,
+  observedTypes: string[],
+  format: string,
+  ctaVariant: string,
+  observedAt: Date,
+): Promise<{
+  ok: boolean;
+  code?: string;
+  metric?: any;
+}> {
+  const platform = token(job?.platform);
+  const campaign = token(job?.campaign, "1000-users");
+  const content = token(job?.platform_content_id);
+  if (!SOCIAL_PLATFORMS.has(platform) || !campaign || !content) {
+    return { ok: false, code: "buffer_metrics_attribution_invalid" };
+  }
+  const metric: any = {
+    platform,
+    campaign,
+    content,
+    ...automatedMetricDimensions(job, format, ctaVariant),
+    published_at: publishedAt,
+    snapshot_days: checkpoint.days,
+    snapshot_captured_at: capturedAt,
+    ...values,
+    metric_source: "buffer",
+    provider_post_id: String(job?.provider_post_id || "").slice(0, 300),
+    provider_channel_id: String(job?.provider_channel_id || "").slice(0, 300),
+    provider_metrics_updated_at: metricsUpdatedAt,
+    provider_metrics_hash: providerMetricsHash,
+    provider_observed_metric_types: [...observedTypes].sort(),
+  };
+  metric.snapshot_fingerprint = await contentMetricFingerprint(metric);
+
+  const existing = await existingAutomatedMetricCheckpoint(
+    entity,
+    job,
+    checkpoint,
+    publishedAt,
+    format,
+    ctaVariant,
+    observedAt,
+  );
+  if (existing.state === "exact") {
+    return { ok: true, metric: existing.metric };
+  }
+  if (existing.state === "conflict") {
+    return { ok: false, code: "content_snapshot_conflict" };
+  }
+  try {
+    const created = await entity.create(metric);
+    if (!created?.id) {
+      return { ok: false, code: "content_metric_unavailable" };
+    }
+    return { ok: true, metric: created };
+  } catch {
+    // A prior lease may have created the row immediately before losing its
+    // job fence. Re-read once and accept only exact provider evidence.
+    const raced = await existingAutomatedMetricCheckpoint(
+      entity,
+      job,
+      checkpoint,
+      publishedAt,
+      format,
+      ctaVariant,
+      observedAt,
+    );
+    return raced.state === "exact"
+      ? { ok: true, metric: raced.metric }
+      : {
+        ok: false,
+        code: raced.state === "conflict"
+          ? "content_snapshot_conflict"
+          : "content_metric_unavailable",
+      };
+  }
+}
+
+async function finishMetricCheckpoint(
+  entities: any,
+  claim: any,
+  publishedAt: string,
+  records: any[],
+  checkpoint: {
+    days: number;
+    dueAt: string;
+    closeAt: string;
+  },
+  now: Date,
+  result: {
+    status: "captured" | "review_needed";
+    metric?: any;
+    errorCode?: string;
+    providerMetricsUpdatedAt?: string;
+    providerMetricsHash?: string;
+  },
+): Promise<string> {
+  const nextRecords = [
+    ...records,
+    result.status === "captured"
+      ? {
+        snapshot_days: checkpoint.days,
+        due_at: checkpoint.dueAt,
+        window_closes_at: checkpoint.closeAt,
+        status: "captured",
+        recorded_at: now.toISOString(),
+        metric_id: String(result.metric?.id || "").slice(0, 160),
+        snapshot_captured_at: timestamp(result.metric?.snapshot_captured_at),
+        snapshot_fingerprint: normalized(result.metric?.snapshot_fingerprint),
+        provider_metrics_updated_at: timestamp(result.providerMetricsUpdatedAt),
+        provider_metrics_hash: normalized(result.providerMetricsHash),
+      }
+      : reviewNeededCheckpoint(
+        checkpoint,
+        now,
+        result.errorCode || "buffer_metrics_checkpoint_missed",
+        {
+          provider_metrics_updated_at: result.providerMetricsUpdatedAt,
+          provider_metrics_hash: result.providerMetricsHash,
+        },
+      ),
+  ].sort(
+    (left, right) => Number(left?.snapshot_days || 0)
+      - Number(right?.snapshot_days || 0),
+  );
+  const fields = {
+    ...metricsProgressFields(publishedAt, nextRecords, now),
+    ...(timestamp(result.providerMetricsUpdatedAt)
+      ? { provider_metrics_updated_at: timestamp(result.providerMetricsUpdatedAt) }
+      : {}),
+    ...(/^[a-f0-9]{64}$/.test(normalized(result.providerMetricsHash))
+      ? { provider_metrics_hash: normalized(result.providerMetricsHash) }
+      : {}),
+    last_error_code: result.status === "captured"
+      ? ""
+      : token(result.errorCode, "buffer_metrics_checkpoint_missed"),
+    last_error_message: result.status === "captured"
+      ? ""
+      : "A fixed-age Buffer metric checkpoint needs human review.",
+  };
+  const saved = await fencedUpdate(
+    entities.GrowthPublishJob,
+    claim.row,
+    claim.leaseToken,
+    claim.leaseGeneration,
+    fields,
+  );
+  return saved ? "sent" : "lease_lost";
+}
+
+async function reconcileExistingMetricCheckpoint(
+  entities: any,
+  claim: any,
+  publishedAt: string,
+  records: any[],
+  checkpoint: {
+    days: number;
+    dueAt: string;
+    closeAt: string;
+    dueMs: number;
+    closeMs: number;
+  },
+  now: Date,
+  format: string,
+  ctaVariant: string,
+): Promise<string | null> {
+  const existing = await existingAutomatedMetricCheckpoint(
+    entities.GrowthContentMetric,
+    claim.row,
+    checkpoint,
+    publishedAt,
+    format,
+    ctaVariant,
+    now,
+  );
+  if (existing.state === "none") return null;
+  if (existing.state === "conflict") {
+    return finishMetricCheckpoint(
+      entities,
+      claim,
+      publishedAt,
+      records,
+      checkpoint,
+      now,
+      {
+        status: "review_needed",
+        errorCode: "content_snapshot_conflict",
+      },
+    );
+  }
+  return finishMetricCheckpoint(
+    entities,
+    claim,
+    publishedAt,
+    records,
+    checkpoint,
+    now,
+    {
+      status: "captured",
+      metric: existing.metric,
+      providerMetricsUpdatedAt: existing.providerMetricsUpdatedAt,
+      providerMetricsHash: existing.providerMetricsHash,
+    },
+  );
+}
+
+async function retryMetricCheckpoint(
+  entities: any,
+  claim: any,
+  publishedAt: string,
+  records: any[],
+  checkpoint: {
+    days: number;
+    dueAt: string;
+    closeAt: string;
+    closeMs: number;
+  },
+  now: Date,
+  errorCode: string,
+  providerMetricsUpdatedAt?: string,
+  providerMetricsHash?: string,
+): Promise<string> {
+  if (now.getTime() >= checkpoint.closeMs) {
+    return finishMetricCheckpoint(
+      entities,
+      claim,
+      publishedAt,
+      records,
+      checkpoint,
+      now,
+      {
+        status: "review_needed",
+        errorCode,
+        providerMetricsUpdatedAt,
+        providerMetricsHash,
+      },
+    );
+  }
+  const retryAt = new Date(Math.min(
+    now.getTime() + METRIC_RETRY_MS,
+    checkpoint.closeMs,
+  )).toISOString();
+  const saved = await fencedUpdate(
+    entities.GrowthPublishJob,
+    claim.row,
+    claim.leaseToken,
+    claim.leaseGeneration,
+    {
+      state: "sent",
+      metrics_published_at: publishedAt,
+      metrics_checkpoints: records,
+      metrics_next_checkpoint_at: retryAt,
+      ...(timestamp(providerMetricsUpdatedAt)
+        ? { provider_metrics_updated_at: timestamp(providerMetricsUpdatedAt) }
+        : {}),
+      ...(/^[a-f0-9]{64}$/.test(normalized(providerMetricsHash))
+        ? { provider_metrics_hash: normalized(providerMetricsHash) }
+        : {}),
+      last_error_code: token(errorCode, "buffer_metrics_retry"),
+      last_error_message: "Buffer metric evidence was not ready; this checkpoint will retry.",
+    },
+  );
+  return saved ? "sent" : "lease_lost";
+}
+
+async function resolveMetricsPlan(
+  entities: any,
+  job: any,
+): Promise<{
+  ok: boolean;
+  code?: string;
+  publishedAt?: string;
+  format?: string;
+  ctaVariant?: string;
+}> {
+  const plans = await measurementPlansForPlatform(
+    entities.GrowthContentPlan,
+    token(job?.platform),
+    token(job?.campaign, "1000-users"),
+    token(job?.platform_content_id),
+  ).catch(() => []);
+  if (plans.length !== 1) {
+    return { ok: false, code: "metrics_plan_missing_or_ambiguous" };
+  }
+  const plan = plans[0];
+  const planPublishedAt = timestamp(plan?.published_at);
+  const durable = timestamp(job?.metrics_published_at || job?.provider_sent_at);
+  if (
+    !planPublishedAt
+    || (durable && durable !== planPublishedAt)
+  ) {
+    return { ok: false, code: "metrics_publication_clock_missing" };
+  }
+  const format = token(plan?.format);
+  if (!CONTENT_FORMATS.has(format)) {
+    return { ok: false, code: "metrics_plan_format_invalid" };
+  }
+  const ctaVariant = String(plan?.cta_label || "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .slice(0, 120);
+  if (!ctaVariant) {
+    return { ok: false, code: "metrics_plan_cta_missing" };
+  }
+  return {
+    ok: true,
+    publishedAt: durable || planPublishedAt,
+    format,
+    ctaVariant,
+  };
+}
+
+async function sentMetricsConfigurationMatches(
+  job: any,
+  config: any,
+): Promise<boolean> {
+  const platform = token(job?.platform);
+  return job?.provider === "buffer"
+    && SOCIAL_PLATFORMS.has(platform)
+    && token(job?.provider_service) === platform
+    && String(job?.provider_organization_id || "") === config.organizationId
+    && String(job?.provider_channel_id || "") === channelFor(config, platform)
+    && await configRevision(job) === job?.config_revision
+    && await publishJobRequestHash(job) === job?.request_hash;
+}
+
+async function processSentMetrics(
+  entities: any,
+  claim: any,
+  config: any,
+  now: Date,
+): Promise<string> {
+  const job = claim.row;
+  if (
+    !job?.provider_post_id
+    || token(job?.provider_status) !== "sent"
+    || !SOCIAL_PLATFORMS.has(token(job?.platform))
+    || String(job?.provider_channel_id || "").length < 1
+    || token(job?.provider_service) !== token(job?.platform)
+  ) {
+    const saved = await fencedUpdate(
+      entities.GrowthPublishJob,
+      job,
+      claim.leaseToken,
+      claim.leaseGeneration,
+      {
+        state: "sent",
+        metrics_sync_completed_at: now.toISOString(),
+        last_error_code: "published_metrics_evidence_missing",
+        last_error_message:
+          "The sent post lacks immutable provider evidence for metric checkpoints.",
+      },
+    );
+    return saved ? "sent" : "lease_lost";
+  }
+  const metricsPlan = await resolveMetricsPlan(entities, job);
+  const publishedAt = metricsPlan.publishedAt || "";
+  const checked = validatedMetricsCheckpoints(job);
+  if (!metricsPlan.ok || !publishedAt || !checked.ok) {
+    const saved = await fencedUpdate(
+      entities.GrowthPublishJob,
+      job,
+      claim.leaseToken,
+      claim.leaseGeneration,
+      {
+        state: "sent",
+        metrics_sync_completed_at: now.toISOString(),
+        last_error_code: !metricsPlan.ok
+          ? metricsPlan.code || "metrics_plan_invalid"
+          : !publishedAt
+          ? "metrics_publication_clock_missing"
+          : "metrics_checkpoint_history_invalid",
+        last_error_message:
+          "Automated fixed-age metrics need review because their durable clock or history is invalid.",
+      },
+    );
+    return saved ? "sent" : "lease_lost";
+  }
+
+  const records = [...checked.records];
+  let checkpoint = nextMetricCheckpoint(publishedAt, records);
+  while (
+    checkpoint
+    && now.getTime() > checkpoint.closeMs + METRIC_FINAL_READ_TOLERANCE_MS
+  ) {
+    const reconciled = await reconcileExistingMetricCheckpoint(
+      entities,
+      claim,
+      publishedAt,
+      records,
+      checkpoint,
+      now,
+      metricsPlan.format || "other",
+      metricsPlan.ctaVariant || "",
+    );
+    if (reconciled) return reconciled;
+    records.push(reviewNeededCheckpoint(
+      checkpoint,
+      now,
+      "buffer_metrics_checkpoint_window_missed",
+    ));
+    checkpoint = nextMetricCheckpoint(publishedAt, records);
+  }
+  if (!checkpoint) {
+    const saved = await fencedUpdate(
+      entities.GrowthPublishJob,
+      job,
+      claim.leaseToken,
+      claim.leaseGeneration,
+      {
+        ...metricsProgressFields(publishedAt, records, now),
+        last_error_code: records.some((record) => record?.status === "review_needed")
+          ? "buffer_metrics_checkpoint_window_missed"
+          : "",
+        last_error_message: records.some((record) => record?.status === "review_needed")
+          ? "One or more fixed-age Buffer metric checkpoints need human review."
+          : "",
+      },
+    );
+    return saved ? "sent" : "lease_lost";
+  }
+  if (now.getTime() < checkpoint.dueMs) {
+    const saved = await fencedUpdate(
+      entities.GrowthPublishJob,
+      job,
+      claim.leaseToken,
+      claim.leaseGeneration,
+      {
+        state: "sent",
+        metrics_published_at: publishedAt,
+        metrics_checkpoints: records,
+        metrics_next_checkpoint_at: checkpoint.dueAt,
+      },
+    );
+    return saved ? "sent" : "lease_lost";
+  }
+  const reconciled = await reconcileExistingMetricCheckpoint(
+    entities,
+    claim,
+    publishedAt,
+    records,
+    checkpoint,
+    now,
+    metricsPlan.format || "other",
+    metricsPlan.ctaVariant || "",
+  );
+  if (reconciled) return reconciled;
+  if (!await sentMetricsConfigurationMatches(job, config)) {
+    return finishMetricCheckpoint(
+      entities,
+      claim,
+      publishedAt,
+      records,
+      checkpoint,
+      now,
+      {
+        status: "review_needed",
+        errorCode: "buffer_metrics_configuration_mismatch",
+      },
+    );
+  }
+
+  const result = await bufferRequest(
+    postMetricsQuery(String(job.provider_post_id)),
+    config,
+    "read",
+  );
+  if (!result.ok) {
+    return retryMetricCheckpoint(
+      entities,
+      claim,
+      publishedAt,
+      records,
+      checkpoint,
+      now,
+      bufferMetricRequestErrorCode(result?.code),
+    );
+  }
+  const post = result.document?.data?.post;
+  const providerSentAt = timestamp(post?.sentAt);
+  const expectedSentAt = timestamp(job?.provider_sent_at);
+  if (
+    String(post?.id || "") !== String(job?.provider_post_id || "")
+    || String(post?.channelId || "") !== String(job?.provider_channel_id || "")
+    || token(post?.channelService) !== token(job?.provider_service)
+    || token(post?.status) !== "sent"
+    || !providerSentAt
+    || (expectedSentAt && providerSentAt !== expectedSentAt)
+  ) {
+    return finishMetricCheckpoint(
+      entities,
+      claim,
+      publishedAt,
+      records,
+      checkpoint,
+      now,
+      {
+        status: "review_needed",
+        errorCode: "buffer_metrics_provider_mismatch",
+      },
+    );
+  }
+  const metricsUpdatedAt = timestamp(post?.metricsUpdatedAt);
+  const normalizedMetrics = normalizedBufferCountMetrics(post);
+  if (
+    !metricsUpdatedAt
+    || new Date(metricsUpdatedAt).getTime() > now.getTime() + 5 * 60 * 1000
+    || !normalizedMetrics.ok
+  ) {
+    return retryMetricCheckpoint(
+      entities,
+      claim,
+      publishedAt,
+      records,
+      checkpoint,
+      now,
+      normalizedMetrics.code || "buffer_metrics_refresh_missing",
+      metricsUpdatedAt,
+    );
+  }
+  const providerMetricsHash = await normalizedProviderMetricsHash(
+    job,
+    metricsUpdatedAt,
+    normalizedMetrics.values || {},
+    normalizedMetrics.observedTypes || [],
+  );
+  const metricsUpdatedMs = new Date(metricsUpdatedAt).getTime();
+  if (metricsUpdatedMs < checkpoint.dueMs) {
+    return retryMetricCheckpoint(
+      entities,
+      claim,
+      publishedAt,
+      records,
+      checkpoint,
+      now,
+      "buffer_metrics_refresh_stale",
+      metricsUpdatedAt,
+      providerMetricsHash,
+    );
+  }
+  if (metricsUpdatedMs > checkpoint.closeMs) {
+    return finishMetricCheckpoint(
+      entities,
+      claim,
+      publishedAt,
+      records,
+      checkpoint,
+      now,
+      {
+        status: "review_needed",
+        errorCode: "buffer_metrics_refresh_after_window",
+        providerMetricsUpdatedAt: metricsUpdatedAt,
+        providerMetricsHash,
+      },
+    );
+  }
+  const capturedAt = metricsUpdatedAt;
+  const upserted = await automatedMetricUpsert(
+    entities.GrowthContentMetric,
+    job,
+    checkpoint,
+    publishedAt,
+    capturedAt,
+    metricsUpdatedAt,
+    providerMetricsHash,
+    normalizedMetrics.values || {},
+    normalizedMetrics.observedTypes || [],
+    metricsPlan.format || "other",
+    metricsPlan.ctaVariant || "",
+    now,
+  );
+  if (!upserted.ok) {
+    return finishMetricCheckpoint(
+      entities,
+      claim,
+      publishedAt,
+      records,
+      checkpoint,
+      now,
+      {
+        status: "review_needed",
+        errorCode: upserted.code || "content_metric_unavailable",
+        providerMetricsUpdatedAt: metricsUpdatedAt,
+        providerMetricsHash,
+      },
+    );
+  }
+  return finishMetricCheckpoint(
+    entities,
+    claim,
+    publishedAt,
+    records,
+    checkpoint,
+    now,
+    {
+      status: "captured",
+      metric: upserted.metric,
+      providerMetricsUpdatedAt: metricsUpdatedAt,
+      providerMetricsHash,
+    },
+  );
 }
 
 async function processCreate(
@@ -1599,7 +2857,7 @@ async function processCreate(
         state: "review_required",
         last_error_code: "provider_post_mismatch",
         last_error_message:
-          "Buffer created a post, but its channel, time, text, or media did not match approval.",
+          "Buffer created a post, but its channel, publishing mode, time, text, or media did not match approval.",
       },
     );
     return saved ? "review_required" : "lease_lost";
@@ -1608,6 +2866,7 @@ async function processCreate(
   fields.provider_response_hash = await sha256Hex(canonicalStringify({
     id: post.id,
     channelId: post.channelId,
+    schedulingType: post.schedulingType,
     status: post.status,
     dueAt: post.dueAt,
     sentAt: post.sentAt,
@@ -1672,6 +2931,7 @@ async function processReconcile(
     fields.provider_response_hash = await sha256Hex(canonicalStringify({
       id: matches[0].id,
       channelId: matches[0].channelId,
+      schedulingType: matches[0].schedulingType,
       status: matches[0].status,
       dueAt: matches[0].dueAt,
       sentAt: matches[0].sentAt,
@@ -1782,7 +3042,7 @@ async function processKnownPost(
         state: "review_required",
         last_error_code: "provider_post_mismatch",
         last_error_message:
-          "The tracked Buffer post no longer matches its approved channel, time, text, or media.",
+          "The tracked Buffer post no longer matches its approved channel, publishing mode, time, text, or media.",
       },
     );
     return saved ? "review_required" : "lease_lost";
@@ -1791,6 +3051,7 @@ async function processKnownPost(
   fields.provider_response_hash = await sha256Hex(canonicalStringify({
     id: post.id,
     channelId: post.channelId,
+    schedulingType: post.schedulingType,
     status: post.status,
     dueAt: post.dueAt,
     sentAt: post.sentAt,
@@ -1935,6 +3196,8 @@ Deno.serve(async (req: Request) => {
             ? "delivery_reconcile"
             : leaseSourceState === "measurement_retry"
               ? "measurement_retry"
+              : leaseSourceState === "sent"
+                ? "sent"
               : "create_reconcile";
           states[recoveredState] = (states[recoveredState] || 0) + 1;
           processed += 1;
@@ -1960,6 +3223,17 @@ Deno.serve(async (req: Request) => {
           claim,
           now,
           [auth.configured, config.apiKey],
+        );
+        states[state] = (states[state] || 0) + 1;
+        processed += 1;
+        continue;
+      }
+      if (claim.sourceState === "sent") {
+        const state = await processSentMetrics(
+          entities,
+          claim,
+          config,
+          now,
         );
         states[state] = (states[state] || 0) + 1;
         processed += 1;

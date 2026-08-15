@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 import ts from 'typescript';
 import * as growthHelpers from '../../base44/functions/_shared/growthContentEngine.js';
+import * as decisionPolicyHelpers from '../../base44/functions/_shared/growthDecisionSufficiency.js';
 
 const testDir = dirname(fileURLToPath(import.meta.url));
 const rootDir = resolve(testDir, '../..');
@@ -168,6 +169,7 @@ export function createGrowthBase44({
   batches = [],
   heartbeats,
   invokeLlm,
+  invokeFunction,
 } = {}) {
   const currentUser = { value: user };
   const entities = {
@@ -190,9 +192,111 @@ export function createGrowthBase44({
     GrowthContentMetric: memoryEntity(metrics, 'GrowthContentMetric'),
     GrowthContentBatch: memoryEntity(batches, 'GrowthContentBatch'),
   };
+  const invokeBoundFunction = invokeFunction || (async (functionName, data = {}) => {
+    if (functionName !== 'getAcquisitionReport') {
+      throw new Error(`${functionName} was not expected in this test`);
+    }
+    const metric = entities.GrowthContentMetric.records.find((candidate) => (
+      String(candidate?.platform || 'instagram') === String(data.platform || 'instagram')
+      && String(candidate?.campaign || '') === String(data.campaign || '')
+      && String(candidate?.content || '') === String(data.content || '')
+      && String(candidate?.snapshot_captured_at || '')
+        === String(data.snapshot_captured_at || '')
+    ));
+    const snapshotMs = Date.parse(data.snapshot_captured_at || '');
+    const generatedAt = Number.isFinite(snapshotMs)
+      ? new Date(snapshotMs + 30 * 60 * 1000).toISOString()
+      : new Date().toISOString();
+    const linkClicks = Math.max(0, Number(metric?.link_clicks || 0));
+    const dmIntents = Math.max(0, Number(metric?.dm_intents || 0));
+    const plan = entities.GrowthContentPlan.records.find((candidate) => (
+      String(candidate?.platform || 'instagram') === String(data.platform || 'instagram')
+      && String(candidate?.campaign || '') === String(data.campaign || '')
+      && String(candidate?.content || '') === String(data.content || '')
+    ));
+    const cohortStartAt = String(plan?.published_at || metric?.published_at || '');
+    const exactHandoff = ['story_link', 'dm_reply', 'comment_reply']
+      .includes(String(plan?.cta_channel || ''));
+    const retentionMature = Number.isFinite(snapshotMs)
+      && Number.isFinite(Date.parse(cohortStartAt))
+      && snapshotMs >= Date.parse(cohortStartAt) + 30 * 24 * 60 * 60 * 1000;
+    const counter = (value) => exactHandoff ? value : null;
+    return {
+      data: {
+        success: true,
+        generated_at: generatedAt,
+        request_scope: {
+          platform: data.platform || 'instagram',
+          campaign: data.campaign || '1000-users',
+          content: data.content || 'unassigned',
+          cohort_start_at: cohortStartAt,
+          conversion_cutoff_at: data.conversion_cutoff_at,
+        },
+        by_content: [{
+          source: data.platform || 'instagram',
+          campaign: data.campaign || '1000-users',
+          content: data.content || 'unassigned',
+          snapshot_days: Number(metric?.snapshot_days || 7),
+          cohort_start_at: cohortStartAt,
+          conversion_cutoff_at: data.conversion_cutoff_at,
+          attribution_granularity: 'content',
+          attribution_method: exactHandoff
+            ? 'declared_content_link'
+            : 'social_evidence_only',
+          conversion_evidence: exactHandoff
+            ? 'client_declared_content_first_touch'
+            : 'social_metrics_only_no_declared_handoff',
+          post_conversion_eligible: exactHandoff,
+          conversion_conclusion: exactHandoff
+            ? 'exact_declared_link'
+            : 'inconclusive_no_declared_link',
+          conversion_counters_available: exactHandoff,
+          link_clicks: linkClicks,
+          dm_intents: dmIntents,
+          owned_intents: linkClicks + dmIntents,
+          landing_sessions: counter(1),
+          signup_cta_sessions: counter(1),
+          auth_completed: counter(1),
+          decision_signups: counter(1),
+          decision_activated_workspaces: counter(1),
+          activated_users: counter(1),
+          activated_reps: counter(0),
+          paid_users: counter(0),
+          activation_timing_complete: exactHandoff,
+          paid_timing_complete: exactHandoff,
+          first_activation_at: exactHandoff ? cohortStartAt : null,
+          last_activation_at: exactHandoff ? cohortStartAt : null,
+          retention_window_days: 30,
+          retention_mature: retentionMature,
+          retention_eligible_users: counter(0),
+          retained_users: counter(0),
+          retention_rate: null,
+          missing_event_timestamps: 0,
+          missing_user_timestamps: 0,
+          activation_timing_missing_users: 0,
+          paid_timing_missing_users: 0,
+          excluded_prepublication_events: 0,
+          excluded_post_cutoff_events: 0,
+          excluded_synthetic_events: 0,
+          excluded_prepublication_users: 0,
+          excluded_post_cutoff_users: 0,
+          excluded_invalid_timing_users: 0,
+          excluded_synthetic_users: 0,
+        }],
+      },
+    };
+  });
   const base44 = {
     auth: { me: async () => jsonClone(currentUser.value) },
-    asServiceRole: { entities },
+    functions: {
+      invoke: invokeBoundFunction,
+    },
+    asServiceRole: {
+      entities,
+      functions: {
+        invoke: invokeBoundFunction,
+      },
+    },
     integrations: {
       Core: {
         InvokeLLM: invokeLlm || (async () => {
@@ -212,6 +316,8 @@ export function loadGrowthHandler(path, {
     throw new Error('fetch was not expected');
   },
   consoleImpl = console,
+  setTimeoutImpl = setTimeout,
+  clearTimeoutImpl = clearTimeout,
   onClientCreate,
 } = {}) {
   const source = readFileSync(resolve(rootDir, path), 'utf8');
@@ -227,6 +333,7 @@ export function loadGrowthHandler(path, {
   const executable = transpiled.outputText.replace(/^import[\s\S]*?;\s*$/gm, '');
   vm.runInNewContext(executable, {
     ...growthHelpers,
+    ...decisionPolicyHelpers,
     console: consoleImpl,
     createClientFromRequest: () => {
       onClientCreate?.();
@@ -245,8 +352,8 @@ export function loadGrowthHandler(path, {
     crypto: globalThis.crypto,
     fetch: fetchImpl,
     AbortController,
-    setTimeout,
-    clearTimeout,
+    setTimeout: setTimeoutImpl,
+    clearTimeout: clearTimeoutImpl,
     structuredClone,
   }, { filename: path });
   assert.equal(typeof handler, 'function');

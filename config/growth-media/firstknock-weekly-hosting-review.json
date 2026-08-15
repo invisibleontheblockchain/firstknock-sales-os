@@ -1,0 +1,130 @@
+{
+  "schema_version": "growth-media-hosting-authorization.v1",
+  "review_id": "firstknock-weekly-rights-safe-hosting-review-2026-07-29",
+  "review_status": "pending",
+  "authorization_scope": "base44_hosting_only",
+  "batch_id": "firstknock-weekly-rights-safe-v2-2026-07",
+  "render_result_sha256": "e3a37de4c9654e0b088021773506775cc0419fdc6e52c029c0b3cc302fbd6fff",
+  "pack_sha256": "00e06013561a34a7fc59a7be75093c262a78f83b52d5dff0371b1fdf30bd79d0",
+  "renderer_environment_sha256": "89e25ffdd2631e75d84dd9bbd70be8ecdfdc4c398e3f6a3fcc96b75bb1547c2f",
+  "hosting_authorized": false,
+  "reviewed_at": null,
+  "reviewed_by": null,
+  "unresolved_blockers": [
+    "owner_hosting_authorization_required"
+  ],
+  "artifacts": [
+    {
+      "artifact_key": "ig-rs-add-details-01",
+      "media_sha256": "1c4a2a66541d9cb92bc4689a7fe72b6c6784fd44a85a2b9cae2afbd133c73162"
+    },
+    {
+      "artifact_key": "ig-rs-analytics-date-01",
+      "media_sha256": "7615a146bc53af82452015b8b0bdaebbcf1ba4b7f9bb8789c7e1097e2ab987df"
+    },
+    {
+      "artifact_key": "ig-rs-bulk-reknock-01",
+      "media_sha256": "e201a2a0925ccc6ec8d47c84a764300e9f43fa03b1168a3a14c4a549c512d413"
+    },
+    {
+      "artifact_key": "ig-rs-generation-settings-01",
+      "media_sha256": "eb5bf4838fe605e5d53c60a962ee29e970df1ce6e3744f52a2c26e07ab6a6d63"
+    },
+    {
+      "artifact_key": "ig-rs-manager-comparison-01",
+      "media_sha256": "18d9c1bf76a4319c08ce84cd4a4fa77cff1a84a4f8fc96b03825b0d183f13ce4"
+    },
+    {
+      "artifact_key": "ig-rs-manager-funnel-01",
+      "media_sha256": "ec76728f7482d90f648c9c45c1d14ff96ce9ae18d5f162b3febf42dd394f0c06"
+    },
+    {
+      "artifact_key": "ig-rs-merge-routes-01",
+      "media_sha256": "97151ad9b4487041015bed4f8cc253ba9deda0bbd2204685c44f6b987f99ce2d"
+    },
+    {
+      "artifact_key": "ig-rs-outcome-controls-01",
+      "media_sha256": "35a46638d3aebccafdb104d1a8258faa6826831c3a29a66c40988ef60084c8ed"
+    },
+    {
+      "artifact_key": "ig-rs-property-styling-01",
+      "media_sha256": "07becc7406f55823cdf742704a65660923d40a02ad00bc4d7643eba87cc9d807"
+    },
+    {
+      "artifact_key": "ig-rs-refresh-area-01",
+      "media_sha256": "5fe39016927ce6054de0057e5b12f580e785d9c92570029df876df233a267fe9"
+    },
+    {
+      "artifact_key": "ig-rs-rerun-followups-01",
+      "media_sha256": "a2a949467d4495aa5f24cff21abb245b09b031cbb197b1f1d46d0dd11687fae4"
+    },
+    {
+      "artifact_key": "ig-rs-route-command-01",
+      "media_sha256": "7344bec26e4b3ac56995bfddff7f2de7477ce8d6814b4a5e43eec40e9ebcfbf9"
+    },
+    {
+      "artifact_key": "ig-rs-route-start-finish-01",
+      "media_sha256": "e19ebea5a190a8fe3b860406e4c667a3c29a3ad9b367b8f7f9a4371c486a10e7"
+    },
+    {
+      "artifact_key": "ig-rs-sale-correction-01",
+      "media_sha256": "bb61bfb6d7e57fa7f1ac5d4f30278700d1ebf212abf2ac20756cbde617a509a0"
+    },
+    {
+      "artifact_key": "tt-rs-add-details-01",
+      "media_sha256": "79e589bce81b7d157fa3e3e4ad3c35367cdfc729fc6fce29b61b3f743d117ff7"
+    },
+    {
+      "artifact_key": "tt-rs-analytics-date-01",
+      "media_sha256": "7a5d4b296b38feafa1f48121995a3328ae9f67a38610cf2ef9dbbdff4603bfbf"
+    },
+    {
+      "artifact_key": "tt-rs-bulk-reknock-01",
+      "media_sha256": "817ca74ffff33c2fd976fd8e1d88f9465f47aed30c9669bfdf7011b20d639c76"
+    },
+    {
+      "artifact_key": "tt-rs-generation-settings-01",
+      "media_sha256": "ef744b564deadc4bc83851ca2a6c5a7c728e23d94033c8d774d90f83894072a7"
+    },
+    {
+      "artifact_key": "tt-rs-manager-comparison-01",
+      "media_sha256": "eaed67edc2a7afbf426be7a9ecbc913c317351005b68965eef396b1fb989e3f7"
+    },
+    {
+      "artifact_key": "tt-rs-manager-funnel-01",
+      "media_sha256": "c43adca4f0bc1f53640e4ab0792e45edbfef80751e0f3d70e459215c1a7358d8"
+    },
+    {
+      "artifact_key": "tt-rs-merge-routes-01",
+      "media_sha256": "8dd62f3aba312e3bd21fcf62a92d765c340544429209e75882396bb18347b639"
+    },
+    {
+      "artifact_key": "tt-rs-outcome-controls-01",
+      "media_sha256": "ef40411adfc54392f9688d491582aadf1d0a20f08b10582ec50d6fe0c7b58a50"
+    },
+    {
+      "artifact_key": "tt-rs-property-styling-01",
+      "media_sha256": "e159b248494f05182ce458bbf879d3dce2853da0e07a736dbc27bcbac46d2124"
+    },
+    {
+      "artifact_key": "tt-rs-refresh-area-01",
+      "media_sha256": "3cb2f904652973a9d5e885330f0aa5b029f1d85593c6afc6b092da9ae5742185"
+    },
+    {
+      "artifact_key": "tt-rs-rerun-followups-01",
+      "media_sha256": "a14ec5dc535942d249ff0771d591a4964af81dc6f4243f85350063d7e13acdf6"
+    },
+    {
+      "artifact_key": "tt-rs-route-command-01",
+      "media_sha256": "5a067c7c66d13f929d0ab873d0169ee40f5e480859add087f408e4ff30b4ce57"
+    },
+    {
+      "artifact_key": "tt-rs-route-start-finish-01",
+      "media_sha256": "8d1b6681760b6382a63f4eabc592ed2bc49df4c7dd2fd01ce50a87e238974344"
+    },
+    {
+      "artifact_key": "tt-rs-sale-correction-01",
+      "media_sha256": "7b26a8a2007d4b333725d89372f3b64b68a6b6dcde5e1b04d8fc9dc05697e7ea"
+    }
+  ]
+}

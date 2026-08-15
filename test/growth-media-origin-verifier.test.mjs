@@ -1,20 +1,32 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import test from 'node:test';
 
 import {
+  exactMediaPathPrefix,
   fetchAndHash,
   validateRemoteArtifactDescriptor,
+  verifyGrowthMediaOrigin,
 } from '../scripts/verify-growth-media-origin.mjs';
 
-function remoteArtifact(bytes = Buffer.from('verified-video')) {
+function remoteArtifact(
+  bytes = Buffer.from('verified-video'),
+  {
+    origin = 'https://media.firstknock.online',
+    pathPrefix = '/sha256/',
+    filenamePrefix = '',
+  } = {},
+) {
   const sha256 = createHash('sha256').update(bytes).digest('hex');
+  const filename = `${sha256}-ig-verifier-proof-01.mp4`;
   return {
     artifact_key: 'ig-verifier-proof-01',
     media_sha256: sha256,
-    delivery_key: `sha256/${sha256}-ig-verifier-proof-01.mp4`,
-    media_url:
-      `https://media.firstknock.online/sha256/${sha256}-ig-verifier-proof-01.mp4`,
+    delivery_key: `sha256/${filename}`,
+    media_url: `${origin}${pathPrefix}${filenamePrefix}${filename}`,
     mime_type: 'video/mp4',
     byte_size: bytes.byteLength,
   };
@@ -33,6 +45,128 @@ function responseFor(bytes, {
     },
   });
 }
+
+test('media path prefix is a required canonical absolute pathname namespace', () => {
+  assert.equal(
+    exactMediaPathPrefix('/files/public/firstknock-app/'),
+    '/files/public/firstknock-app/',
+  );
+
+  for (const prefix of [
+    undefined,
+    '',
+    '/',
+    'files/public/firstknock-app/',
+    '/files/public/firstknock-app',
+    'https://media.base44.com/files/public/firstknock-app/',
+    '/files//firstknock-app/',
+    '/files/-firstknock-app/',
+    '/files/./firstknock-app/',
+    '/files/../firstknock-app/',
+    '/files/%66irstknock-app/',
+    '/files\\public\\firstknock-app\\',
+    '/files/public/firstknock-app/?download=1',
+    '/files/public/firstknock-app/#media',
+    `/${'a'.repeat(1024)}/`,
+  ]) {
+    assert.throws(
+      () => exactMediaPathPrefix(prefix),
+      /media path prefix/i,
+      `${String(prefix)} must be rejected`,
+    );
+  }
+});
+
+test('descriptor accepts a Base44 direct-child filename only when its exact delivery basename is the suffix', () => {
+  const mediaPathPrefix = '/files/public/firstknock-app/';
+  const valid = remoteArtifact(Buffer.from('base44-video'), {
+    origin: 'https://media.base44.com',
+    pathPrefix: mediaPathPrefix,
+    filenamePrefix: '1722199999_',
+  });
+  const descriptor = validateRemoteArtifactDescriptor(
+    valid,
+    'https://media.base44.com',
+    mediaPathPrefix,
+  );
+  assert.equal(
+    descriptor.hostedFilename,
+    `1722199999_${valid.delivery_key.slice('sha256/'.length)}`,
+  );
+  assert.equal(descriptor.deliveryKey, valid.delivery_key);
+
+  const invalidDescriptors = [
+    {
+      name: 'wrong configured namespace',
+      value: {
+        ...valid,
+        media_url: valid.media_url.replace('/firstknock-app/', '/another-app/'),
+      },
+    },
+    {
+      name: 'nested object path',
+      value: {
+        ...valid,
+        media_url: valid.media_url.replace(
+          mediaPathPrefix,
+          `${mediaPathPrefix}nested/`,
+        ),
+      },
+    },
+    {
+      name: 'different delivery artifact key',
+      value: {
+        ...valid,
+        delivery_key: valid.delivery_key.replace(
+          'ig-verifier-proof-01',
+          'tt-verifier-proof-01',
+        ),
+      },
+    },
+    {
+      name: 'filename that does not end in the delivery basename',
+      value: {
+        ...valid,
+        media_url: valid.media_url.replace('.mp4', '-changed.mp4'),
+      },
+    },
+    {
+      name: 'percent-encoded path',
+      value: {
+        ...valid,
+        media_url: valid.media_url.replace('/files/', '/%66iles/'),
+      },
+    },
+    {
+      name: 'dot-segment path',
+      value: {
+        ...valid,
+        media_url: valid.media_url.replace(
+          mediaPathPrefix,
+          `${mediaPathPrefix}../firstknock-app/`,
+        ),
+      },
+    },
+    {
+      name: 'query string',
+      value: {
+        ...valid,
+        media_url: `${valid.media_url}?download=1`,
+      },
+    },
+  ];
+  for (const fixture of invalidDescriptors) {
+    assert.throws(
+      () => validateRemoteArtifactDescriptor(
+        fixture.value,
+        'https://media.base44.com',
+        mediaPathPrefix,
+      ),
+      /invalid content-addressed descriptor/,
+      fixture.name,
+    );
+  }
+});
 
 test('descriptor requires a finite positive integer byte_size', () => {
   const valid = remoteArtifact();
@@ -64,6 +198,55 @@ test('descriptor requires a finite positive integer byte_size', () => {
       `byte_size ${String(byteSize)} must be rejected`,
     );
   }
+});
+
+test('origin verification requires the configured media namespace and reports it', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'growth-origin-prefix-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const bytes = Buffer.from('base44-origin-proof');
+  const mediaPathPrefix = '/files/public/firstknock-app/';
+  const artifact = {
+    ...remoteArtifact(bytes, {
+      origin: 'https://media.base44.com',
+      pathPrefix: mediaPathPrefix,
+      filenamePrefix: '1722199999_',
+    }),
+    distribution_state: 'publish_candidate',
+  };
+  const resultPath = join(root, 'render-result.json');
+  await writeFile(resultPath, JSON.stringify({
+    schema_version: 'growth-render-result.v1',
+    media_origin: 'https://media.base44.com',
+    artifact_count: 1,
+    artifacts: [artifact],
+  }));
+
+  await assert.rejects(
+    () => verifyGrowthMediaOrigin({
+      resultPath,
+      fetchImpl: async () => responseFor(bytes),
+    }),
+    /media path prefix/i,
+  );
+
+  const result = await verifyGrowthMediaOrigin({
+    resultPath,
+    mediaPathPrefix,
+    timeoutMs: 1000,
+    fetchImpl: async (url, options) => {
+      assert.equal(url, artifact.media_url);
+      assert.equal(options.redirect, 'manual');
+      return responseFor(bytes);
+    },
+  });
+  assert.equal(result.media_origin, 'https://media.base44.com');
+  assert.equal(result.media_path_prefix, mediaPathPrefix);
+  assert.equal(result.verified_count, 1);
+  assert.deepEqual(result.verified, [{
+    artifact_key: artifact.artifact_key,
+    byte_size: bytes.byteLength,
+    sha256: artifact.media_sha256,
+  }]);
 });
 
 test('fetchAndHash preserves direct response, MIME, byte count, and SHA checks', async (t) => {

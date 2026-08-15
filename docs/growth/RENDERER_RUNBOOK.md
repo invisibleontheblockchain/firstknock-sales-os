@@ -9,19 +9,35 @@ trims into content-addressed Instagram and TikTok videos and emits a bounded
 publish candidates are immutably hosted and its pack and renderer-environment hashes
 are allowlisted server-side.
 
-The checked-in starter pack contains:
+The current checked-in canonical weekly preflight pack is
+`config/growth-media/firstknock-weekly-rights-safe-seed.json`, batch
+`firstknock-weekly-rights-safe-v2-2026-07`. It contains:
 
-- five registered privacy-safe sources plus one redaction-required preview source,
-  all with exact SHA-256 values;
-- five canonical concepts;
-- ten privacy-safe publish-candidate renditions: one Instagram and one TikTok version
-  per concept; and
-- one additional dynamic concept with two `sanitized_preview_only` renditions.
+- ten registered, frame-reviewed, privacy-safe video donors;
+- four safe FirstKnock-owned image donors;
+- fourteen canonical feature-explainer concepts, exactly two unique concepts per day
+  for seven days; and
+- twenty-eight publish-candidate renditions: one Instagram and one TikTok version per
+  concept.
 
-The preview-only pair proves real screen-recording rendering, but cannot enter the
-content engine because its raw source requires an exact privacy trim. Promote a
-separately hashed sanitized source before changing those artifacts to
-`publish_candidate`.
+Its canonical normalized pack SHA-256 is
+`00e06013561a34a7fc59a7be75093c262a78f83b52d5dff0371b1fdf30bd79d0`.
+The exact final v2 pack was reproducibly rebuilt as a private 28-rendition render on
+August 6, 2026. The
+unhosted render-result SHA-256 is
+`e3a37de4c9654e0b088021773506775cc0419fdc6e52c029c0b3cc302fbd6fff`,
+and the renderer-environment SHA-256 is
+`89e25ffdd2631e75d84dd9bbd70be8ecdfdc4c398e3f6a3fcc96b75bb1547c2f`.
+All 28 final artifact hashes, H.264 codec checks, baked AAC audio checks, and duration
+checks passed. The renditions total 28,241,092 bytes. The v2 sources and final files
+contain no map or geography promotional-rights blocker. They remain outside the
+repository and are not hosted, imported, publication-approved, scheduled, or
+published.
+
+The older `config/growth-media/firstknock-weekly-video-seed.json`, canonical SHA-256
+`1323a3d47f2a92299bb76ad4ee5d352b6af6114a6b136833fda268fdf7bf4eca`,
+is retired blocked audit history and must never be used operationally. Its older
+starter previews also remain fenced from content-engine import.
 
 No output is approved or published by the renderer. Every imported rendition still
 requires the four Growth Dashboard review gates and owner approval.
@@ -30,7 +46,8 @@ requires the four Growth Dashboard review gates and owner approval.
 
 - Node.js 20 or later;
 - FFmpeg and FFprobe on `PATH`;
-- the private July 28 FirstKnock asset directory; and
+- the private audited source directory containing the weekly pack's sanitized videos
+  and image sources; and
 - optional bold and regular TrueType fonts through:
   - `FIRSTKNOCK_RENDER_FONT_BOLD`
   - `FIRSTKNOCK_RENDER_FONT_REGULAR`
@@ -48,8 +65,24 @@ source path in the result manifest.
 PowerShell:
 
 ```powershell
-$env:FIRSTKNOCK_ASSET_DIR = 'C:\path\to\FirstKnockAssets'
-npm.cmd run render:growth-pack -- --validate-only
+$env:FIRSTKNOCK_RAW_ASSET_DIR = 'C:\private\FirstKnockAssets'
+$env:FIRSTKNOCK_PILOT_SANITIZED_VIDEO_OUTPUT = 'C:\private\firstknock-pilot-sanitized'
+$env:FIRSTKNOCK_SUPPLEMENT_SANITIZED_VIDEO_OUTPUT = 'C:\private\firstknock-supplement-sanitized'
+$env:FIRSTKNOCK_WEEKLY_RIGHTS_SAFE_VIDEO_OUTPUT = 'C:\private\firstknock-weekly-rights-safe'
+$env:FIRSTKNOCK_WEEKLY_SOURCE_DIR = 'C:\private\firstknock-weekly-rights-safe-v2-sources'
+npm.cmd run stage:growth-weekly-sources
+
+$env:FIRSTKNOCK_ASSET_DIR = 'C:\private\firstknock-weekly-rights-safe-v2-sources'
+npm.cmd run render:growth-pack -- --manifest config\growth-media\firstknock-weekly-rights-safe-seed.json --validate-only
+```
+
+The staging command copies only the 14 exact audited bytes into a new empty private
+directory and writes a path-free receipt. When passing explicit paths instead of the
+environment variables above, invoke the script directly so PowerShell/npm argument
+forwarding cannot drop the flags:
+
+```powershell
+node scripts/stage-growth-weekly-sources.mjs --raw-source-dir C:\private\FirstKnockAssets --pilot-source-dir C:\private\firstknock-pilot-sanitized --supplement-source-dir C:\private\firstknock-supplement-sanitized --rights-safe-source-dir C:\private\firstknock-weekly-rights-safe --output-dir C:\private\firstknock-weekly-rights-safe-v2-sources
 ```
 
 Validation fails closed when:
@@ -65,9 +98,9 @@ Validation fails closed when:
 ## Render local review files
 
 ```powershell
-$env:FIRSTKNOCK_ASSET_DIR = 'C:\path\to\FirstKnockAssets'
-$env:FIRSTKNOCK_RENDER_OUTPUT = 'C:\private\firstknock-render-output'
-npm.cmd run render:growth-pack
+$env:FIRSTKNOCK_ASSET_DIR = 'C:\private\firstknock-weekly-rights-safe-v2-sources'
+$env:FIRSTKNOCK_RENDER_OUTPUT = 'C:\private\firstknock-weekly-rights-safe-v2-render'
+npm.cmd run render:growth-pack -- --manifest config\growth-media\firstknock-weekly-rights-safe-seed.json
 ```
 
 Useful options:
@@ -84,6 +117,11 @@ Useful options:
 --validate-only
 ```
 
+`--media-origin` is only for a host that serves the renderer's exact
+`/sha256/<delivery-basename>` layout. Base44 returns the authoritative hosted URL and
+may prepend an opaque filename value, so use the Base44 upload handoff to create a
+separate hosted result instead of inventing or predicting that URL.
+
 Because npm reserves `--only`, pass a second option separator when selecting artifacts:
 
 ```powershell
@@ -96,7 +134,7 @@ The output is:
 <output>/
   sha256/
     <full-media-sha256>-<platform-content-id>.mp4
-  firstknock-safe-starter-2026-07.render-result.json
+  firstknock-weekly-rights-safe-v2-2026-07.render-result.json
 ```
 
 Local output is ignored by Git. Keep it private until the final rendition passes visual
@@ -121,16 +159,61 @@ Filter and encoder threading are pinned to a byte-stable profile. The
 and exact bold and regular font hashes. The result also embeds the normalized pack so
 the server can recompute the allowlisted `pack_sha256` and each artifact recipe.
 
-The first automated pack uses a silent AAC track. Add founder voiceover or owned/licensed
-audio only through a future hash-bound audio recipe; do not attach untracked music after
-rendering and then reuse the old result manifest. Imported silent renditions default to
-Buffer notification finishing; automatic silent delivery requires an explicit owner
-choice.
+The canonical v2 pack uses `baked_owned_or_licensed` audio generated by the
+deterministic, hash-bound `firstknock-procedural-ui-v1` recipe. Each artifact's
+`overlay_text` lines appear as progressive callouts during the content window, and the
+renderer reserves the final 1.55 seconds for the CTA. Do not attach or replace audio
+after rendering and then reuse the old result manifest.
+
+The renderer also supports a general, noncanonical `silent` audio mode. Imported silent
+renditions require an explicit owner confirmation before unattended automatic
+scheduling.
+
+## First-week bootstrap workflow
+
+Before the first fixed-age production winner exists, the owner can open Content Engine
+and choose **Start audited week**. Supply the exact allowlisted
+`firstknock-weekly-rights-safe-seed.json`, choose the Phoenix target date, acknowledge
+the seven-day cap, and enter the owner authorization note.
+
+The server creates exactly two unique concepts per day from eligible audited donor
+recipes, with one Instagram and one TikTok rendition for each concept. It does not call
+an LLM or create synthetic plan, metric, review, or performance evidence. Each daily
+pack is an exact source-and-artifact subset of the allowlisted weekly pack; the server
+adds only the durable batch policy, date, owner authorization, source reservations, and
+hashes. Repeat the owner action once per intended production day, up to seven active
+bootstrap batches. The dashboard defaults the next dialog to the day after the latest
+bootstrap batch.
+
+After the full weekly result has explicit hosting authorization and exact remote-byte
+verification, derive a daily import result from its downloaded bootstrap pack:
+
+```powershell
+npm.cmd run slice:growth-render-result -- `
+  --source-result C:\private\firstknock-weekly-rights-safe-v2-render\firstknock-weekly-rights-safe-v2-2026-07.hosted-render-result.json `
+  --batch-pack C:\private\firstknock-bootstrap-day-1-render-pack.json `
+  --output C:\private\firstknock-bootstrap-day-1-hosted-result.json
+```
+
+The slicer accepts only two concepts, four paired artifacts, and exact source/artifact
+objects already present in the full result's canonical pack. It preserves the existing
+media descriptors and URLs, changes only the result inventory plus daily pack SHA-256,
+is idempotent on exact output, and refuses to overwrite a different file. No network
+request or upload occurs.
+
+Download, inspect, authorize, render, host, import, review, approve, and activate each
+bootstrap pack using the same trust gates below. When using the exact-slice handoff, the
+weekly render and hosting steps happen once; each daily result still needs exact-pack
+authorization, import, rendition inspection, review, approval, and activation.
+Bootstrap authorization is not hosting authorization, content approval, scheduling, or
+publication. After fixed-age results mature, stop using bootstrap and select a current
+Repeat or Iterate parent for `build_next_batch`.
 
 ## Measured daily batch workflow
 
 After a D1, D3, D7, or D30 item has a current Repeat or Iterate decision, Growth
-Dashboard can compile the next two or three paired Instagram/TikTok concepts:
+Dashboard's active feature-explainer profile compiles exactly two unique concepts per
+day, each with paired Instagram and TikTok renditions:
 
 1. Open **Measured next batch** in the Content Engine.
 2. Select the reviewed parent and Phoenix target date.
@@ -151,7 +234,7 @@ Dashboard can compile the next two or three paired Instagram/TikTok concepts:
 7. Render it with the same private source package and deterministic renderer:
 
    ```powershell
-   npm.cmd run render:growth-pack -- --manifest C:\private\firstknock-next-batch.json --source-dir C:\private\FirstKnockAssets --output-dir C:\private\firstknock-next-output
+   npm.cmd run render:growth-pack -- --manifest C:\private\firstknock-next-batch.json --source-dir C:\private\firstknock-weekly-rights-safe-v2-sources --output-dir C:\private\firstknock-next-output
    ```
 
 8. Inspect every local video, stage only the approved candidates at the immutable media
@@ -159,9 +242,9 @@ Dashboard can compile the next two or three paired Instagram/TikTok concepts:
 9. Import the resulting `growth-render-result.v1` in Growth Dashboard.
 10. Complete the normal visual inspection and four review gates, approve each exact
     rendition, and only then queue the platform posts. Generated renditions are pinned
-    to their batch date and cadence slot: morning is 9:30 AM, midday is 1:30 PM, and
-    evening is 6:30 PM America/Phoenix. If a slot is missed, do not move it to a later
-    day; create and review a new target-date batch so source cooldown remains truthful.
+    to their batch date and active cadence slot: morning is 9:30 AM and midday is
+    1:30 PM America/Phoenix. If a slot is missed, do not move it to a later day; create
+    and review a new target-date batch so source cooldown remains truthful.
 
 Batch authorization only permits the exact generated pack to cross the render-import
 trust boundary. It does not approve a rendition, schedule a post, or enable the Buffer
@@ -180,9 +263,12 @@ authorization, compare each generated concept with its donor and verify that the
 intended major variable—not several uncontrolled variables—changed. The server does
 not claim that free-text Iterate directions are automatically single-variable tests.
 
-The current five safe donor sources support roughly two two-concept days before the
-seven-day cooldown correctly stops generation. A sustained two-post daily rotation
-needs 14 distinct safe sources; three posts daily needs 21.
+The canonical weekly pack's ten approved videos and four safe image-derived sources
+support seven complete two-concept days before the seven-day cooldown permits a source
+to rotate back in. The feature-explainer compiler accepts both audited source kinds;
+image-derived concepts still render as video-format platform renditions and reserve
+their exact source hash like a video donor. This source-kind allowance never relaxes
+the downstream MP4, codec, visual-review, approval, hosting, or delivery gates.
 
 The active `GrowthContentBatch` is the durable first reservation layer for its selected
 source keys and hashes plus generated-hook set. Scheduling uses a second, provisional
@@ -210,51 +296,161 @@ Buffer does not accept an uploaded file through its API. It fetches a direct pub
 media URL later, so the approved bytes must remain available at a stable HTTPS URL.
 See [Buffer's media-hosting contract](https://developers.buffer.com/guides/hosting-media.html).
 
+### Prepare the production handoff locally
+
+Before changing any external system, generate one deterministic, non-executable
+operator handoff from the exact weekly result:
+
+```powershell
+npm.cmd run prepare:growth-activation -- `
+  --render-result C:\private\firstknock-weekly-rights-safe-v2-render\firstknock-weekly-rights-safe-v2-2026-07.render-result.json `
+  --render-output C:\private\firstknock-weekly-rights-safe-v2-render `
+  --hosting-review config\growth-media\firstknock-weekly-hosting-review.json `
+  --output C:\private\firstknock-weekly-rights-safe-v2-render\firstknock-weekly-rights-safe-v2-2026-07.production-activation-handoff.json
+```
+
+The command reruns the offline production-readiness audit, recomputes the exact weekly
+result and all 28 local media hashes, verifies that the hosting review is either the
+exact pending review or an exact authorized external review, and writes
+`growth-production-activation-handoff.v1`. It refuses unsafe media, an unexpected
+repository failure, an invalid authorization, a missing output directory, or a
+conflicting output file. An exact rerun is idempotent.
+
+The handoff binds the local paths and reviewed hashes, lists the non-secret runtime
+values, names every secret without reading or storing its value, and orders the release,
+hosting, Buffer connection, separate platform smoke, scheduler, daily bootstrap,
+four-gate review, exact owner approval, activation, and measurement evidence. It is
+deliberately not executable and always records `activation_authorized: false`. Creating
+it performs no hosting, deployment, account connection, remote verification, scheduling,
+or publication. Each external stage still requires its separately named owner
+authorization.
+
+Treat the generated handoff as an immutable evidence snapshot. After any repository,
+authorization, hosting, deployment, channel, scheduler, review, or activation evidence
+changes, rerun the command to a new output filename. Do not edit or overwrite an older
+snapshot.
+
 Production sequence:
 
 1. Render without `--media-origin`.
 2. Inspect the local videos, captions, safe zones, demo labels, crops, and exact screen
-   recording boundaries.
-3. Treat the ten visually reviewed `publish_candidate` files as sanitized staging
-   candidates. Keep both `sanitized_preview_only` files and every raw source private.
-4. Upload only those ten staging candidates to the owned, non-indexed, write-once
-   origin using each emitted `delivery_key`. Hosting a candidate is not approval to
-   publish it.
-5. Confirm the origin rejects overwriting an existing key with different bytes.
-6. Re-run the same pack with `--media-origin https://<exact-origin>` to emit identical
-   hashes plus canonical URLs.
-7. Fetch every publish-candidate URL without redirects and verify `200`, `video/mp4`,
-   byte count, and
-   SHA-256:
+   recording boundaries. Confirm that each progressive callout is readable and that
+   the final 1.55-second CTA is fully visible. Any changed source, recipe, environment,
+   or artifact bytes require a new review.
+3. Treat the 28 weekly `publish_candidate` entries as preflight render instructions,
+   not publication authorization. Keep every sanitized donor, raw source, image source,
+   and retired v1 `sanitized_preview_only` rendition private. The final August 6 v2
+   render proves that all 28 exact files pass artifact-hash, H.264 codec, baked
+   `firstknock-procedural-ui-v1` AAC, and duration checks. Owner hosting authorization
+   and the four dashboard review gates remain separate requirements.
+4. The v2 sources and final files contain no map or geography promotional-rights
+   blocker. If a future pack introduces embedded third-party map imagery, document
+   promotional-use clearance and verify required attribution in the exact final file
+   before allowing its media-rights gate to pass.
+5. Create a separate external `growth-media-hosting-authorization.v1` JSON review. It
+   must exactly bind the raw render-result file SHA-256, normalized pack SHA-256,
+   renderer-environment SHA-256, and the sorted, unique, complete set of every publish
+   candidate's artifact key and media SHA-256. For the final v2 evidence, these
+   top-level identities are pack SHA-256
+   `00e06013561a34a7fc59a7be75093c262a78f83b52d5dff0371b1fdf30bd79d0`,
+   raw render-result SHA-256
+   `e3a37de4c9654e0b088021773506775cc0419fdc6e52c029c0b3cc302fbd6fff`,
+   and renderer-environment SHA-256
+   `89e25ffdd2631e75d84dd9bbd70be8ecdfdc4c398e3f6a3fcc96b75bb1547c2f`.
+   The review must set `review_status` to
+   `authorized`, `hosting_authorized` to `true`, identify the reviewer and UTC review
+   time, and have no unresolved blockers. The checked-in
+   [`firstknock-weekly-hosting-review.json`](../../config/growth-media/firstknock-weekly-hosting-review.json)
+   exactly binds the v2 batch, unhosted result, pack, renderer environment, and all 28
+   artifact/media hashes. It remains `pending` with `hosting_authorized: false` only
+   because `owner_hosting_authorization_required` is unresolved; it is evidence and a
+   schema example, not authorization. An authorized owner must create a separate
+   external review for the unchanged result.
+6. Configure the exact FirstKnock Base44 namespace. Use the same value locally and in
+   the deployed backend:
 
    ```powershell
-   npm.cmd run verify:growth-media-origin -- --result C:\private\firstknock-render-output\firstknock-safe-starter-2026-07.render-result.json
+   $env:GROWTH_MEDIA_PATH_PREFIX = '/files/public/695eb764b077190880be21de/'
    ```
 
-8. Read `pack_sha256` and `renderer.environment_sha256` from that verified result and
+   `FIRSTKNOCK_BASE44_MEDIA_PATH_PREFIX` is accepted as a local fallback. The prefix
+   must remain an app-scoped pathname with leading and trailing slashes.
+7. After explicit hosting authorization, upload only the 28 privately rendered and
+   visually reviewed candidates. The host command gives each upload the exact basename
+   of its emitted `delivery_key` as `File.name`, validates the returned Base44 URL, and
+   writes a separate hosted result plus resumable receipt:
+
+   ```powershell
+   $env:FIRSTKNOCK_RENDER_RESULT = 'C:\private\firstknock-weekly-rights-safe-v2-render\firstknock-weekly-rights-safe-v2-2026-07.render-result.json'
+   $env:FIRSTKNOCK_RENDER_OUTPUT = 'C:\private\firstknock-weekly-rights-safe-v2-render'
+   $env:FIRSTKNOCK_HOSTING_REVIEW_FILE = 'C:\private\firstknock-weekly-hosting-review.authorized.json'
+   npm.cmd run host:growth-media:base44
+   ```
+
+   The outputs are
+   `firstknock-weekly-rights-safe-v2-2026-07.hosted-render-result.json` and
+   `firstknock-weekly-rights-safe-v2-2026-07.base44-hosting-receipt.json`. The hosted
+   result keeps `growth-render-result.v1`, sets the exact Base44 `media_origin`, and
+   fills each candidate `media_url` from the actual upload response. Do not modify the
+   pack, recipes, hashes, byte sizes, or local review result in place. Hosting a
+   candidate is not approval to publish it.
+
+   The launcher verifies the external review before Deno, Base44 authentication, or
+   any upload. Missing, pending, false, blocked, mismatched, duplicate, noncanonical,
+   or tampered reviews fail closed. The receipt binds the accepted review ID and
+   SHA-256, so resumable hosting cannot silently switch authorization.
+
+   The pinned Base44 CLI used by this one hosting command requires Node.js 20.19 or
+   later even though the renderer itself supports Node.js 20. Authenticate the Base44
+   CLI for app `695eb764b077190880be21de` and ensure Deno is available before running
+   the handoff; missing runtime or authentication fails without modifying the unhosted
+   result.
+
+   Immediately after Base44 returns a namespace-valid URL, the receipt records
+   `uploaded_pending_verification`. If CDN verification is interrupted, rerunning the
+   command resumes direct-URL byte verification without uploading the file again. A
+   pending URL is never copied into the hosted render result; only a direct `200`,
+   `video/mp4`, exact length, and full-SHA match can promote it to hosted.
+8. Confirm each returned URL is one direct child of the configured app prefix. Base44
+   may prepend an opaque filename value, but the final segment must end with the exact
+   `<media-sha256>-<artifact-key>.mp4` basename from `delivery_key`. Reject nested
+   paths, a different app prefix, credentials, queries, fragments, percent-encoding,
+   and changed or partial delivery basenames.
+9. Fetch every hosted publish-candidate URL without redirects and verify direct `200`,
+   `video/mp4`, exact byte count, and SHA-256 with the same path prefix:
+
+   ```powershell
+   $env:GROWTH_MEDIA_PATH_PREFIX = '/files/public/695eb764b077190880be21de/'
+   npm.cmd run verify:growth-media-origin -- --result C:\private\firstknock-weekly-rights-safe-v2-render\firstknock-weekly-rights-safe-v2-2026-07.hosted-render-result.json
+   ```
+
+10. Read `pack_sha256` and `renderer.environment_sha256` from that verified result and
    configure:
 
    ```text
-   GROWTH_MEDIA_ORIGIN=https://<exact-origin>
+   GROWTH_MEDIA_ORIGIN=https://media.base44.com
+   GROWTH_MEDIA_PATH_PREFIX=/files/public/695eb764b077190880be21de/
    GROWTH_RENDER_PACK_SHA256S=<pack_sha256>
    GROWTH_RENDER_ENVIRONMENT_SHA256S=<renderer.environment_sha256>
    ```
 
    Comma-separated allowlists support a controlled overlap while rolling to a reviewed
    new pack or renderer environment.
-9. Open Growth Dashboard, load the audited source inventory, and select **Import render
+11. Open Growth Dashboard, load the audited source inventory, and select **Import render
    result**.
-10. Load each hosted rendition in the dashboard and complete privacy, demo-label, claims,
+12. Load each hosted rendition in the dashboard and complete privacy, demo-label, claims,
    and media-rights review.
-11. Approve the exact revision as the owner.
-12. Schedule only after the Buffer channels, worker secret, once-per-minute scheduler,
-    worker heartbeat, and publishing kill switch have passed staging.
+13. Approve the exact revision as the owner.
+14. Schedule only after the Buffer channels, worker secret, checked-in five-minute
+    scheduler with its one-job-per-invocation bound, worker heartbeat, metric-sync
+    smoke, and publishing kill switch have passed staging.
 
 The server imports only `publish_candidate` artifacts. It recomputes and allowlists the
 embedded pack and renderer environment, recomputes each render-input hash, and verifies
-the result schema, configured media origin, full-SHA delivery key and URL, exact creative
-fields, codec evidence, attribution, QC flags, byte size, and registered source lineage.
-`sanitized_preview_only` artifacts are reported and skipped.
+the result schema, configured media origin and app path prefix, full-SHA delivery key
+and hosted-filename suffix, exact creative fields, codec evidence, attribution, QC
+flags, byte size, and registered source lineage. `sanitized_preview_only` artifacts are
+reported and skipped.
 
 The schedule action copies each source key, opaque reference, and SHA-256 into the
 publish job. The backend worker rechecks that immutable snapshot against exactly one
@@ -277,26 +473,35 @@ is invoking the recurring worker.
 - `/instagram` remains a backwards-compatible landing path.
 - A clickable profile link or controlled comment/DM reply must preserve the exact
   content ID; caption URLs alone are not dependable attribution surfaces.
+- [Buffer's current TikTok guidance](https://support.buffer.com/article/559-using-tiktok-with-buffer)
+  limits each post to 2,200 characters and no more than five hashtags. The engine
+  excludes the raw tracked URL from TikTok provider text, keeps it on the artifact for
+  the controlled profile link, and records the measurement CTA as `bio`.
 - Instagram and TikTok need separate Buffer channel smoke posts.
-- Buffer's current TikTok help material and API surface are not perfectly consistent,
-  so TikTok video and photo automation remains gated on credentialed staging.
+- Buffer's current API supports TikTok posts, but its channel documentation warns that
+  some TikTok publishing paths use notification publishing. The worker therefore
+  requires Buffer to echo `schedulingType=automatic` for a production post; otherwise
+  the job stops for review. TikTok automation remains gated on a credentialed staging
+  post against the real connected account.
 - Trending music, stickers, polls, and other native features require notification/manual
   finishing rather than unattended publishing.
 
 ## Current boundary
 
-This renderer is executable locally or on an external worker, but the repository does
-not yet provision:
+This renderer is executable locally or on an external worker. The repository does not
+yet provision:
 
 - private source-object storage;
 - a durable remote render-job lease/callback service;
-- the immutable public media origin;
-- Buffer credentials or channel IDs;
-- the recurring worker scheduler; or
-- automatic provider analytics ingestion.
+- deployed Base44 media/backend configuration;
+- Buffer credentials or channel IDs; or
+- configured production scheduler secrets.
 
-Those are deployment and credential steps, not reasons to bypass review or expose the
-raw source package. Rendering, immutable hosting, credential configuration, worker
-deployment, recurring scheduler operation, final review, and enabling delivery remain
-operator responsibilities; the checked-in code does not publish social posts on its
-own.
+The repository now contains the Base44 hosting bridge, immutable namespace validation,
+five-minute GitHub Actions worker trigger bounded to one job per invocation, and
+cumulative Buffer D1/D3/D7/D30 metric sync. They remain inactive until deployment and
+secrets are configured. Those are deployment and credential steps, not reasons to
+bypass review or expose the raw source package. Rendering, final visual review,
+credential configuration, worker deployment, default-branch scheduler activation,
+Instagram/TikTok smoke posts, and enabling delivery remain operator responsibilities;
+the checked-in code does not publish social posts on its own.

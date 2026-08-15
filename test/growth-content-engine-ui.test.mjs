@@ -14,6 +14,10 @@ const growthDashboard = readFileSync(
   new URL('../src/pages/GrowthDashboard.jsx', import.meta.url),
   'utf8',
 );
+const acquisitionLanding = readFileSync(
+  new URL('../src/components/marketing/InstagramLanding.jsx', import.meta.url),
+  'utf8',
+);
 
 test('content delivery UI prevents terminal retries when Buffer evidence exists', () => {
   assert.match(
@@ -75,6 +79,29 @@ test('attribution and canceled-plan copy do not overstate measurement', () => {
   assert.match(growthQueue, /summary\.canceled/);
   assert.match(growthQueue, /No publish action/);
   assert.match(growthQueue, /before treating the sprint as published/);
+  assert.match(growthDashboard, /static profile-link traffic stays platform-level/);
+  assert.match(growthDashboard, /Assist L \/ S \/ A/);
+  assert.match(growthDashboard, /Excluded from winner decisions/);
+  assert.doesNotMatch(growthDashboard, /Compare the exact stage/);
+  assert.match(acquisitionLanding, /Which demo brought you here\?/);
+  assert.match(acquisitionLanding, /getRecentGrowthContentChoices/);
+  assert.match(acquisitionLanding, /content_assist_reported/);
+  assert.match(
+    acquisitionLanding,
+    /const landingJourneyCapturedAt = React\.useMemo\(/,
+  );
+  assert.match(
+    acquisitionLanding,
+    /expectedCapturedAt: landingJourneyCapturedAt/,
+  );
+  assert.doesNotMatch(
+    acquisitionLanding,
+    /expectedCapturedAt: stored\?\.last_touch\?\.captured_at/,
+  );
+  assert.match(
+    acquisitionLanding,
+    /touchOverride: landingTouch[\s\S]*?useStoredTouch: false/,
+  );
 });
 
 test('measured batch builder only offers current repeat or iterate evidence', () => {
@@ -121,9 +148,26 @@ test('measured batch builder recommends and locks the two-video feature explaine
     /value=\{draft\.concept_count\}[\s\S]*?disabled=\{featureExplainerSelected\}/,
   );
   assert.match(contentEngine, /Locked to two concepts/);
-  assert.match(contentEngine, /publish-candidate video donors/);
+  assert.match(contentEngine, /publish-candidate video or image donors/);
   assert.match(contentEngine, /14 for a seven-day rotation/);
+  assert.match(contentEngine, /Every platform rendition still exports as video/);
   assert.match(contentEngine, /Build two video explainers/);
+});
+
+test('owner UI can start the bounded audited week before measured evidence exists', () => {
+  assert.match(contentEngine, /Start audited week/);
+  assert.match(contentEngine, /Start the audited first week/);
+  assert.match(contentEngine, /No LLM is called and no fake performance evidence is created/);
+  assert.match(contentEngine, /action: 'build_audited_bootstrap_batch'/);
+  assert.match(contentEngine, /bootstrap_acknowledged: true/);
+  assert.match(contentEngine, /authorization_note: normalizedBootstrapNote/);
+  assert.match(contentEngine, /content_profile: FEATURE_EXPLAINER_VIDEO_PROFILE/);
+  assert.match(contentEngine, /concept_count: 2/);
+  assert.match(contentEngine, /bootstrapBatchCount >= 7/);
+  assert.match(contentEngine, /Audited bootstrap: \$\{bootstrapBatchCount\}\/7/);
+  assert.match(contentEngine, /seven-day cap/);
+  assert.match(contentEngine, /does not host media/);
+  assert.match(contentEngine, /batch\.batch_input_mode === 'audited_seed_bootstrap'/);
 });
 
 test('measured batches can be downloaded, owner-authorized, and revoked without publishing', () => {
@@ -153,6 +197,11 @@ test('strict video batches use one explicit, resumable, sequential activation fl
     contentEngine,
     /const refreshed = await query\.refetch\(\)[\s\S]*?inspectGrowthBatchActivation\([\s\S]*?schedule_candidates\.map[\s\S]*?for \(let index = 0; index < requests\.length; index \+= 1\)[\s\S]*?await base44\.functions\.invoke/,
   );
+  assert.match(
+    contentEngine,
+    /action: 'preflight_batch_activation'[\s\S]*?batch_key: batchKey[\s\S]*?preflightArtifactIds[\s\S]*?expectedArtifactIds/,
+  );
+  assert.match(contentEngine, /This preflight is not an\s*external-provider transaction/);
   assert.doesNotMatch(
     contentEngine,
     /Promise\.all\(\s*requests\.map/,
@@ -189,8 +238,16 @@ test('render import opens for static trust or authorized measured-batch trust', 
 });
 
 test('measured batch UI makes the starter donor-capacity boundary explicit', () => {
-  assert.match(contentEngine, /needs 2 distinct safe, publish-candidate video donors now/);
+  assert.match(contentEngine, /needs 2 distinct safe, publish-candidate video or image donors now/);
   assert.match(contentEngine, /14 for a seven-day rotation/);
+  assert.match(
+    contentEngine,
+    /FEATURE_EXPLAINER_SOURCE_KINDS = new Set\(\['video', 'image'\]\)/,
+  );
+  assert.match(
+    contentEngine,
+    /growthToken\(current\?\.media_kind\) !== requirement\.media_kind/,
+  );
   assert.match(contentEngine, /needs 14 safe donors at 2\/day or 21 at 3\/day/);
   assert.match(contentEngine, /Hold and stale decisions cannot seed a batch/);
 });

@@ -1,0 +1,101 @@
+{
+  "schema_version": "firstknock-video-derivative-review.v1",
+  "review_id": "firstknock-weekly-rights-safe-review-2026-07-29",
+  "plan_id": "firstknock-weekly-rights-safe-8-donor-2026-07",
+  "plan_sha256": "9fd281983f9519b6d14fa142725da90926dbac84c22aaae7ae10a7a68de672b0",
+  "sanitizer_environment_sha256": "de51429cff69278e8c687e2c8d40852b7d6c8eac3ba94eb4e93d620d06705dd3",
+  "sanitizer_script_sha256": "3eeef2e611ca0169337c8bb3f3802a9961dd1bc72c3286e31ccb37018d9c7287",
+  "reviewed_at": "2026-07-29T10:00:19.228Z",
+  "review_scope": "Offline derivative privacy and content-quality preflight for private donor staging only. This review does not authorize hosting, scheduling, or publication.",
+  "review_method": [
+    "Inspected every one of 1,584 decoded output frames in 27 sequential 30 fps contact sheets covering all eight derivatives.",
+    "Inspected high-resolution first-frame, dynamic-boundary, freeze-transition, and final-frame samples for every derivative.",
+    "Rejected the superseded v1 Route Command and Refresh Area hashes after independent QA found geography and an account-specific date, then restarted the complete review against v2 hashes only.",
+    "Required exclusion of map-provider text or imagery, geography, addresses, identities, customer records or results, account-specific dates or quota values, and device-private UI as applicable."
+  ],
+  "approved_count": 8,
+  "rejected_count": 0,
+  "publication_authorized": false,
+  "decisions": [
+    {
+      "asset_key": "video-weekly-route-start-finish-rights-safe-v1",
+      "decision": "approved_as_safe_donor",
+      "source_reference": "ef84586e3ca36db41db8d886754fc86f2e12beb429f11836eb05824d6d4c44be-video-weekly-route-start-finish-rights-safe-v1.mp4",
+      "source_sha256": "ef84586e3ca36db41db8d886754fc86f2e12beb429f11836eb05824d6d4c44be",
+      "duration_ms": 8021,
+      "byte_size": 1115647,
+      "privacy_status": "safe",
+      "review_note": "All 240 frames exclude OpenStreetMap text, the generic address field, geography, and device UI. Home Base and the generic current-location-ready state remain visible without a real location."
+    },
+    {
+      "asset_key": "video-weekly-route-command-overview-rights-safe-v1",
+      "decision": "approved_as_safe_donor",
+      "source_reference": "752f190ae2daf8be5767869d6178604b4e2865a21836dad19bd295f57d15f614-video-weekly-route-command-overview-rights-safe-v1.mp4",
+      "source_sha256": "752f190ae2daf8be5767869d6178604b4e2865a21836dad19bd295f57d15f614",
+      "duration_ms": 6021,
+      "byte_size": 838553,
+      "privacy_status": "safe",
+      "review_note": "All 180 frames exclude the prior right-edge geography strip, route cards, route titles, representative names, customer results, and map imagery. Grounded feature summary: Shows Route Command tabs, demo active count, Select to Merge, and queued count without exposing any route card; the clipped Delete All label is not claimed."
+    },
+    {
+      "asset_key": "video-weekly-merge-routes-rights-safe-v1",
+      "decision": "approved_as_safe_donor",
+      "source_reference": "53c194b3628a640cbd244b305d2c1080d4ac41bad56e26c47289471e8d5616a2-video-weekly-merge-routes-rights-safe-v1.mp4",
+      "source_sha256": "53c194b3628a640cbd244b305d2c1080d4ac41bad56e26c47289471e8d5616a2",
+      "duration_ms": 5821,
+      "byte_size": 1954587,
+      "privacy_status": "safe",
+      "review_note": "All 174 frames keep the bounded command panel while selection moves from zero to two generic route slots. No route card, route title, representative name, customer result, map, or satellite pixel is visible."
+    },
+    {
+      "asset_key": "video-weekly-bulk-reknock-rights-safe-v1",
+      "decision": "approved_as_safe_donor",
+      "source_reference": "7d01ade03208504f2cdda204637661805798a8c4c6d34cf8dbf92213282afc5d-video-weekly-bulk-reknock-rights-safe-v1.mp4",
+      "source_sha256": "7d01ade03208504f2cdda204637661805798a8c4c6d34cf8dbf92213282afc5d",
+      "duration_ms": 5021,
+      "byte_size": 1681232,
+      "privacy_status": "safe",
+      "review_note": "All 150 frames isolate the filters, bulk-selection actions, Re-Knock action, and bounded Updating state. No property row, address, owner or entity name, customer result, or post-update record enters the crop."
+    },
+    {
+      "asset_key": "video-weekly-outcome-controls-rights-safe-v1",
+      "decision": "approved_as_safe_donor",
+      "source_reference": "da722e154c8ebd305fc1338b46eb63c65861e8ce4958520ebd2d5a4a16c83088-video-weekly-outcome-controls-rights-safe-v1.mp4",
+      "source_sha256": "da722e154c8ebd305fc1338b46eb63c65861e8ce4958520ebd2d5a4a16c83088",
+      "duration_ms": 6021,
+      "byte_size": 410274,
+      "privacy_status": "safe",
+      "review_note": "All 180 frames contain only the six outcome controls and Add Details. No stop address, property chip, map button, keyboard, operating-system prompt, or saved outcome is visible."
+    },
+    {
+      "asset_key": "video-weekly-add-details-rights-safe-v1",
+      "decision": "approved_as_safe_donor",
+      "source_reference": "7f587dc386a704a2f8e4f7f26102e56d1cea276e48bb5397e757359bfbebaaac-video-weekly-add-details-rights-safe-v1.mp4",
+      "source_sha256": "7f587dc386a704a2f8e4f7f26102e56d1cea276e48bb5397e757359bfbebaaac",
+      "duration_ms": 6021,
+      "byte_size": 1248141,
+      "privacy_status": "safe",
+      "review_note": "All 180 frames keep the phone field inside the fixed opaque mask and show only empty quick-note, callback, and Photo Proof controls. No address, phone value, map button, keyboard, property chip, note content, or photo content is visible."
+    },
+    {
+      "asset_key": "video-weekly-property-styling-rights-safe-v1",
+      "decision": "approved_as_safe_donor",
+      "source_reference": "f7d8e8212566340fc08f048138a575dab64a76862d287361aaa917d1fa0963e9-video-weekly-property-styling-rights-safe-v1.mp4",
+      "source_sha256": "f7d8e8212566340fc08f048138a575dab64a76862d287361aaa917d1fa0963e9",
+      "duration_ms": 8021,
+      "byte_size": 1562849,
+      "privacy_status": "safe",
+      "review_note": "All 240 frames exclude map-provider controls, map imagery, geography, team data, and private labels. Grounded feature summary: Shows property-dot size, opacity, and fill controls followed by route-path pattern, thickness, and opacity controls; color scheme is outside the approved crop and is not claimed."
+    },
+    {
+      "asset_key": "video-weekly-refresh-area-rights-safe-v1",
+      "decision": "approved_as_safe_donor",
+      "source_reference": "5d4ab6f6bc38e07ebd9a06f98074444e9f5b29da80326b08b76f8b79a53a58a5-video-weekly-refresh-area-rights-safe-v1.mp4",
+      "source_sha256": "5d4ab6f6bc38e07ebd9a06f98074444e9f5b29da80326b08b76f8b79a53a58a5",
+      "duration_ms": 8021,
+      "byte_size": 604300,
+      "privacy_status": "safe",
+      "review_note": "All 240 frames exclude the account-specific Last pulled date, the private quota panel, property-count settings, map imagery, and geography. Only Fill Gaps, Max Since Last, and the unresolved-follow-up control remain visible."
+    }
+  ]
+}

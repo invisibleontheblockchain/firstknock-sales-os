@@ -19,6 +19,12 @@ import {
   getAcquisitionIdentity,
   sendAcquisitionEvent,
 } from '@/lib/acquisitionEvents';
+import {
+  isGenericAcquisitionContent,
+  parseAcquisitionTouch,
+  readStoredAcquisition,
+  reportStoredAcquisitionContent,
+} from '@/lib/acquisitionTracking';
 
 const LOGO_URL = 'https://media.base44.com/images/public/695eb764b077190880be21de/147abd69b_image.png';
 
@@ -132,12 +138,33 @@ export default function InstagramLanding() {
   const { isAuthenticated, isLoadingAuth } = useAuth();
   const identityRef = React.useRef(null);
   const [isStarting, setIsStarting] = React.useState(false);
+  const [contentChoices, setContentChoices] = React.useState([]);
+  const [contentChoiceState, setContentChoiceState] = React.useState('idle');
+  const [selectedContent, setSelectedContent] = React.useState(null);
+  const landingTouch = React.useMemo(() => parseAcquisitionTouch({
+    href: window.location.href,
+    referrer: document.referrer,
+  }), []);
+  const landingJourneyCapturedAt = React.useMemo(() => {
+    const storedTouch = readStoredAcquisition()?.last_touch;
+    if (
+      !landingTouch
+      || !storedTouch
+      || storedTouch.source !== landingTouch.source
+      || storedTouch.campaign !== landingTouch.campaign
+      || storedTouch.content !== landingTouch.content
+      || storedTouch.landing_path !== landingTouch.landing_path
+    ) {
+      return '';
+    }
+    return String(storedTouch.captured_at || '');
+  }, [landingTouch]);
 
   if (!identityRef.current) {
     identityRef.current = getAcquisitionIdentity();
   }
 
-  const track = React.useCallback((eventName, ctaVariant = '') => (
+  const track = React.useCallback((eventName, ctaVariant = '', eventOptions = {}) => (
     sendAcquisitionEvent(
       (functionName, payload) => base44.functions.invoke(functionName, payload),
       eventName,
@@ -145,6 +172,7 @@ export default function InstagramLanding() {
         ctaVariant,
         landingPath: window.location.pathname,
         identity: identityRef.current,
+        ...eventOptions,
       },
     ).catch(() => null)
   ), []);
@@ -152,17 +180,94 @@ export default function InstagramLanding() {
   React.useEffect(() => {
     const previousTitle = document.title;
     document.title = 'FirstKnock — Turn territory into assigned routes';
-    void track('landing_viewed');
+    void track('landing_viewed', '', {
+      touchOverride: landingTouch,
+      useStoredTouch: false,
+    });
     return () => {
       document.title = previousTitle;
     };
-  }, [track]);
+  }, [landingTouch, track]);
+
+  React.useEffect(() => {
+    let canceled = false;
+    if (isLoadingAuth) {
+      setContentChoiceState('loading');
+      return () => {
+        canceled = true;
+      };
+    }
+    if (
+      isAuthenticated
+      || !landingTouch
+      || !landingJourneyCapturedAt
+      || !['instagram', 'tiktok'].includes(landingTouch.source)
+      || landingTouch.campaign !== '1000-users'
+      || !isGenericAcquisitionContent(
+        landingTouch.source,
+        landingTouch.content,
+      )
+    ) {
+      setContentChoiceState('not_applicable');
+      return () => {
+        canceled = true;
+      };
+    }
+
+    setContentChoiceState('loading');
+    base44.functions.invoke('getRecentGrowthContentChoices', {
+      source: landingTouch.source,
+      campaign: landingTouch.campaign,
+      content: landingTouch.content,
+      landing_path: window.location.pathname,
+    }).then((response) => {
+      if (canceled) return;
+      const body = response?.data || response;
+      const choices = Array.isArray(body?.choices) ? body.choices : [];
+      setContentChoices(choices);
+      setContentChoiceState(choices.length ? 'ready' : 'empty');
+    }).catch(() => {
+      if (!canceled) setContentChoiceState('unavailable');
+    });
+
+    return () => {
+      canceled = true;
+    };
+  }, [
+    isAuthenticated,
+    isLoadingAuth,
+    landingJourneyCapturedAt,
+    landingTouch,
+  ]);
+
+  const reportContentAssist = (choice) => {
+    if (!landingTouch || selectedContent) return;
+    const result = reportStoredAcquisitionContent({
+      platform: landingTouch.source,
+      campaign: landingTouch.campaign,
+      contentId: choice.content,
+      expectedCapturedAt: landingJourneyCapturedAt,
+    });
+    if (result.status !== 'reported') return;
+    setSelectedContent(choice);
+    setContentChoiceState('reported');
+    void track('content_assist_reported');
+  };
 
   const startWorkspace = async (ctaVariant) => {
     if (isStarting) return;
     setIsStarting(true);
     await Promise.race([
-      track('signup_cta_clicked', ctaVariant),
+      track(
+        'signup_cta_clicked',
+        ctaVariant,
+        selectedContent
+          ? {}
+          : {
+            touchOverride: landingTouch,
+            useStoredTouch: false,
+          },
+      ),
       new Promise((resolve) => setTimeout(resolve, 700)),
     ]);
 
@@ -240,6 +345,44 @@ export default function InstagramLanding() {
                   See the workflow
                 </a>
               </div>
+
+              {contentChoiceState === 'ready' && !selectedContent && (
+                <div className="mt-5 max-w-xl rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-black text-white">Which demo brought you here?</p>
+                      <p className="mt-1 text-[11px] leading-relaxed text-white/40">
+                        Optional—one tap helps us learn which product walkthroughs are useful.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setContentChoiceState('dismissed')}
+                      className="shrink-0 text-[10px] font-bold text-white/35 transition hover:text-white"
+                    >
+                      Not sure
+                    </button>
+                  </div>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    {contentChoices.map((choice) => (
+                      <button
+                        key={choice.content}
+                        type="button"
+                        onClick={() => reportContentAssist(choice)}
+                        className="rounded-xl border border-white/10 bg-black/40 px-3 py-2.5 text-left text-[11px] font-bold leading-snug text-white/70 transition hover:border-[#2EEB57]/45 hover:bg-[#2EEB57]/10 hover:text-white"
+                      >
+                        {choice.hook || 'FirstKnock product demo'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {contentChoiceState === 'reported' && selectedContent && (
+                <div className="mt-5 max-w-xl rounded-xl border border-[#2EEB57]/20 bg-[#2EEB57]/10 px-4 py-3 text-xs text-[#a5ffb4]">
+                  Thanks—you selected “{selectedContent.hook || 'FirstKnock product demo'}.”
+                </div>
+              )}
 
               <div className="mt-6 flex flex-wrap gap-x-5 gap-y-2 text-xs font-semibold text-white/40">
                 {['Manager-first workspace', 'Rep-ready routes', 'Mobile field view'].map((item) => (

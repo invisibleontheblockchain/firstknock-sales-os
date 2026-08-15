@@ -1,6 +1,10 @@
 import { createClientFromRequest } from "npm:@base44/sdk@0.8.31";
 
-const PUBLIC_EVENTS = new Set(["landing_viewed", "signup_cta_clicked"]);
+const PUBLIC_EVENTS = new Set([
+  "landing_viewed",
+  "signup_cta_clicked",
+  "content_assist_reported",
+]);
 const PUBLIC_LANDING_PATHS = new Set(["/start", "/instagram"]);
 const TOKEN_MAX = 120;
 const FUTURE_SKEW_MS = 5 * 60 * 1000;
@@ -47,13 +51,41 @@ function landingPath(value: any): string {
 
 function sanitizeTouch(raw: any): any {
   const touch = raw && typeof raw === "object" ? raw : {};
+  const source = token(touch.source, "direct");
+  const content = token(touch.content, "unassigned");
+  const reportedContentId = token(touch.reported_content_id);
+  const expectedPrefix = source === "instagram"
+    ? "ig-"
+    : source === "tiktok"
+    ? "tt-"
+    : "";
+  const rawContentIsGeneric = !content
+    || content === "unassigned"
+    || content === (source === "instagram" ? "ig-bio" : "tt-bio");
+  const reportedContentValid = Boolean(
+    expectedPrefix
+    && rawContentIsGeneric
+    && reportedContentId.startsWith(expectedPrefix)
+    && reportedContentId !== `${expectedPrefix}bio`
+    && token(touch.reported_content_method) === "visitor_self_report",
+  );
+  const reportedAt = reportedContentValid
+    ? timestamp(touch.reported_content_at)
+    : null;
   return {
-    source: token(touch.source, "direct"),
+    source,
     medium: token(touch.medium, "none"),
     campaign: token(touch.campaign, "unassigned"),
-    content: token(touch.content, "unassigned"),
+    content,
     term: token(touch.term),
     referrer_host: token(touch.referrer_host).slice(0, 160),
+    ...(reportedContentValid && reportedAt
+      ? {
+        reported_content_id: reportedContentId,
+        reported_content_method: "visitor_self_report",
+        reported_content_at: reportedAt,
+      }
+      : {}),
   };
 }
 
@@ -143,6 +175,12 @@ Deno.serve(async (req: Request) => {
     }
 
     const touch = sanitizeTouch(body?.touch);
+    if (
+      eventName === "content_assist_reported"
+      && !touch.reported_content_id
+    ) {
+      return Response.json({ error: "invalid_content_assist" }, { status: 400 });
+    }
     // Each stage is counted once per browser session and tracked content touch.
     // This prevents rerenders/retries from inflating a content row without
     // discarding a legitimate visit to a second post during the same session.

@@ -1,0 +1,106 @@
+name: Growth Publisher
+
+# Production scheduler for the idempotent Buffer outbox worker.
+#
+# This workflow is inert until both repository secrets are configured:
+#   GROWTH_PUBLISH_WORKER_URL
+#   GROWTH_PUBLISH_WORKER_SECRET
+#
+# Scheduled workflows run only from the default branch. Pull requests never receive
+# these secrets, and this workflow does not check out or execute repository code.
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: firstknock-growth-publisher-production
+  cancel-in-progress: false
+
+jobs:
+  invoke:
+    name: Process guarded social outbox
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    env:
+      WORKER_URL: ${{ secrets.GROWTH_PUBLISH_WORKER_URL }}
+      WORKER_SECRET: ${{ secrets.GROWTH_PUBLISH_WORKER_SECRET }}
+
+    steps:
+      - name: Check production scheduler configuration
+        id: configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$WORKER_URL" || -z "$WORKER_SECRET" ]]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Growth publisher inactive::Configure both production worker secrets to enable the scheduler."
+            exit 0
+          fi
+          if [[ "$WORKER_URL" != "https://firstknock.online/api/functions/processGrowthPublishQueue" ]]; then
+            echo "::error title=Invalid growth worker URL::The endpoint must be the exact FirstKnock production processGrowthPublishQueue function URL."
+            exit 1
+          fi
+          if (( ${#WORKER_SECRET} < 32 )); then
+            echo "::error title=Invalid growth worker secret::The worker secret must contain at least 32 characters."
+            exit 1
+          fi
+          echo "configured=true" >> "$GITHUB_OUTPUT"
+
+      - name: Invoke production worker
+        if: steps.configuration.outputs.configured == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          RESPONSE_PATH="$RUNNER_TEMP/growth-publisher-response.json"
+          HTTP_STATUS="$(
+            curl \
+              --silent \
+              --show-error \
+              --max-time 120 \
+              --max-filesize 65536 \
+              --request POST \
+              --header "Authorization: Bearer $WORKER_SECRET" \
+              --header "Content-Type: application/json" \
+              --data '{"limit":1}' \
+              --output "$RESPONSE_PATH" \
+              --write-out '%{http_code}' \
+              "$WORKER_URL"
+          )"
+          if [[ "$HTTP_STATUS" != "200" ]]; then
+            echo "::error title=Growth worker failed::The production worker returned HTTP $HTTP_STATUS."
+            exit 1
+          fi
+          node - "$RESPONSE_PATH" <<'NODE'
+          const fs = require('node:fs');
+          const path = process.argv[2];
+          let body;
+          try {
+            body = JSON.parse(fs.readFileSync(path, 'utf8'));
+          } catch {
+            console.error('::error title=Growth worker failed::The worker response was not valid JSON.');
+            process.exit(1);
+          }
+          if (
+            body?.success !== true
+            || !Number.isSafeInteger(body?.inspected)
+            || !Number.isSafeInteger(body?.processed)
+            || body.processed < 0
+            || body.inspected < body.processed
+            || body.inspected > 1
+          ) {
+            console.error('::error title=Growth worker failed::The worker did not return a successful bounded result.');
+            process.exit(1);
+          }
+          const summary = [
+            '### Growth publisher',
+            '',
+            `- inspected: **${body.inspected}**`,
+            `- processed: **${body.processed}**`,
+          ];
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${summary.join('\n')}\n`);
+          NODE

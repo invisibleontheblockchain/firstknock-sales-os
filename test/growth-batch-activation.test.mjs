@@ -200,6 +200,68 @@ test('schedule requests use exact Phoenix batch slots and explicit silent confir
   assert.equal(measuredBatchDueAt({}), '');
 });
 
+test('baked owned-or-licensed audio preserves activation semantics without silent confirmation', () => {
+  const bakedArtifacts = fourArtifacts.map((item) => ({
+    ...item,
+    audio_mode: 'baked_owned_or_licensed',
+  }));
+  const inspected = inspectGrowthBatchActivation({
+    batch: strictBatch(),
+    artifacts: bakedArtifacts,
+    capabilities: READY_CAPABILITIES,
+    isMediaReady: () => true,
+    now: NOW,
+  });
+
+  assert.equal(inspected.can_activate, true);
+  assert.deepEqual(inspected.blockers, []);
+  assert.deepEqual(
+    inspected.schedule_candidates.map(({ artifact: item, retry_terminal }) => ({
+      id: item.id,
+      retry_terminal,
+    })),
+    [
+      { id: 'ig-1', retry_terminal: false },
+      { id: 'tt-1', retry_terminal: false },
+      { id: 'ig-2', retry_terminal: false },
+      { id: 'tt-2', retry_terminal: false },
+    ],
+  );
+  assert.deepEqual(
+    inspected.schedule_candidates.map(growthBatchScheduleRequest),
+    [
+      {
+        action: 'schedule',
+        artifact_id: 'ig-1',
+        due_at: '2026-08-01T16:30:00.000Z',
+        scheduling_type: 'automatic',
+        timezone: 'America/Phoenix',
+      },
+      {
+        action: 'schedule',
+        artifact_id: 'tt-1',
+        due_at: '2026-08-01T16:30:00.000Z',
+        scheduling_type: 'automatic',
+        timezone: 'America/Phoenix',
+      },
+      {
+        action: 'schedule',
+        artifact_id: 'ig-2',
+        due_at: '2026-08-01T20:30:00.000Z',
+        scheduling_type: 'automatic',
+        timezone: 'America/Phoenix',
+      },
+      {
+        action: 'schedule',
+        artifact_id: 'tt-2',
+        due_at: '2026-08-01T20:30:00.000Z',
+        scheduling_type: 'automatic',
+        timezone: 'America/Phoenix',
+      },
+    ],
+  );
+});
+
 test('failed and owner-verified canceled jobs produce explicit terminal retry requests', () => {
   for (const job of [
     { artifact_id: 'ig-1', state: 'failed' },

@@ -6,10 +6,18 @@ const MAX_ACTIVITY_RECORDS = 100000;
 const MAX_GROWTH_RECORDS = 25000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const SNAPSHOT_GRACE_MS = DAY_MS;
+const RETENTION_WINDOW_DAYS = 30;
+const TOUCH_SIGNUP_SKEW_MS = 5 * 60 * 1000;
 const PACE_CAMPAIGN = "1000-users";
 const PACE_OBSERVATION_DAYS = 28;
 const PACE_EXCLUDED_CONTENT = new Set(["ig-release-smoke"]);
 const SOCIAL_PLATFORMS = new Set(["instagram", "tiktok"]);
+const DECISION_POLICY_ID = "growth-decision-sufficiency.v1";
+const DECLARED_CLICKABLE_HANDOFFS = new Set([
+  "story_link",
+  "dm_reply",
+  "comment_reply",
+]);
 const CONTENT_METRIC_FIELDS = [
   "reach",
   "views",
@@ -85,6 +93,66 @@ function dateValue(record: any, fields: string[]): number {
     if (Number.isFinite(parsed.getTime())) return parsed.getTime();
   }
   return 0;
+}
+
+function isoValue(value: any): string | null {
+  const parsed = new Date(value || "");
+  return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : null;
+}
+
+function isSyntheticRecord(record: any): boolean {
+  return record?.is_test === true
+    || record?.test === true
+    || ["test", "testing", "sandbox"].includes(normalized(record?.environment))
+    || ["test", "synthetic"].includes(normalized(record?.trust_source));
+}
+
+async function requestedConversionScope(req: Request): Promise<any> {
+  let body: any = {};
+  if (req.method !== "GET" && req.method !== "HEAD") {
+    if (req.body === null) return { scope: null };
+    try {
+      body = await req.json();
+    } catch {
+      return { error: "invalid_conversion_scope" };
+    }
+  }
+  const supplied = [
+    body?.platform,
+    body?.campaign,
+    body?.content,
+    body?.conversion_cutoff_at,
+  ].some((value) => value !== undefined && value !== null && value !== "");
+  if (!supplied) return { scope: null };
+
+  const platform = normalized(body?.platform);
+  const campaign = normalized(body?.campaign);
+  const content = normalized(body?.content);
+  const cutoffAt = isoValue(body?.conversion_cutoff_at);
+  const snapshotAt = body?.snapshot_captured_at
+    ? isoValue(body.snapshot_captured_at)
+    : cutoffAt;
+  const cutoffMs = cutoffAt ? new Date(cutoffAt).getTime() : 0;
+  if (
+    !SOCIAL_PLATFORMS.has(platform)
+    || !campaign
+    || !content
+    || !cutoffAt
+    || !snapshotAt
+    || snapshotAt !== cutoffAt
+    || cutoffMs > Date.now() + TOUCH_SIGNUP_SKEW_MS
+  ) {
+    return { error: "invalid_conversion_scope" };
+  }
+  return {
+    scope: {
+      platform,
+      campaign,
+      content,
+      cutoff_at: cutoffAt,
+      cutoff_ms: cutoffMs,
+    },
+  };
 }
 
 function isRecent(record: any, days: number, fields: string[]): boolean {
@@ -182,6 +250,137 @@ function buildActivityIndex(
   return { userIds, userEmails };
 }
 
+function buildProductTimelines(
+  users: any[],
+  routes: any[],
+  canvasSessions: any[],
+  interactions: any[],
+  teamMembers: any[],
+  events: any[],
+) {
+  const activationByUserId = new Map<string, number[]>();
+  const activationByEmail = new Map<string, number[]>();
+  const activityByUserId = new Map<string, number[]>();
+  const activityByEmail = new Map<string, number[]>();
+  const paidByUserId = new Map<string, number[]>();
+  const usersById = new Map(users.map((user) => [String(user?.id || ""), user]));
+  const membersById = new Map(teamMembers.map((member) => [String(member?.id || ""), member]));
+  const add = (index: Map<string, number[]>, keyValue: any, timeValue: any) => {
+    const key = String(keyValue || "").trim().toLowerCase();
+    const time = typeof timeValue === "number"
+      ? timeValue
+      : new Date(timeValue || "").getTime();
+    if (!key || !Number.isFinite(time) || time <= 0) return;
+    if (!index.has(key)) index.set(key, []);
+    index.get(key)?.push(time);
+  };
+  const addFields = (
+    index: Map<string, number[]>,
+    key: any,
+    record: any,
+    fields: string[],
+  ) => {
+    for (const field of fields) add(index, key, record?.[field]);
+  };
+  const addActivationId = (id: any, record: any, fields: string[]) => {
+    add(activationByUserId, id, dateValue(record, fields));
+    addFields(activityByUserId, id, record, fields);
+  };
+  const addActivationEmail = (email: any, record: any, fields: string[]) => {
+    add(activationByEmail, normalized(email), dateValue(record, fields));
+    addFields(activityByEmail, normalized(email), record, fields);
+  };
+
+  for (const route of routes) {
+    if (isSyntheticRecord(route)) continue;
+    const propertyCount = Array.isArray(route?.property_hashes)
+      ? route.property_hashes.filter(Boolean).length
+      : 0;
+    if (propertyCount < 1 || !route?.created_by) continue;
+    addActivationEmail(route.created_by, route, ["created_date", "updated_date"]);
+  }
+  for (const session of canvasSessions) {
+    if (
+      isSyntheticRecord(session)
+      || !session?.manager_id
+      || !["deployed", "completed"].includes(normalized(session?.status))
+    ) {
+      continue;
+    }
+    addActivationId(session.manager_id, session, [
+      "deployed_at",
+      "completed_at",
+      "created_date",
+      "updated_date",
+    ]);
+  }
+  for (const interaction of interactions) {
+    if (isSyntheticRecord(interaction) || interaction?.counts_as_knock === false) continue;
+    const fields = ["created_date", "sale_date", "updated_date"];
+    addActivationId(interaction?.logged_by_user_id, interaction, fields);
+    addActivationEmail(interaction?.created_by, interaction, fields);
+    const repId = String(interaction?.rep_id || "");
+    if (usersById.has(repId)) addActivationId(repId, interaction, fields);
+    const member = membersById.get(repId);
+    if (member?.user_id) addActivationId(member.user_id, interaction, fields);
+  }
+  for (const event of events) {
+    if (
+      isSyntheticRecord(event)
+      || !["trusted_product_function", "stripe_webhook"].includes(
+        normalized(event?.trust_source),
+      )
+      || !event?.evidence_id
+    ) {
+      continue;
+    }
+    const occurredAt = event?.occurred_at;
+    if (["workspace_activated", "invited_rep_activated"].includes(
+      normalized(event?.event_name),
+    )) {
+      add(activationByUserId, event?.user_id || event?.workspace_manager_id, occurredAt);
+      add(activityByUserId, event?.user_id || event?.workspace_manager_id, occurredAt);
+    }
+    if (normalized(event?.event_name) === "paid_conversion") {
+      add(paidByUserId, event?.user_id || event?.workspace_manager_id, occurredAt);
+    }
+  }
+  for (const user of users) {
+    addFields(paidByUserId, user?.id, user, [
+      "first_paid_at",
+      "subscription_paid_confirmed_at",
+      "paid_at",
+    ]);
+  }
+  for (const index of [
+    activationByUserId,
+    activationByEmail,
+    activityByUserId,
+    activityByEmail,
+    paidByUserId,
+  ]) {
+    for (const values of index.values()) values.sort((left, right) => left - right);
+  }
+  return {
+    activationByUserId,
+    activationByEmail,
+    activityByUserId,
+    activityByEmail,
+    paidByUserId,
+  };
+}
+
+function timelineValuesForUser(
+  user: any,
+  byUserId: Map<string, number[]>,
+  byEmail?: Map<string, number[]>,
+): number[] {
+  return [...new Set([
+    ...(byUserId.get(String(user?.id || "")) || []),
+    ...(byEmail?.get(normalized(user?.email)) || []),
+  ])].sort((left, right) => left - right);
+}
+
 function isRetainedActive(user: any, activationIndex: any, activityIndex: any): boolean {
   if (!isActivated(user, activationIndex)) return false;
   return activityIndex.userIds.has(String(user?.id || ""))
@@ -276,10 +475,24 @@ function planDefinitionPayload(plan: any): string {
 
 function planReviewPayload(plan: any): string {
   return JSON.stringify({
+    review_schema_version: normalized(plan?.review_schema_version),
     decision: normalized(plan?.review_decision),
     note: String(plan?.review_note || ""),
     snapshot_captured_at: dateValue(plan, ["review_snapshot_captured_at"]),
     evidence_hash: String(plan?.review_evidence_hash || ""),
+    conversion_evidence_hash:
+      String(plan?.review_conversion_evidence_hash || ""),
+    decision_policy_id: normalized(plan?.review_decision_policy_id),
+    decision_policy_reason_codes: Array.isArray(
+      plan?.review_decision_policy_reason_codes,
+    ) ? plan.review_decision_policy_reason_codes : [],
+    decision_policy_evidence_hash:
+      String(plan?.review_decision_policy_evidence_hash || ""),
+    comparable_fixed_age_snapshots:
+      Number(plan?.review_comparable_fixed_age_snapshots || 0),
+    decision_override_note: String(plan?.review_decision_override_note || ""),
+    decision_override_hash: String(plan?.review_decision_override_hash || ""),
+    review_identity_hash: String(plan?.review_identity_hash || ""),
   });
 }
 
@@ -337,12 +550,35 @@ function canonicalContentPlans(plans: any[]): any[] {
   return canonical;
 }
 
+function metricFieldObserved(metric: any, field: string): boolean {
+  if (Array.isArray(metric?.observed_metric_fields)) {
+    return metric.observed_metric_fields
+      .map(normalized)
+      .includes(normalized(field));
+  }
+  if (
+    normalized(metric?.metric_source) === "buffer"
+    && Array.isArray(metric?.provider_observed_metric_types)
+  ) {
+    return metric.provider_observed_metric_types
+      .map(normalized)
+      .includes(normalized(field));
+  }
+  return Object.prototype.hasOwnProperty.call(metric || {}, field);
+}
+
 function hasContentSnapshot(metric: any): boolean {
   const capturedAt = dateValue(metric, ["snapshot_captured_at"]);
   const reach = Number(metric?.reach);
-  return capturedAt > 0
+  const views = Number(metric?.views);
+  const reachValid = metricFieldObserved(metric, "reach")
     && Number.isSafeInteger(reach)
     && reach >= 0;
+  const viewsValid = metricFieldObserved(metric, "views")
+    && Number.isSafeInteger(views)
+    && views >= 0;
+  return capturedAt > 0
+    && (reachValid || viewsValid);
 }
 
 function metricEvidencePayload(metric: any): string {
@@ -357,6 +593,9 @@ function metricEvidencePayload(metric: any): string {
   for (const field of CONTENT_METRIC_FIELDS) {
     payload[field] = Math.max(0, Number(metric?.[field] || 0));
   }
+  payload.observed_fields = CONTENT_METRIC_FIELDS.filter(
+    (field) => metricFieldObserved(metric, field),
+  );
   return JSON.stringify(payload);
 }
 
@@ -528,7 +767,15 @@ function teamMultiplier(
 
 const PLATFORM_SUMMARY_FIELDS = [
   "reach",
+  "views",
+  "reach_observed_assets",
+  "views_observed_assets",
   "content_assets",
+  "link_clicks",
+  "dm_intents",
+  "owned_intents",
+  "owned_intents_observed_assets",
+  "owned_intents_complete_assets",
   "landing_sessions",
   "signup_cta_sessions",
   "auth_completed",
@@ -571,12 +818,53 @@ function summarizePlatform(
   const platformMetrics = metrics.filter(
     (metric) => recordPlatform(metric) === platform,
   );
+  const linkClicks = platformMetrics.reduce(
+    (total, metric) => total + (
+      metricFieldObserved(metric, "link_clicks")
+        ? Math.max(0, Number(metric?.link_clicks || 0))
+        : 0
+    ),
+    0,
+  );
+  const dmIntents = platformMetrics.reduce(
+    (total, metric) => total + (
+      metricFieldObserved(metric, "dm_intents")
+        ? Math.max(0, Number(metric?.dm_intents || 0))
+        : 0
+    ),
+    0,
+  );
   return {
     reach: platformMetrics.reduce(
       (total, metric) => total + Math.max(0, Number(metric?.reach || 0)),
       0,
     ),
+    views: platformMetrics.reduce(
+      (total, metric) => total + Math.max(0, Number(metric?.views || 0)),
+      0,
+    ),
+    reach_observed_assets: platformMetrics.filter(
+      (metric) => metricFieldObserved(metric, "reach"),
+    ).length,
+    views_observed_assets: platformMetrics.filter(
+      (metric) => metricFieldObserved(metric, "views"),
+    ).length,
     content_assets: platformMetrics.length,
+    link_clicks: linkClicks,
+    dm_intents: dmIntents,
+    owned_intents: linkClicks + dmIntents,
+    owned_intents_observed_assets: platformMetrics.filter(
+      (metric) => (
+        metricFieldObserved(metric, "link_clicks")
+        || metricFieldObserved(metric, "dm_intents")
+      ),
+    ).length,
+    owned_intents_complete_assets: platformMetrics.filter(
+      (metric) => (
+        metricFieldObserved(metric, "link_clicks")
+        && metricFieldObserved(metric, "dm_intents")
+      ),
+    ).length,
     landing_sessions: uniqueCount(
       socialEvents.filter((event) => event?.event_name === "landing_viewed"),
       "session_id",
@@ -659,6 +947,9 @@ function summarize(
     ...prefixedPlatformSummary("instagram", instagram),
     ...prefixedPlatformSummary("tiktok", tiktok),
     ...prefixedPlatformSummary("social", social),
+    instagram_cumulative_post_reach: instagram.reach,
+    tiktok_cumulative_post_reach: tiktok.reach,
+    social_cumulative_post_reach: social.reach,
   };
 }
 
@@ -709,6 +1000,13 @@ function buildPaceEvidence(
     const dueAt = checkpointDueAt(plan);
     return dueAt >= observationCutoff && dueAt <= now;
   });
+  const recentDuePlans = scopedPlans.filter((plan) => {
+    const dueAt = checkpointDueAt(plan);
+    return dueAt >= observationCutoff && dueAt <= now;
+  });
+  const allTimeDuePlans = scopedPlans.filter(
+    (plan) => checkpointDueAt(plan) <= now,
+  );
   const activeMemberships = activeRepMemberships(rosterGroups);
   const scopedUsers = users.filter((user) => {
     const touch = acquisitionTouchForUser(user, allUsersById, activeMemberships);
@@ -737,6 +1035,9 @@ function buildPaceEvidence(
     const platformMetrics = recentMetrics.filter(
       (metric) => recordPlatform(metric) === platform,
     );
+    const expectedDueAssets = recentDuePlans.filter(
+      (plan) => recordPlatform(plan) === platform,
+    ).length;
     const platformUsers = recentUsersForPlatform(platform);
     const managers = platformUsers.filter((user) => (
       ["manager", "admin"].includes(normalized(user?.app_role))
@@ -746,6 +1047,18 @@ function buildPaceEvidence(
         (total, metric) => total + Math.max(0, Number(metric?.reach || 0)),
         0,
       ),
+      views: platformMetrics.reduce(
+        (total, metric) => total + Math.max(0, Number(metric?.views || 0)),
+        0,
+      ),
+      reach_observed_assets: platformMetrics.filter(
+        (metric) => metricFieldObserved(metric, "reach"),
+      ).length,
+      views_observed_assets: platformMetrics.filter(
+        (metric) => metricFieldObserved(metric, "views"),
+      ).length,
+      expected_due_assets: expectedDueAssets,
+      captured_assets: platformMetrics.length,
       content_assets: platformMetrics.length,
       activated_workspaces: managers.filter(
         (user) => isActivated(user, activationIndex),
@@ -770,6 +1083,15 @@ function buildPaceEvidence(
     observation_window_days: PACE_OBSERVATION_DAYS,
     observation_window_complete: firstCheckpointDueAt > 0
       && firstCheckpointDueAt <= observationCutoff,
+    expected_due_assets_all_time: allTimeDuePlans.length,
+    expected_due_assets_all_time_by_platform: {
+      instagram: allTimeDuePlans.filter(
+        (plan) => recordPlatform(plan) === "instagram",
+      ).length,
+      tiktok: allTimeDuePlans.filter(
+        (plan) => recordPlatform(plan) === "tiktok",
+      ).length,
+    },
     measured_content_assets_all_time: scopedMetrics.length,
     measured_content_assets_all_time_by_platform: {
       instagram: scopedMetrics.filter(
@@ -781,14 +1103,36 @@ function buildPaceEvidence(
     },
     last_28_days: {
       instagram_reach: instagram.reach,
+      instagram_cumulative_post_reach: instagram.reach,
+      instagram_views: instagram.views,
+      instagram_reach_observed_assets: instagram.reach_observed_assets,
+      instagram_views_observed_assets: instagram.views_observed_assets,
+      instagram_expected_due_assets: instagram.expected_due_assets,
+      instagram_captured_assets: instagram.captured_assets,
       instagram_content_assets: instagram.content_assets,
       instagram_activated_workspaces: instagram.activated_workspaces,
       instagram_retained_active_users_30d: instagram.retained_active_users_30d,
       tiktok_reach: tiktok.reach,
+      tiktok_cumulative_post_reach: tiktok.reach,
+      tiktok_views: tiktok.views,
+      tiktok_reach_observed_assets: tiktok.reach_observed_assets,
+      tiktok_views_observed_assets: tiktok.views_observed_assets,
+      tiktok_expected_due_assets: tiktok.expected_due_assets,
+      tiktok_captured_assets: tiktok.captured_assets,
       tiktok_content_assets: tiktok.content_assets,
       tiktok_activated_workspaces: tiktok.activated_workspaces,
       tiktok_retained_active_users_30d: tiktok.retained_active_users_30d,
       social_reach: instagram.reach + tiktok.reach,
+      social_cumulative_post_reach: instagram.reach + tiktok.reach,
+      social_views: instagram.views + tiktok.views,
+      social_reach_observed_assets:
+        instagram.reach_observed_assets + tiktok.reach_observed_assets,
+      social_views_observed_assets:
+        instagram.views_observed_assets + tiktok.views_observed_assets,
+      social_expected_due_assets:
+        instagram.expected_due_assets + tiktok.expected_due_assets,
+      social_captured_assets:
+        instagram.captured_assets + tiktok.captured_assets,
       social_content_assets: instagram.content_assets + tiktok.content_assets,
       social_activated_workspaces:
         instagram.activated_workspaces + tiktok.activated_workspaces,
@@ -802,15 +1146,100 @@ function rowKey(platform: any, campaign: any, content: any): string {
   return `${socialPlatform(platform)}|${normalized(campaign) || "unassigned"}|${normalized(content) || "unassigned"}`;
 }
 
+function genericSocialContent(sourceValue: any, contentValue: any): boolean {
+  const source = normalized(sourceValue);
+  const content = normalized(contentValue);
+  if (!SOCIAL_PLATFORMS.has(source)) return false;
+  return !content
+    || content === "unassigned"
+    || content === (source === "instagram" ? "ig-bio" : "tt-bio");
+}
+
+function reportedContentAssist(touch: any): any | null {
+  const source = normalized(touch?.source);
+  const campaign = normalized(touch?.campaign) || "unassigned";
+  const content = normalized(touch?.content) || "unassigned";
+  const reportedContent = normalized(touch?.reported_content_id);
+  const expectedPrefix = source === "instagram" ? "ig-" : "tt-";
+  if (
+    !SOCIAL_PLATFORMS.has(source)
+    || !genericSocialContent(source, content)
+    || normalized(touch?.reported_content_method) !== "visitor_self_report"
+    || !reportedContent.startsWith(expectedPrefix)
+    || genericSocialContent(source, reportedContent)
+  ) {
+    return null;
+  }
+  return {
+    source,
+    campaign,
+    content: reportedContent,
+    reported_at: dateValue(touch, ["reported_content_at"]),
+  };
+}
+
+function reportedAcquisitionAssistForUser(user: any): any | null {
+  const createdAt = dateValue(user, ["created_date"]);
+  if (!createdAt) return null;
+  for (const touch of [
+    user?.acquisition_last_touch,
+    user?.acquisition_first_touch,
+  ]) {
+    const assist = reportedContentAssist(touch);
+    if (
+      assist
+      && assist.reported_at > 0
+      && assist.reported_at <= createdAt + 5 * 60 * 1000
+      && assist.reported_at >= createdAt - 90 * DAY_MS
+    ) {
+      return assist;
+    }
+  }
+  return null;
+}
+
+function rowAttribution(source: string, content: string, plan: any): any {
+  const generic = genericSocialContent(source, content);
+  const staticBio = content === (source === "instagram" ? "ig-bio" : "tt-bio");
+  const declaredClickableHandoff = Boolean(
+    !generic
+    && plan
+    && DECLARED_CLICKABLE_HANDOFFS.has(normalized(plan?.cta_channel)),
+  );
+  return {
+    attribution_granularity: generic ? "platform" : "content",
+    attribution_method: generic
+      ? staticBio
+        ? "static_bio"
+        : "source_inferred_or_unassigned"
+      : declaredClickableHandoff
+      ? "declared_content_link"
+      : "social_evidence_only",
+    conversion_evidence: declaredClickableHandoff
+      ? "client_declared_content_first_touch"
+      : generic
+      ? "client_declared_platform_first_touch"
+      : "social_metrics_only_no_declared_handoff",
+    post_conversion_eligible: declaredClickableHandoff,
+  };
+}
+
 function contentRows(
   users: any[],
   allUsersById: Map<string, any>,
   activationIndex: any,
   events: any[],
   metrics: any[],
+  plans: any[],
   rosterGroups: any[],
+  timelines: any,
+  requestScope: any = null,
 ) {
   const activeMemberships = activeRepMemberships(rosterGroups);
+  const plansByAsset = new Map(plans.map((plan) => [
+    assetKey(plan?.campaign, plan?.content, recordPlatform(plan)),
+    plan,
+  ]));
   const rows = new Map<string, any>();
   const ensureRow = (platform: any, campaign: any, content: any) => {
     const cleanPlatform = socialPlatform(platform);
@@ -818,16 +1247,34 @@ function contentRows(
     const cleanContent = normalized(content) || "unassigned";
     const key = rowKey(cleanPlatform, cleanCampaign, cleanContent);
     if (!rows.has(key)) {
+      const plan = plansByAsset.get(assetKey(cleanCampaign, cleanContent, cleanPlatform)) || null;
+      const publishedAt = dateValue(plan, ["published_at"]);
+      const attribution = rowAttribution(cleanPlatform, cleanContent, plan);
       rows.set(key, {
+        key,
+        plan,
         source: cleanPlatform,
         medium: "organic_social",
         campaign: cleanCampaign,
         content: cleanContent,
-        format: "",
-        hook: "",
+        format: normalized(plan?.format),
+        hook: String(plan?.hook || ""),
+        cta_channel: normalized(plan?.cta_channel),
         snapshot_days: null,
+        published_at_ms: publishedAt,
+        conversion_cutoff_ms: requestScope
+            && key === rowKey(
+              requestScope.platform,
+              requestScope.campaign,
+              requestScope.content,
+            )
+          ? requestScope.cutoff_ms
+          : 0,
+        ...attribution,
         reach: 0,
         views: 0,
+        reach_observed: false,
+        views_observed: false,
         shares: 0,
         saves: 0,
         comments: 0,
@@ -835,9 +1282,19 @@ function contentRows(
         profile_visits: 0,
         link_clicks: 0,
         dm_intents: 0,
+        owned_intent_observed_fields: [],
         landing_session_ids: new Set<string>(),
         signup_cta_session_ids: new Set<string>(),
         auth_user_ids: new Set<string>(),
+        self_reported_landing_session_ids: new Set<string>(),
+        self_reported_signup_cta_session_ids: new Set<string>(),
+        self_reported_signup_user_ids: new Set<string>(),
+        self_reported_activated_workspace_user_ids: new Set<string>(),
+        self_reported_paid_user_ids: new Set<string>(),
+        accepted_user_ids: new Set<string>(),
+        retained_user_ids: new Set<string>(),
+        retention_eligible_user_ids: new Set<string>(),
+        activated_rep_user_ids: new Set<string>(),
         signups: 0,
         acquired_users: 0,
         activated_workspaces: 0,
@@ -845,46 +1302,58 @@ function contentRows(
         paid_users: 0,
         manager_signups: 0,
         rep_signups: 0,
-        active_rep_roster_keys: new Set<string>(),
-        joined_rep_user_ids: new Set<string>(),
-        activated_rep_user_ids: new Set<string>(),
-        rep_identity_conflicts: 0,
-        first_signup_at: null,
-        last_signup_at: null,
+        first_signup_ms: 0,
+        last_signup_ms: 0,
+        first_activation_ms: 0,
+        last_activation_ms: 0,
         metric_timestamp: 0,
+        event_timing_complete: true,
+        user_timing_complete: true,
+        activation_timing_complete: true,
+        paid_timing_complete: true,
+        missing_event_timestamps: 0,
+        missing_user_timestamps: 0,
+        activation_timing_missing_users: 0,
+        paid_timing_missing_users: 0,
+        excluded_prepublication_events: 0,
+        excluded_post_cutoff_events: 0,
+        excluded_synthetic_events: 0,
+        excluded_prepublication_users: 0,
+        excluded_post_cutoff_users: 0,
+        excluded_invalid_timing_users: 0,
+        excluded_synthetic_users: 0,
       });
     }
     return rows.get(key);
   };
+  const hasBoundedCohort = (row: any) => (
+    row.published_at_ms > 0
+    && row.conversion_cutoff_ms >= row.published_at_ms
+  );
+  const timestampStatus = (row: any, value: any): string => {
+    const time = new Date(value || "").getTime();
+    if (!Number.isFinite(time) || time <= 0) return "missing";
+    if (!hasBoundedCohort(row) || time < row.published_at_ms) return "prepublication";
+    if (time > row.conversion_cutoff_ms) return "post_cutoff";
+    return "inside";
+  };
 
-  // Keep the most recently captured cumulative snapshot per platform asset.
+  // The social checkpoint defines the immutable conversion cutoff for the row.
   for (const metric of metrics) {
-    const row = ensureRow(
-      recordPlatform(metric),
-      metric?.campaign,
-      metric?.content,
-    );
-    const metricTimestamp = dateValue(metric, [
-      "snapshot_captured_at",
-      "updated_date",
-      "created_date",
-    ]);
+    const row = ensureRow(recordPlatform(metric), metric?.campaign, metric?.content);
+    const metricTimestamp = dateValue(metric, ["snapshot_captured_at"]);
     if (metricTimestamp < row.metric_timestamp) continue;
     row.metric_timestamp = metricTimestamp;
-    row.format = normalized(metric?.format);
-    row.hook = String(metric?.hook || "");
+    if (!requestScope) row.conversion_cutoff_ms = metricTimestamp;
+    row.format = normalized(metric?.format) || row.format;
+    row.hook = String(metric?.hook || row.hook || "");
     row.snapshot_days = Number(metric?.snapshot_days || 0) || null;
-    for (const field of [
-      "reach",
-      "views",
-      "shares",
-      "saves",
-      "comments",
-      "follows",
-      "profile_visits",
-      "link_clicks",
-      "dm_intents",
-    ]) {
+    row.reach_observed = metricFieldObserved(metric, "reach");
+    row.views_observed = metricFieldObserved(metric, "views");
+    row.owned_intent_observed_fields = ["link_clicks", "dm_intents"].filter(
+      (field) => metricFieldObserved(metric, field),
+    );
+    for (const field of CONTENT_METRIC_FIELDS) {
       row[field] = Math.max(0, Number(metric?.[field] || 0));
     }
   }
@@ -893,14 +1362,49 @@ function contentRows(
     const source = normalized(event?.source);
     if (!SOCIAL_PLATFORMS.has(source)) continue;
     const row = ensureRow(source, event?.campaign, event?.content);
-    if (event?.event_name === "landing_viewed" && event?.session_id) {
-      row.landing_session_ids.add(String(event.session_id));
+    const conversionEvent = [
+      "landing_viewed",
+      "signup_cta_clicked",
+      "auth_completed",
+    ].includes(normalized(event?.event_name));
+    if (conversionEvent && row.post_conversion_eligible) {
+      if (isSyntheticRecord(event)) {
+        row.excluded_synthetic_events += 1;
+      } else {
+        const status = timestampStatus(row, event?.occurred_at);
+        if (status === "missing") {
+          row.event_timing_complete = false;
+          row.missing_event_timestamps += 1;
+        } else if (status === "prepublication") {
+          row.excluded_prepublication_events += 1;
+        } else if (status === "post_cutoff") {
+          row.excluded_post_cutoff_events += 1;
+        } else if (event?.event_name === "landing_viewed" && event?.session_id) {
+          row.landing_session_ids.add(String(event.session_id));
+        } else if (event?.event_name === "signup_cta_clicked" && event?.session_id) {
+          row.signup_cta_session_ids.add(String(event.session_id));
+        } else if (event?.event_name === "auth_completed" && event?.user_id) {
+          row.auth_user_ids.add(String(event.user_id));
+        }
+      }
     }
-    if (event?.event_name === "signup_cta_clicked" && event?.session_id) {
-      row.signup_cta_session_ids.add(String(event.session_id));
-    }
-    if (event?.event_name === "auth_completed" && event?.user_id) {
-      row.auth_user_ids.add(String(event.user_id));
+
+    // Visitor self-report remains an explicitly non-conversion assist. Bound it
+    // to the same frozen checkpoint so dashboard values cannot drift later.
+    const assist = reportedContentAssist(event);
+    if (assist && event?.session_id) {
+      const assistRow = ensureRow(assist.source, assist.campaign, assist.content);
+      if (timestampStatus(assistRow, event?.occurred_at) === "inside") {
+        if (
+          event?.event_name === "content_assist_reported"
+          || event?.event_name === "landing_viewed"
+        ) {
+          assistRow.self_reported_landing_session_ids.add(String(event.session_id));
+        }
+        if (event?.event_name === "signup_cta_clicked") {
+          assistRow.self_reported_signup_cta_session_ids.add(String(event.session_id));
+        }
+      }
     }
   }
 
@@ -909,51 +1413,188 @@ function contentRows(
     const source = normalized(touch?.source);
     if (!SOCIAL_PLATFORMS.has(source)) continue;
     const row = ensureRow(source, touch?.campaign, touch?.content);
+    const role = normalized(user?.app_role);
     row.medium = normalized(touch?.medium) || "organic_social";
-    row.acquired_users += 1;
-    if (isActivated(user, activationIndex)) row.activated_users += 1;
-    if (normalized(user?.app_role) === "manager" || normalized(user?.app_role) === "admin") {
-      row.signups += 1;
-      row.manager_signups += 1;
-      if (isActivated(user, activationIndex)) row.activated_workspaces += 1;
-      if (isPaid(user)) row.paid_users += 1;
-    }
-    if (normalized(user?.app_role) === "rep") row.rep_signups += 1;
 
-    const createdAt = String(user?.created_date || touch?.captured_at || "");
-    if (createdAt) {
-      if (!row.first_signup_at || createdAt < row.first_signup_at) row.first_signup_at = createdAt;
-      if (!row.last_signup_at || createdAt > row.last_signup_at) row.last_signup_at = createdAt;
-    }
-  }
+    if (row.post_conversion_eligible) {
+      if (isSyntheticRecord(user) || isSyntheticRecord(touch)) {
+        row.excluded_synthetic_users += 1;
+      } else {
+        const touchAt = new Date(touch?.captured_at || "").getTime();
+        const createdAt = new Date(user?.created_date || "").getTime();
+        const touchStatus = timestampStatus(row, touch?.captured_at);
+        const createdStatus = timestampStatus(row, user?.created_date);
+        if (touchStatus === "missing" || createdStatus === "missing") {
+          row.user_timing_complete = false;
+          row.missing_user_timestamps += 1;
+        } else if (touchAt > createdAt + TOUCH_SIGNUP_SKEW_MS) {
+          row.user_timing_complete = false;
+          row.excluded_invalid_timing_users += 1;
+        } else if (touchStatus === "prepublication" || createdStatus === "prepublication") {
+          row.excluded_prepublication_users += 1;
+        } else if (touchStatus === "post_cutoff" || createdStatus === "post_cutoff") {
+          row.excluded_post_cutoff_users += 1;
+        } else {
+          const userId = String(user?.id || "");
+          row.accepted_user_ids.add(userId);
+          row.acquired_users += 1;
+          if (!row.first_signup_ms || createdAt < row.first_signup_ms) row.first_signup_ms = createdAt;
+          if (!row.last_signup_ms || createdAt > row.last_signup_ms) row.last_signup_ms = createdAt;
+          if (["manager", "admin"].includes(role)) {
+            row.signups += 1;
+            row.manager_signups += 1;
+          } else if (role === "rep") {
+            row.rep_signups += 1;
+          }
 
-  for (const group of rosterGroups) {
-    const manager = allUsersById.get(String(group?.manager_id || ""));
-    const touch = manager?.acquisition_first_touch;
-    const source = normalized(touch?.source);
-    if (!SOCIAL_PLATFORMS.has(source)) continue;
-    const row = ensureRow(source, touch?.campaign, touch?.content);
-    row.active_rep_roster_keys.add(group.key);
-    if (group.identity_conflict) row.rep_identity_conflicts += 1;
-    const joinedUser = group.joined_user;
-    if (joinedUser?.id) {
-      const joinedKey = membershipKey(group.manager_id, joinedUser.id);
-      row.joined_rep_user_ids.add(joinedKey);
-      if (Number(joinedUser?.outcomes_logged || 0) > 0) {
-        row.activated_rep_user_ids.add(joinedKey);
+          const activationTimes = timelineValuesForUser(
+            user,
+            timelines.activationByUserId,
+            timelines.activationByEmail,
+          );
+          const hasActivationState = isActivated(user, activationIndex)
+            || activationTimes.length > 0;
+          const validActivationTimes = activationTimes.filter(
+            (value) => value >= createdAt && value >= row.published_at_ms,
+          );
+          const activationAt = validActivationTimes[0] || 0;
+          if (hasActivationState && !activationAt) {
+            row.activation_timing_complete = false;
+            row.activation_timing_missing_users += 1;
+          } else if (activationAt > 0 && activationAt <= row.conversion_cutoff_ms) {
+            row.activated_users += 1;
+            if (!row.first_activation_ms || activationAt < row.first_activation_ms) {
+              row.first_activation_ms = activationAt;
+            }
+            if (!row.last_activation_ms || activationAt > row.last_activation_ms) {
+              row.last_activation_ms = activationAt;
+            }
+            if (["manager", "admin"].includes(role)) row.activated_workspaces += 1;
+            if (role === "rep") row.activated_rep_user_ids.add(userId);
+            if (activationAt <= row.conversion_cutoff_ms - RETENTION_WINDOW_DAYS * DAY_MS) {
+              row.retention_eligible_user_ids.add(userId);
+              const activityTimes = timelineValuesForUser(
+                user,
+                timelines.activityByUserId,
+                timelines.activityByEmail,
+              );
+              if (activityTimes.some((value) => (
+                value > activationAt
+                && value >= row.conversion_cutoff_ms - RETENTION_WINDOW_DAYS * DAY_MS
+                && value <= row.conversion_cutoff_ms
+              ))) {
+                row.retained_user_ids.add(userId);
+              }
+            }
+          }
+
+          if (["manager", "admin"].includes(role)) {
+            const allPaidTimes = timelineValuesForUser(
+              user,
+              timelines.paidByUserId,
+            );
+            const hasPaidState = isPaid(user) || allPaidTimes.length > 0;
+            if (hasPaidState) {
+              const paidTimes = allPaidTimes.filter(
+                (value) => value >= createdAt && value >= row.published_at_ms,
+              );
+              const paidAt = paidTimes[0] || 0;
+              if (!paidAt) {
+                row.paid_timing_complete = false;
+                row.paid_timing_missing_users += 1;
+              } else if (paidAt <= row.conversion_cutoff_ms) {
+                row.paid_users += 1;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    const assist = reportedAcquisitionAssistForUser(user);
+    if (assist && ["manager", "admin"].includes(role) && user?.id) {
+      const assistRow = ensureRow(assist.source, assist.campaign, assist.content);
+      if (timestampStatus(assistRow, user?.created_date) === "inside") {
+        const userId = String(user.id);
+        assistRow.self_reported_signup_user_ids.add(userId);
+        if (isActivated(user, activationIndex)) {
+          assistRow.self_reported_activated_workspace_user_ids.add(userId);
+        }
+        if (isPaid(user)) assistRow.self_reported_paid_user_ids.add(userId);
       }
     }
   }
 
+  const scopedKey = requestScope
+    ? rowKey(requestScope.platform, requestScope.campaign, requestScope.content)
+    : "";
   return [...rows.values()]
+    .filter((row) => !scopedKey || row.key === scopedKey)
     .map((row) => {
-      const landingSessions = row.landing_session_ids.size;
-      const signupCtaSessions = row.signup_cta_session_ids.size;
-      const authCompleted = row.auth_user_ids.size;
-      const ownedIntents = row.link_clicks + row.dm_intents;
-      const activeRepRosterCount = row.active_rep_roster_keys.size;
-      const joinedReps = row.joined_rep_user_ids.size;
-      const activatedReps = row.activated_rep_user_ids.size;
+      const bounded = hasBoundedCohort(row);
+      const eventCountersAvailable = Boolean(
+        row.post_conversion_eligible && bounded && row.event_timing_complete,
+      );
+      const userCountersAvailable = Boolean(
+        row.post_conversion_eligible && bounded && row.user_timing_complete,
+      );
+      const activationCountersAvailable = Boolean(
+        userCountersAvailable && row.activation_timing_complete,
+      );
+      const paidCountersAvailable = Boolean(
+        userCountersAvailable && row.paid_timing_complete,
+      );
+      const conversionCountersAvailable = Boolean(
+        eventCountersAvailable
+        && activationCountersAvailable
+        && paidCountersAvailable,
+      );
+      const conversionConclusion = !row.post_conversion_eligible
+        ? "inconclusive_no_declared_link"
+        : conversionCountersAvailable
+        ? "exact_declared_link"
+        : "inconclusive_missing_timestamps";
+      const eventValue = (value: number) => eventCountersAvailable ? value : null;
+      const userValue = (value: number) => userCountersAvailable ? value : null;
+      const activationValue = (value: number) => activationCountersAvailable ? value : null;
+      const paidValue = (value: number) => paidCountersAvailable ? value : null;
+      const landingSessions = eventValue(row.landing_session_ids.size);
+      const signupCtaSessions = eventValue(row.signup_cta_session_ids.size);
+      const authCompleted = eventValue(row.auth_user_ids.size);
+      const signups = userValue(row.signups);
+      const activatedWorkspaces = activationValue(row.activated_workspaces);
+      const activatedUsers = activationValue(row.activated_users);
+      const activatedReps = activationValue(row.activated_rep_user_ids.size);
+      const paidUsers = paidValue(row.paid_users);
+      const retentionEligibleUsers = activationCountersAvailable
+        ? row.retention_eligible_user_ids.size
+        : null;
+      const retainedUsers = activationCountersAvailable
+        ? row.retained_user_ids.size
+        : null;
+      const retentionRate = retentionEligibleUsers
+        ? retainedUsers / retentionEligibleUsers
+        : null;
+      const selfReportedLandingAssists = row.self_reported_landing_session_ids.size;
+      const selfReportedSignupCtaAssists = row.self_reported_signup_cta_session_ids.size;
+      const selfReportedSignupAssists = row.self_reported_signup_user_ids.size;
+      const selfReportedActivatedWorkspaceAssists =
+        row.self_reported_activated_workspace_user_ids.size;
+      const selfReportedPaidAssists = row.self_reported_paid_user_ids.size;
+      const hasVisitorAssist = Boolean(
+        selfReportedLandingAssists
+        || selfReportedSignupCtaAssists
+        || selfReportedSignupAssists
+        || selfReportedActivatedWorkspaceAssists
+        || selfReportedPaidAssists
+      );
+      const rate = (numerator: number | null, denominator: number | null) => (
+        typeof numerator === "number"
+        && typeof denominator === "number"
+        && denominator > 0
+          ? numerator / denominator
+          : null
+      );
       return {
         source: row.source,
         medium: row.medium,
@@ -961,9 +1602,21 @@ function contentRows(
         content: row.content,
         format: row.format,
         hook: row.hook,
+        cta_channel: row.cta_channel,
         snapshot_days: row.snapshot_days,
+        published_at: row.published_at_ms
+          ? new Date(row.published_at_ms).toISOString()
+          : null,
+        conversion_cutoff_at: row.conversion_cutoff_ms
+          ? new Date(row.conversion_cutoff_ms).toISOString()
+          : null,
+        cohort_start_at: row.published_at_ms
+          ? new Date(row.published_at_ms).toISOString()
+          : null,
         reach: row.reach,
         views: row.views,
+        reach_observed: row.reach_observed,
+        views_observed: row.views_observed,
         shares: row.shares,
         saves: row.saves,
         comments: row.comments,
@@ -971,52 +1624,178 @@ function contentRows(
         profile_visits: row.profile_visits,
         link_clicks: row.link_clicks,
         dm_intents: row.dm_intents,
-        owned_intents: ownedIntents,
+        owned_intents: row.link_clicks + row.dm_intents,
+        owned_intent_observed_fields: row.owned_intent_observed_fields,
         landing_sessions: landingSessions,
         signup_cta_sessions: signupCtaSessions,
         auth_completed: authCompleted,
-        signups: row.signups,
-        acquired_users: row.acquired_users,
-        activated_workspaces: row.activated_workspaces,
-        activated_users: row.activated_users,
-        paid_users: row.paid_users,
-        manager_signups: row.manager_signups,
-        rep_signups: row.rep_signups,
-        active_rep_roster: activeRepRosterCount,
-        joined_reps: joinedReps,
+        self_reported_landing_assists: selfReportedLandingAssists,
+        self_reported_signup_cta_assists: selfReportedSignupCtaAssists,
+        self_reported_signup_assists: selfReportedSignupAssists,
+        self_reported_activated_workspace_assists:
+          selfReportedActivatedWorkspaceAssists,
+        self_reported_paid_assists: selfReportedPaidAssists,
+        self_reported_assist_method: hasVisitorAssist ? "visitor_self_report" : null,
+        attribution_granularity: row.attribution_granularity,
+        attribution_method: row.attribution_method,
+        conversion_evidence: row.conversion_evidence,
+        post_conversion_eligible: row.post_conversion_eligible,
+        conversion_conclusion: conversionConclusion,
+        conversion_counters_available: conversionCountersAvailable,
+        decision_signups: signups,
+        decision_activated_workspaces: activatedWorkspaces,
+        signups,
+        acquired_users: userValue(row.acquired_users),
+        activated_workspaces: activatedWorkspaces,
+        activated_users: activatedUsers,
+        paid_users: paidUsers,
+        manager_signups: userValue(row.manager_signups),
+        rep_signups: userValue(row.rep_signups),
+        active_rep_roster: null,
+        joined_reps: null,
         activated_reps: activatedReps,
-        rep_identity_conflicts: row.rep_identity_conflicts,
-        reach_to_landing_rate: row.reach ? landingSessions / row.reach : 0,
-        landing_to_cta_rate: landingSessions ? signupCtaSessions / landingSessions : 0,
-        cta_to_signup_rate: signupCtaSessions ? row.signups / signupCtaSessions : 0,
-        reach_to_signup_rate: row.reach ? row.signups / row.reach : 0,
-        reach_to_activation_rate: row.reach ? row.activated_users / row.reach : 0,
-        activation_rate: row.signups ? row.activated_workspaces / row.signups : 0,
-        users_per_activated_workspace: row.activated_workspaces
-          ? row.activated_users / row.activated_workspaces
-          : 0,
-        paid_rate: row.activated_workspaces ? row.paid_users / row.activated_workspaces : 0,
-        roster_to_join_rate: activeRepRosterCount
-          ? joinedReps / activeRepRosterCount
-          : 0,
-        joined_to_activation_rate: joinedReps ? activatedReps / joinedReps : 0,
-        first_signup_at: row.first_signup_at,
-        last_signup_at: row.last_signup_at,
+        rep_identity_conflicts: null,
+        retention_window_days: RETENTION_WINDOW_DAYS,
+        retention_mature: bounded
+          && row.conversion_cutoff_ms
+            >= row.published_at_ms + RETENTION_WINDOW_DAYS * DAY_MS,
+        retention_eligible_users: retentionEligibleUsers,
+        retained_users: retainedUsers,
+        retention_rate: retentionRate,
+        activation_timing_complete: row.post_conversion_eligible
+          ? activationCountersAvailable
+          : false,
+        paid_timing_complete: row.post_conversion_eligible
+          ? paidCountersAvailable
+          : false,
+        first_activation_at: activationCountersAvailable && row.first_activation_ms
+          ? new Date(row.first_activation_ms).toISOString()
+          : null,
+        last_activation_at: activationCountersAvailable && row.last_activation_ms
+          ? new Date(row.last_activation_ms).toISOString()
+          : null,
+        missing_event_timestamps: row.missing_event_timestamps,
+        missing_user_timestamps: row.missing_user_timestamps,
+        activation_timing_missing_users: row.activation_timing_missing_users,
+        paid_timing_missing_users: row.paid_timing_missing_users,
+        excluded_prepublication_events: row.excluded_prepublication_events,
+        excluded_post_cutoff_events: row.excluded_post_cutoff_events,
+        excluded_synthetic_events: row.excluded_synthetic_events,
+        excluded_prepublication_users: row.excluded_prepublication_users,
+        excluded_post_cutoff_users: row.excluded_post_cutoff_users,
+        excluded_invalid_timing_users: row.excluded_invalid_timing_users,
+        excluded_synthetic_users: row.excluded_synthetic_users,
+        reach_to_landing_rate: row.reach_observed && row.reach > 0
+          ? rate(landingSessions, row.reach)
+          : null,
+        landing_to_cta_rate: rate(signupCtaSessions, landingSessions),
+        cta_to_signup_rate: rate(signups, signupCtaSessions),
+        reach_to_signup_rate: row.reach_observed && row.reach > 0
+          ? rate(signups, row.reach)
+          : null,
+        reach_to_activation_rate: row.reach_observed && row.reach > 0
+          ? rate(activatedUsers, row.reach)
+          : null,
+        activation_rate: rate(activatedWorkspaces, signups),
+        users_per_activated_workspace: rate(activatedUsers, activatedWorkspaces),
+        paid_rate: rate(paidUsers, activatedWorkspaces),
+        roster_to_join_rate: null,
+        joined_to_activation_rate: null,
+        first_signup_at: userCountersAvailable && row.first_signup_ms
+          ? new Date(row.first_signup_ms).toISOString()
+          : null,
+        last_signup_at: userCountersAvailable && row.last_signup_ms
+          ? new Date(row.last_signup_ms).toISOString()
+          : null,
       };
     })
     .sort((left, right) => (
-      right.activated_users - left.activated_users
-      || right.signups - left.signups
+      Number(right.activated_users || 0) - Number(left.activated_users || 0)
+      || Number(right.signups || 0) - Number(left.signups || 0)
       || right.reach - left.reach
       || left.source.localeCompare(right.source)
       || left.content.localeCompare(right.content)
     ));
 }
 
+function safeIso(value: any): string | null {
+  const parsed = new Date(value || "");
+  return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : null;
+}
+
+function safeBufferMetricCollection(plan: any, jobs: any[]): any | null {
+  if (
+    normalized(plan?.delivery_managed_by) !== "buffer"
+    && normalized(plan?.sprint) !== "content-engine"
+  ) {
+    return null;
+  }
+  const publishedAt = dateValue(plan, ["published_at"]);
+  const exactJobs = jobs.filter((job) => (
+    normalized(job?.provider) === "buffer"
+    && assetKey(
+      job?.campaign,
+      job?.platform_content_id,
+      job?.platform,
+    ) === assetKey(plan?.campaign, plan?.content, recordPlatform(plan))
+    && dateValue(job, ["metrics_published_at"]) === publishedAt
+  ));
+  if (exactJobs.length !== 1) {
+    return {
+      provider: "buffer",
+      status: exactJobs.length > 1 ? "conflict" : "unlinked",
+      checkpoints: [],
+      next_attempt_at: null,
+      sync_completed_at: null,
+    };
+  }
+
+  const job = exactJobs[0];
+  const checkpointGroups = new Map<number, any[]>();
+  for (const checkpoint of asArray(job?.metrics_checkpoints)) {
+    const snapshotDays = Number(checkpoint?.snapshot_days);
+    const status = normalized(checkpoint?.status);
+    if (![1, 3, 7, 30].includes(snapshotDays)) continue;
+    if (!["captured", "review_needed"].includes(status)) continue;
+    if (!checkpointGroups.has(snapshotDays)) checkpointGroups.set(snapshotDays, []);
+    checkpointGroups.get(snapshotDays)?.push(checkpoint);
+  }
+  if ([...checkpointGroups.values()].some((records) => records.length > 1)) {
+    return {
+      provider: "buffer",
+      status: "conflict",
+      checkpoints: [],
+      next_attempt_at: safeIso(job?.metrics_next_checkpoint_at),
+      sync_completed_at: safeIso(job?.metrics_sync_completed_at),
+    };
+  }
+  const checkpoints = [...checkpointGroups.entries()]
+    .map(([snapshotDays, records]) => {
+      const checkpoint = records[0];
+      return {
+        snapshot_days: snapshotDays,
+        status: normalized(checkpoint?.status),
+        due_at: safeIso(checkpoint?.due_at),
+        window_closes_at: safeIso(checkpoint?.window_closes_at),
+        recorded_at: safeIso(checkpoint?.recorded_at),
+        error_code: normalized(checkpoint?.error_code) || null,
+      };
+    })
+    .sort((left, right) => left.snapshot_days - right.snapshot_days);
+  return {
+    provider: "buffer",
+    status: job?.metrics_sync_completed_at ? "complete" : "collecting",
+    checkpoints,
+    next_attempt_at: safeIso(job?.metrics_next_checkpoint_at),
+    sync_completed_at: safeIso(job?.metrics_sync_completed_at),
+  };
+}
+
 function buildContentQueue(
   plans: any[],
   metricCheckpoints: any[],
   byContent: any[],
+  publishJobs: any[],
   asOf: number,
 ) {
   const checkpointsByAsset = new Map<string, any[]>();
@@ -1041,6 +1820,7 @@ function buildContentQueue(
     const plannedPublishAt = dateValue(plan, ["planned_publish_at"]);
     const publishedAt = dateValue(plan, ["published_at"]);
     const deliveryManagedBy = normalized(plan?.delivery_managed_by) === "buffer"
+      || normalized(plan?.sprint) === "content-engine"
       ? "buffer"
       : "manual";
     const recordedDeliveryStatus = normalized(plan?.delivery_status);
@@ -1138,6 +1918,25 @@ function buildContentQueue(
       snapshotStatus = "collecting";
     }
     const conversion = conversionsByAsset.get(key) || {};
+    const conversionCounter = (field: string): number | null => (
+      typeof conversion?.[field] === "number"
+        && Number.isFinite(conversion[field])
+        && conversion[field] >= 0
+        ? conversion[field]
+        : null
+    );
+    const metricCollection = safeBufferMetricCollection(plan, publishJobs);
+    const observedPlatformNativeExposureFields = ["reach", "views"].filter(
+      (field) => (
+        metricFieldObserved(canonicalMetric, field)
+        && Number.isSafeInteger(Number(canonicalMetric?.[field]))
+        && Number(canonicalMetric?.[field]) >= 0
+      ),
+    );
+    const socialEvidenceHash = fixedSnapshotCaptured
+        && /^[a-f0-9]{64}$/.test(String(canonicalMetric?.snapshot_fingerprint || ""))
+      ? String(canonicalMetric.snapshot_fingerprint)
+      : null;
     return {
       platform,
       campaign: normalized(plan?.campaign) || "1000-users",
@@ -1185,6 +1984,7 @@ function buildContentQueue(
         : null,
       state,
       snapshot_status: snapshotStatus,
+      metric_collection: metricCollection,
       publish_overdue: !canceled
         && !publishedAt
         && plannedPublishAt > 0
@@ -1195,13 +1995,65 @@ function buildContentQueue(
         ? new Date(dateValue(plan, ["reviewed_at"])).toISOString()
         : null,
       decision_stale: decisionStale,
+      decision_policy_id: DECISION_POLICY_ID,
+      decision_policy_base_supported: Boolean(
+        fixedSnapshotCaptured
+        && socialEvidenceHash
+        && observedPlatformNativeExposureFields.length > 0
+      ),
+      social_evidence_hash: socialEvidenceHash,
+      observed_platform_native_exposure_fields:
+        observedPlatformNativeExposureFields,
+      comparable_fixed_age_snapshots: 0,
+      review_schema_version: evidenceCurrent
+        ? normalized(plan?.review_schema_version) || null
+        : null,
+      decision_policy_reason_codes: evidenceCurrent
+          && normalized(plan?.review_decision_policy_id) === DECISION_POLICY_ID
+          && Array.isArray(plan?.review_decision_policy_reason_codes)
+        ? plan.review_decision_policy_reason_codes
+        : [],
+      decision_policy_evidence_hash: evidenceCurrent
+        ? String(plan?.review_decision_policy_evidence_hash || "") || null
+        : null,
+      reviewed_comparable_fixed_age_snapshots: evidenceCurrent
+        ? Number(plan?.review_comparable_fixed_age_snapshots || 0)
+        : null,
+      decision_override_note: evidenceCurrent
+        ? String(plan?.review_decision_override_note || "") || null
+        : null,
+      decision_override_hash: evidenceCurrent
+        ? String(plan?.review_decision_override_hash || "") || null
+        : null,
+      review_identity_hash: evidenceCurrent
+        ? String(plan?.review_identity_hash || "") || null
+        : null,
       reach: Number(canonicalMetric?.reach || 0),
-      owned_intents: Number(conversion?.owned_intents || 0),
-      landing_sessions: Number(conversion?.landing_sessions || 0),
-      signups: Number(conversion?.signups || 0),
-      activated_workspaces: Number(conversion?.activated_workspaces || 0),
-      activated_users: Number(conversion?.activated_users || 0),
-      activated_reps: Number(conversion?.activated_reps || 0),
+      views: Number(canonicalMetric?.views || 0),
+      conversion_conclusion: normalized(conversion?.conversion_conclusion) || null,
+      conversion_counters_available:
+        conversion?.conversion_counters_available === true,
+      owned_intents: conversionCounter("owned_intents"),
+      landing_sessions: conversionCounter("landing_sessions"),
+      signups: conversionCounter("decision_signups"),
+      activated_workspaces: conversionCounter("decision_activated_workspaces"),
+      activated_users: conversionCounter("activated_users"),
+      activated_reps: conversionCounter("activated_reps"),
+      paid_users: conversionCounter("paid_users"),
+      retention_window_days: Number(conversion?.retention_window_days || 0) || null,
+      retention_mature: conversion?.retention_mature === true,
+      retention_eligible_users: conversionCounter("retention_eligible_users"),
+      retained_users: conversionCounter("retained_users"),
+      retention_rate: typeof conversion?.retention_rate === "number"
+          && Number.isFinite(conversion.retention_rate)
+        ? conversion.retention_rate
+        : null,
+      self_reported_signup_assists: Number(
+        conversion?.self_reported_signup_assists || 0,
+      ),
+      self_reported_activated_workspace_assists: Number(
+        conversion?.self_reported_activated_workspace_assists || 0,
+      ),
       hold_eligible: false,
     };
   }).sort((left, right) => (
@@ -1214,7 +2066,10 @@ function buildContentQueue(
 
   const completedByGroup = new Map<string, number>();
   for (const item of queue) {
-    if (!item.fixed_snapshot_captured_at) continue;
+    if (
+      !item.fixed_snapshot_captured_at
+      || item.observed_platform_native_exposure_fields.length < 1
+    ) continue;
     const groupKey = `${item.platform}|${item.campaign}|${item.comparison_group}|${item.snapshot_days}`;
     completedByGroup.set(
       groupKey,
@@ -1223,7 +2078,9 @@ function buildContentQueue(
   }
   for (const item of queue) {
     const groupKey = `${item.platform}|${item.campaign}|${item.comparison_group}|${item.snapshot_days}`;
-    item.hold_eligible = (completedByGroup.get(groupKey) || 0) >= 3;
+    item.comparable_fixed_age_snapshots = completedByGroup.get(groupKey) || 0;
+    item.hold_eligible = item.decision_policy_base_supported
+      && item.comparable_fixed_age_snapshots >= 3;
   }
 
   const nextPublish = queue.find(
@@ -1279,6 +2136,32 @@ function buildContentQueue(
         : earlySnapshotDue
           ? nextSnapshotBase.next_early_snapshot_due_at
           : null,
+      snapshot_provider_checkpoint_status:
+        nextSnapshotBase.delivery_managed_by === "buffer"
+          ? nextSnapshotBase.metric_collection?.checkpoints?.find(
+            (checkpoint: any) => Number(checkpoint?.snapshot_days) === Number(
+              canonicalSnapshotDue
+                ? nextSnapshotBase.snapshot_days
+                : earlySnapshotDue
+                  ? nextSnapshotBase.next_early_snapshot_days
+                  : 0,
+            ),
+          )?.status || nextSnapshotBase.metric_collection?.status || "unlinked"
+          : "manual",
+      snapshot_manual_entry_allowed:
+        nextSnapshotBase.delivery_managed_by !== "buffer"
+        || nextSnapshotBase.metric_collection?.checkpoints?.some(
+          (checkpoint: any) => (
+            Number(checkpoint?.snapshot_days) === Number(
+              canonicalSnapshotDue
+                ? nextSnapshotBase.snapshot_days
+                : earlySnapshotDue
+                  ? nextSnapshotBase.next_early_snapshot_days
+                  : 0,
+            )
+            && normalized(checkpoint?.status) === "review_needed"
+          ),
+        ) === true,
     }
     : null;
   const nextDecision = [...queue]
@@ -1321,6 +2204,11 @@ function reportResponse(data: any, status = 200): Response {
 
 Deno.serve(async (req: Request) => {
   try {
+    const requested = await requestedConversionScope(req);
+    if (requested.error) {
+      return reportResponse({ error: requested.error }, 400);
+    }
+    const requestScope = requested.scope;
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
     if (!user?.id) {
@@ -1339,6 +2227,7 @@ Deno.serve(async (req: Request) => {
       events,
       metrics,
       contentPlans,
+      publishJobs,
     ] = await Promise.all([
       listAll(base44.asServiceRole.entities.User, MAX_USERS, "User report"),
       listAll(
@@ -1376,6 +2265,11 @@ Deno.serve(async (req: Request) => {
         MAX_GROWTH_RECORDS,
         "Growth content plan report",
       ),
+      listAll(
+        base44.asServiceRole.entities.GrowthPublishJob,
+        MAX_GROWTH_RECORDS,
+        "Growth publish job report",
+      ),
     ]);
     const activationIndex = buildActivationIndex(routes, canvasSessions);
     const activityIndex = buildActivityIndex(
@@ -1385,6 +2279,14 @@ Deno.serve(async (req: Request) => {
       interactions,
       teamMembers,
     );
+    const timelines = buildProductTimelines(
+      users,
+      routes,
+      canvasSessions,
+      interactions,
+      teamMembers,
+      events,
+    );
     const usersById = new Map(users.map((candidate) => [
       String(candidate?.id || ""),
       candidate,
@@ -1392,14 +2294,40 @@ Deno.serve(async (req: Request) => {
     const rosterGroups = activeRepRoster(teamMembers, usersById);
     const plans = canonicalContentPlans(contentPlans);
     const metricCheckpoints = canonicalMetricCheckpoints(metrics);
-    const operatingMetrics = operatingContentMetrics(metricCheckpoints, plans);
+    let operatingMetrics = operatingContentMetrics(metricCheckpoints, plans);
+    if (requestScope) {
+      const requestedKey = assetKey(
+        requestScope.campaign,
+        requestScope.content,
+        requestScope.platform,
+      );
+      const requestedPlan = plans.filter((plan) => (
+        assetKey(plan?.campaign, plan?.content, recordPlatform(plan)) === requestedKey
+      ));
+      const requestedMetrics = operatingMetrics.filter((metric) => (
+        assetKey(metric?.campaign, metric?.content, recordPlatform(metric)) === requestedKey
+        && dateValue(metric, ["snapshot_captured_at"]) === requestScope.cutoff_ms
+      ));
+      if (
+        requestedPlan.length !== 1
+        || requestedMetrics.length !== 1
+        || dateValue(requestedPlan[0], ["published_at"]) <= 0
+        || dateValue(requestedPlan[0], ["published_at"]) > requestScope.cutoff_ms
+      ) {
+        return reportResponse({ error: "conversion_scope_unavailable" }, 409);
+      }
+      operatingMetrics = requestedMetrics;
+    }
     const byContent = contentRows(
       users,
       usersById,
       activationIndex,
       events,
       operatingMetrics,
+      plans,
       rosterGroups,
+      timelines,
+      requestScope,
     );
     const paceEvidence = buildPaceEvidence(
       users,
@@ -1414,6 +2342,15 @@ Deno.serve(async (req: Request) => {
     return reportResponse({
       success: true,
       generated_at: generatedAt,
+      request_scope: requestScope
+        ? {
+          platform: requestScope.platform,
+          campaign: requestScope.campaign,
+          content: requestScope.content,
+          cohort_start_at: byContent[0]?.cohort_start_at || null,
+          conversion_cutoff_at: requestScope.cutoff_at,
+        }
+        : null,
       all_time: summarize(
         users,
         usersById,
@@ -1455,6 +2392,7 @@ Deno.serve(async (req: Request) => {
         plans,
         metricCheckpoints,
         byContent,
+        publishJobs,
         new Date(generatedAt).getTime(),
       ),
       definitions: {
@@ -1462,11 +2400,18 @@ Deno.serve(async (req: Request) => {
         manager_activation: "saved route with at least one property or deployed Canvas campaign",
         rep_activation: "first logged door outcome",
         attribution_model: "first touch",
+        content_attribution_boundary: "post-level conversion association requires a content-preserving declared link; static bio and referrer-only touches remain platform-level",
+        content_conversion_window: "publication timestamp through the explicitly requested fixed checkpoint cutoff; prepublication, synthetic, missing-time, and post-cutoff records are never credited",
+        social_only_conclusion: "ordinary feed posts without a declared clickable handoff remain reviewable from social evidence with inconclusive_no_declared_link and null post-conversion counters",
+        content_retention: "a content-attributed activated user becomes retention-eligible 30 days after timestamped activation and is retained only with later verified activity inside the 30 days ending at the frozen cutoff",
+        visitor_reported_assist: "optional visitor selection from confirmed recent Buffer posts; shown separately and excluded from Repeat, Iterate, and Hold conversion evidence",
         team_attribution: "current active rep roster state rolls up to the acquiring manager workspace",
         active_rep_roster: "unique active rep roster seat by manager and normalized email",
         joined_rep: "active roster seat linked to exactly one matching rep User by user ID, manager, and email",
         team_multiplier_window_basis: "current roster, join, and activation state for managers whose accounts were created in the reporting window",
-        reach_source: "owner-entered Instagram Insights or TikTok analytics snapshot",
+        reach_source: "fixed-age Buffer evidence or an owner-entered Instagram Insights or TikTok analytics snapshot",
+        cumulative_post_reach: "sum of canonical per-asset reach; the same account may repeat across posts and platforms, so this is not unique campaign reach",
+        pace_reach_basis: "Instagram cumulative post reach only; TikTok views remain a separate diagnostic and are never added to or converted into reach",
         anonymous_funnel: "unique pseudonymous browser sessions; no names, emails, or contact fields before auth",
         north_star: "activated users with verified product activity in the last 30 days",
         instagram_retained_active_user: "Instagram-attributed manager or active-team rep with verified product activity in the last 30 days",

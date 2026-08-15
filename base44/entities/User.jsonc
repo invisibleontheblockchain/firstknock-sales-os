@@ -281,6 +281,15 @@
         "campaign": { "type": "string" },
         "content": { "type": "string" },
         "term": { "type": "string" },
+        "reported_content_id": {
+          "type": "string",
+          "description": "Optional visitor-selected post assist; raw content remains the canonical first-touch key"
+        },
+        "reported_content_method": {
+          "type": "string",
+          "enum": ["visitor_self_report"]
+        },
+        "reported_content_at": { "type": "string", "format": "date-time" },
         "landing_path": { "type": "string" },
         "referrer_host": { "type": "string" },
         "captured_at": { "type": "string", "format": "date-time" }
@@ -320,6 +329,15 @@
         "campaign": { "type": "string" },
         "content": { "type": "string" },
         "term": { "type": "string" },
+        "reported_content_id": {
+          "type": "string",
+          "description": "Optional visitor-selected post assist; raw content remains the canonical last-touch key"
+        },
+        "reported_content_method": {
+          "type": "string",
+          "enum": ["visitor_self_report"]
+        },
+        "reported_content_at": { "type": "string", "format": "date-time" },
         "landing_path": { "type": "string" },
         "referrer_host": { "type": "string" },
         "captured_at": { "type": "string", "format": "date-time" }

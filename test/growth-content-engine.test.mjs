@@ -4,14 +4,22 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import test from 'node:test';
 import {
-  createGrowthBase44,
+  createGrowthBase44 as createGrowthBase44Harness,
   growthHelpers,
   invokeJson,
   loadGrowthHandler,
 } from './helpers/growthContentTestHarness.mjs';
 import { validatePack } from '../scripts/render-growth-pack.mjs';
+import {
+  evaluateGrowthDecisionSufficiency,
+  GROWTH_DECISION_POLICY_ID,
+  GROWTH_REVIEW_SCHEMA_VERSION,
+} from '../base44/functions/_shared/growthDecisionSufficiency.js';
 
 const managePath = 'base44/functions/manageGrowthContentEngine/entry.ts';
+const mediaOrigin = 'https://media.firstknock.online';
+const mediaPathPrefix = '/files/public/app-firstknock/';
+const mediaNamespace = `${mediaOrigin}${mediaPathPrefix}`;
 const entityNames = [
   'GrowthSourceAsset',
   'GrowthCreativeArtifact',
@@ -50,7 +58,7 @@ const draftInput = {
   cta_label: 'Try FirstKnock',
   cta_url: 'https://firstknock.online',
   disclosure: 'Demo data shown.',
-  media_url: `https://media.firstknock.online/sha256/${'a'.repeat(64)}-manager-proof.png`,
+  media_url: `${mediaNamespace}manual_${'a'.repeat(64)}-manager-proof.png`,
   media_sha256: 'a'.repeat(64),
   mime_type: 'image/png',
   width: 1080,
@@ -64,17 +72,40 @@ const env = {
   BUFFER_ORGANIZATION_ID: 'org_firstknock',
   BUFFER_INSTAGRAM_CHANNEL_ID: 'channel_instagram',
   BUFFER_TIKTOK_CHANNEL_ID: 'channel_tiktok',
-  GROWTH_MEDIA_ORIGIN: 'https://media.firstknock.online',
+  GROWTH_MEDIA_ORIGIN: mediaOrigin,
+  GROWTH_MEDIA_PATH_PREFIX: mediaPathPrefix,
 };
+
+function createGrowthBase44(options = {}) {
+  const resolved = { ...options };
+  if (resolved.heartbeats === undefined) {
+    resolved.heartbeats = [{
+      heartbeat_key: 'buffer-publisher',
+      config_revision: createHash('sha256')
+        .update([
+          'buffer-publisher',
+          env.BUFFER_ORGANIZATION_ID,
+          env.BUFFER_INSTAGRAM_CHANNEL_ID,
+          env.BUFFER_TIKTOK_CHANNEL_ID,
+          env.GROWTH_MEDIA_ORIGIN,
+          env.GROWTH_MEDIA_PATH_PREFIX,
+        ].join('|'))
+        .digest('hex'),
+      observed_at: new Date().toISOString(),
+      status: 'ready',
+      invocation_generation: 1,
+      last_batch_inspected: 0,
+      last_batch_processed: 0,
+    }];
+  }
+  return createGrowthBase44Harness(resolved);
+}
 
 const renderSourceSha256 = 'b'.repeat(64);
 const renderMediaSha256 = 'c'.repeat(64);
 const renderArtifactKey = 'ig-render-proof-01';
-const renderMediaUrl = [
-  env.GROWTH_MEDIA_ORIGIN,
-  'sha256',
-  `${renderMediaSha256}-${renderArtifactKey}.mp4`,
-].join('/');
+const renderMediaUrl =
+  `${mediaNamespace}base44_opaque_${renderMediaSha256}-${renderArtifactKey}.mp4`;
 
 const renderSource = {
   ...safeSource,
@@ -107,7 +138,7 @@ const renderArtifactFields = {
   ai_generated: false,
 };
 const renderEnvironment = {
-  profile_id: 'firstknock-h264-bitexact-v2',
+  profile_id: 'firstknock-h264-bitexact-v3',
   renderer_sha256: '1'.repeat(64),
   bold_font_sha256: '2'.repeat(64),
   regular_font_sha256: '3'.repeat(64),
@@ -232,7 +263,7 @@ function renderImportResult() {
       }],
       template_id: 'firstknock-product-proof',
       template_version: '1.1.0',
-      render_profile_id: 'firstknock-h264-bitexact-v2',
+      render_profile_id: 'firstknock-h264-bitexact-v3',
       render_environment_sha256: renderEnvironmentSha256,
       render_input_sha256: renderInputSha256,
       delivery_key: `sha256/${renderMediaSha256}-${renderArtifactKey}.mp4`,
@@ -306,6 +337,22 @@ for (const artifact of featureExplainerSeedPack.artifacts) {
 const featureExplainerSeedPackSha256 = fixtureSha256(
   featureExplainerSeedPack,
 );
+const weeklyFeatureExplainerSeedPack = validatePack(JSON.parse(readFileSync(
+  resolve(
+    'config/growth-media/firstknock-weekly-rights-safe-seed.json',
+  ),
+  'utf8',
+)));
+const weeklyFeatureExplainerSeedPackSha256 = fixtureSha256(
+  weeklyFeatureExplainerSeedPack,
+);
+const weeklyFeatureExplainerConceptIds = [
+  ...new Set(
+    weeklyFeatureExplainerSeedPack.artifacts.map(
+      (artifact) => artifact.concept_id,
+    ),
+  ),
+];
 
 function measuredSourceRegistry() {
   return measuredSeedPack.sources
@@ -353,6 +400,24 @@ function featureExplainerSourceRegistry() {
     }));
 }
 
+function weeklyFeatureExplainerSourceRegistry() {
+  return weeklyFeatureExplainerSeedPack.sources.map((source) => ({
+    asset_key: source.asset_key,
+    title: `Trusted ${source.asset_key}`,
+    source_reference: source.source_reference,
+    source_sha256: source.source_sha256,
+    media_kind: source.media_kind,
+    mime_type: source.mime_type,
+    width: source.width,
+    height: source.height,
+    duration_ms: source.duration_ms,
+    privacy_status: 'safe',
+    safe_summary: `Sanitized visible FirstKnock workflow for ${source.asset_key}.`,
+    active: true,
+    privacy_change_pending: false,
+  }));
+}
+
 async function measuredReviewEvidence(overrides = {}) {
   const publishedAt = overrides.published_at || '2026-07-20T12:00:00.000Z';
   const capturedAt = overrides.snapshot_captured_at || '2026-07-27T12:00:00.000Z';
@@ -375,24 +440,156 @@ async function measuredReviewEvidence(overrides = {}) {
     dm_intents: 2,
     ...overrides.metric,
   };
-  const snapshotPayload = JSON.stringify({
+  const metricFields = [
+    'reach',
+    'views',
+    'shares',
+    'saves',
+    'comments',
+    'follows',
+    'profile_visits',
+    'link_clicks',
+    'dm_intents',
+  ];
+  const fingerprintPayload = {
     campaign: metric.campaign,
     content: metric.content,
     snapshot_days: metric.snapshot_days,
     snapshot_captured_at: metric.snapshot_captured_at,
     published_at: metric.published_at,
-    reach: metric.reach,
-    views: metric.views,
-    shares: metric.shares,
-    saves: metric.saves,
-    comments: metric.comments,
-    follows: metric.follows,
-    profile_visits: metric.profile_visits,
-    link_clicks: metric.link_clicks,
-    dm_intents: metric.dm_intents,
-  });
+  };
+  for (const field of metricFields) {
+    fingerprintPayload[field] = Math.max(0, Number(metric[field] || 0));
+  }
+  const manualFields = Array.isArray(metric.observed_metric_fields)
+    ? metric.observed_metric_fields
+    : null;
+  const providerFields = String(metric.metric_source || '').trim().toLowerCase() === 'buffer'
+      && Array.isArray(metric.provider_observed_metric_types)
+    ? metric.provider_observed_metric_types
+    : null;
+  const observedFields = manualFields || providerFields;
+  if (observedFields) {
+    const observed = new Set(
+      observedFields.map((field) => String(field || '').trim().toLowerCase()),
+    );
+    fingerprintPayload.observed_fields = metricFields.filter(
+      (field) => observed.has(field),
+    );
+  }
+  const snapshotPayload = JSON.stringify(fingerprintPayload);
   metric.snapshot_fingerprint = createHash('sha256')
     .update(snapshotPayload)
+    .digest('hex');
+  const ownedIntentObservedFields = ['link_clicks', 'dm_intents'].filter(
+    (field) => (observedFields || metricFields).includes(field),
+  );
+  const conversionCutoffAt = overrides.conversion_cutoff_at || capturedAt;
+  const conversionEvidence = {
+    schema_version: 'growth-conversion-evidence.v2',
+    platform: metric.platform,
+    campaign: metric.campaign,
+    content: metric.content,
+    cohort_start_at: publishedAt,
+    cutoff_at: conversionCutoffAt,
+    snapshot_days: metric.snapshot_days,
+    snapshot_captured_at: capturedAt,
+    social_evidence_hash: metric.snapshot_fingerprint,
+    owned_intent_observed_fields: ownedIntentObservedFields,
+    link_clicks: ownedIntentObservedFields.includes('link_clicks')
+      ? metric.link_clicks
+      : 0,
+    dm_intents: ownedIntentObservedFields.includes('dm_intents')
+      ? metric.dm_intents
+      : 0,
+    owned_intents: ownedIntentObservedFields.reduce(
+      (sum, field) => sum + Number(metric[field] || 0),
+      0,
+    ),
+    attribution_method: 'declared_content_link',
+    post_conversion_eligible: true,
+    conversion_conclusion: 'exact_declared_link',
+    conversion_counters_available: true,
+    landing_sessions: 18,
+    signup_cta_sessions: 10,
+    auth_completed: 7,
+    signups: 6,
+    activated_workspaces: 4,
+    activated_users: 9,
+    activated_reps: 5,
+    paid_users: 2,
+    activation_timing_complete: true,
+    paid_timing_complete: true,
+    first_activation_at: '2026-07-21T12:00:00.000Z',
+    last_activation_at: '2026-07-26T12:00:00.000Z',
+    retention_window_days: 30,
+    retention_mature: false,
+    retention_eligible_users: 0,
+    retained_users: 0,
+    retention_rate: null,
+    ...overrides.conversion_evidence,
+  };
+  const conversionEvidenceHash = createHash('sha256')
+    .update(growthHelpers.canonicalStringify(conversionEvidence))
+    .digest('hex');
+  const reviewDecision = overrides.review_decision
+    || overrides.plan?.review_decision
+    || 'repeat';
+  const reviewNote = overrides.review_note
+    || overrides.plan?.review_note
+    || 'Keep the concrete funnel pattern and vary the opening.';
+  const reviewedAt = overrides.reviewed_at
+    || overrides.plan?.reviewed_at
+    || '2026-07-27T13:00:00.000Z';
+  const comparableFixedAgeSnapshots = Number(
+    overrides.comparable_fixed_age_snapshots || 0,
+  );
+  const decisionOverrideNote = String(
+    overrides.decision_override_note || '',
+  );
+  const decisionOverrideHash = decisionOverrideNote
+    ? createHash('sha256').update(decisionOverrideNote).digest('hex')
+    : '';
+  const exposureFields = ['reach', 'views'].filter((field) => (
+    (observedFields || metricFields).includes(field)
+    && Number.isSafeInteger(metric[field])
+    && metric[field] >= 0
+  ));
+  const decisionPolicy = evaluateGrowthDecisionSufficiency({
+    decision: reviewDecision,
+    fixed_age_snapshot_valid: true,
+    social_evidence_hash: metric.snapshot_fingerprint,
+    snapshot_days: metric.snapshot_days,
+    snapshot_captured_at: capturedAt,
+    observed_platform_native_exposure_fields: exposureFields,
+    platform_native_exposure: {
+      reach: exposureFields.includes('reach') ? metric.reach : null,
+      views: exposureFields.includes('views') ? metric.views : null,
+    },
+    conversion_evidence: conversionEvidence,
+    comparable_fixed_age_snapshots: comparableFixedAgeSnapshots,
+    override_note: decisionOverrideNote,
+    override_hash: decisionOverrideHash,
+  });
+  const decisionPolicyEvidenceHash = createHash('sha256')
+    .update(growthHelpers.canonicalStringify(decisionPolicy.evidence))
+    .digest('hex');
+  const reviewIdentityHash = createHash('sha256')
+    .update(growthHelpers.canonicalStringify({
+      review_schema_version: GROWTH_REVIEW_SCHEMA_VERSION,
+      evidence_hash: metric.snapshot_fingerprint,
+      conversion_evidence_hash: conversionEvidenceHash,
+      conversion_cutoff_at: conversionCutoffAt,
+      decision: reviewDecision,
+      decision_note: reviewNote,
+      reviewed_at: reviewedAt,
+      review_snapshot_captured_at: capturedAt,
+      decision_policy_id: decisionPolicy.policy_id,
+      decision_policy_reason_codes: decisionPolicy.reason_codes,
+      decision_policy_evidence_hash: decisionPolicyEvidenceHash,
+      decision_override_note: decisionPolicy.override_note || '',
+      decision_override_hash: decisionPolicy.override_hash || '',
+    }))
     .digest('hex');
   const plan = {
     id: 'plan_measured_parent',
@@ -406,7 +603,7 @@ async function measuredReviewEvidence(overrides = {}) {
     hook: 'See the field funnel',
     script: 'Show the manager funnel.',
     cta_label: 'See FirstKnock',
-    cta_channel: 'caption_url',
+    cta_channel: 'story_link',
     primary_metric: 'Activated users',
     hypothesis: 'Specific product proof will create qualified interest.',
     comparison_group: 'manager-analytics-video',
@@ -416,11 +613,24 @@ async function measuredReviewEvidence(overrides = {}) {
     delivery_managed_by: 'buffer',
     delivery_status: 'published',
     snapshot_days: 7,
-    review_decision: overrides.review_decision || 'repeat',
-    review_note: overrides.review_note || 'Keep the concrete funnel pattern and vary the opening.',
-    reviewed_at: '2026-07-27T13:00:00.000Z',
+    review_schema_version: GROWTH_REVIEW_SCHEMA_VERSION,
+    review_decision: reviewDecision,
+    review_note: reviewNote,
+    reviewed_at: reviewedAt,
     review_snapshot_captured_at: capturedAt,
     review_evidence_hash: metric.snapshot_fingerprint,
+    review_conversion_cutoff_at: conversionCutoffAt,
+    review_conversion_evidence_hash: conversionEvidenceHash,
+    review_conversion_evidence: conversionEvidence,
+    review_decision_policy_id: GROWTH_DECISION_POLICY_ID,
+    review_decision_policy_reason_codes: decisionPolicy.reason_codes,
+    review_decision_policy_evidence_hash: decisionPolicyEvidenceHash,
+    review_comparable_fixed_age_snapshots: comparableFixedAgeSnapshots,
+    ...(decisionPolicy.override_note ? {
+      review_decision_override_note: decisionPolicy.override_note,
+      review_decision_override_hash: decisionPolicy.override_hash,
+    } : {}),
+    review_identity_hash: reviewIdentityHash,
     ...overrides.plan,
   };
   return { plan, metric };
@@ -478,21 +688,67 @@ function featureExplainerGeneration(conceptIds) {
       overlay_cta: index === 0
         ? 'See the field workflow'
         : 'See the route handoff',
-      variants: ['instagram', 'tiktok'].map((platform) => ({
-        platform,
-        problem: index === 0
-          ? 'Field activity can hide the coaching question.'
-          : 'Route ownership can become unclear before field work.',
-        visible_feature_behavior: index === 0
-          ? 'FirstKnock shows the field funnel in one manager view.'
-          : 'FirstKnock shows the route and its owner before the handoff.',
-        practical_benefit: index === 0
-          ? 'Managers can choose the next workflow question with context.'
-          : 'The team can begin with a clear route handoff.',
-        cta_label: index === 0 ? 'See FirstKnock' : 'Open FirstKnock',
-      })),
+      variants: ['instagram', 'tiktok'].map((platform) => {
+        if (platform === 'tiktok') {
+          return {
+            platform,
+            problem: index === 0
+              ? 'Field activity hides context.'
+              : 'Route ownership gets unclear.',
+            visible_feature_behavior: index === 0
+              ? 'FirstKnock shows the field funnel.'
+              : 'FirstKnock shows route ownership.',
+            practical_benefit: index === 0
+              ? 'Choose the next coaching step.'
+              : 'Start with a clear handoff.',
+            cta_label: index === 0 ? 'See FirstKnock' : 'Open FirstKnock',
+          };
+        }
+        return {
+          platform,
+          problem: index === 0
+            ? 'Field activity can hide the coaching question.'
+            : 'Route ownership can become unclear before field work.',
+          visible_feature_behavior: index === 0
+            ? 'FirstKnock shows the field funnel in one manager view.'
+            : 'FirstKnock shows the route and its owner before the handoff.',
+          practical_benefit: index === 0
+            ? 'Managers can choose the next workflow question with context.'
+            : 'The team can begin with a clear route handoff.',
+          cta_label: index === 0 ? 'See FirstKnock' : 'Open FirstKnock',
+        };
+      }),
     })),
   };
+}
+
+const weeklyFeatureHooks = [
+  'Choose smarter starting boundaries',
+  'Log outcomes without guesswork',
+  'Command busy routes centrally',
+  'Merge selected paths confidently',
+  'Revisit missed doors together',
+  'Rerun followups from outcomes',
+  'Capture richer stop details',
+  'Correct accidental sales safely',
+  'Inspect one day precisely',
+  'Diagnose funnel stage friction',
+  'Compare rep cards quickly',
+  'Style property markers clearly',
+  'Refresh previous areas intentionally',
+  'Configure generation inputs visibly',
+  'Plan endpoints before departure',
+  'Record field choices consistently',
+];
+
+function featureExplainerGenerationWithHooks(conceptIds, hooks) {
+  const generation = featureExplainerGeneration(conceptIds);
+  generation.concepts.forEach((concept, index) => {
+    concept.title = hooks[index];
+    concept.hook = hooks[index];
+    concept.overlay_text = [hooks[index]];
+  });
+  return generation;
 }
 
 function generatedRenderResult(renderPack) {
@@ -523,7 +779,8 @@ function generatedRenderResult(renderPack) {
       .update(artifact.artifact_key)
       .digest('hex');
     const deliveryKey = `sha256/${mediaSha256}-${artifact.artifact_key}.mp4`;
-    const mediaUrl = `${env.GROWTH_MEDIA_ORIGIN}/${deliveryKey}`;
+    const mediaUrl =
+      `${mediaNamespace}base44_opaque_${deliveryKey.slice('sha256/'.length)}`;
     return {
       artifact_key: artifact.artifact_key,
       concept_id: artifact.concept_id,
@@ -567,7 +824,12 @@ function generatedRenderResult(renderPack) {
         disclosure_burned_in: true,
         hook_first_frame: true,
         third_party_watermark: false,
-        audio_mode: 'silent',
+        audio_mode: renderPack.output.audio_mode,
+        ...(renderPack.output.audio_recipe
+          ? { audio_recipe: renderPack.output.audio_recipe }
+          : {}),
+        procedural_audio_generated:
+          renderPack.output.audio_recipe === 'firstknock-procedural-ui-v1',
         ready_for_human_review: true,
         ready_for_content_engine_import: true,
       },
@@ -588,7 +850,7 @@ function generatedRenderResult(renderPack) {
         cta_label: artifact.cta_label,
         cta_url: artifact.cta_url,
         disclosure: artifact.disclosure,
-        ai_generated: true,
+        ai_generated: artifact.ai_generated === true,
         media_url: mediaUrl,
         media_sha256: mediaSha256,
         mime_type: 'video/mp4',
@@ -619,12 +881,13 @@ function generatedRenderResult(renderPack) {
 }
 
 async function approvedArtifact(overrides = {}) {
+  const campaign = overrides.campaign ?? 'growth-test';
   const artifact = {
     id: 'artifact_approved_1',
     artifact_key: draftInput.platform_content_id,
     concept_id: draftInput.concept_id,
     revision: 1,
-    campaign: draftInput.campaign,
+    campaign,
     platform: draftInput.platform,
     platform_content_id: draftInput.platform_content_id,
     title: draftInput.title,
@@ -638,7 +901,7 @@ async function approvedArtifact(overrides = {}) {
     shot_list: [...draftInput.shot_list],
     cta_label: draftInput.cta_label,
     cta_url: growthHelpers.instagramTrackedUrl(
-      draftInput.campaign,
+      campaign,
       draftInput.platform_content_id,
     ),
     disclosure: draftInput.disclosure,
@@ -673,6 +936,7 @@ async function pendingScheduleReservation(artifact, dueAt, overrides = {}) {
     providerChannelId,
     artifact.platform,
     env.GROWTH_MEDIA_ORIGIN,
+    env.GROWTH_MEDIA_PATH_PREFIX,
   ].join('|'));
   const sourceLineageSnapshot = [{
     asset_key: safeSource.asset_key,
@@ -686,6 +950,7 @@ async function pendingScheduleReservation(artifact, dueAt, overrides = {}) {
     provider_service: artifact.platform,
     config_revision: configRevision,
     media_origin: env.GROWTH_MEDIA_ORIGIN,
+    media_path_prefix: env.GROWTH_MEDIA_PATH_PREFIX,
     artifact_id: artifact.id,
     artifact_hash: artifact.approved_hash,
     source_lineage_snapshot: sourceLineageSnapshot,
@@ -895,6 +1160,45 @@ test('manager list exposes only public HTTPS provider links', async () => {
     listed.get('job_public_link').provider_external_link,
     'https://www.instagram.com/p/public-firstknock/',
   );
+  assert.equal(
+    result.body.capabilities.immutable_media_origin_configured,
+    true,
+  );
+  assert.equal(
+    result.body.capabilities.immutable_media_path_prefix_configured,
+    true,
+  );
+  assert.equal(
+    result.body.capabilities.immutable_media_namespace_configured,
+    true,
+  );
+});
+
+test('manager capabilities fail closed when the app media prefix is absent', async () => {
+  const { base44 } = createGrowthBase44();
+  const handler = loadGrowthHandler(managePath, {
+    base44,
+    env: { ...env, GROWTH_MEDIA_PATH_PREFIX: '' },
+  });
+
+  const result = await invokeJson(handler, { action: 'list' });
+
+  assert.equal(result.status, 200);
+  assert.equal(
+    result.body.capabilities.immutable_media_origin_configured,
+    true,
+  );
+  assert.equal(
+    result.body.capabilities.immutable_media_path_prefix_configured,
+    false,
+  );
+  assert.equal(
+    result.body.capabilities.immutable_media_namespace_configured,
+    false,
+  );
+  assert.equal(result.body.capabilities.render_result_import_ready, false);
+  assert.equal(result.body.capabilities.publishing_environment_ready, false);
+  assert.equal(result.body.capabilities.publishing_enabled, false);
 });
 
 test('manager list redacts source privacy ownership tokens but preserves fence status', async () => {
@@ -953,7 +1257,7 @@ test('approval hash is canonical and covers every public rendition field', async
     render_template_id: 'firstknock-product-proof',
     render_template_version: '1.1.0',
     render_input_sha256: renderInputSha256,
-    render_profile_id: 'firstknock-h264-bitexact-v2',
+    render_profile_id: 'firstknock-h264-bitexact-v3',
     render_environment_sha256: renderEnvironmentSha256,
     render_delivery_key: `sha256/${'b'.repeat(64)}-ig-manager-proof-01.mp4`,
     render_source_lineage: [{
@@ -1118,7 +1422,7 @@ test('render-result import creates the exact hosted candidate with provenance an
   assert.equal(artifact.render_template_id, 'firstknock-product-proof');
   assert.equal(artifact.render_template_version, '1.1.0');
   assert.equal(artifact.render_input_sha256, renderInputSha256);
-  assert.equal(artifact.render_profile_id, 'firstknock-h264-bitexact-v2');
+  assert.equal(artifact.render_profile_id, 'firstknock-h264-bitexact-v3');
   assert.equal(artifact.render_environment_sha256, renderEnvironmentSha256);
   assert.equal(
     artifact.render_delivery_key,
@@ -1139,6 +1443,26 @@ test('render-result import creates the exact hosted candidate with provenance an
     ),
     false,
   );
+});
+
+test('render-result import requires the configured app media namespace', async () => {
+  const renderResult = renderImportResult();
+  const { base44, entities } = createGrowthBase44({
+    sources: [renderSource],
+  });
+  const handler = loadGrowthHandler(managePath, {
+    base44,
+    env: { ...env, GROWTH_MEDIA_PATH_PREFIX: '' },
+  });
+
+  const result = await invokeJson(handler, {
+    action: 'import_render_result',
+    render_result: renderResult,
+  });
+
+  assert.equal(result.status, 400);
+  assert.equal(result.body.error, 'invalid_render_result');
+  assert.equal(entities.GrowthCreativeArtifact.records.length, 0);
 });
 
 test('render-result import rejects registered source SHA lineage mismatch without writes', async () => {
@@ -1340,6 +1664,18 @@ test('render-result import rejects codec, QC, and URL mismatches without writes'
       },
     },
     {
+      name: 'shared-origin URL from another Base44 app namespace',
+      mutate: (artifact) => {
+        const crossAppUrl = [
+          env.GROWTH_MEDIA_ORIGIN,
+          '/files/public/another-app/',
+          `opaque_${renderMediaSha256}-${renderArtifactKey}.mp4`,
+        ].join('');
+        artifact.media_url = crossAppUrl;
+        artifact.artifact_fields.media_url = crossAppUrl;
+      },
+    },
+    {
       name: 'content-addressed URL digest',
       mutate: (artifact) => {
         const wrongDigestUrl = [
@@ -1452,7 +1788,7 @@ test('render-result import cannot change an approved artifact', async () => {
     action: 'import_render_result',
     render_result: renderResult,
   });
-  assert.equal(imported.status, 200);
+  assert.equal(imported.status, 200, JSON.stringify(imported.body));
 
   const artifact = entities.GrowthCreativeArtifact.records[0];
   Object.assign(artifact, {
@@ -1469,11 +1805,8 @@ test('render-result import cannot change an approved artifact', async () => {
   const before = structuredClone(artifact);
   const changedResult = structuredClone(renderResult);
   const changedMediaSha256 = 'a'.repeat(64);
-  const changedMediaUrl = [
-    env.GROWTH_MEDIA_ORIGIN,
-    'sha256',
-    `${changedMediaSha256}-${renderArtifactKey}.mp4`,
-  ].join('/');
+  const changedMediaUrl =
+    `${mediaNamespace}replacement_${changedMediaSha256}-${renderArtifactKey}.mp4`;
   changedResult.artifacts[0].media_sha256 = changedMediaSha256;
   changedResult.artifacts[0].media_url = changedMediaUrl;
   changedResult.artifacts[0].delivery_key =
@@ -1518,6 +1851,392 @@ test('rendered artifact cannot pass review after a safe source hash changes', as
   assert.equal(reviewed.body.artifact.review_status, 'changes_requested');
 });
 
+test('observed metric fields stay bound from snapshot fingerprints through reviewed batch evidence', async () => {
+  const absentReach = await measuredReviewEvidence({
+    metric: {
+      reach: 0,
+      metric_source: 'buffer',
+      provider_observed_metric_types: ['views'],
+    },
+  });
+  const providerObservedZero = await measuredReviewEvidence({
+    metric: {
+      reach: 0,
+      metric_source: 'buffer',
+      provider_observed_metric_types: ['reach', 'views'],
+    },
+  });
+  const manualObservedZero = await measuredReviewEvidence({
+    metric: {
+      reach: 0,
+      observed_metric_fields: ['reach', 'views'],
+    },
+  });
+
+  assert.notEqual(
+    absentReach.metric.snapshot_fingerprint,
+    providerObservedZero.metric.snapshot_fingerprint,
+  );
+  assert.equal(
+    providerObservedZero.metric.snapshot_fingerprint,
+    manualObservedZero.metric.snapshot_fingerprint,
+  );
+  assert.equal(
+    providerObservedZero.plan.review_evidence_hash,
+    providerObservedZero.metric.snapshot_fingerprint,
+  );
+
+  const selectedConceptIds = [
+    'fk-ce-field-funnel-01',
+    'fk-ce-clean-routes-01',
+  ];
+  const { base44, entities } = createGrowthBase44({
+    sources: measuredSourceRegistry(),
+    plans: [providerObservedZero.plan],
+    metrics: [providerObservedZero.metric],
+    invokeLlm: async () => measuredGeneration(selectedConceptIds),
+  });
+  const handler = loadGrowthHandler(managePath, {
+    base44,
+    env: {
+      ...env,
+      GROWTH_CONTENT_GENERATION_ENABLED: 'true',
+      GROWTH_RENDER_PACK_SHA256S: measuredSeedPackSha256,
+    },
+    dateImpl: controlledClock(
+      Date.parse('2026-07-28T18:00:00.000Z'),
+    ).DateImpl,
+  });
+  const built = await invokeJson(handler, {
+    action: 'build_next_batch',
+    parent: {
+      platform: providerObservedZero.plan.platform,
+      campaign: providerObservedZero.plan.campaign,
+      content: providerObservedZero.plan.content,
+    },
+    target_date: '2026-07-29',
+    concept_count: 2,
+    seed_concept_ids: selectedConceptIds,
+    seed_pack: measuredSeedPack,
+  });
+
+  assert.equal(built.status, 201, JSON.stringify(built.body));
+  assert.equal(
+    built.body.batch.evidence_hash,
+    providerObservedZero.metric.snapshot_fingerprint,
+  );
+  assert.equal(
+    entities.GrowthContentBatch.records[0].evidence_hash,
+    providerObservedZero.metric.snapshot_fingerprint,
+  );
+});
+
+test('reviewed conversion evidence changes batch identity and tampering blocks generation', async (t) => {
+  const selectedConceptIds = [
+    'fk-ce-field-funnel-01',
+    'fk-ce-clean-routes-01',
+  ];
+  const measuredEnv = {
+    ...env,
+    GROWTH_CONTENT_GENERATION_ENABLED: 'true',
+    GROWTH_RENDER_PACK_SHA256S: measuredSeedPackSha256,
+  };
+  const build = async (evidence) => {
+    let reportCalls = 0;
+    const { base44, entities } = createGrowthBase44({
+      sources: measuredSourceRegistry(),
+      plans: [evidence.plan],
+      metrics: [evidence.metric],
+      invokeLlm: async () => measuredGeneration(selectedConceptIds),
+    });
+    base44.functions.invoke = async () => {
+      reportCalls += 1;
+      throw new Error('a frozen reviewed batch must not refresh a later report');
+    };
+    const handler = loadGrowthHandler(managePath, {
+      base44,
+      env: measuredEnv,
+      dateImpl: controlledClock(
+        Date.parse('2026-07-28T18:00:00.000Z'),
+      ).DateImpl,
+    });
+    const result = await invokeJson(handler, {
+      action: 'build_next_batch',
+      parent: {
+        platform: evidence.plan.platform,
+        campaign: evidence.plan.campaign,
+        content: evidence.plan.content,
+      },
+      target_date: '2026-07-29',
+      concept_count: 2,
+      seed_concept_ids: selectedConceptIds,
+      seed_pack: measuredSeedPack,
+    });
+    return { result, entities, reportCalls };
+  };
+
+  const firstEvidence = await measuredReviewEvidence({
+    conversion_evidence: { paid_users: 2 },
+  });
+  const secondEvidence = await measuredReviewEvidence({
+    conversion_evidence: { paid_users: 3 },
+  });
+  const first = await build(firstEvidence);
+  const second = await build(secondEvidence);
+  assert.equal(first.result.status, 201, JSON.stringify(first.result.body));
+  assert.equal(second.result.status, 201, JSON.stringify(second.result.body));
+  assert.equal(first.reportCalls, 0);
+  assert.equal(second.reportCalls, 0);
+  assert.notEqual(
+    first.result.body.batch.conversion_evidence_hash,
+    second.result.body.batch.conversion_evidence_hash,
+  );
+  assert.notEqual(
+    first.result.body.batch.review_hash,
+    second.result.body.batch.review_hash,
+  );
+  assert.notEqual(
+    first.result.body.batch.batch_key,
+    second.result.body.batch.batch_key,
+  );
+  assert.notEqual(
+    first.result.body.batch.request_hash,
+    second.result.body.batch.request_hash,
+  );
+  assert.equal(
+    first.result.body.batch.conversion_cutoff_at,
+    firstEvidence.plan.review_conversion_cutoff_at,
+  );
+
+  await t.test('mutated counter', async () => {
+    const evidence = await measuredReviewEvidence();
+    evidence.plan.review_conversion_evidence.paid_users += 1;
+    const attempt = await build(evidence);
+    assert.equal(attempt.result.status, 409);
+    assert.equal(
+      attempt.result.body.error,
+      'reviewed_parent_conversion_evidence_stale',
+    );
+    assert.equal(attempt.entities.GrowthContentBatch.records.length, 0);
+  });
+
+  await t.test('mutated cutoff', async () => {
+    const evidence = await measuredReviewEvidence();
+    evidence.plan.review_conversion_cutoff_at =
+      '2026-07-27T12:31:00.000Z';
+    const attempt = await build(evidence);
+    assert.equal(attempt.result.status, 409);
+    assert.equal(
+      attempt.result.body.error,
+      'reviewed_parent_conversion_evidence_stale',
+    );
+    assert.equal(attempt.entities.GrowthContentBatch.records.length, 0);
+  });
+
+  await t.test('mutated social binding with a recomputed conversion hash', async () => {
+    const evidence = await measuredReviewEvidence();
+    evidence.plan.review_conversion_evidence.social_evidence_hash = 'f'.repeat(64);
+    evidence.plan.review_conversion_evidence_hash = createHash('sha256')
+      .update(growthHelpers.canonicalStringify(
+        evidence.plan.review_conversion_evidence,
+      ))
+      .digest('hex');
+    const attempt = await build(evidence);
+    assert.equal(attempt.result.status, 409);
+    assert.equal(
+      attempt.result.body.error,
+      'reviewed_parent_conversion_evidence_stale',
+    );
+    assert.equal(attempt.entities.GrowthContentBatch.records.length, 0);
+  });
+
+  await t.test('noncanonical report diagnostics cannot enter frozen evidence', async () => {
+    const evidence = await measuredReviewEvidence();
+    evidence.plan.review_conversion_evidence.excluded_post_cutoff_events = 0;
+    evidence.plan.review_conversion_evidence_hash = createHash('sha256')
+      .update(growthHelpers.canonicalStringify(
+        evidence.plan.review_conversion_evidence,
+      ))
+      .digest('hex');
+    const attempt = await build(evidence);
+    assert.equal(attempt.result.status, 409);
+    assert.equal(
+      attempt.result.body.error,
+      'reviewed_parent_conversion_evidence_stale',
+    );
+    assert.equal(attempt.entities.GrowthContentBatch.records.length, 0);
+  });
+
+  await t.test('missing decision policy cannot use a legacy review', async () => {
+    const evidence = await measuredReviewEvidence();
+    delete evidence.plan.review_decision_policy_id;
+    const attempt = await build(evidence);
+    assert.equal(attempt.result.status, 409);
+    assert.equal(
+      attempt.result.body.error,
+      'reviewed_parent_decision_policy_stale',
+    );
+    assert.equal(attempt.entities.GrowthContentBatch.records.length, 0);
+  });
+
+  await t.test('stale decision policy evidence hash blocks generation', async () => {
+    const evidence = await measuredReviewEvidence();
+    evidence.plan.review_decision_policy_evidence_hash = 'f'.repeat(64);
+    const attempt = await build(evidence);
+    assert.equal(attempt.result.status, 409);
+    assert.equal(
+      attempt.result.body.error,
+      'reviewed_parent_decision_policy_stale',
+    );
+    assert.equal(attempt.entities.GrowthContentBatch.records.length, 0);
+  });
+
+  await t.test('unsupported exact zero-outcome Repeat blocks generation', async () => {
+    const evidence = await measuredReviewEvidence({
+      conversion_evidence: {
+        activated_workspaces: 0,
+        activated_users: 0,
+        activated_reps: 0,
+        paid_users: 0,
+        first_activation_at: null,
+        last_activation_at: null,
+      },
+    });
+    const attempt = await build(evidence);
+    assert.equal(attempt.result.status, 409);
+    assert.equal(
+      attempt.result.body.error,
+      'reviewed_parent_decision_not_supported',
+    );
+    assert.equal(attempt.entities.GrowthContentBatch.records.length, 0);
+  });
+
+  await t.test('social-only Repeat without its bound override blocks generation', async () => {
+    const evidence = await measuredReviewEvidence({
+      plan: { cta_channel: 'caption_url' },
+      conversion_evidence: {
+        attribution_method: 'social_evidence_only',
+        post_conversion_eligible: false,
+        conversion_conclusion: 'inconclusive_no_declared_link',
+        conversion_counters_available: false,
+        landing_sessions: null,
+        signup_cta_sessions: null,
+        auth_completed: null,
+        signups: null,
+        activated_workspaces: null,
+        activated_users: null,
+        activated_reps: null,
+        paid_users: null,
+        activation_timing_complete: false,
+        paid_timing_complete: false,
+        first_activation_at: null,
+        last_activation_at: null,
+        retention_eligible_users: null,
+        retained_users: null,
+        retention_rate: null,
+      },
+    });
+    const attempt = await build(evidence);
+    assert.equal(attempt.result.status, 409);
+    assert.equal(
+      attempt.result.body.error,
+      'reviewed_parent_decision_not_supported',
+    );
+    assert.equal(attempt.entities.GrowthContentBatch.records.length, 0);
+  });
+});
+
+test('policy-supported social-only Repeat override generates without coercing unavailable counters to zero', async () => {
+  const selectedConceptIds = [
+    'fk-ce-field-funnel-01',
+    'fk-ce-clean-routes-01',
+  ];
+  const overrideNote =
+    'Strong native reach and saves justify one controlled repeat without claiming conversion.';
+  const { plan, metric } = await measuredReviewEvidence({
+    decision_override_note: overrideNote,
+    plan: { cta_channel: 'caption_url' },
+    conversion_evidence: {
+      attribution_method: 'social_evidence_only',
+      post_conversion_eligible: false,
+      conversion_conclusion: 'inconclusive_no_declared_link',
+      conversion_counters_available: false,
+      landing_sessions: null,
+      signup_cta_sessions: null,
+      auth_completed: null,
+      signups: null,
+      activated_workspaces: null,
+      activated_users: null,
+      activated_reps: null,
+      paid_users: null,
+      activation_timing_complete: false,
+      paid_timing_complete: false,
+      first_activation_at: null,
+      last_activation_at: null,
+      retention_eligible_users: null,
+      retained_users: null,
+      retention_rate: null,
+    },
+  });
+  let llmRequest;
+  let reportCalls = 0;
+  const { base44, entities } = createGrowthBase44({
+    sources: measuredSourceRegistry(),
+    plans: [plan],
+    metrics: [metric],
+    invokeLlm: async (request) => {
+      llmRequest = request;
+      return measuredGeneration(selectedConceptIds);
+    },
+  });
+  base44.functions.invoke = async () => {
+    reportCalls += 1;
+    throw new Error('generation must use the frozen reviewed evidence');
+  };
+  const handler = loadGrowthHandler(managePath, {
+    base44,
+    env: {
+      ...env,
+      GROWTH_CONTENT_GENERATION_ENABLED: 'true',
+      GROWTH_RENDER_PACK_SHA256S: measuredSeedPackSha256,
+    },
+    dateImpl: controlledClock(
+      Date.parse('2026-07-28T18:00:00.000Z'),
+    ).DateImpl,
+  });
+
+  const built = await invokeJson(handler, {
+    action: 'build_next_batch',
+    parent: {
+      platform: plan.platform,
+      campaign: plan.campaign,
+      content: plan.content,
+    },
+    target_date: '2026-07-29',
+    concept_count: 2,
+    seed_concept_ids: selectedConceptIds,
+    seed_pack: measuredSeedPack,
+  });
+
+  assert.equal(built.status, 201, JSON.stringify(built.body));
+  assert.equal(built.body.batch.state, 'ready');
+  assert.equal(
+    built.body.batch.decision_override_hash,
+    createHash('sha256').update(overrideNote).digest('hex'),
+  );
+  assert.equal(reportCalls, 0);
+  assert.equal(entities.GrowthContentBatch.records.length, 1);
+  assert.match(
+    llmRequest.prompt,
+    /"conversion_conclusion":"inconclusive_no_declared_link"/,
+  );
+  assert.match(llmRequest.prompt, /"conversion_counters_available":false/);
+  assert.match(llmRequest.prompt, /"landing_sessions":null/);
+  assert.match(llmRequest.prompt, /"retention_eligible_users":null/);
+  assert.doesNotMatch(llmRequest.prompt, /"landing_sessions":0/);
+  assert.doesNotMatch(llmRequest.prompt, /"retention_eligible_users":0/);
+});
+
 test('reviewed evidence builds one durable daily batch and imports only after owner authorization', async () => {
   const { plan, metric } = await measuredReviewEvidence();
   const selectedConceptIds = [
@@ -1525,12 +2244,14 @@ test('reviewed evidence builds one durable daily batch and imports only after ow
     'fk-ce-clean-routes-01',
   ];
   let llmCalls = 0;
+  let llmRequest;
   const { base44, entities, currentUser } = createGrowthBase44({
     sources: measuredSourceRegistry(),
     plans: [plan],
     metrics: [metric],
-    invokeLlm: async () => {
+    invokeLlm: async (requestValue) => {
       llmCalls += 1;
+      llmRequest = requestValue;
       return measuredGeneration(selectedConceptIds);
     },
   });
@@ -1559,10 +2280,34 @@ test('reviewed evidence builds one durable daily batch and imports only after ow
   };
 
   const built = await invokeJson(handler, request);
-  assert.equal(built.status, 201);
+  assert.equal(built.status, 201, JSON.stringify(built.body));
   assert.equal(built.body.idempotent, false);
   assert.equal(built.body.batch.state, 'ready');
   assert.equal(built.body.batch.concept_count, 2);
+  assert.equal(
+    built.body.batch.review_schema_version,
+    GROWTH_REVIEW_SCHEMA_VERSION,
+  );
+  assert.equal(
+    built.body.batch.decision_policy_id,
+    GROWTH_DECISION_POLICY_ID,
+  );
+  assert.deepEqual(
+    Array.from(built.body.batch.decision_policy_reason_codes),
+    Array.from(plan.review_decision_policy_reason_codes),
+  );
+  assert.equal(
+    built.body.batch.decision_policy_evidence_hash,
+    plan.review_decision_policy_evidence_hash,
+  );
+  assert.equal(
+    built.body.batch.conversion_evidence_hash,
+    plan.review_conversion_evidence_hash,
+  );
+  assert.equal(
+    built.body.batch.conversion_cutoff_at,
+    plan.review_conversion_cutoff_at,
+  );
   assert.equal(
     built.body.batch.content_profile,
     'measured-next-batch-v1',
@@ -1582,12 +2327,22 @@ test('reviewed evidence builds one durable daily batch and imports only after ow
     assert.match(artifact.cta_url, new RegExp(`utm_source=${artifact.platform}`));
     assert.equal(
       artifact.disclosure,
-      'DEMO DATA - no customer result or performance promise.',
+      artifact.platform === 'tiktok'
+        ? 'Product demo.'
+        : 'DEMO DATA - no customer result or performance promise.',
     );
   }
   assert.doesNotThrow(() => validatePack(structuredClone(built.body.render_pack)));
   assert.equal(llmCalls, 1);
+  assert.match(llmRequest.prompt, /INTERNAL-ONLY frozen conversion evidence/);
+  assert.match(llmRequest.prompt, new RegExp(plan.review_conversion_evidence_hash));
+  assert.match(llmRequest.prompt, new RegExp(plan.review_conversion_cutoff_at));
+  assert.match(llmRequest.prompt, /never quote, paraphrase, imply, or expose/);
   assert.equal(entities.GrowthContentBatch.records.length, 1);
+  assert.equal(
+    entities.GrowthContentBatch.records[0].conversion_evidence_hash,
+    plan.review_conversion_evidence_hash,
+  );
   assert.equal(entities.GrowthCreativeArtifact.records.length, 0);
 
   const retried = await invokeJson(handler, request);
@@ -1640,7 +2395,7 @@ test('reviewed evidence builds one durable daily batch and imports only after ow
     action: 'import_render_result',
     render_result: generatedRenderResult(built.body.render_pack),
   });
-  assert.equal(imported.status, 200);
+  assert.equal(imported.status, 200, JSON.stringify(imported.body));
   assert.equal(imported.body.created, 4);
   assert.equal(imported.body.imported, 4);
   assert.equal(entities.GrowthCreativeArtifact.records.length, 4);
@@ -1770,7 +2525,7 @@ test('video feature explainer profile is server-locked to exactly two concepts',
   assert.equal(entities.GrowthContentBatch.records.length, 0);
 });
 
-test('video feature explainer fails closed without two safe video donors', async () => {
+test('video feature explainer accepts safe image donors but keeps video outputs', async () => {
   const { plan, metric } = await measuredReviewEvidence();
   let llmCalls = 0;
   const { base44, entities } = createGrowthBase44({
@@ -1804,15 +2559,51 @@ test('video feature explainer fails closed without two safe video donors', async
     target_date: '2026-07-29',
     content_profile: 'feature_explainer_video_v1',
     concept_count: 2,
+    seed_concept_ids: featureExplainerConceptIds,
     seed_pack: measuredSeedPack,
   });
 
-  assert.equal(result.status, 409);
-  assert.equal(result.body.error, 'insufficient_eligible_video_donors');
-  assert.equal(result.body.required_donors, 2);
-  assert.equal(result.body.eligible_donors, 0);
-  assert.equal(llmCalls, 0);
-  assert.equal(entities.GrowthContentBatch.records.length, 0);
+  assert.equal(result.status, 201);
+  assert.equal(llmCalls, 1);
+  assert.equal(entities.GrowthContentBatch.records.length, 1);
+  assert.equal(result.body.render_pack.sources.length, 2);
+  assert.equal(
+    result.body.render_pack.sources.every(
+      (source) => source.media_kind === 'image',
+    ),
+    true,
+  );
+  assert.equal(result.body.render_pack.artifacts.length, 4);
+  assert.equal(
+    result.body.render_pack.artifacts.every(
+      (artifact) => artifact.format === 'video',
+    ),
+    true,
+  );
+  assert.doesNotThrow(() => validatePack(
+    structuredClone(result.body.render_pack),
+  ));
+
+  const reread = await invokeJson(handler, {
+    action: 'get_batch',
+    batch_key: result.body.batch.batch_key,
+  });
+  assert.equal(reread.status, 200);
+  assert.equal(reread.body.pack_sha256, result.body.pack_sha256);
+
+  const changedSource = entities.GrowthSourceAsset.records.find(
+    (source) => source.asset_key === result.body.render_pack.sources[0].asset_key,
+  );
+  changedSource.media_kind = 'video';
+  const changedKind = await invokeJson(handler, {
+    action: 'get_batch',
+    batch_key: result.body.batch.batch_key,
+  });
+  assert.equal(changedKind.status, 409);
+  assert.equal(
+    changedKind.body.error,
+    'growth_batch_source_lineage_changed',
+  );
 });
 
 test('video feature explainer binds its profile and assembles grounded tracked captions', async () => {
@@ -1854,7 +2645,7 @@ test('video feature explainer binds its profile and assembles grounded tracked c
   };
 
   const built = await invokeJson(handler, request);
-  assert.equal(built.status, 201);
+  assert.equal(built.status, 201, JSON.stringify(built.body));
   assert.equal(
     built.body.batch.content_profile,
     'feature_explainer_video_v1',
@@ -1865,10 +2656,14 @@ test('video feature explainer binds its profile and assembles grounded tracked c
   assert.equal(entities.GrowthContentBatch.records[0].state, 'ready');
   assert.equal(entities.GrowthCreativeArtifact.records.length, 0);
   assert.equal(llmRequest.add_context_from_internet, false);
+  assert.match(llmRequest.prompt, /INTERNAL-ONLY frozen conversion evidence/);
+  assert.match(llmRequest.prompt, new RegExp(plan.review_conversion_evidence_hash));
+  assert.match(llmRequest.prompt, new RegExp(plan.review_conversion_cutoff_at));
   assert.match(llmRequest.prompt, /problem:[\s\S]*?visible_feature_behavior:/);
   assert.match(llmRequest.prompt, /practical_benefit:[\s\S]*?cta_label:/);
   assert.match(llmRequest.prompt, /only from safe_source_summary/);
   assert.match(llmRequest.prompt, /server assembles[\s\S]*?tracked CTA URL/i);
+  assert.match(llmRequest.prompt, /TikTok[\s\S]*?2,200-character/i);
   const variantSchema = llmRequest.response_json_schema.properties
     .concepts.items.properties.variants.items;
   assert.deepEqual(
@@ -1897,11 +2692,19 @@ test('video feature explainer binds its profile and assembles grounded tracked c
     const blocks = artifact.caption.split(/\n{2,}/);
     assert.equal(blocks.length, 5);
     assert.match(blocks[1], /\bFirstKnock\b/);
-    assert.equal(
-      blocks[3],
-      'DEMO DATA - no customer result or performance promise.',
-    );
-    assert.equal(blocks[4], `${artifact.cta_label}: ${artifact.cta_url}`);
+    if (artifact.platform === 'tiktok') {
+      assert.equal(blocks[3], 'Product demo.');
+      assert.equal(blocks[4], artifact.cta_label);
+      assert.equal(artifact.caption.includes(artifact.cta_url), false);
+      assert.ok(artifact.caption.length <= 2200);
+    } else {
+      assert.equal(
+        blocks[3],
+        'DEMO DATA - no customer result or performance promise.',
+      );
+      assert.equal(blocks[4], `${artifact.cta_label}: ${artifact.cta_url}`);
+      assert.ok(artifact.caption.length <= 2200);
+    }
     assert.match(
       artifact.cta_url,
       new RegExp(`utm_source=${artifact.platform}`),
@@ -1946,6 +2749,443 @@ test('video feature explainer binds its profile and assembles grounded tracked c
   assert.equal(legacy.status, 201);
   assert.notEqual(legacy.body.batch.batch_key, built.body.batch.batch_key);
   assert.notEqual(legacy.body.batch.request_hash, built.body.batch.request_hash);
+});
+
+test('video feature explainer has fourteen-source capacity for seven daily batches', async () => {
+  assert.equal(weeklyFeatureExplainerConceptIds.length, 14);
+  assert.equal(weeklyFeatureExplainerSeedPack.sources.length, 14);
+  assert.equal(
+    weeklyFeatureExplainerSeedPack.sources.filter(
+      (source) => source.media_kind === 'video',
+    ).length,
+    10,
+  );
+  assert.equal(
+    weeklyFeatureExplainerSeedPack.sources.filter(
+      (source) => source.media_kind === 'image',
+    ).length,
+    4,
+  );
+
+  const { plan, metric } = await measuredReviewEvidence();
+  const generationConceptPairs = Array.from(
+    { length: 7 },
+    (_, index) => weeklyFeatureExplainerConceptIds.slice(
+      index * 2,
+      index * 2 + 2,
+    ),
+  );
+  generationConceptPairs.push(weeklyFeatureExplainerConceptIds.slice(0, 2));
+  let llmCalls = 0;
+  const { base44, entities } = createGrowthBase44({
+    sources: weeklyFeatureExplainerSourceRegistry(),
+    plans: [plan],
+    metrics: [metric],
+    invokeLlm: async () => {
+      const offset = llmCalls * 2;
+      const conceptIds = generationConceptPairs[llmCalls];
+      llmCalls += 1;
+      return featureExplainerGenerationWithHooks(
+        conceptIds,
+        weeklyFeatureHooks.slice(offset, offset + 2),
+      );
+    },
+  });
+  const handler = loadGrowthHandler(managePath, {
+    base44,
+    env: {
+      ...env,
+      GROWTH_CONTENT_GENERATION_ENABLED: 'true',
+      GROWTH_RENDER_PACK_SHA256S: weeklyFeatureExplainerSeedPackSha256,
+    },
+    dateImpl: controlledClock(
+      Date.parse('2026-07-28T18:00:00.000Z'),
+    ).DateImpl,
+  });
+  const targetDates = [
+    '2026-07-29',
+    '2026-07-30',
+    '2026-07-31',
+    '2026-08-01',
+    '2026-08-02',
+    '2026-08-03',
+    '2026-08-04',
+  ];
+  const reservedSourceHashes = new Set();
+
+  for (let index = 0; index < targetDates.length; index += 1) {
+    const seedConceptIds = weeklyFeatureExplainerConceptIds.slice(
+      index * 2,
+      index * 2 + 2,
+    );
+    const built = await invokeJson(handler, {
+      action: 'build_next_batch',
+      parent: {
+        platform: plan.platform,
+        campaign: plan.campaign,
+        content: plan.content,
+      },
+      target_date: targetDates[index],
+      content_profile: 'feature_explainer_video_v1',
+      concept_count: 2,
+      seed_concept_ids: seedConceptIds,
+      seed_pack: weeklyFeatureExplainerSeedPack,
+    });
+
+    assert.equal(built.status, 201, JSON.stringify(built.body));
+    assert.equal(built.body.render_pack.sources.length, 2);
+    assert.equal(built.body.render_pack.artifacts.length, 4);
+    assert.equal(
+      built.body.render_pack.artifacts.every(
+        (artifact) => artifact.format === 'video',
+      ),
+      true,
+    );
+    for (const source of built.body.render_pack.sources) {
+      assert.ok(['video', 'image'].includes(source.media_kind));
+      reservedSourceHashes.add(source.source_sha256);
+    }
+    assert.doesNotThrow(() => validatePack(
+      structuredClone(built.body.render_pack),
+    ));
+  }
+
+  assert.equal(llmCalls, 7);
+  assert.equal(entities.GrowthContentBatch.records.length, 7);
+  assert.equal(reservedSourceHashes.size, 14);
+
+  const dayEight = await invokeJson(handler, {
+    action: 'build_next_batch',
+    parent: {
+      platform: plan.platform,
+      campaign: plan.campaign,
+      content: plan.content,
+    },
+    target_date: '2026-08-05',
+    content_profile: 'feature_explainer_video_v1',
+    concept_count: 2,
+    seed_concept_ids: weeklyFeatureExplainerConceptIds.slice(0, 2),
+    seed_pack: weeklyFeatureExplainerSeedPack,
+  });
+  assert.equal(dayEight.status, 201);
+  assert.equal(llmCalls, 8);
+  assert.deepEqual(
+    dayEight.body.render_pack.sources.map((source) => source.asset_key),
+    weeklyFeatureExplainerSeedPack.sources
+      .filter((source) => (
+        weeklyFeatureExplainerConceptIds.slice(0, 2).includes(
+          weeklyFeatureExplainerSeedPack.artifacts.find(
+            (artifact) => artifact.source_asset_key === source.asset_key,
+          )?.concept_id,
+        )
+      ))
+      .map((source) => source.asset_key),
+  );
+});
+
+test('owner can build an audited first-week batch without fake evidence or an LLM call', async () => {
+  let llmCalls = 0;
+  const { base44, entities, currentUser } = createGrowthBase44({
+    sources: weeklyFeatureExplainerSourceRegistry(),
+    invokeLlm: async () => {
+      llmCalls += 1;
+      throw new Error('Audited bootstrap must not invoke an LLM');
+    },
+  });
+  const handler = loadGrowthHandler(managePath, {
+    base44,
+    env: {
+      ...env,
+      GROWTH_CONTENT_GENERATION_ENABLED: 'true',
+      GROWTH_RENDER_PACK_SHA256S: weeklyFeatureExplainerSeedPackSha256,
+    },
+    dateImpl: controlledClock(
+      Date.parse('2026-07-28T18:00:00.000Z'),
+    ).DateImpl,
+  });
+  const request = {
+    action: 'build_audited_bootstrap_batch',
+    target_date: '2026-07-29',
+    content_profile: 'feature_explainer_video_v1',
+    concept_count: 2,
+    bootstrap_acknowledged: true,
+    authorization_note:
+      'Use the exact audited FirstKnock seed to establish the first measured week.',
+    seed_pack: weeklyFeatureExplainerSeedPack,
+  };
+
+  currentUser.value = { id: 'admin_1', role: 'admin', is_owner: false };
+  const nonOwner = await invokeJson(handler, request);
+  assert.equal(nonOwner.status, 403);
+  assert.equal(nonOwner.body.error, 'growth_owner_required');
+  currentUser.value = { id: 'owner_1', role: 'admin', is_owner: true };
+
+  const built = await invokeJson(handler, request);
+  assert.equal(built.status, 201, JSON.stringify(built.body));
+  assert.equal(built.body.idempotent, false);
+  assert.equal(llmCalls, 0);
+  assert.equal(built.body.batch.batch_input_mode, 'audited_seed_bootstrap');
+  assert.equal(
+    built.body.batch.bootstrap_policy_version,
+    'audited-seed-bootstrap-v1',
+  );
+  assert.equal(built.body.batch.concept_count, 2);
+  assert.equal(
+    built.body.render_pack.batch_id,
+    weeklyFeatureExplainerSeedPack.batch_id,
+  );
+  assert.equal(built.body.render_pack.artifacts.length, 4);
+  assert.equal(
+    built.body.render_pack.artifacts.every((artifact) => (
+      artifact.format === 'video'
+      && artifact.ai_generated !== true
+      && artifact.campaign === '1000-users'
+    )),
+    true,
+  );
+  for (const artifact of built.body.render_pack.artifacts) {
+    assert.deepEqual(
+      artifact,
+      weeklyFeatureExplainerSeedPack.artifacts.find(
+        (candidate) => candidate.artifact_key === artifact.artifact_key,
+      ),
+    );
+    assert.equal(artifact.caption.split(/\n{2,}/).length, 5);
+    assert.match(
+      artifact.cta_url,
+      new RegExp(`utm_source=${artifact.platform}`),
+    );
+  }
+  for (const source of built.body.render_pack.sources) {
+    assert.deepEqual(
+      source,
+      weeklyFeatureExplainerSeedPack.sources.find(
+        (candidate) => candidate.asset_key === source.asset_key,
+      ),
+    );
+  }
+  const stored = entities.GrowthContentBatch.records[0];
+  assert.equal(stored.parent_platform, undefined);
+  assert.equal(stored.review_hash, undefined);
+  assert.match(stored.bootstrap_authorization_hash, /^[a-f0-9]{64}$/);
+  assert.doesNotThrow(() => validatePack(
+    structuredClone(built.body.render_pack),
+  ));
+
+  const retry = await invokeJson(handler, request);
+  assert.equal(retry.status, 200);
+  assert.equal(retry.body.idempotent, true);
+  assert.equal(retry.body.pack_sha256, built.body.pack_sha256);
+  assert.deepEqual(retry.body.render_pack, built.body.render_pack);
+  assert.equal(llmCalls, 0);
+
+  const changedAuthorization = await invokeJson(handler, {
+    ...request,
+    authorization_note:
+      'A different authorization note must not mutate an existing bootstrap.',
+  });
+  assert.equal(changedAuthorization.status, 409);
+  assert.equal(
+    changedAuthorization.body.error,
+    'bootstrap_authorization_conflict',
+  );
+
+  const authorized = await invokeJson(handler, {
+    action: 'authorize_batch',
+    batch_key: built.body.batch.batch_key,
+    expected_pack_sha256: built.body.pack_sha256,
+    inspection_acknowledged: true,
+    note: 'Reviewed all four exact bootstrap captions and render recipes.',
+  });
+  assert.equal(authorized.status, 200);
+  assert.equal(authorized.body.batch.state, 'render_authorized');
+
+  const alteredAudioResult = generatedRenderResult(built.body.render_pack);
+  alteredAudioResult.artifacts[0].qc.audio_recipe = 'unreviewed-audio-recipe';
+  const alteredAudioImport = await invokeJson(handler, {
+    action: 'import_render_result',
+    render_result: alteredAudioResult,
+  });
+  assert.equal(alteredAudioImport.status, 400);
+  assert.equal(alteredAudioImport.body.error, 'invalid_render_result_artifact');
+  assert.equal(entities.GrowthCreativeArtifact.records.length, 0);
+
+  const imported = await invokeJson(handler, {
+    action: 'import_render_result',
+    render_result: generatedRenderResult(built.body.render_pack),
+  });
+  assert.equal(imported.status, 200, JSON.stringify(imported.body));
+  assert.equal(imported.body.created, 4);
+  assert.equal(entities.GrowthCreativeArtifact.records.length, 4);
+  assert.equal(
+    entities.GrowthCreativeArtifact.records.every((artifact) => (
+      artifact.growth_batch_key === built.body.batch.batch_key
+      && artifact.growth_batch_target_date === '2026-07-29'
+    )),
+    true,
+  );
+});
+
+test('audited bootstrap is allowlisted, source-current, and capped at seven days', async (t) => {
+  await t.test('rejects request-selected and tampered seed input', async () => {
+    const { base44 } = createGrowthBase44({
+      sources: weeklyFeatureExplainerSourceRegistry(),
+    });
+    const handler = loadGrowthHandler(managePath, {
+      base44,
+      env: {
+        ...env,
+        GROWTH_CONTENT_GENERATION_ENABLED: 'true',
+        GROWTH_RENDER_PACK_SHA256S: weeklyFeatureExplainerSeedPackSha256,
+      },
+      dateImpl: controlledClock(
+        Date.parse('2026-07-28T18:00:00.000Z'),
+      ).DateImpl,
+    });
+    const selected = await invokeJson(handler, {
+      action: 'build_audited_bootstrap_batch',
+      target_date: '2026-07-29',
+      bootstrap_acknowledged: true,
+      authorization_note:
+        'The server must own deterministic donor selection for this bootstrap.',
+      seed_concept_ids: weeklyFeatureExplainerConceptIds.slice(0, 2),
+      seed_pack: weeklyFeatureExplainerSeedPack,
+    });
+    assert.equal(selected.status, 400);
+    assert.equal(selected.body.error, 'invalid_bootstrap_batch_request');
+
+    const tamperedPack = structuredClone(weeklyFeatureExplainerSeedPack);
+    tamperedPack.batch_id = 'tampered-weekly-pack';
+    const tampered = await invokeJson(handler, {
+      action: 'build_audited_bootstrap_batch',
+      target_date: '2026-07-29',
+      bootstrap_acknowledged: true,
+      authorization_note:
+        'A modified pack must never inherit trust from the audited pack.',
+      seed_pack: tamperedPack,
+    });
+    assert.equal(tampered.status, 409);
+    assert.equal(tampered.body.error, 'untrusted_seed_render_pack');
+  });
+
+  await t.test('invalidates stored bootstrap trust when allowlist or source changes', async () => {
+    const bootstrapEnv = {
+      ...env,
+      GROWTH_CONTENT_GENERATION_ENABLED: 'true',
+      GROWTH_RENDER_PACK_SHA256S: weeklyFeatureExplainerSeedPackSha256,
+    };
+    const { base44, entities } = createGrowthBase44({
+      sources: weeklyFeatureExplainerSourceRegistry(),
+    });
+    const handler = loadGrowthHandler(managePath, {
+      base44,
+      env: bootstrapEnv,
+      dateImpl: controlledClock(
+        Date.parse('2026-07-28T18:00:00.000Z'),
+      ).DateImpl,
+    });
+    const built = await invokeJson(handler, {
+      action: 'build_audited_bootstrap_batch',
+      target_date: '2026-07-29',
+      bootstrap_acknowledged: true,
+      authorization_note:
+        'Build only from the exact current allowlisted seed and source lineage.',
+      seed_pack: weeklyFeatureExplainerSeedPack,
+    });
+    assert.equal(built.status, 201, JSON.stringify(built.body));
+
+    bootstrapEnv.GROWTH_RENDER_PACK_SHA256S = 'a'.repeat(64);
+    const retired = await invokeJson(handler, {
+      action: 'get_batch',
+      batch_key: built.body.batch.batch_key,
+    });
+    assert.equal(retired.status, 409);
+    assert.equal(retired.body.error, 'growth_batch_bootstrap_stale');
+
+    bootstrapEnv.GROWTH_RENDER_PACK_SHA256S =
+      weeklyFeatureExplainerSeedPackSha256;
+    const sourceKey = built.body.render_pack.sources[0].asset_key;
+    const source = entities.GrowthSourceAsset.records.find(
+      (candidate) => candidate.asset_key === sourceKey,
+    );
+    source.source_sha256 = 'e'.repeat(64);
+    const changedSource = await invokeJson(handler, {
+      action: 'get_batch',
+      batch_key: built.body.batch.batch_key,
+    });
+    assert.equal(changedSource.status, 409);
+    assert.equal(
+      changedSource.body.error,
+      'growth_batch_source_lineage_changed',
+    );
+  });
+
+  await t.test('permits seven deterministic days and rejects an eighth', async () => {
+    let llmCalls = 0;
+    const { base44, entities } = createGrowthBase44({
+      sources: weeklyFeatureExplainerSourceRegistry(),
+      invokeLlm: async () => {
+        llmCalls += 1;
+        throw new Error('Audited bootstrap must not invoke an LLM');
+      },
+    });
+    const handler = loadGrowthHandler(managePath, {
+      base44,
+      env: {
+        ...env,
+        GROWTH_CONTENT_GENERATION_ENABLED: 'true',
+        GROWTH_RENDER_PACK_SHA256S: weeklyFeatureExplainerSeedPackSha256,
+      },
+      dateImpl: controlledClock(
+        Date.parse('2026-07-28T18:00:00.000Z'),
+      ).DateImpl,
+    });
+    const targetDates = [
+      '2026-07-29',
+      '2026-07-30',
+      '2026-07-31',
+      '2026-08-01',
+      '2026-08-02',
+      '2026-08-03',
+      '2026-08-04',
+    ];
+    const sourceHashes = new Set();
+    for (const targetDate of targetDates) {
+      const built = await invokeJson(handler, {
+        action: 'build_audited_bootstrap_batch',
+        target_date: targetDate,
+        bootstrap_acknowledged: true,
+        authorization_note:
+          'Use the exact audited seed for the bounded seven-day evidence bootstrap.',
+        seed_pack: weeklyFeatureExplainerSeedPack,
+      });
+      assert.equal(built.status, 201, JSON.stringify(built.body));
+      built.body.render_pack.sources.forEach(
+        (source) => sourceHashes.add(source.source_sha256),
+      );
+    }
+    assert.equal(llmCalls, 0);
+    assert.equal(sourceHashes.size, 14);
+    assert.equal(
+      entities.GrowthContentBatch.records.filter(
+        (batch) => batch.state === 'ready',
+      ).length,
+      7,
+    );
+
+    const eighth = await invokeJson(handler, {
+      action: 'build_audited_bootstrap_batch',
+      target_date: '2026-08-05',
+      bootstrap_acknowledged: true,
+      authorization_note:
+        'The bootstrap must stop after the bounded evidence-establishing week.',
+      seed_pack: weeklyFeatureExplainerSeedPack,
+    });
+    assert.equal(eighth.status, 409);
+    assert.equal(eighth.body.error, 'bootstrap_batch_limit_reached');
+    assert.equal(eighth.body.maximum_batches, 7);
+    assert.equal(llmCalls, 0);
+  });
 });
 
 test('video feature explainer rejects ungrounded or promissory caption sections', async (t) => {
@@ -2866,6 +4106,70 @@ test('stable media guard rejects local, private, signed, and credentialed URLs',
     ),
     false,
   );
+  const digest = 'a'.repeat(64);
+  const deliveryKey = `sha256/${digest}-ig-feature-proof.mp4`;
+  const opaqueBase44Url =
+    `${mediaNamespace}opaque_token_${digest}-ig-feature-proof.mp4`;
+  assert.equal(
+    growthHelpers.normalizeMediaPathPrefix(mediaPathPrefix),
+    mediaPathPrefix,
+  );
+  assert.equal(
+    growthHelpers.mediaUrlUsesNamespace(
+      opaqueBase44Url,
+      mediaOrigin,
+      mediaPathPrefix,
+    ),
+    true,
+  );
+  assert.equal(
+    growthHelpers.mediaUrlMatchesDeliveryKey(
+      opaqueBase44Url,
+      digest,
+      deliveryKey,
+      mediaOrigin,
+      mediaPathPrefix,
+    ),
+    true,
+  );
+  assert.equal(
+    growthHelpers.mediaUrlMatchesDeliveryKey(
+      opaqueBase44Url.replace(/\.mp4$/, '.png'),
+      digest,
+      deliveryKey.replace(/\.mp4$/, '.png'),
+      mediaOrigin,
+      mediaPathPrefix,
+    ),
+    false,
+  );
+  for (const url of [
+    `${mediaOrigin}/files/public/another-app/opaque_${digest}-ig-feature-proof.mp4`,
+    `${mediaNamespace}nested/opaque_${digest}-ig-feature-proof.mp4`,
+    `${mediaNamespace}opaque_${digest}-different-proof.mp4`,
+    `${mediaOrigin}/files/public/app-firstknock%2f/opaque_${digest}-ig-feature-proof.mp4`,
+  ]) {
+    assert.equal(
+      growthHelpers.mediaUrlMatchesDeliveryKey(
+        url,
+        digest,
+        deliveryKey,
+        mediaOrigin,
+        mediaPathPrefix,
+      ),
+      false,
+      url,
+    );
+  }
+  for (const prefix of [
+    '',
+    'files/public/app-firstknock/',
+    '/files/public/app-firstknock',
+    '/files/public/../app-firstknock/',
+    '/files/public/app-firstknock//',
+    '/files/public/app%2dfirstknock/',
+  ]) {
+    assert.equal(growthHelpers.normalizeMediaPathPrefix(prefix), '', prefix);
+  }
 });
 
 test('silent rendition requires an explicit automatic-delivery decision', async () => {
@@ -2894,6 +4198,7 @@ test('scheduling requires a ready publisher environment and a fresh matching wor
     env.BUFFER_INSTAGRAM_CHANNEL_ID,
     env.BUFFER_TIKTOK_CHANNEL_ID,
     env.GROWTH_MEDIA_ORIGIN,
+    env.GROWTH_MEDIA_PATH_PREFIX,
   ].join('|'));
   const freshHeartbeat = {
     heartbeat_key: 'buffer-publisher',
@@ -2904,6 +4209,13 @@ test('scheduling requires a ready publisher environment and a fresh matching wor
     last_batch_inspected: 0,
     last_batch_processed: 0,
   };
+  const legacyHeartbeatRevision = await growthHelpers.sha256Hex([
+    'buffer-publisher',
+    env.BUFFER_ORGANIZATION_ID,
+    env.BUFFER_INSTAGRAM_CHANNEL_ID,
+    env.BUFFER_TIKTOK_CHANNEL_ID,
+    env.GROWTH_MEDIA_ORIGIN,
+  ].join('|'));
   const cases = [
     {
       name: 'disabled publisher',
@@ -2934,7 +4246,7 @@ test('scheduling requires a ready publisher environment and a fresh matching wor
       environment: env,
       heartbeats: [{
         ...freshHeartbeat,
-        observed_at: new Date(Date.now() - 4 * 60 * 1000).toISOString(),
+        observed_at: new Date(Date.now() - 16 * 60 * 1000).toISOString(),
       }],
       error: 'publisher_worker_unavailable',
     },
@@ -2944,6 +4256,15 @@ test('scheduling requires a ready publisher environment and a fresh matching wor
       heartbeats: [{
         ...freshHeartbeat,
         config_revision: 'f'.repeat(64),
+      }],
+      error: 'publisher_worker_unavailable',
+    },
+    {
+      name: 'heartbeat without app namespace binding',
+      environment: env,
+      heartbeats: [{
+        ...freshHeartbeat,
+        config_revision: legacyHeartbeatRevision,
       }],
       error: 'publisher_worker_unavailable',
     },
@@ -2995,6 +4316,10 @@ test('scheduling requires a ready publisher environment and a fresh matching wor
 
     assert.equal(result.status, 201);
     assert.equal(entities.GrowthPublishJob.records.length, 1);
+    assert.equal(
+      entities.GrowthPublishJob.records[0].media_path_prefix,
+      env.GROWTH_MEDIA_PATH_PREFIX,
+    );
     assert.equal(entities.GrowthContentPlan.records.length, 1);
   });
 });
@@ -3058,6 +4383,30 @@ test('one canonical concept may schedule its paired Instagram and TikTok renditi
     ['instagram', 'tiktok'],
   );
   assert.equal(entities.GrowthContentPlan.records.length, 2);
+});
+
+test('1000-users cannot schedule an individual or manually assembled post', async () => {
+  const artifact = await approvedArtifact({
+    id: 'artifact_production_manual_blocked',
+    campaign: '1000-users',
+  });
+  const { base44, entities } = createGrowthBase44({
+    sources: [safeSource],
+    artifacts: [artifact],
+  });
+  const handler = loadGrowthHandler(managePath, { base44, env });
+  const result = await invokeJson(handler, {
+    action: 'schedule',
+    artifact_id: artifact.id,
+    due_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    timezone: 'America/Phoenix',
+    scheduling_type: 'automatic',
+  });
+
+  assert.equal(result.status, 409);
+  assert.equal(result.body.error, 'production_batch_required');
+  assert.equal(entities.GrowthPublishJob.records.length, 0);
+  assert.equal(entities.GrowthContentPlan.records.length, 0);
 });
 
 test('schedule revalidates the global 28-day hook reservation', async () => {
@@ -3190,7 +4539,10 @@ test('owner workflow registers sources, reviews, approves, and creates one idemp
   assert.equal(result.status, 200);
   assert.equal(entities.GrowthSourceAsset.records.length, 1);
 
-  result = await invokeJson(handler, { action: 'create_draft', artifact: draftInput });
+  result = await invokeJson(handler, {
+    action: 'create_draft',
+    artifact: { ...draftInput, campaign: 'growth-test' },
+  });
   assert.equal(result.status, 201);
   const artifactId = result.body.artifact.id;
 
@@ -3352,6 +4704,7 @@ test('TikTok scheduling creates and cancels its own platform measurement plan', 
   assert.equal(tiktokPlan.content, contentId);
   assert.equal(tiktokPlan.planned_publish_at, dueAt);
   assert.equal(tiktokPlan.primary_metric, 'TikTok activated users');
+  assert.equal(tiktokPlan.cta_channel, 'bio');
   assert.equal(tiktokPlan.delivery_status, 'planned');
   assert.equal(
     entities.GrowthContentPlan.records.find(
@@ -3800,7 +5153,7 @@ test('a pending privacy fence makes an empty dependency snapshot safe against a 
   const artifact = await approvedArtifact({
     id: 'artifact_source_pending_empty_snapshot',
     media_url:
-      `https://media.firstknock.online/sha256/${mediaSha256}-pending-race.png`,
+      `${mediaNamespace}manual_${mediaSha256}-pending-race.png`,
     media_sha256: mediaSha256,
   });
   const { base44, entities } = createGrowthBase44({
@@ -3927,7 +5280,7 @@ test('a worker claim before the privacy fence blocks downgrade and proceeds only
   const artifact = await approvedArtifact({
     id: 'artifact_claim_before_source_fence',
     media_url:
-      `https://media.firstknock.online/sha256/${mediaSha256}-claim-first.png`,
+      `${mediaNamespace}manual_${mediaSha256}-claim-first.png`,
     media_sha256: mediaSha256,
   });
   const { base44, entities } = createGrowthBase44({
@@ -4005,6 +5358,7 @@ test('a worker claim before the privacy fence blocks downgrade and proceeds only
                 channelId: env.BUFFER_INSTAGRAM_CHANNEL_ID,
                 channelService: 'instagram',
                 status: 'scheduled',
+                schedulingType: 'automatic',
                 dueAt,
                 sentAt: null,
                 externalLink: null,
@@ -4211,7 +5565,7 @@ test('concurrent schedule requests create at most one durable publish job', asyn
 
   result = await invokeJson(handler, {
     action: 'create_draft',
-    artifact: draftInput,
+    artifact: { ...draftInput, campaign: 'growth-test' },
   });
   assert.equal(result.status, 201);
   const artifactId = result.body.artifact.id;
@@ -5370,6 +6724,53 @@ test('provider caption limits are enforced before owner approval', async () => {
   assert.equal(entities.GrowthCreativeArtifact.records.length, 0);
 });
 
+test('TikTok descriptions use Buffer’s 2,200-character limit and omit raw CTA URLs', async () => {
+  const { base44, entities } = createGrowthBase44({
+    sources: [safeSource],
+  });
+  const handler = loadGrowthHandler(managePath, { base44, env });
+  const tooLong = await invokeJson(handler, {
+    action: 'create_draft',
+    artifact: {
+      ...draftInput,
+      platform: 'tiktok',
+      platform_content_id: 'tt-caption-too-long',
+      caption: 'x'.repeat(2201),
+      disclosure: '',
+      cta_label: 'Go',
+    },
+  });
+  assert.equal(tooLong.status, 400);
+  assert.equal(tooLong.body.error, 'invalid_content_draft');
+  assert.equal(entities.GrowthCreativeArtifact.records.length, 0);
+
+  const compactCaption = [
+    'Route ownership gets unclear.',
+    'FirstKnock shows route ownership.',
+    'Start with a clear handoff.',
+    'Product demo.',
+    'Open FirstKnock',
+  ].join('\n\n');
+  const accepted = await invokeJson(handler, {
+    action: 'create_draft',
+    artifact: {
+      ...draftInput,
+      platform: 'tiktok',
+      platform_content_id: 'tt-caption-compact',
+      caption: compactCaption,
+      disclosure: 'Product demo.',
+      cta_label: 'Open FirstKnock',
+    },
+  });
+  assert.equal(accepted.status, 201);
+  const saved = entities.GrowthCreativeArtifact.records[0];
+  assert.equal(saved.provider_text, compactCaption);
+  assert.equal(saved.provider_text.includes(saved.cta_url), false);
+  assert.ok(saved.provider_text.length <= 2200);
+  assert.equal(growthHelpers.socialPostTextLimit('tiktok'), 2200);
+  assert.equal(growthHelpers.socialPostTextLimit('instagram'), 2200);
+});
+
 test('CTA labels honor the 160-character artifact and measurement-plan schema boundary', async () => {
   const artifactSchema = JSON.parse(
     readFileSync(resolve('base44/entities/GrowthCreativeArtifact.jsonc'), 'utf8'),
@@ -5743,6 +7144,7 @@ test('content-plan seed does not create over an existing content-engine artifact
     id: 'artifact_owns_missing_seed_plan',
     artifact_key: content,
     platform_content_id: content,
+    campaign: '1000-users',
   });
   const { base44, entities } = createGrowthBase44({
     artifacts: [artifact],
@@ -5876,6 +7278,7 @@ test('a measured batch beats a stale schedule snapshot and releases the losing p
     env.BUFFER_INSTAGRAM_CHANNEL_ID,
     env.BUFFER_TIKTOK_CHANNEL_ID,
     env.GROWTH_MEDIA_ORIGIN,
+    env.GROWTH_MEDIA_PATH_PREFIX,
   ].join('|'));
   let llmCalls = 0;
   const { base44, entities } = createGrowthBase44({
@@ -6128,6 +7531,7 @@ test('terminal retry reservation precedence uses its fresh lease time instead of
     env.BUFFER_INSTAGRAM_CHANNEL_ID,
     'instagram',
     env.GROWTH_MEDIA_ORIGIN,
+    env.GROWTH_MEDIA_PATH_PREFIX,
   ].join('|'));
   const sourceSnapshot = [{
     asset_key: safeSource.asset_key,
@@ -6141,6 +7545,7 @@ test('terminal retry reservation precedence uses its fresh lease time instead of
     provider_service: 'instagram',
     config_revision: configRevision,
     media_origin: env.GROWTH_MEDIA_ORIGIN,
+    media_path_prefix: env.GROWTH_MEDIA_PATH_PREFIX,
     artifact_id: retryArtifact.id,
     artifact_hash: retryArtifact.approved_hash,
     source_lineage_snapshot: sourceSnapshot,
@@ -6173,6 +7578,7 @@ test('terminal retry reservation precedence uses its fresh lease time instead of
     env.BUFFER_INSTAGRAM_CHANNEL_ID,
     env.BUFFER_TIKTOK_CHANNEL_ID,
     env.GROWTH_MEDIA_ORIGIN,
+    env.GROWTH_MEDIA_PATH_PREFIX,
   ].join('|'));
   const { base44, entities } = createGrowthBase44({
     sources: [safeSource],

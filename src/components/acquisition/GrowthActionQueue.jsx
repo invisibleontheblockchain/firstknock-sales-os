@@ -68,6 +68,117 @@ function channelLabel(channel) {
   }[channel] || channel;
 }
 
+function hasMetricValue(value) {
+  if (value === null || value === undefined || value === '') return false;
+  return Number.isFinite(Number(value));
+}
+
+function optionalCount(value) {
+  return hasMetricValue(value) ? Number(value).toLocaleString() : '—';
+}
+
+function optionalPercent(value, digits = 1) {
+  if (!hasMetricValue(value)) return '—';
+  return `${(Number(value) * 100).toFixed(digits)}%`;
+}
+
+function isInconclusiveConversion(item) {
+  return String(item?.conversion_conclusion || '').startsWith('inconclusive_');
+}
+
+function conversionConclusionLabel(value) {
+  const labels = {
+    exact_declared_link: 'Declared-link cohort',
+    observed_declared_link: 'Declared-link cohort',
+    inconclusive_no_declared_link: 'Social evidence only',
+    inconclusive_missing_timestamps: 'Conversion timing incomplete',
+  };
+  if (!value) return 'Conversion conclusion unavailable';
+  return labels[value] || String(value).replaceAll('_', ' ');
+}
+
+function conversionConclusionDetail(item) {
+  if (item?.conversion_conclusion === 'inconclusive_no_declared_link') {
+    return 'This ordinary social-only post has no declared clickable handoff, so it has no post conversion claim. Review can still proceed from its reach, views, and engagement evidence.';
+  }
+  if (isInconclusiveConversion(item)) {
+    return 'Post-level conversion evidence is inconclusive. Unavailable conversion and retention fields are withheld rather than treated as zero; review can still proceed using the available evidence.';
+  }
+  if (item?.post_conversion_eligible === true) {
+    return 'Conversions are bounded to this post through its declared clickable handoff and measurement cutoff.';
+  }
+  return 'No post-level conversion conclusion is available. Unavailable fields are not observed zeros.';
+}
+
+function suggestedDecisionFor(item) {
+  if (!item) return '';
+  if (item.conversion_conclusion === 'inconclusive_no_declared_link') {
+    return 'Iterate is supported by the social evidence. Repeat needs a separate, explicit social-only override because no post-level conversion claim is available.';
+  }
+  if (isInconclusiveConversion(item)) {
+    return 'Use only the available social and funnel evidence. Missing conversion or retention fields are not zeros and should not drive the decision.';
+  }
+
+  const paidUsers = hasMetricValue(item.paid_users) ? Number(item.paid_users) : null;
+  const retainedUsers = item.retention_mature === true && hasMetricValue(item.retained_users)
+    ? Number(item.retained_users)
+    : null;
+  const activatedWorkspaces = hasMetricValue(item.activated_workspaces)
+    ? Number(item.activated_workspaces)
+    : null;
+  const activatedReps = hasMetricValue(item.activated_reps)
+    ? Number(item.activated_reps)
+    : null;
+  const ownedIntents = hasMetricValue(item.owned_intents)
+    ? Number(item.owned_intents)
+    : null;
+  const signups = hasMetricValue(item.signups) ? Number(item.signups) : null;
+
+  if (paidUsers > 0) return 'Repeat is supported by bounded paid-user evidence.';
+  if (retainedUsers > 0) return 'Repeat is supported by mature, bounded retention evidence.';
+  if (activatedWorkspaces > 0 || activatedReps > 0) {
+    return 'Repeat is supported by bounded downstream activation evidence.';
+  }
+  if (ownedIntents > 0 || signups > 0) return 'Iterate the clearest measured downstream leak.';
+
+  const hasAnyConversionEvidence = [
+    item.landing_sessions,
+    item.signups,
+    item.activated_workspaces,
+    item.activated_reps,
+    item.paid_users,
+  ].some(hasMetricValue);
+  return hasAnyConversionEvidence
+    ? 'Review the measured hook and handoff. Any unavailable fields remain unknown, not zero.'
+    : 'Conversion evidence is unavailable. Decide from social evidence without making a post-level conversion claim.';
+}
+
+function isNontrivialRepeatOverride(value) {
+  const note = String(value || '').trim().replace(/\s+/g, ' ');
+  const words = note.toLowerCase().match(/[a-z0-9]+/g) || [];
+  return note.length >= 24 && words.length >= 5 && new Set(words).size >= 4;
+}
+
+function exactRepeatOutcomeSupported(item) {
+  if (
+    item?.conversion_conclusion !== 'exact_declared_link'
+    || item?.conversion_counters_available !== true
+  ) {
+    return false;
+  }
+  const activationSupported = [
+    item?.activated_workspaces,
+    item?.activated_users,
+    item?.activated_reps,
+  ].some((value) => hasMetricValue(value) && Number(value) > 0);
+  const retentionSupported = item?.retention_mature === true
+    && hasMetricValue(item?.retained_users)
+    && Number(item.retained_users) > 0;
+  const paidSupported = hasMetricValue(item?.paid_users)
+    && Number(item.paid_users) > 0;
+  return activationSupported || retentionSupported || paidSupported;
+}
+
 function ActionCard({ eyebrow, icon: Icon, children }) {
   return (
     <article className="min-w-0 rounded-2xl border border-white/10 bg-black/45 p-4">
@@ -100,6 +211,7 @@ export default function GrowthActionQueue({
   onDecision,
 }) {
   const [decisionNote, setDecisionNote] = React.useState('');
+  const [repeatOverrideNote, setRepeatOverrideNote] = React.useState('');
   const items = queue?.items || [];
   const nextPublish = queue?.next_publish;
   const nextSnapshot = queue?.next_snapshot;
@@ -110,6 +222,7 @@ export default function GrowthActionQueue({
 
   React.useEffect(() => {
     setDecisionNote('');
+    setRepeatOverrideNote('');
   }, [nextDecision?.platform, nextDecision?.campaign, nextDecision?.content]);
 
   const copyLink = async (item) => {
@@ -127,12 +240,31 @@ export default function GrowthActionQueue({
   };
 
   const snapshotAge = Number(nextSnapshot?.snapshot_action_days || 0) || null;
-  const suggestedDecision = nextDecision?.activated_workspaces > 0
-    || nextDecision?.activated_reps > 0
-    ? 'Repeat is supported by downstream activation.'
-    : nextDecision?.owned_intents > 0 || nextDecision?.signups > 0
-      ? 'Iterate the clearest downstream leak.'
-      : 'Review the hook and handoff before choosing.';
+  const providerManagedSnapshot = nextSnapshot?.delivery_managed_by === 'buffer';
+  const manualSnapshotAllowed = !providerManagedSnapshot
+    || nextSnapshot?.snapshot_manual_entry_allowed === true;
+  const providerCheckpointStatus =
+    nextSnapshot?.snapshot_provider_checkpoint_status || 'collecting';
+  const providerCheckpointCopy = {
+    collecting: 'Buffer is still collecting this fixed-age checkpoint. Manual entry stays locked so it cannot conflict with provider evidence.',
+    captured: 'Buffer recorded this checkpoint. Refresh the report if its metric row is not visible; manual replacement is not authorized.',
+    complete: 'Buffer completed its metric sync without authorizing a manual repair for this checkpoint.',
+    unlinked: 'The measurement plan is not linked to one exact Buffer metric job. Resolve that linkage before entering evidence.',
+    conflict: 'Conflicting Buffer metric jobs or checkpoints need repair before any manual evidence can be accepted.',
+  };
+  const suggestedDecision = suggestedDecisionFor(nextDecision);
+  const policyBaseSupported = nextDecision?.decision_policy_base_supported === true;
+  const socialOnlyDecision = nextDecision?.conversion_conclusion
+    === 'inconclusive_no_declared_link';
+  const repeatOverrideValid = isNontrivialRepeatOverride(repeatOverrideNote);
+  const repeatSupported = policyBaseSupported && (
+    exactRepeatOutcomeSupported(nextDecision)
+    || (socialOnlyDecision && repeatOverrideValid)
+  );
+  const comparableSnapshots = Number(
+    nextDecision?.comparable_fixed_age_snapshots || 0,
+  );
+  const holdSupported = policyBaseSupported && comparableSnapshots >= 3;
 
   if (!items.length) {
     return (
@@ -323,24 +455,44 @@ export default function GrowthActionQueue({
               <Button
                 type="button"
                 onClick={() => onSnapshot(nextSnapshot, snapshotAge)}
-                disabled={busy || !snapshotAge}
-                style={snapshotAge === nextSnapshot.snapshot_days
+                disabled={busy || !snapshotAge || !manualSnapshotAllowed}
+                style={manualSnapshotAllowed && snapshotAge === nextSnapshot.snapshot_days
                   ? { background: accent, color: accentText }
                   : undefined}
-                variant={snapshotAge === nextSnapshot.snapshot_days ? 'default' : 'outline'}
+                variant={manualSnapshotAllowed && snapshotAge === nextSnapshot.snapshot_days
+                  ? 'default'
+                  : 'outline'}
                 className={`mt-4 w-full font-black ${
-                  snapshotAge === nextSnapshot.snapshot_days
+                  manualSnapshotAllowed && snapshotAge === nextSnapshot.snapshot_days
                     ? ''
                     : 'border-white/15 bg-white/5 text-white hover:bg-white/10'
                 }`}
               >
                 <Camera className="mr-2 h-4 w-4" />
-                {snapshotAge === nextSnapshot.snapshot_days
-                  ? `Log ${snapshotAge}-day snapshot`
-                  : snapshotAge
-                    ? `Log ${snapshotAge}-day early read`
-                    : 'Early read available after 24h'}
+                {providerManagedSnapshot && providerCheckpointStatus === 'review_needed'
+                  ? `Repair ${snapshotAge}-day snapshot`
+                  : providerManagedSnapshot
+                    ? providerCheckpointStatus === 'captured'
+                      ? 'Buffer checkpoint captured'
+                      : 'Buffer collecting'
+                    : snapshotAge === nextSnapshot.snapshot_days
+                      ? `Log ${snapshotAge}-day snapshot`
+                      : snapshotAge
+                        ? `Log ${snapshotAge}-day early read`
+                        : 'Early read available after 24h'}
               </Button>
+              {providerManagedSnapshot && (
+                <p className={`mt-2 rounded-lg border px-3 py-2 text-[10px] leading-relaxed ${
+                  providerCheckpointStatus === 'review_needed'
+                    ? 'border-amber-400/20 bg-amber-400/10 text-amber-100'
+                    : 'border-blue-400/20 bg-blue-400/10 text-blue-100/75'
+                }`}>
+                  {providerCheckpointStatus === 'review_needed'
+                    ? 'Buffer explicitly marked this exact checkpoint for review. Manual repair is now available and will remain separate from provider evidence.'
+                    : providerCheckpointCopy[providerCheckpointStatus]
+                      || providerCheckpointCopy.collecting}
+                </p>
+              )}
             </div>
           ) : (
             <EmptyAction
@@ -366,29 +518,98 @@ export default function GrowthActionQueue({
                   The snapshot changed after the prior decision. Review the current evidence again.
                 </p>
               )}
+              <div className={`mt-2 rounded-lg border px-2.5 py-2 ${
+                nextDecision.conversion_conclusion === 'inconclusive_no_declared_link'
+                  ? 'border-cyan-400/20 bg-cyan-400/10'
+                  : isInconclusiveConversion(nextDecision)
+                    ? 'border-amber-400/20 bg-amber-400/10'
+                    : 'border-white/10 bg-white/[0.035]'
+              }`}>
+                <p className={`text-[9px] font-black uppercase tracking-wider ${
+                  nextDecision.conversion_conclusion === 'inconclusive_no_declared_link'
+                    ? 'text-cyan-100'
+                    : isInconclusiveConversion(nextDecision)
+                      ? 'text-amber-100'
+                      : 'text-white/55'
+                }`}>
+                  {conversionConclusionLabel(nextDecision.conversion_conclusion)}
+                </p>
+                <p className="mt-1 text-[10px] leading-relaxed text-white/45">
+                  {conversionConclusionDetail(nextDecision)}
+                </p>
+              </div>
+              <p className="mt-2 text-[9px] font-bold uppercase tracking-wider text-white/35">
+                30-day retention: {nextDecision.retention_mature === true
+                  ? 'mature'
+                  : nextDecision.retention_mature === false
+                    ? 'maturing'
+                    : 'maturity unavailable'}
+              </p>
               <div className="mt-3 grid grid-cols-3 gap-1.5 text-center">
                 <div className="rounded-lg bg-white/5 p-2">
-                  <p className="text-lg font-black">{Number(nextDecision.reach || 0).toLocaleString()}</p>
+                  <p className="text-lg font-black">{optionalCount(nextDecision.reach)}</p>
                   <p className="text-[8px] uppercase text-white/35">Reach</p>
                 </div>
                 <div className="rounded-lg bg-white/5 p-2">
-                  <p className="text-lg font-black">{nextDecision.landing_sessions}</p>
+                  <p className="text-lg font-black">{optionalCount(nextDecision.landing_sessions)}</p>
                   <p className="text-[8px] uppercase text-white/35">Landings</p>
                 </div>
                 <div className="rounded-lg bg-white/5 p-2">
-                  <p className="text-lg font-black">{nextDecision.signups}</p>
+                  <p className="text-lg font-black">{optionalCount(nextDecision.signups)}</p>
                   <p className="text-[8px] uppercase text-white/35">Signups</p>
                 </div>
                 <div className="rounded-lg bg-white/5 p-2">
-                  <p className="text-lg font-black">{nextDecision.activated_workspaces}</p>
+                  <p className="text-lg font-black">{optionalCount(nextDecision.activated_workspaces)}</p>
                   <p className="text-[8px] uppercase text-white/35">Workspaces</p>
                 </div>
                 <div className="rounded-lg bg-white/5 p-2">
-                  <p className="text-lg font-black">{nextDecision.activated_reps}</p>
+                  <p className="text-lg font-black">{optionalCount(nextDecision.activated_reps)}</p>
                   <p className="text-[8px] uppercase text-white/35">Rep outcomes</p>
+                </div>
+                <div className="rounded-lg bg-white/5 p-2">
+                  <p className="text-lg font-black">{optionalCount(nextDecision.paid_users)}</p>
+                  <p className="text-[8px] uppercase text-white/35">Paid users</p>
+                </div>
+                <div className="rounded-lg bg-white/5 p-2">
+                  <p className="text-lg font-black">
+                    {nextDecision.retention_mature === true
+                      && hasMetricValue(nextDecision.retained_users)
+                      && hasMetricValue(nextDecision.retention_eligible_users)
+                      ? `${optionalCount(nextDecision.retained_users)} / ${optionalCount(nextDecision.retention_eligible_users)}`
+                      : '—'}
+                  </p>
+                  <p className="text-[8px] uppercase text-white/35">Retained / eligible</p>
+                </div>
+                <div className="rounded-lg bg-white/5 p-2">
+                  <p className="text-lg font-black">
+                    {nextDecision.retention_mature === true
+                      ? optionalPercent(nextDecision.retention_rate)
+                      : '—'}
+                  </p>
+                  <p className="text-[8px] uppercase text-white/35">Retention rate</p>
                 </div>
               </div>
               <p className="mt-3 text-[10px] leading-relaxed text-white/40">{suggestedDecision}</p>
+              <div className={`mt-3 rounded-lg border px-2.5 py-2 ${
+                policyBaseSupported
+                  ? 'border-emerald-400/20 bg-emerald-400/10'
+                  : 'border-amber-400/20 bg-amber-400/10'
+              }`}>
+                <p className="text-[9px] font-black uppercase tracking-wider text-white/65">
+                  Decision policy · {nextDecision.decision_policy_id || 'unavailable'}
+                </p>
+                <p className="mt-1 text-[10px] leading-relaxed text-white/45">
+                  {policyBaseSupported
+                    ? `Base evidence ready: ${(nextDecision.observed_platform_native_exposure_fields || []).join(' + ')} observed at the canonical checkpoint. ${comparableSnapshots} comparable fixed-age snapshot${comparableSnapshots === 1 ? '' : 's'}.`
+                    : 'Decision controls are blocked until a canonical fixed-age snapshot includes an explicitly observed reach or views field.'}
+                </p>
+                {Array.isArray(nextDecision.decision_policy_reason_codes)
+                  && nextDecision.decision_policy_reason_codes.length > 0 && (
+                  <p className="mt-1 font-mono text-[9px] text-white/35">
+                    Bound reasons: {nextDecision.decision_policy_reason_codes.join(', ')}
+                  </p>
+                )}
+              </div>
               <label
                 htmlFor="growth-decision-note"
                 className="mt-3 block text-[10px] font-black uppercase tracking-wider text-white/55"
@@ -405,14 +626,49 @@ export default function GrowthActionQueue({
                 className="mt-1.5 min-h-20 border-white/10 bg-black text-xs text-white"
               />
               <p id="growth-decision-help" className="mt-1.5 text-[9px] leading-relaxed text-white/35">
-                A note is required. Hold unlocks after three same-campaign,
-                same-age snapshots in this comparison group.
+                A note is required. Iterate uses the base social evidence. Repeat
+                requires a positive exact activation, mature retained user, paid user,
+                or the separate social-only override below. Hold needs three comparable
+                fixed-age snapshots.
               </p>
+              {socialOnlyDecision && (
+                <>
+                  <label
+                    htmlFor="growth-repeat-override-note"
+                    className="mt-3 block text-[10px] font-black uppercase tracking-wider text-cyan-100/75"
+                  >
+                    Social-only Repeat override
+                  </label>
+                  <Textarea
+                    id="growth-repeat-override-note"
+                    value={repeatOverrideNote}
+                    onChange={(event) => setRepeatOverrideNote(event.target.value)}
+                    maxLength={500}
+                    aria-describedby="growth-repeat-override-help"
+                    placeholder="Why is repeating justified despite unavailable post-level conversion evidence?"
+                    className="mt-1.5 min-h-20 border-cyan-400/20 bg-cyan-950/10 text-xs text-white"
+                  />
+                  <p id="growth-repeat-override-help" className="mt-1.5 text-[9px] leading-relaxed text-cyan-100/45">
+                    Required only for social-only Repeat: at least 24 characters and five
+                    words. The server hashes and binds this separate override to the review.
+                  </p>
+                </>
+              )}
               <div className="mt-3 grid grid-cols-3 gap-1.5">
                 <Button
                   type="button"
-                  onClick={() => onDecision(nextDecision, 'repeat', decisionNote)}
-                  disabled={busy || decisionNote.trim().length < 5}
+                  onClick={() => onDecision(
+                    nextDecision,
+                    'repeat',
+                    decisionNote,
+                    repeatOverrideNote,
+                  )}
+                  disabled={busy || decisionNote.trim().length < 5 || !repeatSupported}
+                  title={repeatSupported
+                    ? 'Repeat this evidence-backed pattern'
+                    : socialOnlyDecision
+                      ? 'Add a nontrivial social-only override to Repeat'
+                      : 'Repeat requires a positive exact activation, mature retained user, or paid user'}
                   className="h-10 bg-green-500/15 px-2 text-[10px] font-black text-green-100 hover:bg-green-500/25"
                 >
                   <Repeat2 className="mr-1 h-3.5 w-3.5" />
@@ -421,7 +677,7 @@ export default function GrowthActionQueue({
                 <Button
                   type="button"
                   onClick={() => onDecision(nextDecision, 'iterate', decisionNote)}
-                  disabled={busy || decisionNote.trim().length < 5}
+                  disabled={busy || decisionNote.trim().length < 5 || !policyBaseSupported}
                   className="h-10 bg-blue-500/15 px-2 text-[10px] font-black text-blue-100 hover:bg-blue-500/25"
                 >
                   <Wand2 className="mr-1 h-3.5 w-3.5" />
@@ -430,8 +686,8 @@ export default function GrowthActionQueue({
                 <Button
                   type="button"
                   onClick={() => onDecision(nextDecision, 'hold', decisionNote)}
-                  disabled={busy || decisionNote.trim().length < 5 || !nextDecision.hold_eligible}
-                  title={nextDecision.hold_eligible
+                  disabled={busy || decisionNote.trim().length < 5 || !holdSupported}
+                  title={holdSupported
                     ? 'Hold this concept'
                     : 'Hold unlocks after three comparable fixed-age snapshots'}
                   className="h-10 bg-white/10 px-2 text-[10px] font-black text-white/70 hover:bg-white/15"

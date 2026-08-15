@@ -1,10 +1,17 @@
 import { neon } from 'npm:@neondatabase/serverless@0.9.0';
 
-const connectionString = 'postgresql://neondb_owner:npg_jsLScDO6w9mf@ep-fragrant-bush-ahixbnax-pooler.c-3.us-east-1.aws.neon.tech/neondb?sslmode=require';
-const sql = neon(connectionString);
+function getDatabaseClient() {
+  const databaseUrl = Deno.env.get('DATABASE_URL') || Deno.env.get('NEON_DATABASE_URL');
+  return databaseUrl ? neon(databaseUrl) : null;
+}
 
 Deno.serve(async (req) => {
   try {
+    const sql = getDatabaseClient();
+    if (!sql) {
+      return Response.json({ error: 'Database connection is not configured on the server.' }, { status: 503 });
+    }
+
     const { searchParams } = new URL(req.url);
     const testZip = searchParams.get('zip') || '29401';
     

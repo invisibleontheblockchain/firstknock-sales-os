@@ -1,5 +1,6 @@
 export const ACQUISITION_STORAGE_KEY = 'fk_acquisition_touch_v1';
 export const ACQUISITION_TOUCH_TTL_MS = 90 * 24 * 60 * 60 * 1000;
+export const ACQUISITION_REPORTED_CONTENT_METHOD = 'visitor_self_report';
 
 const TRACKING_PARAMS = [
   'utm_source',
@@ -8,6 +9,12 @@ const TRACKING_PARAMS = [
   'utm_content',
   'utm_term',
 ];
+
+const SOCIAL_PLATFORMS = new Set(['instagram', 'tiktok']);
+const GENERIC_CONTENT_BY_PLATFORM = {
+  instagram: 'ig-bio',
+  tiktok: 'tt-bio',
+};
 
 function cleanToken(value, maxLength = 120) {
   return String(value || '')
@@ -18,6 +25,15 @@ function cleanToken(value, maxLength = 120) {
     .replace(/-+/g, '-')
     .replace(/^-|-$/g, '')
     .slice(0, maxLength);
+}
+
+export function isGenericAcquisitionContent(sourceValue, contentValue) {
+  const source = cleanToken(sourceValue);
+  const content = cleanToken(contentValue);
+  if (!SOCIAL_PLATFORMS.has(source)) return false;
+  return !content
+    || content === 'unassigned'
+    || content === GENERIC_CONTENT_BY_PLATFORM[source];
 }
 
 function cleanPath(value) {
@@ -149,6 +165,80 @@ export function captureAcquisitionTouch({
   }
 
   return touch;
+}
+
+export function reportStoredAcquisitionContent({
+  platform,
+  campaign,
+  contentId,
+  expectedCapturedAt,
+  now = new Date(),
+  storage = globalThis.localStorage,
+} = {}) {
+  if (!storage) return { status: 'unavailable' };
+  const source = cleanToken(platform);
+  const cleanCampaign = cleanToken(campaign) || 'unassigned';
+  const content = cleanToken(contentId);
+  const expected = String(expectedCapturedAt || '');
+  const expectedPrefix = source === 'instagram' ? 'ig-' : 'tt-';
+  if (
+    !SOCIAL_PLATFORMS.has(source)
+    || !content
+    || !content.startsWith(expectedPrefix)
+    || isGenericAcquisitionContent(source, content)
+    || !expected
+  ) {
+    return { status: 'invalid' };
+  }
+
+  try {
+    const existing = readStoredAcquisition(storage, now);
+    const lastTouch = existing?.last_touch;
+    if (
+      !existing
+      || existing.synced_user_id
+      || !lastTouch
+      || String(lastTouch.captured_at || '') !== expected
+      || cleanToken(lastTouch.source) !== source
+      || cleanToken(lastTouch.campaign) !== cleanCampaign
+      || !isGenericAcquisitionContent(source, lastTouch.content)
+    ) {
+      return { status: 'stale' };
+    }
+
+    const reportedAt = now instanceof Date ? now : new Date(now);
+    const report = {
+      reported_content_id: content,
+      reported_content_method: ACQUISITION_REPORTED_CONTENT_METHOD,
+      reported_content_at: Number.isFinite(reportedAt.getTime())
+        ? reportedAt.toISOString()
+        : new Date().toISOString(),
+    };
+    const nextLastTouch = { ...lastTouch, ...report };
+    const firstTouch = existing.first_touch;
+    const firstIsSameJourney = Boolean(
+      firstTouch
+      && String(firstTouch.captured_at || '') === expected
+      && cleanToken(firstTouch.source) === source
+      && cleanToken(firstTouch.campaign) === cleanCampaign
+      && isGenericAcquisitionContent(source, firstTouch.content),
+    );
+    const next = {
+      ...existing,
+      first_touch: firstIsSameJourney
+        ? { ...firstTouch, ...report }
+        : firstTouch,
+      last_touch: nextLastTouch,
+      synced_last_touch_at: '',
+    };
+    storage.setItem(ACQUISITION_STORAGE_KEY, JSON.stringify(next));
+    return {
+      status: 'reported',
+      touch: nextLastTouch,
+    };
+  } catch {
+    return { status: 'unavailable' };
+  }
 }
 
 export function shouldSyncStoredAcquisition(stored, userId) {

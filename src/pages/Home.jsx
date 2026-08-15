@@ -89,11 +89,6 @@ import {
 import { BRAND, DEFAULT_STATUS_COLORS, COLOR_SCHEME_MAP, LINE_DASH_MAP, ROUTE_COLORS } from '../components/map/homeMapConstants';
 
 import { LocationMarker, MapRefHandler, MapController } from '../components/map/MapHelpers';
-import MapAttributionControl from '../components/map/MapAttributionControl';
-import {
-    CARTO_ATTRIBUTION,
-    ESRI_IMAGERY_ATTRIBUTION,
-} from '../components/map/mapAttribution';
 import useViewportMapProperties from '../components/map/useViewportMapProperties';
 import { captureParkedCarLocation, isLowAccuracyCapture, lowAccuracyConfirmationMessage } from '@/lib/parkedCarLocation';
 import { OPTIMIZE_MODES, resolveOptimizeMode, routeOriginModeForOptimizeMode } from '@/lib/routeOriginModes';

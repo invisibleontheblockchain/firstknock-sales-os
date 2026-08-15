@@ -8,6 +8,7 @@ export const ACQUISITION_SESSION_TIMEOUT_MS = 30 * 60 * 1000;
 const EVENT_NAMES = new Set([
   'landing_viewed',
   'signup_cta_clicked',
+  'content_assist_reported',
 ]);
 
 function createId(prefix, cryptoApi = globalThis.crypto) {
@@ -94,6 +95,8 @@ export function buildAcquisitionEvent(eventName, {
   landingPath = globalThis.location?.pathname || '/instagram',
   identity = getAcquisitionIdentity(),
   storage = globalThis.localStorage,
+  touchOverride,
+  useStoredTouch = true,
   now = new Date(),
   cryptoApi = globalThis.crypto,
 } = {}) {
@@ -101,8 +104,10 @@ export function buildAcquisitionEvent(eventName, {
     throw new Error(`Unsupported acquisition event: ${eventName}`);
   }
 
-  const stored = readStoredAcquisition(storage);
-  const touch = stored?.last_touch || stored?.first_touch || null;
+  const stored = useStoredTouch ? readStoredAcquisition(storage) : null;
+  const touch = touchOverride !== undefined
+    ? touchOverride
+    : stored?.last_touch || stored?.first_touch || null;
   const occurredAt = now instanceof Date ? now : new Date(now);
 
   return {

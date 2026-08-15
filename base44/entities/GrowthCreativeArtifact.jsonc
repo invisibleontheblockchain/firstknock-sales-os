@@ -77,7 +77,7 @@
     "provider_text": {
       "type": "string",
       "maxLength": 2200,
-      "description": "Exact caption, disclosure, CTA, and tracking URL submitted to the provider"
+      "description": "Exact provider description after platform-specific disclosure and CTA assembly; TikTok keeps its tracked URL on the artifact for the controlled profile link"
     },
     "overlay_text": {
       "type": "array",

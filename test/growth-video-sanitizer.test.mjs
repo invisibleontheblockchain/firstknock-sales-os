@@ -29,6 +29,11 @@ const AUDIT_PLAN_PATH = resolve(
   'growth-media',
   'firstknock-video-pilot-sanitize-plan.json',
 );
+const SUPPLEMENT_PLAN_PATH = resolve(
+  'config',
+  'growth-media',
+  'firstknock-video-supplement-sanitize-plan.json',
+);
 
 function hash(bytes) {
   return createHash('sha256').update(bytes).digest('hex');
@@ -172,6 +177,171 @@ test('checked-in pilot plan satisfies the exact bounded sanitizer contract', asy
       asset.output_duration_ms >= 5000
       && asset.output_duration_ms <= 15000
       && asset.trim.hard_end === true
+      && asset.release_state
+        === 'blocked_until_sanitized_derivative_hash_and_frame_review'
+    )),
+    true,
+  );
+});
+
+test('checked-in supplement plan binds the three audited donors and exact mask boundaries', async () => {
+  const plan = validateSanitizePlan(
+    JSON.parse(await readFile(SUPPLEMENT_PLAN_PATH, 'utf8')),
+  );
+  assert.equal(plan.schema_version, 'firstknock-video-sanitize-plan.v1');
+  assert.equal(plan.plan_id, 'firstknock-video-supplement-3-donor-2026-07');
+  assert.equal(plan.assets.length, 3);
+  assert.deepEqual(
+    plan.assets.map((asset) => ({
+      filename: asset.raw_source.filename,
+      bytes: asset.raw_source.bytes,
+      sha256: asset.raw_source.sha256,
+      duration_ms: asset.raw_source.duration_ms,
+      trim: asset.trim,
+      output_duration_ms: asset.output_duration_ms,
+      short_source_fit: asset.short_source_fit,
+      masks: asset.privacy_masks.map((mask) => ({
+        id: mask.id,
+        x: mask.x,
+        y: mask.y,
+        width: mask.width,
+        height: mask.height,
+        start_ms: mask.start_ms,
+        end_ms: mask.end_ms,
+        start_frame_inclusive: mask.start_frame_inclusive,
+        end_frame_exclusive: mask.end_frame_exclusive,
+      })),
+    })),
+    [
+      {
+        filename: 'ScreenRecording_07-23-2026 16-27-07_1.MP4',
+        bytes: 28251490,
+        sha256: '96d2eaed66255c19bf01fdea6b713aaf703e19e7fc2a63127a662664e90cc8fc',
+        duration_ms: 13418.333,
+        trim: {
+          start_ms: 5513.333,
+          end_ms: 12101.667,
+          hard_end: true,
+          reject_frames_at_or_after_end: true,
+          start_frame_inclusive: 330,
+          start_pts_ms: 5513.333,
+          end_frame_exclusive: 725,
+          end_pts_exclusive_ms: 12101.667,
+        },
+        output_duration_ms: 6588,
+        short_source_fit: 'none',
+        masks: [{
+          id: 'sale-property-identifier',
+          x: 45,
+          y: 675,
+          width: 1115,
+          height: 300,
+          start_ms: 5513.333,
+          end_ms: 12101.667,
+          start_frame_inclusive: 330,
+          end_frame_exclusive: 725,
+        }],
+      },
+      {
+        filename: 'ScreenRecording_07-23-2026 19-27-18_1.MP4',
+        bytes: 15767498,
+        sha256: '02c07db2de72a9c4843efcd7e26b3c871a647c520dc35e67617cd3009d7927d1',
+        duration_ms: 7568.333,
+        trim: {
+          start_ms: 1500,
+          end_ms: 6868.333,
+          hard_end: true,
+          reject_frames_at_or_after_end: true,
+          start_frame_inclusive: 89,
+          start_pts_ms: 1500,
+          end_frame_exclusive: 411,
+          end_pts_exclusive_ms: 6868.333,
+        },
+        output_duration_ms: 5368,
+        short_source_fit: 'none',
+        masks: [
+          {
+            id: 'stop-address-before-scroll',
+            x: 270,
+            y: 690,
+            width: 520,
+            height: 180,
+            start_ms: 1500,
+            end_ms: 2550,
+            start_frame_inclusive: 89,
+            end_frame_exclusive: 152,
+          },
+          {
+            id: 'stop-address-after-scroll',
+            x: 270,
+            y: 440,
+            width: 520,
+            height: 150,
+            start_ms: 2550,
+            end_ms: 6868.333,
+            start_frame_inclusive: 152,
+            end_frame_exclusive: 411,
+          },
+          {
+            id: 'stop-phone-after-scroll',
+            x: 55,
+            y: 1390,
+            width: 565,
+            height: 170,
+            start_ms: 2550,
+            end_ms: 6868.333,
+            start_frame_inclusive: 152,
+            end_frame_exclusive: 411,
+          },
+          {
+            id: 'stop-property-detail-chip',
+            x: 50,
+            y: 2025,
+            width: 805,
+            height: 145,
+            start_ms: 1500,
+            end_ms: 6868.333,
+            start_frame_inclusive: 89,
+            end_frame_exclusive: 411,
+          },
+        ],
+      },
+      {
+        filename: 'ScreenRecording_07-23-2026 16-31-35_1.MP4',
+        bytes: 24640095,
+        sha256: '9bc911880146fb57f0dedae3ec0414cec42deb4fc5bd4d1f617738b8f27ec4d6',
+        duration_ms: 13468.333,
+        trim: {
+          start_ms: 500,
+          end_ms: 5551.667,
+          hard_end: true,
+          reject_frames_at_or_after_end: true,
+          start_frame_inclusive: 30,
+          start_pts_ms: 500,
+          end_frame_exclusive: 333,
+          end_pts_exclusive_ms: 5551.667,
+        },
+        output_duration_ms: 5051,
+        short_source_fit: 'none',
+        masks: [{
+          id: 'demo-property-list',
+          x: 215,
+          y: 1320,
+          width: 905,
+          height: 1068,
+          start_ms: 500,
+          end_ms: 5551.667,
+          start_frame_inclusive: 30,
+          end_frame_exclusive: 333,
+        }],
+      },
+    ],
+  );
+  assert.equal(
+    plan.assets.every((asset) => (
+      asset.output_duration_ms >= 5000
+      && asset.short_source_fit === 'none'
+      && asset.apply_default_crop === true
       && asset.release_state
         === 'blocked_until_sanitized_derivative_hash_and_frame_review'
     )),
@@ -418,6 +588,55 @@ test('filter applies strict hard trim and raw-coordinate masks before crop and s
   assert.ok(filter.indexOf('drawbox=') < filter.indexOf('crop='));
   assert.ok(filter.indexOf('crop=') < filter.indexOf('scale='));
   assert.match(filter, /scale=in_range=auto:out_range=tv,format=yuv420p$/);
+});
+
+test('asset-specific crop is validated and applied after masks', () => {
+  const rawPlan = samplePlan();
+  rawPlan.assets[0].apply_default_crop = false;
+  rawPlan.assets[0].crop = {
+    x: 10,
+    y: 20,
+    width: 300,
+    height: 600,
+  };
+  const plan = validateSanitizePlan(rawPlan);
+  const asset = plan.assets[0];
+  assert.deepEqual(asset.crop, rawPlan.assets[0].crop);
+  assert.equal(
+    validateAssetAgainstProbe(asset, {
+      codec: 'h264',
+      width: 320,
+      height: 640,
+      fps: 30,
+      duration_ms: 2000,
+      start_time_ms: 0,
+      rotation: 0,
+    }, plan.output_profile),
+    true,
+  );
+  const filter = buildSanitizedVideoFilter(asset, plan.output_profile);
+  assert.match(filter, /crop=w=300:h=600:x=10:y=20/);
+  assert.ok(filter.indexOf('drawbox=') < filter.indexOf('crop='));
+
+  const conflictingPlan = samplePlan();
+  conflictingPlan.assets[0].crop = rawPlan.assets[0].crop;
+  assert.throws(
+    () => validateSanitizePlan(conflictingPlan),
+    /cannot combine apply_default_crop with a custom crop/,
+  );
+
+  const outOfBoundsPlan = samplePlan();
+  outOfBoundsPlan.assets[0].apply_default_crop = false;
+  outOfBoundsPlan.assets[0].crop = {
+    x: 21,
+    y: 20,
+    width: 300,
+    height: 600,
+  };
+  assert.throws(
+    () => validateSanitizePlan(outOfBoundsPlan),
+    /crop exceeds the expected raw bounds/,
+  );
 });
 
 test('real FFmpeg sanitizer masks raw pixels, excludes post-trim frames, freezes safely, and reruns identically', {

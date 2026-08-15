@@ -76,6 +76,7 @@ const SLOW_POLLING_JOB_STATES = new Set([
 ]);
 const SUPPORTED_MEDIA_TYPES = new Set(['video/mp4', 'image/jpeg', 'image/png', 'image/webp']);
 const MAX_SOCIAL_POST_TEXT = 2200;
+const TIKTOK_SOCIAL_POST_TEXT_LIMIT = 2200;
 const PHOENIX_UTC_OFFSET_MS = 7 * 60 * 60 * 1000;
 const MINIMUM_SCHEDULE_LEAD_MS = 15 * 60 * 1000;
 const PHOENIX_CADENCE_SLOTS = [
@@ -93,6 +94,7 @@ const MAX_SEED_MANIFEST_BYTES = 150_000;
 const MAX_BATCH_NOTE_LENGTH = 500;
 const LEGACY_MEASURED_PROFILE = 'measured-next-batch-v1';
 const FEATURE_EXPLAINER_VIDEO_PROFILE = 'feature_explainer_video_v1';
+const FEATURE_EXPLAINER_SOURCE_KINDS = new Set(['video', 'image']);
 
 const PILLARS = [
   'Product proof',
@@ -137,6 +139,21 @@ function phoenixDayKey(timestamp) {
 
 function nextPhoenixTargetDate(now = Date.now()) {
   return phoenixDayKey(now + DAY_MS);
+}
+
+function nextBootstrapTargetDate(batches = [], now = Date.now()) {
+  const floor = nextPhoenixTargetDate(now);
+  const latest = batches
+    .filter((batch) => (
+      batch?.batch_input_mode === 'audited_seed_bootstrap'
+      && !['revoked', 'superseded'].includes(batch?.state)
+      && /^\d{4}-\d{2}-\d{2}$/.test(String(batch?.target_date || ''))
+    ))
+    .map((batch) => batch.target_date)
+    .sort()
+    .at(-1);
+  if (!latest || latest < floor) return floor;
+  return phoenixDayKey(Date.parse(`${latest}T07:00:00.000Z`) + DAY_MS);
 }
 
 function measuredParentKey(item) {
@@ -187,7 +204,10 @@ function seedDonorRequirements(pack, contentProfile = LEGACY_MEASURED_PROFILE) {
       || !sourceSha256
       || growthToken(source?.privacy_status) !== 'safe'
       || growthToken(source?.rights_status) !== 'firstknock_owned'
-      || (videoFeatureExplainer && growthToken(source?.media_kind) !== 'video')
+      || (
+        videoFeatureExplainer
+        && !FEATURE_EXPLAINER_SOURCE_KINDS.has(growthToken(source?.media_kind))
+      )
     ) {
       continue;
     }
@@ -266,7 +286,10 @@ function seedSourceReadiness(
       || exactSha256(current?.source_sha256) !== requirement.source_sha256
       || (
         contentProfile === FEATURE_EXPLAINER_VIDEO_PROFILE
-        && growthToken(current?.media_kind) !== 'video'
+        && (
+          !FEATURE_EXPLAINER_SOURCE_KINDS.has(growthToken(current?.media_kind))
+          || growthToken(current?.media_kind) !== requirement.media_kind
+        )
       )
     ) {
       changed.push(requirement.asset_key);
@@ -466,17 +489,28 @@ function socialPostText(artifact) {
   const disclosure = String(artifact?.disclosure || '').trim().replace(/\s+/g, ' ').slice(0, 500);
   const ctaLabel = String(artifact?.cta_label || '').trim().replace(/\s+/g, ' ').slice(0, 160);
   const ctaUrl = String(artifact?.cta_url || '').trim().slice(0, 2048);
+  const isTikTok = artifact?.platform === 'tiktok';
   const blocks = caption ? [caption] : [];
   const normalizedCaption = caption.toLowerCase();
   if (disclosure && !normalizedCaption.includes(disclosure.toLowerCase())) {
     blocks.push(disclosure);
   }
-  const cta = [ctaLabel, ctaUrl].filter(Boolean).join(': ');
-  const ctaAlreadyPresent = ctaUrl
-    ? caption.includes(ctaUrl)
-    : ctaLabel && normalizedCaption.includes(ctaLabel.toLowerCase());
+  const cta = isTikTok
+    ? ctaLabel
+    : [ctaLabel, ctaUrl].filter(Boolean).join(': ');
+  const ctaAlreadyPresent = isTikTok
+    ? ctaLabel && normalizedCaption.includes(ctaLabel.toLowerCase())
+    : ctaUrl
+      ? caption.includes(ctaUrl)
+      : ctaLabel && normalizedCaption.includes(ctaLabel.toLowerCase());
   if (cta && !ctaAlreadyPresent) blocks.push(cta);
   return blocks.join('\n\n');
+}
+
+function socialPostTextLimit(platform) {
+  return platform === 'tiktok'
+    ? TIKTOK_SOCIAL_POST_TEXT_LIMIT
+    : MAX_SOCIAL_POST_TEXT;
 }
 
 function artifactMediaReady(artifact) {
@@ -490,7 +524,7 @@ function artifactMediaReady(artifact) {
     || Number(artifact?.height || 0) < 1
     || artifact?.provider_text !== socialPostText(artifact)
     || !artifact?.provider_text
-    || artifact.provider_text.length > MAX_SOCIAL_POST_TEXT
+    || artifact.provider_text.length > socialPostTextLimit(artifact?.platform)
   ) {
     return false;
   }
@@ -561,7 +595,9 @@ function MeasuredBatchPanel({
   onActivateBatch,
 }) {
   const seedInputRef = React.useRef(null);
+  const bootstrapSeedInputRef = React.useRef(null);
   const [builderOpen, setBuilderOpen] = React.useState(false);
+  const [bootstrapOpen, setBootstrapOpen] = React.useState(false);
   const [retrievingBatchKey, setRetrievingBatchKey] = React.useState('');
   const [batchDecision, setBatchDecision] = React.useState(null);
   const [activationDecision, setActivationDecision] = React.useState(null);
@@ -572,6 +608,13 @@ function MeasuredBatchPanel({
     concept_count: '2',
     seed_pack: null,
     seed_file_name: '',
+  }));
+  const [bootstrapDraft, setBootstrapDraft] = React.useState(() => ({
+    target_date: nextPhoenixTargetDate(),
+    seed_pack: null,
+    seed_file_name: '',
+    acknowledged: false,
+    authorization_note: '',
   }));
   const eligibleParents = reviewedBatchParents(contentQueue);
   const eligibleByKey = new Map(
@@ -594,6 +637,16 @@ function MeasuredBatchPanel({
     conceptCount,
     draft.content_profile,
   );
+  const bootstrapSeedSources = seedSourceReadiness(
+    bootstrapDraft.seed_pack,
+    sources,
+    2,
+    FEATURE_EXPLAINER_VIDEO_PROFILE,
+  );
+  const bootstrapBatchCount = batches.filter((batch) => (
+    batch?.batch_input_mode === 'audited_seed_bootstrap'
+    && !['revoked', 'superseded'].includes(batch?.state)
+  )).length;
   const registeredSafeSourceCount = (sources || []).filter((source) => (
     source?.active !== false
     && growthToken(source?.privacy_status) === 'safe'
@@ -601,13 +654,16 @@ function MeasuredBatchPanel({
     && String(source?.source_reference || '').trim()
     && (
       !featureExplainerSelected
-      || growthToken(source?.media_kind) === 'video'
+      || FEATURE_EXPLAINER_SOURCE_KINDS.has(growthToken(source?.media_kind))
     )
   )).length;
   const hasRegisteredSafeSource = registeredSafeSourceCount >= (
     featureExplainerSelected ? 2 : 1
   );
   const normalizedDecisionNote = compactBatchNote(batchDecision?.note);
+  const normalizedBootstrapNote = compactBatchNote(
+    bootstrapDraft.authorization_note,
+  );
 
   const chooseSeedPack = async (event) => {
     const file = event.target.files?.[0];
@@ -635,6 +691,32 @@ function MeasuredBatchPanel({
     }
   };
 
+  const chooseBootstrapSeedPack = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    setBootstrapDraft((current) => ({
+      ...current,
+      seed_pack: null,
+      seed_file_name: '',
+    }));
+    if (file.size > MAX_SEED_MANIFEST_BYTES) {
+      toast.error('Seed manifest must be 150 KB or smaller');
+      return;
+    }
+    try {
+      const parsed = JSON.parse(await file.text());
+      const pack = renderPackFromSeedFile(parsed);
+      setBootstrapDraft((current) => ({
+        ...current,
+        seed_pack: pack,
+        seed_file_name: file.name,
+      }));
+    } catch {
+      toast.error('Choose the exact allowlisted growth-render-pack.v1 seed JSON');
+    }
+  };
+
   const buildBatch = () => {
     if (!selectedParent || !draft.seed_pack || !seedSources.ready) return;
     onAction({
@@ -650,6 +732,28 @@ function MeasuredBatchPanel({
       seed_pack: draft.seed_pack,
     }, {
       onSuccess: () => setBuilderOpen(false),
+    });
+  };
+
+  const buildBootstrapBatch = () => {
+    if (
+      !bootstrapDraft.seed_pack
+      || !bootstrapSeedSources.ready
+      || bootstrapDraft.acknowledged !== true
+      || normalizedBootstrapNote.length < 10
+    ) {
+      return;
+    }
+    onAction({
+      action: 'build_audited_bootstrap_batch',
+      target_date: bootstrapDraft.target_date,
+      content_profile: FEATURE_EXPLAINER_VIDEO_PROFILE,
+      concept_count: 2,
+      bootstrap_acknowledged: true,
+      authorization_note: normalizedBootstrapNote,
+      seed_pack: bootstrapDraft.seed_pack,
+    }, {
+      onSuccess: () => setBootstrapOpen(false),
     });
   };
 
@@ -767,27 +871,54 @@ function MeasuredBatchPanel({
               The recommended profile turns audited app recordings into exactly two daily feature-explainer videos, each with Instagram and TikTok copy tied to measured evidence.
             </p>
           </div>
-          <Button
-            type="button"
-            size="sm"
-            onClick={() => {
-              setDraft((current) => ({
-                ...current,
-                target_date: nextPhoenixTargetDate(),
-              }));
-              setBuilderOpen(true);
-            }}
-            disabled={
-              !generationReady
-              || !eligibleParents.length
-              || busy
-            }
-            style={{ background: accent, color: accentText }}
-            className="shrink-0 font-black"
-          >
-            <CalendarClock className="mr-2 h-4 w-4" />
-            Build next batch
-          </Button>
+          <div className="flex shrink-0 flex-wrap gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setBootstrapDraft((current) => ({
+                  ...current,
+                  target_date: nextBootstrapTargetDate(batches),
+                  seed_pack: current.seed_pack || draft.seed_pack,
+                  seed_file_name: current.seed_file_name || draft.seed_file_name,
+                  acknowledged: false,
+                }));
+                setBootstrapOpen(true);
+              }}
+              disabled={
+                !generationReady
+                || !canAuthorize
+                || bootstrapBatchCount >= 7
+                || busy
+              }
+              className="border-fuchsia-300/25 bg-fuchsia-300/10 font-black text-fuchsia-100 hover:bg-fuchsia-300/20"
+            >
+              <ShieldCheck className="mr-2 h-4 w-4" />
+              Start audited week
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => {
+                setDraft((current) => ({
+                  ...current,
+                  target_date: nextPhoenixTargetDate(),
+                }));
+                setBuilderOpen(true);
+              }}
+              disabled={
+                !generationReady
+                || !eligibleParents.length
+                || busy
+              }
+              style={{ background: accent, color: accentText }}
+              className="font-black"
+            >
+              <CalendarClock className="mr-2 h-4 w-4" />
+              Build next batch
+            </Button>
+          </div>
         </div>
 
         {!generationReady && (
@@ -797,7 +928,9 @@ function MeasuredBatchPanel({
         )}
         {generationReady && !eligibleParents.length && (
           <p className="mt-3 rounded-xl border border-white/10 bg-black/25 p-3 text-[11px] leading-relaxed text-white/45">
-            No eligible parent yet. Capture a canonical fixed-age snapshot and save a current Repeat or Iterate review first; Hold and stale decisions cannot seed a batch.
+            No eligible measured parent yet. The owner can start the bounded audited week
+            above, then use its fixed-age results for normal Repeat or Iterate batches.
+            Hold and stale decisions cannot seed a batch.
           </p>
         )}
         {generationReady && !hasRegisteredSafeSource && (
@@ -812,11 +945,11 @@ function MeasuredBatchPanel({
           <CircleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-200" />
           <p className="text-[10px] leading-relaxed text-amber-100/65">
             {featureExplainerSelected
-              ? `Video capacity: this profile needs 2 distinct safe, publish-candidate video donors now and 14 for a seven-day rotation. ${
+              ? `Video capacity: this profile needs 2 distinct safe, publish-candidate video or image donors now and 14 for a seven-day rotation. Every platform rendition still exports as video. ${
                 draft.seed_pack
                   ? `The loaded seed currently exposes ${seedSources.requirements.length}.`
                   : 'Load the audited video seed to check current capacity.'
-              }`
+              } Audited bootstrap: ${bootstrapBatchCount}/7 daily batches claimed.`
               : 'Legacy capacity: a seven-day source rotation needs 14 safe donors at 2/day or 21 at 3/day.'}
           </p>
         </div>
@@ -844,7 +977,11 @@ function MeasuredBatchPanel({
                       <Pill tone={statusTone(batch.state)}>
                         {batch.state?.replaceAll('_', ' ')}
                       </Pill>
-                      <Pill>{batch.review_decision || 'review'}</Pill>
+                      <Pill>
+                        {batch.batch_input_mode === 'audited_seed_bootstrap'
+                          ? 'audited bootstrap'
+                          : batch.review_decision || 'review'}
+                      </Pill>
                       {batch.content_profile === FEATURE_EXPLAINER_VIDEO_PROFILE && (
                         <Pill tone="border-fuchsia-300/20 bg-fuchsia-300/10 text-fuchsia-100">
                           video explainer
@@ -862,8 +999,9 @@ function MeasuredBatchPanel({
                       )}
                     </div>
                     <p className="mt-1 truncate text-[10px] text-white/40">
-                      {PLATFORM_LABELS[batch.parent_platform] || batch.parent_platform}
-                      {' · '}{batch.parent_content}
+                      {batch.batch_input_mode === 'audited_seed_bootstrap'
+                        ? 'Audited FirstKnock seed · first-week evidence'
+                        : `${PLATFORM_LABELS[batch.parent_platform] || batch.parent_platform} · ${batch.parent_content}`}
                       {' · '}{batch.pack_artifact_count || batch.concept_count * 2} paired artifacts
                     </p>
                     {batch.canonical_pack_sha256 && (
@@ -953,7 +1091,7 @@ function MeasuredBatchPanel({
           <DialogHeader className="text-left">
             <DialogTitle className="text-xl font-black">Build the next measured batch</DialogTitle>
             <DialogDescription className="text-white/45">
-              Video feature explainer is recommended. The backend rechecks fixed-age evidence, video-only donor lineage, cooldowns, and the exact trusted seed before generation.
+              Video feature explainer is recommended. The backend rechecks fixed-age evidence, exact owned donor lineage, cooldowns, and the trusted seed before generation.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -1027,7 +1165,7 @@ function MeasuredBatchPanel({
                 </select>
                 {featureExplainerSelected && (
                   <p className="mt-1 text-[10px] leading-relaxed text-white/35">
-                    Locked to two concepts: two source videos, each rendered once for Instagram and once for TikTok.
+                    Locked to two concepts: two owned source recipes, each rendered as video once for Instagram and once for TikTok.
                   </p>
                 )}
               </DetailField>
@@ -1093,6 +1231,148 @@ function MeasuredBatchPanel({
                 ? 'Build two video explainers'
                 : 'Build paired batch'}
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={bootstrapOpen} onOpenChange={setBootstrapOpen}>
+        <DialogContent className="border-white/10 bg-[#080808] text-white sm:max-w-xl">
+          <DialogHeader className="text-left">
+            <DialogTitle className="text-xl font-black">
+              Start the audited first week
+            </DialogTitle>
+            <DialogDescription className="text-white/45">
+              Build one deterministic two-video day from the exact allowlisted FirstKnock
+              seed. No LLM is called and no fake performance evidence is created.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <DetailField label="Production date" helper="America/Phoenix">
+                <Input
+                  type="date"
+                  min={phoenixDayKey(Date.now())}
+                  value={bootstrapDraft.target_date}
+                  onChange={(event) => setBootstrapDraft((current) => ({
+                    ...current,
+                    target_date: event.target.value,
+                  }))}
+                  className="border-white/10 bg-black text-white"
+                />
+              </DetailField>
+              <div className="rounded-xl border border-fuchsia-300/20 bg-fuchsia-300/[0.07] p-3">
+                <p className="text-[10px] font-black uppercase tracking-wider text-fuchsia-100/55">
+                  Locked bootstrap policy
+                </p>
+                <p className="mt-2 text-sm font-black text-white">
+                  2 videos · 4 platform posts
+                </p>
+                <p className="mt-1 text-[10px] text-white/40">
+                  Day {Math.min(bootstrapBatchCount + 1, 7)} of 7 maximum
+                </p>
+              </div>
+            </div>
+            <DetailField
+              label="Exact audited seed manifest"
+              helper="Use firstknock-weekly-rights-safe-seed.json; the server verifies its full SHA-256 allowlist entry."
+            >
+              <input
+                ref={bootstrapSeedInputRef}
+                type="file"
+                accept="application/json,.json"
+                onChange={chooseBootstrapSeedPack}
+                className="hidden"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => bootstrapSeedInputRef.current?.click()}
+                className="w-full justify-start border-white/15 bg-black text-white hover:bg-white/10"
+              >
+                <Upload className="mr-2 h-4 w-4" />
+                {bootstrapDraft.seed_file_name || 'Choose audited weekly seed JSON'}
+              </Button>
+            </DetailField>
+            {bootstrapDraft.seed_pack && (
+              <div className={`rounded-xl border p-3 text-[11px] leading-relaxed ${
+                bootstrapSeedSources.ready
+                  ? 'border-green-300/20 bg-green-300/[0.07] text-green-100/70'
+                  : 'border-amber-400/20 bg-amber-400/[0.08] text-amber-100/70'
+              }`}>
+                {bootstrapSeedSources.requirements.length < 2
+                  ? 'This seed does not contain two usable paired video-output donors.'
+                  : bootstrapSeedSources.missing.length
+                    ? `${bootstrapSeedSources.missing.length} exact donor source(s) are not registered.`
+                    : bootstrapSeedSources.changed.length
+                      ? `${bootstrapSeedSources.changed.length} donor source(s) changed or are no longer privacy-safe.`
+                      : `${bootstrapSeedSources.requirements.length} exact safe donors are available for deterministic rotation.`}
+              </div>
+            )}
+            <label className="flex items-start gap-3 rounded-xl border border-green-300/20 bg-green-300/[0.07] p-3 text-xs leading-relaxed text-green-100/75">
+              <input
+                type="checkbox"
+                checked={bootstrapDraft.acknowledged}
+                onChange={(event) => setBootstrapDraft((current) => ({
+                  ...current,
+                  acknowledged: event.target.checked,
+                }))}
+                className="mt-0.5 h-4 w-4 accent-green-300"
+              />
+              I authorize one day from this exact audited seed. I understand the
+              seven-day cap and that every rendition still requires render inspection,
+              four-gate review, owner approval, and separate activation.
+            </label>
+            <DetailField
+              label="Bootstrap authorization note"
+              helper="Required · whitespace is normalized · 10–500 characters"
+            >
+              <Textarea
+                value={bootstrapDraft.authorization_note}
+                onChange={(event) => setBootstrapDraft((current) => ({
+                  ...current,
+                  authorization_note: normalizeBatchNoteInput(
+                    event.target.value,
+                  ),
+                }))}
+                onBlur={() => setBootstrapDraft((current) => ({
+                  ...current,
+                  authorization_note: compactBatchNote(
+                    current.authorization_note,
+                  ),
+                }))}
+                maxLength={MAX_BATCH_NOTE_LENGTH}
+                className="min-h-24 border-white/10 bg-black text-white"
+                placeholder="Use the exact audited seed to establish the first measured week."
+              />
+              <span className="block text-right font-mono text-[9px] text-white/30">
+                {normalizedBootstrapNote.length}/{MAX_BATCH_NOTE_LENGTH} normalized characters
+              </span>
+            </DetailField>
+            <Button
+              type="button"
+              onClick={buildBootstrapBatch}
+              disabled={
+                busy
+                || !generationReady
+                || !canAuthorize
+                || bootstrapBatchCount >= 7
+                || !bootstrapDraft.target_date
+                || !bootstrapDraft.seed_pack
+                || !bootstrapSeedSources.ready
+                || bootstrapDraft.acknowledged !== true
+                || normalizedBootstrapNote.length < 10
+              }
+              className="w-full bg-fuchsia-300 font-black text-black hover:bg-fuchsia-200"
+            >
+              {busy
+                ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                : <ShieldCheck className="mr-2 h-4 w-4" />}
+              Build audited day {Math.min(bootstrapBatchCount + 1, 7)}
+            </Button>
+            <p className="text-[10px] leading-relaxed text-white/35">
+              This creates and stores a render manifest only. It does not host media,
+              import renditions, schedule Buffer, or publish to either platform.
+            </p>
           </div>
         </DialogContent>
       </Dialog>
@@ -1249,11 +1529,11 @@ function MeasuredBatchPanel({
                 tracks, without a native-app finishing step.
               </label>
               <p className="text-[10px] leading-relaxed text-white/35">
-                FirstKnock refetches and revalidates both channels, every approval and
-                media hash, the batch slots, and terminal delivery evidence before the
-                first request. It then queues morning Instagram, morning TikTok,
-                midday Instagram, and midday TikTok sequentially. A safe retry resumes
-                only unfinished posts.
+                FirstKnock refetches, then the server revalidates both channels, every
+                approval and media hash, and the exact four-post batch before the first
+                request. It then queues morning Instagram, morning TikTok, midday
+                Instagram, and midday TikTok sequentially. This preflight is not an
+                external-provider transaction; a safe retry resumes only unfinished posts.
               </p>
               <Button
                 type="button"
@@ -1319,9 +1599,17 @@ function fieldError(code) {
     render_source_lineage_unavailable: 'Register the exact privacy-safe source hashes before importing this render pack',
     creative_changed_during_render_import: 'A creative changed during import; refresh and safely retry the same pack',
     invalid_growth_batch_request: 'Choose a reviewed parent, Phoenix production date, and 2 or 3 concepts',
+    invalid_bootstrap_batch_request: 'Choose a Phoenix date, acknowledge the audited bootstrap, and add a 10–500 character owner note',
+    bootstrap_authorization_conflict: 'This audited day already exists under a different owner authorization',
+    bootstrap_daily_batch_conflict: 'A different audited bootstrap already owns this Phoenix production date',
+    bootstrap_batch_limit_reached: 'The seven-day audited bootstrap is complete; use measured Repeat or Iterate evidence now',
+    growth_batch_bootstrap_stale: 'The audited seed allowlist or bootstrap authorization changed; do not render this batch',
+    invalid_audited_bootstrap_caption: 'An audited donor caption is incomplete',
+    invalid_audited_bootstrap_hooks: 'The audited donor pair does not contain coherent platform hooks',
+    invalid_audited_bootstrap_contract: 'The audited seed no longer satisfies the locked two-video caption contract',
     invalid_content_profile: 'Choose one of the server-supported measured content profiles',
     feature_explainer_requires_two_concepts: 'Video feature explainer is locked to exactly two concepts',
-    insufficient_eligible_video_donors: 'Two distinct, audited publish-candidate video donors are required outside the seven-day cooldown',
+    insufficient_eligible_video_donors: 'Two distinct, audited publish-candidate video or image donors are required outside the seven-day cooldown; every platform rendition still exports as video',
     reviewed_parent_not_published: 'The selected parent is not recorded as published',
     reviewed_parent_on_hold: 'Hold decisions cannot seed a new content batch',
     reviewed_parent_required: 'Save a current Repeat or Iterate decision before building a batch',
@@ -1348,6 +1636,10 @@ function fieldError(code) {
     growth_batch_not_revocable: 'This measured batch can no longer be revoked from this state',
     growth_batch_published_history_immutable: 'Published batch history must stay recorded for source cooldown and hook deduplication',
     growth_batch_schedule_slot_mismatch: 'Measured batches must use their reserved Phoenix cadence date and time',
+    production_batch_required: 'The 1000-user campaign only schedules complete two-video Instagram and TikTok batches',
+    production_batch_incomplete: 'The exact four-post production batch is incomplete; rebuild or finish its missing rendition',
+    production_batch_not_schedulable: 'One or more production renditions changed or is not ready; refresh and complete every review before retrying',
+    production_batch_automatic_required: 'The 1000-user campaign uses automatic paired-batch delivery only',
     source_cooldown_conflict: 'That source is already reserved inside the seven-day cooldown',
     hook_dedupe_conflict: 'That hook is too similar to approved or scheduled content in the active 28-day window',
     silent_media_decision_required: 'Choose notification finishing, or explicitly select automatic delivery for this silent rendition',
@@ -1475,10 +1767,14 @@ function ContentDetailDialog({
   const mediaReady = artifactMediaReady(artifact);
   const mediaPreviewLoaded = mediaInspection.status === 'verified';
   const renditionInspected = mediaReady && mediaPreviewLoaded && renditionConfirmed;
-  const draftProviderText = socialPostText(draft);
+  const providerTextLimit = socialPostTextLimit(artifact.platform);
+  const draftProviderText = socialPostText({
+    ...draft,
+    platform: artifact.platform,
+  });
   const providerText = artifact.provider_text || socialPostText(artifact);
   const captionReady = providerText.length > 0
-    && providerText.length <= MAX_SOCIAL_POST_TEXT;
+    && providerText.length <= providerTextLimit;
   const sourceByKey = new Map((sources || []).map((source) => [source.asset_key, source]));
   const lineageByKey = new Map(
     (artifact.render_source_lineage || []).map((source) => [source.asset_key, source]),
@@ -1781,7 +2077,7 @@ function ContentDetailDialog({
                 Exact provider text
               </p>
               <span className={`text-[10px] font-black ${captionReady ? 'text-green-200' : 'text-red-200'}`}>
-                {providerText.length.toLocaleString()} / {MAX_SOCIAL_POST_TEXT.toLocaleString()}
+                {providerText.length.toLocaleString()} / {providerTextLimit.toLocaleString()}
               </span>
             </div>
             <p className="mt-2 whitespace-pre-wrap text-xs leading-relaxed text-white/65">
@@ -1832,7 +2128,7 @@ function ContentDetailDialog({
             </DetailField>
             <DetailField
               label="Caption"
-              helper={`${draftProviderText.length.toLocaleString()} / ${MAX_SOCIAL_POST_TEXT.toLocaleString()} characters after disclosure, CTA, and content URL`}
+              helper={`${draftProviderText.length.toLocaleString()} / ${providerTextLimit.toLocaleString()} characters after platform disclosure and CTA${artifact.platform === 'tiktok' ? '; tracked URL stays on the profile-link artifact' : ', including the content URL'}`}
             >
               <Textarea value={draft.caption} onChange={(event) => updateDraft('caption', event.target.value)} className="min-h-28 border-white/10 bg-black text-white" />
             </DetailField>
@@ -1871,12 +2167,14 @@ function ContentDetailDialog({
                 <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/40">
                   Exact provider text
                 </p>
-                <span className={`text-[10px] font-black ${draftProviderText.length <= MAX_SOCIAL_POST_TEXT ? 'text-green-200' : 'text-red-200'}`}>
-                  {draftProviderText.length.toLocaleString()} / {MAX_SOCIAL_POST_TEXT.toLocaleString()}
+                <span className={`text-[10px] font-black ${draftProviderText.length <= providerTextLimit ? 'text-green-200' : 'text-red-200'}`}>
+                  {draftProviderText.length.toLocaleString()} / {providerTextLimit.toLocaleString()}
                 </span>
               </div>
               <p className="mt-2 whitespace-pre-wrap text-xs leading-relaxed text-white/65">
-                {draftProviderText || 'Caption, disclosure, CTA, and content URL will appear here.'}
+                {draftProviderText || (artifact.platform === 'tiktok'
+                  ? 'Caption, disclosure, and profile-link CTA will appear here.'
+                  : 'Caption, disclosure, CTA, and content URL will appear here.')}
               </p>
             </div>
 
@@ -2113,7 +2411,12 @@ function ContentDetailDialog({
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="font-black">{JOB_LABELS[displayJob.state] || displayJob.state}</p>
-                <p className="mt-1 text-xs opacity-70">{dateLabel(displayJob.due_at)} · {displayJob.scheduling_type}</p>
+                <p className="mt-1 text-xs opacity-70">
+                  {dateLabel(displayJob.due_at)} · requested {displayJob.scheduling_type}
+                  {displayJob.provider_scheduling_type
+                    ? ` · Buffer confirmed ${displayJob.provider_scheduling_type}`
+                    : ''}
+                </p>
               </div>
               <Pill>{displayJob.attempt_count} attempt{displayJob.attempt_count === 1 ? '' : 's'}</Pill>
             </div>
@@ -2241,6 +2544,7 @@ export default function ContentEngineQueue({ accent, accentText, contentQueue })
         schedule: 'Approved post queued for Buffer worker',
         cancel_job: 'Queued Buffer delivery canceled',
         resolve_job: 'Buffer cancellation recorded; delivery job closed',
+        build_audited_bootstrap_batch: 'Audited first-week video batch built',
         build_next_batch: 'Measured Instagram and TikTok batch built',
         authorize_batch: 'Exact generated pack authorized for render-result import',
         revoke_batch: 'Generated batch revoked',
@@ -2348,6 +2652,36 @@ export default function ContentEngineQueue({ accent, accentText, contentQueue })
         activationError.code = 'growth_batch_activation_not_ready';
         activationError.protected_count = inspection.protected_count;
         activationError.blockers = inspection.blockers;
+        throw activationError;
+      }
+      const preflightResponse = await base44.functions.invoke(
+        'manageGrowthContentEngine',
+        {
+          action: 'preflight_batch_activation',
+          batch_key: batchKey,
+        },
+      );
+      const preflight = preflightResponse?.data || preflightResponse;
+      const expectedArtifactIds = [
+        ...inspection.schedule_candidates.map(
+          (candidate) => String(candidate?.artifact?.id || ''),
+        ),
+        ...inspection.already_queued.map((artifact) => String(artifact?.id || '')),
+        ...inspection.sent.map((artifact) => String(artifact?.id || '')),
+      ].sort();
+      const preflightArtifactIds = (preflight?.artifacts || [])
+        .map((artifact) => String(artifact?.id || ''))
+        .sort();
+      if (
+        preflight?.success !== true
+        || preflightArtifactIds.length !== 4
+        || JSON.stringify(preflightArtifactIds) !== JSON.stringify(expectedArtifactIds)
+      ) {
+        const activationError = new Error(
+          'The server rejected the exact four-post batch preflight.',
+        );
+        activationError.code = 'growth_batch_activation_not_ready';
+        activationError.protected_count = inspection.protected_count;
         throw activationError;
       }
       const requests = inspection.schedule_candidates.map((candidate) => (
@@ -2587,10 +2921,12 @@ export default function ContentEngineQueue({ accent, accentText, contentQueue })
               <div className="rounded-xl border border-white/10 bg-black/30 p-3">
                 <p className="font-black uppercase tracking-wider text-white/35">Instagram delivery</p>
                 <p className="mt-1 font-bold text-white/70">{capabilities.instagram?.delivery === 'buffer' ? 'Buffer worker ready' : 'Not ready'}</p>
+                <p className="mt-1 text-[9px] leading-relaxed text-white/35">Static bio: platform-level; post link or visitor assist stays labeled.</p>
               </div>
               <div className="rounded-xl border border-white/10 bg-black/30 p-3">
                 <p className="font-black uppercase tracking-wider text-white/35">TikTok delivery</p>
                 <p className="mt-1 font-bold text-white/70">{capabilities.tiktok?.delivery === 'buffer' ? 'Buffer worker ready' : 'Not ready'}</p>
+                <p className="mt-1 text-[9px] leading-relaxed text-white/35">Static bio: platform-level; post link or visitor assist stays labeled.</p>
               </div>
             </div>
 
@@ -2647,7 +2983,7 @@ export default function ContentEngineQueue({ accent, accentText, contentQueue })
                 <Image className="mx-auto h-6 w-6 text-white/35" />
                 <p className="mt-3 font-black">Load the audited starter inventory</p>
                 <p className="mx-auto mt-1 max-w-md text-xs leading-relaxed text-white/40">
-                  This registers {FIRSTKNOCK_AUDITED_SOURCES.length} audited, privacy-safe FirstKnock sources, including seven approved feature videos, by opaque filename, exact SHA-256, and sanitized summary. The local files are not uploaded or copied.
+                  This registers {FIRSTKNOCK_AUDITED_SOURCES.length} audited, privacy-safe FirstKnock sources, including ten approved feature videos and four owned image donors that render as video, by opaque filename, exact SHA-256, and sanitized summary. The local files are not uploaded or copied.
                 </p>
                 <Button
                   type="button"

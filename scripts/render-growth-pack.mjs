@@ -26,7 +26,8 @@ const IMAGE_SOURCE_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'
 const VIDEO_SOURCE_MIME_TYPES = new Set(['video/mp4', 'video/quicktime']);
 const PLATFORMS = new Set(['instagram', 'tiktok']);
 const MAX_OUTPUT_BYTES = 250 * 1024 * 1024;
-const RENDERER_PROFILE_ID = 'firstknock-h264-bitexact-v2';
+const RENDERER_PROFILE_ID = 'firstknock-h264-bitexact-v3';
+const PROCEDURAL_AUDIO_RECIPE = 'firstknock-procedural-ui-v1';
 export const DETERMINISTIC_FFMPEG_GLOBAL_ARGS = Object.freeze([
   '-fflags',
   '+bitexact',
@@ -251,9 +252,18 @@ export function validatePack(rawPack) {
       0,
       Number(output.duration_ms || 0) - 1,
     ),
-    audio_mode: output.audio_mode === 'silent'
-      ? 'silent'
-      : fail('output.audio_mode must be silent until licensed audio evidence is implemented'),
+    audio_mode: ['silent', 'baked_owned_or_licensed'].includes(output.audio_mode)
+      ? output.audio_mode
+      : fail('output.audio_mode must be silent or baked_owned_or_licensed'),
+    ...(output.audio_mode === 'baked_owned_or_licensed'
+      ? {
+        audio_recipe: output.audio_recipe === PROCEDURAL_AUDIO_RECIPE
+          ? PROCEDURAL_AUDIO_RECIPE
+          : fail(
+            `baked_owned_or_licensed output requires audio_recipe ${PROCEDURAL_AUDIO_RECIPE}`,
+          ),
+      }
+      : {}),
   };
   if (!/^[1-9][0-9]*[kKmM]$/.test(normalizedOutput.video_bitrate)) {
     fail('output.video_bitrate must be an FFmpeg bitrate such as 8M');
@@ -593,8 +603,9 @@ function drawTextFilter({
   x,
   y,
   lineSpacing = 8,
+  enable = '',
 }) {
-  return [
+  const parts = [
     `drawtext=fontfile='${ffmpegFilterPath(fontPath)}'`,
     `textfile='${ffmpegFilterPath(textPath)}'`,
     `fontsize=${size}`,
@@ -604,7 +615,11 @@ function drawTextFilter({
     `y=${y}`,
     'fix_bounds=1',
     'expansion=none',
-  ].join(':');
+  ];
+  if (enable) {
+    parts.push(`enable='${enable.replaceAll(',', '\\,')}'`);
+  }
+  return parts.join(':');
 }
 
 async function runCommand(command, args, { sourceDir, outputDir } = {}) {
@@ -639,7 +654,7 @@ async function writeOverlayText(workDir, artifact, template) {
   const text = {
     brand: [`${template.brand.toUpperCase()}  /  ${artifact.platform.toUpperCase()}`],
     hook: wrapTextLines(artifact.hook.toUpperCase(), 20, 2),
-    deck: wrapTextLines(artifact.overlay_text.join('  •  '), 52, 2),
+    deck: artifact.overlay_text.flatMap((line) => wrapTextLines(line, 44, 1)),
     cta: wrapTextLines(artifact.overlay_cta.toUpperCase(), 34, 1),
     disclosure: wrapTextLines(artifact.disclosure.toUpperCase(), 58, 1),
     identity: [artifact.platform_content_id],
@@ -666,6 +681,7 @@ function appendTextLines(filters, {
   x,
   y,
   lineHeight,
+  enable = '',
 }) {
   let current = input;
   paths.forEach((textPath, index) => {
@@ -678,6 +694,44 @@ function appendTextLines(filters, {
       x,
       y: y + lineHeight * index,
       lineSpacing: 0,
+      enable,
+    })}[${next}]`);
+    current = next;
+  });
+  return current;
+}
+
+function appendTimedTextLines(filters, {
+  input,
+  output,
+  paths,
+  fontPath,
+  size,
+  color,
+  x,
+  y,
+  durationSeconds,
+}) {
+  const contentStart = 0.35;
+  const contentEnd = Math.max(contentStart + 0.5, durationSeconds - 1.55);
+  const segmentDuration = (contentEnd - contentStart) / paths.length;
+  let current = input;
+  paths.forEach((textPath, index) => {
+    const next = `${output}_${index}`;
+    const start = Math.max(0, contentStart + segmentDuration * index - 0.08);
+    const end = Math.min(
+      durationSeconds,
+      contentStart + segmentDuration * (index + 1) + 0.08,
+    );
+    filters.push(`[${current}]${drawTextFilter({
+      fontPath,
+      textPath,
+      size,
+      color,
+      x,
+      y,
+      lineSpacing: 0,
+      enable: `between(t,${start.toFixed(3)},${end.toFixed(3)})`,
     })}[${next}]`);
     current = next;
   });
@@ -688,6 +742,9 @@ function buildVideoFilter(pack, artifact, source, textPaths, fonts) {
   const { template } = pack;
   const accent = template.accent_color;
   const background = template.background_color;
+  const durationSeconds = artifact.render.duration_ms / 1000;
+  const ctaStartsAt = Math.max(0, durationSeconds - 1.55);
+  const ctaEnable = `gte(t,${ctaStartsAt.toFixed(3)})`;
   const sourceTransforms = [];
   if (source.media_kind === 'video') {
     sourceTransforms.push(
@@ -706,9 +763,9 @@ function buildVideoFilter(pack, artifact, source, textPaths, fonts) {
   const filters = [
     `[0:v]${sourceTransforms.join(',')},split=2[background_source][card_source]`,
     `[background_source]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,gblur=sigma=48,eq=brightness=-0.62:saturation=0.72[blurred]`,
-    `[card_source]scale=860:1120:force_original_aspect_ratio=decrease,pad=900:1160:(ow-iw)/2:(oh-ih)/2:color=${background}[card]`,
-    `[blurred]drawbox=x=0:y=0:w=iw:h=ih:color=black@0.48:t=fill,drawbox=x=0:y=0:w=18:h=ih:color=${accent}@0.95:t=fill,drawbox=x=84:y=364:w=912:h=1172:color=white@0.14:t=2[base]`,
-    "[base][card]overlay=x='90+4*sin(t*0.60)':y='370+5*sin(t*0.45)':eval=frame[composite]",
+    `[card_source]scale=780:900:force_original_aspect_ratio=decrease,pad=820:940:(ow-iw)/2:(oh-ih)/2:color=${background}[card]`,
+    `[blurred]drawbox=x=0:y=0:w=iw:h=ih:color=black@0.52:t=fill,drawbox=x=0:y=0:w=18:h=ih:color=${accent}@0.95:t=fill,drawbox=x=72:y=442:w=840:h=960:color=white@0.14:t=2[base]`,
+    `[base][card]overlay=x='82+6*sin(t*0.80)':y='452-24*t/${durationSeconds.toFixed(3)}+5*sin(t*0.55)':eval=frame[composite]`,
   ];
   let current = appendTextLines(filters, {
     input: 'composite',
@@ -718,7 +775,7 @@ function buildVideoFilter(pack, artifact, source, textPaths, fonts) {
     size: 27,
     color: accent,
     x: 72,
-    y: 66,
+    y: 150,
     lineHeight: 30,
   });
   current = appendTextLines(filters, {
@@ -729,10 +786,10 @@ function buildVideoFilter(pack, artifact, source, textPaths, fonts) {
     size: template.hook_font_size,
     color: 'white',
     x: 72,
-    y: 126,
+    y: 208,
     lineHeight: template.hook_font_size + 8,
   });
-  current = appendTextLines(filters, {
+  current = appendTimedTextLines(filters, {
     input: current,
     output: 'deck',
     paths: textPaths.deck,
@@ -740,11 +797,11 @@ function buildVideoFilter(pack, artifact, source, textPaths, fonts) {
     size: 28,
     color: 'white@0.72',
     x: 72,
-    y: 296,
-    lineHeight: 34,
+    y: 390,
+    durationSeconds,
   });
   filters.push(
-    `[${current}]drawbox=x=72:y=1580:w=936:h=104:color=${accent}@0.96:t=fill[cta_box]`,
+    `[${current}]drawbox=x=72:y=1410:w=840:h=104:color=${accent}@0.96:t=fill:enable='${ctaEnable.replaceAll(',', '\\,')}'[cta_box]`,
   );
   current = appendTextLines(filters, {
     input: 'cta_box',
@@ -754,8 +811,9 @@ function buildVideoFilter(pack, artifact, source, textPaths, fonts) {
     size: template.cta_font_size,
     color: 'black',
     x: 102,
-    y: 1602,
+    y: 1432,
     lineHeight: template.cta_font_size + 4,
+    enable: ctaEnable,
   });
   current = appendTextLines(filters, {
     input: current,
@@ -765,7 +823,7 @@ function buildVideoFilter(pack, artifact, source, textPaths, fonts) {
     size: template.disclosure_font_size,
     color: 'white@0.64',
     x: 72,
-    y: 1722,
+    y: 1542,
     lineHeight: template.disclosure_font_size + 4,
   });
   current = appendTextLines(filters, {
@@ -776,15 +834,32 @@ function buildVideoFilter(pack, artifact, source, textPaths, fonts) {
     size: 19,
     color: 'white@0.34',
     x: 72,
-    y: 1842,
+    y: 1602,
     lineHeight: 22,
   });
   filters.push(
-    `[${current}]fade=t=in:st=0:d=0.35,fade=t=out:st=${(
-      pack.output.duration_ms / 1000 - 0.35
-    ).toFixed(3)}:d=0.35,scale=in_range=auto:out_range=tv,format=yuv420p[outv]`,
+    `[${current}]scale=in_range=auto:out_range=tv,format=yuv420p[outv]`,
   );
   return filters.join(';');
+}
+
+export function renderAudioInput(output, artifact, durationSeconds) {
+  if (output.audio_mode === 'silent') {
+    return 'anullsrc=channel_layout=stereo:sample_rate=48000';
+  }
+  if (
+    output.audio_mode !== 'baked_owned_or_licensed'
+    || output.audio_recipe !== PROCEDURAL_AUDIO_RECIPE
+  ) {
+    fail('Unsupported render audio recipe');
+  }
+  const baseFrequency = artifact.platform === 'tiktok' ? 370 : 330;
+  const highFrequency = baseFrequency * 2;
+  const expression = [
+    `0.08*sin(2*PI*${highFrequency}*t)*exp(-32*mod(t\\,2))`,
+    `0.04*sin(2*PI*${baseFrequency}*t)*exp(-18*mod(t\\,1))`,
+  ].join('+');
+  return `aevalsrc=exprs='${expression}|${expression}':s=48000:d=${durationSeconds}`;
 }
 
 function renderRecipe(pack, artifact, source, renderEnvironment) {
@@ -1011,7 +1086,11 @@ async function renderArtifact({
     '-t',
     durationSeconds,
     '-i',
-    'anullsrc=channel_layout=stereo:sample_rate=48000',
+    renderAudioInput(
+      effectivePack.output,
+      artifact,
+      durationSeconds,
+    ),
     '-filter_complex',
     filter,
     '-map',
@@ -1126,6 +1205,9 @@ async function renderArtifact({
       hook_first_frame: true,
       third_party_watermark: false,
       audio_mode: pack.output.audio_mode,
+      audio_recipe: pack.output.audio_recipe || 'silence',
+      procedural_audio_generated:
+        pack.output.audio_recipe === PROCEDURAL_AUDIO_RECIPE,
       ready_for_human_review: true,
       ready_for_content_engine_import:
         artifact.distribution_state === 'publish_candidate',

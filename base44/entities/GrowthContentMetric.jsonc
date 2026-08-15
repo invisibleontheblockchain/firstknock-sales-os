@@ -98,14 +98,86 @@
       "type": "string",
       "pattern": "^[a-f0-9]{64}$",
       "description": "Service-computed hash used to bind growth decisions to exact snapshot evidence"
+    },
+    "metric_source": {
+      "type": "string",
+      "enum": [
+        "buffer"
+      ],
+      "description": "Automated provider that produced this fixed-age checkpoint; omitted on legacy/manual rows"
+    },
+    "provider_post_id": {
+      "type": "string",
+      "maxLength": 300
+    },
+    "provider_channel_id": {
+      "type": "string",
+      "maxLength": 300
+    },
+    "provider_metrics_updated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "provider_metrics_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "Hash of normalized allowlisted Buffer count metrics and exact post/channel identity"
+    },
+    "provider_observed_metric_types": {
+      "type": "array",
+      "maxItems": 6,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": [
+          "reach",
+          "views",
+          "shares",
+          "saves",
+          "comments",
+          "follows"
+        ]
+      },
+      "description": "Exact allowlisted metric types actually returned by Buffer; omitted fields are unknown, not zero"
+    },
+    "observed_metric_fields": {
+      "type": "array",
+      "maxItems": 9,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": [
+          "reach",
+          "views",
+          "shares",
+          "saves",
+          "comments",
+          "follows",
+          "profile_visits",
+          "link_clicks",
+          "dm_intents"
+        ]
+      },
+      "description": "Exact fields supplied in a manual checkpoint; absent fields are unknown, not zero"
+    },
+    "artifact_key": {
+      "type": "string",
+      "maxLength": 120
+    },
+    "concept_id": {
+      "type": "string",
+      "maxLength": 120
+    },
+    "growth_batch_key": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
     }
   },
   "required": [
     "campaign",
     "content",
     "snapshot_days",
-    "snapshot_captured_at",
-    "reach"
+    "snapshot_captured_at"
   ],
   "rls": {
     "create": {

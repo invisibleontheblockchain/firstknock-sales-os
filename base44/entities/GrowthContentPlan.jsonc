@@ -125,6 +125,13 @@
         "hold"
       ]
     },
+    "review_schema_version": {
+      "type": "string",
+      "enum": [
+        "growth-review.v3"
+      ],
+      "description": "Review identity contract that binds v2 conversion evidence and the server-owned decision-sufficiency policy"
+    },
     "review_note": {
       "type": "string",
       "maxLength": 500
@@ -140,6 +147,264 @@
     "review_evidence_hash": {
       "type": "string",
       "pattern": "^[a-f0-9]{64}$"
+    },
+    "review_conversion_cutoff_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Explicit fixed-checkpoint cutoff for the publication-bounded funnel frozen with the decision"
+    },
+    "review_conversion_evidence_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "Canonical SHA-256 of the bounded conversion or explicit social-only evidence frozen with the decision"
+    },
+    "review_decision_policy_id": {
+      "type": "string",
+      "enum": [
+        "growth-decision-sufficiency.v1"
+      ]
+    },
+    "review_decision_policy_reason_codes": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 8,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": [
+          "base_social_evidence_supported",
+          "iterate_supported_by_social_evidence",
+          "repeat_supported_by_exact_activation",
+          "repeat_supported_by_mature_retention",
+          "repeat_supported_by_paid_outcome",
+          "repeat_supported_by_social_only_override",
+          "hold_supported_by_three_comparable_snapshots"
+        ]
+      }
+    },
+    "review_decision_policy_evidence_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "Canonical SHA-256 of the server-recomputed policy inputs, nullable conversion counters, support result, and reason codes"
+    },
+    "review_comparable_fixed_age_snapshots": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 25000,
+      "description": "Server-counted comparable checkpoint total frozen into the policy evidence; zero when the decision does not depend on comparison-group count"
+    },
+    "review_decision_override_note": {
+      "type": "string",
+      "minLength": 24,
+      "maxLength": 500,
+      "description": "Required only when Repeat is explicitly overridden from social-only evidence"
+    },
+    "review_decision_override_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "review_identity_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "Canonical growth-review.v3 identity binding social evidence, v2 conversion evidence, decision, notes, timestamps, and sufficiency policy evidence"
+    },
+    "review_conversion_evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "type": "string",
+          "enum": [
+            "growth-conversion-evidence.v2"
+          ]
+        },
+        "platform": {
+          "type": "string",
+          "enum": [
+            "instagram",
+            "tiktok"
+          ]
+        },
+        "campaign": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._~-]{0,119}$"
+        },
+        "content": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._~-]{0,119}$"
+        },
+        "cohort_start_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "cutoff_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "snapshot_days": {
+          "type": "integer",
+          "enum": [
+            1,
+            3,
+            7,
+            30
+          ]
+        },
+        "snapshot_captured_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "social_evidence_hash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "owned_intent_observed_fields": {
+          "type": "array",
+          "maxItems": 2,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "link_clicks",
+              "dm_intents"
+            ]
+          }
+        },
+        "link_clicks": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "dm_intents": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "owned_intents": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "attribution_method": {
+          "type": "string",
+          "enum": [
+            "declared_content_link",
+            "social_evidence_only"
+          ]
+        },
+        "post_conversion_eligible": {
+          "type": "boolean"
+        },
+        "conversion_conclusion": {
+          "type": "string",
+          "enum": [
+            "exact_declared_link",
+            "inconclusive_no_declared_link"
+          ]
+        },
+        "conversion_counters_available": {
+          "type": "boolean"
+        },
+        "landing_sessions": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "signup_cta_sessions": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "auth_completed": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "signups": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "activated_workspaces": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "activated_users": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "activated_reps": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "paid_users": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "activation_timing_complete": {
+          "type": "boolean"
+        },
+        "paid_timing_complete": {
+          "type": "boolean"
+        },
+        "first_activation_at": {
+          "type": ["string", "null"],
+          "format": "date-time"
+        },
+        "last_activation_at": {
+          "type": ["string", "null"],
+          "format": "date-time"
+        },
+        "retention_window_days": {
+          "type": "integer",
+          "enum": [30]
+        },
+        "retention_mature": {
+          "type": "boolean"
+        },
+        "retention_eligible_users": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "retained_users": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "retention_rate": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "required": [
+        "schema_version",
+        "platform",
+        "campaign",
+        "content",
+        "cohort_start_at",
+        "cutoff_at",
+        "snapshot_days",
+        "snapshot_captured_at",
+        "social_evidence_hash",
+        "owned_intent_observed_fields",
+        "link_clicks",
+        "dm_intents",
+        "owned_intents",
+        "attribution_method",
+        "post_conversion_eligible",
+        "conversion_conclusion",
+        "conversion_counters_available",
+        "landing_sessions",
+        "signup_cta_sessions",
+        "auth_completed",
+        "signups",
+        "activated_workspaces",
+        "activated_users",
+        "activated_reps",
+        "paid_users",
+        "activation_timing_complete",
+        "paid_timing_complete",
+        "first_activation_at",
+        "last_activation_at",
+        "retention_window_days",
+        "retention_mature",
+        "retention_eligible_users",
+        "retained_users",
+        "retention_rate"
+      ]
     }
   },
   "required": [

@@ -1,0 +1,50 @@
+{
+  "schema_version": "firstknock-video-derivative-review.v1",
+  "review_id": "firstknock-video-supplement-review-2026-07-29",
+  "plan_id": "firstknock-video-supplement-3-donor-2026-07",
+  "plan_sha256": "9a9fad98eb338912cd448fe54932286444bff9eae6952f2c9cc8c24a568e18c5",
+  "sanitizer_environment_sha256": "a3bf9583052ed96aeeefbf7f45deff19532c7daaa98e82bed4a3a04ffb995651",
+  "sanitizer_script_sha256": "d1b73dd185ca8e7451cb2b01f161084d7949c52b06fd4fa302c5cbb37354a65e",
+  "reviewed_at": "2026-07-29T07:37:01.188Z",
+  "review_scope": "Offline derivative privacy and content-quality preflight only. This review does not authorize hosting, scheduling, or publication.",
+  "review_method": [
+    "Inspected full-duration 2 fps contact sheets and dense transition and boundary samples for all three derivatives.",
+    "Inspected every frame of the approved derivative in six sequential 30 fps contact sheets.",
+    "Required opaque removal of property identifiers and rejected any derivative with an address visible in a kept pixel."
+  ],
+  "approved_count": 1,
+  "rejected_count": 2,
+  "publication_authorized": false,
+  "decisions": [
+    {
+      "asset_key": "video-supplement-remove-accidental-sale-safe-v1",
+      "decision": "approved_as_safe_donor",
+      "source_reference": "25544d2f01a62571ba64484b353dc2687ed6af61b43ed9ac409bee2053a98941-video-supplement-remove-accidental-sale-safe-v1.mp4",
+      "source_sha256": "25544d2f01a62571ba64484b353dc2687ed6af61b43ed9ac409bee2053a98941",
+      "duration_ms": 6609,
+      "byte_size": 3786472,
+      "privacy_status": "safe",
+      "review_note": "The property identifier stays inside the fixed opaque mask in every rendered frame. Edit sale, Delete, confirmation, and the bounded Deleting state remain visible; no post-cut screen or private record appears."
+    },
+    {
+      "asset_key": "video-supplement-add-details-fields-safe-v1",
+      "decision": "rejected",
+      "source_reference": "01811476ee552a2b1704d85401300f694e396734bf3706545ef4eb322b4fedba-video-supplement-add-details-fields-safe-v1.mp4",
+      "source_sha256": "01811476ee552a2b1704d85401300f694e396734bf3706545ef4eb322b4fedba",
+      "duration_ms": 5388,
+      "byte_size": 5100439,
+      "privacy_status": "blocked",
+      "review_note": "The opening transition exposes a street address outside the first frame-bounded address mask."
+    },
+    {
+      "asset_key": "video-supplement-bulk-reknock-safe-v1",
+      "decision": "rejected",
+      "source_reference": "9029a6b675d3317089f5c031ef70d30d16bc18c2321d064ef79110375e83183a-video-supplement-bulk-reknock-safe-v1.mp4",
+      "source_sha256": "9029a6b675d3317089f5c031ef70d30d16bc18c2321d064ef79110375e83183a",
+      "duration_ms": 5072,
+      "byte_size": 4599369,
+      "privacy_status": "blocked",
+      "review_note": "The final UI update exposes demo addresses above the fixed list mask, and enlarging the mask would obscure the feature."
+    }
+  ]
+}

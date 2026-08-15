@@ -39,12 +39,36 @@ function sanitizeTouch(raw: any): any | null {
   const campaign = token(raw.campaign);
   const content = token(raw.content);
   if (!source && !campaign && !content) return null;
+  const reportedContentId = token(raw.reported_content_id);
+  const expectedPrefix = source === "instagram"
+    ? "ig-"
+    : source === "tiktok"
+    ? "tt-"
+    : "";
+  const rawContent = content || "unassigned";
+  const rawContentIsGeneric = !rawContent
+    || rawContent === "unassigned"
+    || rawContent === (source === "instagram" ? "ig-bio" : "tt-bio");
+  const reportedContentValid = Boolean(
+    expectedPrefix
+    && rawContentIsGeneric
+    && reportedContentId.startsWith(expectedPrefix)
+    && reportedContentId !== `${expectedPrefix}bio`
+    && token(raw.reported_content_method) === "visitor_self_report",
+  );
   return {
     source: source || "unknown",
     medium: token(raw.medium, "unknown"),
     campaign: campaign || "unassigned",
-    content: content || "unassigned",
+    content: rawContent,
     term: token(raw.term),
+    ...(reportedContentValid
+      ? {
+        reported_content_id: reportedContentId,
+        reported_content_method: "visitor_self_report",
+        reported_content_at: timestamp(raw.reported_content_at),
+      }
+      : {}),
     landing_path: landingPath(raw.landing_path),
     referrer_host: token(raw.referrer_host).slice(0, HOST_MAX),
     captured_at: timestamp(raw.captured_at),
@@ -187,6 +211,13 @@ Deno.serve(async (req: Request) => {
           campaign: touch?.campaign || "unassigned",
           content: touch?.content || "unassigned",
           term: touch?.term || "",
+          ...(touch?.reported_content_id
+            ? {
+              reported_content_id: touch.reported_content_id,
+              reported_content_method: "visitor_self_report",
+              reported_content_at: touch.reported_content_at,
+            }
+            : {}),
           landing_path: touch?.landing_path || "/",
           referrer_host: touch?.referrer_host || "",
           cta_variant: "",

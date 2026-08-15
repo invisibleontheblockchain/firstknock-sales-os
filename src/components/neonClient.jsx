@@ -1,12 +1,8 @@
-import { neon } from '@neondatabase/serverless';
-
-// Neon Postgres connection (serverless-compatible)
-const connectionString = 'postgresql://neondb_owner:npg_jsLScDO6w9mf@ep-fragrant-bush-ahixbnax-pooler.c-3.us-east-1.aws.neon.tech/neondb?sslmode=require';
-
-const sql = neon(connectionString);
+const DIRECT_DATABASE_ACCESS_DISABLED =
+  'Direct browser database access is disabled. Use an authenticated Base44 server function instead.';
 
 export function getConnection() {
-  return sql;
+  throw new Error(DIRECT_DATABASE_ACCESS_DISABLED);
 }
 
 // Diagnostic function to verify database connection and data integrity
