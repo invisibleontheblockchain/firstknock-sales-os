@@ -133,6 +133,57 @@ export function describeBarriers(features, geography) {
 }
 
 /**
+ * Measure how much the road network stretches short aerial gaps.
+ *
+ * This is the physical definition of a barrier and the reason the corpus exists:
+ * a territory is barrier-shaped when pairs of doors that LOOK adjacent are not
+ * reachable that way. Metres of mapped stream cannot express that — nearly every
+ * developed bbox contains streams — so the classification asks the road network
+ * directly, on near pairs only, where a detour is unambiguous.
+ *
+ * `sampleRoadPairs(pairs)` must return road miles per pair in order. It is given
+ * real coordinates and returns real network distance; nothing about any candidate
+ * ordering is involved, so this stays input-side evidence.
+ *
+ * @returns {Promise<object>} `{ ok, detour_median, detour_p95, severe_detour_pct, pairs }`
+ */
+export async function measureDetourProfile(doors, sampleRoadPairs, { pairCount = 120, maxAerialMiles = 0.35 } = {}) {
+    // Deterministic near-pair sample: every door's nearest neighbour that is close
+    // enough for a detour to mean something, taken in a stable stride so a rerun
+    // measures the identical pairs.
+    const stride = Math.max(1, Math.floor(doors.length / pairCount));
+    const pairs = [];
+    for (let i = 0; i < doors.length && pairs.length < pairCount; i += stride) {
+        const from = doors[i];
+        let best = null;
+        let bestMiles = Infinity;
+        for (const other of doors) {
+            if (other === from) continue;
+            const miles = haversineMiles(from, other);
+            if (miles > 0 && miles < bestMiles) { bestMiles = miles; best = other; }
+        }
+        if (best && bestMiles <= maxAerialMiles) pairs.push({ from, to: best, aerialMiles: bestMiles });
+    }
+    if (!pairs.length) return { ok: false, error: 'NO_NEAR_PAIRS' };
+
+    const roadMiles = await sampleRoadPairs(pairs);
+    const ratios = pairs
+        .map((pair, index) => (Number.isFinite(roadMiles[index]) && pair.aerialMiles > 0 ? roadMiles[index] / pair.aerialMiles : null))
+        .filter((value) => Number.isFinite(value) && value >= 1)
+        .sort((a, b) => a - b);
+    if (ratios.length < Math.min(20, pairs.length / 2)) return { ok: false, error: 'INSUFFICIENT_ROAD_PAIRS' };
+
+    return {
+        ok: true,
+        pairs: ratios.length,
+        detour_median: round(ratios[Math.floor(ratios.length / 2)]),
+        detour_p95: round(ratios[Math.floor(ratios.length * 0.95)]),
+        // A neighbour that costs more than 4x its aerial gap is behind something.
+        severe_detour_pct: pct(ratios.filter((value) => value >= 4).length, ratios.length)
+    };
+}
+
+/**
  * Assign a geography class from the measured traits.
  *
  * Ordered most-specific first: a barrier territory is defined by its barrier even
@@ -143,7 +194,7 @@ export function describeBarriers(features, geography) {
  * Returns `{ geography, rationale }`; the rationale is the evidence sentence that
  * goes in the fixture, so a reviewer can check the label against the numbers.
  */
-export function classifyGeography(geography, barriers) {
+export function classifyGeography(geography, barriers, detour = null) {
     const g = geography;
     const b = barriers;
     const reasons = [];
@@ -152,17 +203,24 @@ export function classifyGeography(geography, barriers) {
     const sparse = g.doors_per_sq_mi < 250;
     const verySparse = g.doors_per_sq_mi < 90;
     const terminalHeavy = g.terminal_street_door_pct >= 34;
-    const waterHeavy = b.waterway_meters_per_sq_mi >= 700 || b.water_body_count >= 4;
-    const motorwayHeavy = b.motorway_meters_per_sq_mi >= 500;
     const fewStreetsManyDoors = g.distinct_streets > 0 && g.door_count / g.distinct_streets >= 22;
 
-    if (waterHeavy && !verySparse) {
-        reasons.push(`${b.waterway_meters_per_sq_mi} m/sq mi of waterway and ${b.water_body_count} water bodies force road detours between aerially near doors`);
-        return { geography: 'river_lake_barrier', rationale: reasons.join('; ') };
-    }
-    if (motorwayHeavy) {
-        reasons.push(`${b.motorway_meters_per_sq_mi} m/sq mi of motorway/trunk splits the territory into crossing-limited sides`);
-        return { geography: 'highway_separated', rationale: reasons.join('; ') };
+    // Barrier classes require MEASURED severance, not merely mapped water or road.
+    // The detour profile says a barrier is present; the OSM counts then say which
+    // kind it is, and water wins ties because a river is crossed at bridges only
+    // while a motorway usually has more crossings per mile.
+    const severed = detour?.ok === true && (detour.detour_p95 >= 3 || detour.severe_detour_pct >= 8);
+    if (severed && !verySparse) {
+        const waterEvidence = b.water_body_count >= 3 || b.waterway_meters_per_sq_mi >= 1500;
+        const motorwayEvidence = b.motorway_meters_per_sq_mi >= 400;
+        if (waterEvidence && (!motorwayEvidence || b.water_body_count >= 8)) {
+            reasons.push(`road detour p95 ${detour.detour_p95}x aerial with ${detour.severe_detour_pct}% of near neighbours past 4x, against ${b.water_body_count} water bodies and ${b.waterway_meters_per_sq_mi} m/sq mi waterway`);
+            return { geography: 'river_lake_barrier', rationale: reasons.join('; ') };
+        }
+        if (motorwayEvidence) {
+            reasons.push(`road detour p95 ${detour.detour_p95}x aerial with ${detour.severe_detour_pct}% of near neighbours past 4x, against ${b.motorway_meters_per_sq_mi} m/sq mi of motorway/trunk`);
+            return { geography: 'highway_separated', rationale: reasons.join('; ') };
+        }
     }
     if (fewStreetsManyDoors && terminalHeavy) {
         reasons.push(`${g.door_count} doors on only ${g.distinct_streets} streets (${g.terminal_street_door_pct}% on terminating streets) — one collector feeding interior branches`);
@@ -184,7 +242,7 @@ export function classifyGeography(geography, barriers) {
         reasons.push(`${g.doors_per_sq_mi} doors/sq mi over ${g.area_sq_mi} sq mi — detached pockets separated by undeveloped road`);
         return { geography: 'sparse_exurban', rationale: reasons.join('; ') };
     }
-    reasons.push(`no single trait dominates: ${g.doors_per_sq_mi} doors/sq mi, ${g.terminal_street_door_pct}% terminating-street doors, ${b.waterway_meters_per_sq_mi} m/sq mi waterway`);
+    reasons.push(`no single trait dominates: ${g.doors_per_sq_mi} doors/sq mi, ${g.terminal_street_door_pct}% terminating-street doors, detour p95 ${detour?.detour_p95 ?? 'unmeasured'}x`);
     return { geography: 'mixed_geography', rationale: reasons.join('; ') };
 }
 
