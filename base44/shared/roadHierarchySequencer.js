@@ -155,6 +155,49 @@ export function partitionBlocksByDoorBudget(entries, { maxDoors = MAX_CLUSTER_DO
 }
 
 /**
+ * Cut door-budgeted windows out of an already road-ordered block list as
+ * CONTIGUOUS runs, so a window can only straddle a barrier if the road network
+ * says crossing is cheap. `offsetDoors` shortens the first window, which slides
+ * every later cut onto a different pair of blocks.
+ */
+export function cutWindowsFromBlockOrder(orderedEntries, maxWindowDoors, offsetDoors = 0) {
+    const windows = [];
+    let current = [];
+    let doors = 0;
+    let budget = Math.max(1, Math.min(Number(offsetDoors) || maxWindowDoors, maxWindowDoors));
+    orderedEntries.forEach((entry) => {
+        const entryDoors = entry.block.doors.length;
+        if (current.length > 0 && doors + entryDoors > budget) {
+            windows.push({ entries: current, doorCount: doors });
+            current = [];
+            doors = 0;
+            budget = maxWindowDoors;
+        }
+        current.push(entry);
+        doors += entryDoors;
+    });
+    if (current.length > 0) windows.push({ entries: current, doorCount: doors });
+    return windows;
+}
+
+/**
+ * Cut street blocks into groups small enough that ONE matrix can carry every
+ * block representative in the group (plus its two ports). Same deterministic
+ * door-budget bisection as the window partitioner — the budget is just tightened
+ * until the block count per group fits the matrix.
+ */
+export function partitionBlocksIntoMatrixGroups(entries, { maxBlocks = MAX_ROUTE_MATRIX_POINTS - PORT_SLOTS } = {}) {
+    const totalDoors = entries.reduce((total, entry) => total + entry.block.doors.length, 0);
+    let budget = Math.max(2, Math.ceil(totalDoors / Math.max(1, Math.ceil(entries.length / maxBlocks))));
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+        const groups = partitionBlocksByDoorBudget(entries, { maxDoors: budget });
+        if (groups.every((group) => group.entries.length <= maxBlocks)) return groups;
+        budget = Math.max(2, Math.floor(budget / 2));
+    }
+    return partitionBlocksByDoorBudget(entries, { maxDoors: budget });
+}
+
+/**
  * Order units (cluster representatives) on a road-priced cost function.
  *
  * Nearest-neighbour seed, then reversal and relocation refinement under a
@@ -364,6 +407,30 @@ export async function sequenceRoadHierarchy(properties, options = {}) {
         fetchMatrix = fetchRoadMatrix,
         refinementStepBudget = HIERARCHY_REFINEMENT_STEP_BUDGET,
         windowDoors = DEFAULT_WINDOW_DOORS,
+        // Decomposition diversity (see roadDecompositionPortfolio.js). The road
+        // pricing is identical for every value of these; they only change WHICH
+        // doors get solved together, which is the one decision the hierarchy makes
+        // before the exact solver is allowed to see the doors.
+        //   windowOffsetDoors    - shorten the FIRST window so every later cut
+        //                          lands on a different pair of blocks. A door
+        //                          stranded on the wrong side of one cut gets a
+        //                          different neighbourhood in the shifted variant.
+        //   forceGeometricWindows- group by k-d door-budget bisection instead of by
+        //                          runs of the road-priced block order.
+        windowOffsetDoors = 0,
+        forceGeometricWindows = false,
+        //   coarseBlockOrder     - opt-in decomposition for territories with more
+        //                          street blocks than one matrix can carry (a
+        //                          1,000-door route has ~500). Instead of falling
+        //                          straight to geometric boxes, the blocks are cut
+        //                          into matrix-sized COARSE GROUPS, the groups are
+        //                          ordered on roads, and then the blocks INSIDE each
+        //                          group are ordered on roads too — so the windows
+        //                          are cut out of a road-priced block order at full
+        //                          route size instead of out of lat/lng boxes.
+        //                          Off by default: it must earn its place by
+        //                          measuring shorter, candidate by candidate.
+        coarseBlockOrder = false,
         // Level 4 needs the finished route measured on the road network to know
         // WHICH transitions are still bad. That is a live OSRM dependency, so it is
         // injected explicitly: with no measurer the layer is skipped rather than
@@ -387,6 +454,8 @@ export async function sequenceRoadHierarchy(properties, options = {}) {
         cluster_count: 0,
         street_block_count: blocks.length,
         max_window_doors: maxWindowDoors,
+        window_offset_doors: Math.max(0, Number(windowOffsetDoors) || 0),
+        decomposition: forceGeometricWindows ? 'geometric_windows' : 'road_ordered_windows',
         matrix_request_count: 0,
         // Level 1
         cluster_order_road_priced: false,
@@ -439,7 +508,7 @@ export async function sequenceRoadHierarchy(properties, options = {}) {
     let orderedClusters = null;
     const blockPoints = [...entries.map((entry) => entry.representative), ...anchorPoints];
 
-    if (blockPoints.length <= MAX_ROUTE_MATRIX_POINTS) {
+    if (blockPoints.length <= MAX_ROUTE_MATRIX_POINTS && !forceGeometricWindows) {
         // Preferred: order every street block on the road network, then cut the
         // door-budgeted windows out of that order as contiguous runs. A window can
         // then only straddle a barrier if the road network says crossing is cheap.
@@ -449,20 +518,7 @@ export async function sequenceRoadHierarchy(properties, options = {}) {
             const { distanceBetween } = createMatrixMetricFns(blockPoints, blockMatrix);
             const cost = strictRoadCost(distanceBetween, 'street_block_order');
             const orderedEntries = orderUnitsByRoadCost(entries, { cost, startLocation, endLocation });
-            orderedClusters = [];
-            let window = [];
-            let windowDoors = 0;
-            orderedEntries.forEach((entry) => {
-                const doors = entry.block.doors.length;
-                if (window.length > 0 && windowDoors + doors > maxWindowDoors) {
-                    orderedClusters.push({ entries: window, doorCount: windowDoors });
-                    window = [];
-                    windowDoors = 0;
-                }
-                window.push(entry);
-                windowDoors += doors;
-            });
-            if (window.length > 0) orderedClusters.push({ entries: window, doorCount: windowDoors });
+            orderedClusters = cutWindowsFromBlockOrder(orderedEntries, maxWindowDoors, windowOffsetDoors);
             telemetry.cluster_order_road_priced = true;
             telemetry.window_grouping_road_priced = true;
         } catch (error) {
@@ -470,6 +526,64 @@ export async function sequenceRoadHierarchy(properties, options = {}) {
                 return { ok: false, code: 'UNRESOLVED_ROAD_COST', level: error.level };
             }
             telemetry.degraded_cluster_reasons.push(`block_order_matrix: ${error.message}`);
+        }
+    }
+
+    if (!orderedClusters && coarseBlockOrder && !forceGeometricWindows) {
+        // The blocks do not fit one matrix, but that is a MATRIX limit, not a reason
+        // to abandon road-priced grouping: the territory is cut into matrix-sized
+        // coarse groups, the groups are ordered on roads, and the blocks inside each
+        // group are ordered on roads with the neighbouring groups as ports. Windows
+        // are then contiguous runs of that order, exactly as in the small-route path.
+        try {
+            const coarse = partitionBlocksIntoMatrixGroups(entries);
+            const groupPoints = [...coarse.map((group) => group.representative), ...anchorPoints];
+            if (groupPoints.length <= MAX_ROUTE_MATRIX_POINTS) {
+                const groupMatrix = await fetchMatrix(groupPoints, { baseUrl, profile, timeoutMs });
+                accountMatrix(groupPoints.length);
+                const groupCost = strictRoadCost(
+                    createMatrixMetricFns(groupPoints, groupMatrix).distanceBetween,
+                    'coarse_group_order'
+                );
+                const orderedGroups = orderUnitsByRoadCost(coarse, { cost: groupCost, startLocation, endLocation });
+
+                const orderedEntries = [];
+                for (let groupIndex = 0; groupIndex < orderedGroups.length; groupIndex += 1) {
+                    const group = orderedGroups[groupIndex];
+                    const entryPort = orderedEntries.length > 0
+                        ? orderedEntries[orderedEntries.length - 1].representative
+                        : startLocation;
+                    const exitPort = groupIndex < orderedGroups.length - 1
+                        ? orderedGroups[groupIndex + 1].representative
+                        : endLocation;
+                    const points = clusterMatrixPoints(
+                        group.entries.map((entry) => entry.representative),
+                        entryPort,
+                        exitPort
+                    );
+                    const matrix = await fetchMatrix(points, { baseUrl, profile, timeoutMs });
+                    accountMatrix(points.length);
+                    const cost = strictRoadCost(
+                        createMatrixMetricFns(points, matrix).distanceBetween,
+                        'coarse_block_order'
+                    );
+                    orderedEntries.push(...orderUnitsByRoadCost(group.entries, {
+                        cost,
+                        startLocation: isValidPoint(entryPort) ? entryPort : null,
+                        endLocation: isValidPoint(exitPort) ? exitPort : null
+                    }));
+                }
+                orderedClusters = cutWindowsFromBlockOrder(orderedEntries, maxWindowDoors, windowOffsetDoors);
+                telemetry.cluster_order_road_priced = true;
+                telemetry.window_grouping_road_priced = true;
+                telemetry.decomposition = 'coarse_road_ordered_windows';
+                telemetry.coarse_group_count = orderedGroups.length;
+            }
+        } catch (error) {
+            if (error instanceof UnresolvedRoadCostError) {
+                return { ok: false, code: 'UNRESOLVED_ROAD_COST', level: error.level };
+            }
+            telemetry.degraded_cluster_reasons.push(`coarse_block_order: ${error.message}`);
         }
     }
 

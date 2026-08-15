@@ -72,6 +72,21 @@ async function fetchMatrixBlock(points, sourceRange, destinationRange, { baseUrl
         throw new Error(`Road matrix block exceeded ${MAX_MATRIX_COORDINATES} coordinates.`);
     }
 
+    // A same-range diagonal block can be a SINGLE coordinate whenever the point
+    // count leaves a remainder of one (93 points chunk as 46/46/1). OSRM rejects a
+    // one-coordinate table with 400 InvalidOptions, which failed the whole matrix
+    // and — because a missing matrix is a hard failure by design — killed the
+    // route. The only cell such a block carries is the point's distance to itself,
+    // which is zero, so it is answered locally instead of asked for.
+    if (blockPoints.length < 2) {
+        return {
+            sourceRange,
+            destinationRange,
+            distances: [[0]],
+            durations: [[0]]
+        };
+    }
+
     const sources = sourcePoints.map((_, index) => index);
     const destinations = sameRange
         ? sources
