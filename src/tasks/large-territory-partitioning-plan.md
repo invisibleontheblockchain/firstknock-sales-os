@@ -81,11 +81,20 @@ All rows passed exact-once. Findings:
 ## Recommended ceiling
 
 Express the budget in routing units, with a door figure as the operator-facing
-proxy:
+proxy. The unit ceiling is **derived, not a constant**: 240 is a property of the
+current `MAX_ROUTE_MATRIX_POINTS = 250` implementation and its anchor overhead,
+not of OSRM. If the matrix budget later moves to 500, the partitioner must
+follow automatically.
 
-- primary: **<= 240 street blocks** per generated route (240 + anchors <= 250,
-  so every generated route can be road-optimized at block tier or better)
-- proxy target: **~1,000 homes**, preferred band 800-1,200
+- primary: `MAX_BLOCK_TIER_ROUTING_UNITS = MAX_ROUTE_MATRIX_POINTS - anchorCount`
+  (240 at today's values), so every generated route road-optimizes at block tier
+  or better. `roadMatrixTiers.js` already computes exactly this as `blockBudget`;
+  it must be the single source, replacing the hardcoded `ROUTING_UNIT_BUDGET`.
+- 240 is the **initial value**, tunable in one place. Stage 4's public-OSRM
+  benchmark may move it to 180 or 300; that must not require redesigning
+  anything.
+- proxy target: **1,000 homes = the product cap** (hard). 800-1,200 is the
+  *balance tolerance band*, not a partition budget — see the defect note below.
 - hard ceiling: whichever binds first; the partitioner cuts on the unit budget
 
 ## Staged implementation
@@ -96,10 +105,11 @@ proxy:
 2. **Unit-budget partitioner**: replace the door-only target in
    `chunkStreetBlocks` with a dual budget (units + homes), keep pockets atomic,
    add balance and compactness to the cut score.
-3. **Optimize each partition** with the road matrix after partitioning
-   (per-chunk, dispatched under an explicit OSRM budget — see Stage 2, which now
-   owns this), replacing the aerial `FALLBACK_ROUTING_METADATA` for generated
-   routes.
+3. **Validate every partition against the routing-work budget, enqueue
+   partitions through a bounded OSRM dispatcher, optimize each partition, and
+   require explicit road-optimization success before reporting a route as
+   road-optimized** — replacing the aerial `FALLBACK_ROUTING_METADATA` for
+   generated routes. Stage 2 now owns this.
 4. **Replace the >2,500 refusal** with automatic partitioning of an oversized
    existing route, and make the toast/metadata state the tier honestly.
 5. **Cross-territory validation**: no gaps, no overlaps, contiguous neighbours,
@@ -125,6 +135,21 @@ network so units == street blocks):
 |---|---|---|---|---|---|---|---|---|
 | dense | 1,143 | 125 | 5 | 14 | 14 | doors | 1,143 | 82 |
 | sparse | 5,334 | 73 | 23 | 14 | 23 | routing units | 696 | 232 |
+
+**Defect found in review (must fix in Stage 2):** the dense row says 14 routes at
+1,143 homes each, which is *above* the 1,000-home product cap. Cause:
+`routingUnitWorkload` defaults `doorBudget = 1200` — the balance band's upper
+edge used as if it were the cap. With the correct 1,000 cap, dense becomes **16
+routes at ~1,000 homes**. Sparse is unaffected (units bind at 23). The band and
+the cap are two different things and must not share one number.
+
+**Simulation caveat:** these rows ran with no road network, so units == street
+blocks. That is fine for sizing arithmetic but is *not* the partitioner's input
+contract. The real partitioner takes **homes + road graph + drawn territory
+polygon** together; without the polygon there are no boundary nodes, so a road
+that merely stops at the edge of the fetched data reads as a dead end and gets
+protected as a fake pocket, which would block legitimate cuts along the
+territory edge.
 
 This is the point of the whole exercise: the same 16,000 homes need 14 routes
 dense and 23 sparse, decided by road complexity rather than a fixed homes/route
@@ -193,13 +218,15 @@ work exists to remove.
 
 | budget | value | owner | meaning |
 |---|---|---|---|
-| `MAX_HOMES_PER_ROUTE` | 1,000 (band 800-1,200) | product | operator-facing cap, unchanged |
-| `MAX_ROUTING_UNITS_PER_ROUTE` | 240 | technical | keeps `blocks + anchors <= 250`, i.e. block tier or better |
+| `MAX_HOMES_PER_ROUTE` | 1,000 | product | operator-facing cap. Hard. |
+| `BALANCE_TOLERANCE_BAND` | 800-1,200 | product | acceptable spread *between* routes; never a partition budget |
+| `MAX_BLOCK_TIER_ROUTING_UNITS` | derived (240 today) | technical | `MAX_ROUTE_MATRIX_POINTS - anchorCount`; keeps every route at block tier or better |
 
-Both live in `base44/shared/`. A partition is valid only if it satisfies both.
-Whichever binds first decides the route count — this is already what
-`routingUnitWorkload` computes and reports via `bindingBudget`, and Stage 2
-consumes that rather than re-deriving it.
+Both budgets live in `base44/shared/`, and the unit budget is imported from the
+tier planner rather than restated. A partition is valid only if it satisfies
+both. Whichever binds first decides the route count — `routingUnitWorkload`
+already computes this and reports `bindingBudget`; Stage 2 consumes it rather
+than re-deriving, after its `doorBudget` default is corrected to 1,000.
 
 ## Decision rule
 
@@ -215,12 +242,20 @@ otherwise                              -> optimize
 
 1. **Validity** — inside both budgets. A partition that cannot be road-optimized
    is not a partition we ship.
-2. **Compactness** — contiguous, geographically sensible.
-3. **Balance** — roughly equal homes, as a soft objective inside a tolerance
-   band, never a constraint that can force an invalid or non-contiguous cut.
+2. **Topology** — do not break pockets or cut mid-street unless validity forces
+   it.
+3. **Compactness** — contiguous, geographically sensible shape.
+4. **Balance** — roughly equal homes, a soft objective inside the tolerance
+   band, never a constraint that can force an invalid, pocket-breaking, or
+   non-contiguous cut.
 
-An unbalanced pair of routes is a minor annoyance. An invalid route is a silent
-aerial fallback, which is worse. 800 vs 1,000 homes is an acceptable outcome.
+Good shape beats perfectly equal numbers. An unbalanced pair of routes is a minor
+annoyance; an invalid route is a silent aerial fallback, which is worse. 900 vs
+1,100 is an acceptable outcome.
+
+First implementation keeps compactness and balance **simple** — a contiguity
+check plus a spread tolerance. Sophisticated cut scoring is a later refinement,
+not a Stage 2 requirement.
 
 ## Pocket atomicity, stated honestly
 
@@ -249,43 +284,107 @@ Hard requirements on it:
 - **Deterministic on stable keys.** The parity and baseline gates only work
   because ordering is reproducible; any order-dependent seeding makes them
   worthless.
-- **Territory polygon passed through.** Without boundary nodes, a road window
-  that merely ends at the fetch edge reads as a dead end and gets protected as a
-  fake pocket, which would block legitimate cuts along the territory edge.
-  Canvas already passes its polygon; the partitioner must too.
+- **Input contract is homes + road graph + drawn territory polygon**, never homes
+  alone. Without boundary nodes, a road window that merely ends at the fetch edge
+  reads as a dead end and gets protected as a fake pocket, which would block
+  legitimate cuts along the territory edge. Canvas already passes its polygon;
+  the partitioner must too. Road topology must be loaded *before* the final cuts
+  are made, not after.
 - **Whole-set exactly-once.** Asserted across the entire partition set, not per
   route. Today `assertExactRouteMembership` guards a single generation call, so
   18 individually-clean routes can still have lost a home between them.
 
-## OSRM dispatch budget
+## OSRM dispatcher (separate concern from the partitioner)
 
-A single shared dispatcher in `base44/shared/` fronting every road-matrix call,
-with configured limits for max concurrent requests, max requests per route, and
-max per territory run, plus a deadline. On exhaustion or throttle it **reports
-per route which routes are road-optimized and which are not** — it never labels
-an aerial result as optimized. Sequential-with-concurrency-cap first;
-parallelism is a tuning knob, not the default.
+Clean separation: **the partitioner decides _what_ gets optimized; the dispatcher
+decides _when and how fast_ it is sent.** These are two problems and get two
+modules.
+
+The word "parallel-safe" is removed from the plan. 20 valid routes x several
+matrix requests each, fired at once, is simply the old failure relocated: the
+public server throttles, requests time out, and routes fall back individually.
+
+One shared dispatcher in `base44/shared/` fronts every road-matrix call and owns:
+
+- max concurrent requests (default low; parallelism is a tuning knob, not the
+  default)
+- max requests per time period
+- timeout per request
+- retry policy (bounded)
+- per-route outcome: succeeded / failed
+- per-route tier actually used (door / block / cluster)
+
+## Explicit road-optimization status — the non-negotiable part
+
+Today's dangerous behavior is: OSRM fails -> local optimizer runs -> UI says
+"Optimized!". That ends here.
+
+- Road matrix succeeded -> route reports **road-optimized**, with the tier used.
+- Road matrix failed, timed out, or was refused -> route reports **road
+  optimization unavailable**. A local result may still be produced, but it is
+  labelled as local in both the UI and the persisted metadata.
+- No code path may label a local/aerial result as road-optimized. This is the
+  single most important acceptance criterion in Stage 2.
+
+## The tier ladder stays
+
+The existing door/block/cluster tiers in `roadMatrixTiers.js` are **not
+removed**. The partitioner's job is to make cluster tier *rare*, not to assume it
+can never happen. Deleting a working safety net on the strength of an assumption
+is not an improvement.
+
+## Target architecture
+
+```
+USER DRAWS TERRITORY
+        |
+LOAD HOMES + ROAD TOPOLOGY + POLYGON
+        |
+SHARED ROUTING-UNIT MODEL          (Stage 1, done)
+        |
+PARTITIONER                        max homes | max routing units |
+        |                          pocket protection | compactness | balance
+VALIDATE WHOLE TERRITORY           no missing / no duplicate homes |
+        |                          every route under both budgets
+OSRM DISPATCH QUEUE                limited concurrency, rate, timeout, retry
+        |
+ROAD OPTIMIZATION                  tier ladder retained as safety net
+        |
+EXPLICIT SUCCESS / FAILURE         never "optimized" for a local result
+        |
+COMBINE ROUTES -> SHOW USER
+```
+
+OSRM is no longer responsible for figuring out how to handle 16,000 homes. The
+partitioner handles that first.
 
 ## Risks
 
 - Route output changes for existing generation paths — the parity/baseline
   fixtures are the tripwire and must be re-captured deliberately, not silently.
-- 240 units is derived from synthetic-metric benchmarks; real OSRM latency may
-  move it. It must be a named constant, tunable in one place.
+- 240 units comes from synthetic-metric benchmarks; real public-OSRM latency may
+  move it. Derived from the matrix budget in one place, so retuning is a value
+  change, not a redesign.
 - The bounded-subdivision loop is where an infinite retry could hide. The depth
   cap and the loud failure path both need their own tests.
+- Correcting `doorBudget` 1200 -> 1000 changes route counts on any existing
+  caller of `routingUnitWorkload`. Currently only tests and the simulation
+  consume it, so the blast radius is small — but it must be verified, not
+  assumed.
 
 ## Verification
 
 - New: partitioner unit tests (dual budget, precedence, pocket fits/does not
   fit + override marker, determinism across shuffled input, whole-set
   exactly-once, bounded subdivision, loud failure).
-- New: dispatcher tests (concurrency cap, exhaustion reports honestly, no
-  aerial-labelled-as-road result).
+- New: dispatcher tests (concurrency cap respected, rate limit honored, timeout
+  and bounded retry, exhaustion reports honestly, per-route tier recorded, and a
+  dedicated test that **no path can label a local result as road-optimized**).
 - Existing, must stay green: `routing-units`, `routing-unit-parity`,
   `route-street-sweep`, `road-matrix-tiers`,
   `generate-routes-backend-continuity`, `route-zone-partition`,
   `route-road-context`, `canvas-street-topology`,
   `canvas-street-territory-planner`, `test-failure-baseline-gate`.
-- 16,000-home simulation re-run: 14 dense / 23 sparse route counts, every
-  partition inside both budgets, exactly-once across the whole set.
+- 16,000-home simulation re-run with the corrected 1,000-home cap and a road
+  network present: expect **16 dense / 23 sparse**, every partition inside both
+  budgets, exactly-once across the whole set.
