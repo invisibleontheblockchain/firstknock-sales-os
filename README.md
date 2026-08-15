@@ -673,6 +673,8 @@ PRECISION_WATCHDOG_SECRET — Server-held authorization for stalled-job recovery
 PRECISION_DIAGNOSTIC_SECRET — Server-held authorization for provider diagnostics
 ```
 
+Canvas has an isolated production configuration, signed evidence release, PostGIS migration, and offline-package staging gate. Follow [the Canvas production runbook](docs/CANVAS_PRODUCTION_RUNBOOK.md); never place its server secrets in `.env.local` or any `VITE_` variable.
+
 ---
 
 ## Contributors

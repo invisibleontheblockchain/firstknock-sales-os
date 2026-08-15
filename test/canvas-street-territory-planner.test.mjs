@@ -335,10 +335,10 @@ test('plans ten connected territories across roughly 258 square miles above the 
   assert.deepEqual(new Set(ownedUnitIds), new Set(plannedUnitIds));
 });
 
-test('rejects above the expanded complexity budget before expensive component partitioning', () => {
+test('rejects above the expanded national work-unit budget before expensive component partitioning', () => {
   const elements = [];
-  const workUnitCount = 8_001;
-  const columns = 90;
+  const workUnitCount = 20_001;
+  const columns = 150;
   const rows = Math.ceil(workUnitCount / columns);
   for (let index = 0; index < workUnitCount; index += 1) {
     const row = Math.floor(index / columns);
@@ -359,10 +359,10 @@ test('rejects above the expanded complexity budget before expensive component pa
     { ok: result.ok, status: result.status, code: result.code },
     { ok: false, status: 'blocked', code: 'CANVAS_PLAN_TOO_COMPLEX' },
   );
-  assert.equal(result.details.work_unit_count, 8_001);
+  assert.equal(result.details.work_unit_count, 20_001);
   assert.equal(result.details.maximum_work_unit_count, 20_000);
-  assert.equal(result.details.interactive_complexity, 2_000_250);
-  assert.equal(result.details.maximum_interactive_complexity, 2_000_000);
+  assert.equal(result.details.interactive_complexity, 5_000_250);
+  assert.equal(result.details.maximum_interactive_complexity, 5_000_000);
   assert.ok(elapsedMs < 10_000, `complexity rejection took ${Math.round(elapsedMs)}ms`);
 
   const plannerSource = readFileSync(new URL('../src/components/logic/canvasStreetTerritoryPlanner.js', import.meta.url), 'utf8');

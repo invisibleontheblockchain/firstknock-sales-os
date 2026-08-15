@@ -1,0 +1,25 @@
+{
+  "name": "CanvasClassificationRevisionHead",
+  "type": "object",
+  "properties": {
+    "head_key": { "type": "string" },
+    "manager_id": { "type": "string" },
+    "evidence_id": { "type": "string" },
+    "head_revision_id": { "type": "string" },
+    "version": { "type": "integer", "minimum": 0, "default": 0 },
+    "updated_at": { "type": "string", "format": "date-time" },
+    "updated_by_user_id": { "type": "string" }
+  },
+  "required": ["head_key", "manager_id", "evidence_id", "version", "updated_at", "updated_by_user_id"],
+  "rls": {
+    "create": { "user_condition": { "role": "admin" } },
+    "read": {
+      "$or": [
+        { "manager_id": "{{user.id}}" },
+        { "user_condition": { "role": "admin" } }
+      ]
+    },
+    "update": { "user_condition": { "role": "admin" } },
+    "delete": { "user_condition": { "role": "admin" } }
+  }
+}

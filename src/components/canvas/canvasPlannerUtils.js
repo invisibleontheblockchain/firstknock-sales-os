@@ -3,7 +3,9 @@ const MAX_CANVAS_ZONES = 250;
 const MAX_CANVAS_POLYGON_POINTS = 800;
 const MAX_CANVAS_AREA_SQ_MI = 1_000;
 const CANVAS_COORDINATE_EPSILON = 1e-10;
-export const MAX_CANVAS_INTERACTIVE_COMPLEXITY = 2_000_000;
+// 20,000 evidence units × 250 areas is the advertised upper Canvas shape.
+// Serialized-byte and segment caps remain the primary memory safeguards.
+export const MAX_CANVAS_INTERACTIVE_COMPLEXITY = 5_000_000;
 export const MAX_CANVAS_INTERACTIVE_WORK_UNITS = 20_000;
 export const MAX_CANVAS_INTERACTIVE_SEGMENTS = 50_000;
 
@@ -267,6 +269,7 @@ export function getCanvasPlanComplexityStatus(plan = {}) {
     .reduce((sum, unit) => sum + (Array.isArray(unit?.segments) ? unit.segments.length : 0), 0);
   const complexity = zoneCount * workUnitCount;
   const supported = zoneCount > 0
+    && zoneCount <= MAX_CANVAS_ZONES
     && workUnitCount > 0
     && workUnitCount <= MAX_CANVAS_INTERACTIVE_WORK_UNITS
     && segmentCount <= MAX_CANVAS_INTERACTIVE_SEGMENTS
@@ -362,6 +365,12 @@ export function restoreCanvasDraftPlan(campaign, teamMembers = []) {
     selected_team_member_ids: selectedIds,
     algorithm_version: campaign.algorithm_version || '',
     data_version: campaign.data_version || '',
+    evidence_id: campaign.evidence_id || null,
+    evidence_release_id: campaign.evidence_release_id || null,
+    snapshot_hash: campaign.snapshot_hash || null,
+    revision_id: campaign.revision_id || null,
+    evidence_schema_version: Number(campaign.evidence_schema_version || 1),
+    unresolved_unit_count: Math.max(0, Number(campaign.unresolved_unit_count || 0)),
     zones: restoredZones,
     work_units: workUnits,
     qa,
@@ -480,6 +489,8 @@ export function getCanvasGenerationBlockers({
 export function isCanvasPlanDeployable(plan = {}) {
   const qa = normalizedQa(plan.qa || plan.diagnostics?.qa);
   const workUnits = Array.isArray(plan.work_units) ? plan.work_units : [];
+  const residentialV2 = plan.territory_model === 'residential_street_territory_v2';
+  const ownershipUnits = residentialV2 ? workUnits.filter((unit) => unit?.canvas_role === 'knock') : workUnits;
   const zones = Array.isArray(plan.zones) ? plan.zones : [];
   const crewAssignment = getCanvasCrewAssignmentStatus(plan, plan.selected_team_member_ids || []);
   const ownedUnitIds = zones.flatMap((zone) => Array.isArray(zone?.work_unit_ids) ? zone.work_unit_ids : []);
@@ -487,11 +498,12 @@ export function isCanvasPlanDeployable(plan = {}) {
     && plan.assignment_basis === 'street_work_unit_ids'
     && Boolean(String(plan.algorithm_version || '').trim())
     && Boolean(String(plan.data_version || '').trim())
-    && workUnits.length > 0
+    && ownershipUnits.length > 0
     && zones.length > 0
     && zones.every((zone) => zone?.assigned_team_member_id && Array.isArray(zone?.work_unit_ids) && zone.work_unit_ids.length > 0)
-    && ownedUnitIds.length === workUnits.length
-    && new Set(ownedUnitIds).size === workUnits.length
+    && ownedUnitIds.length === ownershipUnits.length
+    && new Set(ownedUnitIds).size === ownershipUnits.length
+    && (!residentialV2 || (Boolean(plan.evidence_id) && Boolean(plan.snapshot_hash) && Number(plan.unresolved_unit_count || 0) === 0))
     && crewAssignment.valid
     && qa.deployable
     && qa.street_coverage_complete
@@ -505,10 +517,18 @@ export function isCanvasPlanDeployable(plan = {}) {
 }
 
 function normalizeWorkUnit(unit) {
+  const opportunity = unit?.opportunity || {};
   return {
     id: String(unit?.id || unit?.work_unit_id || ''),
     kind: unit?.kind || null,
     protected: unit?.protected === true,
+    protected_group_id: unit?.protected_group_id || null,
+    protected_group_ids: Array.isArray(unit?.protected_group_ids) ? unit.protected_group_ids : [],
+    canvas_role: unit?.canvas_role || null,
+    confidence: unit?.confidence || null,
+    opportunity_low: Number(unit?.opportunity_low ?? opportunity.min ?? opportunity.low ?? 0),
+    opportunity_expected: Number(unit?.opportunity_expected ?? opportunity.expected ?? 0),
+    opportunity_high: Number(unit?.opportunity_high ?? opportunity.max ?? opportunity.high ?? 0),
     street_names: unit?.street_names || unit?.streetNames || [],
     neighbor_ids: unit?.neighbor_ids || unit?.neighborIds || [],
     street_length_meters: Number(unit?.street_length_meters ?? unit?.streetLengthMeters ?? 0),
@@ -527,7 +547,7 @@ export function buildCanvasDraftPayload({ sessionId, expectedVersion, sessionNam
   const planningMethod = plan?.planning_method === 'street_workload' ? 'street_workload' : 'preview_only';
   const assignmentBasis = plan?.assignment_basis === 'street_work_unit_ids' ? 'street_work_unit_ids' : 'legacy_geometry';
   const divisionMode = plan?.division_mode || plan?.division_basis || 'selected_reps';
-  const workloadBasis = ['street_length', 'estimated_doors', 'street_length_plus_estimated_doors'].includes(plan?.workload_basis)
+  const workloadBasis = ['street_length', 'estimated_doors', 'street_length_plus_estimated_doors', 'residential_opportunity'].includes(plan?.workload_basis)
     ? plan.workload_basis
     : 'street_length';
   const zones = (Array.isArray(plan?.zones) ? plan.zones : []).map((zone, index) => ({
@@ -557,7 +577,9 @@ export function buildCanvasDraftPayload({ sessionId, expectedVersion, sessionNam
     ...(sessionId ? { session_id: sessionId } : {}),
     ...(expectedVersion !== undefined && expectedVersion !== null ? { expected_version: expectedVersion } : {}),
     session_name: String(sessionName || 'Canvas Territory Draft').trim() || 'Canvas Territory Draft',
-    territory_model: 'street_territory_v1',
+    territory_model: plan?.territory_model === 'residential_street_territory_v2'
+      ? 'residential_street_territory_v2'
+      : 'street_territory_v1',
     polygon,
     planning_method: planningMethod,
     assignment_basis: assignmentBasis,
@@ -567,6 +589,12 @@ export function buildCanvasDraftPayload({ sessionId, expectedVersion, sessionNam
     target_workload: plan?.target_workload !== null && plan?.target_workload !== undefined && plan?.target_workload !== '' && Number.isFinite(Number(plan.target_workload)) ? Number(plan.target_workload) : null,
     ...(plan?.algorithm_version ? { algorithm_version: plan.algorithm_version } : {}),
     ...(plan?.data_version ? { data_version: plan.data_version } : {}),
+    ...(plan?.evidence_id ? { evidence_id: plan.evidence_id } : {}),
+    ...(plan?.evidence_release_id ? { evidence_release_id: plan.evidence_release_id } : {}),
+    ...(plan?.snapshot_hash ? { snapshot_hash: plan.snapshot_hash } : {}),
+    ...(plan?.revision_id ? { revision_id: plan.revision_id } : {}),
+    ...(plan?.evidence_schema_version ? { evidence_schema_version: plan.evidence_schema_version } : {}),
+    unresolved_unit_count: Math.max(0, Number(plan?.unresolved_unit_count || 0)),
     zones,
     work_units: (Array.isArray(plan?.work_units) ? plan.work_units : []).map(normalizeWorkUnit),
     qa,

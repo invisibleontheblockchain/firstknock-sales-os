@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { CircleMarker, MapContainer, Polygon, Polyline, TileLayer, Tooltip, useMap, useMapEvents } from 'react-leaflet';
+import { CircleMarker, MapContainer, Polygon, Polyline, Tooltip, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import { CheckCircle2, Layers, Loader2, LocateFixed, MapPin, Navigation, RefreshCw, ShieldAlert, X } from 'lucide-react';
 import { toast } from 'sonner';
@@ -11,11 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { getCanvasCampaignMap, logCanvasHouseDecision } from '@/components/canvas/canvasProductionClient';
 import { getFieldRoutesStatuses } from '@/api/fieldRoutes';
 import ScheduleInspectionAction from '@/components/fieldroutes/ScheduleInspectionAction';
+import CanvasBaseMapTiles from '@/components/canvas/CanvasBaseMapTiles';
 import MapAttributionControl from '@/components/map/MapAttributionControl';
-import {
-  ESRI_IMAGERY_ATTRIBUTION,
-  OPENSTREETMAP_ATTRIBUTION,
-} from '@/components/map/mapAttribution';
 import {
   fieldRoutesStatusRows,
   fieldRoutesStatusPresentation,
@@ -47,7 +44,9 @@ function fieldRoutesOverlayStyle(status) {
   return null;
 }
 
-const PIN_REFRESH_MS = 15_000;
+// Legacy campaigns retain a recovery refresh. Residential v2 uses package and
+// cursor sync; neither path should redownload a full campaign every 15 seconds.
+const PIN_REFRESH_MS = 5 * 60_000;
 const FIELDROUTES_STATUS_POLL_MS = 15_000;
 const DNC_SAFETY_ERROR_CODES = new Set(['dnc_safety_limit_exceeded', 'dnc_safety_integrity_failed']);
 
@@ -661,19 +660,12 @@ export default function CanvasFieldView({
       </div>
 
       <div className="relative flex-1">
-        <MapContainer key={assignment.__key} center={center} zoom={15} style={{ height: '100%', width: '100%' }} zoomControl={false} attributionControl={false} preferCanvas>
+        <MapContainer key={assignment.__key} center={center} zoom={15} style={{ height: '100%', width: '100%' }} zoomControl={false} attributionControl preferCanvas>
           <FitAssignmentBounds mapPoints={mapPoints} pins={pins} />
           {dncSafetyComplete && <MapTapCapture onPinLocation={choosePinLocation} />}
           <LocateControl />
-          <TileLayer
-            key={satellite ? 'satellite' : 'streets'}
-            url={satellite
-              ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
-              : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'}
-            attribution=""
-            maxNativeZoom={satellite ? 19 : 20}
-            maxZoom={22}
-          />
+          <CanvasBaseMapTiles satellite={satellite} />
+          <MapAttributionControl position="bottomleft" />
           {campaignBoundary.length >= 3 && <Polygon positions={campaignBoundary} interactive={false} pathOptions={{ color: '#FFFFFF', fillOpacity: 0, opacity: 0.8, weight: 3, dashArray: '7 7' }}><Tooltip sticky>Global Canvas working area</Tooltip></Polygon>}
           {streetPaths.length > 0 && <Polyline positions={streetPaths} interactive={false} pathOptions={{ color: '#050505', opacity: 0.95, weight: 10, lineCap: 'round', lineJoin: 'round' }} />}
           {streetPaths.length > 0 && <Polyline positions={streetPaths} interactive={false} pathOptions={{ color: zoneColor, opacity: 0.98, weight: 6, lineCap: 'round', lineJoin: 'round' }}><Tooltip sticky>Area {zone.zone_number} · your colored street territory</Tooltip></Polyline>}

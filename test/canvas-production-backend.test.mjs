@@ -93,6 +93,9 @@ function managerUser() {
 function makeState() {
   return {
     sessions: [],
+    snapshots: [],
+    revisions: [],
+    revisionHeads: [],
     pins: [],
     events: [],
     members: [
@@ -184,6 +187,9 @@ function makeEntity(state, key, prefix) {
 function makeBase44(user, state) {
   const entities = {
     CanvasSession: makeEntity(state, 'sessions', 'session'),
+    CanvasAnalysisSnapshot: makeEntity(state, 'snapshots', 'snapshot'),
+    CanvasClassificationRevision: makeEntity(state, 'revisions', 'revision'),
+    CanvasClassificationRevisionHead: makeEntity(state, 'revisionHeads', 'revision_head'),
     CanvasHousePin: makeEntity(state, 'pins', 'pin'),
     CanvasHouseEvent: makeEntity(state, 'events', 'event'),
     TeamMember: makeEntity(state, 'members', 'member'),
@@ -196,7 +202,7 @@ function makeBase44(user, state) {
   };
 }
 
-function loadHandler(path, { base44, network = roadNetwork(), fetchImpl = null, sourceTransform = null } = {}) {
+function loadHandler(path, { base44, network = roadNetwork(), fetchImpl = null, sourceTransform = null, allowLegacyPublicOverpass = true } = {}) {
   const source = typeof sourceTransform === 'function' ? sourceTransform(readSource(path)) : readSource(path);
   const transpiled = ts.transpileModule(source, {
     compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
@@ -235,7 +241,11 @@ function loadHandler(path, { base44, network = roadNetwork(), fetchImpl = null, 
     clearTimeout,
     structuredClone,
     Deno: {
-      env: { get: (key) => key === 'CANVAS_DEPLOYMENT_SIGNING_SECRET' ? SIGNING_SECRET : null },
+      env: { get: (key) => {
+        if (key === 'CANVAS_DEPLOYMENT_SIGNING_SECRET') return SIGNING_SECRET;
+        if (key === 'CANVAS_ALLOW_PUBLIC_OVERPASS_FALLBACK') return allowLegacyPublicOverpass ? 'true' : 'false';
+        return null;
+      } },
       serve: (registered) => { handler = registered; }
     }
   }, { filename: path });
@@ -282,6 +292,114 @@ function productionPlan({ assigned = true, divisionMode = 'selected_reps', targe
     qa: generated.qa,
     algorithm_version: generated.algorithm_version,
     data_version: generated.data_version
+  };
+}
+
+function canonicalize(value) {
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(Object.keys(value).sort().map((key) => [key, canonicalize(value[key])]));
+}
+
+async function canonicalSha256(value) {
+  const bytes = new TextEncoder().encode(JSON.stringify(canonicalize(value)));
+  const digest = await webcrypto.subtle.digest('SHA-256', bytes);
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+async function residentialProductionPlan(state, { trusted = true } = {}) {
+  const baseline = productionPlan();
+  const opportunityById = new Map(baseline.zones.flatMap((zone) => zone.work_unit_ids.map((id) => [id, 10 / zone.work_unit_ids.length])));
+  const workUnits = baseline.work_units.map((unit) => ({
+    ...structuredClone(unit),
+    canvas_role: 'knock',
+    confidence: 'high',
+    protected_group_id: unit.protected ? `culdesac:${unit.id}` : null,
+    protected_group_ids: unit.protected ? [`culdesac:${unit.id}`] : [],
+    opportunity_low: opportunityById.get(unit.id),
+    opportunity_expected: opportunityById.get(unit.id),
+    opportunity_high: opportunityById.get(unit.id),
+  }));
+  const first = workUnits[0];
+  const contextId = 'context:commercial-field';
+  first.neighbor_ids = [...new Set([...(first.neighbor_ids || []), contextId])];
+  const context = {
+    id: contextId,
+    kind: 'street_segment',
+    protected: false,
+    protected_group_id: null,
+    protected_group_ids: [],
+    canvas_role: 'excluded',
+    confidence: 'high',
+    opportunity_low: 0,
+    opportunity_expected: 0,
+    opportunity_high: 0,
+    street_names: ['Industrial Access'],
+    neighbor_ids: [first.id],
+    street_length_meters: 25,
+    segments: [{
+      edge_id: 'context:edge',
+      start: structuredClone(first.segments[0].start),
+      end: structuredClone(first.segments[0].end),
+      street_names: ['Industrial Access'],
+      length_meters: 25,
+    }],
+  };
+  workUnits.push(context);
+  const zones = baseline.zones.map((zone) => {
+    const opportunity = zone.work_unit_ids.reduce((sum, id) => sum + opportunityById.get(id), 0);
+    return {
+      ...structuredClone(zone),
+      workload_score: opportunity,
+      estimated_doors: opportunity,
+    };
+  });
+  const analysisResult = {
+    street_units: structuredClone(workUnits),
+    classified_street_units: structuredClone(workUnits),
+    unresolved_unit_count: 0,
+  };
+  const resultHash = await canonicalSha256(analysisResult);
+  const snapshot = {
+    schema_version: 1,
+    manager_id: 'manager_1',
+    created_by_user_id: 'manager_1',
+    created_at: '2026-08-14T12:00:00.000Z',
+    provider: 'osm-static-tiles-v1',
+    release_id: `cer1_${'a'.repeat(64)}`,
+    manifest_hash: 'b'.repeat(64),
+    source_versions: { osm: '2026-08-13' },
+    compiler_version: 'canvas-evidence-compiler-v1',
+    classifier_version: 'canvas-residential-classifier-v1',
+    polygon: structuredClone(polygon),
+    tile_ids: [`cet1_${'c'.repeat(64)}`],
+    result_hash: resultHash,
+    result_bytes: new TextEncoder().encode(JSON.stringify(canonicalize(analysisResult))).byteLength,
+    summary: { role_counts: { knock: workUnits.length - 1, excluded: 1, uncertain: 0, transit_only: 0 } },
+    source_attribution: 'OpenStreetMap contributors',
+    production_trusted: trusted,
+    analysis_result: analysisResult,
+  };
+  snapshot.snapshot_hash = await canonicalSha256({ purpose: 'firstknock-canvas-analysis-snapshot-v1', ...Object.fromEntries(Object.entries(snapshot).filter(([key]) => !['analysis_result', 'snapshot_hash', 'evidence_id'].includes(key))) });
+  snapshot.evidence_id = `canvas_evidence_${snapshot.snapshot_hash}`;
+  state.snapshots.push({ ...structuredClone(snapshot), id: 'snapshot_1' });
+  return {
+    ...baseline,
+    territory_model: 'residential_street_territory_v2',
+    workload_basis: 'residential_opportunity',
+    zones,
+    work_units: workUnits,
+    qa: {
+      ...baseline.qa,
+      data_quality_status: trusted ? 'verified' : 'untrusted',
+      unresolved_unit_count: 0,
+    },
+    evidence_id: snapshot.evidence_id,
+    evidence_release_id: snapshot.release_id,
+    revision_id: null,
+    snapshot_hash: snapshot.snapshot_hash,
+    evidence_schema_version: 1,
+    unresolved_unit_count: 0,
   };
 }
 
@@ -402,7 +520,6 @@ test('Canvas schemas are territory-first and field writes are server-owned', () 
 test('obsolete house-inventory Canvas functions and Canvas Neon dependencies are gone', () => {
   for (const path of [
     'base44/functions/canvasAnalyzeTerritory/entry.ts',
-    'base44/functions/canvasGetAnalysis/entry.ts',
     'base44/functions/canvasFeedback/entry.ts',
     'base44/functions/setupCanvasOpportunityTables/entry.ts'
   ]) assert.equal(existsSync(resolve(rootDir, path)), false, path);
@@ -437,6 +554,53 @@ test('save accepts an unassigned area-count draft but marks it nondeployable', a
   assert.equal(state.sessions[0].territory_model, 'street_territory_v1');
   assert.equal(state.sessions[0].doors, undefined);
   assert.equal(state.sessions[0].work_units.length, 3);
+});
+
+test('residential Canvas deploy replays trusted evidence without live Overpass and preserves context units as unowned', async () => {
+  const state = makeState();
+  const plan = await residentialProductionPlan(state);
+  const { base44, saved } = await savePlan(state, plan);
+  assert.equal(saved.result.qa.deployable, true, JSON.stringify(saved.result));
+  assert.equal(state.sessions[0].lifecycle_state, 'ready_to_send');
+  assert.equal(state.sessions[0].work_units.filter((unit) => unit.canvas_role === 'excluded').length, 1);
+  assert.equal(state.sessions[0].zones.flatMap((zone) => zone.work_unit_ids).includes('context:commercial-field'), false);
+  let fetchCalls = 0;
+  const deploy = loadHandler('base44/functions/canvasDeployCampaign/entry.ts', {
+    base44,
+    fetchImpl: async () => {
+      fetchCalls += 1;
+      throw new Error('Residential deployment must not call live Overpass.');
+    },
+  });
+  const deployed = await invoke(deploy, {
+    session_id: saved.result.session_id,
+    expected_version: saved.result.version,
+    idempotency_key: 'deploy:residential-evidence',
+  });
+  assert.equal(deployed.response.status, 200, JSON.stringify(deployed.result));
+  assert.equal(fetchCalls, 0);
+  assert.equal(state.sessions[0].deployment_qa.topology_validator, 'signed_canvas_evidence_v1');
+  assert.equal(state.sessions[0].deployment_qa.evidence_production_trusted, true);
+  assert.equal(await verifyCanvasLifecycleSession(SIGNING_SECRET, state.sessions[0], 'active'), true);
+});
+
+test('residential Canvas deployment fails closed for untrusted or tampered evidence', async () => {
+  const untrustedState = makeState();
+  const untrustedPlan = await residentialProductionPlan(untrustedState, { trusted: false });
+  const { saved: untrustedSaved } = await savePlan(untrustedState, untrustedPlan);
+  assert.equal(untrustedState.sessions[0].lifecycle_state, 'partially_assigned');
+  const untrustedDeploy = await deployPlan(untrustedState, untrustedSaved, { idempotency_key: 'deploy:untrusted-evidence' });
+  assert.equal(untrustedDeploy.response.status, 422);
+  assert.equal(untrustedDeploy.result.error, 'canvas_not_ready_to_send');
+
+  const tamperedState = makeState();
+  const tamperedPlan = await residentialProductionPlan(tamperedState);
+  const { saved: tamperedSaved } = await savePlan(tamperedState, tamperedPlan);
+  tamperedState.snapshots[0].analysis_result.street_units[0].opportunity_expected += 1;
+  const tamperedDeploy = await deployPlan(tamperedState, tamperedSaved, { idempotency_key: 'deploy:tampered-evidence' });
+  assert.equal(tamperedDeploy.response.status, 409);
+  assert.equal(tamperedDeploy.result.error, 'evidence_integrity_failed');
+  assert.equal(tamperedState.sessions[0].status, 'draft');
 });
 
 test('canvasSaveDraft enforces declared and normalized UTF-8 byte limits before plan acceptance', async () => {
@@ -570,13 +734,13 @@ test('selected-rep drafts preserve strict one-area-per-rep deployment', async ()
   assert.equal(rejected.result.error, 'selected_rep_contract_failed');
 });
 
-test('save rejects plans above the interactive complexity boundary without mutating the draft', async () => {
+test('save rejects plans above the production area boundary without mutating the draft', async () => {
   const state = makeState();
   const first = await savePlan(state);
   const originalId = first.saved.result.session_id;
   const originalVersion = state.sessions[0].version;
   const originalHash = state.sessions[0].plan_hash;
-  const oversized = syntheticHeadcountPlan({ repCount: 250, workUnitCount: 8_001 });
+  const oversized = syntheticHeadcountPlan({ repCount: 251, workUnitCount: 720 });
   const save = loadHandler('base44/functions/canvasSaveDraft/entry.ts', { base44: first.base44 });
   const rejected = await invoke(save, {
     ...oversized,
@@ -591,17 +755,18 @@ test('save rejects plans above the interactive complexity boundary without mutat
   assert.equal(state.sessions[0].plan_hash, originalHash);
 });
 
-test('legacy oversized drafts fail deployment before roster reads or Overpass', async () => {
+test('legacy drafts above the production area boundary fail deployment before roster reads or Overpass', async () => {
   const state = makeState();
   const base44 = makeBase44(managerUser(), state);
-  const oversized = syntheticHeadcountPlan({ repCount: 250, workUnitCount: 8_001 });
+  const oversized = syntheticHeadcountPlan({ repCount: 251, workUnitCount: 720 });
+  oversized.zones[oversized.zones.length - 1].assigned_team_member_id = 'tm_1';
+  oversized.selected_team_member_ids = oversized.selected_team_member_ids.slice(0, 250);
   const save = loadHandler('base44/functions/canvasSaveDraft/entry.ts', {
     base44,
     sourceTransform: (source) => {
-      const guardStart = source.indexOf('    if (workUnits.length > MAX_CANVAS_INTERACTIVE_WORK_UNITS');
-      const nextStatement = source.indexOf('    const zoneAssigneeIds', guardStart);
-      assert.ok(guardStart >= 0 && nextStatement > guardStart);
-      return `${source.slice(0, guardStart)}${source.slice(nextStatement)}`;
+      const guard = "  if (input.length > MAX_ZONES) {\n    throw new HttpError(413, 'plan_too_complex', `Canvas supports at most ${MAX_ZONES} areas in one campaign.`);\n  }";
+      assert.ok(source.includes(guard));
+      return source.replace(guard, '  // Simulate a draft stored before the production area cap existed.');
     },
   });
   const legacy = await invoke(save, oversized);
@@ -631,6 +796,29 @@ test('legacy oversized drafts fail deployment before roster reads or Overpass', 
   assert.equal(teamFilterCalls, 0);
   assert.equal(userFilterCalls, 0);
   assert.equal(fetchCalls, 0);
+});
+
+test('production disables legacy public Overpass deployment and requires signed residential evidence', async () => {
+  const state = makeState();
+  const { base44, saved } = await savePlan(state);
+  let fetchCalls = 0;
+  const deploy = loadHandler('base44/functions/canvasDeployCampaign/entry.ts', {
+    base44,
+    allowLegacyPublicOverpass: false,
+    fetchImpl: async () => {
+      fetchCalls += 1;
+      return new Response(JSON.stringify(roadNetwork()), { status: 200 });
+    },
+  });
+  const rejected = await invoke(deploy, {
+    session_id: saved.result.session_id,
+    expected_version: saved.result.version,
+    idempotency_key: 'deploy:legacy-production-disabled',
+  });
+  assert.equal(rejected.response.status, 422, JSON.stringify(rejected.result));
+  assert.equal(rejected.result.error, 'legacy_canvas_evidence_required');
+  assert.equal(fetchCalls, 0);
+  assert.equal(state.sessions[0].status, 'draft');
 });
 
 test('200-rep deployment validates roster identity in four bounded batch reads', async () => {
@@ -666,7 +854,7 @@ test('200-rep deployment validates roster identity in four bounded batch reads',
   const deploy = loadHandler('base44/functions/canvasDeployCampaign/entry.ts', {
     base44,
     sourceTransform: (source) => source.replace(
-      'const topologyVerification = await verifyServerTopology(session);',
+      'const topologyVerification = await verifyServerTopology(session, base44);',
       'const topologyVerification = { server_topology_verified: true, validator_version: 3 };',
     ),
   });

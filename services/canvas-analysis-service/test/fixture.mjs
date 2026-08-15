@@ -1,0 +1,121 @@
+import { sign } from 'node:crypto';
+
+import { canonicalStringify, sha256Hex } from '../src/canonical.mjs';
+
+export const FIXTURE_KEY_ID = 'firstknock-local-fixture-v1';
+export const FIXTURE_PRIVATE_KEY = `-----BEGIN PRIVATE KEY-----
+MC4CAQAwBQYDK2VwBCIEIPpdU8Ht5DXFVk9Rz635np+GTkLZg0Y04elyw3dnpcNs
+-----END PRIVATE KEY-----
+`;
+export const FIXTURE_PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEAMQFVkuRo9ZigeLUVQyO3hJ9cYXXHLOintJYXPlD6Tqs=
+-----END PUBLIC KEY-----
+`;
+
+const RELEASE_ID = `cer1_${'1'.repeat(64)}`;
+const TILE_ID = `cet1_${'2'.repeat(64)}`;
+const UNIT_ENTRY = `cewu1_${'3'.repeat(64)}`;
+const UNIT_BOWL = `cewu1_${'4'.repeat(64)}`;
+const UNIT_EXTERNAL = `cewu1_${'5'.repeat(64)}`;
+const GROUP_ID = `cepg1_${'6'.repeat(64)}`;
+
+const provenance = (featureId) => [{
+  source_id: 'fixture-source',
+  dataset_version: 'fixture.1',
+  feature_id: featureId,
+  observed_at: '2026-08-14T11:00:00.000Z',
+  license: 'test-data-only',
+}];
+
+export function makeEvidenceFixture() {
+  const tile = {
+    schema: 'firstknock.canvas-evidence-tile',
+    schema_version: 1,
+    release_id: RELEASE_ID,
+    tile_id: TILE_ID,
+    tile_address: { scheme: 'fixture-grid', scheme_version: 1, key: 'phoenix-1' },
+    coverage: {
+      area_sq_mi: 0.25,
+      bounds: { min_lng: -112.081, min_lat: 33.449, max_lng: -112.076, max_lat: 33.453 },
+    },
+    external_neighbor_ids: [UNIT_EXTERNAL],
+    work_units: [
+      {
+        work_unit_id: UNIT_ENTRY,
+        identity: { source_namespace: 'fixture', source_feature_id: 'sunset-court', segment_index: 0, from_millionths: 0, to_millionths: 500000 },
+        canvas_role: 'opportunity',
+        confidence: { score: 0.94, tier: 'high', reasons: ['address_points'] },
+        opportunity: { min: 9, expected: 10, max: 12 },
+        provenance: provenance('sunset-court/0'),
+        geometry: { type: 'LineString', coordinates: [[-112.079, 33.45], [-112.078, 33.451]] },
+        neighbor_ids: [UNIT_BOWL, UNIT_EXTERNAL].sort(),
+        protected_group_id: GROUP_ID,
+      },
+      {
+        work_unit_id: UNIT_BOWL,
+        identity: { source_namespace: 'fixture', source_feature_id: 'sunset-court', segment_index: 1, from_millionths: 500000, to_millionths: 1000000 },
+        canvas_role: 'opportunity',
+        confidence: { score: 0.91, tier: 'high', reasons: ['address_points', 'cul_de_sac_topology'] },
+        opportunity: { min: 11, expected: 13, max: 15 },
+        provenance: provenance('sunset-court/1'),
+        geometry: { type: 'LineString', coordinates: [[-112.078, 33.451], [-112.0775, 33.4522]] },
+        neighbor_ids: [UNIT_ENTRY],
+        protected_group_id: GROUP_ID,
+      },
+    ].sort((left, right) => left.work_unit_id.localeCompare(right.work_unit_id)),
+    protected_groups: [{
+      protected_group_id: GROUP_ID,
+      kind: 'cul_de_sac',
+      member_work_unit_ids: [UNIT_ENTRY, UNIT_BOWL].sort(),
+      entry_work_unit_ids: [UNIT_ENTRY],
+    }],
+  };
+  const tileBytes = Buffer.from(canonicalStringify(tile), 'utf8');
+  const unsignedManifest = {
+    schema: 'firstknock.canvas-evidence-manifest',
+    schema_version: 1,
+    release: {
+      release_id: RELEASE_ID,
+      dataset_namespace: 'firstknock-fixture',
+      dataset_version: 'fixture.1',
+      generated_at: '2026-08-14T12:00:00.000Z',
+      compiler_version: 'fixture-compiler/1',
+    },
+    coverage: {
+      country_codes: ['US'],
+      bounds: tile.coverage.bounds,
+    },
+    tile_scheme: { scheme: 'fixture-grid', scheme_version: 1 },
+    limits: { max_tile_bytes: 5_500_000 },
+    sources: [{
+      source_id: 'fixture-source',
+      provider: 'Local fixture provider',
+      dataset_version: 'fixture.1',
+      license: 'test-data-only',
+      captured_at: '2026-08-14T11:00:00.000Z',
+    }],
+    tiles: [{
+      tile_id: TILE_ID,
+      tile_address: tile.tile_address,
+      uri: `tiles/${TILE_ID}.json`,
+      sha256: sha256Hex(tileBytes),
+      byte_length: tileBytes.byteLength,
+      work_unit_count: tile.work_units.length,
+      coverage_area_sq_mi: tile.coverage.area_sq_mi,
+      coverage_bounds: tile.coverage.bounds,
+      expected_opportunities: 23,
+    }],
+  };
+  const signature = sign(null, Buffer.from(canonicalStringify(unsignedManifest), 'utf8'), FIXTURE_PRIVATE_KEY).toString('base64url');
+  const manifest = { ...unsignedManifest, signature: { algorithm: 'Ed25519', key_id: FIXTURE_KEY_ID, value: signature } };
+  const manifestBytes = Buffer.from(canonicalStringify(manifest), 'utf8');
+  return {
+    manifest,
+    manifestBytes,
+    tile,
+    tileBytes,
+    manifestUrl: 'https://evidence.test/releases/fixture/manifest.json',
+    tileUrl: `https://evidence.test/releases/fixture/tiles/${TILE_ID}.json`,
+    ids: { release: RELEASE_ID, tile: TILE_ID, entry: UNIT_ENTRY, bowl: UNIT_BOWL, external: UNIT_EXTERNAL, group: GROUP_ID },
+  };
+}

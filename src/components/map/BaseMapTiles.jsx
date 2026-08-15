@@ -1,5 +1,6 @@
 import React from 'react';
 import { TileLayer } from 'react-leaflet';
+import CanvasBaseMapTiles from '@/components/canvas/CanvasBaseMapTiles';
 
 const BASEMAP_URLS = {
     satellite: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
@@ -28,7 +29,8 @@ const TILE_PERF = {
     maxZoom: 20,
 };
 
-export default function BaseMapTiles({ mapTheme }) {
+export default function BaseMapTiles({ mapTheme, routeMode = 'precision' }) {
+    if (routeMode === 'canvas') return <CanvasBaseMapTiles satellite={mapTheme === 'satellite' || mapTheme === 'hybrid'} />;
     const showLabels = mapTheme === 'hybrid' || mapTheme === 'satellite';
 
     return (

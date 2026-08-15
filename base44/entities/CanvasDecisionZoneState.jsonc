@@ -1,0 +1,32 @@
+{
+  "name": "CanvasDecisionZoneState",
+  "type": "object",
+  "properties": {
+    "manager_id": { "type": "string" },
+    "campaign_id": { "type": "string" },
+    "zone_id": { "type": "string", "maxLength": 512 },
+    "deployment_plan_version": { "type": "integer", "minimum": 1 },
+    "plan_hash": { "type": "string" },
+    "anchor_signature": { "type": "string" },
+    "lease_token": { "type": "string" },
+    "lease_actor_user_id": { "type": "string" },
+    "lease_acquired_at": { "type": "string", "format": "date-time" },
+    "lease_expires_at": { "type": "string", "format": "date-time" },
+    "lease_generation": { "type": "integer", "minimum": 0, "default": 0 }
+  },
+  "required": [
+    "manager_id",
+    "campaign_id",
+    "zone_id",
+    "deployment_plan_version",
+    "plan_hash",
+    "anchor_signature",
+    "lease_generation"
+  ],
+  "rls": {
+    "create": { "user_condition": { "role": "admin" } },
+    "read": { "user_condition": { "role": "admin" } },
+    "update": { "user_condition": { "role": "admin" } },
+    "delete": { "user_condition": { "role": "admin" } }
+  }
+}

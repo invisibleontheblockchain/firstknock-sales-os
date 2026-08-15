@@ -145,7 +145,9 @@ test('route road loading is isolated from Canvas and exposes no server proxy end
     existsSync(resolve(rootDir, 'base44/functions/fetchRouteRoadNetwork/entry.ts')),
     false,
   );
-  assert.match(canvasBuilder, /fetchOverpassRoadNetwork/);
+  // Canvas no longer reaches any public map-data API from the browser. Road
+  // topology is server-owned, so the builder must stay free of Overpass entirely.
+  assert.doesNotMatch(canvasBuilder, /fetchOverpassRoadNetwork|overpass/i);
   assert.match(canvasDeploy, /fetchServerRoadNetwork/);
   assert.match(canvasDeploy, /canvas_topology_source_unavailable/);
 });

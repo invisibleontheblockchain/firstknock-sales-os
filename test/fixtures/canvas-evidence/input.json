@@ -1,0 +1,254 @@
+{
+  "release": {
+    "dataset_namespace": "firstknock-fixture",
+    "dataset_version": "2026-08-14.fixture.1",
+    "generated_at": "2026-08-14T12:00:00.000Z"
+  },
+  "compiler_version": "canvas-evidence-fixture-compiler/1.0.0",
+  "coverage": {
+    "country_codes": ["US"],
+    "bounds": {
+      "min_lng": -112.0805,
+      "min_lat": 33.448,
+      "max_lng": -112.075,
+      "max_lat": 33.452
+    }
+  },
+  "tile_scheme": {
+    "scheme": "fixture-grid",
+    "scheme_version": 1
+  },
+  "sources": [
+    {
+      "source_id": "fixture-residential-evidence",
+      "provider": "local deterministic fixture",
+      "dataset_version": "2026-08-14.fixture.1",
+      "license": "test-data-only",
+      "captured_at": "2026-08-14T11:00:00.000Z"
+    }
+  ],
+  "tiles": [
+    {
+      "tile_address": {
+        "scheme": "fixture-grid",
+        "scheme_version": 1,
+        "key": "us-az-phoenix-0001"
+      },
+      "coverage": {
+        "area_sq_mi": 0.25,
+        "bounds": {
+          "min_lng": -112.0805,
+          "min_lat": 33.448,
+          "max_lng": -112.075,
+          "max_lat": 33.452
+        }
+      },
+      "external_neighbors": [
+        {
+          "fixture_key": "oak-west-continuation",
+          "identity": {
+            "source_namespace": "fixture-road",
+            "source_feature_id": "oak-street",
+            "segment_index": 99,
+            "from_millionths": 0,
+            "to_millionths": 1000000
+          }
+        }
+      ],
+      "protected_groups": [
+        {
+          "fixture_key": "sunset-court",
+          "kind": "cul_de_sac",
+          "members": ["court-entry", "court-bowl"],
+          "entries": ["court-entry"]
+        }
+      ],
+      "work_units": [
+        {
+          "fixture_key": "main-west",
+          "identity": {
+            "source_namespace": "fixture-road",
+            "source_feature_id": "oak-street",
+            "segment_index": 0,
+            "from_millionths": 0,
+            "to_millionths": 500000
+          },
+          "canvas_role": "opportunity",
+          "confidence": {
+            "score": 0.92,
+            "reasons": ["address_points", "residential_buildings"]
+          },
+          "opportunity": { "min": 17, "expected": 20, "max": 24 },
+          "provenance": [
+            {
+              "source_id": "fixture-residential-evidence",
+              "dataset_version": "2026-08-14.fixture.1",
+              "feature_id": "oak-street/0",
+              "observed_at": "2026-08-14T11:00:00.000Z",
+              "license": "test-data-only"
+            }
+          ],
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [[-112.0802, 33.45], [-112.0784, 33.45]]
+          },
+          "neighbors": ["main-east"],
+          "external_neighbors": ["oak-west-continuation"],
+          "protected_group": null
+        },
+        {
+          "fixture_key": "main-east",
+          "identity": {
+            "source_namespace": "fixture-road",
+            "source_feature_id": "oak-street",
+            "segment_index": 1,
+            "from_millionths": 500000,
+            "to_millionths": 1000000
+          },
+          "canvas_role": "transit",
+          "confidence": {
+            "score": 0.86,
+            "reasons": ["no_residential_evidence", "road_connectivity"]
+          },
+          "provenance": [
+            {
+              "source_id": "fixture-residential-evidence",
+              "dataset_version": "2026-08-14.fixture.1",
+              "feature_id": "oak-street/1",
+              "observed_at": "2026-08-14T11:00:00.000Z",
+              "license": "test-data-only"
+            }
+          ],
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [[-112.0784, 33.45], [-112.0768, 33.45]]
+          },
+          "neighbors": ["main-west", "court-entry", "commercial-spur", "unreviewed-spur"],
+          "protected_group": null
+        },
+        {
+          "fixture_key": "court-entry",
+          "identity": {
+            "source_namespace": "fixture-road",
+            "source_feature_id": "sunset-court",
+            "segment_index": 0,
+            "from_millionths": 0,
+            "to_millionths": 550000
+          },
+          "canvas_role": "opportunity",
+          "confidence": {
+            "score": 0.9,
+            "reasons": ["address_points", "cul_de_sac_topology"]
+          },
+          "opportunity": { "min": 11, "expected": 13, "max": 15 },
+          "provenance": [
+            {
+              "source_id": "fixture-residential-evidence",
+              "dataset_version": "2026-08-14.fixture.1",
+              "feature_id": "sunset-court/0",
+              "observed_at": "2026-08-14T11:00:00.000Z",
+              "license": "test-data-only"
+            }
+          ],
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [[-112.0774, 33.45], [-112.0774, 33.451]]
+          },
+          "neighbors": ["main-east", "court-bowl"],
+          "protected_group": "sunset-court"
+        },
+        {
+          "fixture_key": "court-bowl",
+          "identity": {
+            "source_namespace": "fixture-road",
+            "source_feature_id": "sunset-court",
+            "segment_index": 1,
+            "from_millionths": 550000,
+            "to_millionths": 1000000
+          },
+          "canvas_role": "opportunity",
+          "confidence": {
+            "score": 0.94,
+            "reasons": ["address_points", "cul_de_sac_topology"]
+          },
+          "opportunity": { "min": 24, "expected": 28, "max": 32 },
+          "provenance": [
+            {
+              "source_id": "fixture-residential-evidence",
+              "dataset_version": "2026-08-14.fixture.1",
+              "feature_id": "sunset-court/1",
+              "observed_at": "2026-08-14T11:00:00.000Z",
+              "license": "test-data-only"
+            }
+          ],
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [[-112.0774, 33.451], [-112.0771, 33.4514], [-112.0777, 33.4514], [-112.0774, 33.451]]
+          },
+          "neighbors": ["court-entry"],
+          "protected_group": "sunset-court"
+        },
+        {
+          "fixture_key": "commercial-spur",
+          "identity": {
+            "source_namespace": "fixture-road",
+            "source_feature_id": "warehouse-drive",
+            "segment_index": 0,
+            "from_millionths": 0,
+            "to_millionths": 1000000
+          },
+          "canvas_role": "excluded",
+          "confidence": {
+            "score": 0.97,
+            "reasons": ["industrial_landuse", "warehouse_buildings"]
+          },
+          "provenance": [
+            {
+              "source_id": "fixture-residential-evidence",
+              "dataset_version": "2026-08-14.fixture.1",
+              "feature_id": "warehouse-drive/0",
+              "observed_at": "2026-08-14T11:00:00.000Z",
+              "license": "test-data-only"
+            }
+          ],
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [[-112.0768, 33.45], [-112.076, 33.4492]]
+          },
+          "neighbors": ["main-east"],
+          "protected_group": null
+        },
+        {
+          "fixture_key": "unreviewed-spur",
+          "identity": {
+            "source_namespace": "fixture-road",
+            "source_feature_id": "mixed-use-lane",
+            "segment_index": 0,
+            "from_millionths": 0,
+            "to_millionths": 1000000
+          },
+          "canvas_role": "uncertain",
+          "confidence": {
+            "score": 0.45,
+            "reasons": ["building_use_conflict", "missing_address_evidence"]
+          },
+          "provenance": [
+            {
+              "source_id": "fixture-residential-evidence",
+              "dataset_version": "2026-08-14.fixture.1",
+              "feature_id": "mixed-use-lane/0",
+              "observed_at": "2026-08-14T11:00:00.000Z",
+              "license": "test-data-only"
+            }
+          ],
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [[-112.0768, 33.45], [-112.0761, 33.4508]]
+          },
+          "neighbors": ["main-east"],
+          "protected_group": null
+        }
+      ]
+    }
+  ]
+}
