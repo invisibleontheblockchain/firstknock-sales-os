@@ -605,6 +605,13 @@ export async function sequenceRoadHierarchy(properties, options = {}) {
         const geometric = partitionBlocksByDoorBudget(entries, { maxDoors: maxWindowDoors });
         const windowPoints = [...geometric.map((cluster) => cluster.representative), ...anchorPoints];
         telemetry.window_grouping_road_priced = false;
+        // The label must name the path that RAN, not the one that was preferred.
+        // `decomposition` is initialized to the road-ordered strategy, so reaching
+        // this branch without overwriting it stored 'road_ordered_windows' on routes
+        // whose windows were cut from lat/lng boxes — a stored strategy that
+        // contradicted `window_grouping_road_priced: false` in the same record, and
+        // that made past route audits read as road-grouped when they were not.
+        telemetry.decomposition = 'geometric_windows';
         if (windowPoints.length > MAX_ROUTE_MATRIX_POINTS) {
             return { ok: false, code: 'WINDOW_COUNT_EXCEEDS_MATRIX_LIMIT', windowCount: geometric.length };
         }
