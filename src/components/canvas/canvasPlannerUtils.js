@@ -600,3 +600,19 @@ export function buildCanvasDraftPayload({ sessionId, expectedVersion, sessionNam
     qa,
   };
 }
+
+// Areas the manager pinned, plus a just-merged area that does not exist in the
+// current plan yet. Any pinned area overlapping the merge is dropped, because
+// the partitioner rejects overlapping locks rather than picking a winner.
+export function lockedZonesFromPlan(plan, lockedZoneIds, mergedOverride = null) {
+  const locked = (plan?.zones || [])
+    .filter((zone) => lockedZoneIds?.has?.(String(zone?.zone_id)))
+    .map((zone) => ({ zone_id: String(zone.zone_id), work_unit_ids: [...(zone.work_unit_ids || [])] }));
+  if (!mergedOverride) return locked;
+  const mergedUnits = new Set(mergedOverride.work_unit_ids || []);
+  return [
+    mergedOverride,
+    ...locked.filter((zone) => String(zone.zone_id) !== String(mergedOverride.zone_id)
+      && !zone.work_unit_ids.some((id) => mergedUnits.has(id))),
+  ];
+}

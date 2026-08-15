@@ -154,3 +154,43 @@ test('miles and hours format for scale and stay null when absent', () => {
   assert.equal(formatCanvasFieldHours(214), '214 hrs');
   assert.equal(formatCanvasFieldHours(0), null);
 });
+
+// --- locked-area selection (moved out of the page file so it can be executed) ---
+
+const { lockedZonesFromPlan } = await import('../src/components/canvas/canvasPlannerUtils.js');
+
+const planWith = (...zones) => ({ zones });
+
+test('only pinned areas are locked, and their units are copied not shared', () => {
+  const plan = planWith(
+    { zone_id: 'z1', work_unit_ids: ['a', 'b'] },
+    { zone_id: 'z2', work_unit_ids: ['c'] },
+  );
+  const locked = lockedZonesFromPlan(plan, new Set(['z1']));
+
+  assert.deepEqual(locked, [{ zone_id: 'z1', work_unit_ids: ['a', 'b'] }]);
+  locked[0].work_unit_ids.push('mutated');
+  assert.deepEqual(plan.zones[0].work_unit_ids, ['a', 'b'], 'the plan must not be mutated through the lock');
+
+  assert.deepEqual(lockedZonesFromPlan(plan, new Set()), []);
+  assert.deepEqual(lockedZonesFromPlan(null, new Set(['z1'])), []);
+});
+
+test('a just-merged area replaces any pinned area it swallowed', () => {
+  const plan = planWith(
+    { zone_id: 'z1', work_unit_ids: ['a', 'b'] },
+    { zone_id: 'z2', work_unit_ids: ['c', 'd'] },
+    { zone_id: 'z3', work_unit_ids: ['e'] },
+  );
+  // z2 was merged into z1 and both were pinned; z3 is pinned and untouched.
+  const merged = { zone_id: 'z1', work_unit_ids: ['a', 'b', 'c', 'd'], locked: true };
+  const locked = lockedZonesFromPlan(plan, new Set(['z1', 'z2', 'z3']), merged);
+
+  assert.equal(locked.length, 2, 'the swallowed area must not be locked twice');
+  assert.deepEqual(locked[0], merged);
+  assert.deepEqual(locked[1].zone_id, 'z3');
+  // The partitioner rejects overlapping locks outright, so this de-duplication
+  // is what keeps a merge from producing LOCKED_ZONE_OVERLAP.
+  const allUnits = locked.flatMap((zone) => zone.work_unit_ids);
+  assert.equal(new Set(allUnits).size, allUnits.length, 'no unit may appear in two locks');
+});

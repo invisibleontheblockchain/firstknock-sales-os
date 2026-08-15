@@ -35,6 +35,7 @@ import {
   getCanvasPlannerFailureMessage,
   getCanvasTeamMemberEligibility,
   getCanvasWorkloadDeviation,
+  lockedZonesFromPlan,
   reconcileCanvasPlanWithEligibleTeam,
   restoreCanvasDraftPlan,
   updateCanvasZoneAssignment,
@@ -59,7 +60,7 @@ import {
 } from '@/components/canvas/canvasProductionClient';
 import { canvasZoneLoggedCount, formatCanvasDistance, getCanvasOutcome } from '@/components/canvas/canvasOutcomeUtils';
 import { getCanvasClassifiedStreetUnits } from '@/components/canvas/canvasResidentialPresentation';
-import { partitionCanvasResidentialTerritories } from '@/components/logic/canvasResidentialTerritoryAnalysis';
+import { mergeCanvasResidentialZones, partitionCanvasResidentialTerritories } from '@/components/logic/canvasResidentialTerritoryAnalysis';
 import { partitionCanvasResidentialTerritoriesAsync } from '@/components/logic/canvasResidentialTerritoryPlannerAsync';
 import CanvasPlannerWorkspace from './CanvasPlannerWorkspace.jsx';
 import { createPageUrl } from '@/utils';
@@ -409,6 +410,8 @@ export default function CanvasBuilderSettings({
   });
   const [mobileCollapsed, setMobileCollapsed] = useState(false);
   const [plan, setPlan] = useState(null);
+  // Areas the manager pinned. Their exact streets survive the next regeneration.
+  const [lockedZoneIds, setLockedZoneIds] = useState(() => new Set());
   const [planStaleReason, setPlanStaleReason] = useState('');
   const [planGenerationError, setPlanGenerationError] = useState(null);
   const [generating, setGenerating] = useState(false);
@@ -443,6 +446,8 @@ export default function CanvasBuilderSettings({
   const closeAttemptRef = useRef(null);
   const activeOperationRef = useRef('');
   const plannerAbortRef = useRef(null);
+  // A merge is decided before the plan that contains it exists.
+  const mergedZoneOverrideRef = useRef(null);
   const lastGeneratedPreviewRevisionRef = useRef(-1);
   const lastAttemptedPreviewRevisionRef = useRef(-1);
   const livePreviewTimerRef = useRef(null);
@@ -984,6 +989,42 @@ export default function CanvasBuilderSettings({
     deploymentAttemptRef.current = null;
   };
 
+  const toggleZoneLock = (zone) => {
+    const zoneId = String(zone?.zone_id || '');
+    if (!zoneId || deployed) return;
+    setLockedZoneIds((current) => {
+      const next = new Set(current);
+      if (next.has(zoneId)) next.delete(zoneId);
+      else next.add(zoneId);
+      return next;
+    });
+  };
+
+  const mergeZoneInto = (zone, target) => {
+    if (!zone || !target || deployed) return;
+    const merged = mergeCanvasResidentialZones({
+      street_units: planResidentialStreetUnits(residentialAnalysis),
+      zones: plan?.zones || [],
+      zone_id_a: zone.zone_id,
+      zone_id_b: target.zone_id,
+    });
+    if (!merged.ok) {
+      // Refusing is the correct outcome, so say why rather than failing quietly.
+      return toast.error(merged.code === 'MERGE_ZONES_NOT_ADJACENT'
+        ? `Area ${zone.zone_number} and Area ${target.zone_number} do not touch. Merging them would create a territory nobody can walk end to end.`
+        : 'Canvas could not merge those two areas.');
+    }
+    setLockedZoneIds((current) => {
+      const next = new Set(current);
+      next.delete(String(target.zone_id));
+      next.add(String(merged.merged_zone.zone_id));
+      return next;
+    });
+    mergedZoneOverrideRef.current = merged.merged_zone;
+    toast.success(`Merged Area ${target.zone_number} into Area ${zone.zone_number}.`);
+    changeRequestedAreaCount(Math.max(1, (plan?.zones?.length || 1) - 1));
+  };
+
   const changeRequestedAreaCount = (value) => {
     if (deployed || (activeOperationRef.current && activeOperationRef.current !== 'generate')) return;
     if (activeOperationRef.current === 'generate') plannerAbortRef.current?.abort();
@@ -1150,6 +1191,7 @@ export default function CanvasBuilderSettings({
       polygon,
       residentialAnalysis,
       requestedZoneCount,
+      lockedZones: lockedZonesFromPlan(plan, lockedZoneIds, mergedZoneOverrideRef.current),
       livePreviewRevision,
       sessionName,
       sessionId: serverSession?.session_id,
@@ -1160,6 +1202,7 @@ export default function CanvasBuilderSettings({
       const result = await partitionCanvasResidentialTerritoriesAsync({
         street_units: planResidentialStreetUnits(requestSnapshot.residentialAnalysis),
         area_count: requestSnapshot.requestedZoneCount,
+        locked_zones: requestSnapshot.lockedZones,
       }, { signal: abortController.signal });
       const failure = getCanvasPlannerFailureMessage(result);
       if (failure || !result?.ok) throw canvasPlannerError(result, residentialPartitionFailure(result) || failure);
@@ -1187,6 +1230,8 @@ export default function CanvasBuilderSettings({
       lastGeneratedPreviewRevisionRef.current = requestSnapshot.livePreviewRevision;
       fitNextPreviewRef.current = true;
       setPlan(nextPlan);
+      // The merged area now exists in the plan, so the one-shot override is spent.
+      mergedZoneOverrideRef.current = null;
       setPlanGenerationError(null);
       if (typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 1023px)').matches) setMobileCollapsed(true);
       setWorkloadExceptionAccepted(false);
@@ -1606,6 +1651,7 @@ export default function CanvasBuilderSettings({
     classificationSaving, applyClassificationReview,
     generationBlockers, generatePlan, generating, plan, planStaleReason, planGenerationError,
     zones, assignedZoneCount, selectedZone, selectedZoneNumber, setSelectedZoneNumber,
+    lockedZoneIds, toggleZoneLock, mergeZoneInto,
     autoAssign, updateZoneAssignment, membersById,
     persistDraft, deployPlan, closeCampaign, retryRepPackagePublication, saving, deploying, packagePublishing, packagePublicationStatus, packagePublicationIssue, closing, deployable, sendable, crewAssignmentStatus, workloadDeviationUnavailable, workloadExceptionNeedsAcceptance, workloadExceptionAccepted, changeWorkloadExceptionAcceptance, planTooComplex, planComplexityStatus, serverSession, deployed, activeDeployment, closedDeployment, mutationsLocked, draftDirty,
     startAnotherArea,
