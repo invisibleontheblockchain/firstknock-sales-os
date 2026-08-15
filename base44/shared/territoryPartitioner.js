@@ -25,6 +25,12 @@ import { buildRoutingUnits } from './routingUnits.js';
 import { MAX_BLOCKS_PER_ROUTE, MAX_HOMES_PER_ROUTE, ROUTE_ANCHOR_ALLOWANCE } from './routingBudgets.js';
 import { predictMatrixTier, TIER_BLOCK, TIER_DOOR } from './roadMatrixTiers.js';
 import { stableHash } from './streetTopologyCore.js';
+import { balancePartitions } from './territoryBalance.js';
+import {
+    buildPartitionDiagnostics,
+    formatPartitionDiagnostics,
+    validatePartitionCoverage
+} from './territoryPartitionReport.js';
 
 // A partition may be emitted above budget ONLY when a single atomic routing unit
 // is itself too large to cut. That is an explicit, recorded override — never a
@@ -39,13 +45,6 @@ const compareText = (left, right) => {
     if (first > second) return 1;
     return 0;
 };
-
-function doorIdentity(door) {
-    // address_hash is the identity everywhere else in the system; the coordinate
-    // fallback exists so an un-hashed door still cannot be double counted.
-    if (door?.address_hash) return `hash:${door.address_hash}`;
-    return `geo:${Number(door?.lat).toFixed(6)},${Number(door?.lng).toFixed(6)}|${door?.street_name || ''}|${door?.house_number ?? ''}`;
-}
 
 /**
  * Routing units with the geometry the partitioner needs to cut spatially.
@@ -154,44 +153,39 @@ function overridesFor(units, budgets) {
     return overrides;
 }
 
-/**
- * Exactly-once across the WHOLE partition set — not per partition.
- *
- * Compares the multiset of door identities in the partitions against the model's
- * own door inventory, so a door that is dropped, duplicated, or moved between
- * partitions is caught even if each partition looks internally consistent.
- */
-function validateCoverage(model, partitions) {
-    const expected = new Map();
-    model.blocks.forEach((block) => block.doors.forEach((door) => {
-        const identity = doorIdentity(door);
-        expected.set(identity, (expected.get(identity) || 0) + 1);
-    }));
-
-    const actual = new Map();
-    partitions.forEach((partition) => partition.doors.forEach((door) => {
-        const identity = doorIdentity(door);
-        actual.set(identity, (actual.get(identity) || 0) + 1);
-    }));
-
-    const missing = [];
-    const duplicated = [];
-    expected.forEach((count, identity) => {
-        const seen = actual.get(identity) || 0;
-        if (seen < count) missing.push({ identity, expected: count, actual: seen });
-        if (seen > count) duplicated.push({ identity, expected: count, actual: seen });
-    });
-    actual.forEach((count, identity) => {
-        if (!expected.has(identity)) duplicated.push({ identity, expected: 0, actual: count });
-    });
-
-    const assignedDoorCount = [...actual.values()].reduce((total, count) => total + count, 0);
+function describePartition(group, index, budgets) {
+    const overrides = overridesFor(group, budgets);
+    const doorCount = sumDoors(group);
+    const blockCount = sumBlocks(group);
+    // Requirement 6: the tier is decided from the partition's ACTUAL block
+    // count, using the same rule the matrix planner uses, before this partition
+    // is allowed anywhere near a road request.
+    const tier = predictMatrixTier({ doorCount, blockCount, anchorCount: budgets.anchorCount });
+    const unitKeys = group.map((unit) => unit.key).sort(compareText);
     return {
-        ok: missing.length === 0 && duplicated.length === 0 && assignedDoorCount === model.doorCount,
-        expectedDoorCount: model.doorCount,
-        assignedDoorCount,
-        missing: missing.sort((first, second) => compareText(first.identity, second.identity)).slice(0, 20),
-        duplicated: duplicated.sort((first, second) => compareText(first.identity, second.identity)).slice(0, 20)
+        index,
+        // Hashing the unit set gives a stable identity for the partition that
+        // does not depend on emission order — useful for cache keys and for
+        // proving determinism.
+        signature: `partition:${stableHash(unitKeys.join(','))}`,
+        unitKeys,
+        blockKeys: group.flatMap((unit) => unit.blockKeys).sort(compareText),
+        doors: group.flatMap((unit) => unit.doors),
+        doorCount,
+        blockCount,
+        unitCount: group.length,
+        protectedUnitCount: group.filter((unit) => unit.protected).length,
+        withinBudget: overrides.length === 0
+            && doorCount <= budgets.maxHomes
+            && blockCount <= budgets.maxBlocks,
+        overrides,
+        matrixTier: tier.ok ? tier.tier : null,
+        matrixTierOk: tier.ok === true,
+        matrixTierCode: tier.ok ? null : tier.code,
+        // A partition is road-ready only when the tier rule puts it at block
+        // tier or better. Cluster tier is still a working safety net, but it is
+        // reported, never assumed.
+        roadReady: tier.ok === true && (tier.tier === TIER_DOOR || tier.tier === TIER_BLOCK)
     };
 }
 
@@ -200,9 +194,10 @@ function validateCoverage(model, partitions) {
  *
  * @param {Array} properties every door in the territory
  * @param {object} options `{ roadNetwork, anchorCount, maxHomes, maxBlocks,
- *   allowedHighways, maxSnapMeters }`
- * @returns {object} `{ partitions, units, model, validation, overrides,
- *   budgets, stats }`. Each partition carries `unitKeys`, `blockKeys`, `doors`,
+ *   allowedHighways, maxSnapMeters, balance }`. `balance: false` skips the soft
+ *   evening-out pass; it never changes validity either way.
+ * @returns {object} `{ partitions, units, model, validation, diagnostics,
+ *   balance, overrides, budgets, stats }`. Each partition carries `unitKeys`, `blockKeys`, `doors`,
  *   `doorCount`, `blockCount`, `protectedUnitCount`, `withinBudget`,
  *   `overrides`, `matrixTier` and `signature`.
  * @throws when exactly-once coverage fails — a partition set that loses or
@@ -225,49 +220,25 @@ export function partitionTerritory(properties, options = {}) {
     });
 
     const units = describeUnits(model);
-    const groups = partitionUnits(units, budgets);
+    const cut = partitionUnits(units, budgets);
+    // Balance runs AFTER the territory is already cut into valid partitions, so
+    // it can only even out sizes — it can never be the reason a partition
+    // becomes invalid or a pocket gets split. Route COUNT is decided by the cut
+    // above, never by balancing, and is never steered toward a target number.
+    const balance = options.balance === false
+        ? { groups: cut, moves: [], spreadBefore: null, spreadAfter: null, limitedBy: 'disabled' }
+        : balancePartitions(cut, budgets);
 
-    const partitions = groups.map((group, index) => {
-        const overrides = overridesFor(group, budgets);
-        const doorCount = sumDoors(group);
-        const blockCount = sumBlocks(group);
-        // Requirement 6: the tier is decided from the partition's ACTUAL block
-        // count, using the same rule the matrix planner uses, before this
-        // partition is allowed anywhere near a road request.
-        const tier = predictMatrixTier({ doorCount, blockCount, anchorCount });
-        const unitKeys = group.map((unit) => unit.key).sort(compareText);
-        return {
-            index,
-            // Hashing the unit set gives a stable identity for the partition that
-            // does not depend on emission order — useful for cache keys and for
-            // proving determinism.
-            signature: `partition:${stableHash(unitKeys.join(','))}`,
-            unitKeys,
-            blockKeys: group.flatMap((unit) => unit.blockKeys).sort(compareText),
-            doors: group.flatMap((unit) => unit.doors),
-            doorCount,
-            blockCount,
-            unitCount: group.length,
-            protectedUnitCount: group.filter((unit) => unit.protected).length,
-            withinBudget: overrides.length === 0
-                && doorCount <= budgets.maxHomes
-                && blockCount <= budgets.maxBlocks,
-            overrides,
-            matrixTier: tier.ok ? tier.tier : null,
-            matrixTierOk: tier.ok === true,
-            matrixTierCode: tier.ok ? null : tier.code,
-            // A partition is road-ready only when the tier rule puts it at block
-            // tier or better. Cluster tier is still a working safety net, but it
-            // is reported, never assumed.
-            roadReady: tier.ok === true && (tier.tier === TIER_DOOR || tier.tier === TIER_BLOCK)
-        };
-    });
+    const partitions = balance.groups.map((group, index) => describePartition(group, index, budgets));
 
-    const validation = validateCoverage(model, partitions);
+    const validation = validatePartitionCoverage(model, partitions);
+    const diagnostics = buildPartitionDiagnostics({ model, partitions, budgets, validation, balance });
     if (!validation.ok) {
-        throw new Error(
-            `territoryPartitioner: exactly-once validation failed — expected ${validation.expectedDoorCount} doors, assigned ${validation.assignedDoorCount}, ${validation.missing.length} missing, ${validation.duplicated.length} duplicated`
-        );
+        // Fail loudly with the full picture attached: a coverage failure on a
+        // 16,000-home territory is unfixable from a bare count.
+        const error = new Error(`territoryPartitioner: exactly-once validation failed\n${formatPartitionDiagnostics(diagnostics)}`);
+        error.diagnostics = diagnostics;
+        throw error;
     }
 
     const doorCounts = partitions.map((partition) => partition.doorCount);
@@ -278,6 +249,8 @@ export function partitionTerritory(properties, options = {}) {
         model,
         budgets,
         validation,
+        diagnostics,
+        balance,
         overrides: partitions.flatMap((partition) => partition.overrides),
         stats: {
             partitionCount: partitions.length,
@@ -287,9 +260,14 @@ export function partitionTerritory(properties, options = {}) {
             pocketCount: model.pockets.length,
             minHomesPerPartition: doorCounts.length ? Math.min(...doorCounts) : 0,
             maxHomesPerPartition: doorCounts.length ? Math.max(...doorCounts) : 0,
+            averageHomesPerPartition: diagnostics.homesPerPartition.average,
+            homesSpread: diagnostics.homesPerPartition.spread,
+            minBlocksPerPartition: blockCounts.length ? Math.min(...blockCounts) : 0,
             maxBlocksPerPartition: blockCounts.length ? Math.max(...blockCounts) : 0,
             partitionsWithinBudget: partitions.filter((partition) => partition.withinBudget).length,
-            roadReadyPartitions: partitions.filter((partition) => partition.roadReady).length
+            roadReadyPartitions: partitions.filter((partition) => partition.roadReady).length,
+            balanceMoves: balance.moves.length,
+            balanceLimitedBy: balance.limitedBy
         }
     };
 }

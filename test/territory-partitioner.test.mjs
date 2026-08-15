@@ -14,6 +14,7 @@ import {
 } from '../base44/shared/territoryPartitioner.js';
 import { MAX_BLOCKS_PER_ROUTE, MAX_HOMES_PER_ROUTE } from '../base44/shared/routingBudgets.js';
 import { TIER_BLOCK, TIER_DOOR } from '../base44/shared/roadMatrixTiers.js';
+import { validatePartitionCoverage } from '../base44/shared/territoryPartitionReport.js';
 
 let nextNodeId = 1;
 
@@ -211,4 +212,167 @@ test('PART-08 a territory that already fits stays a single partition', () => {
     assert.equal(result.partitions[0].matrixTier, TIER_DOOR);
     assert.equal(result.overrides.length, 0);
     assert.equal(partitionTerritory([]).partitions.length, 0);
+});
+
+// ---------------------------------------------------------------------------
+// Step 3: global validation hardening + the soft balance pass.
+// ---------------------------------------------------------------------------
+
+/**
+ * One compact neighbourhood of alternating long and short streets. Median
+ * bisection splits units evenly by COUNT, so mixed street sizes leave the home
+ * counts uneven — exactly the case the balance pass exists for.
+ */
+function unevenTerritory() {
+    const doors = [];
+    for (let street = 0; street < 30; street += 1) {
+        const doorsOnStreet = street % 2 === 0 ? 60 : 10;
+        for (let house = 0; house < doorsOnStreet; house += 1) {
+            doors.push(door(
+                `Mixed ${street}`,
+                100 + house * 2,
+                35.2 + street * 0.0006,
+                -80.85 + house * 0.0002
+            ));
+        }
+    }
+    return doors;
+}
+
+/**
+ * A small main street plus a cul-de-sac holding more homes than the budget
+ * allows. Perfect balance is impossible here: the pocket is atomic (topology)
+ * and already over budget (validity), so nothing may move into or out of it.
+ */
+function pocketHeavyDoors() {
+    const doors = [
+        door('Grid St', 100, 35.20005, -80.8496),
+        door('Grid St', 102, 35.20005, -80.8488),
+        door('Grid St', 104, 35.20005, -80.8474),
+        door('Grid St', 106, 35.20005, -80.8462)
+    ];
+    for (let house = 0; house < 6; house += 1) {
+        doors.push(door('Quiet Ct', 200 + house * 2, 35.19795 - house * 0.00018, -80.84602));
+    }
+    return doors;
+}
+
+test('PART-09 the balance pass evens partitions out without breaking any budget', () => {
+    const doors = unevenTerritory();
+    const unbalanced = partitionTerritory(doors, { balance: false });
+    const balanced = partitionTerritory(doors);
+
+    assert.equal(balanced.partitions.length, unbalanced.partitions.length, 'balance must not change the route count');
+    assert.ok(balanced.balance.moves.length > 0, 'this fixture is uneven enough to have improving moves');
+    assert.ok(
+        balanced.stats.homesSpread < unbalanced.stats.homesSpread,
+        `expected balance to reduce spread, got ${unbalanced.stats.homesSpread} -> ${balanced.stats.homesSpread}`
+    );
+    balanced.partitions.forEach((partition) => {
+        assert.ok(partition.doorCount <= MAX_HOMES_PER_ROUTE);
+        assert.ok(partition.blockCount <= MAX_BLOCKS_PER_ROUTE);
+        assert.equal(partition.withinBudget, true);
+        assert.equal(partition.roadReady, true);
+    });
+    assert.equal(balanced.validation.ok, true, 'balancing must not create a gap or an overlap');
+});
+
+test('PART-10 balancing moves whole routing units and never touches a pocket', () => {
+    const doors = culDeSacDoors();
+    const result = partitionTerritory(doors, { roadNetwork: culDeSacNetwork(), maxHomes: 3 });
+    const unitByKey = new Map(result.units.map((unit) => [unit.key, unit]));
+
+    result.balance.moves.forEach((move) => {
+        const unit = unitByKey.get(move.unitKey);
+        assert.ok(unit, 'a move must name a real routing unit');
+        // A move carries the unit's ENTIRE door and block count: there is no
+        // partial-unit move, so a pocket cannot be split by balancing.
+        assert.equal(move.homes, unit.doorCount);
+        assert.equal(move.blocks, unit.blockCount);
+    });
+    result.units.filter((unit) => unit.protected).forEach((pocketUnit) => {
+        const owners = result.partitions.filter((partition) => partition.unitKeys.includes(pocketUnit.key));
+        assert.equal(owners.length, 1, 'a pocket stays in exactly one partition after balancing');
+    });
+    assert.equal(result.validation.ok, true);
+});
+
+test('PART-11 an uneven result is accepted, and explained, when balance would break a higher rule', () => {
+    // 4 homes on a street, 6 in a cul-de-sac, budget of 5. Balance "wants" to
+    // even them at 5/5, which would mean cutting the pocket (topology) or
+    // overfilling a partition (validity). Both outrank balance, so the system
+    // must knowingly ship 6/4 and say why.
+    const result = partitionTerritory(pocketHeavyDoors(), {
+        roadNetwork: culDeSacNetwork(),
+        maxHomes: 5
+    });
+    assert.ok(result.stats.homesSpread > 0, 'this territory cannot be balanced evenly');
+    assert.equal(result.balance.moves.length, 0, 'no legal move exists');
+    assert.equal(result.balance.limitedBy, 'no_improving_move');
+    assert.ok(result.overrides.length > 0, 'the reason for the imbalance is recorded');
+
+    // The higher-priority rules are all still intact despite the imbalance.
+    const pocketUnit = result.units.find((unit) => unit.protected);
+    assert.ok(pocketUnit, 'the cul-de-sac is a protected pocket');
+    const owners = result.partitions.filter((partition) => partition.unitKeys.includes(pocketUnit.key));
+    assert.equal(owners.length, 1, 'the pocket was not split to chase balance');
+    assert.equal(owners[0].doorCount, pocketUnit.doorCount);
+    result.partitions.filter((partition) => partition.overrides.length === 0).forEach((partition) => {
+        assert.ok(partition.doorCount <= 5);
+    });
+    assert.equal(result.validation.ok, true);
+    assert.equal(result.diagnostics.balance.limitedBy, 'no_improving_move');
+});
+
+test('PART-12 diagnostics report everything needed to debug a large territory', () => {
+    const result = partitionTerritory(unevenTerritory());
+    const diagnostics = result.diagnostics;
+
+    assert.equal(diagnostics.territory.totalHomes, result.stats.doorCount);
+    assert.equal(diagnostics.territory.totalBlocks, result.stats.blockCount);
+    assert.equal(diagnostics.territory.totalRoutingUnits, result.stats.unitCount);
+    assert.equal(diagnostics.partitionCount, result.partitions.length);
+    assert.equal(diagnostics.homesPerPartition.min, result.stats.minHomesPerPartition);
+    assert.equal(diagnostics.homesPerPartition.max, result.stats.maxHomesPerPartition);
+    assert.ok(diagnostics.homesPerPartition.average > 0);
+    assert.equal(diagnostics.blocksPerPartition.max, result.stats.maxBlocksPerPartition);
+    assert.ok(diagnostics.routingUnitsPerPartition.min > 0);
+    assert.equal(diagnostics.pocketOverrideCount, result.overrides.length);
+    assert.equal(diagnostics.exactlyOnce.ok, true);
+    assert.equal(diagnostics.exactlyOnce.assignedHomes, diagnostics.exactlyOnce.expectedHomes);
+    assert.equal(diagnostics.exactlyOnce.missingUnits, 0);
+    assert.equal(diagnostics.exactlyOnce.overlappingUnits, 0);
+    assert.deepEqual(diagnostics.signatures, result.partitions.map((partition) => partition.signature));
+    assert.equal(diagnostics.partitions.length, result.partitions.length);
+    assert.equal(diagnostics.budgets.maxHomesPerRoute, MAX_HOMES_PER_ROUTE);
+});
+
+test('PART-13 validation catches unit gaps and overlaps, not just door counts', () => {
+    const result = partitionTerritory(gridTerritory(120, 6));
+    const [first, second] = result.partitions;
+
+    const withGap = validatePartitionCoverage(result.model, result.partitions.slice(1));
+    assert.equal(withGap.ok, false);
+    assert.ok(withGap.missingUnits.length > 0, 'a dropped partition is a gap');
+    assert.ok(withGap.assignedDoorCount < withGap.expectedDoorCount);
+
+    const withOverlap = validatePartitionCoverage(result.model, [
+        ...result.partitions,
+        { ...second, index: result.partitions.length, unitKeys: first.unitKeys, doors: first.doors }
+    ]);
+    assert.equal(withOverlap.ok, false);
+    assert.ok(withOverlap.overlappingUnits.length > 0, 'a unit in two partitions is an overlap');
+    assert.ok(withOverlap.duplicatedDoorCount > 0);
+});
+
+test('PART-14 the balanced result is still deterministic under input shuffling', () => {
+    const doors = unevenTerritory();
+    const forward = partitionTerritory(doors);
+    const reversed = partitionTerritory([...doors].reverse());
+    assert.deepEqual(reversed.balance.moves, forward.balance.moves);
+    assert.deepEqual(reversed.diagnostics.signatures, forward.diagnostics.signatures);
+    assert.deepEqual(
+        reversed.partitions.map((partition) => partition.doorCount),
+        forward.partitions.map((partition) => partition.doorCount)
+    );
 });

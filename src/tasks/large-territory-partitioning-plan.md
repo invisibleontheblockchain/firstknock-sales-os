@@ -272,6 +272,56 @@ beyond what median bisection gives, and **no polygon-aware topology** — the
 boundary exemption (requirement 8) needs `buildRoutingUnits` to accept a polygon
 and is deferred rather than half-wired.
 
+## Step 3 status: complete (validation + balance only — still nothing wired)
+
+Two new modules, both consumed by `territoryPartitioner.js`:
+
+`base44/shared/territoryPartitionReport.js`
+- `validatePartitionCoverage` now audits **units as well as doors**: a missing
+  unit is a gap, a unit owned by two partitions is an overlap. Door multiset
+  comparison is unchanged. Coverage failure throws with the full diagnostics
+  attached (`error.diagnostics`), because a bare count is unfixable at 16,000
+  homes.
+- `buildPartitionDiagnostics` / `formatPartitionDiagnostics`: total homes,
+  blocks, routing units, pockets; partition count; homes min/avg/max/spread;
+  blocks min/max; routing units min/max; pocket overrides; exactly-once detail
+  (missing, duplicated, unit gaps, unit overlaps); per-partition rows; and the
+  partition signatures.
+
+`base44/shared/territoryBalance.js` — soft pass, runs AFTER the cut, so it can
+only even out sizes. Precedence is structural, not conventional:
+1. validity — a move that would push the receiver past the home or block budget
+   is never considered;
+2. topology — moves are whole routing units, so no code path can split a pocket;
+3. compactness — only seam-adjacent units may move, and only to that unit's own
+   nearest neighbouring partition;
+4. balance — the objective (sum of squared deviation from the mean), and the only
+   thing allowed to be sacrificed.
+Every accepted move must strictly reduce the objective, which is what makes the
+pass terminate; there is also a move cap. `limitedBy` records why it stopped
+(`already_balanced`, `no_improving_move`, `move_cap_reached`, `disabled`), so an
+uneven result is explained rather than mysterious. **Balance never changes the
+route count**, and no code anywhere targets a route-count number.
+
+Note on compactness: "only move a unit closer to the receiver than to its own
+centroid" was implemented first and is wrong — in an evenly filled strip even the
+seam unit sits closer to its own centroid, so the pass was inert. Replaced with
+the seam/nearest-neighbour rule above.
+
+Tests: `test/territory-partitioner.test.mjs` 14/14, including PART-11, which
+proves the system knowingly ships 6/4 rather than splitting a pocket or
+overfilling a partition to reach 5/5.
+
+16,000-home simulation (synthetic, no road graph):
+
+| fixture | partitions | homes min/avg/max | spread | blocks/partition | tier | exactly-once |
+|---|---|---|---|---|---|---|
+| dense (2,000 x 8) | 16 | 1000 / 1000 / 1000 | 0 | 125 | block | ok |
+| sparse (5,334 x 3) | 32 | 498 / 500.1 / 501 | 3 | 166-167 | block | ok |
+
+The sparse row is the point: blocks bind, so 16,002 homes correctly becomes 32
+routes of ~500, not 16 of 1,000. Route count follows road complexity.
+
 ## Step 1 status: complete
 
 - `base44/shared/routingBudgets.js` created as the single source of limits.
