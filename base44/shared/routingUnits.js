@@ -31,12 +31,18 @@ import {
     findProtectedTerminalBranches,
     stableHash as topologyHash
 } from './streetTopologyCore.js';
+import { MAX_BLOCKS_PER_ROUTE, MAX_HOMES_PER_ROUTE } from './routingBudgets.js';
 
-// The measured ceiling. A route stays road-priced at block tier only while its
-// units plus its anchors fit inside MAX_ROUTE_MATRIX_POINTS (250), so the
-// partitioner targets this many units — NOT a door count. See
-// src/tasks/large-territory-partitioning-plan.md for the benchmark.
-export const ROUTING_UNIT_BUDGET = 240;
+// Budgets are NOT defined here. `routingBudgets.js` is the single source, and
+// the block ceiling is derived from MAX_ROUTE_MATRIX_POINTS there rather than
+// restated as a literal. See src/tasks/large-territory-partitioning-plan.md.
+//
+// Note the currency: the road matrix carries one point per STREET BLOCK, and a
+// protected pocket is one unit spanning possibly several blocks. Sizing must
+// therefore be checked in blocks; units exist to keep pockets atomic.
+export { MAX_BLOCKS_PER_ROUTE, MAX_HOMES_PER_ROUTE } from './routingBudgets.js';
+// Retained name for existing callers, now derived rather than hardcoded.
+export const ROUTING_UNIT_BUDGET = MAX_BLOCKS_PER_ROUTE;
 
 // Roads a rep can actually canvass on foot or by car. Matches the routable set
 // the road context already uses, so topology here agrees with routing there.
@@ -279,8 +285,11 @@ export function buildRoutingUnits(properties, options = {}) {
             ? POCKET_PROVENANCE_TOPOLOGY
             : POCKET_PROVENANCE_NONE,
         unitCount: units.length,
+        // The matrix currency. Sizing is checked against this, not unitCount,
+        // because a pocket unit can span several blocks.
+        blockCount: blocks.length,
         doorCount: validProperties.length,
-        budget: ROUTING_UNIT_BUDGET
+        budget: MAX_BLOCKS_PER_ROUTE
     };
 }
 
@@ -290,15 +299,24 @@ export function buildRoutingUnits(properties, options = {}) {
  * need more routes than a dense 1,500-door one, which is exactly why door count
  * cannot be the primary metric.
  */
-export function routingUnitWorkload(model, { unitBudget = ROUTING_UNIT_BUDGET, doorBudget = 1200 } = {}) {
+export function routingUnitWorkload(model, options = {}) {
+    // `unitBudget` is accepted as the historical alias; the budget is applied to
+    // BLOCK count, which is what the road matrix actually spends its points on.
+    const blockBudget = Number(options.blockBudget ?? options.unitBudget ?? MAX_BLOCKS_PER_ROUTE);
+    // Was 1200 — the balance band's upper edge used as a cap, which let this
+    // model propose routes above the 1,000-home product ceiling.
+    const doorBudget = Number(options.doorBudget ?? MAX_HOMES_PER_ROUTE);
     const unitCount = Number(model?.unitCount) || 0;
+    const blockCount = Number(model?.blockCount) || unitCount;
     const doorCount = Number(model?.doorCount) || 0;
-    const routesByUnits = unitCount > 0 ? Math.ceil(unitCount / unitBudget) : 0;
+    const routesByUnits = blockCount > 0 ? Math.ceil(blockCount / blockBudget) : 0;
     const routesByDoors = doorCount > 0 ? Math.ceil(doorCount / doorBudget) : 0;
     return {
         unitCount,
+        blockCount,
         doorCount,
-        unitBudget,
+        unitBudget: blockBudget,
+        blockBudget,
         doorBudget,
         routesByUnits,
         routesByDoors,

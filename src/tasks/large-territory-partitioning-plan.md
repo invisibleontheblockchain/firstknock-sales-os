@@ -86,10 +86,11 @@ current `MAX_ROUTE_MATRIX_POINTS = 250` implementation and its anchor overhead,
 not of OSRM. If the matrix budget later moves to 500, the partitioner must
 follow automatically.
 
-- primary: `MAX_BLOCK_TIER_ROUTING_UNITS = MAX_ROUTE_MATRIX_POINTS - anchorCount`
+- primary: `MAX_BLOCKS_PER_ROUTE = MAX_ROUTE_MATRIX_POINTS - anchors - headroom`
   (240 at today's values), so every generated route road-optimizes at block tier
-  or better. `roadMatrixTiers.js` already computes exactly this as `blockBudget`;
-  it must be the single source, replacing the hardcoded `ROUTING_UNIT_BUDGET`.
+  or better. `roadMatrixTiers.js` already computes the same quantity per-call as
+  `blockBudget`; `routingBudgets.js` is now the declared source and the hardcoded
+  `ROUTING_UNIT_BUDGET` literal is gone.
 - 240 is the **initial value**, tunable in one place. Stage 4's public-OSRM
   benchmark may move it to 180 or 300; that must not require redesigning
   anything.
@@ -190,8 +191,55 @@ re-run, plus the existing `route-street-sweep`, `road-matrix-tiers`,
 
 # Stage 2 plan: shared partitioner + OSRM dispatch budget
 
-Status: plan only. No behavior changed. Do not start coding until this section is
-approved.
+Status: **approved. Step 1 implemented; steps 2-8 not started.**
+
+## Agreed hard requirements (binding on the implementation)
+
+1. **1,000 homes is the hard product ceiling.** 800-1,200 is a balance
+   preference only and may never allow a route to exceed 1,000.
+2. **The block ceiling is derived from the existing matrix capacity**, with one
+   source of truth for the matrix budget — no second hardcoded 240.
+3. **The partitioner is the single authority.** Generation, oversized-route
+   splitting, and any future partition/re-optimize path all consume
+   `base44/shared/territoryPartitioner.js`. No second partitioning algorithm.
+4. **Exactly-once is validated across the WHOLE territory**, not per route: for
+   16,000 homes, prove every home appears exactly once across all routes.
+5. **Never silently fall back.** OSRM failure/timeout/refusal must surface as
+   "road optimization unavailable / local" in UI *and* metadata.
+6. **The dispatcher is conservative with public OSRM.** Queue, rate and
+   concurrency controls are built BEFORE any parallel optimization, so a
+   16,000-home territory cannot create a request storm.
+7. **Keep the matrix tier ladder** as the safety net; the partitioner only makes
+   cluster tier uncommon.
+8. **Use the territory polygon** for topology and cuts, so the edge of the
+   fetched road graph is never mistaken for a real dead end.
+9. **Verify the 1,200 -> 1,000 change against the existing tests** and report the
+   regression results explicitly rather than assuming a small blast radius.
+10. **Acceptance is a 16,000-home simulation with a real road graph**, reporting
+    route count, homes/route, blocks/route, pocket overrides, OSRM requests,
+    failures/timeouts, and global exactly-once.
+
+Plus: **every limit is discoverable in one place** — `base44/shared/routingBudgets.js`
+holds homes, blocks, matrix points, and (from step 5) timeout and concurrency.
+
+Sequence: fix budget constants -> derive the routing ceiling -> shared
+partitioner -> global validation -> OSRM dispatcher -> honest routing status ->
+wire generation through -> full regression suite. Nothing outside these steps
+changes without flagging it first.
+
+## Step 1 status: complete
+
+- `base44/shared/routingBudgets.js` created as the single source of limits.
+- `doorBudget` default corrected 1200 -> 1000 (`MAX_HOMES_PER_ROUTE`).
+- `ROUTING_UNIT_BUDGET = 240` literal removed; derived now, re-exported under the
+  old name so existing callers keep working.
+- `buildRoutingUnits` reports `blockCount`; `routingUnitWorkload` spends its
+  technical budget in blocks, not units.
+- Verified: `routing-units` 7/7, `routing-unit-parity` 3/3, `route-solver-budget`
+  8/8, `route-zone-partition` 5/5. UNIT-06 updated — it had encoded the bug as
+  `4800/1200 = 4`; it now asserts 5 and that no route exceeds the ceiling.
+- Blast radius confirmed by search, not assumed: only `routingUnits.js` and its
+  own test referenced these budgets.
 
 ## Intended outcome
 
@@ -216,11 +264,21 @@ work exists to remove.
 
 ## The two budgets
 
+All of these live in ONE module, `base44/shared/routingBudgets.js`, so no limit is
+restated anywhere else:
+
 | budget | value | owner | meaning |
 |---|---|---|---|
 | `MAX_HOMES_PER_ROUTE` | 1,000 | product | operator-facing cap. Hard. |
-| `BALANCE_TOLERANCE_BAND` | 800-1,200 | product | acceptable spread *between* routes; never a partition budget |
-| `MAX_BLOCK_TIER_ROUTING_UNITS` | derived (240 today) | technical | `MAX_ROUTE_MATRIX_POINTS - anchorCount`; keeps every route at block tier or better |
+| `HOMES_PER_ROUTE_BALANCE_BAND` | 800-1,200 | product | acceptable spread *between* routes; never a partition budget |
+| `MAX_BLOCKS_PER_ROUTE` | derived (240 today) | technical | `MAX_ROUTE_MATRIX_POINTS - anchors - headroom`; keeps every route at block tier or better |
+
+**The technical budget is denominated in STREET BLOCKS, not routing units.** The
+road matrix carries one representative point per block, while a protected pocket
+is a single routing unit that may span several blocks. Budgeting 240 *units*
+would therefore permit a route whose block count exceeds the matrix limit and
+silently drops to cluster tier — the exact failure this stage removes. Pockets
+stay atomic in the partitioner; the ceiling is checked in blocks.
 
 Both budgets live in `base44/shared/`, and the unit budget is imported from the
 tier planner rather than restated. A partition is valid only if it satisfies

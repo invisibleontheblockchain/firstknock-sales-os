@@ -10,6 +10,8 @@ import test from 'node:test';
 
 import {
     buildRoutingUnits,
+    MAX_BLOCKS_PER_ROUTE,
+    MAX_HOMES_PER_ROUTE,
     POCKET_PROVENANCE_NONE,
     POCKET_PROVENANCE_TOPOLOGY,
     ROUTING_UNIT_BUDGET,
@@ -162,7 +164,23 @@ test('UNIT-06 workload is driven by routing units, with doors as a secondary sig
     // Dense: many doors, few units — the door budget is what binds.
     const dense = routingUnitWorkload({ unitCount: 108, doorCount: 4800 });
     assert.equal(dense.bindingBudget, 'doors');
-    assert.equal(dense.routeCount, 4);
+    // 5, not 4: the door budget is the 1,000-home PRODUCT cap. This previously
+    // defaulted to 1,200 — the balance band's upper edge — which let the model
+    // propose routes above the ceiling (16,000 homes came out as 14 routes of
+    // 1,143 instead of 16 of ~1,000).
+    assert.equal(dense.doorBudget, MAX_HOMES_PER_ROUTE);
+    assert.equal(dense.routeCount, Math.ceil(4800 / MAX_HOMES_PER_ROUTE));
+    assert.equal(dense.routeCount, 5);
+    assert.ok(
+        4800 / dense.routeCount <= MAX_HOMES_PER_ROUTE,
+        'no route may be sized above the product ceiling'
+    );
+
+    // The budget is spent in BLOCKS, because the road matrix carries one point
+    // per street block while a protected pocket is one unit over several blocks.
+    const pocketed = routingUnitWorkload({ unitCount: 120, blockCount: 480, doorCount: 900 });
+    assert.equal(pocketed.bindingBudget, 'routing_units');
+    assert.equal(pocketed.routeCount, Math.ceil(480 / MAX_BLOCKS_PER_ROUTE));
 
     assert.equal(routingUnitWorkload({ unitCount: 0, doorCount: 0 }).routeCount, 0);
 });
