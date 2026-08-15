@@ -10,22 +10,15 @@ import {
 
 const source = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 
-test('the main Routes map remains visible after using the Canvas builder', () => {
-  assert.equal(shouldRenderPrecisionMapLayers({
-    mode: 'analyze',
-    routeMode: 'canvas',
-    activeRoute: null,
-  }), true);
-  assert.equal(shouldRenderPrecisionMapLayers({
-    mode: 'generate',
-    routeMode: 'canvas',
-    activeRoute: null,
-  }), false);
+test('Canvas mode hides every Precision layer, Precision mode shows them', () => {
+  assert.equal(shouldRenderPrecisionMapLayers({ mode: 'analyze', routeMode: 'canvas' }), false);
+  assert.equal(shouldRenderPrecisionMapLayers({ mode: 'generate', routeMode: 'canvas' }), false);
   assert.equal(shouldRenderPrecisionMapLayers({
     mode: 'generate',
     routeMode: 'canvas',
     activeRoute: { id: 'saved-route' },
-  }), true);
+  }), false);
+  assert.equal(shouldRenderPrecisionMapLayers({ mode: 'analyze', routeMode: 'precision' }), true);
 });
 
 test('saved-route status views hide archived source routes without hiding completed work', () => {
@@ -62,9 +55,9 @@ test('Home map has discovery, legacy-hash, visibility, and camera recovery paths
   assert.match(home, /savedRouteOverviewPoints/);
   assert.match(home, /fitBounds\(bounds, \{ padding: \[50, 50\], maxZoom: 16, animate: false \}\)/);
   assert.match(home, /localStorage\.getItem\('fk_routeStatusView'\) \|\| 'all'/);
-  assert.match(layers, /shouldRenderPrecisionMapLayers\(\{ mode, routeMode, activeRoute \}\)/);
+  assert.match(layers, /shouldRenderPrecisionMapLayers\(\{ routeMode \}\)/);
   assert.match(layers, /activeRoute\?\.properties\?\.some\(isRenderableMapPoint\)/);
-  assert.match(layers, /if \(!isRenderableMapPoint\(p\)\) return/);
+  assert.match(layers, /isRenderableMapPoint\(p\) && inView\(p\)/);
   assert.match(toolbar, /routeStatusView === 'all'/);
   assert.match(toolbar, /'All routes visible'/);
 });

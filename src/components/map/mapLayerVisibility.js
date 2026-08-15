@@ -19,17 +19,10 @@ export function isRenderableMapPoint(point) {
     && lng <= 180;
 }
 
-export function shouldRenderPrecisionMapLayers({ mode, routeMode, activeRoute } = {}) {
-  // Canvas is a builder choice. It must not hide the saved-route overview, or
-  // a selected saved route, after the manager returns to the main map.
-  return routeMode !== 'canvas' || mode === 'analyze' || Boolean(activeRoute);
-}
-
-export function shouldRenderPrecisionPropertyPins({ routeMode } = {}) {
-  // Canvas is territory-first: it has no property inventory of its own, so the
-  // Precision property pins are not its data and must stay out of its map.
-  // Saved routes and a selected route are still owned by
-  // shouldRenderPrecisionMapLayers above.
+export function shouldRenderPrecisionMapLayers({ routeMode } = {}) {
+  // Canvas is territory-first and owns the whole map while it is active: no
+  // Precision property pins, saved-route overviews, or heatmap belong in it.
+  // Switching back to Precision restores every one of those layers.
   return routeMode !== 'canvas';
 }
 

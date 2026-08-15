@@ -33,7 +33,7 @@ test('Canvas branches before the existing Precision builder without replacing it
   assert.match(routeBuilder, /Start Paid Pull/);
 });
 
-test('Canvas territory overlays render once while saved routes remain visible outside the Canvas builder', async () => {
+test('Canvas territory overlays render once and Precision layers stay out of Canvas mode', async () => {
   const [managerLayers, drawTool, overlay, visibility] = await Promise.all([
     source('src/components/map/ManagerMapLayers.jsx'),
     source('src/components/map/MapDrawTool.jsx'),
@@ -43,10 +43,9 @@ test('Canvas territory overlays render once while saved routes remain visible ou
 
   assert.equal((managerLayers.match(/<CanvasZoneOverlay\b[^>]*\/>/g) || []).length, 1);
   assert.match(managerLayers, /shouldRenderPrecisionMapLayers/);
-  assert.match(visibility, /routeMode !== 'canvas' \|\| mode === 'analyze' \|\| Boolean\(activeRoute\)/);
-  // Precision property pins are Precision-only inventory: Canvas must never draw them.
-  assert.match(visibility, /export function shouldRenderPrecisionPropertyPins/);
-  assert.match(managerLayers, /shouldRenderPrecisionPropertyPins\(\{ routeMode \}\) && <ViewportCulledPins/);
+  // Canvas mode owns the map: no Precision pins, saved-route overview, or heatmap.
+  assert.match(visibility, /shouldRenderPrecisionMapLayers\(\{ routeMode \} = \{\}\)[\s\S]*?return routeMode !== 'canvas';/);
+  assert.match(managerLayers, /shouldRenderPrecisionMapLayers\(\{ routeMode \}\)/);
   assert.doesNotMatch(drawTool, /CanvasZoneOverlay/);
   assert.doesNotMatch(overlay, /localStorage|sessionStorage/);
   assert.match(overlay, /CanvasCampaignMapLayers/);

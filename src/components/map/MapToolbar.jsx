@@ -757,8 +757,10 @@ export default function MapToolbar({
 
             {/* Bottom Action Bar */}
             <div className="absolute bottom-4 sm:bottom-6 left-0 right-0 z-[1000] pointer-events-none flex justify-center px-2">
-                <div className={`pointer-events-auto flex items-center justify-center gap-2 ${routeMode === 'canvas' && mode === 'generate' && !activeRoute ? 'max-w-[calc(100vw-1rem)] overflow-x-auto' : ''}`}>
-                    {routeMode === 'canvas' && mode === 'generate' && !activeRoute ? !drawingMode &&
+                {/* Canvas owns the bottom bar whenever it is the active mode, so the
+                    planner is one tap away instead of only inside BUILDER. */}
+                <div className={`pointer-events-auto flex items-center justify-center gap-2 ${routeMode === 'canvas' && !activeRoute ? 'max-w-[calc(100vw-1rem)] overflow-x-auto' : ''}`}>
+                    {routeMode === 'canvas' && !activeRoute ? !drawingMode &&
           <>
                             <Button
               onClick={() => openCanvasPlannerView('new_area')}
