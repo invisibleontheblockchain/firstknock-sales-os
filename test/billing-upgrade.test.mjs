@@ -33,7 +33,18 @@ function loadBackendHandler(path, { base44, stripeApi }) {
   assert.deepEqual(errors, [], `${path} contains TypeScript syntax errors`);
 
   let handler;
-  const executable = transpiled.outputText.replace(/^import .*;\s*$/gm, '');
+  const sharedExecutable = path.includes('reconcilePrecisionUsage')
+    ? readSource('base44/functions/_shared/precisionActiveJobCriteria.js').replace(/^export\s+/gm, '')
+    : '';
+  const executable = `${sharedExecutable}\n${transpiled.outputText.replace(/^import .*;\s*$/gm, '')}`;
+  class FakeClient {
+    async connect() {}
+    async query(sql) {
+      if (sql.includes('pg_try_advisory_xact_lock')) return { rows: [{ claimed: true }] };
+      return { rows: [] };
+    }
+    async end() {}
+  }
   vm.runInNewContext(executable, {
     console,
     createClientFromRequest: () => base44,
@@ -44,7 +55,10 @@ function loadBackendHandler(path, { base44, stripeApi }) {
     Request,
     Response,
     URL,
-    Stripe: makeStripeClass(stripeApi)
+    TextEncoder,
+    crypto: globalThis.crypto,
+    Stripe: makeStripeClass(stripeApi),
+    Client: FakeClient
   }, { filename: path });
   assert.equal(typeof handler, 'function', `${path} did not register a Deno handler`);
   return handler;
@@ -827,9 +841,10 @@ test('existing paid usage reconciliation credits service-owned trial jobs once a
       provider: 'batchdata',
       mode_tag: 'PRECISION_TARGET',
       user_email: user.email,
+      precision_usage_user_id: user.id,
       created_date: '2026-07-13T18:00:00.000Z',
       started_at: '2026-07-13T18:00:00.000Z',
-      completed_at: '2026-07-13T18:01:00.000Z',
+      completed_at: 'not-a-timestamp',
       total_expected: 50,
       dry_run_metadata: { batchdata_summary: { active: 50 } }
     },
@@ -839,6 +854,7 @@ test('existing paid usage reconciliation credits service-owned trial jobs once a
       provider: 'batchdata',
       mode_tag: 'PRECISION_TARGET',
       user_email: user.email,
+      precision_usage_user_id: user.id,
       created_date: '2026-07-15T18:00:00.000Z',
       started_at: '2026-07-15T18:00:00.000Z',
       completed_at: '2026-07-15T18:01:00.000Z',
@@ -893,6 +909,74 @@ test('existing paid usage reconciliation credits service-owned trial jobs once a
   assert.ok(updates[0].precision_usage_reconciled_at);
   assert.equal(fetchJobs[0].precision_usage_kind, 'trial');
   assert.equal(fetchJobs[1].precision_usage_kind, 'paid');
+  assert.equal(Number.isFinite(new Date(fetchJobs[0].precision_usage_recorded_at).getTime()), true);
+  assert.notEqual(fetchJobs[0].precision_usage_recorded_at, 'not-a-timestamp');
+});
+
+test('reconciliation never clears or reclassifies explicit unsettled service-ledger evidence', async () => {
+  const periodStart = Math.floor(Date.parse('2026-07-14T18:18:46.000Z') / 1000);
+  const user = {
+    id: 'user_1',
+    email: 'test@example.com',
+    stripe_customer_id: 'cus_1',
+    subscription_id: 'sub_paid',
+  };
+  const unsettled = {
+    id: 'unsettled_completed',
+    status: 'completed',
+    provider: 'batchdata',
+    mode_tag: 'PRECISION_TARGET',
+    user_email: user.email,
+    precision_usage_user_id: user.id,
+    created_date: '2026-07-15T18:00:00.000Z',
+    started_at: '2026-07-15T18:00:00.000Z',
+    completed_at: '2026-07-15T18:01:00.000Z',
+    total_expected: 50,
+    precision_usage_reserved: 25,
+    precision_usage_count: 0,
+  };
+  const subscription = {
+    ...makeTrial({ id: 'sub_paid' }),
+    status: 'active',
+    trial_end: null,
+    current_period_start: periodStart,
+    current_period_end: periodStart + 2592000,
+    latest_invoice: {
+      id: 'in_paid',
+      subscription: 'sub_paid',
+      status: 'paid',
+      amount_paid: 9900,
+      period_start: periodStart,
+      period_end: periodStart + 2592000,
+      lines: { data: [{ subscription: 'sub_paid', period: { start: periodStart, end: periodStart + 2592000 } }] },
+    },
+  };
+  const fetchJobUpdates = [];
+  const handler = loadBackendHandler('base44/functions/reconcilePrecisionUsage/entry.ts', {
+    base44: makeBase44(user, {
+      fetchJobs: [unsettled],
+      updateFetchJob: async (id, updates) => fetchJobUpdates.push({ id, updates }),
+    }),
+    stripeApi: {
+      subscriptions: { retrieve: async () => subscription },
+      invoices: { retrieve: async () => subscription.latest_invoice },
+    },
+  });
+  const response = await handler(new Request('https://app.example.com/reconcile', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: '{}',
+  }));
+  const result = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(result.reconciled, false);
+  assert.equal(result.start_available, false);
+  assert.equal(result.unsettled_reservation_count, 1);
+  assert.deepEqual(result.unsettled_job_ids, [unsettled.id]);
+  assert.equal(fetchJobUpdates.length, 0);
+  assert.equal(unsettled.precision_usage_reserved, 25);
+  assert.equal(unsettled.precision_usage_recorded_at, undefined);
 });
 
 test('reconciliation rejects an incomplete payment without creating a paid period', async () => {

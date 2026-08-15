@@ -86,13 +86,14 @@ test('wires provider flags through persistence, route generation, and generated-
 
 test('maps BatchData owner and quick-list flags into the persisted property shape', () => {
     const source = fs.readFileSync('base44/functions/processFetchChunk/entry.ts', 'utf8')
-        .replace(/^import .*;\s*$/gm, '');
+        .replace(/^import[\s\S]*?;\r?\n/gm, '');
     const sandbox = {
         Deno: {
             env: { get: () => null },
             serve: () => {},
         },
         console,
+        precisionCriteriaReferenceMs: () => null,
         setTimeout,
         clearTimeout,
     };
@@ -119,7 +120,7 @@ test('maps BatchData owner and quick-list flags into the persisted property shap
                 corporateOwned: true,
                 investorOwned: 'yes',
             },
-            intel: { lastSoldDate: '2026-07-01' },
+            intel: { lastSoldDate: new Date().toISOString().slice(0, 10) },
             general: {
                 standardizedLandUseCode: 'R2',
                 propertyTypeDetail: 'Single Family',
@@ -140,6 +141,59 @@ test('maps BatchData owner and quick-list flags into the persisted property shap
     assert.equal(mapped.owner_occupied, false);
     assert.equal(mapped.corporate_owned, true);
     assert.equal(mapped.investor_owned, true);
+    assert.equal(mapped.route_active, true);
+
+    const stale = sandbox.__mapBatchDataProperty({
+        property: {
+            address: {
+                street: '200 Test Ave',
+                city: 'Phoenix',
+                state: 'AZ',
+                zip: '85001',
+                location: { latitude: 33.4484, longitude: -112.074 },
+            },
+            intel: { lastSoldDate: '2020-01-01' },
+            general: {
+                standardizedLandUseCode: 'R2',
+                propertyTypeDetail: 'Single Family',
+            },
+        },
+    }, {
+        sold_months: 12,
+        polygon: mapped ? [
+            { lat: 33.4, lng: -112.2 },
+            { lat: 33.6, lng: -112.2 },
+            { lat: 33.6, lng: -112.0 },
+            { lat: 33.4, lng: -112.0 },
+        ] : [],
+        dry_run_metadata: { filters: {} },
+    });
+    const missing = sandbox.__mapBatchDataProperty({
+        property: {
+            address: {
+                street: '300 Test Ave',
+                city: 'Phoenix',
+                state: 'AZ',
+                zip: '85001',
+                location: { latitude: 33.4484, longitude: -112.074 },
+            },
+            general: {
+                standardizedLandUseCode: 'R2',
+                propertyTypeDetail: 'Single Family',
+            },
+        },
+    }, {
+        sold_months: 12,
+        polygon: [
+            { lat: 33.4, lng: -112.2 },
+            { lat: 33.6, lng: -112.2 },
+            { lat: 33.6, lng: -112.0 },
+            { lat: 33.4, lng: -112.0 },
+        ],
+        dry_run_metadata: { filters: {} },
+    });
+    assert.equal(stale.route_active, false);
+    assert.equal(missing.route_active, false);
 });
 
 test('explains that the range is based on recorded sale data, not occupant move-in', () => {

@@ -1,9 +1,25 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+import {
+    classifyActivePrecisionJobs,
+    isActualPrecisionJob,
+    isPrecisionReservationUnsettled,
+    loadUserPrecisionJobs,
+    precisionProcessorTokenHash
+} from '../_shared/precisionActiveJobCriteria.js';
 
 const PROCESSOR_CANCEL_WAIT_MS = 900;
 
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function reservationIsUnsettled(job) {
+    try {
+        return isPrecisionReservationUnsettled(job);
+    } catch (error) {
+        console.warn(`[cancelFetchJob] Malformed settlement evidence for ${job?.id || 'unknown'}; treating it as unsettled: ${error.message}`);
+        return true;
+    }
 }
 
 Deno.serve(async (req) => {
@@ -27,31 +43,107 @@ Deno.serve(async (req) => {
         }
 
         const job = jobArr[0];
-        const ownsJob = job.precision_usage_user_id
-            ? String(job.precision_usage_user_id) === String(user.id)
-            : String(job.user_email || '').toLowerCase() === String(user.email || '').toLowerCase();
-        if (!ownsJob) {
+        if (!isActualPrecisionJob(job)) {
+            return Response.json({ error: 'fetch_job_not_precision' }, { status: 409 });
+        }
+        if (!job.precision_usage_user_id) {
+            return Response.json({
+                error: 'legacy_precision_ownership_unverifiable',
+                message: 'This legacy Precision job cannot be changed until immutable ownership is backfilled.'
+            }, { status: 409 });
+        }
+        if (String(job.precision_usage_user_id) !== String(user.id)) {
             return Response.json({ error: 'Not your job' }, { status: 403 });
+        }
+        const activeResolution = classifyActivePrecisionJobs(
+            await loadUserPrecisionJobs(base44, user)
+        );
+        if (activeResolution.state === 'multiple') {
+            return Response.json({
+                error: 'multiple_active_precision_jobs',
+                message: 'Multiple active Precision jobs require operator review. No job was selected or cancelled.',
+                active_job_ids: activeResolution.jobs.map(activeJob => activeJob.id)
+            }, { status: 409 });
         }
 
         if (!['pending', 'running', 'cancelled'].includes(job.status)) {
             return Response.json({ status: job.status, job_id, message: 'Job is not active' });
         }
+        const initiallyUnsettled = reservationIsUnsettled(job);
+        if (job.status === 'cancelled' && !initiallyUnsettled) {
+            return Response.json({
+                status: 'cancelled',
+                job_id,
+                settlement_pending: false
+            });
+        }
 
         const cancelledAt = new Date().toISOString();
-        const errorLog = [...(job.error_log || []), `[${cancelledAt}] Cancelled by user.`];
-        await base44.asServiceRole.entities.FetchJob.update(job_id, {
-            status: 'cancelled',
-            precision_cancel_requested_at: job.precision_cancel_requested_at || cancelledAt,
-            error_message: 'Cancelled by user',
-            error_log: errorLog
-        });
+        const processorToken = crypto.randomUUID();
+        const processorTokenHash = await precisionProcessorTokenHash(processorToken);
+        const updateMany = base44.asServiceRole.entities.FetchJob.updateMany;
+        if (typeof updateMany !== 'function') {
+            return Response.json({
+                error: 'precision_cancellation_claim_unavailable',
+                message: 'Precision cancellation could not acquire a durable state claim.'
+            }, { status: 503 });
+        }
+        let cancellationRecorded = false;
+        let observedJob = job;
+        for (let attempt = 0; attempt < 3 && !cancellationRecorded; attempt++) {
+            if (!['pending', 'running', 'cancelled'].includes(observedJob.status)) break;
+            const observedMetadata = observedJob.dry_run_metadata || {};
+            const cancellationFilter: any = {
+                id: job_id,
+                status: observedJob.status
+            };
+            if (Object.prototype.hasOwnProperty.call(observedJob, 'processor_claim_id')) {
+                cancellationFilter.processor_claim_id = observedJob.processor_claim_id;
+            }
+            const cancellationClaim = await updateMany.call(
+                base44.asServiceRole.entities.FetchJob,
+                cancellationFilter,
+                {
+                    $set: {
+                        status: 'cancelled',
+                        // Preserve an in-flight worker claim. The Neon lease
+                        // owner observes cancellation, rolls back, and settles;
+                        // a successor may take over only after acquiring that
+                        // same advisory lease.
+                        processor_claim_id: observedJob.processor_claim_id ?? null,
+                        precision_cancel_requested_at: observedJob.precision_cancel_requested_at || cancelledAt,
+                        error_message: 'Cancelled by user',
+                        error_log: [
+                            ...(observedJob.error_log || []),
+                            `[${cancelledAt}] Cancelled by user.`
+                        ],
+                        dry_run_metadata: {
+                            ...observedMetadata,
+                            processor_token: null,
+                            processor_token_hash: processorTokenHash
+                        }
+                    }
+                }
+            );
+            cancellationRecorded = cancellationClaim?.success === true
+                && Number(cancellationClaim?.updated) === 1
+                && cancellationClaim?.has_more !== true;
+            if (!cancellationRecorded) {
+                observedJob = await base44.asServiceRole.entities.FetchJob.get(job_id).catch(() => null);
+                if (!observedJob) break;
+            }
+        }
+        if (!cancellationRecorded) {
+            return Response.json({
+                error: 'precision_cancellation_conflict',
+                message: 'The Precision job changed while cancellation was being recorded. No stale state was overwritten.'
+            }, { status: 409 });
+        }
 
         // Cancellation records intent but deliberately does not release billing
         // capacity. The processor owns exact settlement after it has stopped
         // writing, so a second pull cannot oversubscribe the account mid-cancel.
-        const processorToken = job.dry_run_metadata?.processor_token;
-        if (processorToken) {
+        if (initiallyUnsettled) {
             const invokePromise = base44.asServiceRole.functions.invoke('processFetchChunk', {
                 job_id,
                 expected_chunk: job.chunk_number || 0,
@@ -63,21 +155,36 @@ Deno.serve(async (req) => {
         }
 
         const latestJob = await base44.asServiceRole.entities.FetchJob.get(job_id).catch(() => null);
-        if (latestJob?.precision_cancel_requested_at && latestJob.precision_usage_recorded_at && latestJob.status !== 'cancelled') {
-            await base44.asServiceRole.entities.FetchJob.update(job_id, {
-                status: 'cancelled',
-                error_message: 'Cancelled by user',
-                completed_at: latestJob.completed_at || cancelledAt
-            });
+        const settlementPending = !latestJob || reservationIsUnsettled(latestJob);
+        if (latestJob?.precision_cancel_requested_at && !settlementPending && latestJob.status !== 'cancelled') {
+            const finalFilter: any = { id: job_id, status: latestJob.status };
+            if (Object.prototype.hasOwnProperty.call(latestJob, 'processor_claim_id')) {
+                finalFilter.processor_claim_id = latestJob.processor_claim_id;
+            }
+            await updateMany.call(
+                base44.asServiceRole.entities.FetchJob,
+                finalFilter,
+                {
+                    $set: {
+                        status: 'cancelled',
+                        processor_claim_id: null,
+                        error_message: 'Cancelled by user',
+                        completed_at: latestJob.completed_at || cancelledAt
+                    }
+                }
+            );
         }
 
         return Response.json({
             status: 'cancelled',
             job_id,
-            settlement_pending: !latestJob?.precision_usage_recorded_at
+            settlement_pending: settlementPending
         });
     } catch (error) {
         console.error('[cancelFetchJob] Error:', error);
-        return Response.json({ error: error.message }, { status: 500 });
+        return Response.json({
+            error: 'precision_cancellation_unavailable',
+            message: 'Precision cancellation could not be completed safely.'
+        }, { status: 500 });
     }
 });

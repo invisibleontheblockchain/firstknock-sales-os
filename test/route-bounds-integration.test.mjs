@@ -198,8 +198,9 @@ test('Precision route bounds are explicit, off by default, and wired through per
   assert.doesNotMatch(panel, /homeBase: savedHome/);
   assert.match(territory, /route_bounds: routeBounds/);
   assert.match(territory, /onRouteBoundsPrepared/);
-  assert.match(territory, /fk_activePrecisionJob_/);
-  assert.match(territory, /\['running', 'pending', 'completed'\]/);
+  assert.match(territory, /base44\.functions\.invoke\('resolveActivePrecisionJobs', \{\}\)/);
+  assert.match(territory, /resolution\.state === 'multiple'/);
+  assert.doesNotMatch(territory, /fk_activePrecisionJob_/);
   assert.doesNotMatch(home, /fk_precisionRouteBoundsContext/);
   assert.match(home, /endLocation: end/);
   assert.match(home, /routeOriginMode/);

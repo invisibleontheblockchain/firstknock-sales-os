@@ -1,10 +1,16 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import { neon } from 'npm:@neondatabase/serverless@0.9.0';
 import {
-    buildExistingPrecisionCriteria,
     buildRequestedPrecisionCriteria,
     comparePrecisionCriteria,
-    precisionWorkspaceIdentity
+    isActualPrecisionJob,
+    normalizePrecisionPolygon,
+    precisionCriteriaReferenceMs,
+    precisionPolygonAreaSqMi,
+    precisionPolygonHash,
+    precisionWorkspaceIdentity,
+    validateStrictPrecisionCriteriaV1,
+    verifyPrecisionJobCriteriaEvidence
 } from '../_shared/precisionActiveJobCriteria.js';
 
 function normalizeZipList(body) {
@@ -137,23 +143,6 @@ function fetchJobBelongsToUser(fetchJob, user) {
     return !!jobEmail && jobEmail === normalizeEmail(user?.email);
 }
 
-async function polygonHash(points) {
-    if (!Array.isArray(points) || points.length < 3) return null;
-    const normalized = [];
-    for (const point of points) {
-        const lat = Number(point?.lat);
-        const lng = Number(point?.lng);
-        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-        normalized.push([Number(lat.toFixed(6)), Number(lng.toFixed(6))]);
-    }
-    const bytes = new TextEncoder().encode(JSON.stringify(normalized));
-    const hashBuffer = await crypto.subtle.digest('SHA-256', bytes);
-    return Array.from(new Uint8Array(hashBuffer))
-        .map(byte => byte.toString(16).padStart(2, '0'))
-        .join('')
-        .slice(0, 16);
-}
-
 function missingRouteCriteriaFields(body, ownershipMode, workspaceId) {
     const requiredFields = [...REQUIRED_JOB_ROUTE_CRITERIA_FIELDS];
     if (ownershipMode === 'custom') {
@@ -281,6 +270,12 @@ Deno.serve(async (req) => {
         if (!databaseUrl) return Response.json({ error: 'DATABASE_URL is not configured' }, { status: 500 });
 
         const body = await req.json().catch(() => ({}));
+        if (body.debug_job === true) {
+            return Response.json({
+                error: 'precision_debug_mode_forbidden',
+                message: 'Production route-candidate requests cannot enable job debug mode.'
+            }, { status: 403 });
+        }
         const requestedOwnership = parseRequestedCustomOwnershipRange(body);
         if (requestedOwnership.error) {
             return Response.json({ error: 'invalid_ownership_range', message: requestedOwnership.error }, { status: 400 });
@@ -297,8 +292,19 @@ Deno.serve(async (req) => {
         let referenceMs = Date.now();
         let fetchJob = null;
         let persistedCriteria = null;
+        let deliveredCount = null;
         let customOwnershipRange = null;
-        let targetEmail = user.role === 'admin' && body.user_email ? body.user_email : user.email;
+        let targetEmail = user.email;
+        if (
+            !fetchJobId
+            && body.user_email
+            && normalizeEmail(body.user_email) !== normalizeEmail(user.email)
+        ) {
+            return Response.json({
+                error: 'precision_delegation_not_authorized',
+                message: 'Route generation cannot operate for another user without a verified delegation contract.'
+            }, { status: 403 });
+        }
         if (fetchJobId) {
             fetchJob = await base44.asServiceRole.entities.FetchJob.get(fetchJobId).catch(() => null);
             if (!fetchJob) {
@@ -307,11 +313,33 @@ Deno.serve(async (req) => {
                     message: 'The completed property import could not be verified. Route generation stopped so unrelated properties cannot be used.'
                 }, { status: 404 });
             }
+            if (!isActualPrecisionJob(fetchJob)) {
+                return Response.json({
+                    error: 'fetch_job_not_precision',
+                    message: 'The completed import is not an authoritative Precision FetchJob.'
+                }, { status: 409 });
+            }
+            if (fetchJob.include_mls !== false) {
+                return Response.json({
+                    error: 'precision_include_mls_invariant_violation',
+                    message: 'The completed import is not verifiably BatchData-only, so route generation stopped.'
+                }, { status: 409 });
+            }
             if (String(fetchJob.status || '').toLowerCase() !== 'completed') {
                 return Response.json({
                     error: 'fetch_job_not_completed',
                     message: 'Precision routes can only use a completed property import.'
                 }, { status: 409 });
+            }
+            const sharedEvidence = await verifyPrecisionJobCriteriaEvidence(fetchJob, user);
+            if (!sharedEvidence.ok) {
+                return Response.json({
+                    error: sharedEvidence.code || 'fetch_job_criteria_unverifiable',
+                    message: 'The completed Precision import lacks complete immutable criteria and ownership evidence.',
+                    invalid_fields: sharedEvidence.invalid_fields,
+                    invalid_reasons: sharedEvidence.invalid_reasons,
+                    mismatched_fields: sharedEvidence.mismatched_fields
+                }, { status: sharedEvidence.status || 409 });
             }
             if (!fetchJobBelongsToUser(fetchJob, user)) {
                 return Response.json({
@@ -343,13 +371,84 @@ Deno.serve(async (req) => {
                     message: 'The completed property import does not belong to the authenticated workspace.'
                 }, { status: 403 });
             }
+            const invalidSettlementFields = [];
+            if (
+                !hasOwn(fetchJob, 'precision_usage_reserved')
+                || typeof fetchJob.precision_usage_reserved !== 'number'
+                || !Number.isSafeInteger(fetchJob.precision_usage_reserved)
+                || fetchJob.precision_usage_reserved !== 0
+            ) {
+                invalidSettlementFields.push('precision_usage_reserved');
+            }
+            if (
+                !hasOwn(fetchJob, 'precision_usage_count')
+                || typeof fetchJob.precision_usage_count !== 'number'
+                || !Number.isSafeInteger(fetchJob.precision_usage_count)
+                || fetchJob.precision_usage_count < 0
+            ) {
+                invalidSettlementFields.push('precision_usage_count');
+            }
+            if (
+                typeof fetchJob.precision_usage_recorded_at !== 'string'
+                || !Number.isFinite(new Date(fetchJob.precision_usage_recorded_at).getTime())
+            ) {
+                invalidSettlementFields.push('precision_usage_recorded_at');
+            }
+            if (invalidSettlementFields.length > 0) {
+                return Response.json({
+                    error: 'fetch_job_usage_unverifiable',
+                    message: 'The completed Precision import does not contain complete exact-settlement evidence.',
+                    invalid_fields: invalidSettlementFields
+                }, { status: 409 });
+            }
+            deliveredCount = fetchJob.precision_usage_count;
 
-            const persistedPolygonHash = fetchJob.polygon_hash || await polygonHash(fetchJob.polygon);
-            persistedCriteria = buildExistingPrecisionCriteria(fetchJob, {
-                polygonHash: persistedPolygonHash
-            });
+            const strictPersisted = validateStrictPrecisionCriteriaV1(
+                fetchJob?.dry_run_metadata?.precision_criteria
+            );
+            if (!strictPersisted.ok) {
+                return Response.json({
+                    error: 'fetch_job_criteria_unverifiable',
+                    message: 'The completed property import is missing required persisted criteria, so route generation stopped.',
+                    invalid_fields: strictPersisted.invalid_fields,
+                    invalid_reasons: strictPersisted.invalid_reasons
+                }, { status: 409 });
+            }
+            persistedCriteria = strictPersisted.value;
+            if (deliveredCount > persistedCriteria.effective_count) {
+                return Response.json({
+                    error: 'fetch_job_usage_unverifiable',
+                    message: 'The settled delivered count exceeds the canonical effective target.',
+                    delivered_count: deliveredCount,
+                    effective_count: persistedCriteria.effective_count
+                }, { status: 409 });
+            }
+            const persistedPolygon = normalizePrecisionPolygon(fetchJob.polygon);
+            const persistedPolygonHash = persistedPolygon
+                ? await precisionPolygonHash(persistedPolygon)
+                : null;
+            const persistedPolygonArea = persistedPolygon
+                ? precisionPolygonAreaSqMi(persistedPolygon)
+                : 0;
+            if (
+                !persistedPolygonHash
+                || !Number.isFinite(persistedPolygonArea)
+                || persistedPolygonArea <= 0
+                || persistedPolygonHash !== persistedCriteria.polygon_hash
+                || typeof fetchJob.polygon_hash !== 'string'
+                || !/^[a-f0-9]{16}$/i.test(fetchJob.polygon_hash)
+                || fetchJob.polygon_hash.toLowerCase() !== persistedPolygonHash
+            ) {
+                return Response.json({
+                    error: 'fetch_job_polygon_unverifiable',
+                    message: 'The completed Precision polygon does not match its canonical snapshot.'
+                }, { status: 409 });
+            }
             if (jobWorkspaceId && persistedCriteria.workspace_id !== jobWorkspaceId) {
-                persistedCriteria = { ...persistedCriteria, workspace_id: jobWorkspaceId };
+                return Response.json({
+                    error: 'fetch_job_workspace_mismatch',
+                    message: 'The FetchJob workspace metadata conflicts with its canonical Precision snapshot.'
+                }, { status: 403 });
             }
             customOwnershipRange = persistedCriteria.ownership_range_mode === 'custom'
                 ? persistedCriteria.ownership_range_days
@@ -375,9 +474,8 @@ Deno.serve(async (req) => {
                 }, { status: 403 });
             }
 
-            const fetchJobTime = fetchJob?.created_date || fetchJob?.started_at;
-            const parsed = fetchJobTime ? new Date(fetchJobTime).getTime() : NaN;
-            if (!Number.isFinite(parsed)) {
+            const parsed = precisionCriteriaReferenceMs(fetchJob);
+            if (parsed === null) {
                 return Response.json({
                     error: 'fetch_job_criteria_unverifiable',
                     message: 'The completed property import has no valid criteria reference timestamp, so route generation stopped.',
@@ -401,7 +499,10 @@ Deno.serve(async (req) => {
                     persistedCriteria.ownership_range_mode,
                     persistedCriteria.workspace_id
                 );
-                const requestedPolygonHash = await polygonHash(body.polygon);
+                const requestedPolygon = normalizePrecisionPolygon(body.polygon);
+                const requestedPolygonHash = requestedPolygon
+                    ? await precisionPolygonHash(requestedPolygon)
+                    : null;
                 const invalidRequestFields = invalidRequestedCriteriaFields(
                     body,
                     persistedCriteria.ownership_range_mode,
@@ -452,13 +553,24 @@ Deno.serve(async (req) => {
         const customSoldBefore = customOwnershipRange
             ? `${isoDateDaysAgo(customOwnershipRange.min - 1, referenceMs)}T00:00:00.000Z`
             : null;
+        const maxSinceLastSoldAtOrAfter = (
+            persistedCriteria?.repull_mode === 'max_since_last'
+            && persistedCriteria.previous_pull_date
+        ) ? `${new Date(persistedCriteria.previous_pull_date).toISOString().slice(0, 10)}T00:00:00.000Z` : null;
         const soldAfter = soldMonths ? `${isoDateDaysAgo(routeCandidateSoldWindowDays(soldMonths), referenceMs)}T00:00:00.000Z` : null;
+        const referenceSoldBefore = `${new Date(referenceMs + 24 * 60 * 60 * 1000).toISOString().slice(0, 10)}T00:00:00.000Z`;
         const exactJobSoldAtOrAfter = fetchJobId
-            ? customSoldAtOrAfter || soldAfter
+            ? customSoldAtOrAfter || maxSinceLastSoldAtOrAfter || soldAfter
             : null;
         const exactJobSoldBefore = fetchJobId
-            ? customSoldBefore
+            ? customSoldBefore || referenceSoldBefore
             : null;
+        // An exact job must prove that the complete matching candidate set
+        // does not exceed its settled delivery authority. A caller-supplied
+        // low response limit must not hide an extra persisted row.
+        const queryLimit = fetchJobId
+            ? Math.min(100000, Number(deliveredCount) + 1)
+            : limit;
 
         if (body.debug_job === true && fetchJobId) {
             const debugRows = await sql`
@@ -481,8 +593,7 @@ Deno.serve(async (req) => {
                     wp.fetch_job_id
                 FROM workspace_properties wp
                 JOIN properties p ON p.id = wp.property_id
-                WHERE wp.user_email = ${targetEmail}
-                  AND wp.fetch_job_id = ${fetchJobId}
+                WHERE wp.fetch_job_id = ${fetchJobId}
                 ORDER BY p.updated_at DESC
                 LIMIT ${limit}
             `;
@@ -565,7 +676,7 @@ Deno.serve(async (req) => {
                 p.updated_at
             FROM workspace_properties wp
             JOIN properties p ON p.id = wp.property_id
-            WHERE wp.user_email = ${targetEmail}
+            WHERE (${fetchJobId !== null} OR wp.user_email = ${targetEmail})
               AND (${fetchJobId === null} OR wp.fetch_job_id = ${fetchJobId})
               AND wp.route_active = TRUE
               AND p.lat IS NOT NULL
@@ -573,19 +684,19 @@ Deno.serve(async (req) => {
               AND COALESCE(wp.status, '') <> 'REJECTED'
               AND COALESCE(p.original_status, '') <> 'REJECTED'
               AND COALESCE(p.sale_confidence, '') <> 'REJECTED'
-              AND (${zipCodes.length === 0} OR p.zip_code = ANY(${zipCodes}))
+              AND (${fetchJobId !== null || zipCodes.length === 0} OR p.zip_code = ANY(${zipCodes}))
               AND (${fetchJobId !== null || soldAfter === null} OR p.sold_date IS NULL OR p.sold_date >= ${soldAfter})
               AND (${fetchJobId === null || exactJobSoldAtOrAfter === null} OR (
                     p.sold_date IS NOT NULL
                     AND p.sold_date >= ${exactJobSoldAtOrAfter}
                     AND (${exactJobSoldBefore === null} OR p.sold_date < ${exactJobSoldBefore})
               ))
-              AND (${!bounds?.minLat} OR p.lat >= ${bounds?.minLat || 0})
-              AND (${!bounds?.maxLat} OR p.lat <= ${bounds?.maxLat || 0})
-              AND (${!bounds?.minLng} OR p.lng >= ${bounds?.minLng || 0})
-              AND (${!bounds?.maxLng} OR p.lng <= ${bounds?.maxLng || 0})
+              AND (${fetchJobId !== null || !bounds?.minLat} OR p.lat >= ${bounds?.minLat || 0})
+              AND (${fetchJobId !== null || !bounds?.maxLat} OR p.lat <= ${bounds?.maxLat || 0})
+              AND (${fetchJobId !== null || !bounds?.minLng} OR p.lng >= ${bounds?.minLng || 0})
+              AND (${fetchJobId !== null || !bounds?.maxLng} OR p.lng <= ${bounds?.maxLng || 0})
             ORDER BY p.sold_date DESC NULLS LAST, p.updated_at DESC
-            LIMIT ${limit}
+            LIMIT ${queryLimit}
         `;
 
         const exactJobRows = fetchJobId
@@ -600,13 +711,52 @@ Deno.serve(async (req) => {
             : exactJobRows;
         const excludedOutsideCustomRange = exactJobRows.length - rangeCheckedRows.length;
 
-        let properties = rangeCheckedRows.map(row => ({
+        const authoritativeProperties = rangeCheckedRows.map(row => ({
             ...row,
             id: String(row.id),
             address_hash: row.address_hash || String(row.id),
             created_date: row.created_at,
             updated_date: row.updated_at
         }));
+        const authoritativeCandidateCount = authoritativeProperties.length;
+        if (fetchJobId && authoritativeCandidateCount !== deliveredCount) {
+            return Response.json({
+                error: 'fetch_job_delivery_count_mismatch',
+                message: 'Exact-job route candidates do not match the FetchJob delivered-count authority.',
+                fetch_job_id: fetchJobId,
+                candidate_count: authoritativeCandidateCount,
+                delivered_count: deliveredCount,
+                limit
+            }, { status: 409 });
+        }
+        const withinRequestedSubset = property => (
+            (zipCodes.length === 0 || zipCodes.includes(String(property.zip_code || '').slice(0, 5)))
+            && (
+                bounds?.minLat === undefined
+                || bounds?.minLat === null
+                || Number(property.lat) >= Number(bounds.minLat)
+            )
+            && (
+                bounds?.maxLat === undefined
+                || bounds?.maxLat === null
+                || Number(property.lat) <= Number(bounds.maxLat)
+            )
+            && (
+                bounds?.minLng === undefined
+                || bounds?.minLng === null
+                || Number(property.lng) >= Number(bounds.minLng)
+            )
+            && (
+                bounds?.maxLng === undefined
+                || bounds?.maxLng === null
+                || Number(property.lng) <= Number(bounds.maxLng)
+            )
+        );
+        const subsetProperties = fetchJobId
+            ? authoritativeProperties.filter(withinRequestedSubset)
+            : authoritativeProperties;
+        const subsetCandidateCount = subsetProperties.length;
+        let properties = subsetProperties.slice(0, limit);
 
         // Payload reduction: fields='map' returns only what the map pipeline needs
         // (pins, status colors, sold/price/phase filters, dedupe, detail sheet basics).
@@ -634,7 +784,10 @@ Deno.serve(async (req) => {
             fetch_job_id: fetchJobId,
             criteria_verified: fetchJobId !== null,
             count: properties.length,
-            capped: properties.length >= limit,
+            delivered_count: fetchJobId ? deliveredCount : null,
+            capped: fetchJobId
+                ? subsetCandidateCount > limit
+                : authoritativeCandidateCount >= limit,
             limit,
             sold_months: soldMonths,
             sold_at_or_after: exactJobSoldAtOrAfter,
@@ -648,6 +801,12 @@ Deno.serve(async (req) => {
             properties
         });
     } catch (error) {
-        return Response.json({ error: error.message }, { status: 500 });
+        const referenceId = crypto.randomUUID();
+        console.error(`[getRouteCandidatesFromNeon] Unexpected failure ${referenceId}:`, error);
+        return Response.json({
+            error: 'route_candidate_lookup_unavailable',
+            message: 'Route candidates are temporarily unavailable.',
+            reference_id: referenceId
+        }, { status: 500 });
     }
 });

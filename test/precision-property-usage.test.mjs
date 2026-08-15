@@ -6,12 +6,16 @@ import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 import ts from 'typescript';
 
-import { normalizePrecisionUsageResponse } from '../src/lib/precisionUsage.js';
+import {
+  hasUnsettledPrecisionReservation,
+  normalizePrecisionUsageResponse
+} from '../src/lib/precisionUsage.js';
 
 const testDir = dirname(fileURLToPath(import.meta.url));
 const rootDir = resolve(testDir, '..');
 const readSource = (path) => readFileSync(resolve(rootDir, path), 'utf8');
 const endpointPath = 'base44/functions/getPrecisionUsage/entry.ts';
+const controlPlanePath = 'base44/functions/_shared/precisionActiveJobCriteria.js';
 
 function loadHandler({ base44, stripeApi }) {
   const transpiled = ts.transpileModule(readSource(endpointPath), {
@@ -26,17 +30,35 @@ function loadHandler({ base44, stripeApi }) {
   class FakeStripe {
     constructor() { return stripeApi; }
   }
-  const executable = transpiled.outputText.replace(/^import .*;\s*$/gm, '');
+  class FakeClient {
+    async connect() {}
+    async query(sql) {
+      if (sql.includes('pg_try_advisory_xact_lock')) return { rows: [{ claimed: true }] };
+      return { rows: [] };
+    }
+    async end() {}
+  }
+  const sharedExecutable = readSource(controlPlanePath).replace(/^export\s+/gm, '');
+  const executable = `${sharedExecutable}\n${transpiled.outputText.replace(/^import .*;\s*$/gm, '')}`;
   vm.runInNewContext(executable, {
     console,
     createClientFromRequest: () => base44,
     Deno: {
-      env: { get: (key) => key === 'STRIPE_SECRET_KEY' ? 'sk_test' : null },
+      env: {
+        get: (key) => {
+          if (key === 'STRIPE_SECRET_KEY') return 'sk_test';
+          if (key === 'DATABASE_URL') return 'postgres://test';
+          return null;
+        }
+      },
       serve: (registeredHandler) => { handler = registeredHandler; }
     },
     Stripe: FakeStripe,
+    Client: FakeClient,
     Request,
-    Response
+    Response,
+    TextEncoder,
+    crypto: globalThis.crypto
   }, { filename: endpointPath });
   return handler;
 }
@@ -127,14 +149,18 @@ function completedJob({ id, created, count, kind, periodStart, userId = 'user_1'
     provider: 'batchdata',
     mode_tag: 'PRECISION_TARGET',
     user_email: 'austenwaugh@gmail.com',
-    ...(kind ? { precision_usage_user_id: userId, precision_usage_kind: kind } : {}),
+    precision_usage_user_id: userId,
+    ...(kind ? { precision_usage_kind: kind } : {}),
     ...(periodStart ? { precision_usage_period_start: periodStart } : {}),
     created_date: created,
     started_at: created,
     completed_at: created,
     total_expected: count,
-    precision_usage_reserved: 0,
-    ...(kind ? { precision_usage_count: count, precision_usage_recorded_at: created } : {}),
+    ...(kind ? {
+      precision_usage_reserved: 0,
+      precision_usage_count: count,
+      precision_usage_recorded_at: created
+    } : {}),
     dry_run_metadata: { batchdata_summary: { active: count } }
   };
 }
@@ -160,6 +186,46 @@ test('50 trial properties remain credited and payment starts the paid meter at 0
   assert.equal(result.period_start, periodStartIso);
   assert.equal(base44.jobUpdates[0].updates.precision_usage_kind, 'trial');
   assert.equal(base44.userUpdates[0].updates.precision_trial_properties_credited, 50);
+});
+
+test('legacy reconciliation normalizes malformed completion time before writing settlement evidence', async () => {
+  const subscription = paidSubscription();
+  const user = { id: 'user_1', email: 'austenwaugh@gmail.com', subscription_id: subscription.id };
+  const legacy = completedJob({
+    id: 'legacy_bad_completed_at',
+    created: new Date((subscription.current_period_start - 3600) * 1000).toISOString(),
+    count: 25,
+  });
+  legacy.completed_at = 'not-a-timestamp';
+
+  const { response, base44 } = await invoke({ user, jobs: [legacy], subscription });
+  assert.equal(response.status, 200);
+  assert.equal(base44.jobUpdates.length, 1);
+  const recordedAt = base44.jobUpdates[0].updates.precision_usage_recorded_at;
+  assert.equal(Number.isFinite(new Date(recordedAt).getTime()), true);
+  assert.notEqual(recordedAt, legacy.completed_at);
+});
+
+test('legacy reconciliation fails closed on email-only ownership evidence', async () => {
+  const subscription = paidSubscription();
+  const user = { id: 'user_1', email: 'austenwaugh@gmail.com', subscription_id: subscription.id };
+  const emailOnly = completedJob({
+    id: 'legacy_email_only',
+    created: new Date((subscription.current_period_start - 3600) * 1000).toISOString(),
+    count: 25,
+  });
+  delete emailOnly.precision_usage_user_id;
+
+  const { response, result, base44 } = await invoke({
+    user,
+    jobs: [emailOnly],
+    subscription,
+  });
+  assert.equal(response.status, 409);
+  assert.equal(result.complete, false);
+  assert.equal(result.error, 'legacy_precision_ownership_unverifiable');
+  assert.equal(base44.jobUpdates.length, 0);
+  assert.equal(emailOnly.precision_usage_user_id, undefined);
 });
 
 test('the first paid 50-property fetch changes the paid meter to 50 / 1,000', async () => {
@@ -204,7 +270,7 @@ test('a pending paid fetch reserves capacity until it settles to delivered usage
   assert.equal(result.remaining, 950);
 });
 
-test('running cancellation stays reserved while legacy terminal jobs do not create phantom usage', async () => {
+test('running cancellation and email-only legacy terminal jobs fail closed', async () => {
   const subscription = paidSubscription();
   const periodStartIso = new Date(subscription.current_period_start * 1000).toISOString();
   const user = { id: 'user_1', email: 'austenwaugh@gmail.com', subscription_id: subscription.id };
@@ -228,6 +294,7 @@ test('running cancellation stays reserved while legacy terminal jobs do not crea
       provider: 'batchdata',
       mode_tag: 'PRECISION_TARGET',
       user_email: user.email,
+      precision_usage_kind: 'paid',
       total_expected: 1000,
       created_date: new Date((subscription.current_period_start + 10) * 1000).toISOString()
     },
@@ -237,16 +304,40 @@ test('running cancellation stays reserved while legacy terminal jobs do not crea
       provider: 'batchdata',
       mode_tag: 'PRECISION_TARGET',
       user_email: user.email,
+      precision_usage_kind: 'paid',
       total_expected: 1000,
       created_date: new Date((subscription.current_period_start + 20) * 1000).toISOString()
     }
   ];
 
-  const { result } = await invoke({ user, jobs, subscription });
-  assert.equal(result.used, 0);
-  assert.equal(result.reserved, 50);
-  assert.equal(result.meter_used, 50);
-  assert.equal(result.remaining, 950);
+  const { response, result } = await invoke({ user, jobs, subscription });
+  assert.equal(response.status, 409);
+  assert.equal(result.complete, false);
+  assert.equal(result.error, 'legacy_precision_ownership_unverifiable');
+});
+
+test('usage fails closed when a zero reservation was written without complete settlement evidence', async () => {
+  const subscription = paidSubscription();
+  const periodStartIso = new Date(subscription.current_period_start * 1000).toISOString();
+  const user = { id: 'user_1', email: 'austenwaugh@gmail.com', subscription_id: subscription.id };
+  const partial = {
+    id: 'partial_settlement',
+    status: 'failed',
+    provider: 'batchdata',
+    mode_tag: 'PRECISION_TARGET',
+    user_email: user.email,
+    precision_usage_user_id: user.id,
+    precision_usage_kind: 'paid',
+    precision_usage_period_start: periodStartIso,
+    precision_usage_reserved: 0,
+    precision_usage_count: 0,
+    precision_usage_recorded_at: null
+  };
+
+  const { response, result } = await invoke({ user, jobs: [partial], subscription });
+  assert.equal(response.status, 503);
+  assert.equal(result.complete, false);
+  assert.equal(result.error, 'precision_usage_unavailable');
 });
 
 test('renewal uses the new paid period while the trial remains consumed', async () => {
@@ -330,8 +421,8 @@ test('a subscription owned by another Stripe user cannot be borrowed through cli
 test('route deletion, merging, CSV imports, and cancellation cannot change the FetchJob ledger', () => {
   const source = readSource(endpointPath);
   assert.doesNotMatch(source, /SavedRoute/);
-  assert.match(source, /precision_usage_user_id/);
-  assert.match(source, /FetchJob\.update/);
+  assert.match(source, /loadUserPrecisionJobs/);
+  assert.match(source, /reconcileLegacyPrecisionJobs/);
   const cancellation = readSource('base44/functions/stripeWebhook/entry.ts');
   assert.doesNotMatch(cancellation, /SavedRoute\.(delete|update)/);
 });
@@ -351,4 +442,159 @@ test('frontend validation fails closed on partial or inconsistent usage snapshot
     trial_used: 50,
     trial_remaining: 0
   }), /inconsistent/i);
+});
+
+const completeUsageSnapshot = (overrides = {}) => ({
+  success: true,
+  complete: true,
+  version: 2,
+  kind: 'paid',
+  paid_access: true,
+  pro_access: false,
+  limit: 1000,
+  used: 50,
+  reserved: 0,
+  meter_used: 50,
+  remaining: 950,
+  lifetime_used: 100,
+  trial_used: 50,
+  trial_remaining: 0,
+  percent: 5,
+  start_available: true,
+  start_blocker_code: null,
+  start_blocker_job_ids: [],
+  unsettled_reservation_count: 0,
+  unsettled_job_ids: [],
+  ...overrides
+});
+
+test('frontend rejects coerced or fractional authoritative usage evidence', () => {
+  const wholeNumberFields = [
+    'limit',
+    'used',
+    'reserved',
+    'meter_used',
+    'remaining',
+    'lifetime_used',
+    'trial_used',
+    'trial_remaining',
+    'percent',
+  ];
+  for (const field of wholeNumberFields) {
+    for (const malformed of ['50', true, 50.5]) {
+      assert.throws(
+        () => normalizePrecisionUsageResponse(completeUsageSnapshot({
+          [field]: malformed,
+        })),
+        new RegExp(`invalid ${field}`, 'i'),
+        `${field}:${String(malformed)}`
+      );
+    }
+  }
+  for (const malformedVersion of ['2', true, 2.5, undefined]) {
+    assert.throws(
+      () => normalizePrecisionUsageResponse(completeUsageSnapshot({
+        version: malformedVersion,
+      })),
+      /invalid version/i,
+      `version:${String(malformedVersion)}`
+    );
+  }
+  assert.throws(
+    () => normalizePrecisionUsageResponse(completeUsageSnapshot({ percent: 6 })),
+    /inconsistent allowance percentage/i
+  );
+});
+
+test('frontend normalizes all-period start availability and unsettled reservation evidence', () => {
+  const available = normalizePrecisionUsageResponse(completeUsageSnapshot());
+  assert.equal(available.startAvailable, true);
+  assert.equal(available.unsettledReservationCount, 0);
+  assert.deepEqual(available.unsettledJobIds, []);
+  assert.equal(hasUnsettledPrecisionReservation(available), false);
+
+  const blocked = normalizePrecisionUsageResponse(completeUsageSnapshot({
+    start_available: false,
+    start_blocker_code: 'precision_reservation_unsettled',
+    start_blocker_job_ids: ['old_unsettled'],
+    unsettled_reservation_count: 1,
+    unsettled_job_ids: ['old_unsettled']
+  }));
+  assert.equal(blocked.startAvailable, false);
+  assert.equal(blocked.startBlockerCode, 'precision_reservation_unsettled');
+  assert.deepEqual(blocked.startBlockerJobIds, ['old_unsettled']);
+  assert.equal(blocked.unsettledReservationCount, 1);
+  assert.deepEqual(blocked.unsettledJobIds, ['old_unsettled']);
+  assert.equal(hasUnsettledPrecisionReservation(blocked), true);
+
+  for (const [startBlockerCode, startBlockerJobIds] of [
+    ['precision_job_active', ['active_job']],
+    ['multiple_active_precision_jobs', ['active_job_1', 'active_job_2']],
+    ['precision_provider_outcome_unverifiable', ['ambiguous_job']]
+  ]) {
+    const controlBlocked = normalizePrecisionUsageResponse(completeUsageSnapshot({
+      start_available: false,
+      start_blocker_code: startBlockerCode,
+      start_blocker_job_ids: startBlockerJobIds
+    }));
+    assert.equal(controlBlocked.startAvailable, false);
+    assert.equal(controlBlocked.startBlockerCode, startBlockerCode);
+    assert.deepEqual(controlBlocked.startBlockerJobIds, startBlockerJobIds);
+    assert.equal(hasUnsettledPrecisionReservation(controlBlocked), false);
+  }
+
+  const exhausted = normalizePrecisionUsageResponse(completeUsageSnapshot({
+    used: 1000,
+    meter_used: 1000,
+    remaining: 0,
+    percent: 100,
+    start_available: false
+  }));
+  assert.equal(exhausted.startBlockerCode, null);
+  assert.equal(exhausted.startAvailable, false);
+});
+
+test('frontend fails closed when reservation evidence or start availability is malformed or inconsistent', () => {
+  assert.throws(() => normalizePrecisionUsageResponse(completeUsageSnapshot({
+    start_available: 'true'
+  })), /invalid start_available/i);
+  assert.throws(() => normalizePrecisionUsageResponse(completeUsageSnapshot({
+    unsettled_reservation_count: '0'
+  })), /invalid unsettled_reservation_count/i);
+  assert.throws(() => normalizePrecisionUsageResponse(completeUsageSnapshot({
+    unsettled_reservation_count: 1,
+    unsettled_job_ids: []
+  })), /inconsistent unsettled reservation/i);
+  assert.throws(() => normalizePrecisionUsageResponse(completeUsageSnapshot({
+    unsettled_job_ids: ['duplicate', 'duplicate'],
+    unsettled_reservation_count: 2,
+    start_available: false,
+    start_blocker_code: 'precision_reservation_unsettled',
+    start_blocker_job_ids: ['duplicate', 'duplicate']
+  })), /invalid unsettled_job_ids/i);
+  assert.throws(() => normalizePrecisionUsageResponse(completeUsageSnapshot({
+    start_available: false
+  })), /inconsistent start availability/i);
+  assert.throws(() => normalizePrecisionUsageResponse(completeUsageSnapshot({
+    start_available: true,
+    start_blocker_code: 'precision_reservation_unsettled',
+    start_blocker_job_ids: ['old_unsettled'],
+    unsettled_reservation_count: 1,
+    unsettled_job_ids: ['old_unsettled']
+  })), /inconsistent start availability/i);
+  assert.throws(() => normalizePrecisionUsageResponse(completeUsageSnapshot({
+    start_available: false,
+    start_blocker_code: 'unknown_blocker',
+    start_blocker_job_ids: ['job_1']
+  })), /invalid start_blocker_code/i);
+  assert.throws(() => normalizePrecisionUsageResponse(completeUsageSnapshot({
+    start_available: false,
+    start_blocker_code: 'precision_job_active',
+    start_blocker_job_ids: []
+  })), /inconsistent start blocker/i);
+  assert.throws(() => normalizePrecisionUsageResponse(completeUsageSnapshot({
+    start_available: false,
+    start_blocker_code: 'multiple_active_precision_jobs',
+    start_blocker_job_ids: ['job_1']
+  })), /inconsistent multiple-active blocker/i);
 });

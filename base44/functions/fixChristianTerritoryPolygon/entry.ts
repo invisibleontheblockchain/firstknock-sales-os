@@ -1,5 +1,9 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import { neon } from 'npm:@neondatabase/serverless@0.9.0';
+import {
+    hasPrecisionJobMarkers,
+    isActualPrecisionJob
+} from '../_shared/precisionActiveJobCriteria.js';
 
 const RENTCAST_API_KEY = Deno.env.get('RENTCAST_API_KEY');
 const RENTCAST_BASE = 'https://api.rentcast.io/v1';
@@ -309,8 +313,6 @@ Deno.serve(async (req) => {
         const base44 = createClientFromRequest(req);
         const user = await base44.auth.me();
         if (user?.role !== 'admin') return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
-        if (!RENTCAST_API_KEY) return Response.json({ error: 'RENTCAST_API_KEY is not configured' }, { status: 500 });
-        if (!DATABASE_URL) return Response.json({ error: 'DATABASE_URL is not configured' }, { status: 500 });
 
         const body = await req.json().catch(() => ({}));
         const action = body.action || 'audit';
@@ -322,6 +324,14 @@ Deno.serve(async (req) => {
         const jobs = Array.isArray(jobsRaw) ? jobsRaw : (jobsRaw?.items || []);
         const job = jobs[0];
         if (!job) return Response.json({ error: `No completed FetchJob found for ${targetEmail}` }, { status: 404 });
+        if (isActualPrecisionJob(job) || hasPrecisionJobMarkers(job)) {
+            return Response.json({
+                error: 'precision_job_mutation_forbidden',
+                message: 'This legacy territory repair endpoint cannot inspect or mutate an authoritative Precision FetchJob.'
+            }, { status: 409 });
+        }
+        if (!RENTCAST_API_KEY) return Response.json({ error: 'RENTCAST_API_KEY is not configured' }, { status: 500 });
+        if (!DATABASE_URL) return Response.json({ error: 'DATABASE_URL is not configured' }, { status: 500 });
 
         const subCircles = Array.isArray(job.sub_circles) && job.sub_circles.length > 0 ? job.sub_circles : [{ lat: job.latitude, lng: job.longitude, radius: job.radius }];
         const currentPolygon = Array.isArray(job.polygon) ? job.polygon : [];

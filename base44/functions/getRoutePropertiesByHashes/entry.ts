@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 import { neon } from 'npm:@neondatabase/serverless@0.9.0';
 
 const LEGACY_CANONICAL_RECOVERY_CUTOFF = Date.parse('2026-07-24T01:52:18.000Z');
@@ -180,13 +180,27 @@ async function findLegacyVisibleRoute(base44, user, requestedOwner, hashes) {
     return null;
 }
 
-async function resolveRouteTenantEmail(base44, user, route, requestedOwner) {
+async function resolveRouteTenantEmail(base44, user, route) {
     const userEmail = String(user?.email || '').trim();
     const userId = String(user?.id || '').trim();
     const teamManagerId = String(
         user?.data?.team_manager_id || user?.team_manager_id || ''
     ).trim();
     const managerId = String(route?.manager_id || '').trim();
+    const creatorEmail = String(route?.created_by || '').trim();
+    if (
+        normalized(user?.role) === 'admin'
+        && managerId !== userId
+        && managerId !== teamManagerId
+        && normalized(managerId) !== normalized(userEmail)
+        && normalized(creatorEmail) !== normalized(userEmail)
+    ) {
+        throw new HttpError(
+            403,
+            'route_access_denied',
+            'Administrative visibility is not delegated authority for another route tenant.'
+        );
+    }
 
     // manager_id is the SavedRoute tenant key. created_by is audit metadata
     // and may name a rep, importer, old email, or service account.
@@ -209,20 +223,18 @@ async function resolveRouteTenantEmail(base44, user, route, requestedOwner) {
         }
     }
 
-    const creatorEmail = String(route?.created_by || '').trim();
-    if (creatorEmail) {
+    if (creatorEmail && normalized(creatorEmail) === normalized(userEmail)) {
         return {
-            email: creatorEmail,
-            repairEmail: normalized(creatorEmail) === normalized(userEmail)
-                ? userEmail
-                : null
+            email: userEmail,
+            repairEmail: userEmail
         };
     }
 
-    if (requestedOwner && normalized(requestedOwner) === normalized(userEmail)) {
-        return { email: userEmail, repairEmail: null };
-    }
-    return { email: userEmail, repairEmail: null };
+    throw new HttpError(
+        403,
+        'route_access_denied',
+        'This route is not owned by the authenticated user or their verified manager workspace.'
+    );
 }
 
 async function filterMasterProperties(entity, field, hashes) {
@@ -302,30 +314,6 @@ Deno.serve(async (req) => {
         let authorizedRoute = null;
         let repairEmail = null;
         let interactionOwnersByHash = new Map();
-        if (!routeId && !body.user_email) {
-            // Appointments/callbacks intentionally carry no route identity.
-            // Load their caller-visible owners before workspace hydration; exact
-            // route discovery below remains independent authorization.
-            interactionOwnersByHash = await loadVisibleInteractionOwners(base44, hashes);
-            const missingProofHashes = hashes.filter(hash => (
-                !interactionOwnersByHash.has(hash)
-            ));
-            if (
-                interactionOwnersByHash.size > 0
-                && missingProofHashes.length > 0
-            ) {
-                const additionalOwners = await loadVisibleInteractionOwners(
-                    base44,
-                    missingProofHashes
-                );
-                for (const [hash, owners] of additionalOwners) {
-                    if (!interactionOwnersByHash.has(hash)) {
-                        interactionOwnersByHash.set(hash, new Set());
-                    }
-                    owners.forEach(owner => interactionOwnersByHash.get(hash).add(owner));
-                }
-            }
-        }
         if (routeId) {
             authorizedRoute = await base44.entities.SavedRoute.get(routeId).catch(() => null);
             if (!authorizedRoute) {
@@ -338,8 +326,7 @@ Deno.serve(async (req) => {
             const tenant = await resolveRouteTenantEmail(
                 base44,
                 user,
-                authorizedRoute,
-                body.user_email
+                authorizedRoute
             );
             targetEmail = tenant.email;
             repairEmail = tenant.repairEmail;
@@ -361,13 +348,51 @@ Deno.serve(async (req) => {
                 const tenant = await resolveRouteTenantEmail(
                     base44,
                     user,
-                    authorizedRoute,
-                    requestedOwner
+                    authorizedRoute
                 );
                 targetEmail = tenant.email;
                 repairEmail = tenant.repairEmail;
-            } else if (normalized(user.role) === 'admin' && requestedOwner) {
-                targetEmail = requestedOwner;
+            } else if (
+                requestedOwner
+                && normalized(requestedOwner) !== normalized(user.email)
+            ) {
+                throw new HttpError(
+                    403,
+                    'precision_delegation_not_authorized',
+                    'A bare user_email cannot authorize cross-account property access.'
+                );
+            }
+        }
+        if (!routeId && !body.user_email) {
+            if (!authorizedRoute && normalized(user.role) === 'admin') {
+                throw new HttpError(
+                    403,
+                    'route_access_denied',
+                    'Administrative interaction visibility is not delegated workspace authority. Provide an authorized route.'
+                );
+            }
+            // Appointments/callbacks intentionally carry no route identity.
+            // Interaction visibility can augment an already caller-authorized
+            // route or a non-admin RLS scope, but never grants an admin a
+            // foreign workspace merely because admin RLS can see the log.
+            interactionOwnersByHash = await loadVisibleInteractionOwners(base44, hashes);
+            const missingProofHashes = hashes.filter(hash => (
+                !interactionOwnersByHash.has(hash)
+            ));
+            if (
+                interactionOwnersByHash.size > 0
+                && missingProofHashes.length > 0
+            ) {
+                const additionalOwners = await loadVisibleInteractionOwners(
+                    base44,
+                    missingProofHashes
+                );
+                for (const [hash, owners] of additionalOwners) {
+                    if (!interactionOwnersByHash.has(hash)) {
+                        interactionOwnersByHash.set(hash, new Set());
+                    }
+                    owners.forEach(owner => interactionOwnersByHash.get(hash).add(owner));
+                }
             }
         }
         if (!targetEmail) {
@@ -652,9 +677,18 @@ Deno.serve(async (req) => {
             properties
         });
     } catch (error) {
+        if (error instanceof HttpError) {
+            return Response.json({
+                error: error.code,
+                message: error.message
+            }, { status: error.status });
+        }
+        const referenceId = crypto.randomUUID();
+        console.error(`[getRoutePropertiesByHashes] Unexpected ${referenceId}:`, error?.message || error);
         return Response.json({
-            error: error.message,
-            code: error.code || 'route_property_lookup_failed'
-        }, { status: Number(error.status || 500) });
+            error: 'Route property lookup could not be completed safely.',
+            code: 'route_property_lookup_failed',
+            reference_id: referenceId
+        }, { status: 500 });
     }
 });

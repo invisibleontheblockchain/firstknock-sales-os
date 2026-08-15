@@ -73,6 +73,7 @@ import PolygonHistory from '../components/map/PolygonHistory';
 import KnockLimitSheet from '@/components/upgrade/KnockLimitSheet';
 import { createOutcomeIdempotencyKey, getOutcomeGateFromError } from '@/components/upgrade/knockGate';
 import { hasCanvasAccess } from '@/lib/canvasAccess';
+import { getPrecisionWorkspaceId } from '@/lib/precisionIdentity';
 import { validateCanvasBoundary } from '@/components/canvas/canvasPlannerUtils';
 import { fetchAllCanvasTeamMembers } from '@/components/canvas/canvasRosterPagination';
 import { buildFullAddress } from '@/components/logic/navigation';
@@ -142,71 +143,293 @@ function getRouteHistoryPolygon(route) {
     );
 }
 
-function getFetchJobHistoryPolygon(job) {
-    return normalizeHistoryPolygon(
-        job?.polygon ||
-        job?.metadata?.polygon ||
-        job?.request?.polygon ||
-        job?.request_payload?.polygon ||
-        job?.input?.polygon ||
-        job?.searchCriteria?.address?.geoLocationPolygon?.geoPoints ||
-        job?.request?.searchCriteria?.address?.geoLocationPolygon?.geoPoints ||
-        job?.request_payload?.searchCriteria?.address?.geoLocationPolygon?.geoPoints
-    );
-}
-
 function getPrecisionJobId(jobStatus = {}) {
     return jobStatus?.job_id || jobStatus?.fetch_job_id || jobStatus?.id || jobStatus?.jobId || null;
 }
 
-function getRequestedPrecisionCount(jobStatus = {}) {
-    const diagnostics = jobStatus?.diagnostics || {};
-    const value =
-        diagnostics.requested_properties_before_cap ||
-        diagnostics.requested_properties ||
-        jobStatus?.requested_properties ||
-        jobStatus?.total_expected ||
-        jobStatus?.active_count;
-    const count = Number(value);
-    return Number.isFinite(count) && count > 0 ? Math.round(count) : null;
+const PRECISION_CRITERIA_SCHEMA_VERSION = 1;
+const REQUIRED_PRECISION_CRITERIA_FIELDS = Object.freeze([
+    'criteria_schema_version',
+    'polygon_hash',
+    'count_mode',
+    'entered_count',
+    'effective_count',
+    'min_price',
+    'max_price',
+    'sold_months',
+    'ownership_range_mode',
+    'ownership_range_days',
+    'route_filters',
+    'repull_mode',
+    'previous_pull_date',
+    'force_full_refresh',
+    'include_unresolved_followups',
+    'route_bounds',
+    'immutable_user_id',
+    'workspace_id'
+]);
+
+function hasOwn(value, key) {
+    return !!value && Object.prototype.hasOwnProperty.call(value, key);
 }
 
-function getPrecisionCandidateCriteria(jobStatus = {}, fallbackWorkspaceId = null) {
-    const diagnostics = jobStatus?.diagnostics || {};
-    const ownershipRangeDays = normalizeOwnershipRangeDays(diagnostics.ownership_range_days);
-    const ownershipRangeMode = diagnostics.ownership_range_mode === 'custom' && ownershipRangeDays
-        ? 'custom'
-        : 'quick';
-    const requestedBeforeCap = Number(
-        diagnostics.requested_properties_before_cap ??
-        diagnostics.requested_properties ??
-        jobStatus?.total_expected
-    );
-    const requestedEffective = Number(
-        diagnostics.requested_properties ??
-        jobStatus?.total_expected
-    );
-    const soldMonths = Number(diagnostics.sold_months ?? jobStatus?.sold_months);
+function isPositiveInteger(value) {
+    return typeof value === 'number'
+        && Number.isFinite(value)
+        && value > 0
+        && Number.isSafeInteger(value);
+}
 
+function isPositiveNumber(value) {
+    return typeof value === 'number' && Number.isFinite(value) && value > 0;
+}
+
+function isStrictOwnershipRangeDays(value) {
+    return value
+        && typeof value === 'object'
+        && !Array.isArray(value)
+        && typeof value.min === 'number'
+        && typeof value.max === 'number'
+        && Number.isInteger(value.min)
+        && Number.isInteger(value.max)
+        && value.min >= 1
+        && value.max <= 365
+        && value.min < value.max;
+}
+
+function isStrictRouteFilters(value) {
+    return value
+        && typeof value === 'object'
+        && !Array.isArray(value)
+        && Array.isArray(value.propertyTypes)
+        && value.propertyTypes.length === 1
+        && value.propertyTypes[0] === 'Single Family'
+        && value.excludeCommercial === true
+        && value.excludeCondos === true
+        && value.excludeLand === true;
+}
+
+function isStrictRoutePoint(value) {
+    return value
+        && typeof value === 'object'
+        && !Array.isArray(value)
+        && typeof value.lat === 'number'
+        && typeof value.lng === 'number'
+        && Number.isFinite(value.lat)
+        && Number.isFinite(value.lng)
+        && value.lat >= -90
+        && value.lat <= 90
+        && value.lng >= -180
+        && value.lng <= 180;
+}
+
+function isStrictRouteBounds(value) {
+    if (!value || typeof value !== 'object' || Array.isArray(value) || typeof value.enabled !== 'boolean') {
+        return false;
+    }
+    if (value.enabled === false) return true;
+    return ['home_round_trip', 'current_to_home'].includes(value.mode)
+        && isStrictRoutePoint(value.start_location)
+        && isStrictRoutePoint(value.end_location);
+}
+
+function normalizeServerPrecisionPolygon(value) {
+    if (!Array.isArray(value) || value.length < 3) return null;
+    if (value.some((point) => !isStrictRoutePoint(point))) return null;
+    const normalized = value.map((point) => ({ lat: point.lat, lng: point.lng }));
+    const unique = new Set(normalized.map((point) => `${point.lat.toFixed(8)}:${point.lng.toFixed(8)}`));
+    return unique.size >= 3 ? normalized : null;
+}
+
+function getVerifiedServerPrecisionPolygon(jobStatus, criteria) {
+    const polygon = normalizeServerPrecisionPolygon(jobStatus?.polygon);
+    if (!polygon) return null;
+    const jobHash = typeof jobStatus?.polygon_hash === 'string'
+        ? jobStatus.polygon_hash.toLowerCase()
+        : '';
+    const criteriaHash = typeof criteria?.polygon_hash === 'string'
+        ? criteria.polygon_hash.toLowerCase()
+        : '';
+    return jobHash && jobHash === criteriaHash ? polygon : null;
+}
+
+function isCompleteServerPrecisionCriteria(criteria) {
+    if (!criteria || typeof criteria !== 'object' || Array.isArray(criteria)) return false;
+    if (REQUIRED_PRECISION_CRITERIA_FIELDS.some((field) => !hasOwn(criteria, field))) return false;
+    if (criteria.criteria_schema_version !== PRECISION_CRITERIA_SCHEMA_VERSION) return false;
+    if (typeof criteria.polygon_hash !== 'string' || !/^[a-f0-9]{16}$/i.test(criteria.polygon_hash)) return false;
+    if (!['fixed', 'max_available'].includes(criteria.count_mode)) return false;
+    if (!isPositiveInteger(criteria.entered_count) || !isPositiveInteger(criteria.effective_count)) return false;
+    if (criteria.count_mode === 'fixed' && criteria.effective_count > criteria.entered_count) return false;
+    if (!isPositiveNumber(criteria.min_price)) return false;
+    if (criteria.max_price !== null && (
+        !isPositiveNumber(criteria.max_price) ||
+        criteria.max_price < criteria.min_price
+    )) return false;
+    if (!isPositiveNumber(criteria.sold_months)) return false;
+    if (!['quick', 'custom'].includes(criteria.ownership_range_mode)) return false;
+    if (criteria.ownership_range_mode === 'quick' && criteria.ownership_range_days !== null) return false;
+    if (criteria.ownership_range_mode === 'custom' && !isStrictOwnershipRangeDays(criteria.ownership_range_days)) return false;
+    if (!isStrictRouteFilters(criteria.route_filters)) return false;
+    if (!['new_area', 'fill_gaps', 'max_since_last'].includes(criteria.repull_mode)) return false;
+    if (criteria.repull_mode === 'new_area' && criteria.previous_pull_date !== null) return false;
+    if (
+        criteria.repull_mode !== 'new_area' &&
+        (typeof criteria.previous_pull_date !== 'string' || !Number.isFinite(new Date(criteria.previous_pull_date).getTime()))
+    ) return false;
+    if (typeof criteria.force_full_refresh !== 'boolean') return false;
+    if (typeof criteria.include_unresolved_followups !== 'boolean') return false;
+    if (!isStrictRouteBounds(criteria.route_bounds)) return false;
+    return typeof criteria.immutable_user_id === 'string'
+        && !!criteria.immutable_user_id.trim()
+        && typeof criteria.workspace_id === 'string'
+        && !!criteria.workspace_id.trim();
+}
+
+function hasValidPrecisionSaveEvidence(evidence) {
+    const {
+        isGeneratedRoute,
+        routeMode,
+        jobId,
+        criteria,
+        polygon,
+        canonicalCountRefsMatch,
+        deliveredCount,
+        savedRoutePropertyCount
+    } = evidence || {};
+    if (!isGeneratedRoute || routeMode !== 'precision') return true;
+    return !!jobId
+        && isCompleteServerPrecisionCriteria(criteria)
+        && normalizeHistoryPolygon(polygon).length >= 3
+        && canonicalCountRefsMatch === true
+        && Number.isSafeInteger(deliveredCount)
+        && deliveredCount >= 0
+        && Number.isSafeInteger(savedRoutePropertyCount)
+        && savedRoutePropertyCount > 0
+        && savedRoutePropertyCount <= deliveredCount;
+}
+
+function getServerPrecisionCriteria(jobStatus = {}) {
+    if (jobStatus?.criteria_verified !== true) return null;
+    const candidates = [
+        jobStatus.criteria,
+        jobStatus.precision_criteria,
+        jobStatus.diagnostics?.precision_criteria,
+        jobStatus.dry_run_metadata?.precision_criteria
+    ];
+    return candidates.find(isCompleteServerPrecisionCriteria) || null;
+}
+
+function getPrecisionCounts(jobStatus = {}, criteria = getServerPrecisionCriteria(jobStatus)) {
+    if (!criteria) return null;
+    const deliveredValue = hasOwn(jobStatus, 'delivered_count')
+        ? jobStatus.delivered_count
+        : jobStatus.precision_usage_count;
+    const hasDeliveredCount = typeof deliveredValue === 'number'
+        && Number.isSafeInteger(deliveredValue)
+        && deliveredValue >= 0;
     return {
-        count_mode: diagnostics.count_mode === 'max_available' ? 'max_available' : diagnostics.count_mode === 'fixed' ? 'fixed' : null,
-        requested_properties_before_cap: Number.isFinite(requestedBeforeCap) && requestedBeforeCap > 0 ? Math.round(requestedBeforeCap) : null,
-        requested_properties: Number.isFinite(requestedEffective) && requestedEffective > 0 ? Math.round(requestedEffective) : null,
-        min_price: diagnostics.filters?.min_price ?? null,
-        max_price: diagnostics.filters?.max_price ?? null,
-        sold_months: Number.isFinite(soldMonths) && soldMonths > 0 ? soldMonths : null,
-        ownership_range_mode: ownershipRangeMode,
-        ...(ownershipRangeMode === 'custom' ? {
+        count_mode: criteria.count_mode,
+        entered_count: criteria.entered_count,
+        effective_count: criteria.effective_count,
+        delivered_count: hasDeliveredCount ? deliveredValue : null
+    };
+}
+
+function normalizeResolvedPrecisionHistoryEntries(resolution, user) {
+    if (resolution?.state !== 'ok' || !Array.isArray(resolution.entries)) return [];
+    const expectedUserId = String(user?.id || '');
+    const expectedWorkspaceId = getPrecisionWorkspaceId(user);
+
+    return resolution.entries.map((entry) => {
+        const jobId = typeof entry?.job_id === 'string' ? entry.job_id.trim() : '';
+        const displayPolygon = normalizeHistoryPolygon(entry?.polygon);
+        if (!jobId || displayPolygon.length < 3) return null;
+
+        const asUnverified = () => ({
+            ...entry,
+            id: jobId,
+            job_id: jobId,
+            polygon: displayPolygon,
+            criteria: null,
+            criteria_status: 'criteria_unverified',
+            criteria_verified: false,
+            criteria_source_fetch_job_id: null,
+            criteria_schema_version: null,
+            entered_count: null,
+            effective_count: null,
+            delivered_count: null
+        });
+        if (entry.criteria_verified !== true || entry.criteria_status !== 'server_verified') {
+            return asUnverified();
+        }
+
+        const criteria = getServerPrecisionCriteria(entry);
+        const verifiedPolygon = getVerifiedServerPrecisionPolygon(entry, criteria);
+        const counts = getPrecisionCounts(entry, criteria);
+        const criteriaTimestamp = new Date(entry.criteria_timestamp || '').getTime();
+        const verified = entry.status === 'completed'
+            && !!criteria
+            && !!verifiedPolygon
+            && !!counts
+            && Number.isFinite(criteriaTimestamp)
+            && String(entry.criteria_source_fetch_job_id || '') === jobId
+            && entry.criteria_schema_version === criteria.criteria_schema_version
+            && String(criteria.immutable_user_id) === expectedUserId
+            && String(criteria.workspace_id) === expectedWorkspaceId
+            && entry.entered_count === counts.entered_count
+            && entry.effective_count === counts.effective_count
+            && entry.delivered_count === counts.delivered_count
+            && counts.delivered_count !== null
+            && counts.delivered_count <= counts.effective_count;
+        if (!verified) return asUnverified();
+
+        return {
+            ...entry,
+            id: jobId,
+            job_id: jobId,
+            polygon: verifiedPolygon,
+            polygon_hash: criteria.polygon_hash,
+            criteria,
+            criteria_status: 'server_verified',
+            criteria_verified: true,
+            criteria_source_fetch_job_id: jobId,
+            criteria_schema_version: criteria.criteria_schema_version,
+            entered_count: counts.entered_count,
+            effective_count: counts.effective_count,
+            delivered_count: counts.delivered_count
+        };
+    }).filter(Boolean);
+}
+
+function getPrecisionCandidateCriteria(jobStatus = {}) {
+    return getServerPrecisionCriteria(jobStatus);
+}
+
+function mapCanonicalCriteriaToCandidateRequest(criteria) {
+    if (!isCompleteServerPrecisionCriteria(criteria)) return null;
+    const ownershipRangeDays = criteria.ownership_range_mode === 'custom'
+        ? normalizeOwnershipRangeDays(criteria.ownership_range_days)
+        : null;
+    return {
+        count_mode: criteria.count_mode,
+        requested_properties_before_cap: criteria.entered_count,
+        requested_properties: criteria.effective_count,
+        min_price: criteria.min_price,
+        max_price: criteria.max_price,
+        sold_months: criteria.sold_months,
+        ownership_range_mode: criteria.ownership_range_mode,
+        ...(ownershipRangeDays ? {
             ownership_min_days: ownershipRangeDays[0],
             ownership_max_days: ownershipRangeDays[1]
         } : {}),
-        route_filters: diagnostics.route_filters ?? null,
-        repull_mode: diagnostics.repull_mode ?? jobStatus?.pull_mode ?? null,
-        previous_pull_date: diagnostics.previous_pull_date ?? null,
-        force_full_refresh: diagnostics.force_full_refresh === true,
-        include_unresolved_followups: diagnostics.include_unresolved_followups === true,
-        route_bounds: diagnostics.route_bounds || jobStatus?.route_bounds || { enabled: false },
-        workspace_id: diagnostics.workspace_id || fallbackWorkspaceId || null
+        route_filters: criteria.route_filters,
+        repull_mode: criteria.repull_mode,
+        previous_pull_date: criteria.previous_pull_date,
+        force_full_refresh: criteria.force_full_refresh,
+        include_unresolved_followups: criteria.include_unresolved_followups,
+        route_bounds: criteria.route_bounds,
+        workspace_id: criteria.workspace_id
     };
 }
 
@@ -237,50 +460,15 @@ function normalizeRouteBoundsIntent(value) {
     };
 }
 
-function readPersistedPrecisionJobContext(expectedUserEmail) {
+function readPersistedPrecisionJobContext(expectedUser) {
     try {
         const parsed = JSON.parse(localStorage.getItem(PRECISION_JOB_CONTEXT_STORAGE_KEY) || 'null');
         const userEmail = String(parsed?.userEmail || '').trim().toLowerCase();
-        if (!userEmail || userEmail !== String(expectedUserEmail || '').trim().toLowerCase()) return null;
+        if (!userEmail || userEmail !== String(expectedUser?.email || '').trim().toLowerCase()) return null;
         const jobId = parsed?.jobId ? String(parsed.jobId) : null;
-        const persistedCriteria = parsed?.criteria && typeof parsed.criteria === 'object'
-            ? parsed.criteria
-            : null;
-        const ownershipRangeDays = normalizeStrictOwnershipRangeDays(
-            parsed?.ownershipRangeDays ??
-            (persistedCriteria?.ownership_range_mode === 'custom'
-                ? {
-                    min: persistedCriteria.ownership_min_days,
-                    max: persistedCriteria.ownership_max_days
-                }
-                : null)
-        );
-        const ownershipRangeMode = persistedCriteria?.ownership_range_mode === 'custom'
-            ? 'custom'
-            : ownershipRangeDays
-                ? 'custom'
-                : 'quick';
-        const polygon = normalizeHistoryPolygon(parsed?.polygon);
-        if (!jobId || polygon.length < 3 || (ownershipRangeMode === 'custom' && !ownershipRangeDays)) return null;
-        const soldMonths = Number(parsed?.soldMonths);
-        const requestedCount = Number(parsed?.requestedCount);
-        const ownershipReferenceDate = parsed?.ownershipReferenceDate && Number.isFinite(new Date(parsed.ownershipReferenceDate).getTime())
-            ? new Date(parsed.ownershipReferenceDate).toISOString()
-            : null;
-        return {
-            jobId,
-            userEmail,
-            ownershipRangeDays,
-            ownershipReferenceDate,
-            polygon,
-            soldMonths: Number.isFinite(soldMonths) && soldMonths > 0
-                ? soldMonths
-                : ownershipRangeDays
-                    ? ownershipRangeDays[1] / 30
-                    : null,
-            requestedCount: Number.isFinite(requestedCount) && requestedCount > 0 ? Math.round(requestedCount) : null,
-            criteria: persistedCriteria
-        };
+        // Browser state is only a lookup hint. fetchJobStatus must re-authorize
+        // the job and return the complete canonical context before any field is used.
+        return jobId ? { jobId, userEmail } : null;
     } catch {
         return null;
     }
@@ -390,9 +578,13 @@ export default function Home() {
     const currentBatchDataOwnershipRangeDaysRef = useRef(null);
     const [currentBatchDataOwnershipReferenceDate, setCurrentBatchDataOwnershipReferenceDate] = useState(null);
     const currentBatchDataOwnershipReferenceDateRef = useRef(null);
+    const currentBatchDataCountModeRef = useRef(null);
+    const currentBatchDataEnteredCountRef = useRef(null);
     const currentBatchDataRequestedCountRef = useRef(null);
+    const currentBatchDataDeliveredCountRef = useRef(null);
     const currentBatchDataPolygonRef = useRef(null);
     const currentBatchDataCriteriaRef = useRef(null);
+    const currentBatchDataContextHydratingRef = useRef(false);
     const [highlightRecentlySold, setHighlightRecentlySold] = useState(false);
     const [showAllProperties, setShowAllProperties] = useState(false);
     const [viewMode, setViewMode] = useState('pins'); // 'pins' or 'heatmap'
@@ -567,9 +759,9 @@ export default function Home() {
         window.dispatchEvent(new CustomEvent('fk-route-mode-changed', { detail: { routeMode: 'precision' } }));
     }, [routeMode, user]);
     useEffect(() => {
-        if (!user?.email) return;
-        const context = readPersistedPrecisionJobContext(user.email);
-        if (!context) {
+        if (!user?.id || !user?.email) return;
+        let cancelled = false;
+        const clearContext = () => {
             setCurrentBatchDataJobId(null);
             currentBatchDataJobIdRef.current = null;
             currentBatchDataSoldMonthsRef.current = null;
@@ -577,31 +769,100 @@ export default function Home() {
             currentBatchDataOwnershipRangeDaysRef.current = null;
             setCurrentBatchDataOwnershipReferenceDate(null);
             currentBatchDataOwnershipReferenceDateRef.current = null;
+            currentBatchDataCountModeRef.current = null;
+            currentBatchDataEnteredCountRef.current = null;
             currentBatchDataRequestedCountRef.current = null;
+            currentBatchDataDeliveredCountRef.current = null;
             currentBatchDataPolygonRef.current = null;
             currentBatchDataCriteriaRef.current = null;
-            return;
-        }
-        setCurrentBatchDataJobId(context.jobId);
-        currentBatchDataJobIdRef.current = context.jobId;
-        currentBatchDataSoldMonthsRef.current = context.soldMonths;
-        setCurrentBatchDataOwnershipRangeDays(context.ownershipRangeDays);
-        currentBatchDataOwnershipRangeDaysRef.current = context.ownershipRangeDays;
-        setCurrentBatchDataOwnershipReferenceDate(context.ownershipReferenceDate);
-        currentBatchDataOwnershipReferenceDateRef.current = context.ownershipReferenceDate;
-        currentBatchDataRequestedCountRef.current = context.requestedCount;
-        currentBatchDataPolygonRef.current = context.polygon;
-        currentBatchDataCriteriaRef.current = context.criteria;
-    }, [user?.email]);
+        };
+        const cachedContext = readPersistedPrecisionJobContext(user);
+        clearContext();
+        currentBatchDataContextHydratingRef.current = !!cachedContext;
+        if (!cachedContext) return () => { cancelled = true; };
+
+        const rehydrateFromServer = async () => {
+            try {
+                const response = await base44.functions.invoke('fetchJobStatus', { job_id: cachedContext.jobId });
+                if (cancelled) return;
+                const jobStatus = response.data || {};
+                const responseJobId = getPrecisionJobId(jobStatus);
+                const criteria = getServerPrecisionCriteria(jobStatus);
+                const counts = getPrecisionCounts(jobStatus, criteria);
+                const polygon = getVerifiedServerPrecisionPolygon(jobStatus, criteria);
+                const expectedWorkspaceId = getPrecisionWorkspaceId(user);
+                if (
+                    jobStatus.status !== 'completed' ||
+                    jobStatus.criteria_verified !== true ||
+                    String(responseJobId || '') !== String(cachedContext.jobId) ||
+                    !criteria ||
+                    !counts ||
+                    counts.delivered_count === null ||
+                    !polygon ||
+                    String(criteria.immutable_user_id) !== String(user.id) ||
+                    String(criteria.workspace_id) !== expectedWorkspaceId
+                ) {
+                    throw new Error('Persisted Precision context could not be reverified.');
+                }
+                const ownershipRangeDays = criteria.ownership_range_mode === 'custom'
+                    ? normalizeStrictOwnershipRangeDays(criteria.ownership_range_days)
+                    : null;
+                const rawReferenceDate = jobStatus.ownership_reference_date ?? jobStatus.diagnostics?.ownership_reference_date;
+                const ownershipReferenceDate = ownershipRangeDays && Number.isFinite(new Date(rawReferenceDate).getTime())
+                    ? new Date(rawReferenceDate).toISOString()
+                    : null;
+                setCurrentBatchDataJobId(responseJobId);
+                currentBatchDataJobIdRef.current = responseJobId;
+                currentBatchDataSoldMonthsRef.current = Number(criteria.sold_months);
+                setCurrentBatchDataOwnershipRangeDays(ownershipRangeDays);
+                currentBatchDataOwnershipRangeDaysRef.current = ownershipRangeDays;
+                setCurrentBatchDataOwnershipReferenceDate(ownershipReferenceDate);
+                currentBatchDataOwnershipReferenceDateRef.current = ownershipReferenceDate;
+                currentBatchDataCountModeRef.current = counts.count_mode;
+                currentBatchDataEnteredCountRef.current = counts.entered_count;
+                currentBatchDataRequestedCountRef.current = counts.effective_count;
+                currentBatchDataDeliveredCountRef.current = counts.delivered_count;
+                currentBatchDataPolygonRef.current = polygon;
+                currentBatchDataCriteriaRef.current = criteria;
+                currentBatchDataContextHydratingRef.current = false;
+                persistPrecisionJobContext({
+                    userEmail: user.email,
+                    jobId: responseJobId,
+                    soldMonths: Number(criteria.sold_months),
+                    ownershipRangeDays,
+                    ownershipReferenceDate,
+                    countMode: counts.count_mode,
+                    enteredCount: counts.entered_count,
+                    effectiveCount: counts.effective_count,
+                    deliveredCount: counts.delivered_count,
+                    polygon,
+                    criteria
+                });
+            } catch {
+                if (cancelled) return;
+                clearContext();
+                currentBatchDataContextHydratingRef.current = false;
+                persistPrecisionJobContext(null);
+            }
+        };
+        rehydrateFromServer();
+        return () => { cancelled = true; };
+    }, [user?.id, user?.email, user?.team_manager_id, user?.data?.team_manager_id]);
     const [showKnockLimitSheet, setShowKnockLimitSheet] = useState(false);
     const [knockGateMode, setKnockGateMode] = useState('limit');
 
     const fetchRouteCandidatesFromNeon = useCallback(async ({ zipCodes = [], zipCodeFilterValue = '', soldMonths = null, ownershipRangeDays = null, polygon = null, limit = 100000, fetchJobId = null, jobCriteria = null } = {}) => {
         const customOwnershipRange = normalizeOwnershipRangeDays(ownershipRangeDays);
+        const exactJobCriteriaRequest = fetchJobId
+            ? mapCanonicalCriteriaToCandidateRequest(jobCriteria)
+            : null;
+        if (fetchJobId && !exactJobCriteriaRequest) {
+            throw new Error('Exact-job route generation requires a complete server-verified canonical criteria snapshot.');
+        }
         const res = await base44.functions.invoke('getRouteCandidatesFromNeon', {
             zip_codes: zipCodes,
             zip_code_filter: zipCodeFilterValue,
-            ...(fetchJobId && jobCriteria ? jobCriteria : {
+            ...(fetchJobId ? exactJobCriteriaRequest : {
                 sold_months: soldMonths,
                 ownership_range_mode: customOwnershipRange ? 'custom' : 'quick',
                 ...(customOwnershipRange ? {
@@ -914,13 +1175,24 @@ export default function Home() {
     });
     const savedRoutes = Array.isArray(savedRoutesRaw) ? savedRoutesRaw : (savedRoutesRaw?.items || []);
     const [serverHydratedSavedRoutes, setServerHydratedSavedRoutes] = useState([]);
-    const { data: precisionFetchJobsRaw = [] } = useQuery({
-        queryKey: ['precisionFetchJobs', user?.email],
+    const { data: precisionHistoryResolution = null } = useQuery({
+        queryKey: ['precisionHistory', user?.id, getPrecisionWorkspaceId(user)],
         staleTime: 1000 * 60 * 2,
-        queryFn: () => user?.email ? base44.entities.FetchJob.filter({ user_email: user.email }, '-created_date', 50) : [],
-        enabled: !!user?.email
+        queryFn: async () => {
+            if (!user?.id) return { state: 'ok', entries: [] };
+            const response = await base44.functions.invoke('resolvePrecisionHistory', {});
+            const resolution = response.data || {};
+            if (resolution.state !== 'ok' || !Array.isArray(resolution.entries)) {
+                throw new Error('The Precision history resolver returned an invalid response.');
+            }
+            return resolution;
+        },
+        enabled: !!user?.id
     });
-    const precisionFetchJobs = Array.isArray(precisionFetchJobsRaw) ? precisionFetchJobsRaw : (precisionFetchJobsRaw?.items || []);
+    const resolvedPrecisionHistoryEntries = useMemo(
+        () => normalizeResolvedPrecisionHistoryEntries(precisionHistoryResolution, user),
+        [precisionHistoryResolution, user?.id, user?.team_manager_id, user?.data?.team_manager_id]
+    );
 
     const precisionAreaHistory = useMemo(() => {
         const byKey = new Map();
@@ -931,23 +1203,19 @@ export default function Home() {
             const existing = byKey.get(key);
             const existingTime = new Date(existing?.last_pull_date || existing?.date || 0).getTime();
             const incomingTime = new Date(entry.last_pull_date || entry.date || 0).getTime();
-            if (existing && Number.isFinite(existingTime) && (!Number.isFinite(incomingTime) || existingTime > incomingTime)) {
-                byKey.set(key, {
-                    ...existing,
-                    criteria: {
-                        ...(entry.criteria || {}),
-                        ...(existing.criteria || {})
-                    }
-                });
-                return;
-            }
+            const existingVerified = existing?.criteria_verified === true
+                && existing?.criteria_status === 'server_verified';
+            const incomingVerified = entry.criteria_verified === true
+                && entry.criteria_status === 'server_verified';
+            const incomingIsNewer = !existing
+                || !Number.isFinite(existingTime)
+                || (Number.isFinite(incomingTime) && incomingTime >= existingTime);
+            const shouldReplace = !existing
+                || (incomingVerified && !existingVerified)
+                || (incomingVerified === existingVerified && incomingIsNewer);
+            if (!shouldReplace) return;
             byKey.set(key, {
-                ...existing,
                 ...entry,
-                criteria: {
-                    ...(existing?.criteria || {}),
-                    ...(entry.criteria || {})
-                },
                 polygon,
                 queried: true,
                 source: 'server'
@@ -964,51 +1232,21 @@ export default function Home() {
                 date: precisionArea.date || precisionArea.last_pull_date || route.metadata?.generated_at || route.created_date || route.updated_date,
                 last_pull_date: precisionArea.last_pull_date || route.metadata?.generated_at || route.created_date,
                 job_id: precisionArea.job_id,
-                criteria: precisionArea.criteria || {}
+                criteria: null,
+                criteria_status: 'criteria_unverified',
+                criteria_verified: false
             });
         });
 
-        precisionFetchJobs.forEach((job) => {
-            const polygon = getFetchJobHistoryPolygon(job);
-            const completedOrUseful = job.status === 'completed' || Number(job.active_count || job.total_inserted || job.total_existed || 0) > 0;
-            if (!completedOrUseful) return;
-            const jobMetadata = job.dry_run_metadata || {};
-            const jobOwnershipRangeDays = normalizeOwnershipRangeDays(
-                job.ownership_range_days ?? jobMetadata.ownership_range_days
-            );
-            const jobOwnershipRangeMode = (
-                job.ownership_range_mode ?? jobMetadata.ownership_range_mode
-            ) === 'custom' && jobOwnershipRangeDays ? 'custom' : 'quick';
-            addEntry(polygon, {
-                id: `job_${job.id}`,
-                job_id: job.id,
-                date: job.completed_at || job.updated_date || job.created_date,
-                last_pull_date: job.completed_at || job.updated_date || job.created_date,
-                criteria: {
-                    requested_properties: jobMetadata.requested_properties || job.requested_properties || job.total_expected || job.active_count || null,
-                    count_mode: jobMetadata.count_mode || null,
-                    sold_months: job.sold_months || job.fetch_months || null,
-                    ownership_range_mode: jobOwnershipRangeMode,
-                    ownership_range_days: jobOwnershipRangeDays
-                        ? { min: jobOwnershipRangeDays[0], max: jobOwnershipRangeDays[1] }
-                        : null,
-                    min_price: job.min_price ?? job.filters?.min_price ?? jobMetadata.filters?.min_price ?? null,
-                    max_price: job.max_price ?? job.filters?.max_price ?? jobMetadata.filters?.max_price ?? null,
-                    route_filters: jobMetadata.route_filters || null,
-                    route_bounds: jobMetadata.route_bounds || { enabled: false },
-                    repull_mode: jobMetadata.repull_mode || job.pull_mode || 'new_area',
-                    previous_pull_date: jobMetadata.previous_pull_date || null,
-                    force_full_refresh: jobMetadata.force_full_refresh === true || job.force_full_refresh === true,
-                    include_unresolved_followups: jobMetadata.include_unresolved_followups === true
-                }
-            });
+        resolvedPrecisionHistoryEntries.forEach((entry) => {
+            addEntry(entry.polygon, entry);
         });
 
         return Array.from(byKey.values())
             .filter((entry) => entry.polygon?.length >= 3)
             .sort((a, b) => new Date(b.last_pull_date || b.date || 0) - new Date(a.last_pull_date || a.date || 0))
             .slice(0, 20);
-    }, [savedRoutes, precisionFetchJobs]);
+    }, [savedRoutes, resolvedPrecisionHistoryEntries]);
 
     // Identify properties already assigned to saved routes
     const assignedHashes = useMemo(() => {
@@ -1107,35 +1345,48 @@ export default function Home() {
         const isGeneratedRoute = !route?.isSaved && Array.isArray(route?.properties) && route.properties.length > 0;
         const routeMode = route.route_mode || 'precision';
         const jobPrecisionPolygon = normalizeHistoryPolygon(currentBatchDataPolygonRef.current);
-        const drawnPrecisionPolygon = normalizeHistoryPolygon(drawnPolygon);
         const currentPrecisionPolygon = routeMode === 'precision'
-            ? (jobPrecisionPolygon.length >= 3 ? jobPrecisionPolygon : drawnPrecisionPolygon)
+            ? jobPrecisionPolygon
             : [];
-        const currentOwnershipRangeDays = normalizeOwnershipRangeDays(currentBatchDataOwnershipRangeDaysRef.current);
-        const currentPrecisionCriteria = currentBatchDataCriteriaRef.current || {};
+        const currentPrecisionCriteria = isCompleteServerPrecisionCriteria(currentBatchDataCriteriaRef.current)
+            ? currentBatchDataCriteriaRef.current
+            : null;
+        const currentPrecisionJobId = currentBatchDataJobIdRef.current || currentBatchDataJobId || null;
+        const canonicalCountRefsMatch = !!currentPrecisionCriteria
+            && currentBatchDataCountModeRef.current === currentPrecisionCriteria.count_mode
+            && currentBatchDataEnteredCountRef.current === currentPrecisionCriteria.entered_count
+            && currentBatchDataRequestedCountRef.current === currentPrecisionCriteria.effective_count;
+        if (!hasValidPrecisionSaveEvidence({
+            isGeneratedRoute,
+            routeMode,
+            jobId: currentPrecisionJobId,
+            criteria: currentPrecisionCriteria,
+            polygon: currentPrecisionPolygon,
+            canonicalCountRefsMatch,
+            deliveredCount: currentBatchDataDeliveredCountRef.current,
+            savedRoutePropertyCount: route.properties?.length
+        })) {
+            throw new Error('The completed Precision job evidence is incomplete. This route was not saved.');
+        }
         const generatedAt = new Date().toISOString();
         const precisionAreaMetadata = isGeneratedRoute && currentPrecisionPolygon.length >= 3
             ? {
                 precision_area: {
                     polygon: currentPrecisionPolygon,
-                    job_id: currentBatchDataJobIdRef.current || currentBatchDataJobId || null,
+                    job_id: currentPrecisionJobId,
                     last_pull_date: generatedAt,
                     date: generatedAt,
-                    criteria: {
-                        ...currentPrecisionCriteria,
-                        requested_properties: currentBatchDataRequestedCountRef.current || null,
-                        requested_properties_before_cap:
-                            currentPrecisionCriteria.requested_properties_before_cap ||
-                            currentBatchDataRequestedCountRef.current ||
-                            null,
-                        sold_months: currentBatchDataSoldMonthsRef.current || soldDateFilter || null,
-                        ownership_range_mode: currentOwnershipRangeDays ? 'custom' : 'quick',
-                        ownership_range_days: currentOwnershipRangeDays
-                            ? { min: currentOwnershipRangeDays[0], max: currentOwnershipRangeDays[1] }
-                            : null,
-                        route_mode: routeMode,
-                        pull_mode: lastPullMode || null
-                    }
+                    criteria: currentPrecisionCriteria,
+                    criteria_status: 'criteria_unverified',
+                    criteria_source_fetch_job_id: currentPrecisionJobId,
+                    criteria_schema_version: currentPrecisionCriteria?.criteria_schema_version ?? null,
+                    count_mode: currentPrecisionCriteria.count_mode,
+                    entered_count: currentPrecisionCriteria.entered_count,
+                    effective_count: currentPrecisionCriteria.effective_count,
+                    delivered_count: currentBatchDataDeliveredCountRef.current,
+                    saved_route_property_count: route.properties.length,
+                    route_mode: routeMode,
+                    pull_mode: lastPullMode || null
                 }
             }
             : {};
@@ -1870,6 +2121,10 @@ export default function Home() {
     }, [effectiveProperties, zoomLevel, activeRoute]);
 
     const generateRoutes = useCallback(async () => {
+        if (currentBatchDataContextHydratingRef.current) {
+            setGenerationError('The saved Precision job is still being reverified with the server. Try route generation again in a moment.');
+            return false;
+        }
         if (routesGeneratingRef.current) {
             toast.info('Route generation is already running.');
             return false;
@@ -2660,10 +2915,15 @@ export default function Home() {
             }
         }
 
-        // Priority 4: Most recent Precision fetch job boundary
-        if (Array.isArray(precisionFetchJobs) && precisionFetchJobs.length > 0) {
-            const mostRecentJob = precisionFetchJobs[0];
-            if (Array.isArray(mostRecentJob?.polygon) && mostRecentJob.polygon.length >= 3) {
+        // Priority 4: Most recent server-verified Precision history boundary
+        if (Array.isArray(resolvedPrecisionHistoryEntries) && resolvedPrecisionHistoryEntries.length > 0) {
+            const mostRecentJob = resolvedPrecisionHistoryEntries.find(
+                (entry) => entry?.criteria_verified === true
+                    && entry?.criteria_status === 'server_verified'
+                    && Array.isArray(entry?.polygon)
+                    && entry.polygon.length >= 3,
+            );
+            if (mostRecentJob) {
                 const pts = mostRecentJob.polygon
                     .map(pt => [Number(pt?.lat ?? pt?.[0]), Number(pt?.lng ?? pt?.[1])])
                     .filter(p => Number.isFinite(p[0]) && Number.isFinite(p[1]) && (p[0] !== 0 || p[1] !== 0));
@@ -2688,7 +2948,7 @@ export default function Home() {
 
         // Priority 6: Default fallback (continental US center)
         return null;
-    }, [drawnPolygon, user?.id, user?.email, savedRoutes, precisionFetchJobs, availableProperties]);
+    }, [drawnPolygon, user?.id, user?.email, savedRoutes, resolvedPrecisionHistoryEntries, availableProperties]);
 
     // Initial Account Working Area Map Load Effect
     const hasCenteredAccountWorkingAreaRef = useRef(false);
@@ -3108,7 +3368,7 @@ export default function Home() {
                 homeBase={user?.home_base || null}
                 onSaveHomeBase={handleSaveHomeBase}
                 onRouteBoundsPrepared={preparePrecisionRouteBounds}
-                onPullComplete={async (pullFetchMonths, pulledWithMls, jobStatus = {}) => {
+                onPullComplete={async (_pullFetchMonths, pulledWithMls, jobStatus = {}) => {
                     if (routeModeRef.current !== 'precision') return;
                     const completedRouteBounds = jobStatus?.diagnostics?.route_bounds || jobStatus?.route_bounds;
                     if (completedRouteBounds) preparePrecisionRouteBounds(completedRouteBounds);
@@ -3122,7 +3382,10 @@ export default function Home() {
                         currentBatchDataOwnershipRangeDaysRef.current = null;
                         setCurrentBatchDataOwnershipReferenceDate(null);
                         currentBatchDataOwnershipReferenceDateRef.current = null;
+                        currentBatchDataCountModeRef.current = null;
+                        currentBatchDataEnteredCountRef.current = null;
                         currentBatchDataRequestedCountRef.current = null;
+                        currentBatchDataDeliveredCountRef.current = null;
                         currentBatchDataPolygonRef.current = null;
                         currentBatchDataCriteriaRef.current = null;
                         persistPrecisionJobContext(null);
@@ -3130,27 +3393,59 @@ export default function Home() {
                         setGenerationError('This Precision pull completed, but the completed job id was missing. Route generation was stopped so old account data cannot be mixed into this new area. Please generate the area again.');
                         return;
                     }
-                    const statusPolygon = getFetchJobHistoryPolygon(jobStatus);
-                    const drawnPullPolygon = normalizeHistoryPolygon(drawnPolygon);
-                    const normalizedPullPolygon = statusPolygon.length > 2 ? statusPolygon : drawnPullPolygon;
-                    if (normalizedPullPolygon.length < 3) {
+                    const completedCandidateCriteria = getPrecisionCandidateCriteria(jobStatus);
+                    const normalizedPullPolygon = getVerifiedServerPrecisionPolygon(jobStatus, completedCandidateCriteria);
+                    if (!normalizedPullPolygon) {
                         setCurrentBatchDataJobId(null);
                         currentBatchDataJobIdRef.current = null;
                         setCurrentBatchDataOwnershipRangeDays(null);
                         currentBatchDataOwnershipRangeDaysRef.current = null;
                         setCurrentBatchDataOwnershipReferenceDate(null);
                         currentBatchDataOwnershipReferenceDateRef.current = null;
+                        currentBatchDataCountModeRef.current = null;
+                        currentBatchDataEnteredCountRef.current = null;
                         currentBatchDataRequestedCountRef.current = null;
+                        currentBatchDataDeliveredCountRef.current = null;
                         currentBatchDataPolygonRef.current = null;
                         currentBatchDataCriteriaRef.current = null;
                         persistPrecisionJobContext(null);
                         preparePrecisionRouteBounds({ enabled: false });
-                        setGenerationError('This Precision pull completed, but the selected area was missing before routes could be built. Route generation was stopped so old account data cannot be mixed into this new area. Please generate the area again.');
+                        setGenerationError('This Precision pull completed, but its server-returned polygon and canonical polygon hash could not be verified. Route generation was stopped so client state cannot replace missing job evidence.');
+                        return;
+                    }
+                    const completedCounts = getPrecisionCounts(jobStatus, completedCandidateCriteria);
+                    const expectedWorkspaceId = getPrecisionWorkspaceId(user);
+                    if (
+                        jobStatus.criteria_verified !== true ||
+                        !completedCandidateCriteria ||
+                        !completedCounts ||
+                        completedCounts.delivered_count === null ||
+                        String(completedCandidateCriteria.immutable_user_id) !== String(user?.id || '') ||
+                        String(completedCandidateCriteria.workspace_id) !== expectedWorkspaceId
+                    ) {
+                        setCurrentBatchDataJobId(null);
+                        currentBatchDataJobIdRef.current = null;
+                        currentBatchDataSoldMonthsRef.current = null;
+                        setCurrentBatchDataOwnershipRangeDays(null);
+                        currentBatchDataOwnershipRangeDaysRef.current = null;
+                        setCurrentBatchDataOwnershipReferenceDate(null);
+                        currentBatchDataOwnershipReferenceDateRef.current = null;
+                        currentBatchDataCountModeRef.current = null;
+                        currentBatchDataEnteredCountRef.current = null;
+                        currentBatchDataRequestedCountRef.current = null;
+                        currentBatchDataDeliveredCountRef.current = null;
+                        currentBatchDataPolygonRef.current = null;
+                        currentBatchDataCriteriaRef.current = null;
+                        persistPrecisionJobContext(null);
+                        preparePrecisionRouteBounds({ enabled: false });
+                        setGenerationError('This Precision pull completed, but its canonical criteria, ownership, workspace, or delivered count could not be verified. Automatic route generation was stopped.');
                         return;
                     }
                     setCurrentBatchDataJobId(completedJobId);
                     currentBatchDataJobIdRef.current = completedJobId;
-                    const completedOwnershipRangeDays = normalizeStrictOwnershipRangeDays(jobStatus?.diagnostics?.ownership_range_days);
+                    const completedOwnershipRangeDays = completedCandidateCriteria.ownership_range_mode === 'custom'
+                        ? normalizeStrictOwnershipRangeDays(completedCandidateCriteria.ownership_range_days)
+                        : null;
                     setCurrentBatchDataOwnershipRangeDays(completedOwnershipRangeDays);
                     currentBatchDataOwnershipRangeDaysRef.current = completedOwnershipRangeDays;
                     const rawOwnershipReferenceDate = jobStatus?.ownership_reference_date ?? jobStatus?.diagnostics?.ownership_reference_date;
@@ -3159,13 +3454,11 @@ export default function Home() {
                         : null;
                     setCurrentBatchDataOwnershipReferenceDate(completedOwnershipReferenceDate);
                     currentBatchDataOwnershipReferenceDateRef.current = completedOwnershipReferenceDate;
-                    const completedRequestedCount = getRequestedPrecisionCount(jobStatus);
-                    currentBatchDataRequestedCountRef.current = completedRequestedCount;
+                    currentBatchDataCountModeRef.current = completedCounts.count_mode;
+                    currentBatchDataEnteredCountRef.current = completedCounts.entered_count;
+                    currentBatchDataRequestedCountRef.current = completedCounts.effective_count;
+                    currentBatchDataDeliveredCountRef.current = completedCounts.delivered_count;
                     currentBatchDataPolygonRef.current = normalizedPullPolygon;
-                    const completedCandidateCriteria = getPrecisionCandidateCriteria(
-                        jobStatus,
-                        String(user?.team_manager_id || user?.id || '') || null
-                    );
                     currentBatchDataCriteriaRef.current = completedCandidateCriteria;
                     try { localStorage.setItem('fk_drawnPolygonQueried', 'true'); } catch { }
                     setDrawnPolygon(normalizedPullPolygon, true);
@@ -3174,9 +3467,10 @@ export default function Home() {
                     setShowRoutePanel(false);
                     await queryClient.refetchQueries({ queryKey: ['masterProperties'] });
                     await queryClient.refetchQueries({ queryKey: ['user'] });
+                    await queryClient.refetchQueries({ queryKey: ['precisionHistory'] });
                     if (routeModeRef.current !== 'precision') return;
 
-                    const pm = pullFetchMonths || 12;
+                    const pm = Number(completedCandidateCriteria.sold_months);
                     currentBatchDataSoldMonthsRef.current = pm;
                     persistPrecisionJobContext({
                         userEmail: user?.email || '',
@@ -3184,7 +3478,10 @@ export default function Home() {
                         soldMonths: pm,
                         ownershipRangeDays: completedOwnershipRangeDays,
                         ownershipReferenceDate: completedOwnershipReferenceDate,
-                        requestedCount: completedRequestedCount,
+                        countMode: completedCounts.count_mode,
+                        enteredCount: completedCounts.entered_count,
+                        effectiveCount: completedCounts.effective_count,
+                        deliveredCount: completedCounts.delivered_count,
                         polygon: normalizedPullPolygon,
                         criteria: completedCandidateCriteria
                     });
@@ -3416,7 +3713,10 @@ export default function Home() {
                             currentBatchDataOwnershipRangeDaysRef.current = null;
                             setCurrentBatchDataOwnershipReferenceDate(null);
                             currentBatchDataOwnershipReferenceDateRef.current = null;
+                            currentBatchDataCountModeRef.current = null;
+                            currentBatchDataEnteredCountRef.current = null;
                             currentBatchDataRequestedCountRef.current = null;
+                            currentBatchDataDeliveredCountRef.current = null;
                             currentBatchDataPolygonRef.current = null;
                             currentBatchDataCriteriaRef.current = null;
                             persistPrecisionJobContext(null);

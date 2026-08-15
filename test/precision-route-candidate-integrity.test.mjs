@@ -27,6 +27,7 @@ function completedJob(overrides = {}) {
   const metadataOverrides = overrides.dry_run_metadata || {};
   const metadata = {
     workspace_id: 'manager_1',
+    criteria_reference_at: '2026-07-25T12:00:00.000Z',
     requested_properties: 50,
     requested_properties_before_cap: 50,
     count_mode: 'fixed',
@@ -65,6 +66,9 @@ function completedJob(overrides = {}) {
   return {
     id: 'job_1',
     status: 'completed',
+    provider: 'batchdata',
+    mode_tag: 'PRECISION_TARGET',
+    include_mls: false,
     user_email: 'owner@example.com',
     precision_usage_user_id: 'manager_1',
     created_date: '2026-07-25T12:00:00.000Z',
@@ -72,6 +76,9 @@ function completedJob(overrides = {}) {
     polygon_hash: '930e3a75b8a063c0',
     sold_months: 12,
     total_expected: 50,
+    precision_usage_reserved: 0,
+    precision_usage_count: 1,
+    precision_usage_recorded_at: '2026-07-25T12:02:00.000Z',
     ...overrides,
     dry_run_metadata: metadata,
   };
@@ -174,6 +181,26 @@ async function invoke(handler, body) {
   return { response, result: await response.json() };
 }
 
+test('ordinary owners cannot enable production job debug mode', async () => {
+  const { handler, sqlCalls } = loadHandler();
+  const { response, result } = await invoke(handler, exactRequest({ debug_job: true }));
+
+  assert.equal(response.status, 403);
+  assert.equal(result.error, 'precision_debug_mode_forbidden');
+  assert.equal(sqlCalls.length, 0);
+});
+
+test('exact-job candidates require the top-level immutable owner id', async () => {
+  const job = completedJob();
+  delete job.precision_usage_user_id;
+  const { handler, sqlCalls } = loadHandler({ job });
+  const { response, result } = await invoke(handler, exactRequest());
+
+  assert.equal(response.status, 409);
+  assert.equal(result.error, 'fetch_job_not_precision');
+  assert.equal(sqlCalls.length, 0);
+});
+
 test('exact-job candidates reject a running FetchJob before querying properties', async () => {
   const { handler, sqlCalls } = loadHandler({
     job: completedJob({ status: 'running' }),
@@ -207,7 +234,50 @@ test('exact-job candidates reject a FetchJob owned by another immutable user', a
   const { response, result } = await invoke(handler, exactRequest());
 
   assert.equal(response.status, 403);
+  assert.equal(result.error, 'precision_job_owner_mismatch');
+  assert.equal(sqlCalls.length, 0);
+});
+
+test('exact-job candidates reject missing or enabled MLS provenance before querying properties', async () => {
+  for (const includeMls of [undefined, null, true]) {
+    const job = completedJob();
+    if (includeMls === undefined) delete job.include_mls;
+    else job.include_mls = includeMls;
+    const { handler, sqlCalls } = loadHandler({ job });
+
+    const { response, result } = await invoke(handler, exactRequest());
+
+    assert.equal(response.status, 409, String(includeMls));
+    assert.equal(result.error, 'precision_include_mls_invariant_violation');
+    assert.equal(sqlCalls.length, 0);
+  }
+});
+
+test('an email hint cannot authorize an exact Precision FetchJob', async () => {
+  const { handler, sqlCalls } = loadHandler();
+  const { response, result } = await invoke(handler, exactRequest({
+    user_email: 'different@example.com',
+  }));
+
+  assert.equal(response.status, 403);
   assert.equal(result.error, 'fetch_job_owner_mismatch');
+  assert.equal(sqlCalls.length, 0);
+});
+
+test('a distinct undelegated admin cannot authorize another user exact Precision FetchJob', async () => {
+  const { handler, sqlCalls } = loadHandler({
+    user: {
+      id: 'admin_1',
+      email: 'admin@example.com',
+      role: 'admin',
+    },
+  });
+  const { response, result } = await invoke(handler, exactRequest({
+    user_email: 'owner@example.com',
+  }));
+
+  assert.equal(response.status, 403);
+  assert.equal(result.error, 'precision_job_owner_mismatch');
   assert.equal(sqlCalls.length, 0);
 });
 
@@ -219,19 +289,25 @@ test('exact-job candidates reject a FetchJob from another authenticated workspac
       role: 'user',
       team_manager_id: 'manager_other',
     },
-    job: completedJob({ precision_usage_user_id: 'rep_1' }),
+    job: completedJob({
+      precision_usage_user_id: 'rep_1',
+      dry_run_metadata: {
+        precision_criteria: {
+          immutable_user_id: 'rep_1',
+        },
+      },
+    }),
   });
 
   const { response, result } = await invoke(handler, exactRequest());
 
   assert.equal(response.status, 403);
-  assert.equal(result.error, 'fetch_job_workspace_mismatch');
+  assert.equal(result.error, 'precision_job_workspace_mismatch');
   assert.equal(sqlCalls.length, 0);
 });
 
 test('exact-job candidates reject completed jobs with incomplete persisted identity scope', async () => {
   const job = completedJob({
-    precision_usage_user_id: null,
     dry_run_metadata: {
       workspace_id: null,
       precision_criteria: {
@@ -245,9 +321,72 @@ test('exact-job candidates reject completed jobs with incomplete persisted ident
   const { response, result } = await invoke(handler, exactRequest());
 
   assert.equal(response.status, 409);
-  assert.equal(result.error, 'fetch_job_criteria_unverifiable');
-  assert.deepEqual(result.invalid_fields.sort(), ['immutable_user_id', 'workspace_id']);
+  assert.equal(result.error, 'legacy_precision_criteria_unverifiable');
+  assert.deepEqual(result.invalid_fields.sort(), [
+    'precision_criteria.immutable_user_id',
+    'precision_criteria.workspace_id',
+  ]);
+  assert.deepEqual(result.invalid_reasons, [
+    { field: 'precision_criteria.immutable_user_id', reason: 'null_not_allowed' },
+    { field: 'precision_criteria.workspace_id', reason: 'null_not_allowed' },
+  ]);
   assert.equal(sqlCalls.length, 0);
+});
+
+test('exact-job candidates preserve direct strict-validator reasons in the 409 contract', async () => {
+  const job = completedJob();
+  const canonicalCriteria = job.dry_run_metadata.precision_criteria;
+  let criteriaReads = 0;
+  Object.defineProperty(job.dry_run_metadata, 'precision_criteria', {
+    configurable: true,
+    get: () => {
+      criteriaReads += 1;
+      return criteriaReads === 1
+        ? canonicalCriteria
+        : { ...canonicalCriteria, min_price: false };
+    },
+  });
+  const { handler, sqlCalls } = loadHandler({ job });
+
+  const { response, result } = await invoke(handler, exactRequest());
+
+  assert.equal(response.status, 409);
+  assert.equal(result.error, 'fetch_job_criteria_unverifiable');
+  assert.deepEqual(result.invalid_fields, ['min_price']);
+  assert.deepEqual(result.invalid_reasons, [
+    { field: 'min_price', reason: 'wrong_type' },
+  ]);
+  assert.doesNotMatch(JSON.stringify(result.invalid_reasons), /false/);
+  assert.equal(sqlCalls.length, 0);
+});
+
+test('exact-job candidates require complete safe exact-settlement evidence', async () => {
+  const cases = [
+    ['precision_usage_reserved', undefined],
+    ['precision_usage_reserved', null],
+    ['precision_usage_reserved', '0'],
+    ['precision_usage_reserved', 1],
+    ['precision_usage_count', undefined],
+    ['precision_usage_count', null],
+    ['precision_usage_count', '1'],
+    ['precision_usage_count', -1],
+    ['precision_usage_recorded_at', undefined],
+    ['precision_usage_recorded_at', null],
+    ['precision_usage_recorded_at', 'not-a-date'],
+  ];
+  for (const [field, value] of cases) {
+    const job = completedJob();
+    if (value === undefined) delete job[field];
+    else job[field] = value;
+    const { handler, sqlCalls } = loadHandler({ job });
+
+    const { response, result } = await invoke(handler, exactRequest());
+
+    assert.equal(response.status, 409, `${field}:${String(value)}`);
+    assert.equal(result.error, 'fetch_job_usage_unverifiable');
+    assert.ok(result.invalid_fields.includes(field));
+    assert.equal(sqlCalls.length, 0);
+  }
 });
 
 test('exact-job candidates reject persisted criteria scoped to another immutable user', async () => {
@@ -263,7 +402,20 @@ test('exact-job candidates reject persisted criteria scoped to another immutable
   const { response, result } = await invoke(handler, exactRequest());
 
   assert.equal(response.status, 403);
-  assert.equal(result.error, 'fetch_job_owner_mismatch');
+  assert.equal(result.error, 'precision_job_owner_mismatch');
+  assert.equal(sqlCalls.length, 0);
+});
+
+test('exact-job candidates fail closed when persisted polygon evidence is mismatched', async () => {
+  const { handler, sqlCalls } = loadHandler({
+    job: completedJob({
+      polygon_hash: '0000000000000000',
+    }),
+  });
+  const { response, result } = await invoke(handler, exactRequest());
+
+  assert.equal(response.status, 409);
+  assert.equal(result.error, 'precision_job_polygon_unverifiable');
   assert.equal(sqlCalls.length, 0);
 });
 
@@ -281,8 +433,12 @@ test('exact-job candidates reject a missing or nonpositive persisted minimum pri
     const { response, result } = await invoke(handler, exactRequest());
 
     assert.equal(response.status, 409);
-    assert.equal(result.error, 'fetch_job_criteria_unverifiable');
-    assert.ok(result.invalid_fields.includes('min_price'));
+    assert.equal(result.error, 'legacy_precision_criteria_unverifiable');
+    assert.ok(result.invalid_fields.includes('precision_criteria.min_price'));
+    assert.deepEqual(result.invalid_reasons, [{
+      field: 'precision_criteria.min_price',
+      reason: minPrice === null ? 'null_not_allowed' : 'out_of_range',
+    }]);
     assert.equal(sqlCalls.length, 0);
   }
 });
@@ -318,6 +474,45 @@ test('exact-job candidates exclude rows outside the persisted sold-date window',
   assert.equal(result.sold_at_or_after, '2025-07-25T00:00:00.000Z');
 });
 
+test('quick and max-since exact jobs exclude sold dates after their immutable reference day', async () => {
+  const futureRow = propertyRow({
+    sold_date: '2026-07-26T00:00:00.000Z',
+  });
+  const quick = loadHandler({
+    job: completedJob({ precision_usage_count: 0 }),
+    rows: [futureRow],
+  });
+  const quickResult = await invoke(quick.handler, exactRequest());
+  assert.equal(quickResult.response.status, 200);
+  assert.equal(quickResult.result.count, 0);
+  assert.equal(quickResult.result.delivered_count, 0);
+
+  const previousPullDate = '2026-07-24T12:00:00.000Z';
+  const maxSinceJob = completedJob({
+    precision_usage_count: 0,
+    sold_months: 1 / 30,
+    dry_run_metadata: {
+      repull_mode: 'max_since_last',
+      previous_pull_date: previousPullDate,
+      precision_criteria: {
+        sold_months: 1 / 30,
+      },
+    },
+  });
+  const maxSince = loadHandler({
+    job: maxSinceJob,
+    rows: [futureRow],
+  });
+  const maxSinceResult = await invoke(maxSince.handler, exactRequest({
+    sold_months: 1 / 30,
+    repull_mode: 'max_since_last',
+    previous_pull_date: previousPullDate,
+  }));
+  assert.equal(maxSinceResult.response.status, 200);
+  assert.equal(maxSinceResult.result.count, 0);
+  assert.equal(maxSinceResult.result.delivered_count, 0);
+});
+
 test('valid exact-job candidates return only rows associated with that FetchJob', async () => {
   const otherJobRow = propertyRow({
     id: 2,
@@ -333,11 +528,127 @@ test('valid exact-job candidates return only rows associated with that FetchJob'
   assert.equal(response.status, 200);
   assert.equal(result.criteria_verified, true);
   assert.equal(result.fetch_job_id, 'job_1');
+  assert.equal(result.delivered_count, 1);
   assert.equal(result.count, 1);
   assert.deepEqual(result.properties.map(property => property.address_hash), ['hash_1']);
   assert.match(sqlCalls[0].query, /wp\.fetch_job_id/);
   assert.match(sqlCalls[0].query, /p\.sold_date IS NOT NULL/);
   assert.ok(sqlCalls[0].values.includes('job_1'));
+});
+
+test('exact-job candidates remain keyed by immutable job id after the owner email changes', async () => {
+  const { handler, sqlCalls } = loadHandler({
+    user: {
+      id: 'manager_1',
+      email: 'new-owner@example.com',
+      role: 'user',
+    },
+    job: completedJob({ user_email: 'old-owner@example.com' }),
+  });
+
+  const { response, result } = await invoke(handler, exactRequest());
+
+  assert.equal(response.status, 200);
+  assert.equal(result.fetch_job_id, 'job_1');
+  assert.equal(result.count, 1);
+  assert.equal(result.properties[0].address_hash, 'hash_1');
+  assert.match(sqlCalls[0].query, /wp\.fetch_job_id/);
+});
+
+test('exact-job qualifying candidates can never exceed the delivered-count authority', async () => {
+  const second = propertyRow({
+    id: 2,
+    address_hash: 'hash_2',
+    full_address: '200 Test Ave, Phoenix, AZ 85001',
+  });
+  const { handler } = loadHandler({
+    job: completedJob({ precision_usage_count: 1 }),
+    rows: [propertyRow(), second],
+  });
+
+  const { response, result } = await invoke(handler, exactRequest());
+
+  assert.equal(response.status, 409);
+  assert.equal(result.error, 'fetch_job_delivery_count_mismatch');
+  assert.equal(result.candidate_count, 2);
+  assert.equal(result.delivered_count, 1);
+});
+
+test('exact-job candidate loss cannot silently undercut delivered-count authority', async () => {
+  const { handler } = loadHandler({
+    job: completedJob({ precision_usage_count: 2 }),
+    rows: [propertyRow()],
+  });
+
+  const { response, result } = await invoke(handler, exactRequest());
+
+  assert.equal(response.status, 409);
+  assert.equal(result.error, 'fetch_job_delivery_count_mismatch');
+  assert.equal(result.candidate_count, 1);
+  assert.equal(result.delivered_count, 2);
+});
+
+test('a low response limit cannot hide candidates beyond delivered-count authority', async () => {
+  const rows = [
+    propertyRow(),
+    propertyRow({
+      id: 2,
+      address_hash: 'hash_2',
+      full_address: '200 Test Ave, Phoenix, AZ 85001',
+    }),
+    propertyRow({
+      id: 3,
+      address_hash: 'hash_3',
+      full_address: '300 Test Ave, Phoenix, AZ 85001',
+    }),
+  ];
+  const { handler, sqlCalls } = loadHandler({
+    job: completedJob({ precision_usage_count: 2 }),
+    rows,
+  });
+
+  const { response, result } = await invoke(
+    handler,
+    exactRequest({ limit: 1 })
+  );
+
+  assert.equal(response.status, 409);
+  assert.equal(result.error, 'fetch_job_delivery_count_mismatch');
+  assert.equal(result.candidate_count, 3);
+  assert.equal(result.delivered_count, 2);
+  assert.equal(sqlCalls[0].values.at(-1), 3);
+});
+
+test('disjoint caller filters cannot partition rows around delivered-count authority', async () => {
+  const rows = [
+    propertyRow({ zip_code: '85001' }),
+    propertyRow({
+      id: 2,
+      address_hash: 'hash_2',
+      full_address: '200 Test Ave, Phoenix, AZ 85002',
+      zip_code: '85002',
+    }),
+    propertyRow({
+      id: 3,
+      address_hash: 'hash_3',
+      full_address: '300 Test Ave, Phoenix, AZ 85003',
+      zip_code: '85003',
+    }),
+  ];
+  const { handler } = loadHandler({
+    job: completedJob({ precision_usage_count: 2 }),
+    rows,
+  });
+
+  for (const zipCode of ['85001', '85002']) {
+    const { response, result } = await invoke(
+      handler,
+      exactRequest({ zip_codes: [zipCode], limit: 1 })
+    );
+    assert.equal(response.status, 409, zipCode);
+    assert.equal(result.error, 'fetch_job_delivery_count_mismatch', zipCode);
+    assert.equal(result.candidate_count, 3, zipCode);
+  }
 });
 
 test('valid custom-range candidates preserve both persisted sold-date bounds', async () => {

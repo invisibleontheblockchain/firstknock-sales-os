@@ -168,7 +168,10 @@ async function invokeStartWithEntitlementSequence(path, { user, subscriptions, r
   class TestClient {
     async connect() { events.push('db:connect'); }
     async query(sql) {
-      if (sql.includes('pg_advisory_xact_lock')) events.push('db:locked');
+      if (sql.includes('pg_try_advisory_xact_lock')) {
+        events.push('db:locked');
+        return { rows: [{ claimed: true }] };
+      }
       return { rows: [] };
     }
     async end() { events.push('db:end'); }
@@ -333,41 +336,36 @@ test('incomplete payment and spoofed local flags never grant the paid cap', asyn
 });
 
 test('both live start paths use the same account advisory lock and service-owned reservation fields', () => {
+  const sharedSource = readSource(activeJobCriteriaPath);
+  assert.match(sharedSource, /pg_try_advisory_xact_lock/);
+  assert.match(sharedSource, /precision_usage_user_id:\s*String\(user\.id\)/);
+  assert.match(sharedSource, /precision_usage_reserved:\s*effectiveCount/);
+  assert.match(sharedSource, /const entitlement = await resolveStartEntitlement\(entitlementArgs\)/);
   for (const path of livePaths) {
     const source = readSource(path);
-    assert.match(source, /pg_advisory_xact_lock/);
-    assert.match(source, /precision_usage_user_id:\s*user\.id/);
-    assert.match(source, /precision_usage_reserved:\s*reservedProperties/);
-    assert.match(source, /const lockedEntitlement = await resolvePrecisionEntitlement\(user\);[\s\S]*const lockedAllowance = await getPrecisionAllowance\(base44, user, lockedEntitlement\);/);
-    assert.match(source, /precision_usage_kind:\s*lockedEntitlement\.kind/);
+    assert.match(source, /executePrecisionStart/);
     assert.doesNotMatch(source, /subscription_paid_confirmed\s*===\s*true/);
     assert.doesNotMatch(source, /user\?\.is_owner/);
   }
 });
 
-test('both start paths refresh entitlement after acquiring the account lock and stamp the refreshed billing period', async () => {
+test('both start paths resolve the authoritative entitlement inside the account lock and stamp that period', async () => {
   const now = Math.floor(Date.now() / 1000);
-  const preflight = paidSubscription({
-    periodStart: now - 3600,
-    periodEnd: now + 30 * 24 * 60 * 60,
-    invoiceId: 'in_preflight'
-  });
   const locked = paidSubscription({
     periodStart: now - 60,
     periodEnd: now + 31 * 24 * 60 * 60,
     invoiceId: 'in_locked'
   });
-  const user = { id: 'user_1', email: 'austenwaugh@gmail.com', subscription_id: preflight.id };
+  const user = { id: 'user_1', email: 'austenwaugh@gmail.com', subscription_id: locked.id };
 
   for (const path of livePaths) {
     const { response, result, createdJobs, events, retrieveIndex } = await invokeStartWithEntitlementSequence(path, {
       user,
-      subscriptions: [preflight, locked]
+      subscriptions: [locked]
     });
     assert.equal(response.status, 200, path);
-    assert.equal(retrieveIndex, 2, `${path} must resolve Stripe once before and once inside the lock`);
+    assert.equal(retrieveIndex, 1, `${path} must have one authoritative locked Stripe resolution`);
     assert.deepEqual(events.filter((event) => event === 'db:locked' || event.startsWith('stripe:') || event === 'job:create'), [
-      'stripe:in_preflight',
       'db:locked',
       'stripe:in_locked',
       'job:create'
@@ -379,25 +377,44 @@ test('both start paths refresh entitlement after acquiring the account lock and 
   }
 });
 
-test('both start paths reject paid-only criteria when the locked entitlement loses paid access', async () => {
-  const preflight = paidSubscription();
+test('both start paths cap fixed intent when the locked entitlement loses paid access', async () => {
   const locked = paidSubscription({ status: 'incomplete', invoiceStatus: 'open', amountPaid: 0, invoiceId: 'in_incomplete' });
-  const user = { id: 'user_1', email: 'austenwaugh@gmail.com', subscription_id: preflight.id };
+  const user = { id: 'user_1', email: 'austenwaugh@gmail.com', subscription_id: locked.id };
 
   for (const path of livePaths) {
     const { response, result, createdJobs, events, retrieveIndex } = await invokeStartWithEntitlementSequence(path, {
       user,
-      subscriptions: [preflight, locked],
+      subscriptions: [locked],
       requested: 100
     });
-    assert.equal(response.status, 403, path);
-    assert.equal(result.error, 'paid_precision_required', path);
-    assert.equal(retrieveIndex, 2, path);
-    assert.equal(createdJobs.length, 0, path);
+    assert.equal(response.status, 200, path);
+    assert.equal(result.entered_count, 100, path);
+    assert.equal(result.effective_count, 50, path);
+    assert.equal(result.requested_properties, 50, path);
+    assert.equal(result.limited_by_free_home_cap, true, path);
+    assert.equal(retrieveIndex, 1, path);
+    assert.equal(createdJobs.length, 1, path);
+    assert.equal(createdJobs[0].precision_usage_kind, 'trial', path);
+    assert.equal(createdJobs[0].precision_usage_reserved, 50, path);
+    assert.equal(
+      Object.hasOwn(createdJobs[0].dry_run_metadata, 'delivered_count'),
+      false,
+      `${path} must not persist a second delivered-count authority`
+    );
+    assert.equal(
+      createdJobs[0].dry_run_metadata.precision_criteria.entered_count,
+      100,
+      path
+    );
+    assert.equal(
+      createdJobs[0].dry_run_metadata.precision_criteria.effective_count,
+      50,
+      path
+    );
     assert.deepEqual(events.filter((event) => event === 'db:locked' || event.startsWith('stripe:') || event === 'job:create'), [
-      'stripe:in_current',
       'db:locked',
-      'stripe:in_incomplete'
+      'stripe:in_incomplete',
+      'job:create'
     ], path);
   }
 });

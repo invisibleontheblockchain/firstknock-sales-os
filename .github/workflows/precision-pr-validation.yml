@@ -1,0 +1,109 @@
+name: Precision PR Validation
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: precision-pr-validation-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  deterministic-validation:
+    name: Deterministic validation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out the pull request merge result
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Identify the immutable comparison range
+        shell: bash
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          merge_base_sha="$(git merge-base "$PR_BASE_SHA" HEAD)"
+          if [[ "$merge_base_sha" != "$PR_BASE_SHA" ]]; then
+            echo "::error title=Untrusted pull-request checkout::Expected PR base $PR_BASE_SHA to be the merge base, but Git resolved $merge_base_sha."
+            exit 1
+          fi
+          git merge-base --is-ancestor "$merge_base_sha" HEAD
+          echo "MERGE_BASE_SHA=$merge_base_sha" >> "$GITHUB_ENV"
+          echo "PR base:    $PR_BASE_SHA"
+          echo "Merge base: $merge_base_sha"
+          echo "Checked out: $(git rev-parse HEAD)"
+
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Check changed-line whitespace
+        shell: bash
+        run: git diff --check "$MERGE_BASE_SHA...HEAD"
+
+      - name: Reject net-new ESLint diagnostics
+        shell: bash
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: node scripts/lint-diff.mjs --base "$PR_BASE_SHA" --head HEAD
+
+      - name: Run the complete test suite
+        run: npm test
+
+      - name: Run targeted Precision tests
+        shell: bash
+        run: node --test test/precision-*.test.mjs
+
+      - name: Run typecheck
+        run: npm run typecheck
+
+      - name: Validate backend boundaries
+        run: npm run validate:backend
+
+      - name: Build the application
+        run: npm run build
+
+      - name: Validate the production artifact
+        run: npm run validate:artifact
+
+      - name: Report full-lint baseline (nonblocking)
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          set +e
+          npm run lint
+          lint_status=$?
+          set -e
+
+          {
+            echo "### Full lint baseline (nonblocking)"
+            echo
+            if [[ "$lint_status" -eq 0 ]]; then
+              echo "✅ \`npm run lint\` passed."
+            else
+              echo "⚠️ \`npm run lint\` exited with code $lint_status."
+              echo
+              echo "This report is intentionally nonblocking; the diff-aware lint step blocks net-new diagnostics."
+              echo "See this step's log for the complete baseline diagnostics."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [[ "$lint_status" -ne 0 ]]; then
+            echo "::warning title=Nonblocking full-lint baseline::npm run lint exited with code $lint_status; see the step log."
+          fi
+
+          exit 0

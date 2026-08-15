@@ -117,6 +117,9 @@ export default function PrecisionPullPanel({
   usageLoading = false,
   usageError = false,
   usageReady = false,
+  startAvailable = false,
+  startBlockerTitle = '',
+  startBlockerMessage = '',
   usageKind = null,
   proAccess = false,
   onRetryUsage,
@@ -147,7 +150,6 @@ export default function PrecisionPullPanel({
   setForceFullRefresh,
   includeUnresolvedFollowUps = true,
   setIncludeUnresolvedFollowUps,
-  savedRouteHomeCount = 0,
   homeBase = null,
   onSaveHomeBase,
   restoredRouteBounds = { enabled: false }
@@ -180,6 +182,7 @@ export default function PrecisionPullPanel({
   const [ownershipMinDays, ownershipMaxDays] = normalizeOwnershipRangeDays(ownershipRangeDays);
   const isCustomRange = ownershipRangeMode === 'custom';
   const restoredUsesMaxAvailable = repullMode === 'max_since_last' || propertyCountMode === 'max_available';
+  const canStartPrecision = usageReady && startAvailable === true && Number(maxProperties) > 0;
 
   useEffect(() => {
     const normalized = normalizeRouteBoundsIntent(restoredRouteBounds);
@@ -287,7 +290,7 @@ export default function PrecisionPullPanel({
 
   const handleGenerate = () => {
     setRouteOriginError('');
-    if (!usageReady || Number(maxProperties) <= 0) return;
+    if (!canStartPrecision) return;
     if (!routeFromHomeEnabled) {
       return onGenerate?.({ enabled: false });
     }
@@ -353,13 +356,6 @@ export default function PrecisionPullPanel({
     setOwnershipRangeDays?.(normalizeOwnershipRangeDays(nextRange));
   };
 
-  // Max Available is the default — keep the count input synced to the plan max.
-  useEffect(() => {
-    if (usageReady && Number(maxProperties) > 0 && propertyCountMode === 'max_available' && Number(requestedPropertyCount) !== Number(maxProperties)) {
-      setRequestedPropertyCount(maxProperties);
-    }
-  }, [propertyCountMode, maxProperties, requestedPropertyCount, setRequestedPropertyCount, usageReady]);
-
   useEffect(() => {
     const hasLockedSelection = isCustomRange || PREMIUM_RECENT_RANGES.includes(Number(soldMonths));
     if (!isProPlan && hasLockedSelection) {
@@ -420,7 +416,9 @@ export default function PrecisionPullPanel({
                     setRepullMode?.('fill_gaps');
                     setForceFullRefresh?.(true);
                     setPropertyCountMode?.(historyCriteria.count_mode === 'max_available' ? 'max_available' : 'fixed');
-                    setRequestedPropertyCount(historyCriteria.requested_properties || FREE_PRECISION_HOME_LIMIT);
+                    if (historyCriteria.count_mode === 'fixed') {
+                      setRequestedPropertyCount(historyCriteria.entered_count || FREE_PRECISION_HOME_LIMIT);
+                    }
                     setSoldMonths(historyCriteria.sold_months || 12);
                     if (historyCriteria.ownership_range_mode === 'custom' && historyCriteria.ownership_range_days) {
                       setOwnershipRangeDays?.(normalizeOwnershipRangeDays(historyCriteria.ownership_range_days));
@@ -440,7 +438,6 @@ export default function PrecisionPullPanel({
                     setRepullMode?.('max_since_last');
                     setForceFullRefresh?.(false);
                     setPropertyCountMode?.('max_available');
-                    setRequestedPropertyCount(maxProperties);
                   }}
                   className={`rounded-xl px-2 py-2 text-[9px] font-black transition-all ${repullMode === 'max_since_last' ? 'bg-[#2EEB57] text-black' : 'bg-white/5 text-gray-300 border border-white/10'}`}>
                   Max Since Last
@@ -479,13 +476,25 @@ export default function PrecisionPullPanel({
             </div>
           )}
 
+          {usageReady && startBlockerMessage && (
+            <div className="rounded-2xl border border-red-500/35 bg-red-500/[0.09] p-3">
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-red-300">
+                {startBlockerTitle || 'Precision generation paused'}
+              </p>
+              <p className="mt-1 text-[11px] leading-snug text-red-100/90">{startBlockerMessage}</p>
+              <button type="button" onClick={onRetryUsage} className="mt-2 text-[10px] font-black uppercase tracking-wider text-red-200">
+                Retry usage check
+              </button>
+            </div>
+          )}
+
           {usageReady && usageKind === 'trial' && (
             <div className="rounded-2xl border border-yellow-400/25 bg-yellow-400/[0.08] p-3">
               <p className="text-[10px] font-black uppercase tracking-[0.18em] text-yellow-300">
                 Free Precision limit
               </p>
               <p className="mt-1 text-[11px] leading-snug text-yellow-100/90">
-                Free accounts can generate up to {FREE_PRECISION_HOME_LIMIT} total single-family Precision route homes. This account has {formatCount(Math.max(0, FREE_PRECISION_HOME_LIMIT - Number(savedRouteHomeCount || 0)))} remaining for included generation.
+                Free accounts can generate up to {FREE_PRECISION_HOME_LIMIT} total single-family Precision route homes. This account has {formatCount(Math.max(0, Number(maxProperties) || 0))} remaining in the authoritative usage ledger.
               </p>
             </div>
           )}
@@ -499,26 +508,27 @@ export default function PrecisionPullPanel({
               <input
                 type="number"
                 min="1"
-                max={Math.max(1, Number(maxProperties) || 1)}
+                step="1"
                 value={requestedPropertyCount}
-                disabled={!usageReady || Number(maxProperties) <= 0}
+                disabled={!canStartPrecision}
                 onChange={(e) => {
                   setPropertyCountMode?.('fixed');
                   const value = e.target.value;
                   if (value === '') return setRequestedPropertyCount('');
-                  setRequestedPropertyCount(Math.min(Number(value) || 1, Math.max(1, Number(maxProperties) || 1)));
+                  setRequestedPropertyCount(Number(value));
                 }}
-                onBlur={() => setRequestedPropertyCount(Math.max(1, Math.min(Number(requestedPropertyCount) || 1, Math.max(1, Number(maxProperties) || 1))))}
+                onBlur={() => {
+                  if (Number(requestedPropertyCount) < 1) setRequestedPropertyCount(1);
+                }}
                 className="w-24 h-10 rounded-lg bg-black/40 border border-white/10 px-3 text-white text-sm outline-none focus:border-[#2EEB57] disabled:cursor-not-allowed disabled:opacity-50"
               />
             </div>
             <div className="grid grid-cols-2 gap-1.5 rounded-2xl border border-white/10 bg-white/[0.03] p-1.5">
               <button
                 type="button"
-                disabled={!usageReady || Number(maxProperties) <= 0}
+                disabled={!canStartPrecision}
                 onClick={() => {
                   setPropertyCountMode?.('max_available');
-                  setRequestedPropertyCount(maxProperties);
                 }}
                 className={`rounded-xl px-3 py-2 text-[10px] font-black transition-all disabled:cursor-not-allowed disabled:opacity-50 ${propertyCountMode === 'max_available' ? 'bg-[#2EEB57] text-black' : 'text-[#39FF4A] hover:bg-[#2EEB57]/10'}`}
               >
@@ -526,8 +536,9 @@ export default function PrecisionPullPanel({
               </button>
               <button
                 type="button"
+                disabled={!canStartPrecision}
                 onClick={() => setPropertyCountMode?.('fixed')}
-                className={`rounded-xl px-3 py-2 text-[10px] font-black transition-all ${propertyCountMode === 'fixed' ? 'bg-white text-black' : 'text-gray-400 hover:text-white'}`}
+                className={`rounded-xl px-3 py-2 text-[10px] font-black transition-all disabled:cursor-not-allowed disabled:opacity-50 ${propertyCountMode === 'fixed' ? 'bg-white text-black' : 'text-gray-400 hover:text-white'}`}
               >
                 Fixed Count
               </button>
@@ -907,7 +918,7 @@ export default function PrecisionPullPanel({
             </div>
           )}
           <Button
-            disabled={!usageReady || Number(maxProperties) <= 0 || generating || homeBaseSaving || (routeFromHomeEnabled && startPointMode === 'current' && gpsLoading)}
+            disabled={!canStartPrecision || generating || homeBaseSaving || (routeFromHomeEnabled && startPointMode === 'current' && gpsLoading)}
             onClick={handleGenerate}
             className="w-full h-12 rounded-xl bg-[#2EEB57] hover:bg-[#39FF4A] text-black font-extrabold tracking-wide"
           >

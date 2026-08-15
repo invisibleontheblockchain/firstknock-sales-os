@@ -9,7 +9,8 @@ import ts from 'typescript';
 import {
   buildRequestedPrecisionCriteria,
   comparePrecisionCriteria,
-  findActivePrecisionJob
+  findActivePrecisionJob,
+  resolveActivePrecisionJobs
 } from '../base44/functions/_shared/precisionActiveJobCriteria.js';
 
 const testDir = dirname(fileURLToPath(import.meta.url));
@@ -105,7 +106,10 @@ function loadHandler(path, { base44, subscription }) {
   }
   class FakeClient {
     async connect() {}
-    async query() { return { rows: [] }; }
+    async query(sql) {
+      if (sql.includes('pg_try_advisory_xact_lock')) return { rows: [{ claimed: true }] };
+      return { rows: [] };
+    }
     async end() {}
   }
   const sharedExecutable = transpile(sharedPath).replace(/^export\s+/gm, '');
@@ -240,6 +244,7 @@ async function makeActiveJob({ subscription, user, polygon = POLYGON_A } = {}) {
     status: 'running',
     provider: 'batchdata',
     mode_tag: 'PRECISION_TARGET',
+    include_mls: false,
     user_email: user.email,
     precision_usage_user_id: user.id,
     precision_usage_kind: 'paid',
@@ -256,6 +261,7 @@ async function makeActiveJob({ subscription, user, polygon = POLYGON_A } = {}) {
     total_expected: 839,
     pull_mode: 'new_area',
     dry_run_metadata: {
+      criteria_reference_at: new Date().toISOString(),
       requested_properties: 839,
       requested_properties_before_cap: 839,
       count_mode: 'max_available',
@@ -352,19 +358,23 @@ test('all material Precision criteria participate in exact compatibility', () =>
     mismatched_fields: []
   });
   for (const [expectedField, mutation] of Object.entries(mutations)) {
-    const changed = buildRequestedPrecisionCriteria({ ...base, ...mutation });
+    const changed = expectedField === 'route_filters'
+      ? { ...base, ...mutation }
+      : buildRequestedPrecisionCriteria({ ...base, ...mutation });
     const comparison = comparePrecisionCriteria(base, changed);
     assert.equal(comparison.matches, false, expectedField);
     assert.ok(comparison.mismatched_fields.includes(expectedField), expectedField);
   }
 });
 
-test('active-job lookup prefers immutable identity, rejects email collisions, and selects newest deterministically', async () => {
+test('active-job lookup rejects email collisions and reports every immutable-user conflict', async () => {
   const user = { id: 'user_1', email: 'current@example.com' };
   const jobs = [
     {
       id: 'foreign_same_email',
       status: 'running',
+      provider: 'batchdata',
+      mode_tag: 'PRECISION_TARGET',
       precision_usage_user_id: 'user_2',
       user_email: user.email,
       created_date: '2026-07-25T03:00:00.000Z'
@@ -372,6 +382,8 @@ test('active-job lookup prefers immutable identity, rejects email collisions, an
     {
       id: 'own_old_email',
       status: 'running',
+      provider: 'batchdata',
+      mode_tag: 'PRECISION_TARGET',
       precision_usage_user_id: user.id,
       user_email: 'old@example.com',
       created_date: '2026-07-25T01:00:00.000Z'
@@ -379,14 +391,21 @@ test('active-job lookup prefers immutable identity, rejects email collisions, an
     {
       id: 'own_newest',
       status: 'pending',
+      provider: 'batchdata',
+      mode_tag: 'PRECISION_TARGET',
       precision_usage_user_id: user.id,
       user_email: 'older@example.com',
       created_date: '2026-07-25T02:00:00.000Z'
     }
   ];
   const base44 = makeBase44({ user, jobs, events: [] });
-  const active = await findActivePrecisionJob(base44, user);
-  assert.equal(active.id, 'own_newest');
+  const resolution = await resolveActivePrecisionJobs(base44, user);
+  assert.equal(resolution.state, 'multiple');
+  assert.deepEqual(resolution.jobs.map(job => job.id), ['own_newest', 'own_old_email']);
+  await assert.rejects(
+    () => findActivePrecisionJob(base44, user),
+    error => error.code === 'multiple_active_precision_jobs' && error.status === 409
+  );
 });
 
 test('the historical-shaped active job conflicts with a new fixed request on both start paths', async () => {

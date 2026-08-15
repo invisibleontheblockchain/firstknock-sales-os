@@ -1,5 +1,15 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 import { neon } from 'npm:@neondatabase/serverless@0.9.0';
+import {
+    classifyActivePrecisionJobs,
+    isActualPrecisionJob,
+    loadUserPrecisionJobs,
+    precisionCriteriaDiagnostic,
+    precisionCriteriaReferenceMs,
+    precisionErrorPayload,
+    precisionProcessorTokenHash,
+    verifyPrecisionJobCriteriaEvidence
+} from '../_shared/precisionActiveJobCriteria.js';
 
 const PROCESSOR_REKICK_PENDING_MS = 12 * 1000;
 const PROCESSOR_REKICK_RUNNING_IDLE_MS = 30 * 1000;
@@ -21,11 +31,23 @@ function isoDateDaysAgo(days, referenceMs = Date.now()) {
     return date.toISOString().slice(0, 10);
 }
 
-function getCustomOwnershipRange(job) {
-    const metadata = job?.dry_run_metadata || {};
-    if (metadata.ownership_range_mode !== 'custom') return null;
-    const min = Number(metadata.ownership_range_days?.min);
-    const max = Number(metadata.ownership_range_days?.max);
+function soldWindowDays(value) {
+    const months = Number(value || 1);
+    if (Math.abs(months - (1 / 30)) < 0.0001) return 1;
+    if (Math.abs(months - (2 / 30)) < 0.0001) return 2;
+    if (months === 0.25) return 7;
+    if (months === 0.5) return 14;
+    if (months === 1) return 30;
+    if (months === 3) return 90;
+    if (months === 6) return 180;
+    if (months === 12) return 365;
+    return Math.max(1, Math.min(365, Math.round(months * 30)));
+}
+
+function getCustomOwnershipRange(criteria) {
+    if (criteria?.ownership_range_mode !== 'custom') return null;
+    const min = criteria.ownership_range_days?.min;
+    const max = criteria.ownership_range_days?.max;
     if (!Number.isInteger(min) || !Number.isInteger(max) || min < 1 || max > 365 || min >= max) {
         throw new Error('FetchJob has invalid custom ownership range metadata.');
     }
@@ -39,7 +61,12 @@ function getProcessorRekickReason(job, metadata, now) {
     if (lastKickAt && now - lastKickAt < PROCESSOR_REKICK_COOLDOWN_MS) return null;
 
     const createdAt = parseTimeMs(job.created_date) || now;
-    const updatedAt = parseTimeMs(job.updated_date || job.started_at || job.created_date) || createdAt;
+    const updatedAt = parseTimeMs(
+        job.processor_heartbeat_at
+        || job.updated_date
+        || job.started_at
+        || job.created_date
+    ) || createdAt;
     const progressPct = Number(job.progress_pct || 0);
     const totalFetched = Number(job.total_fetched || 0);
 
@@ -105,6 +132,12 @@ Deno.serve(async (req) => {
         }
 
         const job = jobArr[0];
+        if (!isActualPrecisionJob(job)) {
+            return Response.json({
+                error: 'fetch_job_not_precision',
+                message: 'This status endpoint only accepts authoritative Precision FetchJobs.'
+            }, { status: 409 });
+        }
 
         // Security: only let the user see their own jobs
         const ownsJob = job.precision_usage_user_id
@@ -113,35 +146,78 @@ Deno.serve(async (req) => {
         if (!ownsJob) {
             return Response.json({ error: 'Not your job' }, { status: 403 });
         }
+        const activeResolution = classifyActivePrecisionJobs(
+            await loadUserPrecisionJobs(base44, user)
+        );
+        if (activeResolution.state === 'multiple') {
+            return Response.json({
+                error: 'multiple_active_precision_jobs',
+                message: 'Multiple active Precision jobs require operator review. Status did not select, mutate, or re-kick any job.',
+                active_job_ids: activeResolution.jobs.map(activeJob => activeJob.id)
+            }, { status: 409 });
+        }
 
         const metadata = job.dry_run_metadata || {};
+        const criteriaEvidence = await verifyPrecisionJobCriteriaEvidence(job, user);
+        const canonicalCriteria = criteriaEvidence.ok
+            ? precisionCriteriaDiagnostic(criteriaEvidence.criteria)
+            : null;
+        const deliveredCount = (
+            criteriaEvidence.ok
+            && ['completed', 'failed', 'cancelled'].includes(job.status)
+            && typeof job.precision_usage_reserved === 'number'
+            && Number.isSafeInteger(job.precision_usage_reserved)
+            && job.precision_usage_reserved === 0
+            && typeof job.precision_usage_recorded_at === 'string'
+            && Number.isFinite(new Date(job.precision_usage_recorded_at).getTime())
+            && typeof job.precision_usage_count === 'number'
+            && Number.isSafeInteger(job.precision_usage_count)
+            && job.precision_usage_count >= 0
+            && job.precision_usage_count <= canonicalCriteria.effective_count
+        )
+            ? job.precision_usage_count
+            : null;
         const now = Date.now();
         let processorKick = null;
         let customOwnershipRange = null;
         let ownershipRangeError = null;
         try {
-            customOwnershipRange = getCustomOwnershipRange(job);
+            customOwnershipRange = getCustomOwnershipRange(canonicalCriteria);
         } catch (error) {
             ownershipRangeError = error.message;
             job.status = 'failed';
             job.error_message = ownershipRangeError;
-            await base44.asServiceRole.entities.FetchJob.update(job.id, {
-                status: 'failed',
-                error_message: ownershipRangeError
-            }).catch(() => {});
         }
-        const ownershipRangeMode = metadata.ownership_range_mode === 'custom' ? 'custom' : 'quick';
-        const referenceMs = parseTimeMs(job.created_date || job.started_at) || now;
+        const ownershipRangeMode = canonicalCriteria?.ownership_range_mode || null;
+        const referenceMs = precisionCriteriaReferenceMs(job);
+        const ownershipReferenceDate = referenceMs === null
+            ? null
+            : new Date(referenceMs).toISOString();
         const customSoldAtOrAfter = customOwnershipRange
             ? `${isoDateDaysAgo(customOwnershipRange.max, referenceMs)}T00:00:00.000Z`
             : null;
         const customSoldBefore = customOwnershipRange
             ? `${isoDateDaysAgo(customOwnershipRange.min - 1, referenceMs)}T00:00:00.000Z`
             : null;
+        const quickSoldAtOrAfter = !customOwnershipRange && referenceMs !== null
+            ? (
+                canonicalCriteria?.repull_mode === 'max_since_last'
+                    ? `${new Date(canonicalCriteria.previous_pull_date).toISOString().slice(0, 10)}T00:00:00.000Z`
+                    : `${isoDateDaysAgo(soldWindowDays(canonicalCriteria?.sold_months), referenceMs)}T00:00:00.000Z`
+            )
+            : null;
+        const quickSoldBefore = !customOwnershipRange && referenceMs !== null
+            ? `${new Date(referenceMs + 24 * 60 * 60 * 1000).toISOString().slice(0, 10)}T00:00:00.000Z`
+            : null;
+        const soldAtOrAfter = customSoldAtOrAfter || quickSoldAtOrAfter;
+        const soldBefore = customSoldBefore || quickSoldBefore;
 
         let active_count = 0;
         try {
             if (ownershipRangeError) throw new Error(ownershipRangeError);
+            if (criteriaEvidence.ok && referenceMs === null) {
+                throw new Error('Precision criteria reference timestamp is unverifiable.');
+            }
             const databaseUrl = Deno.env.get('DATABASE_URL');
             if (databaseUrl) {
                 const sql = neon(databaseUrl);
@@ -150,9 +226,8 @@ Deno.serve(async (req) => {
                     FROM workspace_properties wp
                     JOIN properties p ON p.id = wp.property_id
                     WHERE wp.fetch_job_id = ${job.id}
-                      AND wp.user_email = ${job.user_email}
                       AND wp.route_active = TRUE
-                      AND (${customOwnershipRange === null} OR (p.sold_date IS NOT NULL AND p.sold_date >= ${customSoldAtOrAfter} AND p.sold_date < ${customSoldBefore}))
+                      AND (${soldAtOrAfter === null} OR (p.sold_date IS NOT NULL AND p.sold_date >= ${soldAtOrAfter} AND p.sold_date < ${soldBefore}))
                 `;
                 active_count = Number(rows?.[0]?.active_count || 0);
             }
@@ -160,52 +235,82 @@ Deno.serve(async (req) => {
             console.warn('[fetchJobStatus] active count diagnostic failed:', e.message);
         }
 
-        const rekickReason = getProcessorRekickReason(job, metadata, now);
-        if (rekickReason && !metadata.processor_token) {
-            const legacyMessage = 'This import predates the secured processor handoff. Retry the import to continue with the original criteria.';
-            job.status = 'failed';
-            job.error_message = legacyMessage;
+        // Never auto-rekick an active job whose full provenance is not
+        // trustworthy. The watchdog/processor recovery path will settle it
+        // exactly without a provider call.
+        const hasDurableProcessorClaim = job.status === 'running'
+            && typeof job.processor_claim_id === 'string'
+            && Boolean(job.processor_claim_id.trim());
+        const rekickReason = criteriaEvidence.ok && !hasDurableProcessorClaim
+            ? getProcessorRekickReason(job, metadata, now)
+            : null;
+        if (!criteriaEvidence.ok && ['pending', 'running'].includes(job.status)) {
             processorKick = {
                 requested: false,
-                reason: 'missing_processor_token',
-                at: new Date(now).toISOString(),
+                reason: criteriaEvidence.code || 'precision_job_evidence_unverifiable',
+                at: null,
                 count: Number(metadata.processor_rekick_count || 0)
             };
-            await base44.asServiceRole.entities.FetchJob.update(job.id, {
-                status: 'failed',
-                error_message: legacyMessage,
-                error_log: [...(job.error_log || []), `[${new Date(now).toISOString()}] ${legacyMessage}`]
-            }).catch(error => {
-                processorKick = { ...processorKick, metadata_error: error.message };
-            });
-        } else if (rekickReason) {
+        }
+        if (rekickReason) {
             const rekickAt = new Date(now).toISOString();
             const rekickCount = Number(metadata.processor_rekick_count || 0) + 1;
-            const processorToken = metadata.processor_token;
-            const staleLocksCleared = await clearInitialStaleLocks(base44, job, now);
+            const processorToken = crypto.randomUUID();
+            const processorTokenHash = await precisionProcessorTokenHash(processorToken);
+            const staleLocksCleared = 0;
             processorKick = { requested: true, reason: rekickReason, at: rekickAt, count: rekickCount, stale_locks_cleared: staleLocksCleared };
 
-            await base44.asServiceRole.entities.FetchJob.update(job.id, {
-                dry_run_metadata: {
-                    ...metadata,
-                    processor_rekick_at: rekickAt,
-                    processor_rekick_reason: rekickReason,
-                    processor_rekick_count: rekickCount
+            try {
+                const latestForRekick = await base44.asServiceRole.entities.FetchJob.get(job.id);
+                const latestMetadata = latestForRekick.dry_run_metadata || {};
+                const updateMany = base44.asServiceRole.entities.FetchJob.updateMany;
+                const rotated = typeof updateMany === 'function'
+                    ? await updateMany.call(
+                        base44.asServiceRole.entities.FetchJob,
+                        {
+                            id: job.id,
+                            status: job.status,
+                            processor_claim_id: job.processor_claim_id ?? null
+                        },
+                        {
+                            $set: {
+                                dry_run_metadata: {
+                                    ...latestMetadata,
+                                    processor_token: null,
+                                    processor_token_hash: processorTokenHash,
+                                    processor_rekick_at: rekickAt,
+                                    processor_rekick_reason: rekickReason,
+                                    processor_rekick_count: rekickCount
+                                }
+                            }
+                        }
+                    )
+                    : null;
+                if (rotated?.success !== true || Number(rotated?.updated) !== 1) {
+                    processorKick = {
+                        ...processorKick,
+                        requested: false,
+                        metadata_error: 'processor_rekick_claim_changed'
+                    };
+                } else {
+                    const invokePromise = base44.asServiceRole.functions.invoke('processFetchChunk', {
+                        job_id: job.id,
+                        expected_chunk: job.chunk_number || 0,
+                        processor_token: processorToken
+                    }).catch(error => {
+                        processorKick = { ...processorKick, invoke_error: 'processor_rekick_unavailable' };
+                        console.warn(`[fetchJobStatus] processor re-kick failed for ${job.id}: ${error.message}`);
+                    });
+                    await Promise.race([invokePromise, sleep(PROCESSOR_REKICK_WAIT_MS)]);
                 }
-            }).catch(error => {
-                processorKick = { ...processorKick, metadata_error: error.message };
-            });
-
-            const invokePromise = base44.asServiceRole.functions.invoke('processFetchChunk', {
-                job_id: job.id,
-                expected_chunk: job.chunk_number || 0,
-                processor_token: processorToken
-            }).catch(error => {
-                processorKick = { ...processorKick, invoke_error: error.message };
-                console.warn(`[fetchJobStatus] processor re-kick failed for ${job.id}: ${error.message}`);
-            });
-
-            await Promise.race([invokePromise, sleep(PROCESSOR_REKICK_WAIT_MS)]);
+            } catch (error) {
+                console.warn(`[fetchJobStatus] processor credential rotation failed for ${job.id}: ${error.message}`);
+                processorKick = {
+                    ...processorKick,
+                    requested: false,
+                    metadata_error: 'processor_rekick_unavailable'
+                };
+            }
         }
 
         return Response.json({
@@ -234,8 +339,21 @@ Deno.serve(async (req) => {
             ownership_min_days: customOwnershipRange?.min ?? null,
             ownership_max_days: customOwnershipRange?.max ?? null,
             ownership_range_days: customOwnershipRange,
-            ownership_reference_date: job.created_date || job.started_at || null,
-            polygon: job.polygon || [],
+            ownership_reference_date: ownershipReferenceDate,
+            polygon: criteriaEvidence.ok ? criteriaEvidence.polygon : [],
+            polygon_hash: criteriaEvidence.ok ? criteriaEvidence.polygon_hash : null,
+            criteria_verified: criteriaEvidence.ok,
+            criteria_verification_error: criteriaEvidence.ok ? null : criteriaEvidence.code,
+            criteria_invalid_fields: criteriaEvidence.ok ? [] : criteriaEvidence.invalid_fields,
+            criteria_invalid_reasons: criteriaEvidence.ok ? [] : criteriaEvidence.invalid_reasons,
+            criteria_mismatched_fields: criteriaEvidence.ok ? [] : criteriaEvidence.mismatched_fields,
+            criteria: canonicalCriteria,
+            requested_properties: canonicalCriteria?.effective_count ?? metadata.requested_properties ?? job.total_expected ?? null,
+            requested_properties_before_cap: canonicalCriteria?.entered_count ?? metadata.requested_properties_before_cap ?? null,
+            entered_count: canonicalCriteria?.entered_count ?? null,
+            effective_count: canonicalCriteria?.effective_count ?? null,
+            delivered_count: deliveredCount,
+            precision_usage_count: deliveredCount,
             diagnostics: {
                 requested_properties: metadata.requested_properties ?? job.total_expected ?? 0,
                 requested_properties_before_cap: metadata.requested_properties_before_cap ?? metadata.requested_properties ?? job.total_expected ?? 0,
@@ -247,7 +365,7 @@ Deno.serve(async (req) => {
                 ownership_min_days: customOwnershipRange?.min ?? null,
                 ownership_max_days: customOwnershipRange?.max ?? null,
                 ownership_range_days: customOwnershipRange,
-                ownership_reference_date: job.created_date || job.started_at || null,
+                ownership_reference_date: ownershipReferenceDate,
                 area_sq_mi: job.area_sq_mi || null,
                 count_mode: metadata.count_mode || null,
                 filters: metadata.filters || null,
@@ -260,6 +378,13 @@ Deno.serve(async (req) => {
                 workspace_id: metadata.workspace_id || null,
                 completion_reason: metadata.completion_reason || null,
                 batchdata_summary: metadata.batchdata_summary || null,
+                criteria_verified: criteriaEvidence.ok,
+                criteria_verification_error: criteriaEvidence.ok ? null : criteriaEvidence.code,
+                criteria_invalid_fields: criteriaEvidence.ok ? [] : criteriaEvidence.invalid_fields,
+                criteria_invalid_reasons: criteriaEvidence.ok ? [] : criteriaEvidence.invalid_reasons,
+                criteria_mismatched_fields: criteriaEvidence.ok ? [] : criteriaEvidence.mismatched_fields,
+                criteria: canonicalCriteria,
+                delivered_count: deliveredCount,
                 processor_rekick_at: processorKick?.at || metadata.processor_rekick_at || null,
                 processor_rekick_reason: processorKick?.reason || metadata.processor_rekick_reason || null,
                 processor_rekick_count: processorKick?.count || metadata.processor_rekick_count || 0,
@@ -271,6 +396,15 @@ Deno.serve(async (req) => {
 
     } catch (error) {
         console.error('[fetchJobStatus] Error:', error);
-        return Response.json({ error: error.message }, { status: 500 });
+        const controlFailure = precisionErrorPayload(error);
+        if (controlFailure.body?.error !== 'precision_start_failed') {
+            return Response.json(controlFailure.body, {
+                status: controlFailure.status
+            });
+        }
+        return Response.json({
+            error: 'precision_status_unavailable',
+            message: 'Precision status is temporarily unavailable.'
+        }, { status: 500 });
     }
 });

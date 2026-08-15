@@ -5,13 +5,14 @@ import vm from 'node:vm';
 
 function loadBatchDataMapper() {
     const source = fs.readFileSync('base44/functions/processFetchChunk/entry.ts', 'utf8')
-        .replace(/^import .*;\s*$/gm, '');
+        .replace(/^import[\s\S]*?;\r?\n/gm, '');
     const sandbox = {
         Deno: {
             env: { get: () => null },
             serve: () => {},
         },
         console,
+        precisionCriteriaReferenceMs: () => null,
         setTimeout,
         clearTimeout,
     };
@@ -110,4 +111,26 @@ test('keeps rollout schema-independent and preserves subdivision across other wr
     assert.match(zipWriter, /raw_payload = CASE[\s\S]*properties\.raw_payload -> 'property' ->> 'subdivision_name'/);
     assert.match(backfillWriter, /raw_payload = CASE[\s\S]*properties\.raw_payload -> 'property' ->> 'subdivision_name'/);
     assert.match(territoryWriter, /raw_payload = CASE[\s\S]*properties\.raw_payload -> 'property' ->> 'subdivision_name'/);
+});
+
+test('legacy RentCast territory repair rejects Precision jobs before provider work or mutation', () => {
+    const source = fs.readFileSync('base44/functions/fixChristianTerritoryPolygon/entry.ts', 'utf8');
+    const precisionGuard = source.indexOf(
+        'if (isActualPrecisionJob(job) || hasPrecisionJobMarkers(job))'
+    );
+    const rentcastConfigCheck = source.indexOf('if (!RENTCAST_API_KEY)', precisionGuard);
+    const databaseConfigCheck = source.indexOf('if (!DATABASE_URL)', precisionGuard);
+    const providerLoop = source.indexOf('await fetchCircleRecords(circle, saleDateRange)');
+    const polygonMutation = source.indexOf('FetchJob.update(job.id, { polygon: correctedPolygon })');
+
+    assert.ok(precisionGuard > 0);
+    assert.ok(rentcastConfigCheck > precisionGuard);
+    assert.ok(databaseConfigCheck > precisionGuard);
+    assert.ok(providerLoop > precisionGuard);
+    assert.ok(polygonMutation > providerLoop);
+    assert.match(
+        source.slice(precisionGuard, rentcastConfigCheck),
+        /isActualPrecisionJob\(job\) \|\| hasPrecisionJobMarkers\(job\)/
+    );
+    assert.match(source.slice(precisionGuard, providerLoop), /precision_job_mutation_forbidden/);
 });

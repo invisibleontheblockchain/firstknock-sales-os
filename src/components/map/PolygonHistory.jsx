@@ -35,7 +35,12 @@ export function savePolygonToHistory(polygon, metadata = {}) {
             polygon,
             date: metadata.date || existing.date || new Date().toISOString(),
             updated_at: new Date().toISOString(),
-            queried: true
+            queried: true,
+            source: 'local',
+            // Local storage is a display cache. A browser-provided flag can never
+            // promote its criteria to authoritative retry/restoration evidence.
+            criteria_status: 'criteria_unverified',
+            criteria_verified: false
         });
         if (deduped.length > MAX_HISTORY) deduped.length = MAX_HISTORY;
         localStorage.setItem(STORAGE_KEY, JSON.stringify(deduped));
@@ -79,7 +84,14 @@ export default function PolygonHistory({ currentPolygon, mode, serverHistory = [
         const loadHistory = () => {
             try {
                 const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
-                const queriedOnly = saved.filter(entry => entry?.queried === true);
+                const queriedOnly = saved
+                    .filter(entry => entry?.queried === true)
+                    .map(entry => ({
+                        ...entry,
+                        source: 'local',
+                        criteria_status: 'criteria_unverified',
+                        criteria_verified: false
+                    }));
                 if (queriedOnly.length !== saved.length) localStorage.setItem(STORAGE_KEY, JSON.stringify(queriedOnly));
                 setHistory(queriedOnly);
             } catch {}
@@ -100,32 +112,33 @@ export default function PolygonHistory({ currentPolygon, mode, serverHistory = [
 
     const visibleHistory = useMemo(() => {
         const byKey = new Map();
-        [...serverHistory, ...history].forEach((entry) => {
+        const candidates = [
+            ...serverHistory.map(entry => ({ ...entry, source: 'server' })),
+            ...history.map(entry => ({
+                ...entry,
+                source: 'local',
+                criteria_status: 'criteria_unverified',
+                criteria_verified: false
+            }))
+        ];
+        candidates.forEach((entry) => {
             if (!entry?.polygon || entry.polygon.length < 3) return;
             const key = polygonKey(entry.polygon);
             if (!key) return;
             const existing = byKey.get(key);
             const existingTime = new Date(existing?.last_pull_date || existing?.updated_at || existing?.date || 0).getTime();
             const incomingTime = new Date(entry.last_pull_date || entry.updated_at || entry.date || 0).getTime();
-            if (existing && Number.isFinite(existingTime) && (!Number.isFinite(incomingTime) || existingTime > incomingTime)) {
-                byKey.set(key, {
-                    ...existing,
-                    criteria: {
-                        ...(entry.criteria || {}),
-                        ...(existing.criteria || {})
-                    }
-                });
-                return;
-            }
-            byKey.set(key, {
-                ...existing,
-                ...entry,
-                criteria: {
-                    ...(existing?.criteria || {}),
-                    ...(entry.criteria || {})
-                },
-                queried: true
-            });
+            const existingVerified = existing?.criteria_verified === true
+                && existing?.criteria_status === 'server_verified';
+            const incomingVerified = entry.criteria_verified === true
+                && entry.criteria_status === 'server_verified';
+            const incomingIsNewer = !existing
+                || !Number.isFinite(existingTime)
+                || (Number.isFinite(incomingTime) && incomingTime >= existingTime);
+            const shouldReplace = !existing
+                || (incomingVerified && !existingVerified)
+                || (incomingVerified === existingVerified && incomingIsNewer);
+            if (shouldReplace) byKey.set(key, { ...entry, queried: true });
         });
         return Array.from(byKey.values());
     }, [history, serverHistory]);
@@ -144,6 +157,10 @@ export default function PolygonHistory({ currentPolygon, mode, serverHistory = [
             {visibleHistory.map((entry, i) => {
                 const key = polygonKey(entry.polygon);
                 const selected = isBuilder && key === selectedKey;
+                const criteriaVerified = entry.criteria_verified === true
+                    && entry.criteria_status === 'server_verified'
+                    && typeof entry.criteria_source_fetch_job_id === 'string'
+                    && entry.criteria_source_fetch_job_id === entry.job_id;
                 const areaLabel = formatSqMiles(calculatePolygonAreaSqMiles(entry.polygon));
                 const center = polygonCenter(entry.polygon);
 
@@ -153,25 +170,30 @@ export default function PolygonHistory({ currentPolygon, mode, serverHistory = [
                         key={`${key || i}-shape`}
                         positions={entry.polygon}
                         pathOptions={{
-                            fillColor: selected ? '#FFD93D' : '#FFFFFF',
-                            color: selected ? '#FFD93D' : '#FFFFFF',
+                            fillColor: selected ? '#FFD93D' : criteriaVerified ? '#FFFFFF' : '#9CA3AF',
+                            color: selected ? '#FFD93D' : criteriaVerified ? '#FFFFFF' : '#9CA3AF',
                             fillOpacity: selected ? 0.16 : 0.18,
                             weight: selected ? 3 : 2.5,
                             opacity: selected ? 1 : 0.95,
                             dashArray: selected ? null : '6,5',
-                            interactive: isBuilder
+                            interactive: isBuilder && criteriaVerified
                         }}
-                        eventHandlers={isBuilder ? {
+                        eventHandlers={isBuilder && criteriaVerified ? {
                             click: () => {
                                 setSelectedKey(key);
-                                window.dispatchEvent(new CustomEvent('fk-select-polygon-history', { detail: entry }));
+                                window.dispatchEvent(new CustomEvent('fk-select-polygon-history', {
+                                    detail: {
+                                        fetch_job_id: entry.criteria_source_fetch_job_id
+                                    }
+                                }));
                             }
                         } : {}}
                     >
                         <Tooltip direction="center" className="bg-black/80 text-gray-300 text-[9px] border border-gray-700 rounded px-1.5 py-0.5 text-center">
                             <div className="font-bold text-white">{areaLabel}</div>
                             <div>{new Date(entry.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
-                            {isBuilder && <div className="text-yellow-400 mt-0.5">Tap to select</div>}
+                            {isBuilder && criteriaVerified && <div className="text-yellow-400 mt-0.5">Tap to select verified criteria</div>}
+                            {isBuilder && !criteriaVerified && <div className="text-gray-400 mt-0.5">Criteria unverified · display only</div>}
                         </Tooltip>
                     </Polygon>
                     {isBuilder && center && entry.source !== 'server' && (

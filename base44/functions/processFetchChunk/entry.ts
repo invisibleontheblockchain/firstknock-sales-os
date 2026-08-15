@@ -1,5 +1,21 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
-import { neon } from 'npm:@neondatabase/serverless@0.9.0';
+import { Client, neon } from 'npm:@neondatabase/serverless@0.9.0';
+import {
+    buildVerifiedPrecisionProcessingJob,
+    classifyActivePrecisionJobs,
+    isActualPrecisionJob,
+    isPrecisionReservationUnsettled,
+    loadUserPrecisionJobs,
+    precisionCriteriaReferenceMs,
+    precisionReservationAmount,
+    verifyPrecisionProcessorToken,
+    verifyPrecisionJobCriteriaEvidence
+} from '../_shared/precisionActiveJobCriteria.js';
+import {
+    abortPrecisionProcessorLease,
+    claimPrecisionProcessorLease,
+    releasePrecisionProcessorLease
+} from '../_shared/precisionProcessorLease.js';
 
 const BATCHDATA_API_KEY = Deno.env.get('BATCH_DATA_API_KEY');
 const DATABASE_URL = Deno.env.get('DATABASE_URL');
@@ -28,6 +44,22 @@ const INVALID_SUBDIVISION_NAMES = new Set([
 
 function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 
+function processorError(code, message) {
+    return Object.assign(new Error(message), { code });
+}
+
+function transactionSql(client) {
+    return async (strings, ...values) => {
+        let text = '';
+        for (let index = 0; index < strings.length; index++) {
+            text += strings[index];
+            if (index < values.length) text += `$${index + 1}`;
+        }
+        const result = await client.query(text, values);
+        return result?.rows || [];
+    };
+}
+
 function isDiagnosticRequest(req) {
     const expected = Deno.env.get('PRECISION_DIAGNOSTIC_SECRET');
     const received = req.headers.get('x-precision-diagnostic-secret');
@@ -50,21 +82,123 @@ function cancellationRequested(job) {
     return job?.status === 'cancelled' || Boolean(job?.precision_cancel_requested_at);
 }
 
-async function settleCancelledPrecisionUsage(base44, job, completedAt, message) {
+function reservationIsUnsettled(job) {
+    try {
+        return isPrecisionReservationUnsettled(job);
+    } catch (error) {
+        console.error('[processFetchChunk] Malformed reservation evidence; treating it as unsettled:', error.message);
+        return true;
+    }
+}
+
+async function settleCancelledPrecisionUsage(
+    base44,
+    job,
+    completedAt,
+    message,
+    expectedProcessorClaimId = null,
+    expectedStatus = 'running'
+) {
+    if (!expectedProcessorClaimId) {
+        throw processorError(
+            'precision_processor_fence_lost',
+            'Cancellation settlement requires a durable Precision processor claim.'
+        );
+    }
     const settledUsageCount = await countPersistedPrecisionProperties(job.id);
-    await base44.asServiceRole.entities.FetchJob.update(job.id, {
+    const providerAttemptUnverifiable = Boolean(
+        job?.dry_run_metadata?.provider_attempt_id
+    );
+    const payload = {
         status: 'cancelled',
+        processor_claim_id: null,
         precision_usage_reserved: 0,
         precision_usage_count: settledUsageCount,
         precision_usage_recorded_at: completedAt,
         completed_at: completedAt,
         error_message: 'Cancelled by user',
+        ...(providerAttemptUnverifiable ? {
+            dry_run_metadata: {
+                ...(job.dry_run_metadata || {}),
+                provider_outcome_unverifiable_at: completedAt
+            }
+        } : {}),
         error_log: [
             ...(job.error_log || []),
-            `[${completedAt}] ${message} Settled ${settledUsageCount} persisted Precision properties.`
+            `[${completedAt}] ${message} Settled ${settledUsageCount} persisted Precision properties.${
+                providerAttemptUnverifiable
+                    ? ' The paid-provider outcome remains unverifiable and blocks replay.'
+                    : ''
+            }`
         ]
-    });
+    };
+    const updateMany = base44.asServiceRole.entities.FetchJob.updateMany;
+    const settled = typeof updateMany === 'function'
+        ? await updateMany.call(
+            base44.asServiceRole.entities.FetchJob,
+            {
+                id: job.id,
+                status: expectedStatus,
+                processor_claim_id: expectedProcessorClaimId
+            },
+            { $set: payload }
+        )
+        : null;
+    if (
+        settled?.success !== true
+        || Number(settled?.updated) !== 1
+        || settled?.has_more === true
+    ) {
+        throw processorError(
+            'precision_processor_fence_lost',
+            'The durable Precision processor fence was lost during cancellation settlement.'
+        );
+    }
     return settledUsageCount;
+}
+
+async function failAndSettleInvalidPrecisionJob(
+    base44,
+    job,
+    evidence,
+    expectedProcessorClaimId,
+    expectedStatus
+) {
+    const completedAt = new Date().toISOString();
+    const settledUsageCount = await countPersistedPrecisionProperties(job.id);
+    const errorCode = evidence?.code || 'precision_job_evidence_unverifiable';
+    const payload = {
+        status: 'failed',
+        processor_claim_id: null,
+        precision_usage_reserved: 0,
+        precision_usage_count: settledUsageCount,
+        precision_usage_recorded_at: completedAt,
+        completed_at: job.completed_at || completedAt,
+        error_message: `Precision invariant violation: ${errorCode}.`,
+        error_log: [
+            ...(job.error_log || []),
+            `[${completedAt}] Processor rejected untrustworthy Precision provenance (${errorCode}) and exactly settled ${settledUsageCount} persisted properties without calling BatchData. invalid_fields=${JSON.stringify(evidence?.invalid_fields || [])} invalid_reasons=${JSON.stringify(evidence?.invalid_reasons || [])} mismatched_fields=${JSON.stringify(evidence?.mismatched_fields || [])}`
+        ]
+    };
+    const updateMany = base44.asServiceRole.entities.FetchJob.updateMany;
+    const failed = typeof updateMany === 'function'
+        ? await updateMany.call(
+            base44.asServiceRole.entities.FetchJob,
+            {
+                id: job.id,
+                status: expectedStatus,
+                processor_claim_id: expectedProcessorClaimId
+            },
+            { $set: payload }
+        )
+        : null;
+    if (failed?.success !== true || Number(failed?.updated) !== 1) {
+        throw processorError(
+            'precision_processor_fence_lost',
+            'The durable Precision processor fence changed during invariant settlement.'
+        );
+    }
+    return { completedAt, settledUsageCount, errorCode };
 }
 
 function normalizePropertyTypeText(value) {
@@ -157,22 +291,14 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = BATCHDATA_REQUEST
 }
 
 async function claimPipelineLock(base44, jobId, lockedBy) {
-    const now = Date.now();
     const existing = await base44.asServiceRole.entities.PipelineLock.filter({ job_id: jobId }, '-created_date', 20).catch(() => []);
     const locks = Array.isArray(existing) ? existing : (existing?.items || []);
-
+    // This entity is diagnostic only. The transaction-scoped PostgreSQL advisory
+    // lease has already proved exclusive ownership, so any old entity rows are
+    // stale observations rather than synchronization authority.
     for (const lock of locks) {
-        const lockedAtMs = new Date(lock.locked_at || lock.created_date).getTime();
-        if (!lockedAtMs || now - lockedAtMs > PIPELINE_LOCK_TTL_MS) {
-            await base44.asServiceRole.entities.PipelineLock.delete(lock.id).catch(() => {});
-        }
+        await base44.asServiceRole.entities.PipelineLock.delete(lock.id).catch(() => {});
     }
-
-    const active = locks.filter(lock => {
-        const lockedAtMs = new Date(lock.locked_at || lock.created_date).getTime();
-        return lockedAtMs && now - lockedAtMs <= PIPELINE_LOCK_TTL_MS;
-    });
-    if (active.length > 0) return { claimed: false, reason: 'active_lock', lockedBy: active[0]?.locked_by };
 
     const created = await base44.asServiceRole.entities.PipelineLock.create({
         job_id: jobId,
@@ -312,9 +438,10 @@ function soldWindowDays(soldMonths) {
 }
 
 function jobReferenceTimeMs(job) {
-    const value = job?.created_date || job?.started_at;
-    const time = value ? new Date(value).getTime() : NaN;
-    return Number.isFinite(time) ? time : Date.now();
+    const time = precisionCriteriaReferenceMs(job);
+    if (time !== null) return time;
+    if (!job?.dry_run_metadata?.precision_criteria) return Date.now();
+    throw new Error('FetchJob has no valid immutable Precision criteria reference timestamp.');
 }
 
 function isoDateDaysAgo(days, referenceMs = Date.now()) {
@@ -353,6 +480,21 @@ function ownershipDateBounds(job) {
 
 function ownershipLookbackDays(job) {
     return getCustomOwnershipRange(job)?.max ?? soldWindowDays(job.sold_months || 12);
+}
+
+function precisionSoldDateBounds(job) {
+    const custom = ownershipDateBounds(job);
+    if (custom) return custom;
+    const referenceMs = jobReferenceTimeMs(job);
+    const criteria = job?.dry_run_metadata?.precision_criteria || {};
+    const previousPullDate = criteria.repull_mode === 'max_since_last'
+        ? isoDateOnly(criteria.previous_pull_date)
+        : null;
+    return {
+        oldestDate: previousPullDate
+            || isoDateDaysAgo(ownershipLookbackDays(job), referenceMs),
+        newestDate: isoDateOnly(new Date(referenceMs).toISOString())
+    };
 }
 
 function ownershipResponseFields(job) {
@@ -412,11 +554,10 @@ function buildBatchDataRequest(job, skip = 0, take = 500, mode = 'strict_polygon
     // Always compute the oldest allowed sold date. For custom ranges, BatchData
     // receives both date bounds. Local mapping and candidate SQL enforce the
     // same bounds again so correctness does not depend on provider behavior.
-    const soldMinDate = isoDateDaysAgo(ownershipLookbackDays(job), jobReferenceTimeMs(job));
-    const customOwnershipBounds = ownershipDateBounds(job);
+    const soldBounds = precisionSoldDateBounds(job);
     const soldDateRange = {
-        minDate: soldMinDate,
-        ...(customOwnershipBounds ? { maxDate: customOwnershipBounds.newestDate } : {})
+        minDate: soldBounds.oldestDate,
+        maxDate: soldBounds.newestDate
     };
 
     const options = {
@@ -467,7 +608,23 @@ function extractBatchDataRecords(payload) {
 }
 
 function extractBatchDataTotal(payload) {
-    return Number(payload?.results?.totalRecordCount ?? payload?.totalRecordCount ?? payload?.meta?.totalRecordCount ?? 0) || null;
+    const evidence = batchDataTotalEvidence(payload);
+    return evidence.present && evidence.consistent
+        ? evidence.value
+        : null;
+}
+
+function batchDataTotalEvidence(payload) {
+    const values = [
+        payload?.results?.totalRecordCount,
+        payload?.totalRecordCount,
+        payload?.meta?.totalRecordCount
+    ].filter(value => value !== undefined && value !== null);
+    return {
+        present: values.length > 0,
+        value: values.length > 0 ? values[0] : null,
+        consistent: values.every(value => value === values[0])
+    };
 }
 
 function normalizeBatchDataAddress(record) {
@@ -553,8 +710,10 @@ function mapBatchDataProperty(record, job) {
     const saleDateMs = saleDate ? new Date(saleDate).getTime() : 0;
     const hasValidSaleDate = saleDateMs > 0 && !Number.isNaN(saleDateMs);
     const saleDateOnly = isoDateOnly(saleDate);
-    const cutoffDate = isoDateDaysAgo(ownershipLookbackDays(job), jobReferenceTimeMs(job));
-    const isSoldInWindow = !!saleDateOnly && saleDateOnly >= cutoffDate;
+    const soldBounds = precisionSoldDateBounds(job);
+    const isSoldInWindow = !!saleDateOnly
+        && saleDateOnly >= soldBounds.oldestDate
+        && saleDateOnly <= soldBounds.newestDate;
     const customOwnershipBounds = customOwnershipRange ? ownershipDateBounds(job) : null;
     const isInCustomOwnershipRange = !customOwnershipBounds || (
         hasValidSaleDate &&
@@ -600,8 +759,9 @@ function mapBatchDataProperty(record, job) {
 
     // ── Loosened BatchData gate ──────────────────────────────────────────
     // The paid BatchData request already asks for owner-change / last-sold records.
-    // Do not reject neutral or incomplete rows locally just because a secondary
-    // listing/sale field is blank or stale. Keep only hard safety exclusions here.
+    // Exact-job candidates require a non-null sale date inside this same
+    // persisted window. Apply that rule before persistence/counting so
+    // delivered usage can never include a home route generation must discard.
     // Price gate: enforce the user's home value range on records with a known price.
     // Unknown-price records pass (provider may omit valuation on some rows).
     const jobFilters = job.dry_run_metadata?.filters || {};
@@ -610,7 +770,7 @@ function mapBatchDataProperty(record, job) {
     const priceKnown = Number.isFinite(Number(price)) && Number(price) > 0;
     const priceRejected = priceKnown && ((filterMinPrice !== null && Number(price) < filterMinPrice) || (filterMaxPrice !== null && Number(price) > filterMaxPrice));
     const rejected = nonResidential || landUseRejected || priceRejected;
-    const routeActive = !rejected && isInCustomOwnershipRange;
+    const routeActive = !rejected && isSoldInWindow && isInCustomOwnershipRange;
 
     const match = address.street.match(/^(\d+)\s+(.*)$/);
     const houseNumber = match ? parseInt(match[1], 10) : 0;
@@ -716,11 +876,20 @@ function withSubdivisionInRawPayload(rawPayload, subdivisionName) {
     }
 }
 
-async function writePropertiesToNeon(sql, properties, job, excludedRouteHashes = new Set()) {
+async function writePropertiesToNeon(
+    sql,
+    properties,
+    job,
+    excludedRouteHashes = new Set(),
+    beforePropertyWrite = null
+) {
     let inserted = 0, existed = 0, updated = 0;
     const customOwnershipRange = getCustomOwnershipRange(job);
 
     for (const p of properties) {
+        if (typeof beforePropertyWrite === 'function') {
+            await beforePropertyWrite();
+        }
         const isInSavedRoute = excludedRouteHashes.has(p.address_hash);
         const existingRows = await sql`
             SELECT
@@ -849,52 +1018,139 @@ function getExcludedRouteHashes(job) {
     return new Set((Array.isArray(hashes) ? hashes : []).map(hash => String(hash)).filter(Boolean));
 }
 
-async function batchDataFetchWithRetry(requestBody) {
-    for (let attempt = 1; attempt <= 4; attempt++) {
-        let response;
-        try {
-            response = await fetchWithTimeout(BATCHDATA_BASE, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${BATCHDATA_API_KEY}` },
-                body: JSON.stringify(requestBody)
-            });
-        } catch (error) {
-            if (attempt < 2) {
-                await sleep(1000);
-                continue;
-            }
-            throw new Error(`BatchData request failed before response: ${error.message}`);
-        }
-        const text = await response.text();
-        let payload = {};
-        try { payload = text ? JSON.parse(text) : {}; } catch { payload = { raw_text: text.slice(0, 1000) }; }
-
-        if (response.ok) return payload;
-        if (response.status === 401) throw new Error('Authentication failed. Verify the BatchData API token is correct and active.');
-        if (response.status === 400) throw new Error(`BatchData rejected the polygon search request: ${text.slice(0, 1000)}`);
-        if (response.status === 429 && attempt < 4) {
-            await sleep(2 ** attempt * 1000);
-            continue;
-        }
-        if ((response.status === 500 || response.status === 503) && attempt < 2) {
-            await sleep(5000);
-            continue;
-        }
-        throw new Error(`BatchData request failed (${response.status}): ${text.slice(0, 1000)}`);
+function stableProviderPageValue(value) {
+    if (Array.isArray(value)) return value.map(stableProviderPageValue);
+    if (value && typeof value === 'object') {
+        return Object.fromEntries(
+            Object.keys(value)
+                .sort()
+                .map(key => [key, stableProviderPageValue(value[key])])
+        );
     }
-    throw new Error('Rate limit exceeded after 3 retries.');
+    return value;
 }
 
-async function fetchBatchDataRecordsForMode(job, mode, requested, onProgress = null) {
+async function providerPageFingerprint(records) {
+    // Sort per-record canonical forms so a provider that repeats the same page
+    // in a different order still cannot make the paid scan look progressive.
+    const canonicalRecords = records
+        .map(record => JSON.stringify(stableProviderPageValue(record)))
+        .sort();
+    const bytes = new TextEncoder().encode(JSON.stringify(canonicalRecords));
+    const digest = await crypto.subtle.digest('SHA-256', bytes);
+    return Array.from(new Uint8Array(digest))
+        .map(byte => byte.toString(16).padStart(2, '0'))
+        .join('');
+}
+
+async function batchDataFetchOnce(requestBody) {
+    let response;
+    try {
+        response = await fetchWithTimeout(BATCHDATA_BASE, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${BATCHDATA_API_KEY}` },
+            body: JSON.stringify(requestBody)
+        });
+    } catch (error) {
+        // A timed-out or disconnected paid POST has an ambiguous provider
+        // outcome. Without a provider idempotency key, replay is forbidden.
+        throw processorError(
+            'precision_provider_outcome_unverifiable',
+            'The paid provider request ended without a verifiable outcome.'
+        );
+    }
+    let text;
+    try {
+        text = await response.text();
+    } catch {
+        if (response.ok || response.status === 429 || response.status >= 500) {
+            throw processorError(
+                'precision_provider_outcome_unverifiable',
+                'The paid provider response could not be verified.'
+            );
+        }
+        throw processorError(
+            'precision_provider_request_rejected',
+            `BatchData rejected the request with HTTP ${response.status}.`
+        );
+    }
+    let payload = {};
+    try {
+        payload = text ? JSON.parse(text) : {};
+    } catch {
+        if (response.ok) {
+            throw processorError(
+                'precision_provider_outcome_unverifiable',
+                'The paid provider returned an unreadable success response.'
+            );
+        }
+    }
+
+    if (response.ok) {
+        const recognizedRecords = (
+            Array.isArray(payload?.results?.properties)
+            || Array.isArray(payload?.properties)
+            || Array.isArray(payload?.results)
+        );
+        const totalEvidence = batchDataTotalEvidence(payload);
+        const declaredTotals = totalEvidence.present ? [totalEvidence.value] : [];
+        const totalsValid = totalEvidence.consistent && declaredTotals.every(value => (
+            typeof value === 'number'
+            && Number.isSafeInteger(value)
+            && value >= 0
+        ));
+        if (
+            !recognizedRecords
+            || !totalsValid
+            || payload?.error
+            || payload?.errors
+        ) {
+            throw processorError(
+                'precision_provider_outcome_unverifiable',
+                'The paid provider returned an unrecognized success envelope.'
+            );
+        }
+        return payload;
+    }
+    if (response.status === 401 || response.status === 400) {
+        throw processorError(
+            'precision_provider_request_rejected',
+            response.status === 401
+                ? 'Authentication failed. Verify the BatchData API token is correct and active.'
+                : 'BatchData rejected the polygon search request.'
+        );
+    }
+    if (response.status === 429 || response.status >= 500) {
+        throw processorError(
+            'precision_provider_outcome_unverifiable',
+            `The paid provider returned HTTP ${response.status} without a safely replayable outcome.`
+        );
+    }
+    throw processorError(
+        'precision_provider_outcome_unverifiable',
+        `The paid provider returned HTTP ${response.status} without a contract-proven pre-execution rejection.`
+    );
+}
+
+async function fetchBatchDataRecordsForMode(
+    job,
+    mode,
+    requested,
+    onProgress = null,
+    beforeProviderRequest = null,
+    afterProviderResponse = null
+) {
     const selected = [];
     const selectedHashes = new Set();
     const excludedRouteHashes = getExcludedRouteHashes(job);
     const routeTypeFilters = getRouteTypeFilters(job);
     const rejectedSamples = [];
     const pageTimings = [];
+    const seenPageFingerprints = new Set();
     let skip = 0;
     let reviewed = 0;
     let totalRecordCount = null;
+    let declaredTotalPresence = null;
     let skippedExistingRoute = 0;
     let skippedDuplicate = 0;
     let skippedRouteType = 0;
@@ -917,15 +1173,75 @@ async function fetchBatchDataRecordsForMode(job, mode, requested, onProgress = n
                 skipped_duplicate: skippedDuplicate,
                 skip,
                 take
-            }).catch(() => {});
+            });
+        }
+        if (typeof beforeProviderRequest === 'function') {
+            await beforeProviderRequest();
         }
         const pageStartedAt = Date.now();
-        const payload = await batchDataFetchWithRetry(requestBody);
+        const payload = await batchDataFetchOnce(requestBody);
         const list = extractBatchDataRecords(payload);
+        if (list.length > take) {
+            throw processorError(
+                'precision_provider_outcome_unverifiable',
+                'The paid provider returned more records than the requested page size.'
+            );
+        }
+        const pageFingerprint = await providerPageFingerprint(list);
+        if (seenPageFingerprints.has(pageFingerprint)) {
+            throw processorError(
+                'precision_provider_outcome_unverifiable',
+                'The paid provider repeated a pagination page, so scan progress could not be verified.'
+            );
+        }
+        seenPageFingerprints.add(pageFingerprint);
+        if (typeof afterProviderResponse === 'function') {
+            await afterProviderResponse();
+        }
         const pageElapsedMs = Date.now() - pageStartedAt;
         pageTimings.push({ skip, take, returned: list.length, elapsed_ms: pageElapsedMs });
-        if (totalRecordCount === null) totalRecordCount = extractBatchDataTotal(payload);
+        const pageTotalEvidence = batchDataTotalEvidence(payload);
+        if (
+            declaredTotalPresence !== null
+            && pageTotalEvidence.present !== declaredTotalPresence
+        ) {
+            throw processorError(
+                'precision_provider_outcome_unverifiable',
+                'The paid provider changed whether pagination total evidence was present during one scan.'
+            );
+        }
+        if (declaredTotalPresence === null) {
+            declaredTotalPresence = pageTotalEvidence.present;
+        }
+        const pageTotalRecordCount = pageTotalEvidence.present
+            ? pageTotalEvidence.value
+            : null;
+        if (
+            totalRecordCount !== null
+            && pageTotalRecordCount !== null
+            && pageTotalRecordCount !== totalRecordCount
+        ) {
+            throw processorError(
+                'precision_provider_outcome_unverifiable',
+                'The paid provider changed its declared pagination total during one scan.'
+            );
+        }
+        if (totalRecordCount === null && pageTotalRecordCount !== null) {
+            totalRecordCount = pageTotalRecordCount;
+        }
         reviewed += list.length;
+        if (
+            totalRecordCount !== null
+            && (
+                reviewed > totalRecordCount
+                || (list.length < take && reviewed < totalRecordCount)
+            )
+        ) {
+            throw processorError(
+                'precision_provider_outcome_unverifiable',
+                'The paid provider returned pagination evidence that contradicts its declared total.'
+            );
+        }
 
         for (const raw of list) {
             const mapped = mapBatchDataProperty(raw, job);
@@ -967,7 +1283,7 @@ async function fetchBatchDataRecordsForMode(job, mode, requested, onProgress = n
                 skip,
                 take,
                 page_elapsed_ms: pageElapsedMs
-            }).catch(() => {});
+            });
         }
 
         if (list.length < take) break;
@@ -980,12 +1296,10 @@ async function fetchBatchDataRecordsForMode(job, mode, requested, onProgress = n
         && (totalRecordCount === null || reviewed < totalRecordCount);
 
     return {
-        // Custom date mismatches are job-scoped, not a reason to deactivate an
-        // otherwise valid workspace property. Keep samples for diagnostics, but
-        // do not persist them when the exact custom window found no matches.
-        records: selected.length > 0
-            ? selected.slice(0, requested)
-            : (getCustomOwnershipRange(job) ? [] : rejectedSamples),
+        // Rejected rows are diagnostic evidence only. Persisting them can
+        // globally downgrade a previously good property or deactivate a saved
+        // route link during a later no-match pull.
+        records: selected.slice(0, requested),
         reviewed,
         active: selected.length,
         rejected_samples: rejectedSamples.length,
@@ -1000,7 +1314,12 @@ async function fetchBatchDataRecordsForMode(job, mode, requested, onProgress = n
     };
 }
 
-async function fetchBatchDataRecords(job, onProgress = null) {
+async function fetchBatchDataRecords(
+    job,
+    onProgress = null,
+    beforeProviderRequest = null,
+    afterProviderResponse = null
+) {
     const requested = Math.min(Math.max(Number(job.estimated_record_count || job.total_expected || 1000), 1), 1000);
     const modes = ['broad_polygon'];
     const attempts = [];
@@ -1009,7 +1328,14 @@ async function fetchBatchDataRecords(job, onProgress = null) {
     let fallbackActive = 0;
 
     for (const mode of modes) {
-        const result = await fetchBatchDataRecordsForMode(job, mode, requested, onProgress);
+        const result = await fetchBatchDataRecordsForMode(
+            job,
+            mode,
+            requested,
+            onProgress,
+            beforeProviderRequest,
+            afterProviderResponse
+        );
         attempts.push({ mode, count: result.records.length, reviewed: result.reviewed, active: result.active, rejected_samples: result.rejected_samples, skipped_existing_route: result.skipped_existing_route, skipped_duplicate: result.skipped_duplicate, skipped_route_type: result.skipped_route_type, skipped_route_type_breakdown: result.skipped_route_type_breakdown, max_reviewed: result.max_reviewed, scan_limit_reached: result.scan_limit_reached, page_timings: result.page_timings, total: result.totalRecordCount });
         if (result.active >= requested) return { records: result.records, attempts, mode_used: mode };
         if (result.active > fallbackActive || (fallback.length === 0 && result.records.length > 0)) {
@@ -1027,13 +1353,40 @@ Deno.serve(async (req) => {
     let lockId = null;
     let targetJobId = null;
     let liveJobClaimed = false;
+    let processorLease = null;
+    let processorClaimId = null;
+    let providerAttemptId = null;
+    let providerCallMayHaveOccurred = false;
+    let acceptedProviderResponses = 0;
     try {
         base44 = createClientFromRequest(req);
         const body = await req.json().catch(() => ({}));
         targetJobId = body.job_id ? String(body.job_id) : null;
+        const diagnosticMode = [
+            'self_test',
+            'request_preview',
+            'map_preview',
+            'fetch_preview',
+            'raw_probe'
+        ].some(field => body[field] === true);
+        if (diagnosticMode && !isDiagnosticRequest(req)) {
+            return Response.json({
+                error: 'precision_diagnostic_unauthorized',
+                message: 'A valid diagnostic credential is required.'
+            }, { status: 403 });
+        }
 
         if (body.self_test === true) {
-            return Response.json({ success: true, active_provider: 'batchdata', rentcast_active: false, batchdata_polygon_search: true, dataset_scope: 'omitted_for_sale_evidence', has_batchdata_key: !!BATCHDATA_API_KEY, has_database_url: !!DATABASE_URL });
+            return Response.json({
+                success: true,
+                active_provider: 'batchdata',
+                rentcast_active: false,
+                batchdata_polygon_search: true,
+                dataset_scope: 'basic_deed_owner_for_sale_evidence',
+                datasets: ['basic', 'deed', 'owner'],
+                has_batchdata_key: !!BATCHDATA_API_KEY,
+                has_database_url: !!DATABASE_URL
+            });
         }
 
         if (body.request_preview === true) {
@@ -1118,7 +1471,7 @@ Deno.serve(async (req) => {
             for (const probe of probes) {
                 const requestBody = buildBatchDataRequest(previewJob, 0, take, probe.mode);
                 if (probe.omitSoldDate) delete requestBody.searchCriteria.intel;
-                const payload = await batchDataFetchWithRetry(requestBody);
+                const payload = await batchDataFetchOnce(requestBody);
                 const records = extractBatchDataRecords(payload);
                 const mapped = records.map(record => mapBatchDataProperty(record, previewJob)).filter(Boolean);
                 const samples = records.slice(0, 3).map((record) => {
@@ -1152,7 +1505,6 @@ Deno.serve(async (req) => {
         }
 
 
-        if (!BATCHDATA_API_KEY) throw new Error('BATCH_DATA_API_KEY is not configured');
         if (!DATABASE_URL) throw new Error('DATABASE_URL is not configured');
 
         if (!targetJobId) {
@@ -1160,15 +1512,33 @@ Deno.serve(async (req) => {
         }
         let job = await base44.asServiceRole.entities.FetchJob.get(targetJobId).catch(() => null);
         if (!job) return Response.json({ error: 'Job not found', job_id: targetJobId }, { status: 404 });
-        const expectedProcessorToken = String(job.dry_run_metadata?.processor_token || '');
+        if (!isActualPrecisionJob(job)) {
+            return Response.json({
+                error: 'fetch_job_not_precision',
+                message: 'The Precision processor rejected a non-Precision FetchJob.',
+                job_id: targetJobId
+            }, { status: 409 });
+        }
         const receivedProcessorToken = String(body.processor_token || '');
-        if (!expectedProcessorToken || receivedProcessorToken !== expectedProcessorToken) {
+        const processorTokenAuthorized = await verifyPrecisionProcessorToken(
+            receivedProcessorToken,
+            job.dry_run_metadata?.processor_token_hash
+        );
+        if (!processorTokenAuthorized) {
             return Response.json({ error: 'Not authorized to process this job.' }, { status: 403 });
         }
-        if (Array.isArray(body.synthetic_records) && !isDiagnosticRequest(req)) {
-            return Response.json({ error: 'Admin access is required for synthetic ingestion.' }, { status: 403 });
+        if (Array.isArray(body.synthetic_records)) {
+            return Response.json({
+                error: 'live_synthetic_ingestion_forbidden',
+                message: 'Synthetic records are not accepted by the state-changing Precision processor.'
+            }, { status: 400 });
         }
-        if (targetJobId && !cancellationRequested(job) && !['pending', 'running'].includes(job.status)) {
+        const initialSettlementRecovery = reservationIsUnsettled(job);
+        if (
+            targetJobId
+            && !['pending', 'running'].includes(job.status)
+            && !initialSettlementRecovery
+        ) {
             return Response.json({ skipped: true, reason: `job_${job.status || 'inactive'}`, job_id: job.id, status: job.status });
         }
 
@@ -1177,44 +1547,506 @@ Deno.serve(async (req) => {
             return Response.json({ skipped: true, reason: 'duplicate_invocation', job_id: job.id });
         }
 
-        const claim = await claimPipelineLock(base44, job.id, crypto.randomUUID());
-        if (!claim.claimed) return Response.json({ skipped: true, reason: claim.reason, job_id: job.id });
-        lockId = claim.lockId;
-        liveJobClaimed = true;
+        processorLease = await claimPrecisionProcessorLease({
+            ClientClass: Client,
+            databaseUrl: DATABASE_URL,
+            jobId: job.id
+        });
+        if (!processorLease.claimed) {
+            return Response.json({ skipped: true, reason: 'active_processor_lease', job_id: job.id });
+        }
 
         // Re-read after obtaining the processor lease. A cancel can race the
         // initial request, and only the lease holder may release its reservation.
         job = await base44.asServiceRole.entities.FetchJob.get(targetJobId).catch(() => null);
         if (!job) throw new Error(`FetchJob ${targetJobId} disappeared after the processor lease was claimed.`);
+        const subjectId = typeof job.precision_usage_user_id === 'string'
+            ? job.precision_usage_user_id.trim()
+            : '';
+        const subject = subjectId
+            ? await base44.asServiceRole.entities.User.get(subjectId).catch(() => null)
+            : null;
+        if (!subject) {
+            await releasePipelineLock(base44, lockId);
+            lockId = null;
+            return Response.json({
+                error: 'precision_job_owner_unverifiable',
+                message: 'The immutable Precision subject could not be resolved. No job state was changed.',
+                job_id: job.id
+            }, { status: 409 });
+        }
+        let subjectJobs;
+        try {
+            subjectJobs = await loadUserPrecisionJobs(base44, subject);
+        } catch (discoveryError) {
+            await releasePipelineLock(base44, lockId);
+            lockId = null;
+            return Response.json({
+                error: discoveryError?.code || 'precision_job_discovery_incomplete',
+                message: 'Precision job discovery was not trustworthy. No job state was changed.',
+                job_id: job.id
+            }, { status: Number(discoveryError?.status || 503) });
+        }
+        const activeResolution = classifyActivePrecisionJobs(subjectJobs);
+        if (activeResolution.state === 'multiple') {
+            await releasePipelineLock(base44, lockId);
+            lockId = null;
+            return Response.json({
+                error: 'multiple_active_precision_jobs',
+                message: 'Multiple active Precision jobs require operator review. No job was selected or changed.',
+                job_id: job.id,
+                active_job_ids: activeResolution.jobs.map(activeJob => activeJob.id)
+            }, { status: 409 });
+        }
+        // PipelineLock is diagnostic state, not synchronization authority.
+        // Delay all Base44 mutation until immutable-subject discovery has
+        // proved this is the only active job for the subject.
+        const claim = await claimPipelineLock(base44, job.id, crypto.randomUUID());
+        lockId = claim.lockId;
+        liveJobClaimed = true;
+        const hasObservedProcessorClaim = typeof job.processor_claim_id === 'string'
+            && Boolean(job.processor_claim_id.trim());
+        if (
+            ['pending', 'running'].includes(job.status)
+            && hasObservedProcessorClaim
+            && !cancellationRequested(job)
+            && !job.precision_watchdog_recovery_at
+        ) {
+            await releasePipelineLock(base44, lockId);
+            lockId = null;
+            return Response.json({
+                skipped: true,
+                reason: 'durable_processor_claim_active',
+                job_id: job.id
+            }, { status: 409 });
+        }
+        if (
+            (
+                ['pending', 'running'].includes(job.status)
+                && !hasObservedProcessorClaim
+            )
+            ||
+            cancellationRequested(job)
+            || job.precision_watchdog_recovery_at
+            || (
+                typeof job.processor_claim_id === 'string'
+                && Boolean(job.processor_claim_id.trim())
+            )
+            || (
+                !['pending', 'running'].includes(job.status)
+                && reservationIsUnsettled(job)
+            )
+            || (
+                job.status === 'running'
+                && (
+                    Boolean(job.started_at)
+                    || Number(job.progress_pct || 0) > 0
+                    || Number(job.total_fetched || 0) > 0
+                    || ['batchdata_requesting', 'batchdata_scanning'].includes(job.phase)
+                )
+            )
+        ) {
+            processorClaimId = crypto.randomUUID();
+            const takeoverFilter = {
+                id: job.id,
+                status: job.status
+            };
+            if (Object.prototype.hasOwnProperty.call(job, 'processor_claim_id')) {
+                takeoverFilter.processor_claim_id = job.processor_claim_id;
+            }
+            const updateMany = base44.asServiceRole.entities.FetchJob.updateMany;
+            const takeover = typeof updateMany === 'function'
+                ? await updateMany.call(
+                    base44.asServiceRole.entities.FetchJob,
+                    takeoverFilter,
+                    {
+                        $set: {
+                            processor_claim_id: processorClaimId,
+                            processor_claimed_at: new Date().toISOString()
+                        }
+                    }
+                )
+                : null;
+            if (takeover?.success !== true || Number(takeover?.updated) !== 1) {
+                await releasePipelineLock(base44, lockId);
+                lockId = null;
+                return Response.json({
+                    skipped: true,
+                    reason: 'processor_recovery_claim_changed',
+                    job_id: job.id
+                }, { status: 409 });
+            }
+            job = await base44.asServiceRole.entities.FetchJob.get(job.id);
+        }
+        const settlementRecovery = reservationIsUnsettled(job);
         if (cancellationRequested(job)) {
-            const completedAt = new Date().toISOString();
-            const settledUsageCount = await settleCancelledPrecisionUsage(
-                base44,
-                job,
-                completedAt,
-                'Cancellation observed after claiming the processor lease.'
-            );
+            let settledUsageCount = job.precision_usage_count;
+            if (settlementRecovery) {
+                const completedAt = new Date().toISOString();
+                settledUsageCount = await settleCancelledPrecisionUsage(
+                    base44,
+                    job,
+                    completedAt,
+                    'Cancellation observed after claiming the processor lease.',
+                    processorClaimId,
+                    job.status
+                );
+            } else if (job.status !== 'cancelled') {
+                const completedAt = new Date().toISOString();
+                const cancelled = await base44.asServiceRole.entities.FetchJob.updateMany.call(
+                    base44.asServiceRole.entities.FetchJob,
+                    {
+                        id: job.id,
+                        status: job.status,
+                        processor_claim_id: processorClaimId
+                    },
+                    {
+                        $set: {
+                            status: 'cancelled',
+                            processor_claim_id: null,
+                            completed_at: job.completed_at || completedAt,
+                            error_message: 'Cancelled by user'
+                        }
+                    }
+                );
+                if (
+                    cancelled?.success !== true
+                    || Number(cancelled?.updated) !== 1
+                    || cancelled?.has_more === true
+                ) {
+                    throw processorError(
+                        'precision_processor_fence_lost',
+                        'The durable Precision processor fence changed during cancellation.'
+                    );
+                }
+            }
             await releasePipelineLock(base44, lockId);
             lockId = null;
             return Response.json({ success: true, status: 'cancelled', job_id: job.id, active: settledUsageCount });
         }
+        if (['pending', 'running'].includes(job.status) && !settlementRecovery) {
+            const terminalAt = new Date().toISOString();
+            const terminalized = await base44.asServiceRole.entities.FetchJob.updateMany.call(
+                base44.asServiceRole.entities.FetchJob,
+                {
+                    id: job.id,
+                    status: job.status,
+                    processor_claim_id: processorClaimId
+                },
+                {
+                    $set: {
+                        status: 'failed',
+                        processor_claim_id: null,
+                        completed_at: job.completed_at || terminalAt,
+                        error_message: 'Precision processing stopped because the job was already exactly settled.',
+                        error_log: [
+                            ...(job.error_log || []),
+                            `[${terminalAt}] Active status contradicted immutable exact-settlement evidence; terminalized without provider work or recount.`
+                        ]
+                    }
+                }
+            );
+            if (terminalized?.success !== true || Number(terminalized?.updated) !== 1) {
+                throw processorError(
+                    'precision_processor_fence_lost',
+                    'The durable Precision processor fence changed during terminalization.'
+                );
+            }
+            await releasePipelineLock(base44, lockId);
+            lockId = null;
+            return Response.json({
+                success: true,
+                status: 'failed',
+                job_id: job.id,
+                active: job.precision_usage_count,
+                settlement_preserved: true
+            });
+        }
         if (!['pending', 'running'].includes(job.status)) {
+            if (settlementRecovery) {
+                const settledAt = new Date().toISOString();
+                const settledUsageCount = await countPersistedPrecisionProperties(job.id);
+                const providerAttemptNeedsHold = (
+                    job.status !== 'completed'
+                    && Boolean(job?.dry_run_metadata?.provider_attempt_id)
+                );
+                const repairPayload = {
+                    processor_claim_id: null,
+                    precision_usage_reserved: 0,
+                    precision_usage_count: settledUsageCount,
+                    precision_usage_recorded_at: settledAt,
+                    completed_at: job.completed_at || settledAt,
+                    ...(providerAttemptNeedsHold ? {
+                        dry_run_metadata: {
+                            ...(job.dry_run_metadata || {}),
+                            provider_outcome_unverifiable_at: settledAt
+                        }
+                    } : {}),
+                    error_log: [
+                        ...(job.error_log || []),
+                        `[${settledAt}] Processor repaired incomplete terminal settlement from exact persisted-property evidence (${settledUsageCount}).`
+                    ]
+                };
+                const updateMany = base44.asServiceRole.entities.FetchJob.updateMany;
+                const repaired = typeof updateMany === 'function' && processorClaimId
+                    ? await updateMany.call(
+                        base44.asServiceRole.entities.FetchJob,
+                        {
+                            id: job.id,
+                            status: job.status,
+                            processor_claim_id: processorClaimId
+                        },
+                        { $set: repairPayload }
+                    )
+                    : null;
+                if (
+                    repaired?.success !== true
+                    || Number(repaired?.updated) !== 1
+                    || repaired?.has_more === true
+                ) {
+                    await releasePipelineLock(base44, lockId);
+                    lockId = null;
+                    return Response.json({
+                        skipped: true,
+                        reason: 'processor_recovery_claim_changed',
+                        job_id: job.id
+                    }, { status: 409 });
+                }
+                await releasePipelineLock(base44, lockId);
+                lockId = null;
+                return Response.json({
+                    success: true,
+                    status: job.status,
+                    job_id: job.id,
+                    active: settledUsageCount,
+                    settlement_repaired: true
+                });
+            }
             await releasePipelineLock(base44, lockId);
             lockId = null;
             return Response.json({ skipped: true, reason: `job_${job.status || 'inactive'}`, job_id: job.id, status: job.status });
         }
 
-        const startedAt = job.started_at || new Date().toISOString();
-        await base44.asServiceRole.entities.FetchJob.update(job.id, {
-            status: 'running',
-            started_at: startedAt,
-            provider: 'batchdata',
-            mode_tag: 'PRECISION_TARGET',
-            phase: 'batchdata_precision',
-            progress_pct: Math.max(job.progress_pct || 0, 5)
-        });
+        const criteriaEvidence = subject
+            ? await verifyPrecisionJobCriteriaEvidence(job, subject)
+            : {
+                ok: false,
+                code: 'precision_job_owner_mismatch',
+                invalid_fields: ['precision_usage_user_id'],
+                mismatched_fields: []
+            };
+        if (!criteriaEvidence.ok) {
+            const invalid = await failAndSettleInvalidPrecisionJob(
+                base44,
+                job,
+                criteriaEvidence,
+                processorClaimId,
+                job.status
+            );
+            await releasePipelineLock(base44, lockId);
+            lockId = null;
+            return Response.json({
+                error: invalid.errorCode,
+                job_id: job.id,
+                delivered_count: invalid.settledUsageCount
+            }, { status: 409 });
+        }
+        let activeReservation = null;
+        try {
+            activeReservation = precisionReservationAmount(job);
+        } catch {
+            activeReservation = null;
+        }
+        if (
+            activeReservation === null
+            || activeReservation <= 0
+            || activeReservation !== criteriaEvidence.criteria.effective_count
+        ) {
+            const invalid = await failAndSettleInvalidPrecisionJob(
+                base44,
+                job,
+                {
+                    code: 'precision_reservation_unverifiable',
+                    invalid_fields: ['precision_usage_reserved'],
+                    mismatched_fields: activeReservation === null
+                        ? []
+                        : ['precision_usage_reserved']
+                },
+                processorClaimId,
+                job.status
+            );
+            await releasePipelineLock(base44, lockId);
+            lockId = null;
+            return Response.json({
+                error: invalid.errorCode,
+                job_id: job.id,
+                delivered_count: invalid.settledUsageCount
+            }, { status: 409 });
+        }
+        job = buildVerifiedPrecisionProcessingJob(job, criteriaEvidence, subject);
 
-        const sql = neon(DATABASE_URL);
+        // A prior worker may have entered provider work and crashed before
+        // settlement. Without a durable provider cursor/checkpoint it is not
+        // safe to call the paid provider again even when no row survived:
+        // result ordering can change and produce duplicate cost or over-
+        // delivery. Only a genuinely never-started pending job may proceed.
+        const persistedBeforeProvider = await countPersistedPrecisionProperties(job.id);
+        const providerMayHaveStarted = (
+            job.status === 'running'
+            || Boolean(job.started_at)
+            || Number(job.progress_pct || 0) > 0
+            || Number(job.total_fetched || 0) > 0
+            || ['batchdata_requesting', 'batchdata_scanning'].includes(job.phase)
+        );
+        if (providerMayHaveStarted || persistedBeforeProvider > 0) {
+            const settledAt = new Date().toISOString();
+            const priorProviderAttemptId = job?.dry_run_metadata?.provider_attempt_id;
+            const replayHoldPayload = {
+                status: 'failed',
+                processor_claim_id: null,
+                precision_usage_reserved: 0,
+                precision_usage_count: persistedBeforeProvider,
+                precision_usage_recorded_at: settledAt,
+                completed_at: job.completed_at || settledAt,
+                error_message: 'Precision processing stopped safely because prior provider progress could not be resumed deterministically.',
+                ...(priorProviderAttemptId ? {
+                    dry_run_metadata: {
+                        ...(job.dry_run_metadata || {}),
+                        provider_outcome_unverifiable_at: settledAt
+                    }
+                } : {}),
+                error_log: [
+                    ...(job.error_log || []),
+                    `[${settledAt}] Recovery found prior provider progress and ${persistedBeforeProvider} persisted Precision properties; exact-settled without another provider call.`
+                ]
+            };
+            const replayHold = processorClaimId
+                && typeof base44.asServiceRole.entities.FetchJob.updateMany === 'function'
+                ? await base44.asServiceRole.entities.FetchJob.updateMany.call(
+                    base44.asServiceRole.entities.FetchJob,
+                    {
+                        id: job.id,
+                        status: job.status,
+                        processor_claim_id: processorClaimId
+                    },
+                    { $set: replayHoldPayload }
+                )
+                : null;
+            if (
+                replayHold?.success !== true
+                || Number(replayHold?.updated) !== 1
+                || replayHold?.has_more === true
+            ) {
+                await releasePipelineLock(base44, lockId);
+                lockId = null;
+                return Response.json({
+                    skipped: true,
+                    reason: 'processor_recovery_claim_changed',
+                    job_id: job.id
+                }, { status: 409 });
+            }
+            await releasePipelineLock(base44, lockId);
+            lockId = null;
+            return Response.json({
+                success: true,
+                status: 'failed',
+                job_id: job.id,
+                active: persistedBeforeProvider,
+                settlement_repaired: true,
+                provider_replay_blocked: true
+            });
+        }
+
+        const startedAt = job.started_at || new Date().toISOString();
+        processorClaimId = processorClaimId || crypto.randomUUID();
+        providerAttemptId = crypto.randomUUID();
+        const providerAttemptStartedAt = new Date().toISOString();
+        const claimedMetadata = {
+            ...(job.dry_run_metadata || {}),
+            provider_attempt_id: providerAttemptId,
+            provider_attempt_started_at: providerAttemptStartedAt
+        };
+        const updateMany = base44.asServiceRole.entities.FetchJob.updateMany;
+        if (typeof updateMany !== 'function') {
+            await releasePipelineLock(base44, lockId);
+            lockId = null;
+            return Response.json({
+                error: 'precision_processor_claim_unavailable',
+                message: 'Precision processing could not acquire a durable provider claim.'
+            }, { status: 503 });
+        }
+        const processorClaim = await updateMany.call(
+            base44.asServiceRole.entities.FetchJob,
+            {
+                id: job.id,
+                status: 'pending',
+                phase: 'batchdata_precision',
+                progress_pct: 0,
+                processor_claim_id: processorClaimId,
+                precision_usage_reserved: activeReservation,
+                precision_usage_count: 0
+            },
+            {
+                $set: {
+                    status: 'running',
+                    started_at: startedAt,
+                    provider: 'batchdata',
+                    mode_tag: 'PRECISION_TARGET',
+                    phase: 'batchdata_requesting',
+                    progress_pct: 5,
+                    processor_claim_id: processorClaimId,
+                    processor_claimed_at: providerAttemptStartedAt,
+                    dry_run_metadata: claimedMetadata
+                }
+            }
+        );
+        if (
+            processorClaim?.success !== true
+            || Number(processorClaim?.updated) !== 1
+            || processorClaim?.has_more === true
+        ) {
+            await releasePipelineLock(base44, lockId);
+            lockId = null;
+            return Response.json({
+                skipped: true,
+                reason: 'processor_claim_not_acquired',
+                job_id: job.id
+            }, { status: 409 });
+        }
+        const claimedJob = await base44.asServiceRole.entities.FetchJob.get(job.id).catch(() => null);
+        if (
+            !claimedJob
+            || claimedJob.status !== 'running'
+            || claimedJob.phase !== 'batchdata_requesting'
+            || claimedJob.started_at !== startedAt
+            || claimedJob.processor_claim_id !== processorClaimId
+            || claimedJob?.dry_run_metadata?.provider_attempt_id !== providerAttemptId
+        ) {
+            await releasePipelineLock(base44, lockId);
+            lockId = null;
+            return Response.json({
+                error: 'precision_processor_claim_unverified',
+                message: 'Precision processing could not verify its durable provider claim.'
+            }, { status: 503 });
+        }
+        job = {
+            ...job,
+            status: claimedJob.status,
+            phase: claimedJob.phase,
+            started_at: claimedJob.started_at,
+            progress_pct: claimedJob.progress_pct,
+            processor_claim_id: claimedJob.processor_claim_id,
+            processor_claimed_at: claimedJob.processor_claimed_at,
+            dry_run_metadata: claimedJob.dry_run_metadata,
+            updated_date: claimedJob.updated_date || job.updated_date
+        };
+        if (!BATCHDATA_API_KEY) throw new Error('BATCH_DATA_API_KEY is not configured');
+
+        // All mutable Neon reads/writes run in the same transaction and on the
+        // same connection that owns the advisory processor lease. Connection
+        // loss therefore rolls back partial property work instead of allowing
+        // a stale worker to write outside its lease.
+        const sql = transactionSql(processorLease.client);
         let lastProgressUpdateAt = 0;
         let lastProgressPct = Math.max(job.progress_pct || 0, 5);
         const requestedProgressCount = Math.max(Number(job.total_expected || job.estimated_record_count || 0) || 1, 1);
@@ -1237,11 +2069,78 @@ Deno.serve(async (req) => {
                 total_fetched: reviewed,
                 ...(Number.isFinite(Number(progress.skip)) ? { current_offset: Number(progress.skip) } : {})
             };
-            await base44.asServiceRole.entities.FetchJob.update(job.id, update).catch(() => {});
+            const progressClaim = await updateMany.call(
+                base44.asServiceRole.entities.FetchJob,
+                {
+                    id: job.id,
+                    status: 'running',
+                    processor_claim_id: processorClaimId
+                },
+                { $set: update }
+            );
+            if (progressClaim?.success !== true || Number(progressClaim?.updated) !== 1) {
+                throw processorError(
+                    'precision_processor_fence_lost',
+                    'The durable Precision processor fence was lost.'
+                );
+            }
         };
-        const batchFetch = Array.isArray(body.synthetic_records)
-            ? { records: body.synthetic_records, attempts: [{ mode: 'synthetic_records', count: body.synthetic_records.length }], mode_used: 'synthetic_records' }
-            : await fetchBatchDataRecords(job, updateScanProgress);
+        const requireProcessorFence = async () => {
+            const observed = await base44.asServiceRole.entities.FetchJob.get(job.id).catch(() => null);
+            if (
+                observed
+                && observed.processor_claim_id === processorClaimId
+                && (cancellationRequested(observed) || observed.precision_watchdog_recovery_at)
+            ) {
+                throw processorError(
+                    'precision_processor_recovery_observed',
+                    'Precision processing was interrupted by durable recovery intent.'
+                );
+            }
+            if (
+                !observed
+                || observed.status !== 'running'
+                || observed.processor_claim_id !== processorClaimId
+                || observed?.dry_run_metadata?.provider_attempt_id !== providerAttemptId
+            ) {
+                throw processorError(
+                    'precision_processor_fence_lost',
+                    'The durable Precision processor fence was lost.'
+                );
+            }
+            const heartbeatAt = new Date().toISOString();
+            const heartbeat = await updateMany.call(
+                base44.asServiceRole.entities.FetchJob,
+                {
+                    id: job.id,
+                    status: 'running',
+                    processor_claim_id: processorClaimId
+                },
+                { $set: { processor_heartbeat_at: heartbeatAt } }
+            );
+            if (
+                heartbeat?.success !== true
+                || Number(heartbeat?.updated) !== 1
+                || heartbeat?.has_more === true
+            ) {
+                throw processorError(
+                    'precision_processor_fence_lost',
+                    'The durable Precision processor fence was lost.'
+                );
+            }
+            return heartbeatAt;
+        };
+        const batchFetch = await fetchBatchDataRecords(
+            job,
+            updateScanProgress,
+            async () => {
+                await requireProcessorFence();
+                providerCallMayHaveOccurred = true;
+            },
+            async () => {
+                acceptedProviderResponses++;
+            }
+        );
         const rawRecords = batchFetch.records;
         const seen = new Set();
         const excludedRouteHashes = getExcludedRouteHashes(job);
@@ -1274,21 +2173,56 @@ Deno.serve(async (req) => {
             mapped.push(property);
         }
 
+        await requireProcessorFence();
         const beforeWriteJob = await base44.asServiceRole.entities.FetchJob.get(job.id);
         if (cancellationRequested(beforeWriteJob)) {
             const cancelledAt = new Date().toISOString();
-            const settledUsageCount = await settleCancelledPrecisionUsage(
-                base44,
-                beforeWriteJob,
-                cancelledAt,
-                'Cancellation observed before the Neon write; no fetched properties were added.'
-            );
+            const beforeWriteUnsettled = reservationIsUnsettled(beforeWriteJob);
+            const settledUsageCount = beforeWriteUnsettled
+                ? await settleCancelledPrecisionUsage(
+                    base44,
+                    beforeWriteJob,
+                    cancelledAt,
+                    'Cancellation observed before the Neon write; no fetched properties were added.',
+                    processorClaimId
+                )
+                : beforeWriteJob.precision_usage_count;
+            if (!beforeWriteUnsettled && beforeWriteJob.status !== 'cancelled') {
+                const cancelled = await updateMany.call(
+                    base44.asServiceRole.entities.FetchJob,
+                    {
+                        id: beforeWriteJob.id,
+                        status: 'running',
+                        processor_claim_id: processorClaimId
+                    },
+                    {
+                        $set: {
+                            status: 'cancelled',
+                            processor_claim_id: null,
+                            completed_at: beforeWriteJob.completed_at || cancelledAt,
+                            error_message: 'Cancelled by user'
+                        }
+                    }
+                );
+                if (cancelled?.success !== true || Number(cancelled?.updated) !== 1) {
+                    throw processorError(
+                        'precision_processor_fence_lost',
+                        'The durable Precision processor fence was lost during cancellation.'
+                    );
+                }
+            }
             await releasePipelineLock(base44, lockId);
             lockId = null;
             return Response.json({ success: true, status: 'cancelled', job_id: job.id, active: settledUsageCount });
         }
 
-        const result = await writePropertiesToNeon(sql, mapped, job, excludedRouteHashes);
+        const result = await writePropertiesToNeon(
+            sql,
+            mapped,
+            job,
+            excludedRouteHashes,
+            requireProcessorFence
+        );
         const completedAt = new Date().toISOString();
         const activeCount = mapped.filter(p => p.route_active !== false).length;
         const requestedCount = Number(job.total_expected || job.estimated_record_count || 0) || 0;
@@ -1373,31 +2307,81 @@ Deno.serve(async (req) => {
             }
         }
 
+        const transactionalCountRows = await sql`
+            SELECT COUNT(*)::int AS count
+            FROM workspace_properties
+            WHERE fetch_job_id = ${job.id}
+              AND route_active = TRUE
+        `;
+        const transactionalSettledUsageCount = Math.max(
+            0,
+            Number(transactionalCountRows?.[0]?.count || 0)
+        );
+        // The transaction has passed post-write verification. Commit it before
+        // taking the exact persisted count; the durable Base44 claim remains
+        // the fence through conditional terminal settlement.
+        await requireProcessorFence();
+        await releasePrecisionProcessorLease(processorLease);
+        processorLease = null;
         const settledUsageCount = await countPersistedPrecisionProperties(job.id);
+        if (settledUsageCount !== transactionalSettledUsageCount) {
+            throw processorError(
+                'precision_post_commit_count_mismatch',
+                'Committed Precision delivery count did not match the verified transaction count.'
+            );
+        }
         const latestJob = await base44.asServiceRole.entities.FetchJob.get(job.id);
         if (cancellationRequested(latestJob)) {
-            await base44.asServiceRole.entities.FetchJob.update(job.id, {
-                status: 'cancelled',
-                precision_usage_reserved: 0,
-                precision_usage_count: settledUsageCount,
-                precision_usage_recorded_at: completedAt,
-                completed_at: completedAt,
-                dry_run_metadata: {
-                    ...(job.dry_run_metadata || {}),
-                    completion_reason: 'cancelled_after_partial_delivery',
-                    batchdata_summary: batchdataSummary
+            const cancelled = await updateMany.call(
+                base44.asServiceRole.entities.FetchJob,
+                {
+                    id: job.id,
+                    status: latestJob.status,
+                    processor_claim_id: processorClaimId
                 },
-                error_log: [...errorLog, `[${completedAt}] Cancellation observed before completion; settled ${settledUsageCount} persisted properties without restoring the route allowance.`]
-            });
+                {
+                    $set: {
+                        status: 'cancelled',
+                        processor_claim_id: null,
+                        precision_usage_reserved: 0,
+                        precision_usage_count: settledUsageCount,
+                        precision_usage_recorded_at: completedAt,
+                        completed_at: completedAt,
+                        dry_run_metadata: {
+                            ...(job.dry_run_metadata || {}),
+                            completion_reason: 'cancelled_after_partial_delivery',
+                            batchdata_summary: batchdataSummary
+                        },
+                        error_log: [...errorLog, `[${completedAt}] Cancellation observed before completion; settled ${settledUsageCount} persisted properties without restoring the route allowance.`]
+                    }
+                }
+            );
+            if (cancelled?.success !== true || Number(cancelled?.updated) !== 1) {
+                throw processorError(
+                    'precision_processor_fence_lost',
+                    'The durable Precision processor fence was lost during cancellation settlement.'
+                );
+            }
             await releasePipelineLock(base44, lockId);
             lockId = null;
             return Response.json({ success: true, status: 'cancelled', job_id: job.id, active: activeCount });
         }
+        if (
+            latestJob.status !== 'running'
+            || latestJob.processor_claim_id !== processorClaimId
+            || latestJob?.dry_run_metadata?.provider_attempt_id !== providerAttemptId
+        ) {
+            throw processorError(
+                'precision_processor_fence_lost',
+                'The durable Precision processor fence was lost before settlement.'
+            );
+        }
 
-        await base44.asServiceRole.entities.FetchJob.update(job.id, {
+        const completionPayload = {
             status: 'completed',
             phase: 'complete',
             progress_pct: 100,
+            processor_claim_id: null,
             completed_at: completedAt,
             precision_usage_reserved: 0,
             precision_usage_count: settledUsageCount,
@@ -1420,75 +2404,243 @@ Deno.serve(async (req) => {
                 batchdata_summary: batchdataSummary
             },
             error_log: errorLog
-        });
+        };
+        const completionClaim = await updateMany.call(
+            base44.asServiceRole.entities.FetchJob,
+            {
+                id: job.id,
+                status: 'running',
+                processor_claim_id: processorClaimId
+            },
+            { $set: completionPayload }
+        );
+        if (
+            completionClaim?.success !== true
+            || Number(completionClaim?.updated) !== 1
+            || completionClaim?.has_more === true
+        ) {
+            throw processorError(
+                'precision_processor_fence_lost',
+                'The durable Precision processor fence was lost during settlement.'
+            );
+        }
 
         // Catch cancellation that arrived between the pre-completion read and
         // the completed update. The settled count is already exact, so only the
         // terminal state needs correcting.
         const afterCompletionJob = await base44.asServiceRole.entities.FetchJob.get(job.id);
         if (cancellationRequested(afterCompletionJob) && afterCompletionJob.status !== 'cancelled') {
-            await base44.asServiceRole.entities.FetchJob.update(job.id, {
-                status: 'cancelled',
-                error_message: 'Cancelled by user',
-                completed_at: completedAt,
-                error_log: [
-                    ...(afterCompletionJob.error_log || errorLog),
-                    `[${completedAt}] Cancellation raced completion; retained exact settled usage of ${settledUsageCount} properties.`
-                ]
-            });
+            const cancellationCorrectionFilter = {
+                id: job.id,
+                status: 'completed',
+                processor_claim_id: null,
+                precision_usage_reserved: 0,
+                precision_usage_count: settledUsageCount,
+                precision_usage_recorded_at: completedAt
+            };
+            if (Object.prototype.hasOwnProperty.call(afterCompletionJob, 'precision_cancel_requested_at')) {
+                cancellationCorrectionFilter.precision_cancel_requested_at =
+                    afterCompletionJob.precision_cancel_requested_at;
+            }
+            const corrected = await updateMany.call(
+                base44.asServiceRole.entities.FetchJob,
+                cancellationCorrectionFilter,
+                {
+                    $set: {
+                        status: 'cancelled',
+                        error_message: 'Cancelled by user',
+                        completed_at: completedAt,
+                        error_log: [
+                            ...(afterCompletionJob.error_log || errorLog),
+                            `[${completedAt}] Cancellation raced completion; retained exact settled usage of ${settledUsageCount} properties.`
+                        ]
+                    }
+                }
+            );
+            if (
+                corrected?.success !== true
+                || Number(corrected?.updated) !== 1
+                || corrected?.has_more === true
+            ) {
+                throw processorError(
+                    'precision_processor_fence_lost',
+                    'The completed Precision settlement changed during cancellation correction.'
+                );
+            }
         }
 
-        const users = await base44.asServiceRole.entities.User.filter({ email: job.user_email }, null, 1).catch(() => []);
-        const userArr = Array.isArray(users) ? users : (users?.items || []);
-        if (userArr[0]) {
-            await base44.asServiceRole.entities.User.update(userArr[0].id, {
-                has_pulled_data: true,
-                last_data_pull: completedAt
-            }).catch(() => {});
-        }
+        // The verified immutable subject remains authoritative even when their
+        // current email differs from the persisted job email. job.user_email is
+        // retained only as the historical workspace_properties row locator.
+        await base44.asServiceRole.entities.User.update(subject.id, {
+            has_pulled_data: true,
+            last_data_pull: completedAt
+        }).catch(() => {});
 
         await releasePipelineLock(base44, lockId);
         lockId = null;
         await sleep(10);
         return Response.json({ success: true, status: 'completed', job_id: job.id, active_provider: 'batchdata', mode_used: batchFetch.mode_used, attempts: batchFetch.attempts, raw: rawRecords.length, mapped: mapped.length, active: activeCount });
     } catch (error) {
-        if (base44 && lockId) await releasePipelineLock(base44, lockId);
-        console.error('[processFetchChunk batchdata-only] Fatal:', error.message);
+        if (processorLease) {
+            await abortPrecisionProcessorLease(processorLease);
+            processorLease = null;
+        }
+        const referenceId = crypto.randomUUID();
+        const fenceLost = error?.code === 'precision_processor_fence_lost';
+        let providerOutcomeUnverifiable = (
+            error?.code === 'precision_provider_outcome_unverifiable'
+            || (
+                providerCallMayHaveOccurred
+                && (
+                    error?.code !== 'precision_provider_request_rejected'
+                    || acceptedProviderResponses > 0
+                )
+                && !fenceLost
+            )
+        );
+        console.error(
+            `[processFetchChunk batchdata-only] Fatal ${referenceId}:`,
+            error?.code || 'precision_processing_failed'
+        );
         try {
-            const recovery = liveJobClaimed && targetJobId
+            const recovery = !fenceLost && liveJobClaimed && targetJobId
                 ? (base44 || createClientFromRequest(req))
                 : null;
             const failedJob = recovery
                 ? await recovery.asServiceRole.entities.FetchJob.get(targetJobId).catch(() => null)
                 : null;
-            const hasUnsettledReservation = failedJob
-                && !failedJob.precision_usage_recorded_at
-                && Math.max(0, Number(failedJob.precision_usage_reserved || 0)) > 0;
+            if (
+                failedJob?.dry_run_metadata?.provider_attempt_id
+                && (
+                    cancellationRequested(failedJob)
+                    || failedJob.precision_watchdog_recovery_at
+                )
+            ) {
+                providerOutcomeUnverifiable = true;
+            }
+            let hasUnsettledReservation = false;
+            if (failedJob) {
+                try {
+                    hasUnsettledReservation = isPrecisionReservationUnsettled(failedJob);
+                } catch (reservationError) {
+                    // Malformed reservation evidence must never make a fatal
+                    // path look settled. The processor still attempts exact
+                    // property-count settlement below.
+                    hasUnsettledReservation = true;
+                    console.error('[processFetchChunk] Reservation evidence is malformed; treating it as unsettled:', reservationError.message);
+                }
+            }
             if (failedJob && (
                 ['pending', 'running'].includes(failedJob.status)
                 || cancellationRequested(failedJob)
                 || hasUnsettledReservation
             )) {
                 let settlement = {};
-                try {
-                    const deliveredCount = await countPersistedPrecisionProperties(failedJob.id);
-                    settlement = {
-                        precision_usage_reserved: 0,
-                        precision_usage_count: deliveredCount,
-                        precision_usage_recorded_at: new Date().toISOString()
-                    };
-                } catch (settlementError) {
-                    console.error('[processFetchChunk] Usage settlement failed; reservation remains in force:', settlementError.message);
+                const terminalAt = new Date().toISOString();
+                if (hasUnsettledReservation) {
+                    try {
+                        const deliveredCount = await countPersistedPrecisionProperties(failedJob.id);
+                        settlement = {
+                            precision_usage_reserved: 0,
+                            precision_usage_count: deliveredCount,
+                            precision_usage_recorded_at: terminalAt
+                        };
+                    } catch (settlementError) {
+                        console.error('[processFetchChunk] Usage settlement failed; reservation remains in force:', settlementError.message);
+                    }
                 }
                 const wasCancelled = cancellationRequested(failedJob);
-                await recovery.asServiceRole.entities.FetchJob.update(failedJob.id, {
+                const failurePayload = {
                     status: wasCancelled ? 'cancelled' : 'failed',
+                    processor_claim_id: null,
                     ...settlement,
-                    error_message: wasCancelled ? 'Cancelled by user' : `BatchData processing failed: ${error.message}`,
-                    error_log: [...(failedJob.error_log || []), `[${new Date().toISOString()}] FATAL: ${error.message}`]
-                });
+                    completed_at: terminalAt,
+                    error_message: wasCancelled
+                        ? 'Cancelled by user'
+                        : providerOutcomeUnverifiable
+                            ? 'The paid provider outcome could not be verified. Support review is required before another Precision pull.'
+                            : `Precision processing failed safely. Reference ${referenceId}.`,
+                    ...(providerOutcomeUnverifiable ? {
+                        dry_run_metadata: {
+                            ...(failedJob.dry_run_metadata || {}),
+                            ...(providerAttemptId ? { provider_attempt_id: providerAttemptId } : {}),
+                            provider_outcome_unverifiable_at: terminalAt
+                        }
+                    } : {}),
+                    error_log: [
+                        ...(failedJob.error_log || []),
+                        `[${terminalAt}] FATAL ${referenceId}: ${
+                            providerOutcomeUnverifiable
+                                ? 'precision_provider_outcome_unverifiable'
+                                : 'precision_processing_failed'
+                        }`
+                    ]
+                };
+                if (processorClaimId) {
+                    const updateMany = recovery.asServiceRole.entities.FetchJob.updateMany;
+                    if (typeof updateMany !== 'function') {
+                        throw new Error('Conditional fatal settlement is unavailable.');
+                    }
+                    const failureClaim = await updateMany.call(
+                        recovery.asServiceRole.entities.FetchJob,
+                        {
+                            id: failedJob.id,
+                            status: failedJob.status,
+                            processor_claim_id: processorClaimId
+                        },
+                        { $set: failurePayload }
+                    );
+                    if (
+                        failureClaim?.success !== true
+                        || Number(failureClaim?.updated) !== 1
+                        || failureClaim?.has_more === true
+                    ) {
+                        console.warn(
+                            '[processFetchChunk] Fatal settlement skipped because the durable processor fence changed.'
+                        );
+                    }
+                } else {
+                    // Without a durable claim there is no safe stale-writer
+                    // predicate. Preserve the reservation/current terminal
+                    // state for watchdog or operator reconciliation.
+                    console.warn(
+                        '[processFetchChunk] Fatal settlement skipped because no durable processor claim was acquired.'
+                    );
+                }
             }
-        } catch {}
-        return Response.json({ error: error.message }, { status: 500 });
+        } catch (recoveryError) {
+            console.error('[processFetchChunk] Fatal recovery could not terminalize the job; reservation remains in force:', recoveryError.message);
+        } finally {
+            // Keep the processor lease through the exact persisted-property
+            // count and terminal FetchJob update. Releasing it earlier permits
+            // a concurrent re-kick to write while the delivered count is taken.
+            if (base44 && lockId) {
+                await releasePipelineLock(base44, lockId);
+                lockId = null;
+            }
+        }
+        if (fenceLost) {
+            return Response.json({
+                error: 'precision_processor_fence_lost',
+                message: 'This worker no longer owns the durable Precision processing claim.',
+                reference_id: referenceId
+            }, { status: 409 });
+        }
+        return Response.json({
+            error: providerOutcomeUnverifiable
+                ? 'precision_provider_outcome_unverifiable'
+                : 'precision_processing_failed',
+            message: providerOutcomeUnverifiable
+                ? 'The paid provider outcome could not be verified. Support review is required.'
+                : 'Precision processing failed safely.',
+            reference_id: referenceId
+        }, { status: providerOutcomeUnverifiable ? 502 : 500 });
+    } finally {
+        if (base44 && lockId) {
+            await releasePipelineLock(base44, lockId);
+            lockId = null;
+        }
+        await releasePrecisionProcessorLease(processorLease);
     }
 });

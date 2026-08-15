@@ -1,18 +1,14 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 import { neon } from 'npm:@neondatabase/serverless@0.9.0';
+import {
+    hasPrecisionJobMarkers,
+    isActualPrecisionJob,
+    listAllPrecisionRecords,
+    PrecisionControlError,
+    precisionErrorPayload
+} from '../_shared/precisionActiveJobCriteria.js';
 
 const KEVIN_EMAIL = 'kevin@reifenvironmental.com';
-
-async function listAll(entity, filter = {}, sort = '-created_date', pageSize = 1000) {
-    const records = [];
-    for (let skip = 0; skip < 20000; skip += pageSize) {
-        const page = await entity.filter(filter, sort, pageSize, skip).catch(() => []);
-        const arr = Array.isArray(page) ? page : (page?.items || []);
-        records.push(...arr);
-        if (arr.length < pageSize) break;
-    }
-    return records;
-}
 
 Deno.serve(async (req) => {
     try {
@@ -25,17 +21,67 @@ Deno.serve(async (req) => {
         const body = await req.json().catch(() => ({}));
         const protectedEmail = String(body.protected_email || KEVIN_EMAIL).toLowerCase();
         const databaseUrl = Deno.env.get('DATABASE_URL');
-        const sql = databaseUrl ? neon(databaseUrl) : null;
+        if (!databaseUrl) {
+            return Response.json({
+                error: 'migration_audit_incomplete',
+                message: 'DATABASE_URL is required to prove migration safety.',
+                audit_complete: false,
+                safe_to_migrate_now: false
+            }, { status: 503 });
+        }
+        const sql = neon(databaseUrl);
 
-        const activeJobsRaw = await base44.asServiceRole.entities.FetchJob.filter({ status: 'running' }, '-updated_date', 20).catch(() => []);
-        const pendingJobsRaw = await base44.asServiceRole.entities.FetchJob.filter({ status: 'pending' }, '-updated_date', 20).catch(() => []);
-        const activeJobs = [...(Array.isArray(activeJobsRaw) ? activeJobsRaw : activeJobsRaw?.items || []), ...(Array.isArray(pendingJobsRaw) ? pendingJobsRaw : pendingJobsRaw?.items || [])];
+        const activeCandidateFilters = ['running', 'pending'].flatMap(status => ([
+            { status, precision_usage_user_id: { $ne: null } },
+            { status, precision_usage_kind: { $ne: null } },
+            { status, precision_usage_reserved: { $gt: 0 } },
+            { status, precision_usage_count: { $gt: 0 } },
+            { status, precision_usage_period_start: { $ne: null } },
+            { status, precision_usage_period_end: { $ne: null } },
+            { status, precision_usage_recorded_at: { $ne: null } },
+            { status, precision_cancel_requested_at: { $ne: null } },
+            { status, precision_watchdog_recovery_at: { $ne: null } },
+            { status, processor_claim_id: { $ne: null } },
+            { status, source_fetch_job_id: { $ne: null } },
+            { status, root_fetch_job_id: { $ne: null } },
+            { status, attempt_reason: { $ne: null } }
+        ]));
+        const activeGroups = await Promise.all(activeCandidateFilters.map(filter =>
+            listAllPrecisionRecords(
+                base44.asServiceRole.entities.FetchJob,
+                filter,
+                '-updated_date'
+            )
+        ));
+        const activeCandidatesById = new Map();
+        for (const group of activeGroups) {
+            for (const job of group) {
+                if (job?.id) activeCandidatesById.set(String(job.id), job);
+            }
+        }
+        const activeCandidates = [...activeCandidatesById.values()];
+        const identityConflictIds = activeCandidates
+            .filter(job => hasPrecisionJobMarkers(job) && !isActualPrecisionJob(job))
+            .map(job => job.id);
+        if (identityConflictIds.length) {
+            throw new PrecisionControlError(
+                'precision_job_identity_conflict',
+                'Marker-bearing active rows have conflicting Precision identity. Migration safety is not proven.',
+                409,
+                {
+                    audit_complete: false,
+                    safe_to_migrate_now: false,
+                    conflicting_job_ids: [...new Set(identityConflictIds)]
+                }
+            );
+        }
+        const activeJobs = activeCandidates.filter(isActualPrecisionJob);
 
-        const teamMembers = await listAll(base44.asServiceRole.entities.TeamMember, { email: protectedEmail });
+        const teamMembers = await listAllPrecisionRecords(base44.asServiceRole.entities.TeamMember, { email: protectedEmail });
         const protectedMemberIds = new Set(teamMembers.map(member => member.id).filter(Boolean));
 
-        const routesByEmail = await listAll(base44.asServiceRole.entities.SavedRoute, { assigned_to_name: protectedEmail });
-        const allRoutes = await listAll(base44.asServiceRole.entities.SavedRoute, {}, '-updated_date', 500);
+        const routesByEmail = await listAllPrecisionRecords(base44.asServiceRole.entities.SavedRoute, { assigned_to_name: protectedEmail });
+        const allRoutes = await listAllPrecisionRecords(base44.asServiceRole.entities.SavedRoute, {}, '-updated_date', 500);
         const protectedRoutes = allRoutes.filter(route =>
             String(route.assigned_to_name || '').toLowerCase() === protectedEmail ||
             protectedMemberIds.has(route.assigned_to) ||
@@ -48,7 +94,11 @@ Deno.serve(async (req) => {
         const interactionLogs = [];
         for (let i = 0; i < protectedHashes.length; i += 100) {
             const batch = protectedHashes.slice(i, i + 100);
-            const rows = await base44.asServiceRole.entities.InteractionLog.filter({ address_hash: batch }, '-created_date', 1000).catch(() => []);
+            const rows = await base44.asServiceRole.entities.InteractionLog.filter(
+                { address_hash: batch },
+                '-created_date',
+                1000
+            );
             interactionLogs.push(...(Array.isArray(rows) ? rows : rows?.items || []));
         }
 
@@ -97,6 +147,7 @@ Deno.serve(async (req) => {
 
         return Response.json({
             success: true,
+            audit_complete: true,
             safe_to_migrate_now: activeJobs.length === 0 && mustKeepRoutes.length === 3,
             blockers: [
                 ...(activeJobs.length > 0 ? ['Active or pending FetchJob exists — do not migrate/purge until it completes or is cancelled.'] : []),
@@ -116,6 +167,7 @@ Deno.serve(async (req) => {
             next_step: 'Use this snapshot before any purge. Protected hashes must be excluded from cleanup unless a route-safe replacement exists.'
         });
     } catch (error) {
-        return Response.json({ error: error.message }, { status: 500 });
+        const failure = precisionErrorPayload(error);
+        return Response.json(failure.body, { status: failure.status });
     }
 });

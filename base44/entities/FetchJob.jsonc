@@ -21,7 +21,6 @@
         "manual",
         "canvas"
       ],
-      "default": "batchdata",
       "description": "External/provider source used for the job"
     },
     "mode_tag": {
@@ -31,7 +30,6 @@
         "CANVAS_DOOR",
         "LEGACY_RENTCAST"
       ],
-      "default": "PRECISION_TARGET",
       "description": "Pipeline mode: BatchData Precision or Canvas door logging"
     },
     "latitude": {
@@ -264,6 +262,82 @@
       "format": "date-time",
       "description": "Durable watchdog recovery marker. The processor must settle exact delivered usage before the watchdog can fail the job."
     },
+    "processor_claim_id": {
+      "type": "string",
+      "description": "Server-owned fencing token for the one worker authorized to issue provider calls and persist results"
+    },
+    "processor_claimed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp at which the current durable processor fencing token was claimed"
+    },
+    "processor_heartbeat_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Last conditional heartbeat written by the worker that owns processor_claim_id"
+    },
+    "source_fetch_job_id": {
+      "type": "string",
+      "description": "Server-stamped immediate source FetchJob for a verified retry attempt"
+    },
+    "root_fetch_job_id": {
+      "type": "string",
+      "description": "Server-stamped root FetchJob for the durable attempt chain"
+    },
+    "attempt_number": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Server-generated attempt number within the durable retry chain"
+    },
+    "attempt_reason": {
+      "type": "string",
+      "enum": [
+        "initial_request",
+        "verified_retry"
+      ],
+      "description": "Server-owned reason for creating this attempt"
+    },
+    "attempt_created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "attempt_actor_user_id": {
+      "type": "string",
+      "description": "Authenticated actor immutable user ID; never accepted from request input"
+    },
+    "attempt_subject_user_id": {
+      "type": "string",
+      "description": "Authorized subject immutable user ID"
+    },
+    "attempt_workspace_id": {
+      "type": "string",
+      "description": "Server-derived workspace identity for this attempt"
+    },
+    "source_criteria_schema_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "source_polygon_hash": {
+      "type": "string"
+    },
+    "source_effective_count": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "source_status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "running",
+        "completed",
+        "failed",
+        "cancelled"
+      ]
+    },
+    "source_terminal_at": {
+      "type": "string",
+      "format": "date-time"
+    },
     "progress_pct": {
       "type": "number",
       "default": 0
@@ -309,8 +383,7 @@
         "batchdata_scanning",
         "canvas_session",
         "complete"
-      ],
-      "default": "batchdata_precision"
+      ]
     },
     "description": {
       "type": "string",

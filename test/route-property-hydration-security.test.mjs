@@ -14,7 +14,7 @@ test('optional ownership columns cannot make route hydration depend on a complet
 });
 
 function loadHandler({
-  user = { id: 'rep_1', email: 'rep@example.com', role: 'user' },
+  user = { id: 'manager_1', email: 'manager@example.com', role: 'user' },
   route = {
     id: 'route_1',
     created_by: 'manager@example.com',
@@ -37,6 +37,7 @@ function loadHandler({
   const sqlValueCalls = [];
   const routeFilterQueries = [];
   const interactionFilterQueries = [];
+  const masterPropertyFilterQueries = [];
   const sql = async (strings, ...values) => {
     const query = strings.join(' ');
     sqlCalls.push(query);
@@ -55,6 +56,7 @@ function loadHandler({
     throw new Error(`Unexpected SQL in hydration test: ${query}`);
   };
   const filterMasterProperty = async (query) => {
+    masterPropertyFilterQueries.push(query);
     const [field, criterion] = Object.entries(query || {})[0] || [];
     const values = Array.isArray(criterion)
       ? criterion
@@ -110,6 +112,7 @@ function loadHandler({
   return {
     handler,
     interactionFilterQueries,
+    masterPropertyFilterQueries,
     routeFilterQueries,
     sqlCalls,
     sqlValueCalls,
@@ -224,6 +227,95 @@ test('canonical property fallback never runs for arbitrary hashes without a rout
   assert.equal(sqlCalls.filter(query =>
     query.includes('FROM properties p') && !query.includes('INSERT INTO workspace_properties')
   ).length, 0);
+});
+
+test('a bare admin user_email cannot authorize cross-account property hydration', async () => {
+  const { handler, sqlCalls } = loadHandler({
+    user: { id: 'admin_1', email: 'admin@example.com', role: 'admin' },
+    route: null,
+    visibleOwnerRoutes: [],
+    workspaceRows: [{
+      id: 42,
+      address_hash: 'hash_1',
+      owner_full_name: 'Victim Owner',
+      lat: 33.45,
+      lng: -112.07,
+    }],
+  });
+
+  const { response, result } = await invoke(handler, {
+    address_hashes: ['hash_1'],
+    user_email: 'victim@example.com',
+  });
+
+  assert.equal(response.status, 403);
+  assert.equal(result.error, 'precision_delegation_not_authorized');
+  assert.equal(sqlCalls.length, 0);
+});
+
+test('global admin route visibility is not delegated tenant authority', async () => {
+  const route = {
+    id: 'victim_route',
+    manager_id: 'victim_manager',
+    created_by: 'victim@example.com',
+    created_date: '2026-07-23T20:00:00.000Z',
+    property_hashes: ['hash_1'],
+  };
+  const { handler, sqlCalls } = loadHandler({
+    user: { id: 'admin_1', email: 'admin@example.com', role: 'admin' },
+    route,
+  });
+
+  const { response, result } = await invoke(handler, {
+    route_id: route.id,
+    address_hashes: ['hash_1'],
+  });
+
+  assert.equal(response.status, 403);
+  assert.equal(result.error, 'route_access_denied');
+  assert.equal(sqlCalls.length, 0);
+});
+
+test('admin interaction visibility without an authorized route grants no workspace authority', async () => {
+  const {
+    handler,
+    interactionFilterQueries,
+    masterPropertyFilterQueries,
+    sqlCalls,
+  } = loadHandler({
+    user: { id: 'admin_1', email: 'admin@example.com', role: 'admin' },
+    route: null,
+    visibleOwnerRoutes: [],
+    interactionLogs: [{
+      address_hash: 'victim_hash',
+      created_by: 'victim@example.com',
+    }],
+    workspaceRows: [{
+      id: 42,
+      address_hash: 'victim_hash',
+      owner_full_name: 'Victim Owner',
+      lat: 33.45,
+      lng: -112.07,
+    }],
+    masterProperties: [{
+      id: 'master_victim',
+      address_hash: 'victim_hash',
+      created_by: 'victim@example.com',
+      owner_full_name: 'Victim Owner',
+      lat: 33.45,
+      lng: -112.07,
+    }],
+  });
+
+  const { response, result } = await invoke(handler, {
+    address_hashes: ['victim_hash'],
+  });
+
+  assert.equal(response.status, 403);
+  assert.equal(result.error, 'route_access_denied');
+  assert.equal(interactionFilterQueries.length, 0);
+  assert.equal(masterPropertyFilterQueries.length, 0);
+  assert.equal(sqlCalls.length, 0);
 });
 
 test('legacy clients hydrate only when a caller-visible route has the exact requested manifest', async () => {
@@ -476,7 +568,7 @@ test('legacy discovery accepts the top-level team manager identity used by older
   assert.ok(routeFilterQueries.some(query => query.manager_id === 'manager_1'));
 });
 
-test('an unresolved manager identity can recover pins but cannot read-repair another workspace', async () => {
+test('an unresolved manager identity fails closed without reading or repairing another workspace', async () => {
   const user = {
     id: 'rep_user_1',
     email: 'rep@example.com',
@@ -510,12 +602,9 @@ test('an unresolved manager identity can recover pins but cannot read-repair ano
     user_email: 'importer@example.com',
   });
 
-  assert.equal(response.status, 200);
-  assert.equal(result.count, 1);
-  assert.equal(
-    sqlCalls.filter(query => query.includes('INSERT INTO workspace_properties')).length,
-    0
-  );
+  assert.equal(response.status, 403);
+  assert.equal(result.error, 'route_access_denied');
+  assert.equal(sqlCalls.length, 0);
 });
 
 test('legacy discovery prefers the recoverable historical route over a newer duplicate', async () => {
@@ -815,6 +904,7 @@ test('legacy compatibility rejects partial manifests and never reaches canonical
     property_hashes: ['hash_1', 'hash_2'],
   };
   const { handler, sqlCalls } = loadHandler({
+    user: { id: 'manager_1', email: 'manager@example.com', role: 'user' },
     route,
     canonicalRows: [{
       id: 42,
@@ -844,6 +934,7 @@ test('a newly client-created exact-manifest route cannot authorize canonical rec
     property_hashes: ['guessed_hash'],
   };
   const { handler, sqlCalls } = loadHandler({
+    user: { id: 'rep_1', email: 'rep@example.com', role: 'user' },
     route,
     canonicalRows: [{
       id: 99,
@@ -881,6 +972,7 @@ test('post-cutoff Base44-only routes retain the creator-owned CSV fallback', asy
     property_hashes: ['csv_hash'],
   };
   const { handler } = loadHandler({
+    user: { id: 'rep_1', email: 'rep@example.com', role: 'user' },
     route,
     masterProperties: [{
       id: 'base44_csv',
@@ -1051,6 +1143,6 @@ test('route hydration rejects hashes that are not on the caller-visible route', 
   });
 
   assert.equal(response.status, 403);
-  assert.equal(result.code, 'route_hash_mismatch');
+  assert.equal(result.error, 'route_hash_mismatch');
   assert.equal(sqlCalls.length, 0);
 });

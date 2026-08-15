@@ -116,5 +116,8 @@ test('background Precision completion cannot dismiss an unsaved Canvas planner',
   assert.match(territoryPrompt, /await onPullComplete\([\s\S]*?if \(routeModeRef\.current !== 'precision'\) return;/);
   assert.match(home, /const routeModeRef = useRef\(routeMode\)/);
   assert.match(home, /onPullComplete=\{async[\s\S]*?if \(routeModeRef\.current !== 'precision'\) return;/);
-  assert.match(home, /await queryClient\.refetchQueries\(\{ queryKey: \['user'\] \}\);\s*if \(routeModeRef\.current !== 'precision'\) return;/);
+  assert.match(
+    home,
+    /await queryClient\.refetchQueries\(\{ queryKey: \['user'\] \}\);[\s\S]*?await queryClient\.refetchQueries\(\{ queryKey: \['precisionHistory'\] \}\);\s*if \(routeModeRef\.current !== 'precision'\) return;/
+  );
 });
