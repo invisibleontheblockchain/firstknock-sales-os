@@ -5,6 +5,7 @@ import {
 } from './roadNetworkRouting';
 import { fetchRouteRoadNetwork } from './routeRoadNetworkSource';
 import { canonicalStreetRoutingKey } from './routeOptimizer';
+import { createOsrmRoadContext } from './osrmRoadContext';
 
 const METERS_PER_MILE = 1609.344;
 // Full mode routes door-to-door eagerly, so it stays deliberately small.
@@ -655,6 +656,31 @@ export async function createRouteRoadContext(properties, options = {}) {
     .filter((property) => pointFrom(property));
   if (validProperties.length < 2) {
     return fallbackContext(validProperties, 'TOO_FEW_POINTS');
+  }
+
+  // Preferred path: the self-hosted full-USA OSRM graph.
+  //
+  // It is tried first because it is the only tier that works everywhere. The
+  // Overpass path below fetches a live road graph per working area from a free
+  // public API and routes it with a Dijkstra in the user's browser — correct, but
+  // rate-limited upstream and bounded by DEFAULT_MAX_COST_ONLY_BLOCKS, so it
+  // cannot carry precision generation nationwide. OSRM has no such ceiling and no
+  // third-party dependency at request time.
+  //
+  // Returns null (never throws) when OSRM is unconfigured, unhealthy, or too
+  // small a job to be worth it, so the Overpass and aerial tiers stay intact as
+  // the safety net.
+  if (options.preferOsrm !== false) {
+    try {
+      const osrmContext = await createOsrmRoadContext(validProperties, {
+        signal: options.signal,
+        deadlineMs: options.osrmDeadlineMs,
+        skipHealthCheck: options.skipOsrmHealthCheck,
+      });
+      if (osrmContext) return osrmContext;
+    } catch (error) {
+      console.warn('[routeRoadContext] OSRM context failed; falling through to Overpass.', error);
+    }
   }
 
   const maxRoutePoints = Math.max(

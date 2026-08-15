@@ -6,6 +6,10 @@ import {
   createRouteContinuityContext,
   routePropertyOrderFingerprint,
 } from './routeRoadContext.js';
+import {
+  createOsrmContextPayload,
+  hydrateOsrmRoadContext,
+} from './osrmRoadContext.js';
 
 export const MAX_SAVED_ROUTE_PROPERTIES = 10_000;
 const WORKER_INDEX_KEY = '__firstknock_large_route_input_index';
@@ -32,15 +36,24 @@ function normalizedTimeoutMs(value) {
   return Math.max(MIN_TIMEOUT_MS, Math.min(MAX_TIMEOUT_MS, Math.round(numeric)));
 }
 
-function routingMetadata(inputPropertyCount, outputPropertyCount, routeCount) {
+function routingMetadata(inputPropertyCount, outputPropertyCount, routeCount, roadContext = null) {
+  const roadAware = roadContext?.roadAware === true;
   return {
-    strategy: 'canonical_street_subdivision_continuity',
+    strategy: roadAware
+      ? 'osrm_road_matrix_over_street_blocks'
+      : 'canonical_street_subdivision_continuity',
     execution: 'browser_module_worker',
-    fallback: true,
-    fallback_reason: 'large_route_uses_local_continuity_worker',
-    road_network_used: false,
+    fallback: !roadAware,
+    fallback_reason: roadAware ? null : 'large_route_uses_local_continuity_worker',
+    road_network_used: roadAware,
+    routing_engine: roadContext?.source || 'aerial-fallback',
+    // The share of distance queries answered from a real road matrix. A route
+    // saved with a low share is one to be suspicious of.
+    road_exact_lookup_share: roadAware
+      ? roadContext?.diagnostics?.exactLookupShare ?? null
+      : null,
     street_key: 'canonical_street_with_suffix',
-    access_key: 'subdivision_name_when_available',
+    access_key: roadAware ? 'osrm_tile' : 'subdivision_name_when_available',
     input_property_count: inputPropertyCount,
     output_property_count: outputPropertyCount,
     route_count: routeCount,
@@ -222,7 +235,11 @@ export function buildLargeRouteManifests(input = {}) {
     // hashes. Original hashes are restored before anything can save.
     address_hash: `__firstknock_large_route_${property[WORKER_INDEX_KEY]}`,
   }));
-  const continuityContext = createRouteContinuityContext(indexedProperties);
+  // Road distances when the caller prefetched them (see optimizeLargeRoutesAsync),
+  // street/subdivision continuity otherwise. The worker cannot fetch: it is
+  // synchronous by construction and has no network budget inside the optimizer.
+  const continuityContext = hydrateOsrmRoadContext(input.osrmContextPayload)
+    || createRouteContinuityContext(indexedProperties);
   const routes = generateOptimizedRoutes(
     indexedProperties,
     normalizedRouteSize(input.housesPerRoute),
@@ -250,7 +267,7 @@ export function buildLargeRouteManifests(input = {}) {
       metadata: {
         ...(route.metadata || {}),
         routing: {
-          ...routingMetadata(properties.length, eligible.length, routes.length),
+          ...routingMetadata(properties.length, eligible.length, routes.length, continuityContext),
           route_property_count: propertyIndexes.length,
           property_order_fingerprint: routePropertyOrderFingerprint(orderedOriginals),
         },
@@ -267,7 +284,7 @@ export function buildLargeRouteManifests(input = {}) {
   return {
     routeManifests,
     eligiblePropertyIndexes,
-    routingMetadata: routingMetadata(properties.length, eligible.length, routes.length),
+    routingMetadata: routingMetadata(properties.length, eligible.length, routes.length, continuityContext),
     cooldownInfo,
   };
 }
@@ -329,8 +346,33 @@ function synchronousFallback(input) {
   };
 }
 
+/**
+ * Fetch the OSRM road matrix on the main thread, before the worker starts.
+ *
+ * This is the only place it can happen. The optimizer's distance hook is
+ * synchronous and the worker has no route to the network mid-run, so road
+ * awareness for the large-route path has to be resolved up front and handed
+ * across as data. A null result is not an error — it means this run uses
+ * street/subdivision continuity, exactly as it did before.
+ */
+async function prefetchOsrmPayload(input, options) {
+  if (options.useOsrm === false) return null;
+  try {
+    return await createOsrmContextPayload(input.properties || [], {
+      signal: options.signal,
+      deadlineMs: options.osrmDeadlineMs,
+    });
+  } catch (error) {
+    console.warn('[largeRouteOptimizer] OSRM prefetch failed; using continuity context.', error);
+    return null;
+  }
+}
+
 export async function optimizeLargeRoutesAsync(input = {}, options = {}) {
-  if (typeof Worker !== 'function') return synchronousFallback(input);
+  const osrmContextPayload = await prefetchOsrmPayload(input, options);
+  const enrichedInput = osrmContextPayload ? { ...input, osrmContextPayload } : input;
+
+  if (typeof Worker !== 'function') return synchronousFallback(enrichedInput);
 
   let worker;
   try {
@@ -340,7 +382,7 @@ export async function optimizeLargeRoutesAsync(input = {}, options = {}) {
     );
   } catch (error) {
     console.warn('[largeRouteOptimizer] Module worker unavailable; using synchronous fallback.', error);
-    return synchronousFallback(input);
+    return synchronousFallback(enrichedInput);
   }
 
   const activeRequestId = workerRequestId();
@@ -390,7 +432,7 @@ export async function optimizeLargeRoutesAsync(input = {}, options = {}) {
     };
 
     try {
-      worker.postMessage({ requestId: activeRequestId, input });
+      worker.postMessage({ requestId: activeRequestId, input: enrichedInput });
     } catch (error) {
       settle(reject, error);
     }

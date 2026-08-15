@@ -7,7 +7,7 @@ import {
     ChevronRight, Merge, Trash2, RefreshCw, Pencil, Check, Scissors, Play, Home
 } from 'lucide-react';
 import { generateOptimizedRoutes } from "@/components/logic/routeOptimizer";
-import { createRouteContinuityContext } from "@/components/logic/routeRoadContext";
+import { createRouteRoadContext } from "@/components/logic/routeRoadContext";
 import { base44 } from '@/api/base44Client';
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -155,7 +155,7 @@ export default function ActiveRoutesTab({
                 selectedRoutes.every(route => boundsKey(route) === boundsKey(firstSelectedRoute));
             const mergeStart = sharedRouteBounds ? firstSelectedRoute.start_location : null;
             const mergeEnd = sharedRouteBounds ? firstSelectedRoute.end_location : null;
-            const routingContext = createRouteContinuityContext(allProps);
+            const routingContext = await createRouteRoadContext(allProps);
             const merged = generateOptimizedRoutes(
                 allProps, allProps.length, mergeStart, [],
                 { minimizeTurns: true, use2Opt: true, walkingPattern: 'nearest', endLocation: mergeEnd, routeOriginMode: sharedRouteBounds ? firstSelectedRoute.route_origin_mode : 'none', excludeTerminal: false, preserveInputMembership: true, routingContext }
