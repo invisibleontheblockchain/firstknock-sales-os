@@ -51,6 +51,12 @@ import { createRoadCostCache } from './roadCostCache.js';
  *                             roads, orders the blocks inside each group on roads,
  *                             and cuts windows from THAT order — road-priced
  *                             grouping at full 1,000-door size.
+ * - barrier_repaired_windows_92 the surgical bet. Keeps the compact geometric
+ *                             windows, measures each window's internal road
+ *                             coherence, and moves only road-disconnected minority
+ *                             components (complete street blocks) to the
+ *                             road-nearest coherent window — barrier separation
+ *                             without global regrouping's measured sprawl.
  * - windows_138 / windows_69  wider windows solve more doors exactly together but
  *                             cost road pairs quadratically; narrower windows leave
  *                             more seams but solve each interior closer to optimal.
@@ -58,6 +64,7 @@ import { createRoadCostCache } from './roadCostCache.js';
 export const DEFAULT_DECOMPOSITION_PORTFOLIO = [
     { id: 'baseline_windows_92', mandatory: true, options: {} },
     { id: 'windows_92_offset_46', options: { windowOffsetDoors: 46 } },
+    { id: 'barrier_repaired_windows_92', options: { barrierRepair: true } },
     { id: 'coarse_road_ordered_windows_92', options: { coarseBlockOrder: true } },
     { id: 'coarse_road_ordered_windows_92_offset_46', options: { coarseBlockOrder: true, windowOffsetDoors: 46 } },
     { id: 'windows_138', options: { windowDoors: 138 } },

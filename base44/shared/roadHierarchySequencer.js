@@ -40,6 +40,7 @@ import { buildStreetBlocks, roadAwareStreetSweep } from './roadAwareStreetSweep.
 import { createMatrixMetricFns, fetchRoadMatrix, MAX_ROUTE_MATRIX_POINTS } from './roadMatrix.js';
 import { osrmCounters, resetOsrmCounters } from './osrmDispatcher.js';
 import { refineWindowSeams } from './roadSeamRefinement.js';
+import { repairBarrierWindows, DEFAULT_BARRIER_EXCESS_MILES } from './barrierWindowRepair.js';
 import { repairWorstTransitions } from './roadHotspotRepair.js';
 
 export const HIERARCHY_VERSION = 'road_hierarchy_v1';
@@ -431,6 +432,17 @@ export async function sequenceRoadHierarchy(properties, options = {}) {
         //                          Off by default: it must earn its place by
         //                          measuring shorter, candidate by candidate.
         coarseBlockOrder = false,
+        //   barrierRepair        - keep the compact geometric windows, but measure
+        //                          each window's internal road coherence and move a
+        //                          road-disconnected minority component's complete
+        //                          street blocks to the road-nearest coherent
+        //                          window. Repairs the aerial-near / road-far
+        //                          straddle (Route 1I window 0) WITHOUT the sprawl
+        //                          that global road grouping measured. Off by
+        //                          default: it competes in the portfolio and must
+        //                          win on independently measured miles.
+        barrierRepair = false,
+        barrierExcessMiles = DEFAULT_BARRIER_EXCESS_MILES,
         // Level 4 needs the finished route measured on the road network to know
         // WHICH transitions are still bad. That is a live OSRM dependency, so it is
         // injected explicitly: with no measurer the layer is skipped rather than
@@ -602,16 +614,44 @@ export async function sequenceRoadHierarchy(properties, options = {}) {
         // (10.8 mi -> 7.9 mi), so the seam is real and worth repairing; it is not
         // worth repairing by replacing the decomposition wholesale. Windows stay
         // geometric until a grouping strategy beats this number on measured miles.
-        const geometric = partitionBlocksByDoorBudget(entries, { maxDoors: maxWindowDoors });
-        const windowPoints = [...geometric.map((cluster) => cluster.representative), ...anchorPoints];
+        let geometric = partitionBlocksByDoorBudget(entries, { maxDoors: maxWindowDoors });
         telemetry.window_grouping_road_priced = false;
+        if (barrierRepair) {
+            // Surgical, not global: the compact geometric cut stays wherever the
+            // road network agrees with it, and only windows holding strongly
+            // road-disconnected pieces have those memberships repaired. A repair
+            // whose road costs cannot be resolved fails the sequencing — the
+            // caller keeps the route it already had rather than a guessed grouping.
+            const repaired = await repairBarrierWindows(geometric, {
+                excessMiles: barrierExcessMiles,
+                maxDoors: MAX_CLUSTER_DOORS,
+                maxWindows: MAX_ROUTE_MATRIX_POINTS - anchorPoints.length,
+                fetchMatrix,
+                baseUrl,
+                profile,
+                timeoutMs
+            });
+            if (!repaired.ok) {
+                return { ok: false, code: repaired.code, reason: repaired.reason };
+            }
+            geometric = repaired.windows;
+            Object.assign(telemetry, repaired.telemetry);
+            telemetry.matrix_request_count += repaired.telemetry.repair_matrix_requests;
+            telemetry.road_pairs_requested += repaired.telemetry.repair_road_pairs;
+        }
+        const windowPoints = [...geometric.map((cluster) => cluster.representative), ...anchorPoints];
         // The label must name the path that RAN, not the one that was preferred.
         // `decomposition` is initialized to the road-ordered strategy, so reaching
         // this branch without overwriting it stored 'road_ordered_windows' on routes
         // whose windows were cut from lat/lng boxes — a stored strategy that
         // contradicted `window_grouping_road_priced: false` in the same record, and
         // that made past route audits read as road-grouped when they were not.
-        telemetry.decomposition = 'geometric_windows';
+        // Barrier repair that actually moved blocks is its own strategy: the body
+        // is still geometric (so the road-priced grouping flag stays false), but
+        // the repaired memberships were decided on measured road connectivity.
+        telemetry.decomposition = Number(telemetry.barrier_blocks_moved) > 0
+            ? 'barrier_repaired_geometric_windows'
+            : 'geometric_windows';
         if (windowPoints.length > MAX_ROUTE_MATRIX_POINTS) {
             return { ok: false, code: 'WINDOW_COUNT_EXCEEDS_MATRIX_LIMIT', windowCount: geometric.length };
         }
