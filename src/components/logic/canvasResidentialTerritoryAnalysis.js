@@ -1092,6 +1092,54 @@ function buildResidentialOwnershipAtoms(knockUnits, unitNeighbors, weighting = n
 }
 
 /** Partitions preclassified, stable-ID street units without mutating them. */
+/**
+ * Merge two areas into one. Territories must stay connected, so this refuses a
+ * merge of two areas that do not touch rather than producing a territory a rep
+ * cannot walk. Returns the merged work-unit set for the caller to lock and
+ * regenerate around; it does not repartition on its own.
+ */
+export function mergeCanvasResidentialZones(input = {}) {
+  const streetUnits = input.street_units ?? input.classified_street_units ?? input.streetUnits ?? [];
+  const zones = Array.isArray(input.zones) ? input.zones : [];
+  const targetIds = [input.zone_id_a, input.zone_id_b].map((id) => String(id ?? ''));
+  if (!Array.isArray(streetUnits) || targetIds.some((id) => !id) || targetIds[0] === targetIds[1]) {
+    return { ok: false, code: 'INVALID_MERGE_REQUEST' };
+  }
+  const [first, second] = targetIds.map((id) => zones.find((zone) => String(zone?.zone_id) === id));
+  if (!first || !second) return { ok: false, code: 'MERGE_ZONE_NOT_FOUND' };
+
+  const knockUnits = streetUnits.filter((unit) => unit.canvas_role === 'knock');
+  const neighbors = effectiveKnockNeighbors(streetUnits, deriveNeighbors(streetUnits));
+  const { atomNeighbors } = buildResidentialOwnershipAtoms(
+    knockUnits.sort((left, right) => compareIds(left.id, right.id)),
+    neighbors,
+  );
+  const atomIdByMemberUnitId = new Map();
+  buildResidentialOwnershipAtoms(knockUnits, neighbors).atoms
+    .forEach((atom) => atom.member_unit_ids.forEach((unitId) => atomIdByMemberUnitId.set(unitId, atom.id)));
+
+  const mergedUnitIds = [...new Set([
+    ...(first.work_unit_ids || []),
+    ...(second.work_unit_ids || []),
+  ].map(canonicalId).filter(Boolean))].sort(compareIds);
+  const mergedAtomIds = [...new Set(mergedUnitIds.map((id) => atomIdByMemberUnitId.get(id)).filter(Boolean))];
+
+  if (!idsConnected(mergedAtomIds, atomNeighbors)) {
+    return { ok: false, code: 'MERGE_ZONES_NOT_ADJACENT' };
+  }
+  return {
+    ok: true,
+    merged_zone: {
+      zone_id: first.zone_id,
+      work_unit_ids: mergedUnitIds,
+      locked: true,
+    },
+    removed_zone_id: second.zone_id,
+    // One fewer area than before the merge.
+    area_count: Math.max(1, zones.length - 1),
+  };
+}
+
 export function partitionCanvasResidentialTerritories(input = {}) {
   const streetUnits = input.street_units ?? input.classified_street_units ?? input.streetUnits ?? [];
   const areaCount = Number(input.area_count ?? input.requested_zone_count ?? input.zone_count ?? 1);
@@ -1127,22 +1175,73 @@ export function partitionCanvasResidentialTerritories(input = {}) {
   const { atoms, atomNeighbors } = buildResidentialOwnershipAtoms(knockUnits, neighbors, weighting);
   const atomById = new Map(atoms.map((atom) => [atom.id, atom]));
   const atomIds = atoms.map((atom) => atom.id);
-  const components = connectedComponents(atomIds, atomNeighbors);
-  if (areaCount < components.length || areaCount > atomIds.length) {
+
+  // Manager-locked areas survive a regeneration unchanged, which is what
+  // "preserve manager-locked areas and reduce churn during edits" requires.
+  // A lock is only honoured when it is itself a legal territory: whole atoms
+  // only, non-overlapping, and connected. Anything else is rejected rather than
+  // quietly repartitioned, because a silently-moved lock is worse than an error.
+  const lockFailure = (code) => ({
+    ok: false, status: 'blocked', deployable: false, code, zones: [], work_units: knockUnits,
+  });
+  const atomIdByMemberUnitId = new Map();
+  atoms.forEach((atom) => atom.member_unit_ids.forEach((unitId) => atomIdByMemberUnitId.set(unitId, atom.id)));
+
+  const lockedGroups = [];
+  const lockedAtomIds = new Set();
+  for (const locked of (Array.isArray(input.locked_zones) ? input.locked_zones : [])) {
+    const unitIds = (locked?.work_unit_ids || locked?.street_work_unit_ids || [])
+      .map(canonicalId).filter(Boolean);
+    if (!unitIds.length) return lockFailure('INVALID_LOCKED_ZONE');
+    const unitIdSet = new Set(unitIds);
+    const groupAtomIds = new Set();
+    for (const unitId of unitIds) {
+      const atomId = atomIdByMemberUnitId.get(unitId);
+      if (!atomId) return lockFailure('LOCKED_UNIT_NOT_ELIGIBLE');
+      if (lockedAtomIds.has(atomId)) return lockFailure('LOCKED_ZONE_OVERLAP');
+      groupAtomIds.add(atomId);
+    }
+    // Taking whole atoms is what keeps a protected cul-de-sac from being cut.
+    for (const atomId of groupAtomIds) {
+      const members = atomById.get(atomId)?.member_unit_ids || [];
+      if (!members.every((id) => unitIdSet.has(id))) return lockFailure('LOCKED_ZONE_SPLITS_PROTECTED_GROUP');
+    }
+    if (!idsConnected([...groupAtomIds], atomNeighbors)) return lockFailure('LOCKED_ZONE_DISCONNECTED');
+    groupAtomIds.forEach((id) => lockedAtomIds.add(id));
+    lockedGroups.push({
+      ids: groupAtomIds,
+      load: [...groupAtomIds].reduce((sum, id) => sum + workload(atomById.get(id)), 0),
+      locked: true,
+      locked_zone_id: locked?.zone_id ? String(locked.zone_id) : null,
+    });
+  }
+
+  // Only the unlocked remainder is repartitioned, and it must stay connected
+  // without routing through a locked atom.
+  const freeAtomIds = atomIds.filter((id) => !lockedAtomIds.has(id));
+  const freeNeighbors = new Map(freeAtomIds.map((id) => [
+    id,
+    (atomNeighbors.get(id) || []).filter((neighborId) => !lockedAtomIds.has(neighborId)),
+  ]));
+  const components = connectedComponents(freeAtomIds, freeNeighbors);
+  const freeAreaCount = areaCount - lockedGroups.length;
+  const minimumZoneCount = components.length + lockedGroups.length;
+  const maximumZoneCount = freeAtomIds.length + lockedGroups.length;
+  if (areaCount < minimumZoneCount || areaCount > maximumZoneCount) {
     return {
       ok: false,
       status: 'infeasible',
       deployable: false,
-      code: areaCount < components.length ? 'TOO_FEW_ZONES_FOR_COMPONENTS' : 'TOO_MANY_ZONES_FOR_WORK_UNITS',
+      code: areaCount < minimumZoneCount ? 'TOO_FEW_ZONES_FOR_COMPONENTS' : 'TOO_MANY_ZONES_FOR_WORK_UNITS',
       zones: [],
       work_units: knockUnits,
-      details: { minimum_zone_count: components.length, maximum_zone_count: atomIds.length },
+      details: { minimum_zone_count: minimumZoneCount, maximum_zone_count: maximumZoneCount },
     };
   }
-  const allocation = allocateZoneCounts(components, areaCount, atomById);
-  const groups = [];
+  const allocation = allocateZoneCounts(components, freeAreaCount, atomById);
+  const groups = [...lockedGroups];
   components.forEach((component, index) => {
-    const partitioned = partitionComponent(component, allocation[index], atomById, atomNeighbors);
+    const partitioned = partitionComponent(component, allocation[index], atomById, freeNeighbors);
     if (partitioned) groups.push(...partitioned);
   });
   if (groups.length !== areaCount) {
@@ -1163,6 +1262,8 @@ export function partitionCanvasResidentialTerritories(input = {}) {
       work_unit_ids: workUnitIds,
       opportunity_expected: opportunity,
       workload_score: group.load,
+      ...(group.locked ? { locked: true } : {}),
+      ...(group.workload_minutes !== undefined ? { workload_minutes: group.workload_minutes } : {}),
     };
   });
   const assignedIds = zones.flatMap((zone) => zone.work_unit_ids);

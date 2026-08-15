@@ -6,6 +6,7 @@ import {
   analyzeCanvasResidentialTerritory,
   associateCanvasFeaturesToStreetUnits,
   classifyCanvasStreetUnit,
+  mergeCanvasResidentialZones,
   partitionCanvasResidentialTerritories,
 } from '../src/components/logic/canvasResidentialTerritoryAnalysis.js';
 
@@ -177,6 +178,161 @@ test('minutes workload basis is opt-in and preserves every ownership guarantee',
       ['a', 'b', 'c', 'd'],
     );
   }
+});
+
+test('a locked area survives regeneration with its exact units', () => {
+  const streets = [
+    unit('a', -82.004, -82.003, { weight: 5 }),
+    unit('b', -82.003, -82.002, { weight: 5 }),
+    unit('c', -82.002, -82.001, { weight: 5 }),
+    unit('d', -82.001, -82, { weight: 5 }),
+  ];
+  const locked = { zone_id: 'keep-me', work_unit_ids: ['a', 'b'] };
+
+  const result = partitionCanvasResidentialTerritories({
+    street_units: streets,
+    area_count: 2,
+    locked_zones: [locked],
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.zones.length, 2);
+  const lockedZone = result.zones.find((zone) => zone.locked);
+  assert.ok(lockedZone, 'the locked area must be marked');
+  assert.deepEqual(lockedZone.work_unit_ids, ['a', 'b'], 'locked units are preserved exactly');
+
+  // Every guarantee still holds around the lock.
+  assert.equal(result.qa.connected_zones, true);
+  assert.equal(result.qa.exclusive_work_unit_coverage, true);
+  assert.equal(result.qa.protected_units_intact, true);
+  assert.deepEqual(result.zones.flatMap((zone) => zone.work_unit_ids).sort(), ['a', 'b', 'c', 'd']);
+
+  // Regenerating at a different count must not move the locked units.
+  const three = partitionCanvasResidentialTerritories({
+    street_units: streets,
+    area_count: 3,
+    locked_zones: [locked],
+  });
+  assert.equal(three.ok, true);
+  assert.deepEqual(three.zones.find((zone) => zone.locked).work_unit_ids, ['a', 'b']);
+});
+
+test('an illegal lock is refused rather than quietly repartitioned', () => {
+  const streets = [
+    unit('a', -82.004, -82.003, { weight: 5 }),
+    unit('b', -82.003, -82.002, { weight: 5 }),
+    unit('c', -82.002, -82.001, { weight: 5 }),
+    unit('d', -82.001, -82, { weight: 5 }),
+  ];
+  const partition = (locked_zones, area_count = 2) => partitionCanvasResidentialTerritories({
+    street_units: streets, area_count, locked_zones,
+  });
+
+  assert.equal(partition([{ work_unit_ids: ['a', 'd'] }]).code, 'LOCKED_ZONE_DISCONNECTED');
+  assert.equal(partition([{ work_unit_ids: ['nope'] }]).code, 'LOCKED_UNIT_NOT_ELIGIBLE');
+  assert.equal(partition([{ work_unit_ids: [] }]).code, 'INVALID_LOCKED_ZONE');
+  assert.equal(
+    partition([{ work_unit_ids: ['a', 'b'] }, { work_unit_ids: ['b', 'c'] }]).code,
+    'LOCKED_ZONE_OVERLAP',
+  );
+  // Locking every area leaves no room for the remaining units.
+  assert.equal(partition([{ work_unit_ids: ['a', 'b'] }], 1).status, 'infeasible');
+});
+
+test('a lock may not cut a protected cul-de-sac group', () => {
+  // The cul-de-sac sits at the end of the chain, so locking it whole still
+  // leaves a connected remainder to partition.
+  const streets = [
+    unit('a', -82.004, -82.003, { weight: 5 }),
+    unit('b', -82.003, -82.002, { weight: 5 }),
+    unit('sac-1', -82.002, -82.001, { weight: 5, protectedGroupId: 'sac' }),
+    unit('sac-2', -82.001, -82, { weight: 5, protectedGroupId: 'sac' }),
+  ];
+
+  const cut = partitionCanvasResidentialTerritories({
+    street_units: streets,
+    area_count: 2,
+    locked_zones: [{ work_unit_ids: ['b', 'sac-1'] }],
+  });
+  assert.equal(cut.code, 'LOCKED_ZONE_SPLITS_PROTECTED_GROUP');
+
+  const whole = partitionCanvasResidentialTerritories({
+    street_units: streets,
+    area_count: 2,
+    locked_zones: [{ work_unit_ids: ['sac-1', 'sac-2'] }],
+  });
+  assert.equal(whole.ok, true);
+  assert.equal(whole.qa.protected_units_intact, true);
+});
+
+test('merging two areas unions their units and refuses non-adjacent areas', () => {
+  const streets = [
+    unit('a', -82.004, -82.003, { weight: 5 }),
+    unit('b', -82.003, -82.002, { weight: 5 }),
+    unit('c', -82.002, -82.001, { weight: 5 }),
+    unit('d', -82.001, -82, { weight: 5 }),
+  ];
+  const zones = [
+    { zone_id: 'z1', work_unit_ids: ['a', 'b'] },
+    { zone_id: 'z2', work_unit_ids: ['c', 'd'] },
+  ];
+
+  const merged = mergeCanvasResidentialZones({
+    street_units: streets, zones, zone_id_a: 'z1', zone_id_b: 'z2',
+  });
+  assert.equal(merged.ok, true);
+  assert.deepEqual(merged.merged_zone.work_unit_ids, ['a', 'b', 'c', 'd']);
+  assert.equal(merged.merged_zone.locked, true, 'a merge is a manager decision and holds through regeneration');
+  assert.equal(merged.removed_zone_id, 'z2');
+  assert.equal(merged.area_count, 1);
+
+  const apart = mergeCanvasResidentialZones({
+    street_units: streets,
+    zones: [
+      { zone_id: 'left', work_unit_ids: ['a'] },
+      { zone_id: 'right', work_unit_ids: ['d'] },
+    ],
+    zone_id_a: 'left',
+    zone_id_b: 'right',
+  });
+  assert.equal(apart.ok, false);
+  assert.equal(apart.code, 'MERGE_ZONES_NOT_ADJACENT', 'a merge must never create a territory nobody can walk');
+
+  assert.equal(mergeCanvasResidentialZones({ street_units: streets, zones, zone_id_a: 'z1', zone_id_b: 'z1' }).code, 'INVALID_MERGE_REQUEST');
+  assert.equal(mergeCanvasResidentialZones({ street_units: streets, zones, zone_id_a: 'z1', zone_id_b: 'ghost' }).code, 'MERGE_ZONE_NOT_FOUND');
+});
+
+test('a merged area can be locked back into a smaller partition', () => {
+  const streets = [
+    unit('a', -82.004, -82.003, { weight: 5 }),
+    unit('b', -82.003, -82.002, { weight: 5 }),
+    unit('c', -82.002, -82.001, { weight: 5 }),
+    unit('d', -82.001, -82, { weight: 5 }),
+  ];
+  const three = partitionCanvasResidentialTerritories({ street_units: streets, area_count: 3 });
+  assert.equal(three.ok, true);
+
+  const merged = mergeCanvasResidentialZones({
+    street_units: streets,
+    zones: three.zones,
+    zone_id_a: three.zones[0].zone_id,
+    zone_id_b: three.zones[1].zone_id,
+  });
+  assert.equal(merged.ok, true);
+
+  const regenerated = partitionCanvasResidentialTerritories({
+    street_units: streets,
+    area_count: merged.area_count,
+    locked_zones: [merged.merged_zone],
+  });
+  assert.equal(regenerated.ok, true);
+  assert.equal(regenerated.zones.length, 2);
+  assert.equal(regenerated.qa.exclusive_work_unit_coverage, true);
+  assert.equal(regenerated.qa.connected_zones, true);
+  assert.deepEqual(
+    regenerated.zones.find((zone) => zone.locked).work_unit_ids,
+    merged.merged_zone.work_unit_ids,
+  );
 });
 
 test('minutes workload stays deterministic under input reordering', () => {
