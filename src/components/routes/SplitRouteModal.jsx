@@ -34,6 +34,18 @@ function defaultMaximum(totalHomes) {
   return Math.min(savedValue, totalHomes - 1);
 }
 
+function defaultRouteCount(totalHomes) {
+  if (totalHomes < 2) return 2;
+  let savedValue = 5;
+  try {
+    const parsed = Number(localStorage.getItem('fk_split_route_count'));
+    if (Number.isInteger(parsed) && parsed >= 2) savedValue = parsed;
+  } catch {
+    // Local preferences are optional.
+  }
+  return Math.min(savedValue, totalHomes);
+}
+
 function entityRows(response) {
   if (Array.isArray(response)) return response;
   if (Array.isArray(response?.items)) return response.items;
@@ -95,12 +107,14 @@ export default function SplitRouteModal({
   onCreated,
 }) {
   const totalHomes = getRouteStops(route).length;
-  const [sizingMode, setSizingMode] = useState('max_homes');
-  const [requestedValue, setRequestedValue] = useState(() => defaultMaximum(totalHomes));
+  // Number of routes is the primary way managers think about dividing a
+  // territory, so the planner opens on it.
+  const [sizingMode, setSizingMode] = useState('route_count');
+  const [requestedValue, setRequestedValue] = useState(() => defaultRouteCount(totalHomes));
   // The plan rebuild + map refit is heavy, so typing updates a local field and
   // only commits after a short pause. Recomputing on every keystroke is what
   // made this input feel laggy and made the preview map flicker.
-  const [valueDraft, setValueDraft] = useState(() => String(defaultMaximum(totalHomes)));
+  const [valueDraft, setValueDraft] = useState(() => String(defaultRouteCount(totalHomes)));
   const [variant, setVariant] = useState(0);
   const [isPreviewExpanded, setIsPreviewExpanded] = useState(false);
   const [routeNames, setRouteNames] = useState([]);
@@ -148,7 +162,7 @@ export default function SplitRouteModal({
       ? (nextMode === 'route_count'
         ? plan.routeCount
         : Math.min(Math.ceil(plan.totalHomes / plan.routeCount), plan.totalHomes - 1))
-      : (nextMode === 'route_count' ? 2 : defaultMaximum(totalHomes));
+      : (nextMode === 'route_count' ? defaultRouteCount(totalHomes) : defaultMaximum(totalHomes));
     setRequestedValue(nextValue);
     setValueDraft(String(nextValue));
     setSizingMode(nextMode);
@@ -358,6 +372,8 @@ export default function SplitRouteModal({
       try {
         if (sizingMode === 'max_homes') {
           localStorage.setItem('fk_split_max_homes', String(requestedValue));
+        } else if (sizingMode === 'route_count') {
+          localStorage.setItem('fk_split_route_count', String(requestedValue));
         }
       } catch {
         // Local preferences are optional.
@@ -423,20 +439,20 @@ export default function SplitRouteModal({
                 <button
                   type="button"
                   disabled={isSaving}
-                  aria-pressed={sizingMode === 'max_homes'}
-                  onClick={() => switchSizingMode('max_homes')}
-                  className={`min-h-11 rounded-xl px-3 text-xs font-black transition-colors ${sizingMode === 'max_homes' ? 'bg-[#2EEB57] text-black' : 'text-white/55 hover:bg-white/5 hover:text-white'}`}
-                >
-                  Maximum homes
-                </button>
-                <button
-                  type="button"
-                  disabled={isSaving}
                   aria-pressed={sizingMode === 'route_count'}
                   onClick={() => switchSizingMode('route_count')}
                   className={`min-h-11 rounded-xl px-3 text-xs font-black transition-colors ${sizingMode === 'route_count' ? 'bg-[#2EEB57] text-black' : 'text-white/55 hover:bg-white/5 hover:text-white'}`}
                 >
                   Number of routes
+                </button>
+                <button
+                  type="button"
+                  disabled={isSaving}
+                  aria-pressed={sizingMode === 'max_homes'}
+                  onClick={() => switchSizingMode('max_homes')}
+                  className={`min-h-11 rounded-xl px-3 text-xs font-black transition-colors ${sizingMode === 'max_homes' ? 'bg-[#2EEB57] text-black' : 'text-white/55 hover:bg-white/5 hover:text-white'}`}
+                >
+                  Maximum homes
                 </button>
               </div>
             </div>
