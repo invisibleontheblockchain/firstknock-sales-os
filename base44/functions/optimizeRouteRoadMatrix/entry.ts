@@ -20,8 +20,11 @@ import {
     createTieredMatrixMetricFns,
     MAX_TIERED_ROUTE_DOORS,
     planTieredRoadMatrix,
+    TIER_CLUSTER,
     TIER_DOOR
 } from '../../shared/roadMatrixTiers.js';
+import { sequenceRoadHierarchy } from '../../shared/roadHierarchySequencer.js';
+import { measureRoadPath } from '../../shared/roadPathMeasure.js';
 import {
     DURATION_TIE_TOLERANCE_MINUTES,
     measureRouteCandidate,
@@ -147,22 +150,6 @@ export default async function (req: Request): Promise<Response> {
         }
         const continuityOrder = continuityChunks.doorChunks.flat().map((door) => door.property);
 
-        let matrix = null;
-        let matrixError = plan.ok ? '' : `Road matrix could not be bounded: ${plan.code}.`;
-        const matrixStartedAt = Date.now();
-        if (plan.ok) {
-            try {
-                matrix = await fetchRoadMatrix(matrixPoints, {
-                    baseUrl: readSecret('OSRM_BASE_URL') || DEFAULT_OSRM_BASE_URL,
-                    profile,
-                    timeoutMs
-                });
-            } catch (error) {
-                matrixError = error.message;
-            }
-        }
-        const matrixMs = Date.now() - matrixStartedAt;
-
         const baseMetadata = {
             property_set_fingerprint: setFingerprint,
             start_constraint: startLocation,
@@ -181,6 +168,135 @@ export default async function (req: Request): Promise<Response> {
             objective_version: OBJECTIVE_VERSION,
             duration_tie_tolerance_minutes: DURATION_TIE_TOLERANCE_MINUTES
         };
+
+        // Cluster-tier routes take the hierarchical path instead of a single
+        // representative matrix. A representative matrix leaves every leg INSIDE a
+        // cluster priced by straight-line distance, which is the defect that let a
+        // route weave between four streets and still report itself optimized. The
+        // hierarchy gives each cluster its own exact door matrix, so no
+        // order-affecting comparison inside a cluster is made without roads, and
+        // the result is then validated against real driving mileage before it is
+        // allowed to replace the route the caller already has.
+        if (plan.ok && plan.tier === TIER_CLUSTER) {
+            const hierarchyStartedAt = Date.now();
+            const osrmBaseUrl = readSecret('OSRM_BASE_URL') || DEFAULT_OSRM_BASE_URL;
+            const hierarchy = await sequenceRoadHierarchy(canonicalProperties, {
+                startLocation,
+                endLocation,
+                baseUrl: osrmBaseUrl,
+                profile,
+                timeoutMs
+            });
+
+            if (hierarchy.ok && exactOnce(hierarchy.order, properties.length)) {
+                const withAnchors = (order) => [
+                    ...(startLocation ? [startLocation] : []),
+                    ...order,
+                    ...(endLocation ? [endLocation] : [])
+                ];
+                const measureOptions = { baseUrl: osrmBaseUrl, profile, timeoutMs };
+                // Product truth: both orders measured the same way, on the road
+                // network, in the units a manager cares about.
+                const [proposedPath, currentPath] = await Promise.all([
+                    measureRoadPath(withAnchors(hierarchy.order), measureOptions),
+                    measureRoadPath(withAnchors(properties), measureOptions)
+                ]);
+
+                const telemetry = hierarchy.telemetry;
+                const round = (value) => (Number.isFinite(value) ? Math.round(value * 1000) / 1000 : null);
+                const validated = proposedPath.ok && currentPath.ok;
+                // An unvalidated order is never applied. Without a real-mileage
+                // comparison there is no evidence it is better, and "the
+                // computation finished" is not evidence.
+                const keepCurrent = !validated || currentPath.totalMiles <= proposedPath.totalMiles;
+                const winningOrder = keepCurrent ? properties : hierarchy.order;
+                const degraded = telemetry.degraded;
+
+                return Response.json({
+                    success: true,
+                    selected: keepCurrent ? 'current' : 'road_aware',
+                    order: winningOrder.map(propertyIdentity),
+                    property_count: winningOrder.length,
+                    routing_metadata: {
+                        ...baseMetadata,
+                        strategy: 'road_hierarchy_cluster_exact_door_matrix',
+                        road_network_used: true,
+                        fallback: false,
+                        objective: 'measured_road_miles',
+                        road_matrix_source: `osrm:${profile}`,
+                        road_matrix_ms: Date.now() - hierarchyStartedAt,
+                        // Computational truth: how the decisions were priced.
+                        ...telemetry,
+                        // Product truth: what the route actually drives.
+                        road_path_validated: validated,
+                        road_path_error: proposedPath.ok ? (currentPath.error || null) : proposedPath.error,
+                        validated_road_miles: round(proposedPath.ok ? proposedPath.totalMiles : null),
+                        current_validated_road_miles: round(currentPath.ok ? currentPath.totalMiles : null),
+                        validated_longest_leg_miles: round(proposedPath.ok ? proposedPath.longestLegMiles : null),
+                        current_longest_leg_miles: round(currentPath.ok ? currentPath.longestLegMiles : null),
+                        road_miles_saved: round(
+                            validated ? currentPath.totalMiles - proposedPath.totalMiles : null
+                        ),
+                        input_measured: round(currentPath.ok ? currentPath.totalMiles : null),
+                        road_aware_measured: round(proposedPath.ok ? proposedPath.totalMiles : null),
+                        improvement: round(
+                            validated ? currentPath.totalMiles - proposedPath.totalMiles : null
+                        ),
+                        current_route_distance: round(currentPath.ok ? currentPath.totalMiles : null),
+                        winning_route_distance: round(
+                            keepCurrent
+                                ? (currentPath.ok ? currentPath.totalMiles : null)
+                                : proposedPath.totalMiles
+                        ),
+                        distance_improvement: round(
+                            validated ? currentPath.totalMiles - proposedPath.totalMiles : null
+                        ),
+                        matrix_point_count: null,
+                        matrix_block_count: telemetry.matrix_request_count,
+                        // Never "ok because it finished": a route that had ANY
+                        // aerial-priced sequencing, or that could not be measured
+                        // on real roads, says exactly that here.
+                        road_aware_degraded: degraded,
+                        road_aware_degradation_reason: degraded
+                            ? telemetry.degraded_cluster_reasons.join('; ') || 'cluster_sequencing_degraded'
+                            : null,
+                        distance_estimate: validated ? 'road_measured' : 'unvalidated',
+                        fallback_status: validated ? 'none' : 'road_path_unvalidated',
+                        fallback_reason: validated ? null : 'final_order_not_measured_on_road_network',
+                        optimality_status: !validated
+                            ? 'unvalidated_not_applied'
+                            : degraded
+                                ? 'road_validated_degraded_sequencing'
+                                : 'road_validated_hierarchical',
+                        selected_candidate_type: keepCurrent ? 'current' : 'road_aware_hierarchy',
+                        candidate_count: 2,
+                        solver_runtime_ms: Date.now() - solverStartedAt,
+                        street_block_count: telemetry.street_block_count,
+                        access_block_count: continuityChunks.accessBlocks.length,
+                        property_order_fingerprint: routePropertyOrderFingerprint(winningOrder),
+                        exact_once_verified: true
+                    }
+                });
+            }
+            // Hierarchy did not apply — fall through to the bounded representative
+            // matrix below, which reports its own aerial degradation honestly.
+        }
+
+        let matrix = null;
+        let matrixError = plan.ok ? '' : `Road matrix could not be bounded: ${plan.code}.`;
+        const matrixStartedAt = Date.now();
+        if (plan.ok) {
+            try {
+                matrix = await fetchRoadMatrix(matrixPoints, {
+                    baseUrl: readSecret('OSRM_BASE_URL') || DEFAULT_OSRM_BASE_URL,
+                    profile,
+                    timeoutMs
+                });
+            } catch (error) {
+                matrixError = error.message;
+            }
+        }
+        const matrixMs = Date.now() - matrixStartedAt;
 
         // Fallback: never block route creation on the routing engine. The caller
         // must not overwrite a verified road-aware order with this — `fallback`
