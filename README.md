@@ -1,58 +1,91 @@
 # FirstKnock Sales OS
 
-> **The field intelligence platform for door-to-door sales teams.** FirstKnock ingests verified sold-home data via a 3-Step Validation Pipeline, generates optimized walking routes, and equips reps with a mobile-first knocking interface — all backed by real-time GPS proof-of-visit and team analytics.
+> **Field intelligence for door-to-door sales teams.**
+> Draw a boundary on a map. FirstKnock turns it into real, ownable work — verified sold-home leads on a road-optimized walking route, or connected residential territories split fairly across a crew — then puts it in every rep's pocket, online or off.
 
 **Stack:** React 18 · Vite · TanStack Query · Leaflet · Base44 BaaS · Deno Cloud Functions · Stripe Billing  
-**Data Providers:** RentCast API · BatchData API · H3 Spatial Index (Uber)
+**Data Providers:** BatchData API · RentCast API · OpenStreetMap · US Census · OSRM
+
+<p align="left">
+  <img alt="React 18" src="https://img.shields.io/badge/React-18-149ECA?logo=react&logoColor=white">
+  <img alt="Vite" src="https://img.shields.io/badge/Vite-646CFF?logo=vite&logoColor=white">
+  <img alt="Deno" src="https://img.shields.io/badge/Deno-000000?logo=deno&logoColor=white">
+  <img alt="Postgres" src="https://img.shields.io/badge/Neon%20Postgres-336791?logo=postgresql&logoColor=white">
+  <img alt="Leaflet" src="https://img.shields.io/badge/Leaflet-199900?logo=leaflet&logoColor=white">
+  <img alt="Stripe" src="https://img.shields.io/badge/Stripe-635BFF?logo=stripe&logoColor=white">
+</p>
+
+### Two ways to generate work
+
+FirstKnock runs **two independent generation lanes**. They share the map, the roster, and billing — and nothing else. A failure in one cannot corrupt the other, and that isolation is enforced by tests.
+
+|  | 🎯 **Precision** | 🗺️ **Canvas** |
+|---|---|---|
+| **Answers** | *Which specific homes just sold?* | *How do I split this whole area into fair territories?* |
+| **Unit of work** | An individual verified property | A connected street-side territory |
+| **Evidence** | BatchData / RentCast, paid per pull | OpenStreetMap + Census, precompiled |
+| **Marginal cost** | Metered per property | Effectively zero once compiled |
+| **Output** | An optimized walking route | Exclusive territories, one owner each |
+| **Best for** | Chasing fresh sold-home signal | Standing up a full crew across a market |
 
 ---
 
 ## Table of Contents
 
 1. [System Architecture](#system-architecture)
-2. [The 3-Step Property Validation Pipeline](#the-3-step-property-validation-pipeline)
-3. [Page-by-Page Feature Reference](#page-by-page-feature-reference)
-4. [Cloud Functions Reference](#cloud-functions-reference)
-5. [Data Entities & Schema](#data-entities--schema)
-6. [Component Library Map](#component-library-map)
-7. [Local Development](#local-development)
-8. [Environment Variables](#environment-variables)
+2. [Precision — Verified Property Generation](#precision--verified-property-generation)
+3. [Canvas — Territory Generation](#canvas--territory-generation)
+4. [Page-by-Page Feature Reference](#page-by-page-feature-reference)
+5. [Cloud Functions Reference](#cloud-functions-reference)
+6. [Data Entities & Schema](#data-entities--schema)
+7. [Component Library Map](#component-library-map)
+8. [Local Development](#local-development)
+9. [Environment Variables](#environment-variables)
 
 ---
 
 ## System Architecture
 
+```mermaid
+flowchart TB
+    subgraph Client["🖥️  Client — Vite + React 18"]
+        direction LR
+        RS["RoleSelect<br/><i>auth gate</i>"] --> HOME["Home<br/><i>manager map</i>"]
+        RS --> REP["RepHome<br/><i>mobile knocking</i>"]
+        RS --> ADMIN["AdminTeam<br/><i>roster + billing</i>"]
+        HOME & REP & ADMIN --- TQ(["TanStack Query cache"])
+    end
+
+    subgraph Backend["☁️  Base44 Cloud Functions — Deno"]
+        direction LR
+        subgraph P["🎯 Precision lane"]
+            SBP["startBatchDataPull"] --> PFC["processFetchChunk"]
+            PFC --> WD["watchdogStaleJobs"]
+        end
+        subgraph C["🗺️ Canvas lane"]
+            CSA["canvasStartAnalysis"] --> CDC["canvasDeployCampaign"]
+            CDC --> CPA["canvasPublishAssignmentPackages"]
+        end
+        BILL["stripeWebhook<br/>reconcilePrecisionUsage"]
+    end
+
+    Client -->|REST| Backend
+
+    P --> NEON[("Neon Postgres<br/><i>properties + candidates</i>")]
+    C --> OPS[("Canvas operational store<br/><i>campaigns, zones, decisions</i>")]
+    P --> MP[("MasterProperty<br/><i>deduped by address_hash</i>")]
+
+    NEON --> BD["BatchData / RentCast<br/><i>metered</i>"]
+    C --> EV["Signed evidence release<br/><i>OSM + Census, immutable</i>"]
+    P -. road matrix .-> OSRM["OSRM<br/><i>via global dispatcher</i>"]
+
+    style P fill:#1e3a5f,stroke:#4a9eff,color:#fff
+    style C fill:#1e4d3a,stroke:#4ade80,color:#fff
+    style Client fill:#2d2d3a,stroke:#8b8ba7,color:#fff
+    style Backend fill:#3a2d1e,stroke:#d4a04a,color:#fff
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                        CLIENT (Vite + React)                    │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌───────────────────┐  │
-│  │RoleSelect│→│  Home    │ │ RepHome  │ │ AdminTeam         │  │
-│  │(Landing) │ │(Manager) │ │(Rep/Mob) │ │(Command Center)   │  │
-│  └──────────┘ └────┬─────┘ └─────┬────┘ └──────┬────────────┘  │
-│                    │             │              │               │
-│              ┌─────┴─────────────┴──────────────┴────┐         │
-│              │     TanStack Query (Cache Layer)       │         │
-│              └─────────────────┬──────────────────────┘         │
-└────────────────────────────────┼────────────────────────────────┘
-                                 │ REST / WebSocket
-┌────────────────────────────────┼────────────────────────────────┐
-│                     BASE44 BACKEND (Deno)                       │
-│  ┌─────────────────┐  ┌──────────────────┐  ┌───────────────┐  │
-│  │processFetchChunk│  │fetchZipProperties│  │ stripeWebhook │  │
-│  │  (3-Step Pipeline) │  (3-Step Pipeline)│  │ (Billing)     │  │
-│  └────────┬────────┘  └────────┬─────────┘  └───────────────┘  │
-│           │                    │                                │
-│     ┌─────┴────────────────────┴──────┐                        │
-│     │      MasterProperty Table       │                        │
-│     │  (Deduplicated by address_hash) │                        │
-│     └─────────────────────────────────┘                        │
-└─────────────────────────────────────────────────────────────────┘
-                      │                    │
-              ┌───────┴──────┐    ┌────────┴────────┐
-              │  RentCast    │    │   BatchData     │
-              │  (Deeds+MLS) │    │  (Verification) │
-              └──────────────┘    └─────────────────┘
-```
+
+**The two lanes never touch.** Precision writes properties and routes; Canvas writes campaigns, zones, and decisions. Canvas holds no `SavedRoute` or `Property` reference, and Precision map layers are suppressed in Canvas mode — both guarded by `test/canvas-precision-isolation.test.mjs`.
 
 ### Authentication & Routing Flow
 
@@ -66,11 +99,64 @@
 
 ---
 
-## The 3-Step Property Validation Pipeline
+## Precision — Verified Property Generation
 
-This pipeline lives inside two cloud functions (`processFetchChunk/entry.ts` and `fetchZipProperties/entry.ts`) and executes **synchronously before any record is written to the database**. This guarantees zero false-positive leads reach the map.
+Precision answers **"which specific homes just sold in this area?"** Every property costs money to verify, so the entire lane is built around *not wasting a call* and *never writing an unverified record*.
 
-### Step 1: RentCast Dual-Stream Aggregation
+### Order → job → route
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant M as Manager
+    participant S as startBatchDataPull
+    participant J as FetchJob
+    participant C as processFetchChunk
+    participant N as Neon Postgres
+    participant R as Route optimizer
+
+    M->>S: Draw polygon, request N properties
+    S->>S: Validate polygon, price, check cap
+    S->>J: Reserve job (pending)
+    J->>C: Chain first chunk
+    loop until area exhausted or budget spent
+        C->>C: Page BatchData (5 concurrent, 100/page)
+        C->>C: Validate before write
+        C->>N: Batched write (250/statement)
+        C->>J: Persist offset + progress
+        C->>C: Chain next chunk
+    end
+    J-->>M: completed
+    M->>R: Generate route from candidates
+    R->>N: getRouteCandidatesFromNeon
+    R-->>M: Road-optimized walking route
+```
+
+**Job lifecycle:** `pending → running → completed | failed | cancelled`. Only `pending` and `running` count as active, which is what stops a manager from stacking duplicate paid pulls on one area.
+
+**Why it chunks.** A single invocation gets a **45-second provider scan budget** and a ceiling of **2,500 selected records**. When either runs out, the chunk persists its offset and chains the next invocation. A 24,000-record metro therefore completes across many chunks instead of silently stopping at an arbitrary ceiling. `watchdogStaleJobs` settles anything that dies mid-flight, and a `PipelineLock` with an 8-minute TTL keeps two chunks off the same job.
+
+**Cost protection.** Property caps are enforced server-side per billing period — a free tier ceiling and a substantially larger paid ceiling — with reservation math persisted on the `FetchJob` so progress and billing cannot drift apart. `getPrecisionUsage` and `reconcilePrecisionUsage` keep Stripe and delivered work reconciled.
+
+### Road-aware route optimization
+
+Once candidates exist, the route has to be *walkable*, not merely short in a straight line.
+
+| Module | Job |
+|---|---|
+| `roadMatrix.js` | Real driving/walking cost matrix via OSRM |
+| `roadMatrixTiers.js` | Bounds the matrix at street-block level past the proven door limit |
+| `roadAwareStreetSweep.js` | Orders blocks the way a person actually walks a street |
+| `roadHierarchySequencer.js` | Two-level cluster → intra-cluster sequencing for large routes |
+| `osrmDispatcher.js` | One global gate in front of every OSRM call |
+
+The matrix cost is quadratic in both directions — 250 doors is ~36 OSRM requests, 1,000 doors is ~484, 2,000 is ~1,936. Past the proven door limit the route used to drop to aerial ordering while still being *labelled* optimized. `roadMatrixTiers` removes that silent cliff by putting one representative door per block into the matrix, so inter-block legs stay real. `osrmDispatcher` exists because the two-level hierarchy fires dozens of concurrent matrices; it enforces a global cap, spacing, and bounded 429/5xx retry so a rate limit can't quietly degrade a route.
+
+### Sold-signal validation (ZIP ingestion)
+
+The ZIP-based lane (`fetchZipProperties/entry.ts`) runs a three-step validation **synchronously before any record is written**, so no false-positive lead reaches the map.
+
+#### Step 1: RentCast Dual-Stream Aggregation
 
 Two parallel data streams are fetched from the RentCast `/properties` endpoint:
 
@@ -81,7 +167,7 @@ Two parallel data streams are fetched from the RentCast `/properties` endpoint:
 
 **Deduplication:** Stream A addresses are indexed into a `Set`. Stream B records are only included if they do NOT already exist in Stream A (deed wins over MLS every time). Address normalization: `addressLine1.toUpperCase().trim() | zipCode.trim().substring(0,5)`.
 
-### Step 2: Heuristic Scoring Engine
+#### Step 2: Heuristic Scoring Engine
 
 Every Stream B (MLS Inactive) property is scored by an algorithmic engine to determine the probability it genuinely sold vs. simply expired/was withdrawn.
 
@@ -111,7 +197,7 @@ Every Stream B (MLS Inactive) property is scored by an algorithmic engine to det
 
 Properties removed >90 days ago are **auto-rejected** before heuristics even run.
 
-### Step 3: BatchData Synchronous Verification
+#### Step 3: BatchData Synchronous Verification
 
 Ambiguous properties are verified via the BatchData Property Search API (`POST api.batchdata.com/api/v1/property/search`).
 
@@ -129,6 +215,100 @@ Ambiguous properties are verified via the BatchData Property Search API (`POST a
 6. 250ms sleep between batch groups to avoid rate limiting.
 
 **Final Filter:** After all 3 steps complete, `mapped.filter(m => m.original_status !== 'REJECTED')` strips all rejected records. Only verified leads are bulk-inserted into `MasterProperty`.
+
+---
+
+## Canvas — Territory Generation
+
+Canvas answers a different question: **"how much real residential work is in this area, and how do I split it into fair territories nobody overlaps on?"**
+
+Where Precision buys evidence per property, Canvas reads **precompiled public evidence** — OpenStreetMap street topology, Census block housing counts, land use and barriers. Once an evidence release is compiled, an individual analysis is nearly free, which is what makes territory planning affordable at national scale.
+
+### Manager flow
+
+```mermaid
+flowchart LR
+    A["✏️ Draw one<br/>boundary"] --> B["💾 Saved<br/>immediately"]
+    B --> C["🔍 Queued<br/>analysis"]
+    C --> D["🎨 Map colors in<br/>progressively"]
+    D --> E["🔢 Enter number<br/>of areas"]
+    E --> F["🧩 Connected<br/>territories"]
+    F --> G["💾 Save plan<br/><i>unassigned</i>"]
+    G --> H["👥 Assign later in<br/>Areas &amp; Assignments"]
+    F -.->|change count| F
+
+    style A fill:#1e3a5f,stroke:#4a9eff,color:#fff
+    style F fill:#1e4d3a,stroke:#4ade80,color:#fff
+    style H fill:#4d1e3a,stroke:#f472b6,color:#fff
+```
+
+The builder asks for **one sizing decision: number of areas.** Changing that count reruns *only* the partitioner against the pinned snapshot — it never reloads map data, so it returns in seconds. Advanced sizing can instead target doors or field hours per area.
+
+### How a street becomes work
+
+Residential opportunity and legal access are classified **separately**, then combined into one role:
+
+| Role | Meaning | Workload |
+|---|---|---|
+| 🟢 **Knock** | Residential and legally accessible | Full |
+| 🔵 **Transit** | Useful for getting between work, no doors | Zero |
+| ⬜ **Excluded** | Field, industrial, commercial-only, water, inaccessible | Zero |
+| 🟡 **Uncertain** | Conflicting or incomplete evidence | **Zero until reviewed** |
+
+Evidence combined per street-side unit: Census block housing totals, explicit address and unit records, building entrances and driveways, residential building classification, land use, commercial places, and gates or barriers.
+
+> **Census totals are never called "actual doors."** A block housing count doesn't reveal entrances, vacancies, or where units sit inside a partially selected block. Canvas reports an honest range instead:
+>
+> **Estimated residential opportunities: 5,800–6,400** · Expected 6,120 · Confidence 84%
+
+For boundary-cut blocks, known address and unit evidence is allocated first, then residential buildings and blockfaces, with area weighting only as a last low-confidence fallback. Apartments are modeled as one MDU site with multiple units — never inferred from footprint size.
+
+### Territory guarantees
+
+The atomic unit of ownership is a **blockface** — a short street-side segment between intersections. Cul-de-sacs and other single-access pockets become protected groups that stay whole.
+
+- ✅ Every eligible knock unit is owned **exactly once**
+- ✅ Every territory is **connected**
+- ✅ Protected pockets are **never split**
+- ✅ Shared transit streets grant **no** shared door ownership
+- ✅ A fixed evidence release + algorithm version is **deterministic**
+- ✅ An infeasible territory count is **explained, not silently fudged**
+
+Workload is measured in estimated minutes — `expected opportunities × attempt time + walking time + MDU overhead` — not land area. A thousand rural square miles can be easier than fifty dense ones, so limits key off work-unit complexity rather than surface area.
+
+The partitioner runs **off the main thread** (`canvasResidentialTerritoryPlanner.worker.js`): build protected atomic units → allocate counts across disconnected components → generate deterministic farthest-point seed sets → grow connected regions → apply connectivity-preserving boundary swaps → score and keep the best → validate exactly before showing *Ready*.
+
+### The rep gets a signed offline package
+
+```mermaid
+flowchart LR
+    PUB["canvasPublish<br/>AssignmentPackages"] -->|signed, versioned, expiring| PKG["📦 Package"]
+    PKG --> DEV["📱 Device store"]
+    DEV --> DEC["Tap → disposition<br/><i>&lt;100ms, local</i>"]
+    DEC --> Q["Durable queue<br/><i>saved before network</i>"]
+    Q -->|batched| SYNC["canvasSyncDecisions"]
+    SYNC --> CUR["Cursor deltas<br/>canvasGetChanges"]
+    CUR --> MGR["Manager progress"]
+
+    style PKG fill:#1e4d3a,stroke:#4ade80,color:#fff
+    style Q fill:#4d3a1e,stroke:#fbbf24,color:#fff
+```
+
+Each package carries the rep's exclusive units, opportunity locations, current pins and dispositions, **complete** DNC suppression, a lightweight basemap, and version/expiry/revocation metadata.
+
+In the field: the app opens straight to today's territory — including after an offline restart. A tap recolors the house in under 100ms, the decision is durably saved on-device *before* any networking, and status reads `Saved on device` → `Synced` → `Needs attention`. Background sync plus a manual **Sync All**.
+
+### What replaced the old scaling traps
+
+| Was | Now |
+|---|---|
+| Full campaign map polled every 15s, per rep | Geometry downloaded once per version; cursor deltas after |
+| 10k pin / 20k event ceilings that a 100-rep team hit in a day | Viewport-paged manager pins, incrementally maintained totals |
+| DNC capped at 20k, able to withhold the map | Complete sharded manifests, **or fail closed** — never a silent partial list |
+| Browser-side public Overpass on every draw | Server-owned topology from a signed evidence release |
+| `tile.openstreetmap.org` basemap | Configured XYZ or PMTiles origin with required attribution |
+
+Full detail: [Canvas production runbook](docs/CANVAS_PRODUCTION_RUNBOOK.md) · [evidence contract](docs/canvas-evidence-contract-v1.md) · [release pipeline](docs/canvas-evidence-release-pipeline.md)
 
 ---
 
@@ -512,6 +692,26 @@ All functions live in `base44/functions/` and execute on Deno runtime.
 | `debugZipData` / `checkZipData` / `checkZipCodesTable` | ZIP-level data inspection tools. |
 | `testRecentlySold` / `testRentcastDirect` / `testZipJoin` | API testing endpoints. |
 
+### Canvas
+Isolated from every function above — its own database role, its own store, no Precision entity access.
+
+| Function | Purpose |
+|----------|---------|
+| `canvasSaveDraft` | Persists a drawn boundary and plan immediately, before analysis. |
+| `canvasStartAnalysis` / `canvasGetAnalysisStatus` / `canvasCancelAnalysis` | Queued analysis lifecycle against a pinned evidence snapshot. |
+| `canvasGetAnalysis` | Returns classified units, opportunity ranges, and confidence. |
+| `canvasApplyClassificationOverride` | Audited manager override of an uncertain classification. |
+| `canvasDeployCampaign` | Activates a plan; server-verifies road ownership and fails closed. |
+| `canvasCloseCampaign` / `canvasQuarantineInvalidCampaigns` | Completion, recall, and fail-closed quarantine of invalid legacy records. |
+| `canvasPublishAssignmentPackages` | Signs and publishes versioned offline rep packages. |
+| `canvasGetAssignmentPackage` / `canvasGetAssignmentIndex` | Rep package delivery and paged assignment index. |
+| `canvasGetMyAssignments` | Rep's own territories, lifecycle and ownership only — no embedded pin history. |
+| `canvasLogHouseDecision` / `canvasSyncDecisions` | Single and batched offline decision writes; append-only and idempotent. |
+| `canvasGetChanges` | Cursor-based delta sync — replaces full-map polling. |
+| `canvasGetViewportPins` / `canvasGetCampaignSummary` | Viewport-paged manager pins and incrementally maintained totals. |
+| `canvasGetCampaignMap` | Manager map; DNC suppression complete or withheld. |
+| `setupCanvasOperationalStore` | PostGIS migration for the Canvas operational store. |
+
 ---
 
 ## Data Entities & Schema
@@ -665,12 +865,36 @@ VITE_BASE44_APP_BASE_URL=https://firstknock.online
 
 ### Server-Side (Base44 Cloud Environment)
 ```
-RENTCAST_API_KEY        — RentCast API key for property data ingestion
-BATCH_DATA_API_KEY      — BatchData API key for sold verification (Step 3)
-STRIPE_SECRET_KEY       — Stripe secret key for billing
-STRIPE_WEBHOOK_SECRET   — Stripe webhook signing secret
-PRECISION_WATCHDOG_SECRET — Server-held authorization for stalled-job recovery
+RENTCAST_API_KEY            — RentCast API key for property data ingestion
+BATCH_DATA_API_KEY          — BatchData API key for sold verification
+DATABASE_URL                — Neon Postgres connection string
+STRIPE_SECRET_KEY           — Stripe secret key for billing
+STRIPE_WEBHOOK_SECRET       — Stripe webhook signing secret
+PRECISION_WATCHDOG_SECRET   — Server-held authorization for stalled-job recovery
 PRECISION_DIAGNOSTIC_SECRET — Server-held authorization for provider diagnostics
+```
+
+**Canvas** runs an isolated production configuration with its own database role, signed evidence release, PostGIS migration, and offline-package staging gate.
+```
+CANVAS_DATABASE_URL                 — Canvas operational store (never a Precision URL)
+CANVAS_ANALYSIS_SERVICE_URL         — Queued analysis service origin
+CANVAS_ANALYSIS_SERVICE_TOKEN       — Shared service token
+CANVAS_PACKAGE_SIGNING_PRIVATE_KEY  — Ed25519 key that signs rep packages
+CANVAS_EVIDENCE_MANIFEST_URL        — Signed evidence release manifest
+CANVAS_EVIDENCE_MANIFEST_PUBLIC_KEY — Trust anchor for that manifest
+```
+
+> ⚠️ **Never** place a Canvas server secret in `.env.local` or behind any `VITE_` prefix — that ships it to the browser. The rep app compiles in only the *public* package-verification key, and it never trusts a public key handed back beside a package over the API.
+>
+> `CANVAS_EVIDENCE_*` values are **not** obtained from OpenStreetMap. FirstKnock creates them when it builds and signs its own evidence release.
+>
+> Format reference: [`docs/canvas-base44-secrets.example`](docs/canvas-base44-secrets.example) · Full procedure: [Canvas production runbook](docs/CANVAS_PRODUCTION_RUNBOOK.md)
+
+### Canvas Client (`.env.local`)
+```env
+VITE_CANVAS_BASEMAP_TILE_URL           — Contracted or self-hosted tile origin
+VITE_CANVAS_BASEMAP_ATTRIBUTION        — Required provider attribution
+VITE_CANVAS_PACKAGE_SIGNING_PUBLIC_KEY — Public trust anchor (public by design)
 ```
 
 ---

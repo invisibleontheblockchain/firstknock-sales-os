@@ -540,6 +540,7 @@ function canvasStoredPlanForHash(session: any) {
     data_version: session?.data_version || null,
     ...(session?.territory_model === "residential_street_territory_v2" ? {
       evidence_id: session?.evidence_id,
+      evidence_release_id: session?.evidence_release_id || null,
       revision_id: session?.revision_id || null,
       snapshot_hash: session?.snapshot_hash,
       evidence_schema_version: Number(session?.evidence_schema_version),

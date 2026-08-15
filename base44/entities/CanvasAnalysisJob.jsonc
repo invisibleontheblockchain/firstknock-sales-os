@@ -1,0 +1,97 @@
+{
+  "name": "CanvasAnalysisJob",
+  "type": "object",
+  "properties": {
+    "job_id": {
+      "type": "string",
+      "description": "Content-addressed, tenant-scoped identifier for a Canvas evidence analysis request."
+    },
+    "request_hash": { "type": "string" },
+    "manager_id": { "type": "string" },
+    "created_by_user_id": { "type": "string" },
+    "created_at": { "type": "string", "format": "date-time" },
+    "updated_at": { "type": "string", "format": "date-time" },
+    "status": {
+      "type": "string",
+      "enum": ["queued", "running", "finalizing", "complete", "failed", "cancelled"],
+      "default": "queued"
+    },
+    "version": { "type": "integer", "minimum": 1, "default": 1 },
+    "polygon": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "lat": { "type": "number" },
+          "lng": { "type": "number" }
+        }
+      }
+    },
+    "area_sq_mi": { "type": "number", "exclusiveMinimum": 0, "maximum": 1000 },
+    "provider": { "type": "string" },
+    "release_id": { "type": "string" },
+    "manifest_url": {
+      "type": "string",
+      "description": "Server-pinned manifest URL; never accepted from the browser."
+    },
+    "manifest_hash": { "type": "string" },
+    "tile_scheme": { "type": "string" },
+    "tile_ids": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "tile_count": { "type": "integer", "minimum": 1 },
+    "completed_tile_count": { "type": "integer", "minimum": 0, "default": 0 },
+    "failed_tile_count": { "type": "integer", "minimum": 0, "default": 0 },
+    "progress_pct": { "type": "number", "minimum": 0, "maximum": 100, "default": 0 },
+    "worker_job_id": { "type": "string" },
+    "worker_status_cursor": { "type": "string" },
+    "evidence_id": { "type": "string" },
+    "snapshot_hash": { "type": "string" },
+    "summary": { "type": "object" },
+    "error_code": { "type": "string" },
+    "error_message": { "type": "string" },
+    "retryable": { "type": "boolean", "default": true },
+    "cancelled_at": { "type": "string", "format": "date-time" },
+    "cancelled_by_user_id": { "type": "string" },
+    "processor_token_hash": {
+      "type": "string",
+      "rls": {
+        "read": { "user_condition": { "role": "admin" } },
+        "write": { "user_condition": { "role": "admin" } }
+      }
+    }
+  },
+  "required": [
+    "job_id",
+    "request_hash",
+    "manager_id",
+    "created_by_user_id",
+    "created_at",
+    "updated_at",
+    "status",
+    "version",
+    "polygon",
+    "area_sq_mi",
+    "provider",
+    "release_id",
+    "manifest_hash",
+    "tile_scheme",
+    "tile_ids",
+    "tile_count",
+    "completed_tile_count",
+    "failed_tile_count",
+    "progress_pct"
+  ],
+  "rls": {
+    "create": { "user_condition": { "role": "admin" } },
+    "read": {
+      "$or": [
+        { "manager_id": "{{user.id}}" },
+        { "user_condition": { "role": "admin" } }
+      ]
+    },
+    "update": { "user_condition": { "role": "admin" } },
+    "delete": { "user_condition": { "role": "admin" } }
+  }
+}

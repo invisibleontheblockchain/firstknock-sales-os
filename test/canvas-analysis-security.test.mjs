@@ -136,5 +136,9 @@ test('general map history is bounded while do-not-knock safety is separately com
   assert.match(map, /MAX_DNC_PINS = (?:2e4|20000)/);
   assert.match(map, /latest_outcome: ["']do_not_knock["']/);
   assert.match(map, /dnc_safety_limit_exceeded/);
-  assert.match(map, /dnc_safety: \{ complete: true/);
+  // dnc_safety is now emitted through a delivery ternary (embedded vs operational
+  // viewport), so match across the line break and require every branch to report a
+  // complete suppression list. An incomplete list must fail closed instead.
+  assert.match(map, /dnc_safety:[\s\S]{0,240}?complete: true/);
+  assert.doesNotMatch(map, /complete: false/);
 });

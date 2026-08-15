@@ -2271,7 +2271,7 @@ export default function Home() {
                 fadeAnimation={true}
             >
                 <MapRefHandler mapRef={mapRef} />
-                <BaseMapTiles mapTheme={mapTheme} />
+                <BaseMapTiles mapTheme={mapTheme} routeMode={routeMode} />
                 <LocationMarker autoCenter={false} userLocation={userLocation} /><AppointmentFocusMarker property={appointmentPin} onSelect={setSelectedProperty} />
                 <DarkRoomManager />
 

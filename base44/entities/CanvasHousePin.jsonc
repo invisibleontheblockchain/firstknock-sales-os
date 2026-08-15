@@ -5,6 +5,12 @@
     "campaign_id": { "type": "string" },
     "zone_id": { "type": "string" },
     "manager_id": { "type": "string" },
+    "street_unit_id": {
+      "type": "string",
+      "description": "Authoritative assigned residential street-unit ownership checked when the pin is written."
+    },
+    "evidence_id": { "type": "string" },
+    "revision_id": { "type": "string" },
     "lat": { "type": "number" },
     "lng": { "type": "number" },
     "address": { "type": "string", "maxLength": 500 },

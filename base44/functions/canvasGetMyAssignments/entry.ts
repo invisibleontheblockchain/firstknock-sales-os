@@ -38,6 +38,7 @@ function canvasStoredPlanForHash(session) {
     qa: session?.qa || {},
     algorithm_version: session?.algorithm_version || null,
     data_version: session?.data_version || null,
+    ...session?.territory_model === "residential_street_territory_v2" ? { evidence_id: session?.evidence_id, evidence_release_id: session?.evidence_release_id || null, revision_id: session?.revision_id || null, snapshot_hash: session?.snapshot_hash, evidence_schema_version: Number(session?.evidence_schema_version), unresolved_unit_count: Number(session?.unresolved_unit_count || 0), assignment_version: Number(session?.assignment_version || 0) } : {},
     manager_id: session?.manager_id,
     version: planVersion
   };
@@ -233,6 +234,7 @@ Deno.serve(async (req) => {
       for (const zone of asArray2(session.zones)) {
         if (String(zone?.assigned_team_member_id || "") !== String(member.id)) continue;
         const workUnitIds = asArray2(zone.work_unit_ids).map(String);
+        const residentialV2 = session.territory_model === "residential_street_territory_v2";
         assignments.push({
           session_id: session.id,
           campaign_id: session.id,
@@ -246,19 +248,30 @@ Deno.serve(async (req) => {
           division_mode: session.division_mode,
           target_workload: session.target_workload ?? null,
           deployed_at: session.deployed_at,
-          campaign_boundary: session.polygon,
+          ...residentialV2 ? {
+            // V2 discovery is intentionally a tiny signed index. The rep loads
+            // verified geometry, evidence, pins, and DNC data from the current
+            // offline assignment package instead of redownloading the campaign.
+            evidence_id: session.evidence_id || null,
+            evidence_release_id: session.evidence_release_id || null,
+            revision_id: session.revision_id || null,
+            snapshot_hash: session.snapshot_hash || null,
+            assignment_version: Number(session.assignment_version || 0)
+          } : { campaign_boundary: session.polygon },
           deployment_qa: repSafeDeploymentQa(session.deployment_qa),
           zone: {
             zone_id: zone.zone_id,
             zone_number: zone.zone_number,
             name: zone.name || `Area ${zone.zone_number}`,
             color: zone.color || null,
-            geometry: zone.geometry || null,
-            parts: zone.parts || null,
-            center: zone.center || null,
-            drop_point: zone.drop_point || null,
-            work_unit_ids: workUnitIds,
-            street_work_unit_ids: workUnitIds,
+            ...residentialV2 ? {} : {
+              geometry: zone.geometry || null,
+              parts: zone.parts || null,
+              center: zone.center || null,
+              drop_point: zone.drop_point || null,
+              work_unit_ids: workUnitIds,
+              street_work_unit_ids: workUnitIds
+            },
             street_length_meters: Number(zone.street_length_meters || 0),
             estimated_doors: zone.estimated_doors ?? null,
             estimated_minutes: zone.estimated_minutes ?? null,
@@ -266,7 +279,7 @@ Deno.serve(async (req) => {
             workload_share: zone.workload_share ?? null,
             assigned_team_member_id: member.id
           },
-          work_units: workUnitIds.map((id) => workUnitById.get(id)).filter(Boolean)
+          ...residentialV2 ? {} : { work_units: workUnitIds.map((id) => workUnitById.get(id)).filter(Boolean) }
         });
       }
     }

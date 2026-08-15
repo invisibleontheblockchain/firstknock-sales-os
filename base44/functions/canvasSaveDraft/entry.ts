@@ -7,10 +7,12 @@ const MAX_WORK_UNITS = 20000;
 const MAX_SEGMENTS = 50000;
 const MAX_JSON_BYTES = 8_000_000;
 const MAX_CANVAS_INTERACTIVE_WORK_UNITS = 20_000;
-const MAX_CANVAS_INTERACTIVE_COMPLEXITY = 2_000_000;
+const MAX_CANVAS_INTERACTIVE_COMPLEXITY = 5_000_000;
 const PLANNING_METHODS = new Set(['street_workload', 'preview_only']);
 const ASSIGNMENT_BASES = new Set(['street_work_unit_ids', 'legacy_geometry']);
-const WORKLOAD_BASES = new Set(['street_length', 'street_length_plus_estimated_doors']);
+const WORKLOAD_BASES = new Set(['street_length', 'street_length_plus_estimated_doors', 'residential_opportunity']);
+const TERRITORY_MODELS = new Set(['street_territory_v1', 'residential_street_territory_v2']);
+const CANVAS_ROLES = new Set(['knock', 'transit_only', 'excluded', 'uncertain']);
 const DIVISION_MODES = new Set(['selected_reps', 'area_count', 'street_workload_target']);
 
 class HttpError extends Error {
@@ -28,6 +30,12 @@ class HttpError extends Error {
 
 function normalized(value: unknown) {
   return String(value || '').trim().toLowerCase();
+}
+
+function asArray(value: any) {
+  if (Array.isArray(value)) return value;
+  if (Array.isArray(value?.items)) return value.items;
+  return [];
 }
 
 function isoInstant(value: unknown) {
@@ -195,6 +203,13 @@ function normalizeWorkUnits(input: any) {
       id,
       kind: optionalString(unit?.kind, 128),
       protected: unit?.protected === true,
+      protected_group_id: optionalString(unit?.protected_group_id, 512),
+      protected_group_ids: normalizeIdList(unit?.protected_group_ids || [], `work_units[${index}].protected_group_ids`, 100),
+      canvas_role: unit?.canvas_role ? requiredString(unit.canvas_role, `work_units[${index}].canvas_role`, 64) : null,
+      confidence: optionalString(unit?.confidence, 64),
+      opportunity_low: finiteNumber(unit?.opportunity_low, `work_units[${index}].opportunity_low`, 0, true),
+      opportunity_expected: finiteNumber(unit?.opportunity_expected, `work_units[${index}].opportunity_expected`, 0, true),
+      opportunity_high: finiteNumber(unit?.opportunity_high, `work_units[${index}].opportunity_high`, 0, true),
       street_names: normalizeIdList(unit?.street_names ?? unit?.streetNames ?? [], `work_units[${index}].street_names`, 100),
       neighbor_ids: normalizeIdList(unit?.neighbor_ids ?? unit?.neighborIds ?? [], `work_units[${index}].neighbor_ids`, MAX_WORK_UNITS),
       street_length_meters: finiteNumber(unit?.street_length_meters ?? unit?.streetLengthMeters, `work_units[${index}].street_length_meters`),
@@ -203,6 +218,14 @@ function normalizeWorkUnits(input: any) {
   });
   if (segmentCount > MAX_SEGMENTS) throw new HttpError(413, 'plan_too_large', `work_units may contain at most ${MAX_SEGMENTS} road segments.`);
   for (const unit of units) {
+    if (unit.canvas_role && !CANVAS_ROLES.has(unit.canvas_role)) {
+      throw new HttpError(400, 'invalid_plan', `Work unit ${unit.id} has an unsupported Canvas role.`);
+    }
+    if (unit.canvas_role === 'knock'
+      && !(Number(unit.opportunity_low) <= Number(unit.opportunity_expected)
+        && Number(unit.opportunity_expected) <= Number(unit.opportunity_high))) {
+      throw new HttpError(400, 'invalid_plan', `Work unit ${unit.id} has an invalid residential opportunity range.`);
+    }
     const unknown = unit.neighbor_ids.filter((id) => !ids.has(id));
     if (unknown.length) throw new HttpError(400, 'invalid_work_unit_graph', `Work unit ${unit.id} references an unknown neighbor.`);
   }
@@ -224,8 +247,11 @@ function normalizeZoneParts(zone: any, index: number) {
 }
 
 function normalizeZones(input: any) {
-  if (!Array.isArray(input) || input.length < 1 || input.length > MAX_ZONES) {
+  if (!Array.isArray(input) || input.length < 1) {
     throw new HttpError(400, 'invalid_plan', `zones must contain 1-${MAX_ZONES} records.`);
+  }
+  if (input.length > MAX_ZONES) {
+    throw new HttpError(413, 'plan_too_complex', `Canvas supports at most ${MAX_ZONES} areas in one campaign.`);
   }
   const zoneIds = new Set<string>();
   const zoneNumbers = new Set<number>();
@@ -262,20 +288,21 @@ function normalizeZones(input: any) {
   });
 }
 
-function deriveQa(workUnits: any[], zones: any[], suppliedQa: any) {
+function deriveQa(workUnits: any[], zones: any[], suppliedQa: any, residentialV2 = false) {
   let clientQa: any = {};
   try {
     clientQa = JSON.parse(JSON.stringify(suppliedQa || {}));
   } catch {
     throw new HttpError(400, 'invalid_plan', 'qa must be valid JSON.');
   }
-  const expectedIds = new Set(workUnits.map((unit) => unit.id));
+  const ownershipUnits = residentialV2 ? workUnits.filter((unit) => unit.canvas_role === 'knock') : workUnits;
+  const expectedIds = new Set(ownershipUnits.map((unit) => unit.id));
   const counts = new Map<string, number>();
   for (const zone of zones) for (const id of zone.work_unit_ids) counts.set(id, (counts.get(id) || 0) + 1);
   const missingIds = [...expectedIds].filter((id) => !counts.has(id));
   const duplicateIds = [...counts].filter(([, count]) => count !== 1).map(([id]) => id);
   const extraIds = [...counts.keys()].filter((id) => !expectedIds.has(id));
-  const protectedIds = new Set(workUnits.filter((unit) => unit.protected).map((unit) => unit.id));
+  const protectedIds = new Set(ownershipUnits.filter((unit) => unit.protected).map((unit) => unit.id));
   const protectedUnitsIntact = [...protectedIds].every((id) => counts.get(id) === 1);
   const streetCoverageComplete = missingIds.length === 0 && extraIds.length === 0;
   const noDuplicateWorkUnits = duplicateIds.length === 0;
@@ -295,6 +322,7 @@ function deriveQa(workUnits: any[], zones: any[], suppliedQa: any) {
     territory_source: 'street_work_units',
     street_coverage_complete: streetCoverageComplete,
     no_duplicate_work_units: noDuplicateWorkUnits,
+    no_missing_work_units: missingIds.length === 0,
     connected_zones: connectedZones,
     atomic_work_units: atomicWorkUnits,
     protected_units_intact: protectedUnitsIntact && clientQa.protected_units_intact === true,
@@ -302,7 +330,8 @@ function deriveQa(workUnits: any[], zones: any[], suppliedQa: any) {
     missing_work_unit_ids: missingIds.slice(0, 100),
     duplicate_work_unit_ids: duplicateIds.slice(0, 100),
     extra_work_unit_ids: extraIds.slice(0, 100),
-    work_unit_count: workUnits.length,
+    work_unit_count: ownershipUnits.length,
+    context_work_unit_count: workUnits.length - ownershipUnits.length,
     zone_count: zones.length,
     total_street_length_meters: Number(workUnits.reduce((sum, unit) => sum + unit.street_length_meters, 0).toFixed(2)),
     max_workload_deviation_percent: maxWorkloadDeviationPercent,
@@ -372,9 +401,14 @@ Deno.serve(async (req: Request) => {
     const divisionMode = requiredString(requestedDivisionMode || (legacySizingMode === 'homes_per_area' ? 'area_count' : 'selected_reps'), 'division_mode', 64);
     const rawWorkloadBasis = legacySizingMode ? 'street_length' : requiredString(body?.workload_basis || 'street_length', 'workload_basis', 64);
     const workloadBasis = rawWorkloadBasis === 'estimated_doors' ? 'street_length_plus_estimated_doors' : rawWorkloadBasis;
+    const territoryModel = requiredString(body?.territory_model || 'street_territory_v1', 'territory_model', 64);
     if (!PLANNING_METHODS.has(planningMethod) || !ASSIGNMENT_BASES.has(assignmentBasis)
-      || !WORKLOAD_BASES.has(workloadBasis) || !DIVISION_MODES.has(divisionMode)) {
+      || !WORKLOAD_BASES.has(workloadBasis) || !DIVISION_MODES.has(divisionMode) || !TERRITORY_MODELS.has(territoryModel)) {
       throw new HttpError(400, 'invalid_plan', 'Unsupported Canvas planning method, assignment basis, division mode, or workload basis.');
+    }
+    const residentialV2 = territoryModel === 'residential_street_territory_v2';
+    if (residentialV2 && workloadBasis !== 'residential_opportunity') {
+      throw new HttpError(400, 'invalid_plan', 'Residential Canvas plans must balance residential opportunity.');
     }
 
     const polygon = normalizePolygon(body?.polygon);
@@ -382,7 +416,22 @@ Deno.serve(async (req: Request) => {
     if (!Number.isFinite(areaSqMi) || areaSqMi <= 0 || areaSqMi > MAX_AREA_SQ_MI) {
       throw new HttpError(400, 'invalid_polygon', `polygon area must be greater than zero and at most ${MAX_AREA_SQ_MI} square miles.`);
     }
-    const workUnits = normalizeWorkUnits(body?.work_units);
+    const submittedWorkUnits = normalizeWorkUnits(body?.work_units);
+    const workUnits = residentialV2 ? submittedWorkUnits : submittedWorkUnits.map((unit) => ({
+      id: unit.id,
+      kind: unit.kind,
+      protected: unit.protected,
+      street_names: unit.street_names,
+      neighbor_ids: unit.neighbor_ids,
+      street_length_meters: unit.street_length_meters,
+      segments: unit.segments,
+    }));
+    if (residentialV2 && workUnits.some((unit) => !CANVAS_ROLES.has(String(unit.canvas_role || '')))) {
+      throw new HttpError(400, 'invalid_plan', 'Every residential Canvas street unit must carry a verified Canvas role.');
+    }
+    if (residentialV2 && workUnits.some((unit) => unit.canvas_role === 'knock' && !(Number(unit.opportunity_expected) > 0))) {
+      throw new HttpError(400, 'invalid_plan', 'Every knock street unit must carry positive residential opportunity.');
+    }
     const zones = normalizeZones(body?.zones);
     if (workUnits.length > MAX_CANVAS_INTERACTIVE_WORK_UNITS || zones.length * workUnits.length > MAX_CANVAS_INTERACTIVE_COMPLEXITY) {
       throw new HttpError(413, 'plan_too_complex', 'This street plan exceeds the supported street-unit or area-by-unit limit. Reduce the boundary or area count that exceeded its limit.');
@@ -404,11 +453,53 @@ Deno.serve(async (req: Request) => {
     }
     const targetWorkload = divisionMode === 'street_workload_target' ? suppliedTargetWorkload : null;
     const now = new Date().toISOString();
+    let evidenceId = null;
+    let evidenceReleaseId = null;
+    let snapshotHash = null;
+    let revisionId = null;
+    let evidenceSchemaVersion = null;
+    let unresolvedUnitCount = 0;
+    let productionEvidenceTrusted = false;
+    if (residentialV2) {
+      evidenceId = requiredString(body?.evidence_id, 'evidence_id', 256);
+      evidenceReleaseId = optionalString(body?.evidence_release_id, 256);
+      snapshotHash = requiredString(body?.snapshot_hash, 'snapshot_hash', 128);
+      revisionId = optionalString(body?.revision_id, 256);
+      evidenceSchemaVersion = Number(body?.evidence_schema_version || 1);
+      unresolvedUnitCount = Number(body?.unresolved_unit_count);
+      if (!/^[a-f0-9]{64}$/.test(snapshotHash)
+        || !Number.isInteger(evidenceSchemaVersion) || evidenceSchemaVersion < 1
+        || !Number.isInteger(unresolvedUnitCount) || unresolvedUnitCount < 0) {
+        throw new HttpError(400, 'invalid_evidence_identity', 'Canvas residential evidence identity is invalid.');
+      }
+      const actualUnresolvedCount = workUnits.filter((unit) => unit.canvas_role === 'uncertain').length;
+      if (actualUnresolvedCount !== unresolvedUnitCount) {
+        throw new HttpError(409, 'evidence_revision_mismatch', 'The submitted uncertain-street count does not match the pinned evidence revision.');
+      }
+      const snapshots = asArray(await base44.asServiceRole.entities.CanvasAnalysisSnapshot.filter({
+        manager_id: user.id,
+        evidence_id: evidenceId,
+      }, '-created_at', 3));
+      if (snapshots.length !== 1) {
+        throw new HttpError(snapshots.length ? 409 : 404, snapshots.length ? 'duplicate_evidence_snapshot' : 'evidence_not_found', 'The pinned Canvas evidence snapshot is unavailable or ambiguous.');
+      }
+      const snapshot = snapshots[0];
+      if (String(snapshot.snapshot_hash || '') !== snapshotHash
+        || Number(snapshot.schema_version || 1) !== evidenceSchemaVersion
+        || (evidenceReleaseId && String(snapshot.release_id || '') !== evidenceReleaseId)) {
+        throw new HttpError(409, 'evidence_snapshot_mismatch', 'The Canvas evidence snapshot changed or does not match this plan.');
+      }
+      productionEvidenceTrusted = snapshot.production_trusted === true;
+    }
     const qa = {
-      ...deriveQa(workUnits, zones, body?.qa),
+      ...deriveQa(workUnits, zones, body?.qa, residentialV2),
       every_zone_assigned: everyZoneAssigned,
       selected_reps_one_to_one: selectedRepsOneToOne,
     };
+    if (residentialV2) {
+      qa.data_quality_status = productionEvidenceTrusted ? 'verified' : 'untrusted';
+      qa.unresolved_unit_count = unresolvedUnitCount;
+    }
     const workloadExceptionRequired = qa.max_workload_deviation_percent === null
       || Number(qa.max_workload_deviation_percent) > 25;
     const managerWorkloadExceptionAcknowledged = Number(qa.max_workload_deviation_percent) > 25
@@ -420,7 +511,8 @@ Deno.serve(async (req: Request) => {
     qa.deployable = qa.deployable
       && planningMethod === 'street_workload'
       && assignmentBasis === 'street_work_unit_ids'
-      && workloadBasis === 'street_length'
+      && workloadBasis === (residentialV2 ? 'residential_opportunity' : 'street_length')
+      && (!residentialV2 || (productionEvidenceTrusted && unresolvedUnitCount === 0))
       && everyZoneAssigned
       && selectionMatches
       && assignmentContractSatisfied
@@ -428,7 +520,7 @@ Deno.serve(async (req: Request) => {
 
     const normalizedPlan = {
       session_name: optionalString(body?.session_name, 200) || 'Canvas Campaign',
-      territory_model: 'street_territory_v1',
+      territory_model: territoryModel,
       polygon,
       rep_count: uniqueAssigneeIds.length,
       planning_method: planningMethod,
@@ -442,6 +534,15 @@ Deno.serve(async (req: Request) => {
       qa,
       algorithm_version: optionalString(body?.algorithm_version, 128),
       data_version: optionalString(body?.data_version, 256),
+      ...(residentialV2 ? {
+        evidence_id: evidenceId,
+        evidence_release_id: evidenceReleaseId,
+        snapshot_hash: snapshotHash,
+        revision_id: revisionId,
+        evidence_schema_version: evidenceSchemaVersion,
+        unresolved_unit_count: unresolvedUnitCount,
+        assignment_version: existing ? Math.max(0, Number(existing.assignment_version || 0)) + 1 : 0,
+      } : {}),
       manager_id: user.id,
       version
     };
@@ -457,7 +558,13 @@ Deno.serve(async (req: Request) => {
       deployment_signature: null,
       deployment_qa: null,
       deployment_plan_version: null,
-      lifecycle_state: null,
+      lifecycle_state: residentialV2
+        ? everyZoneAssigned && qa.deployable
+          ? 'ready_to_send'
+          : zoneAssigneeIds.length > 0
+            ? 'partially_assigned'
+            : 'saved_unassigned'
+        : null,
       lifecycle_evidence: null,
       closed_at: null,
       closed_by_user_id: null,

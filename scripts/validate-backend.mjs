@@ -27,8 +27,9 @@ for (const file of functionFiles) {
 assert.deepEqual(syntaxErrors, [], `Backend syntax errors:\n${syntaxErrors.join('\n')}`);
 
 const jsonFiles = [
-  'base44/entities/FetchJob.jsonc',
-  'base44/entities/User.jsonc',
+  ...fs.readdirSync(path.resolve('base44/entities'), { withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith('.jsonc'))
+    .map((entry) => path.join('base44/entities', entry.name)),
   'base44/config.jsonc',
   'package.json'
 ];

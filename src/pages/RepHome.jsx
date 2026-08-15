@@ -41,7 +41,9 @@ import {
 } from '@/components/logic/routeBulkActions';
 import RepMapView from '@/components/rep/RepMapView';
 import CanvasFieldView from '@/components/rep/CanvasFieldView';
-import { getMyCanvasAssignments } from '@/components/canvas/canvasProductionClient';
+import CanvasResidentialFieldView from '@/components/rep/CanvasResidentialFieldView';
+import { createCanvasOfflineStore } from '@/components/canvas/canvasOfflineStore';
+import { getAllCanvasAssignmentIndex, getMyCanvasAssignments } from '@/components/canvas/canvasProductionClient';
 import RepHeader from '@/components/rep/RepHeader';
 import RepUnifiedSearch from '@/components/rep/RepUnifiedSearch';
 import PropertyCard from '@/components/rep/PropertyCard';
@@ -74,11 +76,31 @@ import {
   preferFieldRoutesStatus,
 } from '@/components/fieldroutes/fieldRoutesPresentation';
 
-const CANVAS_ASSIGNMENT_POLL_MS = 15_000;
+// Assignment packages are immutable and versioned. Window focus and online
+// events handle normal refreshes; this is only a low-frequency recovery poll.
+const CANVAS_ASSIGNMENT_POLL_MS = 5 * 60_000;
 const FIELDROUTES_STATUS_POLL_MS = 15_000;
 // A device fix is warmed while the rep reads the house card, so an outcome tap
 // almost always reuses it instead of waiting on the GPS radio.
 const GPS_FIX_MAX_AGE_MS = 90_000;
+
+function residentialAssignmentFromIndex(row) {
+  return {
+    ...row,
+    session_id: row.campaign_id,
+    session_name: 'Canvas Campaign',
+    territory_model: 'residential_street_territory_v2',
+    version: Number(row.assignment_index_version || 1),
+    assignment_version: Number(row.assignment_index_version || 1),
+    package_valid_until: row.valid_until,
+    zone: {
+      zone_id: row.zone_id,
+      zone_number: null,
+      name: 'Assigned area',
+      color: '#A855F7',
+    },
+  };
+}
 // The fix resolves behind an already-closed sheet, so accuracy no longer costs
 // the rep anything and this can stay generous.
 const GPS_FIX_WAIT_MS = 4_000;
@@ -147,12 +169,14 @@ export default function RepHome() {
   const [homeBasePanelOpen, setHomeBasePanelOpen] = useState(false);
   const [canvasFieldDismissed, setCanvasFieldDismissed] = useState(false);
   const [canvasFieldOpen, setCanvasFieldOpen] = useState(false);
+  const [canvasFieldMode, setCanvasFieldMode] = useState(null);
   const [canvasAssignmentNotice, setCanvasAssignmentNotice] = useState('');
   const previousCanvasAssignmentIdentityRef = React.useRef('');
   const hydratedHomeBaseUserRef = React.useRef(null);
   const routeSwitcherRef = React.useRef(null);
   const routeSwitcherCloseButtonRef = React.useRef(null);
   const routeSwitcherReturnFocusRef = React.useRef(null);
+  const canvasOfflineStore = useMemo(() => createCanvasOfflineStore(), []);
 
   // Offline Listener
   React.useEffect(() => {
@@ -388,25 +412,90 @@ export default function RepHome() {
   );
 
   const {
-    data: canvasAssignmentPackage,
-    isLoading: canvasAssignmentsLoading,
-    isError: canvasAssignmentsUnavailable,
-    refetch: refetchCanvasAssignments,
+    data: residentialCanvasPackage,
+    isLoading: residentialCanvasAssignmentsLoading,
+    isError: residentialCanvasAssignmentsUnavailable,
+    refetch: refetchResidentialCanvasAssignments,
   } = useQuery({
-    queryKey: ['myCanvasAssignments', user?.id],
-    queryFn: () => getMyCanvasAssignments(),
+    queryKey: ['myResidentialCanvasAssignmentIndex', user?.id],
+    queryFn: async () => {
+      try {
+        const result = await getAllCanvasAssignmentIndex({ maxPages: 100 });
+        const residentialAssignments = result.assignments.map(residentialAssignmentFromIndex);
+        await canvasOfflineStore.putAssignmentIndex({
+          actorUserId: user.id,
+          assignments: residentialAssignments,
+          serverTime: result.server_time,
+          authoritativeComplete: result.complete === true,
+        });
+        return { ...result, assignments: residentialAssignments };
+      } catch (error) {
+        const cached = await canvasOfflineStore.getAssignmentIndex({ actorUserId: user.id });
+        if (!cached?.assignments?.length) throw error;
+        return {
+          success: true,
+          assignments: cached.assignments,
+          server_time: cached.serverTime,
+          offline_index: true,
+        };
+      }
+    },
     enabled: !!user,
     retry: false,
     refetchOnWindowFocus: true,
     refetchInterval: canvasFieldOpen || (!activeRoute && !canvasFieldDismissed) ? CANVAS_ASSIGNMENT_POLL_MS : false,
   });
-  const canvasAssignments = canvasAssignmentPackage?.assignments || [];
+
+  // Legacy discovery is isolated to one compatibility read per app session.
+  // Residential polling above never scans denormalized CanvasSession records.
+  const {
+    data: legacyCanvasPackage,
+    isLoading: legacyCanvasAssignmentsLoading,
+    isError: legacyCanvasAssignmentsUnavailable,
+    refetch: refetchLegacyCanvasAssignments,
+  } = useQuery({
+    queryKey: ['myLegacyCanvasAssignments', user?.id],
+    queryFn: async () => {
+      const result = await getMyCanvasAssignments();
+      return {
+        ...result,
+        assignments: (result.assignments || []).filter((assignment) => assignment?.territory_model !== 'residential_street_territory_v2'),
+      };
+    },
+    enabled: !!user,
+    retry: false,
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+    refetchInterval: false,
+  });
+  const residentialCanvasAssignments = residentialCanvasPackage?.assignments || [];
+  const legacyCanvasAssignments = legacyCanvasPackage?.assignments || [];
+  const canvasAssignments = useMemo(
+    () => [...residentialCanvasAssignments, ...legacyCanvasAssignments],
+    [legacyCanvasAssignments, residentialCanvasAssignments],
+  );
+  const canvasAssignmentPackage = useMemo(() => ({
+    success: true,
+    assignments: canvasAssignments,
+    rejected_deployments: legacyCanvasPackage?.rejected_deployments || 0,
+    truncated: legacyCanvasPackage?.truncated === true,
+    offline_index: residentialCanvasPackage?.offline_index === true,
+    server_time: residentialCanvasPackage?.server_time || legacyCanvasPackage?.server_time || null,
+  }), [canvasAssignments, legacyCanvasPackage, residentialCanvasPackage]);
+  const canvasAssignmentsLoading = residentialCanvasAssignmentsLoading || legacyCanvasAssignmentsLoading;
+  const canvasAssignmentsUnavailable = residentialCanvasAssignmentsUnavailable
+    || (legacyCanvasAssignmentsUnavailable && residentialCanvasAssignments.length === 0);
+  const refetchCanvasAssignments = React.useCallback(() => Promise.all([
+    refetchResidentialCanvasAssignments(),
+    refetchLegacyCanvasAssignments(),
+  ]), [refetchLegacyCanvasAssignments, refetchResidentialCanvasAssignments]);
   const canvasAssignmentIdentity = useMemo(() => canvasAssignments
-    .map((assignment) => `${assignment.session_id}:${assignment.version}:${assignment.zone?.zone_id || assignment.zone?.zone_number || ''}`)
+    .map((assignment) => `${assignment.session_id}:${assignment.zone?.zone_id || assignment.zone?.zone_number || ''}:${assignment.package_id || assignment.version || ''}:${assignment.package_version || assignment.assignment_version || ''}:${assignment.manifest_hash || ''}`)
     .sort()
     .join('|'), [canvasAssignments]);
 
   React.useEffect(() => {
+    if (canvasAssignmentsLoading) return;
     const previousIdentity = previousCanvasAssignmentIdentityRef.current;
     const canvasWasVisible = canvasFieldOpen || (!activeRoute?.id && !canvasFieldDismissed);
     if (previousIdentity && previousIdentity !== canvasAssignmentIdentity && canvasWasVisible) {
@@ -423,7 +512,7 @@ export default function RepHome() {
       setCanvasAssignmentNotice('');
     }
     previousCanvasAssignmentIdentityRef.current = canvasAssignmentIdentity;
-  }, [activeRoute?.id, canvasAssignmentIdentity, canvasFieldDismissed, canvasFieldOpen]);
+  }, [activeRoute?.id, canvasAssignmentIdentity, canvasAssignmentsLoading, canvasFieldDismissed, canvasFieldOpen]);
 
   React.useEffect(() => {
     if (!activeRoute?.id) return;
@@ -1309,8 +1398,22 @@ export default function RepHome() {
   }
 
   if (canvasAssignments.length > 0 && (canvasFieldOpen || (!activeRoute && !canvasFieldDismissed))) {
+    const hasResidentialCanvas = residentialCanvasAssignments.length > 0;
+    const hasLegacyCanvas = legacyCanvasAssignments.length > 0;
+    if (hasResidentialCanvas && hasLegacyCanvas && !canvasFieldMode) {
+      return <div className="flex h-screen flex-col items-center justify-center bg-black p-6 text-white"><Navigation className="h-11 w-11 text-purple-300" /><h1 className="mt-4 text-xl font-black">Choose Canvas assignments</h1><p className="mt-2 max-w-sm text-center text-sm text-gray-400">Your team has both current residential territories and legacy Canvas areas. Both remain available.</p><div className="mt-6 w-full max-w-sm space-y-3"><Button onClick={() => setCanvasFieldMode('residential')} className="h-14 w-full bg-purple-600 text-sm font-black text-white">Residential street territories · {residentialCanvasAssignments.length}</Button><Button onClick={() => setCanvasFieldMode('legacy')} className="h-14 w-full border border-white/15 bg-white/10 text-sm font-black text-white">Legacy Canvas areas · {legacyCanvasAssignments.length}</Button><Button onClick={() => { setCanvasFieldOpen(false); setCanvasFieldDismissed(true); }} className="h-11 w-full bg-transparent text-gray-400">Back to routes</Button></div></div>;
+    }
+    if (hasResidentialCanvas && (!hasLegacyCanvas || canvasFieldMode === 'residential')) {
+      return <CanvasResidentialFieldView
+        assignments={residentialCanvasAssignments}
+        rejectedDeployments={canvasAssignmentPackage?.rejected_deployments || 0}
+        user={user}
+        navigationApp={navigationApp}
+        onClose={() => { setCanvasFieldMode(null); setCanvasFieldOpen(false); setCanvasFieldDismissed(true); }}
+      />;
+    }
     return <CanvasFieldView
-      assignments={canvasAssignments}
+      assignments={legacyCanvasAssignments}
       truncated={canvasAssignmentPackage?.truncated === true}
       rejectedDeployments={canvasAssignmentPackage?.rejected_deployments || 0}
       user={user}
@@ -1320,7 +1423,7 @@ export default function RepHome() {
       fieldRoutesPendingDeviceCount={fieldRoutesPendingDeviceCount}
       onDiscardFieldRoutesDeviceAttention={discardFieldRoutesDeviceAttention}
       onScheduleFieldRoutesInspection={submitFieldRoutesInspection}
-      onClose={() => { setCanvasFieldOpen(false); setCanvasFieldDismissed(true); }}
+      onClose={() => { setCanvasFieldMode(null); setCanvasFieldOpen(false); setCanvasFieldDismissed(true); }}
     />;
   }
 
@@ -1971,6 +2074,7 @@ export default function RepHome() {
                                 type="button"
                                 onClick={() => {
                                   setCanvasFieldDismissed(false);
+                                  setCanvasFieldMode(null);
                                   setCanvasFieldOpen(true);
                                   closeRouteSwitcher();
                                 }}

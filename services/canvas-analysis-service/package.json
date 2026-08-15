@@ -1,0 +1,13 @@
+{
+  "name": "@firstknock/canvas-analysis-service",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "start": "node src/index.mjs",
+    "test": "node --test test/*.test.mjs"
+  }
+}

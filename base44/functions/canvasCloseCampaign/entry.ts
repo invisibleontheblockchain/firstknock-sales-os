@@ -1,5 +1,6 @@
 // base44/functions/canvasCloseCampaign/entry.ts
 import { createClientFromRequest } from "npm:@base44/sdk@0.8.31";
+import { Client } from "npm:@neondatabase/serverless@0.9.0";
 
 // base44/functions/canvasCloseCampaign/canvasLifecycleSignature.js
 var LIFECYCLE_STATES = /* @__PURE__ */ new Set(["active", "completed", "recalled"]);
@@ -38,6 +39,7 @@ function canvasStoredPlanForHash(session) {
     qa: session?.qa || {},
     algorithm_version: session?.algorithm_version || null,
     data_version: session?.data_version || null,
+    ...session?.territory_model === "residential_street_territory_v2" ? { evidence_id: session?.evidence_id, evidence_release_id: session?.evidence_release_id || null, revision_id: session?.revision_id || null, snapshot_hash: session?.snapshot_hash, evidence_schema_version: Number(session?.evidence_schema_version), unresolved_unit_count: Number(session?.unresolved_unit_count || 0), assignment_version: Number(session?.assignment_version || 0) } : {},
     manager_id: session?.manager_id,
     version: planVersion
   };
@@ -203,6 +205,135 @@ async function releaseCampaignTransitionLock(base44, session, token) {
     canvas_field_write_lock_expires_at: ""
   } }).catch(() => null);
 }
+function usesCanvasOperationalStore(session) {
+  return String(session?.territory_model || "") === "residential_street_territory_v2";
+}
+function queryRows(result) {
+  return Array.isArray(result?.rows) ? result.rows : [];
+}
+async function closeOperationalCampaign(session, {
+  targetState,
+  action,
+  idempotencyKey,
+  closedAt,
+  closedByUserId,
+  lifecycleVersion
+}) {
+  if (!usesCanvasOperationalStore(session)) {
+    return { required: false, closed_at: closedAt, assignment_count: 0, package_count: 0 };
+  }
+  const databaseUrl = Deno.env.get("CANVAS_DATABASE_URL") || "";
+  if (!databaseUrl) {
+    throw new HttpError(503, "canvas_operational_lifecycle_unavailable", "Canvas operational lifecycle storage is not configured. The campaign remains active.");
+  }
+  const client = new Client(databaseUrl);
+  try {
+    await client.connect();
+    await client.query("BEGIN ISOLATION LEVEL SERIALIZABLE");
+    await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [`canvas:publish:${session.manager_id}:${session.id}`]);
+    await client.query(`
+      INSERT INTO canvas_deployments (
+        campaign_id, manager_id, plan_version, plan_hash, lifecycle_version,
+        assignment_index_version, evidence_release_id, classification_revision_id,
+        algorithm_version, status, deployed_at, closed_at, closed_by_user_id,
+        lifecycle_action, lifecycle_idempotency_key
+      ) VALUES ($1, $2, $3, $4, $5, 1, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+      ON CONFLICT (campaign_id) DO NOTHING
+    `, [
+      session.id,
+      session.manager_id,
+      Number(session.deployment_plan_version),
+      session.plan_hash,
+      lifecycleVersion,
+      session.evidence_release_id || null,
+      session.revision_id || null,
+      session.algorithm_version || null,
+      targetState,
+      session.deployed_at,
+      closedAt,
+      closedByUserId,
+      action,
+      idempotencyKey
+    ]);
+    const deployment = queryRows(await client.query(`
+      SELECT * FROM canvas_deployments
+      WHERE campaign_id = $1
+      FOR UPDATE
+    `, [session.id]))[0];
+    if (!deployment
+      || String(deployment.manager_id) !== String(session.manager_id)
+      || String(deployment.plan_hash) !== String(session.plan_hash)
+      || Number(deployment.plan_version) !== Number(session.deployment_plan_version)) {
+      throw new HttpError(409, "canvas_operational_lifecycle_conflict", "The operational campaign does not match this signed Canvas lifecycle.");
+    }
+    const currentStatus = String(deployment.status || "");
+    if (currentStatus !== targetState && !["packaging", "active"].includes(currentStatus)) {
+      throw new HttpError(409, "canvas_operational_lifecycle_conflict", `The operational campaign is already ${currentStatus || "closed"}.`);
+    }
+    if (currentStatus === targetState) {
+      if (deployment.lifecycle_action && String(deployment.lifecycle_action) !== action) {
+        throw new HttpError(409, "canvas_operational_lifecycle_conflict", "The operational campaign was closed by a different lifecycle action.");
+      }
+      if (deployment.lifecycle_idempotency_key && String(deployment.lifecycle_idempotency_key) !== idempotencyKey) {
+        throw new HttpError(409, "canvas_operational_lifecycle_conflict", "The operational campaign was closed by a different request.");
+      }
+    }
+    const effectiveClosedAt = deployment.closed_at ? new Date(deployment.closed_at).toISOString() : closedAt;
+    const packageResult = await client.query(`
+      UPDATE canvas_assignment_packages AS p
+      SET status = 'revoked', updated_at = NOW()
+      FROM canvas_assignments AS a
+      WHERE p.manager_id = $1
+        AND a.manager_id = p.manager_id
+        AND a.assignment_id = p.assignment_id
+        AND a.campaign_id = $2
+        AND p.status IN ('building', 'ready')
+    `, [session.manager_id, session.id]);
+    const assignmentStatus = targetState === "completed" ? "completed" : "revoked";
+    const assignmentReason = targetState === "completed" ? "campaign_completed" : "campaign_recalled";
+    const assignmentResult = await client.query(`
+      UPDATE canvas_assignments
+      SET status = $3, package_status = 'revoked',
+        revoked_at = COALESCE(revoked_at, $4),
+        revocation_reason = COALESCE(revocation_reason, $5),
+        updated_at = NOW()
+      WHERE manager_id = $1 AND campaign_id = $2
+        AND status IN ('packaging', 'active', $3)
+    `, [session.manager_id, session.id, assignmentStatus, effectiveClosedAt, assignmentReason]);
+    const updatedDeployment = queryRows(await client.query(`
+      UPDATE canvas_deployments
+      SET status = $3,
+        lifecycle_version = GREATEST(lifecycle_version, $4),
+        assignment_index_version = assignment_index_version + CASE WHEN status = $3 THEN 0 ELSE 1 END,
+        closed_at = COALESCE(closed_at, $5),
+        closed_by_user_id = COALESCE(closed_by_user_id, $6),
+        lifecycle_action = COALESCE(lifecycle_action, $7),
+        lifecycle_idempotency_key = COALESCE(lifecycle_idempotency_key, $8),
+        updated_at = NOW()
+      WHERE campaign_id = $1 AND manager_id = $2
+      RETURNING status, closed_at, lifecycle_version, assignment_index_version
+    `, [session.id, session.manager_id, targetState, lifecycleVersion, effectiveClosedAt, closedByUserId, action, idempotencyKey]))[0];
+    if (!updatedDeployment || String(updatedDeployment.status) !== targetState) {
+      throw new HttpError(503, "canvas_operational_lifecycle_failed", "Canvas could not verify the operational campaign closure.");
+    }
+    await client.query("COMMIT");
+    return {
+      required: true,
+      status: updatedDeployment.status,
+      closed_at: new Date(updatedDeployment.closed_at).toISOString(),
+      assignment_count: Number(assignmentResult?.rowCount || 0),
+      package_count: Number(packageResult?.rowCount || 0),
+      assignment_index_version: Number(updatedDeployment.assignment_index_version)
+    };
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    if (error instanceof HttpError) throw error;
+    console.error("[canvasCloseCampaign] operational lifecycle transition failed");
+    throw new HttpError(503, "canvas_operational_lifecycle_failed", "Canvas could not revoke operational assignments. The signed campaign was not closed.");
+  } finally {
+    await client.end().catch(() => undefined);
+  }
+}
 Deno.serve(async (req) => {
   let base44 = null;
   let session = null;
@@ -242,7 +373,15 @@ Deno.serve(async (req) => {
       if (expectedVersion !== originalVersion && expectedVersion !== Number(session.version)) {
         throw new HttpError(409, "version_conflict", "The Canvas campaign changed before this close retry.");
       }
-      return Response.json(closeResponse(session, true));
+      const operationalLifecycle = await closeOperationalCampaign(session, {
+        targetState,
+        action,
+        idempotencyKey,
+        closedAt: session.closed_at,
+        closedByUserId: session.closed_by_user_id,
+        lifecycleVersion: Number(session.version)
+      });
+      return Response.json({ ...closeResponse(session, true), operational_lifecycle: operationalLifecycle });
     }
     if (session.status !== "deployed") {
       throw new HttpError(409, "campaign_not_active", "Only an active deployed Canvas campaign can be completed or recalled.");
@@ -258,8 +397,17 @@ Deno.serve(async (req) => {
     if (!session || session.manager_id !== user.id || session.status !== "deployed" || session.lifecycle_state !== "active" || Number(session.version) !== expectedVersion || !await verifyCanvasLifecycleSession(signingSecret, session, "active")) {
       throw new HttpError(409, "version_conflict", "The Canvas campaign changed before the close lock was acquired. Reload before retrying.");
     }
-    const closedAt = (/* @__PURE__ */ new Date()).toISOString();
+    const requestedClosedAt = (/* @__PURE__ */ new Date()).toISOString();
     const nextVersion = Number(session.version) + 1;
+    const operationalLifecycle = await closeOperationalCampaign(session, {
+      targetState,
+      action,
+      idempotencyKey,
+      closedAt: requestedClosedAt,
+      closedByUserId: user.id,
+      lifecycleVersion: nextVersion
+    });
+    const closedAt = operationalLifecycle.closed_at || requestedClosedAt;
     const lifecycleEvidence = {
       schema_version: 1,
       state: targetState,
@@ -313,7 +461,7 @@ Deno.serve(async (req) => {
     if (mutation?.success !== true || Number(mutation?.updated) !== 1 || mutation?.has_more === true) {
       const latest = await base44.entities.CanvasSession.get(session.id).catch(() => null);
       if (latest?.manager_id === user.id && latest?.status === targetState && latest?.close_action === action && latest?.close_idempotency_key === idempotencyKey && await verifyCanvasLifecycleSession(signingSecret, latest, targetState)) {
-        return Response.json(closeResponse(latest, true));
+        return Response.json({ ...closeResponse(latest, true), operational_lifecycle: operationalLifecycle });
       }
       throw new HttpError(409, "version_conflict", "The Canvas campaign changed before the close committed. Reload before retrying.");
     }
@@ -321,7 +469,7 @@ Deno.serve(async (req) => {
     if (!updated || !await verifyCanvasLifecycleSession(signingSecret, updated, targetState)) {
       throw new HttpError(503, "canvas_close_commit_unverified", "The Canvas lifecycle commit could not be verified. Reload before retrying.");
     }
-    return Response.json(closeResponse(updated, false));
+    return Response.json({ ...closeResponse(updated, false), operational_lifecycle: operationalLifecycle });
   } catch (error) {
     if (error instanceof HttpError) {
       return Response.json({

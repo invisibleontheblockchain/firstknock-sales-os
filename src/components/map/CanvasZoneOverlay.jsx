@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useMap } from 'react-leaflet';
 import CanvasZoneLayers from './CanvasZoneLayers';
 import CanvasCampaignMapLayers from './CanvasCampaignMapLayers';
+import CanvasResidentialAnalysisLayers from './CanvasResidentialAnalysisLayers';
 import { canvasZoneStreetSegments } from '@/components/canvas/canvasOutcomeUtils';
 
 function previewPoints(zones, workUnits) {
@@ -17,6 +18,7 @@ export default function CanvasZoneOverlay({ routeMode = 'precision', preview = {
   const fitFrameRef = useRef(null);
   const [zones, setZones] = useState(() => Array.isArray(preview.zones) ? preview.zones : []);
   const [workUnits, setWorkUnits] = useState(() => Array.isArray(preview.workUnits) ? preview.workUnits : []);
+  const [residentialAnalysis, setResidentialAnalysis] = useState(null);
   routeModeRef.current = routeMode;
 
   useEffect(() => {
@@ -63,10 +65,17 @@ export default function CanvasZoneOverlay({ routeMode = 'precision', preview = {
     };
   }, [map, routeMode]);
 
+  useEffect(() => {
+    const handleResidentialAnalysis = (event) => setResidentialAnalysis(event.detail?.analysis || null);
+    window.addEventListener('fk-canvas-residential-analysis-updated', handleResidentialAnalysis);
+    return () => window.removeEventListener('fk-canvas-residential-analysis-updated', handleResidentialAnalysis);
+  }, []);
+
   if (routeMode !== 'canvas') return null;
 
   return (
     <>
+      <CanvasResidentialAnalysisLayers analysis={residentialAnalysis} hasAreaPreview={zones.length > 0} />
       <CanvasZoneLayers zones={zones} workUnits={workUnits} />
       <CanvasCampaignMapLayers />
     </>

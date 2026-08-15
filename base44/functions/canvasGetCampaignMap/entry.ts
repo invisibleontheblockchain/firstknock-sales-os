@@ -38,6 +38,7 @@ function canvasStoredPlanForHash(session) {
     qa: session?.qa || {},
     algorithm_version: session?.algorithm_version || null,
     data_version: session?.data_version || null,
+    ...session?.territory_model === "residential_street_territory_v2" ? { evidence_id: session?.evidence_id, evidence_release_id: session?.evidence_release_id || null, revision_id: session?.revision_id || null, snapshot_hash: session?.snapshot_hash, evidence_schema_version: Number(session?.evidence_schema_version), unresolved_unit_count: Number(session?.unresolved_unit_count || 0), assignment_version: Number(session?.assignment_version || 0) } : {},
     manager_id: session?.manager_id,
     version: planVersion
   };
@@ -315,9 +316,23 @@ Deno.serve(async (req) => {
       throw new HttpError(403, "zone_not_assigned", "This campaign has no area assigned to the authenticated rep.");
     }
     const visibleZoneIds = new Set(visibleZones.map((zone) => String(zone.zone_id)));
+    // Residential Canvas v2 stores field decisions in the transactional
+    // operational ledger. Managers load those decisions by viewport and read
+    // totals from canvasGetCampaignSummary; resending every pin with the static
+    // campaign geometry would recreate the national-scale polling bottleneck.
+    // Legacy campaigns and rep callers always retain the complete Base44 path.
+    const operationalViewport = manager
+      && session.territory_model === "residential_street_territory_v2"
+      && body?.include_pins === false;
     const pinFilter = { manager_id: managerId, campaign_id: campaignId };
-    const pinResult = manager ? await pagedFilter(base44.asServiceRole.entities.CanvasHousePin, pinFilter, "-last_event_at", MAX_PINS) : await pagedFilterByVisibleZones(base44.asServiceRole.entities.CanvasHousePin, pinFilter, [...visibleZoneIds], "-last_event_at", MAX_PINS);
-    const dncPins = await loadCompleteDncPins(base44.asServiceRole.entities.CanvasHousePin, pinFilter, [...visibleZoneIds], manager);
+    const pinResult = operationalViewport
+      ? { rows: [], truncated: false }
+      : manager
+        ? await pagedFilter(base44.asServiceRole.entities.CanvasHousePin, pinFilter, "-last_event_at", MAX_PINS)
+        : await pagedFilterByVisibleZones(base44.asServiceRole.entities.CanvasHousePin, pinFilter, [...visibleZoneIds], "-last_event_at", MAX_PINS);
+    const dncPins = operationalViewport
+      ? []
+      : await loadCompleteDncPins(base44.asServiceRole.entities.CanvasHousePin, pinFilter, [...visibleZoneIds], manager);
     if (dncPins.some((pin) => !visibleZoneIds.has(String(pin.zone_id)))) {
       throw new HttpError(503, "dnc_safety_integrity_failed", "A do-not-knock pin no longer belongs to a campaign territory. The map was withheld for safety.");
     }
@@ -326,7 +341,7 @@ Deno.serve(async (req) => {
     const pins = [...pinById.values()].filter((pin) => pin.manager_id === managerId && pin.campaign_id === campaignId && visibleZoneIds.has(String(pin.zone_id)));
     let events = [];
     let eventsTruncated = false;
-    if (includeEvents) {
+    if (includeEvents && !operationalViewport) {
       const eventFilter = {
         manager_id: managerId,
         campaign_id: campaignId,
@@ -352,6 +367,7 @@ Deno.serve(async (req) => {
     return Response.json({
       success: true,
       access_scope: manager ? "manager_global" : "rep_assigned_zones",
+      decision_delivery: operationalViewport ? "operational_viewport" : "embedded",
       campaign: {
         campaign_id: session.id,
         session_name: session.session_name || "Canvas Campaign",
@@ -381,12 +397,14 @@ Deno.serve(async (req) => {
         work_units: workUnits
       },
       pins: pins.map(publicPin),
-      events: includeEvents ? events.map(publicEvent) : void 0,
+      events: includeEvents && !operationalViewport ? events.map(publicEvent) : void 0,
       outcome_counts: outcomeCounts,
       zone_counts: zoneCounts,
       total_pins: pins.length,
-      total_events: includeEvents ? events.length : null,
-      dnc_safety: { complete: true, pin_count: dncPins.length, hard_limit: MAX_DNC_PINS },
+      total_events: includeEvents && !operationalViewport ? events.length : null,
+      dnc_safety: operationalViewport
+        ? { complete: true, delivery: "operational_viewport", pin_count: null }
+        : { complete: true, delivery: "embedded", pin_count: dncPins.length, hard_limit: MAX_DNC_PINS },
       truncated: { pins: pinResult.truncated, events: eventsTruncated },
       server_time: (/* @__PURE__ */ new Date()).toISOString()
     });

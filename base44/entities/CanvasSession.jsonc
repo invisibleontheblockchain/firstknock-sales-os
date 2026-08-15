@@ -9,7 +9,8 @@
     "territory_model": {
       "type": "string",
       "enum": [
-        "street_territory_v1"
+        "street_territory_v1",
+        "residential_street_territory_v2"
       ],
       "default": "street_territory_v1",
       "description": "Canvas is territory-first. Houses are created as field pins, not preloaded into the campaign."
@@ -50,7 +51,8 @@
       "type": "string",
       "enum": [
         "street_length",
-        "street_length_plus_estimated_doors"
+        "street_length_plus_estimated_doors",
+        "residential_opportunity"
       ],
       "default": "street_length"
     },
@@ -94,6 +96,29 @@
     },
     "algorithm_version": { "type": "string" },
     "data_version": { "type": "string" },
+    "evidence_id": {
+      "type": "string",
+      "description": "Pinned immutable Canvas evidence snapshot for residential territories."
+    },
+    "evidence_release_id": { "type": "string" },
+    "revision_id": {
+      "type": "string",
+      "description": "Pinned append-only manager classification revision, when present."
+    },
+    "snapshot_hash": { "type": "string" },
+    "evidence_schema_version": { "type": "integer", "minimum": 1 },
+    "result_package_ref": { "type": "string" },
+    "result_package_hash": { "type": "string" },
+    "assignment_package_version": { "type": "integer", "minimum": 0, "default": 0 },
+    "assignment_package_ref": { "type": "string" },
+    "assignment_package_hash": { "type": "string" },
+    "decision_state_version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Version 1 retains the legacy campaign lock; version 2 uses campaign and per-zone decision-state rows."
+    },
+    "unresolved_unit_count": { "type": "integer", "minimum": 0 },
+    "assignment_version": { "type": "integer", "minimum": 0, "default": 0 },
     "plan_hash": {
       "type": "string",
       "description": "Server-computed SHA-256 digest of the normalized territory plan"
@@ -113,7 +138,7 @@
     },
     "lifecycle_state": {
       "type": "string",
-      "enum": ["active", "completed", "recalled"]
+      "enum": ["saved_unassigned", "partially_assigned", "ready_to_send", "active", "completed", "recalled"]
     },
     "lifecycle_evidence": { "type": "object" },
     "closed_at": { "type": "string", "format": "date-time" },

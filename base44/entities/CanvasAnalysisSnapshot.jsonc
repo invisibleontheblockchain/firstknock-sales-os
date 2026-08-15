@@ -1,0 +1,79 @@
+{
+  "name": "CanvasAnalysisSnapshot",
+  "type": "object",
+  "properties": {
+    "evidence_id": {
+      "type": "string",
+      "description": "Stable content-addressed ID for immutable campaign evidence."
+    },
+    "snapshot_hash": { "type": "string" },
+    "schema_version": { "type": "integer", "minimum": 1, "default": 1 },
+    "manager_id": { "type": "string" },
+    "created_by_user_id": { "type": "string" },
+    "created_at": { "type": "string", "format": "date-time" },
+    "provider": { "type": "string" },
+    "release_id": { "type": "string" },
+    "manifest_hash": { "type": "string" },
+    "source_versions": { "type": "object" },
+    "compiler_version": { "type": "string" },
+    "classifier_version": { "type": "string" },
+    "polygon": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "lat": { "type": "number" },
+          "lng": { "type": "number" }
+        }
+      }
+    },
+    "tile_ids": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "analysis_result": {
+      "type": "object",
+      "description": "Bounded classified street-unit result for interactive campaigns."
+    },
+    "result_object_key": {
+      "type": "string",
+      "description": "Optional immutable object-store result when the bounded inline representation is not used."
+    },
+    "result_hash": { "type": "string" },
+    "result_bytes": { "type": "integer", "minimum": 0 },
+    "summary": { "type": "object" },
+    "source_attribution": { "type": "string" },
+    "production_trusted": { "type": "boolean", "default": false }
+  },
+  "required": [
+    "evidence_id",
+    "snapshot_hash",
+    "schema_version",
+    "manager_id",
+    "created_by_user_id",
+    "created_at",
+    "provider",
+    "release_id",
+    "manifest_hash",
+    "source_versions",
+    "compiler_version",
+    "classifier_version",
+    "polygon",
+    "tile_ids",
+    "result_hash",
+    "result_bytes",
+    "summary",
+    "production_trusted"
+  ],
+  "rls": {
+    "create": { "user_condition": { "role": "admin" } },
+    "read": {
+      "$or": [
+        { "manager_id": "{{user.id}}" },
+        { "user_condition": { "role": "admin" } }
+      ]
+    },
+    "update": { "user_condition": { "id": "__immutable_canvas_analysis_snapshot__" } },
+    "delete": { "user_condition": { "id": "__immutable_canvas_analysis_snapshot__" } }
+  }
+}

@@ -11,7 +11,7 @@ test('Canvas uses a separate planner and production API lane', async () => {
     source('src/components/canvas/canvasProductionClient.js'),
   ]);
 
-  assert.match(builder, /generateStreetPlan = planCanvasTerritories/);
+  assert.match(builder, /partitionCanvasResidentialTerritoriesAsync/);
   assert.doesNotMatch(builder, /generateCanvasZones|BatchData|FetchJob/);
   assert.doesNotMatch(planner, /generateCanvasZones|h3-js|BatchData|FetchJob|precision/i);
   assert.match(client, /canvasSaveDraft/);
@@ -19,7 +19,10 @@ test('Canvas uses a separate planner and production API lane', async () => {
   assert.match(client, /canvasGetMyAssignments/);
   assert.match(client, /canvasLogHouseDecision/);
   assert.match(client, /canvasGetCampaignMap/);
-  assert.doesNotMatch(client, /localStorage|SavedRoute|Property/);
+  // localStorage is now a legitimate Canvas dependency: it persists the analysis
+  // job id so a reload resumes the queued run instead of restarting it. Precision
+  // entities must still never appear on the Canvas lane.
+  assert.doesNotMatch(client, /SavedRoute|Property/);
 });
 
 test('Canvas branches before the existing Precision builder without replacing it', async () => {
@@ -84,7 +87,8 @@ test('Canvas has no house-analysis UI gate and Home owns the authorized mode', a
   ]);
 
   assert.doesNotMatch(builder, /canvasAnalyzeTerritory|CanvasOpportunityReview|canvasAnalysisStore|stable home|homes per area/i);
-  assert.match(builder, /workload_basis: 'street_length'/);
+  // v1.1 measures workload as estimated residential opportunity, not street length.
+  assert.match(builder, /workload_basis: 'residential_opportunity'/);
   assert.match(workspace, /Number of areas/);
   assert.doesNotMatch(workspace, /How many people are working this area/);
   assert.match(home, /routeMode=\{routeMode\}/);

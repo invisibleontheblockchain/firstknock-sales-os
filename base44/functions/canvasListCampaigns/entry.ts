@@ -38,6 +38,7 @@ function canvasStoredPlanForHash(session) {
     qa: session?.qa || {},
     algorithm_version: session?.algorithm_version || null,
     data_version: session?.data_version || null,
+    ...session?.territory_model === "residential_street_territory_v2" ? { evidence_id: session?.evidence_id, evidence_release_id: session?.evidence_release_id || null, revision_id: session?.revision_id || null, snapshot_hash: session?.snapshot_hash, evidence_schema_version: Number(session?.evidence_schema_version), unresolved_unit_count: Number(session?.unresolved_unit_count || 0), assignment_version: Number(session?.assignment_version || 0) } : {},
     manager_id: session?.manager_id,
     version: planVersion
   };
@@ -186,6 +187,14 @@ Deno.serve(async (req) => {
         version: Number(session.version || 0),
         zone_count: asArray2(session.zones).length,
         work_unit_count: asArray2(session.work_units).length,
+        territory_model: session.territory_model || "street_territory_v1",
+        ...(session.territory_model === "residential_street_territory_v2" ? {
+          evidence_id: session.evidence_id || null,
+          evidence_release_id: session.evidence_release_id || null,
+          revision_id: session.revision_id || null,
+          snapshot_hash: session.snapshot_hash || null,
+          assignment_version: Number(session.assignment_version || 0)
+        } : {}),
         division_mode: session.division_mode || null,
         workload_basis: session.workload_basis || null,
         target_workload: session.target_workload ?? null,

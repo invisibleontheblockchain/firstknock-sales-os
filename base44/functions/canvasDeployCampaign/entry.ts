@@ -1166,7 +1166,7 @@ import intersectPolygons from "npm:turf-intersect@3.0.12";
 var ALGORITHM_VERSION = "canvas_street_workload_v3";
 var MAX_CANVAS_ZONE_COUNT = 250;
 var MAX_CANVAS_INTERACTIVE_WORK_UNITS = 2e4;
-var MAX_CANVAS_INTERACTIVE_COMPLEXITY = 2e6;
+var MAX_CANVAS_INTERACTIVE_COMPLEXITY = 5e6;
 var MAX_CANVAS_INTERACTIVE_SEGMENTS = 5e4;
 var MAX_DISPLAY_CORRIDOR_WORK_UNITS = 2e3;
 var ZONE_COLORS = ["#A855F7", "#2563EB", "#059669", "#D97706", "#DC2626", "#0891B2", "#7C3AED", "#DB2777"];
@@ -2068,6 +2068,15 @@ function canvasStoredPlanForHash(session) {
     qa: session?.qa || {},
     algorithm_version: session?.algorithm_version || null,
     data_version: session?.data_version || null,
+    ...session?.territory_model === "residential_street_territory_v2" ? {
+      evidence_id: session?.evidence_id,
+      evidence_release_id: session?.evidence_release_id || null,
+      revision_id: session?.revision_id || null,
+      snapshot_hash: session?.snapshot_hash,
+      evidence_schema_version: Number(session?.evidence_schema_version),
+      unresolved_unit_count: Number(session?.unresolved_unit_count || 0),
+      assignment_version: Number(session?.assignment_version || 0)
+    } : {},
     manager_id: session?.manager_id,
     version: planVersion
   };
@@ -2150,7 +2159,7 @@ var OVERPASS_TILE_SIDE_MILES = 5;
 var MAX_OVERPASS_TILES = 144;
 var OVERPASS_TILE_CONCURRENCY = 2;
 var CANVAS_HIGHWAY_FILTER = "primary|secondary|tertiary|unclassified|residential|living_street";
-var WORKLOAD_BASES = /* @__PURE__ */ new Set(["street_length", "street_length_plus_estimated_doors"]);
+var WORKLOAD_BASES = /* @__PURE__ */ new Set(["street_length", "street_length_plus_estimated_doors", "residential_opportunity"]);
 var DIVISION_MODES = /* @__PURE__ */ new Set(["selected_reps", "area_count", "street_workload_target"]);
 var LEASE_DURATION_MS = 12e4;
 var LEASE_WAIT_MS = 10e3;
@@ -2364,7 +2373,8 @@ function deploymentSigningSecret() {
 }
 function validatePlan(session) {
   if (session.status !== "draft") throw new HttpError(409, "invalid_plan_status", "Only a draft Canvas plan can be deployed.");
-  if (session.territory_model !== "street_territory_v1" || session.planning_method !== "street_workload" || session.assignment_basis !== "street_work_unit_ids") {
+  const residentialV2 = session.territory_model === "residential_street_territory_v2";
+  if (!residentialV2 && session.territory_model !== "street_territory_v1" || session.planning_method !== "street_workload" || session.assignment_basis !== "street_work_unit_ids") {
     throw new HttpError(422, "territory_plan_required", "Canvas deployment requires a territory-first street-workload plan.");
   }
   if (!WORKLOAD_BASES.has(session.workload_basis)) throw new HttpError(422, "invalid_workload_basis", "Canvas workload basis is missing or invalid.");
@@ -2372,27 +2382,61 @@ function validatePlan(session) {
   if (session.division_mode === "street_workload_target" && !(Number(session.target_workload) > 0)) {
     throw new HttpError(422, "invalid_workload_target", "Workload-sized Canvas plans require positive class-weighted street meters per area.");
   }
-  if (session.workload_basis !== "street_length") {
+  if (session.workload_basis !== (residentialV2 ? "residential_opportunity" : "street_length")) {
     throw new HttpError(422, "estimated_workload_preview_only", "Optional door estimates are preview-only in this release. Regenerate using street-length workload before deployment.");
+  }
+  if (residentialV2) {
+    if (session.lifecycle_state !== "ready_to_send") {
+      throw new HttpError(422, "canvas_not_ready_to_send", "Assign every territory and resolve all uncertain residential evidence before sending this campaign.");
+    }
+    if (!/^canvas_evidence_[a-f0-9]{64}$/.test(String(session.evidence_id || ""))
+      || !/^[a-f0-9]{64}$/.test(String(session.snapshot_hash || ""))
+      || !Number.isInteger(Number(session.evidence_schema_version))
+      || Number(session.evidence_schema_version) < 1
+      || Number(session.unresolved_unit_count || 0) !== 0) {
+      throw new HttpError(422, "residential_evidence_required", "Canvas deployment requires a pinned, fully reviewed residential evidence revision.");
+    }
   }
   if (!String(session.algorithm_version || "").trim() || !String(session.data_version || "").trim()) {
     throw new HttpError(422, "unversioned_plan", "Canvas algorithm_version and data_version are required for deployment.");
   }
   const zones = asArray2(session.zones);
   const workUnits = asArray2(session.work_units);
-  if (zones.length < 1 || zones.length > MAX_ZONES || workUnits.length < 1 || workUnits.length > MAX_WORK_UNITS) {
+  if (zones.length < 1 || workUnits.length < 1) {
     throw new HttpError(422, "invalid_plan_size", "Canvas deployment requires supported zones and street work units.");
+  }
+  if (zones.length > MAX_ZONES || workUnits.length > MAX_WORK_UNITS) {
+    throw new HttpError(422, "plan_too_complex", "This street plan exceeds the supported area or street-unit limit. Reduce the boundary or area count that exceeded its limit.");
   }
   const segmentCount = workUnits.reduce((sum, unit) => sum + asArray2(unit?.segments).length, 0);
   if (workUnits.length > MAX_CANVAS_INTERACTIVE_WORK_UNITS || segmentCount > MAX_CANVAS_INTERACTIVE_SEGMENTS || zones.length * workUnits.length > MAX_CANVAS_INTERACTIVE_COMPLEXITY) {
     throw new HttpError(422, "plan_too_complex", "This street plan exceeds the supported street-unit, segment, or area-by-unit limit. Reduce the boundary or area count that exceeded its limit.");
   }
   const expectedUnitIds = /* @__PURE__ */ new Set();
+  const allUnitIds = /* @__PURE__ */ new Set();
   for (const unit of workUnits) {
     const unitId = requiredString(unit?.id, "work_unit.id");
-    if (expectedUnitIds.has(unitId)) throw new HttpError(422, "duplicate_work_unit", `Work unit ${unitId} is duplicated.`);
+    if (allUnitIds.has(unitId)) throw new HttpError(422, "duplicate_work_unit", `Work unit ${unitId} is duplicated.`);
     if (!asArray2(unit?.segments).length) throw new HttpError(422, "invalid_work_unit", `Work unit ${unitId} has no canonical road segments.`);
-    expectedUnitIds.add(unitId);
+    allUnitIds.add(unitId);
+    if (residentialV2) {
+      const role = String(unit?.canvas_role || "");
+      if (!["knock", "transit_only", "excluded", "uncertain"].includes(role)) {
+        throw new HttpError(422, "invalid_canvas_role", `Work unit ${unitId} has an invalid residential role.`);
+      }
+      const low = Number(unit?.opportunity_low || 0);
+      const expected = Number(unit?.opportunity_expected || 0);
+      const high = Number(unit?.opportunity_high || 0);
+      if (![low, expected, high].every((value) => Number.isFinite(value) && value >= 0)
+        || low > expected || expected > high
+        || (role === "knock" && !(expected > 0))
+        || (role !== "knock" && (low !== 0 || expected !== 0 || high !== 0))) {
+        throw new HttpError(422, "invalid_residential_opportunity", `Work unit ${unitId} has an invalid residential opportunity range.`);
+      }
+      if (role === "knock") expectedUnitIds.add(unitId);
+    } else {
+      expectedUnitIds.add(unitId);
+    }
   }
   const counts = /* @__PURE__ */ new Map();
   const zoneIds = /* @__PURE__ */ new Set();
@@ -2453,11 +2497,16 @@ function validatePlan(session) {
     assignedRepIds: [...assignedRepIds],
     deploymentQa: {
       identity_validator_version: 2,
-      territory_model: "street_territory_v1",
+      territory_model: session.territory_model,
       street_work_units_complete_and_exclusive: true,
+      residential_evidence_pinned: residentialV2 ? true : null,
+      evidence_id: residentialV2 ? session.evidence_id : null,
+      revision_id: residentialV2 ? session.revision_id || null : null,
+      unresolved_unit_count: residentialV2 ? 0 : null,
       selected_reps_one_to_one: session.division_mode === "selected_reps" ? true : null,
       zone_count: zones.length,
-      work_unit_count: workUnits.length,
+      work_unit_count: expectedUnitIds.size,
+      context_work_unit_count: residentialV2 ? workUnits.length - expectedUnitIds.size : 0,
       total_street_length_meters: Number(qa.total_street_length_meters || 0),
       max_workload_deviation_percent: maxWorkloadDeviationPercent,
       manager_workload_exception_acknowledged: maxWorkloadDeviationPercent > 25 ? true : null,
@@ -2832,6 +2881,285 @@ function canonicalWorkUnit(unit) {
     }).sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)))
   };
 }
+function canvasAnalysisSnapshotIdentityForDeploy(snapshot) {
+  return {
+    purpose: "firstknock-canvas-analysis-snapshot-v1",
+    schema_version: Number(snapshot?.schema_version),
+    manager_id: String(snapshot?.manager_id || ""),
+    created_by_user_id: String(snapshot?.created_by_user_id || ""),
+    created_at: snapshot?.created_at,
+    provider: snapshot?.provider,
+    release_id: snapshot?.release_id,
+    manifest_hash: snapshot?.manifest_hash,
+    source_versions: snapshot?.source_versions,
+    compiler_version: snapshot?.compiler_version,
+    classifier_version: snapshot?.classifier_version,
+    polygon: snapshot?.polygon,
+    tile_ids: snapshot?.tile_ids,
+    result_hash: snapshot?.result_hash,
+    result_bytes: Number(snapshot?.result_bytes),
+    summary: snapshot?.summary,
+    source_attribution: snapshot?.source_attribution,
+    production_trusted: snapshot?.production_trusted === true
+  };
+}
+function residentialUnitsFromAnalysisResult(result) {
+  return asArray2(result?.street_units ?? result?.classified_street_units ?? result?.work_units);
+}
+function canonicalResidentialWorkUnitForDeploy(unit) {
+  const opportunity = unit?.opportunity || {};
+  const canonicalSegment = (segment) => ({
+    edge_id: segment?.edge_id ?? segment?.edgeId ?? null,
+    start: canonicalPoint(segment?.start),
+    end: canonicalPoint(segment?.end),
+    street_names: asArray2(segment?.street_names ?? segment?.streetNames).map(String).sort(),
+    length_meters: Number(segment?.length_meters ?? segment?.lengthMeters ?? 0)
+  });
+  return {
+    id: String(unit?.id ?? unit?.unit_id ?? unit?.work_unit_id ?? ""),
+    kind: unit?.kind || null,
+    protected: unit?.protected === true,
+    protected_group_id: unit?.protected_group_id || null,
+    protected_group_ids: [...new Set(asArray2(unit?.protected_group_ids).map(String).filter(Boolean))].sort(),
+    canvas_role: unit?.canvas_role || null,
+    confidence: unit?.confidence || null,
+    opportunity_low: Number(unit?.opportunity_low ?? opportunity.min ?? opportunity.low ?? 0),
+    opportunity_expected: Number(unit?.opportunity_expected ?? opportunity.expected ?? 0),
+    opportunity_high: Number(unit?.opportunity_high ?? opportunity.max ?? opportunity.high ?? 0),
+    street_names: asArray2(unit?.street_names ?? unit?.streetNames).map(String).sort(),
+    neighbor_ids: [...new Set(asArray2(unit?.neighbor_ids ?? unit?.neighborIds).map(String).filter(Boolean))].sort(),
+    street_length_meters: Number(unit?.street_length_meters ?? unit?.streetLengthMeters ?? 0),
+    segments: asArray2(unit?.segments).map(canonicalSegment).sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)))
+  };
+}
+function residentialRevisionIdentityForDeploy(revision) {
+  return {
+    purpose: "firstknock-canvas-classification-revision-v1",
+    schema_version: Number(revision?.schema_version),
+    manager_id: String(revision?.manager_id || ""),
+    evidence_id: String(revision?.evidence_id || ""),
+    parent_revision_id: revision?.parent_revision_id || null,
+    street_unit_ids: [...new Set(asArray2(revision?.street_unit_ids).map(String).filter(Boolean))].sort(),
+    original_classifications: asArray2(revision?.original_classifications).map((entry) => ({
+      street_unit_id: String(entry?.street_unit_id || ""),
+      canvas_role: entry?.canvas_role || null,
+      opportunity_low: Number(entry?.opportunity_low || 0),
+      opportunity_expected: Number(entry?.opportunity_expected || 0),
+      opportunity_high: Number(entry?.opportunity_high || 0)
+    })).sort((left, right) => left.street_unit_id.localeCompare(right.street_unit_id)),
+    override_canvas_role: revision?.override_canvas_role,
+    opportunity_low: Number(revision?.opportunity_low || 0),
+    opportunity_expected: Number(revision?.opportunity_expected || 0),
+    opportunity_high: Number(revision?.opportunity_high || 0),
+    override_reason: revision?.override_reason,
+    created_by_user_id: String(revision?.created_by_user_id || "")
+  };
+}
+async function replayResidentialRevisionForDeploy(base44, session, baseUnits) {
+  if (!session.revision_id) return baseUnits.map((unit) => ({ ...unit }));
+  const chain = [];
+  const seen = /* @__PURE__ */ new Set();
+  let cursor = String(session.revision_id);
+  while (cursor) {
+    if (!/^canvas_revision_[a-f0-9]{64}$/.test(cursor) || seen.has(cursor) || chain.length >= 500) {
+      throw new HttpError(409, "revision_chain_invalid", "The pinned Canvas classification revision chain is invalid.");
+    }
+    seen.add(cursor);
+    const rows = asArray2(await base44.asServiceRole.entities.CanvasClassificationRevision.filter({
+      manager_id: session.manager_id,
+      evidence_id: session.evidence_id,
+      revision_id: cursor
+    }, "-created_at", 2));
+    if (rows.length !== 1) throw new HttpError(409, "revision_not_found", "A pinned Canvas classification revision is unavailable or ambiguous.");
+    const revision = rows[0];
+    const revisionHash = await sha2562(residentialRevisionIdentityForDeploy(revision));
+    if (revision.revision_hash !== revisionHash || revision.revision_id !== `canvas_revision_${revisionHash}`) {
+      throw new HttpError(409, "revision_integrity_failed", "A pinned Canvas classification revision failed integrity verification.");
+    }
+    chain.push(revision);
+    cursor = revision.parent_revision_id ? String(revision.parent_revision_id) : "";
+  }
+  const units = baseUnits.map((unit) => ({ ...unit }));
+  const byId = new Map(units.map((unit) => [String(unit?.id ?? unit?.unit_id ?? unit?.work_unit_id ?? ""), unit]));
+  for (const revision of chain.reverse()) {
+    const ids = [...new Set(asArray2(revision.street_unit_ids).map(String).filter(Boolean))].sort();
+    const overrideRole = String(revision.override_canvas_role || "");
+    const low = Number(revision.opportunity_low || 0);
+    const expected = Number(revision.opportunity_expected || 0);
+    const high = Number(revision.opportunity_high || 0);
+    const validKnock = overrideRole === "knock" && ids.length === 1 && Number.isInteger(expected) && expected > 0 && low === expected && high === expected;
+    const validZeroRole = ["transit_only", "excluded", "uncertain"].includes(overrideRole) && low === 0 && expected === 0 && high === 0;
+    if (!ids.length || ids.length > 250
+      || (ids.length > 1 && !["transit_only", "excluded"].includes(overrideRole))
+      || (!validKnock && !validZeroRole)) {
+      throw new HttpError(409, "revision_targets_invalid", "A pinned Canvas classification revision has invalid targets.");
+    }
+    const originals = asArray2(revision.original_classifications).map((entry) => ({
+      street_unit_id: String(entry?.street_unit_id || ""),
+      canvas_role: entry?.canvas_role || null,
+      opportunity_low: Number(entry?.opportunity_low || 0),
+      opportunity_expected: Number(entry?.opportunity_expected || 0),
+      opportunity_high: Number(entry?.opportunity_high || 0)
+    })).sort((left, right) => left.street_unit_id.localeCompare(right.street_unit_id));
+    if (originals.length !== ids.length || originals.some((entry, index) => entry.street_unit_id !== ids[index])) {
+      throw new HttpError(409, "revision_audit_invalid", "A pinned Canvas classification revision is missing its original audit state.");
+    }
+    for (const id of ids) {
+      const unit = byId.get(id);
+      if (!unit) throw new HttpError(409, "revision_unit_missing", "A pinned classification revision references evidence outside this snapshot.");
+      const current = canonicalResidentialWorkUnitForDeploy(unit);
+      const original = originals.find((entry) => entry.street_unit_id === id);
+      if (original.canvas_role !== current.canvas_role
+        || original.opportunity_low !== current.opportunity_low
+        || original.opportunity_expected !== current.opportunity_expected
+        || original.opportunity_high !== current.opportunity_high) {
+        throw new HttpError(409, "revision_audit_mismatch", "A pinned Canvas classification revision does not match the prior evidence state.");
+      }
+      unit.canvas_role = overrideRole;
+      unit.opportunity_low = low;
+      unit.opportunity_expected = expected;
+      unit.opportunity_high = high;
+      unit.opportunity = overrideRole === "knock" ? { low, min: low, expected, high, max: high } : null;
+      unit.confidence = "manager_reviewed";
+    }
+  }
+  return units;
+}
+function residentialEffectiveNeighborMapForDeploy(units) {
+  const byId = new Map(units.map((unit) => [String(unit?.id ?? unit?.unit_id ?? unit?.work_unit_id ?? ""), unit]).filter(([id]) => id));
+  const neighbors = new Map([...byId.keys()].map((id) => [id, /* @__PURE__ */ new Set()]));
+  for (const [id, unit] of byId) {
+    for (const candidate of asArray2(unit?.neighbor_ids ?? unit?.neighborIds).map(String)) {
+      if (!byId.has(candidate) || candidate === id) continue;
+      neighbors.get(id).add(candidate);
+      neighbors.get(candidate).add(id);
+    }
+  }
+  const knockIds = new Set([...byId].filter(([, unit]) => unit.canvas_role === "knock").map(([id]) => id));
+  const effective = new Map([...knockIds].map((id) => [id, /* @__PURE__ */ new Set()]));
+  for (const id of knockIds) for (const neighborId of neighbors.get(id) || []) {
+    if (knockIds.has(neighborId)) effective.get(id).add(neighborId);
+  }
+  const unseenTransit = new Set([...byId].filter(([, unit]) => unit.canvas_role === "transit_only").map(([id]) => id));
+  while (unseenTransit.size) {
+    const seed = [...unseenTransit].sort()[0];
+    const queue = [seed];
+    const borderingKnockIds = /* @__PURE__ */ new Set();
+    unseenTransit.delete(seed);
+    for (let index = 0; index < queue.length; index += 1) {
+      for (const neighborId of neighbors.get(queue[index]) || []) {
+        if (unseenTransit.has(neighborId)) {
+          unseenTransit.delete(neighborId);
+          queue.push(neighborId);
+        } else if (knockIds.has(neighborId)) {
+          borderingKnockIds.add(neighborId);
+        }
+      }
+    }
+    for (const id of borderingKnockIds) for (const neighborId of borderingKnockIds) {
+      if (id !== neighborId) effective.get(id).add(neighborId);
+    }
+  }
+  return effective;
+}
+function verifyResidentialZoneTopologyForDeploy(units, zones) {
+  const canonicalUnits = units.map(canonicalResidentialWorkUnitForDeploy);
+  const byId = new Map(canonicalUnits.map((unit) => [unit.id, unit]));
+  const effectiveNeighbors = residentialEffectiveNeighborMapForDeploy(canonicalUnits);
+  const zoneByUnitId = new Map();
+  for (const zone of zones) for (const id of asArray2(zone?.work_unit_ids).map(String)) zoneByUnitId.set(id, String(zone?.zone_id || ""));
+  const zonesByProtectedGroup = /* @__PURE__ */ new Map();
+  for (const unit of canonicalUnits.filter((candidate) => candidate.canvas_role === "knock")) {
+    const groups = [...new Set([...unit.protected_group_ids, unit.protected_group_id].filter(Boolean))];
+    for (const groupId of groups) {
+      if (!zonesByProtectedGroup.has(groupId)) zonesByProtectedGroup.set(groupId, /* @__PURE__ */ new Set());
+      zonesByProtectedGroup.get(groupId).add(zoneByUnitId.get(unit.id) || "");
+    }
+  }
+  for (const [groupId, zoneIds] of zonesByProtectedGroup) {
+    if (zoneIds.size !== 1 || zoneIds.has("")) throw new HttpError(422, "protected_cul_de_sac_split", `Protected cul-de-sac group ${groupId} is split across territories.`);
+  }
+  for (const zone of zones) {
+    const zoneId = String(zone?.zone_id || "unknown");
+    const ids = asArray2(zone?.work_unit_ids).map(String);
+    if (!ids.length || ids.some((id) => !effectiveNeighbors.has(id))) {
+      throw new HttpError(422, "residential_zone_topology_failed", `Area ${zoneId} contains a non-knock or missing residential street unit.`);
+    }
+    const allowed = new Set(ids);
+    const visited = new Set([ids[0]]);
+    const queue = [ids[0]];
+    for (let index = 0; index < queue.length; index += 1) for (const neighborId of effectiveNeighbors.get(queue[index]) || []) {
+      if (!allowed.has(neighborId) || visited.has(neighborId)) continue;
+      visited.add(neighborId);
+      queue.push(neighborId);
+    }
+    if (visited.size !== allowed.size) throw new HttpError(422, "residential_zone_disconnected", `Area ${zoneId} is not connected through owned knock streets and shared transit.`);
+    const expectedWorkload = ids.reduce((sum, id) => sum + Number(byId.get(id)?.opportunity_expected || 0), 0);
+    if (Math.abs(Number(zone?.workload_score) - expectedWorkload) > 1e-6) {
+      throw new HttpError(422, "residential_zone_workload_mismatch", `Area ${zoneId} workload does not match the pinned residential evidence.`);
+    }
+  }
+  return {
+    server_zone_connectivity_verified: true,
+    server_zone_workload_verified: true,
+    protected_cul_de_sac_groups_verified: true
+  };
+}
+async function verifyResidentialEvidenceForDeploy(base44, session) {
+  const rows = asArray2(await base44.asServiceRole.entities.CanvasAnalysisSnapshot.filter({
+    manager_id: session.manager_id,
+    evidence_id: session.evidence_id
+  }, "-created_at", 2));
+  if (rows.length !== 1) throw new HttpError(409, "evidence_not_found", "The pinned Canvas residential evidence is unavailable or ambiguous.");
+  const snapshot = rows[0];
+  if (!snapshot.analysis_result || typeof snapshot.analysis_result !== "object") throw new HttpError(409, "evidence_integrity_failed", "The pinned Canvas evidence has no classified result.");
+  const resultHash = await sha2562(snapshot.analysis_result);
+  const resultBytes = new TextEncoder().encode(JSON.stringify(canonicalize3(snapshot.analysis_result))).byteLength;
+  const snapshotHash = await sha2562(canvasAnalysisSnapshotIdentityForDeploy(snapshot));
+  if (snapshot.result_hash !== resultHash
+    || Number(snapshot.result_bytes) !== resultBytes
+    || snapshot.snapshot_hash !== snapshotHash
+    || session.snapshot_hash !== snapshotHash
+    || snapshot.evidence_id !== `canvas_evidence_${snapshotHash}`
+    || String(snapshot.manager_id || "") !== String(session.manager_id || "")) {
+    throw new HttpError(409, "evidence_integrity_failed", "The pinned Canvas residential evidence failed integrity verification.");
+  }
+  if (snapshot.production_trusted !== true) throw new HttpError(422, "development_evidence_not_activatable", "This Canvas evidence release is not approved for production deployment.");
+  if (String(snapshot.release_id || "") !== String(session.evidence_release_id || "")
+    || Number(snapshot.schema_version) !== Number(session.evidence_schema_version)
+    || JSON.stringify(canonicalize3(snapshot.polygon)) !== JSON.stringify(canonicalize3(session.polygon))) {
+    throw new HttpError(409, "evidence_snapshot_mismatch", "The saved campaign boundary or evidence release differs from its immutable snapshot.");
+  }
+  const baseUnits = residentialUnitsFromAnalysisResult(snapshot.analysis_result);
+  if (!baseUnits.length) throw new HttpError(409, "evidence_integrity_failed", "The pinned Canvas evidence has no street units.");
+  const effectiveUnits = await replayResidentialRevisionForDeploy(base44, session, baseUnits);
+  const unresolved = effectiveUnits.filter((unit) => unit?.canvas_role === "uncertain").length;
+  if (unresolved !== 0 || Number(session.unresolved_unit_count || 0) !== unresolved) {
+    throw new HttpError(422, "unresolved_residential_evidence", "Review every uncertain residential street before sending this campaign.");
+  }
+  const expectedUnits = effectiveUnits.map(canonicalResidentialWorkUnitForDeploy).sort((left, right) => left.id.localeCompare(right.id));
+  const submittedUnits = asArray2(session.work_units).map(canonicalResidentialWorkUnitForDeploy).sort((left, right) => left.id.localeCompare(right.id));
+  if (JSON.stringify(expectedUnits) !== JSON.stringify(submittedUnits)) {
+    throw new HttpError(409, "residential_work_unit_snapshot_mismatch", "Saved territories do not match the pinned residential evidence revision.");
+  }
+  const topology = verifyResidentialZoneTopologyForDeploy(effectiveUnits, asArray2(session.zones));
+  return {
+    validator_version: 4,
+    topology_validator: "signed_canvas_evidence_v1",
+    server_topology_verified: true,
+    evidence_snapshot_verified: true,
+    evidence_production_trusted: true,
+    evidence_id: snapshot.evidence_id,
+    evidence_release_id: snapshot.release_id,
+    evidence_manifest_hash: snapshot.manifest_hash,
+    evidence_result_hash: snapshot.result_hash,
+    classification_revision_id: session.revision_id || null,
+    residential_unit_count: effectiveUnits.filter((unit) => unit?.canvas_role === "knock").length,
+    context_unit_count: effectiveUnits.filter((unit) => unit?.canvas_role !== "knock").length,
+    unresolved_unit_count: 0,
+    ...topology
+  };
+}
 function zoneSignature(zone) {
   return JSON.stringify(asArray2(zone?.work_unit_ids ?? zone?.street_work_unit_ids).map(String).sort());
 }
@@ -2843,7 +3171,17 @@ function canonicalZoneDisplay(zone) {
     drop_point: zone?.drop_point ? canonicalPoint(zone.drop_point) : null
   };
 }
-async function verifyServerTopology(session) {
+async function verifyServerTopology(session, base44) {
+  if (session?.territory_model === "residential_street_territory_v2") {
+    return verifyResidentialEvidenceForDeploy(base44, session);
+  }
+  if (Deno.env.get("CANVAS_ALLOW_PUBLIC_OVERPASS_FALLBACK") !== "true") {
+    throw new HttpError(
+      422,
+      "legacy_canvas_evidence_required",
+      "This legacy Canvas draft cannot be sent without public road verification. Redraw the boundary to create a signed residential Canvas plan."
+    );
+  }
   const { roadNetwork, endpoint } = await fetchServerRoadNetwork(session.polygon);
   const serverPlan = planCanvasTerritories({
     polygon: session.polygon,
@@ -3040,7 +3378,7 @@ Deno.serve(async (req) => {
     const entitlement = await resolveCanvasEntitlement(user);
     const members = await validateTeamMembers(base44, user.id, validation.assignedRepIds);
     if (Number.isFinite(entitlement.seats) && members.length > entitlement.seats) throw new HttpError(403, "canvas_seat_limit_exceeded", `This deployment assigns ${members.length} reps, but the verified subscription has ${entitlement.seats} seats.`);
-    const topologyVerification = await verifyServerTopology(session);
+    const topologyVerification = await verifyServerTopology(session, base44);
     const providedSupersedeIds = optionalUniqueIdList(body?.supersede_session_ids, "supersede_session_ids");
     lease = await acquireManagerLease(base44, user.id);
     leaseBase44 = base44;
@@ -3050,6 +3388,9 @@ Deno.serve(async (req) => {
     if (!lockedSession || lockedSession.manager_id !== user.id || lockedSession.status !== "draft" || Number(lockedSession.version) !== expectedVersion || lockedSession.plan_hash !== session.plan_hash || lockedSession.plan_hash !== lockedHash) {
       throw new HttpError(409, "version_conflict", "The Canvas draft changed before deployment committed. Reload before retrying.");
     }
+    const commitTopologyVerification = lockedSession.territory_model === "residential_street_territory_v2"
+      ? await verifyServerTopology(lockedSession, base44)
+      : topologyVerification;
     const activeDeployments = await loadActiveValidDeployments(base44, user.id, signingSecret);
     const conflicts = deploymentOverlapConflicts(lockedSession, activeDeployments);
     const supersededSessionIds = requireExactSupersedeConfirmation(providedSupersedeIds, conflicts);
@@ -3076,7 +3417,7 @@ Deno.serve(async (req) => {
     };
     const deploymentQa = {
       ...validation.deploymentQa,
-      ...topologyVerification,
+      ...commitTopologyVerification,
       verified_team_member_ids: members.map((member) => member.id),
       verified_team_member_bindings: members.map((member) => ({ team_member_id: String(member.id), user_id: String(member.user_id), email: normalized(member.email) })).sort((a, b) => a.team_member_id.localeCompare(b.team_member_id)),
       entitlement_kind: entitlement.kind,
