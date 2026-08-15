@@ -9,6 +9,7 @@ import { isSoldDateInCustomOwnershipRange, normalizeOwnershipRangeDays } from '@
 import { routePropertyOrderFingerprint } from '@/components/logic/routeRoadContext';
 import { resolvePinSize, zoomAdjustedPinSize } from './densePinSize';
 import { buildPinStyle, pinKey, pinStyleContextKey } from './pinStyle';
+import { buildSavedRouteGroup, savedRouteStyleKey } from './savedRouteLayer';
 import {
     filterRoutesByStatus,
     isRenderableMapPoint,
@@ -556,7 +557,10 @@ function SavedRoutesLayer({
     lineDashArray, setActiveRoute, allSavedRoutes, decisionFilterActive
 }) {
     const map = useMap();
-    const layerRef = useRef(null);
+    // Persistent container plus one cached layer group per route. Zoom/pan now
+    // attaches and detaches those groups instead of rebuilding their markers.
+    const containerRef = useRef(null);
+    const cacheRef = useRef(new Map());
     // Zoom band only — rebuilding these layers on every zoom step made zooming stutter.
     const routesZoomEnabled = zoomLevel >= 8;
 
@@ -612,171 +616,123 @@ function SavedRoutesLayer({
         };
     }, [map]);
 
+    // Dot radius is applied to cached pins imperatively, so crossing a zoom band
+    // resizes them instead of rebuilding every route.
+    const dotSize = zoomAdjustedPinSize(pinSize, zoomLevel);
+    const dotSizeRef = useRef(dotSize);
+
+    const styleKey = useMemo(() => savedRouteStyleKey({
+        quickFilter, showRouteDetails, showRouteLines, decisionFilterActive,
+        pinOpacity: mapSettings.pinOpacity, fillStyle: mapSettings.fillStyle,
+        pinBorderColor: mapSettings.pinBorderColor, pinBorderWidth: mapSettings.pinBorderWidth,
+        showLabels: mapSettings.showLabels, labelType: mapSettings.labelType,
+        lineWidth: mapSettings.lineWidth, lineOpacity: mapSettings.lineOpacity, lineDashArray,
+    }), [quickFilter, showRouteDetails, showRouteLines, decisionFilterActive, mapSettings.pinOpacity,
+        mapSettings.fillStyle, mapSettings.pinBorderColor, mapSettings.pinBorderWidth, mapSettings.showLabels,
+        mapSettings.labelType, mapSettings.lineWidth, mapSettings.lineOpacity, lineDashArray]);
+
     useEffect(() => {
         if (!map || !viewBox) return;
+        if (!containerRef.current) containerRef.current = L.layerGroup().addTo(map);
+        const container = containerRef.current;
+        const cache = cacheRef.current;
+
         const inView = (p) => (
             Number(p.lat) >= viewBox.south && Number(p.lat) <= viewBox.north
             && Number(p.lng) >= viewBox.west && Number(p.lng) <= viewBox.east
         );
 
-        // Clean up previous layer
-        if (layerRef.current) {
-            map.removeLayer(layerRef.current);
-            layerRef.current = null;
-        }
-
         // Only show saved route overlays in Routes mode. Builder/draw mode stays visually clean,
         // while selecting an individual route still shows it through ActiveRouteLayer.
         const activeRouteHasMapPoints = activeRoute?.properties?.some(isRenderableMapPoint);
-        if (activeRouteHasMapPoints || mode !== 'analyze' || !routesZoomEnabled) return;
+        const routesVisible = !activeRouteHasMapPoints && mode === 'analyze' && routesZoomEnabled;
 
-        const group = L.layerGroup();
-        // Every door of every visible route renders — a low budget meant only a
-        // fraction of a dense territory's pins appeared.
-        const MAX_ROUTE_DETAIL_PINS = 40000;
-        // Same street-level growth as the property pins, so route doors stay
-        // visible instead of shrinking into the imagery when fully zoomed in.
-        const routeDotSize = zoomAdjustedPinSize(pinSize, zoomLevel);
-
-        const filteredRoutes = filterRoutesByStatus(hydratedSavedRoutes, routeStatusView).filter(route => {
-            // Off-screen routes contribute nothing visible, so they are skipped
-            // entirely — pins, number label and lines.
-            if (!route.properties.some(p => isRenderableMapPoint(p) && inView(p))) return false;
-            if (mode === 'generate') return true;
-            if (analyzeZipFilter === 'all') return true;
-            return route.properties.some(p => p.zip_code === analyzeZipFilter);
-        });
+        const visibleRoutes = routesVisible
+            ? filterRoutesByStatus(hydratedSavedRoutes, routeStatusView).filter(route => {
+                // Off-screen routes contribute nothing visible, so their cached
+                // group is simply detached — pins, number label and lines.
+                if (!route.properties.some(p => isRenderableMapPoint(p) && inView(p))) return false;
+                if (analyzeZipFilter === 'all') return true;
+                return route.properties.some(p => p.zip_code === analyzeZipFilter);
+            })
+            : [];
 
         // Build a global route number map from the full unfiltered list for consistent numbering
         const routeNumberMap = new Map();
         (allSavedRoutes || hydratedSavedRoutes).forEach((r, i) => routeNumberMap.set(r.id, i + 1));
 
-        // The detail-pin budget is shared per route. A single first-come budget
-        // meant one large route consumed it all and every other visible route
-        // rendered with no door pins at all.
-        const perRoutePinBudget = Math.max(
-            15000,
-            Math.floor(MAX_ROUTE_DETAIL_PINS / Math.max(1, filteredRoutes.length))
-        );
-
-        filteredRoutes.forEach((route, routeIdx) => {
-            let detailPinsDrawn = 0;
+        const keep = new Set();
+        visibleRoutes.forEach((route, routeIdx) => {
             const globalNumber = routeNumberMap.get(route.id) || (routeIdx + 1);
             const repColor = getRouteColor(route, globalNumber);
-            const isUnassigned = !route.assigned_to;
-            const centerProp = route.properties[Math.floor(route.properties.length / 2)];
+            // Anything that changes the drawn route invalidates its cached group.
+            const signature = [
+                route.properties.length, route.status, route.assigned_to || '',
+                route.updated_date || '', repColor, styleKey,
+            ].join('|');
+            keep.add(route.id);
 
-            // Center marker with route number — hidden while a decision filter
-            // is active so only the matching outcome pins remain on the map.
-            if (!decisionFilterActive && isRenderableMapPoint(centerProp)) {
-                const centerPoint = [Number(centerProp.lat), Number(centerProp.lng)];
-                const centerCircle = L.circleMarker(centerPoint, {
-                    radius: 14, fillColor: 'black', fillOpacity: 0.7, color: repColor, weight: 2
-                });
-                centerCircle.on('click', (e) => { L.DomEvent.stopPropagation(e); setActiveRoute({ ...route, route_number: globalNumber, display_color: repColor }); });
-                group.addLayer(centerCircle);
-
-                const label = L.marker(centerPoint, {
-                    icon: L.divIcon({
-                        className: '',
-                        html: `<div style="color:${repColor};font-weight:900;font-size:10px;text-shadow:0 0 3px #000;pointer-events:none;transform:translate(-50%,-50%);white-space:nowrap">#${globalNumber}</div>`,
-                        iconSize: [0, 0], iconAnchor: [0, 0],
-                    }),
-                    interactive: false, keyboard: false,
-                });
-                group.addLayer(label);
+            let entry = cache.get(route.id);
+            if (entry && entry.signature !== signature) {
+                if (entry.attached) container.removeLayer(entry.group);
+                cache.delete(route.id);
+                entry = null;
             }
-
-            // Detail pins
-            if (showRouteDetails) {
-                route.properties.forEach(p => {
-                    if (!isRenderableMapPoint(p)) return;
-                    if (!inView(p)) return;
-                    if (quickFilter !== 'all') {
-                        if (quickFilter === 'eligible' && p.effective_status !== 'ELIGIBLE' && p.effective_status !== 'NO_ANSWER') return;
-                        if (quickFilter === 'sold' && p.effective_status !== 'SOLD' && p.effective_status !== 'QUALIFIED') return;
-                        if (quickFilter === 'rejected' && p.effective_status !== 'HARD_NO') return;
-                    }
-
-                    // Detail-pin budget: past this point the route lines and center
-                    // markers still show the whole territory, but drawing every
-                    // door of every saved route is what freezes a large account.
-                    if (detailPinsDrawn >= perRoutePinBudget) return;
-                    detailPinsDrawn++;
-
-                    // No separate transparent hitbox: the global 12px canvas tap
-                    // slop covers tapping without doubling the layer count.
-                    const point = [Number(p.lat), Number(p.lng)];
-
-                    // Visible pin — confirmed sales stay green regardless of route color
-                    const sold = isConfirmedSale(p);
-                    const pinColor = sold ? SOLD_PIN_COLOR : repColor;
-                    const circle = L.circleMarker(point, {
-                        radius: sold ? routeDotSize + 2 : routeDotSize,
-                        fillColor: pinColor,
-                        fillOpacity: sold ? 1 : (mapSettings.pinOpacity || 1),
-                        color: sold ? '#FFFFFF' : (mapSettings.fillStyle === 'outline' ? repColor : (mapSettings.pinBorderColor || '#000')),
-                        weight: sold ? 2 : (mapSettings.fillStyle === 'outline' ? 2 : (mapSettings.pinBorderWidth || 1))
-                    });
-                    circle.on('click', (e) => { L.DomEvent.stopPropagation(e); setActiveRoute({ ...route, route_number: globalNumber, display_color: repColor }); });
-                    group.addLayer(circle);
-
-                    // Labels (optional)
-                    if (mapSettings.showLabels) {
-                        const labelText = mapSettings.labelType === 'number' ? p.house_number
-                            : mapSettings.labelType === 'status' ? (p.effective_status || '').slice(0, 1)
-                            : (p.street_name || '').split(' ')[0];
-                        const pinLabel = L.marker(point, {
-                            icon: L.divIcon({
-                                className: '',
-                                html: `<div style="color:#fff;font-weight:bold;font-size:8px;text-shadow:0 0 3px #000;pointer-events:none;transform:translate(-50%,-50%);white-space:nowrap">${labelText}</div>`,
-                                iconSize: [0, 0], iconAnchor: [0, 0],
-                            }),
-                            interactive: false, keyboard: false,
-                        });
-                        group.addLayer(pinLabel);
-                    }
-                });
-            }
-
-            // Route line — tappable to select the route (with a wide invisible
-            // hit line underneath so it's easy to tap on mobile)
-            const routeLinePoints = getRouteLinePoints(route, route.properties);
-            if (showRouteLines && routeLinePoints.length > 1) {
-                const lineLatLngs = routeLinePoints.map(p => [Number(p.lat), Number(p.lng)]);
-                const selectRoute = (e) => { L.DomEvent.stopPropagation(e); setActiveRoute({ ...route, route_number: globalNumber, display_color: repColor }); };
-
-                const hitLine = L.polyline(lineLatLngs, {
-                    color: 'transparent',
-                    weight: 26,
-                    opacity: 0,
-                    interactive: true
-                });
-                hitLine.on('click', selectRoute);
-                group.addLayer(hitLine);
-
-                const line = L.polyline(lineLatLngs, {
+            if (!entry) {
+                const centerProp = route.properties[Math.floor(route.properties.length / 2)];
+                const built = buildSavedRouteGroup({
+                    doors: route.properties.filter(isRenderableMapPoint),
+                    linePoints: getRouteLinePoints(route, route.properties),
+                    centerPoint: isRenderableMapPoint(centerProp)
+                        ? [Number(centerProp.lat), Number(centerProp.lng)]
+                        : null,
+                    number: globalNumber,
                     color: repColor,
-                    weight: mapSettings.lineWidth || 3,
-                    opacity: mapSettings.lineOpacity || 0.7,
-                    dashArray: lineDashArray || null
+                    style: {
+                        quickFilter, showRouteDetails, showRouteLines, decisionFilterActive,
+                        pinOpacity: mapSettings.pinOpacity, fillStyle: mapSettings.fillStyle,
+                        pinBorderColor: mapSettings.pinBorderColor, pinBorderWidth: mapSettings.pinBorderWidth,
+                        showLabels: mapSettings.showLabels, labelType: mapSettings.labelType,
+                        lineWidth: mapSettings.lineWidth, lineOpacity: mapSettings.lineOpacity, lineDashArray,
+                    },
+                    dotSize: dotSizeRef.current,
+                    onSelect: () => setActiveRoute({ ...route, route_number: globalNumber, display_color: repColor }),
                 });
-                line.on('click', selectRoute);
-                group.addLayer(line);
+                entry = { ...built, signature, attached: false };
+                cache.set(route.id, entry);
+            }
+            if (!entry.attached) {
+                container.addLayer(entry.group);
+                entry.attached = true;
             }
         });
 
-        group.addTo(map);
-        layerRef.current = group;
-
-        return () => {
-            if (layerRef.current) {
-                map.removeLayer(layerRef.current);
-                layerRef.current = null;
-            }
-        };
+        // Routes that left the view are detached but kept built, so panning back
+        // costs nothing.
+        cache.forEach((entry, routeId) => {
+            if (keep.has(routeId) || !entry.attached) return;
+            container.removeLayer(entry.group);
+            entry.attached = false;
+        });
     }, [map, viewBox, mode, activeRoute, routesZoomEnabled, hydratedSavedRoutes, analyzeZipFilter, quickFilter,
-        routeStatusView, repColors, ROUTE_COLORS, showRouteDetails, showRouteLines, pinSize, mapSettings, lineDashArray, setActiveRoute, allSavedRoutes, decisionFilterActive]);
+        routeStatusView, showRouteDetails, showRouteLines, styleKey, mapSettings, lineDashArray, setActiveRoute,
+        allSavedRoutes, decisionFilterActive]);
+
+    // Zoom band change: resize the cached pins in place.
+    useEffect(() => {
+        dotSizeRef.current = dotSize;
+        cacheRef.current.forEach(entry => {
+            entry.doorPins.forEach(pin => pin.setRadius(pin.__sold ? dotSize + 2 : dotSize));
+        });
+    }, [dotSize]);
+
+    // Teardown on unmount only — dropping the container on every dependency
+    // change is what would make the cache pointless.
+    useEffect(() => () => {
+        if (containerRef.current && map) map.removeLayer(containerRef.current);
+        containerRef.current = null;
+        cacheRef.current = new Map();
+    }, [map]);
 
     return null; // Imperative layer — no React DOM output
 }
