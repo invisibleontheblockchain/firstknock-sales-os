@@ -5,6 +5,8 @@
 // straight-line continuity route). A real routing engine is the only source of
 // truth we price routes with, and it is only ever called from the backend.
 
+import { fetchOsrmJson } from './osrmDispatcher.js';
+
 export const ROAD_MATRIX_VERSION = 'osrm_table_v1';
 export const DEFAULT_OSRM_BASE_URL = 'https://router.project-osrm.org';
 // How many coordinates one OSRM table request accepts. An IMPLEMENTATION limit:
@@ -17,9 +19,10 @@ export const MATRIX_CHUNK_SIZE = 46;
 // PRODUCT limit for one optimization request. Bounded because block count grows
 // quadratically (ceil(N/46)^2), not because of the per-request coordinate cap.
 export const MAX_ROUTE_MATRIX_POINTS = 250;
-// The public demo server rate-limits aggressive parallelism, so blocks go out in
-// small batches rather than all at once.
-const MATRIX_BLOCK_CONCURRENCY = 4;
+// Concurrency is no longer this module's business: every OSRM request in the
+// codebase — matrix blocks, per-cluster matrices, final route geometry — is
+// enqueued through the process-wide dispatcher, so one global cap applies
+// instead of each level of the hierarchy independently allowing four in flight.
 
 function coordinateKey(point) {
     return `${Number(point?.lat).toFixed(6)},${Number(point?.lng).toFixed(6)}`;
@@ -77,21 +80,7 @@ async function fetchMatrixBlock(points, sourceRange, destinationRange, { baseUrl
         + `${blockPoints.map(coordinateParam).join(';')}`
         + `?annotations=distance,duration&sources=${sources.join(';')}&destinations=${destinations.join(';')}`;
 
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    let payload;
-    try {
-        const response = await fetch(url, { signal: controller.signal });
-        if (!response.ok) {
-            throw new Error(`OSRM table request failed with status ${response.status}.`);
-        }
-        payload = await response.json();
-    } finally {
-        clearTimeout(timer);
-    }
-    if (payload?.code !== 'Ok') {
-        throw new Error(`OSRM table request rejected: ${payload?.code || 'unknown'}.`);
-    }
+    const payload = await fetchOsrmJson(url, { timeoutMs });
 
     const distances = Array.isArray(payload.distances) ? payload.distances : null;
     const durations = Array.isArray(payload.durations) ? payload.durations : null;
@@ -136,40 +125,39 @@ export async function fetchRoadMatrix(points, options = {}) {
     let sawDistances = false;
     let sawDurations = false;
 
-    for (let index = 0; index < blockRequests.length; index += MATRIX_BLOCK_CONCURRENCY) {
-        const batch = blockRequests.slice(index, index + MATRIX_BLOCK_CONCURRENCY);
-        const blocks = await Promise.all(batch.map(({ sourceRange, destinationRange }) => (
-            fetchMatrixBlock(points, sourceRange, destinationRange, { baseUrl, profile, timeoutMs })
-        )));
-        blocks.forEach((block) => {
-            const rows = block.sourceRange.end - block.sourceRange.start;
-            const columns = block.destinationRange.end - block.destinationRange.start;
-            const table = block.distances || block.durations;
-            if (table.length !== rows || table.some((row) => row.length !== columns)) {
-                throw new Error('OSRM matrix block did not match its requested source/destination shape.');
-            }
-            if (block.distances) sawDistances = true;
-            if (block.durations) sawDurations = true;
-            for (let row = 0; row < rows; row++) {
-                for (let column = 0; column < columns; column++) {
-                    const target = block.sourceRange.start + row;
-                    const destination = block.destinationRange.start + column;
-                    if (block.distances) {
-                        const meters = block.distances[row][column];
-                        distances[target][destination] = Number.isFinite(meters)
-                            ? meters * METERS_TO_MILES
-                            : null;
-                    }
-                    if (block.durations) {
-                        const seconds = block.durations[row][column];
-                        durations[target][destination] = Number.isFinite(seconds)
-                            ? seconds / 60
-                            : null;
-                    }
+    // Every block is handed over at once; the dispatcher, not this function,
+    // decides how many reach OSRM simultaneously.
+    const blocks = await Promise.all(blockRequests.map(({ sourceRange, destinationRange }) => (
+        fetchMatrixBlock(points, sourceRange, destinationRange, { baseUrl, profile, timeoutMs })
+    )));
+    blocks.forEach((block) => {
+        const rows = block.sourceRange.end - block.sourceRange.start;
+        const columns = block.destinationRange.end - block.destinationRange.start;
+        const table = block.distances || block.durations;
+        if (table.length !== rows || table.some((row) => row.length !== columns)) {
+            throw new Error('OSRM matrix block did not match its requested source/destination shape.');
+        }
+        if (block.distances) sawDistances = true;
+        if (block.durations) sawDurations = true;
+        for (let row = 0; row < rows; row++) {
+            for (let column = 0; column < columns; column++) {
+                const target = block.sourceRange.start + row;
+                const destination = block.destinationRange.start + column;
+                if (block.distances) {
+                    const meters = block.distances[row][column];
+                    distances[target][destination] = Number.isFinite(meters)
+                        ? meters * METERS_TO_MILES
+                        : null;
+                }
+                if (block.durations) {
+                    const seconds = block.durations[row][column];
+                    durations[target][destination] = Number.isFinite(seconds)
+                        ? seconds / 60
+                        : null;
                 }
             }
-        });
-    }
+        }
+    });
 
     // Completeness gate. A hole anywhere means some candidate leg would be
     // unpriceable, which is exactly how an unmeasured order used to slip through.
