@@ -2,13 +2,13 @@ import React, { useMemo, useEffect, useRef } from 'react';
 import { CircleMarker, Polyline, Circle, LayerGroup, Tooltip, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { DarkRoomClient } from '@/components/logic/neonClient';
-import { CONFIDENCE_COLORS } from '@/components/map/ConfidenceLegend';
 import CanvasZoneOverlay from './CanvasZoneOverlay';
 import StateBoundariesLayer from './StateBoundariesLayer';
 import { getCompletedPinColor } from '@/components/routes/routeRerunUtils';
 import { isSoldDateInCustomOwnershipRange, normalizeOwnershipRangeDays } from '@/components/logic/soldDateRange';
 import { routePropertyOrderFingerprint } from '@/components/logic/routeRoadContext';
 import { resolvePinSize, zoomAdjustedPinSize } from './densePinSize';
+import { buildPinStyle, pinKey, pinStyleContextKey } from './pinStyle';
 import {
     filterRoutesByStatus,
     isRenderableMapPoint,
@@ -439,100 +439,107 @@ function ViewportCulledPins({
 
     const oneMonthAgo = useMemo(() => subMonths(new Date(), 1), [subMonths]);
     const fastPinsMap = useMap();
-    const layerRef = useRef(null);
+    const groupRef = useRef(null);
+    // Identity model for the pin layer. Without it, every settled pan destroyed and
+    // recreated up to 12,000 native markers in one synchronous task to achieve what a
+    // small add/remove delta accomplishes — the dominant cost of high-pin-count lag.
+    const markerStoreRef = useRef(new Map());
+    const styleCacheRef = useRef({ key: '', styles: new Map() });
 
+    const denseView = visiblePins.length > 1200;
+    // Dots grow back at street-level zoom so they don't vanish into the map.
+    const dotSize = zoomAdjustedPinSize(pinSize, zoomLevel);
+    const styleContext = useMemo(() => ({
+        statusColors: STATUS_COLORS,
+        colorScheme: mapSettings.colorScheme,
+        pinOpacity: mapSettings.pinOpacity,
+        pinBorderColor: mapSettings.pinBorderColor,
+        pinBorderWidth: mapSettings.pinBorderWidth,
+        fillStyle: mapSettings.fillStyle,
+        highlightRecentlySold,
+        oneMonthAgo,
+        denseView,
+        dotSize,
+    }), [STATUS_COLORS, mapSettings.colorScheme, mapSettings.pinOpacity, mapSettings.pinBorderColor,
+        mapSettings.pinBorderWidth, mapSettings.fillStyle, highlightRecentlySold, oneMonthAgo, denseView, dotSize]);
+
+    // One shared handler instead of a fresh closure allocated per pin per rebuild.
+    const handlePinClick = React.useCallback((event) => {
+        L.DomEvent.stopPropagation(event);
+        const property = event.target?.__property;
+        if (property) setSelectedProperty(property);
+    }, [setSelectedProperty]);
+
+    // Diffed update: add pins that entered the view, remove pins that left it, and
+    // restyle a surviving pin only when its cheap style key actually changed.
     useEffect(() => {
         if (!fastPinsMap) return;
+        if (!groupRef.current) groupRef.current = L.layerGroup().addTo(fastPinsMap);
+        const group = groupRef.current;
+        const store = markerStoreRef.current;
 
-        // Clean up previous layer
-        if (layerRef.current) {
-            fastPinsMap.removeLayer(layerRef.current);
-            layerRef.current = null;
+        const contextKey = pinStyleContextKey(styleContext);
+        if (styleCacheRef.current.key !== contextKey) {
+            styleCacheRef.current = { key: contextKey, styles: new Map() };
         }
+        const styleCache = styleCacheRef.current.styles;
 
-        if (visiblePins.length === 0) return;
+        const nextPins = new Map();
+        visiblePins.forEach(p => nextPins.set(pinKey(p), p));
 
-        const group = L.layerGroup();
-        const denseView = visiblePins.length > 1200;
-        // Dots grow back at street-level zoom so they don't vanish into the map.
-        const dotSize = zoomAdjustedPinSize(pinSize, zoomLevel);
-
-        visiblePins.forEach(p => {
-            let isRecentlySold = false;
-            if (highlightRecentlySold && p.sold_date) {
-                isRecentlySold = new Date(p.sold_date) > oneMonthAgo;
-            }
-            const isUnvisited = ['ELIGIBLE', 'NO_ANSWER', 'OTHER'].includes(p.effective_status);
-            let effectiveColorStatus = p.effective_status;
-            if (p.effective_status === 'ELIGIBLE' && p.original_status) {
-                if (p.original_status === 'SOLD' || p.original_status === 'RECENT_OFF_MARKET' || p.original_status === 'PENDING') {
-                    effectiveColorStatus = p.original_status;
-                }
-            }
-            // Fix #5: Confidence-tier coloring when 'confidence' color scheme is active
-            const useConfidenceColors = mapSettings.colorScheme === 'confidence';
-            let fillColor;
-            if (isRecentlySold) {
-                fillColor = '#FF00FF';
-            } else if (useConfidenceColors && p.sale_confidence && CONFIDENCE_COLORS[p.sale_confidence]) {
-                fillColor = CONFIDENCE_COLORS[p.sale_confidence];
-            } else {
-                fillColor = STATUS_COLORS[effectiveColorStatus] || STATUS_COLORS.OTHER;
-            }
-            
-            // No separate transparent hitbox layer: leafletPatches gives every
-            // canvas pin ~12px of tap slop, so a second layer per pin only
-            // doubled the layers Leaflet hit-tests on every mouse move.
-
-            // Confidence ring: subtle outer glow for verified/high leads in any color scheme.
-            // Skipped on dense views — a third layer per pin is what tips large
-            // territories into unusable pan/zoom lag.
-            const conf = p.sale_confidence;
-            const showConfRing = !denseView && !useConfidenceColors && !isRecentlySold && !isUnvisited && conf && (conf === 'high' || conf === 'verified');
-            if (showConfRing) {
-                const ringColor = CONFIDENCE_COLORS[conf];
-                const ring = L.circleMarker([p.lat, p.lng], {
-                    radius: dotSize + 3,
-                    fillColor: 'transparent',
-                    fillOpacity: 0,
-                    color: ringColor,
-                    weight: 1.5,
-                    opacity: 0.6,
-                });
-                group.addLayer(ring);
-            }
-
-            // Callback pins render slightly smaller than other outcome pins.
-            const isCallback = effectiveColorStatus === 'CALLBACK';
-
-            // Visible pin
-            // Unvisited doors used to render smaller, borderless and at 0.3 opacity,
-            // which read as "most of my pins are missing" on a dense territory.
-            // Every pin now draws at the same size and strength as worked doors.
-            const circle = L.circleMarker([p.lat, p.lng], {
-                radius: isRecentlySold ? dotSize + 4 : (isCallback ? dotSize * 0.9 : dotSize),
-                fillColor,
-                fillOpacity: isRecentlySold ? 1 : (mapSettings.pinOpacity || 1),
-                color: isRecentlySold ? '#FFFFFF' : (mapSettings.fillStyle === 'outline' ? fillColor : (mapSettings.pinBorderColor || '#000')),
-                weight: isRecentlySold ? 2 : (mapSettings.fillStyle === 'outline' ? 2 : mapSettings.pinBorderWidth)
-            });
-            circle.on('click', (e) => {
-                L.DomEvent.stopPropagation(e);
-                setSelectedProperty(p);
-            });
-            group.addLayer(circle);
+        store.forEach((entry, key) => {
+            if (nextPins.has(key)) return;
+            group.removeLayer(entry.marker);
+            if (entry.ring) group.removeLayer(entry.ring);
+            store.delete(key);
         });
 
-        group.addTo(fastPinsMap);
-        layerRef.current = group;
-
-        return () => {
-            if (layerRef.current) {
-                fastPinsMap.removeLayer(layerRef.current);
-                layerRef.current = null;
+        nextPins.forEach((p, key) => {
+            let style = styleCache.get(key);
+            if (!style) {
+                style = buildPinStyle(p, styleContext);
+                styleCache.set(key, style);
             }
-        };
-    }, [fastPinsMap, visiblePins, highlightRecentlySold, oneMonthAgo, STATUS_COLORS, pinSize, zoomLevel, mapSettings, mode, setSelectedProperty]);
+
+            const entry = store.get(key);
+            if (!entry) {
+                // Ring first so it stays underneath the dot, exactly as before.
+                const ring = style.ring ? L.circleMarker([p.lat, p.lng], style.ring) : null;
+                if (ring) group.addLayer(ring);
+                const marker = L.circleMarker([p.lat, p.lng], style.marker);
+                marker.__property = p;
+                marker.on('click', handlePinClick);
+                group.addLayer(marker);
+                store.set(key, { marker, ring, styleKey: style.styleKey });
+                return;
+            }
+
+            // Same door, possibly a fresher record — keep the click payload current.
+            entry.marker.__property = p;
+            if (entry.styleKey === style.styleKey) return;
+            entry.marker.setStyle(style.marker);
+            entry.marker.setRadius(style.marker.radius);
+            if (entry.ring && !style.ring) {
+                group.removeLayer(entry.ring);
+                entry.ring = null;
+            } else if (!entry.ring && style.ring) {
+                entry.ring = L.circleMarker([p.lat, p.lng], style.ring);
+                group.addLayer(entry.ring);
+            } else if (entry.ring && style.ring) {
+                entry.ring.setStyle(style.ring);
+                entry.ring.setRadius(style.ring.radius);
+            }
+            entry.styleKey = style.styleKey;
+        });
+    }, [fastPinsMap, visiblePins, styleContext, handlePinClick]);
+
+    // Teardown belongs to unmount only. Running it on every dependency change is
+    // what made marker reuse impossible.
+    useEffect(() => () => {
+        if (groupRef.current && fastPinsMap) fastPinsMap.removeLayer(groupRef.current);
+        groupRef.current = null;
+        markerStoreRef.current = new Map();
+    }, [fastPinsMap]);
 
     return null; // Imperative layer — no React DOM output
 }

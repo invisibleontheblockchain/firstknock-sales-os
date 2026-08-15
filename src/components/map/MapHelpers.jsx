@@ -119,19 +119,10 @@ export function MapRefHandler({ mapRef }) {
         if (mapRef) mapRef.current = map;
     }, [map, mapRef]);
 
-    // Optimize zoom behavior for smooth, responsive interactions
-    useEffect(() => {
-        if (!map) return;
-
-        // Reduce wheel scroll sensitivity for snappier zoom response
-        map.options.wheelPxPerZoomLevel = 100;  // Tighter scroll-to-zoom ratio
-        map.options.wheelDebounceTime = 80;     // Faster recognition of zoom intent
-        
-        // Smooth zoom animations
-        map.options.zoomAnimationThreshold = 4;
-        map.options.easeLinearity = 0.2;        // Easing curve for smooth acceleration
-    }, [map]);
-
+    // Wheel/zoom tuning lives on <MapContainer> only. This effect used to
+    // overwrite map.options after init (wheelPxPerZoomLevel 100,
+    // wheelDebounceTime 80), silently winning over the values passed as props —
+    // so the tuned props were dead and trackpad zoom ran on the slower debounce.
     return null;
 }
 
@@ -149,7 +140,12 @@ export function MapController({ fitBounds, onZoomChange, onMoveEnd }) {
             if (zoomTimeout) clearTimeout(zoomTimeout);
             zoomTimeout = setTimeout(() => {
                 try {
-                    if (map && map.getZoom) onZoomChange(map.getZoom());
+                    // Fractional zoom (zoomSnap < 1) is what makes trackpad zoom
+                    // smooth, but the data layers key their pin budget and dot
+                    // size off this value, so an unrounded zoom would rebuild
+                    // every pin at each intermediate step. Layers only ever
+                    // change at integer boundaries, so band it here.
+                    if (map && map.getZoom) onZoomChange(Math.floor(map.getZoom()));
                 } catch (e) { /* Map destroyed */ }
             }, 100);
         };

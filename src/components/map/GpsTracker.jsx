@@ -24,46 +24,72 @@ function haversine(lat1, lng1, lat2, lng2) {
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+const NEARBY_MILES = 0.1; // ~500ft
+
+// One geolocation watch, shared by the map layer and the HUD. Both components call
+// useGpsTracker, so a tracking session used to run two watchPosition subscriptions
+// and repeat all of the work below twice on every position fix.
+const gpsWatch = { position: null, accuracy: 50, watchId: null, listeners: new Set() };
+
+function subscribeToGps(listener) {
+    gpsWatch.listeners.add(listener);
+    if (gpsWatch.watchId === null && navigator.geolocation) {
+        gpsWatch.watchId = navigator.geolocation.watchPosition(
+            (pos) => {
+                gpsWatch.position = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+                gpsWatch.accuracy = pos.coords.accuracy || 50;
+                gpsWatch.listeners.forEach(notify => notify());
+            },
+            (err) => console.warn('GPS error:', err),
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 2000 }
+        );
+    }
+    return () => {
+        gpsWatch.listeners.delete(listener);
+        if (gpsWatch.listeners.size === 0 && gpsWatch.watchId !== null) {
+            navigator.geolocation.clearWatch(gpsWatch.watchId);
+            gpsWatch.watchId = null;
+            gpsWatch.position = null;
+        }
+    };
+}
+
 function useGpsTracker(properties, isTracking) {
-    const [position, setPosition] = useState(null);
-    const [accuracy, setAccuracy] = useState(50);
+    const [fix, setFix] = useState(null);
 
     useEffect(() => {
         if (!isTracking) {
-            setPosition(null);
+            setFix(null);
             return;
         }
-
-        let watchId = null;
-        if (navigator.geolocation) {
-            watchId = navigator.geolocation.watchPosition(
-                (pos) => {
-                    setPosition({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-                    setAccuracy(pos.coords.accuracy || 50);
-                },
-                (err) => console.warn('GPS error:', err),
-                { enableHighAccuracy: true, timeout: 10000, maximumAge: 2000 }
-            );
-        }
-
-        return () => {
-            if (watchId !== null) navigator.geolocation.clearWatch(watchId);
-        };
+        const readFix = () => setFix(gpsWatch.position
+            ? { ...gpsWatch.position, accuracy: gpsWatch.accuracy }
+            : null);
+        readFix();
+        return subscribeToGps(readFix);
     }, [isTracking]);
 
     const nearbyProperties = useMemo(() => {
-        if (!position || !properties?.length) return [];
-        return properties
-            .map(p => {
-                const dist = haversine(position.lat, position.lng, p.lat, p.lng);
-                return { ...p, _dist: dist, _distFt: Math.round(dist * 5280) };
-            })
-            .filter(p => p._dist <= 0.1) // ~500ft
-            .sort((a, b) => a._dist - b._dist)
-            .slice(0, 15);
-    }, [position, properties]);
+        if (!fix || !properties?.length) return [];
+        // Bounding-box reject first. This used to spread EVERY property in the
+        // account into a new object on every GPS fix before filtering to 500ft.
+        const latSpan = NEARBY_MILES / 69;
+        const lngSpan = latSpan / Math.max(0.1, Math.cos(fix.lat * Math.PI / 180));
+        const nearby = [];
+        for (const p of properties) {
+            if (Math.abs(p.lat - fix.lat) > latSpan || Math.abs(p.lng - fix.lng) > lngSpan) continue;
+            const dist = haversine(fix.lat, fix.lng, p.lat, p.lng);
+            if (dist > NEARBY_MILES) continue;
+            nearby.push({ ...p, _dist: dist, _distFt: Math.round(dist * 5280) });
+        }
+        return nearby.sort((a, b) => a._dist - b._dist).slice(0, 15);
+    }, [fix, properties]);
 
-    return { position, accuracy, nearbyProperties };
+    return {
+        position: fix ? { lat: fix.lat, lng: fix.lng } : null,
+        accuracy: fix?.accuracy ?? 50,
+        nearbyProperties
+    };
 }
 
 function GpsMapLayer({ properties, isTracking, onSelectProperty }) {

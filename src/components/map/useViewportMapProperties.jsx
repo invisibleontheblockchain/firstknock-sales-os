@@ -9,6 +9,9 @@ import { base44 } from '@/api/base44Client';
 const BASE_LIMIT = 20000;
 const VIEWPORT_LIMIT = 10000;
 const MAX_VIEWPORT_SPAN_DEG = 2; // skip fetches when zoomed out to region/state level
+// The merge set used to grow for the whole session, so a long panning session kept
+// enlarging every downstream pass over the property list.
+const MAX_MERGED_PROPERTIES = 30000;
 
 const quantize = (v) => Math.round(v * 50) / 50; // 0.02° grid → stable, reusable fetch keys
 
@@ -70,8 +73,21 @@ export default function useViewportMapProperties(user) {
             });
             fetchedKeysRef.current.add(key);
             const props = Array.isArray(res.data?.properties) ? res.data.properties : [];
-            if (props.length > 0) {
-                props.forEach(p => mergedRef.current.set(p.address_hash || p.id, p));
+            let added = 0;
+            props.forEach(p => {
+                const key = p.address_hash || p.id;
+                if (!mergedRef.current.has(key)) added++;
+                mergedRef.current.set(key, p);
+            });
+            // Re-publishing an array of everything merged this session on every pan
+            // invalidated the entire property fan-out downstream (status derivation,
+            // route hydration, pin layer) even when the fetch added nothing new.
+            if (added > 0) {
+                if (mergedRef.current.size > MAX_MERGED_PROPERTIES) {
+                    mergedRef.current = new Map(Array.from(mergedRef.current.entries()).slice(-MAX_MERGED_PROPERTIES));
+                    // Evicted boxes must be re-fetchable, or panning back would show no pins.
+                    fetchedKeysRef.current = new Set([key]);
+                }
                 setViewportProperties(Array.from(mergedRef.current.values()));
             }
             console.log(`[ViewportFetch] viewport key=${key} fetched=${props.length} mergedTotal=${mergedRef.current.size}`);

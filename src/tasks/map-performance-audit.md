@@ -1,6 +1,7 @@
 # Map (/Home) Performance Audit — trackpad zoom stagger + high-pin-count lag
 
-Status: **diagnostic only. No code changed yet.**
+Status: **steps 1, 2, 3, 4, 6, 7 + the deep-link index are implemented. Step 5
+(splitting the `effectiveProperties` memo) is deferred — see §5.**
 Scope: `src/pages/Home.jsx`, `src/components/map/ManagerMapLayers.jsx`,
 `src/components/map/MapHelpers.jsx`, `src/components/map/useViewportMapProperties.jsx`,
 `src/components/map/GpsTracker.jsx`, `src/components/map/densePinSize.js`.
@@ -212,3 +213,59 @@ entry per key. `MapDrawTool` index keys: cleanup, not a contributor.
 **Not yet measured:** these are code-path conclusions, not profiler traces. A
 Performance recording of one settled pan at 12,000 pins before step 2 would give
 us a hard baseline number to hold the fix to.
+
+---
+
+## 5. What landed
+
+| Step | Change | Files |
+| --- | --- | --- |
+| 1 | Pin styling extracted + cached per property, invalidated by a style-context key | **new** `components/map/pinStyle.js`, `ManagerMapLayers.jsx` |
+| 2 | Diffed keyed marker store (add/remove/restyle), one shared click handler, unmount-only teardown | `ManagerMapLayers.jsx` |
+| 3 | `zoomSnap 0.25` / `zoomDelta 0.5` / `wheelPxPerZoomLevel 120` / `wheelDebounceTime 20`; dead `map.options` override deleted; layer zoom banded with `Math.floor` | `Home.jsx`, `MapHelpers.jsx` |
+| 4 | Viewport merge: no state write when a fetch adds nothing; 30k cap with refetchable eviction | `useViewportMapProperties.jsx` |
+| 6 | Route hydration keyed on `effectiveProperties.length` + a ref, not identity | `Home.jsx` |
+| 7 | One shared geolocation watch; bounding-box prefilter before haversine | `GpsTracker.jsx` |
+| — | Deep-link route load uses a hash→property Map | `Home.jsx` |
+
+The pin effect's dependency array went from 10 entries to 4
+(`fastPinsMap, visiblePins, styleContext, handlePinClick`); `highlightRecentlySold`,
+`oneMonthAgo`, `STATUS_COLORS`, raw `pinSize`/`zoomLevel`, the whole `mapSettings`
+object and the unused `mode` are no longer rebuild triggers.
+
+### Deferred: step 5 (`effectiveProperties` memo split)
+
+Not attempted, deliberately. The reuse condition the report proposes (compare the
+cached `logsByAddress` array reference) cannot work as written — `logsByAddress`
+is rebuilt inside the memo, so every reference is new and nothing would ever be
+reused. Doing it correctly needs a content-based per-property log signature, which
+changes how `determineEffectiveStatus` is fed and carries real
+wrong-status-on-a-door risk. Step 6 removes the most expensive consequence of the
+churn (the network round trip + saved-route rebuild per log write), so this should
+be re-measured before being attempted.
+
+### Also worth noting
+
+`Home.jsx` is 2,841 lines and is now at the platform's hard edit ceiling —
+edits that add lines are rejected. The three changes above had to be written
+line-neutral-or-shorter. It needs an extraction pass (the `onPullComplete`
+handler and `generateRoutes` are the obvious candidates) before further work
+lands there.
+
+## 6. Verification actually performed
+
+- Reviewed the resulting pin-layer region line by line; the legacy rebuild loop is
+  fully removed with no dangling dependency array.
+- Confirmed `leafletPatches` only sets `L.Canvas` `tolerance: 12` and does not
+  re-dispatch events, so `e.target.__property` on the shared handler resolves to
+  the clicked marker — clicks keep working.
+- Loaded /Home in the preview: the app boots and the map renders a dense
+  multi-thousand-pin territory without errors.
+
+**Not verified — needs a human pass:**
+- Pixel diff of the territory pin layer before/after (the screenshot above is
+  Routes mode, which uses `SavedRoutesLayer`, not the changed layer). Switch to
+  Builder/pins mode with a color scheme + confidence rings visible and compare.
+- Trackpad feel, and that fractional zoom does not change pin size mid-band.
+- Clicking each pin class to confirm the correct property opens.
+- Profiler numbers at the 5k / 8k / 12k bands.

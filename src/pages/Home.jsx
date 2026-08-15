@@ -1270,19 +1270,20 @@ export default function Home() {
         return deduped;
     }, [properties, logs, user?.territory_zip_codes, user?.generated_zip_codes, zipCodeFilter, drawnPolygon]);
 
+    // A log write changes effectiveProperties' identity but not its length. Keying this
+    // effect on identity re-ran hydration (a network round trip) and rebuilt the whole
+    // saved-route layer on every outcome logged, so it reads properties through a ref.
+    const effectivePropertiesRef = useRef(effectiveProperties);
+    effectivePropertiesRef.current = effectiveProperties;
     useEffect(() => {
         let cancelled = false;
-        async function hydrateOnLoad() {
-            if (!user?.email || savedRoutes.length === 0) {
-                setServerHydratedSavedRoutes([]);
-                return;
-            }
-            const hydrated = await hydrateRoutesForMap(savedRoutes, user.email, effectiveProperties);
+        (async () => {
+            if (!user?.email || savedRoutes.length === 0) return setServerHydratedSavedRoutes([]);
+            const hydrated = await hydrateRoutesForMap(savedRoutes, user.email, effectivePropertiesRef.current);
             if (!cancelled) setServerHydratedSavedRoutes(hydrated);
-        }
-        hydrateOnLoad();
+        })();
         return () => { cancelled = true; };
-    }, [savedRoutes, user?.email, effectiveProperties]);
+    }, [savedRoutes, user?.email, effectiveProperties.length]);
 
     // Smart Auto-Open/Close for Generate Mode
     useEffect(() => {
@@ -1419,9 +1420,8 @@ export default function Home() {
             const saved = savedRoutes.find(r => r.id === savedRouteId);
             if (saved) {
                 // Reconstruct route object
-                const routeProps = saved.property_hashes
-                    .map(hash => effectiveProperties.find(p => p.address_hash === hash))
-                    .filter(Boolean);
+                const byHash = new Map(effectiveProperties.map(p => [p.address_hash, p])); // was a linear find per hash
+                const routeProps = saved.property_hashes.map(hash => byHash.get(hash)).filter(Boolean);
 
                 if (routeProps.length > 0) {
                     setActiveRoute({
@@ -2265,8 +2265,7 @@ export default function Home() {
                 zoomControl={false}
                 attributionControl
                 preferCanvas={true}
-                wheelPxPerZoomLevel={80} zoomSnap={1} zoomDelta={1}
-                wheelDebounceTime={40} maxZoom={20}
+                wheelPxPerZoomLevel={120} zoomSnap={0.25} zoomDelta={0.5} wheelDebounceTime={20} maxZoom={20}
                 zoomAnimation={true}
                 markerZoomAnimation={true}
                 fadeAnimation={true}
