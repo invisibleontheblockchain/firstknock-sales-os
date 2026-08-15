@@ -8,6 +8,7 @@ import HomeBaseDialog from '@/components/routes/HomeBaseDialog';
 import MapThemePicker from '@/components/map/MapThemePicker';
 import { DEFAULT_PIN_THEME } from '@/components/map/mapPinThemes';
 import MapOverlayToggles from '@/components/map/MapOverlayToggles';
+import RouteModeSetting from '@/components/map/RouteModeSetting';
 import { getBoundaryOverlays, setBoundaryOverlay } from '@/components/map/boundaryOverlayPrefs';
 import { markPinSizeUserSet, clearPinSizeUserSet } from '@/components/map/densePinSize';
 
@@ -183,6 +184,9 @@ export default function MapSettingsPanel({
 
             {/* ═══════════ APPEARANCE TAB ═══════════ */}
             {tab === 'appearance' && (<>
+
+              {/* Route Mode — switch between Canvas and Precision territory building */}
+              <RouteModeSetting />
 
               {/* Navigation Provider — first, because it drives every Navigate button */}
               <div>
