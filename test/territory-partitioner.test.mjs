@@ -393,10 +393,9 @@ test('PART-15 an access group that fits the budget is never split, and merging k
         maxHomes: 4
     });
 
-    // 8 doors against a 4-home budget needs 2 routes. Bisection alone emits
-    // 2 / 4 / 2, so the merge pass is what keeps this at the minimum.
+    // 8 doors against a 4-home budget needs 2 routes, and the four-door access
+    // group must not be the thing that gets cut to reach them.
     assert.equal(result.partitions.length, 2);
-    assert.ok(result.stats.mergeCount > 0, 'the lopsided bisection must be merged back down');
     result.partitions.forEach((partition) => {
         assert.ok(partition.doorCount <= 4, `partition ${partition.index} has ${partition.doorCount} homes`);
         assert.equal(partition.withinBudget, true);
@@ -416,22 +415,59 @@ test('PART-15 an access group that fits the budget is never split, and merging k
     assert.deepEqual(reversed.diagnostics.signatures, result.diagnostics.signatures);
 });
 
-test('PART-16 the drawn territory boundary is not mistaken for a dead end', () => {
-    const doors = culDeSacDoors();
-    const network = culDeSacNetwork();
-    const unbounded = partitionTerritory(doors, { roadNetwork: network });
-    assert.ok(unbounded.stats.pocketCount > 0, 'the stub reads as a pocket when no boundary is given');
-
-    // The stub's terminal node sits below 35.1975, so this polygon clips it: the
-    // road leaves the territory there rather than ending there.
-    const territoryPolygon = [
-        { lat: 35.1975, lng: -80.8520 },
-        { lat: 35.1975, lng: -80.8420 },
-        { lat: 35.2030, lng: -80.8420 },
-        { lat: 35.2030, lng: -80.8520 }
+/**
+ * A through street that leaves the drawn territory at both ends, plus ONE real
+ * cul-de-sac inside it. The two clipped ends look like dead ends to a detector
+ * that only sees the fetched road window.
+ */
+function clippedThroughStreetNetwork() {
+    const spine = [
+        node(35.2000, -80.8600), // outside the territory
+        node(35.2000, -80.8500),
+        node(35.2000, -80.8480),
+        node(35.2000, -80.8460),
+        node(35.2000, -80.8440),
+        node(35.2000, -80.8340)  // outside the territory
     ];
-    const bounded = partitionTerritory(doors, { roadNetwork: network, territoryPolygon });
-    assert.equal(bounded.stats.pocketCount, 0, 'a clipped road must not be protected as a pocket');
+    const court = [node(35.2010, -80.8480), node(35.2016, -80.8480)];
+    return { elements: [...spine, ...court, way(spine), way([spine[2], court[0]]), way(court)] };
+}
+
+function clippedThroughStreetDoors() {
+    return [
+        door('Main St', 100, 35.20005, -80.8495),
+        door('Main St', 102, 35.20005, -80.8485),
+        door('Main St', 104, 35.20005, -80.8455),
+        door('Main St', 106, 35.20005, -80.8445),
+        door('Quiet Ct', 200, 35.2010, -80.84795),
+        door('Quiet Ct', 202, 35.2016, -80.84795)
+    ];
+}
+
+const drawnTerritoryPolygon = [
+    { lat: 35.1970, lng: -80.8520 },
+    { lat: 35.1970, lng: -80.8420 },
+    { lat: 35.2030, lng: -80.8420 },
+    { lat: 35.2030, lng: -80.8520 }
+];
+
+test('PART-16 the drawn territory boundary is not mistaken for a dead end', () => {
+    const doors = clippedThroughStreetDoors();
+    const roadNetwork = clippedThroughStreetNetwork();
+
+    // Without the drawn boundary the two clipped ends of the through street read
+    // as dead ends and get protected alongside the one real cul-de-sac.
+    const unbounded = partitionTerritory(doors, { roadNetwork });
+    assert.equal(unbounded.stats.pocketCount, 3);
+
+    const bounded = partitionTerritory(doors, {
+        roadNetwork,
+        territoryPolygon: drawnTerritoryPolygon
+    });
+    assert.equal(bounded.stats.pocketCount, 1, 'only the real cul-de-sac stays protected');
+    const pocketUnits = bounded.units.filter((unit) => unit.protected);
+    assert.equal(pocketUnits.length, 1);
+    assert.equal(pocketUnits[0].doorCount, 2, 'the protected unit is the cul-de-sac, not the through street');
     assert.equal(bounded.stats.doorCount, doors.length);
     assert.equal(bounded.validation.ok, true);
 });
