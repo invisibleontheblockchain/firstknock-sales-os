@@ -185,7 +185,12 @@ export default async function (req: Request): Promise<Response> {
                 endLocation,
                 baseUrl: osrmBaseUrl,
                 profile,
-                timeoutMs
+                timeoutMs,
+                // Enables level-4 hotspot repair: the hierarchy measures its own
+                // finished route so it can find the transitions that are still bad
+                // and re-solve their neighbourhoods. Each round is kept only when a
+                // fresh measurement is shorter, so this cannot lengthen the route.
+                measurePath: measureRoadPath
             });
 
             if (hierarchy.ok && exactOnce(hierarchy.order, properties.length)) {
@@ -234,6 +239,11 @@ export default async function (req: Request): Promise<Response> {
                         current_validated_road_miles: round(currentPath.ok ? currentPath.totalMiles : null),
                         validated_longest_leg_miles: round(proposedPath.ok ? proposedPath.longestLegMiles : null),
                         current_longest_leg_miles: round(currentPath.ok ? currentPath.longestLegMiles : null),
+                        // The whole transition distribution, both routes, measured
+                        // the same way. Longest-leg alone can be owned by one
+                        // unavoidable highway hop and hides how the rest reads.
+                        validated_leg_distribution: proposedPath.ok ? proposedPath.legDistribution : null,
+                        current_leg_distribution: currentPath.ok ? currentPath.legDistribution : null,
                         road_miles_saved: round(
                             validated ? currentPath.totalMiles - proposedPath.totalMiles : null
                         ),

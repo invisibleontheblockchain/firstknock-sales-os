@@ -40,6 +40,7 @@ import { buildStreetBlocks, roadAwareStreetSweep } from './roadAwareStreetSweep.
 import { createMatrixMetricFns, fetchRoadMatrix, MAX_ROUTE_MATRIX_POINTS } from './roadMatrix.js';
 import { osrmCounters, resetOsrmCounters } from './osrmDispatcher.js';
 import { refineWindowSeams } from './roadSeamRefinement.js';
+import { repairWorstTransitions } from './roadHotspotRepair.js';
 
 export const HIERARCHY_VERSION = 'road_hierarchy_v1';
 
@@ -362,7 +363,13 @@ export async function sequenceRoadHierarchy(properties, options = {}) {
         timeoutMs = 20000,
         fetchMatrix = fetchRoadMatrix,
         refinementStepBudget = HIERARCHY_REFINEMENT_STEP_BUDGET,
-        windowDoors = DEFAULT_WINDOW_DOORS
+        windowDoors = DEFAULT_WINDOW_DOORS,
+        // Level 4 needs the finished route measured on the road network to know
+        // WHICH transitions are still bad. That is a live OSRM dependency, so it is
+        // injected explicitly: with no measurer the layer is skipped rather than
+        // guessing which legs are long.
+        measurePath = null,
+        hotspotOptions = null
     } = options;
     const maxWindowDoors = Math.max(2, Math.min(Number(windowDoors) || DEFAULT_WINDOW_DOORS, MAX_CLUSTER_DOORS));
 
@@ -602,10 +609,35 @@ export async function sequenceRoadHierarchy(properties, options = {}) {
         timeoutMs,
         refinementStepBudget: perClusterBudget
     });
-    const finalOrder = seamRefined.order;
+    let finalOrder = seamRefined.order;
     Object.assign(telemetry, seamRefined.telemetry);
     telemetry.matrix_request_count += seamRefined.telemetry.seam_matrix_requests;
     telemetry.road_pairs_requested += seamRefined.telemetry.seam_road_pairs_requested;
+
+    // ---- Level 4: large-neighborhood repair around the worst measured legs. ----
+    //
+    // Seams are cuts the hierarchy chose to make; hotspots are wherever the drive
+    // is still bad, including the middle of a window where no boundary exists. This
+    // reads the finished route's real per-leg miles and re-solves the worst
+    // neighbourhoods, keeping a round only when a fresh measurement is shorter.
+    if (typeof measurePath === 'function') {
+        const hotspot = await repairWorstTransitions(finalOrder, {
+            startLocation,
+            endLocation,
+            measurePath,
+            fetchMatrix,
+            baseUrl,
+            profile,
+            timeoutMs,
+            refinementStepBudget: perClusterBudget,
+            ...(hotspotOptions || {})
+        });
+        finalOrder = hotspot.order;
+        Object.assign(telemetry, hotspot.telemetry);
+        telemetry.matrix_request_count += hotspot.telemetry.hotspot_matrix_requests;
+        telemetry.final_leg_distribution = hotspot.distribution;
+        telemetry.pre_hotspot_leg_distribution = hotspot.startDistribution;
+    }
 
     telemetry.cluster_seam_legs = Math.max(0, orderedClusters.length - 1);
     const decisionLegs = telemetry.intra_cluster_road_priced_legs

@@ -10,6 +10,7 @@
 // cost is linear in doors (~1 request per 49 legs) rather than quadratic.
 
 import { fetchOsrmJson } from './osrmDispatcher.js';
+import { summarizeLegMiles } from './roadLegDistribution.js';
 import { DEFAULT_OSRM_BASE_URL } from './roadMatrix.js';
 
 const METERS_TO_MILES = 0.000621371;
@@ -36,7 +37,8 @@ function thinGeometry(points) {
  * Measure an ordered stop list on the real road network.
  *
  * @returns {object} `{ ok: true, totalMiles, legMiles, longestLegMiles,
- *   longestLegIndex, geometry, requestCount }`, or `{ ok: false, error }` when
+ *   longestLegIndex, legDistribution, geometry, requestCount }`, or
+ *   `{ ok: false, error }` when
  *   the measurement could not be completed — the caller then reports the route
  *   as unmeasured rather than quoting a mixed-source total.
  */
@@ -114,6 +116,9 @@ export async function measureRoadPath(order, options = {}) {
         longestLegMiles: legMiles[longestLegIndex],
         // 0-based leg index: leg i is the drive from stop i+1 to stop i+2.
         longestLegIndex,
+        // Percentiles and threshold counts over these same measured legs, so
+        // continuity is never judged from the maximum alone.
+        legDistribution: summarizeLegMiles(legMiles),
         geometry: thinGeometry(geometry),
         requestCount
     };

@@ -87,6 +87,7 @@ export default async function (req: Request): Promise<Response> {
             success: true,
             stop_count: stops.length,
             leg_count: measured.legMiles.length,
+            leg_distribution: measured.legDistribution,
             total_road_miles: round(measured.totalMiles),
             longest_road_leg: longestLeg,
             leg_miles: measured.legMiles.map(round),
