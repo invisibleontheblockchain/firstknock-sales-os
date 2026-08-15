@@ -47,8 +47,8 @@ test('unit minutes combine attempts, walking, and MDU overhead', () => {
     mdu_site_count: 2,
   }));
 
-  // 10 doors * 3.5 min = 35, 600m / 60 m-per-min = 10, 2 sites * 12 = 24.
-  assert.ok(Math.abs(minutes - 69) < 0.5, `expected ~69 minutes, got ${minutes}`);
+  // 10 doors * 3.3 min = 33, 600m / 60 m-per-min = 10, 2 sites * 12 = 24.
+  assert.ok(Math.abs(minutes - 67) < 0.5, `expected ~67 minutes, got ${minutes}`);
 });
 
 test('a spread-out unit outweighs a dense unit with the same door count', () => {
@@ -92,8 +92,8 @@ test('plan summary reports miles, hours, uncertain pockets, and geometry presenc
   assert.equal(summary.uncertain_unit_count, 1);
   assert.ok(Math.abs(summary.eligible_street_meters - 1200) < 2, 'only knock units count toward eligible miles');
   assert.ok(summary.has_street_geometry);
-  // 2 units * (35 attempt + 10 walk) = 90 minutes over a 50-minute field hour.
-  assert.ok(Math.abs(summary.estimated_hours - 1.8) < 0.02, `got ${summary.estimated_hours}`);
+  // 2 units * (33 attempt + 10 walk) = 86 minutes over a 50-minute field hour.
+  assert.ok(Math.abs(summary.estimated_hours - 1.72) < 0.02, `got ${summary.estimated_hours}`);
 });
 
 test('plan summary flags absent geometry instead of implying a walking estimate', () => {

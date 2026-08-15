@@ -19,14 +19,42 @@ import {
   unwrapCanvasResidentialAnalysis,
 } from './canvasResidentialPresentation.js';
 
+// Calibration provenance (checkpoint A, 2026-08-15). Read before changing a
+// constant here, because only one of them has been measured.
+//
+// Source: a read-only aggregate over Precision `InteractionLog` knock history.
+// 89 same-street pairs; 44 of them GPS-qualified. Median elapsed between logged
+// knocks 5.26 min, median straight-line spacing 155.1 m (IQR 97.8-392.7).
+// No-answers are logged (356 of 656 logs, 54.3%), so the intervals are not
+// contact-only.
+//
+// Decomposed at an 80 m/min gait: 155.1 / 80 = 1.94 min walking, leaving
+// ~3.32 min of attempt. Straight-line GPS understates the walked path (a
+// driveway approach and retreat do not appear in it), so true walking is
+// higher and true attempt is at or below 3.32. The band is roughly 2.7-3.3.
+//
+// What this does NOT calibrate: `walk_meters_per_minute`. Every measured
+// interval contains stationary door time, so the sample cannot isolate gait —
+// the 34.1 m/min "pace" it yields is an effective rate, not a walking speed.
+// Nor does the spacing transfer: InteractionLog is the Precision route log,
+// where reps walk between sparse selected properties. Canvas is saturation
+// work along a blockface, where meters-per-door is lot frontage (~20-30 m),
+// not 155 m. Feeding this spacing into the walking term would inflate every
+// estimate several-fold.
+//
+// Recalibrate walking against Canvas's own `CanvasHouseEvent` telemetry once a
+// pilot territory has been worked door to door.
 export const CANVAS_WORKLOAD_DEFAULTS = Object.freeze({
   // Knock, wait, converse, log. Median across a shift, not a best case.
-  attempt_minutes: 3.5,
-  // Walking pace along a blockface, including stops at each approach.
+  // Measured: ~3.3 min, top of the 2.7-3.3 band derived above.
+  attempt_minutes: 3.3,
+  // Street traverse at working pace. NOT yet measured — see the note above.
+  // Held at ~75% of an 80 m/min gait to absorb driveways, turns and materials.
   walk_meters_per_minute: 60,
   // Fixed cost of working one multi-dwelling site: access, lobby, stairs.
+  // Not yet measured; no MDU evidence exists until the adapter lands.
   mdu_site_overhead_minutes: 12,
-  // A working field hour is not 60 minutes of doors.
+  // A working field hour is not 60 minutes of doors. Not yet measured.
   productive_minutes_per_hour: 50,
 });
 
