@@ -33,6 +33,7 @@ function CanvasPmtilesLayer({ config }) {
       lang: 'en',
       attribution: config.attribution,
       noWrap: true,
+      className: 'fk-canvas-basemap-tone',
       keepBuffer: TILE_PERFORMANCE.keepBuffer,
       updateWhenZooming: TILE_PERFORMANCE.updateWhenZooming,
       updateWhenIdle: TILE_PERFORMANCE.updateWhenIdle,
@@ -58,6 +59,7 @@ export default function CanvasBaseMapTiles({ satellite = false }) {
       key={`canvas-basemap-${satellite && config.satelliteAvailable ? 'satellite' : 'streets'}`}
       url={config.url}
       attribution={config.attribution}
+      className={satellite && config.satelliteAvailable ? undefined : 'fk-canvas-basemap-tone'}
       crossOrigin
       {...TILE_PERFORMANCE}
     />
