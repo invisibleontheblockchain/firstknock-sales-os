@@ -185,7 +185,7 @@ export default function Home() {
     const [navigationApp, setNavigationApp] = useState('apple');
 
     // Persisted Map Settings
-    const [mapTheme, setMapTheme] = useState(() => localStorage.getItem('fk_mapTheme_v2') || 'satellite');
+    const [mapTheme, setMapTheme] = useState(() => { const canvasMode = localStorage.getItem('fk_routeMode') === 'canvas'; return localStorage.getItem(canvasMode ? 'fk_mapTheme_canvas_v1' : 'fk_mapTheme_v2') || (canvasMode ? 'dark' : 'satellite'); });
     const [showRouteDetails, setShowRouteDetails] = useState(() => {
         const saved = localStorage.getItem('fk_showRouteDetails_v2');
         return saved ? JSON.parse(saved) : true;
@@ -246,7 +246,7 @@ export default function Home() {
 
     useEffect(() => {
         try {
-            localStorage.setItem('fk_mapTheme_v2', mapTheme);
+            localStorage.setItem(routeModeRef.current === 'canvas' ? 'fk_mapTheme_canvas_v1' : 'fk_mapTheme_v2', mapTheme);
             localStorage.setItem('fk_showRouteDetails_v2', JSON.stringify(showRouteDetails));
             localStorage.setItem('fk_pinSize_v3', JSON.stringify(pinSize));
             localStorage.setItem('fk_showRouteLines_v2', JSON.stringify(showRouteLines));
