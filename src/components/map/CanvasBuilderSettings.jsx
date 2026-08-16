@@ -1060,7 +1060,9 @@ export default function CanvasBuilderSettings({
       if (!quiet) toast.success('Canvas analysis cancelled. Your drawn boundary is still here.');
       return true;
     } catch (error) {
-      if (!quiet) toast.error(error?.message || 'Canvas could not cancel the analysis.');
+      // `quiet` suppresses the success toast, never a failure. A cancel that
+      // fails silently is what made Redraw and Clear look broken.
+      toast.error(error?.message || 'Canvas could not cancel the analysis.');
       return false;
     } finally {
       setCancellingServerAnalysis(false);
@@ -1322,15 +1324,24 @@ export default function CanvasBuilderSettings({
     try { sessionStorage.setItem('fk_canvasPlannerView', normalizedView); } catch {}
   };
 
+  // Redraw and Clear act on the locally drawn boundary, so they must never be
+  // blocked by the outcome of a server-side cancel. A job that has already
+  // failed or finished cannot be cancelled, and treating that as a reason to
+  // abort left both buttons as silent no-ops with no feedback at all — the
+  // manager's only route out of a failed analysis was reloading the page.
+  //
+  // The cancel is still attempted, so a running job is stopped rather than left
+  // to write a result nobody wants, and any failure is surfaced instead of
+  // swallowed. The boundary is client state; clearing it is always allowed.
   const redrawArea = async () => {
     if (!confirmDiscardUnsaved('Redrawing the work area')) return;
-    if (!await cancelResidentialAnalysis({ quiet: true })) return;
+    await cancelResidentialAnalysis({ quiet: true });
     onDraw?.();
   };
 
   const clearArea = async () => {
     if (!confirmDiscardUnsaved('Clearing the work area')) return;
-    if (!await cancelResidentialAnalysis({ quiet: true })) return;
+    await cancelResidentialAnalysis({ quiet: true });
     clearPersistedCanvasAnalysisJob(user?.id);
     onClearPolygon?.();
   };
@@ -1609,7 +1620,9 @@ export default function CanvasBuilderSettings({
   const startAnotherArea = async () => {
     if (activeOperationRef.current) return;
     if (!confirmDiscardUnsaved('Starting another area')) return;
-    if (!await cancelResidentialAnalysis({ quiet: true })) return;
+    // Same reasoning as redrawArea: starting a new area resets local state and
+    // must not be blocked by a job that can no longer be cancelled.
+    await cancelResidentialAnalysis({ quiet: true });
     clearPersistedCanvasAnalysisJob(user?.id);
     setPlan(null);
     setPlanStaleReason('');
