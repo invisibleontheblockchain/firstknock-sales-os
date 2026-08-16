@@ -14,7 +14,7 @@ body,
 
 /* Canvas street basemap runs slightly dimmed so route pins and territory
    outlines stay readable against it in daylight. Satellite is left untouched. */
-.fk-canvas-basemap-tone {
+.fk-canvas-basemap-tone .leaflet-tile-pane {
   filter: brightness(0.92) saturate(0.9);
 }
 
