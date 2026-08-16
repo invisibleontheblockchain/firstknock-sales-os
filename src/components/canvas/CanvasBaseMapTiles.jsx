@@ -15,20 +15,6 @@ const TILE_PERFORMANCE = Object.freeze({
 
 export { getCanvasBasemapConfiguration } from '@/components/canvas/canvasBasemapConfiguration';
 
-// The dim has to be applied to the whole tile pane, not to each tile. A filter
-// on individual tiles promotes every tile to its own compositing layer, which
-// makes the seams between them show up as a visible grid of squares.
-function useCanvasBasemapTone(enabled) {
-  const map = useMap();
-
-  useEffect(() => {
-    if (!enabled) return undefined;
-    const container = map.getContainer();
-    container.classList.add('fk-canvas-basemap-tone');
-    return () => container.classList.remove('fk-canvas-basemap-tone');
-  }, [enabled, map]);
-}
-
 function CanvasPmtilesLayer({ config }) {
   const map = useMap();
 
@@ -63,15 +49,14 @@ function CanvasPmtilesLayer({ config }) {
   return null;
 }
 
-export default function CanvasBaseMapTiles({ satellite = false }) {
-  const config = getCanvasBasemapConfiguration({ satellite, env: import.meta.env });
-  const showingSatellite = satellite && config.satelliteAvailable;
-  useCanvasBasemapTone(Boolean(config.url) && !showingSatellite);
+// theme mirrors the Map Style choice in Map Settings: light, dark, satellite, hybrid.
+export default function CanvasBaseMapTiles({ theme = 'light', satellite = false }) {
+  const config = getCanvasBasemapConfiguration({ theme, satellite, env: import.meta.env });
   if (!config.url) return null;
   if (config.mode === 'pmtiles') return <CanvasPmtilesLayer config={config} />;
   return (
     <TileLayer
-      key={`canvas-basemap-${satellite && config.satelliteAvailable ? 'satellite' : 'streets'}`}
+      key={`canvas-basemap-${config.url}`}
       url={config.url}
       attribution={config.attribution}
       crossOrigin

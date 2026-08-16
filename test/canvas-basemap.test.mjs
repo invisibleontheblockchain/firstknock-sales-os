@@ -64,6 +64,34 @@ test('Canvas satellite is an explicit visual override and no mode ever substitut
   }
 });
 
+test('Canvas honours the same four Map Style choices as Precision', () => {
+  const resolve = (theme, env = {}) => getCanvasBasemapConfiguration({ theme, env });
+
+  // Dark and satellite are separate sources, so a street override must not
+  // silently hand back light tiles for them.
+  const streetOverride = { VITE_CANVAS_BASEMAP_TILE_URL: 'https://tiles.example.test/{z}/{x}/{y}.png' };
+  assert.equal(resolve('light', streetOverride).url, streetOverride.VITE_CANVAS_BASEMAP_TILE_URL);
+  assert.match(resolve('dark', streetOverride).url, /cartocdn\.com\/dark_all/);
+
+  for (const theme of ['satellite', 'hybrid']) {
+    const config = resolve(theme, streetOverride);
+    assert.match(config.url, /World_Imagery/);
+    assert.match(config.attribution, /Esri/);
+  }
+
+  // Every theme must render something; an unresolved style is the black map.
+  for (const theme of ['light', 'dark', 'satellite', 'hybrid']) {
+    assert.equal(resolve(theme).configured, true, `${theme} did not resolve a basemap`);
+  }
+
+  // A self-hosted archive already carries a dark palette, so Dark stays vector
+  // instead of dropping back to metered raster tiles.
+  const pmtiles = { VITE_CANVAS_BASEMAP_PMTILES_URL: 'https://r2.example.test/maps/conus.pmtiles' };
+  assert.equal(resolve('dark', pmtiles).mode, 'pmtiles');
+  assert.equal(resolve('dark', pmtiles).flavor, 'dark');
+  assert.equal(resolve('light', pmtiles).flavor, 'carto');
+});
+
 test('the Canvas basemap never depends on an env file being present', () => {
   const config = readFileSync(new URL('../src/components/canvas/canvasBasemapConfiguration.js', import.meta.url), 'utf8');
   const productionEnv = readFileSync(new URL('../.env.production', import.meta.url), 'utf8');

@@ -30,8 +30,23 @@ const TILE_PERF = {
 };
 
 export default function BaseMapTiles({ mapTheme, routeMode = 'precision' }) {
-    if (routeMode === 'canvas') return <CanvasBaseMapTiles satellite={mapTheme === 'satellite' || mapTheme === 'hybrid'} />;
     const showLabels = mapTheme === 'hybrid' || mapTheme === 'satellite';
+
+    // Canvas honours the same four Map Style choices; only the street source differs.
+    if (routeMode === 'canvas') return (
+        <>
+            <CanvasBaseMapTiles theme={mapTheme} />
+            {showLabels && (
+                <TileLayer
+                    key={`canvas-basemap-labels-${mapTheme}`}
+                    url={LABEL_URL}
+                    attribution=""
+                    zIndex={100}
+                    {...TILE_PERF}
+                />
+            )}
+        </>
+    );
 
     return (
         <>
