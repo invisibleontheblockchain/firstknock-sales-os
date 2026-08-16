@@ -80,6 +80,32 @@ test('the Canvas basemap never depends on an env file being present', () => {
   assert.deepEqual(activeKeys(productionEnv).filter((key) => /BASEMAP|SATELLITE/.test(key)), []);
 });
 
+test('the self-hosted vector basemap defaults to the OSM-Carto theme', async () => {
+  const { CANVAS_CARTO_FLAVOR } = await import('../src/components/canvas/canvasCartoFlavor.js');
+  const tiles = readFileSync(new URL('../src/components/canvas/CanvasBaseMapTiles.jsx', import.meta.url), 'utf8');
+
+  // Self-hosting is what keeps basemap cost flat per rep, so the vector path
+  // must carry the Carto palette by default rather than a built-in flavor.
+  const pmtiles = getCanvasBasemapConfiguration({ env: {
+    VITE_CANVAS_BASEMAP_PMTILES_URL: 'https://r2.example.test/maps/conus.pmtiles',
+  } });
+  assert.equal(pmtiles.mode, 'pmtiles');
+  assert.equal(pmtiles.flavor, 'carto');
+  assert.match(tiles, /config\.flavor === 'carto' \? CANVAS_CARTO_FLAVOR/);
+
+  // The road ramp is what makes the map legible while knocking; keep the
+  // hierarchy distinct rather than collapsing to one road color.
+  const roads = [CANVAS_CARTO_FLAVOR.highway, CANVAS_CARTO_FLAVOR.major, CANVAS_CARTO_FLAVOR.minor_a, CANVAS_CARTO_FLAVOR.minor_b];
+  assert.equal(new Set(roads).size, roads.length);
+  assert.equal(CANVAS_CARTO_FLAVOR.water, '#aad3df');
+  assert.equal(CANVAS_CARTO_FLAVOR.earth, '#f2efe9');
+
+  // A missing key renders that feature with an undefined color.
+  for (const key of ['background', 'buildings', 'railway', 'boundaries', 'city_label', 'landcover', 'pois']) {
+    assert.ok(CANVAS_CARTO_FLAVOR[key], `flavor is missing ${key}`);
+  }
+});
+
 test('Canvas field maps keep visible provider attribution and PMTiles stays Canvas-only', () => {
   const basemap = readFileSync(new URL('../src/components/canvas/CanvasBaseMapTiles.jsx', import.meta.url), 'utf8');
   const residentialField = readFileSync(new URL('../src/components/rep/CanvasResidentialFieldView.jsx', import.meta.url), 'utf8');

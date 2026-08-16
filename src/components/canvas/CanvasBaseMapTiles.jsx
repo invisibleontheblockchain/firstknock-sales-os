@@ -3,6 +3,7 @@ import L from 'leaflet';
 import { TileLayer, useMap } from 'react-leaflet';
 import { leafletLayer } from 'protomaps-leaflet';
 import { getCanvasBasemapConfiguration } from '@/components/canvas/canvasBasemapConfiguration';
+import { CANVAS_CARTO_FLAVOR } from '@/components/canvas/canvasCartoFlavor';
 
 const TILE_PERFORMANCE = Object.freeze({
   keepBuffer: 3,
@@ -26,7 +27,9 @@ function CanvasPmtilesLayer({ config }) {
     globalObject.L = L;
     const layer = leafletLayer({
       url: config.url,
-      flavor: config.flavor,
+      // Our Carto theme is a full palette object; the built-in flavors are
+      // referenced by name.
+      flavor: config.flavor === 'carto' ? CANVAS_CARTO_FLAVOR : config.flavor,
       lang: 'en',
       attribution: config.attribution,
       noWrap: true,

@@ -16,7 +16,9 @@ const DEFAULT_BASEMAP = Object.freeze({
   attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
 });
 
-const PMTILES_FLAVORS = new Set(['light', 'dark', 'white', 'grayscale', 'black']);
+// 'carto' is our OSM-Carto-styled theme (canvasCartoFlavor.js); the rest are
+// protomaps-leaflet built-ins, kept available as an env override.
+const PMTILES_FLAVORS = new Set(['carto', 'light', 'dark', 'white', 'grayscale', 'black']);
 
 function configured(value) {
   const result = String(value || '').trim();
@@ -47,7 +49,7 @@ export function getCanvasBasemapConfiguration({ satellite = false, env = {} } = 
     : env?.VITE_CANVAS_BASEMAP_ATTRIBUTION)
     || (url === DEFAULT_BASEMAP.url ? DEFAULT_BASEMAP.attribution : '');
   const requestedFlavor = configured(env?.VITE_CANVAS_BASEMAP_PMTILES_FLAVOR)?.toLowerCase();
-  const flavor = PMTILES_FLAVORS.has(requestedFlavor) ? requestedFlavor : 'dark';
+  const flavor = PMTILES_FLAVORS.has(requestedFlavor) ? requestedFlavor : 'carto';
 
   return Object.freeze({
     url,

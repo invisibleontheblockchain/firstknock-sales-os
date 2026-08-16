@@ -11,7 +11,7 @@ export const CANVAS_READINESS_COMPONENTS = Object.freeze(['base44', 'analysis', 
 
 const RELEASE_ID_PATTERN = /cer1_[a-f0-9]{64}/;
 const KEY_ID_PATTERN = /^[A-Za-z0-9._:-]{3,128}$/;
-const PMTILES_FLAVORS = new Set(['light', 'dark', 'white', 'grayscale', 'black']);
+const PMTILES_FLAVORS = new Set(['carto', 'light', 'dark', 'white', 'grayscale', 'black']);
 const PUBLIC_RUNTIME_HOSTS = Object.freeze([
   'tile.openstreetmap.org',
   'nominatim.openstreetmap.org',
@@ -364,9 +364,9 @@ async function checkWeb(env, report) {
   if (pmtilesFlavor && !pmtiles) {
     report.fail('VITE_CANVAS_BASEMAP_PMTILES_FLAVOR', 'A PMTiles flavor may be configured only with VITE_CANVAS_BASEMAP_PMTILES_URL.');
   } else if (pmtilesFlavor && !PMTILES_FLAVORS.has(pmtilesFlavor)) {
-    report.fail('VITE_CANVAS_BASEMAP_PMTILES_FLAVOR', 'PMTiles flavor must be light, dark, white, grayscale, or black.');
+    report.fail('VITE_CANVAS_BASEMAP_PMTILES_FLAVOR', 'PMTiles flavor must be carto, light, dark, white, grayscale, or black.');
   } else {
-    report.pass('VITE_CANVAS_BASEMAP_PMTILES_FLAVOR', pmtiles ? `PMTiles uses the ${pmtilesFlavor || 'dark'} Canvas basemap flavor.` : 'PMTiles styling is not configured for the XYZ basemap.');
+    report.pass('VITE_CANVAS_BASEMAP_PMTILES_FLAVOR', pmtiles ? `PMTiles uses the ${pmtilesFlavor || 'carto'} Canvas basemap flavor.` : 'PMTiles styling is not configured for the XYZ basemap.');
   }
 
   const satelliteUrl = clean(env.VITE_CANVAS_SATELLITE_TILE_URL);
