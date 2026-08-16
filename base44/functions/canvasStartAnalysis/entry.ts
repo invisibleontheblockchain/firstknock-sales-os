@@ -207,15 +207,23 @@ async function callAnalysisService(config: any, path: string, body: any, jobId: 
       },
       body: JSON.stringify(body),
       signal: controller.signal,
-      redirect: "error",
+      // The edge runtime does not implement redirect: "error". Follow nothing and
+      // reject any 3xx explicitly so the token is never replayed to another host.
+      redirect: "manual",
     });
   } catch (error: any) {
     if (error?.name === "AbortError") {
       throw new HttpError(504, "canvas_analysis_service_timeout", "Canvas residential analysis timed out. Retry safely.");
     }
+    // The transport failure reason is required to tell an egress block apart
+    // from a redirect or TLS refusal. Never log the token or the request body.
+    console.error("[canvasStartAnalysis] transport", error?.name || "unknown", String(error?.message || "").slice(0, 200));
     throw new HttpError(503, "canvas_analysis_service_unavailable", "Canvas residential analysis is temporarily unavailable.");
   } finally {
     clearTimeout(timeout);
+  }
+  if (response.status >= 300 && response.status < 400) {
+    throw new HttpError(502, "canvas_analysis_service_redirected", "Canvas residential analysis is misconfigured.");
   }
   const payload = await readBoundedJson(response, MAX_RESPONSE_BYTES);
   if (!response.ok) {

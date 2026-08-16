@@ -114,13 +114,18 @@ async function serviceStatus(config: any, job: any) {
         "x-firstknock-manager-id": String(job.manager_id),
       },
       signal: controller.signal,
-      redirect: "error",
+      // The edge runtime does not implement redirect: "error". Follow nothing and
+      // reject any 3xx explicitly so the token is never replayed to another host.
+      redirect: "manual",
     });
   } catch (error: any) {
     if (error?.name === "AbortError") throw new HttpError(504, "canvas_analysis_service_timeout", "Canvas analysis progress timed out. Retry safely.");
     throw new HttpError(503, "canvas_analysis_service_unavailable", "Canvas analysis progress is temporarily unavailable.");
   } finally {
     clearTimeout(timeout);
+  }
+  if (response.status >= 300 && response.status < 400) {
+    throw new HttpError(502, "canvas_analysis_service_redirected", "Canvas residential analysis is misconfigured.");
   }
   const payload = await readBoundedJson(response);
   if (!response.ok) {
