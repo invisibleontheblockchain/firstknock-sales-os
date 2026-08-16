@@ -1,6 +1,11 @@
 #env
 .env
 .env.*
+# Vite bakes VITE_ values into the public bundle at build time, so the frontend
+# build needs them in the repo. Only public values belong here: the basemap URL
+# and attribution, and the assignment-package verification (public) key. Private
+# keys and API secrets stay in Base44 Secrets, read server-side only.
+!.env.production
 
 # Logs
 logs
