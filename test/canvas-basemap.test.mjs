@@ -13,7 +13,6 @@ test('Canvas basemap selects exactly one production source and fails closed on a
     attribution: '',
     configured: false,
     conflict: false,
-    developmentFallback: false,
     satelliteAvailable: false,
   });
 
@@ -45,7 +44,7 @@ test('Canvas basemap selects exactly one production source and fails closed on a
   assert.equal(conflict.conflict, true);
 });
 
-test('Canvas satellite is an explicit visual override and development fallback stays development-only', () => {
+test('Canvas satellite is an explicit visual override and no mode ever substitutes its own basemap', () => {
   const satellite = getCanvasBasemapConfiguration({ satellite: true, env: {
     VITE_CANVAS_BASEMAP_PMTILES_URL: 'https://r2.example.test/maps/conus.pmtiles',
     VITE_CANVAS_BASEMAP_ATTRIBUTION: 'Street attribution',
@@ -56,14 +55,37 @@ test('Canvas satellite is an explicit visual override and development fallback s
   assert.equal(satellite.url, 'https://sat.example.test/{z}/{x}/{y}.jpg');
   assert.equal(satellite.attribution, 'Satellite attribution');
 
-  const development = getCanvasBasemapConfiguration({ env: { DEV: true } });
-  assert.equal(development.mode, 'xyz');
-  assert.equal(development.developmentFallback, true);
-  assert.match(development.url, /tile\.openstreetmap\.org/);
+  // A dev-only substitute basemap is a second visual variation: it rendered a
+  // different map in the Base44 preview than on phones. Every mode must resolve
+  // to the same configured source, and an unconfigured build must render
+  // nothing rather than inventing a replacement.
+  for (const DEV of [true, false]) {
+    const unconfigured = getCanvasBasemapConfiguration({ env: { DEV } });
+    assert.equal(unconfigured.mode, 'none');
+    assert.equal(unconfigured.url, null);
+    assert.equal(unconfigured.configured, false);
+  }
 
-  const production = getCanvasBasemapConfiguration({ env: { DEV: false } });
-  assert.equal(production.mode, 'none');
-  assert.equal(production.url, null);
+  const shared = { VITE_CANVAS_BASEMAP_TILE_URL: 'https://tiles.example.test/{z}/{x}/{y}.png' };
+  assert.deepEqual(
+    getCanvasBasemapConfiguration({ env: { ...shared, DEV: true } }),
+    getCanvasBasemapConfiguration({ env: { ...shared, DEV: false } }),
+  );
+});
+
+test('the Canvas basemap is defined once in .env so every mode and device renders it', () => {
+  const rootEnv = readFileSync(new URL('../.env', import.meta.url), 'utf8');
+  const productionEnv = readFileSync(new URL('../.env.production', import.meta.url), 'utf8');
+  const activeKeys = (source) => source
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith('#'))
+    .map((line) => line.split('=')[0]);
+
+  assert.ok(activeKeys(rootEnv).includes('VITE_CANVAS_BASEMAP_TILE_URL'));
+  assert.ok(activeKeys(rootEnv).includes('VITE_CANVAS_BASEMAP_ATTRIBUTION'));
+  // A per-mode override here is exactly what split the preview from mobile.
+  assert.deepEqual(activeKeys(productionEnv).filter((key) => /BASEMAP|SATELLITE/.test(key)), []);
 });
 
 test('Canvas field maps keep visible provider attribution and PMTiles stays Canvas-only', () => {

@@ -1,5 +1,9 @@
-const DEVELOPMENT_FALLBACK_URL = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-const DEVELOPMENT_FALLBACK_ATTRIBUTION = '&copy; OpenStreetMap contributors';
+// Canvas has exactly one basemap, configured once in `.env` and therefore
+// identical in the dev preview, the published web app, and the native builds.
+// There is deliberately no mode-specific fallback: a dev-only substitute tile
+// source is a second visual variation, and it silently shipped a different map
+// to the Base44 preview than to phones. A missing configuration must render
+// nothing so the misconfiguration is visible instead of disguised.
 const PMTILES_FLAVORS = new Set(['light', 'dark', 'white', 'grayscale', 'black']);
 
 function configured(value) {
@@ -13,14 +17,9 @@ export function getCanvasBasemapConfiguration({ satellite = false, env = {} } = 
   const satelliteUrl = configured(env?.VITE_CANVAS_SATELLITE_TILE_URL);
   const conflictingBaseMaps = Boolean(xyzUrl && pmtilesUrl);
   const useSatellite = Boolean(satellite && satelliteUrl);
-  const developmentFallback = env?.DEV === true
-    && !conflictingBaseMaps
-    && !xyzUrl
-    && !pmtilesUrl
-    && !useSatellite;
   const mode = conflictingBaseMaps
     ? 'invalid'
-    : useSatellite || xyzUrl || developmentFallback
+    : useSatellite || xyzUrl
       ? 'xyz'
       : pmtilesUrl
         ? 'pmtiles'
@@ -28,11 +27,11 @@ export function getCanvasBasemapConfiguration({ satellite = false, env = {} } = 
   const url = mode === 'pmtiles'
     ? pmtilesUrl
     : mode === 'xyz'
-      ? useSatellite ? satelliteUrl : xyzUrl || DEVELOPMENT_FALLBACK_URL
+      ? useSatellite ? satelliteUrl : xyzUrl
       : null;
   const attribution = configured(useSatellite
     ? env?.VITE_CANVAS_SATELLITE_ATTRIBUTION
-    : env?.VITE_CANVAS_BASEMAP_ATTRIBUTION) || (developmentFallback ? DEVELOPMENT_FALLBACK_ATTRIBUTION : '');
+    : env?.VITE_CANVAS_BASEMAP_ATTRIBUTION) || '';
   const requestedFlavor = configured(env?.VITE_CANVAS_BASEMAP_PMTILES_FLAVOR)?.toLowerCase();
   const flavor = PMTILES_FLAVORS.has(requestedFlavor) ? requestedFlavor : 'dark';
 
@@ -41,9 +40,8 @@ export function getCanvasBasemapConfiguration({ satellite = false, env = {} } = 
     mode,
     flavor,
     attribution,
-    configured: Boolean(url) && !developmentFallback,
+    configured: Boolean(url),
     conflict: conflictingBaseMaps,
-    developmentFallback,
     satelliteAvailable: Boolean(satelliteUrl),
   });
 }

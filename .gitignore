@@ -6,6 +6,8 @@
 # and attribution, and the assignment-package verification (public) key. Private
 # keys and API secrets stay in Base44 Secrets, read server-side only.
 !.env.production
+# Canvas basemap config: loaded in every Vite mode, public-by-design values only.
+!.env
 
 # Logs
 logs
