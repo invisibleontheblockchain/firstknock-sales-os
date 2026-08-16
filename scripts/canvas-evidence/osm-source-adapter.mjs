@@ -366,10 +366,48 @@ const ADDRESSABLE_ROAD_CLASSES = new Set([
   'trunk', 'trunk_link', 'track', 'unknown',
 ]);
 
-function associateToSegment(point, segments, streetName, contextualMethod = null, addressable = false) {
+// Association is the adapter's hot path: every address, building, barrier and
+// land-use polygon has to find its nearest road. Scanning all segments per
+// feature is O(features x segments) — tolerable over one square mile, hopeless
+// over a metro. Segments are bucketed into a coarse lat/lng grid once, and each
+// lookup then visits only the buckets within the association radius.
+const INDEX_CELL_DEGREES = 0.002; // ~200m; comfortably wider than MAX_ASSOCIATION_METERS
+
+function buildSegmentIndex(segments) {
+  const cells = new Map();
+  const key = (row, col) => `${row}:${col}`;
+  for (const segment of segments) {
+    const seen = new Set();
+    for (const point of segment._coordPoints) {
+      const row = Math.floor(point.lat / INDEX_CELL_DEGREES);
+      const col = Math.floor(point.lng / INDEX_CELL_DEGREES);
+      const cellKey = key(row, col);
+      if (seen.has(cellKey)) continue;
+      seen.add(cellKey);
+      if (!cells.has(cellKey)) cells.set(cellKey, []);
+      cells.get(cellKey).push(segment);
+    }
+  }
+  return {
+    // Every segment whose geometry touches a cell within one ring of the point.
+    near(point) {
+      const row = Math.floor(point.lat / INDEX_CELL_DEGREES);
+      const col = Math.floor(point.lng / INDEX_CELL_DEGREES);
+      const found = new Set();
+      for (let dRow = -1; dRow <= 1; dRow += 1) {
+        for (let dCol = -1; dCol <= 1; dCol += 1) {
+          for (const segment of cells.get(key(row + dRow, col + dCol)) || []) found.add(segment);
+        }
+      }
+      return found;
+    },
+  };
+}
+
+function associateToSegment(point, index, streetName, contextualMethod = null, addressable = false) {
   let best = null;
   let bestNamed = null;
-  for (const segment of segments) {
+  for (const segment of index.near(point)) {
     if (addressable && !ADDRESSABLE_ROAD_CLASSES.has(segment.road_class)) continue;
     const points = segment._coordPoints;
     for (let index = 1; index < points.length; index += 1) {
@@ -403,6 +441,7 @@ function associateToSegment(point, segments, streetName, contextualMethod = null
 }
 
 function buildEvidence(ways, taggedNodes, segments, nodeCoords, provenanceOf) {
+  const index = buildSegmentIndex(segments);
   const evidence = [];
   const push = (id, kind, attributes, association) => {
     if (!association) return;
@@ -424,17 +463,17 @@ function buildEvidence(ways, taggedNodes, segments, nodeCoords, provenanceOf) {
         address_key: `${tags['addr:housenumber']}-${normalizeStreetName(tags['addr:street']) || 'unknown'}`,
         unit_keys: tags['addr:unit'] ? [String(tags['addr:unit'])] : [],
         occupancy: occupancyOf(tags),
-      }, associateToSegment(point, segments, street, null, true));
+      }, associateToSegment(point, index, street, null, true));
     } else if (tags.barrier) {
       push(`node/${node.id}`, 'barrier', {
         barrier_type: String(tags.barrier).slice(0, 80),
         pedestrian_access: pedestrianAccessOf(tags),
-      }, associateToSegment(point, segments, null, 'network_link'));
+      }, associateToSegment(point, index, null, 'network_link'));
     } else if (tags.shop || tags.amenity || tags.office) {
       const placeUse = placeUseOf(tags);
       if (placeUse) {
         push(`node/${node.id}`, 'place', { place_use: placeUse },
-          associateToSegment(point, segments, null, 'area_overlap'));
+          associateToSegment(point, index, null, 'area_overlap'));
       }
     }
   }
@@ -450,7 +489,7 @@ function buildEvidence(ways, taggedNodes, segments, nodeCoords, provenanceOf) {
       const use = buildingUseOf(tags);
       if (!use) continue;
       const street = normalizeStreetName(tags['addr:street']);
-      const association = associateToSegment(centroid, segments, street, null, true);
+      const association = associateToSegment(centroid, index, street, null, true);
       push(`way/${way.id}`, 'building', {
         building_use: use,
         ...(Number.parseInt(tags['building:units'], 10) > 0 ? { unit_count: Number.parseInt(tags['building:units'], 10) } : {}),
@@ -466,13 +505,13 @@ function buildEvidence(ways, taggedNodes, segments, nodeCoords, provenanceOf) {
       const landUse = landUseOf(tags);
       if (landUse) {
         push(`way/${way.id}`, 'land_use', { land_use: landUse },
-          associateToSegment(centroid, segments, null, 'area_overlap'));
+          associateToSegment(centroid, index, null, 'area_overlap'));
       }
     } else if (tags.shop || tags.amenity) {
       const placeUse = placeUseOf(tags);
       if (placeUse) {
         push(`way/${way.id}`, 'place', { place_use: placeUse },
-          associateToSegment(centroid, segments, null, 'area_overlap'));
+          associateToSegment(centroid, index, null, 'area_overlap'));
       }
     }
   }
@@ -568,23 +607,74 @@ export async function compileOsmSourceTiles(options) {
   // farmland would not, so the caller splits the request into a grid and each
   // cell declares the bounds it actually holds. Clipping geometry to a cell
   // instead would sever street topology at the seam, which tiling must never do.
-  const gridSize = Math.max(1, Number.parseInt(options.grid ?? '1', 10) || 1);
-  const cellOf = (segment) => {
-    const points = segment._coordPoints;
-    const mid = points[Math.floor(points.length / 2)];
-    const col = Math.min(gridSize - 1, Math.floor(((mid.lng - minLng) / (maxLng - minLng)) * gridSize));
-    const row = Math.min(gridSize - 1, Math.floor(((mid.lat - minLat) / (maxLat - minLat)) * gridSize));
-    return `${Math.max(0, row)}-${Math.max(0, col)}`;
+  // Density varies far too much for a uniform grid: downtown blocks carry ten
+  // times the geometry of the outskirts. Cells are therefore subdivided only
+  // where they actually exceed a limit, so sparse areas stay whole and dense
+  // ones split as far as they need to. The alternative — one grid number chosen
+  // by hand — either wastes tiles everywhere or blows the cap downtown.
+  const TILE_BYTE_BUDGET = 4_500_000;   // headroom under the 5.5 MB contract limit
+  const TILE_UNIT_BUDGET = 4_500;       // headroom under the 5,000 work-unit limit
+  const MAX_SUBDIVISION_DEPTH = 8;
+
+  // A tile's weight is its segments PLUS the evidence that references them —
+  // dense blocks carry far more addresses per metre of street, and sizing on
+  // geometry alone under-counts exactly where it matters most.
+  const evidenceBytesBySegment = new Map();
+  for (const record of evidence) {
+    const identity = record.associations[0]?.road_identity;
+    if (!identity) continue;
+    const key = `${identity.source_feature_id}#${identity.segment_index}`;
+    evidenceBytesBySegment.set(key, (evidenceBytesBySegment.get(key) || 0) + JSON.stringify(record).length);
+  }
+  const segmentBytes = new Map(segments.map((segment) => {
+    const geometryBytes = JSON.stringify({
+      ...segment,
+      _startRef: undefined, _endRef: undefined, _refs: undefined, _streetName: undefined, _coordPoints: undefined,
+    }).length;
+    const key = `${segment.identity.source_feature_id}#${segment.identity.segment_index}`;
+    return [segment, geometryBytes + (evidenceBytesBySegment.get(key) || 0)];
+  }));
+  const midpointOf = (segment) => segment._coordPoints[Math.floor(segment._coordPoints.length / 2)];
+
+  const leaves = [];
+  const subdivide = (members, box, depth) => {
+    if (!members.length) return;
+    const bytes = members.reduce((sum, segment) => sum + segmentBytes.get(segment), 0);
+    if (depth >= MAX_SUBDIVISION_DEPTH || (bytes <= TILE_BYTE_BUDGET && members.length <= TILE_UNIT_BUDGET)) {
+      leaves.push(members);
+      return;
+    }
+    const midLng = (box.minLng + box.maxLng) / 2;
+    const midLat = (box.minLat + box.maxLat) / 2;
+    const quadrants = [[], [], [], []];
+    for (const segment of members) {
+      const point = midpointOf(segment);
+      quadrants[(point.lat >= midLat ? 2 : 0) + (point.lng >= midLng ? 1 : 0)].push(segment);
+    }
+    // A quadrant that swallowed everything cannot be split further usefully.
+    if (quadrants.some((quadrant) => quadrant.length === members.length)) {
+      leaves.push(members);
+      return;
+    }
+    const boxes = [
+      { minLng: box.minLng, minLat: box.minLat, maxLng: midLng, maxLat: midLat },
+      { minLng: midLng, minLat: box.minLat, maxLng: box.maxLng, maxLat: midLat },
+      { minLng: box.minLng, minLat: midLat, maxLng: midLng, maxLat: box.maxLat },
+      { minLng: midLng, minLat: midLat, maxLng: box.maxLng, maxLat: box.maxLat },
+    ];
+    quadrants.forEach((quadrant, index) => subdivide(quadrant, boxes[index], depth + 1));
   };
+  subdivide(segments, { minLng, minLat, maxLng, maxLat }, 0);
 
   const segmentsByCell = new Map();
   const cellBySegmentKey = new Map();
-  for (const segment of segments) {
-    const cell = cellOf(segment);
-    if (!segmentsByCell.has(cell)) segmentsByCell.set(cell, []);
-    segmentsByCell.get(cell).push(segment);
-    cellBySegmentKey.set(`${segment.identity.source_feature_id}#${segment.identity.segment_index}`, cell);
-  }
+  leaves.forEach((members, index) => {
+    const cell = String(index).padStart(4, '0');
+    segmentsByCell.set(cell, members);
+    for (const segment of members) {
+      cellBySegmentKey.set(`${segment.identity.source_feature_id}#${segment.identity.segment_index}`, cell);
+    }
+  });
 
   // Evidence belongs to the tile that owns the road it references; the contract
   // rejects an association pointing outside its own tile.
@@ -625,7 +715,7 @@ export async function compileOsmSourceTiles(options) {
       tile_address: {
         scheme: 'osm-bbox',
         scheme_version: 1,
-        key: gridSize === 1 ? options.tileKey : `${options.tileKey}-${cell}`,
+        key: segmentsByCell.size === 1 ? options.tileKey : `${options.tileKey}-${cell}`,
       },
       coverage: {
         area_sq_mi: Number(Math.max(1e-6, (widthMeters * heightMeters) / 2_589_988.11).toFixed(6)),
