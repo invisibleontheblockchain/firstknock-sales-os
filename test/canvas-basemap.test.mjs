@@ -6,16 +6,14 @@ import { getCanvasBasemapConfiguration } from '../src/components/canvas/canvasBa
 
 test('Canvas basemap selects exactly one production source and fails closed on ambiguity', () => {
   const attribution = 'FirstKnock map data providers';
-  assert.deepEqual(getCanvasBasemapConfiguration({ env: {} }), {
-    url: null,
-    mode: 'none',
-    flavor: 'dark',
-    attribution: '',
-    configured: false,
-    conflict: false,
-    developmentFallback: false,
-    satelliteAvailable: false,
-  });
+  // An unconfigured Canvas map must still render tiles. Returning no source left
+  // the deployed Canvas map black whenever VITE_ values did not reach the bundle.
+  const unconfigured = getCanvasBasemapConfiguration({ env: {} });
+  assert.equal(unconfigured.mode, 'xyz');
+  assert.match(unconfigured.url, /basemaps\.cartocdn\.com/);
+  assert.equal(unconfigured.usingDefaultBasemap, true);
+  assert.equal(unconfigured.configured, false);
+  assert.notEqual(unconfigured.attribution, '');
 
   const xyz = getCanvasBasemapConfiguration({ env: {
     VITE_CANVAS_BASEMAP_TILE_URL: 'https://tiles.example.test/{z}/{x}/{y}.png',
@@ -45,7 +43,7 @@ test('Canvas basemap selects exactly one production source and fails closed on a
   assert.equal(conflict.conflict, true);
 });
 
-test('Canvas satellite is an explicit visual override and development fallback stays development-only', () => {
+test('Canvas satellite is an explicit visual override and defaults keep the map visible', () => {
   const satellite = getCanvasBasemapConfiguration({ satellite: true, env: {
     VITE_CANVAS_BASEMAP_PMTILES_URL: 'https://r2.example.test/maps/conus.pmtiles',
     VITE_CANVAS_BASEMAP_ATTRIBUTION: 'Street attribution',
@@ -56,14 +54,14 @@ test('Canvas satellite is an explicit visual override and development fallback s
   assert.equal(satellite.url, 'https://sat.example.test/{z}/{x}/{y}.jpg');
   assert.equal(satellite.attribution, 'Satellite attribution');
 
-  const development = getCanvasBasemapConfiguration({ env: { DEV: true } });
-  assert.equal(development.mode, 'xyz');
-  assert.equal(development.developmentFallback, true);
-  assert.match(development.url, /tile\.openstreetmap\.org/);
+  const defaultSatellite = getCanvasBasemapConfiguration({ satellite: true, env: {} });
+  assert.equal(defaultSatellite.mode, 'xyz');
+  assert.match(defaultSatellite.url, /World_Imagery/);
+  assert.equal(defaultSatellite.usingDefaultBasemap, true);
 
   const production = getCanvasBasemapConfiguration({ env: { DEV: false } });
-  assert.equal(production.mode, 'none');
-  assert.equal(production.url, null);
+  assert.equal(production.mode, 'xyz');
+  assert.match(production.url, /basemaps\.cartocdn\.com/);
 });
 
 test('Canvas field maps keep visible provider attribution and PMTiles stays Canvas-only', () => {

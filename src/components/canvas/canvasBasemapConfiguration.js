@@ -1,5 +1,12 @@
-const DEVELOPMENT_FALLBACK_URL = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-const DEVELOPMENT_FALLBACK_ATTRIBUTION = '&copy; OpenStreetMap contributors';
+// Canvas must always render a basemap. VITE_ values are not reliably injected
+// into the deployed browser bundle, and returning no tile source left the whole
+// Canvas map black while Precision (which hardcodes its tile URLs) worked. So an
+// absent configuration falls back to the same providers Precision uses instead
+// of rendering nothing. A conflicting configuration still fails closed.
+const DEFAULT_STREETS_URL = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+const DEFAULT_SATELLITE_URL = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+const DEFAULT_STREETS_ATTRIBUTION = '&copy; OpenStreetMap contributors, &copy; CARTO';
+const DEFAULT_SATELLITE_ATTRIBUTION = 'Imagery &copy; Esri';
 const PMTILES_FLAVORS = new Set(['light', 'dark', 'white', 'grayscale', 'black']);
 
 function configured(value) {
@@ -12,27 +19,27 @@ export function getCanvasBasemapConfiguration({ satellite = false, env = {} } = 
   const pmtilesUrl = configured(env?.VITE_CANVAS_BASEMAP_PMTILES_URL);
   const satelliteUrl = configured(env?.VITE_CANVAS_SATELLITE_TILE_URL);
   const conflictingBaseMaps = Boolean(xyzUrl && pmtilesUrl);
-  const useSatellite = Boolean(satellite && satelliteUrl);
-  const developmentFallback = env?.DEV === true
-    && !conflictingBaseMaps
-    && !xyzUrl
-    && !pmtilesUrl
-    && !useSatellite;
+  const useSatellite = Boolean(satellite);
+  const usingDefaultBasemap = !conflictingBaseMaps
+    && (useSatellite ? !satelliteUrl : !xyzUrl && !pmtilesUrl);
   const mode = conflictingBaseMaps
     ? 'invalid'
-    : useSatellite || xyzUrl || developmentFallback
+    : useSatellite || xyzUrl || usingDefaultBasemap
       ? 'xyz'
-      : pmtilesUrl
-        ? 'pmtiles'
-        : 'none';
-  const url = mode === 'pmtiles'
-    ? pmtilesUrl
-    : mode === 'xyz'
-      ? useSatellite ? satelliteUrl : xyzUrl || DEVELOPMENT_FALLBACK_URL
-      : null;
+      : 'pmtiles';
+  const url = mode === 'invalid'
+    ? null
+    : mode === 'pmtiles'
+      ? pmtilesUrl
+      : useSatellite
+        ? satelliteUrl || DEFAULT_SATELLITE_URL
+        : xyzUrl || DEFAULT_STREETS_URL;
   const attribution = configured(useSatellite
     ? env?.VITE_CANVAS_SATELLITE_ATTRIBUTION
-    : env?.VITE_CANVAS_BASEMAP_ATTRIBUTION) || (developmentFallback ? DEVELOPMENT_FALLBACK_ATTRIBUTION : '');
+    : env?.VITE_CANVAS_BASEMAP_ATTRIBUTION)
+    || (usingDefaultBasemap
+      ? useSatellite ? DEFAULT_SATELLITE_ATTRIBUTION : DEFAULT_STREETS_ATTRIBUTION
+      : '');
   const requestedFlavor = configured(env?.VITE_CANVAS_BASEMAP_PMTILES_FLAVOR)?.toLowerCase();
   const flavor = PMTILES_FLAVORS.has(requestedFlavor) ? requestedFlavor : 'dark';
 
@@ -41,10 +48,9 @@ export function getCanvasBasemapConfiguration({ satellite = false, env = {} } = 
     mode,
     flavor,
     attribution,
-    configured: Boolean(url) && !developmentFallback,
+    configured: Boolean(url) && !usingDefaultBasemap,
     conflict: conflictingBaseMaps,
-    developmentFallback,
-    satelliteAvailable: Boolean(satelliteUrl),
+    usingDefaultBasemap,
+    satelliteAvailable: Boolean(satelliteUrl) || usingDefaultBasemap,
   });
 }
-
