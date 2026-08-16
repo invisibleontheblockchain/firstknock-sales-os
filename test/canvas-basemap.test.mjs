@@ -6,15 +6,14 @@ import { getCanvasBasemapConfiguration } from '../src/components/canvas/canvasBa
 
 test('Canvas basemap selects exactly one production source and fails closed on ambiguity', () => {
   const attribution = 'FirstKnock map data providers';
-  assert.deepEqual(getCanvasBasemapConfiguration({ env: {} }), {
-    url: null,
-    mode: 'none',
-    flavor: 'dark',
-    attribution: '',
-    configured: false,
-    conflict: false,
-    satelliteAvailable: false,
-  });
+  // An empty env must still render the one Canvas basemap. Requiring an env file
+  // here is what produced a fully black map when the file was absent or the dev
+  // server had not reloaded it.
+  const unconfigured = getCanvasBasemapConfiguration({ env: {} });
+  assert.equal(unconfigured.mode, 'xyz');
+  assert.equal(unconfigured.configured, true);
+  assert.match(unconfigured.url, /basemaps\.cartocdn\.com\/rastertiles\/voyager/);
+  assert.match(unconfigured.attribution, /OpenStreetMap/);
 
   const xyz = getCanvasBasemapConfiguration({ env: {
     VITE_CANVAS_BASEMAP_TILE_URL: 'https://tiles.example.test/{z}/{x}/{y}.png',
@@ -55,26 +54,18 @@ test('Canvas satellite is an explicit visual override and no mode ever substitut
   assert.equal(satellite.url, 'https://sat.example.test/{z}/{x}/{y}.jpg');
   assert.equal(satellite.attribution, 'Satellite attribution');
 
-  // A dev-only substitute basemap is a second visual variation: it rendered a
-  // different map in the Base44 preview than on phones. Every mode must resolve
-  // to the same configured source, and an unconfigured build must render
-  // nothing rather than inventing a replacement.
-  for (const DEV of [true, false]) {
-    const unconfigured = getCanvasBasemapConfiguration({ env: { DEV } });
-    assert.equal(unconfigured.mode, 'none');
-    assert.equal(unconfigured.url, null);
-    assert.equal(unconfigured.configured, false);
+  // The resolved basemap must never depend on the build mode. A DEV-keyed branch
+  // is what made the Base44 preview and phones render different maps.
+  for (const env of [{}, { VITE_CANVAS_BASEMAP_TILE_URL: 'https://tiles.example.test/{z}/{x}/{y}.png' }]) {
+    assert.deepEqual(
+      getCanvasBasemapConfiguration({ env: { ...env, DEV: true } }),
+      getCanvasBasemapConfiguration({ env: { ...env, DEV: false } }),
+    );
   }
-
-  const shared = { VITE_CANVAS_BASEMAP_TILE_URL: 'https://tiles.example.test/{z}/{x}/{y}.png' };
-  assert.deepEqual(
-    getCanvasBasemapConfiguration({ env: { ...shared, DEV: true } }),
-    getCanvasBasemapConfiguration({ env: { ...shared, DEV: false } }),
-  );
 });
 
-test('the Canvas basemap is defined once in .env so every mode and device renders it', () => {
-  const rootEnv = readFileSync(new URL('../.env', import.meta.url), 'utf8');
+test('the Canvas basemap never depends on an env file being present', () => {
+  const config = readFileSync(new URL('../src/components/canvas/canvasBasemapConfiguration.js', import.meta.url), 'utf8');
   const productionEnv = readFileSync(new URL('../.env.production', import.meta.url), 'utf8');
   const activeKeys = (source) => source
     .split('\n')
@@ -82,9 +73,10 @@ test('the Canvas basemap is defined once in .env so every mode and device render
     .filter((line) => line && !line.startsWith('#'))
     .map((line) => line.split('=')[0]);
 
-  assert.ok(activeKeys(rootEnv).includes('VITE_CANVAS_BASEMAP_TILE_URL'));
-  assert.ok(activeKeys(rootEnv).includes('VITE_CANVAS_BASEMAP_ATTRIBUTION'));
-  // A per-mode override here is exactly what split the preview from mobile.
+  // The default is a plain constant, not a mode-conditional fallback.
+  assert.match(config, /const DEFAULT_BASEMAP = Object\.freeze/);
+  assert.doesNotMatch(config, /env\?\.DEV|import\.meta\.env\.DEV/);
+  // A per-mode override is exactly what split the preview from mobile.
   assert.deepEqual(activeKeys(productionEnv).filter((key) => /BASEMAP|SATELLITE/.test(key)), []);
 });
 
