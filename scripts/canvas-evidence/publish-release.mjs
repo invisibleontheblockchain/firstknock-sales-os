@@ -64,10 +64,11 @@ function parseArguments(argv) {
     ['--release-dir', 'releaseDir'], ['--bucket', 'bucket'],
     ['--endpoint', 'endpoint'], ['--region', 'region'],
   ]);
-  const result = { region: 'auto', dryRun: false };
+  const result = { region: 'auto', dryRun: false, resume: false };
   for (let index = 0; index < argv.length; index += 1) {
     if (argv[index] === '--help' || argv[index] === '-h') return { help: true };
     if (argv[index] === '--dry-run') { result.dryRun = true; continue; }
+    if (argv[index] === '--resume') { result.resume = true; continue; }
     const key = keys.get(argv[index]);
     if (!key) fail(`Unknown option: ${argv[index]}`);
     const value = argv[index + 1];
@@ -135,16 +136,50 @@ async function prefixIsOccupied(client, bucket, prefix) {
   return (listing.KeyCount || 0) > 0;
 }
 
-async function readBackAndVerify(client, bucket, artifact) {
-  const object = await client.send(new GetObjectCommand({ Bucket: bucket, Key: artifact.object_key }));
+const UPLOAD_ATTEMPTS = 5;
+
+const sleep = (milliseconds) => new Promise((resolveSleep) => { setTimeout(resolveSleep, milliseconds); });
+
+/** 'absent', 'match', or 'mismatch' — what the store currently holds for this key. */
+async function remoteState(client, bucket, artifact) {
+  let object;
+  try {
+    object = await client.send(new GetObjectCommand({ Bucket: bucket, Key: artifact.object_key }));
+  } catch (error) {
+    const code = error?.name || error?.Code;
+    if (code === 'NoSuchKey' || code === 'NotFound' || error?.$metadata?.httpStatusCode === 404) return 'absent';
+    throw error;
+  }
   const bytes = Buffer.from(await object.Body.transformToByteArray());
-  if (bytes.byteLength !== artifact.byte_length) {
-    fail(`${artifact.object_key}: stored byte length ${bytes.byteLength} does not match ${artifact.byte_length}.`);
+  if (bytes.byteLength !== artifact.byte_length) return 'mismatch';
+  return sha256Hex(bytes) === artifact.sha256 ? 'match' : 'mismatch';
+}
+
+// One dropped connection used to abandon a single object mid-release, leaving a
+// prefix that looks published but is quietly missing tiles — and the run still
+// exited zero. Uploads are network work, so transient failure is expected and
+// must be retried rather than tolerated. A release that cannot place every
+// object now fails loudly.
+async function putVerified(client, bucket, artifact) {
+  let lastError = null;
+  for (let attempt = 1; attempt <= UPLOAD_ATTEMPTS; attempt += 1) {
+    try {
+      await client.send(new PutObjectCommand({
+        Bucket: bucket,
+        Key: artifact.object_key,
+        Body: artifact.bytes,
+        ContentType: artifact.content_type,
+        CacheControl: artifact.cache_control,
+        ContentLength: artifact.byte_length,
+      }));
+      if (await remoteState(client, bucket, artifact) === 'match') return attempt;
+      lastError = new Error('stored bytes do not match the pinned SHA-256');
+    } catch (error) {
+      lastError = error;
+    }
+    if (attempt < UPLOAD_ATTEMPTS) await sleep(250 * 2 ** (attempt - 1));
   }
-  const digest = sha256Hex(bytes);
-  if (digest !== artifact.sha256) {
-    fail(`${artifact.object_key}: stored SHA-256 ${digest} does not match ${artifact.sha256}.`);
-  }
+  throw new Error(`${artifact.object_key}: giving up after ${UPLOAD_ATTEMPTS} attempts (${lastError?.message || lastError}).`);
 }
 
 async function main() {
@@ -187,24 +222,32 @@ async function main() {
     credentials: { accessKeyId, secretAccessKey },
   });
 
-  if (await prefixIsOccupied(client, options.bucket, prefix)) {
-    fail(`Refusing to publish: ${prefix}/ already exists in ${options.bucket}.\nReleases are immutable. Build a new release id rather than overwriting one.`);
+  if (await prefixIsOccupied(client, options.bucket, prefix) && !options.resume) {
+    fail(`Refusing to publish: ${prefix}/ already exists in ${options.bucket}.\nReleases are immutable. Build a new release id rather than overwriting one.\nIf an earlier publish of this exact release was interrupted, re-run with --resume.`);
   }
 
+  // --resume finishes an interrupted publish without weakening immutability:
+  // an object already carrying the pinned hash is left alone, and one holding
+  // anything else is a hard failure rather than something to overwrite.
+  let placed = 0;
+  let skipped = 0;
   for (const artifact of publishOrder(artifacts)) {
-    await client.send(new PutObjectCommand({
-      Bucket: options.bucket,
-      Key: artifact.object_key,
-      Body: artifact.bytes,
-      ContentType: artifact.content_type,
-      CacheControl: artifact.cache_control,
-      ContentLength: artifact.byte_length,
-    }));
-    await readBackAndVerify(client, options.bucket, artifact);
-    process.stdout.write(`  ok ${artifact.object_key}\n`);
+    if (options.resume) {
+      const state = await remoteState(client, options.bucket, artifact);
+      if (state === 'match') {
+        skipped += 1;
+        continue;
+      }
+      if (state === 'mismatch') {
+        fail(`${artifact.object_key} already exists with different bytes than this release pins.\nReleases are immutable. Build a new release id rather than overwriting one.`);
+      }
+    }
+    const attempts = await putVerified(client, options.bucket, artifact);
+    placed += 1;
+    process.stdout.write(`  ok ${artifact.object_key}${attempts > 1 ? ` (after ${attempts} attempts)` : ''}\n`);
   }
 
-  process.stdout.write(`\nPublished ${artifacts.length} artifacts; every object re-read and hash-verified.\n`);
+  process.stdout.write(`\nPublished ${artifacts.length} artifacts (${placed} uploaded, ${skipped} already present); every object re-read and hash-verified.\n`);
   process.stdout.write(`\nManifest URL for CANVAS_EVIDENCE_MANIFEST_URL:\n  <your public base>/${prefix}/manifest.json\n`);
 }
 

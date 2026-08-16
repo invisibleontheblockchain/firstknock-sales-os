@@ -15,9 +15,9 @@
 // ODbL: every emitted record carries the provider, dataset version and license
 // supplied on the command line, so a release can always be traced to its input.
 
-import { createReadStream } from 'node:fs';
+import { createReadStream, createWriteStream } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { dirname, resolve } from 'node:path';
+import { dirname, extname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import parseOSM from 'osm-pbf-parser';
@@ -92,6 +92,13 @@ function pointToSegmentMeters(point, start, end) {
 }
 
 const insideBounds = (lat, lng, b) => lat >= b.min_lat && lat <= b.max_lat && lng >= b.min_lng && lng <= b.max_lng;
+
+// Cell ownership is half-open — [min, max) on both axes — so a segment whose
+// midpoint lands exactly on a shared edge belongs to exactly one cell. With
+// inclusive bounds, adjacent compiles both claimed it and the release refused
+// the whole thing with duplicate_release_work_unit. Rare per pair, certain
+// across thousands of cells.
+const ownsMidpoint = (lat, lng, b) => lat >= b.min_lat && lat < b.max_lat && lng >= b.min_lng && lng < b.max_lng;
 
 /* ────────────────────────────── tag reading ────────────────────────────── */
 
@@ -193,6 +200,114 @@ function normalizeStreetName(value) {
 
 /* ────────────────────────────── extract read ────────────────────────────── */
 
+// V8 caps a single Map at ~16.7M entries, and a state-sized extract holds more
+// nodes than that — the compile died with "Map maximum size exceeded". Sharding
+// the node store across several Maps raises the ceiling proportionally without
+// changing the lookup cost, and whole-extract compiles are mandatory: segment
+// identities are only stable when one run sees the entire way.
+const NODE_SHARD_COUNT = 32;
+
+// Fallback store, used only when an extract's node ids are not ascending.
+// A Map entry plus a {lat,lng} object costs roughly 100 bytes per node, which
+// is what put California past this machine's memory: correctness never depends
+// on the extract's ordering, but the cheap path below does.
+function createMapNodeStore() {
+  const shards = Array.from({ length: NODE_SHARD_COUNT }, () => new Map());
+  const shardFor = (id) => shards[Number(BigInt(id) % BigInt(NODE_SHARD_COUNT))];
+  return {
+    set(id, lat, lng) { shardFor(id).set(id, { lat, lng }); },
+    get(id) { return shardFor(id).get(id); },
+    has(id) { return shardFor(id).has(id); },
+    get size() { return shards.reduce((total, shard) => total + shard.size, 0); },
+  };
+}
+
+// Chunked parallel typed arrays: 24 bytes per node against ~100 for a Map of
+// objects. That ratio is the difference between a state that compiles and one
+// that swaps — norcal died at a 12 GB heap, and whole California wanted ~21 GB.
+//
+// Chunks rather than one growable array because doubling a 2.4 GB buffer needs
+// the old and new copies live at once, and that transient spike is exactly the
+// headroom we are short of. Ids are exact in Float64 (the largest OSM node id
+// is ~1.2e10, far below 2^53).
+//
+// PBF emits nodes in ascending id order, so each chunk is sorted and chunk
+// ranges are disjoint — a lookup binary-searches the chunk list, then the
+// chunk. If an extract ever violates that, the store converts itself to the
+// map form above rather than returning a wrong coordinate.
+const NODE_CHUNK_ENTRIES = 1 << 22;
+
+function createNodeStore() {
+  const chunks = [];
+  let count = 0;
+  let lastId = -Infinity;
+  let fallback = null;
+
+  const locate = (id) => {
+    let low = 0;
+    let high = chunks.length - 1;
+    let target = -1;
+    while (low <= high) {
+      const mid = (low + high) >> 1;
+      if (chunks[mid].ids[chunks[mid].length - 1] >= id) { target = mid; high = mid - 1; } else low = mid + 1;
+    }
+    if (target < 0) return null;
+    const chunk = chunks[target];
+    let a = 0;
+    let b = chunk.length - 1;
+    while (a <= b) {
+      const mid = (a + b) >> 1;
+      const value = chunk.ids[mid];
+      if (value === id) return { chunk, offset: mid };
+      if (value < id) a = mid + 1; else b = mid - 1;
+    }
+    return null;
+  };
+
+  const convertToFallback = () => {
+    fallback = createMapNodeStore();
+    for (const chunk of chunks) {
+      for (let offset = 0; offset < chunk.length; offset += 1) {
+        fallback.set(chunk.ids[offset], chunk.lats[offset], chunk.lngs[offset]);
+      }
+    }
+    chunks.length = 0;
+  };
+
+  return {
+    set(id, lat, lng) {
+      if (fallback) { fallback.set(id, lat, lng); return; }
+      if (id <= lastId) { convertToFallback(); fallback.set(id, lat, lng); return; }
+      lastId = id;
+      let chunk = chunks[chunks.length - 1];
+      if (!chunk || chunk.length === NODE_CHUNK_ENTRIES) {
+        chunk = {
+          ids: new Float64Array(NODE_CHUNK_ENTRIES),
+          lats: new Float64Array(NODE_CHUNK_ENTRIES),
+          lngs: new Float64Array(NODE_CHUNK_ENTRIES),
+          length: 0,
+        };
+        chunks.push(chunk);
+      }
+      chunk.ids[chunk.length] = id;
+      chunk.lats[chunk.length] = lat;
+      chunk.lngs[chunk.length] = lng;
+      chunk.length += 1;
+      count += 1;
+    },
+    get(id) {
+      if (fallback) return fallback.get(id);
+      const found = locate(id);
+      return found ? { lat: found.chunk.lats[found.offset], lng: found.chunk.lngs[found.offset] } : undefined;
+    },
+    has(id) {
+      if (fallback) return fallback.has(id);
+      return locate(id) !== null;
+    },
+    get size() { return fallback ? fallback.size : count; },
+  };
+}
+
 async function readExtract(pbfPath, bounds) {
   // Nodes stream before ways, so one pass suffices: hold coordinates, then use
   // them to place ways. A margin keeps ways that cross the tile edge intact.
@@ -203,7 +318,7 @@ async function readExtract(pbfPath, bounds) {
     min_lng: bounds.min_lng - margin,
     max_lng: bounds.max_lng + margin,
   };
-  const nodeCoords = new Map();
+  const nodeCoords = createNodeStore();
   const taggedNodes = [];
   const ways = [];
 
@@ -214,7 +329,7 @@ async function readExtract(pbfPath, bounds) {
         for (const item of items) {
           if (item.type === 'node') {
             if (!insideBounds(item.lat, item.lon, wide)) continue;
-            nodeCoords.set(item.id, { lat: item.lat, lng: item.lon });
+            nodeCoords.set(item.id, item.lat, item.lon);
             const tags = item.tags || {};
             if (tags['addr:housenumber'] || tags.barrier || tags.shop || tags.amenity || tags.office || tags.entrance) {
               taggedNodes.push({ id: item.id, lat: item.lat, lng: item.lon, tags });
@@ -222,9 +337,23 @@ async function readExtract(pbfPath, bounds) {
           } else if (item.type === 'way') {
             const tags = item.tags || {};
             if (!tags.highway && !tags.building && !tags.landuse && !tags.barrier && !tags.shop && !tags.amenity) continue;
-            const coords = (item.refs || []).map((ref) => nodeCoords.get(ref)).filter(Boolean);
-            if (!coords.length) continue;
-            ways.push({ id: item.id, refs: item.refs || [], tags, coords });
+            // Only the centroid is ever read from a way's coordinates, so it is
+            // accumulated here instead of keeping a resolved point per node —
+            // that array was the second largest allocation in the compile.
+            // The arithmetic mirrors the previous reduce exactly (each term
+            // divided before summing, in ref order) so results stay identical.
+            const refs = item.refs || [];
+            let resolved = 0;
+            for (const ref of refs) if (nodeCoords.has(ref)) resolved += 1;
+            if (!resolved) continue;
+            const centroid = { lat: 0, lng: 0 };
+            for (const ref of refs) {
+              const point = nodeCoords.get(ref);
+              if (!point) continue;
+              centroid.lat += point.lat / resolved;
+              centroid.lng += point.lng / resolved;
+            }
+            ways.push({ id: item.id, refs, tags, centroid });
           }
         }
         next();
@@ -271,7 +400,7 @@ function buildRoadSegments(ways, nodeCoords, bounds, provenanceOf) {
         return [Number(point.lng.toFixed(7)), Number(point.lat.toFixed(7))];
       });
       const midpoint = nodeCoords.get(sliceRefs[Math.floor(sliceRefs.length / 2)]);
-      if (insideBounds(midpoint.lat, midpoint.lng, bounds) && coordinates.length >= 2) {
+      if (ownsMidpoint(midpoint.lat, midpoint.lng, bounds) && coordinates.length >= 2) {
         segments.push({
           identity: {
             source_namespace: 'osm-way',
@@ -480,10 +609,7 @@ function buildEvidence(ways, taggedNodes, segments, nodeCoords, provenanceOf) {
 
   for (const way of ways) {
     const tags = way.tags;
-    const centroid = way.coords.reduce((acc, point) => ({
-      lat: acc.lat + point.lat / way.coords.length,
-      lng: acc.lng + point.lng / way.coords.length,
-    }), { lat: 0, lng: 0 });
+    const { centroid } = way;
 
     if (tags.building) {
       const use = buildingUseOf(tags);
@@ -614,7 +740,11 @@ export async function compileOsmSourceTiles(options) {
   // by hand — either wastes tiles everywhere or blows the cap downtown.
   const TILE_BYTE_BUDGET = 4_500_000;   // headroom under the 5.5 MB contract limit
   const TILE_UNIT_BUDGET = 4_500;       // headroom under the 5,000 work-unit limit
-  const MAX_SUBDIVISION_DEPTH = 8;
+  // Depth is relative to the ROOT box, so the same number buys very different
+  // leaves: depth 8 over a county reaches ~200 m cells, but over a whole state
+  // it stops at ~2 km and emits tiles far past budget. Recursion still halts on
+  // the degenerate-quadrant check below, so this is a safety valve, not a target.
+  const MAX_SUBDIVISION_DEPTH = 14;
 
   // A tile's weight is its segments PLUS the evidence that references them —
   // dense blocks carry far more addresses per metre of street, and sizing on
@@ -625,6 +755,16 @@ export async function compileOsmSourceTiles(options) {
     if (!identity) continue;
     const key = `${identity.source_feature_id}#${identity.segment_index}`;
     evidenceBytesBySegment.set(key, (evidenceBytesBySegment.get(key) || 0) + JSON.stringify(record).length);
+  }
+  // Protected groups ride along in the emitted tile and were missing from the
+  // weight entirely. A county carries few enough for that to go unnoticed; a
+  // state carries hundreds of thousands, and the omission put real tiles at
+  // nearly twice the budget they were sized against.
+  for (const group of protectedGroups) {
+    const identity = group.members[0];
+    if (!identity) continue;
+    const key = `${identity.source_feature_id}#${identity.segment_index}`;
+    evidenceBytesBySegment.set(key, (evidenceBytesBySegment.get(key) || 0) + JSON.stringify(group).length);
   }
   const segmentBytes = new Map(segments.map((segment) => {
     const geometryBytes = JSON.stringify({
@@ -696,48 +836,130 @@ export async function compileOsmSourceTiles(options) {
     groupsByCell.get(cell).push(group);
   }
 
-  const tiles = [];
-  for (const [cell, cellSegments] of [...segmentsByCell].sort(([a], [b]) => a.localeCompare(b))) {
-    const declared = { min_lng: Infinity, min_lat: Infinity, max_lng: -Infinity, max_lat: -Infinity };
-    for (const segment of cellSegments) {
-      for (const [lng, lat] of segment.geometry.coordinates) {
-        declared.min_lng = Math.min(declared.min_lng, lng);
-        declared.max_lng = Math.max(declared.max_lng, lng);
-        declared.min_lat = Math.min(declared.min_lat, lat);
-        declared.max_lat = Math.max(declared.max_lat, lat);
+  // Tiles are yielded, not accumulated. Holding every finished tile alongside
+  // the segments they were copied from roughly doubled peak memory at exactly
+  // the moment it was highest, and each cell's inputs are dead the instant its
+  // tile is written — so they are dropped here rather than at the end of the
+  // run. The consumer writes one line at a time, so nothing needs the whole set.
+  const orderedCells = [...segmentsByCell.keys()].sort((a, b) => a.localeCompare(b));
+  const tileCount = orderedCells.length;
+  const coverageBounds = { min_lng: Infinity, min_lat: Infinity, max_lng: -Infinity, max_lat: -Infinity };
+  function* generateTiles() {
+    for (const cell of orderedCells) {
+      const cellSegments = segmentsByCell.get(cell);
+      const declared = { min_lng: Infinity, min_lat: Infinity, max_lng: -Infinity, max_lat: -Infinity };
+      for (const segment of cellSegments) {
+        for (const [lng, lat] of segment.geometry.coordinates) {
+          declared.min_lng = Math.min(declared.min_lng, lng);
+          declared.max_lng = Math.max(declared.max_lng, lng);
+          declared.min_lat = Math.min(declared.min_lat, lat);
+          declared.max_lat = Math.max(declared.max_lat, lat);
+        }
       }
+      const widthMeters = haversineMeters({ lat: declared.min_lat, lng: declared.min_lng }, { lat: declared.min_lat, lng: declared.max_lng });
+      const heightMeters = haversineMeters({ lat: declared.min_lat, lng: declared.min_lng }, { lat: declared.max_lat, lng: declared.min_lng });
+      const tile = {
+        schema: 'firstknock.canvas-source-evidence-tile',
+        schema_version: 1,
+        tile_address: {
+          scheme: 'osm-bbox',
+          scheme_version: 1,
+          key: tileCount === 1 ? options.tileKey : `${options.tileKey}-${cell}`,
+        },
+        coverage: {
+          area_sq_mi: Number(Math.max(1e-6, (widthMeters * heightMeters) / 2_589_988.11).toFixed(6)),
+          bounds: declared,
+        },
+        road_segments: cellSegments.map(({ _startRef, _endRef, _refs, _streetName, _coordPoints, ...segment }) => segment),
+        evidence: evidenceByCell.get(cell) || [],
+        protected_groups: groupsByCell.get(cell) || [],
+      };
+      coverageBounds.min_lng = Math.min(coverageBounds.min_lng, declared.min_lng);
+      coverageBounds.min_lat = Math.min(coverageBounds.min_lat, declared.min_lat);
+      coverageBounds.max_lng = Math.max(coverageBounds.max_lng, declared.max_lng);
+      coverageBounds.max_lat = Math.max(coverageBounds.max_lat, declared.max_lat);
+      segmentsByCell.delete(cell);
+      evidenceByCell.delete(cell);
+      groupsByCell.delete(cell);
+      yield tile;
     }
-    const widthMeters = haversineMeters({ lat: declared.min_lat, lng: declared.min_lng }, { lat: declared.min_lat, lng: declared.max_lng });
-    const heightMeters = haversineMeters({ lat: declared.min_lat, lng: declared.min_lng }, { lat: declared.max_lat, lng: declared.min_lng });
-    tiles.push({
-      schema: 'firstknock.canvas-source-evidence-tile',
-      schema_version: 1,
-      tile_address: {
-        scheme: 'osm-bbox',
-        scheme_version: 1,
-        key: segmentsByCell.size === 1 ? options.tileKey : `${options.tileKey}-${cell}`,
-      },
-      coverage: {
-        area_sq_mi: Number(Math.max(1e-6, (widthMeters * heightMeters) / 2_589_988.11).toFixed(6)),
-        bounds: declared,
-      },
-      road_segments: cellSegments.map(({ _startRef, _endRef, _refs, _streetName, _coordPoints, ...segment }) => segment),
-      evidence: evidenceByCell.get(cell) || [],
-      protected_groups: groupsByCell.get(cell) || [],
-    });
   }
 
   return {
-    tiles,
+    tiles: generateTiles(),
     stats: {
-      tiles: tiles.length,
+      tiles: tileCount,
       segments: segments.length,
       evidence: evidence.length,
       protectedGroups: protectedGroups.length,
       nodesHeld: nodeCoords.size,
+      coverageBounds,
     },
   };
 
+}
+
+// A state-sized extract overruns two separate limits here. Writing without
+// awaiting drain buffers the whole compile in memory, and a single output file
+// stops accepting writes at exactly 2^32 bytes — the Maryland compile died with
+// an opaque "A system error occurred" on a file of precisely 4294967296 bytes.
+// Parts keep each file well under that wall, and normalize-source already
+// accepts repeated --input or a directory, so the split costs nothing later.
+//
+// Splitting the OUTPUT is safe; splitting the COMPILE is not. Segment identities
+// are only stable when one run observes a way's full node list, so an extract
+// must be compiled in a single pass no matter how many files it lands in.
+const OUTPUT_PART_BYTE_LIMIT = 1_000_000_000;
+
+async function writeTileParts(outputPath, tiles) {
+  const base = resolve(outputPath);
+  const extension = extname(base);
+  const stem = base.slice(0, base.length - extension.length);
+  const paths = [];
+  let stream = null;
+  let failure = null;
+  let bytesInPart = 0;
+
+  const openPart = () => {
+    const index = paths.length + 1;
+    const path = index === 1 ? base : `${stem}.part${String(index).padStart(4, '0')}${extension}`;
+    paths.push(path);
+    bytesInPart = 0;
+    const opened = createWriteStream(path, { encoding: 'utf8' });
+    opened.on('error', (error) => { failure = failure || error; });
+    return opened;
+  };
+  const finishPart = (target) => new Promise((resolveFinish, rejectFinish) => {
+    target.on('error', rejectFinish);
+    target.on('finish', () => (failure ? rejectFinish(failure) : resolveFinish()));
+    target.end();
+  });
+
+  stream = openPart();
+  for (const tile of tiles) {
+    if (failure) throw failure;
+    const line = `${JSON.stringify(tile)}\n`;
+    const lineBytes = Buffer.byteLength(line, 'utf8');
+    if (bytesInPart > 0 && bytesInPart + lineBytes > OUTPUT_PART_BYTE_LIMIT) {
+      await finishPart(stream);
+      stream = openPart();
+    }
+    bytesInPart += lineBytes;
+    if (!stream.write(line)) {
+      // Both listeners are removed on settle. Leaving the loser attached leaks
+      // one listener per drain, which a state-sized compile hits thousands of
+      // times over.
+      const current = stream;
+      await new Promise((resolveDrain, rejectDrain) => {
+        const onDrain = () => { current.off('error', onError); resolveDrain(); };
+        const onError = (error) => { current.off('drain', onDrain); rejectDrain(error); };
+        current.once('drain', onDrain);
+        current.once('error', onError);
+      });
+    }
+  }
+  await finishPart(stream);
+  return paths;
 }
 
 const isMain = process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
@@ -751,12 +973,36 @@ if (isMain) {
     const { tiles, stats } = await compileOsmSourceTiles(options);
     await mkdir(dirname(resolve(options.output)), { recursive: true });
     // NDJSON, one source-evidence tile per line, which normalize-source accepts.
-    await writeFile(resolve(options.output), `${tiles.map((tile) => JSON.stringify(tile)).join('\n')}\n`, 'utf8');
-    process.stdout.write(`Wrote ${options.output}\n`);
+    // Written a line at a time: joining a county's worth of tiles into a single
+    // string exceeds V8's maximum string length and fails the entire compile.
+    const parts = await writeTileParts(options.output, tiles);
+    for (const part of parts) process.stdout.write(`Wrote ${part}\n`);
+    // Coverage for the release descriptor must be the union of what was
+    // actually emitted, not the requested bbox: Geofabrik ships complete ways
+    // across a region's border, so real geometry reaches past the .poly extent.
+    // Writing it here is free — the bounds were computed per tile anyway —
+    // and saves the orchestrator a second full pass over multi-GB output.
+    const summaryPath = `${resolve(options.output)}.summary.json`;
+    await writeFile(summaryPath, `${JSON.stringify({
+      schema: 'firstknock.canvas-source-evidence-summary',
+      schema_version: 1,
+      tile_key: options.tileKey,
+      parts: parts.map((part) => part.slice(dirname(part).length + 1)),
+      coverage_bounds: stats.coverageBounds,
+      tiles: stats.tiles,
+      road_segments: stats.segments,
+      evidence_records: stats.evidence,
+      protected_groups: stats.protectedGroups,
+    }, null, 2)}\n`, 'utf8');
+    process.stdout.write(`Wrote ${summaryPath}\n`);
     process.stdout.write(`  tiles           : ${stats.tiles}\n`);
     process.stdout.write(`  road segments   : ${stats.segments}\n`);
     process.stdout.write(`  evidence records: ${stats.evidence}\n`);
     process.stdout.write(`  protected groups: ${stats.protectedGroups}\n`);
+    // Node count is the figure that decides whether an extract fits: a single
+    // V8 Map caps out near 16.7M entries, which is why the store is sharded.
+    process.stdout.write(`  nodes held      : ${stats.nodesHeld}\n`);
+    process.stdout.write(`  peak rss mb     : ${Math.round(process.memoryUsage().rss / 1048576)}\n`);
   } catch (error) {
     process.stderr.write(`${error?.message || error}\n`);
     process.exit(1);

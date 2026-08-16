@@ -1,0 +1,262 @@
+{
+  "schema": "firstknock.canvas-region-catalog",
+  "schema_version": 1,
+  "note": "Geofabrik region paths under north-america/us. A region is the unit of compilation: never subdivide one with a hand-drawn box. If a region will not fit in memory, replace its entry with that regions own Geofabrik sub-regions (e.g. california -> california/norcal, california/socal), which carry the same complete-way guarantee.",
+  "regions": [
+    {
+      "slug": "alabama",
+      "name": "Alabama",
+      "path": "alabama"
+    },
+    {
+      "slug": "alaska",
+      "name": "Alaska",
+      "path": "alaska"
+    },
+    {
+      "slug": "arizona",
+      "name": "Arizona",
+      "path": "arizona"
+    },
+    {
+      "slug": "arkansas",
+      "name": "Arkansas",
+      "path": "arkansas"
+    },
+    {
+      "slug": "california",
+      "name": "California",
+      "path": "california"
+    },
+    {
+      "slug": "colorado",
+      "name": "Colorado",
+      "path": "colorado"
+    },
+    {
+      "slug": "connecticut",
+      "name": "Connecticut",
+      "path": "connecticut"
+    },
+    {
+      "slug": "delaware",
+      "name": "Delaware",
+      "path": "delaware"
+    },
+    {
+      "slug": "district-of-columbia",
+      "name": "District of Columbia",
+      "path": "district-of-columbia"
+    },
+    {
+      "slug": "florida",
+      "name": "Florida",
+      "path": "florida"
+    },
+    {
+      "slug": "georgia",
+      "name": "Georgia",
+      "path": "georgia"
+    },
+    {
+      "slug": "hawaii",
+      "name": "Hawaii",
+      "path": "hawaii"
+    },
+    {
+      "slug": "idaho",
+      "name": "Idaho",
+      "path": "idaho"
+    },
+    {
+      "slug": "illinois",
+      "name": "Illinois",
+      "path": "illinois"
+    },
+    {
+      "slug": "indiana",
+      "name": "Indiana",
+      "path": "indiana"
+    },
+    {
+      "slug": "iowa",
+      "name": "Iowa",
+      "path": "iowa"
+    },
+    {
+      "slug": "kansas",
+      "name": "Kansas",
+      "path": "kansas"
+    },
+    {
+      "slug": "kentucky",
+      "name": "Kentucky",
+      "path": "kentucky"
+    },
+    {
+      "slug": "louisiana",
+      "name": "Louisiana",
+      "path": "louisiana"
+    },
+    {
+      "slug": "maine",
+      "name": "Maine",
+      "path": "maine"
+    },
+    {
+      "slug": "maryland",
+      "name": "Maryland",
+      "path": "maryland"
+    },
+    {
+      "slug": "massachusetts",
+      "name": "Massachusetts",
+      "path": "massachusetts"
+    },
+    {
+      "slug": "michigan",
+      "name": "Michigan",
+      "path": "michigan"
+    },
+    {
+      "slug": "minnesota",
+      "name": "Minnesota",
+      "path": "minnesota"
+    },
+    {
+      "slug": "mississippi",
+      "name": "Mississippi",
+      "path": "mississippi"
+    },
+    {
+      "slug": "missouri",
+      "name": "Missouri",
+      "path": "missouri"
+    },
+    {
+      "slug": "montana",
+      "name": "Montana",
+      "path": "montana"
+    },
+    {
+      "slug": "nebraska",
+      "name": "Nebraska",
+      "path": "nebraska"
+    },
+    {
+      "slug": "nevada",
+      "name": "Nevada",
+      "path": "nevada"
+    },
+    {
+      "slug": "new-hampshire",
+      "name": "New Hampshire",
+      "path": "new-hampshire"
+    },
+    {
+      "slug": "new-jersey",
+      "name": "New Jersey",
+      "path": "new-jersey"
+    },
+    {
+      "slug": "new-mexico",
+      "name": "New Mexico",
+      "path": "new-mexico"
+    },
+    {
+      "slug": "new-york",
+      "name": "New York",
+      "path": "new-york"
+    },
+    {
+      "slug": "north-carolina",
+      "name": "North Carolina",
+      "path": "north-carolina"
+    },
+    {
+      "slug": "north-dakota",
+      "name": "North Dakota",
+      "path": "north-dakota"
+    },
+    {
+      "slug": "ohio",
+      "name": "Ohio",
+      "path": "ohio"
+    },
+    {
+      "slug": "oklahoma",
+      "name": "Oklahoma",
+      "path": "oklahoma"
+    },
+    {
+      "slug": "oregon",
+      "name": "Oregon",
+      "path": "oregon"
+    },
+    {
+      "slug": "pennsylvania",
+      "name": "Pennsylvania",
+      "path": "pennsylvania"
+    },
+    {
+      "slug": "rhode-island",
+      "name": "Rhode Island",
+      "path": "rhode-island"
+    },
+    {
+      "slug": "south-carolina",
+      "name": "South Carolina",
+      "path": "south-carolina"
+    },
+    {
+      "slug": "south-dakota",
+      "name": "South Dakota",
+      "path": "south-dakota"
+    },
+    {
+      "slug": "tennessee",
+      "name": "Tennessee",
+      "path": "tennessee"
+    },
+    {
+      "slug": "texas",
+      "name": "Texas",
+      "path": "texas"
+    },
+    {
+      "slug": "utah",
+      "name": "Utah",
+      "path": "utah"
+    },
+    {
+      "slug": "vermont",
+      "name": "Vermont",
+      "path": "vermont"
+    },
+    {
+      "slug": "virginia",
+      "name": "Virginia",
+      "path": "virginia"
+    },
+    {
+      "slug": "washington",
+      "name": "Washington",
+      "path": "washington"
+    },
+    {
+      "slug": "west-virginia",
+      "name": "West Virginia",
+      "path": "west-virginia"
+    },
+    {
+      "slug": "wisconsin",
+      "name": "Wisconsin",
+      "path": "wisconsin"
+    },
+    {
+      "slug": "wyoming",
+      "name": "Wyoming",
+      "path": "wyoming"
+    }
+  ]
+}
