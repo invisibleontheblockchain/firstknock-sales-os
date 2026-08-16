@@ -1679,7 +1679,7 @@ export default function CanvasBuilderSettings({
   return (
     <div className="fixed inset-0 z-[2000] pointer-events-none lg:flex">
       <div className="hidden lg:block pointer-events-auto h-full w-[410px] bg-[#09090f]/95 border-r border-purple-500/20 shadow-2xl pt-[env(safe-area-inset-top)]"><BuilderContent {...contentProps} /></div>
-      <div className={`lg:hidden pointer-events-auto absolute left-0 right-0 bottom-0 rounded-t-3xl bg-[#09090f]/98 border-t border-purple-500/25 shadow-2xl overflow-hidden pb-[env(safe-area-inset-bottom)] transition-[height] ${mobileCollapsed ? 'h-16' : 'h-[82dvh] max-h-[82vh]'}`}>
+      <div className={`lg:hidden pointer-events-auto absolute left-0 right-0 bottom-0 rounded-t-3xl bg-[#09090f] border-t border-purple-500/25 shadow-2xl overflow-hidden pb-[env(safe-area-inset-bottom)] transition-[height] ${mobileCollapsed ? 'h-16' : 'h-[82dvh] max-h-[82vh]'}`}>
         <button type="button" onClick={() => setMobileCollapsed((value) => !value)} className="flex h-10 w-full items-center justify-center gap-2 text-[11px] font-bold text-purple-200" aria-expanded={!mobileCollapsed}>
           {mobileCollapsed ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}{mobileCollapsed ? 'Open Canvas planner' : 'Collapse to inspect map'}
         </button>
