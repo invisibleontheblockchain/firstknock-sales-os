@@ -23,11 +23,7 @@ Deno.serve(async (req) => {
       return json({ error: "forbidden", message: "Platform administrator access is required." }, 403);
     }
     const configuredSecret = Deno.env.get("CANVAS_OPERATIONAL_MIGRATION_SECRET") || "";
-    // The secret may arrive via header or JSON body; both are TLS-protected and
-    // compared constant-time. The body path exists because some invocation
-    // tooling cannot set custom headers.
-    const body = await req.json().catch(() => ({}));
-    const suppliedSecret = req.headers.get("x-canvas-migration-secret") || String(body?.migration_secret || "");
+    const suppliedSecret = req.headers.get("x-canvas-migration-secret") || "";
     if (configuredSecret.length < 32 || !constantTimeEqual(configuredSecret, suppliedSecret)) {
       return json({ error: "forbidden", message: "Canvas migration authorization failed." }, 403);
     }
