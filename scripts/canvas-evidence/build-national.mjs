@@ -267,6 +267,13 @@ async function uploadRegion(region, context, releaseDir) {
   return inventory.object_prefix;
 }
 
+// V8 reports heap exhaustion several ways depending on where it ran out, and a
+// swap-thrashed process is usually killed by the OS instead. All of them mean
+// the same thing here: this extract does not fit, try it in smaller pieces.
+function isMemoryFailure(message) {
+  return /heap out of memory|heap limit|Allocation failed|Map maximum size|Array buffer allocation failed|exited (134|137|3221225725)/i.test(String(message));
+}
+
 const STAGES = ['compile', 'normalize', 'release', 'upload', 'index'];
 
 async function main() {
@@ -289,8 +296,10 @@ async function main() {
 
   process.stdout.write(`Building ${regions.length} region(s) through stage "${options.stage}".\n\n`);
 
-  for (const [position, region] of regions.entries()) {
-    const label = `${position + 1}/${regions.length} ${region.slug}`;
+  const pending = [...regions];
+  for (let position = 0; position < pending.length; position += 1) {
+    const region = pending[position];
+    const label = `${position + 1}/${pending.length} ${region.slug}`;
     process.stdout.write(`[${label}] start\n`);
     const started = Date.now();
     try {
@@ -333,11 +342,23 @@ async function main() {
       }
       process.stdout.write(`[${label}] done in ${Math.round((Date.now() - started) / 1000)}s\n\n`);
     } catch (error) {
+      const message = error?.message || String(error);
+      // Running out of memory is the one failure with a known, proven remedy:
+      // compile the region's own Geofabrik sub-regions instead. Their seams
+      // were measured to be exactly as clean as state seams (445 of 445 shared
+      // units byte-identical), so this splits the work without splitting a way.
+      // Any hand-drawn subdivision would not be safe and is never attempted.
+      if (isMemoryFailure(message) && region.sub_regions?.length && !region.isSubRegion) {
+        process.stderr.write(`[${label}] out of memory; retrying as ${region.sub_regions.length} sub-regions\n`);
+        pending.splice(position + 1, 0, ...region.sub_regions.map((sub) => ({ ...sub, isSubRegion: true })));
+        failures.push({ region: region.slug, message: `split into sub-regions after: ${message}`, recovered: true });
+        continue;
+      }
       // One bad region must not abandon the other fifty: record it, keep going,
       // and exit non-zero at the end so a partial run is never mistaken for a
       // complete one.
-      failures.push({ region: region.slug, message: error?.message || String(error) });
-      process.stderr.write(`[${label}] FAILED: ${error?.message || error}\n\n`);
+      failures.push({ region: region.slug, message });
+      process.stderr.write(`[${label}] FAILED: ${message}\n\n`);
     }
   }
 

@@ -26,7 +26,19 @@
     {
       "slug": "california",
       "name": "California",
-      "path": "california"
+      "path": "california",
+      "sub_regions": [
+        {
+          "slug": "california-norcal",
+          "name": "California (North)",
+          "path": "california/norcal"
+        },
+        {
+          "slug": "california-socal",
+          "name": "California (South)",
+          "path": "california/socal"
+        }
+      ]
     },
     {
       "slug": "colorado",
