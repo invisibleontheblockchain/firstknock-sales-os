@@ -24,6 +24,8 @@
     "canvas:overture:region": "node scripts/canvas-evidence/overture/build-region.mjs",
     "canvas:maryland:property-overlay": "node scripts/canvas-evidence/overture/build-maryland-overlay.mjs",
     "canvas:maryland:homedata-audit": "node scripts/canvas-evidence/maryland-homedata-analysis.mjs",
+    "canvas:maryland:worker": "node scripts/canvas-evidence/statewide/maryland-build-worker.mjs",
+    "canvas:maryland:status": "node scripts/canvas-evidence/statewide/maryland-build-worker.mjs --status",
     "canvas:sources:verify": "node scripts/canvas-evidence/source-artifacts/verify-source-manifest.mjs",
     "canvas:artifacts:upload-r2": "node scripts/canvas-evidence/source-artifacts/upload-r2.mjs",
     "smoke:fieldroutes:readonly": "node scripts/fieldroutes-readonly-smoke.mjs",

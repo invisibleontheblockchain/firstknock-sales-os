@@ -21,10 +21,13 @@ dist
 dist-ssr
 *.local
 
-# Canvas raw source artifacts live in immutable object storage, never Git.
+# Canvas raw source artifacts and runtime scratch live in R2, never Git.
+build-work/
 .canvas-source-artifacts/
 canvas-source-artifacts/
 *.osm.pbf
+__pycache__/
+*.py[cod]
 
 # Editor directories and files
 .vscode/*
