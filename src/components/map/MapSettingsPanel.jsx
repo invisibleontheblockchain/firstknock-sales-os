@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { X, Sun, Moon, Globe, Mountain, Eye, EyeOff, RotateCcw, Save, Navigation, Home, SlidersHorizontal } from 'lucide-react';
+import { X, Sun, Moon, Globe, Mountain, Map, Layers, Satellite, Eye, EyeOff, RotateCcw, Save, Navigation, Home, SlidersHorizontal } from 'lucide-react';
 import HomeBaseDialog from '@/components/routes/HomeBaseDialog';
 import MapThemePicker from '@/components/map/MapThemePicker';
 import { DEFAULT_PIN_THEME } from '@/components/map/mapPinThemes';
@@ -44,8 +44,11 @@ const STATUS_FILTERS = [
 const MAP_STYLES = [
   { id: 'dark', label: 'Dark', icon: Moon },
   { id: 'light', label: 'Light', icon: Sun },
+  { id: 'streets', label: 'Streets', icon: Map },
+  { id: 'minimal', label: 'Minimal', icon: Layers },
+  { id: 'terrain', label: 'Terrain', icon: Mountain },
   { id: 'satellite', label: 'Satellite', icon: Globe },
-  { id: 'hybrid', label: 'Hybrid', icon: Mountain },
+  { id: 'hybrid', label: 'Hybrid', icon: Satellite },
 ];
 
 /* ── sub-component: section header ── */

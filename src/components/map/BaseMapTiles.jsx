@@ -1,5 +1,5 @@
-import React from 'react';
-import { TileLayer } from 'react-leaflet';
+import React, { useEffect } from 'react';
+import { TileLayer, useMap } from 'react-leaflet';
 import CanvasBaseMapTiles from '@/components/canvas/CanvasBaseMapTiles';
 
 const BASEMAP_URLS = {
@@ -7,6 +7,23 @@ const BASEMAP_URLS = {
     hybrid: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
     light: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
     dark: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+    streets: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
+    terrain: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
+    minimal: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png",
+};
+
+// The map container is black, so any hairline gap Leaflet leaves between tiles
+// at fractional zoom reads as a dark grid over light imagery. Painting the
+// container in the basemap's own base colour makes those seams invisible
+// without touching zoom behaviour or the tiles themselves.
+const BASEMAP_BACKDROP = {
+    satellite: '#0b1a26',
+    hybrid: '#0b1a26',
+    light: '#f2f0eb',
+    dark: '#0b0b0b',
+    streets: '#f8f4f0',
+    terrain: '#e9e5dc',
+    minimal: '#f8f4f0',
 };
 
 const LABEL_URL = "https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png";
@@ -29,12 +46,22 @@ const TILE_PERF = {
     maxZoom: 20,
 };
 
-export default function BaseMapTiles({ mapTheme, routeMode = 'precision' }) {
-    const showLabels = mapTheme === 'hybrid';
+function MapBackdrop({ mapTheme }) {
+    const map = useMap();
+    useEffect(() => {
+        const container = map.getContainer();
+        container.style.background = BASEMAP_BACKDROP[mapTheme] || BASEMAP_BACKDROP.dark;
+    }, [map, mapTheme]);
+    return null;
+}
 
-    // Canvas honours the same four Map Style choices; only the street source differs.
+export default function BaseMapTiles({ mapTheme, routeMode = 'precision' }) {
+    const showLabels = mapTheme === 'hybrid' || mapTheme === 'satellite';
+
+    // Canvas honours the same Map Style choices; only the street source differs.
     if (routeMode === 'canvas') return (
         <>
+            <MapBackdrop mapTheme={mapTheme} />
             <CanvasBaseMapTiles theme={mapTheme} />
             {showLabels && (
                 <TileLayer
@@ -50,6 +77,7 @@ export default function BaseMapTiles({ mapTheme, routeMode = 'precision' }) {
 
     return (
         <>
+            <MapBackdrop mapTheme={mapTheme} />
             <TileLayer
                 key={`basemap-${mapTheme}`}
                 url={BASEMAP_URLS[mapTheme] || BASEMAP_URLS.dark}
