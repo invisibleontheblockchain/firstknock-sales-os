@@ -1,4 +1,4 @@
-# Damascus Property Benchmark v3 — production-authoritative candidate
+# Damascus Property Benchmark v3 — production-authoritative freeze
 
 The historical Overture extraction investigation is closed. Exact polygon, bbox, shared halo, geometry predicates, Places categories, theme/type selection, reader serialization, and likely post-filters did not produce one coherent contract matching the historical 1,303 / 2,453 / 151 slice. The project now uses the explicit `2026-07-22.0` contract in `src/data/damascusPropertyBenchmarkV3SourceManifest.json`; old counts are not acceptance criteria.
 
@@ -14,6 +14,6 @@ Before HomeData: 227 eligible, 53 excluded, 942 review (77.09%). After HomeData:
 
 The production release compiler generated and verified two signed tiles. `EvidenceRepository` verified the manifest and tile hashes, stitched both tiles, clipped workload to the manager polygon, retained real outside-road connectivity with zero outside doors, and exposed `workload_authority=eligible_properties` with no street fallback. The 1,055 eligible doors split 240 / 199 / 200 / 198 / 218 against a target of 211, for 13.74% maximum deviation. Connected cores, protected groups, exclusive property ownership, explicit-island accounting, and deterministic rerun all passed.
 
-## Remaining Gate D prerequisite
+## Gate D — durable retention
 
-The freeze metadata and intended immutable object keys are committed, but raw artifacts are still local. Do not mark Damascus complete, run statewide publication, or deploy this release until every source artifact is uploaded to the immutable `canvas-source-artifacts/maryland/damascus-v3/` prefix and re-read by hash. The workspace currently has no R2/S3 write credentials.
+All seven manifest-listed source artifacts were uploaded to their immutable R2 object keys and re-read by byte length and SHA-256. The signed release manifest, two tiles, upload inventory, and checksum inventory were also uploaded without overwrite permission. Damascus v3 is now the production-authoritative retained benchmark; the next critical-path step is the statewide Maryland build.

@@ -5,3 +5,5 @@ Every production evidence release must start from a checked-in source manifest a
 A source manifest pins origin, license, source version, extraction geometry and predicates, tool/reader options, transformation versions, object key, byte length, SHA-256, canonical content hash where applicable, and raw record count. Object keys are append-only and versioned; overwrite is forbidden.
 
 Before compilation, mirror the listed objects into an empty local directory and run `npm run canvas:sources:verify -- <manifest> <artifact-root>`. Missing bytes, altered bytes, changed canonical content, incomplete provenance, or duplicate source IDs fail closed. Uploads must be re-read and hash-verified before a signed evidence manifest is published.
+
+Use `npm run canvas:artifacts:upload-r2 -- <manifest> <artifact-root> <signed-release-directory> [registry-file ...]` with the `CANVAS_R2_*` environment values. The uploader refuses an existing key unless its stored byte length and SHA-256 metadata exactly match, uploads release artifacts only from the compiler inventory, and verifies every write with an authenticated R2 HEAD request.

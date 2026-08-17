@@ -19,12 +19,12 @@ The frozen signed path now partitions 619 eligible doors as 112 / 124 / 124 / 12
 - [x] Accept the provisional result: 1,080 eligible / 33 excluded / 109 review (8.9%).
 - [x] Add deterministic byte-limited tiling that preserves property/work-unit identities, classifications, protected groups, and release-scoped topology.
 - [x] Pass focused packaging, adapter, release-builder, 10,000-work-unit topology, and production-build checks.
-- [ ] Upload the production-authoritative Damascus v3 source artifacts to immutable R2 and re-read every hash (write credentials are not configured in this workspace).
+- [x] Upload the production-authoritative Damascus v3 source artifacts to immutable R2 and re-read every hash.
 - [x] Build twice and validate the new explicit 1,222-property source contract with byte-identical outputs.
 - [x] Rerun the signed, production-equivalent five-way 1,055-door benchmark at the ≤15% maximum-deviation gate.
 - [x] Freeze v3 source rules, hashes, transition matrix, tile inventory, signed manifest, and territory result.
 - [ ] Run the unchanged pipeline over statewide Maryland after source retention passes.
-- [ ] Sign, upload, verify, activate with rollback retained, then run live Damascus acceptance.
+- [ ] Activate the retained release with rollback preserved, then run live Damascus acceptance.
 
 ---
 
@@ -38,7 +38,7 @@ The frozen signed path now partitions 619 eligible doors as 112 / 124 / 124 / 12
 - [ ] Validate and sign the resulting immutable regional release with the existing offline signer.
 
 ### Current constraint — Maryland Property-First Vertical Slice
-Historical Overture recovery is closed after one focused predicate/tool comparison. The explicit `2026-07-22.0` contract is now authoritative: Gates A–C pass at 1,222 properties, 1,055 eligible / 26 excluded / 141 review (11.54%), and five-way loads 240 / 199 / 200 / 198 / 218 (13.74% maximum deviation). The only Damascus Gate D blocker is durable source retention: upload the manifest-listed raw artifacts to immutable R2 and re-read their hashes before statewide publication.
+Historical Overture recovery is closed after one focused predicate/tool comparison. The explicit `2026-07-22.0` contract is authoritative: Gates A–C pass at 1,222 properties, 1,055 eligible / 26 excluded / 141 review (11.54%), and five-way loads 240 / 199 / 200 / 198 / 218 (13.74% maximum deviation). Gate D now passes: all seven source artifacts and the signed release were uploaded to immutable R2 keys and independently verified by byte length and SHA-256. Statewide Maryland is the next build step.
 
 ---
 

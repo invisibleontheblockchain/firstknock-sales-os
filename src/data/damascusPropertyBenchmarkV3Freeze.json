@@ -3,11 +3,13 @@
   "schema_version": 1,
   "benchmark": "Damascus Property Benchmark v3",
   "frozen_at": "2026-08-17T06:20:00.000Z",
-  "status": "gates_a_c_passed_source_retention_pending",
+  "status": "production_authoritative_retained",
   "source_manifest": "src/data/damascusPropertyBenchmarkV3SourceManifest.json",
   "source_retention": {
-    "status": "pending_object_storage_write_credentials",
-    "required_prefix": "canvas-source-artifacts/maryland/damascus-v3/"
+    "status": "verified_immutable_r2",
+    "verified_at": "2026-08-17T06:23:00.000Z",
+    "required_prefix": "canvas-source-artifacts/maryland/damascus-v3/",
+    "source_object_count": 7
   },
   "versions": {
     "repository_commit": "abc27a8f",
@@ -54,7 +56,7 @@
   "gate_c_signed_five_way": {
     "passed": true,
     "release_id": "cer1_e54be6e77247de4e73c7494ce957a429cc9b847ed5681f5b3aba24a6cc9df3a6",
-    "manifest_hash": "214eebb51e4acfb38a85f756cb80e58318c8cebeb7ccee5529654f649d136f97",
+    "manifest_hash": "dc04c146aff09f99d439a97508b0315206849274af55f50f165f0c7fd45c914b",
     "workload_authority": "eligible_properties",
     "street_only_fallback": false,
     "eligible_doors": 1055,
