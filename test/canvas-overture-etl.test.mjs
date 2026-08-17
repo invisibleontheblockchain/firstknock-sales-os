@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildOvertureCanvasRegion } from '../scripts/canvas-evidence/overture/adapter.mjs';
+import { buildOvertureCanvasRegion, partitionNormalizedCanvasTile } from '../scripts/canvas-evidence/overture/adapter.mjs';
 
 const observedAt = '2026-07-22T00:00:00.000Z';
 const releaseVersion = '2026-07-22.0';
@@ -53,4 +53,49 @@ test('FirstKnock property identity is stable across Overture feature ID changes'
   assert.equal(firstHome.fk_property_id, secondHome.fk_property_id);
   assert.equal(firstHome.property_key, secondHome.property_key);
   assert.notDeepEqual(firstHome.provenance, secondHome.provenance, 'Overture IDs remain provenance and may change independently');
+});
+
+test('duplicate normalized addresses conflate into one property while retaining every source feature as provenance', () => {
+  const input = fixture();
+  input.addresses.features.push(point('overture-address-home-duplicate', [-82.6502, 34.5101], { number: '100', street: 'Oak Street', postal_city: 'Anderson', postcode: '29621', country: 'US' }));
+  const result = buildOvertureCanvasRegion({ ...input, regionKey: 'duplicates', releaseVersion, observedAt });
+  const home = result.normalized_tile.properties.find((property) => property.display_address.startsWith('100'));
+  assert.equal(result.report.raw_source_address_record_count, 4);
+  assert.equal(result.report.canonical_property_count, 3);
+  assert.equal(result.report.duplicate_source_record_count, 1);
+  assert.equal(result.normalized_tile.properties.length, 3);
+  assert.ok(home.provenance.some((item) => item.feature_id === 'overture-address-home'));
+  assert.ok(home.provenance.some((item) => item.feature_id === 'overture-address-home-duplicate'));
+});
+
+test('one mixed-tag OSM feature emits unique building, land-use, and place assertions', () => {
+  const input = fixture();
+  input.osm = featureCollection([polygon('osm-mixed-school', [[-82.6504, 34.5099], [-82.65, 34.5099], [-82.65, 34.5103], [-82.6504, 34.5103], [-82.6504, 34.5099]], { building: 'yes', amenity: 'school', landuse: 'residential' })]);
+  const result = buildOvertureCanvasRegion({ ...input, regionKey: 'mixed-assertions', releaseVersion, observedAt });
+  const home = result.normalized_tile.properties.find((property) => property.display_address.startsWith('100'));
+  const mixedProvenance = home.provenance.filter((item) => item.feature_id === 'osm-mixed-school');
+  assert.equal(mixedProvenance.length, 1, 'assertions share one source-feature provenance record');
+  assert.equal(home.canvass_eligibility, 'excluded', 'the complete conflicting evidence set is classified');
+  assert.ok(result.report.evidence_assertion_count > result.report.raw_source_address_record_count);
+});
+
+test('pinned OSM node identities produce only real edges, deterministic neighbors, and terminal protected groups', () => {
+  const input = fixture();
+  input.roads = featureCollection([
+    { type: 'Feature', id: 'way/1', geometry: { type: 'LineString', coordinates: [[-82.651, 34.51], [-82.65, 34.51], [-82.649, 34.51]] }, properties: { highway: 'residential', name: 'Oak Street', node_ids: ['1', '2', '3'] } },
+    { type: 'Feature', id: 'way/2', geometry: { type: 'LineString', coordinates: [[-82.649, 34.51], [-82.648, 34.51], [-82.647, 34.51]] }, properties: { highway: 'secondary', name: 'Main Street', node_ids: ['3', '4', '5'] } },
+    { type: 'Feature', id: 'way/3', geometry: { type: 'LineString', coordinates: [[-82.649, 34.51], [-82.649, 34.511]] }, properties: { highway: 'residential', name: 'Court', node_ids: ['3', '6'] } },
+  ]);
+  const first = buildOvertureCanvasRegion({ ...input, regionKey: 'osm-roads', releaseVersion, observedAt });
+  const second = buildOvertureCanvasRegion({ ...input, roads: featureCollection(input.roads.features.toReversed()), regionKey: 'osm-roads', releaseVersion, observedAt });
+  assert.equal(first.report.road_authority, 'pinned_openstreetmap_node_graph');
+  assert.equal(first.report.synthetic_road_edge_count, 0);
+  assert.ok(first.report.protected_group_count > 0);
+  assert.equal(JSON.stringify(first.normalized_tile), JSON.stringify(second.normalized_tile));
+  assert.equal(first.normalized_tile.work_units.length, 3);
+  const tiles = partitionNormalizedCanvasTile(first.normalized_tile, 2);
+  assert.equal(tiles.length, 2);
+  assert.equal(tiles.flatMap((tile) => tile.work_units).length, 3);
+  assert.equal(tiles.flatMap((tile) => tile.properties).length, first.normalized_tile.properties.length);
+  assert.equal(tiles.flatMap((tile) => tile.protected_groups).length, first.normalized_tile.protected_groups.length);
 });

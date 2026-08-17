@@ -1,6 +1,6 @@
 import { canonicalWorkUnitId } from '../contract.mjs';
 import { applyPropertyWorkloadAuthority, normalizeCanvasSourceEvidenceTile } from '../source-normalizer.mjs';
-import { buildOverturePropertyEvidence } from './adapter.mjs';
+import { CANVAS_OSM_ASSERTION_NORMALIZATION_VERSION, CANVAS_PROPERTY_IDENTITY_VERSION, buildOverturePropertyEvidence } from './adapter.mjs';
 
 const features = (value, label) => {
   if (value?.type === 'FeatureCollection' && Array.isArray(value.features)) return value.features;
@@ -91,6 +91,9 @@ export function buildMarylandPropertyOverlay({ baseTiles, addresses, buildings, 
       preserved_work_unit_count: baselineUnits.length,
       baseline_blockface_counts: countBy(baselineUnits, 'canvas_role', { opportunity: 0, transit: 0, excluded: 0, uncertain: 0 }),
       property_classification_counts: propertyCounts,
+      raw_source_address_record_count: propertyEvidence.rawAddressRecordCount,
+      canonical_property_count: propertyEvidence.canonicalPropertyCount,
+      duplicate_source_record_count: propertyEvidence.duplicateAddressRecordCount,
       discovered_address_count: propertyEvidence.discoveredPropertyCount,
       signed_property_count: properties.length,
       unique_fk_property_id_count: new Set(properties.map((property) => property.fk_property_id)).size,
@@ -103,6 +106,9 @@ export function buildMarylandPropertyOverlay({ baseTiles, addresses, buildings, 
       property_authoritative_road_counts: countBy(outputUnits, 'canvas_role', { opportunity: 0, transit: 0, excluded: 0, uncertain: 0 }),
       unlinked_property_count: propertyEvidence.unlinked.length + boundaryUnlinked.length,
       osm_supporting_feature_count: osmFeatures.length,
+      evidence_assertion_count: propertyEvidence.evidenceAssertionCount,
+      property_identity_version: CANVAS_PROPERTY_IDENTITY_VERSION,
+      osm_assertion_normalization_version: CANVAS_OSM_ASSERTION_NORMALIZATION_VERSION,
       batchdata_call_count: 0,
     },
   };

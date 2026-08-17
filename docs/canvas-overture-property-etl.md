@@ -10,7 +10,9 @@ Canvas production property evidence is built offline from public bulk data. It n
 4. National Address Database and public assessor/parcel GeoJSON are optional additive inputs. Their absence never blocks an Overture release.
 5. Overture Transportation segments provide street linkage and connectivity only. Eligible property counts are the workload authority.
 
-Each address receives a FirstKnock-owned `FKP1_…` identity derived from normalized address components. Overture IDs remain provenance and conflation references and are never the canonical property ID.
+Each address receives a FirstKnock-owned `FKP1_…` identity derived from normalized country, house number, street, unit, locality, region, and postcode components (`fk-property-key-v1`). Source feature IDs never enter the canonical identity. Rows with the same normalized components conflate into one property unless a unit/subaddress distinguishes a physical unit; every distinct source feature remains in the canonical property's provenance. Reports always separate raw source address records, canonical FirstKnock properties, and conflated duplicate rows.
+
+Mixed-tag OSM features use `osm-assertions-v2`: one raw source feature may emit independently typed building, land-use, and place assertions. Assertion IDs include source feature, assertion kind, and canonical property, so the assertions are deterministic and unique while their provenance continues to identify the same raw feature. Classification evaluates all assertions; the raw feature is never duplicated or forced through a building-first precedence rule.
 
 ## Maryland property-first vertical slice
 
@@ -30,6 +32,10 @@ node scripts/canvas-evidence/build-release.mjs \
 ```
 
 The overlay preserves Maryland work-unit identities, neighbor topology, protected groups, source provenance, tile scheme, signing, and publication flow. `ab-report.json` records the old opportunity/transit/excluded/uncertain blockface counts beside discovered properties, eligible/excluded/review counts, eligible doors, and property-authoritative road support counts. Census housing-unit totals belong in a later coverage report and never create `FK_PROPERTY_ID` records.
+
+## Source-derived regional benchmark build
+
+A benchmark road graph is extracted from the pinned OSM PBF with authoritative OSM node IDs and a fixed 2,000-meter halo around the workload polygon. Traversable ways are split only at real shared OSM nodes; geometry nodes between junctions remain in the segment geometry. Neighbor edges exist only when segments share an authoritative node. Terminal-to-junction branches become protected cul-de-sac groups. The workload polygon filters address records before identity/conflation, while halo roads remain zero-door connectivity context; no outside property and no synthetic road edge can contribute workload.
 
 ## Standalone regional build
 

@@ -941,6 +941,45 @@ function partitionScore(zones, target) {
   }, { maximum: 0, squared: 0 });
 }
 
+function refineAdjacentZoneBalance(groups, atomNeighbors, atomById, target) {
+  if (groups.some((group) => group.locked || group.island_ids?.size)) return groups;
+  const result = groups.map((group) => ({ ...group, ids: new Set(group.ids) }));
+  const zoneByAtom = () => new Map(result.flatMap((group, index) => [...group.ids].map((id) => [id, index])));
+  const better = (candidate, current) => candidate.maximum < current.maximum - 1e-12
+    || (Math.abs(candidate.maximum - current.maximum) <= 1e-12 && candidate.squared < current.squared - 1e-12);
+  const limit = result.reduce((sum, group) => sum + group.ids.size, 0) * result.length;
+  for (let iteration = 0; iteration < limit; iteration += 1) {
+    const currentScore = partitionScore(result, target);
+    const owners = zoneByAtom();
+    let best = null;
+    result.forEach((donor, donorIndex) => {
+      if (donor.ids.size <= 1) return;
+      [...donor.ids].sort(compareIds).forEach((atomId) => {
+        const remaining = [...donor.ids].filter((id) => id !== atomId);
+        if (!idsConnected(remaining, atomNeighbors)) return;
+        const load = workload(atomById.get(atomId));
+        const recipients = [...new Set((atomNeighbors.get(atomId) || []).map((neighborId) => owners.get(neighborId)))]
+          .filter((index) => Number.isInteger(index) && index !== donorIndex).sort((left, right) => left - right);
+        recipients.forEach((recipientIndex) => {
+          const loads = result.map((group, index) => ({ ...group, load: index === donorIndex ? group.load - load : index === recipientIndex ? group.load + load : group.load }));
+          const score = partitionScore(loads, target);
+          if (!better(score, currentScore)) return;
+          const candidate = { donorIndex, recipientIndex, atomId, load, score };
+          if (!best || better(candidate.score, best.score)
+            || (Math.abs(candidate.score.maximum - best.score.maximum) <= 1e-12 && Math.abs(candidate.score.squared - best.score.squared) <= 1e-12
+              && `${candidate.donorIndex}:${candidate.recipientIndex}:${candidate.atomId}`.localeCompare(`${best.donorIndex}:${best.recipientIndex}:${best.atomId}`) < 0)) best = candidate;
+        });
+      });
+    });
+    if (!best) break;
+    result[best.donorIndex].ids.delete(best.atomId);
+    result[best.donorIndex].load -= best.load;
+    result[best.recipientIndex].ids.add(best.atomId);
+    result[best.recipientIndex].load += best.load;
+  }
+  return result;
+}
+
 function subsetDistances(seed, subset, allowed, adjacency) {
   const distances = new Int32Array(adjacency.length);
   distances.fill(-1);
@@ -1340,6 +1379,7 @@ export function partitionCanvasResidentialTerritories(input = {}) {
     if (partitioned) groups.push(...partitioned);
   });
   if (islands.length) groups = attachDisconnectedIslands(groups, islands, atomById, byId, target);
+  groups = refineAdjacentZoneBalance(groups, atomNeighbors, atomById, target);
   if (groups.length !== areaCount) {
     return { ok: false, status: 'infeasible', deployable: false, code: 'CONNECTED_PARTITION_FAILED', zones: [], work_units: knockUnits };
   }

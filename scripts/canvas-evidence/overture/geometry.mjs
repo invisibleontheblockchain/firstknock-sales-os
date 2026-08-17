@@ -28,6 +28,38 @@ export function featureContainsPoint(feature, point) {
   return ringsOf(feature).some((ring) => pointInRing(point, ring));
 }
 
+function orientation(first, second, third) {
+  const value = (second[0] - first[0]) * (third[1] - first[1]) - (second[1] - first[1]) * (third[0] - first[0]);
+  if (Math.abs(value) <= 1e-12) return 0;
+  return value > 0 ? 1 : -1;
+}
+
+function onSegment(point, start, end) {
+  return orientation(start, end, point) === 0
+    && point[0] >= Math.min(start[0], end[0]) - 1e-12 && point[0] <= Math.max(start[0], end[0]) + 1e-12
+    && point[1] >= Math.min(start[1], end[1]) - 1e-12 && point[1] <= Math.max(start[1], end[1]) + 1e-12;
+}
+
+function segmentsIntersect(firstStart, firstEnd, secondStart, secondEnd) {
+  const one = orientation(firstStart, firstEnd, secondStart);
+  const two = orientation(firstStart, firstEnd, secondEnd);
+  const three = orientation(secondStart, secondEnd, firstStart);
+  const four = orientation(secondStart, secondEnd, firstEnd);
+  return (one !== two && three !== four) || onSegment(secondStart, firstStart, firstEnd)
+    || onSegment(secondEnd, firstStart, firstEnd) || onSegment(firstStart, secondStart, secondEnd)
+    || onSegment(firstEnd, secondStart, secondEnd);
+}
+
+export function lineIntersectsRing(coordinates, ring) {
+  if (coordinates.some(([lng, lat]) => pointInRing({ lng, lat }, ring))) return true;
+  for (let lineIndex = 1; lineIndex < coordinates.length; lineIndex += 1) {
+    for (let ringIndex = 0; ringIndex < ring.length; ringIndex += 1) {
+      if (segmentsIntersect(coordinates[lineIndex - 1], coordinates[lineIndex], ring[ringIndex], ring[(ringIndex + 1) % ring.length])) return true;
+    }
+  }
+  return false;
+}
+
 function projected(point, originLat) {
   return { x: point.lng * EARTH_METERS_PER_DEGREE * Math.cos(originLat * Math.PI / 180), y: point.lat * EARTH_METERS_PER_DEGREE };
 }
