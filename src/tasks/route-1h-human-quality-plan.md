@@ -38,7 +38,58 @@ Also: 399 door pairs sit within 0.25 mi of each other but more than 30 stops
 apart in the order (worst gap: 372 stops). And 121 legs have road distance
 greater than 3× aerial — 210 miles of barrier detour, a third of the route.
 
-## Root causes
+## Root cause, established by running the real solver (2026-08-17)
+
+**Route 1H never went through the road solver at all.**
+
+`scripts/route-1h-solver-bench.mjs` runs the production `sequenceRoadHierarchy`
+on 1H's exact door set against live OSRM. With today's untouched defaults it
+returns **428.31 road miles in 27s** — 199 miles better than what shipped, with
+pocket re-entries at 16 instead of 38. `scripts/route-1h-deadline-probe.mjs`
+then replicates the backend's full cluster-tier branch at production's own 12s
+per-call timeout: sequencing 28.3s, dual measurement 3.9s, `validated: true`,
+`keepCurrent: false`, total 32.2s — comfortably inside the interactive deadline,
+returning `selected: 'road_aware'`.
+
+So the solver works and the delivery path works. What failed is upstream of both:
+
+`src/lib/roadMatrixRouteGeneration.js` budgeted **60 seconds for the entire
+generation batch**, sized on a comment assuming "~15s" per route. Measured cost
+is ~32s per 1,000-door route. Route 1 runs, route 2 finishes around 64s, and
+**every route from the third onward is skipped** and keeps the straight-line
+continuity order it was generated with. `skippedForBudget` was counted, returned,
+and read by no caller — nothing marked the route, so an unoptimized route was
+indistinguishable from an optimized one.
+
+Route 1H is the eighth in an A–H series. Its signature matches an aerial order
+exactly: strong straight-line mileage (278.6) against terrible road mileage
+(627.6), and a 27.4-mile leg between doors 3.30 mi apart — the classic tell of an
+optimizer that cannot see water.
+
+### Measured configurations (1,000 doors, live OSRM, same door set)
+
+| variant | road mi | vs shipped | re-entries | longest leg | sequencing |
+|---|---|---|---|---|---|
+| shipped | 627.57 | — | 38 | 27.44 | — |
+| baseline (today's defaults) | 428.31 | −199.3 | 16 | 18.09 | 27s |
+| budget ×8 | 414.94 | −212.6 | 16 | 16.89 | 35s |
+| barrier repair | 414.26 | −213.3 | 20 | 14.48 | 34s |
+| coarse road-ordered windows | 417.55 | −210.0 | 17 | 16.55 | 33s |
+| **barrier repair + budget ×8** | **394.13** | **−233.4** | 18 | 14.48 | 36s |
+
+Two results worth keeping. `coarse` is the only variant that achieves
+road-priced grouping and it still loses to barrier repair — consistent with
+`route-decomposition-findings.md` measuring it worse on 1J. And barrier repair
+alone *trades Layer 2 for Layer 1*: miles and longest leg improve while
+re-entries go 16 → 20 and reversals 24.2% → 27.9%. Combined with the raised
+budget it washes back to roughly Layer-2-neutral, which is why the shipped
+configuration is the pair rather than barrier repair alone.
+
+Raw records: `scripts/route-1h-bench-results.json`.
+
+## Structural findings — real, but second order
+
+These hold and still cost miles. They are not why 1H shipped at 628.
 
 ### 1. At production size, windows are lat/lng boxes, not road groups
 
@@ -243,6 +294,24 @@ against Phase 2.
 
 Exit: reps prefer the generated order over their own re-ordering in a clear
 majority of blind comparisons, on territories never tuned against.
+
+## Shipped 2026-08-17 — measured 627.57 → 394.13 (−233 mi, −37%)
+
+| change | file | why |
+|---|---|---|
+| whole-run budget → per-route budget (90s) with a run ceiling that scales by route count | `src/lib/roadMatrixRouteGeneration.js` | a flat 60s cap optimized two routes per batch and silently skipped the rest |
+| skipped routes stamped `road_pass_skipped` / `road_network_used: false` | `src/lib/roadMatrixRouteGeneration.js` | an unoptimized route must never again look like an optimized one |
+| interactive deadline 45s → 90s | `src/lib/roadMatrixOptimize.js` | measured 42.3s for the shipped configuration; 45s left 2.7s of margin |
+| `barrierRepair: true`, `refinementStepBudget × 8` | `base44/functions/optimizeRouteRoadMatrix/entry.ts` | 428.31 → 394.13, longest leg 18.09 → 14.48 |
+
+Patched configuration verified end to end on 1H: 394.13 mi, `selected: road_aware`,
+`degraded: false`, 0 aerial order decisions, 42.3s total.
+`node --test test/precision-single-route-1000.test.mjs test/route-cluster-tier-honesty.test.mjs test/route-generation-phases.test.mjs` — 12/12 pass.
+
+**Still open after this:** 394 is not 358, and Layer 2 barely moves (re-entries
+38 → 18, progression 14.1% → 18.2%, reversals 30.2% → 25.3%). The structural work
+below is what closes that, and Phase 4 is what makes the route read human. The
+628 problem is fixed; the human-quality problem is not.
 
 ## Critical path
 

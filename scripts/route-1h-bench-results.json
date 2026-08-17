@@ -1,0 +1,192 @@
+[
+  {
+    "measured_at": "2026-08-17T20:33:39.669Z",
+    "doors": 1000,
+    "street_blocks": 560,
+    "matrix_tier": "cluster",
+    "shipped": {
+      "layer1": {
+        "ok": true,
+        "miles": 627.57,
+        "longestLeg": 27.44,
+        "p95": 2.46,
+        "p99": 4.62
+      },
+      "layer2": {
+        "pockets": 41,
+        "pocket_visits": 79,
+        "pocket_reentries": 38,
+        "direction_reversals": 301,
+        "direction_reversal_pct": 30.2,
+        "progression_efficiency_pct": 14.1
+      }
+    },
+    "variants": [
+      {
+        "name": "baseline",
+        "ok": true,
+        "runtime_s": 27,
+        "decomposition": "geometric_windows",
+        "window_grouping_road_priced": false,
+        "cluster_count": 17,
+        "street_block_count": 560,
+        "degraded": false,
+        "order_affecting_aerial_decisions": 0,
+        "matrix_requests": 60,
+        "osrm_requests": 207,
+        "layer1": {
+          "ok": true,
+          "miles": 428.31,
+          "longestLeg": 18.09,
+          "p95": 1.31,
+          "p99": 3.46
+        },
+        "layer2": {
+          "pockets": 41,
+          "pocket_visits": 57,
+          "pocket_reentries": 16,
+          "direction_reversals": 255,
+          "direction_reversal_pct": 25.6,
+          "progression_efficiency_pct": 18.3
+        }
+      }
+    ]
+  },
+  {
+    "measured_at": "2026-08-17T20:36:53.634Z",
+    "doors": 1000,
+    "street_blocks": 560,
+    "matrix_tier": "cluster",
+    "shipped": {
+      "layer1": {
+        "ok": true,
+        "miles": 627.57,
+        "longestLeg": 27.44,
+        "p95": 2.46,
+        "p99": 4.62
+      },
+      "layer2": {
+        "pockets": 41,
+        "pocket_visits": 79,
+        "pocket_reentries": 38,
+        "direction_reversals": 301,
+        "direction_reversal_pct": 30.2,
+        "progression_efficiency_pct": 14.1
+      }
+    },
+    "variants": [
+      {
+        "name": "budget8x",
+        "ok": true,
+        "runtime_s": 35,
+        "decomposition": "geometric_windows",
+        "window_grouping_road_priced": false,
+        "cluster_count": 17,
+        "street_block_count": 560,
+        "degraded": false,
+        "order_affecting_aerial_decisions": 0,
+        "matrix_requests": 60,
+        "osrm_requests": 228,
+        "layer1": {
+          "ok": true,
+          "miles": 414.94,
+          "longestLeg": 16.89,
+          "p95": 1.24,
+          "p99": 3.38
+        },
+        "layer2": {
+          "pockets": 41,
+          "pocket_visits": 57,
+          "pocket_reentries": 16,
+          "direction_reversals": 242,
+          "direction_reversal_pct": 24.2,
+          "progression_efficiency_pct": 18.9
+        }
+      },
+      {
+        "name": "barrier",
+        "ok": true,
+        "runtime_s": 34,
+        "decomposition": "barrier_repaired_geometric_windows",
+        "window_grouping_road_priced": false,
+        "cluster_count": 19,
+        "street_block_count": 560,
+        "degraded": false,
+        "order_affecting_aerial_decisions": 0,
+        "matrix_requests": 85,
+        "osrm_requests": 235,
+        "layer1": {
+          "ok": true,
+          "miles": 414.26,
+          "longestLeg": 14.48,
+          "p95": 1.29,
+          "p99": 3.29
+        },
+        "layer2": {
+          "pockets": 41,
+          "pocket_visits": 61,
+          "pocket_reentries": 20,
+          "direction_reversals": 278,
+          "direction_reversal_pct": 27.9,
+          "progression_efficiency_pct": 17.9
+        }
+      },
+      {
+        "name": "coarse",
+        "ok": true,
+        "runtime_s": 33,
+        "decomposition": "coarse_road_ordered_windows",
+        "window_grouping_road_priced": true,
+        "cluster_count": 11,
+        "street_block_count": 560,
+        "degraded": false,
+        "order_affecting_aerial_decisions": 0,
+        "matrix_requests": 46,
+        "osrm_requests": 279,
+        "layer1": {
+          "ok": true,
+          "miles": 417.55,
+          "longestLeg": 16.55,
+          "p95": 1.41,
+          "p99": 3.46
+        },
+        "layer2": {
+          "pockets": 41,
+          "pocket_visits": 58,
+          "pocket_reentries": 17,
+          "direction_reversals": 240,
+          "direction_reversal_pct": 24,
+          "progression_efficiency_pct": 17.7
+        }
+      },
+      {
+        "name": "barrier-budget",
+        "ok": true,
+        "runtime_s": 36,
+        "decomposition": "barrier_repaired_geometric_windows",
+        "window_grouping_road_priced": false,
+        "cluster_count": 19,
+        "street_block_count": 560,
+        "degraded": false,
+        "order_affecting_aerial_decisions": 0,
+        "matrix_requests": 85,
+        "osrm_requests": 235,
+        "layer1": {
+          "ok": true,
+          "miles": 394.13,
+          "longestLeg": 14.48,
+          "p95": 1.26,
+          "p99": 2.83
+        },
+        "layer2": {
+          "pockets": 41,
+          "pocket_visits": 59,
+          "pocket_reentries": 18,
+          "direction_reversals": 252,
+          "direction_reversal_pct": 25.3,
+          "progression_efficiency_pct": 18.2
+        }
+      }
+    ]
+  }
+]

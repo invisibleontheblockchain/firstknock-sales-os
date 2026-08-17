@@ -28,7 +28,15 @@ const MAX_ROAD_MATRIX_DOORS = 2500;
 // nothing on screen but a ticking toast. Optimize is interactive, so the wait
 // gets a ceiling: past it the attempt is abandoned and the caller runs the
 // existing local path, which is exactly what every other failure mode does.
-const ROAD_MATRIX_DEADLINE_MS = 45000;
+//
+// Sized from measurement, not assumption. On a real 1,000-door route against a
+// healthy road engine (`scripts/route-1h-deadline-probe.mjs`): 28.3s to sequence
+// plus 3.9s for the backend's dual road measurement = 32.2s, and a barrier-repair
+// configuration adds ~8s more. The previous 45s left roughly 5s of margin on the
+// biggest routes, so any load on the road engine turned a finished, strictly
+// better order into a silent null and the route kept its straight-line order.
+// Abandoning a 200-mile improvement to save 30 seconds is the wrong trade.
+const ROAD_MATRIX_DEADLINE_MS = 90000;
 
 const propertyKey = (property) => String(property.address_hash || property.legacy_hash || property.id || '');
 
