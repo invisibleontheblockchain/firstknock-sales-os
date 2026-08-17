@@ -24,6 +24,15 @@ const DARK_BASEMAP = Object.freeze({
   attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
 });
 
+// The remaining Map Style choices are their own raster sources, shared with
+// Precision so both modes render the same style for the same choice.
+const THEME_BASEMAPS = Object.freeze({
+  streets: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+  minimal: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png',
+  terrain: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
+  light: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+});
+
 const SATELLITE_BASEMAP = Object.freeze({
   url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
   attribution: 'Imagery &copy; Esri',
@@ -50,7 +59,11 @@ export function getCanvasBasemapConfiguration({ theme = 'light', satellite = fal
     ? null
     : wantsDark
       ? DARK_BASEMAP.url
-      : configured(env?.VITE_CANVAS_BASEMAP_TILE_URL) || DEFAULT_BASEMAP.url;
+      // A non-default Map Style is an explicit source; only the default street
+      // theme honours the configured override.
+      : THEME_BASEMAPS[theme] && theme !== 'light'
+        ? THEME_BASEMAPS[theme]
+        : configured(env?.VITE_CANVAS_BASEMAP_TILE_URL) || DEFAULT_BASEMAP.url;
   const satelliteUrl = configured(env?.VITE_CANVAS_SATELLITE_TILE_URL) || SATELLITE_BASEMAP.url;
   const conflictingBaseMaps = Boolean(configured(env?.VITE_CANVAS_BASEMAP_TILE_URL) && pmtilesUrl);
   const mode = conflictingBaseMaps
