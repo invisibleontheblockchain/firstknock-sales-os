@@ -1,0 +1,16 @@
+{
+  "phase": "A_source_reextraction",
+  "launched_at": "2026-08-17T16:23:59.723Z",
+  "jobs": [
+    {
+      "name": "homedata",
+      "pid": 1269,
+      "cmd": "node scripts/canvas-evidence/statewide/pull-homedata.mjs /app/build-work/statewide-v1/homedata.ndjson"
+    },
+    {
+      "name": "overture",
+      "pid": 1270,
+      "cmd": "sh scripts/canvas-evidence/statewide/extract-overture.sh /app/build-work/statewide-v1"
+    }
+  ]
+}
