@@ -22,6 +22,7 @@ import { haversineDistanceMiles, isValidRoutePoint } from '@/lib/routeBounds';
 import { captureParkedCarLocation, isLowAccuracyCapture, lowAccuracyConfirmationMessage } from '@/lib/parkedCarLocation';
 import { startOptimizeProgress } from '@/lib/optimizeProgressToast';
 import { tryRoadMatrixOptimize } from '@/lib/roadMatrixOptimize';
+import { ROAD_VERIFICATION, stampRoadVerification } from '@/lib/routeRoadVerification';
 import { requireUsableRouteContext } from '@/lib/routeContextGuard';
 import { OPTIMIZE_MODES, ROUTE_ORIGIN_MODES, resolveOptimizeMode, routeOriginModeForOptimizeMode } from '@/lib/routeOriginModes';
 import {
@@ -168,9 +169,15 @@ export async function reoptimizeRoute(route, options = {}, deps = {}) {
             id: TOAST_ID,
             label: `Checking real road distances for ${routeProperties.length} doors...`
         });
+        // Why the road pass declined decides what the saved route may claim about
+        // itself. "The road engine measured your order and found nothing better"
+        // is a verification; "the road engine was unreachable" is not, and the two
+        // used to be the same anonymous null.
+        let roadDeclineReason = null;
         const roadMatrixResult = await tryRoadMatrixOptimize(routeProperties, {
             start: isValidRoutePoint(start) ? start : null,
             end: isValidRoutePoint(end) ? end : null,
+            onOutcome: (reason) => { roadDeclineReason = reason; }
         });
 
         // A route whose saved order was already validated on a real road matrix
@@ -248,9 +255,22 @@ export async function reoptimizeRoute(route, options = {}, deps = {}) {
         const appliedHashes = appliedProperties.map(propertyKey).filter(Boolean);
         const newDistanceRounded = Math.round(objective.appliedDistance * 100) / 100;
         const existingMetadata = { ...(route.metadata || {}) };
-        const routingMetadata = roadMatrixResult
-            ? roadMatrixResult.routingMetadata
-            : buildPersistedRoadRoutingMetadata(routingContext, null, appliedHashes);
+        // The same verdict contract generation writes, so a route's provenance
+        // means one thing regardless of which entry point last touched it.
+        const verificationVerdict = roadMatrixResult
+            ? ROAD_VERIFICATION.ADOPTED
+            : roadDeclineReason === 'current_order_measured_best'
+                ? ROAD_VERIFICATION.CONFIRMED
+                : ROAD_VERIFICATION.LOCAL_FALLBACK;
+        const routingMetadata = {
+            ...(roadMatrixResult
+                ? roadMatrixResult.routingMetadata
+                : buildPersistedRoadRoutingMetadata(routingContext, null, appliedHashes)),
+            ...stampRoadVerification({}, verificationVerdict, {
+                reason: roadMatrixResult ? null : roadDeclineReason,
+                measuredMiles: newDistanceRounded
+            }).metadata
+        };
         const routeUpdate = usingCustomAnchors
             ? buildRouteAnchorsUpdate({
                 start,

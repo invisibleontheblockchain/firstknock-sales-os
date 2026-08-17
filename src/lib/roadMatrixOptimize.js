@@ -74,14 +74,28 @@ export function buildRoadMatrixRoutingBlock(meta = {}) {
     };
 }
 
+/**
+ * @param {Array} routeProperties the route's current order
+ * @param {object} options `{ start, end, deadlineMs, onOutcome }`.
+ *   `onOutcome(reason)` is called with a short machine-readable reason on every
+ *   path that returns null. Returning a bare null told the caller nothing, so a
+ *   backend outage and "your route is already optimal" were the same event and
+ *   both were recorded as neither. Callers that ignore it are unaffected.
+ */
 export async function tryRoadMatrixOptimize(routeProperties, {
     start = null,
     end = null,
-    deadlineMs = ROAD_MATRIX_DEADLINE_MS
+    deadlineMs = ROAD_MATRIX_DEADLINE_MS,
+    onOutcome = null
 } = {}) {
-    if (!Array.isArray(routeProperties)
-        || routeProperties.length < 2
-        || routeProperties.length > MAX_ROAD_MATRIX_DOORS) return null;
+    const decline = (reason) => { onOutcome?.(reason); return null; };
+
+    if (!Array.isArray(routeProperties) || routeProperties.length < 2) {
+        return decline('too_few_doors');
+    }
+    if (routeProperties.length > MAX_ROAD_MATRIX_DOORS) {
+        return decline('route_exceeds_supported_size');
+    }
 
     try {
         const payload = {
@@ -110,7 +124,7 @@ export async function tryRoadMatrixOptimize(routeProperties, {
         ]).finally(() => clearTimeout(deadlineTimer));
         if (!response) {
             console.warn(`[roadMatrixOptimize] Road matrix exceeded ${deadlineMs}ms; using local optimize path`);
-            return null;
+            return decline('deadline_exceeded');
         }
         const data = response?.data || response;
         // Any winner other than the caller's current order is an order the backend
@@ -118,15 +132,19 @@ export async function tryRoadMatrixOptimize(routeProperties, {
         // reversed or continuity-shaped candidate. Requiring the 'road_aware'
         // label discarded those, which is why routes kept their zig-zag order
         // even though OSRM had already priced a shorter one.
-        if (!data?.success
-            || data.selected === 'current'
-            // Aerial fallback orders are unmeasured — never adopt one.
-            || data.routing_metadata?.fallback === true
-            || !Array.isArray(data.order)) return null;
+        if (!data?.success) return decline('backend_reported_failure');
+        // Aerial fallback orders are unmeasured — never adopt one.
+        if (data.routing_metadata?.fallback === true) return decline('aerial_fallback');
+        // The backend measured both orders and the saved one won. That IS a road
+        // verification: the order is confirmed, not merely unimproved.
+        if (data.selected === 'current') return decline('current_order_measured_best');
+        if (!Array.isArray(data.order)) return decline('backend_returned_no_order');
 
         const byKey = new Map(routeProperties.map((property) => [propertyKey(property), property]));
         const order = data.order.map((hash) => byKey.get(String(hash))).filter(Boolean);
-        if (order.length !== routeProperties.length || new Set(order).size !== routeProperties.length) return null;
+        if (order.length !== routeProperties.length || new Set(order).size !== routeProperties.length) {
+            return decline('order_failed_exact_once');
+        }
 
         const meta = data.routing_metadata || {};
         const roadMiles = Number.isFinite(Number(meta.winning_route_distance))
@@ -135,13 +153,15 @@ export async function tryRoadMatrixOptimize(routeProperties, {
         const baseline = Number.isFinite(Number(meta.input_measured))
             ? Number(meta.input_measured)
             : Number(meta.continuity_measured);
-        if (!Number.isFinite(roadMiles) || !Number.isFinite(baseline)) return null;
+        if (!Number.isFinite(roadMiles) || !Number.isFinite(baseline)) {
+            return decline('backend_returned_no_measurement');
+        }
         const savings = baseline - roadMiles;
         // Driving time is the primary objective, so a candidate that saves
         // minutes is adopted even when the mileage is a wash. The backend gate
         // already refused to return anything worse than the current order.
         const durationGain = Number(meta.duration_improvement);
-        if (!(savings > 0) && !(durationGain > 0)) return null;
+        if (!(savings > 0) && !(durationGain > 0)) return decline('current_order_measured_best');
 
         return {
             order,
@@ -158,6 +178,6 @@ export async function tryRoadMatrixOptimize(routeProperties, {
         };
     } catch (error) {
         console.warn('[roadMatrixOptimize] Road-matrix backend unavailable; using local optimize path', error);
-        return null;
+        return decline(`backend_unavailable: ${error.message}`);
     }
 }

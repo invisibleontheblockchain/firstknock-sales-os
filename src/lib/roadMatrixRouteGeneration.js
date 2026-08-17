@@ -18,6 +18,13 @@
 import { buildPersistedRoadRoutingMetadata } from '@/components/logic/routeRoadContext';
 import { isValidRoutePoint } from '@/lib/routeBounds';
 import { tryRoadMatrixOptimize } from '@/lib/roadMatrixOptimize';
+import {
+    describeUnverifiedRoutes,
+    ROAD_VERIFICATION,
+    stampRoadVerification,
+    summarizeRoadVerification,
+    verdictForOutcome
+} from '@/lib/routeRoadVerification';
 
 // How long ONE route's road pass is allowed to take, and how long a whole
 // generation may spend on road passes in total.
@@ -72,7 +79,15 @@ export async function buildRoadAwareGeneratedRoutes({ rawGenerated, routingConte
 
 export async function applyRoadMatrixToGeneratedRoutes(routes, { onProgress } = {}) {
     if (!Array.isArray(routes) || routes.length === 0) {
-        return { routes, appliedCount: 0, savedMiles: 0, skippedForBudget: 0 };
+        return {
+            routes,
+            appliedCount: 0,
+            savedMiles: 0,
+            skippedForBudget: 0,
+            unverifiedCount: 0,
+            verification: summarizeRoadVerification([]),
+            unverifiedMessage: null
+        };
     }
 
     const startedAt = Date.now();
@@ -80,12 +95,14 @@ export async function applyRoadMatrixToGeneratedRoutes(routes, { onProgress } = 
     let appliedCount = 0;
     let savedMiles = 0;
     let skippedForBudget = 0;
+    let unverifiedCount = 0;
 
     for (let index = 0; index < routes.length; index += 1) {
         const route = routes[index];
         const properties = route?.properties;
         if (!Array.isArray(properties) || properties.length < 2) {
-            out.push(route);
+            const outcome = verdictForOutcome({ doorCount: properties?.length ?? 0 });
+            out.push(stampRoadVerification(route, outcome.verdict, { reason: outcome.reason }));
             continue;
         }
         // The ceiling exists so a dead road engine cannot hold generation open
@@ -98,35 +115,39 @@ export async function applyRoadMatrixToGeneratedRoutes(routes, { onProgress } = 
         );
         if (Date.now() - startedAt > runCeiling) {
             skippedForBudget += 1;
+            unverifiedCount += 1;
             // A skipped route keeps its straight-line order. Say so on the route
             // itself: an unoptimized route that looks identical to an optimized
             // one is how a 628-mile route passed for a generated route.
-            out.push({
-                ...route,
-                metadata: {
-                    ...(route.metadata || {}),
-                    road_pass_skipped: true,
-                    road_pass_skipped_reason: 'generation_run_ceiling',
-                    road_network_used: false
-                }
-            });
+            const outcome = verdictForOutcome({ doorCount: properties.length, ceilingExceeded: true });
+            out.push(stampRoadVerification(route, outcome.verdict, {
+                reason: `${outcome.reason} (${Math.round(runCeiling / 1000)}s) before route ${index + 1} of ${routes.length}`
+            }));
             continue;
         }
 
         onProgress?.({ index: index + 1, total: routes.length });
+        let declineReason = null;
         const result = await tryRoadMatrixOptimize(properties, {
             start: isValidRoutePoint(route.startLocation) ? route.startLocation : null,
             end: isValidRoutePoint(route.endLocation) ? route.endLocation : null,
-            deadlineMs: ROAD_MATRIX_PER_ROUTE_BUDGET_MS
+            deadlineMs: ROAD_MATRIX_PER_ROUTE_BUDGET_MS,
+            onOutcome: (reason) => { declineReason = reason; }
         });
         if (!result) {
-            out.push(route);
+            // The road engine having measured the generated order and found
+            // nothing better is a VERIFIED outcome, not a failure — the order is
+            // confirmed on real roads. Every other decline leaves the route
+            // straight-line ordered and unverified, and must say so.
+            const outcome = verdictForOutcome({ doorCount: properties.length, declineReason });
+            out.push(stampRoadVerification(route, outcome.verdict, { reason: outcome.reason }));
+            if (outcome.verdict !== ROAD_VERIFICATION.CONFIRMED) unverifiedCount += 1;
             continue;
         }
 
         appliedCount += 1;
         savedMiles += result.objective.estimatedSavings;
-        out.push({
+        out.push(stampRoadVerification({
             ...route,
             properties: result.order,
             totalDistance: Math.round(result.objective.appliedDistance * 100) / 100,
@@ -137,13 +158,31 @@ export async function applyRoadMatrixToGeneratedRoutes(routes, { onProgress } = 
                 // sitting beside it and contradicting it.
                 ...result.routingMetadata
             }
-        });
+        }, ROAD_VERIFICATION.ADOPTED, {
+            measuredMiles: result.objective.appliedDistance,
+            savedMiles: result.objective.estimatedSavings
+        }));
+    }
+
+    const verification = summarizeRoadVerification(out);
+    // Loud, because silence is what let this ship. A run that could not verify
+    // some of its routes is a materially different run from a clean one, and the
+    // previous return values said so only in counters nobody read.
+    if (verification.unverified > 0) {
+        console.warn(
+            `[roadMatrixRouteGeneration] ${verification.unverified} of ${verification.total} routes are NOT road-verified`,
+            verification.byVerdict
+        );
     }
 
     return {
         routes: out,
         appliedCount,
         savedMiles: Math.round(savedMiles * 100) / 100,
-        skippedForBudget
+        skippedForBudget,
+        unverifiedCount,
+        verification,
+        // Null when everything verified, so a caller can surface it unconditionally.
+        unverifiedMessage: describeUnverifiedRoutes(out)
     };
 }
