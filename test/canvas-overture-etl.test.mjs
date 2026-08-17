@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildOvertureCanvasRegion, partitionNormalizedCanvasTile } from '../scripts/canvas-evidence/overture/adapter.mjs';
+import { buildOvertureCanvasRegion, partitionNormalizedCanvasTile, partitionNormalizedCanvasTileByByteLimit } from '../scripts/canvas-evidence/overture/adapter.mjs';
 
 const observedAt = '2026-07-22T00:00:00.000Z';
 const releaseVersion = '2026-07-22.0';
@@ -98,6 +98,32 @@ test('pinned OSM node identities produce only real edges, deterministic neighbor
   assert.equal(tiles.flatMap((tile) => tile.work_units).length, 3);
   assert.equal(tiles.flatMap((tile) => tile.properties).length, first.normalized_tile.properties.length);
   assert.equal(tiles.flatMap((tile) => tile.protected_groups).length, first.normalized_tile.protected_groups.length);
+});
+
+test('byte-limited production tiling preserves identities, classifications, protected groups, and release topology', () => {
+  const input = fixture();
+  input.roads = featureCollection([
+    { type: 'Feature', id: 'way/1', geometry: { type: 'LineString', coordinates: [[-82.651, 34.51], [-82.65, 34.51], [-82.649, 34.51]] }, properties: { highway: 'residential', name: 'Oak Street', node_ids: ['1', '2', '3'] } },
+    { type: 'Feature', id: 'way/2', geometry: { type: 'LineString', coordinates: [[-82.649, 34.51], [-82.648, 34.51], [-82.647, 34.51]] }, properties: { highway: 'secondary', name: 'Main Street', node_ids: ['3', '4', '5'] } },
+    { type: 'Feature', id: 'way/3', geometry: { type: 'LineString', coordinates: [[-82.649, 34.51], [-82.649, 34.511]] }, properties: { highway: 'residential', name: 'Court', node_ids: ['3', '6'] } },
+  ]);
+  const source = buildOvertureCanvasRegion({ ...input, regionKey: 'byte-limited', releaseVersion, observedAt }).normalized_tile;
+  const twoTiles = partitionNormalizedCanvasTile(source, 2);
+  const byteLimit = Math.max(...twoTiles.map((tile) => Buffer.byteLength(JSON.stringify(tile)))) + 100;
+  const first = partitionNormalizedCanvasTileByByteLimit(source, byteLimit);
+  const second = partitionNormalizedCanvasTileByByteLimit({ ...source, work_units: source.work_units.toReversed(), properties: source.properties.toReversed() }, byteLimit);
+  const originalProperties = source.properties.map((property) => [property.fk_property_id, property.canvass_eligibility]).sort();
+  const tiledProperties = first.flatMap((tile) => tile.properties).map((property) => [property.fk_property_id, property.canvass_eligibility]).sort();
+  const tiledUnitIds = first.flatMap((tile) => tile.work_units).map((unit) => JSON.stringify(unit.identity));
+  const allUnitIds = new Set(tiledUnitIds);
+
+  assert.deepEqual(tiledProperties, originalProperties);
+  assert.equal(new Set(tiledProperties.map(([id]) => id)).size, source.properties.length);
+  assert.equal(new Set(tiledUnitIds).size, source.work_units.length);
+  assert.equal(first.flatMap((tile) => tile.protected_groups).length, source.protected_groups.length);
+  assert.ok(first.every((tile) => Buffer.byteLength(JSON.stringify(tile)) <= byteLimit));
+  assert.ok(first.flatMap((tile) => tile.work_units).every((unit) => unit.neighbors.filter((neighbor) => neighbor.scope === 'release').every((neighbor) => allUnitIds.has(JSON.stringify(neighbor.identity)))));
+  assert.deepEqual(second, first);
 });
 
 test('real outside connector roads retain topology but carry zero property workload', () => {

@@ -12,17 +12,19 @@ The frozen signed path now partitions 619 eligible doors as 112 / 124 / 124 / 12
 ---
 
 ## Plan — Phase 2 Bulk Evidence Review Reduction
-- [x] Freeze the unchanged 557-record review baseline and aggregate its deterministic reason/source distribution.
-- [x] Add a deterministic, read-only cohort profiler over frozen source assertions and normalized properties.
-- [x] Characterize all 557 reviews into 12 evidence-pattern cohorts without changing classification.
-- [x] Evaluate initial multi-signal counterfactuals; reject broad rules that resolve zero or one record at moderate risk.
-- [x] Investigate free national and Maryland bulk evidence and identify SDAT/MDP HomeData as the next authoritative offline source.
-- [x] Ingest an official HomeData bulk export and audit normalized-address plus bounded-spatial joins against frozen controls.
-- [x] Complete a conflict-safe dry run: 459/487 dominant reviews gain meaningful use evidence; proposed result is 1,098 eligible / 33 excluded / 91 review.
-- [ ] Review the HomeData mappings and dry-run conflicts before accepting the production adapter or any classifier rule.
-- [ ] Evaluate free bulk evidence capable of resolving the remaining `property_use_unresolved` records.
-- [ ] Add evidence only through the existing signed normalization and provenance contracts.
-- [ ] Rebuild twice and measure review reduction without changing Phase 1 eligible/excluded safety guarantees.
+- [x] Freeze the unchanged 557-record review baseline and profile its deterministic evidence cohorts.
+- [x] Accept the conflict-safe offline HomeData adapter without broadening classifier policy.
+- [x] Verify the final transition matrix has zero eligible↔excluded flips.
+- [x] Verify two clean adapter builds produce identical normalized output and hashes.
+- [x] Accept the provisional result: 1,080 eligible / 33 excluded / 109 review (8.9%).
+- [x] Add deterministic byte-limited tiling that preserves property/work-unit identities, classifications, protected groups, and release-scoped topology.
+- [x] Pass focused packaging, adapter, release-builder, 10,000-work-unit topology, and production-build checks.
+- [ ] Restore the pinned Damascus raw address/building/place/road/HomeData artifacts to durable storage.
+- [ ] Build and validate the exact 1,222-property tiled signed release; reject any count or identity drift.
+- [ ] Rerun the production-equivalent five-way 1,080-door benchmark at the ≤15% maximum-deviation gate.
+- [ ] Freeze Phase 2 hashes, transition matrix, tile inventory, manifest, and territory result.
+- [ ] Run the unchanged pipeline over the retained statewide Maryland evidence artifacts.
+- [ ] Sign, upload, verify, activate with rollback retained, then run live Damascus acceptance.
 
 ---
 
@@ -36,7 +38,7 @@ The frozen signed path now partitions 619 eligible doors as 112 / 124 / 124 / 12
 - [ ] Validate and sign the resulting immutable regional release with the existing offline signer.
 
 ### Current constraint — Maryland Property-First Vertical Slice
-The repository contains the release compiler and contracts but not the 2.7 GB Maryland build artifacts, the normalized pre-signing tiles, or the ephemeral 734-door Damascus benchmark release. The signed analysis path now stitches verified surrounding tiles before selecting bounded real-road connectors, keeps properties clipped to the drawn polygon, projects every connector as zero workload, and records connector diagnostics. Signed lifecycle, property authority, island allocation, Maryland overlay, release-builder, source-normalizer, and residential partition regressions pass (43/43), and the production build passes. The exact 734-door signed Damascus rerun remains blocked until the matching immutable benchmark artifacts are restored; production secrets and mutable R2/Railway configuration remain intentionally untouched.
+The accepted Phase 2 source exports and normalized benchmark build existed only in temporary storage and are not present in the repository or immutable artifact storage available to this workspace. Packaging is now deterministic and byte-limited, with focused checks passing 16/16 and the production app build passing, but the exact 1,222-property release cannot be signed or benchmarked from aggregate reports without violating evidence provenance. Restore the pinned raw Damascus and statewide Maryland artifacts before release generation; do not reconstruct properties from summaries or alter the accepted 1,080 / 33 / 109 policy to bypass this gate.
 
 ---
 

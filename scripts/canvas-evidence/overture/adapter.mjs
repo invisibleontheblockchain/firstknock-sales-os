@@ -336,8 +336,10 @@ export function partitionNormalizedCanvasTile(tile, tileCount = 1) {
     const id = canonicalWorkUnitId(property.work_unit_identity);
     propertyByUnit.set(id, [...(propertyByUnit.get(id) || []), property]);
   });
+  propertyByUnit.forEach((properties) => properties.sort((left, right) => String(left.property_key).localeCompare(String(right.property_key))));
   return buckets.map((bucket, index) => {
-    const workUnits = tile.work_units.filter((unit) => bucket.ids.has(canonicalWorkUnitId(unit.identity)));
+    const workUnits = tile.work_units.filter((unit) => bucket.ids.has(canonicalWorkUnitId(unit.identity)))
+      .sort((left, right) => canonicalWorkUnitId(left.identity).localeCompare(canonicalWorkUnitId(right.identity)));
     const properties = workUnits.flatMap((unit) => propertyByUnit.get(canonicalWorkUnitId(unit.identity)) || []);
     const geometryFeatures = [
       ...workUnits.map((unit) => ({ geometry: unit.geometry })),
@@ -353,6 +355,20 @@ export function partitionNormalizedCanvasTile(tile, tileCount = 1) {
       protected_groups: bucket.groups,
     };
   });
+}
+
+export function partitionNormalizedCanvasTileByByteLimit(tile, maxBytes) {
+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 1) throw new TypeError('maxBytes must be a positive safe integer.');
+  const groupedIds = new Set((tile.protected_groups || []).flatMap((group) => group.members.map(canonicalWorkUnitId)));
+  const atomCount = (tile.protected_groups || []).length
+    + tile.work_units.filter((unit) => !groupedIds.has(canonicalWorkUnitId(unit.identity))).length;
+  const sourceBytes = Buffer.byteLength(canonicalStringify(tile), 'utf8');
+  const initialTileCount = Math.max(1, Math.min(atomCount, Math.ceil(sourceBytes / maxBytes)));
+  for (let tileCount = initialTileCount; tileCount <= atomCount; tileCount += 1) {
+    const tiles = partitionNormalizedCanvasTile(tile, tileCount);
+    if (tiles.every((candidate) => Buffer.byteLength(canonicalStringify(candidate), 'utf8') <= maxBytes)) return tiles;
+  }
+  throw new TypeError('A protected topology atom exceeds the normalized tile byte limit.');
 }
 
 export function buildOvertureCanvasRegion({ addresses, buildings, places, roads, osm = null, nad = null, assessors = null, propertyPolygon = null, osmSource = null, regionKey, releaseVersion, observedAt, maxNearestRoadMeters = 60 } = {}) {

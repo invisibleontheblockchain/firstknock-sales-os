@@ -3,10 +3,10 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { canonicalStringify } from '../contract.mjs';
-import { buildOvertureCanvasRegion, partitionNormalizedCanvasTile } from './adapter.mjs';
+import { buildOvertureCanvasRegion, partitionNormalizedCanvasTile, partitionNormalizedCanvasTileByByteLimit } from './adapter.mjs';
 import { applyMarylandHomeDataAdapter } from './maryland-homedata-adapter.mjs';
 
-const valueOptions = new Set(['--addresses', '--buildings', '--places', '--roads', '--osm', '--nad', '--assessors', '--property-polygon', '--homedata', '--homedata-version', '--homedata-observed-at', '--homedata-source-hash', '--osm-version', '--osm-observed-at', '--region', '--release-version', '--observed-at', '--generated-at', '--tile-count', '--output']);
+const valueOptions = new Set(['--addresses', '--buildings', '--places', '--roads', '--osm', '--nad', '--assessors', '--property-polygon', '--homedata', '--homedata-version', '--homedata-observed-at', '--homedata-source-hash', '--osm-version', '--osm-observed-at', '--region', '--release-version', '--observed-at', '--generated-at', '--tile-count', '--max-normalized-tile-bytes', '--output']);
 function args(argv) {
   const result = {};
   for (let index = 0; index < argv.length; index += 1) {
@@ -35,7 +35,10 @@ export async function runOvertureRegionBuild(argv = process.argv.slice(2)) {
   }) : null;
   const sourceTile = homeData?.source_tile || result.source_tile;
   const normalizedTile = homeData?.normalized_tile || result.normalized_tile;
-  const normalizedTiles = partitionNormalizedCanvasTile(normalizedTile, Number(options.tile_count || 1));
+  const normalizedTiles = options.tile_count
+    ? partitionNormalizedCanvasTile(normalizedTile, Number(options.tile_count))
+    : partitionNormalizedCanvasTileByByteLimit(normalizedTile, Number(options.max_normalized_tile_bytes || 4_500_000));
+  const normalizedTileBytes = normalizedTiles.map((tile) => Buffer.byteLength(canonicalStringify(tile), 'utf8'));
   const output = resolve(options.output);
   await mkdir(output, { recursive: true });
   const generatedAt = new Date(options.generated_at || Date.now()).toISOString();
@@ -50,10 +53,10 @@ export async function runOvertureRegionBuild(argv = process.argv.slice(2)) {
     writeFile(join(output, 'source.json'), canonicalStringify(sourceTile)),
     writeFile(join(output, 'normalized.ndjson'), `${normalizedTiles.map((tile) => canonicalStringify(tile)).join('\n')}\n`),
     writeFile(join(output, 'release.json'), canonicalStringify(release)),
-    writeFile(join(output, 'etl-report.json'), canonicalStringify({ ...result.report, ...(homeData ? { homedata: homeData.report } : {}), unlinked_properties: result.unlinked_properties })),
+    writeFile(join(output, 'etl-report.json'), canonicalStringify({ ...result.report, ...(homeData ? { homedata: homeData.report } : {}), normalized_tile_count: normalizedTiles.length, normalized_tile_max_bytes: Math.max(...normalizedTileBytes), unlinked_properties: result.unlinked_properties })),
     ...(homeData ? [writeFile(join(output, 'homedata-evidence-ledger.ndjson'), `${homeData.evidence_ledger.map((item) => canonicalStringify(item)).join('\n')}\n`)] : []),
   ]);
-  return { ...result.report, ...(homeData ? { homedata: homeData.report } : {}), normalized_tile_count: normalizedTiles.length, output_directory: output };
+  return { ...result.report, ...(homeData ? { homedata: homeData.report } : {}), normalized_tile_count: normalizedTiles.length, normalized_tile_max_bytes: Math.max(...normalizedTileBytes), output_directory: output };
 }
 
 const isMain = process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
