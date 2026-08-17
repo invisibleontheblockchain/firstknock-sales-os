@@ -6,7 +6,7 @@ import { classifyCanvasPropertyEntity, summarizeCanvasPropertyClassifications } 
 
 const { edgeIdFor } = canvasStreetTopologyInternals;
 
-const ALGORITHM_VERSION = 'canvas_residential_territory_v2_balanced';
+const ALGORITHM_VERSION = 'canvas_residential_territory_v3_transit_graph';
 const EARTH_RADIUS_METERS = 6371008.8;
 const DEFAULT_MAX_ASSOCIATION_METERS = 120;
 const DEFAULT_AMBIGUITY_METERS = 12;
@@ -549,33 +549,49 @@ function deriveNeighbors(streetUnits) {
 }
 
 function effectiveKnockNeighbors(streetUnits, baseNeighbors) {
-  const byId = new Map(streetUnits.map((unit) => [unit.id, unit]));
-  const knockIds = streetUnits.filter((unit) => unit.canvas_role === 'knock').map((unit) => unit.id).sort(compareIds);
-  const result = new Map(knockIds.map((id) => [id, new Set()]));
-  knockIds.forEach((id) => (baseNeighbors.get(id) || []).forEach((neighborId) => {
-    if (result.has(neighborId)) result.get(id).add(neighborId);
-  }));
+  const traversableIds = new Set(streetUnits
+    .filter((unit) => unit.canvas_role === 'knock' || unit.canvas_role === 'transit_only')
+    .map((unit) => unit.id));
+  const knockIds = streetUnits
+    .filter((unit) => unit.canvas_role === 'knock')
+    .map((unit) => unit.id)
+    .sort(compareIds);
+  const owner = new Map(knockIds.map((id) => [id, id]));
+  const distance = new Map(knockIds.map((id) => [id, 0]));
+  const queue = [...knockIds];
 
-  const transitIds = new Set(streetUnits.filter((unit) => unit.canvas_role === 'transit_only').map((unit) => unit.id));
-  const unseen = new Set(transitIds);
-  while (unseen.size) {
-    const seed = [...unseen].sort(compareIds)[0];
-    const queue = [seed];
-    const borders = new Set();
-    unseen.delete(seed);
-    for (let index = 0; index < queue.length; index += 1) {
-      (baseNeighbors.get(queue[index]) || []).forEach((neighborId) => {
-        if (transitIds.has(neighborId) && unseen.has(neighborId)) {
-          unseen.delete(neighborId);
+  // Contract zero-door transit roads without turning an entire transit network
+  // into a clique. Multi-source graph distance assigns each real road segment to
+  // its nearest eligible-road seed; an adjacency is emitted only where two such
+  // regions meet on an authoritative road edge.
+  for (let index = 0; index < queue.length; index += 1) {
+    const id = queue[index];
+    const nextDistance = distance.get(id) + 1;
+    (baseNeighbors.get(id) || []).filter((neighborId) => traversableIds.has(neighborId))
+      .sort(compareIds).forEach((neighborId) => {
+        const currentDistance = distance.get(neighborId);
+        const currentOwner = owner.get(neighborId);
+        const candidateOwner = owner.get(id);
+        if (currentDistance === undefined || nextDistance < currentDistance
+          || (nextDistance === currentDistance && compareIds(candidateOwner, currentOwner) < 0)) {
+          distance.set(neighborId, nextDistance);
+          owner.set(neighborId, candidateOwner);
           queue.push(neighborId);
-        } else if (byId.get(neighborId)?.canvas_role === 'knock') borders.add(neighborId);
+        }
       });
-    }
-    const orderedBorders = [...borders].sort(compareIds);
-    orderedBorders.forEach((id) => orderedBorders.forEach((neighborId) => {
-      if (id !== neighborId) result.get(id).add(neighborId);
-    }));
   }
+
+  const result = new Map(knockIds.map((id) => [id, new Set()]));
+  [...traversableIds].sort(compareIds).forEach((id) => {
+    (baseNeighbors.get(id) || []).filter((neighborId) => traversableIds.has(neighborId))
+      .sort(compareIds).forEach((neighborId) => {
+        const left = owner.get(id);
+        const right = owner.get(neighborId);
+        if (!left || !right || left === right) return;
+        result.get(left)?.add(right);
+        result.get(right)?.add(left);
+      });
+  });
   return new Map([...result.entries()].map(([id, ids]) => [id, [...ids].sort(compareIds)]));
 }
 
@@ -646,13 +662,13 @@ function workload(unit) {
   return Math.max(1, Number(unit.opportunity?.expected ?? unit.opportunity_expected ?? 0));
 }
 
-function allocateZoneCounts(components, areaCount, byId) {
-  const allocation = components.map(() => 1);
-  for (let remaining = areaCount - components.length; remaining > 0; remaining -= 1) {
+function allocateZoneCounts(components, areaCount, byId, allowIslandAttachments = false) {
+  const allocation = components.map(() => allowIslandAttachments ? 0 : 1);
+  for (let remaining = areaCount - allocation.reduce((sum, value) => sum + value, 0); remaining > 0; remaining -= 1) {
     const candidates = components.map((ids, index) => ({
       index,
       capacity: ids.length - allocation[index],
-      pressure: ids.reduce((sum, id) => sum + workload(byId.get(id)), 0) / allocation[index],
+      pressure: ids.reduce((sum, id) => sum + workload(byId.get(id)), 0) / (allocation[index] + 1),
       firstId: ids[0],
     })).filter((candidate) => candidate.capacity > 0)
       .sort((left, right) => right.pressure - left.pressure || compareIds(left.firstId, right.firstId));
@@ -660,6 +676,51 @@ function allocateZoneCounts(components, areaCount, byId) {
     allocation[candidates[0].index] += 1;
   }
   return allocation;
+}
+
+function groupCenter(group, atomById, unitById) {
+  const points = [...group.ids].flatMap((atomId) => (atomById.get(atomId)?.member_unit_ids || []))
+    .flatMap((unitId) => {
+      const unit = unitById.get(unitId);
+      const segmentPoints = (unit?.segments || []).flatMap((segment) => [pointFrom(segment?.start), pointFrom(segment?.end)]);
+      if (segmentPoints.length) return segmentPoints.filter(Boolean);
+      return (unit?.geometry?.coordinates || []).map(([lng, lat]) => pointFrom({ lat, lng })).filter(Boolean);
+    });
+  if (!points.length) return null;
+  return {
+    lat: points.reduce((sum, point) => sum + point.lat, 0) / points.length,
+    lng: points.reduce((sum, point) => sum + point.lng, 0) / points.length,
+  };
+}
+
+function centerDistanceSquared(left, right) {
+  if (!left || !right) return Number.POSITIVE_INFINITY;
+  const latitudeScale = Math.cos((left.lat + right.lat) * Math.PI / 360);
+  const deltaLat = left.lat - right.lat;
+  const deltaLng = (left.lng - right.lng) * latitudeScale;
+  return deltaLat * deltaLat + deltaLng * deltaLng;
+}
+
+function attachDisconnectedIslands(groups, islands, atomById, unitById, target) {
+  const result = groups.map((group) => ({ ...group, island_ids: new Set(group.island_ids || []) }));
+  [...islands].sort((left, right) => right.load - left.load || compareIds([...left.ids][0], [...right.ids][0]))
+    .forEach((island) => {
+      const islandCenter = groupCenter(island, atomById, unitById);
+      const candidates = result.map((group, index) => ({
+        index,
+        loadError: Math.abs(group.load + island.load - target),
+        distance: centerDistanceSquared(islandCenter, groupCenter(group, atomById, unitById)),
+        firstId: [...group.ids].sort(compareIds)[0],
+      })).sort((left, right) => left.loadError - right.loadError
+        || left.distance - right.distance || compareIds(left.firstId, right.firstId));
+      const selected = result[candidates[0].index];
+      island.ids.forEach((id) => {
+        selected.ids.add(id);
+        selected.island_ids.add(id);
+      });
+      selected.load += island.load;
+    });
+  return result;
 }
 
 function graphDistances(seed, allowed, neighbors) {
@@ -1248,7 +1309,8 @@ export function partitionCanvasResidentialTerritories(input = {}) {
   ]));
   const components = connectedComponents(freeAtomIds, freeNeighbors);
   const freeAreaCount = areaCount - lockedGroups.length;
-  const minimumZoneCount = components.length + lockedGroups.length;
+  const allowIslandAttachments = lockedGroups.length === 0 && components.length > 1;
+  const minimumZoneCount = (allowIslandAttachments ? 1 : components.length) + lockedGroups.length;
   const maximumZoneCount = freeAtomIds.length + lockedGroups.length;
   if (areaCount < minimumZoneCount || areaCount > maximumZoneCount) {
     return {
@@ -1261,20 +1323,31 @@ export function partitionCanvasResidentialTerritories(input = {}) {
       details: { minimum_zone_count: minimumZoneCount, maximum_zone_count: maximumZoneCount },
     };
   }
-  const allocation = allocateZoneCounts(components, freeAreaCount, atomById);
-  const groups = [...lockedGroups];
+  const allocation = allocateZoneCounts(components, freeAreaCount, atomById, allowIslandAttachments);
+  const total = atoms.reduce((sum, atom) => sum + workload(atom), 0);
+  const target = total / areaCount;
+  let groups = [...lockedGroups];
+  const islands = [];
   components.forEach((component, index) => {
+    if (allocation[index] === 0) {
+      islands.push({
+        ids: new Set(component),
+        load: component.reduce((sum, id) => sum + workload(atomById.get(id)), 0),
+      });
+      return;
+    }
     const partitioned = partitionComponent(component, allocation[index], atomById, freeNeighbors);
     if (partitioned) groups.push(...partitioned);
   });
+  if (islands.length) groups = attachDisconnectedIslands(groups, islands, atomById, byId, target);
   if (groups.length !== areaCount) {
     return { ok: false, status: 'infeasible', deployable: false, code: 'CONNECTED_PARTITION_FAILED', zones: [], work_units: knockUnits };
   }
-  const total = atoms.reduce((sum, atom) => sum + workload(atom), 0);
-  const target = total / areaCount;
   const zones = groups.map((group, index) => {
     const atomIdsInZone = [...group.ids].sort(compareIds);
+    const islandAtomIds = [...(group.island_ids || [])].sort(compareIds);
     const workUnitIds = atomIdsInZone.flatMap((id) => atomById.get(id)?.member_unit_ids || []).sort(compareIds);
+    const islandWorkUnitIds = islandAtomIds.flatMap((id) => atomById.get(id)?.member_unit_ids || []).sort(compareIds);
     const opportunity = workUnitIds.reduce((sum, id) => {
       const unit = byId.get(id);
       return sum + Number(unit?.opportunity?.expected ?? unit?.opportunity_expected ?? 0);
@@ -1285,12 +1358,16 @@ export function partitionCanvasResidentialTerritories(input = {}) {
       work_unit_ids: workUnitIds,
       opportunity_expected: opportunity,
       workload_score: group.load,
+      ...(islandWorkUnitIds.length ? { island_work_unit_ids: islandWorkUnitIds } : {}),
       ...(group.locked ? { locked: true } : {}),
       ...(group.workload_minutes !== undefined ? { workload_minutes: group.workload_minutes } : {}),
     };
   });
   const assignedIds = zones.flatMap((zone) => zone.work_unit_ids);
-  const connected = groups.every((group) => idsConnected([...group.ids], atomNeighbors));
+  const connected = groups.every((group) => {
+    const primaryIds = [...group.ids].filter((id) => !group.island_ids?.has(id));
+    return idsConnected(primaryIds, atomNeighbors);
+  });
   const zoneByUnitId = new Map(zones.flatMap((zone) => zone.work_unit_ids.map((id) => [id, zone.zone_id])));
   const protectedGroupsIntact = atoms.filter((atom) => atom.protected_group_ids.length)
     .every((atom) => new Set(atom.member_unit_ids.map((id) => zoneByUnitId.get(id))).size === 1);
@@ -1311,8 +1388,11 @@ export function partitionCanvasResidentialTerritories(input = {}) {
       exclusive_work_unit_coverage: assignedIds.length === knockIds.length && new Set(assignedIds).size === knockIds.length,
       protected_units_intact: protectedGroupsIntact && knockUnits.filter((unit) => unit.protected)
         .every((unit) => assignedIds.filter((id) => id === unit.id).length === 1),
-      minimum_zone_count: components.length,
+      minimum_zone_count: minimumZoneCount,
       maximum_zone_count: atomIds.length,
+      genuine_island_count: islands.length,
+      island_attachment_count: zones.reduce((sum, zone) => sum + (zone.island_work_unit_ids?.length ? 1 : 0), 0),
+      islands_explicit: islands.length > 0,
       max_opportunity_deviation_percent: Number(deviation.toFixed(2)),
     },
   };
