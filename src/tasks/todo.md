@@ -17,8 +17,9 @@ The frozen signed path now partitions 619 eligible doors as 112 / 124 / 124 / 12
 - [x] Characterize all 557 reviews into 12 evidence-pattern cohorts without changing classification.
 - [x] Evaluate initial multi-signal counterfactuals; reject broad rules that resolve zero or one record at moderate risk.
 - [x] Investigate free national and Maryland bulk evidence and identify SDAT/MDP HomeData as the next authoritative offline source.
-- [ ] Ingest an official HomeData bulk export and audit normalized-address plus bounded-spatial joins against frozen controls.
-- [ ] Review the resulting evidence combinations and approve only low-risk, multi-signal candidate rules.
+- [x] Ingest an official HomeData bulk export and audit normalized-address plus bounded-spatial joins against frozen controls.
+- [x] Complete a conflict-safe dry run: 459/487 dominant reviews gain meaningful use evidence; proposed result is 1,098 eligible / 33 excluded / 91 review.
+- [ ] Review the HomeData mappings and dry-run conflicts before accepting the production adapter or any classifier rule.
 - [ ] Evaluate free bulk evidence capable of resolving the remaining `property_use_unresolved` records.
 - [ ] Add evidence only through the existing signed normalization and provenance contracts.
 - [ ] Rebuild twice and measure review reduction without changing Phase 1 eligible/excluded safety guarantees.

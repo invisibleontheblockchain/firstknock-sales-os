@@ -1,0 +1,75 @@
+{
+  "schema": "firstknock.canvas-maryland-homedata-profile",
+  "schema_version": 1,
+  "benchmark": "Damascus Property Benchmark v2",
+  "classifier_changed": false,
+  "adapter_accepted": false,
+  "source": {
+    "source_id": "maryland-sdat-homedata",
+    "dataset_id": "ed4q-f8tm",
+    "filtered_view_id": "kb22-is2w",
+    "dataset_version": "2026-08-05T22:25:30.000Z",
+    "license": "PUBLIC_DOMAIN",
+    "selected_polygon_rows_sha256": "bbd1b2feb161e95797f850fa9b70a711c08cee583c09c54652c6bbea922bde68"
+  },
+  "coverage": {
+    "input_bbox_records": 2065,
+    "total_homedata_records_in_polygon": 1443,
+    "matched_homedata_records": 1138,
+    "unmatched_homedata_records": 249,
+    "ambiguous_homedata_records": 56,
+    "firstknock_properties": 1222,
+    "firstknock_properties_matched": 1099,
+    "firstknock_properties_without_match": 123,
+    "one_to_one_matches": 1090,
+    "one_to_many_firstknock_properties": 9,
+    "many_to_one_homedata_records": 56,
+    "exact_normalized_address_matches": 966,
+    "normalized_address_city_relaxed_matches": 115,
+    "spatial_only_matches": 57,
+    "confidence": {
+      "high": 1056,
+      "medium": 82,
+      "unmatched_or_ambiguous": 305
+    }
+  },
+  "review_coverage": {
+    "review_properties": 557,
+    "review_properties_matched": 521,
+    "review_properties_with_meaningful_use": 510,
+    "generic_cohort_properties": 487,
+    "generic_cohort_matched": 467,
+    "generic_cohort_with_meaningful_use": 459,
+    "generic_cohort_meaningful_coverage_percent": 94.3
+  },
+  "observed_land_use_values": [
+    { "raw": "Residential (R)", "count": 1204, "normalized": "residential", "classifier_assertion": "residential" },
+    { "raw": "Residential Condominium (U)", "count": 132, "normalized": "residential_condominium", "classifier_assertion": "residential" },
+    { "raw": "Exempt (E)", "count": 74, "normalized": "exempt_unknown", "classifier_assertion": null },
+    { "raw": "Agricultural (A)", "count": 15, "normalized": "agricultural", "classifier_assertion": null },
+    { "raw": "Exempt Commercial (EC)", "count": 8, "normalized": "exempt_commercial", "classifier_assertion": "commercial" },
+    { "raw": "Commercial (C)", "count": 7, "normalized": "commercial", "classifier_assertion": "commercial" },
+    { "raw": "Apartments (M)", "count": 3, "normalized": "apartments", "classifier_assertion": "multifamily" }
+  ],
+  "dry_run": {
+    "current": { "eligible": 619, "excluded": 46, "review": 557, "review_percent": 45.6 },
+    "proposed": { "eligible": 1098, "excluded": 33, "review": 91, "review_percent": 7.4 },
+    "review_movements": {
+      "homedata_residential_to_eligible": 480,
+      "homedata_commercial_to_excluded": 1,
+      "homedata_institutional_or_government_to_excluded": 0,
+      "conflicting_evidence_remains_review": 22,
+      "still_insufficient_remains_review": 45,
+      "access_restricted_remains_review": 9
+    },
+    "existing_control_conflicts_moved_to_review": {
+      "total": 15,
+      "eligible_to_review": 1,
+      "excluded_to_review": 14
+    },
+    "classifier_parity_mismatches_without_homedata": 0,
+    "proposed_only": true
+  },
+  "decision": "material_coverage_build_adapter_after_review",
+  "phase_1_changed": false
+}
