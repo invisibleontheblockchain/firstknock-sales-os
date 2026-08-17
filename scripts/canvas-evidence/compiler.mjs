@@ -1,6 +1,7 @@
 import {
   CANVAS_EVIDENCE_SCHEMA,
   DEFAULT_CANVAS_EVIDENCE_LIMITS,
+  canonicalPropertyId,
   canonicalProtectedGroupId,
   canonicalReleaseId,
   canonicalStringify,
@@ -137,6 +138,25 @@ export function compileCanvasEvidenceTile(rawTile, releaseId, limits = DEFAULT_C
   }
   workUnits.sort((left, right) => left.work_unit_id.localeCompare(right.work_unit_id));
 
+  const properties = assertArray(rawTile.properties || [], 'fixture.tiles[].properties').map((rawProperty) => {
+    const propertyKey = String(rawProperty.property_key || '');
+    const workUnitId = workUnitIdsByKey.get(rawProperty.work_unit);
+    if (!workUnitId) throw new TypeError(`Property ${propertyKey} references unknown work unit ${rawProperty.work_unit}.`);
+    const score = rawProperty.confidence?.score;
+    return {
+      property_id: canonicalPropertyId(propertyKey),
+      property_key: propertyKey,
+      work_unit_id: workUnitId,
+      point: copyJson(rawProperty.point),
+      property_type: rawProperty.property_type,
+      canvass_eligibility: rawProperty.canvass_eligibility,
+      confidence: { score, tier: confidenceTier(score), reasons: [...assertArray(rawProperty.confidence?.reasons, `properties.${propertyKey}.confidence.reasons`)].sort() },
+      door_count: rawProperty.door_count,
+      ...(rawProperty.display_address ? { display_address: rawProperty.display_address } : {}),
+      provenance: copyJson(rawProperty.provenance).sort((left, right) => `${left.source_id}\u0000${left.dataset_version}\u0000${left.feature_id}`.localeCompare(`${right.source_id}\u0000${right.dataset_version}\u0000${right.feature_id}`)),
+    };
+  }).sort((left, right) => left.property_id.localeCompare(right.property_id));
+
   const tile = {
     schema: CANVAS_EVIDENCE_SCHEMA.tile,
     schema_version: CANVAS_EVIDENCE_SCHEMA.version,
@@ -146,6 +166,7 @@ export function compileCanvasEvidenceTile(rawTile, releaseId, limits = DEFAULT_C
     coverage: copyJson(rawTile.coverage),
     external_neighbor_ids: [...externalWorkUnitIdsByKey.values()].sort(),
     work_units: workUnits,
+    properties,
     protected_groups: protectedGroups,
   };
   const metrics = validateCanvasEvidenceTile(tile, limits);
@@ -159,6 +180,7 @@ export function compileCanvasEvidenceTile(rawTile, releaseId, limits = DEFAULT_C
       sha256: sha256Hex(bytes),
       byte_length: bytes.byteLength,
       work_unit_count: metrics.work_unit_count,
+      property_count: metrics.property_count,
       coverage_area_sq_mi: tile.coverage.area_sq_mi,
       coverage_bounds: copyJson(tile.coverage.bounds),
       expected_opportunities: metrics.expected_opportunities,

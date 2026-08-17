@@ -25,6 +25,8 @@ export const DEFAULT_CANVAS_EVIDENCE_LIMITS = Object.freeze({
   max_neighbors_per_work_unit: 64,
   max_coordinates_per_work_unit: 2_048,
   max_protected_groups_per_tile: 2_000,
+  max_properties_per_tile: 50_000,
+  max_properties_per_sq_mi: 200_000,
   max_tiles_per_release: 250_000,
 });
 
@@ -33,6 +35,7 @@ const ID_PATTERNS = Object.freeze({
   tile: /^cet1_[a-f0-9]{64}$/,
   workUnit: /^cewu1_[a-f0-9]{64}$/,
   protectedGroup: /^cepg1_[a-f0-9]{64}$/,
+  property: /^cepr1_[a-f0-9]{64}$/,
 });
 
 export class CanvasEvidenceContractError extends Error {
@@ -171,6 +174,11 @@ export function canonicalWorkUnitDescriptor(descriptor) {
 
 export function canonicalWorkUnitId(descriptor) {
   return `cewu1_${sha256Hex(canonicalStringify(canonicalWorkUnitDescriptor(descriptor)))}`;
+}
+
+export function canonicalPropertyId(propertyKey) {
+  const key = requireString(propertyKey, 'property_key', { maxLength: 256 });
+  return `cepr1_${sha256Hex(canonicalStringify({ property_key: key }))}`;
 }
 
 export function canonicalProtectedGroupId(kind, memberWorkUnitIds) {
@@ -399,6 +407,41 @@ export function validateCanvasEvidenceTile(tile, suppliedLimits = DEFAULT_CANVAS
     }
   }
 
+  const properties = candidate.properties === undefined ? [] : candidate.properties;
+  if (!Array.isArray(properties)) fail('invalid_properties', 'tile.properties must be an array.');
+  if (properties.length > limits.max_properties_per_tile) {
+    fail('property_limit_exceeded', 'Tile exceeds the property count limit.', { actual: properties.length, limit: limits.max_properties_per_tile });
+  }
+  const propertyIds = properties.map((property) => property?.property_id);
+  assertUnique(propertyIds, 'tile.properties.property_id');
+  assertSorted(propertyIds, 'tile.properties.property_id');
+  let eligibleDoorCount = 0;
+  for (const [index, property] of properties.entries()) {
+    const field = `tile.properties[${index}]`;
+    requireRecord(property, field);
+    requireString(property.property_id, `${field}.property_id`, { pattern: ID_PATTERNS.property });
+    const propertyKey = requireString(property.property_key, `${field}.property_key`, { maxLength: 256 });
+    if (canonicalPropertyId(propertyKey) !== property.property_id) fail('property_id_mismatch', `${field}.property_id does not match property_key.`, { field });
+    requireString(property.work_unit_id, `${field}.work_unit_id`, { pattern: ID_PATTERNS.workUnit });
+    if (!localIds.has(property.work_unit_id)) fail('property_work_unit_missing', `${field} references a work unit outside its tile.`, { field });
+    if (!['residential', 'multifamily', 'commercial', 'government', 'institutional', 'vacant', 'unknown'].includes(property.property_type)) fail('invalid_property_type', `${field}.property_type is unsupported.`, { field });
+    if (!['eligible', 'excluded', 'review'].includes(property.canvass_eligibility)) fail('invalid_canvass_eligibility', `${field}.canvass_eligibility is unsupported.`, { field });
+    const doorCount = requireInteger(property.door_count, `${field}.door_count`, { min: 1, max: 100_000 });
+    if (property.canvass_eligibility === 'eligible') eligibleDoorCount += doorCount;
+    validateConfidence(property.confidence, `${field}.confidence`);
+    validateProvenance(property.provenance, `${field}.provenance`);
+    requireRecord(property.point, `${field}.point`);
+    const lat = requireFinite(property.point.lat, `${field}.point.lat`, { min: -90, max: 90 });
+    const lng = requireFinite(property.point.lng, `${field}.point.lng`, { min: -180, max: 180 });
+    if (lat < candidate.coverage.bounds.min_lat || lat > candidate.coverage.bounds.max_lat || lng < candidate.coverage.bounds.min_lng || lng > candidate.coverage.bounds.max_lng) fail('property_outside_tile', `${field}.point is outside tile coverage.`, { field });
+    if (property.display_address !== undefined) requireString(property.display_address, `${field}.display_address`, { maxLength: 500 });
+  }
+
+  const propertiesPerSqMi = properties.length / areaSqMi;
+  if (propertiesPerSqMi > limits.max_properties_per_sq_mi) {
+    fail('property_density_exceeded', 'Tile exceeds the property density limit.', { actual: propertiesPerSqMi, limit: limits.max_properties_per_sq_mi });
+  }
+
   const workUnitsPerSqMi = candidate.work_units.length / areaSqMi;
   if (workUnitsPerSqMi > limits.max_work_units_per_sq_mi) {
     fail('work_unit_density_exceeded', 'Tile exceeds the work-unit density limit.', { actual: workUnitsPerSqMi, limit: limits.max_work_units_per_sq_mi });
@@ -417,6 +460,9 @@ export function validateCanvasEvidenceTile(tile, suppliedLimits = DEFAULT_CANVAS
     work_units_per_sq_mi: workUnitsPerSqMi,
     expected_opportunities: expectedOpportunities,
     expected_opportunities_per_sq_mi: opportunitiesPerSqMi,
+    property_count: properties.length,
+    properties_per_sq_mi: propertiesPerSqMi,
+    eligible_door_count: eligibleDoorCount,
   });
 }
 
@@ -493,6 +539,7 @@ export function validateCanvasEvidenceManifest(manifest, { requireSignature = tr
     requireString(tile.sha256, `${field}.sha256`, { pattern: /^[a-f0-9]{64}$/, maxLength: 64 });
     requireInteger(tile.byte_length, `${field}.byte_length`, { min: 1, max: limits.max_tile_bytes });
     requireInteger(tile.work_unit_count, `${field}.work_unit_count`, { max: limits.max_work_units_per_tile });
+    requireInteger(tile.property_count, `${field}.property_count`, { max: limits.max_properties_per_tile });
     requireFinite(tile.coverage_area_sq_mi, `${field}.coverage_area_sq_mi`, { min: Number.EPSILON });
     validateBounds(tile.coverage_bounds, `${field}.coverage_bounds`);
     requireFinite(tile.expected_opportunities, `${field}.expected_opportunities`, { min: 0 });
@@ -545,7 +592,7 @@ export function validateCanvasEvidenceBundle({ manifest, tiles, publicKey, expec
     const metrics = validateCanvasEvidenceTile(tile, manifest.limits);
     const bytes = Buffer.from(canonicalStringify(tile), 'utf8');
     if (sha256Hex(bytes) !== entry.sha256) fail('bundle_tile_digest_mismatch', 'Tile digest does not match the manifest.', { tile_id: entry.tile_id });
-    if (bytes.byteLength !== entry.byte_length || metrics.work_unit_count !== entry.work_unit_count) {
+    if (bytes.byteLength !== entry.byte_length || metrics.work_unit_count !== entry.work_unit_count || metrics.property_count !== entry.property_count) {
       fail('bundle_tile_metrics_mismatch', 'Tile metrics do not match the manifest.', { tile_id: entry.tile_id });
     }
     if (
@@ -677,6 +724,7 @@ export function selectCanvasEvidenceWorkUnits(tile, polygon, suppliedLimits = DE
   }
 
   const workUnits = tile.work_units.filter((unit) => selectedIds.has(unit.work_unit_id));
+  const properties = (tile.properties || []).filter((property) => pointInPolygon([property.point.lng, property.point.lat], coordinates));
   const protectedGroups = tile.protected_groups.filter((group) => (
     group.member_work_unit_ids.some((id) => selectedIds.has(id))
   ));
@@ -690,6 +738,7 @@ export function selectCanvasEvidenceWorkUnits(tile, polygon, suppliedLimits = DE
     release_id: tile.release_id,
     source_tile_id: tile.tile_id,
     work_units: workUnits,
+    properties,
     protected_groups: protectedGroups,
     external_neighbor_ids: [...externalNeighborIds].sort(),
   });

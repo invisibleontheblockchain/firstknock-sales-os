@@ -154,6 +154,11 @@ test('fixture HTTP API and worker complete the signed evidence lifecycle end to 
   assert.equal(snapshot.analysis_result.classified_street_units.length, 2, 'protected cul-de-sac expands atomically');
   assert.deepEqual(snapshot.analysis_result.external_neighbor_ids, [fixture.ids.external]);
   assert.ok(snapshot.analysis_result.classified_street_units.every((unit) => unit.canvas_role === 'knock'));
+  assert.equal(snapshot.analysis_result.classified_properties.length, 3);
+  assert.deepEqual(snapshot.analysis_result.property_classification_summary, {
+    eligible: 1, excluded: 1, review: 1, total: 3, automatically_resolved: 2, automatically_resolved_percent: 66.7,
+  });
+  assert.equal(snapshot.analysis_result.unresolved_property_count, 1);
   const resultJson = canonicalStringify(snapshot.analysis_result);
   assert.equal(snapshot.result_bytes, Buffer.byteLength(resultJson));
   assert.equal(snapshot.result_hash, sha256Hex(resultJson));
@@ -248,6 +253,7 @@ test('buildSnapshot uses the adapter-compatible content identity', () => {
   };
   const snapshot = buildSnapshot(job, release, {
     work_units: fixture.tile.work_units,
+    properties: fixture.tile.properties,
     protected_groups: fixture.tile.protected_groups,
     external_neighbor_ids: fixture.tile.external_neighbor_ids,
   }, FIXED_TIME);

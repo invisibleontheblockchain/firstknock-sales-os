@@ -1,4 +1,4 @@
-const RESIDENTIAL = new Set(['single_family', 'townhome', 'duplex', 'triplex', 'quadplex', 'house', 'detached', 'semidetached_house', 'terrace', 'residential']);
+const RESIDENTIAL = new Set(['single_family', 'townhome', 'duplex', 'triplex', 'quadplex', 'house', 'detached', 'semidetached_house', 'terrace', 'residential', 'mixed_use']);
 const MULTIFAMILY = new Set(['apartments', 'multifamily', 'dormitory', 'senior_living']);
 const NON_RESIDENTIAL = new Set(['commercial', 'retail', 'office', 'industrial', 'warehouse', 'school', 'hospital', 'government', 'civic', 'institutional', 'religious', 'utility', 'military', 'vacant']);
 const ACCESS_REVIEW = new Set(['gated', 'private_road', 'senior_living', 'dormitory', 'military_housing', 'no_solicitation', 'inaccessible_multifamily']);
@@ -23,6 +23,7 @@ function pointFrom(features) {
 
 export function classifyCanvasPropertyEntity({ property_id, features = [] } = {}) {
   const values = signalValues(features, ['usps_rdi', 'delivery_type', 'assessor_class', 'property_type', 'building', 'building_use', 'site_use', 'landuse', 'place_use', 'poi_type']);
+  const directValues = signalValues(features, ['usps_rdi', 'delivery_type', 'assessor_class', 'property_type', 'building', 'building_use', 'site_use']);
   const access = signalValues(features, ['canvass_access', 'access_classification', 'access', 'site_access']);
   const dpv = signalValues(features, ['usps_dpv', 'delivery_valid']);
   const positive = values.filter((value) => value === 'residential' || RESIDENTIAL.has(value));
@@ -40,6 +41,10 @@ export function classifyCanvasPropertyEntity({ property_id, features = [] } = {}
     propertyType = multifamily.length ? 'multifamily' : 'residential';
     typeScore = Math.min(0.99, 0.72 + (unique([...positive, ...multifamily]).length * 0.09));
     reasons.push(...unique([...positive, ...multifamily]).map((value) => `residential_${value}`));
+    if (!directValues.some((value) => value === 'residential' || RESIDENTIAL.has(value) || MULTIFAMILY.has(value))) {
+      typeScore = Math.min(typeScore, 0.69);
+      reasons.push('residential_context_only');
+    }
     if (negative.length) { typeScore = Math.min(typeScore, 0.69); reasons.push('conflicting_property_use'); }
   } else {
     reasons.push('property_use_unresolved');

@@ -197,8 +197,10 @@ export async function runCanvasSourceNormalizerCli(argv = process.argv.slice(2))
   if (rawTiles.length === 0) fail('missing_source_tiles', 'Source evidence files did not contain any tiles.');
   const tiles = normalizeCanvasSourceEvidenceTiles(rawTiles, { maxNearestRoadMeters });
   const roleCounts = { opportunity: 0, transit: 0, excluded: 0, uncertain: 0 };
+  const propertyCounts = { eligible: 0, excluded: 0, review: 0 };
   for (const tile of tiles) {
     for (const unit of tile.work_units) roleCounts[unit.canvas_role] += 1;
+    for (const property of tile.properties || []) propertyCounts[property.canvass_eligibility] += 1;
   }
   let outputPath = null;
   if (!options.validateOnly) {
@@ -211,6 +213,8 @@ export async function runCanvasSourceNormalizerCli(argv = process.argv.slice(2))
     tile_count: tiles.length,
     work_unit_count: Object.values(roleCounts).reduce((sum, count) => sum + count, 0),
     role_counts: roleCounts,
+    property_count: Object.values(propertyCounts).reduce((sum, count) => sum + count, 0),
+    property_classification_counts: propertyCounts,
     output_path: outputPath,
     max_nearest_road_meters: maxNearestRoadMeters,
     tiles,
@@ -225,6 +229,7 @@ if (isMain) {
     else {
       process.stdout.write(`Canvas source evidence ${result.mode === 'validate-only' ? 'valid' : 'normalized'}: ${result.tile_count} tiles, ${result.work_unit_count} work units.\n`);
       process.stdout.write(`Roles: ${JSON.stringify(result.role_counts)}\n`);
+      process.stdout.write(`Properties: ${result.property_count} ${JSON.stringify(result.property_classification_counts)}\n`);
       if (result.output_path) process.stdout.write(`Output: ${result.output_path}\n`);
     }
   } catch (error) {

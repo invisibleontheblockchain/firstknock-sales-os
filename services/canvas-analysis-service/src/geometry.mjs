@@ -101,16 +101,18 @@ export function selectTileWorkUnits(tile, boundary) {
     }
   }
   const workUnits = tile.work_units.filter((unit) => selectedIds.has(unit.work_unit_id));
+  const properties = (tile.properties || []).filter((property) => pointInPolygon([property.point.lng, property.point.lat], polygon));
   const protectedGroups = tile.protected_groups.filter((group) => group.member_work_unit_ids.some((id) => selectedIds.has(id)));
   const externalNeighborIds = new Set();
   for (const unit of workUnits) {
     for (const neighborId of unit.neighbor_ids) if (!selectedIds.has(neighborId)) externalNeighborIds.add(neighborId);
   }
-  return { work_units: workUnits, protected_groups: protectedGroups, external_neighbor_ids: [...externalNeighborIds].sort() };
+  return { work_units: workUnits, properties, protected_groups: protectedGroups, external_neighbor_ids: [...externalNeighborIds].sort() };
 }
 
 export function stitchSelections(selections) {
   const workUnits = new Map();
+  const properties = new Map();
   const protectedGroups = new Map();
   const externalCandidates = new Set();
   for (const selection of selections) {
@@ -120,6 +122,13 @@ export function stitchSelections(selections) {
         throw new ServiceError(502, 'evidence_work_unit_conflict', `Work unit ${unit.work_unit_id} differs across tiles.`);
       }
       workUnits.set(unit.work_unit_id, unit);
+    }
+    for (const property of selection.properties || []) {
+      const existing = properties.get(property.property_id);
+      if (existing && canonicalStringify(existing) !== canonicalStringify(property)) {
+        throw new ServiceError(502, 'evidence_property_conflict', `Property ${property.property_id} differs across tiles.`);
+      }
+      properties.set(property.property_id, property);
     }
     for (const group of selection.protected_groups) {
       const existing = protectedGroups.get(group.protected_group_id);
@@ -142,6 +151,7 @@ export function stitchSelections(selections) {
   const selectedIds = new Set(workUnits.keys());
   return {
     work_units: [...workUnits.values()].sort((left, right) => left.work_unit_id.localeCompare(right.work_unit_id)),
+    properties: [...properties.values()].sort((left, right) => left.property_id.localeCompare(right.property_id)),
     protected_groups: [...protectedGroups.values()].sort((left, right) => left.protected_group_id.localeCompare(right.protected_group_id)),
     external_neighbor_ids: [...externalCandidates].filter((id) => !selectedIds.has(id)).sort(),
   };

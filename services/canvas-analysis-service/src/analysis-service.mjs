@@ -77,6 +77,23 @@ function presentationRole(role) {
 function buildAnalysisResult(job, release, stitched) {
   const roleCounts = { knock: 0, transit_only: 0, uncertain: 0, excluded: 0 };
   const opportunity = { low: 0, expected: 0, high: 0 };
+  const classifiedProperties = (stitched.properties || []).map((property) => ({
+    ...property,
+    confidence_score: property.confidence.score,
+    confidence_percent: Math.round(property.confidence.score * 100),
+    classification_reasons: property.confidence.reasons,
+  }));
+  const propertyCounts = classifiedProperties.reduce((counts, property) => {
+    counts[property.canvass_eligibility] += 1;
+    return counts;
+  }, { eligible: 0, excluded: 0, review: 0 });
+  const propertyTotal = classifiedProperties.length;
+  const propertySummary = {
+    ...propertyCounts,
+    total: propertyTotal,
+    automatically_resolved: propertyCounts.eligible + propertyCounts.excluded,
+    automatically_resolved_percent: propertyTotal ? Number((((propertyCounts.eligible + propertyCounts.excluded) / propertyTotal) * 100).toFixed(1)) : 0,
+  };
   const classified = stitched.work_units.map((unit) => {
     const role = presentationRole(unit.canvas_role);
     roleCounts[role] += 1;
@@ -103,11 +120,15 @@ function buildAnalysisResult(job, release, stitched) {
     requested_area_count: job.area_count,
     boundary: job.polygon,
     classified_street_units: classified,
+    classified_properties: classifiedProperties,
+    property_classification_summary: propertySummary,
     protected_groups: stitched.protected_groups,
     external_neighbor_ids: stitched.external_neighbor_ids,
-    unresolved_unit_count: roleCounts.uncertain,
+    unresolved_unit_count: propertyTotal ? propertyCounts.review : roleCounts.uncertain,
+    unresolved_property_count: propertyCounts.review,
     summary: {
       role_counts: roleCounts,
+      property_classification: propertySummary,
       opportunity,
       selected_work_unit_count: classified.length,
       protected_group_count: stitched.protected_groups.length,
@@ -154,7 +175,7 @@ export function buildSnapshot(job, release, stitched, createdAt) {
     manifest_hash: job.manifest_hash,
     source_versions: release.source_versions,
     compiler_version: release.manifest.release.compiler_version,
-    classifier_version: 'canvas-evidence-role-projection/1',
+    classifier_version: 'canvas-property-evidence-projection/2',
     polygon: job.polygon,
     tile_ids: [...job.tile_ids].sort(),
     analysis_result: analysisResult,

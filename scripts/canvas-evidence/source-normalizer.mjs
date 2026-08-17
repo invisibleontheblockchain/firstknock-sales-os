@@ -5,6 +5,7 @@ import {
   canonicalWorkUnitDescriptor,
   canonicalWorkUnitId,
 } from './contract.mjs';
+import { normalizeCanvasProperties } from './property-normalizer.mjs';
 
 export const CANVAS_SOURCE_EVIDENCE_SCHEMA = Object.freeze({
   tile: 'firstknock.canvas-source-evidence-tile',
@@ -313,6 +314,15 @@ function validateGeometry(value, bounds, field) {
   };
 }
 
+function validatePoint(value, bounds, field) {
+  assertAllowedKeys(value, new Set(['lat', 'lng']), field);
+  const point = {
+    lat: requireNumber(value.lat, `${field}.lat`, { min: bounds.min_lat, max: bounds.max_lat }),
+    lng: requireNumber(value.lng, `${field}.lng`, { min: bounds.min_lng, max: bounds.max_lng }),
+  };
+  return point;
+}
+
 function validateInstant(value, field) {
   requireString(value, field);
   const parsed = new Date(value);
@@ -398,7 +408,7 @@ function validateRoad(raw, bounds, index) {
 function validateAttributes(kind, raw, field) {
   requireRecord(raw, field);
   if (kind === 'address') {
-    assertAllowedKeys(raw, new Set(['address_key', 'unit_keys', 'occupancy']), field);
+    assertAllowedKeys(raw, new Set(['address_key', 'display_address', 'unit_keys', 'occupancy']), field);
     const unitKeys = raw.unit_keys === undefined
       ? []
       : requireArray(raw.unit_keys, `${field}.unit_keys`).map((key, index) => (
@@ -407,6 +417,7 @@ function validateAttributes(kind, raw, field) {
     if (new Set(unitKeys).size !== unitKeys.length) fail('duplicate_unit_key', `${field}.unit_keys contains duplicates.`, { field });
     return {
       address_key: requireString(raw.address_key, `${field}.address_key`, { maxLength: 256 }),
+      ...(raw.display_address === undefined ? {} : { display_address: requireString(raw.display_address, `${field}.display_address`, { maxLength: 500 }) }),
       unit_keys: [...unitKeys].sort(),
       occupancy: requireEnum(raw.occupancy, ADDRESS_OCCUPANCY, `${field}.occupancy`),
     };
@@ -499,9 +510,9 @@ function chooseAssociationRoads(kind, associations, field) {
   return best;
 }
 
-function validateEvidence(raw, index, roadById, maxNearestRoadMeters) {
+function validateEvidence(raw, index, roadById, bounds, maxNearestRoadMeters) {
   const field = `source_tile.evidence[${index}]`;
-  assertAllowedKeys(raw, new Set(['evidence_id', 'kind', 'attributes', 'associations', 'provenance']), field);
+  assertAllowedKeys(raw, new Set(['evidence_id', 'kind', 'property_key', 'location', 'attributes', 'associations', 'provenance']), field);
   const evidenceId = requireString(raw.evidence_id, `${field}.evidence_id`, {
     pattern: /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$/,
   });
@@ -511,11 +522,15 @@ function validateEvidence(raw, index, roadById, maxNearestRoadMeters) {
     validateAssociation(association, `${field}.associations[${associationIndex}]`, roadById, maxNearestRoadMeters)
   ));
   const roadIds = chooseAssociationRoads(kind, associations, `${field}.associations`);
+  const propertyKey = raw.property_key === undefined ? null : requireString(raw.property_key, `${field}.property_key`, { maxLength: 256 });
+  if (raw.location !== undefined && !propertyKey) fail('property_key_missing', `${field}.location requires property_key.`, { field });
   return {
     evidenceId,
     kind,
     attributes,
     roadIds,
+    propertyKey,
+    location: raw.location === undefined ? null : validatePoint(raw.location, bounds, `${field}.location`),
     provenance: validateProvenance(raw.provenance, `${field}.provenance`),
   };
 }
@@ -856,7 +871,7 @@ function normalizeTileInternal(rawInput, { maxNearestRoadMeters = DEFAULT_MAX_NE
     }
   }
   const evidence = requireArray(raw.evidence, 'source_tile.evidence').map((feature, index) => (
-    validateEvidence(feature, index, roadById, maxNearestRoadMeters)
+    validateEvidence(feature, index, roadById, coverage.bounds, maxNearestRoadMeters)
   ));
   const evidenceIds = evidence.map((feature) => feature.evidenceId);
   if (new Set(evidenceIds).size !== evidenceIds.length) fail('duplicate_evidence_id', 'source_tile.evidence contains a duplicate evidence_id.');
@@ -865,6 +880,7 @@ function normalizeTileInternal(rawInput, { maxNearestRoadMeters = DEFAULT_MAX_NE
     for (const roadId of feature.roadIds) roadById.get(roadId).evidence.push(feature);
   }
   const protectedGroups = validateProtectedGroups(raw.protected_groups, roadById);
+  const properties = normalizeCanvasProperties({ evidence, roadById, mergeProvenance, fail });
   const ownership = [];
   const audit = [];
   const workUnits = roads.map((road) => {
@@ -905,6 +921,7 @@ function normalizeTileInternal(rawInput, { maxNearestRoadMeters = DEFAULT_MAX_NE
       tile_address: tileAddress,
       coverage,
       work_units: workUnits,
+      properties,
       protected_groups: protectedGroups,
     },
     ownership,

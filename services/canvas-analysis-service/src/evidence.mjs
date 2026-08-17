@@ -10,6 +10,7 @@ const MAX_TILE_BYTES = 5_500_000;
 const RELEASE_PATTERN = /^cer1_[a-f0-9]{64}$/;
 const TILE_PATTERN = /^cet1_[a-f0-9]{64}$/;
 const WORK_UNIT_PATTERN = /^cewu1_[a-f0-9]{64}$/;
+const PROPERTY_PATTERN = /^cepr1_[a-f0-9]{64}$/;
 const ROLES = new Set(['opportunity', 'transit', 'uncertain', 'excluded']);
 const INDEX_DEGREES = 2;
 
@@ -152,6 +153,26 @@ function validateTile(tile, entry, releaseId) {
     if (unit.provenance.length < 1 || unit.confidence.score < 0 || unit.confidence.score > 1) throw new ServiceError(502, 'evidence_tile_schema_invalid', `Work unit ${unit.work_unit_id} has incomplete evidence.`);
     for (const neighborId of unit.neighbor_ids) requiredString(neighborId, 'neighbor ID', WORK_UNIT_PATTERN, 72);
   }
+  const properties = tile.properties === undefined ? [] : tile.properties;
+  if (!Array.isArray(properties)) throw new ServiceError(502, 'evidence_tile_schema_invalid', `Canvas evidence tile ${entry.tile_id} properties are invalid.`);
+  const propertyIds = new Set();
+  for (const property of properties) {
+    requiredString(property.property_id, 'property ID', PROPERTY_PATTERN, 72);
+    if (propertyIds.has(property.property_id)) throw new ServiceError(502, 'evidence_tile_schema_invalid', 'Canvas evidence tile contains duplicate properties.');
+    propertyIds.add(property.property_id);
+    requiredString(property.property_key, 'property key', null, 256);
+    requiredString(property.work_unit_id, 'property work unit ID', WORK_UNIT_PATTERN, 72);
+    if (!ids.has(property.work_unit_id) || !['residential', 'multifamily', 'commercial', 'government', 'institutional', 'vacant', 'unknown'].includes(property.property_type)
+      || !['eligible', 'excluded', 'review'].includes(property.canvass_eligibility)
+      || !Number.isInteger(property.door_count) || property.door_count < 1
+      || !property.confidence || !Number.isFinite(property.confidence.score) || property.confidence.score < 0 || property.confidence.score > 1
+      || !Array.isArray(property.confidence.reasons) || !property.confidence.reasons.length
+      || !Array.isArray(property.provenance) || !property.provenance.length
+      || !Number.isFinite(property.point?.lat) || !Number.isFinite(property.point?.lng)) {
+      throw new ServiceError(502, 'evidence_tile_schema_invalid', `Property ${property.property_id} is invalid.`);
+    }
+  }
+  if (entry.property_count !== undefined && entry.property_count !== properties.length) throw new ServiceError(502, 'evidence_tile_schema_invalid', `Canvas evidence tile ${entry.tile_id} property count differs from its manifest.`);
   if (entry.work_unit_count !== tile.work_units.length) throw new ServiceError(502, 'evidence_tile_schema_invalid', `Canvas evidence tile ${entry.tile_id} work-unit count differs from its manifest.`);
   if (canonicalStringify(tile.coverage?.bounds) !== canonicalStringify(entry.coverage_bounds)) throw new ServiceError(502, 'evidence_tile_schema_invalid', `Canvas evidence tile ${entry.tile_id} bounds differ from its manifest.`);
   const external = new Set(tile.external_neighbor_ids);

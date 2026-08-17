@@ -11,9 +11,15 @@ This contract is the provider-neutral boundary between an offline evidence compi
 
 The manifest deliberately identifies evidence sources by source ID, provider name, source dataset version, capture time, and license. No field assumes OpenStreetMap, a commercial vendor, or a particular tile system.
 
+## Property model
+
+New property-aware v1 tiles include an additive `properties` array while legacy street-only v1 tiles remain readable. Each signed property has a deterministic `cepr1_…` ID derived from its upstream conflation key, point geometry, linked work unit, separate `property_type` and `canvass_eligibility`, confidence score and reasons, door count, optional display address, and ordered provenance. Eligibility is one of `eligible`, `excluded`, or `review`; only `review` properties belong in the manager exception queue.
+
+The runtime selects properties by point-in-polygon, deduplicates their stable IDs across tile seams, and reports property-level automatic-resolution metrics. Streets remain connectivity and ownership metadata rather than the manager's primary classification unit.
+
 ## Work-unit model
 
-The stable ownership primitive is a short street/block-face work unit. `cewu1_…` IDs are derived from a source namespace, source feature ID, segment index, and millionth-based source range. Each unit contains:
+The stable connectivity primitive is a short street/block-face work unit. `cewu1_…` IDs are derived from a source namespace, source feature ID, segment index, and millionth-based source range. Each unit contains:
 
 - `canvas_role`: `opportunity`, `transit`, `uncertain`, or `excluded`;
 - score-derived confidence tier and ordered reasons;

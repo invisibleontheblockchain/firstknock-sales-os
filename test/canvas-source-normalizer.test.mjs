@@ -62,10 +62,11 @@ function road(featureId, coordinates, neighbors = [], legalAccess = 'public') {
   };
 }
 
-function evidence(evidenceId, kind, attributes, associations) {
+function evidence(evidenceId, kind, attributes, associations, property = null) {
   return {
     evidence_id: evidenceId,
     kind,
+    ...(property ? { property_key: property.key, location: property.location } : {}),
     attributes,
     associations,
     provenance: provenance('fixture-places', evidenceId),
@@ -107,10 +108,11 @@ function sourceFixture({ reverse = false } = {}) {
       address_key: '100-main-st',
       unit_keys: ['B', 'A'],
       occupancy: 'residential',
+      display_address: '100 Main St',
     }, [
       association(westIds.commercial, 'nearest_road', 10),
       association(westIds.neighborhood, 'address_street'),
-    ]),
+    ], { key: '100-main-st', location: { lat: 0.1, lng: 0.15 } }),
     evidence('building-main', 'building', { building_use: 'residential', unit_count: 99 }, [
       association(westIds.neighborhood, 'side_of_street'),
     ]),
@@ -119,9 +121,9 @@ function sourceFixture({ reverse = false } = {}) {
     }, [association(westIds.neighborhood, 'entrance_driveway')]),
     evidence('cul-entry-home', 'building', { building_use: 'house' }, [association(westIds['cul-entry'], 'side_of_street')]),
     evidence('cul-bowl-home', 'building', { building_use: 'detached' }, [association(westIds['cul-bowl'], 'side_of_street')]),
-    evidence('warehouse', 'building', { building_use: 'warehouse' }, [association(westIds.commercial, 'side_of_street')]),
+    evidence('warehouse', 'building', { building_use: 'warehouse' }, [association(westIds.commercial, 'side_of_street')], { key: 'warehouse-1', location: { lat: 0.35, lng: 0.15 } }),
     evidence('farm-field', 'land_use', { land_use: 'farmland' }, [association(westIds.field, 'area_overlap')]),
-    evidence('generic-building', 'building', { building_use: 'yes', unit_count: 77 }, [association(westIds.generic, 'side_of_street')]),
+    evidence('generic-building', 'building', { building_use: 'yes', unit_count: 77 }, [association(westIds.generic, 'side_of_street')], { key: 'generic-1', location: { lat: 0.55, lng: 0.15 } }),
     evidence('mixed-address', 'address', {
       address_key: '200-market-st', unit_keys: [], occupancy: 'mixed',
     }, [association(westIds.mixed, 'address_street')]),
@@ -230,6 +232,8 @@ test('source normalizer implements the four safe roles and the evidence priority
   assert.equal(units.get('denied').canvas_role, 'excluded', 'legal access is combined after residential classification');
   assert.equal(units.get('denied').opportunity, undefined);
   assert.equal(units.get('gated').canvas_role, 'uncertain');
+  assert.deepEqual(west.properties.map((property) => property.canvass_eligibility).sort(), ['eligible', 'excluded', 'review']);
+  assert.equal(west.properties.find((property) => property.property_key === '100-main-st').display_address, '100 Main St');
 });
 
 test('mixed use stays knockable and apartment fallback is wide without footprint-derived unit math', () => {
@@ -347,6 +351,7 @@ test('normalized fixture validates end to end through the production release bui
     });
     assert.equal(result.tile_count, 2);
     assert.equal(result.work_unit_count, 13);
+    assert.equal(result.topology.property_count, 3);
     assert.equal(result.topology.release_neighbor_references, 6);
   } finally {
     await rm(temporary, { recursive: true, force: true });

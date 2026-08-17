@@ -26,6 +26,7 @@ import { createInterface } from 'node:readline';
 import {
   CANVAS_EVIDENCE_SCHEMA,
   DEFAULT_CANVAS_EVIDENCE_LIMITS,
+  canonicalPropertyId,
   canonicalProtectedGroupId,
   canonicalReleaseId,
   canonicalStringify,
@@ -44,7 +45,7 @@ import { compileCanvasEvidenceTile } from './compiler.mjs';
 export const NORMALIZED_RELEASE_SCHEMA = 'firstknock.canvas-normalized-evidence-release';
 export const NORMALIZED_TILE_SCHEMA = 'firstknock.canvas-normalized-evidence-tile';
 export const UPLOAD_INVENTORY_SCHEMA = 'firstknock.canvas-evidence-upload-inventory';
-export const PRODUCTION_COMPILER_VERSION = 'firstknock-canvas-evidence-release-compiler/1.0.0';
+export const PRODUCTION_COMPILER_VERSION = 'firstknock-canvas-evidence-release-compiler/1.1.0';
 
 const NORMALIZED_SCHEMA_VERSION = 1;
 const DEFAULT_TOPOLOGY_BUCKETS = 256;
@@ -258,6 +259,18 @@ function validateGeometryWithinTile(unit, tileBounds, field) {
   }
 }
 
+function validatePointWithinTile(point, tileBounds, field) {
+  requireRecord(point, field);
+  const lat = Number(point.lat);
+  const lng = Number(point.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)
+    || lat < tileBounds.min_lat || lat > tileBounds.max_lat
+    || lng < tileBounds.min_lng || lng > tileBounds.max_lng) {
+    fail('property_outside_tile', `${field} is outside tile coverage.`, { field });
+  }
+  return { lat, lng };
+}
+
 function normalizeNeighbor(neighbor, field) {
   assertAllowedKeys(neighbor, new Set(['identity', 'scope']), field);
   const identity = canonicalWorkUnitDescriptor(neighbor.identity);
@@ -276,6 +289,7 @@ export function compileNormalizedCanvasEvidenceTile(rawInput, context) {
     'tile_address',
     'coverage',
     'work_units',
+    'properties',
     'protected_groups',
   ]), field);
   if (rawTile.schema !== NORMALIZED_TILE_SCHEMA || rawTile.schema_version !== NORMALIZED_SCHEMA_VERSION) {
@@ -398,12 +412,37 @@ export function compileNormalizedCanvasEvidenceTile(rawInput, context) {
     };
   });
 
+  const fixtureProperties = requireArray(rawTile.properties || [], `${field}.properties`).map((property, index) => {
+    const propertyField = `${field}.properties[${index}]`;
+    assertAllowedKeys(property, new Set(['property_key', 'work_unit_identity', 'point', 'property_type', 'canvass_eligibility', 'confidence', 'door_count', 'display_address', 'provenance']), propertyField);
+    const propertyKey = requireString(property.property_key, `${propertyField}.property_key`);
+    const propertyId = canonicalPropertyId(propertyKey);
+    const workUnitId = canonicalWorkUnitId(canonicalWorkUnitDescriptor(property.work_unit_identity));
+    if (!unitById.has(workUnitId)) fail('property_work_unit_missing', `${propertyField} references a work unit outside its tile.`, { property_id: propertyId });
+    validateUnitProvenance(property, propertyField, context.sourceById, context.generatedAt);
+    topologyRecords.push({ type: 'property', propertyId });
+    return {
+      fixture_key: propertyKey,
+      property_key: propertyKey,
+      work_unit: `unit:${workUnitId}`,
+      point: validatePointWithinTile(property.point, tileBounds, `${propertyField}.point`),
+      property_type: property.property_type,
+      canvass_eligibility: property.canvass_eligibility,
+      confidence: copyJson(property.confidence),
+      door_count: property.door_count,
+      ...(property.display_address === undefined ? {} : { display_address: requireString(property.display_address, `${propertyField}.display_address`) }),
+      provenance: copyJson(property.provenance),
+    };
+  });
+  if (new Set(fixtureProperties.map((property) => property.property_key)).size !== fixtureProperties.length) fail('duplicate_property', `${field}.properties contains duplicate property_key values.`, { field });
+
   const fixtureTile = {
     tile_address: tileAddress,
     coverage,
     external_neighbors: [...externalById.values()],
     protected_groups: fixtureGroups,
     work_units: fixtureUnits,
+    properties: fixtureProperties,
   };
   const compiled = compileCanvasEvidenceTile(fixtureTile, context.releaseId, context.limits);
   return { ...compiled, topologyRecords };
@@ -445,6 +484,10 @@ class TopologySpool {
         this.add(`target:${record.workUnitId}`, `U\t${record.workUnitId}\n`);
         continue;
       }
+      if (record.type === 'property') {
+        this.add(`property:${record.propertyId}`, `P\t${record.propertyId}\n`);
+        continue;
+      }
       const prefix = record.type === 'release_neighbor' ? 'R' : 'O';
       this.add(`target:${record.targetId}`, `${prefix}\t${record.targetId}\t${record.sourceId}\n`);
       if (record.type === 'release_neighbor') {
@@ -473,11 +516,13 @@ class TopologySpool {
     await this.flush();
     const files = (await readdir(this.directory)).filter((file) => file.endsWith('.tsv')).sort();
     let workUnitCount = 0;
+    let propertyCount = 0;
     let releaseEdgeCount = 0;
     let outsideEdgeCount = 0;
     let firstAsymmetricEdge = null;
     for (const file of files) {
       const units = new Set();
+      const properties = new Set();
       const requiredTargets = new Map();
       const outsideTargets = new Map();
       const edgeMasks = new Map();
@@ -489,6 +534,10 @@ class TopologySpool {
           if (units.has(parts[1])) fail('duplicate_release_work_unit', `Work unit ${parts[1]} appears in more than one normalized tile.`, { work_unit_id: parts[1] });
           units.add(parts[1]);
           workUnitCount += 1;
+        } else if (parts[0] === 'P') {
+          if (properties.has(parts[1])) fail('duplicate_release_property', `Property ${parts[1]} appears in more than one normalized tile.`, { property_id: parts[1] });
+          properties.add(parts[1]);
+          propertyCount += 1;
         } else if (parts[0] === 'R') {
           requiredTargets.set(parts[1], parts[2]);
           releaseEdgeCount += 1;
@@ -525,7 +574,7 @@ class TopologySpool {
     if (firstAsymmetricEdge) {
       fail('asymmetric_release_topology', 'Release-scoped neighbor links must be symmetric across tile boundaries.', firstAsymmetricEdge);
     }
-    return Object.freeze({ work_unit_count: workUnitCount, release_neighbor_references: releaseEdgeCount, outside_neighbor_references: outsideEdgeCount });
+    return Object.freeze({ work_unit_count: workUnitCount, property_count: propertyCount, release_neighbor_references: releaseEdgeCount, outside_neighbor_references: outsideEdgeCount });
   }
 }
 
@@ -786,6 +835,7 @@ async function verifyReleaseDirectory({ directory, expectedManifest, publicKey, 
       || sha256Hex(bytes) !== entry.sha256
       || bytes.byteLength !== entry.byte_length
       || metrics.work_unit_count !== entry.work_unit_count
+      || metrics.property_count !== entry.property_count
       || metrics.expected_opportunities !== entry.expected_opportunities
       || tile.coverage.area_sq_mi !== entry.coverage_area_sq_mi
       || !compareCanonical(tile.coverage.bounds, entry.coverage_bounds)

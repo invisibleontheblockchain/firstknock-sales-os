@@ -134,6 +134,24 @@ test('compiled work units carry all four roles, provenance, confidence, symmetri
   )));
 });
 
+test('signed tiles carry stable property classifications and select them by point geometry', async () => {
+  const fixture = await loadFixture();
+  const unit = fixture.tiles[0].work_units[0];
+  fixture.tiles[0].properties = [
+    { fixture_key: 'home-1', property_key: '100-oak-st', work_unit: unit.fixture_key, point: { lat: 33.45, lng: -112.079 }, property_type: 'residential', canvass_eligibility: 'eligible', confidence: { score: 0.98, reasons: ['residential_house'] }, door_count: 1, display_address: '100 Oak St', provenance: clone(unit.provenance) },
+    { fixture_key: 'business-1', property_key: '500-main-st', work_unit: unit.fixture_key, point: { lat: 33.4501, lng: -112.0789 }, property_type: 'commercial', canvass_eligibility: 'excluded', confidence: { score: 0.99, reasons: ['non_residential_commercial'] }, door_count: 1, provenance: clone(unit.provenance) },
+    { fixture_key: 'unknown-1', property_key: '401-lakeview-dr', work_unit: unit.fixture_key, point: { lat: 33.4502, lng: -112.0788 }, property_type: 'unknown', canvass_eligibility: 'review', confidence: { score: 0.63, reasons: ['property_use_unresolved'] }, door_count: 1, provenance: clone(unit.provenance) },
+  ];
+  const bundle = compileCanvasEvidenceFixture(fixture, keyOptions);
+  const tile = Object.values(bundle.tiles)[0];
+  const metrics = validateCanvasEvidenceTile(tile, bundle.manifest.limits);
+  assert.equal(metrics.property_count, 3);
+  assert.equal(metrics.eligible_door_count, 1);
+  assert.deepEqual(tile.properties.map((property) => property.canvass_eligibility).sort(), ['eligible', 'excluded', 'review']);
+  const selection = selectCanvasEvidenceWorkUnits(tile, [[-112.08, 33.449], [-112.078, 33.449], [-112.078, 33.451], [-112.08, 33.451]], bundle.manifest.limits);
+  assert.equal(selection.properties.length, 3);
+});
+
 test('tile validation enforces density, canonical byte, topology, and provenance limits', async () => {
   const bundle = await compileFixture();
   const tile = Object.values(bundle.tiles)[0];

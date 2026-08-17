@@ -18,6 +18,9 @@ const UNIT_ENTRY = `cewu1_${'3'.repeat(64)}`;
 const UNIT_BOWL = `cewu1_${'4'.repeat(64)}`;
 const UNIT_EXTERNAL = `cewu1_${'5'.repeat(64)}`;
 const GROUP_ID = `cepg1_${'6'.repeat(64)}`;
+const PROPERTY_ELIGIBLE = `cepr1_${'7'.repeat(64)}`;
+const PROPERTY_EXCLUDED = `cepr1_${'8'.repeat(64)}`;
+const PROPERTY_REVIEW = `cepr1_${'9'.repeat(64)}`;
 
 const provenance = (featureId) => [{
   source_id: 'fixture-source',
@@ -63,6 +66,11 @@ export function makeEvidenceFixture() {
         protected_group_id: GROUP_ID,
       },
     ].sort((left, right) => left.work_unit_id.localeCompare(right.work_unit_id)),
+    properties: [
+      { property_id: PROPERTY_ELIGIBLE, property_key: '100-sunset-ct', work_unit_id: UNIT_ENTRY, point: { lat: 33.4501, lng: -112.0789 }, property_type: 'residential', canvass_eligibility: 'eligible', confidence: { score: 0.98, tier: 'high', reasons: ['residential_house'] }, door_count: 1, display_address: '100 Sunset Ct', provenance: provenance('property/100') },
+      { property_id: PROPERTY_EXCLUDED, property_key: '102-sunset-ct', work_unit_id: UNIT_ENTRY, point: { lat: 33.4502, lng: -112.0788 }, property_type: 'commercial', canvass_eligibility: 'excluded', confidence: { score: 0.99, tier: 'high', reasons: ['non_residential_commercial'] }, door_count: 1, display_address: '102 Sunset Ct', provenance: provenance('property/102') },
+      { property_id: PROPERTY_REVIEW, property_key: '104-sunset-ct', work_unit_id: UNIT_BOWL, point: { lat: 33.4503, lng: -112.0787 }, property_type: 'unknown', canvass_eligibility: 'review', confidence: { score: 0.45, tier: 'low', reasons: ['property_use_unresolved'] }, door_count: 1, display_address: '104 Sunset Ct', provenance: provenance('property/104') },
+    ].sort((left, right) => left.property_id.localeCompare(right.property_id)),
     protected_groups: [{
       protected_group_id: GROUP_ID,
       kind: 'cul_de_sac',
@@ -101,6 +109,7 @@ export function makeEvidenceFixture() {
       sha256: sha256Hex(tileBytes),
       byte_length: tileBytes.byteLength,
       work_unit_count: tile.work_units.length,
+      property_count: tile.properties.length,
       coverage_area_sq_mi: tile.coverage.area_sq_mi,
       coverage_bounds: tile.coverage.bounds,
       expected_opportunities: 23,
@@ -116,6 +125,6 @@ export function makeEvidenceFixture() {
     tileBytes,
     manifestUrl: 'https://evidence.test/releases/fixture/manifest.json',
     tileUrl: `https://evidence.test/releases/fixture/tiles/${TILE_ID}.json`,
-    ids: { release: RELEASE_ID, tile: TILE_ID, entry: UNIT_ENTRY, bowl: UNIT_BOWL, external: UNIT_EXTERNAL, group: GROUP_ID },
+    ids: { release: RELEASE_ID, tile: TILE_ID, entry: UNIT_ENTRY, bowl: UNIT_BOWL, external: UNIT_EXTERNAL, group: GROUP_ID, propertyEligible: PROPERTY_ELIGIBLE, propertyExcluded: PROPERTY_EXCLUDED, propertyReview: PROPERTY_REVIEW },
   };
 }

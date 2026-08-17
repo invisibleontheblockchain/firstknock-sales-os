@@ -16,7 +16,7 @@ raw providers
   -> Canvas analysis service
 ```
 
-The upstream ETL owns source licensing, download provenance, address/building deduplication, residential-access classification, opportunity estimates, road segmentation, tile assignment, and initial neighbor discovery. The release builder independently enforces the Canvas evidence v1 output contract and refuses ambiguous graph boundaries.
+The upstream ETL owns source licensing, download provenance, address/building/parcel conflation into stable `property_key` values, deterministic property type and canvass eligibility signals, road segmentation, tile assignment, and initial neighbor discovery. Property-aware inputs are the production target; omitted `properties` arrays are supported only for compatibility with existing street-only releases. The release builder independently enforces the Canvas evidence v1 output contract and refuses ambiguous graph boundaries.
 
 ## Normalized release metadata
 
@@ -81,6 +81,33 @@ Each `.json` file can contain one tile or an array of tiles. Each nonblank `.jso
       "max_lat": 33.5
     }
   },
+  "properties": [
+    {
+      "property_key": "usps-or-assessor-stable-key",
+      "work_unit_identity": {
+        "source_namespace": "overture-segment",
+        "source_feature_id": "stable-upstream-feature-id",
+        "segment_index": 0,
+        "from_millionths": 0,
+        "to_millionths": 1000000
+      },
+      "point": { "lat": 33.45, "lng": -112.18 },
+      "property_type": "residential",
+      "canvass_eligibility": "eligible",
+      "confidence": { "score": 0.98, "reasons": ["delivery_point_verified", "residential_single_family"] },
+      "door_count": 1,
+      "display_address": "100 Oak St",
+      "provenance": [
+        {
+          "source_id": "overture-transportation",
+          "dataset_version": "upstream-version-from-etl",
+          "feature_id": "property-feature-id",
+          "observed_at": "2026-08-13T00:00:00.000Z",
+          "license": "license-identifier-recorded-by-etl"
+        }
+      ]
+    }
+  ],
   "work_units": [
     {
       "identity": {
@@ -233,4 +260,3 @@ The pointer update is intentionally outside this builder because it is mutable d
 - Tile bounds must stay inside release bounds, work-unit geometry must stay inside its tile bounds, source provenance must match signed release source metadata, and source timestamps cannot be later than release generation.
 
 Before promoting a national release, run validation on the exact normalized input, build once with the production signer, upload from the generated allowlist, download a sample from each geographic partition plus all seam/error reports, verify hashes and signature in the analysis service, and retain the normalized input inventory and ETL version for rollback and audit.
-
