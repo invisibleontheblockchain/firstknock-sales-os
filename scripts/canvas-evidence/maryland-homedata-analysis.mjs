@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { classifyCanvasPropertyEntity } from '../../src/components/logic/canvasPropertyClassification.js';
+import { canonicalWorkUnitId } from './contract.mjs';
 import { pointInRing } from './overture/geometry.mjs';
 
 const FIELD = Object.freeze({
@@ -18,6 +19,8 @@ const zip = (value) => text(value).slice(0, 5);
 const point = (row) => ({ lat: Number(row[FIELD.lat]), lng: Number(row[FIELD.lng]) });
 const distance = (a, b) => Math.hypot((a.lat - b.lat) * 111_320, (a.lng - b.lng) * 111_320 * Math.cos((a.lat + b.lat) * Math.PI / 360));
 const canonical = (value) => JSON.stringify(value, Object.keys(value).sort());
+export const MARYLAND_HOMEDATA_MAPPING_VERSION = 'maryland-homedata-use-v1';
+export const canonicalMarylandHomeDataRowsHash = (rows) => createHash('sha256').update(rows.map((row) => canonical(row)).join('\n')).digest('hex');
 const frequency = (rows, field) => Object.entries(rows.reduce((out, row) => { const value = String(row[field] ?? '').trim() || '(missing)'; out[value] = (out[value] || 0) + 1; return out; }, {})).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([raw_value, count]) => ({ raw_value, count }));
 
 function homeAddress(row) {
@@ -68,6 +71,25 @@ function classificationFeature(item) {
   return { point: item.location };
 }
 
+const TRANSITION_STATES = ['eligible', 'excluded', 'review'];
+const transitionMatrix = (records) => Object.fromEntries(TRANSITION_STATES.flatMap((from) => TRANSITION_STATES.map((to) => [`${from}_to_${to}`, records.filter(({ property, result }) => property.canvass_eligibility === from && result.canvass_eligibility === to).length])));
+const evidenceSummary = (items) => items.map((item) => ({ evidence_id: item.evidence_id || `${item.kind}:unspecified`, kind: item.kind, attributes: item.attributes, source_ids: [...new Set((item.provenance || []).map((source) => source.source_id))].sort() })).sort((left, right) => left.evidence_id.localeCompare(right.evidence_id));
+const mappingLabel = (matches) => [...new Set(matches.map((match) => [match.use.raw_land_use || '(missing)', match.use.raw_exempt_class || '', match.use.mapping_basis, match.use.classifier_value || 'no_assertion'].join(' | ')))].sort().join(' + ') || 'no_high_confidence_homedata_assertion';
+
+function auditExample(record, evidenceByProperty) {
+  const { property, result, allEvidenceResult, acceptedMatches, assessor, conflicting_assessor_values: conflict } = record;
+  return {
+    address: property.display_address,
+    fk_property_id: property.fk_property_id,
+    baseline: { property_type: property.property_type, canvass_eligibility: property.canvass_eligibility, reason_codes: property.confidence?.reasons || [] },
+    existing_firstknock_evidence: evidenceSummary(evidenceByProperty.get(property.property_key) || []),
+    homedata_records: assessor.map((match) => ({ account_id: match.account_id, raw_land_use: match.use.raw_land_use, raw_exempt_class: match.use.raw_exempt_class, normalized_assertion: match.use.classifier_value, mapping_basis: match.use.mapping_basis, match_method: match.method, match_confidence: match.confidence, distance_m: match.distance_m, allowed_to_influence: acceptedMatches.includes(match) })),
+    proposed: { property_type: result.property_type, canvass_eligibility: result.canvass_eligibility, reason_codes: result.classification_reasons },
+    all_matched_homedata_counterfactual: { property_type: allEvidenceResult.property_type, canvass_eligibility: allEvidenceResult.canvass_eligibility, reason_codes: allEvidenceResult.classification_reasons },
+    evidence_conflicts: conflict || allEvidenceResult.classification_reasons.includes('conflicting_property_use'),
+  };
+}
+
 function isGenericCohort(property, evidence, residentialBuildings) {
   if (property.canvass_eligibility !== 'review') return false;
   const uses = evidence.filter((item) => item.kind === 'building').map((item) => item.attributes?.building_use);
@@ -77,16 +99,16 @@ function isGenericCohort(property, evidence, residentialBuildings) {
   return uses.includes('yes') && !uses.some((use) => !['yes', null, undefined].includes(use)) && context.length === 0 && !restricted && !nearby;
 }
 
-export function analyzeMarylandHomeData({ rows, polygon, sourceTile, normalizedTiles, sourceVersion = 'unknown' }) {
+export function conflateMarylandHomeData({ rows, polygon, properties }) {
   const ring = polygon.map(({ lng, lat }) => [Number(lng), Number(lat)]);
   const areaRows = rows.filter((row) => Number.isFinite(point(row).lat) && Number.isFinite(point(row).lng) && pointInRing(point(row), ring)).sort((a, b) => String(a[FIELD.account]).localeCompare(String(b[FIELD.account])));
-  const properties = normalizedTiles.flatMap((tile) => tile.properties || []).sort((a, b) => a.fk_property_id.localeCompare(b.fk_property_id));
+  const orderedProperties = [...properties].sort((a, b) => a.fk_property_id.localeCompare(b.fk_property_id));
   const byFull = new Map(), byRelaxed = new Map();
-  for (const property of properties) { const address = propertyAddress(property); byFull.set(fullKey(address), [...(byFull.get(fullKey(address)) || []), property]); byRelaxed.set(relaxedKey(address), [...(byRelaxed.get(relaxedKey(address)) || []), property]); }
+  for (const property of orderedProperties) { const address = propertyAddress(property); byFull.set(fullKey(address), [...(byFull.get(fullKey(address)) || []), property]); byRelaxed.set(relaxedKey(address), [...(byRelaxed.get(relaxedKey(address)) || []), property]); }
   const matches = areaRows.map((row) => {
     const address = homeAddress(row); const exact = byFull.get(fullKey(address)) || []; const relaxed = exact.length ? [] : byRelaxed.get(relaxedKey(address)) || [];
     let candidates = exact.length ? exact : relaxed; let method = exact.length ? 'exact_normalized_address' : relaxed.length ? 'normalized_address_city_relaxed' : 'unmatched';
-    if (!candidates.length) { candidates = properties.filter((property) => distance(point(row), property.point) <= 15); method = candidates.length ? 'spatial_only' : 'unmatched'; }
+    if (!candidates.length) { candidates = orderedProperties.filter((property) => distance(point(row), property.point) <= 15); method = candidates.length ? 'spatial_only' : 'unmatched'; }
     const ranked = candidates.map((property) => ({ property, distance_m: distance(point(row), property.point) })).sort((a, b) => a.distance_m - b.distance_m || a.property.fk_property_id.localeCompare(b.property.fk_property_id));
     const ambiguous = ranked.length > 1 && (!Number.isFinite(ranked[0].distance_m) || ranked[1].distance_m - ranked[0].distance_m < 8);
     const selected = ranked.length && !ambiguous ? ranked[0] : null;
@@ -95,17 +117,30 @@ export function analyzeMarylandHomeData({ rows, polygon, sourceTile, normalizedT
   });
   const matched = matches.filter((match) => match.fk_property_id); const byProperty = new Map();
   for (const match of matched) byProperty.set(match.fk_property_id, [...(byProperty.get(match.fk_property_id) || []), match]);
+  return { areaRows, matches, matched, byProperty, properties: orderedProperties };
+}
+
+export function analyzeMarylandHomeData({ rows, polygon, sourceTile, normalizedTiles, sourceVersion = 'unknown' }) {
+  const properties = normalizedTiles.flatMap((tile) => tile.properties || []);
+  const conflation = conflateMarylandHomeData({ rows, polygon, properties });
+  const { areaRows, matches, matched, byProperty } = conflation;
   const evidenceByProperty = new Map(); for (const item of sourceTile.evidence || []) if (item.property_key) evidenceByProperty.set(item.property_key, [...(evidenceByProperty.get(item.property_key) || []), item]);
+  const legalAccessByRoad = new Map((sourceTile.road_segments || []).map((road) => [canonicalWorkUnitId(road.identity), road.legal_access]));
   const residentialBuildings = (sourceTile.evidence || []).filter((item) => item.kind === 'building' && ['residential', 'house', 'detached', 'semidetached_house', 'terrace', 'apartments'].includes(item.attributes?.building_use) && item.location);
   const genericIds = new Set(properties.filter((property) => isGenericCohort(property, evidenceByProperty.get(property.property_key) || [], residentialBuildings)).map((property) => property.fk_property_id));
   const simulated = properties.map((property) => {
     const sourceEvidence = (evidenceByProperty.get(property.property_key) || []).map(classificationFeature);
-    if (property.confidence?.reasons?.includes('canvass_access_private_road')) sourceEvidence.push({ point: property.point, canvass_access: 'private_road' });
+    if (property.confidence?.reasons?.includes('canvass_access_private_road') || ['denied', 'unknown'].includes(legalAccessByRoad.get(canonicalWorkUnitId(property.work_unit_identity)))) sourceEvidence.push({ point: property.point, canvass_access: 'private_road' });
     const assessor = byProperty.get(property.fk_property_id) || [];
-    const values = [...new Set(assessor.map((item) => item.use.classifier_value).filter(Boolean))]; const raw = assessor.map((item) => ({ account_id: item.account_id, ...item.use }));
+    const acceptedMatches = assessor.filter((item) => item.confidence === 'high');
+    const values = [...new Set(acceptedMatches.map((item) => item.use.classifier_value).filter(Boolean))];
+    const allValues = [...new Set(assessor.map((item) => item.use.classifier_value).filter(Boolean))];
+    const raw = assessor.map((item) => ({ account_id: item.account_id, match_method: item.method, match_confidence: item.confidence, ...item.use }));
     const baselineResult = classifyCanvasPropertyEntity({ property_id: property.property_key, features: sourceEvidence });
-    const result = classifyCanvasPropertyEntity({ property_id: property.property_key, features: [...sourceEvidence, ...values.map((assessor_class) => ({ point: property.point, assessor_class }))] });
-    return { property, baselineResult, result, values, raw, conflicting_assessor_values: values.length > 1 };
+    const acceptedResult = classifyCanvasPropertyEntity({ property_id: property.property_key, features: [...sourceEvidence, ...values.map((assessor_class) => ({ point: property.point, assessor_class }))] });
+    const allEvidenceResult = classifyCanvasPropertyEntity({ property_id: property.property_key, features: [...sourceEvidence, ...allValues.map((assessor_class) => ({ point: property.point, assessor_class }))] });
+    const result = property.canvass_eligibility !== 'review' && allEvidenceResult.canvass_eligibility === 'review' ? allEvidenceResult : acceptedResult;
+    return { property, baselineResult, result, allEvidenceResult, values, raw, assessor, acceptedMatches, conflicting_assessor_values: allValues.length > 1 };
   });
   const reviewSimulation = simulated.filter(({ property }) => property.canvass_eligibility === 'review');
   const moved = reviewSimulation.filter(({ result }) => result.canvass_eligibility !== 'review');
@@ -118,13 +153,31 @@ export function analyzeMarylandHomeData({ rows, polygon, sourceTile, normalizedT
   const counts = (records, key) => records.reduce((out, item) => { const value = item[key]; out[value] = (out[value] || 0) + 1; return out; }, {});
   const classifierParityMismatches = simulated.filter(({ property, baselineResult }) => baselineResult.canvass_eligibility !== property.canvass_eligibility);
   const controlConflicts = simulated.filter(({ property, baselineResult, result }) => property.canvass_eligibility !== 'review' && baselineResult.canvass_eligibility === property.canvass_eligibility && result.canvass_eligibility === 'review');
+  const allControlDisagreements = simulated.filter(({ property, baselineResult, allEvidenceResult }) => property.canvass_eligibility !== 'review' && baselineResult.canvass_eligibility === property.canvass_eligibility && allEvidenceResult.canvass_eligibility === 'review');
+  const matrix = transitionMatrix(simulated);
+  const transitionIds = Object.fromEntries(TRANSITION_STATES.flatMap((from) => TRANSITION_STATES.map((to) => [`${from}_to_${to}`, simulated.filter(({ property, result }) => property.canvass_eligibility === from && result.canvass_eligibility === to).map(({ property }) => property.fk_property_id).sort()])));
+  const transitionMappingBreakdown = Object.entries(reviewSimulation.reduce((out, record) => {
+    const transition = `review_to_${record.result.canvass_eligibility}`;
+    const mapping = mappingLabel(record.acceptedMatches);
+    const key = `${transition}\u0000${mapping}`;
+    out[key] = (out[key] || 0) + 1;
+    return out;
+  }, {})).map(([key, count]) => { const [transition, mapping_rule] = key.split('\u0000'); return { transition, mapping_rule, count }; }).sort((left, right) => left.transition.localeCompare(right.transition) || right.count - left.count || left.mapping_rule.localeCompare(right.mapping_rule));
+  const landUseCount = new Map(useInventory.map((item) => [item.raw_value, item.count]));
+  const sample = (records, limit = records.length) => records.slice().sort((left, right) => left.property.fk_property_id.localeCompare(right.property.fk_property_id)).slice(0, limit).map((record) => auditExample(record, evidenceByProperty));
+  const rareUseCases = simulated.filter(({ assessor }) => assessor.some((match) => (landUseCount.get(match.use.raw_land_use) || 0) <= 15));
+  const multifamilyCases = simulated.filter(({ property, assessor }) => property.property_type === 'multifamily' || assessor.some((match) => match.use.raw_land_use === 'Apartments (M)'));
+  const agriculturalMixedCases = simulated.filter(({ assessor, result }) => assessor.some((match) => match.use.raw_land_use === 'Agricultural (A)') && result.classification_reasons.some((reason) => reason.startsWith('residential_')));
+  const exemptCases = simulated.filter(({ assessor }) => assessor.some((match) => match.use.raw_land_use === 'Exempt (E)'));
   return {
     schema: 'firstknock.canvas-maryland-homedata-profile', schema_version: 1, classifier_changed: false,
-    source: { source_id: 'maryland-sdat-homedata', dataset_id: 'ed4q-f8tm', filtered_view_id: 'kb22-is2w', dataset_version: sourceVersion, license: 'PUBLIC_DOMAIN', selected_rows_sha256: createHash('sha256').update(areaRows.map((row) => canonical(row)).join('\n')).digest('hex') },
-    coverage: { input_bbox_records: rows.length, total_homedata_records_in_polygon: areaRows.length, matched_homedata_records: matched.length, unmatched_homedata_records: matches.filter((item) => !item.fk_property_id && item.candidate_fk_property_ids.length === 0).length, ambiguous_homedata_records: matches.filter((item) => !item.fk_property_id && item.candidate_fk_property_ids.length > 0).length, firstknock_properties: properties.length, firstknock_properties_matched: byProperty.size, firstknock_properties_without_match: properties.length - byProperty.size, one_to_one_matches: [...byProperty.values()].filter((items) => items.length === 1).length, one_to_many_firstknock_properties: oneToMany, many_to_one_homedata_records: matches.filter((item) => item.candidate_fk_property_ids.length > 1).length, exact_normalized_address_matches: exact, spatial_only_matches: matched.filter((item) => item.method === 'spatial_only').length, match_method_distribution: counts(matched, 'method'), match_confidence_distribution: counts(matches, 'confidence') },
+    source: { source_id: 'maryland-sdat-homedata', dataset_id: 'ed4q-f8tm', filtered_view_id: 'kb22-is2w', dataset_version: sourceVersion, license: 'PUBLIC_DOMAIN', selected_rows_sha256: canonicalMarylandHomeDataRowsHash(areaRows) },
+    coverage: { input_bbox_records: rows.length, total_homedata_records_in_polygon: areaRows.length, matched_homedata_records: matched.length, unmatched_homedata_records: matches.filter((item) => !item.fk_property_id && item.candidate_fk_property_ids.length === 0).length, ambiguous_homedata_records: matches.filter((item) => !item.fk_property_id && item.candidate_fk_property_ids.length > 0).length, firstknock_properties: properties.length, firstknock_properties_matched: byProperty.size, firstknock_properties_without_match: properties.length - byProperty.size, one_to_one_matches: [...byProperty.values()].filter((items) => items.length === 1).length, one_to_many_firstknock_properties: oneToMany, many_to_one_homedata_records: matches.filter((item) => item.candidate_fk_property_ids.length > 1).length, exact_normalized_address_matches: exact, address_zip_matches: matched.filter((item) => item.method === 'normalized_address_city_relaxed').length, address_spatial_confirmed_matches: matched.filter((item) => item.method === 'normalized_address_city_relaxed' && item.confidence === 'high').length, spatial_only_matches: matched.filter((item) => item.method === 'spatial_only').length, ambiguous_matches: matches.filter((item) => !item.fk_property_id && item.candidate_fk_property_ids.length > 0).length, high_confidence_matches_allowed_to_influence: matched.filter((item) => item.confidence === 'high').length, medium_confidence_matches_held_from_automatic_influence: matched.filter((item) => item.confidence === 'medium').length, match_method_distribution: counts(matched, 'method'), match_confidence_distribution: counts(matches, 'confidence') },
     review_coverage: { review_properties: 557, review_properties_matched: reviewSimulation.filter(({ property }) => byProperty.has(property.fk_property_id)).length, review_properties_with_meaningful_use: meaningfulReview, meaningful_use_distribution: useDistribution(reviewSimulation.map(({ property }) => property.fk_property_id)), generic_cohort_properties: genericIds.size, generic_cohort_matched: [...genericIds].filter((id) => byProperty.has(id)).length, generic_cohort_with_meaningful_use: meaningfulGeneric, generic_cohort_use_distribution: useDistribution(genericIds) },
     signal_inventory: { land_use: useInventory, exempt_class: frequency(areaRows, FIELD.exemptClass), dwelling_type: frequency(areaRows, FIELD.dwellingType), building_style: frequency(areaRows, FIELD.buildingStyle), dwelling_units: frequency(areaRows, FIELD.dwellingUnits), tax_class: frequency(areaRows, FIELD.taxClass), county_property_code: frequency(areaRows, FIELD.countyPropertyCode), owner_occupancy_not_property_use: frequency(areaRows, FIELD.ownerOccupancy) },
-    dry_run: { current: { eligible: 619, excluded: 46, review: 557 }, proposed: { eligible: simulated.filter(({ result }) => result.canvass_eligibility === 'eligible').length, excluded: simulated.filter(({ result }) => result.canvass_eligibility === 'excluded').length, review: simulated.filter(({ result }) => result.canvass_eligibility === 'review').length }, movements: { homedata_residential_review_to_eligible: moved.filter(({ result, values }) => result.canvass_eligibility === 'eligible' && values.some((value) => ['residential', 'multifamily'].includes(value))).length, homedata_commercial_review_to_excluded: moved.filter(({ result, values }) => result.canvass_eligibility === 'excluded' && values.includes('commercial')).length, homedata_institutional_government_review_to_excluded: moved.filter(({ result, values }) => result.canvass_eligibility === 'excluded' && values.some((value) => ['school', 'religious', 'government'].includes(value))).length, conflicting_evidence_remains_review: reviewSimulation.filter(({ result }) => result.canvass_eligibility === 'review' && result.classification_reasons.includes('conflicting_property_use')).length, still_insufficient_remains_review: reviewSimulation.filter(({ result }) => result.canvass_eligibility === 'review' && result.classification_reasons.includes('property_use_unresolved')).length, access_restricted_remains_review: reviewSimulation.filter(({ result }) => result.canvass_eligibility === 'review' && result.classification_reasons.some((reason) => reason.startsWith('canvass_access_'))).length }, classifier_parity_mismatches_without_homedata: classifierParityMismatches.length, existing_control_conflicts_moved_to_review: { total: controlConflicts.length, eligible_to_review: controlConflicts.filter(({ property }) => property.canvass_eligibility === 'eligible').length, excluded_to_review: controlConflicts.filter(({ property }) => property.canvass_eligibility === 'excluded').length, samples: controlConflicts.slice(0, 20).map(({ property, result, values }) => ({ fk_property_id: property.fk_property_id, address: property.display_address, current: property.canvass_eligibility, simulated: result.canvass_eligibility, current_reasons: property.confidence?.reasons || [], simulated_reasons: result.classification_reasons, homedata_values: values })) }, proposed_only: true },
+    classification_transition_audit: { transition_matrix: matrix, property_ids_by_transition: transitionIds, opposite_decision_flips: matrix.eligible_to_excluded + matrix.excluded_to_eligible, excluded_count_reconciliation: { baseline_excluded: 46, excluded_to_review: matrix.excluded_to_review, excluded_to_eligible: matrix.excluded_to_eligible, review_to_excluded: matrix.review_to_excluded, eligible_to_excluded: matrix.eligible_to_excluded, simulated_excluded: matrix.excluded_to_excluded + matrix.review_to_excluded + matrix.eligible_to_excluded }, review_transition_mapping_breakdown: transitionMappingBreakdown, deterministic_samples: { review_to_eligible: sample(reviewSimulation.filter(({ result }) => result.canvass_eligibility === 'eligible'), 20), review_to_excluded: sample(reviewSimulation.filter(({ result }) => result.canvass_eligibility === 'excluded'), 10), all_control_conflicts: sample(allControlDisagreements), rare_use_codes: sample(rareUseCases), multifamily_or_apartment: sample(multifamilyCases), agricultural_residential_mixed: sample(agriculturalMixedCases), exempt_government_religious: sample(exemptCases) } },
+    policy_lock: { property_type_separate_from_canvass_eligibility: true, residential_use_does_not_override_access_private_road_gated_or_conflict_evidence: true, multifamily_property_type_preserved_separately: true, automatic_influence_requires_high_confidence_match: true, ambiguous_and_spatial_only_matches_remain_review: true },
+    dry_run: { current: { eligible: 619, excluded: 46, review: 557 }, proposed: { eligible: simulated.filter(({ result }) => result.canvass_eligibility === 'eligible').length, excluded: simulated.filter(({ result }) => result.canvass_eligibility === 'excluded').length, review: simulated.filter(({ result }) => result.canvass_eligibility === 'review').length }, movements: { homedata_residential_review_to_eligible: moved.filter(({ result, values }) => result.canvass_eligibility === 'eligible' && values.some((value) => ['residential', 'multifamily'].includes(value))).length, homedata_commercial_review_to_excluded: moved.filter(({ result, values }) => result.canvass_eligibility === 'excluded' && values.includes('commercial')).length, homedata_institutional_government_review_to_excluded: moved.filter(({ result, values }) => result.canvass_eligibility === 'excluded' && values.some((value) => ['school', 'religious', 'government'].includes(value))).length, conflicting_evidence_remains_review: reviewSimulation.filter(({ result }) => result.canvass_eligibility === 'review' && result.classification_reasons.includes('conflicting_property_use')).length, still_insufficient_remains_review: reviewSimulation.filter(({ result }) => result.canvass_eligibility === 'review' && result.classification_reasons.includes('property_use_unresolved')).length, access_restricted_remains_review: reviewSimulation.filter(({ result }) => result.canvass_eligibility === 'review' && result.classification_reasons.some((reason) => reason.startsWith('canvass_access_'))).length }, classifier_parity_mismatches_without_homedata: classifierParityMismatches.length, all_homedata_control_disagreements: allControlDisagreements.length, existing_control_conflicts_moved_to_review: { total: controlConflicts.length, eligible_to_review: controlConflicts.filter(({ property }) => property.canvass_eligibility === 'eligible').length, excluded_to_review: controlConflicts.filter(({ property }) => property.canvass_eligibility === 'excluded').length, samples: controlConflicts.slice(0, 20).map(({ property, result, values }) => ({ fk_property_id: property.fk_property_id, address: property.display_address, current: property.canvass_eligibility, simulated: result.canvass_eligibility, current_reasons: property.confidence?.reasons || [], simulated_reasons: result.classification_reasons, homedata_values: values })) }, proposed_only: true },
     production_adapter_recommendation: meaningfulGeneric >= genericIds.size * 0.5 ? 'material_coverage_build_adapter' : 'insufficient_coverage_do_not_build_adapter',
   };
 }

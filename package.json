@@ -23,6 +23,7 @@
     "canvas:evidence:build": "node scripts/canvas-evidence/build-release.mjs",
     "canvas:overture:region": "node scripts/canvas-evidence/overture/build-region.mjs",
     "canvas:maryland:property-overlay": "node scripts/canvas-evidence/overture/build-maryland-overlay.mjs",
+    "canvas:maryland:homedata-audit": "node scripts/canvas-evidence/maryland-homedata-analysis.mjs",
     "smoke:fieldroutes:readonly": "node scripts/fieldroutes-readonly-smoke.mjs",
     "typecheck": "tsc -p ./jsconfig.validation.json",
     "validate:dependencies": "npm audit --audit-level=high",
