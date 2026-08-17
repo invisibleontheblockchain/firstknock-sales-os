@@ -44,7 +44,7 @@ export default function RouteModeSetting() {
     setRouteMode(nextMode);
     try { localStorage.setItem('fk_routeMode', nextMode); } catch {}
     window.dispatchEvent(new CustomEvent('fk-route-mode-changed', { detail: { routeMode: nextMode } }));
-    toast.success(`${nextMode === 'canvas' ? 'Canvas' : 'Precision'} mode active`);
+    toast.success(`${nextMode === 'canvas' ? 'Standard' : 'Precision'} mode active`);
   };
 
   return (
@@ -53,7 +53,7 @@ export default function RouteModeSetting() {
       <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-3">
       <RouteModeToggle routeMode={routeMode} onChange={selectMode} className="w-full" />
       <p className="mt-2 text-[9px] text-gray-600 leading-relaxed">
-        Canvas divides drawn areas into rep territories. Precision pulls property data and builds door routes.
+        Standard divides drawn areas into rep territories. Precision pulls property data and builds door routes.
         </p>
       </div>
     </div>

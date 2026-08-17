@@ -113,7 +113,7 @@ export default function MapToolbar({
     setRouteMode(nextMode);
     try {localStorage.setItem('fk_routeMode', nextMode);} catch {}
     window.dispatchEvent(new CustomEvent('fk-route-mode-changed', { detail: { routeMode: nextMode } }));
-    toast.success(`${nextMode === 'canvas' ? 'Canvas' : 'Precision'} mode active`);
+    toast.success(`${nextMode === 'canvas' ? 'Standard' : 'Precision'} mode active`);
   };
 
   useEffect(() => {

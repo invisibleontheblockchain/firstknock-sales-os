@@ -3,7 +3,7 @@ import { Target, Users } from 'lucide-react';
 
 export default function RouteModeToggle({ routeMode, onChange, className = '' }) {
   const modes = [
-    { key: 'canvas', label: 'CANVAS', shortLabel: 'CAN', icon: Users, activeClass: 'bg-purple-600 text-white' },
+    { key: 'canvas', label: 'STANDARD', shortLabel: 'STD', icon: Users, activeClass: 'bg-purple-600 text-white' },
     { key: 'precision', label: 'PRECISION', shortLabel: 'PRE', icon: Target, activeClass: 'bg-yellow-500 text-black' },
   ];
 
