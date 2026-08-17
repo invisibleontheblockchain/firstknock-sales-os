@@ -2299,7 +2299,7 @@ export default function Home() {
                         setActiveDrawnPolygon(confirmedPolygon); setActiveDraftPolygon([]); setDrawingMode(false);
                         if (routeMode === 'canvas') {
                             setShowCompare(true);
-                            toast.success('Canvas global area selected. Choose reps or a territory count, then divide the streets.');
+                            toast.success('Canvas area selected. Property counts will load next, then choose how many balanced territories to create.');
                         } else {
                             toast.success("Freehand area selected! Choose property count and run Sandbox Preview.");
                         }

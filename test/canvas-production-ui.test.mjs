@@ -721,7 +721,7 @@ test('Canvas builder asks only for subdivision count and keeps assignment in the
   assert.match(builder, /const sendable = deployable\s*&& !planStaleReason/);
   assert.match(builder, /if \(planStaleReason\) return toast\.error\('The territory preview is out of date\./);
   assert.match(workspace, /Likely homes/);
-  assert.match(workspace, /balances residential opportunity—not square miles/);
+  assert.match(workspace, /balances eligible properties—not street length or square miles/);
   assert.match(workspace, /max workload deviation/);
 });
 
