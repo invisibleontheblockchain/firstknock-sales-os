@@ -1,0 +1,128 @@
+{
+  "schema": "firstknock.canvas-source-artifact-manifest",
+  "schema_version": 1,
+  "benchmark": "Damascus Property Benchmark v3",
+  "status": "production_authoritative",
+  "created_at": "2026-08-17T06:20:00.000Z",
+  "artifact_prefix": "canvas-source-artifacts/maryland/damascus-v3/",
+  "policy": {
+    "immutable": true,
+    "overwrite_allowed": false,
+    "raw_sources_in_git_allowed": false
+  },
+  "extraction": {
+    "overture_release": "2026-07-22.0",
+    "polygon_path": "src/data/damascusPropertyBenchmarkV2Polygon.json",
+    "polygon_sha256": "4fff7e75df68dc441e524ea0b702d7e407aee14c46415be27fbc7c8ed1d0f196",
+    "bbox": [-77.2074509, 39.2576218, -77.1518326, 39.2897273],
+    "buffer_degrees": 0,
+    "buffer_meters": 0,
+    "reader": "overturemaps 1.0.1",
+    "reader_options": {
+      "format": "geojson",
+      "geometry": true,
+      "all_columns": true,
+      "feature_id_location": "top_level"
+    },
+    "themes": {
+      "addresses": { "theme": "addresses", "type": "address", "source_predicate": "bbox_intersects", "post_filter": "address point in exact manager polygon" },
+      "buildings": { "theme": "buildings", "type": "building", "source_predicate": "bbox_intersects", "post_filter": "none; linked only when footprint contains an in-polygon address point" },
+      "places": { "theme": "places", "type": "place", "source_predicate": "bbox_intersects", "post_filter": "none; classifier consumes only mapped categories in linked context" }
+    },
+    "place_context_radius_meters": 35,
+    "normalization_post_filter_version": "buildOvertureCanvasRegion@abc27a8f"
+  },
+  "versions": {
+    "repository_commit": "abc27a8f",
+    "property_identity": "fk-property-key-v1",
+    "osm_assertion_normalization": "osm-assertions-v2",
+    "homedata_mapping": "maryland-homedata-use-v1",
+    "release_compiler": "firstknock-canvas-evidence-release-compiler/1.1.0",
+    "splitter": "canvas_residential_territory_v4_connected_balance_search"
+  },
+  "sources": [
+    {
+      "source_id": "overture-addresses",
+      "source_version": "2026-07-22.0",
+      "origin": "s3://overturemaps-us-west-2/release/2026-07-22.0/theme=addresses/type=address/",
+      "license": "ODbL-1.0",
+      "artifact_key": "canvas-source-artifacts/maryland/damascus-v3/overture/address.geojson",
+      "relative_path": "overture/address.geojson",
+      "feature_count": 1783,
+      "bytes": 822312,
+      "sha256": "b5d97dbbd26dfee2776067fccd29ab9b197989016af62f16f2e8af6bb46c5019",
+      "canonical_content_sha256": "7184c1b254dad1bef4df35496c267bf0fd0c399afb5852e3c1995979b90dc1fe"
+    },
+    {
+      "source_id": "overture-buildings",
+      "source_version": "2026-07-22.0",
+      "origin": "s3://overturemaps-us-west-2/release/2026-07-22.0/theme=buildings/type=building/",
+      "license": "ODbL-1.0",
+      "artifact_key": "canvas-source-artifacts/maryland/damascus-v3/overture/building.geojson",
+      "relative_path": "overture/building.geojson",
+      "feature_count": 3148,
+      "bytes": 2408928,
+      "sha256": "5b3833679bcf1d5a9df022a2c07d3b1a78ff0a98223b8cd0cb1da43eddb20cf6",
+      "canonical_content_sha256": "551baec106b6c049cd2ed7769ccdf4682db8b27a8be44338096ef4ec8c6edf4d"
+    },
+    {
+      "source_id": "overture-places",
+      "source_version": "2026-07-22.0",
+      "origin": "s3://overturemaps-us-west-2/release/2026-07-22.0/theme=places/type=place/",
+      "license": "ODbL-1.0",
+      "artifact_key": "canvas-source-artifacts/maryland/damascus-v3/overture/place.geojson",
+      "relative_path": "overture/place.geojson",
+      "feature_count": 231,
+      "bytes": 588604,
+      "sha256": "7973f9378e7ba668b28da68082a1824771f2b3f6c75026ee95f7331850ae44da",
+      "canonical_content_sha256": "a0f9eb229a6476b3973c83f117f2e13fcd1861fa9952f83b13ea23b0a3635124"
+    },
+    {
+      "source_id": "openstreetmap-maryland-pbf",
+      "source_version": "2026-08-16",
+      "origin": "https://download.geofabrik.de/north-america/us/maryland-260816.osm.pbf",
+      "license": "ODbL-1.0",
+      "artifact_key": "canvas-source-artifacts/maryland/2026-08-16/maryland.osm.pbf",
+      "relative_path": "osm/maryland.osm.pbf",
+      "bytes": 213605306,
+      "sha256": "ce5542dab60d5a9d82693eb2b01c34d4c4dbeaa4b91a15cfbeec5e623c2c32aa"
+    },
+    {
+      "source_id": "openstreetmap-damascus-roads",
+      "source_version": "2026-08-16/osm-roads-v1",
+      "origin": "derived from openstreetmap-maryland-pbf using pinned node/way extraction",
+      "license": "ODbL-1.0",
+      "artifact_key": "canvas-source-artifacts/maryland/damascus-v3/osm/roads.geojson",
+      "relative_path": "osm/roads.geojson",
+      "feature_count": 1910,
+      "bytes": 1003984,
+      "sha256": "e545ac124787761986921005008d826231c777de45615ad035b7157bce4d24f0",
+      "canonical_content_sha256": "f2b979c3c8519ba19afdc1a68cb07abe6c953d974710d0444b220d2f83f9f919"
+    },
+    {
+      "source_id": "maryland-sdat-homedata",
+      "source_version": "2026-08-05T22:25:30.000Z",
+      "origin": "https://opendata.maryland.gov/resource/kb22-is2w.json",
+      "license": "PUBLIC_DOMAIN",
+      "artifact_key": "canvas-source-artifacts/maryland/damascus-v3/homedata/bbox.json",
+      "relative_path": "homedata/bbox.json",
+      "feature_count": 2065,
+      "selected_polygon_row_count": 1443,
+      "selected_polygon_rows_sha256": "bbd1b2feb161e95797f850fa9b70a711c08cee583c09c54652c6bbea922bde68",
+      "bytes": 3267395,
+      "sha256": "105622f23cbdf89aca310682edaa633f60a40c13f031944f072e19c274eca8f6",
+      "canonical_content_sha256": "1f093345fb0aaa8db642a97672e1a9a1ebe676ddfbb320206503c0677d0b0df6"
+    },
+    {
+      "source_id": "damascus-manager-polygon",
+      "source_version": "v2",
+      "origin": "FirstKnock frozen manager polygon",
+      "license": "FIRSTKNOCK_INTERNAL",
+      "artifact_key": "repository/src/data/damascusPropertyBenchmarkV2Polygon.json",
+      "repository_path": "src/data/damascusPropertyBenchmarkV2Polygon.json",
+      "bytes": 1435,
+      "sha256": "4fff7e75df68dc441e524ea0b702d7e407aee14c46415be27fbc7c8ed1d0f196",
+      "canonical_content_sha256": "252e5ea5227fd1c44742ce8c9479ff56d1912396f3969959eaa2e8f6348617b9"
+    }
+  ]
+}

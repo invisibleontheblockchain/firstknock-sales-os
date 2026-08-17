@@ -19,11 +19,11 @@ The frozen signed path now partitions 619 eligible doors as 112 / 124 / 124 / 12
 - [x] Accept the provisional result: 1,080 eligible / 33 excluded / 109 review (8.9%).
 - [x] Add deterministic byte-limited tiling that preserves property/work-unit identities, classifications, protected groups, and release-scoped topology.
 - [x] Pass focused packaging, adapter, release-builder, 10,000-work-unit topology, and production-build checks.
-- [ ] Restore the pinned Damascus raw address/building/place/road/HomeData artifacts to durable storage.
-- [ ] Build and validate the exact 1,222-property tiled signed release; reject any count or identity drift.
-- [ ] Rerun the production-equivalent five-way 1,080-door benchmark at the ≤15% maximum-deviation gate.
-- [ ] Freeze Phase 2 hashes, transition matrix, tile inventory, manifest, and territory result.
-- [ ] Run the unchanged pipeline over the retained statewide Maryland evidence artifacts.
+- [ ] Upload the production-authoritative Damascus v3 source artifacts to immutable R2 and re-read every hash (write credentials are not configured in this workspace).
+- [x] Build twice and validate the new explicit 1,222-property source contract with byte-identical outputs.
+- [x] Rerun the signed, production-equivalent five-way 1,055-door benchmark at the ≤15% maximum-deviation gate.
+- [x] Freeze v3 source rules, hashes, transition matrix, tile inventory, signed manifest, and territory result.
+- [ ] Run the unchanged pipeline over statewide Maryland after source retention passes.
 - [ ] Sign, upload, verify, activate with rollback retained, then run live Damascus acceptance.
 
 ---
@@ -38,7 +38,7 @@ The frozen signed path now partitions 619 eligible doors as 112 / 124 / 124 / 12
 - [ ] Validate and sign the resulting immutable regional release with the existing offline signer.
 
 ### Current constraint — Maryland Property-First Vertical Slice
-The accepted Phase 2 source exports and normalized benchmark build existed only in temporary storage and are not present in the repository or immutable artifact storage available to this workspace. Packaging is now deterministic and byte-limited, with focused checks passing 16/16 and the production app build passing, but the exact 1,222-property release cannot be signed or benchmarked from aggregate reports without violating evidence provenance. Restore the pinned raw Damascus and statewide Maryland artifacts before release generation; do not reconstruct properties from summaries or alter the accepted 1,080 / 33 / 109 policy to bypass this gate.
+Historical Overture recovery is closed after one focused predicate/tool comparison. The explicit `2026-07-22.0` contract is now authoritative: Gates A–C pass at 1,222 properties, 1,055 eligible / 26 excluded / 141 review (11.54%), and five-way loads 240 / 199 / 200 / 198 / 218 (13.74% maximum deviation). The only Damascus Gate D blocker is durable source retention: upload the manifest-listed raw artifacts to immutable R2 and re-read their hashes before statewide publication.
 
 ---
 

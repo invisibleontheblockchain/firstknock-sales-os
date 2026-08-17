@@ -1,0 +1,86 @@
+{
+  "schema": "firstknock.canvas-property-benchmark-freeze",
+  "schema_version": 1,
+  "benchmark": "Damascus Property Benchmark v3",
+  "frozen_at": "2026-08-17T06:20:00.000Z",
+  "status": "gates_a_c_passed_source_retention_pending",
+  "source_manifest": "src/data/damascusPropertyBenchmarkV3SourceManifest.json",
+  "source_retention": {
+    "status": "pending_object_storage_write_credentials",
+    "required_prefix": "canvas-source-artifacts/maryland/damascus-v3/"
+  },
+  "versions": {
+    "repository_commit": "abc27a8f",
+    "property_identity": "fk-property-key-v1",
+    "osm_assertion_normalization": "osm-assertions-v2",
+    "homedata_mapping": "maryland-homedata-use-v1",
+    "release_compiler": "firstknock-canvas-evidence-release-compiler/1.1.0",
+    "road_graph": "buildOsmRoadGraph@abc27a8f",
+    "splitter": "canvas_residential_territory_v4_connected_balance_search"
+  },
+  "gate_a_determinism": {
+    "passed": true,
+    "clean_build_count": 2,
+    "raw_addresses_in_polygon": 1225,
+    "canonical_properties": 1222,
+    "duplicate_source_addresses_conflated": 3,
+    "duplicate_property_identities": 0,
+    "unlinked_properties": 0,
+    "property_identity_sha256": "ba4d8828ab7e32c9f5aae6d53316dc5092482d07f309929241fd3317c38fbc53",
+    "conflation_sha256": "fea2a05fb0f28e21bc48142f44784b4a8ad7039ef3871e30d44600110b8c925a",
+    "source_tile_sha256": "07aaf45af8c60c234148b2edfd5c4e3227f4f1660af1a5c26d0474338a8f3c0e",
+    "normalized_evidence_sha256": "b02d017ba8ab54b94dc56bd976b18ff1afbfdf39130d832c56137a329e3d7a29",
+    "homedata_ledger_sha256": "7b9413c8d788efd590c28daa6c2f2729c6caeaeee6495d30087bb951f12cd33d"
+  },
+  "gate_b_classification": {
+    "passed": true,
+    "before_homedata": { "eligible": 227, "excluded": 53, "review": 942, "review_percent": 77.09 },
+    "after_homedata": { "eligible": 1055, "excluded": 26, "review": 141, "review_percent": 11.54 },
+    "transition_matrix": {
+      "eligible_to_eligible": 226,
+      "eligible_to_excluded": 0,
+      "eligible_to_review": 1,
+      "excluded_to_eligible": 0,
+      "excluded_to_excluded": 24,
+      "excluded_to_review": 29,
+      "review_to_eligible": 829,
+      "review_to_excluded": 2,
+      "review_to_review": 111
+    },
+    "opposite_decision_flips": 0,
+    "batchdata_calls": 0,
+    "rentcast_calls": 0
+  },
+  "gate_c_signed_five_way": {
+    "passed": true,
+    "release_id": "cer1_e54be6e77247de4e73c7494ce957a429cc9b847ed5681f5b3aba24a6cc9df3a6",
+    "manifest_hash": "214eebb51e4acfb38a85f756cb80e58318c8cebeb7ccee5529654f649d136f97",
+    "workload_authority": "eligible_properties",
+    "street_only_fallback": false,
+    "eligible_doors": 1055,
+    "target": 211,
+    "territory_eligible_doors": [240, 199, 200, 198, 218],
+    "maximum_deviation_percent": 13.74,
+    "connected_cores": true,
+    "protected_groups_intact": true,
+    "exclusive_property_ownership": true,
+    "genuine_island_count": 0,
+    "outside_connector_segment_count": 80,
+    "outside_connector_workload": 0,
+    "outside_properties_included": 0,
+    "synthetic_edges": 0,
+    "deterministic_rerun": true,
+    "territory_hash": "f63896206eb753f56e25462762183b0cd711752d4dde5629940a2b6c62097563",
+    "tiles": [
+      { "tile_id": "cet1_1c75215b53b9960cf925e645e6a5f976d1714e06a28886c3ea8c858e4e347016", "sha256": "66813ba13f1b23736535bac6e10cca07b22547db1a6a6d234fae806e6ad17e1a", "bytes": 3496242, "properties": 710 },
+      { "tile_id": "cet1_e62d5e07ecb5f3440a4857a49a5374567cf2d62a60c1ec81309f9c4339a5c479", "sha256": "36590642ae431efa4224a4ce82b2481cc46007640122a3291f03cc30fedcd881", "bytes": 3191232, "properties": 512 }
+    ]
+  },
+  "regression_gate": {
+    "maximum_deviation_percent": 15,
+    "maximum_review_percent": 15,
+    "require_zero_opposite_decision_flips": true,
+    "require_identical_clean_build_hashes": true,
+    "require_property_workload_authority": true
+  }
+}

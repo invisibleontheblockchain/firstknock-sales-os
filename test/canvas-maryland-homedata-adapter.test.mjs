@@ -24,6 +24,8 @@ test('HomeData adapter emits deterministic auditable evidence without runtime pr
   assert.deepEqual(first, second);
   assert.equal(first.report.workload_authority, 'eligible_properties');
   assert.equal(first.report.batchdata_call_count, 0);
+  assert.equal(first.report.opposite_decision_flips, 0);
+  assert.equal(first.report.policy.automatic_promotion_requires_high_confidence, true);
   assert.ok(first.evidence_ledger.every((item) => item.source_hash && item.mapping_version && item.conflation_method && item.match_confidence));
   assert.ok(first.normalized_tile.properties.some((property) => property.canvass_eligibility === 'eligible'));
 });

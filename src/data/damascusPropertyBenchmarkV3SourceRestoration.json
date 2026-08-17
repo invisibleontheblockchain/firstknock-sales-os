@@ -1,0 +1,20 @@
+{
+  "schema": "firstknock.canvas-source-restoration-decision",
+  "schema_version": 1,
+  "benchmark": "Damascus Property Benchmark v3",
+  "decided_at": "2026-08-17T06:20:00.000Z",
+  "decision": "adopt_current_explicit_contract",
+  "historical_counts": { "addresses": 1303, "buildings": 2453, "places": 151 },
+  "current_explicit_counts": { "addresses": 1783, "buildings": 3148, "places": 231 },
+  "focused_checks": {
+    "exact_polygon_current": { "addresses": 1225, "buildings_intersecting": 2141, "building_centroids_inside": 2124, "places": 90 },
+    "historical_outside_polygon": { "addresses": 78, "buildings": 312, "places": 61 },
+    "shared_feature_ids": { "addresses": 1284, "buildings": 2361, "places": 138 },
+    "historical_only_feature_ids": { "addresses": 19, "buildings": 92, "places": 13 },
+    "current_only_feature_ids": { "addresses": 499, "buildings": 787, "places": 93 },
+    "reader_versions_checked": ["current extraction serialization", "overturemaps 1.0.1"],
+    "high_value_hypotheses_checked": ["exact polygon vs bbox", "shared buffer/halo", "point-in-polygon vs intersection", "building centroid/containment/intersection", "Places category distribution", "theme/type selection", "reader serialization", "post-download filtering"]
+  },
+  "conclusion": "No single documented spatial predicate, shared halo, category filter, or available reader serialization reproduces all three historical sets and identities. Historical recovery is closed; counts must not be tuned to the old totals.",
+  "authoritative_manifest": "src/data/damascusPropertyBenchmarkV3SourceManifest.json"
+}

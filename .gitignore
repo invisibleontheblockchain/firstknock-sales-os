@@ -21,6 +21,11 @@ dist
 dist-ssr
 *.local
 
+# Canvas raw source artifacts live in immutable object storage, never Git.
+.canvas-source-artifacts/
+canvas-source-artifacts/
+*.osm.pbf
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
