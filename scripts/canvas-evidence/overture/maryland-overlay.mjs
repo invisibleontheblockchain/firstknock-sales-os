@@ -61,7 +61,7 @@ export function buildMarylandPropertyOverlay({ baseTiles, addresses, buildings, 
     const roadId = canonicalWorkUnitId(item.associations[0].road_identity);
     evidenceByTile[roadOwner.get(roadId)].push(item);
   });
-  const normalizedTiles = baseTiles.map((tile, tileIndex) => {
+  const tileOutputs = baseTiles.map((tile, tileIndex) => {
     const sourceTile = {
       schema: 'firstknock.canvas-source-evidence-tile', schema_version: 1,
       tile_address: tile.tile_address, coverage: tile.coverage,
@@ -73,8 +73,13 @@ export function buildMarylandPropertyOverlay({ baseTiles, addresses, buildings, 
       evidence: evidenceByTile[tileIndex], protected_groups: tile.protected_groups || [],
     };
     const normalized = normalizeCanvasSourceEvidenceTile(sourceTile, { maxNearestRoadMeters });
-    return { ...normalized, work_units: applyPropertyWorkloadAuthority(normalized.work_units, normalized.properties, { force: true }) };
+    return {
+      source_tile: sourceTile,
+      normalized_tile: { ...normalized, work_units: applyPropertyWorkloadAuthority(normalized.work_units, normalized.properties, { force: true }) },
+    };
   });
+  const sourceTiles = tileOutputs.map((output) => output.source_tile);
+  const normalizedTiles = tileOutputs.map((output) => output.normalized_tile);
   const baselineUnits = baseTiles.flatMap((tile) => tile.work_units);
   const properties = normalizedTiles.flatMap((tile) => tile.properties);
   const outputUnits = normalizedTiles.flatMap((tile) => tile.work_units);
@@ -83,6 +88,7 @@ export function buildMarylandPropertyOverlay({ baseTiles, addresses, buildings, 
   const linkedToBuildings = properties.filter((property) => property.building_linkage.length > 0).length;
   const linkedToRoads = properties.filter((property) => property.road_linkage?.work_unit_identity).length;
   return {
+    source_tiles: sourceTiles,
     normalized_tiles: normalizedTiles,
     unlinked_properties: [...propertyEvidence.unlinked, ...boundaryUnlinked],
     report: {

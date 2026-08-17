@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   HOMEDATA_DATASET_ID, HOMEDATA_DATASET_URL, HOMEDATA_EXPECTED_ROWS, MARYLAND_TILE_COUNT, resolveBuildState,
 } from '../scripts/canvas-evidence/statewide/build-state.mjs';
+import { workerStartupRecord } from '../scripts/canvas-evidence/statewide/maryland-build-worker.mjs';
 
 function state(chunks = []) {
   const rows = chunks.reduce((sum, chunk) => sum + chunk.rows, 0);
@@ -19,6 +20,16 @@ function state(chunks = []) {
 
 const hash = 'a'.repeat(64);
 const chunk = { object_key: `canvas-source-artifacts/maryland/statewide-v1/homedata/chunks/000000-${hash}.ndjson`, offset_start: 0, offset_end: 5000, rows: 5000, sha256: hash };
+
+test('declares the durable R2 startup contract before checkpoint verification', () => {
+  assert.deepEqual(workerStartupRecord(), {
+    event: 'worker_starting',
+    phase: '04_homedata',
+    dataset: 'ed4q-f8tm',
+    expected_rows: 2_440_779,
+    state_authority: 'r2',
+  });
+});
 
 test('resolves the next statewide HomeData offset from contiguous R2 journal chunks', () => {
   const result = resolveBuildState(state([chunk]));
