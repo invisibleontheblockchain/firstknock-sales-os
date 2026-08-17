@@ -123,7 +123,7 @@ export default function MapSettingsPanel({
     // Back to defaults includes handing dot sizing back to the automatic
     // dense-territory rule.
     clearPinSizeUserSet();
-    const defaultMapTheme = routeMode === 'canvas' ? 'dark' : 'hybrid';
+    const defaultMapTheme = routeMode === 'canvas' ? 'terrain' : 'hybrid';
     setMapTheme?.(defaultMapTheme);
     setLocal({
       mapSettings: { pinShape:'circle', showLabels:false, labelType:'number', ...DEFAULT_PIN_THEME.settings },

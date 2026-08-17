@@ -184,8 +184,8 @@ export default function Home() {
     const [showMapSettings, setShowMapSettings] = useState(false);
     const [navigationApp, setNavigationApp] = useState('apple');
 
-    // Precision v3 rolls Hybrid out to existing devices; Canvas stays independent.
-    const [mapTheme, setMapTheme] = useState(() => { const canvasMode = localStorage.getItem('fk_routeMode') === 'canvas'; return localStorage.getItem(canvasMode ? 'fk_mapTheme_canvas_v1' : 'fk_mapTheme_v3') || (canvasMode ? 'dark' : 'hybrid'); });
+    // Precision v3 stays Hybrid; Canvas v2 rolls the stock Terrain map out as its default.
+    const [mapTheme, setMapTheme] = useState(() => { const canvasMode = localStorage.getItem('fk_routeMode') === 'canvas'; return localStorage.getItem(canvasMode ? 'fk_mapTheme_canvas_v2' : 'fk_mapTheme_v3') || (canvasMode ? 'terrain' : 'hybrid'); });
     const [showRouteDetails, setShowRouteDetails] = useState(() => {
         const saved = localStorage.getItem('fk_showRouteDetails_v2');
         return saved ? JSON.parse(saved) : true;
@@ -246,7 +246,7 @@ export default function Home() {
 
     useEffect(() => {
         try {
-            localStorage.setItem(routeModeRef.current === 'canvas' ? 'fk_mapTheme_canvas_v1' : 'fk_mapTheme_v3', mapTheme);
+            localStorage.setItem(routeModeRef.current === 'canvas' ? 'fk_mapTheme_canvas_v2' : 'fk_mapTheme_v3', mapTheme);
             localStorage.setItem('fk_showRouteDetails_v2', JSON.stringify(showRouteDetails));
             localStorage.setItem('fk_pinSize_v3', JSON.stringify(pinSize));
             localStorage.setItem('fk_showRouteLines_v2', JSON.stringify(showRouteLines));
