@@ -8,7 +8,7 @@
 - [ ] Validate and sign the resulting immutable regional release with the existing offline signer.
 
 ### Current constraint — Maryland Property-First Vertical Slice
-The repository contains the release compiler and contracts but not the 2.7 GB Maryland build artifacts or its normalized pre-signing tiles. The overlay and deterministic fixture are implemented; the real Damascus/Olney run requires an operator export of the matching normalized Maryland tiles. Production secrets and mutable R2/Railway configuration are intentionally untouched.
+The repository contains the release compiler and contracts but not the 2.7 GB Maryland build artifacts, the normalized pre-signing tiles, or the ephemeral 734-door Damascus benchmark release. The signed analysis path now stitches verified surrounding tiles before selecting bounded real-road connectors, keeps properties clipped to the drawn polygon, projects every connector as zero workload, and records connector diagnostics. Signed lifecycle, property authority, island allocation, Maryland overlay, release-builder, source-normalizer, and residential partition regressions pass (43/43), and the production build passes. The exact 734-door signed Damascus rerun remains blocked until the matching immutable benchmark artifacts are restored; production secrets and mutable R2/Railway configuration remain intentionally untouched.
 
 ---
 

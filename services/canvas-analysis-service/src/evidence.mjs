@@ -1,7 +1,8 @@
 import { createPublicKey, verify as verifySignature } from 'node:crypto';
 
 import { canonicalStringify, parseJsonBytes, readBoundedBytes, sha256Hex } from './canonical.mjs';
-import { boundsIntersect, polygonBounds, selectTileWorkUnits, stitchSelections } from './geometry.mjs';
+import { connectivityContextBounds, selectBoundaryConnectivity } from './connectivity-selection.mjs';
+import { boundsIntersect, polygonBounds, stitchSelections } from './geometry.mjs';
 import { ServiceError } from './errors.mjs';
 
 const DEFAULT_MAX_MANIFEST_BYTES = 64 * 1024 * 1024;
@@ -279,9 +280,13 @@ export class EvidenceRepository {
   }
 
   selectTiles(release, polygon) {
-    const bounds = polygonBounds(polygon);
-    return indexedCandidates(release.tile_index, bounds)
-      .filter((entry) => boundsIntersect(entry.coverage_bounds, bounds))
+    const workloadBounds = polygonBounds(polygon);
+    const hasWorkloadCoverage = indexedCandidates(release.tile_index, workloadBounds)
+      .some((entry) => boundsIntersect(entry.coverage_bounds, workloadBounds));
+    if (!hasWorkloadCoverage) return [];
+    const contextBounds = connectivityContextBounds(polygon);
+    return indexedCandidates(release.tile_index, contextBounds)
+      .filter((entry) => boundsIntersect(entry.coverage_bounds, contextBounds))
       .sort((left, right) => left.tile_id.localeCompare(right.tile_id));
   }
 
@@ -322,13 +327,19 @@ export class EvidenceRepository {
   async analyzeBoundary(release, polygon, onProgress = async () => {}, isCancelled = async () => false) {
     const entries = this.selectTiles(release, polygon);
     if (!entries.length) throw new ServiceError(422, 'evidence_coverage_missing', 'No signed Canvas evidence tiles cover this boundary.');
-    const selections = [];
+    const contextSelections = [];
     for (let index = 0; index < entries.length; index += 1) {
       if (await isCancelled()) throw new ServiceError(409, 'analysis_cancelled', 'Canvas analysis was cancelled.');
       const tile = await this.loadTile(release, entries[index]);
-      selections.push(selectTileWorkUnits(tile, polygon));
+      contextSelections.push({
+        work_units: tile.work_units,
+        properties: tile.properties || [],
+        protected_groups: tile.protected_groups,
+        external_neighbor_ids: tile.external_neighbor_ids,
+      });
       await onProgress(index + 1, entries.length);
     }
-    return { entries, ...stitchSelections(selections) };
+    const signedContext = stitchSelections(contextSelections);
+    return { entries, ...selectBoundaryConnectivity(signedContext, polygon) };
   }
 }

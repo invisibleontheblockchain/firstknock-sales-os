@@ -39,3 +39,33 @@ test('signed analysis projects eligible properties as exact split workload', () 
   assert.equal(workloads.reduce((sum, value) => sum + value, 0), 10);
   assert.ok(workloads[1] - workloads[0] <= 2);
 });
+
+test('genuine disconnected property islands are allocated deterministically without fake topology', () => {
+  const connectedIds = ['main-a', 'main-b', 'main-c', 'main-d', 'main-e'];
+  const units = [
+    ...connectedIds.map((id, index) => ({
+      id,
+      canvas_role: 'knock',
+      opportunity: { low: 140, expected: 140, high: 140 },
+      neighbor_ids: [connectedIds[index - 1], connectedIds[index + 1]].filter(Boolean),
+      geometry: { type: 'LineString', coordinates: [[-77, 39 + index * 0.001], [-76.999, 39 + index * 0.001]] },
+    })),
+    {
+      id: 'island',
+      canvas_role: 'knock',
+      opportunity: { low: 13, expected: 13, high: 13 },
+      neighbor_ids: [],
+      geometry: { type: 'LineString', coordinates: [[-77.02, 39.02], [-77.019, 39.02]] },
+    },
+  ];
+  const first = partitionCanvasResidentialTerritories({ street_units: units, area_count: 5 });
+  const second = partitionCanvasResidentialTerritories({ street_units: units, area_count: 5 });
+  assert.equal(first.ok, true);
+  assert.deepEqual(first.zones, second.zones);
+  assert.equal(first.qa.genuine_island_count, 1);
+  assert.equal(first.qa.islands_explicit, true);
+  assert.equal(first.qa.exclusive_work_unit_coverage, true);
+  assert.equal(first.qa.connected_zones, true);
+  assert.equal(first.zones.filter((zone) => zone.island_work_unit_ids?.includes('island')).length, 1);
+  assert.deepEqual(first.zones.map((zone) => zone.opportunity_expected).sort((a, b) => a - b), [140, 140, 140, 140, 153]);
+});

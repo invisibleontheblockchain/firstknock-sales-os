@@ -128,3 +128,63 @@ export function makeEvidenceFixture() {
     ids: { release: RELEASE_ID, tile: TILE_ID, entry: UNIT_ENTRY, bowl: UNIT_BOWL, external: UNIT_EXTERNAL, group: GROUP_ID, propertyEligible: PROPERTY_ELIGIBLE, propertyExcluded: PROPERTY_EXCLUDED, propertyReview: PROPERTY_REVIEW },
   };
 }
+
+export function makeConnectivityEvidenceFixture() {
+  const fixture = makeEvidenceFixture();
+  const secondId = `cewu1_${'d'.repeat(64)}`;
+  const insidePropertyId = `cepr1_${'e'.repeat(64)}`;
+  const outsidePropertyId = `cepr1_${'f'.repeat(64)}`;
+  fixture.tile.work_units[0].neighbor_ids = [...new Set([...fixture.tile.work_units[0].neighbor_ids, UNIT_EXTERNAL])].sort();
+  fixture.tile.work_units.push(
+    {
+      work_unit_id: UNIT_EXTERNAL,
+      identity: { source_namespace: 'fixture', source_feature_id: 'real-outside-connector', segment_index: 0, from_millionths: 0, to_millionths: 1_000_000 },
+      canvas_role: 'transit',
+      confidence: { score: 1, tier: 'high', reasons: ['authoritative_road_topology'] },
+      opportunity: null,
+      provenance: provenance('real-outside-connector'),
+      geometry: { type: 'LineString', coordinates: [[-112.078, 33.451], [-112.078, 33.4502]] },
+      neighbor_ids: [UNIT_ENTRY, secondId].sort(),
+      protected_group_id: null,
+    },
+    {
+      work_unit_id: secondId,
+      identity: { source_namespace: 'fixture', source_feature_id: 'second-inside-road', segment_index: 0, from_millionths: 0, to_millionths: 1_000_000 },
+      canvas_role: 'opportunity',
+      confidence: { score: 1, tier: 'high', reasons: ['address_points'] },
+      opportunity: { min: 1, expected: 1, max: 1 },
+      provenance: provenance('second-inside-road'),
+      geometry: { type: 'LineString', coordinates: [[-112.078, 33.4502], [-112.0788, 33.4502]] },
+      neighbor_ids: [UNIT_EXTERNAL],
+      protected_group_id: null,
+    },
+  );
+  fixture.tile.work_units.sort((left, right) => left.work_unit_id.localeCompare(right.work_unit_id));
+  fixture.tile.external_neighbor_ids = [];
+  fixture.tile.properties.push(
+    { property_id: insidePropertyId, fk_property_id: `FKP1_${'d'.repeat(64)}`, property_key: '106-sunset-ct', work_unit_id: secondId, building_linkage: [], road_linkage: { method: 'fixture' }, point: { lat: 33.4502, lng: -112.0788 }, property_type: 'residential', canvass_eligibility: 'eligible', confidence: { score: 1, tier: 'high', reasons: ['residential_house'] }, door_count: 1, display_address: '106 Sunset Ct', provenance: provenance('property/106') },
+    { property_id: outsidePropertyId, fk_property_id: `FKP1_${'e'.repeat(64)}`, property_key: 'outside-sunset-ct', work_unit_id: UNIT_EXTERNAL, building_linkage: [], road_linkage: { method: 'fixture' }, point: { lat: 33.4511, lng: -112.078 }, property_type: 'residential', canvass_eligibility: 'eligible', confidence: { score: 1, tier: 'high', reasons: ['residential_house'] }, door_count: 99, display_address: 'Outside Sunset Ct', provenance: provenance('property/outside') },
+  );
+  fixture.tile.properties.sort((left, right) => left.property_id.localeCompare(right.property_id));
+  fixture.tileBytes = Buffer.from(canonicalStringify(fixture.tile), 'utf8');
+  const entry = fixture.manifest.tiles[0];
+  entry.sha256 = sha256Hex(fixture.tileBytes);
+  entry.byte_length = fixture.tileBytes.byteLength;
+  entry.work_unit_count = fixture.tile.work_units.length;
+  entry.property_count = fixture.tile.properties.length;
+  entry.expected_opportunities = 24;
+  const { signature: _signature, ...unsignedManifest } = fixture.manifest;
+  fixture.manifest = {
+    ...unsignedManifest,
+    signature: {
+      algorithm: 'Ed25519',
+      key_id: FIXTURE_KEY_ID,
+      value: sign(null, Buffer.from(canonicalStringify(unsignedManifest), 'utf8'), FIXTURE_PRIVATE_KEY).toString('base64url'),
+    },
+  };
+  fixture.manifestBytes = Buffer.from(canonicalStringify(fixture.manifest), 'utf8');
+  fixture.ids.second = secondId;
+  fixture.ids.insideProperty = insidePropertyId;
+  fixture.ids.outsideProperty = outsidePropertyId;
+  return fixture;
+}

@@ -6,10 +6,11 @@ import { fileURLToPath } from 'node:url';
 
 import { buildSnapshot, CanvasAnalysisService } from '../src/analysis-service.mjs';
 import { canonicalStringify, sha256Hex } from '../src/canonical.mjs';
+import { selectBoundaryConnectivity } from '../src/connectivity-selection.mjs';
 import { EvidenceRepository } from '../src/evidence.mjs';
 import { createAnalysisHttpServer, listen } from '../src/http-server.mjs';
 import { MemoryStore } from '../src/store.mjs';
-import { FIXTURE_KEY_ID, FIXTURE_PUBLIC_KEY, makeEvidenceFixture } from './fixture.mjs';
+import { FIXTURE_KEY_ID, FIXTURE_PUBLIC_KEY, makeConnectivityEvidenceFixture, makeEvidenceFixture } from './fixture.mjs';
 
 const testDirectory = dirname(fileURLToPath(import.meta.url));
 const serviceDirectory = resolve(testDirectory, '..');
@@ -167,6 +168,64 @@ test('fixture HTTP API and worker complete the signed evidence lifecycle end to 
   assert.equal(snapshot.snapshot_hash, sha256Hex(canonicalStringify(snapshotIdentity(snapshot))));
   assert.equal(snapshot.evidence_id, `canvas_evidence_${snapshot.snapshot_hash}`);
   assert.equal(JSON.stringify(result.result).includes(SERVICE_TOKEN), false);
+});
+
+test('verified signed analysis selects necessary outside roads as zero-door connectivity context', async () => {
+  const fixture = makeConnectivityEvidenceFixture();
+  const store = new MemoryStore();
+  const evidence = new EvidenceRepository({
+    manifestUrl: fixture.manifestUrl,
+    manifestPublicKey: FIXTURE_PUBLIC_KEY,
+    expectedKeyId: FIXTURE_KEY_ID,
+    fetchImpl: manifestFetch(fixture, []),
+  });
+  const service = new CanvasAnalysisService({ store, evidenceRepository: evidence, clock: () => new Date(FIXED_TIME) });
+  const body = startBody();
+  await service.start(body);
+  const completed = await service.processNextJob('signed-connectivity-worker', 60_000);
+  assert.equal(completed.job.status, 'complete');
+  const analysis = completed.snapshot.analysis_result;
+  assert.ok(analysis.connectivity_context.outside_connector_work_unit_ids.includes(fixture.ids.external));
+  assert.equal(analysis.connectivity_context.outside_connector_segment_count, 2);
+  assert.equal(analysis.connectivity_context.connectors_contribute_zero_doors, true);
+  assert.equal(analysis.connectivity_context.outside_properties_included, 0);
+  assert.equal(analysis.classified_properties.some((property) => property.property_id === fixture.ids.outsideProperty), false);
+  const connector = analysis.classified_street_units.find((unit) => unit.work_unit_id === fixture.ids.external);
+  assert.equal(connector.canvas_role, 'transit_only');
+  assert.equal(connector.opportunity, null);
+  assert.equal(analysis.summary.opportunity.expected, 2);
+});
+
+test('signed connectivity context uses only real topology and never imports outside workload', () => {
+  const polygon = [
+    { lat: 39, lng: -77 }, { lat: 39, lng: -76.98 },
+    { lat: 39.01, lng: -76.98 }, { lat: 39.01, lng: -77 },
+  ];
+  const units = [
+    { work_unit_id: 'inside-west', canvas_role: 'opportunity', geometry: { type: 'LineString', coordinates: [[-76.999, 39.009], [-76.997, 39.01]] }, neighbor_ids: ['outside-connector'] },
+    { work_unit_id: 'outside-connector', canvas_role: 'transit', geometry: { type: 'LineString', coordinates: [[-76.997, 39.011], [-76.983, 39.011]] }, neighbor_ids: ['inside-east', 'inside-west'] },
+    { work_unit_id: 'inside-east', canvas_role: 'opportunity', geometry: { type: 'LineString', coordinates: [[-76.983, 39.01], [-76.981, 39.009]] }, neighbor_ids: ['outside-connector'] },
+  ];
+  const property = (property_id, work_unit_id, lat, lng) => ({ property_id, work_unit_id, point: { lat, lng } });
+  const input = {
+    work_units: units,
+    properties: [
+      property('inside-1', 'inside-west', 39.005, -76.998),
+      property('inside-2', 'inside-east', 39.005, -76.982),
+      property('outside-1', 'outside-connector', 39.012, -76.99),
+    ],
+    protected_groups: [],
+  };
+  const first = selectBoundaryConnectivity(input, polygon);
+  const second = selectBoundaryConnectivity(input, polygon);
+  assert.deepEqual(first, second);
+  assert.deepEqual(first.work_units.map((unit) => unit.work_unit_id), ['inside-west', 'outside-connector', 'inside-east']);
+  assert.deepEqual(first.properties.map((item) => item.property_id), ['inside-1', 'inside-2']);
+  assert.deepEqual(first.connectivity_context.outside_connector_work_unit_ids, ['outside-connector']);
+  assert.equal(first.connectivity_context.outside_connector_segment_count, 1);
+  assert.equal(first.connectivity_context.connectors_contribute_zero_doors, true);
+  assert.equal(first.connectivity_context.outside_properties_included, 0);
+  assert.ok(first.connectivity_context.maximum_connector_excursion_meters > 0);
 });
 
 test('queued cancellation is idempotent and the same content-addressed job can be explicitly retried', async () => {

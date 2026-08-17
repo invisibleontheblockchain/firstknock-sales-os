@@ -132,6 +132,15 @@ function buildAnalysisResult(job, release, stitched) {
     property_classification_summary: propertySummary,
     protected_groups: stitched.protected_groups,
     external_neighbor_ids: stitched.external_neighbor_ids,
+    connectivity_context: stitched.connectivity_context || {
+      source: 'signed_authoritative_road_topology',
+      outside_connector_work_unit_ids: [],
+      outside_connector_segment_count: 0,
+      outside_connector_length_meters: 0,
+      maximum_connector_excursion_meters: 0,
+      connectors_contribute_zero_doors: true,
+      outside_properties_included: 0,
+    },
     unresolved_unit_count: propertyTotal ? propertyCounts.review : roleCounts.uncertain,
     unresolved_property_count: propertyCounts.review,
     summary: {
@@ -142,6 +151,13 @@ function buildAnalysisResult(job, release, stitched) {
       selected_work_unit_count: classified.length,
       protected_group_count: stitched.protected_groups.length,
       external_neighbor_count: stitched.external_neighbor_ids.length,
+      connectivity_context: stitched.connectivity_context || {
+        outside_connector_segment_count: 0,
+        outside_connector_length_meters: 0,
+        maximum_connector_excursion_meters: 0,
+        connectors_contribute_zero_doors: true,
+        outside_properties_included: 0,
+      },
     },
   };
 }
