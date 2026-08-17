@@ -3,6 +3,7 @@ import { useMap } from 'react-leaflet';
 import CanvasZoneLayers from './CanvasZoneLayers';
 import CanvasCampaignMapLayers from './CanvasCampaignMapLayers';
 import CanvasResidentialAnalysisLayers from './CanvasResidentialAnalysisLayers';
+import CanvasPropertyClassificationLayers from './CanvasPropertyClassificationLayers';
 import { canvasZoneStreetSegments } from '@/components/canvas/canvasOutcomeUtils';
 
 function previewPoints(zones, workUnits) {
@@ -76,6 +77,7 @@ export default function CanvasZoneOverlay({ routeMode = 'precision', preview = {
   return (
     <>
       <CanvasResidentialAnalysisLayers analysis={residentialAnalysis} hasAreaPreview={zones.length > 0} />
+      <CanvasPropertyClassificationLayers analysis={residentialAnalysis} />
       <CanvasZoneLayers zones={zones} workUnits={workUnits} />
       <CanvasCampaignMapLayers />
     </>

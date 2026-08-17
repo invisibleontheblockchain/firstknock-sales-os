@@ -410,6 +410,9 @@ test('runs the vertical analysis slice and preserves drawable topology on classi
   assert.equal(result.classified_street_units.length, 1);
   assert.equal(result.classified_street_units[0].canvas_role, 'knock');
   assert.equal(result.classified_street_units[0].opportunity.expected, 1);
+  assert.equal(result.classified_properties.length, 1);
+  assert.equal(result.classified_properties[0].canvass_eligibility, 'eligible');
+  assert.equal(result.property_classification_summary.automatically_resolved_percent, 100);
   assert.ok(result.classified_street_units[0].segments.length > 0);
   assert.deepEqual(result.classified_street_units[0].street_names, ['Oak Street']);
   assert.equal(result.work_units[0].id, result.classified_street_units[0].id);

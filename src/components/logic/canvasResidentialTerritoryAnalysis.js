@@ -2,6 +2,7 @@ import {
   buildCanvasStreetWorkUnits,
   canvasStreetTopologyInternals,
 } from './canvasStreetTopology.js';
+import { classifyCanvasPropertyEntity, summarizeCanvasPropertyClassifications } from './canvasPropertyClassification.js';
 
 const { edgeIdFor } = canvasStreetTopologyInternals;
 
@@ -314,6 +315,12 @@ function featureSignals(feature) {
   };
 }
 
+function isPropertyEntityFeature(feature) {
+  const tags = feature.tags || {};
+  return Boolean(feature.entity_id || feature.building_id || feature.site_id || feature.parent_building_id
+    || tags.building || tags['addr:housenumber'] || feature.addr_housenumber || feature.address_key);
+}
+
 function estimateEntityOpportunity(features) {
   const signals = features.map(featureSignals);
   const residential = signals.some((signal) => signal.residential);
@@ -389,16 +396,23 @@ export function aggregateCanvasResidentialOpportunity(input = {}) {
     const selected = rankedAssociations[0];
     const signals = entityFeatures.map(featureSignals);
     const estimate = estimateEntityOpportunity(entityFeatures);
+    const propertyClassification = entityFeatures.some(isPropertyEntityFeature)
+      ? classifyCanvasPropertyEntity({ property_id: entityId, features: entityFeatures })
+      : null;
+    const eligibleEstimate = propertyClassification?.canvass_eligibility === 'eligible'
+      ? estimate
+      : { low: 0, expected: 0, high: 0, source: estimate.source, confidence: estimate.confidence };
     const record = {
       entity_id: entityId,
       street_unit_id: selected?.street_unit_id || null,
-      ...estimate,
+      ...eligibleEstimate,
+      ...(propertyClassification || {}),
       residential_evidence: signals.some((signal) => signal.residential),
       ambiguous_building_evidence: signals.some((signal) => signal.ambiguousBuilding),
       negative_evidence: signals.some((signal) => signal.negative),
       open_land_evidence: signals.some((signal) => signal.openLand),
     };
-    entityEstimates.push(record);
+    if (propertyClassification) entityEstimates.push(record);
     if (!selected) return;
     const current = byStreet.get(selected.street_unit_id) || {
       low: 0,
@@ -410,11 +424,17 @@ export function aggregateCanvasResidentialOpportunity(input = {}) {
       ambiguous_building_evidence: false,
       negative_evidence: false,
       open_land_evidence: false,
+      uncertain_property_count: 0,
+      excluded_property_count: 0,
+      eligible_property_count: 0,
     };
-    current.low += estimate.low;
-    current.expected += estimate.expected;
-    current.high += estimate.high;
-    current.entity_ids.push(entityId);
+    current.low += eligibleEstimate.low;
+    current.expected += eligibleEstimate.expected;
+    current.high += eligibleEstimate.high;
+    if (propertyClassification) {
+      current[`${propertyClassification.canvass_eligibility === 'review' ? 'uncertain' : propertyClassification.canvass_eligibility}_property_count`] += 1;
+      current.entity_ids.push(entityId);
+    }
     current.sources.push(estimate.source);
     current.residential_evidence ||= record.residential_evidence;
     current.ambiguous_building_evidence ||= record.ambiguous_building_evidence;
@@ -463,11 +483,14 @@ function classifyAccess(highwayTypes, evidence) {
 export function classifyCanvasStreetUnit(input = {}) {
   const opportunity = input.opportunity || input.opportunity_estimate || {};
   const expected = Number(opportunity.expected ?? input.opportunity_expected ?? 0);
+  const propertyAware = Number.isFinite(Number(opportunity.eligible_property_count))
+    || Number.isFinite(Number(opportunity.uncertain_property_count));
   const positive = expected > 0 || Boolean(input.residential_evidence);
   const ambiguous = Boolean(input.ambiguous_building_evidence || input.conflicting_evidence);
   const negative = Boolean(input.negative_evidence || input.open_land_evidence);
   let opportunityClassification;
   if (expected > 0) opportunityClassification = 'likely';
+  else if (propertyAware) opportunityClassification = 'none';
   else if (positive || ambiguous) opportunityClassification = 'uncertain';
   else if (negative) opportunityClassification = 'none';
   else opportunityClassification = 'uncertain';
@@ -1441,16 +1464,22 @@ export function analyzeCanvasResidentialTerritory(input = {}) {
   const uncertain = classified.filter((unit) => unit.canvas_role === 'uncertain');
   const excluded = classified.filter((unit) => unit.canvas_role === 'excluded');
   const transit = classified.filter((unit) => unit.canvas_role === 'transit_only');
+  const classifiedProperties = aggregated.entity_estimates;
+  const propertySummary = summarizeCanvasPropertyClassifications(classifiedProperties);
+  const uncertainProperties = classifiedProperties.filter((property) => property.canvass_eligibility === 'review');
   const structurallyOk = partition.ok || partition.code === 'NO_KNOCK_OPPORTUNITY';
   return {
     ok: structurallyOk,
-    status: uncertain.length || !partition.ok ? 'needs_review' : 'ready',
-    deployable: Boolean(partition.ok && !uncertain.length),
+    status: uncertainProperties.length || !partition.ok ? 'needs_review' : 'ready',
+    deployable: Boolean(partition.ok && !uncertainProperties.length),
     algorithm_version: ALGORITHM_VERSION,
     classified_street_units: classified,
     feature_associations: association.associations,
     opportunity_by_street_unit: aggregated.by_street_unit,
     opportunity_entities: aggregated.entity_estimates,
+    classified_properties: classifiedProperties,
+    uncertain_properties: uncertainProperties,
+    property_classification_summary: propertySummary,
     zones: partition.zones || [],
     territories: partition.zones || [],
     work_units: classified.filter((unit) => unit.canvas_role === 'knock'),
@@ -1461,7 +1490,9 @@ export function analyzeCanvasResidentialTerritory(input = {}) {
     shared_transit_unit_ids: transit.map((unit) => unit.id).sort(compareIds),
     qa: {
       ...(partition.qa || {}),
-      unresolved_uncertain_count: uncertain.length,
+      unresolved_uncertain_count: uncertainProperties.length,
+      unresolved_property_count: uncertainProperties.length,
+      property_automatic_resolution_percent: propertySummary.automatically_resolved_percent,
       unassociated_feature_count: association.unassociated.length,
       cul_de_sac_splits: partition.qa?.protected_units_intact === false ? 1 : 0,
     },

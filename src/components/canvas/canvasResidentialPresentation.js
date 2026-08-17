@@ -54,6 +54,27 @@ export function getCanvasClassifiedStreetUnits(value) {
   return Array.isArray(units) ? units : [];
 }
 
+export function getCanvasClassifiedProperties(value) {
+  const analysis = unwrapCanvasResidentialAnalysis(value);
+  const properties = analysis?.classified_properties || analysis?.properties || analysis?.property_candidates;
+  return Array.isArray(properties) ? properties : [];
+}
+
+export function getCanvasPropertyClassificationSummary(value) {
+  const analysis = unwrapCanvasResidentialAnalysis(value);
+  const properties = getCanvasClassifiedProperties(analysis);
+  if (properties.length) {
+    const counts = properties.reduce((result, property) => {
+      const state = ['eligible', 'excluded', 'review'].includes(property?.canvass_eligibility) ? property.canvass_eligibility : 'review';
+      result[state] += 1;
+      return result;
+    }, { eligible: 0, excluded: 0, review: 0 });
+    const total = properties.length;
+    return { ...counts, total, automatically_resolved: counts.eligible + counts.excluded, automatically_resolved_percent: Number((((counts.eligible + counts.excluded) / total) * 100).toFixed(1)) };
+  }
+  return analysis?.property_classification_summary || null;
+}
+
 export function getCanvasResidentialRole(unit) {
   const raw = String(
     unit?.canvas_role
