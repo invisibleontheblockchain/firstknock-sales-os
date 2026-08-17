@@ -202,8 +202,8 @@ export default function Home() {
         try { return localStorage.getItem('fk_routeStatusView') || 'all'; } catch { return 'all'; }
     });
     const [routeMode, setRouteMode] = useState('precision');
-    const routeModeRef = useRef(routeMode);
-    routeModeRef.current = routeMode;
+    const routeModeRef = useRef(routeMode); routeModeRef.current = routeMode;
+    useEffect(() => { const modeTheme = routeMode === 'canvas' ? 'terrain' : 'hybrid'; setMapTheme(modeTheme); try { localStorage.setItem(routeMode === 'canvas' ? 'fk_mapTheme_canvas_v2' : 'fk_mapTheme_v3', modeTheme); } catch {} }, [routeMode]);
     const [canvasDraftDirty, setCanvasDraftDirty] = useState(false);
     useEffect(() => {
         window.dispatchEvent(new CustomEvent('fk-canvas-draft-dirty-changed', { detail: { dirty: canvasDraftDirty } }));
