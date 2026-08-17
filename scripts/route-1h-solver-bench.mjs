@@ -73,7 +73,20 @@ const VARIANT_OPTIONS = {
     budget8x: { refinementStepBudget: HIERARCHY_REFINEMENT_STEP_BUDGET * 8 },
     barrier: { barrierRepair: true },
     coarse: { coarseBlockOrder: true },
-    'barrier-budget': { barrierRepair: true, refinementStepBudget: HIERARCHY_REFINEMENT_STEP_BUDGET * 8 }
+    'barrier-budget': { barrierRepair: true, refinementStepBudget: HIERARCHY_REFINEMENT_STEP_BUDGET * 8 },
+    // Level 5 on top of the shipped configuration.
+    'branch': {
+        barrierRepair: true,
+        refinementStepBudget: HIERARCHY_REFINEMENT_STEP_BUDGET * 8,
+        branchRepair: true
+    },
+    // The rule enforced regardless of mileage, to price what it actually costs.
+    'branch-strict': {
+        barrierRepair: true,
+        refinementStepBudget: HIERARCHY_REFINEMENT_STEP_BUDGET * 8,
+        branchRepair: true,
+        branchOptions: { enforceRule: true, maxRepairs: 40 }
+    }
 };
 
 const round = (v) => (Number.isFinite(v) ? Math.round(v * 100) / 100 : null);
@@ -205,6 +218,14 @@ async function runVariant(name, doors) {
     console.log(`  LAYER 1 road miles .... ${measured.miles}   longest leg ${measured.longestLeg}   p95 ${measured.p95}`);
     console.log(`  LAYER 2 pockets ....... ${behaviour.pockets} entered ${behaviour.pocket_visits}x -> ${behaviour.pocket_reentries} re-entries`);
     console.log(`  LAYER 2 reversals ..... ${behaviour.direction_reversal_pct}%   progression ${behaviour.progression_efficiency_pct}%`);
+    if (telemetry.branch_repair_ran !== undefined && telemetry.branches_found > 0) {
+        console.log(`  BRANCHES .............. ${telemetry.branches_found} single-entry areas, ${telemetry.branch_doors_total} doors behind a gate`);
+        console.log(`  re-entered ............ ${telemetry.branches_reentered_before} -> ${telemetry.branches_reentered_after}`
+            + `   (extra entries ${telemetry.branch_extra_entries_before} -> ${telemetry.branch_extra_entries_after})`);
+        console.log(`  repairs ............... ${telemetry.branches_repaired} kept, ${telemetry.branches_rejected_no_gain} measured longer`
+            + `${telemetry.branches_enforced ? `, ${telemetry.branches_enforced} enforced anyway` : ''},`
+            + ` net ${telemetry.branch_miles_saved} mi`);
+    }
     console.log(`  runtime ............... ${record.runtime_s}s (${record.osrm_requests} OSRM requests)`);
     return record;
 }
