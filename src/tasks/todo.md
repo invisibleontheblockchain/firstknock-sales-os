@@ -13,7 +13,13 @@ The frozen signed path now partitions 619 eligible doors as 112 / 124 / 124 / 12
 
 ## Plan — Phase 2 Bulk Evidence Review Reduction
 - [x] Freeze the unchanged 557-record review baseline and aggregate its deterministic reason/source distribution.
-- [ ] Evaluate free bulk evidence capable of resolving the 526 `property_use_unresolved` records.
+- [x] Add a deterministic, read-only cohort profiler over frozen source assertions and normalized properties.
+- [x] Characterize all 557 reviews into 12 evidence-pattern cohorts without changing classification.
+- [x] Evaluate initial multi-signal counterfactuals; reject broad rules that resolve zero or one record at moderate risk.
+- [x] Investigate free national and Maryland bulk evidence and identify SDAT/MDP HomeData as the next authoritative offline source.
+- [ ] Ingest an official HomeData bulk export and audit normalized-address plus bounded-spatial joins against frozen controls.
+- [ ] Review the resulting evidence combinations and approve only low-risk, multi-signal candidate rules.
+- [ ] Evaluate free bulk evidence capable of resolving the remaining `property_use_unresolved` records.
 - [ ] Add evidence only through the existing signed normalization and provenance contracts.
 - [ ] Rebuild twice and measure review reduction without changing Phase 1 eligible/excluded safety guarantees.
 

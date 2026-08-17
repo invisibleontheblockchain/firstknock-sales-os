@@ -1,0 +1,58 @@
+{
+  "schema": "firstknock.canvas-phase2-review-profile",
+  "schema_version": 1,
+  "benchmark": "Damascus Property Benchmark v2",
+  "classifier_changed": false,
+  "baseline": {
+    "total": 1222,
+    "eligible": 619,
+    "excluded": 46,
+    "review": 557,
+    "automatic_resolution_percent": 54.4,
+    "review_percent": 45.6,
+    "unresolved_property_use": 526
+  },
+  "signal_coverage": {
+    "normalized_address_present": 557,
+    "building_linkage_present": 527,
+    "overture_building_evidence": 527,
+    "osm_building_evidence_in_signed_property_assertions": 0,
+    "residential_land_use_context": 21,
+    "nearby_typed_residential_building": 38,
+    "commercial_poi_nearby": 21,
+    "institutional_poi_nearby": 0,
+    "industrial_or_commercial_land_use": 0,
+    "assessor_or_parcel_evidence": 0,
+    "access_restricted_or_unknown": 9,
+    "multifamily_indicators": 0,
+    "conflicting_use_evidence": 21,
+    "generic_building_yes": 516
+  },
+  "cohorts": [
+    { "count": 487, "percent_of_review": 87.4, "combination": "address + generic Overture building + no land-use + no POI + no nearby typed residential building + clear access + no conflict" },
+    { "count": 19, "percent_of_review": 3.4, "combination": "address + no building linkage + no land-use + no POI + no nearby typed residential building + clear access + no conflict" },
+    { "count": 11, "percent_of_review": 2.0, "combination": "address + generic Overture building + residential land-use + commercial POI + no nearby typed residential building + clear access + conflict" },
+    { "count": 10, "percent_of_review": 1.8, "combination": "address + generic Overture building + residential land-use + commercial POI + two-or-more nearby typed residential buildings + clear access + conflict" },
+    { "count": 10, "percent_of_review": 1.8, "combination": "address + no building linkage + no land-use + no POI + one nearby typed residential building + clear access + no conflict" },
+    { "count": 7, "percent_of_review": 1.3, "combination": "address + generic Overture building + no land-use + no POI + one nearby typed residential building + clear access + no conflict" },
+    { "count": 7, "percent_of_review": 1.3, "combination": "address + typed residential Overture building + two-or-more nearby typed residential buildings + restricted access" },
+    { "count": 2, "percent_of_review": 0.4, "combination": "address + typed residential Overture building + one nearby typed residential building + restricted access" },
+    { "count": 1, "percent_of_review": 0.2, "combination": "address + generic Overture building + two-or-more nearby typed residential buildings + clear access + no conflict" },
+    { "count": 1, "percent_of_review": 0.2, "combination": "address + no building linkage + two-or-more nearby typed residential buildings + clear access + no conflict" },
+    { "count": 1, "percent_of_review": 0.2, "combination": "address + Overture-linked building with no usable type + no context + clear access + no conflict" },
+    { "count": 1, "percent_of_review": 0.2, "combination": "address + typed residential Overture building + no nearby typed residential building + clear access + no conflict" }
+  ],
+  "proposed_rule_results": [
+    { "rule_id": "P2-R1", "resolution": "eligible", "resolved": 0, "risk": "low_to_moderate", "accepted": false },
+    { "rule_id": "P2-R2", "resolution": "eligible", "resolved": 1, "risk": "moderate", "accepted": false },
+    { "rule_id": "P2-R3", "resolution": "excluded", "resolved": 0, "risk": "moderate", "accepted": false }
+  ],
+  "recommended_next_source": "Maryland HomeData statewide SDAT/MDP bulk assessment data",
+  "unavailable_current_signals": [
+    "authoritative_property_use",
+    "parcel_boundary",
+    "assessor_use_class",
+    "independent_building_occupancy",
+    "residential_scale_validation"
+  ]
+}
