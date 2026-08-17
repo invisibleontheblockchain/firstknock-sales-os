@@ -1,6 +1,8 @@
+import { createHash } from 'node:crypto';
 import { classifyCanvasPropertyEntity } from '../../src/components/logic/canvasPropertyClassification.js';
 
 const KIND_PRIORITY = Object.freeze({ address: 1, entrance: 2, building: 3, site: 4, place: 5, land_use: 6, access: 7, barrier: 8 });
+const unique = (values) => [...new Set(values)].sort();
 
 function classificationFeature(feature) {
   const attributes = feature.attributes || {};
@@ -13,6 +15,12 @@ function classificationFeature(feature) {
   if (feature.kind === 'access') return { point, canvass_access: attributes.pedestrian_access === 'denied' ? 'private_road' : attributes.pedestrian_access };
   if (feature.kind === 'barrier') return { point, canvass_access: attributes.pedestrian_access === 'unknown' ? 'gated' : attributes.pedestrian_access };
   return { point };
+}
+
+function firstKnockPropertyId(propertyKey) {
+  const digest = String(propertyKey).match(/^fk-property-key-v1:([a-f0-9]{64})$/)?.[1]
+    || createHash('sha256').update(String(propertyKey)).digest('hex');
+  return `FKP1_${digest}`;
 }
 
 function doorCount(features) {
@@ -45,8 +53,13 @@ export function normalizeCanvasProperties({ evidence, roadById, mergeProvenance,
       classification.confidence_score = Math.min(classification.confidence_score, 0.69);
       classification.classification_reasons = [...new Set([...classification.classification_reasons, 'canvass_access_private_road'])].sort();
     }
-    const displayAddress = ranked.find((feature) => feature.kind === 'address' && feature.attributes.display_address)?.attributes.display_address;
+    const address = ranked.find((feature) => feature.kind === 'address');
+    const displayAddress = address?.attributes.display_address;
+    const normalizedAddress = address?.attributes.normalized_address;
+    const roadAssociation = associated.associations?.find((candidate) => candidate.id === roadId);
+    const buildingLinkage = unique(features.filter((feature) => feature.kind === 'building').flatMap((feature) => feature.provenance.map((item) => `${item.source_id}:${item.feature_id}`)));
     return {
+      fk_property_id: firstKnockPropertyId(propertyKey),
       property_key: propertyKey,
       point: located.location,
       work_unit_identity: road.identity,
@@ -54,7 +67,14 @@ export function normalizeCanvasProperties({ evidence, roadById, mergeProvenance,
       canvass_eligibility: classification.canvass_eligibility,
       confidence: { score: classification.confidence_score, reasons: classification.classification_reasons },
       door_count: doorCount(features),
+      ...(normalizedAddress ? { normalized_address: normalizedAddress } : {}),
       ...(displayAddress ? { display_address: displayAddress } : {}),
+      building_linkage: buildingLinkage,
+      road_linkage: {
+        work_unit_identity: road.identity,
+        method: roadAssociation?.method || 'nearest_road',
+        ...(Number.isFinite(roadAssociation?.distance) ? { distance_m: roadAssociation.distance } : {}),
+      },
       provenance: mergeProvenance(features.map((feature) => feature.provenance), `source_tile.properties.${propertyKey}.provenance`),
     };
   });

@@ -145,6 +145,7 @@ export function compileCanvasEvidenceTile(rawTile, releaseId, limits = DEFAULT_C
     const score = rawProperty.confidence?.score;
     return {
       property_id: canonicalPropertyId(propertyKey),
+      fk_property_id: rawProperty.fk_property_id || `FKP1_${sha256Hex(canonicalStringify({ property_key: propertyKey }))}`,
       property_key: propertyKey,
       work_unit_id: workUnitId,
       point: copyJson(rawProperty.point),
@@ -152,7 +153,10 @@ export function compileCanvasEvidenceTile(rawTile, releaseId, limits = DEFAULT_C
       canvass_eligibility: rawProperty.canvass_eligibility,
       confidence: { score, tier: confidenceTier(score), reasons: [...assertArray(rawProperty.confidence?.reasons, `properties.${propertyKey}.confidence.reasons`)].sort() },
       door_count: rawProperty.door_count,
+      ...(rawProperty.normalized_address ? { normalized_address: rawProperty.normalized_address } : {}),
       ...(rawProperty.display_address ? { display_address: rawProperty.display_address } : {}),
+      building_linkage: copyJson(rawProperty.building_linkage || []).sort(),
+      road_linkage: copyJson(rawProperty.road_linkage || { work_unit_id: workUnitId, method: 'legacy' }),
       provenance: copyJson(rawProperty.provenance).sort((left, right) => `${left.source_id}\u0000${left.dataset_version}\u0000${left.feature_id}`.localeCompare(`${right.source_id}\u0000${right.dataset_version}\u0000${right.feature_id}`)),
     };
   }).sort((left, right) => left.property_id.localeCompare(right.property_id));

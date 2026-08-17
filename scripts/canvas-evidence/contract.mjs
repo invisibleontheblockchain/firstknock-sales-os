@@ -420,6 +420,7 @@ export function validateCanvasEvidenceTile(tile, suppliedLimits = DEFAULT_CANVAS
     const field = `tile.properties[${index}]`;
     requireRecord(property, field);
     requireString(property.property_id, `${field}.property_id`, { pattern: ID_PATTERNS.property });
+    requireString(property.fk_property_id, `${field}.fk_property_id`, { pattern: /^FKP1_[a-f0-9]{64}$/, maxLength: 69 });
     const propertyKey = requireString(property.property_key, `${field}.property_key`, { maxLength: 256 });
     if (canonicalPropertyId(propertyKey) !== property.property_id) fail('property_id_mismatch', `${field}.property_id does not match property_key.`, { field });
     requireString(property.work_unit_id, `${field}.work_unit_id`, { pattern: ID_PATTERNS.workUnit });
@@ -434,7 +435,12 @@ export function validateCanvasEvidenceTile(tile, suppliedLimits = DEFAULT_CANVAS
     const lat = requireFinite(property.point.lat, `${field}.point.lat`, { min: -90, max: 90 });
     const lng = requireFinite(property.point.lng, `${field}.point.lng`, { min: -180, max: 180 });
     if (lat < candidate.coverage.bounds.min_lat || lat > candidate.coverage.bounds.max_lat || lng < candidate.coverage.bounds.min_lng || lng > candidate.coverage.bounds.max_lng) fail('property_outside_tile', `${field}.point is outside tile coverage.`, { field });
+    if (property.normalized_address !== undefined) requireString(property.normalized_address, `${field}.normalized_address`, { maxLength: 500 });
     if (property.display_address !== undefined) requireString(property.display_address, `${field}.display_address`, { maxLength: 500 });
+    if (!Array.isArray(property.building_linkage)) fail('invalid_building_linkage', `${field}.building_linkage must be an array.`, { field });
+    property.building_linkage.forEach((value, linkIndex) => requireString(value, `${field}.building_linkage[${linkIndex}]`, { maxLength: 512 }));
+    requireRecord(property.road_linkage, `${field}.road_linkage`);
+    requireString(property.road_linkage.method, `${field}.road_linkage.method`, { maxLength: 64 });
   }
 
   const propertiesPerSqMi = properties.length / areaSqMi;

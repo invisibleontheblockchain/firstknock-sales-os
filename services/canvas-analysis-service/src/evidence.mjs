@@ -158,6 +158,7 @@ function validateTile(tile, entry, releaseId) {
   const propertyIds = new Set();
   for (const property of properties) {
     requiredString(property.property_id, 'property ID', PROPERTY_PATTERN, 72);
+    requiredString(property.fk_property_id, 'FirstKnock property ID', /^FKP1_[a-f0-9]{64}$/, 69);
     if (propertyIds.has(property.property_id)) throw new ServiceError(502, 'evidence_tile_schema_invalid', 'Canvas evidence tile contains duplicate properties.');
     propertyIds.add(property.property_id);
     requiredString(property.property_key, 'property key', null, 256);
@@ -168,6 +169,8 @@ function validateTile(tile, entry, releaseId) {
       || !property.confidence || !Number.isFinite(property.confidence.score) || property.confidence.score < 0 || property.confidence.score > 1
       || !Array.isArray(property.confidence.reasons) || !property.confidence.reasons.length
       || !Array.isArray(property.provenance) || !property.provenance.length
+      || !Array.isArray(property.building_linkage)
+      || !property.road_linkage || typeof property.road_linkage.method !== 'string'
       || !Number.isFinite(property.point?.lat) || !Number.isFinite(property.point?.lng)) {
       throw new ServiceError(502, 'evidence_tile_schema_invalid', `Property ${property.property_id} is invalid.`);
     }

@@ -21,6 +21,7 @@
     "test:fieldroutes": "node --test test/fieldroutes-backend.test.mjs test/fieldroutes-manager-ui.test.mjs test/fieldroutes-rep-ui.test.mjs",
     "test:canvas-evidence": "node --test test/canvas-evidence-contract.test.mjs test/canvas-evidence-release-builder.test.mjs",
     "canvas:evidence:build": "node scripts/canvas-evidence/build-release.mjs",
+    "canvas:overture:region": "node scripts/canvas-evidence/overture/build-region.mjs",
     "smoke:fieldroutes:readonly": "node scripts/fieldroutes-readonly-smoke.mjs",
     "typecheck": "tsc -p ./jsconfig.validation.json",
     "validate:dependencies": "npm audit --audit-level=high",

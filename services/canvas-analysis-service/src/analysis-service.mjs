@@ -94,12 +94,19 @@ function buildAnalysisResult(job, release, stitched) {
     automatically_resolved: propertyCounts.eligible + propertyCounts.excluded,
     automatically_resolved_percent: propertyTotal ? Number((((propertyCounts.eligible + propertyCounts.excluded) / propertyTotal) * 100).toFixed(1)) : 0,
   };
+  const eligibleDoorsByWorkUnit = new Map();
+  for (const property of classifiedProperties) {
+    if (property.canvass_eligibility !== 'eligible') continue;
+    eligibleDoorsByWorkUnit.set(property.work_unit_id, (eligibleDoorsByWorkUnit.get(property.work_unit_id) || 0) + property.door_count);
+  }
+  const propertyWorkloadAuthority = classifiedProperties.length > 0;
   const classified = stitched.work_units.map((unit) => {
-    const role = presentationRole(unit.canvas_role);
+    const eligibleDoors = eligibleDoorsByWorkUnit.get(unit.work_unit_id) || 0;
+    const role = propertyWorkloadAuthority ? (eligibleDoors ? 'knock' : 'transit_only') : presentationRole(unit.canvas_role);
     roleCounts[role] += 1;
-    const range = unit.opportunity
-      ? { low: unit.opportunity.min, expected: unit.opportunity.expected, high: unit.opportunity.max }
-      : null;
+    const range = propertyWorkloadAuthority
+      ? (eligibleDoors ? { low: eligibleDoors, expected: eligibleDoors, high: eligibleDoors } : null)
+      : unit.opportunity ? { low: unit.opportunity.min, expected: unit.opportunity.expected, high: unit.opportunity.max } : null;
     if (range) {
       opportunity.low += range.low;
       opportunity.expected += range.expected;
@@ -112,6 +119,7 @@ function buildAnalysisResult(job, release, stitched) {
       evidence_role: unit.canvas_role,
       canvas_role: role,
       opportunity: range,
+      workload_authority: propertyWorkloadAuthority ? 'eligible_properties' : 'street_only_fallback',
     };
   });
   return {
@@ -129,6 +137,7 @@ function buildAnalysisResult(job, release, stitched) {
     summary: {
       role_counts: roleCounts,
       property_classification: propertySummary,
+      workload_authority: propertyWorkloadAuthority ? 'eligible_properties' : 'street_only_fallback',
       opportunity,
       selected_work_unit_count: classified.length,
       protected_group_count: stitched.protected_groups.length,

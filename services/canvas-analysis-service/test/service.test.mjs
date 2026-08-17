@@ -153,7 +153,9 @@ test('fixture HTTP API and worker complete the signed evidence lifecycle end to 
   assert.equal(snapshot.created_at, FIXED_TIME);
   assert.equal(snapshot.analysis_result.classified_street_units.length, 2, 'protected cul-de-sac expands atomically');
   assert.deepEqual(snapshot.analysis_result.external_neighbor_ids, [fixture.ids.external]);
-  assert.ok(snapshot.analysis_result.classified_street_units.every((unit) => unit.canvas_role === 'knock'));
+  assert.deepEqual(snapshot.analysis_result.classified_street_units.map((unit) => unit.canvas_role), ['knock', 'transit_only']);
+  assert.equal(snapshot.analysis_result.summary.workload_authority, 'eligible_properties');
+  assert.equal(snapshot.analysis_result.summary.opportunity.expected, 1);
   assert.equal(snapshot.analysis_result.classified_properties.length, 3);
   assert.deepEqual(snapshot.analysis_result.property_classification_summary, {
     eligible: 1, excluded: 1, review: 1, total: 3, automatically_resolved: 2, automatically_resolved_percent: 66.7,

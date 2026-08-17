@@ -408,7 +408,7 @@ function validateRoad(raw, bounds, index) {
 function validateAttributes(kind, raw, field) {
   requireRecord(raw, field);
   if (kind === 'address') {
-    assertAllowedKeys(raw, new Set(['address_key', 'display_address', 'unit_keys', 'occupancy']), field);
+    assertAllowedKeys(raw, new Set(['address_key', 'normalized_address', 'display_address', 'unit_keys', 'occupancy']), field);
     const unitKeys = raw.unit_keys === undefined
       ? []
       : requireArray(raw.unit_keys, `${field}.unit_keys`).map((key, index) => (
@@ -417,6 +417,7 @@ function validateAttributes(kind, raw, field) {
     if (new Set(unitKeys).size !== unitKeys.length) fail('duplicate_unit_key', `${field}.unit_keys contains duplicates.`, { field });
     return {
       address_key: requireString(raw.address_key, `${field}.address_key`, { maxLength: 256 }),
+      ...(raw.normalized_address === undefined ? {} : { normalized_address: requireString(raw.normalized_address, `${field}.normalized_address`, { maxLength: 500 }) }),
       ...(raw.display_address === undefined ? {} : { display_address: requireString(raw.display_address, `${field}.display_address`, { maxLength: 500 }) }),
       unit_keys: [...unitKeys].sort(),
       occupancy: requireEnum(raw.occupancy, ADDRESS_OCCUPANCY, `${field}.occupancy`),
@@ -530,6 +531,7 @@ function validateEvidence(raw, index, roadById, bounds, maxNearestRoadMeters) {
     attributes,
     roadIds,
     propertyKey,
+    associations,
     location: raw.location === undefined ? null : validatePoint(raw.location, bounds, `${field}.location`),
     provenance: validateProvenance(raw.provenance, `${field}.provenance`),
   };
@@ -883,7 +885,7 @@ function normalizeTileInternal(rawInput, { maxNearestRoadMeters = DEFAULT_MAX_NE
   const properties = normalizeCanvasProperties({ evidence, roadById, mergeProvenance, fail });
   const ownership = [];
   const audit = [];
-  const workUnits = roads.map((road) => {
+  let workUnits = roads.map((road) => {
     road.evidence.sort((left, right) => left.evidenceId.localeCompare(right.evidenceId));
     const classification = classifyCanvasSourceWorkUnit(road);
     ownership.push(...classification.opportunity_ownership_keys.map((key) => ({ key, roadId: road.id })));
@@ -914,6 +916,29 @@ function normalizeTileInternal(rawInput, { maxNearestRoadMeters = DEFAULT_MAX_NE
   }).sort((left, right) => (
     canonicalWorkUnitId(left.identity).localeCompare(canonicalWorkUnitId(right.identity))
   ));
+  const propertyAwareRelease = properties.some((property) => property.property_key.startsWith('fk-property-key-v1:'));
+  if (propertyAwareRelease) {
+    const eligibleDoorsByUnit = new Map();
+    for (const property of properties) {
+      if (property.canvass_eligibility !== 'eligible') continue;
+      const id = canonicalWorkUnitId(property.work_unit_identity);
+      eligibleDoorsByUnit.set(id, (eligibleDoorsByUnit.get(id) || 0) + property.door_count);
+    }
+    workUnits = workUnits.map((unit) => {
+      const eligibleDoors = eligibleDoorsByUnit.get(canonicalWorkUnitId(unit.identity)) || 0;
+      const context = { ...unit };
+      delete context.opportunity;
+      return {
+        ...context,
+        canvas_role: eligibleDoors ? 'opportunity' : 'transit',
+        confidence: {
+          score: eligibleDoors ? 1 : 0.9,
+          reasons: [eligibleDoors ? 'property_eligible_door_authority' : 'property_no_eligible_doors'],
+        },
+        ...(eligibleDoors ? { opportunity: { min: eligibleDoors, expected: eligibleDoors, max: eligibleDoors } } : {}),
+      };
+    });
+  }
   return {
     tile: {
       schema: NORMALIZED_TILE_SCHEMA,

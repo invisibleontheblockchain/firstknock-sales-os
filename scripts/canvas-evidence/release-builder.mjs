@@ -414,7 +414,7 @@ export function compileNormalizedCanvasEvidenceTile(rawInput, context) {
 
   const fixtureProperties = requireArray(rawTile.properties || [], `${field}.properties`).map((property, index) => {
     const propertyField = `${field}.properties[${index}]`;
-    assertAllowedKeys(property, new Set(['property_key', 'work_unit_identity', 'point', 'property_type', 'canvass_eligibility', 'confidence', 'door_count', 'display_address', 'provenance']), propertyField);
+    assertAllowedKeys(property, new Set(['fk_property_id', 'property_key', 'work_unit_identity', 'point', 'property_type', 'canvass_eligibility', 'confidence', 'door_count', 'normalized_address', 'display_address', 'building_linkage', 'road_linkage', 'provenance']), propertyField);
     const propertyKey = requireString(property.property_key, `${propertyField}.property_key`);
     const propertyId = canonicalPropertyId(propertyKey);
     const workUnitId = canonicalWorkUnitId(canonicalWorkUnitDescriptor(property.work_unit_identity));
@@ -423,6 +423,7 @@ export function compileNormalizedCanvasEvidenceTile(rawInput, context) {
     topologyRecords.push({ type: 'property', propertyId });
     return {
       fixture_key: propertyKey,
+      fk_property_id: property.fk_property_id,
       property_key: propertyKey,
       work_unit: `unit:${workUnitId}`,
       point: validatePointWithinTile(property.point, tileBounds, `${propertyField}.point`),
@@ -430,7 +431,10 @@ export function compileNormalizedCanvasEvidenceTile(rawInput, context) {
       canvass_eligibility: property.canvass_eligibility,
       confidence: copyJson(property.confidence),
       door_count: property.door_count,
+      ...(property.normalized_address === undefined ? {} : { normalized_address: requireString(property.normalized_address, `${propertyField}.normalized_address`) }),
       ...(property.display_address === undefined ? {} : { display_address: requireString(property.display_address, `${propertyField}.display_address`) }),
+      building_linkage: copyJson(property.building_linkage || []),
+      road_linkage: copyJson(property.road_linkage || { work_unit_identity: property.work_unit_identity, method: 'legacy' }),
       provenance: copyJson(property.provenance),
     };
   });
