@@ -1,5 +1,5 @@
 import { canonicalStringify, canonicalWorkUnitId } from '../contract.mjs';
-import { normalizeCanvasSourceEvidenceTile } from '../source-normalizer.mjs';
+import { applyPropertyWorkloadAuthority, normalizeCanvasSourceEvidenceTile } from '../source-normalizer.mjs';
 import { normalizeOvertureAddress, sanitizeSourceFeatureId } from './identity.mjs';
 import { bboxAreaSqMi, boundsForFeatures, distanceToLineMeters, featureContainsPoint, lineIntersectsRing, pointInRing, pointOf } from './geometry.mjs';
 
@@ -125,6 +125,56 @@ export function buildOsmRoadGraph(features, version, observedAt) {
     protectedGroups.push({ kind: 'cul_de_sac', members: members.map((member) => edges[member].identity), entries: [edges[entry].identity] });
   }
   return { roadRecords: edges.map(({ _nodes, ...edge }) => edge), protectedGroups };
+}
+
+function relocateOutsideConnectorWorkload(tile, polygonRing) {
+  if (!polygonRing) return { tile, connectorIds: [], connectorDistanceM: 0, maximumExcursionM: 0 };
+  const byId = new Map(tile.work_units.map((unit) => [canonicalWorkUnitId(unit.identity), unit]));
+  const insideIds = new Set(tile.work_units.filter((unit) => lineIntersectsRing(unit.geometry.coordinates, polygonRing)).map((unit) => canonicalWorkUnitId(unit.identity)));
+  const connectorIds = new Set();
+  const properties = tile.properties.map((property) => {
+    const startId = canonicalWorkUnitId(property.work_unit_identity);
+    if (insideIds.has(startId)) return property;
+    const queue = [startId];
+    const previous = new Map([[startId, null]]);
+    let anchorId = null;
+    while (queue.length && !anchorId) {
+      const current = queue.shift();
+      const neighbors = (byId.get(current)?.neighbors || []).map((item) => canonicalWorkUnitId(item.identity)).filter((id) => byId.has(id)).sort();
+      for (const neighborId of neighbors) {
+        if (previous.has(neighborId)) continue;
+        previous.set(neighborId, current);
+        if (insideIds.has(neighborId)) { anchorId = neighborId; break; }
+        queue.push(neighborId);
+      }
+    }
+    if (!anchorId) throw new TypeError(`Property ${property.fk_property_id} has no real-road path to the workload polygon.`);
+    for (let current = previous.get(anchorId); current; current = previous.get(current)) connectorIds.add(current);
+    const anchor = byId.get(anchorId);
+    return {
+      ...property,
+      work_unit_identity: anchor.identity,
+      road_linkage: { work_unit_identity: anchor.identity, method: 'boundary_connector' },
+    };
+  });
+  const distance = (left, right) => {
+    const lat = (left[1] + right[1]) / 2 * Math.PI / 180;
+    return Math.hypot((right[0] - left[0]) * 111_320 * Math.cos(lat), (right[1] - left[1]) * 111_320);
+  };
+  const connectorDistanceM = [...connectorIds].reduce((sum, id) => {
+    const coordinates = byId.get(id).geometry.coordinates;
+    return sum + coordinates.slice(1).reduce((subtotal, point, index) => subtotal + distance(coordinates[index], point), 0);
+  }, 0);
+  const closedRing = [...polygonRing, polygonRing[0]];
+  const maximumExcursionM = Math.max(0, ...[...connectorIds].flatMap((id) => byId.get(id).geometry.coordinates)
+    .filter(([lng, lat]) => !pointInRing({ lng, lat }, polygonRing))
+    .map(([lng, lat]) => distanceToLineMeters({ lng, lat }, closedRing)));
+  return {
+    tile: { ...tile, properties, work_units: applyPropertyWorkloadAuthority(tile.work_units, properties, { force: true }) },
+    connectorIds: [...connectorIds].sort(),
+    connectorDistanceM: Number(connectorDistanceM.toFixed(2)),
+    maximumExcursionM: Number(maximumExcursionM.toFixed(2)),
+  };
 }
 
 function nearestRoad(point, street, roads, maxMeters) {
@@ -318,9 +368,8 @@ export function buildOvertureCanvasRegion({ addresses, buildings, places, roads,
   const osmRoadAuthority = roadFeatures.some((feature) => Array.isArray(feature?.properties?.node_ids));
   const roadGraph = osmRoadAuthority ? buildOsmRoadGraph(roadFeatures, osmSource?.dataset_version || releaseVersion, osmSource?.captured_at || observedAt) : { roadRecords: buildRoads(roadFeatures, releaseVersion, observedAt), protectedGroups: [] };
   const roadRecords = roadGraph.roadRecords;
-  const linkageRoadRecords = polygonRing ? roadRecords.filter((road) => lineIntersectsRing(road.geometry.coordinates, polygonRing)) : roadRecords;
   const { evidence, unlinked, discoveredPropertyCount } = buildOverturePropertyEvidence({
-    addressFeatures, supportingAddresses, buildingFeatures, placeFeatures, roadRecords: linkageRoadRecords,
+    addressFeatures, supportingAddresses, buildingFeatures, placeFeatures, roadRecords,
     releaseVersion, observedAt, maxNearestRoadMeters, osmSource,
   });
   const allGeometry = [...addressFeatures, ...roadFeatures];
@@ -331,7 +380,9 @@ export function buildOvertureCanvasRegion({ addresses, buildings, places, roads,
     coverage: { area_sq_mi: Number(bboxAreaSqMi(bounds).toFixed(6)), bounds },
     road_segments: roadRecords.map(({ _name, ...road }) => road), evidence, protected_groups: roadGraph.protectedGroups,
   };
-  const normalizedTile = normalizeCanvasSourceEvidenceTile(sourceTile, { maxNearestRoadMeters });
+  const normalized = normalizeCanvasSourceEvidenceTile(sourceTile, { maxNearestRoadMeters });
+  const connectorResult = relocateOutsideConnectorWorkload(normalized, polygonRing);
+  const normalizedTile = connectorResult.tile;
   const counts = normalizedTile.properties.reduce((result, property) => { result[property.canvass_eligibility] += 1; return result; }, { eligible: 0, excluded: 0, review: 0 });
   return {
     source_tile: sourceTile,
@@ -345,7 +396,7 @@ export function buildOvertureCanvasRegion({ addresses, buildings, places, roads,
       ...(nad ? [source('national-address-database', 'National Address Database', releaseVersion, 'public-data', observedAt)] : []),
       ...(assessors ? [source('public-assessor', 'Public assessor/parcel feeds', releaseVersion, 'public-data', observedAt)] : []),
     ].filter((record) => normalizedTile.properties.some((property) => property.provenance.some((item) => item.source_id === record.source_id)) || record.source_id === (osmRoadAuthority ? 'openstreetmap' : 'overture-transportation')),
-    report: { region_key: regionKey, overture_release: releaseVersion, source_address_records_outside_property_polygon: addressRecords.length + supportingRecords.length - addressFeatures.length - supportingAddresses.length, property_polygon_enforced: Boolean(polygonRing), outside_property_workload: 0, road_authority: osmRoadAuthority ? 'pinned_openstreetmap_node_graph' : 'overture_transportation', linkage_road_scope: polygonRing ? 'workload_polygon_intersections' : 'all_release_roads', synthetic_road_edge_count: 0, protected_group_count: roadGraph.protectedGroups.length, raw_source_address_record_count: addressFeatures.length + supportingAddresses.length, canonical_property_count: discoveredPropertyCount, duplicate_source_record_count: addressFeatures.length + supportingAddresses.length - discoveredPropertyCount, discovered_address_count: discoveredPropertyCount, signed_property_count: normalizedTile.properties.length, unlinked_property_count: unlinked.length, evidence_assertion_count: evidence.length, property_identity_version: CANVAS_PROPERTY_IDENTITY_VERSION, osm_assertion_normalization_version: CANVAS_OSM_ASSERTION_NORMALIZATION_VERSION, property_classification_counts: counts, eligible_door_count: normalizedTile.properties.filter((property) => property.canvass_eligibility === 'eligible').reduce((sum, property) => sum + property.door_count, 0), batchdata_call_count: 0, input_digest: canonicalStringify({ addresses: addressFeatures.length, buildings: buildingFeatures.length, places: placeFeatures.length, roads: roadFeatures.length }) },
+    report: { region_key: regionKey, overture_release: releaseVersion, source_address_records_outside_property_polygon: addressRecords.length + supportingRecords.length - addressFeatures.length - supportingAddresses.length, property_polygon_enforced: Boolean(polygonRing), outside_property_workload: 0, road_authority: osmRoadAuthority ? 'pinned_openstreetmap_node_graph' : 'overture_transportation', linkage_road_scope: polygonRing ? 'workload_polygon_plus_real_connectors' : 'all_release_roads', outside_connector_count: connectorResult.connectorIds.length, connector_distance_m: connectorResult.connectorDistanceM, maximum_connector_excursion_m: connectorResult.maximumExcursionM, outside_connector_workload: 0, synthetic_road_edge_count: 0, protected_group_count: roadGraph.protectedGroups.length, raw_source_address_record_count: addressFeatures.length + supportingAddresses.length, canonical_property_count: discoveredPropertyCount, duplicate_source_record_count: addressFeatures.length + supportingAddresses.length - discoveredPropertyCount, discovered_address_count: discoveredPropertyCount, signed_property_count: normalizedTile.properties.length, unlinked_property_count: unlinked.length, evidence_assertion_count: evidence.length, property_identity_version: CANVAS_PROPERTY_IDENTITY_VERSION, osm_assertion_normalization_version: CANVAS_OSM_ASSERTION_NORMALIZATION_VERSION, property_classification_counts: counts, eligible_door_count: normalizedTile.properties.filter((property) => property.canvass_eligibility === 'eligible').reduce((sum, property) => sum + property.door_count, 0), batchdata_call_count: 0, input_digest: canonicalStringify({ addresses: addressFeatures.length, buildings: buildingFeatures.length, places: placeFeatures.length, roads: roadFeatures.length }) },
     unlinked_properties: unlinked,
   };
 }

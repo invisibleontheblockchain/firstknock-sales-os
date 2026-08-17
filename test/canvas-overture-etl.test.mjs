@@ -99,3 +99,27 @@ test('pinned OSM node identities produce only real edges, deterministic neighbor
   assert.equal(tiles.flatMap((tile) => tile.properties).length, first.normalized_tile.properties.length);
   assert.equal(tiles.flatMap((tile) => tile.protected_groups).length, first.normalized_tile.protected_groups.length);
 });
+
+test('real outside connector roads retain topology but carry zero property workload', () => {
+  const input = fixture();
+  input.addresses = featureCollection([point('boundary-home', [-82.6508, 34.5098], { number: '100', street: 'Oak Street', postal_city: 'Anderson', postcode: '29621', country: 'US' })]);
+  input.buildings = featureCollection([polygon('boundary-building', [[-82.65085, 34.50975], [-82.65075, 34.50975], [-82.65075, 34.50985], [-82.65085, 34.50985], [-82.65085, 34.50975]], { class: 'house' })]);
+  input.places = featureCollection([]);
+  input.roads = featureCollection([
+    { type: 'Feature', id: 'way/connector', geometry: { type: 'LineString', coordinates: [[-82.651, 34.509], [-82.651, 34.51]] }, properties: { highway: 'residential', name: 'Oak Street', node_ids: ['1', '2'] } },
+    { type: 'Feature', id: 'way/inside', geometry: { type: 'LineString', coordinates: [[-82.651, 34.51], [-82.649, 34.51]] }, properties: { highway: 'residential', name: 'Main Street', node_ids: ['2', '3'] } },
+  ]);
+  const propertyPolygon = [
+    { lng: -82.6509, lat: 34.5097 }, { lng: -82.6507, lat: 34.5097 },
+    { lng: -82.6507, lat: 34.5102 }, { lng: -82.6509, lat: 34.5102 },
+  ];
+  const result = buildOvertureCanvasRegion({ ...input, propertyPolygon, regionKey: 'boundary-connector', releaseVersion, observedAt });
+  const connector = result.normalized_tile.work_units.find((unit) => unit.identity.source_feature_id === 'way/connector');
+  const property = result.normalized_tile.properties[0];
+  assert.equal(result.report.outside_connector_count, 1);
+  assert.equal(result.report.outside_connector_workload, 0);
+  assert.equal(connector.canvas_role, 'transit');
+  assert.equal(connector.opportunity, undefined);
+  assert.equal(property.work_unit_identity.source_feature_id, 'way/inside');
+  assert.equal(property.road_linkage.method, 'boundary_connector');
+});
