@@ -184,8 +184,8 @@ export default function Home() {
     const [showMapSettings, setShowMapSettings] = useState(false);
     const [navigationApp, setNavigationApp] = useState('apple');
 
-    // Persisted Map Settings
-    const [mapTheme, setMapTheme] = useState(() => { const canvasMode = localStorage.getItem('fk_routeMode') === 'canvas'; return localStorage.getItem(canvasMode ? 'fk_mapTheme_canvas_v1' : 'fk_mapTheme_v2') || (canvasMode ? 'dark' : 'satellite'); });
+    // Precision v3 rolls Hybrid out to existing devices; Canvas stays independent.
+    const [mapTheme, setMapTheme] = useState(() => { const canvasMode = localStorage.getItem('fk_routeMode') === 'canvas'; return localStorage.getItem(canvasMode ? 'fk_mapTheme_canvas_v1' : 'fk_mapTheme_v3') || (canvasMode ? 'dark' : 'hybrid'); });
     const [showRouteDetails, setShowRouteDetails] = useState(() => {
         const saved = localStorage.getItem('fk_showRouteDetails_v2');
         return saved ? JSON.parse(saved) : true;
@@ -246,7 +246,7 @@ export default function Home() {
 
     useEffect(() => {
         try {
-            localStorage.setItem(routeModeRef.current === 'canvas' ? 'fk_mapTheme_canvas_v1' : 'fk_mapTheme_v2', mapTheme);
+            localStorage.setItem(routeModeRef.current === 'canvas' ? 'fk_mapTheme_canvas_v1' : 'fk_mapTheme_v3', mapTheme);
             localStorage.setItem('fk_showRouteDetails_v2', JSON.stringify(showRouteDetails));
             localStorage.setItem('fk_pinSize_v3', JSON.stringify(pinSize));
             localStorage.setItem('fk_showRouteLines_v2', JSON.stringify(showRouteLines));
@@ -2799,7 +2799,7 @@ export default function Home() {
             {/* Map Settings Panel */}
             {showMapSettings && (
                 <React.Suspense fallback={null}>
-                    <MapSettingsPanel
+                    <MapSettingsPanel routeMode={routeMode}
                         mapTheme={mapTheme}
                         setMapTheme={setMapTheme}
                         teamMembers={teamMembers}

@@ -58,6 +58,7 @@ function SectionLabel({ children }) {
 
 /* ── main panel ── */
 export default function MapSettingsPanel({
+  routeMode = 'precision',
   mapTheme, setMapTheme,
   teamMembers, repColors, onUpdateRepColor,
   onClose,
@@ -127,7 +128,7 @@ export default function MapSettingsPanel({
     setLocal({
       mapSettings: { pinShape:'circle', showLabels:false, labelType:'number', ...DEFAULT_PIN_THEME.settings },
       pinSize:DEFAULT_PIN_THEME.pinSize, showRouteLines:false, showRouteDetails:true, showAllProperties:false,
-      mapTheme:'dark', navigationApp:'apple', quickFilter:'all',
+      mapTheme:routeMode === 'canvas' ? 'dark' : 'hybrid', navigationApp:'apple', quickFilter:'all',
       soldDateFilter:null, highlightRecentlySold:false,
     });
   };
