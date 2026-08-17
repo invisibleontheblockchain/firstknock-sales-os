@@ -23,7 +23,7 @@ import {
     TIER_CLUSTER,
     TIER_DOOR
 } from '../../shared/roadMatrixTiers.js';
-import { sequenceRoadHierarchy } from '../../shared/roadHierarchySequencer.js';
+import { HIERARCHY_REFINEMENT_STEP_BUDGET, sequenceRoadHierarchy } from '../../shared/roadHierarchySequencer.js';
 import { measureRoadPath } from '../../shared/roadPathMeasure.js';
 import {
     DURATION_TIE_TOLERANCE_MINUTES,
@@ -190,7 +190,30 @@ export default async function (req: Request): Promise<Response> {
                 // finished route so it can find the transitions that are still bad
                 // and re-solve their neighbourhoods. Each round is kept only when a
                 // fresh measurement is shorter, so this cannot lengthen the route.
-                measurePath: measureRoadPath
+                measurePath: measureRoadPath,
+                // A 1,000-door territory has ~560 street blocks against a 250-point
+                // matrix limit, so the road-ordered block path is unreachable and
+                // the windows are cut from lat/lng boxes. Those boxes straddle
+                // barriers by construction. Barrier repair measures each window's
+                // internal road coherence and moves road-disconnected street blocks
+                // to the road-nearest coherent window, which is the one correction
+                // that addresses geometric windows without replacing them.
+                //
+                // Measured on Charlotte Route 1H (1,000 doors, scripts/route-1h-solver-bench.mjs):
+                //   baseline                428.31 mi   longest leg 18.09   27s
+                //   barrier repair          414.26 mi   longest leg 14.48   34s
+                //   barrier + 8x budget     394.13 mi   longest leg 14.48   36s
+                // and the repo's own portfolio benchmarks have barrier repair
+                // winning on 1I (518.3 -> 502.8), 1J (358.3 -> 354.7) and Salisbury
+                // (616.6 -> 603.0), with no change on East Valley where there is no
+                // barrier to repair.
+                barrierRepair: true,
+                // The hierarchy divides this pool across windows, so a 17-window
+                // route got ~118k steps each while ONE complete refinement pass over
+                // a 33-block window needs ~500k. The first pass was therefore cut
+                // off about a third of the way through and the second and third
+                // seeds never ran at all. Worth 20 measured miles on 1H.
+                refinementStepBudget: HIERARCHY_REFINEMENT_STEP_BUDGET * 8
             });
 
             if (hierarchy.ok && exactOnce(hierarchy.order, properties.length)) {
