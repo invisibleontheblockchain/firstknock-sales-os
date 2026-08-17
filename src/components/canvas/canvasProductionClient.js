@@ -302,7 +302,7 @@ export function applyCanvasClassificationOverride({
     ? streetUnitIds
     : [streetUnitId]).map((value) => String(value || '').trim()).filter(Boolean))].sort();
   if (!evidenceId || !targetUnitIds.length || !String(reason || '').trim()) {
-    throw new CanvasProductionError('Choose an amber street and enter a reason before applying an override.', {
+    throw new CanvasProductionError('Choose a classification target and enter a reason before applying an override.', {
       code: 'CANVAS_OVERRIDE_INPUT_REQUIRED',
     });
   }
@@ -323,7 +323,7 @@ export function applyCanvasClassificationOverride({
     override_canvas_role: canvasRole,
     ...(Number.isFinite(Number(opportunityCount)) ? { opportunity_count: Number(opportunityCount) } : {}),
     override_reason: String(reason).trim(),
-  }, 'The amber classification could not be revised.');
+  }, 'The classification could not be revised.');
 }
 
 export function deployCanvasCampaign({ sessionId, expectedVersion, idempotencyKey, supersedeSessionIds = [] }) {

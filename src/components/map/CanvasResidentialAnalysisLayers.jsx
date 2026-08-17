@@ -3,6 +3,7 @@ import { useMap } from 'react-leaflet';
 import L from './leafletPatches';
 import {
   CANVAS_RESIDENTIAL_ROLE_META,
+  getCanvasClassifiedProperties,
   getCanvasClassifiedStreetUnits,
   getCanvasResidentialRole,
   getCanvasResidentialStreetSegments,
@@ -74,6 +75,7 @@ export default function CanvasResidentialAnalysisLayers({ analysis, hasAreaPrevi
   const map = useMap();
   const layerRef = useRef(null);
   const selectedUnitIdRef = useRef('');
+  const propertyAuthoritative = getCanvasClassifiedProperties(analysis).length > 0;
 
   useEffect(() => {
     const features = getCanvasClassifiedStreetUnits(analysis).map(featureForUnit).filter(Boolean);
@@ -85,7 +87,7 @@ export default function CanvasResidentialAnalysisLayers({ analysis, hasAreaPrevi
       style: (feature) => featureStyle(feature, hasAreaPreview, selectedUnitIdRef.current),
       onEachFeature: (feature, featureLayer) => {
         featureLayer.bindTooltip(tooltipNode(feature), { sticky: true });
-        if (feature.properties.role === 'uncertain') {
+        if (!propertyAuthoritative && feature.properties.role === 'uncertain') {
           featureLayer.on('click', () => {
             selectedUnitIdRef.current = String(feature.id || '');
             layer.setStyle((candidate) => featureStyle(candidate, hasAreaPreview, selectedUnitIdRef.current));
@@ -102,7 +104,7 @@ export default function CanvasResidentialAnalysisLayers({ analysis, hasAreaPrevi
       if (layerRef.current === layer) layerRef.current = null;
       layer.remove();
     };
-  }, [analysis, hasAreaPreview, map]);
+  }, [analysis, hasAreaPreview, map, propertyAuthoritative]);
 
   useEffect(() => {
     const handleSelection = (event) => {

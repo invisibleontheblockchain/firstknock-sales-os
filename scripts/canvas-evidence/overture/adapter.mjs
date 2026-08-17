@@ -10,10 +10,10 @@ const source = (id, provider, version, license, observedAt) => ({ source_id: id,
 const provenance = (sourceId, version, featureId, observedAt, license = OVERTURE_LICENSE) => [{ source_id: sourceId, dataset_version: version, feature_id: sanitizeSourceFeatureId(featureId), observed_at: observedAt, license }];
 
 const BUILDING_USE = new Map([
-  ['residential', 'residential'], ['house', 'house'], ['detached', 'detached'], ['semi_detached', 'semidetached_house'], ['apartments', 'apartments'], ['commercial', 'commercial'], ['industrial', 'industrial'], ['warehouse', 'warehouse'], ['retail', 'retail'], ['office', 'office'], ['school', 'school'], ['hospital', 'hospital'], ['civic', 'civic'], ['religious', 'religious'], ['garage', 'garage'],
+  ['residential', 'residential'], ['house', 'house'], ['detached', 'detached'], ['semi_detached', 'semidetached_house'], ['apartments', 'apartments'], ['terrace', 'terrace'], ['commercial', 'commercial'], ['industrial', 'industrial'], ['warehouse', 'warehouse'], ['retail', 'retail'], ['office', 'office'], ['school', 'school'], ['hospital', 'hospital'], ['civic', 'civic'], ['religious', 'religious'], ['garage', 'garage'], ['shed', 'nonresidential'], ['farm_auxiliary', 'nonresidential'],
 ]);
 const PLACE_USE = new Map([
-  ['school', 'school'], ['university', 'university'], ['hospital', 'hospital'], ['government', 'government'], ['public_service', 'government'], ['religious_organization', 'religious'], ['place_of_worship', 'religious'], ['hotel', 'hotel'], ['warehouse', 'warehouse'], ['office', 'office'], ['store', 'retail'], ['shopping', 'retail'], ['retail', 'retail'], ['restaurant', 'commercial'], ['commercial_service', 'commercial'],
+  ['residential', 'residential'], ['school', 'school'], ['university', 'university'], ['hospital', 'hospital'], ['government', 'government'], ['public_service', 'government'], ['religious_organization', 'religious'], ['place_of_worship', 'religious'], ['church', 'religious'], ['hotel', 'hotel'], ['warehouse', 'warehouse'], ['office', 'office'], ['store', 'retail'], ['shopping', 'retail'], ['retail', 'retail'], ['restaurant', 'commercial'], ['commercial_service', 'commercial'], ['professional_services', 'commercial'], ['contractor', 'commercial'], ['parking', 'parking'], ['farmland', 'nonresidential'], ['meadow', 'nonresidential'],
 ]);
 
 function collection(value, label) {
@@ -80,7 +80,7 @@ function buildingUse(feature) {
 }
 
 function placeUse(feature) {
-  const values = [feature?.properties?.categories?.primary, ...(feature?.properties?.categories?.alternate || []), feature?.properties?.amenity, feature?.properties?.shop, feature?.properties?.office, feature?.properties?.landuse].map(norm);
+  const values = [feature?.properties?.categories?.primary, ...(feature?.properties?.categories?.alternate || []), feature?.properties?.amenity, feature?.properties?.shop ? 'retail' : '', feature?.properties?.office ? 'office' : '', feature?.properties?.government ? 'government' : '', feature?.properties?.landuse].map(norm);
   for (const value of values) {
     if (PLACE_USE.has(value)) return PLACE_USE.get(value);
     for (const [token, mapped] of PLACE_USE) if (value.includes(token)) return mapped;
@@ -112,9 +112,11 @@ export function buildOverturePropertyEvidence({ addressFeatures, supportingAddre
     const association = { method: road.method, road_identity: road.road.identity, ...(road.method === 'nearest_road' ? { distance_m: Number(road.distance.toFixed(2)) } : {}) };
     const matchedBuildings = buildingFeatures.filter((building) => featureContainsPoint(building, point));
     const matchedPlaces = linkedContext(point, placeFeatures);
-    const residentialBuilding = matchedBuildings.map(buildingUse).find((use) => ['residential', 'house', 'detached', 'semidetached_house', 'apartments'].includes(use));
-    const excludedPlace = matchedPlaces.map(placeUse).find(Boolean);
-    const occupancy = excludedPlace ? 'commercial' : residentialBuilding ? 'residential' : 'unknown';
+    const residentialBuilding = matchedBuildings.map(buildingUse).find((use) => ['residential', 'house', 'detached', 'semidetached_house', 'terrace', 'apartments'].includes(use));
+    const placeUses = matchedPlaces.map(placeUse).filter(Boolean);
+    const residentialPlace = placeUses.includes('residential');
+    const excludedPlace = placeUses.find((use) => use !== 'residential');
+    const occupancy = excludedPlace ? 'commercial' : residentialBuilding || residentialPlace ? 'residential' : 'unknown';
     const addressSourceId = index < addressFeatures.length ? 'overture-addresses' : feature?.properties?._adapter_source === 'assessor' ? 'public-assessor' : 'national-address-database';
     const license = addressSourceId === 'overture-addresses' ? OVERTURE_LICENSE : 'public-data';
     evidence.push({
@@ -125,10 +127,11 @@ export function buildOverturePropertyEvidence({ addressFeatures, supportingAddre
       provenance: provenance(addressSourceId, releaseVersion, feature.id || feature.properties?.id || `address-${index}`, observedAt, license),
     });
     matchedBuildings.slice(0, 8).forEach((building, buildingIndex) => {
-      const sourceId = building.properties?._adapter_source === 'osm' ? 'openstreetmap' : 'overture-buildings';
-      const sourceVersion = sourceId === 'openstreetmap' ? osmSource?.dataset_version || releaseVersion : releaseVersion;
-      const sourceObservedAt = sourceId === 'openstreetmap' ? osmSource?.captured_at || observedAt : observedAt;
-      const sourceLicense = sourceId === 'openstreetmap' ? osmSource?.license || OSM_LICENSE : OVERTURE_LICENSE;
+      const osmEvidence = building.properties?._adapter_source === 'osm';
+      const sourceId = osmEvidence ? osmSource?.source_id || 'openstreetmap' : 'overture-buildings';
+      const sourceVersion = osmEvidence ? osmSource?.dataset_version || releaseVersion : releaseVersion;
+      const sourceObservedAt = osmEvidence ? osmSource?.captured_at || observedAt : observedAt;
+      const sourceLicense = osmEvidence ? osmSource?.license || OSM_LICENSE : OVERTURE_LICENSE;
       evidence.push({
         evidence_id: `${sourceId}:${sanitizeSourceFeatureId(building.id || building.properties?.id, `${index}-${buildingIndex}`).slice(0, 160)}:${identity.fk_property_id}`,
         kind: 'building', property_key: identity.property_key, location: point,
@@ -140,10 +143,11 @@ export function buildOverturePropertyEvidence({ addressFeatures, supportingAddre
     matchedPlaces.forEach((place, placeIndex) => {
       const use = placeUse(place);
       if (!use) return;
-      const sourceId = place.properties?._adapter_source === 'osm' ? 'openstreetmap' : 'overture-places';
-      const sourceVersion = sourceId === 'openstreetmap' ? osmSource?.dataset_version || releaseVersion : releaseVersion;
-      const sourceObservedAt = sourceId === 'openstreetmap' ? osmSource?.captured_at || observedAt : observedAt;
-      const sourceLicense = sourceId === 'openstreetmap' ? osmSource?.license || OSM_LICENSE : OVERTURE_LICENSE;
+      const osmEvidence = place.properties?._adapter_source === 'osm';
+      const sourceId = osmEvidence ? osmSource?.source_id || 'openstreetmap' : 'overture-places';
+      const sourceVersion = osmEvidence ? osmSource?.dataset_version || releaseVersion : releaseVersion;
+      const sourceObservedAt = osmEvidence ? osmSource?.captured_at || observedAt : observedAt;
+      const sourceLicense = osmEvidence ? osmSource?.license || OSM_LICENSE : OVERTURE_LICENSE;
       evidence.push({ evidence_id: `${sourceId}:${sanitizeSourceFeatureId(place.id || place.properties?.id, `${index}-${placeIndex}`).slice(0, 160)}:${identity.fk_property_id}`, kind: 'place', property_key: identity.property_key, location: point, attributes: { place_use: use }, associations: [{ method: 'area_overlap', road_identity: road.road.identity }], provenance: provenance(sourceId, sourceVersion, place.id || place.properties?.id || `${index}-${placeIndex}`, sourceObservedAt, sourceLicense) });
     });
   }

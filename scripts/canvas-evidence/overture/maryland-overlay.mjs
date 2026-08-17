@@ -79,6 +79,9 @@ export function buildMarylandPropertyOverlay({ baseTiles, addresses, buildings, 
   const properties = normalizedTiles.flatMap((tile) => tile.properties);
   const outputUnits = normalizedTiles.flatMap((tile) => tile.work_units);
   const propertyCounts = countBy(properties, 'canvass_eligibility', { eligible: 0, excluded: 0, review: 0 });
+  const automaticallyResolved = propertyCounts.eligible + propertyCounts.excluded;
+  const linkedToBuildings = properties.filter((property) => property.building_linkage.length > 0).length;
+  const linkedToRoads = properties.filter((property) => property.road_linkage?.work_unit_identity).length;
   return {
     normalized_tiles: normalizedTiles,
     unlinked_properties: [...propertyEvidence.unlinked, ...boundaryUnlinked],
@@ -90,6 +93,12 @@ export function buildMarylandPropertyOverlay({ baseTiles, addresses, buildings, 
       property_classification_counts: propertyCounts,
       discovered_address_count: propertyEvidence.discoveredPropertyCount,
       signed_property_count: properties.length,
+      unique_fk_property_id_count: new Set(properties.map((property) => property.fk_property_id)).size,
+      automatically_resolved_percent: properties.length ? Number((automaticallyResolved / properties.length * 100).toFixed(1)) : 0,
+      review_percent: properties.length ? Number((propertyCounts.review / properties.length * 100).toFixed(1)) : 0,
+      linked_to_building_count: linkedToBuildings,
+      linked_to_maryland_road_count: linkedToRoads,
+      duplicate_address_count_resolved: features(addresses, 'addresses').length - propertyEvidence.discoveredPropertyCount,
       eligible_door_count: properties.filter((property) => property.canvass_eligibility === 'eligible').reduce((sum, property) => sum + property.door_count, 0),
       property_authoritative_road_counts: countBy(outputUnits, 'canvas_role', { opportunity: 0, transit: 0, excluded: 0, uncertain: 0 }),
       unlinked_property_count: propertyEvidence.unlinked.length + boundaryUnlinked.length,
