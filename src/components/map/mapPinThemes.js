@@ -88,6 +88,7 @@ export const PIN_THEMES = [
  * are thousands of doors, where a bigger dot turns the map into one solid mass.
  */
 export const DEFAULT_PIN_THEME = PIN_THEMES.find((theme) => theme.id === 'dense');
+export const DEFAULT_PRECISION_PIN_THEME = PIN_THEMES.find((theme) => theme.id === 'neon_grid');
 
 /** The theme whose every setting matches the current state, or null when tuned by hand. */
 export function matchPinTheme(mapSettings = {}, pinSize = null) {

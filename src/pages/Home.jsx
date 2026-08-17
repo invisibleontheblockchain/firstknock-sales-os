@@ -40,7 +40,7 @@ import { hydrateRoutesForMap } from '@/components/logic/routeHydration';
 import { GpsMapLayer as GpsTrackerMapLayers, GpsHud as GpsTrackerHud } from '../components/map/GpsTracker';
 import ManagerPropertyDetailSheet from '../components/map/ManagerPropertyDetailSheet';
 import MapDrawTool from '../components/map/MapDrawTool';
-import ManagerMapLayers from '../components/map/ManagerMapLayers'; import { DEFAULT_PIN_THEME } from '../components/map/mapPinThemes';
+import ManagerMapLayers from '../components/map/ManagerMapLayers'; import { DEFAULT_PIN_THEME, DEFAULT_PRECISION_PIN_THEME } from '../components/map/mapPinThemes';
 import { filterRoutesByStatus, isRenderableMapPoint } from '../components/map/mapLayerVisibility.js';
 import MapToolbar from '../components/map/MapToolbar';
 import BoundaryOverlays from '../components/map/BoundaryOverlays';
@@ -191,8 +191,8 @@ export default function Home() {
         return saved ? JSON.parse(saved) : true;
     });
     const [pinSize, setPinSize] = useState(() => {
-        const saved = localStorage.getItem('fk_pinSize_v3');
-        return saved ? JSON.parse(saved) : DEFAULT_PIN_THEME.pinSize;
+        const saved = localStorage.getItem(localStorage.getItem('fk_routeMode') === 'canvas' ? 'fk_pinSize_v3' : 'fk_pinSize_precision_v1');
+        return saved ? JSON.parse(saved) : (localStorage.getItem('fk_routeMode') === 'canvas' ? DEFAULT_PIN_THEME : DEFAULT_PRECISION_PIN_THEME).pinSize;
     });
     const [showRouteLines, setShowRouteLines] = useState(() => {
         const saved = localStorage.getItem('fk_showRouteLines_v2');
@@ -203,7 +203,7 @@ export default function Home() {
     });
     const [routeMode, setRouteMode] = useState('precision');
     const routeModeRef = useRef(routeMode); routeModeRef.current = routeMode;
-    useEffect(() => { const modeTheme = routeMode === 'canvas' ? 'terrain' : 'hybrid'; setMapTheme(modeTheme); try { localStorage.setItem(routeMode === 'canvas' ? 'fk_mapTheme_canvas_v2' : 'fk_mapTheme_v3', modeTheme); } catch {} }, [routeMode]);
+    useEffect(() => { const isCanvas = routeMode === 'canvas', modeTheme = isCanvas ? 'terrain' : 'hybrid', pinTheme = isCanvas ? DEFAULT_PIN_THEME : DEFAULT_PRECISION_PIN_THEME; setMapTheme(modeTheme); try { const savedSettings = localStorage.getItem(isCanvas ? 'fk_mapSettings_v4' : 'fk_mapSettings_precision_v1'), savedPinSize = localStorage.getItem(isCanvas ? 'fk_pinSize_v3' : 'fk_pinSize_precision_v1'); setMapSettings(savedSettings ? JSON.parse(savedSettings) : { pinShape:'circle', showLabels:false, labelType:'number', ...pinTheme.settings }); setPinSize(savedPinSize ? JSON.parse(savedPinSize) : pinTheme.pinSize); localStorage.setItem(isCanvas ? 'fk_mapTheme_canvas_v2' : 'fk_mapTheme_v3', modeTheme); } catch {} }, [routeMode]);
     const [canvasDraftDirty, setCanvasDraftDirty] = useState(false);
     useEffect(() => {
         window.dispatchEvent(new CustomEvent('fk-canvas-draft-dirty-changed', { detail: { dirty: canvasDraftDirty } }));
@@ -235,12 +235,12 @@ export default function Home() {
     const [mapSettings, setMapSettings] = useState(() => {
         // v4: the default look is now the Dense theme, so the key is bumped to
         // roll it out to devices still holding the old saved defaults.
-        const saved = localStorage.getItem('fk_mapSettings_v4');
+        const saved = localStorage.getItem(localStorage.getItem('fk_routeMode') === 'canvas' ? 'fk_mapSettings_v4' : 'fk_mapSettings_precision_v1');
         return saved ? JSON.parse(saved) : {
             pinShape: 'circle',
             showLabels: false,
             labelType: 'number',
-            ...DEFAULT_PIN_THEME.settings,
+            ...(localStorage.getItem('fk_routeMode') === 'canvas' ? DEFAULT_PIN_THEME : DEFAULT_PRECISION_PIN_THEME).settings,
         };
     });
 
@@ -248,10 +248,10 @@ export default function Home() {
         try {
             localStorage.setItem(routeModeRef.current === 'canvas' ? 'fk_mapTheme_canvas_v2' : 'fk_mapTheme_v3', mapTheme);
             localStorage.setItem('fk_showRouteDetails_v2', JSON.stringify(showRouteDetails));
-            localStorage.setItem('fk_pinSize_v3', JSON.stringify(pinSize));
+            localStorage.setItem(routeModeRef.current === 'canvas' ? 'fk_pinSize_v3' : 'fk_pinSize_precision_v1', JSON.stringify(pinSize));
             localStorage.setItem('fk_showRouteLines_v2', JSON.stringify(showRouteLines));
             localStorage.setItem('fk_routeStatusView', routeStatusView);
-            localStorage.setItem('fk_mapSettings_v4', JSON.stringify(mapSettings));
+            localStorage.setItem(routeModeRef.current === 'canvas' ? 'fk_mapSettings_v4' : 'fk_mapSettings_precision_v1', JSON.stringify(mapSettings));
         } catch (e) {
             // Ignore quota errors in preview if any
         }

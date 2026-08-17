@@ -7,7 +7,7 @@ import { X, Eye, EyeOff, RotateCcw, Save, Navigation, Home, SlidersHorizontal } 
 import HomeBaseDialog from '@/components/routes/HomeBaseDialog';
 import MapStyleSelector from '@/components/map/MapStyleSelector';
 import MapThemePicker from '@/components/map/MapThemePicker';
-import { DEFAULT_PIN_THEME } from '@/components/map/mapPinThemes';
+import { DEFAULT_PIN_THEME, DEFAULT_PRECISION_PIN_THEME } from '@/components/map/mapPinThemes';
 import MapOverlayToggles from '@/components/map/MapOverlayToggles';
 import RouteModeSetting from '@/components/map/RouteModeSetting';
 import { getBoundaryOverlays, setBoundaryOverlay } from '@/components/map/boundaryOverlayPrefs';
@@ -124,10 +124,11 @@ export default function MapSettingsPanel({
     // dense-territory rule.
     clearPinSizeUserSet();
     const defaultMapTheme = routeMode === 'canvas' ? 'terrain' : 'hybrid';
+    const defaultPinTheme = routeMode === 'canvas' ? DEFAULT_PIN_THEME : DEFAULT_PRECISION_PIN_THEME;
     setMapTheme?.(defaultMapTheme);
     setLocal({
-      mapSettings: { pinShape:'circle', showLabels:false, labelType:'number', ...DEFAULT_PIN_THEME.settings },
-      pinSize:DEFAULT_PIN_THEME.pinSize, showRouteLines:false, showRouteDetails:true, showAllProperties:false,
+      mapSettings: { pinShape:'circle', showLabels:false, labelType:'number', ...defaultPinTheme.settings },
+      pinSize:defaultPinTheme.pinSize, showRouteLines:false, showRouteDetails:true, showAllProperties:false,
       mapTheme:defaultMapTheme, navigationApp:'apple', quickFilter:'all',
       soldDateFilter:null, highlightRecentlySold:false,
     });
