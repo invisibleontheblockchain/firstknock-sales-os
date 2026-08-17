@@ -30,7 +30,7 @@ const TILE_PERF = {
 };
 
 export default function BaseMapTiles({ mapTheme, routeMode = 'precision' }) {
-    const showLabels = mapTheme === 'hybrid' || mapTheme === 'satellite';
+    const showLabels = mapTheme === 'hybrid';
 
     // Canvas honours the same four Map Style choices; only the street source differs.
     if (routeMode === 'canvas') return (
