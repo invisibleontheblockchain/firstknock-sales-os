@@ -12,13 +12,13 @@ body,
   overscroll-behavior: none;
 }
 
-/* The map runs on fractional zoom, so Leaflet places tiles at sub-pixel offsets
-   and the browser leaves a hairline gap between them that reads as a faint grid
-   (most visible on light basemaps). Scaling each tile a fraction of a percent
-   overlaps its neighbours and closes those gaps without changing zoom
-   behaviour, tile requests, or promoting tiles to separate layers. */
+/* Leaflet positions each 256px tile with an inline transform. Overriding that
+   transform does not work because the inline position wins, leaving fractional
+   pixel seams at some zoom levels. A one-pixel width/height overlap preserves
+   Leaflet's positioning and closes the exposed tile edges on light maps. */
 .leaflet-tile {
-  transform: scale(1.004);
+  width: 257px !important;
+  height: 257px !important;
 }
 
 /* Hide Leaflet map attribution control */
