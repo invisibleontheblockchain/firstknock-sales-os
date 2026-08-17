@@ -12,9 +12,28 @@ Canvas production property evidence is built offline from public bulk data. It n
 
 Each address receives a FirstKnock-owned `FKP1_…` identity derived from normalized address components. Overture IDs remain provenance and conflation references and are never the canonical property ID.
 
-## Regional build
+## Maryland property-first vertical slice
 
-Use the official `overturemaps download --bbox=west,south,east,north -f geojson` command to export `address`, `building`, `place`, and `segment` files for one bounded region. Then run:
+Maryland remains the transportation and distribution foundation. Export the normalized Maryland tiles and raw OSM building/land-use/POI evidence intersecting a Damascus or Olney test polygon, then overlay pinned Overture address/building/place evidence without rebuilding road identities. The official CLI currently consults its STAC catalog even for an explicit release; if that catalog is unavailable, use the official Python `record_batch_reader(..., release='2026-07-22.0', stac=False)` API to read the pinned public S3 release directly rather than switching to an unpinned latest release:
+
+```sh
+npm run canvas:maryland:property-overlay -- \
+  --base-release maryland/release.json --base-tiles maryland/damascus.normalized.ndjson \
+  --addresses damascus-addresses.geojson --buildings damascus-buildings.geojson --places damascus-places.geojson \
+  --osm maryland/damascus-osm-evidence.geojson \
+  --region us-md-damascus-001 --release-version 2026-07-22.0 \
+  --observed-at 2026-07-22T00:00:00.000Z --output build/canvas/us-md-damascus-001
+
+node scripts/canvas-evidence/build-release.mjs \
+  --release build/canvas/us-md-damascus-001/release.json \
+  --input build/canvas/us-md-damascus-001/normalized.ndjson --validate-only
+```
+
+The overlay preserves Maryland work-unit identities, neighbor topology, protected groups, source provenance, tile scheme, signing, and publication flow. `ab-report.json` records the old opportunity/transit/excluded/uncertain blockface counts beside discovered properties, eligible/excluded/review counts, eligible doors, and property-authoritative road support counts. Census housing-unit totals belong in a later coverage report and never create `FK_PROPERTY_ID` records.
+
+## Standalone regional build
+
+For development regions that do not have an existing normalized transportation graph, use the official `overturemaps download --bbox=west,south,east,north -f geojson` command to export `address`, `building`, `place`, and `segment` files. Then run:
 
 ```sh
 node scripts/canvas-evidence/overture/build-region.mjs \

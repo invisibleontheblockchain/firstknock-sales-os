@@ -832,6 +832,42 @@ function validateProtectedGroups(rawGroups, roadById) {
   return groups.sort((left, right) => canonicalStringify(left).localeCompare(canonicalStringify(right)));
 }
 
+function hasHardTransportationExclusion(unit) {
+  if (unit?.canvas_role !== 'excluded') return false;
+  const reasons = Array.isArray(unit?.confidence?.reasons) ? unit.confidence.reasons : [];
+  return reasons.some((reason) => /(?:pedestrian|legal)_access_denied|access_barrier/.test(String(reason)));
+}
+
+export function applyPropertyWorkloadAuthority(workUnits, properties, { force = false } = {}) {
+  const propertyAware = force || properties.some((property) => property.property_key.startsWith('fk-property-key-v1:'));
+  if (!propertyAware) return workUnits;
+  const eligibleDoorsByUnit = new Map();
+  for (const property of properties) {
+    if (property.canvass_eligibility !== 'eligible') continue;
+    const id = canonicalWorkUnitId(property.work_unit_identity);
+    eligibleDoorsByUnit.set(id, (eligibleDoorsByUnit.get(id) || 0) + property.door_count);
+  }
+  return workUnits.map((unit) => {
+    const eligibleDoors = eligibleDoorsByUnit.get(canonicalWorkUnitId(unit.identity)) || 0;
+    const context = { ...unit };
+    delete context.opportunity;
+    if (eligibleDoors) {
+      return {
+        ...context,
+        canvas_role: 'opportunity',
+        confidence: { score: 1, reasons: ['property_eligible_door_authority'] },
+        opportunity: { min: eligibleDoors, expected: eligibleDoors, max: eligibleDoors },
+      };
+    }
+    if (hasHardTransportationExclusion(unit)) return context;
+    return {
+      ...context,
+      canvas_role: 'transit',
+      confidence: { score: 0.9, reasons: ['property_no_eligible_doors'] },
+    };
+  });
+}
+
 function normalizeTileInternal(rawInput, { maxNearestRoadMeters = DEFAULT_MAX_NEAREST_ROAD_METERS } = {}) {
   const raw = requireRecord(rawInput, 'source_tile');
   assertAllowedKeys(raw, new Set([
@@ -916,29 +952,7 @@ function normalizeTileInternal(rawInput, { maxNearestRoadMeters = DEFAULT_MAX_NE
   }).sort((left, right) => (
     canonicalWorkUnitId(left.identity).localeCompare(canonicalWorkUnitId(right.identity))
   ));
-  const propertyAwareRelease = properties.some((property) => property.property_key.startsWith('fk-property-key-v1:'));
-  if (propertyAwareRelease) {
-    const eligibleDoorsByUnit = new Map();
-    for (const property of properties) {
-      if (property.canvass_eligibility !== 'eligible') continue;
-      const id = canonicalWorkUnitId(property.work_unit_identity);
-      eligibleDoorsByUnit.set(id, (eligibleDoorsByUnit.get(id) || 0) + property.door_count);
-    }
-    workUnits = workUnits.map((unit) => {
-      const eligibleDoors = eligibleDoorsByUnit.get(canonicalWorkUnitId(unit.identity)) || 0;
-      const context = { ...unit };
-      delete context.opportunity;
-      return {
-        ...context,
-        canvas_role: eligibleDoors ? 'opportunity' : 'transit',
-        confidence: {
-          score: eligibleDoors ? 1 : 0.9,
-          reasons: [eligibleDoors ? 'property_eligible_door_authority' : 'property_no_eligible_doors'],
-        },
-        ...(eligibleDoors ? { opportunity: { min: eligibleDoors, expected: eligibleDoors, max: eligibleDoors } } : {}),
-      };
-    });
-  }
+  workUnits = applyPropertyWorkloadAuthority(workUnits, properties);
   return {
     tile: {
       schema: NORMALIZED_TILE_SCHEMA,

@@ -73,11 +73,14 @@ function nearestRoad(point, street, roads, maxMeters) {
 }
 
 function buildingUse(feature) {
-  return BUILDING_USE.get(norm(feature?.properties?.class)) || BUILDING_USE.get(norm(feature?.properties?.subtype)) || 'yes';
+  return BUILDING_USE.get(norm(feature?.properties?.class))
+    || BUILDING_USE.get(norm(feature?.properties?.subtype))
+    || BUILDING_USE.get(norm(feature?.properties?.building))
+    || 'yes';
 }
 
 function placeUse(feature) {
-  const values = [feature?.properties?.categories?.primary, ...(feature?.properties?.categories?.alternate || []), feature?.properties?.amenity, feature?.properties?.shop, feature?.properties?.office].map(norm);
+  const values = [feature?.properties?.categories?.primary, ...(feature?.properties?.categories?.alternate || []), feature?.properties?.amenity, feature?.properties?.shop, feature?.properties?.office, feature?.properties?.landuse].map(norm);
   for (const value of values) {
     if (PLACE_USE.has(value)) return PLACE_USE.get(value);
     for (const [token, mapped] of PLACE_USE) if (value.includes(token)) return mapped;
@@ -93,14 +96,7 @@ function linkedContext(point, features, radiusMeters = 35) {
   })());
 }
 
-export function buildOvertureCanvasRegion({ addresses, buildings, places, roads, osm = null, nad = null, assessors = null, regionKey, releaseVersion, observedAt, maxNearestRoadMeters = 60 } = {}) {
-  const addressFeatures = collection(addresses, 'addresses');
-  const buildingFeatures = collection(buildings, 'buildings');
-  const placeFeatures = [...collection(places, 'places'), ...collection(osm, 'osm')];
-  const roadFeatures = collection(roads, 'roads');
-  const supportingAddresses = [...collection(nad, 'nad'), ...collection(assessors, 'assessors')];
-  if (!addressFeatures.length || !roadFeatures.length) throw new TypeError('A regional Canvas build requires Overture addresses and transportation segments.');
-  const roadRecords = buildRoads(roadFeatures, releaseVersion, observedAt);
+export function buildOverturePropertyEvidence({ addressFeatures, supportingAddresses = [], buildingFeatures, placeFeatures, roadRecords, releaseVersion, observedAt, osmSource = null, maxNearestRoadMeters = 60 } = {}) {
   const evidence = [];
   const unlinked = [];
   const seenProperties = new Set();
@@ -128,21 +124,44 @@ export function buildOvertureCanvasRegion({ addresses, buildings, places, roads,
       associations: [association],
       provenance: provenance(addressSourceId, releaseVersion, feature.id || feature.properties?.id || `address-${index}`, observedAt, license),
     });
-    matchedBuildings.slice(0, 1).forEach((building, buildingIndex) => evidence.push({
-      evidence_id: `overture-building:${sanitizeSourceFeatureId(building.id || building.properties?.id, `${index}-${buildingIndex}`)}`,
-      kind: 'building', property_key: identity.property_key, location: point,
-      attributes: { building_use: buildingUse(building), ...(Number.isInteger(building.properties?.unit_count) && building.properties.unit_count > 0 ? { unit_count: building.properties.unit_count } : {}) },
-      associations: [{ method: 'side_of_street', road_identity: road.road.identity }],
-      provenance: provenance('overture-buildings', releaseVersion, building.id || building.properties?.id || `${index}-${buildingIndex}`, observedAt),
-    }));
+    matchedBuildings.slice(0, 8).forEach((building, buildingIndex) => {
+      const sourceId = building.properties?._adapter_source === 'osm' ? 'openstreetmap' : 'overture-buildings';
+      const sourceVersion = sourceId === 'openstreetmap' ? osmSource?.dataset_version || releaseVersion : releaseVersion;
+      const sourceObservedAt = sourceId === 'openstreetmap' ? osmSource?.captured_at || observedAt : observedAt;
+      const sourceLicense = sourceId === 'openstreetmap' ? osmSource?.license || OSM_LICENSE : OVERTURE_LICENSE;
+      evidence.push({
+        evidence_id: `${sourceId}:${sanitizeSourceFeatureId(building.id || building.properties?.id, `${index}-${buildingIndex}`).slice(0, 160)}:${identity.fk_property_id}`,
+        kind: 'building', property_key: identity.property_key, location: point,
+        attributes: { building_use: buildingUse(building), ...(Number.isInteger(building.properties?.unit_count) && building.properties.unit_count > 0 ? { unit_count: building.properties.unit_count } : {}) },
+        associations: [{ method: 'side_of_street', road_identity: road.road.identity }],
+        provenance: provenance(sourceId, sourceVersion, building.id || building.properties?.id || `${index}-${buildingIndex}`, sourceObservedAt, sourceLicense),
+      });
+    });
     matchedPlaces.forEach((place, placeIndex) => {
       const use = placeUse(place);
       if (!use) return;
-      const osmFeature = !String(place.id || '').includes('-') && (place.properties?.osm_id || place.properties?.amenity || place.properties?.shop);
-      const sourceId = osmFeature ? 'openstreetmap' : 'overture-places';
-      evidence.push({ evidence_id: `${sourceId}:${sanitizeSourceFeatureId(place.id || place.properties?.id, `${index}-${placeIndex}`)}`, kind: 'place', property_key: identity.property_key, location: point, attributes: { place_use: use }, associations: [{ method: 'area_overlap', road_identity: road.road.identity }], provenance: provenance(sourceId, releaseVersion, place.id || place.properties?.id || `${index}-${placeIndex}`, observedAt, sourceId === 'openstreetmap' ? OSM_LICENSE : OVERTURE_LICENSE) });
+      const sourceId = place.properties?._adapter_source === 'osm' ? 'openstreetmap' : 'overture-places';
+      const sourceVersion = sourceId === 'openstreetmap' ? osmSource?.dataset_version || releaseVersion : releaseVersion;
+      const sourceObservedAt = sourceId === 'openstreetmap' ? osmSource?.captured_at || observedAt : observedAt;
+      const sourceLicense = sourceId === 'openstreetmap' ? osmSource?.license || OSM_LICENSE : OVERTURE_LICENSE;
+      evidence.push({ evidence_id: `${sourceId}:${sanitizeSourceFeatureId(place.id || place.properties?.id, `${index}-${placeIndex}`).slice(0, 160)}:${identity.fk_property_id}`, kind: 'place', property_key: identity.property_key, location: point, attributes: { place_use: use }, associations: [{ method: 'area_overlap', road_identity: road.road.identity }], provenance: provenance(sourceId, sourceVersion, place.id || place.properties?.id || `${index}-${placeIndex}`, sourceObservedAt, sourceLicense) });
     });
   }
+  return { evidence, unlinked, discoveredPropertyCount: seenProperties.size };
+}
+
+export function buildOvertureCanvasRegion({ addresses, buildings, places, roads, osm = null, nad = null, assessors = null, regionKey, releaseVersion, observedAt, maxNearestRoadMeters = 60 } = {}) {
+  const addressFeatures = collection(addresses, 'addresses');
+  const buildingFeatures = collection(buildings, 'buildings');
+  const placeFeatures = [...collection(places, 'places'), ...collection(osm, 'osm')];
+  const roadFeatures = collection(roads, 'roads');
+  const supportingAddresses = [...collection(nad, 'nad'), ...collection(assessors, 'assessors')];
+  if (!addressFeatures.length || !roadFeatures.length) throw new TypeError('A regional Canvas build requires Overture addresses and transportation segments.');
+  const roadRecords = buildRoads(roadFeatures, releaseVersion, observedAt);
+  const { evidence, unlinked, discoveredPropertyCount } = buildOverturePropertyEvidence({
+    addressFeatures, supportingAddresses, buildingFeatures, placeFeatures, roadRecords,
+    releaseVersion, observedAt, maxNearestRoadMeters,
+  });
   const allGeometry = [...addressFeatures, ...roadFeatures];
   const bounds = boundsForFeatures(allGeometry);
   const sourceTile = {
@@ -165,7 +184,7 @@ export function buildOvertureCanvasRegion({ addresses, buildings, places, roads,
       ...(nad ? [source('national-address-database', 'National Address Database', releaseVersion, 'public-data', observedAt)] : []),
       ...(assessors ? [source('public-assessor', 'Public assessor/parcel feeds', releaseVersion, 'public-data', observedAt)] : []),
     ].filter((record) => normalizedTile.properties.some((property) => property.provenance.some((item) => item.source_id === record.source_id)) || record.source_id === 'overture-transportation'),
-    report: { region_key: regionKey, overture_release: releaseVersion, discovered_address_count: seenProperties.size, signed_property_count: normalizedTile.properties.length, unlinked_property_count: unlinked.length, property_classification_counts: counts, eligible_door_count: normalizedTile.properties.filter((property) => property.canvass_eligibility === 'eligible').reduce((sum, property) => sum + property.door_count, 0), batchdata_call_count: 0, input_digest: canonicalStringify({ addresses: addressFeatures.length, buildings: buildingFeatures.length, places: placeFeatures.length, roads: roadFeatures.length }) },
+    report: { region_key: regionKey, overture_release: releaseVersion, discovered_address_count: discoveredPropertyCount, signed_property_count: normalizedTile.properties.length, unlinked_property_count: unlinked.length, property_classification_counts: counts, eligible_door_count: normalizedTile.properties.filter((property) => property.canvass_eligibility === 'eligible').reduce((sum, property) => sum + property.door_count, 0), batchdata_call_count: 0, input_digest: canonicalStringify({ addresses: addressFeatures.length, buildings: buildingFeatures.length, places: placeFeatures.length, roads: roadFeatures.length }) },
     unlinked_properties: unlinked,
   };
 }

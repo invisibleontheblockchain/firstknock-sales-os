@@ -1,3 +1,17 @@
+## Plan — Maryland Property-First Vertical Slice
+- [x] Confirm Maryland's signed release path is the existing distribution foundation and identify the separate-road regression in the standalone Overture adapter.
+- [x] Add a regional overlay that preserves normalized Maryland road identities, topology, protected groups, provenance, and tile scheme.
+- [x] Make eligible property doors authoritative while retaining hard transportation-access exclusions.
+- [x] Emit an old blockface versus property-level A/B report for Damascus/Olney slices.
+- [x] Acquire and validate the pinned Damascus Overture slice: 1,303 addresses, 1,383 buildings, and 34 places from release `2026-07-22.0`.
+- [ ] Run the overlay against exported live Maryland normalized tiles and the pinned Overture bulk files.
+- [ ] Validate and sign the resulting immutable regional release with the existing offline signer.
+
+### Current constraint — Maryland Property-First Vertical Slice
+The repository contains the release compiler and contracts but not the 2.7 GB Maryland build artifacts or its normalized pre-signing tiles. The overlay and deterministic fixture are implemented; the real Damascus/Olney run requires an operator export of the matching normalized Maryland tiles. Production secrets and mutable R2/Railway configuration are intentionally untouched.
+
+---
+
 ## Plan — Restore Route Hydration Recovery Exports
 - [x] Trace the runtime import error to the Knock page and shared hydration module.
 - [x] Restore the missing recovery marker and cache-safety helpers with the backend marker as source of truth.
