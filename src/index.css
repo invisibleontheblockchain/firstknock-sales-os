@@ -12,13 +12,13 @@ body,
   overscroll-behavior: none;
 }
 
-/* Leaflet positions each 256px tile with an inline transform. Overriding that
-   transform does not work because the inline position wins, leaving fractional
-   pixel seams at some zoom levels. A one-pixel width/height overlap preserves
-   Leaflet's positioning and closes the exposed tile edges on light maps. */
+/* Leaflet's Chromium gap workaround uses plus-lighter blending, which turns
+   overlapping tile edges into bright grid lines. Use a single-pixel overlap
+   with normal compositing so the seam is covered without whitening the edge. */
 .leaflet-tile {
   width: 257px !important;
   height: 257px !important;
+  mix-blend-mode: normal !important;
 }
 
 /* Hide Leaflet map attribution control */
