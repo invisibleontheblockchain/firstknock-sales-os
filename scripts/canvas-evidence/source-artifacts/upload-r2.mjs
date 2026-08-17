@@ -20,7 +20,7 @@ async function fileHash(path) {
   return hash.digest('hex');
 }
 
-function signedRequest({ method, key, payloadHash, metadataHash, contentLength, contentType, cacheControl }) {
+function signedRequest({ method, key, payloadHash, metadataHash, contentLength, contentType, cacheControl, range }) {
   const accountId = requiredEnv('CANVAS_R2_ACCOUNT_ID');
   const accessKeyId = requiredEnv('CANVAS_R2_ACCESS_KEY_ID');
   const secretAccessKey = requiredEnv('CANVAS_R2_SECRET_ACCESS_KEY');
@@ -34,6 +34,7 @@ function signedRequest({ method, key, payloadHash, metadataHash, contentLength, 
   if (contentLength !== undefined) headers['content-length'] = String(contentLength);
   if (contentType) headers['content-type'] = contentType;
   if (cacheControl) headers['cache-control'] = cacheControl;
+  if (range) headers.range = range;
   if (metadataHash) headers['x-amz-meta-sha256'] = metadataHash;
   const signedHeaders = Object.keys(headers).sort().join(';');
   const canonicalHeaders = Object.keys(headers).sort().map((name) => `${name}:${headers[name]}\n`).join('');
@@ -49,12 +50,17 @@ function signedRequest({ method, key, payloadHash, metadataHash, contentLength, 
 }
 
 async function headObject(key) {
-  const request = signedRequest({ method: 'HEAD', key, payloadHash: EMPTY_SHA256 });
-  const response = await fetch(request.url, { method: 'HEAD', headers: request.headers, redirect: 'manual' });
+  const range = 'bytes=0-0';
+  const request = signedRequest({ method: 'GET', key, payloadHash: EMPTY_SHA256, range });
+  const response = await fetch(request.url, { method: 'GET', headers: request.headers, redirect: 'manual' });
   if (response.status === 404) return null;
-  if (!response.ok) fail(`R2 HEAD failed for ${key}: HTTP ${response.status}`);
+  if (response.status !== 206) fail(`R2 metadata probe failed for ${key}: HTTP ${response.status}`);
+  const contentRange = response.headers.get('content-range') || '';
+  const bytes = Number(contentRange.match(/\/(\d+)$/)?.[1]);
+  await response.arrayBuffer();
+  if (!Number.isSafeInteger(bytes) || bytes < 1) fail(`R2 metadata probe returned an invalid object length for ${key}.`);
   return {
-    bytes: Number(response.headers.get('content-length')),
+    bytes,
     sha256: response.headers.get('x-amz-meta-sha256'),
     contentType: response.headers.get('content-type'),
     cacheControl: response.headers.get('cache-control'),
