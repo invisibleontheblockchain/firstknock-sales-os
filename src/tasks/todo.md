@@ -1,3 +1,24 @@
+## Plan — Damascus Property Benchmark v2 Phase 1 Freeze
+- [x] Lock the reproducible 1,225 raw / 1,222 canonical / 619 eligible / 46 excluded / 557 review evidence result.
+- [x] Diagnose movable atoms and prove the 49.11% imbalance is a partition-search failure rather than an unavoidable protected-group constraint.
+- [x] Add deterministic multi-seed connected growth and neighboring-territory re-splitting without changing evidence or classification behavior.
+- [x] Pass the five-way ≤15% balance gate with connected cores, protected groups, exclusive ownership, and zero outside workload.
+- [x] Verify deterministic signed-path reruns and freeze the acceptance hashes.
+- [x] Start Phase 2 from the unchanged 557-record review baseline.
+
+### Review — Damascus Property Benchmark v2 Phase 1 Freeze
+The frozen signed path now partitions 619 eligible doors as 112 / 124 / 124 / 120 / 139 against a 123.8 target, reducing maximum deviation from 49.11% to 12.28%. All five cores are connected, all protected groups remain intact, all 619 properties are owned exactly once, genuine islands are zero, and connector/outside/synthetic workload remains zero. Reversed-input reruns produce the same territory hash. Phase 1 is complete; Phase 2 starts with 526 of 557 review records concentrated in unresolved property use.
+
+---
+
+## Plan — Phase 2 Bulk Evidence Review Reduction
+- [x] Freeze the unchanged 557-record review baseline and aggregate its deterministic reason/source distribution.
+- [ ] Evaluate free bulk evidence capable of resolving the 526 `property_use_unresolved` records.
+- [ ] Add evidence only through the existing signed normalization and provenance contracts.
+- [ ] Rebuild twice and measure review reduction without changing Phase 1 eligible/excluded safety guarantees.
+
+---
+
 ## Plan — Maryland Property-First Vertical Slice
 - [x] Confirm Maryland's signed release path is the existing distribution foundation and identify the separate-road regression in the standalone Overture adapter.
 - [x] Add a regional overlay that preserves normalized Maryland road identities, topology, protected groups, provenance, and tile scheme.

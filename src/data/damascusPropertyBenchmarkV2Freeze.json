@@ -1,0 +1,47 @@
+{
+  "benchmark": "Damascus Property Benchmark v2",
+  "frozen_at": "2026-08-17T04:44:00.000Z",
+  "status": "phase_1_complete",
+  "inputs": {
+    "raw_address_records": 1225,
+    "canonical_properties": 1222,
+    "eligible_properties": 619,
+    "excluded_properties": 46,
+    "review_properties": 557,
+    "property_identity_version": "fk-property-key-v1",
+    "osm_assertion_normalization_version": "osm-assertions-v2"
+  },
+  "signed_release": {
+    "release_id": "cer1_67ef9ed06c49b7d49bf0b2defd5958a406d1769060a7fa51de7bd2b98a5921d5",
+    "manifest_hash": "45cc0010b71543eac58b4af015fa96e9a2eda9779790ec5acd1e61c766bcb065",
+    "snapshot_hash": "7fa542d0dd41d2c9b01ba5fb1ed6e94cc0a3172169ef8aa601fcfd8f756090fc",
+    "result_hash": "68b2c4e3f64ff5882853c3787872f1a5c7d81e0a577a328010fa371bc1a37a9f"
+  },
+  "partition_acceptance": {
+    "algorithm_version": "canvas_residential_territory_v4_connected_balance_search",
+    "before_workloads": [152, 154, 63, 152, 98],
+    "after_workloads": [112, 124, 124, 120, 139],
+    "target_workload": 123.8,
+    "minimum_workload": 112,
+    "maximum_workload": 139,
+    "maximum_deviation_percent": 12.28,
+    "balance_percent": 87.72,
+    "connected_cores": true,
+    "protected_groups_intact": true,
+    "exclusive_property_ownership": true,
+    "genuine_island_count": 0,
+    "connector_road_workload": 0,
+    "outside_property_workload": 0,
+    "synthetic_edge_count": 0,
+    "deterministic_rerun": true,
+    "territory_hash": "29ddf02d92861fa4677d36912f4ff566dd47fc1f324ec78e62dea8faa428bc56"
+  },
+  "balance_bounds": {
+    "connectivity_ignored_integer_lower_bound": [123, 124, 124, 124, 124],
+    "connectivity_ignored_max_deviation_percent": 0.65,
+    "connectivity_required_without_protected_groups_best_found": [124, 139, 112, 120, 124],
+    "connectivity_required_without_protected_groups_max_deviation_percent": 12.28,
+    "connectivity_and_protected_groups_best_found": [112, 124, 124, 120, 139],
+    "connectivity_and_protected_groups_max_deviation_percent": 12.28
+  }
+}

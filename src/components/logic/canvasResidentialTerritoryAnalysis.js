@@ -6,7 +6,7 @@ import { classifyCanvasPropertyEntity, summarizeCanvasPropertyClassifications } 
 
 const { edgeIdFor } = canvasStreetTopologyInternals;
 
-const ALGORITHM_VERSION = 'canvas_residential_territory_v3_transit_graph';
+const ALGORITHM_VERSION = 'canvas_residential_territory_v4_connected_balance_search';
 const EARTH_RADIUS_METERS = 6371008.8;
 const DEFAULT_MAX_ASSOCIATION_METERS = 120;
 const DEFAULT_AMBIGUITY_METERS = 12;
@@ -880,7 +880,7 @@ function bestConnectedPrefix(order, zonesRemaining, remainingLoad, weights, adja
   return best;
 }
 
-function peelConnectedZones(component, zoneCount, byId, neighbors, descending) {
+function peelConnectedZones(component, zoneCount, byId, neighbors, descending, seedOffset = 0) {
   const ids = [...component].sort(compareIds);
   const rankById = new Map(ids.map((id, index) => [id, index]));
   const adjacency = ids.map((id) => (neighbors.get(id) || [])
@@ -896,9 +896,10 @@ function peelConnectedZones(component, zoneCount, byId, neighbors, descending) {
   const zones = [];
 
   for (let zonesRemaining = zoneCount; zonesRemaining > 1; zonesRemaining -= 1) {
-    let firstRemaining = 0;
-    while (firstRemaining < remaining.length && !remaining[firstRemaining]) firstRemaining += 1;
-    const seed = farthestRemainingRank(firstRemaining, remaining, adjacency);
+    const remainingRanks = [];
+    for (let rank = 0; rank < remaining.length; rank += 1) if (remaining[rank]) remainingRanks.push(rank);
+    const startingRank = remainingRanks[seedOffset % remainingRanks.length];
+    const seed = farthestRemainingRank(startingRank, remaining, adjacency);
     const order = connectedFloodOrder(seed, remaining, remainingCount, adjacency, descending);
     if (!order) return null;
     const cut = bestConnectedPrefix(
@@ -936,22 +937,40 @@ function partitionScore(zones, target) {
     const deviation = Math.abs(zone.load - target) / Math.max(1, target);
     return {
       maximum: Math.max(score.maximum, deviation),
+      absolute: score.absolute + deviation,
       squared: score.squared + deviation * deviation,
     };
-  }, { maximum: 0, squared: 0 });
+  }, { maximum: 0, absolute: 0, squared: 0 });
+}
+
+function betterPartitionScore(candidate, current) {
+  return candidate.maximum < current.maximum - 1e-12
+    || (Math.abs(candidate.maximum - current.maximum) <= 1e-12
+      && candidate.absolute < current.absolute - 1e-12)
+    || (Math.abs(candidate.maximum - current.maximum) <= 1e-12
+      && Math.abs(candidate.absolute - current.absolute) <= 1e-12
+      && candidate.squared < current.squared - 1e-12);
 }
 
 function refineAdjacentZoneBalance(groups, atomNeighbors, atomById, target) {
   if (groups.some((group) => group.locked || group.island_ids?.size)) return groups;
   const result = groups.map((group) => ({ ...group, ids: new Set(group.ids) }));
   const zoneByAtom = () => new Map(result.flatMap((group, index) => [...group.ids].map((id) => [id, index])));
-  const better = (candidate, current) => candidate.maximum < current.maximum - 1e-12
-    || (Math.abs(candidate.maximum - current.maximum) <= 1e-12 && candidate.squared < current.squared - 1e-12);
+  const candidateKey = (candidate) => `${candidate.kind}:${candidate.leftIndex}:${candidate.rightIndex}:${candidate.atomId || ''}`;
+  const choose = (candidate, currentBest, currentScore) => {
+    if (!betterPartitionScore(candidate.score, currentScore)) return currentBest;
+    if (!currentBest || betterPartitionScore(candidate.score, currentBest.score)) return candidate;
+    const tied = Math.abs(candidate.score.maximum - currentBest.score.maximum) <= 1e-12
+      && Math.abs(candidate.score.absolute - currentBest.score.absolute) <= 1e-12
+      && Math.abs(candidate.score.squared - currentBest.score.squared) <= 1e-12;
+    return tied && candidateKey(candidate).localeCompare(candidateKey(currentBest)) < 0 ? candidate : currentBest;
+  };
   const limit = result.reduce((sum, group) => sum + group.ids.size, 0) * result.length;
   for (let iteration = 0; iteration < limit; iteration += 1) {
     const currentScore = partitionScore(result, target);
     const owners = zoneByAtom();
     let best = null;
+
     result.forEach((donor, donorIndex) => {
       if (donor.ids.size <= 1) return;
       [...donor.ids].sort(compareIds).forEach((atomId) => {
@@ -961,21 +980,54 @@ function refineAdjacentZoneBalance(groups, atomNeighbors, atomById, target) {
         const recipients = [...new Set((atomNeighbors.get(atomId) || []).map((neighborId) => owners.get(neighborId)))]
           .filter((index) => Number.isInteger(index) && index !== donorIndex).sort((left, right) => left - right);
         recipients.forEach((recipientIndex) => {
-          const loads = result.map((group, index) => ({ ...group, load: index === donorIndex ? group.load - load : index === recipientIndex ? group.load + load : group.load }));
-          const score = partitionScore(loads, target);
-          if (!better(score, currentScore)) return;
-          const candidate = { donorIndex, recipientIndex, atomId, load, score };
-          if (!best || better(candidate.score, best.score)
-            || (Math.abs(candidate.score.maximum - best.score.maximum) <= 1e-12 && Math.abs(candidate.score.squared - best.score.squared) <= 1e-12
-              && `${candidate.donorIndex}:${candidate.recipientIndex}:${candidate.atomId}`.localeCompare(`${best.donorIndex}:${best.recipientIndex}:${best.atomId}`) < 0)) best = candidate;
+          const candidateGroups = result.map((group, index) => ({
+            ...group,
+            load: index === donorIndex ? group.load - load : index === recipientIndex ? group.load + load : group.load,
+          }));
+          best = choose({
+            kind: 'transfer', leftIndex: donorIndex, rightIndex: recipientIndex, atomId, load,
+            score: partitionScore(candidateGroups, target),
+          }, best, currentScore);
         });
       });
     });
+
+    const adjacentPairs = new Set();
+    [...owners.entries()].sort(([left], [right]) => compareIds(left, right)).forEach(([atomId, leftIndex]) => {
+      (atomNeighbors.get(atomId) || []).forEach((neighborId) => {
+        const rightIndex = owners.get(neighborId);
+        if (!Number.isInteger(rightIndex) || leftIndex === rightIndex) return;
+        adjacentPairs.add([Math.min(leftIndex, rightIndex), Math.max(leftIndex, rightIndex)].join(':'));
+      });
+    });
+    [...adjacentPairs].sort().forEach((pair) => {
+      const [leftIndex, rightIndex] = pair.split(':').map(Number);
+      const combined = [...result[leftIndex].ids, ...result[rightIndex].ids].sort(compareIds);
+      const repartitioned = partitionComponent(combined, 2, atomById, atomNeighbors);
+      if (!repartitioned) return;
+      const leftOriginal = result[leftIndex].ids;
+      const directOverlap = [...repartitioned[0].ids].filter((id) => leftOriginal.has(id)).length;
+      const reverseOverlap = [...repartitioned[1].ids].filter((id) => leftOriginal.has(id)).length;
+      const ordered = reverseOverlap > directOverlap ? [repartitioned[1], repartitioned[0]] : repartitioned;
+      const candidateGroups = result.map((group, index) => (
+        index === leftIndex ? ordered[0] : index === rightIndex ? ordered[1] : group
+      ));
+      best = choose({
+        kind: 'resplit', leftIndex, rightIndex, groups: ordered,
+        score: partitionScore(candidateGroups, target),
+      }, best, currentScore);
+    });
+
     if (!best) break;
-    result[best.donorIndex].ids.delete(best.atomId);
-    result[best.donorIndex].load -= best.load;
-    result[best.recipientIndex].ids.add(best.atomId);
-    result[best.recipientIndex].load += best.load;
+    if (best.kind === 'transfer') {
+      result[best.leftIndex].ids.delete(best.atomId);
+      result[best.leftIndex].load -= best.load;
+      result[best.rightIndex].ids.add(best.atomId);
+      result[best.rightIndex].load += best.load;
+    } else {
+      result[best.leftIndex] = best.groups[0];
+      result[best.rightIndex] = best.groups[1];
+    }
   }
   return result;
 }
@@ -1102,6 +1154,58 @@ function distanceBisectedZones(component, zoneCount, byId, neighbors) {
   return recurse(ids.map((_, rank) => rank), zoneCount);
 }
 
+function connectedGrowthZones(component, zoneCount, byId, neighbors, seedOffset = 0, descending = false) {
+  const ids = [...component].sort(compareIds);
+  if (zoneCount > ids.length) return null;
+  const allowed = new Set(ids);
+  const seeds = [ids[seedOffset % ids.length]];
+  const distanceMaps = [graphDistances(seeds[0], allowed, neighbors)];
+  while (seeds.length < zoneCount) {
+    const ranked = ids.filter((id) => !seeds.includes(id)).map((id) => ({
+      id,
+      distance: Math.min(...distanceMaps.map((distances) => distances.get(id) ?? Number.POSITIVE_INFINITY)),
+    })).sort((left, right) => right.distance - left.distance
+      || (descending ? compareIds(right.id, left.id) : compareIds(left.id, right.id)));
+    if (!ranked.length || !Number.isFinite(ranked[0].distance)) return null;
+    seeds.push(ranked[0].id);
+    distanceMaps.push(graphDistances(ranked[0].id, allowed, neighbors));
+  }
+
+  const groups = seeds.map((id) => ({ ids: new Set([id]), load: workload(byId.get(id)) }));
+  const owner = new Map(seeds.map((id, index) => [id, index]));
+  const unassigned = new Set(ids.filter((id) => !owner.has(id)));
+  const target = ids.reduce((sum, id) => sum + workload(byId.get(id)), 0) / zoneCount;
+  while (unassigned.size) {
+    const candidates = [];
+    groups.forEach((group, zoneIndex) => {
+      const frontier = [...new Set([...group.ids].flatMap((id) => neighbors.get(id) || []))]
+        .filter((id) => unassigned.has(id));
+      frontier.forEach((atomId) => {
+        const nextLoad = group.load + workload(byId.get(atomId));
+        candidates.push({
+          zoneIndex,
+          atomId,
+          loadRatio: group.load / Math.max(1, target),
+          projectedError: Math.abs(nextLoad - target),
+          unassignedDegree: (neighbors.get(atomId) || []).filter((id) => unassigned.has(id)).length,
+        });
+      });
+    });
+    if (!candidates.length) return null;
+    candidates.sort((left, right) => left.loadRatio - right.loadRatio
+      || left.projectedError - right.projectedError
+      || right.unassignedDegree - left.unassignedDegree
+      || left.zoneIndex - right.zoneIndex
+      || (descending ? compareIds(right.atomId, left.atomId) : compareIds(left.atomId, right.atomId)));
+    const selected = candidates[0];
+    groups[selected.zoneIndex].ids.add(selected.atomId);
+    groups[selected.zoneIndex].load += workload(byId.get(selected.atomId));
+    owner.set(selected.atomId, selected.zoneIndex);
+    unassigned.delete(selected.atomId);
+  }
+  return groups;
+}
+
 function partitionComponent(component, zoneCount, byId, neighbors) {
   if (zoneCount === 1) {
     return [{
@@ -1110,21 +1214,25 @@ function partitionComponent(component, zoneCount, byId, neighbors) {
     }];
   }
   const target = component.reduce((sum, id) => sum + workload(byId.get(id)), 0) / zoneCount;
-  const ascending = peelConnectedZones(component, zoneCount, byId, neighbors, false);
-  const descending = peelConnectedZones(component, zoneCount, byId, neighbors, true);
-  const peelCandidates = [ascending, descending].filter(Boolean)
-    .map((zones, index) => ({ zones, index, score: partitionScore(zones, target) }))
-    .sort((left, right) => left.score.maximum - right.score.maximum
-      || left.score.squared - right.score.squared || left.index - right.index);
-  if (peelCandidates[0]?.score.maximum <= 0.25) return peelCandidates[0].zones;
+  const seedCount = Math.min(16, component.length);
+  const generatedCandidates = [];
+  for (let seedOffset = 0; seedOffset < seedCount; seedOffset += 1) {
+    for (const descending of [false, true]) {
+      const peeled = peelConnectedZones(component, zoneCount, byId, neighbors, descending, seedOffset);
+      if (peeled) generatedCandidates.push({ zones: peeled, index: generatedCandidates.length, score: partitionScore(peeled, target) });
+      const grown = connectedGrowthZones(component, zoneCount, byId, neighbors, seedOffset, descending);
+      if (grown) generatedCandidates.push({ zones: grown, index: generatedCandidates.length, score: partitionScore(grown, target) });
+    }
+  }
   const bisected = distanceBisectedZones(component, zoneCount, byId, neighbors);
-  const candidates = [...peelCandidates, ...(bisected ? [{
+  const candidates = [...generatedCandidates, ...(bisected ? [{
     zones: bisected,
-    index: 2,
+    index: generatedCandidates.length,
     score: partitionScore(bisected, target),
   }] : [])];
   if (!candidates.length) return null;
   return candidates.sort((left, right) => left.score.maximum - right.score.maximum
+      || left.score.absolute - right.score.absolute
       || left.score.squared - right.score.squared || left.index - right.index)[0].zones;
 }
 
@@ -1434,6 +1542,62 @@ export function partitionCanvasResidentialTerritories(input = {}) {
       island_attachment_count: zones.reduce((sum, zone) => sum + (zone.island_work_unit_ids?.length ? 1 : 0), 0),
       islands_explicit: islands.length > 0,
       max_opportunity_deviation_percent: Number(deviation.toFixed(2)),
+    },
+  };
+}
+
+export function diagnoseCanvasResidentialPartition(input = {}) {
+  const streetUnits = input.street_units ?? input.classified_street_units ?? input.streetUnits ?? [];
+  const areaCount = Number(input.area_count ?? input.requested_zone_count ?? input.zone_count ?? 1);
+  const knockUnits = streetUnits.filter((unit) => unit.canvas_role === 'knock').sort((left, right) => compareIds(left.id, right.id));
+  const neighbors = effectiveKnockNeighbors(streetUnits, deriveNeighbors(streetUnits));
+  const { atoms, atomNeighbors } = buildResidentialOwnershipAtoms(knockUnits, neighbors);
+  const components = connectedComponents(atoms.map((atom) => atom.id), atomNeighbors);
+  const componentByAtom = new Map(components.flatMap((ids, index) => ids.map((id) => [id, `component:${index + 1}`])));
+  const partition = partitionCanvasResidentialTerritories({ ...input, street_units: streetUnits, area_count: areaCount });
+  const ownerByUnit = new Map((partition.zones || []).flatMap((zone) => zone.work_unit_ids.map((id) => [id, zone.zone_id])));
+  const target = atoms.reduce((sum, atom) => sum + workload(atom), 0) / Math.max(1, areaCount);
+  const constrainedLoads = (partition.zones || []).map((zone) => zone.workload_score);
+  const unitLevel = partitionCanvasResidentialTerritories({
+    ...input,
+    street_units: streetUnits.map((unit) => ({ ...unit, protected: false, protected_group_id: undefined, protected_group_ids: [] })),
+    area_count: areaCount,
+  });
+  const unitLevelLoads = (unitLevel.zones || []).map((zone) => zone.workload_score);
+  const maximumDeviation = (loads) => loads.length
+    ? Math.max(...loads.map((load) => Math.abs(load - target))) / Math.max(1, target) * 100
+    : null;
+  const floor = Math.floor(target);
+  const ceil = Math.ceil(target);
+  const idealIntegerLoads = Array.from({ length: areaCount }, (_, index) => (
+    index < Math.round(atoms.reduce((sum, atom) => sum + workload(atom), 0) - floor * areaCount) ? ceil : floor
+  )).sort((left, right) => left - right);
+  return {
+    target,
+    atoms: atoms.map((atom) => ({
+      atom_id: atom.id,
+      eligible_door_weight: workload(atom),
+      connected_component_id: componentByAtom.get(atom.id),
+      protected_group_ids: atom.protected_group_ids,
+      can_legally_split: atom.protected_group_ids.length === 0 && atom.member_unit_ids.length === 1,
+      member_work_unit_ids: atom.member_unit_ids,
+      neighboring_movable_atom_ids: atomNeighbors.get(atom.id) || [],
+      territory_id: ownerByUnit.get(atom.member_unit_ids[0]) || null,
+    })).sort((left, right) => right.eligible_door_weight - left.eligible_door_weight || compareIds(left.atom_id, right.atom_id)),
+    component_count: components.length,
+    theoretical_balance: {
+      connectivity_ignored: {
+        lower_bound_loads: idealIntegerLoads,
+        lower_bound_max_deviation_percent: Number(maximumDeviation(idealIntegerLoads).toFixed(2)),
+      },
+      connectivity_required_without_protected_groups: {
+        best_found_loads: unitLevelLoads,
+        max_deviation_percent: Number(maximumDeviation(unitLevelLoads).toFixed(2)),
+      },
+      connectivity_and_protected_groups_required: {
+        best_found_loads: constrainedLoads,
+        max_deviation_percent: Number(maximumDeviation(constrainedLoads).toFixed(2)),
+      },
     },
   };
 }

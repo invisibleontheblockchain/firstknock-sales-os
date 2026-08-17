@@ -382,6 +382,24 @@ test('contracts every edge in a protected cul-de-sac group into one indivisible 
   assert.equal(partitionCanvasResidentialTerritories({ street_units: streets, area_count: 3 }).code, 'TOO_MANY_ZONES_FOR_WORK_UNITS');
 });
 
+test('re-splits adjacent connected zones instead of stopping at a single-move local optimum', () => {
+  const weights = [12, 12, 12, 12, 1, 1, 1, 1, 12, 12, 12, 12, 1, 1, 1, 1];
+  const streets = weights.map((weight, index) => ({
+    ...unit(`chain-${String(index).padStart(2, '0')}`, -82 + index * 0.001, -82 + (index + 1) * 0.001, { weight }),
+    neighbor_ids: [index > 0 ? `chain-${String(index - 1).padStart(2, '0')}` : null, index < weights.length - 1 ? `chain-${String(index + 1).padStart(2, '0')}` : null].filter(Boolean),
+  }));
+  const first = partitionCanvasResidentialTerritories({ street_units: streets, area_count: 4 });
+  const second = partitionCanvasResidentialTerritories({ street_units: [...streets].reverse(), area_count: 4 });
+  const loads = first.zones.map((zone) => zone.opportunity_expected);
+
+  assert.equal(first.ok, true);
+  assert.equal(first.qa.connected_zones, true);
+  assert.equal(first.qa.exclusive_work_unit_coverage, true);
+  assert.ok(first.qa.max_opportunity_deviation_percent <= 15);
+  assert.deepEqual(second.zones, first.zones);
+  assert.equal(loads.reduce((sum, value) => sum + value, 0), 104);
+});
+
 test('runs the vertical analysis slice and preserves drawable topology on classified units', () => {
   const polygon = [
     { lat: 34.999, lng: -82.011 },
