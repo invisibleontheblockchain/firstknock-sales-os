@@ -2248,7 +2248,7 @@ export default function Home() {
     }
 
     return (
-        <div className="h-full relative" style={{ background: BRAND.voidBlack }}>
+        <div className={`h-full w-full relative ${showMapSettings ? 'lg:w-[calc(100%-24rem)]' : ''}`} style={{ background: BRAND.voidBlack }}>
             {/* Generation Overlay — immediate visual feedback */}
             <RouteGenerationOverlay
                 visible={routesGenerating || !!generationError}

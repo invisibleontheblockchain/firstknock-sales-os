@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { X, Sun, Moon, Globe, Mountain, Map, Layers, Satellite, Eye, EyeOff, RotateCcw, Save, Navigation, Home, SlidersHorizontal } from 'lucide-react';
+import { X, Eye, EyeOff, RotateCcw, Save, Navigation, Home, SlidersHorizontal } from 'lucide-react';
 import HomeBaseDialog from '@/components/routes/HomeBaseDialog';
+import MapStyleSelector from '@/components/map/MapStyleSelector';
 import MapThemePicker from '@/components/map/MapThemePicker';
 import { DEFAULT_PIN_THEME } from '@/components/map/mapPinThemes';
 import MapOverlayToggles from '@/components/map/MapOverlayToggles';
@@ -39,16 +40,6 @@ const STATUS_FILTERS = [
   { id: 'hard_no', label: 'HARD_NO', color: '#8B5CF6' },
   { id: 'not_moved_in', label: 'NOT_MOVED_IN', color: '#f97316' },
   { id: 'dm_not_home', label: 'DM_NOT_HOME', color: '#06b6d4' },
-];
-
-const MAP_STYLES = [
-  { id: 'dark', label: 'Dark', icon: Moon },
-  { id: 'light', label: 'Light', icon: Sun },
-  { id: 'streets', label: 'Streets', icon: Map },
-  { id: 'minimal', label: 'Minimal', icon: Layers },
-  { id: 'terrain', label: 'Terrain', icon: Mountain },
-  { id: 'satellite', label: 'Satellite', icon: Globe },
-  { id: 'hybrid', label: 'Hybrid', icon: Satellite },
 ];
 
 /* ── sub-component: section header ── */
@@ -88,6 +79,13 @@ export default function MapSettingsPanel({
 
   const upd = (key, val) => setLocal(p => ({ ...p, [key]: val }));
   const updMs = (key, val) => setLocal(p => ({ ...p, mapSettings: { ...p.mapSettings, [key]: val } }));
+  const setLiveMapTheme = (value) => { upd('mapTheme', value); setMapTheme?.(value); };
+
+  useEffect(() => {
+    if (!window.matchMedia('(min-width: 1024px)').matches) return undefined;
+    window.dispatchEvent(new Event('resize'));
+    return () => { setTimeout(() => window.dispatchEvent(new Event('resize')), 0); };
+  }, []);
 
   const ms = local.mapSettings;
 
@@ -125,10 +123,12 @@ export default function MapSettingsPanel({
     // Back to defaults includes handing dot sizing back to the automatic
     // dense-territory rule.
     clearPinSizeUserSet();
+    const defaultMapTheme = routeMode === 'canvas' ? 'dark' : 'hybrid';
+    setMapTheme?.(defaultMapTheme);
     setLocal({
       mapSettings: { pinShape:'circle', showLabels:false, labelType:'number', ...DEFAULT_PIN_THEME.settings },
       pinSize:DEFAULT_PIN_THEME.pinSize, showRouteLines:false, showRouteDetails:true, showAllProperties:false,
-      mapTheme:routeMode === 'canvas' ? 'dark' : 'hybrid', navigationApp:'apple', quickFilter:'all',
+      mapTheme:defaultMapTheme, navigationApp:'apple', quickFilter:'all',
       soldDateFilter:null, highlightRecentlySold:false,
     });
   };
@@ -150,8 +150,8 @@ export default function MapSettingsPanel({
   ];
 
   return (
-    <div className="fixed inset-0 z-[2000]">
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+    <div className="fixed inset-0 z-[2000] lg:left-auto lg:w-96">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm lg:hidden" onClick={onClose} />
       <div className="absolute top-0 right-0 bottom-0 w-full max-w-sm overflow-hidden pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] shadow-2xl animate-in slide-in-from-right duration-300 flex flex-col" style={{ background:'#0a0a0a', borderLeft:'1px solid rgba(255,255,255,0.06)' }}>
 
         {/* Header */}
@@ -231,21 +231,9 @@ export default function MapSettingsPanel({
 
               {/* Map Style */}
               <div>
-                <SectionLabel>Map Style</SectionLabel>
-                <div className="grid grid-cols-2 gap-2 min-[400px]:grid-cols-4">
-                  {MAP_STYLES.map(s => {
-                    const Icon = s.icon;
-                    const active = local.mapTheme === s.id;
-                    return (
-                      <button key={s.id} onClick={() => upd('mapTheme', s.id)}
-                        className={`flex flex-col items-center gap-1.5 py-3 rounded-xl text-[10px] font-bold transition-all border ${active ? 'bg-white/10 border-white/20 text-white' : 'bg-white/[0.02] border-white/[0.04] text-gray-500 hover:border-white/10'}`}
-                      >
-                        <Icon className="w-4 h-4" />
-                        {s.label}
-                      </button>
-                    );
-                  })}
-                </div>
+                <SectionLabel>{routeMode === 'canvas' ? 'Canvas Light Variants & Map Style' : 'Map Style'}</SectionLabel>
+                <MapStyleSelector routeMode={routeMode} value={local.mapTheme} onChange={setLiveMapTheme} />
+                {routeMode === 'canvas' && <p className="mt-2 text-[9px] leading-relaxed text-gray-600">Select any light treatment to compare saturation, warmth, and contrast directly on the map.</p>}
               </div>
 
               {/* Overlays — boundaries and labels, side by side */}

@@ -90,6 +90,11 @@ test('Canvas honours the same four Map Style choices as Precision', () => {
   assert.equal(resolve('dark', pmtiles).mode, 'pmtiles');
   assert.equal(resolve('dark', pmtiles).flavor, 'dark');
   assert.equal(resolve('light', pmtiles).flavor, 'carto');
+
+  for (const theme of ['light_soft', 'light_warm', 'light_cool', 'light_vivid', 'light_contrast', 'light_mono']) {
+    assert.equal(resolve(theme).url, resolve('light').url);
+    assert.equal(resolve(theme, pmtiles).flavor, 'carto');
+  }
 });
 
 test('the Canvas basemap never depends on an env file being present', () => {

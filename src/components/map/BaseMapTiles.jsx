@@ -56,6 +56,7 @@ function MapBackdrop({ mapTheme }) {
 }
 
 export default function BaseMapTiles({ mapTheme, routeMode = 'precision' }) {
+    const precisionTheme = mapTheme.startsWith('light_') ? 'light' : mapTheme;
     const showLabels = mapTheme === 'hybrid' || mapTheme === 'satellite';
 
     // Canvas honours the same Map Style choices; only the street source differs.
@@ -79,8 +80,8 @@ export default function BaseMapTiles({ mapTheme, routeMode = 'precision' }) {
         <>
             <MapBackdrop mapTheme={mapTheme} />
             <TileLayer
-                key={`basemap-${mapTheme}`}
-                url={BASEMAP_URLS[mapTheme] || BASEMAP_URLS.dark}
+                key={`basemap-${precisionTheme}`}
+                url={BASEMAP_URLS[precisionTheme] || BASEMAP_URLS.dark}
                 attribution=""
                 {...TILE_PERF}
             />

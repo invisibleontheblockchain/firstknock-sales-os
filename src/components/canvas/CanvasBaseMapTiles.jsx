@@ -13,9 +13,18 @@ const TILE_PERFORMANCE = Object.freeze({
   maxZoom: 20,
 });
 
+const LIGHT_VARIANT_CLASSES = Object.freeze({
+  light_soft: 'fk-canvas-light-soft',
+  light_warm: 'fk-canvas-light-warm',
+  light_cool: 'fk-canvas-light-cool',
+  light_vivid: 'fk-canvas-light-vivid',
+  light_contrast: 'fk-canvas-light-contrast',
+  light_mono: 'fk-canvas-light-mono',
+});
+
 export { getCanvasBasemapConfiguration } from '@/components/canvas/canvasBasemapConfiguration';
 
-function CanvasPmtilesLayer({ config }) {
+function CanvasPmtilesLayer({ config, tileClass }) {
   const map = useMap();
 
   useEffect(() => {
@@ -37,6 +46,7 @@ function CanvasPmtilesLayer({ config }) {
       updateWhenZooming: TILE_PERFORMANCE.updateWhenZooming,
       updateWhenIdle: TILE_PERFORMANCE.updateWhenIdle,
       maxZoom: TILE_PERFORMANCE.maxZoom,
+      className: tileClass,
     });
     layer.addTo(map);
     return () => {
@@ -44,7 +54,7 @@ function CanvasPmtilesLayer({ config }) {
       if (previousLeaflet === undefined) delete globalObject.L;
       else globalObject.L = previousLeaflet;
     };
-  }, [config.attribution, config.flavor, config.url, map]);
+  }, [config.attribution, config.flavor, config.url, map, tileClass]);
 
   return null;
 }
@@ -52,13 +62,15 @@ function CanvasPmtilesLayer({ config }) {
 // theme mirrors the Map Style choice in Map Settings: light, dark, satellite, hybrid.
 export default function CanvasBaseMapTiles({ theme = 'light', satellite = false }) {
   const config = getCanvasBasemapConfiguration({ theme, satellite, env: import.meta.env });
+  const tileClass = LIGHT_VARIANT_CLASSES[theme] || '';
   if (!config.url) return null;
-  if (config.mode === 'pmtiles') return <CanvasPmtilesLayer config={config} />;
+  if (config.mode === 'pmtiles') return <CanvasPmtilesLayer key={`${theme}-${config.url}`} config={config} tileClass={tileClass} />;
   return (
     <TileLayer
-      key={`canvas-basemap-${config.url}`}
+      key={`canvas-basemap-${theme}-${config.url}`}
       url={config.url}
       attribution={config.attribution}
+      className={tileClass}
       crossOrigin
       {...TILE_PERFORMANCE}
     />
