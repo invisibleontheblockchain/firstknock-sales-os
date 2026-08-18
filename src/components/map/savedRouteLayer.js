@@ -1,4 +1,5 @@
 import L from 'leaflet';
+import { outcomeColor } from '@/components/logic/outcomeStatus';
 
 // One saved route, built once into a reusable Leaflet layer group.
 //
@@ -9,8 +10,8 @@ import L from 'leaflet';
 
 export const MAX_DOOR_PINS_PER_ROUTE = 15000;
 
-const SOLD_PIN_COLOR = '#2EEB57';
-const isConfirmedSale = (property) => property?.effective_status === 'SOLD';
+const decisionStatus = (property) => property?.effective_status || property?.parsed_status || property?.original_status || 'ELIGIBLE';
+const hasRecordedDecision = (property) => decisionStatus(property) !== 'ELIGIBLE';
 
 function passesQuickFilter(property, quickFilter) {
     if (quickFilter === 'all') return true;
@@ -87,18 +88,19 @@ export function buildSavedRouteGroup({ doors, linePoints, centerPoint, number, c
             drawn++;
 
             const point = [Number(property.lat), Number(property.lng)];
-            // Confirmed sales stay green regardless of the route's color.
-            const sold = isConfirmedSale(property);
+            // Recorded decisions use the same colors as Run Route across every saved route.
+            const hasDecision = hasRecordedDecision(property);
+            const decisionColor = hasDecision ? outcomeColor(decisionStatus(property)) : null;
             // No separate transparent hitbox: the global 12px canvas tap slop
             // covers tapping without doubling the layer count.
             const circle = L.circleMarker(point, {
-                radius: sold ? dotSize + 2 : dotSize,
-                fillColor: sold ? SOLD_PIN_COLOR : color,
-                fillOpacity: sold ? 1 : (style.pinOpacity || 1),
-                color: sold ? '#FFFFFF' : (style.fillStyle === 'outline' ? color : (style.pinBorderColor || '#000')),
-                weight: sold ? 2 : (style.fillStyle === 'outline' ? 2 : (style.pinBorderWidth || 1)),
+                radius: property.effective_status === 'SOLD' ? dotSize + 2 : dotSize,
+                fillColor: decisionColor || color,
+                fillOpacity: hasDecision ? 1 : (style.pinOpacity || 1),
+                color: hasDecision ? (decisionColor === '#FFFFFF' ? '#111827' : '#FFFFFF') : (style.fillStyle === 'outline' ? color : (style.pinBorderColor || '#000')),
+                weight: hasDecision ? 2 : (style.fillStyle === 'outline' ? 2 : (style.pinBorderWidth || 1)),
             });
-            circle.__sold = sold;
+            circle.__sold = property.effective_status === 'SOLD';
             circle.on('click', selectRoute);
             group.addLayer(circle);
             doorPins.push(circle);

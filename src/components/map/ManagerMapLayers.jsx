@@ -10,6 +10,7 @@ import { routePropertyOrderFingerprint } from '@/components/logic/routeRoadConte
 import { resolvePinSize, zoomAdjustedPinSize } from './densePinSize';
 import { buildPinStyle, pinKey, pinStyleContextKey } from './pinStyle';
 import { buildSavedRouteGroup, savedRouteStyleKey } from './savedRouteLayer';
+import { outcomeColor } from '@/components/logic/outcomeStatus';
 import {
     filterRoutesByStatus,
     isRenderableMapPoint,
@@ -25,8 +26,6 @@ import {
 // Green is reserved for confirmed sales, so no route is assigned a green color.
 const DEFAULT_ROUTE_COLORS = ['#FFD700', '#ec4899', '#a855f7', '#f59e0b', '#8b5cf6', '#06b6d4', '#f97316', '#ef4444', '#e11d48', '#3b82f6'];
 
-// Confirmed sales always render in this green, whatever color their route uses.
-const SOLD_PIN_COLOR = '#2EEB57';
 const isConfirmedSale = (property) => property?.effective_status === 'SOLD';
 
 // Route styling only changes at these zoom boundaries. Quantizing keeps a
@@ -226,10 +225,14 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, pinSize, lineDashAr
             // canvas pin ~12px of tap slop, so a second layer per stop only
             // doubled the layers Leaflet hit-tests on every mouse move.
             const sold = isConfirmedSale(p);
+            const status = p.effective_status || p.parsed_status || p.original_status || 'ELIGIBLE';
+            const hasDecision = status !== 'ELIGIBLE';
             const completedColor = activeRoute.status === 'COMPLETED'
-                ? getCompletedPinColor(p.effective_status, routeColor)
+                ? getCompletedPinColor(status, routeColor)
                 : routeColor;
-            const baseColor = isFirst && activeRoute.status !== 'COMPLETED' ? '#FFFFFF' : completedColor;
+            const baseColor = hasDecision
+                ? outcomeColor(status)
+                : isFirst && activeRoute.status !== 'COMPLETED' ? '#FFFFFF' : completedColor;
 
             // Circle pin (canvas-rendered, fast)
             // Emphasis is reserved for outcomes that matter (sales, qualified) —
@@ -251,7 +254,7 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, pinSize, lineDashAr
                 : Math.max(2.5, zoomAdjustedPinSize(pinSize, zoom) * 0.8);
             const circle = L.circleMarker(point, {
                 radius: emphasized ? activeDotSize + 1.5 : activeDotSize,
-                fillColor: sold ? SOLD_PIN_COLOR : baseColor,
+                fillColor: baseColor,
                 // Zoomed out the stops sit on top of each other, so plain doors
                 // dim back and only sales / first stop stay at full strength.
                 // Route stops keep the same solid look at every zoom — dimming
@@ -273,7 +276,7 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, pinSize, lineDashAr
             if (!showNumbers && !sold) return;
             if (labelsDrawn >= MAX_NUMBER_LABELS) return;
             labelsDrawn++;
-            const labelColor = sold ? SOLD_PIN_COLOR : 'rgba(255,255,255,0.9)';
+            const labelColor = hasDecision ? outcomeColor(status) : 'rgba(255,255,255,0.9)';
             const labelSize = sold ? Math.max(11, numberFontSize) : numberFontSize;
             const label = L.marker(point, {
                 icon: L.divIcon({

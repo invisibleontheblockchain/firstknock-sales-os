@@ -43,7 +43,7 @@ export default function PropertyDetailSheet({
     const [showHistory, setShowHistory] = useState(false);
     const isSavingOutcome = savingStatus !== null;
 
-    const handleMark = async (status, { skipSaleAmount = false } = {}) => {
+    const handleMark = async (status, { skipSaleAmount = false, skipCallbackDetails = false } = {}) => {
         if (isSavingOutcome) return;
         // Free-limit gate: when disabled, every tap re-fires the upgrade prompt
         // and never saves an outcome.
@@ -74,12 +74,12 @@ export default function PropertyDetailSheet({
 
         if (status === 'CALLBACK') {
             setShowCallbackPrompt(true);
-            if (!showCallbackPrompt && (!callbackName.trim() || !callbackPhone.trim())) {
+            if (!showCallbackPrompt && !skipCallbackDetails) {
                 setCallbackError('');
                 return;
             }
-            if (!callbackName.trim() || !callbackPhone.trim() || !callbackTime) {
-                setCallbackError('Name, phone number, and callback date/time are required.');
+            if (!skipCallbackDetails && (!callbackName.trim() || !callbackPhone.trim() || !callbackTime)) {
+                setCallbackError('Name, phone number, and callback date/time are required, or skip the details.');
                 return;
             }
             setCallbackError('');
@@ -87,13 +87,13 @@ export default function PropertyDetailSheet({
 
         let noteText = `Marked as ${status}`;
         if (logNote.trim()) noteText += ` | Note: ${logNote.trim()}`;
-        if (status === 'CALLBACK' && callbackName.trim()) noteText += ` | Contact: ${callbackName.trim()}`;
-        if (status === 'CALLBACK' && callbackPhone) noteText += ` | Phone: ${callbackPhone}`;
-        if (status === 'CALLBACK' && callbackTime) noteText += ` | Callback: ${callbackTime}`;
+        if (status === 'CALLBACK' && !skipCallbackDetails && callbackName.trim()) noteText += ` | Contact: ${callbackName.trim()}`;
+        if (status === 'CALLBACK' && !skipCallbackDetails && callbackPhone) noteText += ` | Phone: ${callbackPhone}`;
+        if (status === 'CALLBACK' && !skipCallbackDetails && callbackTime) noteText += ` | Callback: ${callbackTime}`;
         if (status === 'SOLD' && parsedSaleAmount !== null) noteText += ` | Sale: $${parsedSaleAmount}`;
 
         let nextDate = null;
-        if (status === 'CALLBACK' && callbackTime) {
+        if (status === 'CALLBACK' && !skipCallbackDetails && callbackTime) {
             if (callbackTime.includes('T')) {
                 nextDate = new Date(callbackTime).toISOString();
             } else {
@@ -110,9 +110,9 @@ export default function PropertyDetailSheet({
             description: logNote.trim() || null,
             parsed_status: status,
             next_eligible_date: nextDate,
-            callback_contact_name: status === 'CALLBACK' ? callbackName.trim() : null,
-            callback_contact_phone: status === 'CALLBACK' ? callbackPhone.trim() : null,
-            callback_time: status === 'CALLBACK' ? callbackTime : null
+            callback_contact_name: status === 'CALLBACK' && !skipCallbackDetails ? callbackName.trim() : null,
+            callback_contact_phone: status === 'CALLBACK' && !skipCallbackDetails ? callbackPhone.trim() : null,
+            callback_time: status === 'CALLBACK' && !skipCallbackDetails ? callbackTime : null
         };
 
         if (status === 'SOLD' && parsedSaleAmount !== null) {
@@ -235,6 +235,14 @@ export default function PropertyDetailSheet({
                                     {savingStatus === 'CALLBACK' ? 'Saving...' : 'Save Callback'}
                                 </button>
                             </div>
+                            <button
+                                type="button"
+                                onClick={() => handleMark('CALLBACK', { skipCallbackDetails: true })}
+                                disabled={isSavingOutcome}
+                                className="mt-2 w-full rounded-xl border border-purple-400/20 bg-purple-500/[0.06] px-3 py-2.5 text-xs font-black text-purple-200 transition-colors active:bg-purple-500/15 disabled:opacity-60"
+                            >
+                                Record callback without details
+                            </button>
                             {callbackError && <p className="mt-2 text-[10px] font-bold text-red-300">{callbackError}</p>}
                         </div>
                     )}

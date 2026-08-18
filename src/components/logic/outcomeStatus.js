@@ -22,6 +22,8 @@ export const OUTCOME_COLORS = {
     HARD_NO: '#FF6B6B',
     NOT_MOVED_IN: '#F97316',
     DM_NOT_HOME: '#FFFFFF',
+    DO_NOT_KNOCK: '#FF6B6B',
+    OTHER: '#6b7280',
     // No knock-tab equivalent — these describe route state, not a door outcome.
     ELIGIBLE: '#6b7280',
     QUALIFIED: '#3b82f6',

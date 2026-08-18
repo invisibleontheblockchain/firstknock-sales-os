@@ -67,6 +67,8 @@ test('Run Route keeps every stop visible in Todo with explicit outcome presentat
     const detail = readFileSync(new URL('../src/components/rep/PropertyDetailSheet.jsx', import.meta.url), 'utf8');
     const layout = readFileSync(new URL('../src/Layout.jsx', import.meta.url), 'utf8');
     const toolbar = readFileSync(new URL('../src/components/map/MapToolbar.jsx', import.meta.url), 'utf8');
+    const savedRouteLayer = readFileSync(new URL('../src/components/map/savedRouteLayer.js', import.meta.url), 'utf8');
+    const managerMapLayers = readFileSync(new URL('../src/components/map/ManagerMapLayers.jsx', import.meta.url), 'utf8');
 
     assert.match(repHome, /if \(filterStatus === 'todo'\) return true/);
     assert.match(checklist, /filter === 'all' \|\| filter === CHECKLIST_STAGES\.TODO/);
@@ -78,6 +80,10 @@ test('Run Route keeps every stop visible in Todo with explicit outcome presentat
     assert.match(propertyCard, /export default React\.memo\(PropertyCard\)/);
     assert.match(repHome, /touch-pan-y overflow-y-auto overscroll-y-contain/);
     assert.doesNotMatch(repHome, /bg-black\/55[\s\S]*?backdrop-blur-2xl/);
+    assert.match(detail, /skipCallbackDetails: true/);
+    assert.match(detail, /Record callback without details/);
+    assert.match(savedRouteLayer, /outcomeColor\(decisionStatus\(property\)\)/);
+    assert.match(managerMapLayers, /hasDecision \? outcomeColor\(status\)/);
     assert.doesNotMatch(detail, /FieldRoutes|ScheduleInspectionAction|Schedule Inspection/);
     assert.match(layout, /label="Run Route"/);
     assert.match(toolbar, /RUN ROUTE/);

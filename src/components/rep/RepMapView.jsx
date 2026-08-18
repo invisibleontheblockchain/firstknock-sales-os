@@ -7,6 +7,7 @@ import { routePropertyOrderFingerprint } from '@/components/logic/routeRoadConte
 import MapAttributionControl from '@/components/map/MapAttributionControl';
 import { DEFAULT_PIN_THEME } from '@/components/map/mapPinThemes';
 import { ESRI_IMAGERY_ATTRIBUTION } from '@/components/map/mapAttribution';
+import { outcomeColor } from '@/components/logic/outcomeStatus';
 
 // Fix Leaflet unmount error during scroll wheel zoom
 const originalGetMapPanePos = L.Map.prototype._getMapPanePos;
@@ -43,24 +44,9 @@ function isRoutePoint(point) {
     return Number.isFinite(Number(point.lat)) && Number.isFinite(Number(point.lng));
 }
 
-const STATUS_COLORS = {
-    ELIGIBLE: '#8888A0',
-    SOLD: '#00F5A0',
-    HARD_NO: '#FF6B6B',
-    CALLBACK: '#39FF4A',
-    NO_ANSWER: '#FF6B6B',
-    QUALIFIED: '#2EEB57',
-    RECENT_OFF_MARKET: '#39FF4A',
-    NOT_MOVED_IN: '#FF6B6B',
-    DM_NOT_HOME: '#FF6B6B',
-    DO_NOT_KNOCK: '#FF6B6B',
-};
-
 function getOutcomeDotColor(property) {
     const status = property?.effective_status || property?.parsed_status || property?.original_status || 'ELIGIBLE';
-    if (['SOLD', 'CALLBACK', 'QUALIFIED', 'RECENT_OFF_MARKET'].includes(status)) return '#2EEB57';
-    if (['HARD_NO', 'NO_ANSWER', 'NOT_MOVED_IN', 'DM_NOT_HOME', 'DO_NOT_KNOCK'].includes(status)) return '#FF6B6B';
-    return '#8888A0';
+    return outcomeColor(status);
 }
 
 function haversine(lat1, lng1, lat2, lng2) {
