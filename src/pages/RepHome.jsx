@@ -949,15 +949,14 @@ export default function RepHome() {
     const total = expectedRoutePropertyCount || routeProperties.length;
     if (!total) return { total: 0, done: 0, todo: 0, sold: 0, percent: 0 };
     const sold = routeProperties.filter((p) => p.effective_status === 'SOLD').length;
-    const done = routeProperties.filter((p) => ['HARD_NO', 'NOT_MOVED_IN'].includes(p.effective_status)).length;
+    const done = routeProperties.filter((p) => ['SOLD', 'HARD_NO'].includes(p.effective_status)).length;
     const todo = routeProperties.filter((p) => !['SOLD', 'HARD_NO'].includes(p.effective_status)).length;
-    const decided = routeProperties.filter((p) => p.effective_status !== 'ELIGIBLE').length;
     return {
       total,
       done,
       todo,
       sold,
-      percent: Math.round(decided / total * 100)
+      percent: Math.round(done / total * 100)
     };
   }, [expectedRoutePropertyCount, routeProperties]);
 
@@ -995,10 +994,10 @@ export default function RepHome() {
         }
       }
 
-      // Sales-funnel views: Todo keeps all open opportunities, Done keeps
-      // completed non-sale outcomes, and Sold is closed-won.
+      // Sales-funnel views: Todo keeps every non-terminal opportunity, Done
+      // contains only closed-won and closed-lost outcomes.
       if (filterStatus === 'todo') return matchesTodoRouteFilters(p, todoRouteTypes);
-      if (filterStatus === 'done') return ['HARD_NO', 'NOT_MOVED_IN'].includes(p.effective_status);
+      if (filterStatus === 'done') return ['SOLD', 'HARD_NO'].includes(p.effective_status);
       if (filterStatus === 'sold') return p.effective_status === 'SOLD';
       return true;
     });
@@ -1159,8 +1158,8 @@ export default function RepHome() {
         setFilterStatus('todo');
         toast.success(`${count} stop${count === 1 ? '' : 's'} moved to Todo`);
       } else if (action === ROUTE_BULK_ACTIONS.CALLBACK) {
-        setFilterStatus('done');
-        setDecisionFilter('CALLBACK');
+        setFilterStatus('todo');
+        setTodoRouteTypes((current) => current.includes('CALLBACK') ? current : [...current, 'CALLBACK']);
         toast.success(`${count} stop${count === 1 ? '' : 's'} moved to Callback`);
       } else if (action === ROUTE_BULK_ACTIONS.RE_KNOCK) {
         setFilterStatus('todo');
@@ -1308,6 +1307,24 @@ export default function RepHome() {
     setSelectedProperty(property);
     setSelectedPropertyIndex(index);
   }, []);
+
+  const scrollToNextRouteProperty = React.useCallback((property) => {
+    const currentIndex = routeProperties.findIndex((routeProperty) =>
+      routeProperty.address_hash === property.address_hash
+      || routeProperty.id === property.id
+    );
+    if (currentIndex < 0) return;
+    window.setTimeout(() => {
+      const renderedStops = [...document.querySelectorAll('[data-route-stop-hash]')];
+      for (let index = currentIndex + 1; index < routeProperties.length; index += 1) {
+        const nextHash = routeProperties[index].address_hash || routeProperties[index].id;
+        const nextStop = renderedStops.find((node) => node.dataset.routeStopHash === String(nextHash));
+        if (!nextStop) continue;
+        nextStop.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        break;
+      }
+    }, 80);
+  }, [routeProperties]);
 
   const handleTogglePropertySelection = React.useCallback((property) => {
     if (activeRouteArchived || bulkActionMutation.isPending) return;
@@ -1494,6 +1511,7 @@ export default function RepHome() {
     });
     setSelectedProperty(null);
     setSelectedPropertyIndex(null);
+    scrollToNextRouteProperty(prop);
 
     // Every outcome write takes a per-user server lease, so concurrent taps
     // would collide with 409 outcome_write_in_progress. Queue them instead.
@@ -1822,11 +1840,11 @@ export default function RepHome() {
                     </div> :
 
         <div className="space-y-1.5">
-                        {filteredProperties.map((prop, idx) =>
+                        {filteredProperties.map((prop) =>
           <PropertyCard
             key={getPropertySelectionKey(prop)}
             property={prop}
-            index={idx}
+            index={routeProperties.findIndex((routeProperty) => getPropertySelectionKey(routeProperty) === getPropertySelectionKey(prop))}
             navigationApp={navigationApp}
             onSelect={handleSelectProperty} />
 
@@ -2030,7 +2048,11 @@ export default function RepHome() {
             {showMap &&
       <RepMapView
         properties={routeProperties}
-        onSelectProperty={(p) => setSelectedProperty(p)}
+        onSelectProperty={(p) => {
+          setSelectedProperty(p);
+          const routeIndex = routeProperties.findIndex((property) => getPropertySelectionKey(property) === getPropertySelectionKey(p));
+          setSelectedPropertyIndex(routeIndex >= 0 ? routeIndex : null);
+        }}
         onClose={() => {setShowMap(false);setFocusProperty(null);}}
         focusProperty={focusProperty}
         roadGeometry={activeRoute?.metadata?.road_geometry}
@@ -2057,7 +2079,7 @@ export default function RepHome() {
         uploading={uploading}
         onClose={() => {setSelectedProperty(null);setSelectedPropertyIndex(null);}}
         routePosition={selectedPropertyIndex !== null ? selectedPropertyIndex + 1 : null}
-        totalStops={filteredProperties.length}
+        totalStops={routeProperties.length}
         navigationApp={navigationApp}
         onViewOnMap={() => {
           const prop = selectedProperty;

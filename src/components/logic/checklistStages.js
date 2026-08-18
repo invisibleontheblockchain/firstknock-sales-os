@@ -15,6 +15,7 @@ export const CHECKLIST_STAGES = Object.freeze({
 export const FOLLOW_UP_STATUSES = Object.freeze([
     'NO_ANSWER',
     'CALLBACK',
+    'NOT_MOVED_IN',
     'DM_NOT_HOME',
     'QUALIFIED',
 ]);
@@ -23,7 +24,6 @@ export const FOLLOW_UP_STATUSES = Object.freeze([
 export const COMPLETED_STATUSES = Object.freeze([
     'SOLD',
     'HARD_NO',
-    'NOT_MOVED_IN',
 ]);
 
 const FOLLOW_UP_SET = new Set(FOLLOW_UP_STATUSES);
@@ -64,12 +64,12 @@ export const STAGE_DECISION_OPTIONS = Object.freeze({
     [CHECKLIST_STAGES.FOLLOW_UP]: [
         { value: 'NO_ANSWER', label: 'No Answer' },
         { value: 'CALLBACK', label: 'Callback' },
+        { value: 'NOT_MOVED_IN', label: 'Not Moved In' },
         { value: 'DM_NOT_HOME', label: 'DM Not Home' },
         { value: 'QUALIFIED', label: 'Qualified' },
     ],
     [CHECKLIST_STAGES.COMPLETED]: [
         { value: 'SOLD', label: 'Sold' },
         { value: 'HARD_NO', label: 'Not Interested' },
-        { value: 'NOT_MOVED_IN', label: 'Not Moved In' },
     ],
 });

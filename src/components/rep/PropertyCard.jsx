@@ -54,6 +54,7 @@ function PropertyCard({
 
   return (
     <div
+      data-route-stop-hash={property.address_hash || property.id}
       className={`relative w-full overflow-hidden rounded-xl border px-2.5 py-2 text-left transition-[border-color,background-color,box-shadow,transform] duration-300 active:scale-[0.985] group cursor-pointer hover:-translate-y-0.5 hover:shadow-[0_14px_42px_rgba(0,0,0,0.46)] ${selected ? 'shadow-[0_0_0_1px_rgba(57,255,74,0.16)]' : ''}`}
       style={{
         background: selected

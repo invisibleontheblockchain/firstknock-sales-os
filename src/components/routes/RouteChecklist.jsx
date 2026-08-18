@@ -84,6 +84,7 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
     const [noteStatus, setNoteStatus] = useState({});
     const [noteError, setNoteError] = useState({});
     const noteTimersRef = React.useRef({});
+    const stopRefs = React.useRef({});
     const [saleAmount, setSaleAmount] = useState('');
     const [saleAmountError, setSaleAmountError] = useState('');
     const [navigationSession, setNavigationSession] = useState(null);
@@ -132,6 +133,9 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
     }, [route]);
 
     const displayRoute = latestRoute || route;
+    const routePositionByHash = useMemo(() => new Map(
+        displayRoute.properties.map((property, index) => [property.address_hash || property.id, index + 1])
+    ), [displayRoute.properties]);
     const businessOwnedCount = useMemo(
         () => displayRoute.properties.filter(isBusinessOwnedProperty).length,
         [displayRoute.properties]
@@ -383,6 +387,20 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
         });
     };
 
+    const scrollToNextRouteStop = (property) => {
+        const currentPosition = routePositionByHash.get(property.address_hash || property.id);
+        if (!currentPosition) return;
+        window.setTimeout(() => {
+            for (let index = currentPosition; index < displayRoute.properties.length; index += 1) {
+                const nextProperty = displayRoute.properties[index];
+                const nextRef = stopRefs.current[nextProperty.address_hash || nextProperty.id];
+                if (!nextRef) continue;
+                nextRef.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                break;
+            }
+        }, 80);
+    };
+
     // Outcomes are append-only, so the interface must not claim a save that the
     // server rejected; the draft is only released once the write is accepted.
     const logOutcome = async (property, logData) => {
@@ -395,6 +413,7 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
         }
         if (saved === false) return false;
         clearHouseNote(property.address_hash);
+        scrollToNextRouteStop(property);
         return saved;
     };
 
@@ -482,7 +501,11 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
                     setSaleAmountError('');
                     setSelectedAction({ propertyId: property.address_hash, statusId: 'SOLD' });
                 } else {
-                    onLogResult(property, status, text);
+                    logOutcome(property, {
+                        parsed_status: status,
+                        raw_input_text: text,
+                        ...houseNotePayload(property)
+                    });
                     setExpandedId(null);
                 }
             }
@@ -653,6 +676,7 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
                         </p>
                     )}
                     {filteredProperties.map((prop, idx) => {
+                        const routePosition = routePositionByHash.get(prop.address_hash || prop.id) || idx + 1;
                         const propData = propertyData[prop.address_hash] || {};
                         const currentStatus = propertyStatuses[prop.address_hash];
                         const isExpanded = expandedId === prop.address_hash;
@@ -700,6 +724,11 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
                         return (
                             <div
                                 key={prop.address_hash}
+                                ref={(node) => {
+                                    const key = prop.address_hash || prop.id;
+                                    if (node) stopRefs.current[key] = node;
+                                    else delete stopRefs.current[key];
+                                }}
                                 className={`group rounded-xl overflow-hidden transition-all duration-300 border ${isExpanded ? 'shadow-[0_0_18px_rgba(46,235,87,0.12)]' : ''}`}
                                 style={currentStatus ? {
                                     background: `linear-gradient(135deg, ${outcomeTint(STATUS_COLORS[currentStatus], '28')}, ${outcomeTint(STATUS_COLORS[currentStatus], '0D')})`,
@@ -730,7 +759,7 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
                                                 ? { background: 'rgba(255,215,0,0.12)', color: BRAND.gold, border: '1px solid rgba(255,215,0,0.35)' }
                                                 : { background: 'rgba(46,235,87,0.12)', color: '#86efac', border: '1px solid rgba(46,235,87,0.3)' }}
                                     >
-                                        {idx + 1}
+                                        {routePosition}
                                     </div>
 
                                     <div className="flex-1 min-w-0">
