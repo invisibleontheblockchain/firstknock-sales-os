@@ -8,6 +8,11 @@ const MAX_STRIPE_CUSTOMERS = 50000;
 const MAX_STRIPE_SUBSCRIPTIONS = 20000;
 const MAX_STRIPE_INVOICES = 50000;
 const DAY_MS = 24 * 60 * 60 * 1000;
+const PLATFORM_HQ_VIEWER_IDS = new Set([
+    '695eb764b077190880be21df',
+    '6978c7229935cf40cde25086',
+    '69cfceec85189c20b0f4e97a'
+]);
 const HIDDEN_PLATFORM_ANALYTICS_REP_NAMES = new Set([
     'irobot v2',
     'irobotv2',
@@ -52,6 +57,11 @@ function normalized(value: any) {
 
 function normalizedLeaderboardName(value: any) {
     return normalized(value).replace(/\s+/g, ' ');
+}
+
+function canViewPlatformCommandCenter(user: any) {
+    if (!user) return false;
+    return PLATFORM_HQ_VIEWER_IDS.has(String(user.id || '').trim());
 }
 
 function finiteNonNegative(value: any) {
@@ -1302,19 +1312,18 @@ async function runLegacyAdminDiagnostics(base44: any, user: any, body: any) {
 Deno.serve(async (req: Request) => {
     try {
         const base44 = createClientFromRequest(req);
+        const caller = await base44.auth.me();
+        if (!caller) return Response.json({ error: 'Authentication required' }, { status: 401 });
         const body = await req.json().catch(() => ({}));
-
         if (body?.view !== 'platform_command_center') {
-            const caller = await base44.auth.me();
-            if (!caller) return Response.json({ error: 'Authentication required' }, { status: 401 });
             if (caller.role !== 'admin') {
                 return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
             }
             return await runLegacyAdminDiagnostics(base44, caller, body);
         }
-
-        // FirstKnock HQ is intentionally public: no Base44 session or allowlist
-        // is required to view the platform command center.
+        if (!canViewPlatformCommandCenter(caller)) {
+            return Response.json({ error: 'Forbidden: FirstKnock HQ access required' }, { status: 403 });
+        }
         const timeZone = validTimeZone(body?.time_zone);
         if (!timeZone) {
             return Response.json({ error: 'Choose a valid time zone.' }, { status: 400 });

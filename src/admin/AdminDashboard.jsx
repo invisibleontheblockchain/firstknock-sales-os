@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Activity,
   AlertTriangle,
@@ -13,10 +13,12 @@ import {
   DollarSign,
   DoorOpen,
   Gauge,
+  LogOut,
   Medal,
   Radio,
   RefreshCw,
   Search,
+  ShieldAlert,
   Sparkles,
   Target,
   TrendingUp,
@@ -35,6 +37,7 @@ import {
 } from '@/admin/hqNavigation';
 import { buildPlatformAdoptionView } from '@/admin/platformAdoption';
 import UserActivityHeatmap from '@/components/analytics/team/UserActivityHeatmap';
+import { canViewPlatformDashboard } from '@/lib/platformDashboardAccess';
 
 const PERIOD_OPTIONS = [
   { id: '7d', label: '7D' },
@@ -428,7 +431,25 @@ function LoadingState() {
   );
 }
 
+function AccessDenied() {
+  return (
+    <div className="grid h-full place-items-center overflow-y-auto bg-[#030504] p-6">
+      <div className="max-w-md rounded-[28px] border border-red-400/15 bg-red-400/[0.05] p-8 text-center shadow-2xl">
+        <span className="mx-auto grid h-14 w-14 place-items-center rounded-2xl border border-red-400/20 bg-red-400/10">
+          <ShieldAlert className="h-6 w-6 text-red-300" />
+        </span>
+        <h1 className="mt-5 text-2xl font-black text-white">This account is not approved</h1>
+        <p className="mt-2 text-sm leading-relaxed text-white/45">FirstKnock HQ is limited to the authorized operator accounts.</p>
+        <button onClick={() => base44.auth.logout(window.location.origin + '/hq/index.html')} className="mt-5 inline-flex h-10 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-4 text-[10px] font-black uppercase tracking-[0.14em] text-white/65 hover:bg-white/[0.08]">
+          <LogOut className="h-4 w-4" /> Use another account
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function AdminDashboard() {
+  const queryClient = useQueryClient();
   const dashboardScrollRef = useRef(null);
   const tabShellRef = useRef(null);
   const tabStripRef = useRef(null);
@@ -489,6 +510,22 @@ export default function AdminDashboard() {
     selectHqTab(nextTabId, true);
   };
 
+  const { data: user, isLoading: isUserLoading } = useQuery({
+    queryKey: ['user'],
+    queryFn: () => base44.auth.me(),
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+  });
+  const isAuthorizedViewer = canViewPlatformDashboard(user);
+
+  const handleLogout = async () => {
+    try {
+      await base44.auth.logout(window.location.origin + '/hq/index.html');
+    } finally {
+      queryClient.clear();
+    }
+  };
+
   const analyticsQuery = useQuery({
     queryKey: ['platformCommandCenter', timeZone],
     queryFn: async () => {
@@ -502,6 +539,7 @@ export default function AdminDashboard() {
       }
       return payload;
     },
+    enabled: isAuthorizedViewer,
     refetchInterval: 60_000,
     refetchOnWindowFocus: true,
     staleTime: 30_000,
@@ -555,6 +593,8 @@ export default function AdminDashboard() {
     });
   }, [business?.customers, customerFilter, customerSearch]);
 
+  if (isUserLoading) return <LoadingState />;
+  if (!isAuthorizedViewer) return <AccessDenied />;
   if (analyticsQuery.isLoading) return <LoadingState />;
 
   if (analyticsQuery.isError) {
@@ -605,6 +645,13 @@ export default function AdminDashboard() {
               className="grid h-9 w-9 place-items-center rounded-full border border-white/[0.09] bg-white/[0.04] text-white/55 transition-all hover:border-white/20 hover:bg-white/[0.08] hover:text-white disabled:opacity-50"
             >
               <RefreshCw className={`h-4 w-4 ${analyticsQuery.isFetching ? 'animate-spin' : ''}`} />
+            </button>
+            <button
+              onClick={handleLogout}
+              aria-label="Sign out of FirstKnock HQ"
+              className="grid h-9 w-9 place-items-center rounded-full border border-white/[0.09] bg-white/[0.04] text-white/45 transition-all hover:border-white/20 hover:bg-white/[0.08] hover:text-white"
+            >
+              <LogOut className="h-4 w-4" />
             </button>
           </div>
         </header>

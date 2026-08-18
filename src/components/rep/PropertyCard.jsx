@@ -1,9 +1,9 @@
 import React from 'react';
-import { Navigation } from 'lucide-react';
+import { Navigation, User, DollarSign, Ruler } from 'lucide-react';
 import { formatPropertyAge } from '@/utils';
 import { buildFullAddress, openInMaps } from '@/components/logic/navigation';
 import { isNewConstruction } from '@/lib/newConstruction';
-import VisitBadge from '@/components/rep/VisitBadge';
+import NewBuildBadge from '@/components/rep/NewBuildBadge';
 import { formatRunRouteAge, outcomeBorder, outcomeColor, outcomeLabel, outcomeTint } from '@/components/logic/outcomeStatus';
 
 const formatMoney = (value) => {
@@ -25,7 +25,6 @@ function PropertyCard({
   selectable = false,
   selected = false,
   onToggleSelect,
-  visitCount = 0,
 }) {
   const hasOutcome = property.effective_status && property.effective_status !== 'ELIGIBLE';
   const statusColor = outcomeColor(property.effective_status);
@@ -108,15 +107,28 @@ function PropertyCard({
                                 {property.city}, {property.state} {property.zip_code}
                             </p>
               }
-                            <p className="mt-1 min-h-[14px] truncate text-[9px] font-semibold leading-tight text-white/45">
-                                {[
-                                  ownerName || 'Owner unavailable',
-                                  valueLabel,
-                                  sqftLabel ? `${sqftLabel} sqft` : null,
-                                  yearBuilt ? `Built ${yearBuilt}` : null,
-                                  isNewBuild ? 'New build' : null,
-                                ].filter(Boolean).join(' • ')}
-                            </p>
+                            {(ownerName || valueLabel || sqftLabel || yearBuilt || isNewBuild) &&
+              <div className="mt-1 flex flex-wrap items-center gap-1 text-[8.5px] font-bold leading-tight text-white/45">
+                                    {ownerName &&
+                <span className="inline-flex max-w-full items-start gap-1 rounded-full bg-white/5 px-1.5 py-0.5">
+                                            <User className="mt-px h-2.5 w-2.5 shrink-0 text-[#39FF4A]" />
+                                            <span className="break-words leading-tight">{ownerName}</span>
+                                        </span>
+                }
+                                    {valueLabel &&
+                <span className="inline-flex items-center gap-1 rounded-full bg-[#2EEB57]/10 px-1.5 py-0.5 text-[#39FF4A]">
+                                            <DollarSign className="h-2.5 w-2.5" />{valueLabel}
+                                        </span>
+                }
+                                    {isNewBuild && <NewBuildBadge />}
+                                    {sqftLabel &&
+                <span className="inline-flex items-center gap-1 rounded-full bg-white/5 px-1.5 py-0.5">
+                                            <Ruler className="h-2.5 w-2.5" />{sqftLabel} sqft
+                                        </span>
+                }
+                                    {yearBuilt && <span className="rounded-full bg-white/5 px-1.5 py-0.5">Built {yearBuilt}</span>}
+                                </div>
+              }
                         </div>
 
                         {/* Navigate shortcut */}
@@ -132,8 +144,7 @@ function PropertyCard({
                             </button>
                     </div>
 
-                    <div className="mt-1.5 flex flex-wrap items-center gap-1.5 min-h-[20px]">
-                        <VisitBadge count={visitCount} />
+                    <div className="mt-1.5 flex flex-wrap items-center gap-1 min-h-[16px]">
                         {age &&
             <span className="text-[9px] font-black text-[#39FF4A] shrink-0 rounded-full bg-[#2EEB57]/10 border border-[#2EEB57]/20 px-1.5 py-0.5 tracking-wide">
                                 {formatRunRouteAge(age)}
