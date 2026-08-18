@@ -570,7 +570,7 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
                     <button
                         onClick={handleRouteNavigation}
                         disabled={remainingProperties.length === 0 && !hasNextNavigationBatch}
-                        className="flex min-h-9 items-center justify-center gap-1.5 rounded-xl border border-[#2EEB57]/25 bg-[#2EEB57]/10 px-3 text-[10px] font-black uppercase tracking-[0.08em] text-[#86efac] transition hover:border-[#2EEB57]/45 hover:bg-[#2EEB57]/15 active:scale-95 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/5 disabled:text-white/30 sm:ml-auto"
+                        className="order-3 flex min-h-9 items-center justify-center gap-1.5 rounded-xl border border-[#2EEB57]/25 bg-[#2EEB57]/10 px-3 text-[10px] font-black uppercase tracking-[0.08em] text-[#86efac] transition hover:border-[#2EEB57]/45 hover:bg-[#2EEB57]/15 active:scale-95 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/5 disabled:text-white/30 sm:order-none sm:ml-auto"
                         >
                         <Navigation className="w-3 h-3" />
                         {hasNextNavigationBatch ? 'NEXT BATCH' : canResumeNavigationBatch ? 'RESUME' : 'START'}

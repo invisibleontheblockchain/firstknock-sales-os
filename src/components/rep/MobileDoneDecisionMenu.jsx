@@ -10,7 +10,7 @@ export default function MobileDoneDecisionMenu({ options, value, onChange }) {
     ? 'All decisions'
     : options.find((option) => option.value === value)?.label || 'All decisions';
   return (
-    <div className="col-span-2 flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.035] px-2.5 py-2 sm:hidden">
+    <div className="order-4 col-span-2 flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.035] px-2.5 py-2 sm:hidden sm:order-none">
       <div className="min-w-0">
         <p className="text-[9px] font-black uppercase tracking-[0.12em] text-white/45">Done decisions</p>
         <p className="mt-0.5 truncate text-[10px] font-bold text-[#39FF4A]">{selectedLabel}</p>
