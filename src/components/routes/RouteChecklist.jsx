@@ -23,7 +23,7 @@ import {
 import { getWorkflowBucketFromLogs } from '../logic/routeBulkActions';
 import { buildFullAddress, getRouteNavigationPlan, openInMaps, openNavigationBatch } from '../logic/navigation';
 import { getNavigationSessionProgress } from '../logic/routeNavigation';
-import { countTodoRouteFilters, DEFAULT_TODO_ROUTE_FILTERS, matchesTodoRouteFilters } from '../logic/todoRouteFilters';
+import { countTodoRouteFilters, DEFAULT_TODO_ROUTE_FILTERS, matchesTodoRouteFilters, TODO_ROUTE_FILTER_OPTIONS } from '../logic/todoRouteFilters';
 import RouteFunnelTabs from '@/components/rep/RouteFunnelTabs';
 import TodoRouteFilters from '@/components/rep/TodoRouteFilters';
 import MobileDoneDecisionMenu from '@/components/rep/MobileDoneDecisionMenu';
@@ -47,6 +47,11 @@ const BRAND = {
 const FILTER_SELECT_CLASS = 'min-h-9 min-w-0 cursor-pointer appearance-none rounded-xl border border-white/15 px-2 text-[10px] font-bold outline-none focus:border-[#2EEB57]/50';
 const FILTER_SELECT_STYLE = { background: '#141414', color: '#E5E5E5', colorScheme: 'dark' };
 const FILTER_OPTION_STYLE = { background: '#141414', color: '#E5E5E5' };
+const ALL_DECISION_OPTIONS = [
+    { value: 'ELIGIBLE', label: 'Todo' },
+    ...STAGE_DECISION_OPTIONS[CHECKLIST_STAGES.FOLLOW_UP],
+    ...STAGE_DECISION_OPTIONS[CHECKLIST_STAGES.COMPLETED]
+];
 
 const formatMoney = (value) => {
     const n = Number(value);
@@ -180,10 +185,22 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
         return stageMap;
     }, [visibleRouteProperties, propertyStatuses, logsByProperty]);
 
-    const stageDecisionOptions = filter === 'done'
-        ? (STAGE_DECISION_OPTIONS[CHECKLIST_STAGES.COMPLETED] || [])
-            .filter(option => option.value !== 'SOLD')
-        : null;
+    const decisionOptions = filter === 'todo'
+        ? TODO_ROUTE_FILTER_OPTIONS
+        : filter === 'done'
+            ? STAGE_DECISION_OPTIONS[CHECKLIST_STAGES.COMPLETED].filter(option => option.value !== 'SOLD')
+            : filter === 'sold'
+                ? STAGE_DECISION_OPTIONS[CHECKLIST_STAGES.COMPLETED].filter(option => option.value === 'SOLD')
+                : ALL_DECISION_OPTIONS;
+    const displayedDecisionFilter = filter === 'todo'
+        ? (todoRouteTypes.length === 1 ? todoRouteTypes[0] : 'all')
+        : decisionFilter;
+    const handleDecisionFilterChange = (value) => {
+        setDecisionFilter(value);
+        if (filter !== 'todo') return;
+        setTodoRouteTypes(value === 'all' ? TODO_ROUTE_FILTER_OPTIONS.map(option => option.value) : [value]);
+        setNavigationSession(null);
+    };
 
     // Switching stages clears a decision filter that the new stage cannot show,
     // otherwise the list would look empty for no visible reason.
@@ -205,7 +222,7 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
                 return decisionFilter === 'all' || status === decisionFilter;
             }
             if (filter === 'sold') return status === 'SOLD';
-            return true;
+            return decisionFilter === 'all' || status === decisionFilter;
         });
     }, [visibleRouteProperties, propertyStages, propertyStatuses, logsByProperty, filter, decisionFilter, todoRouteTypes]);
 
@@ -545,28 +562,28 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
                             <option value="12" style={FILTER_OPTION_STYLE}>1 Year</option>
                         </select>
                     )}
-                    {stageDecisionOptions && (
-                        <>
-                            <MobileDoneDecisionMenu
-                                options={stageDecisionOptions}
-                                value={decisionFilter}
-                                onChange={setDecisionFilter}
-                            />
-                            <select
-                                value={decisionFilter}
-                                onChange={(e) => setDecisionFilter(e.target.value)}
-                                className={`${FILTER_SELECT_CLASS} hidden sm:block`}
-                                style={FILTER_SELECT_STYLE}
-                            >
-                                <option value="all" style={FILTER_OPTION_STYLE}>All Decisions</option>
-                                {stageDecisionOptions.map(option => (
-                                    <option key={option.value} value={option.value} style={FILTER_OPTION_STYLE}>
-                                        {option.label}
-                                    </option>
-                                ))}
-                            </select>
-                        </>
+                    {(filter === 'all' || filter === 'done') && (
+                        <MobileDoneDecisionMenu
+                            options={decisionOptions}
+                            value={decisionFilter}
+                            onChange={setDecisionFilter}
+                            title={filter === 'all' ? 'Filter decisions' : 'Done decisions'}
+                            menuLabel={filter === 'all' ? 'All route decisions' : 'Completed decisions'}
+                        />
                     )}
+                    <select
+                        value={displayedDecisionFilter}
+                        onChange={(e) => handleDecisionFilterChange(e.target.value)}
+                        className={`${FILTER_SELECT_CLASS} hidden sm:block`}
+                        style={FILTER_SELECT_STYLE}
+                    >
+                        <option value="all" style={FILTER_OPTION_STYLE}>All Decisions</option>
+                        {decisionOptions.map(option => (
+                            <option key={option.value} value={option.value} style={FILTER_OPTION_STYLE}>
+                                {option.label}
+                            </option>
+                        ))}
+                    </select>
                     <button
                         onClick={handleRouteNavigation}
                         disabled={remainingProperties.length === 0 && !hasNextNavigationBatch}
@@ -585,14 +602,16 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
                     </button>
                 </div>
                 {filter === 'todo' && (
-                    <TodoRouteFilters
-                        selected={todoRouteTypes}
-                        counts={todoRouteTypeCounts}
-                        onChange={(next) => {
-                            setTodoRouteTypes(next);
-                            setNavigationSession(null);
-                        }}
-                    />
+                    <div className="sm:hidden">
+                        <TodoRouteFilters
+                            selected={todoRouteTypes}
+                            counts={todoRouteTypeCounts}
+                            onChange={(next) => {
+                                setTodoRouteTypes(next);
+                                setNavigationSession(null);
+                            }}
+                        />
+                    </div>
                 )}
                 {navigationError && (
                     <p className="text-[10px] font-semibold text-red-400" role="alert">{navigationError}</p>
