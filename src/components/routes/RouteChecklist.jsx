@@ -553,8 +553,8 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
                     started-but-open so the bar never overstates the day */}
                 <div className="flex items-center gap-3">
                     <div className="flex flex-1 h-1.5 rounded-full overflow-hidden border border-white/10 bg-black/60">
-                        <div className="h-full transition-all duration-500 shadow-[0_0_14px_rgba(46,235,87,0.55)]" style={{ width: `${completedPct}%`, background: 'linear-gradient(90deg, #2EEB57, #39FF4A)' }} />
-                        <div className="h-full transition-all duration-500" style={{ width: `${followUpPct}%`, background: 'rgba(255,215,0,0.55)' }} />
+                        <div className="h-full transition-all duration-500 shadow-[0_0_14px_rgba(46,235,87,0.55)]" style={{ width: `${completedPct}%`, background: '#2EEB57' }} />
+                        <div className="h-full transition-all duration-500" style={{ width: `${followUpPct}%`, background: '#2EEB57' }} />
                     </div>
                     <span className="shrink-0 font-mono text-[11px] font-black tabular-nums text-white">
                         {stats.completed}<span className="text-white/35">/{stats.total}</span>
