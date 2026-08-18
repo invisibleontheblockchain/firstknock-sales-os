@@ -73,6 +73,9 @@ test('Run Route keeps every stop visible in Todo with explicit outcome presentat
     assert.match(repHome, /useState\('all'\)/);
     assert.match(repHome, /if \(filterStatus === 'todo'\) return !\['SOLD', 'HARD_NO'\]\.includes\(p\.effective_status\)/);
     assert.match(repHome, /if \(filterStatus === 'sold'\) return p\.effective_status === 'SOLD'/);
+    assert.match(repHome, /if \(filterStatus === 'done'\) return \['HARD_NO', 'NOT_MOVED_IN'\]\.includes\(p\.effective_status\)/);
+    assert.doesNotMatch(repHome, /selectable=\{filterStatus === 'done'/);
+    assert.doesNotMatch(repHome, /Select All.*visible completed stops/s);
     assert.match(repHome, /label: 'All', count: stats\.total/);
     assert.match(checklist, /const \[filter, setFilter\] = useState\('all'\)/);
     assert.match(checklist, /if \(filter === 'todo'\) return !\['SOLD', 'HARD_NO'\]\.includes\(status\)/);

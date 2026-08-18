@@ -946,7 +946,7 @@ export default function RepHome() {
     const total = expectedRoutePropertyCount || routeProperties.length;
     if (!total) return { total: 0, done: 0, todo: 0, sold: 0, percent: 0 };
     const sold = routeProperties.filter((p) => p.effective_status === 'SOLD').length;
-    const done = routeProperties.filter((p) => p.effective_status !== 'ELIGIBLE' && p.effective_status !== 'SOLD').length;
+    const done = routeProperties.filter((p) => ['HARD_NO', 'NOT_MOVED_IN'].includes(p.effective_status)).length;
     const todo = routeProperties.filter((p) => !['SOLD', 'HARD_NO'].includes(p.effective_status)).length;
     const decided = routeProperties.filter((p) => p.effective_status !== 'ELIGIBLE').length;
     return {
@@ -990,14 +990,11 @@ export default function RepHome() {
       // Sales-funnel views: Todo keeps all open opportunities, Done keeps
       // completed non-sale outcomes, and Sold is closed-won.
       if (filterStatus === 'todo') return !['SOLD', 'HARD_NO'].includes(p.effective_status);
-      if (filterStatus === 'done') {
-        if (p.effective_status === 'ELIGIBLE' || p.effective_status === 'SOLD') return false;
-        return decisionFilter === 'all' || p.effective_status === decisionFilter;
-      }
+      if (filterStatus === 'done') return ['HARD_NO', 'NOT_MOVED_IN'].includes(p.effective_status);
       if (filterStatus === 'sold') return p.effective_status === 'SOLD';
       return true;
     });
-  }, [routeProperties, filterStatus, searchQuery, soldDateFilter, decisionFilter]);
+  }, [routeProperties, filterStatus, searchQuery, soldDateFilter]);
 
   const visiblePropertyKeys = useMemo(
     () => getVisiblePropertyKeys(filteredProperties),
@@ -1774,23 +1771,6 @@ export default function RepHome() {
                         <CalendarDays className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#8888A0] pointer-events-none" />
                     </div>
 
-                    {filterStatus === 'done' &&
-          <div className="relative flex-1 min-w-0">
-                            <select
-              value={decisionFilter}
-              onChange={(e) => setDecisionFilter(e.target.value)}
-              className="appearance-none w-full h-8 pl-2.5 pr-6 text-[10px] font-bold bg-white/[0.04] border border-white/10 text-white rounded-lg outline-none focus:border-[#2EEB57]/60 cursor-pointer [color-scheme:dark] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] lg:h-12 lg:rounded-xl lg:pl-3 lg:pr-8 lg:text-xs">
-              
-                                <option className="bg-black text-white" value="all">Decision: All</option>
-                                <option className="bg-black text-white" value="NO_ANSWER">No Answer</option>
-                                <option className="bg-black text-white" value="CALLBACK">Callback</option>
-                                <option className="bg-black text-white" value="HARD_NO">Not Interested</option>
-                                <option className="bg-black text-white" value="NOT_MOVED_IN">Not Moved In</option>
-                                <option className="bg-black text-white" value="DM_NOT_HOME">DM Not Home</option>
-                            </select>
-                        </div>
-          }
-
                     {/* Inline search */}
                     {routeProperties.length > 8 &&
           <div className="relative flex-1">
@@ -1811,64 +1791,6 @@ export default function RepHome() {
                 </div>
             </div>
 
-            {filterStatus === 'done' &&
-            <div className="border-b border-white/10 bg-black/85 px-3 py-2 shadow-[0_10px_30px_rgba(0,0,0,0.28)] backdrop-blur-xl">
-                <div className="mb-2 flex items-center justify-between gap-3">
-                    <label className="flex min-w-0 cursor-pointer items-center gap-2 text-[10px] font-black uppercase tracking-[0.12em] text-white/75">
-                        <input
-                          type="checkbox"
-                          checked={allVisibleSelected}
-                          aria-checked={!allVisibleSelected && selectedProperties.length > 0 ? 'mixed' : allVisibleSelected}
-                          aria-label={`Select all ${filteredProperties.length} visible completed stops`}
-                          disabled={activeRouteArchived || bulkActionMutation.isPending || filteredProperties.length === 0}
-                          onChange={handleToggleVisibleSelection}
-                          className="h-4 w-4 shrink-0 cursor-pointer accent-[#39FF4A] disabled:cursor-not-allowed disabled:opacity-40"
-                        />
-                        <span className="truncate">{allVisibleSelected ? 'Clear All' : 'Select All'} ({filteredProperties.length})</span>
-                    </label>
-                    <span className="shrink-0 text-[10px] font-bold text-[#39FF4A]" aria-live="polite">
-                        {bulkActionMutation.isPending
-                          ? <span className="inline-flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> Updating</span>
-                          : `${selectedProperties.length} selected`}
-                    </span>
-                </div>
-                <div className="grid grid-cols-4 gap-1.5">
-                    <button
-                      type="button"
-                      disabled={activeRouteArchived || bulkActionMutation.isPending || selectedProperties.length === 0}
-                      onClick={() => handleBulkAction(ROUTE_BULK_ACTIONS.TODO)}
-                      className="h-9 rounded-xl border border-white/15 bg-white/[0.07] px-1 text-[9px] font-black text-white transition-colors hover:bg-white/[0.12] disabled:cursor-not-allowed disabled:opacity-35"
-                    >
-                        To Todo
-                    </button>
-                    <button
-                      type="button"
-                      disabled={activeRouteArchived || bulkActionMutation.isPending || selectedProperties.length === 0}
-                      onClick={() => handleBulkAction(ROUTE_BULK_ACTIONS.CALLBACK)}
-                      className="h-9 rounded-xl border border-sky-400/25 bg-sky-400/10 px-1 text-[9px] font-black text-sky-300 transition-colors hover:bg-sky-400/15 disabled:cursor-not-allowed disabled:opacity-35"
-                    >
-                        Callback
-                    </button>
-                    <button
-                      type="button"
-                      disabled={activeRouteArchived || bulkActionMutation.isPending || selectedProperties.length === 0}
-                      onClick={() => handleBulkAction(ROUTE_BULK_ACTIONS.RE_KNOCK)}
-                      className="h-9 rounded-xl border border-amber-400/25 bg-amber-400/10 px-1 text-[9px] font-black text-amber-300 transition-colors hover:bg-amber-400/15 disabled:cursor-not-allowed disabled:opacity-35"
-                    >
-                        Re-Knock
-                    </button>
-                    <button
-                      type="button"
-                      disabled={activeRouteArchived || bulkActionMutation.isPending || selectedProperties.length === 0}
-                      onClick={() => handleBulkAction(ROUTE_BULK_ACTIONS.DELETE)}
-                      className="h-9 rounded-xl border border-red-400/25 bg-red-400/10 px-1 text-[9px] font-black text-red-300 transition-colors hover:bg-red-400/15 disabled:cursor-not-allowed disabled:opacity-35"
-                    >
-                        Delete
-                    </button>
-                </div>
-            </div>
-            }
-
             {/* Property List */}
             <PullToRefresh onRefresh={handleRouteRefresh} className="flex-1 touch-pan-y overflow-y-auto overscroll-y-contain px-2.5 py-2 pb-20 bg-transparent">
                 {filteredProperties.length === 0 ?
@@ -1888,9 +1810,6 @@ export default function RepHome() {
             property={prop}
             index={idx}
             navigationApp={navigationApp}
-            selectable={filterStatus === 'done' && !activeRouteArchived}
-            selected={selectedPropertyKeys.has(getPropertySelectionKey(prop))}
-            onToggleSelect={handleTogglePropertySelection}
             onSelect={handleSelectProperty} />
 
           )}
