@@ -1,6 +1,5 @@
 import React, { useCallback, useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Loader2, Navigation, Locate, List, X, Filter, MapPin, Zap, Eye, EyeOff, Save, Pencil, Check, RotateCcw, Download, MoreVertical, Scissors, Ghost, Flag, Trash2 } from 'lucide-react';
 import { LayoutDashboard, Settings } from 'lucide-react';
 import { toast } from "sonner";
@@ -803,26 +802,7 @@ export default function MapToolbar({
                                   </Button>
             </>
             }
-                            {mode !== 'generate' &&
-            <Button
-              onClick={() => !activeRoute && setShowRoutePanel(true)}
-              disabled={!!activeRoute}
-              className={`rounded-full h-10 px-4 text-xs font-bold tracking-wide shadow-sm transition-all active:scale-95 whitespace-nowrap ${activeRoute ? 'opacity-50 cursor-not-allowed' : 'hover:bg-white/10'}`}
-              style={{
-                background: activeRoute ? 'rgba(0, 0, 0, 0.62)' : 'rgba(0, 0, 0, 0.78)',
-                color: activeRoute ? 'rgba(255,255,255,0.48)' : 'rgba(255,255,255,0.86)',
-                border: activeRoute ? '1px solid rgba(255,255,255,0.10)' : '1px solid rgba(255,255,255,0.14)'
-              }}>
-              
-                                <List className="w-4 h-4 mr-1.5" />
-                                ROUTES
-                                {!routesGenerating && (hydratedSavedRoutes.length > 0 || routes.length > 0) &&
-              <Badge className="ml-1.5 h-5 min-w-[20px] px-1.5 text-[10px] border border-white/10" style={{ background: 'rgba(255,255,255,0.10)', color: 'rgba(255,255,255,0.82)' }}>
-                                        {hydratedSavedRoutes.length > 0 ? hydratedSavedRoutes.length : routes.length}
-                                    </Badge>
-              }
-                            </Button>
-            }
+
                         </>
           }
 
