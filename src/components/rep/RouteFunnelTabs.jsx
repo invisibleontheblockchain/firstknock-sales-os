@@ -16,14 +16,14 @@ export default function RouteFunnelTabs({ activeTab, tabs, onChange }) {
             role="tab"
             aria-selected={active}
             onClick={() => onChange(tab.id)}
-            className={`flex h-10 min-w-0 items-center justify-center gap-1 rounded-lg border px-2 text-[10px] font-black uppercase tracking-[0.07em] transition-colors sm:h-11 sm:text-xs ${
+            className={`flex h-11 min-w-0 flex-col items-center justify-center gap-0.5 rounded-lg border px-1 text-[9px] font-black uppercase tracking-[0.04em] transition-colors sm:text-[10px] ${
               active
                 ? 'border-[#2EEB57]/60 bg-[#2EEB57] text-black shadow-[0_0_18px_rgba(46,235,87,0.24)]'
                 : 'border-transparent bg-white/[0.055] text-white/55 hover:bg-white/10 hover:text-white'
             }`}
           >
-            <span className="truncate">{tab.label}</span>
-            <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] tabular-nums ${active ? 'bg-black/15' : 'bg-white/10'}`}>
+            <span className="whitespace-nowrap leading-none">{tab.label}</span>
+            <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[8px] leading-none tabular-nums ${active ? 'bg-black/15' : 'bg-white/10'}`}>
               {tab.count}
             </span>
           </button>
