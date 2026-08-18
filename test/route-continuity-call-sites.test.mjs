@@ -222,7 +222,7 @@ test('every non-Home route generator supplies synchronous continuity context', a
 
 test('Home and RepHome interactive optimizers never depend on live road loading', async () => {
   const auditedPages = [
-    ['../src/pages/Home.jsx', 3],
+    ['../src/pages/Home.jsx', 2],
     ['../src/pages/RepHome.jsx', 1],
   ];
 
@@ -260,6 +260,10 @@ test('Home and RepHome interactive optimizers never depend on live road loading'
     new URL('../src/pages/Home.jsx', import.meta.url),
     'utf8',
   );
+  const optimizeActionSource = await readFile(
+    new URL('../src/lib/reoptimizeRouteAction.js', import.meta.url),
+    'utf8',
+  );
   assert.match(
     homeSource,
     /const routingContext = finalCount <= 5000\s*\?\s*createRouteContinuityContext\(workingSet\)/,
@@ -271,9 +275,9 @@ test('Home and RepHome interactive optimizers never depend on live road loading'
     'manager reorder must construct local continuity before routing',
   );
   assert.match(
-    homeSource,
-    /const routingContext = createRouteContinuityContext\(routeProperties\);[\s\S]*?optimizeRouteByStreetSweep\(routeProperties, start, end, routingContext\)/,
-    'manager Optimize must pass local continuity to the street sweep',
+    optimizeActionSource,
+    /routingContext = await createRouteRoadContext\(routeProperties,[\s\S]*?optimizeRouteByStreetSweep\(routeProperties, start, end, routingContext\)/,
+    'the extracted manager Optimize action must pass its route context to the street sweep',
   );
 
   const largeRouteSource = await readFile(
@@ -314,5 +318,34 @@ test('intentional synchronous continuity is silent instead of reporting unavaila
     homeSource,
     /discloseLargeRouteContinuityFallback|Live road-network ordering is unavailable at this size|Large-route continuity fallback used; no live road network was used/,
     'the intentional large-route continuity path must not claim that live streets are unavailable',
+  );
+});
+
+test('initial generation and reorder use Optimize route-only semantics and the same road backend', async () => {
+  const [homeSource, generationSource, optimizeSource] = await Promise.all([
+    readFile(new URL('../src/pages/Home.jsx', import.meta.url), 'utf8'),
+    readFile(new URL('../src/lib/roadMatrixRouteGeneration.js', import.meta.url), 'utf8'),
+    readFile(new URL('../src/lib/reoptimizeRouteAction.js', import.meta.url), 'utf8'),
+  ]);
+
+  assert.doesNotMatch(
+    homeSource,
+    /getCenter\(\)[\s\S]{0,180}(?:const|let)\s+start\s*=/,
+    'the visible map center must never become an implicit generation or reorder anchor',
+  );
+  assert.equal(
+    (homeSource.match(/buildRoadAwareGeneratedRoutes\(\{/g) || []).length,
+    2,
+    'initial generation and reorder must both run the shared road-aware tail',
+  );
+  assert.match(
+    generationSource,
+    /tryRoadMatrixOptimize\(properties,\s*\{[\s\S]*?start:\s*isValidRoutePoint\(route\.startLocation\)\s*\?\s*route\.startLocation\s*:\s*null,[\s\S]*?end:\s*isValidRoutePoint\(route\.endLocation\)\s*\?\s*route\.endLocation\s*:\s*null/,
+    'generated routes must call the shared optimizer without inferred anchors',
+  );
+  assert.match(
+    optimizeSource,
+    /const start = optimizeFromCar[\s\S]*?: null;[\s\S]*?const end = optimizeFromCar[\s\S]*?: null;[\s\S]*?tryRoadMatrixOptimize\(routeProperties/,
+    'Optimize route-only must stay unanchored and use the same shared optimizer',
   );
 });

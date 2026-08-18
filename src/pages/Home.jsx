@@ -1750,11 +1750,10 @@ export default function Home() {
             }
 
             // 5. GENERATE ROUTES — yield to UI before heavy computation
-            const currentCenter = mapRef.current ? mapRef.current.getCenter() : null;
             const preparedRouteBounds = normalizeRouteBoundsIntent(pendingRouteBoundsRef.current);
+            // Route only: viewport position is never an implicit anchor.
             const start = preparedRouteBounds.enabled
-                ? preparedRouteBounds.startLocation
-                : startLocation || (currentCenter ? { lat: currentCenter.lat, lng: currentCenter.lng } : null);
+                ? preparedRouteBounds.startLocation : isValidRoutePoint(startLocation) ? startLocation : null;
             const end = preparedRouteBounds.enabled
                 ? preparedRouteBounds.endLocation
                 : routeConfig.returnToStart && isValidRoutePoint(start)
@@ -1898,9 +1897,9 @@ export default function Home() {
             const workingSet = filterResult.workingSet;
             const effectiveUse2Opt = workingSet.length > 3000 ? false : routeConfig.use2Opt;
             const reorderBounds = normalizeRouteBoundsIntent(lastGeneratedRouteBoundsRef.current);
+            // Route only: viewport position is never an implicit anchor.
             const start = reorderBounds.enabled
-                ? reorderBounds.startLocation
-                : startLocation || (mapRef.current ? { lat: mapRef.current.getCenter().lat, lng: mapRef.current.getCenter().lng } : null);
+                ? reorderBounds.startLocation : isValidRoutePoint(startLocation) ? startLocation : null;
             const end = reorderBounds.enabled
                 ? reorderBounds.endLocation
                 : routeConfig.returnToStart && isValidRoutePoint(start) ? start : null;
