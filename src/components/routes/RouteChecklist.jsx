@@ -188,7 +188,7 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
     const decisionOptions = filter === 'todo'
         ? TODO_ROUTE_FILTER_OPTIONS
         : filter === 'done'
-            ? STAGE_DECISION_OPTIONS[CHECKLIST_STAGES.COMPLETED].filter(option => option.value !== 'SOLD')
+            ? STAGE_DECISION_OPTIONS[CHECKLIST_STAGES.COMPLETED]
             : filter === 'sold'
                 ? STAGE_DECISION_OPTIONS[CHECKLIST_STAGES.COMPLETED].filter(option => option.value === 'SOLD')
                 : ALL_DECISION_OPTIONS;
@@ -218,7 +218,7 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
                 getWorkflowBucketFromLogs(logsByProperty.get(p.address_hash) || [])
             );
             if (filter === 'done') {
-                if (propertyStages[p.address_hash] !== CHECKLIST_STAGES.COMPLETED || status === 'SOLD') return false;
+                if (propertyStages[p.address_hash] !== CHECKLIST_STAGES.COMPLETED) return false;
                 return decisionFilter === 'all' || status === decisionFilter;
             }
             if (filter === 'sold') return status === 'SOLD';
@@ -246,7 +246,6 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
             todo: statuses.filter(status => !['SOLD', 'HARD_NO'].includes(status)).length,
             done: visibleRouteProperties.filter(p => (
                 propertyStages[p.address_hash] === CHECKLIST_STAGES.COMPLETED
-                && (propertyStatuses[p.address_hash] || 'ELIGIBLE') !== 'SOLD'
             )).length,
             sold: statuses.filter(status => status === 'SOLD').length,
         };
