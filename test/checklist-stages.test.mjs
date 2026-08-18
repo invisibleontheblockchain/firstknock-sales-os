@@ -7,6 +7,7 @@ import {
     checklistStageFor,
     summarizeChecklistStages,
 } from '../src/components/logic/checklistStages.js';
+import { formatRunRouteAge } from '../src/components/logic/outcomeStatus.js';
 
 test('unvisited stops are the only ones left in To Do', () => {
     assert.equal(checklistStageFor(null), CHECKLIST_STAGES.TODO);
@@ -52,6 +53,11 @@ test('stage counts separate follow-ups from completed work', () => {
     );
 
     assert.deepEqual(counts, { todo: 1, followup: 2, completed: 1, total: 4 });
+});
+
+test('Run Route formats recent sale age in days and older sales in months', () => {
+    assert.equal(formatRunRouteAge('6d'), '6 days ago');
+    assert.equal(formatRunRouteAge('2m'), '2 mon ago');
 });
 
 test('Run Route keeps every stop visible in Todo with explicit outcome presentation', () => {

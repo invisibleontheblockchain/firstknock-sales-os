@@ -51,7 +51,9 @@ export const outcomeShortLabel = (status) => OUTCOME_SHORT_LABELS[status] || sta
 const OUTCOME_LABELS = { ELIGIBLE: 'Todo', ...Object.fromEntries(OUTCOME_OPTIONS.map(({ id, label }) => [id, label])) };
 export const outcomeLabel = (status) => OUTCOME_LABELS[status] || String(status || '').replaceAll('_', ' ');
 
-export const formatRunRouteAge = (age) => String(age || '').replace(/^(\d+)m$/, '$1 mon ago');
+export const formatRunRouteAge = (age) => String(age || '')
+    .replace(/^(\d+)d$/, '$1 days ago')
+    .replace(/^(\d+)m$/, '$1 mon ago');
 
 // A house note lives on its own non-metered InteractionLog row (source
 // 'house_note'), one per house, updated in place. It is durable field knowledge
