@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Check, X, Navigation, Mic, MapPin, User, DollarSign, Ruler, Building2, ChevronUp, History, Loader2, RotateCcw } from 'lucide-react';
+import { X, Navigation, Mic, MapPin, User, DollarSign, Ruler, Building2, ChevronUp, History, Loader2 } from 'lucide-react';
 import { getPropertyResultSummary } from '../logic/territoryLogic';
 import PropertyHistory from '@/components/rep/PropertyHistory';
 import HouseNoteField from '@/components/routes/HouseNoteField';
@@ -9,8 +9,9 @@ import {
     OUTCOME_OPTIONS as STATUS_OPTIONS,
     OUTCOME_COLORS as STATUS_COLORS,
     outcomeBorder,
-    outcomeShortLabel,
+    outcomeLabel,
     outcomeTint,
+    formatRunRouteAge,
     latestOutcomeNote
 } from '../logic/outcomeStatus';
 import {
@@ -184,7 +185,7 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
 
     const filteredProperties = useMemo(() => {
         return visibleRouteProperties.filter(p => {
-            if (filter === 'all') return true;
+            if (filter === 'all' || filter === CHECKLIST_STAGES.TODO) return true;
             if (propertyStages[p.address_hash] !== filter) return false;
             if (decisionFilter === 'all') return true;
             return propertyStatuses[p.address_hash] === decisionFilter;
@@ -478,7 +479,7 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
                     <div className="col-span-2 grid grid-cols-4 gap-1 rounded-xl border border-white/10 bg-white/[0.04] p-1 sm:flex sm:flex-1">
                         {[
                             { id: 'all', label: 'All' },
-                            { id: CHECKLIST_STAGES.TODO, label: `Todo ${stats.todo}` },
+                            { id: CHECKLIST_STAGES.TODO, label: `Todo ${stats.total}` },
                             { id: CHECKLIST_STAGES.FOLLOW_UP, label: `Return ${stats.followup}` },
                             { id: CHECKLIST_STAGES.COMPLETED, label: `Done ${stats.completed}` }
                         ].map(f => (
@@ -632,11 +633,14 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
                         return (
                             <div
                                 key={prop.address_hash}
-                                className={`group rounded-xl overflow-hidden transition-all duration-300 border ${
-                                    isExpanded 
-                                        ? 'bg-[#0E1510] border-[#2EEB57]/35 shadow-[0_0_18px_rgba(46,235,87,0.12)]'
-                                        : 'bg-white/[0.03] border-white/10 hover:border-white/20'
-                                }`}
+                                className={`group rounded-xl overflow-hidden transition-all duration-300 border ${isExpanded ? 'shadow-[0_0_18px_rgba(46,235,87,0.12)]' : ''}`}
+                                style={currentStatus ? {
+                                    background: `linear-gradient(135deg, ${outcomeTint(STATUS_COLORS[currentStatus], '28')}, ${outcomeTint(STATUS_COLORS[currentStatus], '0D')})`,
+                                    borderColor: outcomeBorder(STATUS_COLORS[currentStatus], '70'),
+                                } : {
+                                    background: isExpanded ? '#0E1510' : 'rgba(255,255,255,0.03)',
+                                    borderColor: isExpanded ? 'rgba(46,235,87,0.35)' : 'rgba(255,255,255,0.10)',
+                                }}
                             >
                                 {/* Property Row */}
                                 <button
@@ -651,17 +655,17 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
                                                 ? { background: 'rgba(255,215,0,0.12)', color: BRAND.gold, border: '1px solid rgba(255,215,0,0.35)' }
                                                 : { background: 'rgba(46,235,87,0.12)', color: '#86efac', border: '1px solid rgba(46,235,87,0.3)' }}
                                     >
-                                        {isDone ? <Check className="w-3.5 h-3.5" /> : needsReturn ? <RotateCcw className="w-3.5 h-3.5" /> : idx + 1}
+                                        {idx + 1}
                                     </div>
 
                                     <div className="flex-1 min-w-0">
                                         <div className="flex items-center gap-2">
-                                            <p className={`truncate text-[13px] font-bold leading-tight tracking-tight text-white transition-all duration-300 ${isDone ? 'line-through opacity-40' : ''}`}>
+                                            <p className="truncate text-[13px] font-bold leading-tight tracking-tight text-white transition-all duration-300">
                                                 {prop.house_number} {prop.street_name}
                                             </p>
                                             {ageLabel && (
                                                 <span className="shrink-0 rounded-full bg-[#2EEB57]/10 px-1.5 py-0.5 text-[9px] font-bold text-[#86efac]">
-                                                    {ageLabel}
+                                                    {formatRunRouteAge(ageLabel)}
                                                 </span>
                                             )}
                                         </div>
@@ -694,11 +698,11 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
                                         )}
                                     </div>
 
-                                    {currentStatus && !isExpanded && (
+                                    {!isExpanded && (
                                         <div className="mt-1 flex shrink-0 flex-col items-end gap-1">
                                             <span className="rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-wide"
-                                                style={{ background: STATUS_COLORS[currentStatus] + '20', color: STATUS_COLORS[currentStatus] }}>
-                                                {outcomeShortLabel(currentStatus)}
+                                                style={{ background: (STATUS_COLORS[currentStatus || 'ELIGIBLE'] || '#6b7280') + '20', color: STATUS_COLORS[currentStatus || 'ELIGIBLE'] || '#6b7280' }}>
+                                                Status: {outcomeLabel(currentStatus || 'ELIGIBLE')}
                                             </span>
                                             {needsReturn && (
                                                 <span className="rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-wide"
@@ -777,7 +781,7 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
                                                     autoFocus
                                                 />
                                                 <div className="flex gap-2">
-                                                    <Button onClick={() => confirmCallback(prop)} className="flex-1 h-9 text-xs font-bold bg-yellow-500 text-black hover:bg-yellow-400">
+                                                    <Button onClick={() => confirmCallback(prop)} className="flex-1 h-9 text-xs font-bold bg-purple-500 text-white hover:bg-purple-400">
                                                         Save Callback
                                                     </Button>
                                                     <Button onClick={() => { setSelectedAction(null); setCallbackPhone(''); }} variant="ghost" className="h-9 text-xs text-gray-400">

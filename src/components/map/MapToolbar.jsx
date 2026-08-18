@@ -834,7 +834,7 @@ export default function MapToolbar({
             style={{ background: 'rgba(31, 31, 31, 0.9)', color: BRAND.gold, border: `1px solid ${BRAND.gold}` }}>
             
                             <List className="w-4 h-4 mr-1.5" />
-                            CHECKLIST
+                            RUN ROUTE
                         </Button>
           }
                 </div>

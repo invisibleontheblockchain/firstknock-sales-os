@@ -4,10 +4,10 @@ import { Check, Home, Phone, Ban, Clock, UserX } from 'lucide-react';
 const ACTIONS = [
     { id: 'SOLD', label: 'SOLD', icon: Check, bg: 'rgba(46, 235, 87, 0.12)', text: '#39FF4A', border: 'rgba(46, 235, 87, 0.3)' },
     { id: 'NO_ANSWER', label: 'NO ANSWER', icon: Home, bg: 'rgba(255, 255, 255, 0.055)', text: '#FFFFFF', border: 'rgba(255, 255, 255, 0.12)' },
-    { id: 'CALLBACK', label: 'CALLBACK', icon: Phone, bg: 'rgba(57, 255, 74, 0.1)', text: '#2EEB57', border: 'rgba(57, 255, 74, 0.25)' },
+    { id: 'CALLBACK', label: 'CALLBACK', icon: Phone, bg: 'rgba(168, 85, 247, 0.12)', text: '#C084FC', border: 'rgba(168, 85, 247, 0.35)' },
     { id: 'HARD_NO', label: 'NOT INT.', icon: Ban, bg: 'rgba(255, 107, 107, 0.1)', text: '#FF6B6B', border: 'rgba(255, 107, 107, 0.24)' },
     { id: 'NOT_MOVED_IN', label: 'NOT MOVED IN', icon: Clock, bg: 'rgba(249, 115, 22, 0.1)', text: '#F97316', border: 'rgba(249, 115, 22, 0.24)' },
-    { id: 'DM_NOT_HOME', label: 'DM NOT HOME', icon: UserX, bg: 'rgba(255, 255, 255, 0.045)', text: '#D1D5DB', border: 'rgba(255, 255, 255, 0.11)' },
+    { id: 'DM_NOT_HOME', label: 'DM NOT HOME', icon: UserX, bg: 'rgba(255, 255, 255, 0.055)', text: '#FFFFFF', border: 'rgba(255, 255, 255, 0.14)' },
 ];
 
 export default function QuickMarkButtons({ onMark, disabled, size = 'normal' }) {

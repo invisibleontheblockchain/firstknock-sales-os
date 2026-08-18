@@ -63,15 +63,6 @@ function getOutcomeDotColor(property) {
     return '#8888A0';
 }
 
-function getFieldRoutesPinStyle(property) {
-    const tone = property?.fieldroutes_status?.tone;
-    if (tone === 'synced') return { color: '#38BDF8', label: 'FieldRoutes sent' };
-    if (tone === 'attention') return { color: '#FB7185', label: 'FieldRoutes needs review' };
-    if (tone === 'device') return { color: '#FBBF24', label: 'FieldRoutes saved on device', dashArray: '3 3' };
-    if (tone === 'pending') return { color: '#F59E0B', label: 'FieldRoutes sync pending', dashArray: '4 3' };
-    return null;
-}
-
 function haversine(lat1, lng1, lat2, lng2) {
     const R = 3959;
     const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -151,7 +142,6 @@ function PropertyPinLayer({ properties, nearbyHashes, onSelectProperty }) {
     return properties?.map((p, idx) => {
         const isNearby = nearbyHashes.has(p.address_hash);
         const color = getOutcomeDotColor(p);
-        const fieldRoutes = getFieldRoutesPinStyle(p);
         return (
             <LayerGroup key={p.address_hash}>
                 <CircleMarker
@@ -162,20 +152,6 @@ function PropertyPinLayer({ properties, nearbyHashes, onSelectProperty }) {
                     bubblingMouseEvents={false}
                     pathOptions={{ fillOpacity: 0, opacity: 0, weight: 0 }}
                 />
-                {fieldRoutes && (
-                    <CircleMarker
-                        center={[p.lat, p.lng]}
-                        radius={isNearby ? 12 : 10}
-                        renderer={CANVAS_RENDERER}
-                        interactive={false}
-                        pathOptions={{
-                            fillOpacity: 0,
-                            color: fieldRoutes.color,
-                            weight: 3,
-                            dashArray: fieldRoutes.dashArray,
-                        }}
-                    />
-                )}
                 <CircleMarker
                     center={[p.lat, p.lng]}
                     radius={wideView ? (isNearby ? 4 : 3) : (isNearby ? 8 : 6)}
@@ -197,7 +173,6 @@ function PropertyPinLayer({ properties, nearbyHashes, onSelectProperty }) {
                             textShadow: '0 1px 3px #000, 0 0 5px #000'
                         }}>
                             {p.house_number || idx + 1}
-                            {fieldRoutes && <span style={{ display: 'block', color: fieldRoutes.color, fontSize: '8px' }}>{fieldRoutes.label}</span>}
                         </span>
                     </Tooltip>
                 </CircleMarker>
@@ -340,7 +315,7 @@ export default function RepMapView({
                         e.stopPropagation();
                     }}
                     size="sm"
-                    aria-label="Close FirstKnock map and return to Knock tab"
+                    aria-label="Close FirstKnock map and return to Run Route tab"
                     className="pointer-events-auto touch-manipulation select-none bg-black/95 backdrop-blur-xl text-white border border-white/20 hover:bg-gray-800 rounded-full h-12 sm:h-14 px-4 sm:px-6 shadow-[0_12px_35px_rgba(0,0,0,0.65)] active:scale-95"
                 >
                     <X className="w-4 h-4 sm:mr-1" /> <span className="hidden sm:inline">Close Map</span>

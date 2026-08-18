@@ -91,17 +91,13 @@ test('Schedule Inspection is an explicit full-width action with confirmation and
   assert.match(action, /formIdentity[\s\S]*?eslint-disable-next-line react-hooks\/exhaustive-deps/);
 });
 
-test('Precision scheduling stays independent while Canvas scheduling remains capability-gated after a synced house outcome', () => {
+test('Run Route property details omit FieldRoutes while Canvas scheduling remains capability-gated', () => {
   const precision = read('src/components/rep/PropertyDetailSheet.jsx');
   const canvas = read('src/components/rep/CanvasFieldView.jsx');
-  const precisionMap = read('src/components/rep/RepMapView.jsx');
   const outcomes = read('src/components/canvas/canvasOutcomeUtils.js');
 
-  assert.ok(precision.indexOf('<ScheduleInspectionAction') < precision.indexOf('Quick Outcome - unchanged local decision grid'));
-  assert.match(precision, /mode="precision"/);
-  assert.match(precision, /ownerName: property\.owner_full_name/);
-  assert.match(precision, /streetAddress: property\.full_address/);
-  assert.match(precision, /<div className="flex-1 overflow-y-auto">/);
+  assert.doesNotMatch(precision, /FieldRoutes|ScheduleInspectionAction|Schedule Inspection/);
+  assert.match(precision, /Log outcome/);
 
   assert.ok(canvas.indexOf('<ScheduleInspectionAction') > canvas.indexOf('>Log outcome<'));
   assert.match(canvas, /mode="canvas"/);
@@ -114,21 +110,8 @@ test('Precision scheduling stays independent while Canvas scheduling remains cap
   assert.match(canvas, /Log and sync this house first; then you can schedule an inspection/);
   assert.match(canvas, /\{pinDraft\.pinId && !pinDraft\.pendingDecision && \([\s\S]*?<ScheduleInspectionAction/);
   assert.match(canvas, /address: \{[\s\S]*?\.\.\.property,[\s\S]*?lat:/);
-  assert.match(canvas, /`canvas:\$\{assignment\.campaign_id\}:\$\{zone\.zone_id\}:\$\{Number\(pinDraft\.point\.lat\)\.toFixed\(6\)\}:\$\{Number\(pinDraft\.point\.lng\)\.toFixed\(6\)\}`/);
   assert.match(canvas, /fieldRoutesOnlyMarkers/);
-  assert.ok(canvas.indexOf('const pendingPins') < canvas.indexOf('const fieldRoutesOnlyMarkers'),
-    'Canvas FieldRoutes markers must not read pendingPins before it is initialized');
-  assert.match(canvas, /tap to log the Canvas house outcome/);
-  assert.match(canvas, /fieldRoutesStyleForPin/);
-  assert.match(canvas, /source_reference/);
-  assert.match(precisionMap, /getFieldRoutesPinStyle/);
-  assert.match(precisionMap, /FieldRoutes sync pending/);
-  assert.match(precisionMap, /fillOpacity: 0/);
   assert.match(outcomes, /value: 'appointment'/);
-
-  const saveDecision = canvas.slice(canvas.indexOf('const saveDecision'), canvas.indexOf('const discardPendingDecision'));
-  assert.doesNotMatch(saveDecision, /scheduleCanvasInspection|onScheduleFieldRoutesInspection/,
-    'logging an ordinary Canvas outcome must never automatically schedule FieldRoutes');
 });
 
 test('rep queue persists before sending and retries only within the same actor and manager scope', () => {
@@ -177,19 +160,16 @@ test('rep queue persists before sending and retries only within the same actor a
   assert.ok(deleteAccount.indexOf('await clearFieldRoutesInspectionQueue()') < deleteAccount.indexOf('await base44.auth.logout()'));
 });
 
-test('RepHome wires one scoped queue into both Precision and Canvas without changing Precision outcomes', () => {
+test('RepHome keeps the scoped queue for Canvas while Run Route omits Precision scheduling', () => {
   const home = read('src/pages/RepHome.jsx');
 
   assert.match(home, /useFieldRoutesInspectionQueue\(\{/);
   assert.match(home, /actorUserId: user\?\.id/);
   assert.match(home, /managerId: repManagerId/);
-  assert.match(home, /kind: 'precision'/);
-  assert.match(home, /route_id: activeRoute\.id/);
-  assert.match(home, /address_hash: target\.address_hash/);
+  assert.doesNotMatch(home, /kind: 'precision'/);
   assert.match(home, /onScheduleFieldRoutesInspection=\{submitFieldRoutesInspection\}/);
-  assert.match(home, /onScheduleInspection=\{activeRouteArchived \? undefined : handleScheduleInspection\}/);
-  assert.match(home, /refetchInterval: \(query\) => shouldPollPrecisionFieldRoutes/);
-  assert.match(home, /preferFieldRoutesStatus\(localStatus, serverStatus\)/);
+  assert.doesNotMatch(home, /onScheduleInspection=\{activeRouteArchived \? undefined : handleScheduleInspection\}/);
+  assert.doesNotMatch(home, /shouldPollPrecisionFieldRoutes|precisionFieldRoutesStatus/);
   assert.match(home, /await createLogMutation\.mutateAsync\(\{/);
   assert.match(home, /onLog=\{handleLog\}/);
 });

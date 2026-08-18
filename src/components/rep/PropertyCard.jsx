@@ -1,21 +1,10 @@
 import React from 'react';
-import { Check, Navigation, User, DollarSign, Ruler } from 'lucide-react';
+import { Navigation, User, DollarSign, Ruler } from 'lucide-react';
 import { formatPropertyAge } from '@/utils';
 import { buildFullAddress, openInMaps } from '@/components/logic/navigation';
 import { isNewConstruction } from '@/lib/newConstruction';
 import NewBuildBadge from '@/components/rep/NewBuildBadge';
-
-const STATUS_COLORS = {
-  ELIGIBLE: '#FFFFFF',
-  SOLD: '#2EEB57',
-  HARD_NO: '#FF6B6B',
-  CALLBACK: '#39FF4A',
-  NO_ANSWER: '#9CA3AF',
-  QUALIFIED: '#2EEB57',
-  RECENT_OFF_MARKET: '#39FF4A',
-  NOT_MOVED_IN: '#F97316',
-  DM_NOT_HOME: '#D1D5DB'
-};
+import { formatRunRouteAge, outcomeBorder, outcomeColor, outcomeLabel, outcomeTint } from '@/components/logic/outcomeStatus';
 
 const formatMoney = (value) => {
   const n = Number(value);
@@ -37,8 +26,8 @@ export default function PropertyCard({
   selected = false,
   onToggleSelect,
 }) {
-  const isDone = property.effective_status !== 'ELIGIBLE';
-  const statusColor = STATUS_COLORS[property.effective_status] || '#555';
+  const hasOutcome = property.effective_status && property.effective_status !== 'ELIGIBLE';
+  const statusColor = outcomeColor(property.effective_status);
   const soldDate = property.sold_date || property.soldDate || property.lastSoldDate || property.last_sold_date || property.saleDate || property.sale_date;
   const age = formatPropertyAge(soldDate);
   const ownerName = property.owner_full_name || property.owner_name || property.ownerFullName;
@@ -60,19 +49,20 @@ export default function PropertyCard({
   const sqftLabel = formatNumber(property.sqft || property.squareFootage);
   const yearBuilt = Number(property.year_built || property.yearBuilt) || null;
   const addressLabel = `${property.house_number || ''} ${property.street_name || ''}`.trim() || 'route stop';
-  const isReKnock = property.workflow_bucket === 'RE_KNOCK' && !isDone;
+  const isReKnock = property.workflow_bucket === 'RE_KNOCK' && !hasOutcome;
   const isNewBuild = isNewConstruction(property);
 
   return (
     <div
-      className={`relative w-full overflow-hidden rounded-xl border px-2.5 py-2 text-left transition-all duration-300 active:scale-[0.985] group cursor-pointer ${selected ? 'border-[#39FF4A]/60 bg-[#2EEB57]/10 shadow-[0_0_0_1px_rgba(57,255,74,0.16)]' : ''} ${!isDone ? 'hover:-translate-y-0.5 hover:border-[#2EEB57]/45 hover:shadow-[0_14px_42px_rgba(0,0,0,0.46)]' : 'opacity-80'}`}
+      className={`relative w-full overflow-hidden rounded-xl border px-2.5 py-2 text-left transition-all duration-300 active:scale-[0.985] group cursor-pointer hover:-translate-y-0.5 hover:shadow-[0_14px_42px_rgba(0,0,0,0.46)] ${selected ? 'shadow-[0_0_0_1px_rgba(57,255,74,0.16)]' : ''}`}
       style={{
-        background: selected ?
-        'linear-gradient(135deg, rgba(46,235,87,0.16), rgba(255,255,255,0.035))' : isDone ?
-        'linear-gradient(135deg, rgba(255,255,255,0.035), rgba(255,255,255,0.012))' :
-        'linear-gradient(135deg, rgba(255,255,255,0.095), rgba(46,235,87,0.045), rgba(255,255,255,0.025))',
-        borderColor: selected ? 'rgba(57,255,74,0.6)' : isDone ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.13)',
-        boxShadow: isDone ? 'none' : 'inset 0 1px 0 rgba(255,255,255,0.08), 0 12px 35px rgba(0,0,0,0.28)'
+        background: selected
+          ? 'linear-gradient(135deg, rgba(46,235,87,0.18), rgba(255,255,255,0.045))'
+          : hasOutcome
+            ? `linear-gradient(135deg, ${outcomeTint(statusColor, '28')}, ${outcomeTint(statusColor, '0D')})`
+            : 'linear-gradient(135deg, rgba(255,255,255,0.095), rgba(46,235,87,0.045), rgba(255,255,255,0.025))',
+        borderColor: selected ? 'rgba(57,255,74,0.6)' : hasOutcome ? outcomeBorder(statusColor, '70') : 'rgba(255,255,255,0.13)',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 12px 35px rgba(0,0,0,0.28)'
       }}>
       
             <div className="pointer-events-none absolute inset-x-0 top-0 z-20 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
@@ -96,16 +86,16 @@ export default function PropertyCard({
                 {/* Number / Check */}
                 <div
                     className="flex h-7 w-7 shrink-0 items-center justify-center gap-1 transition-all duration-300"
-                    style={{ color: isDone ? statusColor : '#FFFFFF' }}
+                    style={{ color: hasOutcome ? statusColor : '#FFFFFF' }}
                 >
-                    {isDone ? <Check className="w-3 h-3" /> : <span className="text-[18px] font-black leading-none tracking-[-0.08em] text-white">{index + 1}</span>}
+                    <span className="text-[18px] font-black leading-none tracking-[-0.08em]">{index + 1}</span>
                 </div>
 
                 {/* Address */}
                 <div className="flex-1 min-w-0">
                 <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
-                        <p className={`text-[13px] font-extrabold leading-tight tracking-tight break-words transition-all duration-300 ${isDone ? 'line-through opacity-45 text-white/45' : 'text-white group-hover:text-[#39FF4A]'}`}>
+                        <p className="text-[13px] font-extrabold leading-tight tracking-tight break-words text-white transition-all duration-300 group-hover:text-[#39FF4A]">
                             {property.house_number} {property.street_name}
                         </p>
                         {property.city &&
@@ -138,8 +128,7 @@ export default function PropertyCard({
                         </div>
 
                         {/* Navigate shortcut */}
-                        {!isDone &&
-            <button
+                        <button
               type="button"
               aria-label={`Navigate to ${addressLabel}`}
               onClick={() => {
@@ -149,21 +138,18 @@ export default function PropertyCard({
               
                                 <Navigation className="w-3 h-3 text-[#39FF4A] transition-colors group-hover/nav:text-black" />
                             </button>
-            }
                     </div>
 
                     <div className="mt-1.5 flex flex-wrap items-center gap-1 min-h-[16px]">
                         {age &&
             <span className="text-[9px] font-black text-[#39FF4A] shrink-0 rounded-full bg-[#2EEB57]/10 border border-[#2EEB57]/20 px-1.5 py-0.5 tracking-wide">
-                                {age}
+                                {formatRunRouteAge(age)}
                             </span>
             }
-                        {isDone &&
-            <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full shrink-0 tracking-wide border"
-            style={{ background: statusColor + '18', color: statusColor, borderColor: statusColor + '30' }}>
-                                {property.effective_status === 'NO_ANSWER' ? 'N/A' : property.effective_status === 'HARD_NO' ? 'NO' : property.effective_status === 'NOT_MOVED_IN' ? 'NMI' : property.effective_status === 'DM_NOT_HOME' ? 'DM' : property.effective_status}
+                        <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full shrink-0 tracking-wide border"
+            style={{ background: outcomeTint(statusColor, '20'), color: statusColor, borderColor: outcomeBorder(statusColor, '45') }}>
+                                Status: {outcomeLabel(property.effective_status || 'ELIGIBLE')}
                             </span>
-            }
                         {isReKnock &&
             <span className="shrink-0 rounded-full border border-amber-400/30 bg-amber-400/10 px-1.5 py-0.5 text-[9px] font-black tracking-wide text-amber-300">
                                 RE-KNOCK

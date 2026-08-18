@@ -9,19 +9,19 @@ import { Check, Phone, Ban, Home, Clock, UserX } from 'lucide-react';
 export const OUTCOME_OPTIONS = [
     { id: 'SOLD', label: 'Sold', icon: Check, color: '#39FF4A' },
     { id: 'NO_ANSWER', label: 'No Answer', icon: Home, color: '#FFFFFF' },
-    { id: 'CALLBACK', label: 'Callback', icon: Phone, color: '#2EEB57' },
+    { id: 'CALLBACK', label: 'Callback', icon: Phone, color: '#A855F7' },
     { id: 'HARD_NO', label: 'Not Int.', icon: Ban, color: '#FF6B6B' },
     { id: 'NOT_MOVED_IN', label: 'Not Moved In', icon: Clock, color: '#F97316' },
-    { id: 'DM_NOT_HOME', label: 'DM Not Home', icon: UserX, color: '#D1D5DB' },
+    { id: 'DM_NOT_HOME', label: 'DM Not Home', icon: UserX, color: '#FFFFFF' },
 ];
 
 export const OUTCOME_COLORS = {
     SOLD: '#39FF4A',
     NO_ANSWER: '#FFFFFF',
-    CALLBACK: '#2EEB57',
+    CALLBACK: '#A855F7',
     HARD_NO: '#FF6B6B',
     NOT_MOVED_IN: '#F97316',
-    DM_NOT_HOME: '#D1D5DB',
+    DM_NOT_HOME: '#FFFFFF',
     // No knock-tab equivalent — these describe route state, not a door outcome.
     ELIGIBLE: '#6b7280',
     QUALIFIED: '#3b82f6',
@@ -47,6 +47,11 @@ export const OUTCOME_SHORT_LABELS = {
 };
 
 export const outcomeShortLabel = (status) => OUTCOME_SHORT_LABELS[status] || status;
+
+const OUTCOME_LABELS = { ELIGIBLE: 'Todo', ...Object.fromEntries(OUTCOME_OPTIONS.map(({ id, label }) => [id, label])) };
+export const outcomeLabel = (status) => OUTCOME_LABELS[status] || String(status || '').replaceAll('_', ' ');
+
+export const formatRunRouteAge = (age) => String(age || '').replace(/^(\d+)m$/, '$1 mon ago');
 
 // A house note lives on its own non-metered InteractionLog row (source
 // 'house_note'), one per house, updated in place. It is durable field knowledge

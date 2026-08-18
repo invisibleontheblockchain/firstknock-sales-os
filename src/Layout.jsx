@@ -382,7 +382,7 @@ function LayoutInner({ children }) {
       <nav className="bg-black border-t border-slate-800 z-20 shrink-0">
                 {isRepNav ?
         <div className="flex justify-around items-center h-16 max-w-full mx-auto">
-                        <NavItem icon={Navigation} label="Knock" to={(() => {try {const id = localStorage.getItem('fk_selectedKnockRouteId');return createPageUrl('RepHome') + (id ? `?route=${encodeURIComponent(id)}` : '');} catch {return createPageUrl('RepHome');}})()} active={isPageActive('RepHome')} accent={accent} />
+                        <NavItem icon={Navigation} label="Run Route" to={(() => {try {const id = localStorage.getItem('fk_selectedKnockRouteId');return createPageUrl('RepHome') + (id ? `?route=${encodeURIComponent(id)}` : '');} catch {return createPageUrl('RepHome');}})()} active={isPageActive('RepHome')} accent={accent} />
                         <NavItem icon={TrendingUp} label="Analytics" to={createPageUrl('List')} active={isPageActive('List')} accent={accent} />
                         <NavItem icon={Calendar} label="Appts" to={createPageUrl('Appointments')} active={isPageActive('Appointments')} accent={accent} />
                         <NavItem icon={Users} label="Team" to={createPageUrl('AdminTeam')} active={isPageActive('AdminTeam')} accent={accent} />
@@ -390,7 +390,7 @@ function LayoutInner({ children }) {
 
         <div className="flex justify-around items-center h-16 max-w-full mx-auto">
                         <NavItem icon={Map} label="Map" to={createPageUrl('Home')} active={isPageActive('Home')} accent={accent} />
-                        <NavItem icon={Navigation} label="Knock" to={(() => {try {const id = localStorage.getItem('fk_selectedKnockRouteId');return createPageUrl('RepHome') + (id ? `?route=${encodeURIComponent(id)}` : '');} catch {return createPageUrl('RepHome');}})()} active={isPageActive('RepHome')} accent={accent} />
+                        <NavItem icon={Navigation} label="Run Route" to={(() => {try {const id = localStorage.getItem('fk_selectedKnockRouteId');return createPageUrl('RepHome') + (id ? `?route=${encodeURIComponent(id)}` : '');} catch {return createPageUrl('RepHome');}})()} active={isPageActive('RepHome')} accent={accent} />
                         <NavItem icon={TrendingUp} label="Analytics" to={createPageUrl('List')} active={isPageActive('List')} accent={accent} />
                         <NavItem icon={Calendar} label="Appts" to={createPageUrl('Appointments')} active={isPageActive('Appointments')} accent={accent} />
                         <NavItem icon={Users} label="Team" to={createPageUrl('AdminTeam')} active={isPageActive('AdminTeam')} accent={accent} />

@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import {
     CHECKLIST_STAGES,
@@ -51,4 +52,23 @@ test('stage counts separate follow-ups from completed work', () => {
     );
 
     assert.deepEqual(counts, { todo: 1, followup: 2, completed: 1, total: 4 });
+});
+
+test('Run Route keeps every stop visible in Todo with explicit outcome presentation', () => {
+    const repHome = readFileSync(new URL('../src/pages/RepHome.jsx', import.meta.url), 'utf8');
+    const propertyCard = readFileSync(new URL('../src/components/rep/PropertyCard.jsx', import.meta.url), 'utf8');
+    const checklist = readFileSync(new URL('../src/components/routes/RouteChecklist.jsx', import.meta.url), 'utf8');
+    const detail = readFileSync(new URL('../src/components/rep/PropertyDetailSheet.jsx', import.meta.url), 'utf8');
+    const layout = readFileSync(new URL('../src/Layout.jsx', import.meta.url), 'utf8');
+    const toolbar = readFileSync(new URL('../src/components/map/MapToolbar.jsx', import.meta.url), 'utf8');
+
+    assert.match(repHome, /if \(filterStatus === 'todo'\) return true/);
+    assert.match(checklist, /filter === 'all' \|\| filter === CHECKLIST_STAGES\.TODO/);
+    assert.match(propertyCard, /Status: \{outcomeLabel\(property\.effective_status \|\| 'ELIGIBLE'\)\}/);
+    assert.match(checklist, /Status: \{outcomeLabel\(currentStatus \|\| 'ELIGIBLE'\)\}/);
+    assert.match(propertyCard, /formatRunRouteAge\(age\)/);
+    assert.match(checklist, /formatRunRouteAge\(ageLabel\)/);
+    assert.doesNotMatch(detail, /FieldRoutes|ScheduleInspectionAction|Schedule Inspection/);
+    assert.match(layout, /label="Run Route"/);
+    assert.match(toolbar, /RUN ROUTE/);
 });
