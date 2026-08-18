@@ -1,5 +1,4 @@
 import React from "react";
-import { MapPin } from "lucide-react";
 
 const MAP_IMAGE = "https://media.base44.com/images/public/695eb764b077190880be21de/eca53f465_generated_image.png";
 
@@ -11,10 +10,12 @@ export default function CommandMapAuthLayout({ icon: Icon, title, subtitle, foot
         style={{ backgroundImage: `linear-gradient(rgba(0,10,4,0.1),rgba(0,8,3,0.28)),url(${MAP_IMAGE})` }}
       >
         <div className="absolute inset-0 bg-gradient-to-r from-black/10 via-transparent to-black/45" />
-        <div className="relative flex items-center rounded-2xl bg-black/85 px-7 py-4 shadow-[0_18px_70px_rgba(0,0,0,0.65)] backdrop-blur-sm">
-          <span className="text-5xl font-extrabold tracking-[-0.055em]">FirstKn</span>
-          <MapPin className="-mx-1 h-11 w-11 fill-primary text-primary" strokeWidth={2.5} aria-hidden="true" />
-          <span className="text-5xl font-extrabold tracking-[-0.055em]">ck</span>
+        <div className="relative overflow-hidden rounded-2xl bg-black/90 px-7 py-4 shadow-[0_18px_70px_rgba(0,0,0,0.65)] backdrop-blur-sm">
+          <img
+            src="https://media.base44.com/images/public/695eb764b077190880be21de/63660feba_Screenshot2026-08-18at111435AM.png"
+            alt="FirstKnock"
+            className="h-auto w-[440px] max-w-[42vw] object-contain"
+          />
         </div>
       </section>
 
