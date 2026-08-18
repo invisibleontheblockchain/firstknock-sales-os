@@ -597,8 +597,10 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
                             options={decisionOptions}
                             value={decisionFilter}
                             onChange={setDecisionFilter}
-                            title={filter === 'all' ? 'Filter decisions' : 'Done decisions'}
                             menuLabel={filter === 'all' ? 'All route decisions' : 'Completed decisions'}
+                            businessOwnedCount={businessOwnedCount}
+                            hideBusinessOwned={hideBusinessOwned}
+                            onToggleBusinessOwned={() => setHideBusinessOwned(current => !current)}
                         />
                     )}
                     <select
@@ -640,6 +642,9 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
                                 setTodoRouteTypes(next);
                                 setNavigationSession(null);
                             }}
+                            businessOwnedCount={businessOwnedCount}
+                            hideBusinessOwned={hideBusinessOwned}
+                            onToggleBusinessOwned={() => setHideBusinessOwned(current => !current)}
                         />
                     </div>
                 )}
@@ -651,7 +656,7 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
                         type="button"
                         aria-pressed={hideBusinessOwned}
                         onClick={() => setHideBusinessOwned(current => !current)}
-                        className="w-full flex items-center justify-center gap-1.5 rounded-lg border px-3 py-1.5 text-[10px] font-bold tracking-wide transition-colors"
+                        className="hidden w-full items-center justify-center gap-1.5 rounded-lg border px-3 py-1.5 text-[10px] font-bold tracking-wide transition-colors sm:flex"
                         style={{
                             background: hideBusinessOwned ? 'rgba(6,182,212,0.12)' : '#151515',
                             borderColor: hideBusinessOwned ? 'rgba(6,182,212,0.45)' : '#262626',
