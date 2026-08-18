@@ -13,14 +13,14 @@
 // with backoff a bounded number of times before it is allowed to fail the caller.
 
 // Requests in flight at once, across every level of the hierarchy.
-const MAX_CONCURRENT_REQUESTS = 4;
+const MAX_CONCURRENT_REQUESTS = 2;
 // Minimum gap between two dispatches. The public server tolerates steady
 // throughput far better than bursts.
-const MIN_DISPATCH_SPACING_MS = 60;
+const MIN_DISPATCH_SPACING_MS = 150;
 // Bounded retry. Beyond this the caller takes its labelled fallback rather than
 // hammering a server that is already refusing work.
 const MAX_ATTEMPTS = 3;
-const RETRY_BASE_DELAY_MS = 400;
+const RETRY_BASE_DELAY_MS = 1000;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -91,15 +91,21 @@ export async function fetchOsrmJson(url, { timeoutMs = 20000 } = {}) {
                 const timer = setTimeout(() => controller.abort(), timeoutMs);
                 let response;
                 try {
-                    response = await fetch(url, { signal: controller.signal });
+                    response = await fetch(url, {
+                        signal: controller.signal,
+                        headers: {
+                            'Accept': 'application/json',
+                            'User-Agent': 'FirstKnock-Routing/1.0'
+                        }
+                    });
                 } catch (error) {
                     // Abort or network failure — worth another attempt.
                     throw new RetryableOsrmError(`OSRM request failed: ${error.message}`);
                 } finally {
                     clearTimeout(timer);
                 }
-                if (response.status === 429 || response.status >= 500) {
-                    if (response.status === 429) counters.rateLimited += 1;
+                if (response.status === 403 || response.status === 429 || response.status >= 500) {
+                    if (response.status === 403 || response.status === 429) counters.rateLimited += 1;
                     throw new RetryableOsrmError(`OSRM request failed with status ${response.status}.`);
                 }
                 if (!response.ok) {
