@@ -150,10 +150,10 @@ export default function Home() {
     const [showAllProperties, setShowAllProperties] = useState(false);
     const [viewMode, setViewMode] = useState('pins'); // 'pins' or 'heatmap'
     const [mode, setModeRaw] = useState('analyze'); // Default to routes mode
-    const setMode = (newMode) => {
-        setModeRaw(newMode);
-        // Logic moved to useEffect to be smarter about when to open
-    };
+    const setMode = (newMode) => setModeRaw(newMode);
+    useEffect(() => {
+        const openRunRoute = () => { setModeRaw('analyze'); setShowCompare(false); setShowChecklist(false); setShowRoutePanel(true); }, openMap = () => { setShowChecklist(false); setShowRoutePanel(false); }; window.addEventListener('fk-run-route-open', openRunRoute); window.addEventListener('fk-map-tab-open', openMap); if (new URLSearchParams(window.location.search).get('runRoute') === '1') openRunRoute(); return () => { window.removeEventListener('fk-run-route-open', openRunRoute); window.removeEventListener('fk-map-tab-open', openMap); };
+    }, []);
     const [showDashboard, setShowDashboard] = useState(false);
     const [drawingMode, setDrawingMode] = useState(false);
     const [drawnPolygon, setDrawnPolygonRaw] = useState(() => {
