@@ -26,6 +26,7 @@ import { getNavigationSessionProgress } from '../logic/routeNavigation';
 import { countTodoRouteFilters, DEFAULT_TODO_ROUTE_FILTERS, matchesTodoRouteFilters } from '../logic/todoRouteFilters';
 import RouteFunnelTabs from '@/components/rep/RouteFunnelTabs';
 import TodoRouteFilters from '@/components/rep/TodoRouteFilters';
+import MobileDoneDecisionMenu from '@/components/rep/MobileDoneDecisionMenu';
 import { parseOptionalSaleAmount } from '../analytics/salesManagement';
 import { isBusinessOwnedProperty } from '../logic/ownerType';
 import { formatPropertyAge } from '@/utils';
@@ -545,19 +546,26 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
                         </select>
                     )}
                     {stageDecisionOptions && (
-                        <select
-                            value={decisionFilter}
-                            onChange={(e) => setDecisionFilter(e.target.value)}
-                            className={FILTER_SELECT_CLASS}
-                            style={FILTER_SELECT_STYLE}
-                        >
-                            <option value="all" style={FILTER_OPTION_STYLE}>All Decisions</option>
-                            {stageDecisionOptions.map(option => (
-                                <option key={option.value} value={option.value} style={FILTER_OPTION_STYLE}>
-                                    {option.label}
-                                </option>
-                            ))}
-                        </select>
+                        <>
+                            <MobileDoneDecisionMenu
+                                options={stageDecisionOptions}
+                                value={decisionFilter}
+                                onChange={setDecisionFilter}
+                            />
+                            <select
+                                value={decisionFilter}
+                                onChange={(e) => setDecisionFilter(e.target.value)}
+                                className={`${FILTER_SELECT_CLASS} hidden sm:block`}
+                                style={FILTER_SELECT_STYLE}
+                            >
+                                <option value="all" style={FILTER_OPTION_STYLE}>All Decisions</option>
+                                {stageDecisionOptions.map(option => (
+                                    <option key={option.value} value={option.value} style={FILTER_OPTION_STYLE}>
+                                        {option.label}
+                                    </option>
+                                ))}
+                            </select>
+                        </>
                     )}
                     <button
                         onClick={handleRouteNavigation}
