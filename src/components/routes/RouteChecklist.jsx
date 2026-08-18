@@ -684,9 +684,17 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
                                 }}
                             >
                                 {/* Property Row */}
-                                <button
+                                <div
+                                    role="button"
+                                    tabIndex={0}
                                     onClick={() => setExpandedId(isExpanded ? null : prop.address_hash)}
-                                    className="w-full px-3 py-2.5 flex items-start gap-2.5 text-left"
+                                    onKeyDown={(event) => {
+                                        if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) {
+                                            event.preventDefault();
+                                            setExpandedId(isExpanded ? null : prop.address_hash);
+                                        }
+                                    }}
+                                    className="w-full cursor-pointer px-3 py-2.5 flex items-start gap-2.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#39FF4A]"
                                 >
                                     <div
                                         className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-black"
@@ -741,6 +749,17 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
 
                                     {!isExpanded && (
                                         <div className="mt-1 flex shrink-0 flex-col items-end gap-1">
+                                            <button
+                                                type="button"
+                                                aria-label={`Navigate to ${buildFullAddress(prop)}`}
+                                                onClick={(event) => {
+                                                    event.stopPropagation();
+                                                    handleNavigate(prop);
+                                                }}
+                                                className="flex h-7 w-7 items-center justify-center rounded-lg border border-[#2EEB57]/25 bg-[#2EEB57]/10 text-[#39FF4A] transition-colors hover:bg-[#2EEB57] hover:text-black"
+                                            >
+                                                <Navigation className="h-3 w-3" />
+                                            </button>
                                             <span className="rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-wide"
                                                 style={{ background: (STATUS_COLORS[currentStatus || 'ELIGIBLE'] || '#6b7280') + '20', color: STATUS_COLORS[currentStatus || 'ELIGIBLE'] || '#6b7280' }}>
                                                 Status: {outcomeLabel(currentStatus || 'ELIGIBLE')}
@@ -753,7 +772,7 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
                                             )}
                                         </div>
                                     )}
-                                </button>
+                                </div>
 
                                 {/* Expanded Actions */}
                                 {isExpanded && (

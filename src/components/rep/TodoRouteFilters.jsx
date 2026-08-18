@@ -1,14 +1,17 @@
 import React from 'react';
-import { TODO_ROUTE_FILTER_OPTIONS } from '@/components/logic/todoRouteFilters';
+import { DEFAULT_TODO_ROUTE_FILTERS, TODO_ROUTE_FILTER_OPTIONS } from '@/components/logic/todoRouteFilters';
 
 export default function TodoRouteFilters({ selected, counts = {}, onChange }) {
   const selectedSet = new Set(selected);
+  const allValues = TODO_ROUTE_FILTER_OPTIONS.map((option) => option.value);
+  const allSelected = allValues.every((value) => selectedSet.has(value));
   const toggle = (value) => {
     const next = new Set(selectedSet);
     if (next.has(value)) next.delete(value);
     else next.add(value);
     onChange([...next]);
   };
+  const toggleAll = () => onChange(allSelected ? [...DEFAULT_TODO_ROUTE_FILTERS] : allValues);
 
   return (
     <div className="rounded-xl border border-white/10 bg-white/[0.035] p-2" aria-label="Choose Todo types to show and route">
@@ -17,6 +20,10 @@ export default function TodoRouteFilters({ selected, counts = {}, onChange }) {
         <span className="text-[9px] font-bold text-[#39FF4A]">Start uses selected</span>
       </div>
       <div className="flex flex-wrap gap-1.5">
+        <button type="button" aria-pressed={allSelected} onClick={toggleAll}
+          className={`min-h-8 rounded-lg border px-2.5 text-[9px] font-black uppercase tracking-[0.04em] transition-colors ${allSelected ? 'border-[#2EEB57]/55 bg-[#2EEB57] text-black' : 'border-white/10 bg-white/[0.05] text-white/55 hover:text-white'}`}>
+          All <span className="opacity-65">{allValues.reduce((sum, value) => sum + (counts[value] || 0), 0)}</span>
+        </button>
         {TODO_ROUTE_FILTER_OPTIONS.map((option) => {
           const active = selectedSet.has(option.value);
           return (

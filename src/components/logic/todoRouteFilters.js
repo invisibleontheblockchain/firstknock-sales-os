@@ -1,10 +1,8 @@
 export const TODO_ROUTE_FILTER_OPTIONS = Object.freeze([
   { value: 'ELIGIBLE', label: 'Todo' },
   { value: 'NO_ANSWER', label: 'No Answer' },
-  { value: 'CALLBACK', label: 'Callback' },
+  { value: 'NOT_MOVED_IN', label: 'Not Moved In' },
   { value: 'DM_NOT_HOME', label: 'DM Not Home' },
-  { value: 'QUALIFIED', label: 'Qualified' },
-  { value: 'RE_KNOCK', label: 'Re-Knock' },
 ]);
 
 export const DEFAULT_TODO_ROUTE_FILTERS = Object.freeze(['ELIGIBLE']);

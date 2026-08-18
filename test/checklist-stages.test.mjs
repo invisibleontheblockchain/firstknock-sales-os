@@ -66,7 +66,9 @@ test('Todo routing defaults to untouched homes and supports explicit follow-up c
     assert.equal(matchesTodoRouteFilters({ effective_status: 'ELIGIBLE' }, ['ELIGIBLE']), true);
     assert.equal(matchesTodoRouteFilters({ effective_status: 'NO_ANSWER' }, ['ELIGIBLE']), false);
     assert.equal(matchesTodoRouteFilters({ effective_status: 'NO_ANSWER' }, ['ELIGIBLE', 'NO_ANSWER']), true);
-    assert.equal(matchesTodoRouteFilters({ effective_status: 'ELIGIBLE', workflow_bucket: 'RE_KNOCK' }, ['RE_KNOCK']), true);
+    assert.equal(matchesTodoRouteFilters({ effective_status: 'NOT_MOVED_IN' }, ['NOT_MOVED_IN']), true);
+    assert.equal(matchesTodoRouteFilters({ effective_status: 'DM_NOT_HOME' }, ['DM_NOT_HOME']), true);
+    assert.equal(matchesTodoRouteFilters({ effective_status: 'QUALIFIED' }, ['ELIGIBLE', 'NO_ANSWER', 'NOT_MOVED_IN', 'DM_NOT_HOME']), false);
 });
 
 test('Run Route keeps every stop visible with explicit outcome presentation', () => {
@@ -90,6 +92,7 @@ test('Run Route keeps every stop visible with explicit outcome presentation', ()
     assert.match(checklist, /if \(filter === 'todo'\) return matchesTodoRouteFilters\(/);
     assert.match(checklist, /<RouteFunnelTabs/);
     assert.match(checklist, /<TodoRouteFilters/);
+    assert.match(checklist, /aria-label=\{`Navigate to \$\{buildFullAddress\(prop\)\}`\}/);
     assert.match(checklist, /\{ id: 'sold', label: 'Sold', count: stats\.sold \}/);
     assert.match(checklist, /propertyStages\[p\.address_hash\] !== CHECKLIST_STAGES\.COMPLETED \|\| status === 'SOLD'/);
     assert.doesNotMatch(checklist, /label: `Return/);
