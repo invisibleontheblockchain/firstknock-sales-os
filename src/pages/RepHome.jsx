@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getKnockWindowLabel } from '@/components/logic/knockTimeOptimizer';
 import { determineEffectiveStatus } from '@/components/logic/territoryLogic';
+import { countVisitOutcomes } from '@/components/logic/outcomeStatus';
+import { scheduleRouteStopAtTop } from '@/components/logic/scrollRouteStopToTop';
 import {
     hydrateRouteWithLookup,
     isRecoveryLimitedProperty,
@@ -965,6 +967,16 @@ export default function RepHome() {
     [routeProperties]
   );
 
+  const visitCountsByAddress = useMemo(() => {
+    const grouped = new Map();
+    logs.forEach((log) => {
+      if (!log?.address_hash) return;
+      if (!grouped.has(log.address_hash)) grouped.set(log.address_hash, []);
+      grouped.get(log.address_hash).push(log);
+    });
+    return new Map([...grouped].map(([hash, propertyLogs]) => [hash, countVisitOutcomes(propertyLogs)]));
+  }, [logs]);
+
   const filteredProperties = useMemo(() => {
     return routeProperties.filter((p) => {
       // Search filter
@@ -1314,16 +1326,15 @@ export default function RepHome() {
       || routeProperty.id === property.id
     );
     if (currentIndex < 0) return;
-    window.setTimeout(() => {
+    scheduleRouteStopAtTop(() => {
       const renderedStops = [...document.querySelectorAll('[data-route-stop-hash]')];
       for (let index = currentIndex + 1; index < routeProperties.length; index += 1) {
         const nextHash = routeProperties[index].address_hash || routeProperties[index].id;
         const nextStop = renderedStops.find((node) => node.dataset.routeStopHash === String(nextHash));
-        if (!nextStop) continue;
-        nextStop.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        break;
+        if (nextStop) return nextStop;
       }
-    }, 80);
+      return null;
+    });
   }, [routeProperties]);
 
   const handleTogglePropertySelection = React.useCallback((property) => {
@@ -1845,6 +1856,7 @@ export default function RepHome() {
             key={getPropertySelectionKey(prop)}
             property={prop}
             index={routeProperties.findIndex((routeProperty) => getPropertySelectionKey(routeProperty) === getPropertySelectionKey(prop))}
+            visitCount={(visitCountsByAddress.get(prop.address_hash) || 0) + (prop.legacy_hash && prop.legacy_hash !== prop.address_hash ? (visitCountsByAddress.get(prop.legacy_hash) || 0) : 0)}
             navigationApp={navigationApp}
             onSelect={handleSelectProperty} />
 

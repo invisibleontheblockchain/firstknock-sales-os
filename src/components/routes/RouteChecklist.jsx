@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { X, Navigation, Mic, MapPin, User, DollarSign, Ruler, Building2, ChevronUp, History, Loader2 } from 'lucide-react';
+import { X, Navigation, Mic, MapPin, Building2, ChevronUp, History, Loader2 } from 'lucide-react';
 import { getPropertyResultSummary } from '../logic/territoryLogic';
 import PropertyHistory from '@/components/rep/PropertyHistory';
 import HouseNoteField from '@/components/routes/HouseNoteField';
@@ -9,6 +9,7 @@ import {
     OUTCOME_OPTIONS as STATUS_OPTIONS,
     OUTCOME_COLORS as STATUS_COLORS,
     outcomeBorder,
+    countVisitOutcomes,
     outcomeLabel,
     outcomeTint,
     formatRunRouteAge,
@@ -31,7 +32,8 @@ import { parseOptionalSaleAmount } from '../analytics/salesManagement';
 import { isBusinessOwnedProperty } from '../logic/ownerType';
 import { formatPropertyAge } from '@/utils';
 import { isNewConstruction } from '@/lib/newConstruction';
-import NewBuildBadge from '@/components/rep/NewBuildBadge';
+import VisitBadge from '@/components/rep/VisitBadge';
+import { scheduleRouteStopAtTop } from '@/components/logic/scrollRouteStopToTop';
 import { base44 } from '@/api/base44Client';
 
 const BRAND = {
@@ -390,15 +392,14 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
     const scrollToNextRouteStop = (property) => {
         const currentPosition = routePositionByHash.get(property.address_hash || property.id);
         if (!currentPosition) return;
-        window.setTimeout(() => {
+        scheduleRouteStopAtTop(() => {
             for (let index = currentPosition; index < displayRoute.properties.length; index += 1) {
                 const nextProperty = displayRoute.properties[index];
                 const nextRef = stopRefs.current[nextProperty.address_hash || nextProperty.id];
-                if (!nextRef) continue;
-                nextRef.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                break;
+                if (nextRef) return nextRef;
             }
-        }, 80);
+            return null;
+        });
     };
 
     // Outcomes are append-only, so the interface must not claim a save that the
@@ -708,6 +709,7 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
                         const soldDate = prop.sold_date || prop.soldDate || prop.lastSoldDate || prop.last_sold_date || prop.saleDate || prop.sale_date;
                         const ageLabel = formatPropertyAge(soldDate);
                         const houseLogs = logsForProperty(prop);
+                        const visitCount = countVisitOutcomes(houseLogs);
                         const savedNote = latestOutcomeNote(houseLogs);
                         const noteDraft = houseNotes[prop.address_hash];
                         const noteDirty = noteDraft !== undefined && noteDraft.trim() !== savedNote;
@@ -778,28 +780,15 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
                                                 {prop.city}, {prop.state} {prop.zip_code}
                                             </p>
                                         )}
-                                        {(ownerName || valueLabel || sqftLabel || yearBuilt || isNewBuild) && (
-                                            <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[9px] font-bold text-white/45">
-                                                {ownerName && (
-                                                    <span className="inline-flex max-w-[140px] items-center gap-1 truncate rounded-full bg-white/5 px-1.5 py-0.5">
-                                                        <User className="h-2.5 w-2.5 shrink-0 text-[#39FF4A]" />
-                                                        <span className="truncate">{ownerName}</span>
-                                                    </span>
-                                                )}
-                                                {valueLabel && (
-                                                    <span className="inline-flex items-center gap-1 rounded-full bg-[#2EEB57]/10 px-1.5 py-0.5 text-[#39FF4A]">
-                                                        <DollarSign className="h-2.5 w-2.5" />{valueLabel}
-                                                    </span>
-                                                )}
-                                                {isNewBuild && <NewBuildBadge />}
-                                                {sqftLabel && (
-                                                    <span className="inline-flex items-center gap-1 rounded-full bg-white/5 px-1.5 py-0.5">
-                                                        <Ruler className="h-2.5 w-2.5" />{sqftLabel} sqft
-                                                    </span>
-                                                )}
-                                                {yearBuilt && <span className="rounded-full bg-white/5 px-1.5 py-0.5">Built {yearBuilt}</span>}
-                                            </div>
-                                        )}
+                                        <p className="mt-1 min-h-[14px] truncate text-[9px] font-semibold leading-tight text-white/45">
+                                            {[
+                                                ownerName || 'Owner unavailable',
+                                                valueLabel,
+                                                sqftLabel ? `${sqftLabel} sqft` : null,
+                                                yearBuilt ? `Built ${yearBuilt}` : null,
+                                                isNewBuild ? 'New build' : null,
+                                            ].filter(Boolean).join(' • ')}
+                                        </p>
                                     </div>
 
                                     {!isExpanded && (
@@ -819,12 +808,7 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
                                                 style={{ background: (STATUS_COLORS[currentStatus || 'ELIGIBLE'] || '#6b7280') + '20', color: STATUS_COLORS[currentStatus || 'ELIGIBLE'] || '#6b7280' }}>
                                                 Status: {outcomeLabel(currentStatus || 'ELIGIBLE')}
                                             </span>
-                                            {needsReturn && (
-                                                <span className="rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-wide"
-                                                    style={{ background: 'rgba(255,215,0,0.14)', color: BRAND.gold }}>
-                                                    Return
-                                                </span>
-                                            )}
+                                            <VisitBadge count={visitCount} />
                                         </div>
                                     )}
                                 </div>

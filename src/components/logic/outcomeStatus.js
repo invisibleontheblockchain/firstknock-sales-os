@@ -79,6 +79,17 @@ export const isHouseNoteLog = (log) => {
 export const withoutHouseNotes = (logs) =>
     (Array.isArray(logs) ? logs.filter((log) => !isHouseNoteLog(log)) : []);
 
+export const isVisitOutcomeLog = (log) => Boolean(
+    log?.parsed_status
+    && log.parsed_status !== 'ELIGIBLE'
+    && log.counts_as_knock !== false
+    && !log.workflow_action
+    && !isHouseNoteLog(log)
+);
+
+export const countVisitOutcomes = (logs = []) =>
+    (Array.isArray(logs) ? logs.filter(isVisitOutcomeLog).length : 0);
+
 export const findHouseNoteLog = (logs = []) =>
     (Array.isArray(logs) ? logs : [])
         .filter((log) => log?.source === HOUSE_NOTE_SOURCE)
