@@ -80,16 +80,19 @@ export function buildSavedRouteGroup({ doors, linePoints, centerPoint, number, c
         }));
     }
 
-    if (style.showRouteDetails) {
+    {
         let drawn = 0;
         for (const property of doors) {
             if (drawn >= MAX_DOOR_PINS_PER_ROUTE) break;
             if (!passesQuickFilter(property, style.quickFilter)) continue;
+            const hasDecision = hasRecordedDecision(property);
+            // Keep outcome pins visible in the saved-route overview even when
+            // unvisited route details are hidden.
+            if (!style.showRouteDetails && !hasDecision) continue;
             drawn++;
 
             const point = [Number(property.lat), Number(property.lng)];
             // Recorded decisions use the same colors as Run Route across every saved route.
-            const hasDecision = hasRecordedDecision(property);
             const decisionColor = hasDecision ? outcomeColor(decisionStatus(property)) : null;
             // No separate transparent hitbox: the global 12px canvas tap slop
             // covers tapping without doubling the layer count.

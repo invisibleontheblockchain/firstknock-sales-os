@@ -679,7 +679,7 @@ function SavedRoutesLayer({
             const repColor = getRouteColor(route, globalNumber);
             // Anything that changes the drawn route invalidates its cached group.
             const decisionFingerprint = route.properties
-                .map(property => `${property.address_hash || property.id || ''}:${property.effective_status || 'ELIGIBLE'}`)
+                .map(property => `${property.address_hash || property.id || ''}:${property.effective_status || property.parsed_status || property.original_status || 'ELIGIBLE'}`)
                 .join(',');
             const signature = [
                 route.properties.length, route.status, route.assigned_to || '',

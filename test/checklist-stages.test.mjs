@@ -83,6 +83,7 @@ test('Run Route keeps every stop visible in Todo with explicit outcome presentat
     assert.match(detail, /skipCallbackDetails: true/);
     assert.match(detail, /Record callback without details/);
     assert.match(savedRouteLayer, /outcomeColor\(decisionStatus\(property\)\)/);
+    assert.match(savedRouteLayer, /if \(!style\.showRouteDetails && !hasDecision\) continue/);
     assert.match(managerMapLayers, /hasDecision \? outcomeColor\(status\)/);
     assert.doesNotMatch(detail, /FieldRoutes|ScheduleInspectionAction|Schedule Inspection/);
     assert.match(layout, /label="Run Route"/);
