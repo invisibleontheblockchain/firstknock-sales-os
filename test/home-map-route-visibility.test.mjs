@@ -58,6 +58,8 @@ test('Home map has discovery, legacy-hash, visibility, and camera recovery paths
   assert.match(layers, /shouldRenderPrecisionMapLayers\(\{ routeMode \}\)/);
   assert.match(layers, /activeRoute\?\.properties\?\.some\(isRenderableMapPoint\)/);
   assert.match(layers, /isRenderableMapPoint\(p\) && inView\(p\)/);
+  assert.match(layers, /pinPropertyStyleKey\(p\)/);
+  assert.match(layers, /decisionFingerprint/);
   assert.match(toolbar, /routeStatusView === 'all'/);
   assert.match(toolbar, /'All routes visible'/);
 });

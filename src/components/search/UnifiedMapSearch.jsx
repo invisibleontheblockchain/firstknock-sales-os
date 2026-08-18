@@ -1,11 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { History, Loader2, MapPin, Search, User, X, Landmark, Building2 } from 'lucide-react';
+import { History, Loader2, MapPin, Search, User, X, Landmark, Building2, Navigation } from 'lucide-react';
 import useUnifiedMapSearch from './useUnifiedMapSearch';
 import UnifiedSearchResultRow from './UnifiedSearchResultRow';
 import { addRecentSearch, clearRecentSearches, loadRecentSearches } from './recentSearches';
 
-const TYPE_ICONS = { record: User, address: MapPin, city: Building2, county: Landmark };
+const TYPE_ICONS = { route: Navigation, record: User, address: MapPin, city: Building2, county: Landmark };
 
 /**
  * Shared search field for the manager and rep Home screens.
@@ -18,7 +18,7 @@ export default function UnifiedMapSearch({
   enableCounties = true,
   className = '',
   autoFocus = false,
-  placeholder = 'Search customers, addresses, or counties…',
+  placeholder = 'Search routes, customers, addresses, or counties…',
   showLeadingIcon = true,
   // The header field lives inside a low z-index bar, so its dropdown must be
   // portaled to the body or map overlays paint on top of it.
@@ -114,7 +114,7 @@ export default function UnifiedMapSearch({
   const renderPanel = (node) => (portalResults ? createPortal(node, document.body) : node);
 
   const emptyMessage = !loading && results.length === 0 && intent.usable
-    ? (error || `No customers or leads found for “${query.trim()}”. Search their address to locate or add them.`)
+    ? (error || `No routes, customers, or leads found for “${query.trim()}”. Search an address to locate or add it.`)
     : '';
 
   return (
@@ -131,7 +131,7 @@ export default function UnifiedMapSearch({
           aria-expanded={showPanel}
           aria-controls="unified-map-search-results"
           aria-autocomplete="list"
-          aria-label="Search customers, addresses, or counties"
+          aria-label="Search routes, customers, addresses, or counties"
           autoComplete="off"
           value={query}
           onChange={(event) => { setQuery(event.target.value); setOpen(true); }}

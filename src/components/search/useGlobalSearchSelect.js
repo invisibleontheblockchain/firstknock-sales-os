@@ -10,6 +10,10 @@ import { dispatchGlobalSearchSelection, parkPendingSelection } from './globalSea
 export default function useGlobalSearchSelect(onDone) {
   return useCallback((result) => {
     onDone?.();
+    if (result?.type === 'route' && (result.route_id || result.id)) {
+      window.location.href = `${createPageUrl('Home')}?savedRoute=${encodeURIComponent(result.route_id || result.id)}`;
+      return;
+    }
     if (dispatchGlobalSearchSelection(result)) return;
     parkPendingSelection(result);
     window.location.href = createPageUrl('Home');

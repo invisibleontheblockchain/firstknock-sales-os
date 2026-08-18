@@ -15,7 +15,7 @@
 const USER_SET_KEY = 'fk_pinSizeUserSet_v3';
 
 export const DENSE_PIN_THRESHOLD = 200;
-export const DENSE_PIN_SIZE = 2;
+export const DENSE_PIN_SIZE = 3;
 
 export function markPinSizeUserSet() {
     try { localStorage.setItem(USER_SET_KEY, 'true'); } catch { /* private mode / quota */ }

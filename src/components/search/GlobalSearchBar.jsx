@@ -18,7 +18,7 @@ export default function GlobalSearchBar({ className = '' }) {
         onSelect={handleSelect}
         showLeadingIcon={false}
         portalResults
-        placeholder="Search customers, addresses, or counties…"
+        placeholder="Search routes, customers, addresses, or counties…"
       />
     </div>
   );

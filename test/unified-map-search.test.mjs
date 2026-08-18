@@ -87,11 +87,20 @@ test('two customers named Amanda both survive ranking and stay distinguishable',
 
 test('results are categorized for display', () => {
   const groups = groupResults([
+    { type: 'route', id: 'r1', name: 'Phoenix Route' },
     { type: 'record', name: 'Amanda' },
     { type: 'address', formatted_address: '1 Oak St' },
     { type: 'county', name: 'Maricopa, Arizona' },
   ]);
-  assert.deepEqual(groups.map((group) => group.label), ['Customers & Leads', 'Addresses', 'Counties']);
+  assert.deepEqual(groups.map((group) => group.label), ['Routes', 'Customers & Leads', 'Addresses', 'Counties']);
+});
+
+test('saved routes rank above similarly named records', () => {
+  const ranked = rankResults([
+    { type: 'record', address_hash: 'h1', name: 'Phoenix', formatted_address: '1 Oak St' },
+    { type: 'route', route_id: 'r1', name: 'Phoenix Route', formatted_address: '50 doors' },
+  ], 'Phoenix');
+  assert.equal(ranked[0].type, 'route');
 });
 
 test('duplicate result keys collapse to the highest scoring entry', () => {

@@ -11,9 +11,11 @@
 // rings are unchanged.
 
 import { CONFIDENCE_COLORS } from '@/components/map/ConfidenceLegend';
+import { outcomeColor } from '@/components/logic/outcomeStatus';
 
 // Allocated once instead of once per pin.
-const UNVISITED_STATUSES = new Set(['ELIGIBLE', 'NO_ANSWER', 'OTHER']);
+const UNVISITED_STATUSES = new Set(['ELIGIBLE', 'OTHER']);
+const RECORDED_DECISION_STATUSES = new Set(['SOLD', 'NO_ANSWER', 'CALLBACK', 'HARD_NO', 'NOT_MOVED_IN', 'DM_NOT_HOME', 'DO_NOT_KNOCK']);
 const ORIGINAL_STATUS_OVERRIDES = new Set(['SOLD', 'RECENT_OFF_MARKET', 'PENDING']);
 
 /** Stable identity for a rendered pin, used as the marker-store key. */
@@ -23,6 +25,16 @@ export function pinKey(property) {
         || property?.id
         || `${property?.lat},${property?.lng}`
     );
+}
+
+export function pinPropertyStyleKey(property) {
+    return [
+        pinKey(property),
+        property?.effective_status || '',
+        property?.original_status || '',
+        property?.sold_date || '',
+        property?.sale_confidence || '',
+    ].join('|');
 }
 
 /**
@@ -73,7 +85,9 @@ export function buildPinStyle(property, context) {
     // Confidence-tier coloring when the 'confidence' color scheme is active.
     const useConfidenceColors = colorScheme === 'confidence';
     let fillColor;
-    if (isRecentlySold) {
+    if (RECORDED_DECISION_STATUSES.has(effectiveColorStatus)) {
+        fillColor = outcomeColor(effectiveColorStatus);
+    } else if (isRecentlySold) {
         fillColor = '#FF00FF';
     } else if (useConfidenceColors && property.sale_confidence && CONFIDENCE_COLORS[property.sale_confidence]) {
         fillColor = CONFIDENCE_COLORS[property.sale_confidence];
@@ -81,10 +95,8 @@ export function buildPinStyle(property, context) {
         fillColor = statusColors[effectiveColorStatus] || statusColors.OTHER;
     }
 
-    // Callback pins render slightly smaller than other outcome pins.
-    const isCallback = effectiveColorStatus === 'CALLBACK';
     const marker = {
-        radius: isRecentlySold ? dotSize + 4 : (isCallback ? dotSize * 0.9 : dotSize),
+        radius: isRecentlySold ? dotSize + 4 : dotSize,
         fillColor,
         fillOpacity: isRecentlySold ? 1 : (pinOpacity || 1),
         color: isRecentlySold ? '#FFFFFF' : (fillStyle === 'outline' ? fillColor : (pinBorderColor || '#000')),

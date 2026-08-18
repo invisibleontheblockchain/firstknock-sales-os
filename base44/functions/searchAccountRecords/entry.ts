@@ -54,7 +54,7 @@ function recordFromProperty(row) {
   };
 }
 
-Deno.serve(async (req) => {
+export default async function(req) {
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
@@ -94,14 +94,31 @@ Deno.serve(async (req) => {
     // 2. Named people the account has actually worked: appointments and sales
     //    history. Both entities are tenant-keyed by manager_id.
     if (managerId) {
-      const [appointments, interactions] = await Promise.all([
+      const [appointments, interactions, savedRoutes] = await Promise.all([
         base44.asServiceRole.entities.Appointment
           .filter({ manager_id: managerId }, '-created_date', NAME_SCAN_LIMIT)
           .catch(() => []),
         base44.asServiceRole.entities.InteractionLog
           .filter({ manager_id: managerId }, '-created_date', NAME_SCAN_LIMIT)
           .catch(() => []),
+        base44.entities.SavedRoute.list('-created_date', NAME_SCAN_LIMIT).catch(() => []),
       ]);
+
+      for (const route of toArray(savedRoutes)) {
+        if (!normalizeName(route.name).includes(normalizedQuery)) continue;
+        const doorCount = Number(route.metrics?.house_count || route.property_hashes?.length || 0);
+        results.push({
+          type: 'route',
+          source: 'internal',
+          id: String(route.id),
+          route_id: String(route.id),
+          name: route.name || 'Unnamed route',
+          formatted_address: `${doorCount.toLocaleString()} doors${route.assigned_to_name ? ` • ${route.assigned_to_name}` : ''}`,
+          status: route.status || null,
+          route_label: 'Saved route',
+          last_interaction_at: route.updated_date || route.created_date || null,
+        });
+      }
 
       for (const appointment of toArray(appointments)) {
         if (!normalizeName(appointment.homeowner_name).includes(normalizedQuery)
@@ -147,8 +164,9 @@ Deno.serve(async (req) => {
     // Collapse aliases of the same door, keeping the entry with the most context.
     const byKey = new Map();
     for (const result of results) {
-      const key = result.address_hash
-        || `${normalizeAddress(result.formatted_address)}|${normalizeName(result.name)}`;
+      const key = result.type === 'route'
+        ? `route:${result.route_id || result.id}`
+        : result.address_hash || `${normalizeAddress(result.formatted_address)}|${normalizeName(result.name)}`;
       const existing = byKey.get(key);
       const score = (result.name ? 2 : 0) + (result.lat !== null ? 2 : 0) + (result.last_interaction_at ? 1 : 0);
       const existingScore = existing
@@ -168,4 +186,4 @@ Deno.serve(async (req) => {
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
   }
-});
+}

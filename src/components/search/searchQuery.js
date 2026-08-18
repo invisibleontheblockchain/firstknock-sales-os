@@ -68,7 +68,7 @@ function matchStrength(candidate, normalizedQuery) {
   return value.split(' ').some((word) => word.startsWith(normalizedQuery)) ? 2 : 0;
 }
 
-const TYPE_BASE = { record: 600, address: 300, city: 250, county: 200 };
+const TYPE_BASE = { route: 700, record: 600, address: 300, city: 250, county: 200 };
 
 export function scoreResult(result, normalizedQuery) {
   const base = TYPE_BASE[result?.type] || 0;
@@ -82,6 +82,7 @@ export function scoreResult(result, normalizedQuery) {
 
 export function resultKey(result) {
   if (result?.type === 'record') return `record:${result.address_hash || result.id || result.formatted_address}`;
+  if (result?.type === 'route') return `route:${result.route_id || result.id}`;
   if (result?.type === 'county') return `county:${normalizeSearchText(result.name)}`;
   if (result?.type === 'city') return `city:${normalizeSearchText(result.name)}`;
   return `address:${normalizeSearchText(result.formatted_address)}`;
@@ -108,6 +109,7 @@ export function rankResults(results, rawQuery, { limit = 12 } = {}) {
 
 export function groupResults(results) {
   const groups = [
+    { id: 'route', label: 'Routes', items: [] },
     { id: 'record', label: 'Customers & Leads', items: [] },
     { id: 'address', label: 'Addresses', items: [] },
     { id: 'city', label: 'Cities', items: [] },

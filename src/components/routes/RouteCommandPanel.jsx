@@ -10,7 +10,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { generateOptimizedRoutes } from "@/components/logic/routeOptimizer";
 import { createRouteContinuityContext } from "@/components/logic/routeRoadContext";
 import {
-    Navigation, X, BarChart3, User, Shield, MapPin, Flame, Plus, Clock, CheckCircle2, ChevronRight, Zap, Trash2, Scissors, Pencil, Check, Play, Home
+    Navigation, X, BarChart3, User, Shield, MapPin, Flame, Plus, Clock, CheckCircle2, ChevronRight, Zap, Trash2, Scissors, Pencil, Check, Play, Home, Search
 } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { toast } from "sonner";
@@ -81,10 +81,17 @@ export default function RouteCommandPanel({
     // on the map after generation, so this must not depend on builder mode or active route.
     const [activeTab, setActiveTab] = useState(generatedRoutes.length > 0 ? 'new' : 'active');
     const [splitRoute, setSplitRoute] = useState(null);
+    const [routeSearch, setRouteSearch] = useState('');
     const queryClient = useQueryClient();
+    const normalizedRouteSearch = routeSearch.trim().toLowerCase();
+    const matchesRouteSearch = (route) => !normalizedRouteSearch || String(route?.name || '').toLowerCase().includes(normalizedRouteSearch);
     const operationalSavedRoutes = useMemo(
-        () => savedRoutes.filter(isOperationalRoute),
-        [savedRoutes]
+        () => savedRoutes.filter(route => isOperationalRoute(route) && matchesRouteSearch(route)),
+        [savedRoutes, normalizedRouteSearch]
+    );
+    const visibleFilteredRoutes = useMemo(
+        () => filteredRoutes.filter(matchesRouteSearch),
+        [filteredRoutes, normalizedRouteSearch]
     );
 
     useEffect(() => {
@@ -167,6 +174,24 @@ export default function RouteCommandPanel({
                     >
                         <X className="w-5 h-5" style={{ color: BRAND.offWhite }} />
                     </button>
+                </div>
+
+                <div className="shrink-0 border-b border-white/10 px-3 py-2.5 sm:px-4">
+                    <div className="relative">
+                        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
+                        <input
+                            type="text"
+                            value={routeSearch}
+                            onChange={(event) => {
+                                setRouteSearch(event.target.value);
+                                if (event.target.value.trim()) setActiveTab('active');
+                            }}
+                            placeholder="Search routes by name…"
+                            aria-label="Search routes by name"
+                            className="h-10 w-full rounded-xl border border-white/10 bg-black/60 pl-9 pr-9 text-sm text-white outline-none placeholder:text-white/30 focus:border-[#2EEB57]/55"
+                        />
+                        {routeSearch && <button type="button" onClick={() => setRouteSearch('')} aria-label="Clear route search" className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-white/40 hover:bg-white/10 hover:text-white"><X className="h-3.5 w-3.5" /></button>}
+                    </div>
                 </div>
 
                 {/* Tab Navigation */}
@@ -396,7 +421,7 @@ export default function RouteCommandPanel({
 
                                         {/* Route List */}
                                         <div className="space-y-3">
-                                            {filteredRoutes.map((route, idx) => (
+                                            {visibleFilteredRoutes.map((route, idx) => (
                                                 <NewRouteCard
                                                     key={route.id}
                                                     route={route}
@@ -420,6 +445,10 @@ export default function RouteCommandPanel({
                                     </>
                                 )}
                             </>
+                        )}
+
+                        {normalizedRouteSearch && operationalSavedRoutes.length === 0 && visibleFilteredRoutes.length === 0 && (
+                            <div className="py-12 text-center text-sm font-bold text-white/40">No routes match “{routeSearch.trim()}”.</div>
                         )}
 
                         {/* ACTIVE ROUTES TAB */}

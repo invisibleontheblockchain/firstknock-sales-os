@@ -8,7 +8,7 @@ import { getCompletedPinColor } from '@/components/routes/routeRerunUtils';
 import { isSoldDateInCustomOwnershipRange, normalizeOwnershipRangeDays } from '@/components/logic/soldDateRange';
 import { routePropertyOrderFingerprint } from '@/components/logic/routeRoadContext';
 import { resolvePinSize, zoomAdjustedPinSize } from './densePinSize';
-import { buildPinStyle, pinKey, pinStyleContextKey } from './pinStyle';
+import { buildPinStyle, pinKey, pinPropertyStyleKey, pinStyleContextKey } from './pinStyle';
 import { buildSavedRouteGroup, savedRouteStyleKey } from './savedRouteLayer';
 import { outcomeColor } from '@/components/logic/outcomeStatus';
 import {
@@ -507,10 +507,11 @@ function ViewportCulledPins({
         });
 
         nextPins.forEach((p, key) => {
-            let style = styleCache.get(key);
+            const propertyStyleKey = pinPropertyStyleKey(p);
+            let style = styleCache.get(propertyStyleKey);
             if (!style) {
                 style = buildPinStyle(p, styleContext);
-                styleCache.set(key, style);
+                styleCache.set(propertyStyleKey, style);
             }
 
             const entry = store.get(key);
@@ -677,9 +678,12 @@ function SavedRoutesLayer({
             const globalNumber = routeNumberMap.get(route.id) || (routeIdx + 1);
             const repColor = getRouteColor(route, globalNumber);
             // Anything that changes the drawn route invalidates its cached group.
+            const decisionFingerprint = route.properties
+                .map(property => `${property.address_hash || property.id || ''}:${property.effective_status || 'ELIGIBLE'}`)
+                .join(',');
             const signature = [
                 route.properties.length, route.status, route.assigned_to || '',
-                route.updated_date || '', repColor, styleKey,
+                route.updated_date || '', repColor, styleKey, decisionFingerprint,
             ].join('|');
             keep.add(route.id);
 

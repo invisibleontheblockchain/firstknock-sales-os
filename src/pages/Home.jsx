@@ -1411,36 +1411,19 @@ export default function Home() {
         }
     }, []);
 
-    // Handle Load Route from URL
+    // Handle route-name search and other saved-route deep links after full map hydration.
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
         const savedRouteId = params.get('savedRoute');
-
-        if (savedRouteId && savedRoutes.length > 0 && effectiveProperties.length > 0 && !activeRoute) {
-            const saved = savedRoutes.find(r => r.id === savedRouteId);
-            if (saved) {
-                // Reconstruct route object
-                const byHash = new Map(effectiveProperties.map(p => [p.address_hash, p])); // was a linear find per hash
-                const routeProps = saved.property_hashes.map(hash => byHash.get(hash)).filter(Boolean);
-
-                if (routeProps.length > 0) {
-                    setActiveRoute({
-                        id: saved.id,
-                        name: saved.name,
-                        properties: routeProps,
-                        houseCount: saved.metrics?.house_count || routeProps.length,
-                        totalDistance: saved.metrics?.distance || 0,
-                        competitivenessScore: saved.metrics?.score || 0,
-                        status: saved.status
-                    });
-                    // Clear route-only deep links after loading, but keep appointment links until the appointment focus handler runs.
-                    if (params.get('appointment') !== '1') {
-                        window.history.replaceState({}, '', window.location.pathname);
-                    }
-                }
-            }
+        if (!savedRouteId || activeRoute || hydratedSavedRoutes.length === 0) return;
+        const saved = hydratedSavedRoutes.find(route => route.id === savedRouteId);
+        if (!saved?.properties?.length) return;
+        setModeRaw('analyze');
+        setActiveRoute(saved);
+        if (params.get('appointment') !== '1') {
+            window.history.replaceState({}, '', window.location.pathname);
         }
-    }, [savedRoutes, effectiveProperties, activeRoute]);
+    }, [hydratedSavedRoutes, activeRoute]);
 
     useAppointmentMapFocus({
         savedRoutes, activeRoute, effectiveProperties, mapRef,
