@@ -11,6 +11,7 @@ import {
     outcomeBorder,
     outcomeLabel,
     outcomeTint,
+    countPropertyVisits,
     formatRunRouteAge,
     latestOutcomeNote
 } from '../logic/outcomeStatus';
@@ -391,14 +392,16 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
         const currentPosition = routePositionByHash.get(property.address_hash || property.id);
         if (!currentPosition) return;
         window.setTimeout(() => {
-            for (let index = currentPosition; index < displayRoute.properties.length; index += 1) {
-                const nextProperty = displayRoute.properties[index];
-                const nextRef = stopRefs.current[nextProperty.address_hash || nextProperty.id];
-                if (!nextRef) continue;
-                nextRef.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                break;
-            }
-        }, 80);
+            window.requestAnimationFrame(() => {
+                for (let index = currentPosition; index < displayRoute.properties.length; index += 1) {
+                    const nextProperty = displayRoute.properties[index];
+                    const nextRef = stopRefs.current[nextProperty.address_hash || nextProperty.id];
+                    if (!nextRef) continue;
+                    nextRef.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+                    break;
+                }
+            });
+        }, 180);
     };
 
     // Outcomes are append-only, so the interface must not claim a save that the
@@ -685,7 +688,7 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
                         // awaiting another visit keeps its number and full
                         // contrast so it still reads as work.
                         const isDone = stage === CHECKLIST_STAGES.COMPLETED;
-                        const needsReturn = stage === CHECKLIST_STAGES.FOLLOW_UP;
+                        const isFollowUp = stage === CHECKLIST_STAGES.FOLLOW_UP;
                         const ownerName = prop.owner_full_name || prop.owner_name || prop.ownerFullName;
                         const valueLabel = formatMoney(
                             prop.price ??
@@ -708,6 +711,7 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
                         const soldDate = prop.sold_date || prop.soldDate || prop.lastSoldDate || prop.last_sold_date || prop.saleDate || prop.sale_date;
                         const ageLabel = formatPropertyAge(soldDate);
                         const houseLogs = logsForProperty(prop);
+                        const visitCount = countPropertyVisits(houseLogs);
                         const savedNote = latestOutcomeNote(houseLogs);
                         const noteDraft = houseNotes[prop.address_hash];
                         const noteDirty = noteDraft !== undefined && noteDraft.trim() !== savedNote;
@@ -755,7 +759,7 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
                                         className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-black"
                                         style={isDone
                                             ? { background: (STATUS_COLORS[currentStatus] || '#333') + '22', color: STATUS_COLORS[currentStatus] || '#888', border: `1px solid ${(STATUS_COLORS[currentStatus] || '#333')}55` }
-                                            : needsReturn
+                                            : isFollowUp
                                                 ? { background: 'rgba(255,215,0,0.12)', color: BRAND.gold, border: '1px solid rgba(255,215,0,0.35)' }
                                                 : { background: 'rgba(46,235,87,0.12)', color: '#86efac', border: '1px solid rgba(46,235,87,0.3)' }}
                                     >
@@ -819,10 +823,10 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
                                                 style={{ background: (STATUS_COLORS[currentStatus || 'ELIGIBLE'] || '#6b7280') + '20', color: STATUS_COLORS[currentStatus || 'ELIGIBLE'] || '#6b7280' }}>
                                                 Status: {outcomeLabel(currentStatus || 'ELIGIBLE')}
                                             </span>
-                                            {needsReturn && (
-                                                <span className="rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-wide"
-                                                    style={{ background: 'rgba(255,215,0,0.14)', color: BRAND.gold }}>
-                                                    Return
+                                            {visitCount > 0 && (
+                                                <span className="inline-flex items-center gap-1.5 rounded-full bg-yellow-400/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-wide text-yellow-300">
+                                                    <span className="h-2 w-2 shrink-0 rounded-full bg-yellow-400 shadow-[0_0_7px_rgba(250,204,21,0.8)]" />
+                                                    Visits {visitCount}
                                                 </span>
                                             )}
                                         </div>

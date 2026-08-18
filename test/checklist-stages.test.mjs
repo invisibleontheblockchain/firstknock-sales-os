@@ -7,7 +7,7 @@ import {
     checklistStageFor,
     summarizeChecklistStages,
 } from '../src/components/logic/checklistStages.js';
-import { formatRunRouteAge } from '../src/components/logic/outcomeStatus.js';
+import { countPropertyVisits, formatRunRouteAge } from '../src/components/logic/outcomeStatus.js';
 import { DEFAULT_TODO_ROUTE_FILTERS, matchesTodoRouteFilters } from '../src/components/logic/todoRouteFilters.js';
 
 test('unvisited stops begin in Todo', () => {
@@ -61,6 +61,16 @@ test('Run Route formats recent sale age in days and older sales in months', () =
     assert.equal(formatRunRouteAge('2m'), '2 mon ago');
 });
 
+test('visit counts include door outcomes but exclude notes and workflow moves', () => {
+    assert.equal(countPropertyVisits([
+        { parsed_status: 'NO_ANSWER' },
+        { parsed_status: 'CALLBACK' },
+        { source: 'house_note', description: 'Dog in yard' },
+        { parsed_status: 'ELIGIBLE', counts_as_knock: false, workflow_action: 'CLEAR_TO_TODO' },
+    ]), 2);
+    assert.equal(countPropertyVisits([]), 0);
+});
+
 test('Todo routing defaults to every non-terminal outcome', () => {
     assert.deepEqual(DEFAULT_TODO_ROUTE_FILTERS, ['ELIGIBLE', 'NO_ANSWER', 'CALLBACK', 'NOT_MOVED_IN', 'DM_NOT_HOME', 'QUALIFIED']);
     assert.equal(matchesTodoRouteFilters({ effective_status: 'ELIGIBLE' }, DEFAULT_TODO_ROUTE_FILTERS), true);
@@ -96,8 +106,9 @@ test('Run Route keeps every stop visible with explicit outcome presentation', ()
     assert.match(checklist, /\{ id: 'sold', label: 'Sold', count: stats\.sold \}/);
     assert.match(checklist, /propertyStages\[p\.address_hash\] !== CHECKLIST_STAGES\.COMPLETED/);
     assert.match(checklist, /routePositionByHash/);
-    assert.match(checklist, /scrollIntoView\(\{ behavior: 'smooth', block: 'center' \}\)/);
-    assert.doesNotMatch(checklist, /label: `Return/);
+    assert.match(checklist, /scrollIntoView\(\{ behavior: 'smooth', block: 'center', inline: 'nearest' \}\)/);
+    assert.match(checklist, /Visits \{visitCount\}/);
+    assert.doesNotMatch(checklist, />\s*Return\s*</);
     assert.match(propertyCard, /Status: \{outcomeLabel\(property\.effective_status \|\| 'ELIGIBLE'\)\}/);
     assert.match(checklist, /Status: \{outcomeLabel\(currentStatus \|\| 'ELIGIBLE'\)\}/);
     assert.match(propertyCard, /formatRunRouteAge\(age\)/);
