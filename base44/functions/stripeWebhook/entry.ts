@@ -1,6 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import Stripe from 'npm:stripe@14.14.0';
 import { recordReferralInvoice } from '../../shared/referralLedger.js';
+import { PRECISION_CREDIT_COMPONENT, isPaidPrecisionCreditInvoice } from '../../shared/precisionCredits.js';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') || '');
 const endpointSecret = Deno.env.get('STRIPE_WEBHOOK_SECRET');
@@ -54,7 +55,7 @@ function subscriptionHasPaidInvoice(subscription: any, invoice: any) {
         && trialEnded
         && invoiceHasPositivePayment(invoice)
         && (!invoiceSubscriptionId || invoiceSubscriptionId === subscription.id)
-        && invoiceCoversCurrentPeriod(subscription, invoice);
+        && (invoiceCoversCurrentPeriod(subscription, invoice) || isPaidPrecisionCreditInvoice(invoice));
 }
 
 function isBlockingSubscription(subscription: any) {
@@ -149,6 +150,35 @@ async function refreshAttachedCard(base44: any, userId: string, customerResource
     const updates = await attachedCardUpdates(userId, customerResource);
     await base44.asServiceRole.entities.User.update(userId, updates);
     return updates;
+}
+
+async function recordPrecisionCreditInvoice(base44: any, userId: string, subscription: any, invoice: any) {
+    if (!invoiceHasPositivePayment(invoice) || subscription?.status !== 'active') return 0;
+    let recorded = 0;
+    for (const line of invoice?.lines?.data || []) {
+        if (String(line?.price?.metadata?.billing_component || '') !== PRECISION_CREDIT_COMPONENT) continue;
+        const amountCents = Math.max(0, Math.floor(Number(line?.amount || 0)));
+        const credits = amountCents * 2;
+        if (!line?.id || credits <= 0) continue;
+        const existing = await base44.asServiceRole.entities.PrecisionCreditLedger.filter({
+            invoice_id: invoice.id,
+            stripe_line_id: line.id
+        }, 'created_date', 1);
+        const matches = Array.isArray(existing) ? existing : (existing?.items || []);
+        if (matches.length > 0) continue;
+        await base44.asServiceRole.entities.PrecisionCreditLedger.create({
+            owner_user_id: userId,
+            subscription_id: subscription.id,
+            invoice_id: invoice.id,
+            stripe_line_id: line.id,
+            credits_delta: credits,
+            amount_paid_cents: amountCents,
+            ...(stripeTimestampIso(line?.period?.start) ? { billing_period_start: stripeTimestampIso(line.period.start) } : {}),
+            ...(stripeTimestampIso(line?.period?.end) ? { billing_period_end: stripeTimestampIso(line.period.end) } : {})
+        });
+        recorded += credits;
+    }
+    return recorded;
 }
 
 // Helper to manage invite codes
@@ -374,9 +404,10 @@ Deno.serve(async (req: Request) => {
                         });
                         if (paidConfirmed) {
                             await syncInviteCode(base44, userId, quantity);
+                            const creditedProperties = await recordPrecisionCreditInvoice(base44, userId, subscription, currentInvoice);
                             const paidUser = await getCurrentUser(base44, userId);
                             await recordReferralInvoice(base44, paidUser, subscription, currentInvoice);
-                            console.log(`Confirmed paid subscription invoice for user ${userId} with ${quantity} seats`);
+                            console.log(`Confirmed paid subscription invoice for user ${userId} with ${quantity} seats and ${creditedProperties} rollover credits`);
                         } else {
                             console.log(`Ignored zero-dollar or trial invoice for user ${userId}`);
                         }

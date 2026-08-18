@@ -40,6 +40,10 @@ export function normalizePrecisionUsageResponse(response) {
     lifetimeUsed: finiteWhole(data.lifetime_used, 'lifetime_used'),
     trialUsed: finiteWhole(data.trial_used, 'trial_used'),
     trialRemaining: finiteWhole(data.trial_remaining, 'trial_remaining'),
+    configuredExtraCredits: finiteWhole(data.configured_extra_credits || 0, 'configured_extra_credits'),
+    rolloverCreditsIssued: finiteWhole(data.rollover_credits_issued || 0, 'rollover_credits_issued'),
+    rolloverCreditsConsumed: finiteWhole(data.rollover_credits_consumed || 0, 'rollover_credits_consumed'),
+    rolloverCreditsRemaining: finiteWhole(data.rollover_credits_remaining || 0, 'rollover_credits_remaining'),
     percent: Math.max(0, Math.min(100, Number(data.percent) || 0)),
     paidAccess: data.paid_access === true,
     proAccess: data.pro_access === true

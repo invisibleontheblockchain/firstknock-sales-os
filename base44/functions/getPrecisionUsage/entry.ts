@@ -1,5 +1,11 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 import Stripe from 'npm:stripe@14.14.0';
+import {
+    calculatePrecisionCreditState,
+    configuredExtraCredits,
+    isPaidPrecisionCreditInvoice,
+    listPrecisionCreditLedger
+} from '../../shared/precisionCredits.js';
 
 const FREE_PROPERTY_LIMIT = 50;
 const PAID_PROPERTY_LIMIT = 1000;
@@ -168,7 +174,7 @@ function paidPrecisionEvidence(subscription: any, expectedUserId: string) {
     if (invoice.status !== 'paid' || Number(invoice.amount_paid || 0) <= 0) return null;
     const linkedSubscriptionId = invoiceSubscriptionId(invoice);
     if (linkedSubscriptionId && linkedSubscriptionId !== subscription.id) return null;
-    if (!invoiceCoversCurrentPeriod(subscription, invoice)) return null;
+    if (!invoiceCoversCurrentPeriod(subscription, invoice) && !isPaidPrecisionCreditInvoice(invoice)) return null;
 
     const periodStart = stripeTimestampIso(subscription.current_period_start);
     const periodEnd = stripeTimestampIso(subscription.current_period_end);
@@ -181,7 +187,8 @@ function paidPrecisionEvidence(subscription: any, expectedUserId: string) {
         subscriptionId: subscription.id,
         invoiceId: invoice.id || null,
         periodStart,
-        periodEnd
+        periodEnd,
+        configuredExtraCredits: configuredExtraCredits(subscription)
     };
 }
 
@@ -197,7 +204,8 @@ function trialPrecisionEvidence(subscription: any, expectedUserId: string) {
         subscriptionId: subscription.id,
         invoiceId: null,
         periodStart: null,
-        periodEnd: null
+        periodEnd: null,
+        configuredExtraCredits: 0
     };
 }
 
@@ -262,7 +270,8 @@ async function resolveEntitlement(user: any) {
         subscriptionId: null,
         invoiceId: null,
         periodStart: null,
-        periodEnd: null
+        periodEnd: null,
+        configuredExtraCredits: 0
     };
 }
 
@@ -495,6 +504,26 @@ Deno.serve(async (req: Request) => {
         let jobs = await getUserPrecisionJobs(base44, user);
         const reconciliation = await reconcileLegacyJobs(base44, user, jobs, entitlement);
         jobs = reconciliation.jobs;
+        let creditState = {
+            totalIssued: 0,
+            historicalConsumed: 0,
+            creditBalanceAtPeriodStart: 0,
+            rolloverRemaining: 0,
+            limit: entitlement.limit
+        };
+        if (entitlement.kind === 'paid') {
+            const ledger = await listPrecisionCreditLedger(base44, user.id);
+            creditState = calculatePrecisionCreditState({
+                ledger,
+                currentPeriodStart: entitlement.periodStart,
+                jobs: jobs.map(job => ({
+                    kind: job.precision_usage_kind,
+                    periodStart: job.precision_usage_period_start,
+                    ...jobUsage(job)
+                }))
+            });
+            entitlement.limit = creditState.limit;
+        }
         const usage = calculateUsage(jobs, entitlement);
         const asOf = new Date().toISOString();
 
@@ -516,6 +545,10 @@ Deno.serve(async (req: Request) => {
             period_end: entitlement.periodEnd,
             subscription_id: entitlement.subscriptionId,
             invoice_id: entitlement.invoiceId,
+            configured_extra_credits: entitlement.configuredExtraCredits || 0,
+            rollover_credits_issued: creditState.totalIssued,
+            rollover_credits_consumed: creditState.historicalConsumed,
+            rollover_credits_remaining: creditState.rolloverRemaining,
             lifetime_used: usage.lifetimeUsed,
             trial_used: usage.trialUsed,
             trial_remaining: usage.trialRemaining,

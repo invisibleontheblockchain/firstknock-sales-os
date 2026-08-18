@@ -7,6 +7,13 @@ import vm from 'node:vm';
 import ts from 'typescript';
 
 import { getBillingState, shouldShowTrialActivation } from '../src/lib/billingState.js';
+import {
+  CREDIT_BLOCK_PRICE_CENTS,
+  PRECISION_CREDIT_COMPONENT,
+  isPaidPrecisionCreditInvoice,
+  isPrecisionCreditPrice,
+  normalizeExtraCreditBlocks
+} from '../base44/shared/precisionCredits.js';
 
 const testDir = dirname(fileURLToPath(import.meta.url));
 const rootDir = resolve(testDir, '..');
@@ -44,6 +51,11 @@ function loadBackendHandler(path, { base44, stripeApi }) {
     Request,
     Response,
     URL,
+    CREDIT_BLOCK_PRICE_CENTS,
+    PRECISION_CREDIT_COMPONENT,
+    isPaidPrecisionCreditInvoice,
+    isPrecisionCreditPrice,
+    normalizeExtraCreditBlocks,
     Stripe: makeStripeClass(stripeApi)
   }, { filename: path });
   assert.equal(typeof handler, 'function', `${path} did not register a Deno handler`);

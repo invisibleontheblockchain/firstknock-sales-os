@@ -7,6 +7,12 @@ import vm from 'node:vm';
 import ts from 'typescript';
 
 import { normalizePrecisionUsageResponse } from '../src/lib/precisionUsage.js';
+import {
+  calculatePrecisionCreditState,
+  configuredExtraCredits,
+  isPaidPrecisionCreditInvoice,
+  listPrecisionCreditLedger
+} from '../base44/shared/precisionCredits.js';
 
 const testDir = dirname(fileURLToPath(import.meta.url));
 const rootDir = resolve(testDir, '..');
@@ -35,6 +41,10 @@ function loadHandler({ base44, stripeApi }) {
       serve: (registeredHandler) => { handler = registeredHandler; }
     },
     Stripe: FakeStripe,
+    calculatePrecisionCreditState,
+    configuredExtraCredits,
+    isPaidPrecisionCreditInvoice,
+    listPrecisionCreditLedger,
     Request,
     Response
   }, { filename: endpointPath });
@@ -71,8 +81,9 @@ function paidSubscription({
   };
 }
 
-function makeBase44(user, initialJobs) {
+function makeBase44(user, initialJobs, initialCredits = []) {
   const jobs = initialJobs.map((job) => ({ ...job }));
+  const credits = initialCredits.map((credit) => ({ ...credit }));
   const jobUpdates = [];
   const userUpdates = [];
   const matches = (job, filter) => Object.entries(filter).every(([key, value]) => job[key] === value);
@@ -96,6 +107,11 @@ function makeBase44(user, initialJobs) {
           },
           User: {
             update: async (id, updates) => userUpdates.push({ id, updates })
+          },
+          PrecisionCreditLedger: {
+            filter: async (filter, _sort, limit = 500, skip = 0) => credits
+              .filter((credit) => Object.entries(filter).every(([key, value]) => credit[key] === value))
+              .slice(skip, skip + limit)
           }
         }
       }
@@ -103,8 +119,8 @@ function makeBase44(user, initialJobs) {
   };
 }
 
-async function invoke({ user, jobs, subscription, searchSubscriptions = [] }) {
-  const base44 = makeBase44(user, jobs);
+async function invoke({ user, jobs, credits = [], subscription, searchSubscriptions = [] }) {
+  const base44 = makeBase44(user, jobs, credits);
   const stripeApi = {
     subscriptions: {
       retrieve: async () => subscription,

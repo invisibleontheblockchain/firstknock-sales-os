@@ -11,6 +11,11 @@ import {
     resolveEffectiveCount,
     selectOwnedPrecisionJobs
 } from '../../shared/precisionOrderSafety.js';
+import {
+    calculatePrecisionCreditState,
+    isPaidPrecisionCreditInvoice,
+    listPrecisionCreditLedger
+} from '../../shared/precisionCredits.js';
 
 const FREE_PROPERTY_CAP = 50;
 const PAID_PROPERTY_CAP = 1000;
@@ -260,7 +265,7 @@ function paidPrecisionEvidence(subscription, userId) {
     if (subscription.status !== 'active' || !trialEnded || amountCents < PRECISION_PRICE_FLOOR_CENTS) return null;
     if (!invoice || typeof invoice === 'string' || invoice.status !== 'paid' || Number(invoice.amount_paid || 0) <= 0) return null;
     if (invoiceSubscriptionId && invoiceSubscriptionId !== subscription.id) return null;
-    if (!invoiceCoversCurrentPeriod(subscription, invoice)) return null;
+    if (!invoiceCoversCurrentPeriod(subscription, invoice) && !isPaidPrecisionCreditInvoice(invoice)) return null;
     const periodStart = stripeTimestampIso(subscription.current_period_start);
     const periodEnd = stripeTimestampIso(subscription.current_period_end);
     if (!periodStart || !periodEnd) return null;
@@ -520,12 +525,27 @@ async function getPrecisionAllowance(base44, user, entitlement) {
         used = Math.min(FREE_PROPERTY_CAP, trialUsed);
         reserved = 0;
     }
-    const limit = entitlement.kind === 'beta'
+    let limit = entitlement.kind === 'beta'
         ? entitlement.precisionLimit
         : entitlement.kind === 'paid' ? PAID_PROPERTY_CAP : FREE_PROPERTY_CAP;
+    let rolloverRemaining = 0;
+    if (entitlement.kind === 'paid') {
+        const ledger = await listPrecisionCreditLedger(base44, user.id);
+        const creditState = calculatePrecisionCreditState({
+            ledger,
+            currentPeriodStart: entitlement.periodStart,
+            jobs: jobs.map(job => ({
+                kind: job.precision_usage_kind,
+                periodStart: job.precision_usage_period_start,
+                ...jobUsage(job)
+            }))
+        });
+        limit = creditState.limit;
+        rolloverRemaining = creditState.rolloverRemaining;
+    }
     used = Math.min(limit, used);
     reserved = Math.min(Math.max(0, limit - used), reserved);
-    return { used, reserved, remaining: Math.max(0, limit - used - reserved), trialUsed: Math.min(FREE_PROPERTY_CAP, trialUsed), lifetimeUsed };
+    return { used, reserved, remaining: Math.max(0, limit - used - reserved), trialUsed: Math.min(FREE_PROPERTY_CAP, trialUsed), lifetimeUsed, limit, rolloverRemaining };
 }
 
 Deno.serve(async (req) => {
@@ -582,7 +602,7 @@ Deno.serve(async (req) => {
         const allowance = forceFreeForSelfTest
             ? { used: 0, reserved: 0, remaining: FREE_PROPERTY_CAP, trialUsed: 0, lifetimeUsed: 0 }
             : await getPrecisionAllowance(base44, user, entitlement);
-        const paidPropertyLimit = entitlement.kind === 'beta' ? entitlement.precisionLimit : PAID_PROPERTY_CAP;
+        const paidPropertyLimit = hasPaidPrecisionCapacity ? allowance.limit : PAID_PROPERTY_CAP;
         const paidPropertiesUsed = hasPaidPrecisionCapacity ? allowance.used + allowance.reserved : null;
         const paidPropertiesRemaining = hasPaidPrecisionCapacity
             ? allowance.remaining
@@ -795,7 +815,6 @@ Deno.serve(async (req) => {
         const lockedEntitlement = await resolvePrecisionEntitlement(user);
         const lockedHasPaidPrecisionCapacity = lockedEntitlement.paidAccess;
         const lockedHasPrecisionPro = lockedEntitlement.proAccess;
-        const lockedPaidPropertyLimit = lockedEntitlement.kind === 'beta' ? lockedEntitlement.precisionLimit : PAID_PROPERTY_CAP;
         if (ownership.mode === 'custom' && !lockedHasPrecisionPro) {
             return Response.json({
                 error: 'upgrade_required',
@@ -815,6 +834,7 @@ Deno.serve(async (req) => {
             }, { status: 403 });
         }
         const lockedAllowance = await getPrecisionAllowance(base44, user, lockedEntitlement);
+        const lockedPaidPropertyLimit = lockedHasPaidPrecisionCapacity ? lockedAllowance.limit : PAID_PROPERTY_CAP;
         if (lockedAllowance.remaining <= 0) {
             return Response.json({
                 error: lockedHasPaidPrecisionCapacity ? 'precision_allowance_exhausted' : 'paid_precision_required',

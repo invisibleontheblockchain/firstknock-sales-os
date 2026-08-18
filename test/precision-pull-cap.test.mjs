@@ -5,6 +5,11 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 import ts from 'typescript';
+import {
+  calculatePrecisionCreditState,
+  isPaidPrecisionCreditInvoice,
+  listPrecisionCreditLedger
+} from '../base44/shared/precisionCredits.js';
 
 const testDir = dirname(fileURLToPath(import.meta.url));
 const rootDir = resolve(testDir, '..');
@@ -54,6 +59,9 @@ function loadHandler(path, { base44, stripeApi = {}, ClientImpl = null }) {
   const executable = transpiled.outputText.replace(/^import .*;\s*$/gm, '');
   vm.runInNewContext(executable, {
     ...PRECISION_ORDER_SAFETY,
+    calculatePrecisionCreditState,
+    isPaidPrecisionCreditInvoice,
+    listPrecisionCreditLedger,
     console,
     createClientFromRequest: () => base44,
     Deno: {
@@ -137,7 +145,8 @@ function makeBase44({ user, jobs, routes, usageSnapshot, createdJobs = [], event
             events.push('job:create');
             return job;
           }
-        }
+        },
+        PrecisionCreditLedger: { filter: async () => [] }
       },
       functions: {
         invoke: async () => ({ data: { accepted: true } })

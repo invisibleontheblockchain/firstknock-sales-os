@@ -1,0 +1,77 @@
+{
+  "name": "PrecisionCreditLedger",
+  "type": "object",
+  "properties": {
+    "owner_user_id": {
+      "type": "string",
+      "description": "Immutable Base44 user ID that owns these rollover Precision credits"
+    },
+    "subscription_id": {
+      "type": "string",
+      "description": "Verified Stripe subscription that funded this credit grant"
+    },
+    "invoice_id": {
+      "type": "string",
+      "description": "Paid Stripe invoice used as the idempotency source"
+    },
+    "stripe_line_id": {
+      "type": "string",
+      "description": "Paid Stripe invoice line for the Precision credit add-on"
+    },
+    "credits_delta": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Number of purchased properties added to the rollover balance"
+    },
+    "amount_paid_cents": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Pre-tax paid line amount used to calculate credits at half a cent per property"
+    },
+    "billing_period_start": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "billing_period_end": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "owner_user_id",
+    "subscription_id",
+    "invoice_id",
+    "stripe_line_id",
+    "credits_delta",
+    "amount_paid_cents"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "$or": [
+        {
+          "data.owner_user_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

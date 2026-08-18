@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import BetaUsageMeter from '../components/beta/BetaUsageMeter';
 import { getBillingState, shouldShowTrialActivation } from '@/lib/billingState';
 import { usePrecisionUsage } from '@/hooks/usePrecisionUsage';
+import PrecisionCreditsSlider from '@/components/billing/PrecisionCreditsSlider';
 
 const PLANS = [
   {
@@ -17,7 +18,7 @@ const PLANS = [
     isPopular: true,
     subtitle: 'For targeted property acquisition before routing.',
     includedFeatures: [
-      'Up to 1,000 Precision homes per monthly billing period after payment clears',
+      '1,000 Precision homes included monthly, with rollover add-ons up to 50,000 total',
       'Free accounts remain limited to 50 total single-family Precision homes',
       'A card or free trial alone does not unlock the 1,000-home allowance',
       'Freehand area preview before using Precision homes'
@@ -35,6 +36,8 @@ const PLANS = [
 
 export default function Billing() {
   const [loadingPriceId, setLoadingPriceId] = useState(null);
+  const [selectedMonthlyProperties, setSelectedMonthlyProperties] = useState(1000);
+  const creditSelectionInitialized = React.useRef(false);
 
   const {
     data: user,
@@ -54,6 +57,12 @@ export default function Billing() {
     refetch: refetchPrecisionUsage
   } = usePrecisionUsage(user);
 
+  React.useEffect(() => {
+    if (!precisionUsage || creditSelectionInitialized.current) return;
+    setSelectedMonthlyProperties(1000 + precisionUsage.configuredExtraCredits);
+    creditSelectionInitialized.current = true;
+  }, [precisionUsage]);
+
   const handleSubscribe = async (planId, trialDays = 0) => {
     // Check if running in iframe (preview mode)
     if (window.self !== window.top) {
@@ -71,7 +80,8 @@ export default function Billing() {
         quantity: 1,
         successUrl: window.location.origin + '/Billing?success=true',
         cancelUrl: window.location.origin + '/Billing?canceled=true',
-        trialDays: trialDays
+        trialDays: trialDays,
+        extra_blocks: Math.max(0, (selectedMonthlyProperties - 1000) / 1000)
       });
 
       console.log('[Billing] Checkout response:', JSON.stringify(res));
@@ -109,6 +119,7 @@ export default function Billing() {
         action: 'activate_trial',
         planId,
         quantity: 1,
+        extra_blocks: Math.max(0, (selectedMonthlyProperties - 1000) / 1000),
         returnUrl: window.location.origin + '/Billing?billing_return=true'
       });
       const result = res?.data || res;
@@ -151,7 +162,7 @@ export default function Billing() {
     const params = new URLSearchParams(window.location.search);
     let refreshTimer;
     if (params.get('success') === 'true') {
-      toast.success("Checkout is complete. The 1,000-home Precision allowance unlocks after Stripe confirms the $99 payment.", { duration: 7000 });
+      toast.success("Checkout is complete. Precision usage unlocks after Stripe confirms the $99 plan and any selected add-on payment.", { duration: 7000 });
       window.history.replaceState({}, '', window.location.pathname);
       refetchUser();
       refetchPrecisionUsage();
@@ -197,6 +208,27 @@ export default function Billing() {
     }
   };
 
+  const handleUpdateCredits = async () => {
+    try {
+      setLoadingPriceId('precision_credits');
+      const response = await base44.functions.invoke('updatePrecisionCredits', {
+        extra_blocks: Math.max(0, (selectedMonthlyProperties - 1000) / 1000)
+      });
+      const result = response?.data || response;
+      if (result?.url) {
+        window.location.href = result.url;
+        return;
+      }
+      if (!result?.success) throw new Error(result?.error || 'Unable to update extra usage.');
+      toast.success('Monthly Precision usage updated. Paid credits will roll over.');
+      await refetchPrecisionUsage();
+    } catch (error) {
+      toast.error(error?.response?.data?.error || error?.message || 'Unable to update extra usage.');
+    } finally {
+      setLoadingPriceId(null);
+    }
+  };
+
   return (
     <div className="h-full overflow-y-auto bg-black text-white px-4 py-4 sm:p-6 lg:p-8 flex flex-col items-center">
             <div className="max-w-6xl w-full mx-auto space-y-4 sm:space-y-8 py-4 sm:py-8">
@@ -219,7 +251,7 @@ export default function Billing() {
                     <div className="rounded-xl border border-yellow-500/30 bg-yellow-500/[0.07] p-4">
                         <p className="text-xs font-extrabold uppercase tracking-wider text-yellow-400">Precision unlock</p>
                         <p className="mt-2 text-sm leading-relaxed text-gray-300">
-                            The $99 payment must successfully clear before up to 1,000 Precision homes unlock for the monthly billing period. A trial or card on file alone remains at the free 50-home total limit.
+                            The $99 payment must clear before the included 1,000 Precision homes or any paid rollover credits unlock. A trial or card on file alone remains at the free 50-home total limit.
                         </p>
                     </div>
                 </div>
@@ -310,6 +342,11 @@ export default function Billing() {
                                                         {precisionUsage.reserved.toLocaleString()} properties are reserved by an import in progress.
                                                     </p>
                                                 )}
+                                                {precisionUsage.paidAccess && precisionUsage.rolloverCreditsRemaining > 0 && (
+                                                    <p className="mt-2 text-[10px] text-yellow-300">
+                                                        {precisionUsage.rolloverCreditsRemaining.toLocaleString()} rollover credits available.
+                                                    </p>
+                                                )}
                                             </>
                                         ) : isPrecisionUsageLoading || isPrecisionUsageFetching ? (
                                             <p className="text-xs text-gray-400">Checking authoritative usage…</p>
@@ -326,6 +363,25 @@ export default function Billing() {
                                     </div>
                                 )}
                             </div>
+
+                            {plan.id === 'precision' && (
+                                <div className="mb-5">
+                                    <PrecisionCreditsSlider
+                                        value={selectedMonthlyProperties}
+                                        onChange={setSelectedMonthlyProperties}
+                                        disabled={needsPaymentRecovery || loadingPriceId !== null}
+                                        onAction={isActive ? handleUpdateCredits : null}
+                                        actionLabel="UPDATE MONTHLY USAGE"
+                                        loading={loadingPriceId === 'precision_credits'}
+                                    />
+                                    {!isSubscribed && (
+                                        <p className="mt-2 text-center text-[10px] text-gray-500">Your selected usage and price will be sent to Stripe Checkout together.</p>
+                                    )}
+                                    {isTrialing && (
+                                        <p className="mt-2 text-center text-[10px] text-gray-500">Extra credits activate only when you upgrade and the paid invoice clears.</p>
+                                    )}
+                                </div>
+                            )}
 
                             <ul className="space-y-2.5 sm:space-y-3 mb-5 sm:mb-8 flex-1">
                                 {plan.features.map((feature, i) => (

@@ -1,5 +1,11 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import Stripe from 'npm:stripe@14.14.0';
+import {
+    CREDIT_BLOCK_PRICE_CENTS,
+    PRECISION_CREDIT_COMPONENT,
+    isPrecisionCreditPrice,
+    normalizeExtraCreditBlocks
+} from '../../shared/precisionCredits.js';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') || '');
 const PLAN_CONFIG = {
@@ -101,6 +107,16 @@ function subscriptionHasPaidInvoice(subscription: any, invoice: any) {
     return subscription?.status === 'active' && trialEnded && invoiceHasPositivePayment(invoice);
 }
 
+async function createPrecisionCreditPrice() {
+    return await stripe.prices.create({
+        currency: 'usd',
+        unit_amount: CREDIT_BLOCK_PRICE_CENTS,
+        recurring: { interval: 'month' },
+        product_data: { name: 'FirstKnock Precision Rollover Credits' },
+        metadata: { billing_component: PRECISION_CREDIT_COMPONENT, properties_per_block: '1000' }
+    }, { idempotencyKey: 'firstknock-precision-rollover-price-v1' });
+}
+
 function existingSubscriptionResponse(subscription: any) {
     const isTrial = subscription?.status === 'trialing';
     return Response.json({
@@ -179,6 +195,7 @@ async function activateTrialSubscription({
     planId,
     plan,
     quantity,
+    extraBlocks,
     returnUrl,
     origin
 }: any) {
@@ -272,7 +289,9 @@ async function activateTrialSubscription({
         || stripeResourceId(trialSubscription.latest_invoice)
         || String(trialSubscription.trial_end || 'initial');
     const trialItems = trialSubscription.items?.data || [];
-    if (trialItems.length !== 1) {
+    const baseItems = trialItems.filter((item: any) => !isPrecisionCreditPrice(item?.price));
+    const creditItems = trialItems.filter((item: any) => isPrecisionCreditPrice(item?.price));
+    if (baseItems.length !== 1 || creditItems.length > 1) {
         return Response.json({
             error: 'This trial has a custom Stripe setup. Please contact support before changing it.'
         }, { status: 409 });
@@ -288,7 +307,7 @@ async function activateTrialSubscription({
         });
     }
 
-    const currentItem = trialSubscription.items.data[0];
+    const currentItem = baseItems[0];
     const currentPrice = currentItem.price;
     const currentAmount = Number(currentPrice?.unit_amount || currentPrice?.unit_amount_decimal || 0);
     const currentSubscriptionTier = String(trialSubscription.metadata?.subscription_tier || '').toLowerCase();
@@ -329,15 +348,23 @@ async function activateTrialSubscription({
         trial_end: 'now',
         payment_behavior: 'pending_if_incomplete',
         proration_behavior: 'always_invoice',
+        metadata: { ...trialSubscription.metadata, precision_extra_blocks: String(extraBlocks) },
         expand: ['latest_invoice.payment_intent']
     };
+    const itemUpdates: any[] = [];
     if (!isExpectedMonthlyPrice || Number(currentItem.quantity || 1) !== quantity) {
-        updateParams.items = [{
-            id: currentItem.id,
-            price: targetPriceId,
-            quantity
-        }];
+        itemUpdates.push({ id: currentItem.id, price: targetPriceId, quantity });
     }
+    const creditItem = creditItems[0];
+    if (creditItem && extraBlocks === 0) {
+        itemUpdates.push({ id: creditItem.id, deleted: true });
+    } else if (creditItem && Number(creditItem.quantity || 0) !== extraBlocks) {
+        itemUpdates.push({ id: creditItem.id, quantity: extraBlocks });
+    } else if (!creditItem && extraBlocks > 0) {
+        const creditPrice = await createPrecisionCreditPrice();
+        itemUpdates.push({ price: creditPrice.id, quantity: extraBlocks });
+    }
+    if (itemUpdates.length > 0) updateParams.items = itemUpdates;
 
     const activatedSubscription = await stripe.subscriptions.update(
         trialSubscription.id,
@@ -384,6 +411,10 @@ Deno.serve(async (req: Request) => {
         if (!plan) {
             return Response.json({ error: 'A valid billing plan is required.' }, { status: 400 });
         }
+        const extraBlocks = planId === 'precision' ? normalizeExtraCreditBlocks(body.extra_blocks) : 0;
+        if (extraBlocks === null) {
+            return Response.json({ error: 'Extra usage must be from 0 to 49 blocks of 1,000 properties.' }, { status: 400 });
+        }
 
         const requestedQuantity = Number(body.quantity ?? 1);
         if (!Number.isInteger(requestedQuantity) || requestedQuantity < 1 || requestedQuantity > 100) {
@@ -402,6 +433,7 @@ Deno.serve(async (req: Request) => {
                 planId,
                 plan,
                 quantity,
+                extraBlocks,
                 returnUrl: safeReturnUrl,
                 origin: req.headers.get('origin')
             });
@@ -480,6 +512,7 @@ Deno.serve(async (req: Request) => {
             && session.metadata?.subscription_tier === planId
             && session.metadata?.checkout_intent === checkoutIntent
             && Number(session.metadata?.quantity || 1) === quantity
+            && Number(session.metadata?.precision_extra_blocks || 0) === extraBlocks
         );
 
         // Keep at most one Checkout capable of creating a subscription. The
@@ -497,26 +530,39 @@ Deno.serve(async (req: Request) => {
             subscription_tier: planId,
             checkout_intent: checkoutIntent,
             quantity: String(quantity),
+            precision_extra_blocks: String(extraBlocks),
             started_with_trial: String(trialDays === 7)
         };
+        const lineItems: any[] = [{
+            price_data: {
+                currency: 'usd',
+                product_data: {
+                    name: plan.productName,
+                    metadata: { subscription_tier: planId }
+                },
+                recurring: { interval: 'month' },
+                unit_amount: plan.amountCents,
+                tax_behavior: 'exclusive'
+            },
+            quantity
+        }];
+        if (planId === 'precision' && extraBlocks > 0) {
+            lineItems.push({
+                price_data: {
+                    currency: 'usd',
+                    product_data: { name: 'FirstKnock Precision Rollover Credits' },
+                    recurring: { interval: 'month' },
+                    unit_amount: CREDIT_BLOCK_PRICE_CENTS,
+                    tax_behavior: 'exclusive',
+                    metadata: { billing_component: PRECISION_CREDIT_COMPONENT, properties_per_block: '1000' }
+                },
+                quantity: extraBlocks
+            });
+        }
         const sessionConfig: any = {
             mode: 'subscription',
             payment_method_types: ['card'],
-            line_items: [{
-                price_data: {
-                    currency: 'usd',
-                    product_data: {
-                        name: plan.productName,
-                        metadata: { subscription_tier: planId }
-                    },
-                    recurring: { interval: 'month' },
-                    unit_amount: plan.amountCents,
-                    // Plan prices are pre-tax; Stripe Tax adds the customer's
-                    // sales tax on top of the listed amount.
-                    tax_behavior: 'exclusive'
-                },
-                quantity
-            }],
+            line_items: lineItems,
             subscription_data: {
                 metadata,
                 ...(trialDays === 7 ? { trial_period_days: 7 } : {})

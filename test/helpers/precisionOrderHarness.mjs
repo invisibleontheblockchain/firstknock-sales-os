@@ -57,6 +57,7 @@ export function readSource(path) {
  * therefore visible to every test that drives a handler.
  */
 let sharedContractCache = null;
+let precisionCreditsCache = null;
 export function loadSharedOrderSafety() {
   if (sharedContractCache) return sharedContractCache;
   const source = readSource('base44/shared/precisionOrderSafety.js');
@@ -76,6 +77,22 @@ export function loadSharedOrderSafety() {
   );
   assert.ok(collected, 'the shared order-safety module did not expose its bindings');
   sharedContractCache = collected;
+  return collected;
+}
+
+export function loadSharedPrecisionCredits() {
+  if (precisionCreditsCache) return precisionCreditsCache;
+  const source = readSource('base44/shared/precisionCredits.js');
+  const names = [
+    ...[...source.matchAll(/^export (?:async )?function (\w+)/gm)].map((match) => match[1]),
+    ...[...source.matchAll(/^export const (\w+)/gm)].map((match) => match[1])
+  ];
+  let collected = null;
+  vm.runInNewContext(
+    `${source.replace(/^export /gm, '')}\n;__collect({ ${names.join(', ')} });`,
+    { __collect: (value) => { collected = value; }, Number, String, Array, Object, Map, Math, Date, Error }
+  );
+  precisionCreditsCache = collected;
   return collected;
 }
 
@@ -222,17 +239,20 @@ export function makeBase44({
   fetchJobs = [],
   savedRoutes = [],
   users = [],
+  precisionCredits = [],
   invokeHandlers = {},
   onFetchJobCreate = null
 }) {
   const fetchJobRows = fetchJobs.map((row) => ({ ...row }));
   const savedRouteRows = savedRoutes.map((row) => ({ ...row }));
   const userRows = users.map((row) => ({ ...row }));
+  const precisionCreditRows = precisionCredits.map((row) => ({ ...row }));
 
   const make = (serviceRole) => ({
     FetchJob: new FakeEntityStore(trace, { name: 'FetchJob', rows: fetchJobRows, serviceRole, onCreate: onFetchJobCreate }),
     SavedRoute: new FakeEntityStore(trace, { name: 'SavedRoute', rows: savedRouteRows, serviceRole }),
-    User: new FakeEntityStore(trace, { name: 'User', rows: userRows, serviceRole })
+    User: new FakeEntityStore(trace, { name: 'User', rows: userRows, serviceRole }),
+    PrecisionCreditLedger: new FakeEntityStore(trace, { name: 'PrecisionCreditLedger', rows: precisionCreditRows, serviceRole })
   });
 
   const invoke = async (name, payload) => {
@@ -253,7 +273,7 @@ export function makeBase44({
       entities: make(true),
       functions: { invoke }
     },
-    __rows: { fetchJobRows, savedRouteRows, userRows }
+    __rows: { fetchJobRows, savedRouteRows, userRows, precisionCreditRows }
   };
 }
 
@@ -449,6 +469,7 @@ export function loadPrecisionHandler(path, {
 
   vm.runInNewContext(executable, {
     ...loadSharedOrderSafety(),
+    ...loadSharedPrecisionCredits(),
     console: { log: () => {}, warn: () => {}, error: () => {} },
     createClientFromRequest: () => base44,
     Deno: {
