@@ -12,7 +12,7 @@ export default function CommandMapAuthLayout({ icon: Icon, title, subtitle, foot
         <div className="absolute inset-0 bg-gradient-to-r from-black/10 via-transparent to-black/45" />
         <div className="relative overflow-hidden rounded-2xl bg-black/90 px-7 py-4 shadow-[0_18px_70px_rgba(0,0,0,0.65)] backdrop-blur-sm">
           <img
-            src="https://media.base44.com/images/public/695eb764b077190880be21de/63660feba_Screenshot2026-08-18at111435AM.png"
+            src="https://media.base44.com/images/public/695eb764b077190880be21de/3a5836111_firstknockmaintransparentlogo.png"
             alt="FirstKnock"
             className="h-auto w-[440px] max-w-[42vw] object-contain"
           />
