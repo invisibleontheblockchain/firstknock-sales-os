@@ -74,6 +74,10 @@ test('Run Route keeps every stop visible in Todo with explicit outcome presentat
     assert.match(checklist, /Status: \{outcomeLabel\(currentStatus \|\| 'ELIGIBLE'\)\}/);
     assert.match(propertyCard, /formatRunRouteAge\(age\)/);
     assert.match(checklist, /formatRunRouteAge\(ageLabel\)/);
+    assert.match(propertyCard, /contentVisibility: 'auto'/);
+    assert.match(propertyCard, /export default React\.memo\(PropertyCard\)/);
+    assert.match(repHome, /touch-pan-y overflow-y-auto overscroll-y-contain/);
+    assert.doesNotMatch(repHome, /bg-black\/55[\s\S]*?backdrop-blur-2xl/);
     assert.doesNotMatch(detail, /FieldRoutes|ScheduleInspectionAction|Schedule Inspection/);
     assert.match(layout, /label="Run Route"/);
     assert.match(toolbar, /RUN ROUTE/);

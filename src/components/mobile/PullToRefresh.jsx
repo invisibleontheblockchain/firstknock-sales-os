@@ -39,6 +39,7 @@ export default function PullToRefresh({ children, onRefresh, className = '', thr
     <div
       ref={containerRef}
       className={className}
+      style={{ WebkitOverflowScrolling: 'touch' }}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}

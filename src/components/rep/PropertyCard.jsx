@@ -17,7 +17,7 @@ const formatNumber = (value) => {
   return Number.isFinite(n) && n > 0 ? n.toLocaleString() : null;
 };
 
-export default function PropertyCard({
+function PropertyCard({
   property,
   index,
   onSelect,
@@ -54,7 +54,7 @@ export default function PropertyCard({
 
   return (
     <div
-      className={`relative w-full overflow-hidden rounded-xl border px-2.5 py-2 text-left transition-all duration-300 active:scale-[0.985] group cursor-pointer hover:-translate-y-0.5 hover:shadow-[0_14px_42px_rgba(0,0,0,0.46)] ${selected ? 'shadow-[0_0_0_1px_rgba(57,255,74,0.16)]' : ''}`}
+      className={`relative w-full overflow-hidden rounded-xl border px-2.5 py-2 text-left transition-[border-color,background-color,box-shadow,transform] duration-300 active:scale-[0.985] group cursor-pointer hover:-translate-y-0.5 hover:shadow-[0_14px_42px_rgba(0,0,0,0.46)] ${selected ? 'shadow-[0_0_0_1px_rgba(57,255,74,0.16)]' : ''}`}
       style={{
         background: selected
           ? 'linear-gradient(135deg, rgba(46,235,87,0.18), rgba(255,255,255,0.045))'
@@ -62,7 +62,10 @@ export default function PropertyCard({
             ? `linear-gradient(135deg, ${outcomeTint(statusColor, '28')}, ${outcomeTint(statusColor, '0D')})`
             : 'linear-gradient(135deg, rgba(255,255,255,0.095), rgba(46,235,87,0.045), rgba(255,255,255,0.025))',
         borderColor: selected ? 'rgba(57,255,74,0.6)' : hasOutcome ? outcomeBorder(statusColor, '70') : 'rgba(255,255,255,0.13)',
-        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 12px 35px rgba(0,0,0,0.28)'
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 12px 35px rgba(0,0,0,0.28)',
+        contentVisibility: 'auto',
+        contain: 'layout paint style',
+        containIntrinsicSize: '84px'
       }}>
       
             <div className="pointer-events-none absolute inset-x-0 top-0 z-20 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
@@ -161,3 +164,5 @@ export default function PropertyCard({
         </div>);
 
 }
+
+export default React.memo(PropertyCard);

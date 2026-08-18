@@ -1299,6 +1299,16 @@ export default function RepHome() {
     });
   }, [warmGpsFix]);
 
+  const handleSelectProperty = React.useCallback((property, index) => {
+    setSelectedProperty(property);
+    setSelectedPropertyIndex(index);
+  }, []);
+
+  const handleTogglePropertySelection = React.useCallback((property) => {
+    if (activeRouteArchived || bulkActionMutation.isPending) return;
+    setSelectedPropertyKeys((previous) => togglePropertySelection(previous, property));
+  }, [activeRouteArchived, bulkActionMutation.isPending]);
+
   if (teamMembersLoading || routesLoading || propsLoading || logsLoading || (!activeRoute && canvasAssignmentsLoading)) {
     return (
       <div className="flex h-screen items-center justify-center bg-black text-white">
@@ -1392,11 +1402,6 @@ export default function RepHome() {
     if (confirm('Clear this decision and move the home back to Todo?')) {
       clearDecisionMutation.mutate(log);
     }
-  };
-
-  const handleTogglePropertySelection = (property) => {
-    if (activeRouteArchived || bulkActionMutation.isPending) return;
-    setSelectedPropertyKeys((previous) => togglePropertySelection(previous, property));
   };
 
   const handleToggleVisibleSelection = () => {
@@ -1875,7 +1880,7 @@ export default function RepHome() {
             }
 
             {/* Property List */}
-            <PullToRefresh onRefresh={handleRouteRefresh} className="flex-1 overflow-y-auto px-2.5 py-2 pb-20 bg-transparent">
+            <PullToRefresh onRefresh={handleRouteRefresh} className="flex-1 touch-pan-y overflow-y-auto overscroll-y-contain px-2.5 py-2 pb-20 bg-transparent">
                 {filteredProperties.length === 0 ?
         <div className="text-center py-16">
                         <div className="w-14 h-14 bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-3">
@@ -1896,7 +1901,7 @@ export default function RepHome() {
             selectable={filterStatus === 'done' && !activeRouteArchived}
             selected={selectedPropertyKeys.has(getPropertySelectionKey(prop))}
             onToggleSelect={handleTogglePropertySelection}
-            onSelect={(p, i) => {setSelectedProperty(p);setSelectedPropertyIndex(i);}} />
+            onSelect={handleSelectProperty} />
 
           )}
                     </div>
@@ -1904,7 +1909,7 @@ export default function RepHome() {
             </PullToRefresh>
 
             {/* Floating action buttons */}
-            <div className="fixed bottom-20 left-4 right-4 z-30 flex items-center gap-2 rounded-[28px] border border-white/10 bg-black/55 p-2 shadow-[0_22px_70px_rgba(0,0,0,0.65)] backdrop-blur-2xl">
+            <div className="fixed bottom-20 left-4 right-4 z-30 flex items-center gap-2 rounded-[28px] border border-white/10 bg-black/90 p-2 shadow-[0_22px_70px_rgba(0,0,0,0.65)]">
                 {routeHydrationComplete && stats.percent >= 100 && activeRouteCanComplete &&
         <Button
           onClick={() => {
