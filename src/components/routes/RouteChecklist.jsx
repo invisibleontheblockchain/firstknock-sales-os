@@ -86,6 +86,7 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
     const [noteError, setNoteError] = useState({});
     const noteTimersRef = React.useRef({});
     const stopRefs = React.useRef({});
+    const scrollAreaRef = React.useRef(null);
     const [saleAmount, setSaleAmount] = useState('');
     const [saleAmountError, setSaleAmountError] = useState('');
     const [navigationSession, setNavigationSession] = useState(null);
@@ -396,8 +397,12 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
                 for (let index = currentPosition; index < displayRoute.properties.length; index += 1) {
                     const nextProperty = displayRoute.properties[index];
                     const nextRef = stopRefs.current[nextProperty.address_hash || nextProperty.id];
-                    if (!nextRef) continue;
-                    nextRef.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+                    const viewport = scrollAreaRef.current?.querySelector('[data-radix-scroll-area-viewport]');
+                    if (!nextRef || !viewport) continue;
+                    const nextTop = viewport.scrollTop
+                        + nextRef.getBoundingClientRect().top
+                        - viewport.getBoundingClientRect().top;
+                    viewport.scrollTo({ top: nextTop, behavior: 'smooth' });
                     break;
                 }
             });
@@ -665,7 +670,7 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
             <div className="h-px" style={{ background: '#1a1a1a' }} />
 
             {/* Property List */}
-            <ScrollArea className="flex-1">
+            <ScrollArea ref={scrollAreaRef} className="flex-1">
                 <div className="px-3 py-2 space-y-1.5">
                     {filteredProperties.length === 0 && (
                         <p className="px-2 py-8 text-center text-[11px] font-semibold text-white/40">
@@ -824,9 +829,17 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
                                                 Status: {outcomeLabel(currentStatus || 'ELIGIBLE')}
                                             </span>
                                             {visitCount > 0 && (
-                                                <span className="inline-flex items-center gap-1.5 rounded-full bg-yellow-400/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-wide text-yellow-300">
-                                                    <span className="h-2 w-2 shrink-0 rounded-full bg-yellow-400 shadow-[0_0_7px_rgba(250,204,21,0.8)]" />
-                                                    Visits {visitCount}
+                                                <span
+                                                    aria-label={`${visitCount} visits`}
+                                                    className="inline-flex items-center gap-1.5 rounded-full bg-yellow-400/10 px-2 py-0.5 text-[9px] font-black tracking-wide text-yellow-300"
+                                                >
+                                                    Visits:
+                                                    {Array.from({ length: visitCount }, (_, visitIndex) => (
+                                                        <span
+                                                            key={visitIndex}
+                                                            className="h-4 w-4 shrink-0 rounded-full bg-yellow-400 shadow-[0_0_6px_rgba(250,204,21,0.75)]"
+                                                        />
+                                                    ))}
                                                 </span>
                                             )}
                                         </div>

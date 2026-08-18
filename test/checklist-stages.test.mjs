@@ -106,8 +106,10 @@ test('Run Route keeps every stop visible with explicit outcome presentation', ()
     assert.match(checklist, /\{ id: 'sold', label: 'Sold', count: stats\.sold \}/);
     assert.match(checklist, /propertyStages\[p\.address_hash\] !== CHECKLIST_STAGES\.COMPLETED/);
     assert.match(checklist, /routePositionByHash/);
-    assert.match(checklist, /scrollIntoView\(\{ behavior: 'smooth', block: 'center', inline: 'nearest' \}\)/);
-    assert.match(checklist, /Visits \{visitCount\}/);
+    assert.match(checklist, /data-radix-scroll-area-viewport/);
+    assert.match(checklist, /viewport\.scrollTo\(\{ top: nextTop, behavior: 'smooth' \}\)/);
+    assert.match(checklist, /Array\.from\(\{ length: visitCount \}/);
+    assert.match(checklist, /Visits:/);
     assert.doesNotMatch(checklist, />\s*Return\s*</);
     assert.match(propertyCard, /Status: \{outcomeLabel\(property\.effective_status \|\| 'ELIGIBLE'\)\}/);
     assert.match(checklist, /Status: \{outcomeLabel\(currentStatus \|\| 'ELIGIBLE'\)\}/);
