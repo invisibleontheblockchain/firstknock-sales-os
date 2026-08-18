@@ -48,6 +48,7 @@ import RepHeader from '@/components/rep/RepHeader';
 import RepUnifiedSearch from '@/components/rep/RepUnifiedSearch';
 import PropertyCard from '@/components/rep/PropertyCard';
 import PropertyDetailSheet from '@/components/rep/PropertyDetailSheet';
+import RouteFunnelTabs from '@/components/rep/RouteFunnelTabs';
 import {
   buildRepRouteScope,
   buildSavedRouteQueryFilters,
@@ -109,7 +110,7 @@ export default function RepHome() {
   const queryClient = useQueryClient();
   const [selectedProperty, setSelectedProperty] = useState(null);
   const [selectedPropertyIndex, setSelectedPropertyIndex] = useState(null);
-  const [filterStatus, setFilterStatus] = useState('todo');
+  const [filterStatus, setFilterStatus] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [uploading, setUploading] = useState(false);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
@@ -939,18 +940,21 @@ export default function RepHome() {
     }
   }, [routeProperties, activeRoute?.id]);
 
-  // Stats
+  // Funnel counts are views of the route, not mutually exclusive workflow stages.
+  // Todo intentionally keeps every opportunity except closed-won and closed-lost.
   const stats = useMemo(() => {
     const total = expectedRoutePropertyCount || routeProperties.length;
-    if (!total) return { total: 0, done: 0, todo: 0, reKnock: 0, percent: 0 };
-    const done = routeProperties.filter((p) => p.effective_status !== 'ELIGIBLE').length;
-    const reKnock = routeProperties.filter((p) => p.effective_status === 'ELIGIBLE' && p.workflow_bucket === 'RE_KNOCK').length;
+    if (!total) return { total: 0, done: 0, todo: 0, sold: 0, percent: 0 };
+    const sold = routeProperties.filter((p) => p.effective_status === 'SOLD').length;
+    const done = routeProperties.filter((p) => p.effective_status !== 'ELIGIBLE' && p.effective_status !== 'SOLD').length;
+    const todo = routeProperties.filter((p) => !['SOLD', 'HARD_NO'].includes(p.effective_status)).length;
+    const decided = routeProperties.filter((p) => p.effective_status !== 'ELIGIBLE').length;
     return {
       total,
       done,
-      todo: total,
-      reKnock,
-      percent: Math.round(done / total * 100)
+      todo,
+      sold,
+      percent: Math.round(decided / total * 100)
     };
   }, [expectedRoutePropertyCount, routeProperties]);
 
@@ -983,17 +987,14 @@ export default function RepHome() {
         }
       }
 
-      // Status filter
-      const isDone = p.effective_status !== 'ELIGIBLE';
-
-      if (filterStatus === 'todo') return true;
+      // Sales-funnel views: Todo keeps all open opportunities, Done keeps
+      // completed non-sale outcomes, and Sold is closed-won.
+      if (filterStatus === 'todo') return !['SOLD', 'HARD_NO'].includes(p.effective_status);
       if (filterStatus === 'done') {
-        if (!isDone) return false;
+        if (p.effective_status === 'ELIGIBLE' || p.effective_status === 'SOLD') return false;
         return decisionFilter === 'all' || p.effective_status === decisionFilter;
       }
-      if (filterStatus === 're_knock') {
-        return !isDone && p.workflow_bucket === 'RE_KNOCK';
-      }
+      if (filterStatus === 'sold') return p.effective_status === 'SOLD';
       return true;
     });
   }, [routeProperties, filterStatus, searchQuery, soldDateFilter, decisionFilter]);
@@ -1157,7 +1158,7 @@ export default function RepHome() {
         setDecisionFilter('CALLBACK');
         toast.success(`${count} stop${count === 1 ? '' : 's'} moved to Callback`);
       } else if (action === ROUTE_BULK_ACTIONS.RE_KNOCK) {
-        setFilterStatus('re_knock');
+        setFilterStatus('todo');
         toast.success(`${count} stop${count === 1 ? '' : 's'} queued for Re-Knock`);
       } else if (action === ROUTE_BULK_ACTIONS.DELETE) {
         toast.success(`${count} stop${count === 1 ? '' : 's'} removed from this route. History was preserved.`);
@@ -1740,27 +1741,17 @@ export default function RepHome() {
                   }}
                 />
 
-                {/* Top Row: Segmented Control */}
-                <div className="flex bg-white/[0.04] p-0.5 rounded-xl border border-white/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] lg:grid lg:grid-cols-4 lg:gap-1 lg:rounded-2xl lg:p-1 lg:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_10px_30px_rgba(0,0,0,0.24)]">
-                    {[
-          { id: 'todo', label: 'Todo', mobileLabel: `Todo ${stats.todo}`, count: stats.todo },
-          { id: 'done', label: 'Done', mobileLabel: `Done ${stats.done}`, count: stats.done },
-          { id: 're_knock', label: 'Re-Knock', mobileLabel: `Re-Knock ${stats.reKnock}`, count: stats.reKnock },
-          { id: 'all', label: 'All', mobileLabel: 'All', count: routeProperties.length }].
-          map((tab) =>
-          <button
-            key={tab.id}
-            onClick={() => setFilterStatus(tab.id)}
-            className={`flex-1 py-1.5 rounded-lg text-[10px] sm:text-[11px] font-black tracking-[0.1em] sm:tracking-[0.05em] transition-all whitespace-nowrap lg:flex lg:h-12 lg:min-w-0 lg:items-center lg:justify-center lg:gap-2 lg:rounded-xl lg:py-0 lg:text-sm lg:tracking-[0.04em] ${filterStatus === tab.id ? 'bg-white text-black shadow-[0_6px_18px_rgba(255,255,255,0.12)] lg:shadow-[0_8px_24px_rgba(255,255,255,0.16)]' : 'text-white/45 hover:text-white lg:text-white/55 lg:hover:bg-white/[0.06]'}`
-            }>
-                            <span className="lg:hidden">{tab.mobileLabel}</span>
-                            <span className="hidden lg:inline lg:truncate">{tab.label}</span>
-                            <span className={`hidden lg:flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full px-1.5 text-[10px] font-black ${filterStatus === tab.id ? 'bg-black/10 text-black/70' : 'bg-white/10 text-white/60'}`}>
-                                {tab.count}
-                            </span>
-                        </button>
-          )}
-                </div>
+                {/* Sales funnel: total route → open opportunities → completed outcomes → sales */}
+                <RouteFunnelTabs
+                  activeTab={filterStatus}
+                  onChange={setFilterStatus}
+                  tabs={[
+                    { id: 'all', label: 'All', count: stats.total },
+                    { id: 'todo', label: 'Todo', count: stats.todo },
+                    { id: 'done', label: 'Done', count: stats.done },
+                    { id: 'sold', label: 'Sold', count: stats.sold },
+                  ]}
+                />
 
                 {/* Bottom Row: Date Filter & Search */}
                 <div className="flex items-center gap-2 lg:min-w-0 lg:justify-end">
@@ -1791,7 +1782,6 @@ export default function RepHome() {
               className="appearance-none w-full h-8 pl-2.5 pr-6 text-[10px] font-bold bg-white/[0.04] border border-white/10 text-white rounded-lg outline-none focus:border-[#2EEB57]/60 cursor-pointer [color-scheme:dark] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] lg:h-12 lg:rounded-xl lg:pl-3 lg:pr-8 lg:text-xs">
               
                                 <option className="bg-black text-white" value="all">Decision: All</option>
-                                <option className="bg-black text-white" value="SOLD">Sold</option>
                                 <option className="bg-black text-white" value="NO_ANSWER">No Answer</option>
                                 <option className="bg-black text-white" value="CALLBACK">Callback</option>
                                 <option className="bg-black text-white" value="HARD_NO">Not Interested</option>
@@ -1884,10 +1874,10 @@ export default function RepHome() {
                 {filteredProperties.length === 0 ?
         <div className="text-center py-16">
                         <div className="w-14 h-14 bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-3">
-                            {filterStatus === 'done' ? <CheckCircle2 className="w-7 h-7 text-green-500" /> : <Navigation className="w-7 h-7 text-gray-600" />}
+                            {filterStatus === 'done' || filterStatus === 'sold' ? <CheckCircle2 className="w-7 h-7 text-green-500" /> : <Navigation className="w-7 h-7 text-gray-600" />}
                         </div>
                         <p className="text-gray-500 text-sm font-medium">
-                            {searchQuery ? 'No matches' : filterStatus === 'done' ? 'None completed yet' : filterStatus === 're_knock' ? 'No Re-Knock stops queued' : 'All done! 🎉'}
+                            {searchQuery ? 'No matches' : filterStatus === 'done' ? 'No completed outcomes yet' : filterStatus === 'sold' ? 'No sales yet' : filterStatus === 'todo' ? 'No open opportunities' : 'No route stops'}
                         </p>
                     </div> :
 
