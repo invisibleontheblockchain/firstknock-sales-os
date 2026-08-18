@@ -812,7 +812,7 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
                                     </div>
 
                                     {!isExpanded && (
-                                        <div className="mt-1 flex shrink-0 flex-col items-end gap-1">
+                                        <div className="mt-1 flex max-w-[42%] shrink-0 flex-col items-end gap-1">
                                             <button
                                                 type="button"
                                                 aria-label={`Navigate to ${buildFullAddress(prop)}`}
@@ -831,13 +831,13 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
                                             {visitCount > 0 && (
                                                 <span
                                                     aria-label={`${visitCount} visits`}
-                                                    className="inline-flex items-center gap-1.5 rounded-full bg-yellow-400/10 px-2 py-0.5 text-[9px] font-black tracking-wide text-yellow-300"
+                                                    className="inline-flex max-w-full flex-wrap items-center justify-end gap-1 rounded-full bg-yellow-400/10 px-2 py-0.5 text-[9px] font-black tracking-wide text-yellow-300"
                                                 >
                                                     Visits:
                                                     {Array.from({ length: visitCount }, (_, visitIndex) => (
                                                         <span
                                                             key={visitIndex}
-                                                            className="h-4 w-4 shrink-0 rounded-full bg-yellow-400 shadow-[0_0_6px_rgba(250,204,21,0.75)]"
+                                                            className="h-1.5 w-1.5 shrink-0 rounded-full bg-yellow-400 shadow-[0_0_4px_rgba(250,204,21,0.75)]"
                                                         />
                                                     ))}
                                                 </span>
