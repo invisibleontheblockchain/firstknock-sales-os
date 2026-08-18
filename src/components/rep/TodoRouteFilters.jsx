@@ -1,5 +1,6 @@
 import React from 'react';
 import { DEFAULT_TODO_ROUTE_FILTERS, TODO_ROUTE_FILTER_OPTIONS } from '@/components/logic/todoRouteFilters';
+import MobileTodoRouteMenu from '@/components/rep/MobileTodoRouteMenu';
 
 export default function TodoRouteFilters({ selected, counts = {}, onChange }) {
   const selectedSet = new Set(selected);
@@ -14,7 +15,16 @@ export default function TodoRouteFilters({ selected, counts = {}, onChange }) {
   const toggleAll = () => onChange(allSelected ? [...DEFAULT_TODO_ROUTE_FILTERS] : allValues);
 
   return (
-    <div className="rounded-xl border border-white/10 bg-white/[0.035] p-2" aria-label="Choose Todo types to show and route">
+    <>
+      <MobileTodoRouteMenu
+        options={TODO_ROUTE_FILTER_OPTIONS}
+        selectedSet={selectedSet}
+        allSelected={allSelected}
+        counts={counts}
+        onToggle={toggle}
+        onToggleAll={toggleAll}
+      />
+      <div className="hidden rounded-xl border border-white/10 bg-white/[0.035] p-2 sm:block" aria-label="Choose Todo types to show and route">
       <div className="mb-1.5 flex items-center justify-between gap-3 px-0.5">
         <span className="text-[9px] font-black uppercase tracking-[0.12em] text-white/45">Route Todo types</span>
         <span className="text-[9px] font-bold text-[#39FF4A]">Start uses selected</span>
@@ -34,6 +44,7 @@ export default function TodoRouteFilters({ selected, counts = {}, onChange }) {
           );
         })}
       </div>
-    </div>
+      </div>
+    </>
   );
 }
