@@ -22,7 +22,10 @@ import {
 } from '../logic/checklistStages';
 import { getWorkflowBucketFromLogs } from '../logic/routeBulkActions';
 import { buildFullAddress, getRouteNavigationPlan, openInMaps, openNavigationBatch } from '../logic/navigation';
-import { getNavigationSessionProgress, selectRemainingTodoStops } from '../logic/routeNavigation';
+import { getNavigationSessionProgress } from '../logic/routeNavigation';
+import { countTodoRouteFilters, DEFAULT_TODO_ROUTE_FILTERS, matchesTodoRouteFilters } from '../logic/todoRouteFilters';
+import RouteFunnelTabs from '@/components/rep/RouteFunnelTabs';
+import TodoRouteFilters from '@/components/rep/TodoRouteFilters';
 import { parseOptionalSaleAmount } from '../analytics/salesManagement';
 import { isBusinessOwnedProperty } from '../logic/ownerType';
 import { formatPropertyAge } from '@/utils';
@@ -59,6 +62,7 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
     const [latestRoute, setLatestRoute] = useState(route);
     const [expandedId, setExpandedId] = useState(null);
     const [filter, setFilter] = useState('all');
+    const [todoRouteTypes, setTodoRouteTypes] = useState([...DEFAULT_TODO_ROUTE_FILTERS]);
     const [decisionFilter, setDecisionFilter] = useState('all');
     const [callbackPhone, setCallbackPhone] = useState('');
     const [selectedAction, setSelectedAction] = useState(null);
@@ -189,7 +193,12 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
     const filteredProperties = useMemo(() => {
         return visibleRouteProperties.filter(p => {
             const status = propertyStatuses[p.address_hash] || 'ELIGIBLE';
-            if (filter === 'todo') return !['SOLD', 'HARD_NO'].includes(status);
+            if (filter === 'todo') return matchesTodoRouteFilters(
+                p,
+                todoRouteTypes,
+                status,
+                getWorkflowBucketFromLogs(logsByProperty.get(p.address_hash) || [])
+            );
             if (filter === 'done') {
                 if (propertyStages[p.address_hash] !== CHECKLIST_STAGES.COMPLETED || status === 'SOLD') return false;
                 return decisionFilter === 'all' || status === decisionFilter;
@@ -197,7 +206,16 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
             if (filter === 'sold') return status === 'SOLD';
             return true;
         });
-    }, [visibleRouteProperties, propertyStages, propertyStatuses, filter, decisionFilter]);
+    }, [visibleRouteProperties, propertyStages, propertyStatuses, logsByProperty, filter, decisionFilter, todoRouteTypes]);
+
+    const todoRouteTypeCounts = useMemo(
+        () => countTodoRouteFilters(
+            visibleRouteProperties,
+            (property) => propertyStatuses[property.address_hash],
+            (property) => getWorkflowBucketFromLogs(logsByProperty.get(property.address_hash) || [])
+        ),
+        [visibleRouteProperties, propertyStatuses, logsByProperty]
+    );
 
     const stats = useMemo(() => {
         const stageCounts = summarizeChecklistStages(
@@ -217,8 +235,13 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
     }, [visibleRouteProperties, propertyStages, propertyStatuses]);
 
     const remainingProperties = useMemo(
-        () => selectRemainingTodoStops(visibleRouteProperties, propertyStatuses),
-        [visibleRouteProperties, propertyStatuses]
+        () => visibleRouteProperties.filter((property) => matchesTodoRouteFilters(
+            property,
+            todoRouteTypes,
+            propertyStatuses[property.address_hash],
+            getWorkflowBucketFromLogs(logsByProperty.get(property.address_hash) || [])
+        )),
+        [visibleRouteProperties, propertyStatuses, logsByProperty, todoRouteTypes]
     );
 
     const navigationProgress = getNavigationSessionProgress(
@@ -456,7 +479,7 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
     const followUpPct = stats.total > 0 ? (stats.followup / stats.total) * 100 : 0;
 
     return (
-        <div className="h-full flex flex-col pt-[calc(env(safe-area-inset-top)+0.5rem)]" style={{ background: BRAND.voidBlack }}>
+        <div className="h-full flex flex-col bg-black pt-[calc(env(safe-area-inset-top)+0.5rem)] text-[#F0F0F5] shadow-[0_0_70px_rgba(0,0,0,0.75)]">
             {/* Compact Header */}
             <div className="px-4 pt-2 pb-3 space-y-3">
                 {/* Title Row */}
@@ -492,26 +515,17 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
 
                 {/* Filters + Start Route */}
                 <div className="grid grid-cols-2 items-center gap-2 sm:flex sm:flex-wrap">
-                    <div className="col-span-2 grid grid-cols-4 gap-1 rounded-xl border border-white/10 bg-white/[0.04] p-1 sm:flex sm:flex-1">
-                        {[
-                            { id: 'all', label: 'All', count: stats.total },
-                            { id: 'todo', label: 'Todo', count: stats.todo },
-                            { id: 'done', label: 'Done', count: stats.done },
-                            { id: 'sold', label: 'Sold', count: stats.sold },
-                        ].map(tab => (
-                            <button
-                                key={tab.id}
-                                type="button"
-                                onClick={() => setFilter(tab.id)}
-                                className={`min-h-8 whitespace-nowrap rounded-lg px-2.5 text-[10px] font-black uppercase tracking-[0.04em] transition-colors sm:min-w-[5.5rem] sm:flex-1 sm:text-xs ${
-                                    filter === tab.id
-                                        ? 'border border-[#2EEB57]/30 bg-[#2EEB57]/12 text-[#86efac]'
-                                        : 'border border-transparent text-white/60 hover:bg-white/[0.06] hover:text-white'
-                                }`}
-                            >
-                                {tab.label} {tab.count}
-                            </button>
-                        ))}
+                    <div className="col-span-2 sm:flex-1">
+                        <RouteFunnelTabs
+                            activeTab={filter}
+                            onChange={setFilter}
+                            tabs={[
+                                { id: 'all', label: 'All', count: stats.total },
+                                { id: 'todo', label: 'Todo', count: stats.todo },
+                                { id: 'done', label: 'Done', count: stats.done },
+                                { id: 'sold', label: 'Sold', count: stats.sold },
+                            ]}
+                        />
                     </div>
                     {setActiveRouteSoldFilter && (
                         <select
@@ -562,6 +576,16 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
                         )}
                     </button>
                 </div>
+                {filter === 'todo' && (
+                    <TodoRouteFilters
+                        selected={todoRouteTypes}
+                        counts={todoRouteTypeCounts}
+                        onChange={(next) => {
+                            setTodoRouteTypes(next);
+                            setNavigationSession(null);
+                        }}
+                    />
+                )}
                 {navigationError && (
                     <p className="text-[10px] font-semibold text-red-400" role="alert">{navigationError}</p>
                 )}

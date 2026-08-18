@@ -22,7 +22,7 @@ import {
 } from '@/components/logic/routeRoadContext';
 import { buildFullAddress, getRouteNavigationPlan, openNavigationBatch } from '@/components/logic/navigation';
 import { collectUnretiredOutcomes, confirmOutcomeRow } from '@/components/logic/optimisticOutcomes';
-import { getNavigationSessionProgress, selectRemainingTodoStops } from '@/components/logic/routeNavigation';
+import { getNavigationSessionProgress } from '@/components/logic/routeNavigation';
 import {
   ROUTE_BULK_ACTIONS,
   buildWorkflowTransitionLogs,
@@ -49,6 +49,8 @@ import RepUnifiedSearch from '@/components/rep/RepUnifiedSearch';
 import PropertyCard from '@/components/rep/PropertyCard';
 import PropertyDetailSheet from '@/components/rep/PropertyDetailSheet';
 import RouteFunnelTabs from '@/components/rep/RouteFunnelTabs';
+import TodoRouteFilters from '@/components/rep/TodoRouteFilters';
+import { countTodoRouteFilters, DEFAULT_TODO_ROUTE_FILTERS, matchesTodoRouteFilters } from '@/components/logic/todoRouteFilters';
 import {
   buildRepRouteScope,
   buildSavedRouteQueryFilters,
@@ -111,6 +113,7 @@ export default function RepHome() {
   const [selectedProperty, setSelectedProperty] = useState(null);
   const [selectedPropertyIndex, setSelectedPropertyIndex] = useState(null);
   const [filterStatus, setFilterStatus] = useState('all');
+  const [todoRouteTypes, setTodoRouteTypes] = useState([...DEFAULT_TODO_ROUTE_FILTERS]);
   const [searchQuery, setSearchQuery] = useState('');
   const [uploading, setUploading] = useState(false);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
@@ -958,6 +961,11 @@ export default function RepHome() {
     };
   }, [expectedRoutePropertyCount, routeProperties]);
 
+  const todoRouteTypeCounts = useMemo(
+    () => countTodoRouteFilters(routeProperties),
+    [routeProperties]
+  );
+
   const filteredProperties = useMemo(() => {
     return routeProperties.filter((p) => {
       // Search filter
@@ -989,12 +997,12 @@ export default function RepHome() {
 
       // Sales-funnel views: Todo keeps all open opportunities, Done keeps
       // completed non-sale outcomes, and Sold is closed-won.
-      if (filterStatus === 'todo') return !['SOLD', 'HARD_NO'].includes(p.effective_status);
+      if (filterStatus === 'todo') return matchesTodoRouteFilters(p, todoRouteTypes);
       if (filterStatus === 'done') return ['HARD_NO', 'NOT_MOVED_IN'].includes(p.effective_status);
       if (filterStatus === 'sold') return p.effective_status === 'SOLD';
       return true;
     });
-  }, [routeProperties, filterStatus, searchQuery, soldDateFilter]);
+  }, [routeProperties, filterStatus, searchQuery, soldDateFilter, todoRouteTypes]);
 
   const visiblePropertyKeys = useMemo(
     () => getVisiblePropertyKeys(filteredProperties),
@@ -1173,9 +1181,8 @@ export default function RepHome() {
 
   const knockWindow = getKnockWindowLabel(new Date());
 
-  const remainingNavigationStops = selectRemainingTodoStops(
-    routeProperties,
-    (property) => property.effective_status
+  const remainingNavigationStops = routeProperties.filter(
+    (property) => matchesTodoRouteFilters(property, todoRouteTypes)
   );
   const navigationProgress = getNavigationSessionProgress(
     navigationSession?.routeId === activeRoute?.id ? navigationSession : null,
@@ -1749,6 +1756,17 @@ export default function RepHome() {
                     { id: 'sold', label: 'Sold', count: stats.sold },
                   ]}
                 />
+
+                {filterStatus === 'todo' &&
+                  <TodoRouteFilters
+                    selected={todoRouteTypes}
+                    counts={todoRouteTypeCounts}
+                    onChange={(next) => {
+                      setTodoRouteTypes(next);
+                      setNavigationSession(null);
+                    }}
+                  />
+                }
 
                 {/* Bottom Row: Date Filter & Search */}
                 <div className="flex items-center gap-2 lg:min-w-0 lg:justify-end">

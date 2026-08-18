@@ -8,6 +8,7 @@ import {
     summarizeChecklistStages,
 } from '../src/components/logic/checklistStages.js';
 import { formatRunRouteAge } from '../src/components/logic/outcomeStatus.js';
+import { DEFAULT_TODO_ROUTE_FILTERS, matchesTodoRouteFilters } from '../src/components/logic/todoRouteFilters.js';
 
 test('unvisited stops are the only ones left in To Do', () => {
     assert.equal(checklistStageFor(null), CHECKLIST_STAGES.TODO);
@@ -60,7 +61,15 @@ test('Run Route formats recent sale age in days and older sales in months', () =
     assert.equal(formatRunRouteAge('2m'), '2 mon ago');
 });
 
-test('Run Route keeps every stop visible in Todo with explicit outcome presentation', () => {
+test('Todo routing defaults to untouched homes and supports explicit follow-up choices', () => {
+    assert.deepEqual(DEFAULT_TODO_ROUTE_FILTERS, ['ELIGIBLE']);
+    assert.equal(matchesTodoRouteFilters({ effective_status: 'ELIGIBLE' }, ['ELIGIBLE']), true);
+    assert.equal(matchesTodoRouteFilters({ effective_status: 'NO_ANSWER' }, ['ELIGIBLE']), false);
+    assert.equal(matchesTodoRouteFilters({ effective_status: 'NO_ANSWER' }, ['ELIGIBLE', 'NO_ANSWER']), true);
+    assert.equal(matchesTodoRouteFilters({ effective_status: 'ELIGIBLE', workflow_bucket: 'RE_KNOCK' }, ['RE_KNOCK']), true);
+});
+
+test('Run Route keeps every stop visible with explicit outcome presentation', () => {
     const repHome = readFileSync(new URL('../src/pages/RepHome.jsx', import.meta.url), 'utf8');
     const propertyCard = readFileSync(new URL('../src/components/rep/PropertyCard.jsx', import.meta.url), 'utf8');
     const checklist = readFileSync(new URL('../src/components/routes/RouteChecklist.jsx', import.meta.url), 'utf8');
@@ -71,14 +80,16 @@ test('Run Route keeps every stop visible in Todo with explicit outcome presentat
     const managerMapLayers = readFileSync(new URL('../src/components/map/ManagerMapLayers.jsx', import.meta.url), 'utf8');
 
     assert.match(repHome, /useState\('all'\)/);
-    assert.match(repHome, /if \(filterStatus === 'todo'\) return !\['SOLD', 'HARD_NO'\]\.includes\(p\.effective_status\)/);
+    assert.match(repHome, /if \(filterStatus === 'todo'\) return matchesTodoRouteFilters\(p, todoRouteTypes\)/);
     assert.match(repHome, /if \(filterStatus === 'sold'\) return p\.effective_status === 'SOLD'/);
     assert.match(repHome, /if \(filterStatus === 'done'\) return \['HARD_NO', 'NOT_MOVED_IN'\]\.includes\(p\.effective_status\)/);
     assert.doesNotMatch(repHome, /selectable=\{filterStatus === 'done'/);
     assert.doesNotMatch(repHome, /Select All.*visible completed stops/s);
     assert.match(repHome, /label: 'All', count: stats\.total/);
     assert.match(checklist, /const \[filter, setFilter\] = useState\('all'\)/);
-    assert.match(checklist, /if \(filter === 'todo'\) return !\['SOLD', 'HARD_NO'\]\.includes\(status\)/);
+    assert.match(checklist, /if \(filter === 'todo'\) return matchesTodoRouteFilters\(/);
+    assert.match(checklist, /<RouteFunnelTabs/);
+    assert.match(checklist, /<TodoRouteFilters/);
     assert.match(checklist, /\{ id: 'sold', label: 'Sold', count: stats\.sold \}/);
     assert.match(checklist, /propertyStages\[p\.address_hash\] !== CHECKLIST_STAGES\.COMPLETED \|\| status === 'SOLD'/);
     assert.doesNotMatch(checklist, /label: `Return/);
