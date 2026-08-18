@@ -80,6 +80,25 @@ export function buildSavedRouteGroup({ doors, linePoints, centerPoint, number, c
         }));
     }
 
+    // Route lines are added before door pins so a route-colored line can never
+    // cover a smaller outcome-colored pin at wide zoom levels.
+    if (style.showRouteLines && linePoints.length > 1) {
+        const latLngs = linePoints.map(p => [Number(p.lat), Number(p.lng)]);
+
+        const hitLine = L.polyline(latLngs, { color: 'transparent', weight: 26, opacity: 0, interactive: true });
+        hitLine.on('click', selectRoute);
+        group.addLayer(hitLine);
+
+        const line = L.polyline(latLngs, {
+            color,
+            weight: style.lineWidth || 3,
+            opacity: style.lineOpacity || 0.7,
+            dashArray: style.lineDashArray || null,
+        });
+        line.on('click', selectRoute);
+        group.addLayer(line);
+    }
+
     {
         let drawn = 0;
         for (const property of doors) {
@@ -119,25 +138,6 @@ export function buildSavedRouteGroup({ doors, linePoints, centerPoint, number, c
                 }));
             }
         }
-    }
-
-    // Route line, with a wide invisible hit line underneath so it stays easy to
-    // tap on mobile.
-    if (style.showRouteLines && linePoints.length > 1) {
-        const latLngs = linePoints.map(p => [Number(p.lat), Number(p.lng)]);
-
-        const hitLine = L.polyline(latLngs, { color: 'transparent', weight: 26, opacity: 0, interactive: true });
-        hitLine.on('click', selectRoute);
-        group.addLayer(hitLine);
-
-        const line = L.polyline(latLngs, {
-            color,
-            weight: style.lineWidth || 3,
-            opacity: style.lineOpacity || 0.7,
-            dashArray: style.lineDashArray || null,
-        });
-        line.on('click', selectRoute);
-        group.addLayer(line);
     }
 
     return { group, doorPins };

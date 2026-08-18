@@ -84,6 +84,7 @@ test('Run Route keeps every stop visible in Todo with explicit outcome presentat
     assert.match(detail, /Record callback without details/);
     assert.match(savedRouteLayer, /outcomeColor\(decisionStatus\(property\)\)/);
     assert.match(savedRouteLayer, /if \(!style\.showRouteDetails && !hasDecision\) continue/);
+    assert.ok(savedRouteLayer.indexOf('// Route lines are added before door pins') < savedRouteLayer.indexOf('// Keep outcome pins visible'));
     assert.match(managerMapLayers, /hasDecision \? outcomeColor\(status\)/);
     assert.doesNotMatch(detail, /FieldRoutes|ScheduleInspectionAction|Schedule Inspection/);
     assert.match(layout, /label="Run Route"/);
