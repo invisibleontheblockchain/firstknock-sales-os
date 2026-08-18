@@ -74,7 +74,10 @@ test('Run Route keeps every stop visible in Todo with explicit outcome presentat
     assert.match(repHome, /if \(filterStatus === 'todo'\) return !\['SOLD', 'HARD_NO'\]\.includes\(p\.effective_status\)/);
     assert.match(repHome, /if \(filterStatus === 'sold'\) return p\.effective_status === 'SOLD'/);
     assert.match(repHome, /label: 'All', count: stats\.total/);
-    assert.match(checklist, /filter === 'all' \|\| filter === CHECKLIST_STAGES\.TODO/);
+    assert.match(checklist, /const \[filter, setFilter\] = useState\('all'\)/);
+    assert.match(checklist, /if \(filter === 'todo'\) return !\['SOLD', 'HARD_NO'\]\.includes\(status\)/);
+    assert.match(checklist, /\{ id: 'sold', label: 'Sold', count: stats\.sold \}/);
+    assert.doesNotMatch(checklist, /label: `Return/);
     assert.match(propertyCard, /Status: \{outcomeLabel\(property\.effective_status \|\| 'ELIGIBLE'\)\}/);
     assert.match(checklist, /Status: \{outcomeLabel\(currentStatus \|\| 'ELIGIBLE'\)\}/);
     assert.match(propertyCard, /formatRunRouteAge\(age\)/);

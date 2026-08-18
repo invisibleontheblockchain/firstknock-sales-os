@@ -28,6 +28,7 @@ import { isBusinessOwnedProperty } from '../logic/ownerType';
 import { formatPropertyAge } from '@/utils';
 import { isNewConstruction } from '@/lib/newConstruction';
 import NewBuildBadge from '@/components/rep/NewBuildBadge';
+import RouteFunnelTabs from '@/components/rep/RouteFunnelTabs';
 import { base44 } from '@/api/base44Client';
 
 const BRAND = {
@@ -58,7 +59,7 @@ const formatNumber = (value) => {
 export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, onClose, navigationApp = 'apple', activeRouteSoldFilter, setActiveRouteSoldFilter }) {
     const [latestRoute, setLatestRoute] = useState(route);
     const [expandedId, setExpandedId] = useState(null);
-    const [filter, setFilter] = useState(CHECKLIST_STAGES.TODO);
+    const [filter, setFilter] = useState('all');
     const [decisionFilter, setDecisionFilter] = useState('all');
     const [callbackPhone, setCallbackPhone] = useState('');
     const [selectedAction, setSelectedAction] = useState(null);
@@ -175,7 +176,12 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
         return stageMap;
     }, [visibleRouteProperties, propertyStatuses, logsByProperty]);
 
-    const stageDecisionOptions = STAGE_DECISION_OPTIONS[filter] || null;
+    const stageDecisionOptions = filter === 'done'
+        ? [
+            ...(STAGE_DECISION_OPTIONS[CHECKLIST_STAGES.FOLLOW_UP] || []),
+            ...(STAGE_DECISION_OPTIONS[CHECKLIST_STAGES.COMPLETED] || []),
+        ].filter(option => option.value !== 'SOLD')
+        : null;
 
     // Switching stages clears a decision filter that the new stage cannot show,
     // otherwise the list would look empty for no visible reason.
@@ -185,20 +191,30 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
 
     const filteredProperties = useMemo(() => {
         return visibleRouteProperties.filter(p => {
-            if (filter === 'all' || filter === CHECKLIST_STAGES.TODO) return true;
-            if (propertyStages[p.address_hash] !== filter) return false;
-            if (decisionFilter === 'all') return true;
-            return propertyStatuses[p.address_hash] === decisionFilter;
+            const status = propertyStatuses[p.address_hash] || 'ELIGIBLE';
+            if (filter === 'todo') return !['SOLD', 'HARD_NO'].includes(status);
+            if (filter === 'done') {
+                if (status === 'ELIGIBLE' || status === 'SOLD') return false;
+                return decisionFilter === 'all' || status === decisionFilter;
+            }
+            if (filter === 'sold') return status === 'SOLD';
+            return true;
         });
-    }, [visibleRouteProperties, propertyStages, propertyStatuses, filter, decisionFilter]);
+    }, [visibleRouteProperties, propertyStatuses, filter, decisionFilter]);
 
-    const stats = useMemo(
-        () => summarizeChecklistStages(
+    const stats = useMemo(() => {
+        const stageCounts = summarizeChecklistStages(
             visibleRouteProperties,
             (property) => propertyStages[property.address_hash]
-        ),
-        [visibleRouteProperties, propertyStages]
-    );
+        );
+        const statuses = visibleRouteProperties.map(p => propertyStatuses[p.address_hash] || 'ELIGIBLE');
+        return {
+            ...stageCounts,
+            todo: statuses.filter(status => !['SOLD', 'HARD_NO'].includes(status)).length,
+            done: statuses.filter(status => status !== 'ELIGIBLE' && status !== 'SOLD').length,
+            sold: statuses.filter(status => status === 'SOLD').length,
+        };
+    }, [visibleRouteProperties, propertyStages, propertyStatuses]);
 
     const remainingProperties = useMemo(
         () => selectRemainingTodoStops(visibleRouteProperties, propertyStatuses),
@@ -476,25 +492,17 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
 
                 {/* Filters + Start Route */}
                 <div className="grid grid-cols-2 items-center gap-2 sm:flex sm:flex-wrap">
-                    <div className="col-span-2 grid grid-cols-4 gap-1 rounded-xl border border-white/10 bg-white/[0.04] p-1 sm:flex sm:flex-1">
-                        {[
-                            { id: 'all', label: 'All' },
-                            { id: CHECKLIST_STAGES.TODO, label: `Todo ${stats.total}` },
-                            { id: CHECKLIST_STAGES.FOLLOW_UP, label: `Return ${stats.followup}` },
-                            { id: CHECKLIST_STAGES.COMPLETED, label: `Done ${stats.completed}` }
-                        ].map(f => (
-                            <button
-                                key={f.id}
-                                onClick={() => setFilter(f.id)}
-                                className={`min-h-8 rounded-lg px-2.5 text-[10px] font-black uppercase tracking-[0.08em] transition-colors sm:flex-1 ${
-                                    filter === f.id
-                                        ? 'border border-[#2EEB57]/30 bg-[#2EEB57]/12 text-[#86efac]'
-                                        : 'border border-transparent text-white/50 hover:text-white'
-                                }`}
-                            >
-                                {f.label}
-                            </button>
-                        ))}
+                    <div className="col-span-2 sm:flex-1">
+                        <RouteFunnelTabs
+                            activeTab={filter}
+                            onChange={setFilter}
+                            tabs={[
+                                { id: 'all', label: 'All', count: stats.total },
+                                { id: 'todo', label: 'Todo', count: stats.todo },
+                                { id: 'done', label: 'Done', count: stats.done },
+                                { id: 'sold', label: 'Sold', count: stats.sold },
+                            ]}
+                        />
                     </div>
                     {setActiveRouteSoldFilter && (
                         <select
@@ -576,12 +584,12 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
                 <div className="px-3 py-2 space-y-1.5">
                     {filteredProperties.length === 0 && (
                         <p className="px-2 py-8 text-center text-[11px] font-semibold text-white/40">
-                            {filter === CHECKLIST_STAGES.TODO
-                                ? 'Every stop on this route has been knocked.'
-                                : filter === CHECKLIST_STAGES.FOLLOW_UP
-                                    ? 'No stops need another visit right now.'
-                                    : filter === CHECKLIST_STAGES.COMPLETED
-                                        ? 'No stops are fully completed yet.'
+                            {filter === 'todo'
+                                ? 'No open opportunities.'
+                                : filter === 'done'
+                                    ? 'No completed outcomes yet.'
+                                    : filter === 'sold'
+                                        ? 'No sales yet.'
                                         : 'No stops match this filter.'}
                         </p>
                     )}
