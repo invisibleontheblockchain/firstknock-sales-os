@@ -4,8 +4,8 @@ import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { LogIn, Mail, Lock, Loader2 } from "lucide-react";
-import AuthLayout from "@/components/AuthLayout";
+import { LockKeyhole, Mail, Lock, Loader2 } from "lucide-react";
+import CommandMapAuthLayout from "@/components/auth/CommandMapAuthLayout";
 import GoogleIcon from "@/components/GoogleIcon";
 import { safeReturnTo } from "@/lib/authReturnTo";
 
@@ -37,8 +37,8 @@ export default function Login() {
   };
 
   return (
-    <AuthLayout
-      icon={LogIn}
+    <CommandMapAuthLayout
+      icon={LockKeyhole}
       title="Welcome back"
       subtitle="Log in to your account"
       footer={
@@ -55,7 +55,7 @@ export default function Login() {
     >
       <Button
         variant="outline"
-        className="w-full h-12 text-sm font-medium mb-6"
+        className="mb-6 h-12 w-full rounded-lg border-white/20 bg-transparent text-sm font-medium text-white hover:border-primary/50 hover:bg-primary/5 hover:text-white"
         onClick={handleGoogle}
       >
         <GoogleIcon className="w-5 h-5 mr-2" />
@@ -67,7 +67,7 @@ export default function Login() {
           <div className="w-full border-t border-border" />
         </div>
         <div className="relative flex justify-center text-xs uppercase">
-          <span className="bg-card px-3 text-muted-foreground">or</span>
+          <span className="bg-[#020a05] px-3 text-white/55">or</span>
         </div>
       </div>
 
@@ -90,7 +90,7 @@ export default function Login() {
               placeholder="you@example.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="pl-10 h-12"
+              className="h-12 rounded-lg border-white/15 bg-black/25 pl-10 text-white placeholder:text-white/40 focus-visible:border-primary/60"
               required
             />
           </div>
@@ -111,12 +111,12 @@ export default function Login() {
               placeholder="••••••••"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="pl-10 h-12"
+              className="h-12 rounded-lg border-white/15 bg-black/25 pl-10 text-white placeholder:text-white/40 focus-visible:border-primary/60"
               required
             />
           </div>
         </div>
-        <Button type="submit" className="w-full h-12 font-medium" disabled={loading}>
+        <Button type="submit" className="h-12 w-full rounded-lg font-semibold shadow-[0_0_24px_rgba(46,235,87,0.24)]" disabled={loading}>
           {loading ? (
             <>
               <Loader2 className="w-4 h-4 mr-2 animate-spin" />
@@ -127,6 +127,6 @@ export default function Login() {
           )}
         </Button>
       </form>
-    </AuthLayout>
+    </CommandMapAuthLayout>
   );
 }
