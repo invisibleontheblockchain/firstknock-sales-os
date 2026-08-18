@@ -1,7 +1,12 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import Stripe from 'npm:stripe@14.14.0';
 import { recordReferralInvoice } from '../../shared/referralLedger.js';
-import { PRECISION_CREDIT_COMPONENT, isPaidPrecisionCreditInvoice } from '../../shared/precisionCredits.js';
+import {
+    CREDIT_BLOCK_PRICE_CENTS,
+    CREDIT_BLOCK_PROPERTIES,
+    PRECISION_CREDIT_COMPONENT,
+    isPaidPrecisionCreditInvoice
+} from '../../shared/precisionCredits.js';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') || '');
 const endpointSecret = Deno.env.get('STRIPE_WEBHOOK_SECRET');
@@ -158,7 +163,7 @@ async function recordPrecisionCreditInvoice(base44: any, userId: string, subscri
     for (const line of invoice?.lines?.data || []) {
         if (String(line?.price?.metadata?.billing_component || '') !== PRECISION_CREDIT_COMPONENT) continue;
         const amountCents = Math.max(0, Math.floor(Number(line?.amount || 0)));
-        const credits = amountCents * 2;
+        const credits = Math.floor(amountCents * CREDIT_BLOCK_PROPERTIES / CREDIT_BLOCK_PRICE_CENTS);
         if (!line?.id || credits <= 0) continue;
         const existing = await base44.asServiceRole.entities.PrecisionCreditLedger.filter({
             invoice_id: invoice.id,

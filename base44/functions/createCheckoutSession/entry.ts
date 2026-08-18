@@ -114,7 +114,7 @@ async function createPrecisionCreditPrice() {
         recurring: { interval: 'month' },
         product_data: { name: 'FirstKnock Precision Rollover Credits' },
         metadata: { billing_component: PRECISION_CREDIT_COMPONENT, properties_per_block: '1000' }
-    }, { idempotencyKey: 'firstknock-precision-rollover-price-v1' });
+    }, { idempotencyKey: 'firstknock-precision-rollover-price-v2-4900' });
 }
 
 function existingSubscriptionResponse(subscription: any) {
@@ -356,8 +356,14 @@ async function activateTrialSubscription({
         itemUpdates.push({ id: currentItem.id, price: targetPriceId, quantity });
     }
     const creditItem = creditItems[0];
+    const creditPriceMatches = Number(creditItem?.price?.unit_amount || 0) === CREDIT_BLOCK_PRICE_CENTS
+        && creditItem?.price?.currency === 'usd'
+        && creditItem?.price?.recurring?.interval === 'month';
     if (creditItem && extraBlocks === 0) {
         itemUpdates.push({ id: creditItem.id, deleted: true });
+    } else if (creditItem && extraBlocks > 0 && !creditPriceMatches) {
+        const creditPrice = await createPrecisionCreditPrice();
+        itemUpdates.push({ id: creditItem.id, price: creditPrice.id, quantity: extraBlocks });
     } else if (creditItem && Number(creditItem.quantity || 0) !== extraBlocks) {
         itemUpdates.push({ id: creditItem.id, quantity: extraBlocks });
     } else if (!creditItem && extraBlocks > 0) {
@@ -513,6 +519,7 @@ Deno.serve(async (req: Request) => {
             && session.metadata?.checkout_intent === checkoutIntent
             && Number(session.metadata?.quantity || 1) === quantity
             && Number(session.metadata?.precision_extra_blocks || 0) === extraBlocks
+            && (extraBlocks === 0 || Number(session.metadata?.precision_credit_price_cents || 0) === CREDIT_BLOCK_PRICE_CENTS)
         );
 
         // Keep at most one Checkout capable of creating a subscription. The
@@ -531,6 +538,7 @@ Deno.serve(async (req: Request) => {
             checkout_intent: checkoutIntent,
             quantity: String(quantity),
             precision_extra_blocks: String(extraBlocks),
+            precision_credit_price_cents: String(CREDIT_BLOCK_PRICE_CENTS),
             started_with_trial: String(trialDays === 7)
         };
         const lineItems: any[] = [{
@@ -547,17 +555,8 @@ Deno.serve(async (req: Request) => {
             quantity
         }];
         if (planId === 'precision' && extraBlocks > 0) {
-            lineItems.push({
-                price_data: {
-                    currency: 'usd',
-                    product_data: { name: 'FirstKnock Precision Rollover Credits' },
-                    recurring: { interval: 'month' },
-                    unit_amount: CREDIT_BLOCK_PRICE_CENTS,
-                    tax_behavior: 'exclusive',
-                    metadata: { billing_component: PRECISION_CREDIT_COMPONENT, properties_per_block: '1000' }
-                },
-                quantity: extraBlocks
-            });
+            const creditPrice = await createPrecisionCreditPrice();
+            lineItems.push({ price: creditPrice.id, quantity: extraBlocks });
         }
         const sessionConfig: any = {
             mode: 'subscription',

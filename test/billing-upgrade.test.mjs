@@ -9,6 +9,7 @@ import ts from 'typescript';
 import { getBillingState, shouldShowTrialActivation } from '../src/lib/billingState.js';
 import {
   CREDIT_BLOCK_PRICE_CENTS,
+  CREDIT_BLOCK_PROPERTIES,
   PRECISION_CREDIT_COMPONENT,
   isPaidPrecisionCreditInvoice,
   isPrecisionCreditPrice,
@@ -52,6 +53,7 @@ function loadBackendHandler(path, { base44, stripeApi }) {
     Response,
     URL,
     CREDIT_BLOCK_PRICE_CENTS,
+    CREDIT_BLOCK_PROPERTIES,
     PRECISION_CREDIT_COMPONENT,
     isPaidPrecisionCreditInvoice,
     isPrecisionCreditPrice,
@@ -456,6 +458,12 @@ test('normal Checkout uses server pricing, preserves Precision seat purchases, a
       retrieve: async (id) => ({ id, deleted: false, metadata: { base44_user_id: user.id } })
     },
     subscriptions: { list: async () => ({ data: [] }) },
+    prices: {
+      create: async (params) => {
+        assert.equal(params.unit_amount, 4900);
+        return { id: 'price_precision_credits_4900' };
+      }
+    },
     checkout: {
       sessions: {
         list: async () => ({ data: [] }),
@@ -483,6 +491,7 @@ test('normal Checkout uses server pricing, preserves Precision seat purchases, a
       body: JSON.stringify({
         planId,
         quantity: 99,
+        extra_blocks: planId === 'precision' ? 1 : 0,
         amountCents: 1,
         priceId: 'price_untrusted',
         successUrl: 'https://app.example.com/Billing?success=true',
@@ -496,6 +505,8 @@ test('normal Checkout uses server pricing, preserves Precision seat purchases, a
   assert.equal(checkoutCalls[0].params.line_items[0].quantity, 2);
   assert.equal(checkoutCalls[1].params.line_items[0].price_data.unit_amount, 9900);
   assert.equal(checkoutCalls[1].params.line_items[0].quantity, 99);
+  assert.equal(checkoutCalls[1].params.line_items[1].price, 'price_precision_credits_4900');
+  assert.equal(checkoutCalls[1].params.line_items[1].quantity, 1);
   assert.equal(checkoutCalls[0].options.idempotencyKey, checkoutCalls[1].options.idempotencyKey);
   assert.equal(checkoutCalls[0].params.success_url, 'https://firstknock.online/Billing?success=true');
   assert.equal(checkoutCalls[0].params.cancel_url, 'https://firstknock.online/Billing?canceled=true');
@@ -1245,5 +1256,6 @@ test('UI and backend wiring keep the $99 activation and neutral Stripe return pa
   assert.match(checkoutSource, /checkout\.sessions\.list\(\{/);
   assert.match(checkoutSource, /checkout\.sessions\.expire\(session\.id\)/);
   assert.match(checkoutSource, /const checkoutIdempotencyKey = `firstknock-checkout-/);
+  assert.equal(CREDIT_BLOCK_PRICE_CENTS, 4900);
   assert.match(webhookSource, /Number\(invoice\?\.amount_paid \|\| 0\) > 0/);
 });

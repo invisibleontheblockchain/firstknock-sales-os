@@ -1,7 +1,7 @@
 export const BASE_PRECISION_PROPERTIES = 1000;
 export const MAX_PRECISION_PROPERTIES = 50000;
 export const CREDIT_BLOCK_PROPERTIES = 1000;
-export const CREDIT_BLOCK_PRICE_CENTS = 500;
+export const CREDIT_BLOCK_PRICE_CENTS = 4900;
 export const MAX_EXTRA_CREDIT_BLOCKS = 49;
 export const PRECISION_CREDIT_COMPONENT = 'precision_extra_credits';
 

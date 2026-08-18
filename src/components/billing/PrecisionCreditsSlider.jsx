@@ -2,7 +2,8 @@ import React from 'react';
 
 export default function PrecisionCreditsSlider({ value, onChange, disabled = false, actionLabel, onAction, loading = false }) {
   const extraProperties = Math.max(0, value - 1000);
-  const addOnPrice = extraProperties * 0.005;
+  const extraBlocks = extraProperties / 1000;
+  const addOnPrice = extraBlocks * 49;
 
   return (
     <div className="rounded-xl border border-yellow-500/25 bg-yellow-500/[0.06] p-4 text-left">
@@ -29,7 +30,7 @@ export default function PrecisionCreditsSlider({ value, onChange, disabled = fal
       />
       <div className="mt-2 flex justify-between text-[10px] text-gray-500"><span>1,000</span><span>50,000</span></div>
       <div className="mt-3 flex items-center justify-between border-t border-white/10 pt-3 text-sm">
-        <span className="text-gray-400">{extraProperties.toLocaleString()} extra at $0.005 each</span>
+        <span className="text-gray-400">{extraBlocks.toLocaleString()} extra {extraBlocks === 1 ? 'block' : 'blocks'} at $49 per 1,000</span>
         <span className="font-bold text-white">${(99 + addOnPrice).toFixed(2)}/mo</span>
       </div>
       {onAction && (

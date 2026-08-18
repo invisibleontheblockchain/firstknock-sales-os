@@ -61,8 +61,11 @@ export default async function(req) {
         }
 
         const creditItem = subscription.items.data.find(item => isPrecisionCreditPrice(item.price));
+        const creditPriceMatches = Number(creditItem?.price?.unit_amount || 0) === CREDIT_BLOCK_PRICE_CENTS
+            && creditItem?.price?.currency === 'usd'
+            && creditItem?.price?.recurring?.interval === 'month';
         const currentExtraBlocks = configuredExtraCredits(subscription) / 1000;
-        if (currentExtraBlocks === extraBlocks) {
+        if (currentExtraBlocks === extraBlocks && (extraBlocks === 0 || creditPriceMatches)) {
             return Response.json({ success: true, unchanged: true, extra_blocks: extraBlocks, configured_extra_credits: extraBlocks * 1000 });
         }
         const isIncrease = extraBlocks > currentExtraBlocks;
@@ -70,7 +73,7 @@ export default async function(req) {
         const items = [];
         if (extraBlocks === 0 && creditItem) {
             items.push({ id: creditItem.id, deleted: true });
-        } else if (extraBlocks > 0 && creditItem) {
+        } else if (extraBlocks > 0 && creditItem && creditPriceMatches) {
             items.push({ id: creditItem.id, quantity: extraBlocks });
         } else if (extraBlocks > 0) {
             const price = await stripe.prices.create({
@@ -79,8 +82,10 @@ export default async function(req) {
                 recurring: { interval: 'month' },
                 product_data: { name: 'FirstKnock Precision Rollover Credits' },
                 metadata: { billing_component: PRECISION_CREDIT_COMPONENT, properties_per_block: '1000' }
-            }, { idempotencyKey: 'firstknock-precision-rollover-price-v1' });
-            items.push({ price: price.id, quantity: extraBlocks });
+            }, { idempotencyKey: 'firstknock-precision-rollover-price-v2-4900' });
+            items.push(creditItem
+                ? { id: creditItem.id, price: price.id, quantity: extraBlocks }
+                : { price: price.id, quantity: extraBlocks });
         }
 
         const updated = await stripe.subscriptions.update(subscription.id, {
@@ -89,7 +94,7 @@ export default async function(req) {
             proration_behavior: isIncrease ? 'always_invoice' : 'none',
             payment_behavior: isIncrease ? 'pending_if_incomplete' : 'allow_incomplete',
             expand: ['latest_invoice.payment_intent']
-        }, { idempotencyKey: `firstknock-precision-credits-${subscription.id}-${extraBlocks}-${subscription.items.data.map(item => `${item.id}:${item.quantity || 1}`).join('_')}` });
+        }, { idempotencyKey: `firstknock-precision-credits-v2-4900-${subscription.id}-${extraBlocks}-${subscription.items.data.map(item => `${item.id}:${item.quantity || 1}`).join('_')}` });
         const invoice = typeof updated.latest_invoice === 'string'
             ? await stripe.invoices.retrieve(updated.latest_invoice)
             : updated.latest_invoice;
