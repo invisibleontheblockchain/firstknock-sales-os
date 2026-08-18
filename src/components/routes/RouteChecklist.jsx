@@ -28,7 +28,6 @@ import { isBusinessOwnedProperty } from '../logic/ownerType';
 import { formatPropertyAge } from '@/utils';
 import { isNewConstruction } from '@/lib/newConstruction';
 import NewBuildBadge from '@/components/rep/NewBuildBadge';
-import RouteFunnelTabs from '@/components/rep/RouteFunnelTabs';
 import { base44 } from '@/api/base44Client';
 
 const BRAND = {
@@ -177,10 +176,8 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
     }, [visibleRouteProperties, propertyStatuses, logsByProperty]);
 
     const stageDecisionOptions = filter === 'done'
-        ? [
-            ...(STAGE_DECISION_OPTIONS[CHECKLIST_STAGES.FOLLOW_UP] || []),
-            ...(STAGE_DECISION_OPTIONS[CHECKLIST_STAGES.COMPLETED] || []),
-        ].filter(option => option.value !== 'SOLD')
+        ? (STAGE_DECISION_OPTIONS[CHECKLIST_STAGES.COMPLETED] || [])
+            .filter(option => option.value !== 'SOLD')
         : null;
 
     // Switching stages clears a decision filter that the new stage cannot show,
@@ -194,13 +191,13 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
             const status = propertyStatuses[p.address_hash] || 'ELIGIBLE';
             if (filter === 'todo') return !['SOLD', 'HARD_NO'].includes(status);
             if (filter === 'done') {
-                if (status === 'ELIGIBLE' || status === 'SOLD') return false;
+                if (propertyStages[p.address_hash] !== CHECKLIST_STAGES.COMPLETED || status === 'SOLD') return false;
                 return decisionFilter === 'all' || status === decisionFilter;
             }
             if (filter === 'sold') return status === 'SOLD';
             return true;
         });
-    }, [visibleRouteProperties, propertyStatuses, filter, decisionFilter]);
+    }, [visibleRouteProperties, propertyStages, propertyStatuses, filter, decisionFilter]);
 
     const stats = useMemo(() => {
         const stageCounts = summarizeChecklistStages(
@@ -211,7 +208,10 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
         return {
             ...stageCounts,
             todo: statuses.filter(status => !['SOLD', 'HARD_NO'].includes(status)).length,
-            done: statuses.filter(status => status !== 'ELIGIBLE' && status !== 'SOLD').length,
+            done: visibleRouteProperties.filter(p => (
+                propertyStages[p.address_hash] === CHECKLIST_STAGES.COMPLETED
+                && (propertyStatuses[p.address_hash] || 'ELIGIBLE') !== 'SOLD'
+            )).length,
             sold: statuses.filter(status => status === 'SOLD').length,
         };
     }, [visibleRouteProperties, propertyStages, propertyStatuses]);
@@ -492,17 +492,26 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
 
                 {/* Filters + Start Route */}
                 <div className="grid grid-cols-2 items-center gap-2 sm:flex sm:flex-wrap">
-                    <div className="col-span-2 sm:flex-1">
-                        <RouteFunnelTabs
-                            activeTab={filter}
-                            onChange={setFilter}
-                            tabs={[
-                                { id: 'all', label: 'All', count: stats.total },
-                                { id: 'todo', label: 'Todo', count: stats.todo },
-                                { id: 'done', label: 'Done', count: stats.done },
-                                { id: 'sold', label: 'Sold', count: stats.sold },
-                            ]}
-                        />
+                    <div className="col-span-2 grid grid-cols-4 gap-1 rounded-xl border border-white/10 bg-white/[0.04] p-1 sm:flex sm:flex-1">
+                        {[
+                            { id: 'all', label: 'All', count: stats.total },
+                            { id: 'todo', label: 'Todo', count: stats.todo },
+                            { id: 'done', label: 'Done', count: stats.done },
+                            { id: 'sold', label: 'Sold', count: stats.sold },
+                        ].map(tab => (
+                            <button
+                                key={tab.id}
+                                type="button"
+                                onClick={() => setFilter(tab.id)}
+                                className={`min-h-8 whitespace-nowrap rounded-lg px-2.5 text-[10px] font-black uppercase tracking-[0.04em] transition-colors sm:min-w-[5.5rem] sm:flex-1 sm:text-xs ${
+                                    filter === tab.id
+                                        ? 'border border-[#2EEB57]/30 bg-[#2EEB57]/12 text-[#86efac]'
+                                        : 'border border-transparent text-white/60 hover:bg-white/[0.06] hover:text-white'
+                                }`}
+                            >
+                                {tab.label} {tab.count}
+                            </button>
+                        ))}
                     </div>
                     {setActiveRouteSoldFilter && (
                         <select
