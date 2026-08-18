@@ -73,15 +73,11 @@ async function invoke(handler, body = { view: 'platform_command_center' }) {
   return { response, body: await response.json() };
 }
 
-test('global command center rejects accounts outside the private HQ audience', async () => {
+test('platform command center is public: no Base44 session or role is required', async () => {
   for (const caller of [
     null,
     { id: 'manager_1', role: 'user', app_role: 'manager', is_owner: true },
-    { id: 'custom_admin', role: 'user', app_role: 'admin' },
-    { id: 'other_platform_admin', role: 'admin', email: 'other-admin@example.com' },
-    { id: 'wrong_id', role: 'admin', email: 'baysecurity@gmail.com' },
-    { id: 'wrong_help_id', role: 'admin', email: 'firstknockhelp@gmail.com' },
-    { id: 'wrong_christian_id', role: 'admin', email: 'christian@nativapest.com' },
+    { id: 'random_visitor', role: 'user', email: 'nobody@example.com' },
   ]) {
     let serviceRead = false;
     const base44 = {
@@ -92,14 +88,15 @@ test('global command center rejects accounts outside the private HQ audience', a
     };
     const { handler } = loadFunction({ base44 });
     const result = await invoke(handler);
-    assert.equal(result.response.status, caller ? 403 : 401);
-    assert.equal(serviceRead, false);
+    assert.equal(result.response.status, 200);
+    assert.equal(result.body.success, true);
+    assert.equal(serviceRead, true);
   }
 });
 
-test('Cory receives complete empty app metrics while Stripe is unconfigured', async () => {
+test('an anonymous caller receives complete empty app metrics while Stripe is unconfigured', async () => {
   const base44 = {
-    auth: { me: async () => ({ id: '695eb764b077190880be21df', role: 'admin', email: 'BaySecurity@gmail.com' }) },
+    auth: { me: async () => null },
     asServiceRole: emptyService(),
   };
   const { handler } = loadFunction({ base44 });
@@ -120,37 +117,16 @@ test('Cory receives complete empty app metrics while Stripe is unconfigured', as
   assert.equal(result.body.rep.adoption.time_zone, 'UTC');
 });
 
-test('Christian is an explicit private HQ viewer without a platform-admin role', async () => {
-  const base44 = {
-    auth: { me: async () => ({ id: '6978c7229935cf40cde25086', role: 'owner', email: 'Christian@nativapest.com' }) },
-    asServiceRole: emptyService(),
-  };
-  const { handler } = loadFunction({ base44 });
-  const result = await invoke(handler);
-  assert.equal(result.response.status, 200);
-  assert.equal(result.body.success, true);
-});
-
-test('FirstKnock Help is an explicit private HQ viewer without a platform-admin role', async () => {
-  const base44 = {
-    auth: { me: async () => ({ id: '69cfceec85189c20b0f4e97a', role: 'user', email: 'firstknockhelp@gmail.com' }) },
-    asServiceRole: emptyService(),
-  };
-  const { handler } = loadFunction({ base44 });
-  const result = await invoke(handler);
-  assert.equal(result.response.status, 200);
-  assert.equal(result.body.success, true);
-});
-
-test('client and server HQ gates name only the same three immutable operator IDs', () => {
-  const backend = readSource(functionPath);
-  const frontend = readSource('src/lib/platformDashboardAccess.js');
-  for (const id of ['695eb764b077190880be21df', '6978c7229935cf40cde25086', '69cfceec85189c20b0f4e97a']) {
-    assert.match(backend, new RegExp(id));
-    assert.match(frontend, new RegExp(id));
+test('the legacy admin diagnostics view is unaffected and still requires an admin session', async () => {
+  for (const caller of [null, { id: 'user_1', role: 'user' }]) {
+    const base44 = {
+      auth: { me: async () => caller },
+      asServiceRole: emptyService(),
+    };
+    const { handler } = loadFunction({ base44 });
+    const result = await invoke(handler, { view: 'legacy_diagnostics' });
+    assert.equal(result.response.status, caller ? 403 : 401);
   }
-  assert.doesNotMatch(backend, /user\.role === 'admin'/);
-  assert.doesNotMatch(frontend, /getAccountRole|VITE_PLATFORM_DASHBOARD_ALLOWED_EMAILS|baysecurity|nativapest|nativepest|firstknockhelp/);
 });
 
 test('platform adoption keeps inactive users and counts only real, timezone-correct activity', () => {
@@ -609,12 +585,11 @@ test('dashboard polls on a bounded cadence, validates complete data, and indepen
   const layout = readSource('src/Layout.jsx');
   const app = readSource('src/App.jsx');
   const vite = readSource('vite.config.js');
-  assert.match(page, /canViewPlatformDashboard\(user\)/);
+  assert.doesNotMatch(page, /canViewPlatformDashboard|isAuthorizedViewer|AccessDenied/);
   assert.match(page, /refetchInterval: 60_000/);
   assert.match(page, /isCompletePlatformPayload\(payload\)/);
   assert.match(page, /Array\.isArray\(payload\?\.rep\?\.adoption\?\.reps\)/);
   assert.match(page, /adminDiagnostics', \{[\s\S]*view: 'platform_command_center'[\s\S]*time_zone: timeZone/);
-  assert.match(page, /\/hq\/index\.html/);
   assert.match(page, /scopeLabel="Platform"/);
   assert.match(page, /data\?\.rep\?\.adoption/);
   assert.doesNotMatch(page, /continuityHealth/);
