@@ -134,6 +134,7 @@ export default function PrecisionPullPanel({
 
   const handleGenerate = () => {
     if (!usageReady || Number(maxProperties) <= 0) return;
+    window.dispatchEvent(new CustomEvent('fk-first-area-building'));
     return onGenerate?.({ enabled: false });
   };
 
@@ -201,7 +202,7 @@ export default function PrecisionPullPanel({
   return (
     <>
     <div className="fixed inset-0 z-[2400] flex items-start sm:items-center justify-center overflow-y-auto bg-black/70 backdrop-blur-sm px-3 pb-[calc(env(safe-area-inset-bottom)+5rem)] pt-[calc(env(safe-area-inset-top)+5rem)] sm:p-6">
-      <div className="flex max-h-[calc(100dvh-env(safe-area-inset-top)-6rem)] w-full max-w-md flex-col overflow-hidden rounded-3xl border border-[#2EEB57]/25 bg-[#070707] shadow-2xl animate-in slide-in-from-bottom-4 sm:zoom-in-95">
+      <div data-onboarding="precision-panel" className="flex max-h-[calc(100dvh-env(safe-area-inset-top)-6rem)] w-full max-w-md flex-col overflow-hidden rounded-3xl border border-[#2EEB57]/25 bg-[#070707] shadow-2xl animate-in slide-in-from-bottom-4 sm:zoom-in-95">
         <div className="flex items-start justify-between gap-3 p-4 sm:p-5 border-b border-white/10 shrink-0">
           <div>
             <p className="text-[10px] font-bold tracking-[0.25em] text-[#39FF4A] uppercase">{selectedHistoryArea ? 'Ghost Builder' : 'Precision Generate'}</p>
@@ -537,6 +538,7 @@ export default function PrecisionPullPanel({
             </div>
           )}
           <Button
+            data-onboarding="precision-generate"
             disabled={!usageReady || Number(maxProperties) <= 0 || generating}
             onClick={handleGenerate}
             className="w-full h-12 rounded-xl bg-[#2EEB57] hover:bg-[#39FF4A] text-black font-extrabold tracking-wide"

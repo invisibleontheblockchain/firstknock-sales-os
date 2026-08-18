@@ -39,7 +39,7 @@ export default function OnboardingWizard({ user, onComplete }) {
 
     const isNewManagerWithoutTerritory = user?.app_role === 'manager' && !user.has_defined_market && !user.has_pulled_data && !user.territory_zip_codes?.length && !user.area_pulls_count;
 
-    if (!user || user.has_seen_onboarding || !user.app_role || !isOpen || isNewManagerWithoutTerritory) return null;
+    if (!user || user.has_seen_onboarding || !user.app_role || !isOpen || isNewManagerWithoutTerritory || user.app_role === 'manager') return null;
 
     const handleNext = () => {
         setStep(2);

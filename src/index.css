@@ -30,6 +30,12 @@ body,
 .fk-canvas-light-contrast { filter: saturate(0.92) contrast(1.22) brightness(1.02); }
 .fk-canvas-light-mono { filter: grayscale(1) contrast(0.96) brightness(1.06); }
 
+.fk-onboarding-focus {
+  outline: 3px solid hsl(var(--primary)) !important;
+  outline-offset: 4px;
+  box-shadow: 0 0 0 8px hsl(var(--primary) / 0.18), 0 0 32px hsl(var(--primary) / 0.45) !important;
+}
+
 /* Hide Leaflet map attribution control */
 .leaflet-control-attribution {
   display: none !important;

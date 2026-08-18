@@ -378,6 +378,16 @@ export default function TerritoryPrompt({
   }, []);
 
   useEffect(() => {
+    const walkthroughKey = user?.id ? `fk_firstAreaWalkthrough_${user.id}` : null;
+    if (routeMode !== 'precision' || drawingMode || !drawnPolygon || drawnPolygon.length < 3) return;
+    if (!walkthroughKey || localStorage.getItem(walkthroughKey) !== 'active') return;
+    setMode('generate');
+    setShowCompare(false);
+    setShowRoutePanel(false);
+    setShowPrecisionPullPanel(true);
+  }, [routeMode, drawingMode, drawnPolygon, user?.id, setMode, setShowCompare, setShowRoutePanel]);
+
+  useEffect(() => {
     if (routeMode !== 'precision') return;
     if (!selectedHistoryArea) return;
     const historyPolygon = selectedHistoryArea.polygon || [];

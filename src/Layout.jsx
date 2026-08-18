@@ -10,7 +10,7 @@ import {
 "@/components/ui/dropdown-menu";
 import AiAssistant from '@/components/help/AiAssistant';
 import OnboardingWizard from '@/components/onboarding/OnboardingWizard';
-import MarketOnboarding from '@/components/onboarding/MarketOnboarding';
+import MarketOnboarding from '@/components/onboarding/MarketOnboarding'; import FirstAreaWalkthrough from '@/components/onboarding/FirstAreaWalkthrough';
 import { ThemeProvider, useTheme } from '@/components/theme/ThemeProvider';
 import { getAppRole, isManagerAccount, isRepAccount } from '@/lib/roles';
 import { clearFieldRoutesInspectionQueue } from '@/components/fieldroutes/fieldRoutesInspectionQueue';
@@ -371,10 +371,10 @@ function LayoutInner({ children }) {
             if (method === 'draw') {
               if (!confirmCanvasNavigation('Opening drawing setup')) return;
               // Navigate to Home and trigger drawing mode with chosen shape
-              window.location.href = createPageUrl('Home') + '?startDraw=true' + (shape ? `&drawShape=${shape}` : '');
+              window.location.href = createPageUrl('Home') + '?startDraw=true&onboarding=precision' + (shape ? `&drawShape=${shape}` : '');
             }
           }} />
-        
+                <FirstAreaWalkthrough user={user} />
             </main>
 
             {/* Bottom Nav */}

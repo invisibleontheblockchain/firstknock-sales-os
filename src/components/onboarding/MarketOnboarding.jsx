@@ -1,29 +1,25 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { ArrowRight, Check, Map as MapIcon, Pencil } from 'lucide-react';
-import { base44 } from '@/api/base44Client';
 import { Button } from "@/components/ui/button";
-import { useQueryClient } from "@tanstack/react-query";
 
 export default function MarketOnboarding({ user, onComplete }) {
-    const queryClient = useQueryClient();
     const [isStarting, setIsStarting] = React.useState(false);
 
     if (!user || user.app_role !== 'manager') return null;
-    if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('startDraw') === 'true') return null;
+    const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+    const walkthroughKey = user.id ? `fk_firstAreaWalkthrough_${user.id}` : null;
+    const walkthroughActive = walkthroughKey && localStorage.getItem(walkthroughKey) === 'active';
+    if (params?.get('startDraw') === 'true' || params?.get('onboarding') === 'precision' || walkthroughActive) return null;
 
     const hasExistingTerritory = user.has_pulled_data || user.has_defined_market || user.territory_zip_codes?.length > 0 || user.area_pulls_count > 0;
     if (hasExistingTerritory) return null;
 
-    const startDrawing = async () => {
+    const startDrawing = () => {
         if (isStarting) return;
         setIsStarting(true);
-        await base44.auth.updateMe({
-            has_seen_onboarding: true,
-            has_defined_market: true,
-            pull_months_back: user.pull_months_back || 12
-        });
-        await queryClient.invalidateQueries({ queryKey: ['user'] });
+        if (walkthroughKey) localStorage.setItem(walkthroughKey, 'active');
+        localStorage.setItem('fk_routeMode', 'precision');
         onComplete?.({ method: 'draw' });
     };
 
@@ -42,10 +38,10 @@ export default function MarketOnboarding({ user, onComplete }) {
 
                         <div>
                             <h2 className="text-2xl font-extrabold text-white mb-2 tracking-tight">
-                                Define Your Territory
+                                Build Your First Precision Route
                             </h2>
                             <p className="text-gray-400 text-sm leading-relaxed">
-                                Draw your custom area directly on the satellite map. We’ll use that polygon to build your route.
+                                We’ll guide you through drawing an area, choosing recently sold homes, and building your first optimized route.
                             </p>
                         </div>
 
@@ -59,9 +55,9 @@ export default function MarketOnboarding({ user, onComplete }) {
                                     <Pencil className="w-6 h-6" />
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                    <h3 className="text-white font-extrabold text-base">Freehand Polygon</h3>
+                                    <h3 className="text-white font-extrabold text-base">Precision Quick Start</h3>
                                     <p className="text-xs text-gray-400 mt-1 leading-relaxed">
-                                        Hold and drag around the exact neighborhood, streets, or service area you want to target.
+                                        Outline a neighborhood, select your target filters, and let FirstKnock create the route.
                                     </p>
                                 </div>
                                 <ArrowRight className="w-5 h-5 text-[#39FF4A] mt-1 shrink-0" />
@@ -71,7 +67,7 @@ export default function MarketOnboarding({ user, onComplete }) {
                         <div className="bg-black/50 border border-white/10 rounded-2xl p-4 space-y-2 text-left">
                             <div className="flex items-center gap-2">
                                 <Check className="w-4 h-4 text-[#39FF4A] shrink-0" />
-                                <span className="text-xs text-gray-300">No preset circles or squares — draw the real area</span>
+                                <span className="text-xs text-gray-300">Draw the exact neighborhood you want to target</span>
                             </div>
                             <div className="flex items-center gap-2">
                                 <Check className="w-4 h-4 text-[#39FF4A] shrink-0" />
@@ -79,7 +75,7 @@ export default function MarketOnboarding({ user, onComplete }) {
                             </div>
                             <div className="flex items-center gap-2">
                                 <Check className="w-4 h-4 text-[#39FF4A] shrink-0" />
-                                <span className="text-xs text-gray-300">After drawing, choose your route settings and generate</span>
+                                <span className="text-xs text-gray-300">Your first route builds automatically after the pull</span>
                             </div>
                         </div>
 
@@ -88,7 +84,7 @@ export default function MarketOnboarding({ user, onComplete }) {
                             disabled={isStarting}
                             className="bg-[#2EEB57] hover:bg-[#39FF4A] text-black font-bold h-14 text-base w-full rounded-xl border-none"
                         >
-                            {isStarting ? 'Opening Map...' : 'Start Drawing'} <ArrowRight className="w-5 h-5 ml-2" />
+                            {isStarting ? 'Opening Map...' : 'Start Quick Setup'} <ArrowRight className="w-5 h-5 ml-2" />
                         </Button>
                     </div>
                 </div>

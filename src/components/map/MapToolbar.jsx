@@ -828,6 +828,7 @@ export default function MapToolbar({
 
                     {activeRoute &&
           <Button
+            data-onboarding="route-checklist"
             onClick={() => setShowChecklist(true)}
             className="rounded-full h-10 px-4 text-xs font-bold tracking-wide shadow-lg backdrop-blur-md transition-all active:scale-95 whitespace-nowrap"
             style={{ background: 'rgba(31, 31, 31, 0.9)', color: BRAND.gold, border: `1px solid ${BRAND.gold}` }}>
