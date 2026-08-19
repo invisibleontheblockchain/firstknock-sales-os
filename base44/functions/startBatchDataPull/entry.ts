@@ -1,7 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import { Client } from 'npm:@neondatabase/serverless@0.9.0';
 import Stripe from 'npm:stripe@14.14.0';
-import { UNLIMITED_PROPERTY_CAP, hasUnlimitedPrecision } from '../../shared/privilegedAccounts.js';
+import { UNLIMITED_PROPERTY_CAP, precisionGrantLabel, precisionGrantLimit } from '../../shared/privilegedAccounts.js';
 import {
     ACTIVE_PRECISION_STATUSES,
     classifyActivePrecisionJobs,
@@ -163,14 +163,15 @@ function stripeTimestampIso(value) {
 
 function betaPrecisionEvidence(user) {
     const grantEmail = user?.email?.toLowerCase();
-    if (hasUnlimitedPrecision(user)) {
+    const grantedLimit = precisionGrantLimit(user);
+    if (grantedLimit !== null) {
         return {
             kind: 'beta',
             paidAccess: true,
             proAccess: true,
-            limit: UNLIMITED_PROPERTY_CAP,
-            precisionLimit: UNLIMITED_PROPERTY_CAP,
-            subscriptionId: 'owner_unlimited_grant',
+            limit: grantedLimit,
+            precisionLimit: grantedLimit,
+            subscriptionId: precisionGrantLabel(grantedLimit),
             invoiceId: null,
             periodStart: new Date(2026, 0, 1).toISOString(),
             periodEnd: new Date(2030, 0, 1).toISOString()

@@ -25,7 +25,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 import ts from 'typescript';
-import { UNLIMITED_PROPERTY_CAP, hasUnlimitedPrecision } from '../../base44/shared/privilegedAccounts.js';
+import { UNLIMITED_PROPERTY_CAP, precisionGrantLabel, precisionGrantLimit } from '../../base44/shared/privilegedAccounts.js';
 
 const testDir = dirname(fileURLToPath(import.meta.url));
 export const rootDir = resolve(testDir, '..', '..');
@@ -474,7 +474,8 @@ export function loadPrecisionHandler(path, {
     console: { log: () => {}, warn: () => {}, error: () => {} },
     createClientFromRequest: () => base44,
     UNLIMITED_PROPERTY_CAP,
-    hasUnlimitedPrecision,
+    precisionGrantLabel,
+    precisionGrantLimit,
     Deno: {
       env: {
         get: (key) => (Object.prototype.hasOwnProperty.call(env, key) ? env[key] : envDefaults[key])
