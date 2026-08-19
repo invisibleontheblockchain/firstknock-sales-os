@@ -10,7 +10,7 @@ const STATUS_OPTIONS = [
     { id: 'NO_ANSWER', label: 'No Answer', icon: Home, color: '#FFFFFF' },
     { id: 'CALLBACK', label: 'Callback', icon: Phone, color: '#A855F7' },
     { id: 'HARD_NO', label: 'Not Int.', icon: Ban, color: '#FF6B6B' },
-    { id: 'NOT_MOVED_IN', label: 'Not Moved In', icon: Clock, color: '#FFA033' },
+    { id: 'NOT_MOVED_IN', label: 'Not Moved In', icon: Clock, color: '#FFBC66' },
     { id: 'DM_NOT_HOME', label: 'DM Not Home', icon: UserX, color: '#FFFFFF' },
 ];
 
