@@ -4,6 +4,7 @@ import { dirname, resolve } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
+import { UNLIMITED_PROPERTY_CAP } from '../base44/shared/privilegedAccounts.js';
 
 // "Max available" must behave like draining a well: it keeps paging until the
 // provider has nothing left inside the drawn area, and never stops because a
@@ -142,9 +143,7 @@ test('a draining chunk asks for a full chunk instead of a remaining count', () =
 
 test('only an uncapped max-available order persists the drain flag', () => {
   const flagSource = extract(startSource, 'drain_until_exhausted: countMode', ',');
-  const unlimitedCap = Number(
-    /const UNLIMITED_PROPERTY_CAP = (\d+);/.exec(startSource)?.[1],
-  );
+  const unlimitedCap = UNLIMITED_PROPERTY_CAP;
   const paidCap = Number(/const PAID_PROPERTY_CAP = (\d+);/.exec(startSource)?.[1]);
   assert.ok(unlimitedCap > paidCap);
 

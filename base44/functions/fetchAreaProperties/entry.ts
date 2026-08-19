@@ -1,6 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 import { Client } from 'npm:@neondatabase/serverless@0.9.0';
 import Stripe from 'npm:stripe@14.14.0';
+import { UNLIMITED_PROPERTY_CAP, hasUnlimitedPrecision } from '../../shared/privilegedAccounts.js';
 import {
     ACTIVE_PRECISION_STATUSES,
     classifyActivePrecisionJobs,
@@ -16,11 +17,9 @@ const FREE_AREA_LIMIT_SQ_MI = 40;
 const PAID_AREA_LIMIT_SQ_MI = 300;
 const FREE_PROPERTY_CAP = 50;
 const PAID_PROPERTY_CAP = 1000;
-// Mirrors the temporary uncapped grant in startBatchDataPull. This path resumes
-// an interrupted import, so without the same grant a large owner pull would be
-// clamped back to 1,000 on retry.
-const UNLIMITED_PROPERTY_CAP = 1000000;
-const UNLIMITED_PRECISION_EMAIL = 'invisibleontheblockchain@gmail.com';
+// UNLIMITED_PROPERTY_CAP mirrors the uncapped grant in startBatchDataPull.
+// This path resumes an interrupted import, so without the same grant a large
+// granted pull would be clamped back to 1,000 on retry.
 const PROCESSOR_START_WAIT_MS = 900;
 const PRECISION_PRICE_FLOOR_CENTS = 9900;
 const DEFAULT_ROUTE_TYPE_FILTERS = {
@@ -78,7 +77,7 @@ function trialPrecisionEvidence(subscription, userId) {
 }
 
 async function resolvePrecisionEntitlement(user) {
-    if (user?.email?.toLowerCase() === UNLIMITED_PRECISION_EMAIL) {
+    if (hasUnlimitedPrecision(user)) {
         return {
             kind: 'beta',
             paidAccess: true,

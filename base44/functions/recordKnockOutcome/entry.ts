@@ -1,5 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 import Stripe from 'npm:stripe@14.14.0';
+import { isKnockGateExempt } from '../../shared/privilegedAccounts.js';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') || '');
 const CARD_REQUIRED_AFTER = 25;
@@ -38,14 +39,6 @@ const WORKFLOW_TRANSITIONS: Record<string, {
         rawInputText: 'Workflow update - moved to Re-Knock'
     }
 };
-const EXEMPT_EMAILS = new Set([
-    'christian@nativepest.com',
-    'kevin@reefenvironmental.com',
-    'kevin@reifenvironmental.com',
-    'christian@nativepestmanagement.com',
-    'keven@reefenvironmental.com',
-    'justinhoskins44@gmail.com'
-]);
 
 class HttpError extends Error {
     status: number;
@@ -269,7 +262,7 @@ function isPrivilegedBillingAccount(user: any) {
     const role = normalized(user?.role || user?.data?.role);
     return user?.is_owner === true
         || role === 'admin'
-        || EXEMPT_EMAILS.has(normalized(user?.email));
+        || isKnockGateExempt(user);
 }
 
 function stripeResourceId(resource: any) {

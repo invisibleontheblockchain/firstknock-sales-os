@@ -1,6 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import { Client } from 'npm:@neondatabase/serverless@0.9.0';
 import Stripe from 'npm:stripe@14.14.0';
+import { UNLIMITED_PROPERTY_CAP, hasUnlimitedPrecision } from '../../shared/privilegedAccounts.js';
 import {
     ACTIVE_PRECISION_STATUSES,
     classifyActivePrecisionJobs,
@@ -19,14 +20,11 @@ import {
 
 const FREE_PROPERTY_CAP = 50;
 const PAID_PROPERTY_CAP = 1000;
-// TEMPORARY marketing grant (full-metro Charlotte pull). This one account has no
-// practical property cap. The ceiling is a large finite number rather than
-// Infinity/MAX_SAFE_INTEGER because the reservation, expected-count and progress
-// math all persist this value on the FetchJob. Delete this constant and the
-// UNLIMITED_PRECISION_EMAIL branch in betaPrecisionEvidence to restore the
-// normal 1,000-properties-per-period paid cap.
-const UNLIMITED_PROPERTY_CAP = 1000000;
-const UNLIMITED_PRECISION_EMAIL = 'invisibleontheblockchain@gmail.com';
+// Granted accounts have no practical property cap. The ceiling is a large
+// finite number rather than Infinity/MAX_SAFE_INTEGER because the reservation,
+// expected-count and progress math all persist this value on the FetchJob.
+// Empty UNLIMITED_PRECISION_EMAILS in shared/privilegedAccounts.js to restore
+// the normal 1,000-properties-per-period paid cap for everyone.
 const PROCESSOR_START_WAIT_MS = 900;
 const PRECISION_PRICE_FLOOR_CENTS = 9900;
 const DEFAULT_ROUTE_TYPE_FILTERS = {
@@ -165,7 +163,7 @@ function stripeTimestampIso(value) {
 
 function betaPrecisionEvidence(user) {
     const grantEmail = user?.email?.toLowerCase();
-    if (grantEmail === UNLIMITED_PRECISION_EMAIL) {
+    if (hasUnlimitedPrecision(user)) {
         return {
             kind: 'beta',
             paidAccess: true,
