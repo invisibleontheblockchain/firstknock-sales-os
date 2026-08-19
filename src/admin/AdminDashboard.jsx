@@ -527,7 +527,7 @@ export default function AdminDashboard() {
   const stripeBestDay = trend.reduce((best, point) => (
     Number(point?.stripe_revenue || 0) > Number(best?.stripe_revenue || 0) ? point : best
   ), null);
-  const stripeDailyAverage = Number(stripeMetrics?.collected_30d || 0) / 30;
+  const stripeDailyAverage = Number(stripeMetrics?.net_collected_30d || 0) / 30;
 
   const leaderboard = useMemo(() => {
     const query = leaderboardSearch.trim().toLowerCase();
@@ -704,7 +704,7 @@ export default function AdminDashboard() {
               <div>
                 <Eyebrow tone="violet"><CreditCard className="h-3 w-3" /> Our customers</Eyebrow>
                 <h2 className="mt-3 text-2xl font-black tracking-[-0.045em] sm:text-3xl">Revenue engine</h2>
-                <p className="mt-1 text-xs text-white/40">Live subscriber health and confirmed Stripe cash.</p>
+                <p className="mt-1 text-xs text-white/40">Live subscriber health and net Stripe cash after refunds.</p>
               </div>
               {stripeLive && <span className="hidden rounded-lg border border-white/[0.07] bg-white/[0.03] px-2.5 py-1.5 font-mono text-[9px] font-bold text-white/35 sm:block">60s refresh</span>}
             </div>
@@ -729,7 +729,7 @@ export default function AdminDashboard() {
                 <div className="grid grid-cols-2 gap-3 sm:col-span-2">
                   <MetricTile icon={UserCheck} label="Paying customers" value={formatNumber(stripeMetrics?.paying_customers)} helper={`${formatNumber(stripeMetrics?.paid_seats)} paid seats · verified by Stripe`} color="#39FF6E" />
                   <MetricTile icon={Sparkles} label="Trials & beta" value={formatNumber(stripeMetrics?.active_trials_and_beta)} helper={`${formatNumber(stripeMetrics?.active_trials)} Stripe · ${formatNumber(stripeMetrics?.active_beta_accounts)} beta`} color="#A78BFA" />
-                  <MetricTile icon={CircleDollarSign} label="Gross collected" value={formatMoney(stripeMetrics?.gross_collected, true)} helper={`${formatMoney(stripeMetrics?.collected_30d, true)} in the last 30 days`} color="#67E8F9" />
+                  <MetricTile icon={CircleDollarSign} label="Net collected" value={formatMoney(stripeMetrics?.net_collected, true)} helper={`${formatMoney(stripeMetrics?.net_collected_30d, true)} last 30 days · ${formatMoney(stripeMetrics?.total_refunded, true)} refunded`} color="#67E8F9" />
                   <MetricTile icon={AlertTriangle} label="At-risk accounts" value={formatNumber(stripeMetrics?.past_due_customers)} helper={`${formatNumber(stripeMetrics?.confirmed_payments)} confirmed payments`} color="#FB923C" />
                 </div>
               </div>
@@ -794,12 +794,12 @@ export default function AdminDashboard() {
               <div>
                 <Eyebrow tone="violet"><DollarSign className="h-3 w-3" /> Stripe cash</Eyebrow>
                 <h3 className="mt-3 text-xl font-black tracking-[-0.035em]">Cash vault</h3>
-                <p className="mt-1 text-[11px] text-white/38">Confirmed Stripe collections, day by day.</p>
+                <p className="mt-1 text-[11px] text-white/38">Net Stripe cash after refunds, day by day.</p>
               </div>
               {stripeLive && (
                 <div className="text-right">
-                  <p className="text-[8px] font-black uppercase tracking-[0.18em] text-violet-200/45">Collected · 30 days</p>
-                  <p className="mt-1 font-mono text-2xl font-black text-violet-100">{formatMoney(stripeMetrics?.collected_30d, true)}</p>
+                  <p className="text-[8px] font-black uppercase tracking-[0.18em] text-violet-200/45">Net collected · 30 days</p>
+                  <p className="mt-1 font-mono text-2xl font-black text-violet-100">{formatMoney(stripeMetrics?.net_collected_30d, true)}</p>
                 </div>
               )}
             </div>
@@ -807,15 +807,15 @@ export default function AdminDashboard() {
               <>
                 <DimensionalColumnChart
                   data={trend}
-                  ariaLabel="Thirty day confirmed Stripe cash collections"
-                  series={[{ key: 'stripe_revenue', label: 'Stripe cash', tone: 'violet' }]}
+                  ariaLabel="Thirty day net Stripe cash after refunds"
+                  series={[{ key: 'stripe_revenue', label: 'Net Stripe cash', tone: 'violet' }]}
                   scaleFormatter={(value) => formatMoney(value, true)}
-                  dayAriaLabel={(point) => `${fullDayLabel(point)}: ${preciseMoney.format(point?.stripe_revenue || 0)} collected through Stripe`}
+                  dayAriaLabel={(point) => `${fullDayLabel(point)}: ${preciseMoney.format(point?.stripe_revenue || 0)} net cash through Stripe`}
                   renderReadout={(point) => (
                     <>
                       <div><p>Selected day</p><strong>{point?.label}</strong></div>
                       <div className="dimensional-readout-values">
-                        <span><b className="text-violet-200">{preciseMoney.format(point?.stripe_revenue || 0)}</b> confirmed cash</span>
+                        <span><b className="text-violet-200">{preciseMoney.format(point?.stripe_revenue || 0)}</b> net cash</span>
                       </div>
                     </>
                   )}
@@ -1132,7 +1132,7 @@ export default function AdminDashboard() {
           </div>
           <div className="mt-4 flex flex-col gap-2 border-t border-white/[0.05] pt-4 text-[10px] leading-relaxed text-white/28 sm:flex-row sm:items-center sm:justify-between">
             <p>Sales are rep-reported. Recorded sales volume excludes Canvas sales and any sale without a dollar amount.</p>
-            <p>Stripe gross collected is paid invoice volume before refunds; MRR uses active subscriptions with verified paid history. Beta access is shown separately from Stripe trials.</p>
+            <p>Net collected is paid invoice volume minus succeeded Stripe refunds; gross collected is shown before refunds for reference. MRR uses active subscriptions with verified paid history. Beta access is shown separately from Stripe trials.</p>
           </div>
         </Panel>
 
