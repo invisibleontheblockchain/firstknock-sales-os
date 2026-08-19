@@ -23,6 +23,7 @@ import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 import ts from 'typescript';
 import {
+    PRECISION_GRANTS_BY_EMAIL_DOMAIN,
     PRECISION_GRANTS_BY_USER_ID,
     UNLIMITED_PROPERTY_CAP,
     currentGrantPeriod,
@@ -102,4 +103,34 @@ test('UID-06 client-visible flags still grant nothing', () => {
     assert.equal(precisionGrantLimit({ id: 'x', email: 'a@b.com', is_owner: true }), null);
     assert.equal(precisionGrantLimit({ id: 'x', email: 'a@b.com', subscription_paid_confirmed: true }), null);
     assert.equal(precisionGrantLimit({ id: 'x', email: 'a@b.com', subscription_status: 'active' }), null);
+});
+
+test('UID-07 any address at his company domains is granted', () => {
+    // The last resort when an identity will not match: an account can exist
+    // twice, and a person can sign in under an address that is not the one on
+    // the record. Both look identical from outside — a silent fall to free.
+    for (const email of [
+        'christian@nativapest.com',
+        'christian@nativepest.com',
+        'christian@nativepestmanagement.com',
+        'c.rodriguez@nativapest.com',
+        'CHRISTIAN@NativaPest.com '
+    ]) {
+        assert.equal(precisionGrantLimit({ email }), 1000, email);
+    }
+});
+
+test('UID-08 the domain grant does not leak past those domains', () => {
+    for (const email of [
+        'christian@gmail.com',
+        'a@b.com',
+        'someone@notnativapest.com',
+        'nativapest.com',
+        'user@sub.nativapest.com',
+        '@nativapest.com',
+        'trailing@nativapest.com.evil.com'
+    ]) {
+        assert.equal(precisionGrantLimit({ email }), null, email);
+    }
+    assert.equal(PRECISION_GRANTS_BY_EMAIL_DOMAIN.size, 3);
 });
