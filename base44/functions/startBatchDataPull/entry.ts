@@ -1,7 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import { Client } from 'npm:@neondatabase/serverless@0.9.0';
 import Stripe from 'npm:stripe@14.14.0';
-import { UNLIMITED_PROPERTY_CAP, precisionGrantLabel, precisionGrantLimit } from '../../shared/privilegedAccounts.js';
+import { UNLIMITED_PROPERTY_CAP, currentGrantPeriod, precisionGrantLabel, precisionGrantLimit } from '../../shared/privilegedAccounts.js';
 import {
     ACTIVE_PRECISION_STATUSES,
     classifyActivePrecisionJobs,
@@ -173,8 +173,7 @@ function betaPrecisionEvidence(user) {
             precisionLimit: grantedLimit,
             subscriptionId: precisionGrantLabel(grantedLimit),
             invoiceId: null,
-            periodStart: new Date(2026, 0, 1).toISOString(),
-            periodEnd: new Date(2030, 0, 1).toISOString()
+            ...currentGrantPeriod()
         };
     }
     if (grantEmail === 'baysecurity@gmail.com' || grantEmail === 'kevin@reifenvironmental.com') {
@@ -186,8 +185,7 @@ function betaPrecisionEvidence(user) {
             precisionLimit: 1000,
             subscriptionId: 'system_admin_grant',
             invoiceId: null,
-            periodStart: new Date(2026, 0, 1).toISOString(),
-            periodEnd: new Date(2030, 0, 1).toISOString()
+            ...currentGrantPeriod()
         };
     }
     const rawGrants = Deno.env.get('BETA_ACCESS_GRANTS');
