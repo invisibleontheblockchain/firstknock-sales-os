@@ -43,12 +43,29 @@ export const PRECISION_GRANTS = new Map([
 ]);
 
 /**
+ * The same ceilings keyed on the immutable Base44 user ID.
+ *
+ * Checked before the email map because an address is the weak link: the list
+ * already carries two spellings of one domain, and the address a person signs
+ * in with need not match the one on their record. An ID cannot be mistyped
+ * into somebody else's account and cannot drift when an address changes.
+ *
+ * This is server-side configuration, not a field on the user, so it is not
+ * subject to the rule that client-visible flags must never grant entitlement.
+ */
+export const PRECISION_GRANTS_BY_USER_ID = new Map([
+    // christian@nativapest.com
+    ['6978c7229935cf40cde25086', 1000]
+]);
+
+/**
  * Exempt from the 25-outcome card gate and the 50-outcome free ceiling.
  * Every granted account is included by construction: somebody who can pull
  * properties must be able to knock the doors they pulled.
  */
 export const KNOCK_GATE_EXEMPT_EMAILS = new Set([
     ...PRECISION_GRANTS.keys(),
+    'christian@nativapest.com',
     'christian@nativepest.com',
     'christian@nativepestmanagement.com',
     'kevin@reefenvironmental.com',
@@ -62,9 +79,14 @@ export const KNOCK_GATE_EXEMPT_EMAILS = new Set([
  * fall through to live Stripe verification. Null rather than 0 so a caller
  * cannot accidentally treat "no grant" as "granted nothing".
  */
+function usableLimit(value) {
+    return Number.isSafeInteger(value) && value > 0 ? value : null;
+}
+
 export function precisionGrantLimit(user) {
-    const limit = PRECISION_GRANTS.get(normalizeAccountEmail(user?.email));
-    return Number.isSafeInteger(limit) && limit > 0 ? limit : null;
+    const byId = usableLimit(PRECISION_GRANTS_BY_USER_ID.get(String(user?.id ?? '').trim()));
+    if (byId !== null) return byId;
+    return usableLimit(PRECISION_GRANTS.get(normalizeAccountEmail(user?.email)));
 }
 
 export function hasPrecisionGrant(user) {
