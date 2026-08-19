@@ -2,7 +2,7 @@ import React from 'react';
 import { DEFAULT_TODO_ROUTE_FILTERS, TODO_ROUTE_FILTER_OPTIONS } from '@/components/logic/todoRouteFilters';
 import MobileTodoRouteMenu from '@/components/rep/MobileTodoRouteMenu';
 
-export default function TodoRouteFilters({ selected, counts = {}, onChange, businessOwnedCount, hideBusinessOwned, onToggleBusinessOwned }) {
+export default function TodoRouteFilters({ selected, counts = {}, onChange, businessOwnedCount, hideBusinessOwned, onToggleBusinessOwned, newBuildCount, newBuildsOnly, onToggleNewBuilds }) {
   const selectedSet = new Set(selected);
   const allValues = TODO_ROUTE_FILTER_OPTIONS.map((option) => option.value);
   const allSelected = allValues.every((value) => selectedSet.has(value));
@@ -26,6 +26,9 @@ export default function TodoRouteFilters({ selected, counts = {}, onChange, busi
         businessOwnedCount={businessOwnedCount}
         hideBusinessOwned={hideBusinessOwned}
         onToggleBusinessOwned={onToggleBusinessOwned}
+        newBuildCount={newBuildCount}
+        newBuildsOnly={newBuildsOnly}
+        onToggleNewBuilds={onToggleNewBuilds}
       />
       <div className="hidden rounded-xl border border-white/10 bg-white/[0.035] p-2 sm:block" aria-label="Choose Todo types to show and route">
       <div className="mb-1.5 flex items-center justify-between gap-3 px-0.5">

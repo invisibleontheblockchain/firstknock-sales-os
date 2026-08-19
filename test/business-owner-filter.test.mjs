@@ -71,6 +71,7 @@ test('wires provider flags through persistence, route generation, and generated-
     const routePipeline = fs.readFileSync('src/components/logic/routeFilterPipeline.jsx', 'utf8');
     const builder = fs.readFileSync('src/components/map/RouteBuilderSettings.jsx', 'utf8');
     const checklist = fs.readFileSync('src/components/routes/RouteChecklist.jsx', 'utf8');
+    const scopeToggles = fs.readFileSync('src/components/rep/RouteScopeToggles.jsx', 'utf8');
 
     assert.match(ingestion, /corporate_owned:\s*corporateOwned/);
     assert.match(ingestion, /INSERT INTO properties[\s\S]*corporate_owned/);
@@ -80,7 +81,11 @@ test('wires provider flags through persistence, route generation, and generated-
     assert.match(routePipeline, /routeConfig\.excludeBusinessOwned/);
     assert.match(routePipeline, /!isBusinessOwnedProperty\(p\)/);
     assert.match(builder, /Exclude LLC \/ Business-Owned/);
-    assert.match(checklist, /Hide LLC \/ business-owned/);
+    // The rep-facing LLC control moved onto the shared Run Route scope row;
+    // what it actually filters is covered by test/route-scope-filters.test.mjs.
+    assert.match(scopeToggles, /Remove LLC \(/);
+    assert.match(scopeToggles, /onToggleBusinessOwned/);
+    assert.match(checklist, /applyRouteScopeFilters/);
     assert.match(checklist, /visibleRouteProperties/);
 });
 

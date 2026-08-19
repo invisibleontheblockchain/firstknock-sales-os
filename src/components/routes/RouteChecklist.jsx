@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { X, Navigation, Mic, MapPin, User, DollarSign, Ruler, Building2, ChevronUp, History, Loader2 } from 'lucide-react';
+import { X, Navigation, Mic, MapPin, User, DollarSign, Ruler, ChevronUp, History, Loader2 } from 'lucide-react';
 import { getPropertyResultSummary } from '../logic/territoryLogic';
 import PropertyHistory from '@/components/rep/PropertyHistory';
 import HouseNoteField from '@/components/routes/HouseNoteField';
@@ -28,10 +28,11 @@ import { countTodoRouteFilters, DEFAULT_TODO_ROUTE_FILTERS, matchesTodoRouteFilt
 import RouteFunnelTabs from '@/components/rep/RouteFunnelTabs';
 import TodoRouteFilters from '@/components/rep/TodoRouteFilters';
 import MobileDoneDecisionMenu from '@/components/rep/MobileDoneDecisionMenu';
+import RouteScopeToggles from '@/components/rep/RouteScopeToggles';
 import { parseOptionalSaleAmount } from '../analytics/salesManagement';
-import { isBusinessOwnedProperty } from '../logic/ownerType';
 import { formatPropertyAge } from '@/utils';
 import { isNewConstruction } from '@/lib/newConstruction';
+import { applyRouteScopeFilters, countRouteScope } from '@/lib/routeScopeFilters';
 import NewBuildBadge from '@/components/rep/NewBuildBadge';
 import { base44 } from '@/api/base44Client';
 
@@ -92,6 +93,7 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
     const [navigationSession, setNavigationSession] = useState(null);
     const [navigationError, setNavigationError] = useState('');
     const [hideBusinessOwned, setHideBusinessOwned] = useState(false);
+    const [newBuildsOnly, setNewBuildsOnly] = useState(false);
 
     useEffect(() => {
         setLatestRoute(route);
@@ -138,16 +140,24 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
     const routePositionByHash = useMemo(() => new Map(
         displayRoute.properties.map((property, index) => [property.address_hash || property.id, index + 1])
     ), [displayRoute.properties]);
-    const businessOwnedCount = useMemo(
-        () => displayRoute.properties.filter(isBusinessOwnedProperty).length,
+    // Counts come from the whole route so a toggle's badge never moves as the
+    // other toggle is flipped.
+    const scopeCounts = useMemo(
+        () => countRouteScope(displayRoute.properties),
         [displayRoute.properties]
     );
     const visibleRouteProperties = useMemo(
-        () => hideBusinessOwned
-            ? displayRoute.properties.filter(p => !isBusinessOwnedProperty(p))
-            : displayRoute.properties,
-        [displayRoute.properties, hideBusinessOwned]
+        () => applyRouteScopeFilters(displayRoute.properties, { hideBusinessOwned, newBuildsOnly }),
+        [displayRoute.properties, hideBusinessOwned, newBuildsOnly]
     );
+    const scopeToggleProps = {
+        businessOwnedCount: scopeCounts.businessOwned,
+        hideBusinessOwned,
+        onToggleBusinessOwned: () => setHideBusinessOwned(current => !current),
+        newBuildCount: scopeCounts.newBuild,
+        newBuildsOnly,
+        onToggleNewBuilds: () => setNewBuildsOnly(current => !current),
+    };
 
     // Every house-level lookup goes through address_hash, never list position.
     const logsByProperty = useMemo(() => {
@@ -598,9 +608,13 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
                             value={decisionFilter}
                             onChange={setDecisionFilter}
                             menuLabel={filter === 'all' ? 'All route decisions' : 'Completed decisions'}
-                            businessOwnedCount={businessOwnedCount}
-                            hideBusinessOwned={hideBusinessOwned}
-                            onToggleBusinessOwned={() => setHideBusinessOwned(current => !current)}
+                            {...scopeToggleProps}
+                        />
+                    )}
+                    {filter === 'sold' && (
+                        <RouteScopeToggles
+                            {...scopeToggleProps}
+                            className="order-4 col-span-2 flex rounded-xl border border-white/10 bg-white/[0.035] px-2 py-2 sm:hidden"
                         />
                     )}
                     <select
@@ -616,6 +630,7 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
                             </option>
                         ))}
                     </select>
+                    <RouteScopeToggles {...scopeToggleProps} className="hidden max-w-full flex-wrap sm:flex" />
                     <button
                         onClick={handleRouteNavigation}
                         disabled={remainingProperties.length === 0 && !hasNextNavigationBatch}
@@ -642,32 +657,12 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
                                 setTodoRouteTypes(next);
                                 setNavigationSession(null);
                             }}
-                            businessOwnedCount={businessOwnedCount}
-                            hideBusinessOwned={hideBusinessOwned}
-                            onToggleBusinessOwned={() => setHideBusinessOwned(current => !current)}
+                            {...scopeToggleProps}
                         />
                     </div>
                 )}
                 {navigationError && (
                     <p className="text-[10px] font-semibold text-red-400" role="alert">{navigationError}</p>
-                )}
-                {businessOwnedCount > 0 && (
-                    <button
-                        type="button"
-                        aria-pressed={hideBusinessOwned}
-                        onClick={() => setHideBusinessOwned(current => !current)}
-                        className="hidden w-full items-center justify-center gap-1.5 rounded-lg border px-3 py-1.5 text-[10px] font-bold tracking-wide transition-colors sm:flex"
-                        style={{
-                            background: hideBusinessOwned ? 'rgba(6,182,212,0.12)' : '#151515',
-                            borderColor: hideBusinessOwned ? 'rgba(6,182,212,0.45)' : '#262626',
-                            color: hideBusinessOwned ? '#67e8f9' : '#888'
-                        }}
-                    >
-                        <Building2 className="w-3 h-3" />
-                        {hideBusinessOwned
-                            ? `${businessOwnedCount} LLC / business-owned stops hidden`
-                            : `Hide LLC / business-owned (${businessOwnedCount})`}
-                    </button>
                 )}
             </div>
 
