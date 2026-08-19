@@ -571,20 +571,22 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
                     </span>
                 </div>
 
-                {/* Filters + Start Route */}
+                {/* Stage tabs own their line. The checklist is a max-w-lg panel, so
+                    sharing a row with the selects and the scope toggles squeezed
+                    every control to the point of being unreadable. */}
+                <RouteFunnelTabs
+                    activeTab={filter}
+                    onChange={setFilter}
+                    tabs={[
+                        { id: 'all', label: 'All', count: stats.total },
+                        { id: 'todo', label: 'Todo', count: stats.todo },
+                        { id: 'done', label: 'Done', count: stats.done },
+                        { id: 'sold', label: 'Sold', count: stats.sold },
+                    ]}
+                />
+
+                {/* Scope toggles + decision filters + Start Route */}
                 <div className="grid grid-cols-2 items-center gap-2 sm:flex sm:flex-wrap">
-                    <div className="col-span-2 sm:flex-1">
-                        <RouteFunnelTabs
-                            activeTab={filter}
-                            onChange={setFilter}
-                            tabs={[
-                                { id: 'all', label: 'All', count: stats.total },
-                                { id: 'todo', label: 'Todo', count: stats.todo },
-                                { id: 'done', label: 'Done', count: stats.done },
-                                { id: 'sold', label: 'Sold', count: stats.sold },
-                            ]}
-                        />
-                    </div>
                     {setActiveRouteSoldFilter && (
                         <select
                             value={activeRouteSoldFilter}
