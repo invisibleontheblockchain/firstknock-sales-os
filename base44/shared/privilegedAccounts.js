@@ -79,6 +79,29 @@ export function precisionGrantLabel(limit) {
     return limit >= UNLIMITED_PROPERTY_CAP ? 'owner_unlimited_grant' : 'account_precision_grant';
 }
 
+/**
+ * The billing window a granted account is metered against.
+ *
+ * Calendar month, matching how a paying customer is metered by their Stripe
+ * period. Grants used to carry a single fixed 2026-2030 window, which made a
+ * granted allowance a lifetime total rather than a monthly one: usage never
+ * reset, and reconcileLegacyJobs classified every historical pull inside that
+ * window as billable, so an account with real history arrived at zero
+ * remaining on the day its grant went live. The builder derives what it can
+ * request from `remaining`, so zero remaining reads as "drawing is broken".
+ *
+ * UTC so the window does not shift with the caller's timezone; job matching
+ * compares these strings exactly.
+ */
+export function currentGrantPeriod(now = new Date()) {
+    const year = now.getUTCFullYear();
+    const month = now.getUTCMonth();
+    return {
+        periodStart: new Date(Date.UTC(year, month, 1)).toISOString(),
+        periodEnd: new Date(Date.UTC(year, month + 1, 1)).toISOString()
+    };
+}
+
 export function isKnockGateExempt(user) {
     return KNOCK_GATE_EXEMPT_EMAILS.has(normalizeAccountEmail(user?.email));
 }
