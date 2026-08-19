@@ -5,6 +5,31 @@ export const CREDIT_BLOCK_PRICE_CENTS = 4900;
 export const MAX_EXTRA_CREDIT_BLOCKS = 49;
 export const PRECISION_CREDIT_COMPONENT = 'precision_extra_credits';
 
+// A credit pack is a one-off purchase, not a line on the subscription. It
+// funds the same rollover ledger the monthly add-on funded, so the balance,
+// the limit and the usage meter all behave identically once the money lands --
+// only the way it is charged differs. Checkout marks the session with this
+// intent so the webhook can tell a pack from a plan purchase.
+export const PRECISION_CREDIT_PACK_INTENT = 'precision_credit_pack';
+export const MIN_CREDIT_PACK_BLOCKS = 1;
+
+// Packs are bought, never set to a level, so zero is not a valid purchase --
+// this is deliberately stricter than normalizeExtraCreditBlocks, which has to
+// accept 0 to express 'remove the recurring add-on'.
+export function normalizeCreditPackBlocks(value) {
+    const blocks = Number(value ?? 0);
+    if (!Number.isInteger(blocks) || blocks < MIN_CREDIT_PACK_BLOCKS || blocks > MAX_EXTRA_CREDIT_BLOCKS) return null;
+    return blocks;
+}
+
+export function creditPackProperties(blocks) {
+    return blocks * CREDIT_BLOCK_PROPERTIES;
+}
+
+export function creditPackPriceCents(blocks) {
+    return blocks * CREDIT_BLOCK_PRICE_CENTS;
+}
+
 export function normalizeExtraCreditBlocks(value) {
     const blocks = Number(value ?? 0);
     if (!Number.isInteger(blocks) || blocks < 0 || blocks > MAX_EXTRA_CREDIT_BLOCKS) return null;

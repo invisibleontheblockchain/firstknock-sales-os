@@ -8,6 +8,8 @@ import BetaUsageMeter from '../components/beta/BetaUsageMeter';
 import { getBillingState, shouldShowTrialActivation } from '@/lib/billingState';
 import { usePrecisionUsage } from '@/hooks/usePrecisionUsage';
 import PrecisionCreditsSlider from '@/components/billing/PrecisionCreditsSlider';
+import PrecisionCreditPackCard from '@/components/billing/PrecisionCreditPackCard';
+import { MIN_CREDIT_PACK_PROPERTIES } from '@/lib/precisionCreditPacks';
 
 const PLANS = [
   {
@@ -36,6 +38,10 @@ const PLANS = [
 
 export default function Billing() {
   const [loadingPriceId, setLoadingPriceId] = useState(null);
+  // Credit packs are bought on their own, so this is a purchase size and starts
+  // at the smallest pack -- it is deliberately NOT seeded from the subscription.
+  const [creditPackProperties, setCreditPackProperties] = useState(MIN_CREDIT_PACK_PROPERTIES);
+  // Only for accounts that still carry the old recurring $49 add-on.
   const [selectedMonthlyProperties, setSelectedMonthlyProperties] = useState(1000);
   const creditSelectionInitialized = React.useRef(false);
 
@@ -80,8 +86,7 @@ export default function Billing() {
         quantity: 1,
         successUrl: window.location.origin + '/Billing?success=true',
         cancelUrl: window.location.origin + '/Billing?canceled=true',
-        trialDays: trialDays,
-        extra_blocks: Math.max(0, (selectedMonthlyProperties - 1000) / 1000)
+        trialDays: trialDays
       });
 
       console.log('[Billing] Checkout response:', JSON.stringify(res));
@@ -119,7 +124,6 @@ export default function Billing() {
         action: 'activate_trial',
         planId,
         quantity: 1,
-        extra_blocks: Math.max(0, (selectedMonthlyProperties - 1000) / 1000),
         returnUrl: window.location.origin + '/Billing?billing_return=true'
       });
       const result = res?.data || res;
@@ -179,6 +183,14 @@ export default function Billing() {
         refetchUser();
         refetchPrecisionUsage();
       }, 2000);
+    } else if (params.get('credits') === 'purchased') {
+      toast.success("Credit pack purchased. Your credits appear as soon as Stripe confirms the payment.", { duration: 7000 });
+      window.history.replaceState({}, '', window.location.pathname);
+      refetchPrecisionUsage();
+      refreshTimer = setTimeout(() => refetchPrecisionUsage(), 2000);
+    } else if (params.get('credits') === 'canceled') {
+      toast.info("Credit purchase canceled. Your plan is unchanged.");
+      window.history.replaceState({}, '', window.location.pathname);
     } else if (params.get('canceled') === 'true') {
       toast.info("Checkout canceled. You can try again anytime.");
       window.history.replaceState({}, '', window.location.pathname);
@@ -191,6 +203,17 @@ export default function Billing() {
 
   const { isTrialing, isActive, needsPaymentRecovery, hasSubscription: isSubscribed } = getBillingState(user);
   const billingReadyForPlan = () => isUserLoaded;
+
+  // Packs top up the rollover ledger, which getPrecisionUsage only reads for a
+  // paid entitlement. Selling one to a free or trialing account would take the
+  // money and raise no limit, so the server refuses it and so does the page.
+  const hasLegacyMonthlyAddOn = (precisionUsage?.configuredExtraCredits || 0) > 0;
+  const canBuyCreditPacks = Boolean(precisionUsage?.paidAccess) && isActive && !needsPaymentRecovery;
+  const creditPackBlockedReason = needsPaymentRecovery
+    ? 'Fix your payment method in the billing portal before buying credits.'
+    : isTrialing
+      ? 'Credit packs unlock once your trial converts and the $99 payment clears.'
+      : 'Credit packs require an active, paid $99 Precision plan.';
 
   const handleManageSubscription = async () => {
     try {
@@ -205,6 +228,30 @@ export default function Billing() {
       }
     } catch (error) {
       toast.error("Error opening portal: " + error.message);
+    }
+  };
+
+  const handleBuyCreditPack = async (blocks) => {
+    if (window.self !== window.top) {
+      toast.error("Stripe Checkout cannot run in this preview window. Please open your app in a new tab.", { duration: 5000 });
+      return;
+    }
+    try {
+      setLoadingPriceId('credit_pack');
+      const response = await base44.functions.invoke('purchasePrecisionCredits', {
+        blocks,
+        successUrl: window.location.origin + '/Billing?credits=purchased',
+        cancelUrl: window.location.origin + '/Billing?credits=canceled'
+      });
+      const result = response?.data || response;
+      if (result?.url) {
+        window.location.href = result.url;
+        return;
+      }
+      throw new Error(result?.error || 'Stripe did not return a checkout link for the credit pack.');
+    } catch (error) {
+      toast.error(error?.response?.data?.error || error?.message || 'Unable to start the credit pack checkout.');
+      setLoadingPriceId(null);
     }
   };
 
@@ -364,8 +411,11 @@ export default function Billing() {
                                 )}
                             </div>
 
-                            {plan.id === 'precision' && (
+                            {plan.id === 'precision' && hasLegacyMonthlyAddOn && (
                                 <div className="mb-5">
+                                    <p className="mb-2 text-[10px] uppercase tracking-wider text-gray-500">
+                                        Legacy monthly add-on
+                                    </p>
                                     <PrecisionCreditsSlider
                                         value={selectedMonthlyProperties}
                                         onChange={setSelectedMonthlyProperties}
@@ -374,12 +424,10 @@ export default function Billing() {
                                         actionLabel="UPDATE MONTHLY USAGE"
                                         loading={loadingPriceId === 'precision_credits'}
                                     />
-                                    {!isSubscribed && (
-                                        <p className="mt-2 text-center text-[10px] text-gray-500">Your selected usage and price will be sent to Stripe Checkout together.</p>
-                                    )}
-                                    {isTrialing && (
-                                        <p className="mt-2 text-center text-[10px] text-gray-500">Extra credits activate only when you upgrade and the paid invoice clears.</p>
-                                    )}
+                                    <p className="mt-2 text-center text-[10px] text-gray-500">
+                                        You bought extra usage as a recurring monthly charge. Set it to 1,000 to drop it and
+                                        buy credits as one-off packs instead.
+                                    </p>
                                 </div>
                             )}
 
@@ -431,6 +479,20 @@ export default function Billing() {
                         </div>
                     ))}
                 </div>
+
+                {isUserLoaded && (
+                    <PrecisionCreditPackCard
+                        value={creditPackProperties}
+                        onChange={setCreditPackProperties}
+                        onPurchase={handleBuyCreditPack}
+                        loading={loadingPriceId === 'credit_pack'}
+                        disabled={loadingPriceId !== null || needsPaymentRecovery}
+                        eligible={canBuyCreditPacks}
+                        ineligibleReason={creditPackBlockedReason}
+                        currentLimit={precisionUsage?.limit || 0}
+                        creditsRemaining={precisionUsage?.rolloverCreditsRemaining || 0}
+                    />
+                )}
 
                 {isUserLoaded && (
                     <p className="text-center text-xs sm:text-xs text-gray-500 mt-3 sm:mt-4">
