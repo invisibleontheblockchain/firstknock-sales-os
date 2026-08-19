@@ -79,6 +79,33 @@ export const KNOCK_GATE_EXEMPT_EMAILS = new Set([
  * fall through to live Stripe verification. Null rather than 0 so a caller
  * cannot accidentally treat "no grant" as "granted nothing".
  */
+/**
+ * Whole-domain ceilings, the last resort when an identity will not match.
+ *
+ * An account can exist more than once -- diagnoseKnockBilling reads two User
+ * records per email and takes the newest, so duplicates are expected -- and a
+ * person can sign in under an address that is not the one on the record we
+ * were given. Both failures look identical from outside: a silent fall through
+ * to the free tier.
+ *
+ * Granting the domain removes identity from the question entirely. It is
+ * deliberately a bounded monthly number rather than an uncapped one, because
+ * it covers everyone who can receive mail there.
+ */
+export const PRECISION_GRANTS_BY_EMAIL_DOMAIN = new Map([
+    // Every spelling of Christian's company seen on an account so far. The
+    // knock-gate list already carries all three, so all three are in use.
+    ['nativapest.com', 1000],
+    ['nativepest.com', 1000],
+    ['nativepestmanagement.com', 1000]
+]);
+
+function emailDomain(email) {
+    const normalized = normalizeAccountEmail(email);
+    const at = normalized.lastIndexOf('@');
+    return at > 0 && at < normalized.length - 1 ? normalized.slice(at + 1) : '';
+}
+
 function usableLimit(value) {
     return Number.isSafeInteger(value) && value > 0 ? value : null;
 }
@@ -86,7 +113,9 @@ function usableLimit(value) {
 export function precisionGrantLimit(user) {
     const byId = usableLimit(PRECISION_GRANTS_BY_USER_ID.get(String(user?.id ?? '').trim()));
     if (byId !== null) return byId;
-    return usableLimit(PRECISION_GRANTS.get(normalizeAccountEmail(user?.email)));
+    const byEmail = usableLimit(PRECISION_GRANTS.get(normalizeAccountEmail(user?.email)));
+    if (byEmail !== null) return byEmail;
+    return usableLimit(PRECISION_GRANTS_BY_EMAIL_DOMAIN.get(emailDomain(user?.email)));
 }
 
 export function hasPrecisionGrant(user) {
