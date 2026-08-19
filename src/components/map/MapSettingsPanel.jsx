@@ -38,7 +38,7 @@ const STATUS_FILTERS = [
   { id: 'no_answer', label: 'NO_ANSWER', color: '#3b82f6' },
   { id: 'callback', label: 'CALLBACK', color: '#eab308' },
   { id: 'hard_no', label: 'HARD_NO', color: '#8B5CF6' },
-  { id: 'not_moved_in', label: 'NOT_MOVED_IN', color: '#f97316' },
+  { id: 'not_moved_in', label: 'NOT_MOVED_IN', color: '#FFA033' },
   { id: 'dm_not_home', label: 'DM_NOT_HOME', color: '#06b6d4' },
 ];
 

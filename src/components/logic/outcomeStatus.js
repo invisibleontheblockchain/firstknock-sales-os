@@ -6,12 +6,18 @@ import { Check, Phone, Ban, Home, Clock, UserX } from 'lucide-react';
 //
 // Statuses with no knock-tab equivalent keep their own colour below; they are
 // not forced into a knock meaning they do not have.
+//
+// NOT_MOVED_IN is #FFA033 rather than the orange-500 it used to be. Reps kept
+// reading it as Not Interested: the old #F97316 sat at luminance 0.325 against
+// HARD_NO's 0.328, so the two washed a card to the same brightness only 25deg
+// of hue apart. The replacement is both lighter and further round the wheel,
+// which is what separates them at a glance on a sunlit phone.
 export const OUTCOME_OPTIONS = [
     { id: 'SOLD', label: 'Sold', icon: Check, color: '#39FF4A' },
     { id: 'NO_ANSWER', label: 'No Answer', icon: Home, color: '#FFFFFF' },
     { id: 'CALLBACK', label: 'Callback', icon: Phone, color: '#A855F7' },
     { id: 'HARD_NO', label: 'Not Int.', icon: Ban, color: '#FF6B6B' },
-    { id: 'NOT_MOVED_IN', label: 'Not Moved In', icon: Clock, color: '#F97316' },
+    { id: 'NOT_MOVED_IN', label: 'Not Moved In', icon: Clock, color: '#FFA033' },
     { id: 'DM_NOT_HOME', label: 'DM Not Home', icon: UserX, color: '#FFFFFF' },
 ];
 
@@ -20,7 +26,7 @@ export const OUTCOME_COLORS = {
     NO_ANSWER: '#FFFFFF',
     CALLBACK: '#A855F7',
     HARD_NO: '#FF6B6B',
-    NOT_MOVED_IN: '#F97316',
+    NOT_MOVED_IN: '#FFA033',
     DM_NOT_HOME: '#FFFFFF',
     DO_NOT_KNOCK: '#FF6B6B',
     OTHER: '#6b7280',
