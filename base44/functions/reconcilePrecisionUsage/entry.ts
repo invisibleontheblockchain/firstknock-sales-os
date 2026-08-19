@@ -1,5 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import Stripe from 'npm:stripe@14.14.0';
+import { currentGrantPeriod, precisionGrantLabel, precisionGrantLimit } from '../../shared/privilegedAccounts.js';
 
 const FREE_PROPERTY_LIMIT = 50;
 const PAID_PROPERTY_LIMIT = 1000;
@@ -107,6 +108,22 @@ Deno.serve(async (req: Request) => {
         const targetEmail = typeof body.target_email === 'string' ? body.target_email : null;
         const user = await loadTargetUser(caller, targetEmail);
 
+        // A granted account has no Stripe subscription to read a period from,
+        // so this repair tool used to 409 on exactly the accounts most likely
+        // to need repairing. Resolve the grant first and reconcile against its
+        // monthly window, the same window getPrecisionUsage meters it against.
+        const grantedLimit = precisionGrantLimit(user);
+        if (grantedLimit !== null) {
+            const granted = currentGrantPeriod();
+            return await reconcileAgainstPeriod(base44, user, {
+                periodStart: granted.periodStart,
+                periodEnd: granted.periodEnd,
+                subscriptionId: precisionGrantLabel(grantedLimit),
+                invoiceId: null,
+                propertyLimit: grantedLimit
+            });
+        }
+
         const secret = Deno.env.get('STRIPE_SECRET_KEY');
         if (!secret) throw new Error('Stripe billing verification is unavailable.');
         const stripe = new Stripe(secret);
@@ -158,11 +175,34 @@ Deno.serve(async (req: Request) => {
             throw Object.assign(new Error('An active paid Precision subscription with a current positive payment is required.'), { status: 409 });
         }
         const { subscription, invoice } = selected;
-        const periodStart = stripeTimestampIso(subscription.current_period_start);
-        const periodEnd = stripeTimestampIso(subscription.current_period_end);
-        if (!periodStart || !periodEnd) {
+        const paidPeriodStart = stripeTimestampIso(subscription.current_period_start);
+        const paidPeriodEnd = stripeTimestampIso(subscription.current_period_end);
+        if (!paidPeriodStart || !paidPeriodEnd) {
             return Response.json({ error: 'Stripe did not return a valid current billing period.' }, { status: 409 });
         }
+        return await reconcileAgainstPeriod(base44, user, {
+            periodStart: paidPeriodStart,
+            periodEnd: paidPeriodEnd,
+            subscriptionId: subscription.id,
+            invoiceId: invoice.id,
+            propertyLimit: PAID_PROPERTY_LIMIT
+        });
+    } catch (error: any) {
+        console.error('[reconcilePrecisionUsage] Failed:', error?.message || error);
+        return Response.json({ error: error.message }, { status: error.status || 500 });
+    }
+});
+
+/**
+ * Reclassifies an account's legacy FetchJobs against one billing window,
+ * whether that window came from Stripe or from a grant. Jobs that started
+ * inside it become billable usage for that period; everything older falls to
+ * the included trial and then to unmetered, so history cannot consume a
+ * current allowance.
+ */
+async function reconcileAgainstPeriod(base44: any, user: any, period: any) {
+    try {
+        const { periodStart, periodEnd, subscriptionId, invoiceId, propertyLimit } = period;
         const periodStartMs = asTimestamp(periodStart);
         const periodEndMs = asTimestamp(periodEnd);
 
@@ -190,8 +230,8 @@ Deno.serve(async (req: Request) => {
                 precision_usage_user_id: user.id,
                 precision_usage_kind: kind,
                 ...(kind === 'paid' ? {
-                    precision_subscription_id: subscription.id,
-                    precision_invoice_id: invoice.id,
+                    precision_subscription_id: subscriptionId,
+                    ...(invoiceId ? { precision_invoice_id: invoiceId } : {}),
                     precision_usage_period_start: periodStart,
                     precision_usage_period_end: periodEnd
                 } : {}),
@@ -212,7 +252,7 @@ Deno.serve(async (req: Request) => {
         const trialProperties = Math.min(FREE_PROPERTY_LIMIT, jobs
             .filter(job => job.precision_usage_kind === 'trial')
             .reduce((sum, job) => sum + Math.max(0, Number(job.precision_usage_count || 0)), 0));
-        const paidProperties = Math.min(PAID_PROPERTY_LIMIT, jobs
+        const paidProperties = Math.min(propertyLimit, jobs
             .filter(job => job.precision_usage_kind === 'paid' && Math.abs((asTimestamp(job.precision_usage_period_start) || 0) - (periodStartMs || 0)) < 1000)
             .reduce((sum, job) => sum + Math.max(0, Number(job.precision_usage_count || 0)), 0));
 
@@ -234,11 +274,11 @@ Deno.serve(async (req: Request) => {
             precision_usage_period_end: periodEnd,
             trial_properties_credited: trialProperties,
             paid_properties_used: paidProperties,
-            paid_properties_remaining: Math.max(0, PAID_PROPERTY_LIMIT - paidProperties),
-            paid_property_limit: PAID_PROPERTY_LIMIT
+            paid_properties_remaining: Math.max(0, propertyLimit - paidProperties),
+            paid_property_limit: propertyLimit
         });
     } catch (error: any) {
         console.error('[reconcilePrecisionUsage] Failed:', error?.message || error);
         return Response.json({ error: error.message }, { status: error.status || 500 });
     }
-});
+}
