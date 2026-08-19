@@ -7,6 +7,7 @@ import vm from 'node:vm';
 import ts from 'typescript';
 
 import { normalizePrecisionUsageResponse } from '../src/lib/precisionUsage.js';
+import { UNLIMITED_PROPERTY_CAP, hasUnlimitedPrecision } from '../base44/shared/privilegedAccounts.js';
 import {
   calculatePrecisionCreditState,
   configuredExtraCredits,
@@ -36,6 +37,8 @@ function loadHandler({ base44, stripeApi }) {
   vm.runInNewContext(executable, {
     console,
     createClientFromRequest: () => base44,
+    UNLIMITED_PROPERTY_CAP,
+    hasUnlimitedPrecision,
     Deno: {
       env: { get: (key) => key === 'STRIPE_SECRET_KEY' ? 'sk_test' : null },
       serve: (registeredHandler) => { handler = registeredHandler; }

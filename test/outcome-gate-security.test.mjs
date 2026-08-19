@@ -5,6 +5,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 import ts from 'typescript';
+import { isKnockGateExempt } from '../base44/shared/privilegedAccounts.js';
 
 const testDir = dirname(fileURLToPath(import.meta.url));
 const rootDir = resolve(testDir, '..');
@@ -36,6 +37,7 @@ function loadHandler({ base44, stripeApi, stripeConfigured = true }) {
   vm.runInNewContext(executable, {
     console,
     createClientFromRequest: () => base44,
+    isKnockGateExempt,
     Stripe: makeStripeClass(stripeApi),
     Deno: {
       env: {

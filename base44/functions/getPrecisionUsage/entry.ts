@@ -6,13 +6,14 @@ import {
     isPaidPrecisionCreditInvoice,
     listPrecisionCreditLedger
 } from '../../shared/precisionCredits.js';
+import { UNLIMITED_PROPERTY_CAP, hasUnlimitedPrecision } from '../../shared/privilegedAccounts.js';
 
 const FREE_PROPERTY_LIMIT = 50;
 const PAID_PROPERTY_LIMIT = 1000;
-// Mirrors the temporary uncapped grant in startBatchDataPull so the usage meter
-// reports the same allowance the pull path will actually honor.
-const UNLIMITED_PROPERTY_LIMIT = 1000000;
-const UNLIMITED_PRECISION_EMAIL = 'invisibleontheblockchain@gmail.com';
+// Mirrors the uncapped grant in startBatchDataPull so the usage meter reports
+// the same allowance the pull path will actually honor. Who holds that grant
+// now lives in shared/privilegedAccounts.js, so the two cannot drift.
+const UNLIMITED_PROPERTY_LIMIT = UNLIMITED_PROPERTY_CAP;
 const RECONCILIATION_VERSION = 2;
 const PRECISION_PRICE_FLOOR_CENTS = 9900;
 
@@ -40,7 +41,7 @@ function betaTimestampIso(value: any) {
 
 function betaPrecisionEvidence(user: any) {
     const grantEmail = user?.email?.toLowerCase();
-    if (grantEmail === UNLIMITED_PRECISION_EMAIL) {
+    if (hasUnlimitedPrecision(user)) {
         return {
             kind: 'beta',
             paidAccess: true,
