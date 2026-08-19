@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
+import { landingPageForAccount } from '@/lib/roles';
 import { useTheme, contrastText } from '@/components/theme/ThemeProvider';
 
 export default function RoleSelect() {
@@ -121,14 +122,13 @@ export default function RoleSelect() {
         }
     };
 
-    // Auto-redirect if user already has a role
+    // Auto-redirect if user already has a role. An owner or admin is a manager
+    // account too, so the destination comes from landingPageForAccount rather
+    // than from a bare app_role === 'manager' check -- that check sent every
+    // admin to RepHome, which is Knock Mode and has no route builder.
     React.useEffect(() => {
         if (user?.app_role) {
-            if (user.app_role === 'manager') {
-                navigate(createPageUrl('Home'), { replace: true });
-            } else {
-                navigate(createPageUrl('RepHome'), { replace: true });
-            }
+            navigate(createPageUrl(landingPageForAccount(user)), { replace: true });
         }
     }, [user, navigate]);
 
