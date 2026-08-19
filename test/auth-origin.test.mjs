@@ -20,6 +20,6 @@ test('deployed authentication stays on the origin that served FirstKnock', () =>
   assert.match(exampleEnv, /^VITE_BASE44_APP_ID=695eb764b077190880be21de$/m);
   assert.match(exampleEnv, /^VITE_BASE44_APP_BASE_URL=https:\/\/firstknock\.online$/m);
   assert.doesNotMatch(exampleEnv, /my-to-do-list-81bfaad7/);
-  assert.match(html, /2026-07-14-auth-origin-v5/);
+  assert.match(html, /2026-08-19-pwa-force-refresh-v1/);
   assert.match(html, /rel="canonical" href="https:\/\/firstknock\.online\/"/);
 });

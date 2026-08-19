@@ -23,19 +23,26 @@
     
     <!-- Force PWA Updates on Home Screen Resume -->
     <script>
-      const FK_PWA_RELEASE = '2026-07-14-auth-origin-v5';
+      const FK_PWA_RELEASE = '2026-08-19-pwa-force-refresh-v1';
       const clearOldPwaCachesOnce = async () => {
         try {
-          if (!('caches' in window)) return;
-          if (localStorage.getItem('fk_pwa_release') === FK_PWA_RELEASE) return;
+          if (!('caches' in window)) return false;
+          if (localStorage.getItem('fk_pwa_release') === FK_PWA_RELEASE) return false;
           const cacheNames = await caches.keys();
           await Promise.all(cacheNames.map((name) => caches.delete(name)));
           localStorage.setItem('fk_pwa_release', FK_PWA_RELEASE);
+          return true;
         } catch (error) {
           console.warn('PWA cache refresh skipped', error);
+          return false;
         }
       };
-      clearOldPwaCachesOnce();
+      clearOldPwaCachesOnce().then((cacheWasCleared) => {
+        if (!cacheWasCleared) return;
+        const releaseUrl = new URL(window.location.href);
+        releaseUrl.searchParams.set('fk_release', FK_PWA_RELEASE);
+        window.location.replace(releaseUrl.toString());
+      });
 
       if ('serviceWorker' in navigator) {
         // 1. Reload when new SW takes control
@@ -50,6 +57,7 @@
         // 2. Force new service workers to skip waiting when installed
         navigator.serviceWorker.getRegistration().then(reg => {
           if (!reg) return;
+          reg.update().catch((error) => console.warn('PWA startup update check skipped', error));
 
           const handleUpdate = (worker) => {
             if (worker) {
@@ -76,11 +84,13 @@
           });
         });
 
-        // 3. Check for updates every time app comes to foreground
+        // 3. Check for updates every time app starts or returns to foreground.
+        const checkForPwaUpdate = () => {
+          navigator.serviceWorker.getRegistration().then((reg) => reg?.update());
+        };
+        window.addEventListener('pageshow', checkForPwaUpdate);
         document.addEventListener('visibilitychange', () => {
-          if (document.visibilityState === 'visible') {
-            navigator.serviceWorker.ready.then(reg => reg.update());
-          }
+          if (document.visibilityState === 'visible') checkForPwaUpdate();
         });
       }
     </script>
