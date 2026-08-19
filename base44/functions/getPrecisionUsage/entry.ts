@@ -6,7 +6,7 @@ import {
     isPaidPrecisionCreditInvoice,
     listPrecisionCreditLedger
 } from '../../shared/precisionCredits.js';
-import { UNLIMITED_PROPERTY_CAP, hasUnlimitedPrecision } from '../../shared/privilegedAccounts.js';
+import { UNLIMITED_PROPERTY_CAP, precisionGrantLabel, precisionGrantLimit } from '../../shared/privilegedAccounts.js';
 
 const FREE_PROPERTY_LIMIT = 50;
 const PAID_PROPERTY_LIMIT = 1000;
@@ -41,14 +41,17 @@ function betaTimestampIso(value: any) {
 
 function betaPrecisionEvidence(user: any) {
     const grantEmail = user?.email?.toLowerCase();
-    if (hasUnlimitedPrecision(user)) {
+    // A per-account ceiling from shared/privilegedAccounts.js. It is a number,
+    // not a flag, so this reports exactly what the pull path will honor.
+    const grantedLimit = precisionGrantLimit(user);
+    if (grantedLimit !== null) {
         return {
             kind: 'beta',
             paidAccess: true,
             proAccess: true,
-            limit: UNLIMITED_PROPERTY_LIMIT,
-            precisionLimit: UNLIMITED_PROPERTY_LIMIT,
-            subscriptionId: 'owner_unlimited_grant',
+            limit: grantedLimit,
+            precisionLimit: grantedLimit,
+            subscriptionId: precisionGrantLabel(grantedLimit),
             invoiceId: null,
             periodStart: new Date(2026, 0, 1).toISOString(),
             periodEnd: new Date(2030, 0, 1).toISOString()

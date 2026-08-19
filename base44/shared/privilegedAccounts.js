@@ -11,8 +11,18 @@
  * A grant here bypasses metering only. It is not a permission system: entity
  * access still runs through RLS and the is_owner / role checks, so adding an
  * address cannot hand anyone data they were not already entitled to read.
+ *
+ * Note that none of this reads is_owner, role or subscription_status. Those
+ * fields govern permissions and are checked elsewhere; the Precision ceiling
+ * is decided here or by live Stripe state, and nowhere else. Making somebody
+ * an owner does not raise their property cap.
  */
 
+/**
+ * The ceiling for an uncapped account. A large finite number rather than
+ * Infinity because the reservation, expected-count and progress math all
+ * persist this value on the FetchJob.
+ */
 export const UNLIMITED_PROPERTY_CAP = 1000000;
 
 export function normalizeAccountEmail(value) {
@@ -20,22 +30,25 @@ export function normalizeAccountEmail(value) {
 }
 
 /**
- * Uncapped Precision pulls. The cap is a large finite number rather than
- * Infinity because the reservation, expected-count and progress math all
- * persist it on the FetchJob.
+ * Per-account Precision ceilings, in properties per period.
+ *
+ * Each entry is a number rather than a membership flag so raising or lowering
+ * somebody is a one-line edit here, with no need to move them between lists.
+ * BatchData bills per property, so these are spend limits: prefer a real
+ * number and raise it on request over handing out UNLIMITED_PROPERTY_CAP.
  */
-export const UNLIMITED_PRECISION_EMAILS = new Set([
-    'invisibleontheblockchain@gmail.com',
-    'christian@nativapest.com'
+export const PRECISION_GRANTS = new Map([
+    ['invisibleontheblockchain@gmail.com', UNLIMITED_PROPERTY_CAP],
+    ['christian@nativapest.com', 1000]
 ]);
 
 /**
  * Exempt from the 25-outcome card gate and the 50-outcome free ceiling.
- * Deliberately a superset of the unlimited-Precision list: an account that can
- * pull without limit must also be able to knock the doors it pulled.
+ * Every granted account is included by construction: somebody who can pull
+ * properties must be able to knock the doors they pulled.
  */
 export const KNOCK_GATE_EXEMPT_EMAILS = new Set([
-    ...UNLIMITED_PRECISION_EMAILS,
+    ...PRECISION_GRANTS.keys(),
     'christian@nativepest.com',
     'christian@nativepestmanagement.com',
     'kevin@reefenvironmental.com',
@@ -44,8 +57,26 @@ export const KNOCK_GATE_EXEMPT_EMAILS = new Set([
     'justinhoskins44@gmail.com'
 ]);
 
-export function hasUnlimitedPrecision(user) {
-    return UNLIMITED_PRECISION_EMAILS.has(normalizeAccountEmail(user?.email));
+/**
+ * The granted ceiling for this account, or null when it has no grant and must
+ * fall through to live Stripe verification. Null rather than 0 so a caller
+ * cannot accidentally treat "no grant" as "granted nothing".
+ */
+export function precisionGrantLimit(user) {
+    const limit = PRECISION_GRANTS.get(normalizeAccountEmail(user?.email));
+    return Number.isSafeInteger(limit) && limit > 0 ? limit : null;
+}
+
+export function hasPrecisionGrant(user) {
+    return precisionGrantLimit(user) !== null;
+}
+
+/**
+ * Written to the entitlement's subscriptionId so a granted allowance is
+ * traceable in logs and diagnostics. Nothing branches on these strings.
+ */
+export function precisionGrantLabel(limit) {
+    return limit >= UNLIMITED_PROPERTY_CAP ? 'owner_unlimited_grant' : 'account_precision_grant';
 }
 
 export function isKnockGateExempt(user) {
