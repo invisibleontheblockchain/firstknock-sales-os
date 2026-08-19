@@ -6,7 +6,7 @@ const ACTIONS = [
     { id: 'NO_ANSWER', label: 'NO ANSWER', icon: Home, bg: 'rgba(255, 255, 255, 0.055)', text: '#FFFFFF', border: 'rgba(255, 255, 255, 0.12)' },
     { id: 'CALLBACK', label: 'CALLBACK', icon: Phone, bg: 'rgba(168, 85, 247, 0.12)', text: '#C084FC', border: 'rgba(168, 85, 247, 0.35)' },
     { id: 'HARD_NO', label: 'NOT INT.', icon: Ban, bg: 'rgba(255, 107, 107, 0.1)', text: '#FF6B6B', border: 'rgba(255, 107, 107, 0.24)' },
-    { id: 'NOT_MOVED_IN', label: 'NOT MOVED IN', icon: Clock, bg: 'rgba(255, 160, 51, 0.1)', text: '#FFA033', border: 'rgba(255, 160, 51, 0.24)' },
+    { id: 'NOT_MOVED_IN', label: 'NOT MOVED IN', icon: Clock, bg: 'rgba(255, 188, 102, 0.1)', text: '#FFBC66', border: 'rgba(255, 188, 102, 0.24)' },
     { id: 'DM_NOT_HOME', label: 'DM NOT HOME', icon: UserX, bg: 'rgba(255, 255, 255, 0.055)', text: '#FFFFFF', border: 'rgba(255, 255, 255, 0.14)' },
 ];
 
