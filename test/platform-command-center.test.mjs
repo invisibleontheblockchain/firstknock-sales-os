@@ -530,12 +530,56 @@ test('Stripe metrics retain established subscribers during renewal processing an
   assert.equal(result.metrics.mrr, 297);
   assert.equal(result.metrics.trial_mrr_pipeline, 19);
   assert.equal(result.metrics.gross_collected, 297);
+  assert.equal(result.metrics.total_refunded, 0);
+  assert.equal(result.metrics.net_collected, 297);
+  assert.equal(result.metrics.net_collected_30d, result.metrics.collected_30d);
+  assert.equal(result.metrics.net_collected_7d, result.metrics.collected_7d);
   assert.equal(result.metrics.paid_seats, 2);
   assert.equal(result.metrics.trial_seats, 1);
   assert.equal(result.metrics.past_due_customers, 1);
   assert.equal(result.customer_count, 5);
   assert.equal(result.customers_truncated, false);
   assert.equal(result.trend[0].stripe_revenue, 99);
+});
+
+test('a succeeded refund nets out of gross collected, the 30-day window, and the daily cash trend', () => {
+  const base44 = { auth: { me: async () => null } };
+  const { sandbox } = loadFunction({
+    base44,
+    expose: 'globalThis.__buildStripeAnalytics = buildStripeAnalytics;',
+  });
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const paidAtSeconds = nowSeconds - 3600;
+  const refundedAtSeconds = nowSeconds - 1800;
+  const paidDateKey = new Date(paidAtSeconds * 1000).toISOString().slice(0, 10);
+  const monthlyItem = { quantity: 1, price: { unit_amount: 15000, recurring: { interval: 'month', interval_count: 1 } } };
+  const stripeData = {
+    status: 'live',
+    livemode: true,
+    subscriptions: [
+      { id: 'sub_refunded', status: 'active', current_period_start: nowSeconds - 100, current_period_end: nowSeconds + 2500000, created: nowSeconds - 5000, customer: { id: 'cus_refunded', email: 'refunded@example.com' }, items: { data: [monthlyItem] }, metadata: { subscription_tier: 'precision' } },
+    ],
+    invoices: [
+      { id: 'in_refunded', status: 'paid', amount_paid: 15000, currency: 'usd', customer: 'cus_refunded', subscription: 'sub_refunded', period_start: nowSeconds - 200, period_end: nowSeconds + 2500000, created: paidAtSeconds, status_transitions: { paid_at: paidAtSeconds }, lines: { data: [] } },
+    ],
+    refunds: [
+      { id: 're_partial', status: 'succeeded', amount: 5000, currency: 'usd', created: refundedAtSeconds, charge: 'ch_refunded' },
+      { id: 're_pending', status: 'pending', amount: 2000, currency: 'usd', created: refundedAtSeconds, charge: 'ch_refunded' },
+      { id: 're_non_usd', status: 'succeeded', amount: 1000, currency: 'eur', created: refundedAtSeconds, charge: 'ch_other' },
+    ],
+    customers: [{ id: 'cus_refunded' }],
+    events: [],
+  };
+  const trend = [{ date: paidDateKey, stripe_revenue: 0 }];
+  const result = plain(sandbox.__buildStripeAnalytics(stripeData, [], trend));
+
+  assert.equal(result.metrics.gross_collected, 150);
+  assert.equal(result.metrics.total_refunded, 50);
+  assert.equal(result.metrics.net_collected, 100);
+  assert.equal(result.metrics.refunded_payments, 1);
+  assert.equal(result.metrics.net_collected_30d, 100);
+  assert.equal(result.metrics.net_collected_7d, 100);
+  assert.equal(result.trend[0].stripe_revenue, 100);
 });
 
 test('active immutable beta grants appear separately from Stripe trials and expire closed', () => {
@@ -595,6 +639,10 @@ test('dashboard polls on a bounded cadence, validates complete data, and indepen
   assert.doesNotMatch(page, /continuityHealth/);
   assert.match(page, /Trials & beta/);
   assert.match(page, /active_trials_and_beta/);
+  assert.match(page, /Net collected/);
+  assert.match(page, /net_collected_30d/);
+  assert.match(page, /total_refunded/);
+  assert.doesNotMatch(page, /label="Gross collected"/);
   assert.match(page, /confirmed sales \/ \$\{formatNumber\(rep\?\.knocks\)\} logged knocks/);
   assert.match(page, /Decision-maker runway/);
   assert.match(page, /Cash vault/);

@@ -7,6 +7,7 @@ const MAX_ENTITY_RECORDS = 100000;
 const MAX_STRIPE_CUSTOMERS = 50000;
 const MAX_STRIPE_SUBSCRIPTIONS = 20000;
 const MAX_STRIPE_INVOICES = 50000;
+const MAX_STRIPE_REFUNDS = 50000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const HIDDEN_PLATFORM_ANALYTICS_REP_NAMES = new Set([
     'irobot v2',
@@ -804,7 +805,7 @@ async function loadStripeLiveData() {
 
     const stripe = new Stripe(secretKey);
     try {
-        const [customers, subscriptions, invoices, eventsPage] = await Promise.all([
+        const [customers, subscriptions, invoices, refunds, eventsPage] = await Promise.all([
             listAllStripeRecords(
                 (startingAfter) => stripe.customers.list({
                     limit: 100,
@@ -832,6 +833,14 @@ async function loadStripeLiveData() {
                 'Stripe paid invoices',
                 MAX_STRIPE_INVOICES
             ),
+            listAllStripeRecords(
+                (startingAfter) => stripe.refunds.list({
+                    limit: 100,
+                    ...(startingAfter ? { starting_after: startingAfter } : {})
+                }),
+                'Stripe refunds',
+                MAX_STRIPE_REFUNDS
+            ),
             stripe.events.list({ limit: 100 })
         ]);
 
@@ -840,6 +849,7 @@ async function loadStripeLiveData() {
             customers,
             subscriptions,
             invoices,
+            refunds,
             events: asArray(eventsPage?.data),
             livemode: Boolean(
                 asArray(eventsPage?.data)[0]?.livemode
@@ -856,6 +866,10 @@ async function loadStripeLiveData() {
 
 function invoicePaidAt(invoice: any) {
     return stripeTimestamp(invoice?.status_transitions?.paid_at) || stripeTimestamp(invoice?.created);
+}
+
+function refundCreatedAt(refund: any) {
+    return stripeTimestamp(refund?.created);
 }
 
 function invoiceBelongsToSubscription(invoice: any, subscription: any) {
@@ -1124,6 +1138,28 @@ function buildStripeAnalytics(stripeData: any, users: any[], trend: any[], betaG
     });
     const usdPaidInvoices = paidInvoices.filter((invoice: any) => normalized(invoice?.currency || 'usd') === 'usd');
 
+    // Gross Stripe revenue is misleading on its own: a refund never edits the
+    // original invoice's amount_paid, so a refunded sale still looks like
+    // collected cash unless we net succeeded refunds back out here.
+    const succeededRefunds = (stripeData.refunds || []).filter((refund: any) => (
+        normalized(refund?.status) === 'succeeded' && finiteNonNegative(refund?.amount) > 0
+    ));
+    const usdRefunds = succeededRefunds.filter((refund: any) => normalized(refund?.currency || 'usd') === 'usd');
+    const refundedLast30Days = usdRefunds.filter((refund: any) => {
+        const refundedAt = refundCreatedAt(refund);
+        return refundedAt !== null && refundedAt >= now - 30 * DAY_MS;
+    });
+    const refundedLast7Days = usdRefunds.filter((refund: any) => {
+        const refundedAt = refundCreatedAt(refund);
+        return refundedAt !== null && refundedAt >= now - 7 * DAY_MS;
+    });
+    const grossCollected = round(usdPaidInvoices.reduce((sum: number, invoice: any) => sum + finiteNonNegative(invoice.amount_paid), 0) / 100, 2);
+    const grossCollected30d = round(paidLast30Days.filter((invoice: any) => normalized(invoice?.currency || 'usd') === 'usd').reduce((sum: number, invoice: any) => sum + finiteNonNegative(invoice.amount_paid), 0) / 100, 2);
+    const grossCollected7d = round(paidLast7Days.filter((invoice: any) => normalized(invoice?.currency || 'usd') === 'usd').reduce((sum: number, invoice: any) => sum + finiteNonNegative(invoice.amount_paid), 0) / 100, 2);
+    const totalRefunded = round(usdRefunds.reduce((sum: number, refund: any) => sum + finiteNonNegative(refund.amount), 0) / 100, 2);
+    const refunded30d = round(refundedLast30Days.reduce((sum: number, refund: any) => sum + finiteNonNegative(refund.amount), 0) / 100, 2);
+    const refunded7d = round(refundedLast7Days.reduce((sum: number, refund: any) => sum + finiteNonNegative(refund.amount), 0) / 100, 2);
+
     const trendByDay = new Map(trend.map((point: any) => [point.date, point]));
     for (const invoice of paidInvoices) {
         if (normalized(invoice?.currency || 'usd') !== 'usd') continue;
@@ -1131,6 +1167,12 @@ function buildStripeAnalytics(stripeData: any, users: any[], trend: any[], betaG
         if (paidAt === null) continue;
         const point = trendByDay.get(dayKey(paidAt));
         if (point) point.stripe_revenue = round(point.stripe_revenue + finiteNonNegative(invoice.amount_paid) / 100, 2);
+    }
+    for (const refund of usdRefunds) {
+        const refundedAt = refundCreatedAt(refund);
+        if (refundedAt === null) continue;
+        const point = trendByDay.get(dayKey(refundedAt));
+        if (point) point.stripe_revenue = round(point.stripe_revenue - finiteNonNegative(refund.amount) / 100, 2);
     }
 
     const planMap = new Map<string, any>();
@@ -1166,9 +1208,16 @@ function buildStripeAnalytics(stripeData: any, users: any[], trend: any[], betaG
             total_stripe_customers: listedStripeCustomerKeys.size || subscriptionCustomerKeys.size,
             mrr: round(contractedMrrRows.reduce((sum: number, row: any) => sum + row.mrr, 0), 2),
             trial_mrr_pipeline: round(trialRows.reduce((sum: number, row: any) => sum + row.mrr, 0), 2),
-            gross_collected: round(usdPaidInvoices.reduce((sum: number, invoice: any) => sum + finiteNonNegative(invoice.amount_paid), 0) / 100, 2),
-            collected_30d: round(paidLast30Days.filter((invoice: any) => normalized(invoice?.currency || 'usd') === 'usd').reduce((sum: number, invoice: any) => sum + finiteNonNegative(invoice.amount_paid), 0) / 100, 2),
-            collected_7d: round(paidLast7Days.filter((invoice: any) => normalized(invoice?.currency || 'usd') === 'usd').reduce((sum: number, invoice: any) => sum + finiteNonNegative(invoice.amount_paid), 0) / 100, 2),
+            gross_collected: grossCollected,
+            collected_30d: grossCollected30d,
+            collected_7d: grossCollected7d,
+            total_refunded: totalRefunded,
+            refunded_30d: refunded30d,
+            refunded_7d: refunded7d,
+            net_collected: round(grossCollected - totalRefunded, 2),
+            net_collected_30d: round(grossCollected30d - refunded30d, 2),
+            net_collected_7d: round(grossCollected7d - refunded7d, 2),
+            refunded_payments: usdRefunds.length,
             paid_seats: activePaidRows.reduce((sum: number, row: any) => sum + row.seats, 0),
             trial_seats: trialRows.reduce((sum: number, row: any) => sum + row.seats, 0),
             beta_seats: betaRows.reduce((sum: number, row: any) => sum + row.seats, 0),
