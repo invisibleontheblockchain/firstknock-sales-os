@@ -5,7 +5,9 @@ import {
     CREDIT_BLOCK_PRICE_CENTS,
     CREDIT_BLOCK_PROPERTIES,
     PRECISION_CREDIT_COMPONENT,
-    isPaidPrecisionCreditInvoice
+    PRECISION_CREDIT_PACK_INTENT,
+    isPaidPrecisionCreditInvoice,
+    normalizeCreditPackBlocks
 } from '../../shared/precisionCredits.js';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') || '');
@@ -178,12 +180,65 @@ async function recordPrecisionCreditInvoice(base44: any, userId: string, subscri
             stripe_line_id: line.id,
             credits_delta: credits,
             amount_paid_cents: amountCents,
+            purchase_kind: 'subscription_addon',
             ...(stripeTimestampIso(line?.period?.start) ? { billing_period_start: stripeTimestampIso(line.period.start) } : {}),
             ...(stripeTimestampIso(line?.period?.end) ? { billing_period_end: stripeTimestampIso(line.period.end) } : {})
         });
         recorded += credits;
     }
     return recorded;
+}
+
+/**
+ * Grants the credits behind a one-off pack purchase.
+ *
+ * Packs are charged outside the subscription, so none of the invoice-line
+ * machinery above applies -- the money arrives as a single paid Checkout
+ * session. What the two paths share is the ledger: a pack writes the same kind
+ * of row, so the balance, the limit and the rollover behave identically once
+ * granted.
+ *
+ * Keyed on the session id, which Stripe may deliver more than once. A replayed
+ * event finds the existing row and grants nothing further.
+ */
+async function recordPrecisionCreditPack(base44: any, userId: string, session: any) {
+    if (session?.payment_status !== 'paid') {
+        console.warn(`Credit pack session ${session?.id} is not paid; granting nothing`);
+        return 0;
+    }
+    const blocks = normalizeCreditPackBlocks(Number(session?.metadata?.precision_credit_blocks || 0));
+    if (blocks === null) {
+        throw new Error(`Credit pack session ${session.id} carries an unusable block count`);
+    }
+    const amountCents = Math.max(0, Math.floor(Number(session?.amount_total || 0)));
+    if (amountCents <= 0) {
+        throw new Error(`Credit pack session ${session.id} settled with no payable amount`);
+    }
+    const paymentIntentId = typeof session.payment_intent === 'string'
+        ? session.payment_intent
+        : session.payment_intent?.id || `${session.id}:payment`;
+
+    const existing = await base44.asServiceRole.entities.PrecisionCreditLedger.filter({
+        invoice_id: session.id,
+        stripe_line_id: paymentIntentId
+    }, 'created_date', 1);
+    const matches = Array.isArray(existing) ? existing : (existing?.items || []);
+    if (matches.length > 0) return 0;
+
+    const credits = blocks * CREDIT_BLOCK_PROPERTIES;
+    await base44.asServiceRole.entities.PrecisionCreditLedger.create({
+        owner_user_id: userId,
+        // The subscription that entitles the account, not the thing that paid --
+        // a pack is funded on its own. Recorded so a grant stays traceable to
+        // the plan it was bought against.
+        subscription_id: String(session?.metadata?.precision_subscription_id || ''),
+        invoice_id: session.id,
+        stripe_line_id: paymentIntentId,
+        credits_delta: credits,
+        amount_paid_cents: amountCents,
+        purchase_kind: 'credit_pack'
+    });
+    return credits;
 }
 
 // Helper to manage invite codes
@@ -257,6 +312,17 @@ Deno.serve(async (req: Request) => {
                                 throw new Error(`Checkout Setup Session ${session.id} completed without an attached card`);
                             }
                             console.log(`Confirmed card-only Checkout for user ${userId}`);
+                            break;
+                        }
+
+                        if (session.metadata?.checkout_intent === PRECISION_CREDIT_PACK_INTENT) {
+                            const customerId = typeof session.customer === 'string' ? session.customer : session.customer?.id;
+                            const packCustomer = await stripe.customers.retrieve(customerId);
+                            if (packCustomer?.deleted || String(packCustomer?.metadata?.base44_user_id || '') !== String(userId)) {
+                                throw new Error(`Credit pack session ${session.id} customer ownership does not match user ${userId}`);
+                            }
+                            const granted = await recordPrecisionCreditPack(base44, userId, session);
+                            console.log(`Credit pack session ${session.id} granted ${granted} Precision credits to user ${userId}`);
                             break;
                         }
 

@@ -28,6 +28,14 @@
       "minimum": 1,
       "description": "Pre-tax paid line amount used to calculate credits at half a cent per property"
     },
+    "purchase_kind": {
+      "type": "string",
+      "enum": [
+        "subscription_addon",
+        "credit_pack"
+      ],
+      "description": "How this grant was funded. Absent on rows written before credit packs existed, which were all subscription add-ons."
+    },
     "billing_period_start": {
       "type": "string",
       "format": "date-time"
