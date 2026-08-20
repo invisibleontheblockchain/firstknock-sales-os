@@ -7,6 +7,7 @@ import {
     listPrecisionCreditLedger
 } from '../../shared/precisionCredits.js';
 import { UNLIMITED_PROPERTY_CAP, currentGrantPeriod, precisionGrantLabel, precisionGrantLimit } from '../../shared/privilegedAccounts.js';
+import { selectOwnedPrecisionJobs } from '../../shared/precisionOrderSafety.js';
 
 const FREE_PROPERTY_LIMIT = 50;
 const PAID_PROPERTY_LIMIT = 1000;
@@ -317,7 +318,9 @@ async function getUserPrecisionJobs(base44: any, user: any) {
             jobsById.set(job.id, job);
         }
     }
-    return [...jobsById.values()];
+    // Match the pull path: the legacy email query is only an index fallback.
+    // An immutable owner mismatch must never consume this account's allowance.
+    return selectOwnedPrecisionJobs([...jobsById.values()], user);
 }
 
 function jobStartedAtMs(job: any) {
