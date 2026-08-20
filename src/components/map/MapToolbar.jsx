@@ -90,7 +90,6 @@ export default function MapToolbar({
 }) {
   const queryClient = useQueryClient();
   const hasDrawnArea = drawnPolygon && drawnPolygon.length > 2;
-  const customAreaControlsBlocked = mode === 'generate' && routeMode === 'precision' && hasDrawnArea && !drawingMode && !activeRoute;
   const routeSelectClass = "h-6 md:h-7 text-[10px] md:text-[11px] font-extrabold rounded-lg px-2 md:px-2.5 outline-none cursor-pointer shrink-0 bg-[#050505]/95 border border-white/15 text-white shadow-[0_8px_24px_rgba(0,0,0,0.35)] hover:border-[#2EEB57]/50 hover:bg-[#0D0D0D] focus:border-[#2EEB57] focus:ring-2 focus:ring-[#2EEB57]/20 transition-all";
   const routeSelectAccentClass = `${routeSelectClass} border-[#2EEB57]/35 text-[#86efac]`;
   const routeSelectStyle = { backgroundColor: '#050505', color: '#F9FAFB', colorScheme: 'dark', WebkitAppearance: 'menulist' };
@@ -100,6 +99,7 @@ export default function MapToolbar({
   const [routeMode, setRouteMode] = useState(() => {
     try {return localStorage.getItem('fk_routeMode') || 'precision';} catch {return 'precision';}
   });
+  const customAreaControlsBlocked = mode === 'generate' && routeMode === 'precision' && hasDrawnArea && !drawingMode && !activeRoute;
   const [showGhostAreas, setShowGhostAreas] = useState(() => {
     try {return localStorage.getItem('fk_showGhostAreas') === 'true';} catch {return false;}
   });
