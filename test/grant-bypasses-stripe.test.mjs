@@ -40,13 +40,13 @@ class ExplodingStripe {
     }
 }
 
-function loadEndpoint() {
-    const source = readFileSync(resolve(rootDir, endpoint), 'utf8');
+function loadEndpoint(file = endpoint, exportNames = ['resolvePrecisionEntitlement', 'betaPrecisionEvidence']) {
+    const source = readFileSync(resolve(rootDir, file), 'utf8');
     const js = ts.transpileModule(source, {
         compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 }
     }).outputText.replace(/^import .*;\s*$/gm, '');
     return vm.runInNewContext(
-        `${js}\n__exports = { resolvePrecisionEntitlement, betaPrecisionEvidence };\n__exports;`,
+        `${js}\n__exports = { ${exportNames.join(', ')} };\n__exports;`,
         {
             console,
             UNLIMITED_PROPERTY_CAP,
@@ -62,7 +62,7 @@ function loadEndpoint() {
             Request, Response, TextEncoder, crypto: globalThis.crypto, setTimeout,
             __exports: undefined
         },
-        { filename: endpoint }
+        { filename: file }
     );
 }
 
@@ -117,4 +117,68 @@ test('STRIPELESS-04 the grant is consulted before any Stripe read, in source ord
     const stripeAt = resolver.indexOf('STRIPE_SECRET_KEY');
     assert.ok(grantAt >= 0 && stripeAt >= 0);
     assert.ok(grantAt < stripeAt, 'the grant check must precede the Stripe read');
+});
+
+/**
+ * The three gates above cover startBatchDataPull only. A grant that bypasses
+ * Stripe on the pull but not on the meter still reads to the user as broken:
+ * the pull would run while the panel showed a free-tier ceiling. These extend
+ * the same ExplodingStripe proof to the other Precision gates.
+ */
+
+test('STRIPELESS-05 the area fetch resolves a grant with no Stripe client', async () => {
+    const api = loadEndpoint('base44/functions/fetchAreaProperties/entry.ts', ['resolvePrecisionEntitlement']);
+    const entitlement = await api.resolvePrecisionEntitlement(CHRISTIAN);
+    assert.equal(entitlement.kind, 'beta');
+    assert.equal(entitlement.paidAccess, true);
+    assert.equal(entitlement.precisionLimit, 1000);
+});
+
+test('STRIPELESS-06 the meter resolves a grant with no Stripe client', async () => {
+    const api = loadEndpoint('base44/functions/getPrecisionUsage/entry.ts', ['resolveEntitlement']);
+    const entitlement = await api.resolveEntitlement(CHRISTIAN);
+    assert.equal(entitlement.kind, 'beta');
+    // calculateUsage divides the period budget by .limit, not .precisionLimit;
+    // a grant that set only the latter would meter him against undefined.
+    assert.equal(entitlement.limit, 1000);
+    assert.equal(entitlement.precisionLimit, 1000);
+});
+
+test('STRIPELESS-07 both still reach Stripe for an ungranted account', async () => {
+    // The controls for 05 and 06: without these they could pass because the
+    // billing code is unreachable in this harness rather than because it was
+    // skipped for a granted account.
+    for (const [file, exported] of [
+        ['base44/functions/fetchAreaProperties/entry.ts', 'resolvePrecisionEntitlement'],
+        ['base44/functions/getPrecisionUsage/entry.ts', 'resolveEntitlement']
+    ]) {
+        const api = loadEndpoint(file, [exported]);
+        await assert.rejects(
+            () => api[exported]({ id: 'x', email: 'nobody@example.com' }),
+            /Stripe billing verification is unavailable/,
+            file
+        );
+    }
+});
+
+test('STRIPELESS-08 every Precision gate orders the grant ahead of the Stripe read', () => {
+    // reconcilePrecisionUsage resolves the grant inline in its Deno.serve
+    // handler rather than in a named resolver, so it is covered here by source
+    // order and by reconcile-granted-account.test.mjs by execution.
+    for (const [file, resolver] of [
+        ['base44/functions/getPrecisionUsage/entry.ts', 'async function resolveEntitlement'],
+        ['base44/functions/startBatchDataPull/entry.ts', 'async function resolvePrecisionEntitlement'],
+        ['base44/functions/fetchAreaProperties/entry.ts', 'async function resolvePrecisionEntitlement'],
+        ['base44/functions/reconcilePrecisionUsage/entry.ts', 'Deno.serve']
+    ]) {
+        const source = readFileSync(resolve(rootDir, file), 'utf8');
+        const start = source.indexOf(resolver);
+        assert.ok(start >= 0, `${file}: could not find ${resolver}`);
+        const body = source.slice(start);
+        const grantAt = body.search(/precisionGrantLimit\(|betaPrecisionEvidence\(user\)/);
+        const stripeAt = body.indexOf('STRIPE_SECRET_KEY');
+        assert.ok(grantAt >= 0, `${file} must consult the shared grant`);
+        assert.ok(stripeAt >= 0, `${file} must still have a Stripe path for everyone else`);
+        assert.ok(grantAt < stripeAt, `${file}: the grant must precede the Stripe read`);
+    }
 });
