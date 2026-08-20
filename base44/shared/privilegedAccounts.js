@@ -59,9 +59,14 @@ export const PRECISION_GRANTS_BY_USER_ID = new Map([
 ]);
 
 /**
- * Exempt from the 25-outcome card gate and the 50-outcome free ceiling.
- * Every granted account is included by construction: somebody who can pull
- * properties must be able to knock the doors they pulled.
+ * Additional addresses exempt from the 25-outcome card gate and the 50-outcome
+ * free ceiling, beyond those a Precision grant already exempts.
+ *
+ * This set is no longer the whole answer: isKnockGateExempt also honours any
+ * Precision grant, including the ID and domain routes. Spelling an address here
+ * is only needed for somebody who should keep logging outcomes *without* being
+ * granted Precision spend -- justinhoskins44@gmail.com is the case that
+ * distinguishes the two.
  */
 export const KNOCK_GATE_EXEMPT_EMAILS = new Set([
     ...PRECISION_GRANTS.keys(),
@@ -153,6 +158,21 @@ export function currentGrantPeriod(now = new Date()) {
     };
 }
 
+/**
+ * The knock gate follows the Precision grant, then the address list.
+ *
+ * Reading the address list alone re-opened the exact hole the ID and domain
+ * maps were added to close. An account granted by ID -- the route that exists
+ * precisely because the address on the record need not match the one signed in
+ * with -- cleared the Precision cap and was then stopped by the card gate at 25
+ * outcomes. That reads as random failure: the pull works, the knocking does
+ * not. Somebody who can pull properties must be able to knock the doors they
+ * pulled, so the grant is consulted first, by every route it has.
+ *
+ * The converse still does not hold: an address in the set above grants no
+ * Precision spend, which is what keeps justinhoskins44@gmail.com at a knock
+ * exemption and nothing more.
+ */
 export function isKnockGateExempt(user) {
-    return KNOCK_GATE_EXEMPT_EMAILS.has(normalizeAccountEmail(user?.email));
+    return hasPrecisionGrant(user) || KNOCK_GATE_EXEMPT_EMAILS.has(normalizeAccountEmail(user?.email));
 }

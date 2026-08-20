@@ -72,6 +72,19 @@ test('PRIV-06 every granted account can knock what it pulled', () => {
     assert.equal(hasPrecisionGrant({ email: 'justinhoskins44@gmail.com' }), false);
 });
 
+test('PRIV-06b the knock gate follows the ID and domain grants too', () => {
+    // The hole the ID and domain maps were added to close, re-opened one gate
+    // later: an account granted by ID cleared the Precision cap and was then
+    // stopped by the card gate at 25 outcomes. The pull works, the knocking
+    // does not, which reads as random failure rather than as a gate.
+    assert.equal(isKnockGateExempt({ id: '6978c7229935cf40cde25086', email: 'unrecorded@example.com' }), true);
+    assert.equal(isKnockGateExempt({ id: '6978c7229935cf40cde25086' }), true);
+    // Granted by domain, under an address nobody wrote down.
+    assert.equal(isKnockGateExempt({ email: 'c.rodriguez@nativapest.com' }), true);
+    // Still bounded by the grant: no grant, no exemption.
+    assert.equal(isKnockGateExempt({ id: 'someone-else', email: 'someone@notnativapest.com' }), false);
+});
+
 test('PRIV-07 an ungranted account falls through to live Stripe, not to zero', () => {
     // null and not 0, so a caller cannot read "no grant" as "granted nothing"
     // and hand somebody a cap of zero properties.
