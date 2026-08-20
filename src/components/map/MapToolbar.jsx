@@ -16,6 +16,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { OptimizeRouteChoices, OptimizeRouteTrigger } from './OptimizeRouteInline';
 import { routeBelongsToActingUser } from '@/lib/routeOptimizeUpdate';
+import { findHydratedSearchRoute, GLOBAL_ROUTE_SEARCH_EVENT } from '@/components/search/globalSearchBridge';
 
 /**
  * MapToolbar — extracted from Home.jsx
@@ -160,6 +161,32 @@ export default function MapToolbar({
     window.addEventListener('fk-map-tab-open', handler);
     return () => window.removeEventListener('fk-map-tab-open', handler);
   }, [allowCanvasDiscard, setMode, setShowCompare, setShowRoutePanel]);
+
+  const pendingSearchRouteIdRef = React.useRef(null);
+  const openHydratedSearchRoute = useCallback((routeId) => {
+    const route = findHydratedSearchRoute(hydratedSavedRoutes, routeId);
+    if (!route) return false;
+    setMode('analyze');
+    setActiveRoute(route);
+    setShowCompare(false);
+    setShowRoutePanel(false);
+    return true;
+  }, [hydratedSavedRoutes, setActiveRoute, setMode, setShowCompare, setShowRoutePanel]);
+
+  useEffect(() => {
+    const handler = (event) => {
+      const routeId = event.detail?.result?.route_id || event.detail?.result?.id;
+      pendingSearchRouteIdRef.current = routeId || null;
+      if (openHydratedSearchRoute(routeId)) pendingSearchRouteIdRef.current = null;
+    };
+    window.addEventListener(GLOBAL_ROUTE_SEARCH_EVENT, handler);
+    return () => window.removeEventListener(GLOBAL_ROUTE_SEARCH_EVENT, handler);
+  }, [openHydratedSearchRoute]);
+
+  useEffect(() => {
+    const routeId = pendingSearchRouteIdRef.current;
+    if (routeId && openHydratedSearchRoute(routeId)) pendingSearchRouteIdRef.current = null;
+  }, [hydratedSavedRoutes, openHydratedSearchRoute]);
 
   useEffect(() => {
     if (!activeRoute?.id) return;

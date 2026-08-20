@@ -8,6 +8,7 @@ import {
   scoreResult,
 } from '../src/components/search/searchQuery.js';
 import { fitMapBounds, focusMapPoint, resolveSelectedProperty } from '../src/components/search/searchSelection.js';
+import { findHydratedSearchRoute } from '../src/components/search/globalSearchBridge.js';
 import {
   addressDedupeKey,
   normalizeAddress,
@@ -101,6 +102,12 @@ test('saved routes rank above similarly named records', () => {
     { type: 'route', route_id: 'r1', name: 'Phoenix Route', formatted_address: '50 doors' },
   ], 'Phoenix');
   assert.equal(ranked[0].type, 'route');
+});
+
+test('route search waits for a fully hydrated route', () => {
+  const route = { id: 'r1', properties: [{ address_hash: 'h1' }] };
+  assert.equal(findHydratedSearchRoute([route], 'r1'), route);
+  assert.equal(findHydratedSearchRoute([{ id: 'r1', properties: [] }], 'r1'), null);
 });
 
 test('duplicate result keys collapse to the highest scoring entry', () => {

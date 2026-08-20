@@ -11,6 +11,9 @@ export default function useGlobalSearchSelect(onDone) {
   return useCallback((result) => {
     onDone?.();
     if (result?.type === 'route' && (result.route_id || result.id)) {
+      // The map can activate an already-hydrated route without a page reload.
+      // Other pages fall back to the durable saved-route deep link below.
+      if (dispatchGlobalSearchSelection(result)) return;
       window.location.href = `${createPageUrl('Home')}?savedRoute=${encodeURIComponent(result.route_id || result.id)}`;
       return;
     }

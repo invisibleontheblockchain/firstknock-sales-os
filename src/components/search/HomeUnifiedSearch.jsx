@@ -3,7 +3,7 @@ import { toast } from 'sonner';
 import AddLeadFromAddressDialog from './AddLeadFromAddressDialog';
 import { fitMapBounds, focusMapPoint, resolveSelectedProperty } from './searchSelection';
 import { removeSearchedAddressMarker, showSearchedAddressMarker } from './searchedAddressLayer';
-import { GLOBAL_SEARCH_EVENT, takePendingSelection } from './globalSearchBridge';
+import { GLOBAL_ROUTE_SEARCH_EVENT, GLOBAL_SEARCH_EVENT, takePendingSelection } from './globalSearchBridge';
 
 /**
  * Search result handler for the manager map.
@@ -37,6 +37,11 @@ export default function HomeUnifiedSearch({
   }, [workingAreaCenteredRef]);
 
   const handleSelect = useCallback((result) => {
+    if (result.type === 'route') {
+      window.dispatchEvent(new CustomEvent(GLOBAL_ROUTE_SEARCH_EVENT, { detail: { result } }));
+      return true;
+    }
+
     if (result.type === 'county' || result.type === 'city') {
       claimViewport();
       // Place navigation only moves the camera — routes, territories, markers
@@ -77,9 +82,9 @@ export default function HomeUnifiedSearch({
     const onGlobalSelect = (event) => {
       const result = event.detail?.result;
       if (!result) return;
-      // Claim the event so the launcher does not navigate away from the map.
-      event.preventDefault();
-      handleSelect(result);
+      // Claim only results the ready map handled. A route that has not hydrated
+      // yet falls back to its durable Home deep link.
+      if (handleSelect(result) !== false) event.preventDefault();
     };
     window.addEventListener(GLOBAL_SEARCH_EVENT, onGlobalSelect);
     return () => window.removeEventListener(GLOBAL_SEARCH_EVENT, onGlobalSelect);

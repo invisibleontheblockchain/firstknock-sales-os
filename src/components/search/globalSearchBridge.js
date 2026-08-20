@@ -7,7 +7,15 @@
  * navigates to the manager map, which consumes it on mount.
  */
 export const GLOBAL_SEARCH_EVENT = 'fk-global-search-select';
+export const GLOBAL_ROUTE_SEARCH_EVENT = 'fk-global-route-search-select';
 const PENDING_KEY = 'fk_pending_search_selection';
+
+export function findHydratedSearchRoute(routes, routeId) {
+  if (!routeId) return null;
+  return (routes || []).find((route) => (
+    String(route?.id) === String(routeId) && route?.properties?.length > 0
+  )) || null;
+}
 
 export function dispatchGlobalSearchSelection(result) {
   const event = new CustomEvent(GLOBAL_SEARCH_EVENT, { detail: { result }, cancelable: true });
