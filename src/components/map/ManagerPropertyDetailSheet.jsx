@@ -9,6 +9,18 @@ import PropertyHistory from '@/components/rep/PropertyHistory';
 import QuickMarkButtons from '@/components/rep/QuickMarkButtons';
 import { buildFullAddress, openInMaps } from '@/components/logic/navigation';
 import { parseOptionalSaleAmount } from '@/components/analytics/salesManagement';
+import PropertyNoteSection from './PropertyNoteSection';
+import { outcomeBorder, outcomeColor, outcomeLabel, outcomeTint, withoutHouseNotes } from '@/components/logic/outcomeStatus';
+
+// The badge under the address reflects the most recent logged decision, so a
+// callback reads purple and a not-moved-in reads orange exactly as it does in
+// the field. House notes carry no decision, so they never change it.
+function latestLoggedStatus(logs = [], fallback) {
+    const latest = withoutHouseNotes(logs)
+        .filter((log) => log?.parsed_status)
+        .sort((a, b) => new Date(b.created_date || 0) - new Date(a.created_date || 0))[0];
+    return latest?.parsed_status || fallback;
+}
 
 function numberValue(...values) {
     for (const value of values) {
@@ -46,6 +58,7 @@ export default function ManagerPropertyDetailSheet({
     selectedPropertyLogs,
     handleLogResult,
     onClearInteraction,
+    onNoteSaved,
     toast
 }) {
     const [showCallbackPrompt, setShowCallbackPrompt] = React.useState(false);
@@ -75,6 +88,7 @@ export default function ManagerPropertyDetailSheet({
     const squareFeet = numberValue(selectedProperty.sqft, selectedProperty.squareFootage, selectedProperty.livingAreaSquareFeet, selectedProperty.building?.livingAreaSquareFeet, selectedProperty.building?.squareFeet);
     const soldDate = dateValue(selectedProperty.sold_date, selectedProperty.soldDate, selectedProperty.lastSaleDate, selectedProperty.sale?.lastSaleDate);
     const ownerName = selectedProperty.owner_full_name || selectedProperty.ownerFullName || selectedProperty.owner_name || selectedProperty.owner?.fullName || selectedProperty.owner?.ownerName || null;
+    const displayStatus = latestLoggedStatus(selectedPropertyLogs, selectedProperty.effective_status);
     const beds = numberValue(selectedProperty.beds, selectedProperty.bedrooms, selectedProperty.building?.bedroomCount);
     const baths = numberValue(selectedProperty.baths, selectedProperty.bathrooms, selectedProperty.building?.bathroomCount);
 
@@ -166,10 +180,14 @@ export default function ManagerPropertyDetailSheet({
                             <span className="truncate">{selectedProperty.house_number} {selectedProperty.street_name}</span>
                         </h3>
                         <div className="mt-1.5 flex items-center gap-2 flex-wrap">
-                            <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-bold text-white border border-white/10"
-                                style={{ background: `${STATUS_COLORS[selectedProperty.effective_status] || '#333'}` }}>
+                            <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-bold"
+                                style={{
+                                    background: outcomeTint(outcomeColor(displayStatus), '26'),
+                                    border: `1px solid ${outcomeBorder(outcomeColor(displayStatus), '70')}`,
+                                    color: outcomeColor(displayStatus),
+                                }}>
                                 <HomeIcon className="w-3 h-3" />
-                                {selectedProperty.effective_status}
+                                {outcomeLabel(displayStatus)}
                             </span>
                             {selectedProperty.next_eligible_date && (
                                 <span className="text-[10px] font-bold text-gray-400">
@@ -268,6 +286,14 @@ export default function ManagerPropertyDetailSheet({
                                 )}
                             </div>
                         </div>
+
+                        {/* Add Details — durable house note, saved automatically */}
+                        <PropertyNoteSection
+                            property={selectedProperty}
+                            logs={selectedPropertyLogs}
+                            routeId={selectedProperty.route_id || null}
+                            onSaved={onNoteSaved}
+                        />
 
                         {/* Interaction History */}
                         <div>
