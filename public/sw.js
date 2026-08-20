@@ -1,4 +1,4 @@
-const RELEASE = '2026-08-20-precision-entitlement-v2';
+const RELEASE = '__FK_BUILD_RELEASE__';
 
 self.addEventListener('install', () => self.skipWaiting());
 
@@ -15,5 +15,7 @@ self.addEventListener('message', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  event.respondWith(fetch(event.request));
+  if (event.request.mode === 'navigate') {
+    event.respondWith(fetch(event.request, { cache: 'no-store' }));
+  }
 });

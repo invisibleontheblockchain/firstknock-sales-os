@@ -29,10 +29,15 @@ test('the live start gate exposes an admin-only target-account dry run', () => {
   assert.match(start, /diagnostic_user_id: body\.diagnostic_user_id \? user\.id : null/);
 });
 
-test('PWA release registers a network-only refresh worker', () => {
+test('every production build generates a new PWA release', () => {
   const html = fs.readFileSync('index.html', 'utf8');
+  const vite = fs.readFileSync('vite.config.js', 'utf8');
   const worker = fs.readFileSync('public/sw.js', 'utf8');
+  const refreshManager = fs.readFileSync('src/components/AppRefreshManager.jsx', 'utf8');
   assert.match(html, /serviceWorker\.register\('\/sw\.js'/);
-  assert.match(html, /2026-08-20-precision-entitlement-v2/);
+  assert.match(html, /__FK_BUILD_RELEASE__/);
+  assert.match(vite, /Date\.now\(\).*transformIndexHtml.*dist\/sw\.js/s);
+  assert.match(worker, /request\.mode === 'navigate'.*cache: 'no-store'/s);
+  assert.match(refreshManager, /checkForPublishedRelease/);
   assert.doesNotMatch(worker, /cache\.put|caches\.open/);
 });
