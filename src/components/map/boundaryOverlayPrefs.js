@@ -21,11 +21,23 @@ export function getBoundaryOverlays() {
   }
 }
 
-export function setBoundaryOverlay(name, value) {
-  const next = { ...getBoundaryOverlays(), [name]: Boolean(value) };
-  try { localStorage.setItem(KEYS[name], value ? 'true' : 'false'); } catch { /* private mode */ }
+export function previewBoundaryOverlays(overlays) {
+  const next = { zip: Boolean(overlays?.zip), county: Boolean(overlays?.county) };
   window.dispatchEvent(new CustomEvent(EVENT, { detail: next }));
   return next;
+}
+
+export function saveBoundaryOverlays(overlays) {
+  const next = previewBoundaryOverlays(overlays);
+  try {
+    localStorage.setItem(KEYS.zip, next.zip ? 'true' : 'false');
+    localStorage.setItem(KEYS.county, next.county ? 'true' : 'false');
+  } catch { /* private mode */ }
+  return next;
+}
+
+export function setBoundaryOverlay(name, value) {
+  return saveBoundaryOverlays({ ...getBoundaryOverlays(), [name]: Boolean(value) });
 }
 
 export function subscribeBoundaryOverlays(onChange) {

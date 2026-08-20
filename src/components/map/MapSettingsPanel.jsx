@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
@@ -10,7 +10,7 @@ import MapThemePicker from '@/components/map/MapThemePicker';
 import { DEFAULT_PIN_THEME, DEFAULT_PRECISION_PIN_THEME } from '@/components/map/mapPinThemes';
 import MapOverlayToggles from '@/components/map/MapOverlayToggles';
 import RouteModeSetting from '@/components/map/RouteModeSetting';
-import { getBoundaryOverlays, setBoundaryOverlay } from '@/components/map/boundaryOverlayPrefs';
+import { getBoundaryOverlays, previewBoundaryOverlays, saveBoundaryOverlays } from '@/components/map/boundaryOverlayPrefs';
 import { markPinSizeUserSet, clearPinSizeUserSet } from '@/components/map/densePinSize';
 
 /* ── constants ── */
@@ -51,7 +51,7 @@ function SectionLabel({ children }) {
 export default function MapSettingsPanel({
   routeMode = 'precision',
   mapTheme, setMapTheme,
-  teamMembers, repColors, onUpdateRepColor,
+  teamMembers, repColors, onUpdateRepColor, onPreviewRepColors,
   onClose,
   quickFilter, setQuickFilter,
   showRouteDetails, setShowRouteDetails,
@@ -64,22 +64,59 @@ export default function MapSettingsPanel({
   highlightRecentlySold, setHighlightRecentlySold,
   homeBase = null, onSaveHomeBase,
 }) {
-  // Boundary overlays are per-device display prefs, applied live.
-  const [overlays, setOverlays] = useState(getBoundaryOverlays);
-  const toggleOverlay = (name) => (value) => setOverlays(setBoundaryOverlay(name, value));
+  const originalRef = useRef({
+    routeMode, mapSettings, pinSize, showRouteLines, showRouteDetails, showAllProperties,
+    mapTheme, navigationApp, quickFilter, soldDateFilter, highlightRecentlySold,
+    overlays: getBoundaryOverlays(), repColors: { ...repColors },
+  });
+  const persistedKeys = [
+    'fk_routeMode', 'fk_mapTheme_canvas_v2', 'fk_mapTheme_v3',
+    'fk_mapSettings_v4', 'fk_mapSettings_precision_v1',
+    'fk_pinSize_v3', 'fk_pinSize_precision_v1',
+    'fk_showRouteDetails_v2', 'fk_showRouteLines_v2', 'fk_navigation_app',
+  ];
+  const persistedSnapshotRef = useRef(Object.fromEntries(persistedKeys.map(key => [key, localStorage.getItem(key)])));
+  const rollbackTimerRef = useRef(null);
+  const committedRef = useRef(false);
+  const restorePersistedSnapshot = () => {
+    Object.entries(persistedSnapshotRef.current).forEach(([key, value]) => {
+      if (value === null) localStorage.removeItem(key);
+      else localStorage.setItem(key, value);
+    });
+  };
+  const [overlays, setOverlays] = useState(originalRef.current.overlays);
+  const [draftRepColors, setDraftRepColors] = useState(() => ({ ...repColors }));
+  const [pinSizeIntent, setPinSizeIntent] = useState('preserve');
+  const toggleOverlay = (name) => (value) => {
+    const next = { ...overlays, [name]: Boolean(value) };
+    setOverlays(next);
+    previewBoundaryOverlays(next);
+  };
   const [showHomeBase, setShowHomeBase] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
-  // Local buffered state
   const [local, setLocal] = useState({
-    mapSettings: mapSettings || {},
+    routeMode, mapSettings: mapSettings || {},
     pinSize, showRouteLines, showRouteDetails, showAllProperties,
     mapTheme, navigationApp, quickFilter,
     soldDateFilter, highlightRecentlySold,
   });
 
-  const upd = (key, val) => setLocal(p => ({ ...p, [key]: val }));
-  const updMs = (key, val) => setLocal(p => ({ ...p, mapSettings: { ...p.mapSettings, [key]: val } }));
-  const setLiveMapTheme = (value) => { upd('mapTheme', value); setMapTheme?.(value); };
+  const upd = (key, val) => {
+    setLocal(p => ({ ...p, [key]: val }));
+    const setters = {
+      pinSize: setPinSize, showRouteLines: setShowRouteLines,
+      showRouteDetails: setShowRouteDetails, showAllProperties: setShowAllProperties,
+      mapTheme: setMapTheme, quickFilter: setQuickFilter,
+      soldDateFilter: setSoldDateFilter, highlightRecentlySold: setHighlightRecentlySold,
+    };
+    setters[key]?.(val);
+  };
+  const updMs = (key, val) => {
+    const next = { ...local.mapSettings, [key]: val };
+    setLocal(p => ({ ...p, mapSettings: next }));
+    setMapSettings?.(next);
+  };
+  const setLiveMapTheme = (value) => upd('mapTheme', value);
 
   useEffect(() => {
     if (!window.matchMedia('(min-width: 1024px)').matches) return undefined;
@@ -87,51 +124,112 @@ export default function MapSettingsPanel({
     return () => { setTimeout(() => window.dispatchEvent(new Event('resize')), 0); };
   }, []);
 
+  // Home applies preview state to the live map. Its existing preference effect
+  // also writes that state, so restore the opening snapshot after each preview;
+  // Save Settings cancels this guard and writes the final values once.
+  useEffect(() => {
+    clearTimeout(rollbackTimerRef.current);
+    rollbackTimerRef.current = setTimeout(() => {
+      if (!committedRef.current) restorePersistedSnapshot();
+    }, 75);
+    return () => clearTimeout(rollbackTimerRef.current);
+  }, [local, overlays]);
+
   const ms = local.mapSettings;
 
-  // Live filter updates
-  const setLiveQuickFilter = (v) => { upd('quickFilter', v); setQuickFilter?.(v); };
-  const setLiveSoldDateFilter = (v) => {
-    upd('soldDateFilter', v);
-    setSoldDateFilter?.(v);
+  const setLiveQuickFilter = (v) => upd('quickFilter', v);
+  const setLiveSoldDateFilter = (v) => upd('soldDateFilter', v);
+  const setLiveShowAll = (v) => upd('showAllProperties', v);
+  const setLiveHighlight = (v) => upd('highlightRecentlySold', v);
+  const setLiveRouteMode = (nextMode) => {
+    upd('routeMode', nextMode);
+    window.dispatchEvent(new CustomEvent('fk-route-mode-changed', { detail: { routeMode: nextMode, preview: true } }));
   };
-  const setLiveShowAll = (v) => { upd('showAllProperties', v); setShowAllProperties?.(v); };
-  const setLiveHighlight = (v) => { upd('highlightRecentlySold', v); setHighlightRecentlySold?.(v); };
   // A theme is the dots, the paths, and the colour scheme applied together.
   // Picking one is an explicit dot-size choice, so it overrides the automatic
   // dense-territory size the map applies on its own.
   const applyTheme = (theme) => {
-    markPinSizeUserSet();
-    setLocal(p => ({ ...p, mapSettings: { ...p.mapSettings, ...theme.settings }, pinSize: theme.pinSize }));
+    const nextSettings = { ...local.mapSettings, ...theme.settings };
+    setPinSizeIntent('user');
+    setLocal(p => ({ ...p, mapSettings: nextSettings, pinSize: theme.pinSize }));
+    setMapSettings?.(nextSettings);
+    setPinSize?.(theme.pinSize);
   };
 
-  const handleSave = () => {
-    setMapSettings?.(local.mapSettings);
-    setPinSize?.(local.pinSize);
-    setShowRouteLines?.(local.showRouteLines);
-    setShowRouteDetails?.(local.showRouteDetails);
-    setShowAllProperties?.(local.showAllProperties);
-    setMapTheme?.(local.mapTheme);
-    setNavigationApp?.(local.navigationApp);
-    setHighlightRecentlySold?.(local.highlightRecentlySold);
-    try { localStorage.setItem('fk_navigation_app', local.navigationApp); } catch {}
+  const handleSave = async () => {
+    committedRef.current = true;
+    clearTimeout(rollbackTimerRef.current);
+    if (pinSizeIntent === 'user') markPinSizeUserSet();
+    if (pinSizeIntent === 'auto') clearPinSizeUserSet();
+    saveBoundaryOverlays(overlays);
+    try {
+      const canvasMode = local.routeMode === 'canvas';
+      localStorage.setItem('fk_navigation_app', local.navigationApp);
+      localStorage.setItem('fk_routeMode', local.routeMode);
+      localStorage.setItem(canvasMode ? 'fk_mapTheme_canvas_v2' : 'fk_mapTheme_v3', local.mapTheme);
+      localStorage.setItem(canvasMode ? 'fk_mapSettings_v4' : 'fk_mapSettings_precision_v1', JSON.stringify(local.mapSettings));
+      localStorage.setItem(canvasMode ? 'fk_pinSize_v3' : 'fk_pinSize_precision_v1', JSON.stringify(local.pinSize));
+      localStorage.setItem('fk_showRouteDetails_v2', JSON.stringify(local.showRouteDetails));
+      localStorage.setItem('fk_showRouteLines_v2', JSON.stringify(local.showRouteLines));
+    } catch {}
+    await setNavigationApp?.(local.navigationApp);
     window.dispatchEvent(new CustomEvent('fk-navigation-app-changed', { detail: { navigationApp: local.navigationApp } }));
+    window.dispatchEvent(new CustomEvent('fk-route-mode-changed', { detail: { routeMode: local.routeMode } }));
+    const changedRepColors = Object.entries(draftRepColors).filter(([id, color]) => originalRef.current.repColors[id] !== color);
+    await Promise.all(changedRepColors.map(([id, color]) => onUpdateRepColor?.(id, color)));
+    onClose();
+  };
+
+  const handleCancel = () => {
+    committedRef.current = true;
+    clearTimeout(rollbackTimerRef.current);
+    restorePersistedSnapshot();
+    const original = originalRef.current;
+    setMapSettings?.(original.mapSettings);
+    setPinSize?.(original.pinSize);
+    setShowRouteLines?.(original.showRouteLines);
+    setShowRouteDetails?.(original.showRouteDetails);
+    setShowAllProperties?.(original.showAllProperties);
+    setMapTheme?.(original.mapTheme);
+    setQuickFilter?.(original.quickFilter);
+    setSoldDateFilter?.(original.soldDateFilter);
+    setHighlightRecentlySold?.(original.highlightRecentlySold);
+    onPreviewRepColors?.(original.repColors);
+    previewBoundaryOverlays(original.overlays);
+    if (local.routeMode !== original.routeMode) {
+      window.dispatchEvent(new CustomEvent('fk-route-mode-changed', { detail: { routeMode: original.routeMode, preview: true } }));
+      setTimeout(() => {
+        setMapSettings?.(original.mapSettings);
+        setPinSize?.(original.pinSize);
+        setMapTheme?.(original.mapTheme);
+      }, 0);
+    }
     onClose();
   };
 
   const handleReset = () => {
     // Back to defaults includes handing dot sizing back to the automatic
     // dense-territory rule.
-    clearPinSizeUserSet();
+    setPinSizeIntent('auto');
     const defaultMapTheme = routeMode === 'canvas' ? 'terrain' : 'hybrid';
     const defaultPinTheme = routeMode === 'canvas' ? DEFAULT_PIN_THEME : DEFAULT_PRECISION_PIN_THEME;
-    setMapTheme?.(defaultMapTheme);
-    setLocal({
+    const defaults = {
+      routeMode: local.routeMode,
       mapSettings: { pinShape:'circle', showLabels:false, labelType:'number', ...defaultPinTheme.settings },
       pinSize:defaultPinTheme.pinSize, showRouteLines:false, showRouteDetails:true, showAllProperties:false,
       mapTheme:defaultMapTheme, navigationApp:'apple', quickFilter:'all',
       soldDateFilter:null, highlightRecentlySold:false,
-    });
+    };
+    setLocal(defaults);
+    setMapTheme?.(defaults.mapTheme);
+    setMapSettings?.(defaults.mapSettings);
+    setPinSize?.(defaults.pinSize);
+    setShowRouteLines?.(defaults.showRouteLines);
+    setShowRouteDetails?.(defaults.showRouteDetails);
+    setShowAllProperties?.(defaults.showAllProperties);
+    setQuickFilter?.(defaults.quickFilter);
+    setSoldDateFilter?.(defaults.soldDateFilter);
+    setHighlightRecentlySold?.(defaults.highlightRecentlySold);
   };
 
   const resetDataFilters = () => {
@@ -139,8 +237,9 @@ export default function MapSettingsPanel({
     setLiveShowAll(false);
     setLiveHighlight(false);
     setLiveSoldDateFilter(null);
-    setOverlays(setBoundaryOverlay('zip', false));
-    setOverlays(setBoundaryOverlay('county', false));
+    const nextOverlays = { zip: false, county: false };
+    setOverlays(nextOverlays);
+    previewBoundaryOverlays(nextOverlays);
   };
 
   /* ── tab state ── */
@@ -152,7 +251,7 @@ export default function MapSettingsPanel({
 
   return (
     <div className="fixed inset-0 z-[2000] lg:left-auto lg:w-96">
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm lg:hidden" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm lg:hidden" onClick={handleCancel} />
       <div className="absolute top-0 right-0 bottom-0 w-full max-w-sm overflow-hidden pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] shadow-2xl animate-in slide-in-from-right duration-300 flex flex-col" style={{ background:'#0a0a0a', borderLeft:'1px solid rgba(255,255,255,0.06)' }}>
 
         {/* Header */}
@@ -165,7 +264,7 @@ export default function MapSettingsPanel({
             <button onClick={handleReset} className="text-[9px] font-bold text-gray-500 hover:text-white flex items-center gap-1 px-2 py-1 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] transition-colors">
               <RotateCcw className="w-3 h-3" /> Reset
             </button>
-            <button onClick={onClose} className="p-1.5 hover:bg-white/[0.06] rounded-lg transition-colors">
+            <button onClick={handleCancel} className="p-1.5 hover:bg-white/[0.06] rounded-lg transition-colors">
               <X className="w-4 h-4 text-gray-400" />
             </button>
           </div>
@@ -191,14 +290,14 @@ export default function MapSettingsPanel({
             {tab === 'appearance' && (<>
 
               {/* Route Mode — switch between Canvas and Precision territory building */}
-              <RouteModeSetting />
+              <RouteModeSetting value={local.routeMode} onChange={setLiveRouteMode} />
 
               {/* Navigation Provider — first, because it drives every Navigate button */}
               <div>
                 <SectionLabel>Navigation App</SectionLabel>
                 <div className="grid grid-cols-2 gap-2 rounded-xl border border-white/[0.06] bg-white/[0.02] p-2">
                   {[{ id:'apple', label:'Apple Maps' }, { id:'google', label:'Google Maps' }].map(opt => (
-                    <button key={opt.id} onClick={() => { upd('navigationApp', opt.id); setNavigationApp?.(opt.id); try { localStorage.setItem('fk_navigation_app', opt.id); } catch {} window.dispatchEvent(new CustomEvent('fk-navigation-app-changed', { detail: { navigationApp: opt.id } })); }}
+                    <button key={opt.id} onClick={() => upd('navigationApp', opt.id)}
                       className={`flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold transition-all border ${local.navigationApp === opt.id ? 'bg-white/10 border-white/20 text-white' : 'bg-black/20 border-white/[0.04] text-gray-500 hover:border-white/10'}`}
                     >
                       <Navigation className="w-3.5 h-3.5" />
@@ -284,7 +383,7 @@ export default function MapSettingsPanel({
                   <SectionLabel>Property Dots</SectionLabel>
                   <div className="space-y-4 rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
                     <Row label="Dot size" value={`${local.pinSize}px`}>
-                      <Slider value={[local.pinSize]} onValueChange={([v]) => { markPinSizeUserSet(); upd('pinSize', v); }} min={2} max={14} step={1} className="w-full" />
+                      <Slider value={[local.pinSize]} onValueChange={([v]) => { setPinSizeIntent('user'); upd('pinSize', v); }} min={2} max={14} step={1} className="w-full" />
                     </Row>
                     <Row label="Dot opacity" value={`${Math.round((ms.pinOpacity || 0.85) * 100)}%`}>
                       <Slider value={[(ms.pinOpacity || 0.85) * 100]} onValueChange={([v]) => updMs('pinOpacity', v / 100)} min={20} max={100} step={5} className="w-full" />
@@ -352,14 +451,18 @@ export default function MapSettingsPanel({
                     {teamMembers.map(member => (
                       <div key={member.id} className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-3">
                         <div className="flex items-center gap-2 mb-2">
-                          <div className="w-3.5 h-3.5 rounded-full border border-white/20" style={{ background: repColors[member.id] || '#FFD700' }} />
+                          <div className="w-3.5 h-3.5 rounded-full border border-white/20" style={{ background: draftRepColors[member.id] || '#FFD700' }} />
                           <span className="text-xs font-bold text-white">{member.name}</span>
                           <span className="text-[9px] text-gray-600 ml-auto">{member.role}</span>
                         </div>
                         <div className="flex flex-wrap gap-1.5">
                           {REP_COLOR_OPTIONS.map(color => (
-                            <button key={color} onClick={() => onUpdateRepColor(member.id, color)}
-                              className={`w-6 h-6 rounded-full transition-all ${repColors[member.id] === color ? 'ring-2 ring-white ring-offset-1 ring-offset-black scale-110' : 'hover:scale-110'}`}
+                            <button key={color} onClick={() => {
+                              const next = { ...draftRepColors, [member.id]: color };
+                              setDraftRepColors(next);
+                              onPreviewRepColors?.(next);
+                            }}
+                              className={`w-6 h-6 rounded-full transition-all ${draftRepColors[member.id] === color ? 'ring-2 ring-white ring-offset-1 ring-offset-black scale-110' : 'hover:scale-110'}`}
                               style={{ background: color }}
                             />
                           ))}

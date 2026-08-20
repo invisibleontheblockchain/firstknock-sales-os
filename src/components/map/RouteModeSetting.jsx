@@ -11,7 +11,7 @@ import RouteModeToggle from '@/components/map/RouteModeToggle';
  * toolbar and route builder already listen to, so switching here keeps every
  * view in step without new plumbing through Home.
  */
-export default function RouteModeSetting() {
+export default function RouteModeSetting({ value, onChange }) {
   const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me(), staleTime: 1000 * 60 * 5 });
   const [routeMode, setRouteMode] = React.useState(() => {
     try { return localStorage.getItem('fk_routeMode') || 'precision'; } catch { return 'precision'; }
@@ -34,16 +34,21 @@ export default function RouteModeSetting() {
 
   if (!hasCanvasAccess(user)) return null;
 
+  const selectedMode = value || routeMode;
   const selectMode = (nextMode) => {
-    if (nextMode === routeMode) return;
+    if (nextMode === selectedMode) return;
     if (
-      routeMode === 'canvas'
+      selectedMode === 'canvas'
       && canvasDraftDirty
       && !window.confirm('You have unsaved Canvas territory changes. Switching to Precision mode will discard them. Continue?')
     ) return;
     setRouteMode(nextMode);
-    try { localStorage.setItem('fk_routeMode', nextMode); } catch {}
-    window.dispatchEvent(new CustomEvent('fk-route-mode-changed', { detail: { routeMode: nextMode } }));
+    if (onChange) {
+      onChange(nextMode);
+    } else {
+      try { localStorage.setItem('fk_routeMode', nextMode); } catch {}
+      window.dispatchEvent(new CustomEvent('fk-route-mode-changed', { detail: { routeMode: nextMode } }));
+    }
     toast.success(`${nextMode === 'canvas' ? 'Standard' : 'Precision'} mode active`);
   };
 
@@ -51,7 +56,7 @@ export default function RouteModeSetting() {
     <div>
       <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-500 mb-3 mt-1">Route Mode</h4>
       <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-3">
-      <RouteModeToggle routeMode={routeMode} onChange={selectMode} className="w-full" />
+      <RouteModeToggle routeMode={selectedMode} onChange={selectMode} className="w-full" />
       <p className="mt-2 text-[9px] text-gray-600 leading-relaxed">
         Standard divides drawn areas into rep territories. Precision pulls property data and builds door routes.
         </p>
