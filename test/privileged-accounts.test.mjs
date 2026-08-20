@@ -30,16 +30,16 @@ const CHRISTIAN = 'christian@nativapest.com';
 const OWNER = 'invisibleontheblockchain@gmail.com';
 const FREE_LIMIT = 50;
 
-test('PRIV-01 Christian is granted 1,000 properties, not the free 50', () => {
+test('PRIV-01 Christian is granted the uncapped ceiling, not the free 50', () => {
     // The reported symptom: an owner-flagged admin still capped at 50.
-    assert.equal(precisionGrantLimit({ email: CHRISTIAN }), 1000);
+    assert.equal(precisionGrantLimit({ email: CHRISTIAN }), UNLIMITED_PROPERTY_CAP);
     assert.ok(precisionGrantLimit({ email: CHRISTIAN }) > FREE_LIMIT);
     assert.equal(isKnockGateExempt({ email: CHRISTIAN }), true);
 });
 
 test('PRIV-02 the grant survives the casing and whitespace a real login carries', () => {
     for (const variant of [' christian@nativapest.com', 'Christian@NativaPest.com', 'CHRISTIAN@NATIVAPEST.COM ']) {
-        assert.equal(precisionGrantLimit({ email: variant }), 1000, variant);
+        assert.equal(precisionGrantLimit({ email: variant }), UNLIMITED_PROPERTY_CAP, variant);
         assert.equal(isKnockGateExempt({ email: variant }), true, variant);
     }
 });

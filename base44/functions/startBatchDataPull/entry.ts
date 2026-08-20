@@ -12,6 +12,7 @@ import {
     resolveEffectiveCount,
     selectOwnedPrecisionJobs
 } from '../../shared/precisionOrderSafety.js';
+import { loadAuthoritativeUser } from '../../shared/accountIdentity.js';
 import {
     calculatePrecisionCreditState,
     isPaidPrecisionCreditInvoice,
@@ -549,8 +550,9 @@ async function getPrecisionAllowance(base44, user, entitlement) {
 Deno.serve(async (req) => {
     try {
         const base44 = createClientFromRequest(req);
-        const user = await base44.auth.me();
-        if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+        const authenticatedUser = await base44.auth.me();
+        if (!authenticatedUser) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+        const user = await loadAuthoritativeUser(base44, authenticatedUser);
 
         const body = await req.json().catch(() => ({}));
         // 5.3 Polygon input integrity. Valid geometry remains untouched;

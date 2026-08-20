@@ -2,6 +2,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 import { Client } from 'npm:@neondatabase/serverless@0.9.0';
 import Stripe from 'npm:stripe@14.14.0';
 import { UNLIMITED_PROPERTY_CAP, currentGrantPeriod, precisionGrantLabel, precisionGrantLimit } from '../../shared/privilegedAccounts.js';
+import { loadAuthoritativeUser } from '../../shared/accountIdentity.js';
 import {
     ACTIVE_PRECISION_STATUSES,
     classifyActivePrecisionJobs,
@@ -433,8 +434,9 @@ async function getPrecisionAllowance(base44, user, entitlement) {
 Deno.serve(async (req) => {
     try {
         const base44 = createClientFromRequest(req);
-        const user = await base44.auth.me();
-        if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+        const authenticatedUser = await base44.auth.me();
+        if (!authenticatedUser) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+        const user = await loadAuthoritativeUser(base44, authenticatedUser);
 
         const body = await req.json().catch(() => ({}));
         // 5.3 Polygon input integrity. Valid geometry remains untouched;

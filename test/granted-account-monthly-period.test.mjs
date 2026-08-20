@@ -70,7 +70,7 @@ const paidJob = (count, period) => ({
     precision_usage_count: count,
     precision_usage_reserved: 0,
     precision_usage_recorded_at: period.periodStart,
-    precision_subscription_id: 'account_precision_grant',
+    precision_subscription_id: precisionGrantLabel(UNLIMITED_PROPERTY_CAP),
     precision_usage_period_start: period.periodStart,
     precision_usage_period_end: period.periodEnd
 });

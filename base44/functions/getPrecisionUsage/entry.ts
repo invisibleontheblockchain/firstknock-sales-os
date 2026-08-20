@@ -8,6 +8,7 @@ import {
 } from '../../shared/precisionCredits.js';
 import { UNLIMITED_PROPERTY_CAP, currentGrantPeriod, precisionGrantLabel, precisionGrantLimit } from '../../shared/privilegedAccounts.js';
 import { selectOwnedPrecisionJobs } from '../../shared/precisionOrderSafety.js';
+import { loadAuthoritativeUser } from '../../shared/accountIdentity.js';
 
 const FREE_PROPERTY_LIMIT = 50;
 const PAID_PROPERTY_LIMIT = 1000;
@@ -503,8 +504,9 @@ async function reconcileLegacyJobs(base44: any, user: any, jobs: any[], entitlem
 Deno.serve(async (req: Request) => {
     try {
         const base44 = createClientFromRequest(req);
-        const user = await base44.auth.me();
-        if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+        const authenticatedUser = await base44.auth.me();
+        if (!authenticatedUser) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+        const user = await loadAuthoritativeUser(base44, authenticatedUser);
 
         const entitlement = await resolveEntitlement(user);
         let jobs = await getUserPrecisionJobs(base44, user);

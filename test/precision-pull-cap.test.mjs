@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 import ts from 'typescript';
 import { UNLIMITED_PROPERTY_CAP, precisionGrantLabel, precisionGrantLimit } from '../base44/shared/privilegedAccounts.js';
+import { loadAuthoritativeUser } from '../base44/shared/accountIdentity.js';
 import {
   calculatePrecisionCreditState,
   isPaidPrecisionCreditInvoice,
@@ -68,6 +69,7 @@ function loadHandler(path, { base44, stripeApi = {}, ClientImpl = null }) {
     UNLIMITED_PROPERTY_CAP,
     precisionGrantLabel,
     precisionGrantLimit,
+    loadAuthoritativeUser,
     Deno: {
       env: { get: (key) => key === 'STRIPE_SECRET_KEY' ? 'sk_test' : 'test_value' },
       serve: (registeredHandler) => { handler = registeredHandler; }
