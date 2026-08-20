@@ -668,16 +668,6 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
                         <Trash2 className="w-3.5 h-3.5" />
                     </button>
                 )}
-                {!isMultiSelect && onReoptimize && (
-                    <button
-                        onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); onReoptimize(route); }}
-                        className="absolute top-2 right-10 p-1.5 bg-blue-500/20 hover:bg-blue-500/40 text-blue-400 rounded opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity touch-manipulation"
-                        title={`Re-optimize order (${routeConfig?.walkingPattern?.replace(/_/g, ' ') || 'current pattern'})`}
-                    >
-                        <RefreshCw className="w-3.5 h-3.5" />
-                    </button>
-                )}
             </div>
         </div>
     );
