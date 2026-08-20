@@ -6,7 +6,9 @@ function publishedRelease(html) {
 
 export function checkForPublishedRelease(currentRelease) {
   const isBase44Preview = /(^|\.)preview(?:-sandbox)?--.*\.base44\.app$/i.test(window.location.hostname);
-  if (isBase44Preview || !navigator.onLine || updateCheckInFlight) return updateCheckInFlight;
+  // import.meta.env.DEV covers every Vite dev-server host, not just the known
+  // preview domains — a release-check reload there replays stale dev chunks.
+  if (import.meta.env.DEV || isBase44Preview || !navigator.onLine || updateCheckInFlight) return updateCheckInFlight;
 
   updateCheckInFlight = (async () => {
     const url = new URL('/', window.location.origin);

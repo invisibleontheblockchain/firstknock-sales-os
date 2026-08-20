@@ -46,12 +46,24 @@
       });
 
       const isBase44Preview = /(^|\.)preview(?:-sandbox)?--.*\.base44\.app$/i.test(window.location.hostname);
-      if ('serviceWorker' in navigator && isBase44Preview) {
-        // Preview deployments do not serve a stable production worker. Remove
-        // stale registrations without allowing preview fetch failures to escape.
+      // The Vite dev server injects its client script; its presence means dev
+      // modules (/node_modules/.vite, /@vite) are in play. A worker or cache
+      // left over there serves chunks from an older dep-optimization run next
+      // to fresh ones — two React copies, and hooks crash with null useContext.
+      const isViteDev = !!document.querySelector('script[src*="@vite/client"], script[src*="@react-refresh"]');
+      const isLocalHost = /^(localhost|127\.0\.0\.1|\[::1\])$/i.test(window.location.hostname);
+      if ('serviceWorker' in navigator && (isBase44Preview || isViteDev || isLocalHost)) {
+        // Dev/preview environments do not serve a stable production worker.
+        // Remove stale registrations AND their caches so no stale dev JS can
+        // be replayed, without letting cleanup failures escape.
         navigator.serviceWorker.getRegistrations()
           .then((registrations) => Promise.all(registrations.map((registration) => registration.unregister())))
           .catch((error) => console.warn('Preview PWA cleanup skipped', error));
+        if ('caches' in window) {
+          caches.keys()
+            .then((names) => Promise.all(names.map((name) => caches.delete(name))))
+            .catch((error) => console.warn('Preview cache cleanup skipped', error));
+        }
       } else if ('serviceWorker' in navigator) {
         // 1. Reload when new SW takes control
         let refreshing = false;
