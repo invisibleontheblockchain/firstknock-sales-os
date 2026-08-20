@@ -1411,18 +1411,16 @@ export default function Home() {
         }
     }, []);
 
-    // Handle route-name search and other saved-route deep links after full map hydration.
+    // Route search / deep links stay in the URL while the route is open, so a
+    // late hydration or PWA refresh cannot drop it. MapToolbar clears the param
+    // when the route is closed.
     useEffect(() => {
-        const params = new URLSearchParams(window.location.search);
-        const savedRouteId = params.get('savedRoute');
+        const savedRouteId = new URLSearchParams(window.location.search).get('savedRoute');
         if (!savedRouteId || activeRoute || hydratedSavedRoutes.length === 0) return;
         const saved = hydratedSavedRoutes.find(route => route.id === savedRouteId);
         if (!saved?.properties?.length) return;
         setModeRaw('analyze');
         setActiveRoute(saved);
-        if (params.get('appointment') !== '1') {
-            window.history.replaceState({}, '', window.location.pathname);
-        }
     }, [hydratedSavedRoutes, activeRoute]);
 
     useAppointmentMapFocus({

@@ -188,6 +188,24 @@ export default function MapToolbar({
     if (routeId && openHydratedSearchRoute(routeId)) pendingSearchRouteIdRef.current = null;
   }, [hydratedSavedRoutes, openHydratedSearchRoute]);
 
+  // The open route is mirrored into the URL so a refresh reopens it, and the
+  // param is dropped only after the user actually closes the route.
+  const hadActiveRouteRef = React.useRef(false);
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (activeRoute?.id) {
+      hadActiveRouteRef.current = true;
+      if (params.get('savedRoute') === String(activeRoute.id)) return;
+      params.set('savedRoute', String(activeRoute.id));
+    } else {
+      if (!hadActiveRouteRef.current || !params.has('savedRoute')) return;
+      hadActiveRouteRef.current = false;
+      params.delete('savedRoute');
+    }
+    const query = params.toString();
+    window.history.replaceState({}, '', `${window.location.pathname}${query ? `?${query}` : ''}`);
+  }, [activeRoute?.id]);
+
   useEffect(() => {
     if (!activeRoute?.id) return;
     try {localStorage.setItem('fk_selectedKnockRouteId', activeRoute.id);} catch {}
