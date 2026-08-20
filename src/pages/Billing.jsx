@@ -378,12 +378,14 @@ export default function Billing() {
                                         {precisionUsage && !isPrecisionUsageError && !isPrecisionUsageFetching ? (
                                             <>
                                                 <div className="flex justify-between text-xs text-gray-300 mb-2">
-                                                    <span>Precision properties used</span>
-                                                    <span>{precisionUsage.meterUsed.toLocaleString()} / {precisionUsage.limit.toLocaleString()}</span>
+                                                    <span>{precisionUsage.unlimited ? 'Precision Properties' : 'Precision properties used'}</span>
+                                                    <span>{precisionUsage.unlimited ? 'Unlimited' : `${precisionUsage.meterUsed.toLocaleString()} / ${precisionUsage.limit.toLocaleString()}`}</span>
                                                 </div>
-                                                <div className="h-2 bg-gray-800 rounded-full overflow-hidden">
-                                                    <div className="h-full bg-yellow-500 rounded-full" style={{ width: `${precisionUsage.percent}%` }} />
-                                                </div>
+                                                {!precisionUsage.unlimited && (
+                                                    <div className="h-2 bg-gray-800 rounded-full overflow-hidden">
+                                                        <div className="h-full bg-yellow-500 rounded-full" style={{ width: `${precisionUsage.percent}%` }} />
+                                                    </div>
+                                                )}
                                                 {precisionUsage.reserved > 0 && (
                                                     <p className="mt-2 text-[10px] text-gray-400">
                                                         {precisionUsage.reserved.toLocaleString()} properties are reserved by an import in progress.

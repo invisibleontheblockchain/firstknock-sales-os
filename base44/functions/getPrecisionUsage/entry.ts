@@ -552,6 +552,7 @@ Deno.serve(async (req: Request) => {
             period_start: entitlement.periodStart,
             period_end: entitlement.periodEnd,
             subscription_id: entitlement.subscriptionId,
+            unlimited: entitlement.subscriptionId === 'owner_unlimited_grant',
             invoice_id: entitlement.invoiceId,
             configured_extra_credits: entitlement.configuredExtraCredits || 0,
             rollover_credits_issued: creditState.totalIssued,

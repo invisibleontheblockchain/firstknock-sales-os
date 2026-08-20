@@ -552,9 +552,16 @@ Deno.serve(async (req) => {
         const base44 = createClientFromRequest(req);
         const authenticatedUser = await base44.auth.me();
         if (!authenticatedUser) return Response.json({ error: 'Unauthorized' }, { status: 401 });
-        const user = await loadAuthoritativeUser(base44, authenticatedUser);
-
         const body = await req.json().catch(() => ({}));
+        let user = await loadAuthoritativeUser(base44, authenticatedUser);
+        if (body.diagnostic_user_id) {
+            if (body.dry_run !== true || String(authenticatedUser.role || '').toLowerCase() !== 'admin') {
+                return Response.json({ error: 'Admin dry-run access required' }, { status: 403 });
+            }
+            const targetUser = await base44.asServiceRole.entities.User.get(String(body.diagnostic_user_id));
+            if (!targetUser) return Response.json({ error: 'Diagnostic account not found' }, { status: 404 });
+            user = targetUser;
+        }
         // 5.3 Polygon input integrity. Valid geometry remains untouched;
         // crossed freehand traces are untangled before identity is computed.
         const polygonResult = normalizePrecisionPolygon(body.polygon);
@@ -678,6 +685,9 @@ Deno.serve(async (req) => {
                 paid_properties_reserved: hasPaidPrecisionCapacity ? allowance.reserved : null,
                 paid_properties_remaining: paidPropertiesRemaining,
                 paid_property_limit: hasPaidPrecisionCapacity ? paidPropertyLimit : null,
+                entitlement_kind: entitlement.kind,
+                unlimited: entitlement.subscriptionId === 'owner_unlimited_grant',
+                diagnostic_user_id: body.diagnostic_user_id ? user.id : null,
                 precision_usage_period_start: entitlement.periodStart,
                 sold_months: requestedSoldMonths,
                 ...ownershipResponseFields(ownership),

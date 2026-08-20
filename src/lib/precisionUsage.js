@@ -46,6 +46,7 @@ export function normalizePrecisionUsageResponse(response) {
     rolloverCreditsRemaining: finiteWhole(data.rollover_credits_remaining || 0, 'rollover_credits_remaining'),
     percent: Math.max(0, Math.min(100, Number(data.percent) || 0)),
     paidAccess: data.paid_access === true,
-    proAccess: data.pro_access === true
+    proAccess: data.pro_access === true,
+    unlimited: data.unlimited === true
   };
 }

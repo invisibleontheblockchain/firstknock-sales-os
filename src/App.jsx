@@ -8,6 +8,7 @@ import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider } from '@/lib/AuthContext';
 import ProtectedRoute from '@/components/ProtectedRoute';
+import AppRefreshManager from '@/components/AppRefreshManager';
 import Layout from './Layout.jsx';
 
 // Phase 5 — code-splitting: every page in ./pages is its own lazy-loaded chunk.
@@ -87,6 +88,7 @@ function App() {
   return (
     <AuthProvider>
       <QueryClientProvider client={queryClientInstance}>
+        <AppRefreshManager />
         <Router>
           <NavigationTracker />
           <React.Suspense fallback={

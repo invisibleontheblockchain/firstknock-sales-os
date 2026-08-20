@@ -23,7 +23,8 @@
     
     <!-- Force PWA Updates on Home Screen Resume -->
     <script>
-      const FK_PWA_RELEASE = '2026-08-19-pwa-force-refresh-v1';
+      const FK_PWA_RELEASE = '2026-08-20-precision-entitlement-v2';
+      window.__FK_PWA_RELEASE__ = FK_PWA_RELEASE;
       const clearOldPwaCachesOnce = async () => {
         try {
           if (!('caches' in window)) return false;
@@ -55,8 +56,7 @@
         });
 
         // 2. Force new service workers to skip waiting when installed
-        navigator.serviceWorker.getRegistration().then(reg => {
-          if (!reg) return;
+        navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).then(reg => {
           reg.update().catch((error) => console.warn('PWA startup update check skipped', error));
 
           const handleUpdate = (worker) => {
