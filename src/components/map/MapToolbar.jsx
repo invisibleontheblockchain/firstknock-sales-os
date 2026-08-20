@@ -90,6 +90,7 @@ export default function MapToolbar({
 }) {
   const queryClient = useQueryClient();
   const hasDrawnArea = drawnPolygon && drawnPolygon.length > 2;
+  const customAreaControlsBlocked = mode === 'generate' && routeMode === 'precision' && hasDrawnArea && !drawingMode && !activeRoute;
   const routeSelectClass = "h-6 md:h-7 text-[10px] md:text-[11px] font-extrabold rounded-lg px-2 md:px-2.5 outline-none cursor-pointer shrink-0 bg-[#050505]/95 border border-white/15 text-white shadow-[0_8px_24px_rgba(0,0,0,0.35)] hover:border-[#2EEB57]/50 hover:bg-[#0D0D0D] focus:border-[#2EEB57] focus:ring-2 focus:ring-[#2EEB57]/20 transition-all";
   const routeSelectAccentClass = `${routeSelectClass} border-[#2EEB57]/35 text-[#86efac]`;
   const routeSelectStyle = { backgroundColor: '#050505', color: '#F9FAFB', colorScheme: 'dark', WebkitAppearance: 'menulist' };
@@ -352,7 +353,7 @@ export default function MapToolbar({
             <div className="absolute top-1 left-1 right-1 sm:top-4 sm:left-4 sm:right-4 z-[1000] flex flex-col gap-1.5 sm:gap-2 pointer-events-none">
                 <div className="relative flex flex-nowrap items-center justify-between gap-1 sm:gap-2 w-full">
                     {/* DASHBOARD & SETTINGS TOGGLES */}
-                    <div className="pointer-events-auto shrink-0 flex gap-1 sm:gap-2">
+                    <div className={`${customAreaControlsBlocked ? 'pointer-events-none' : 'pointer-events-auto'} shrink-0 flex gap-1 sm:gap-2`}>
                         <Button
               onClick={() => setShowDashboard(true)}
               className="bg-black/80 hover:bg-black backdrop-blur-md border border-gray-800 shadow-xl h-8 sm:h-11 rounded-lg sm:rounded-xl px-2 sm:px-3 flex items-center gap-1.5 sm:gap-2">
@@ -370,7 +371,7 @@ export default function MapToolbar({
                     </div>
 
                     {/* MODE TOGGLE - Absolutely centered */}
-                    <div className="pointer-events-auto absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-black/80 backdrop-blur-md rounded-xl p-1 border border-gray-800 flex gap-1 shadow-xl max-w-[42vw] sm:max-w-none">
+                    <div className={`${customAreaControlsBlocked ? 'pointer-events-none' : 'pointer-events-auto'} absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-black/80 backdrop-blur-md rounded-xl p-1 border border-gray-800 flex gap-1 shadow-xl max-w-[42vw] sm:max-w-none`}>
                         <button
               onClick={() => {
                 if (!allowCanvasDiscard('Opening Routes')) return;
@@ -400,7 +401,7 @@ export default function MapToolbar({
                     </div>
 
                     {/* DATA STATUS + FILTER BUTTON */}
-                    <div className="pointer-events-auto shrink-0 flex items-center gap-1 sm:gap-2">
+                    <div className={`${customAreaControlsBlocked ? 'pointer-events-none' : 'pointer-events-auto'} shrink-0 flex items-center gap-1 sm:gap-2`}>
 
                         <div className="hidden xl:block">
                             <DataStatusIndicator user={user} />

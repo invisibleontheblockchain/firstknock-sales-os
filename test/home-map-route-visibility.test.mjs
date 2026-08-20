@@ -62,4 +62,6 @@ test('Home map has discovery, legacy-hash, visibility, and camera recovery paths
   assert.match(layers, /decisionFingerprint/);
   assert.match(toolbar, /routeStatusView === 'all'/);
   assert.match(toolbar, /'All routes visible'/);
+  assert.match(toolbar, /customAreaControlsBlocked = mode === 'generate'.*routeMode === 'precision'.*hasDrawnArea.*!drawingMode.*!activeRoute/);
+  assert.equal((toolbar.match(/customAreaControlsBlocked \? 'pointer-events-none'/g) || []).length, 3);
 });
