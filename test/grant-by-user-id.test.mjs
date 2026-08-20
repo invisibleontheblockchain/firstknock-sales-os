@@ -95,7 +95,9 @@ test('UID-05 nobody else is granted by ID', () => {
     }
     assert.equal(precisionGrantLimit(null), null);
     assert.equal(precisionGrantLimit({}), null);
-    assert.equal(PRECISION_GRANTS_BY_USER_ID.size, 1);
+    // Christian and Devin (devinfgalligan@gmail.com) are the only ID grants.
+    assert.equal(PRECISION_GRANTS_BY_USER_ID.size, 2);
+    assert.equal(precisionGrantLimit({ id: '69fb8c76e8bf4b0b31e8d4f9', email: 'mismatched@example.com' }), 1000);
 });
 
 test('UID-06 client-visible flags still grant nothing', () => {

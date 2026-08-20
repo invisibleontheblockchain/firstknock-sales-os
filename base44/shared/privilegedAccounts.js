@@ -39,7 +39,8 @@ export function normalizeAccountEmail(value) {
  */
 export const PRECISION_GRANTS = new Map([
     ['invisibleontheblockchain@gmail.com', UNLIMITED_PROPERTY_CAP],
-    ['christian@nativapest.com', 1000]
+    ['christian@nativapest.com', 1000],
+    ['devinfgalligan@gmail.com', 1000]
 ]);
 
 /**
@@ -55,7 +56,9 @@ export const PRECISION_GRANTS = new Map([
  */
 export const PRECISION_GRANTS_BY_USER_ID = new Map([
     // christian@nativapest.com
-    ['6978c7229935cf40cde25086', 1000]
+    ['6978c7229935cf40cde25086', 1000],
+    // devinfgalligan@gmail.com
+    ['69fb8c76e8bf4b0b31e8d4f9', 1000]
 ]);
 
 /**
