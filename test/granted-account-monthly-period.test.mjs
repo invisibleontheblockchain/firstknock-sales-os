@@ -83,7 +83,7 @@ function priorMonth(period) {
 test('GRANT-01 the granted window is the current calendar month, not a fixed block', () => {
     const entitlement = api.betaPrecisionEvidence(CHRISTIAN);
     const expected = currentGrantPeriod();
-    assert.equal(entitlement.limit, 1000);
+    assert.equal(entitlement.limit, UNLIMITED_PROPERTY_CAP);
     assert.equal(entitlement.periodStart, expected.periodStart);
     assert.equal(entitlement.periodEnd, expected.periodEnd);
 
@@ -102,7 +102,7 @@ test('GRANT-02 last month’s usage does not consume this month’s allowance', 
     const spentLastMonth = [paidJob(4000, previous)];
     const usage = api.calculateUsage(spentLastMonth, entitlement);
     assert.equal(usage.used, 0, 'a previous period must not count against this one');
-    assert.equal(usage.remaining, 1000, 'the allowance resets with the month');
+    assert.equal(usage.remaining, UNLIMITED_PROPERTY_CAP, 'the allowance resets with the month');
 });
 
 test('GRANT-03 a drawn area can still request properties', () => {
@@ -118,15 +118,15 @@ test('GRANT-03 a drawn area can still request properties', () => {
     assert.equal(requestable([], 500), 500);
 });
 
-test('GRANT-04 this month’s usage still meters normally', () => {
+test('GRANT-04 this month’s usage tracks against the uncapped safety ceiling', () => {
     const entitlement = api.betaPrecisionEvidence(CHRISTIAN);
     const usage = api.calculateUsage([paidJob(400, entitlement)], entitlement);
     assert.equal(usage.used, 400);
-    assert.equal(usage.remaining, 600);
+    assert.equal(usage.remaining, UNLIMITED_PROPERTY_CAP - 400);
 
-    // And the ceiling still binds inside the month.
-    const spent = api.calculateUsage([paidJob(1200, entitlement)], entitlement);
-    assert.equal(spent.used, 1000);
+    // The shared finite safety ceiling still protects persisted job math.
+    const spent = api.calculateUsage([paidJob(UNLIMITED_PROPERTY_CAP + 200, entitlement)], entitlement);
+    assert.equal(spent.used, UNLIMITED_PROPERTY_CAP);
     assert.equal(spent.remaining, 0);
 });
 
@@ -142,7 +142,7 @@ test('GRANT-05 an unmetered legacy pull never counts against the grant', () => {
         }
     ], entitlement);
     assert.equal(usage.used, 0);
-    assert.equal(usage.remaining, 1000);
+    assert.equal(usage.remaining, UNLIMITED_PROPERTY_CAP);
 });
 
 test('GRANT-06 the owner keeps an uncapped ceiling on the same monthly window', () => {
