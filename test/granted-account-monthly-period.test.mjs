@@ -60,6 +60,7 @@ function loadEndpoint() {
 
 const api = loadEndpoint();
 const CHRISTIAN = { id: '6978c7229935cf40cde25086', email: 'christian@nativapest.com' };
+const CHRISTIAN_LIMIT = 1000;
 
 // precision_usage_recorded_at is what makes jobUsage honour the explicit
 // count; without it a completed job falls back to legacy count fields and
@@ -70,7 +71,7 @@ const paidJob = (count, period) => ({
     precision_usage_count: count,
     precision_usage_reserved: 0,
     precision_usage_recorded_at: period.periodStart,
-    precision_subscription_id: precisionGrantLabel(UNLIMITED_PROPERTY_CAP),
+    precision_subscription_id: precisionGrantLabel(CHRISTIAN_LIMIT),
     precision_usage_period_start: period.periodStart,
     precision_usage_period_end: period.periodEnd
 });
@@ -83,7 +84,7 @@ function priorMonth(period) {
 test('GRANT-01 the granted window is the current calendar month, not a fixed block', () => {
     const entitlement = api.betaPrecisionEvidence(CHRISTIAN);
     const expected = currentGrantPeriod();
-    assert.equal(entitlement.limit, UNLIMITED_PROPERTY_CAP);
+    assert.equal(entitlement.limit, CHRISTIAN_LIMIT);
     assert.equal(entitlement.periodStart, expected.periodStart);
     assert.equal(entitlement.periodEnd, expected.periodEnd);
 
@@ -102,7 +103,7 @@ test('GRANT-02 last month’s usage does not consume this month’s allowance', 
     const spentLastMonth = [paidJob(4000, previous)];
     const usage = api.calculateUsage(spentLastMonth, entitlement);
     assert.equal(usage.used, 0, 'a previous period must not count against this one');
-    assert.equal(usage.remaining, UNLIMITED_PROPERTY_CAP, 'the allowance resets with the month');
+    assert.equal(usage.remaining, CHRISTIAN_LIMIT, 'the allowance resets with the month');
 });
 
 test('GRANT-03 a drawn area can still request properties', () => {
@@ -118,15 +119,14 @@ test('GRANT-03 a drawn area can still request properties', () => {
     assert.equal(requestable([], 500), 500);
 });
 
-test('GRANT-04 this month’s usage tracks against the uncapped safety ceiling', () => {
+test('GRANT-04 this month’s usage tracks against Christian’s 1,000-property ceiling', () => {
     const entitlement = api.betaPrecisionEvidence(CHRISTIAN);
     const usage = api.calculateUsage([paidJob(400, entitlement)], entitlement);
     assert.equal(usage.used, 400);
-    assert.equal(usage.remaining, UNLIMITED_PROPERTY_CAP - 400);
+    assert.equal(usage.remaining, CHRISTIAN_LIMIT - 400);
 
-    // The shared finite safety ceiling still protects persisted job math.
-    const spent = api.calculateUsage([paidJob(UNLIMITED_PROPERTY_CAP + 200, entitlement)], entitlement);
-    assert.equal(spent.used, UNLIMITED_PROPERTY_CAP);
+    const spent = api.calculateUsage([paidJob(CHRISTIAN_LIMIT + 200, entitlement)], entitlement);
+    assert.equal(spent.used, CHRISTIAN_LIMIT);
     assert.equal(spent.remaining, 0);
 });
 
@@ -142,7 +142,7 @@ test('GRANT-05 an unmetered legacy pull never counts against the grant', () => {
         }
     ], entitlement);
     assert.equal(usage.used, 0);
-    assert.equal(usage.remaining, UNLIMITED_PROPERTY_CAP);
+    assert.equal(usage.remaining, CHRISTIAN_LIMIT);
 });
 
 test('GRANT-06 the owner keeps an uncapped ceiling on the same monthly window', () => {

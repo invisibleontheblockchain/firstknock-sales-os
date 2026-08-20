@@ -89,7 +89,7 @@ const CHRISTIAN = {
 test('STRIPELESS-01 a granted account resolves with no Stripe records at all', async () => {
     const entitlement = await api.resolvePrecisionEntitlement(CHRISTIAN);
     assert.equal(entitlement.paidAccess, true, 'paidAccess is what every pull gate reads');
-    assert.equal(entitlement.precisionLimit, UNLIMITED_PROPERTY_CAP);
+    assert.equal(entitlement.precisionLimit, 1000);
     assert.equal(entitlement.kind, 'beta');
 });
 
@@ -131,7 +131,7 @@ test('STRIPELESS-05 the area fetch resolves a grant with no Stripe client', asyn
     const entitlement = await api.resolvePrecisionEntitlement(CHRISTIAN);
     assert.equal(entitlement.kind, 'beta');
     assert.equal(entitlement.paidAccess, true);
-    assert.equal(entitlement.precisionLimit, UNLIMITED_PROPERTY_CAP);
+    assert.equal(entitlement.precisionLimit, 1000);
 });
 
 test('STRIPELESS-06 the meter resolves a grant with no Stripe client', async () => {
@@ -140,8 +140,8 @@ test('STRIPELESS-06 the meter resolves a grant with no Stripe client', async () 
     assert.equal(entitlement.kind, 'beta');
     // calculateUsage divides the period budget by .limit, not .precisionLimit;
     // a grant that set only the latter would meter him against undefined.
-    assert.equal(entitlement.limit, UNLIMITED_PROPERTY_CAP);
-    assert.equal(entitlement.precisionLimit, UNLIMITED_PROPERTY_CAP);
+    assert.equal(entitlement.limit, 1000);
+    assert.equal(entitlement.precisionLimit, 1000);
 });
 
 test('STRIPELESS-07 both still reach Stripe for an ungranted account', async () => {

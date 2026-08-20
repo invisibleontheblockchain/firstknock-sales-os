@@ -57,17 +57,17 @@ function loadEndpoint(endpoint, exportNames) {
     );
 }
 
-test('UID-01 the ID grants uncapped Precision whatever address he signs in with', () => {
-    assert.equal(precisionGrantLimit({ id: CHRISTIAN_ID, email: 'christian@nativapest.com' }), UNLIMITED_PROPERTY_CAP);
+test('UID-01 the ID grants 1,000 Precision properties whatever address he signs in with', () => {
+    assert.equal(precisionGrantLimit({ id: CHRISTIAN_ID, email: 'christian@nativapest.com' }), 1000);
     // The failure mode an email list cannot see.
-    assert.equal(precisionGrantLimit({ id: CHRISTIAN_ID, email: 'christian@nativepest.com' }), UNLIMITED_PROPERTY_CAP);
-    assert.equal(precisionGrantLimit({ id: CHRISTIAN_ID, email: 'someone.else@gmail.com' }), UNLIMITED_PROPERTY_CAP);
-    assert.equal(precisionGrantLimit({ id: CHRISTIAN_ID }), UNLIMITED_PROPERTY_CAP);
-    assert.equal(precisionGrantLimit({ id: ` ${CHRISTIAN_ID} ` }), UNLIMITED_PROPERTY_CAP);
+    assert.equal(precisionGrantLimit({ id: CHRISTIAN_ID, email: 'christian@nativepest.com' }), 1000);
+    assert.equal(precisionGrantLimit({ id: CHRISTIAN_ID, email: 'someone.else@gmail.com' }), 1000);
+    assert.equal(precisionGrantLimit({ id: CHRISTIAN_ID }), 1000);
+    assert.equal(precisionGrantLimit({ id: ` ${CHRISTIAN_ID} ` }), 1000);
 });
 
 test('UID-02 the email route still works when the ID is absent', () => {
-    assert.equal(precisionGrantLimit({ email: 'christian@nativapest.com' }), UNLIMITED_PROPERTY_CAP);
+    assert.equal(precisionGrantLimit({ email: 'christian@nativapest.com' }), 1000);
     assert.equal(precisionGrantLimit({ email: 'invisibleontheblockchain@gmail.com' }), UNLIMITED_PROPERTY_CAP);
 });
 
@@ -76,7 +76,7 @@ test('UID-03 the BatchData pull honours it with no Stripe anywhere', async () =>
     const api = loadEndpoint('base44/functions/startBatchDataPull/entry.ts', ['resolvePrecisionEntitlement']);
     const entitlement = await api.resolvePrecisionEntitlement({ id: CHRISTIAN_ID, email: 'mismatched@example.com' });
     assert.equal(entitlement.paidAccess, true, 'hasPaidPrecisionCapacity reads this');
-    assert.equal(entitlement.precisionLimit, UNLIMITED_PROPERTY_CAP);
+    assert.equal(entitlement.precisionLimit, 1000);
     assert.equal(entitlement.kind, 'beta');
 });
 
@@ -85,7 +85,7 @@ test('UID-04 the meter agrees with the pull path, so no free-limit banner', () =
     const entitlement = api.betaPrecisionEvidence({ id: CHRISTIAN_ID, email: 'mismatched@example.com' });
     // PrecisionPullPanel renders "Free Precision limit" only for kind 'trial'.
     assert.equal(entitlement.kind, 'beta');
-    assert.equal(entitlement.limit, UNLIMITED_PROPERTY_CAP);
+    assert.equal(entitlement.limit, 1000);
     assert.equal(entitlement.periodStart, currentGrantPeriod().periodStart);
 });
 
@@ -109,7 +109,7 @@ test('UID-07 any address at his company domains is granted', () => {
     // The last resort when an identity will not match: an account can exist
     // twice, and a person can sign in under an address that is not the one on
     // the record. Both look identical from outside — a silent fall to free.
-    assert.equal(precisionGrantLimit({ email: 'christian@nativapest.com' }), UNLIMITED_PROPERTY_CAP);
+    assert.equal(precisionGrantLimit({ email: 'christian@nativapest.com' }), 1000);
     for (const email of [
         'christian@nativepest.com',
         'christian@nativepestmanagement.com',
@@ -117,7 +117,7 @@ test('UID-07 any address at his company domains is granted', () => {
     ]) {
         assert.equal(precisionGrantLimit({ email }), 1000, email);
     }
-    assert.equal(precisionGrantLimit({ email: 'CHRISTIAN@NativaPest.com ' }), UNLIMITED_PROPERTY_CAP);
+    assert.equal(precisionGrantLimit({ email: 'CHRISTIAN@NativaPest.com ' }), 1000);
 });
 
 test('UID-08 the domain grant does not leak past those domains', () => {

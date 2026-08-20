@@ -90,7 +90,7 @@ test('RECON-01 a granted account reconciles without Stripe and without throwing'
     const body = await response.json();
     assert.equal(response.status, 200, JSON.stringify(body));
     assert.equal(body.success, true);
-    assert.equal(body.paid_property_limit, UNLIMITED_PROPERTY_CAP, 'the granted ceiling, not the Stripe one');
+    assert.equal(body.paid_property_limit, 1000, 'the granted ceiling, not the Stripe one');
 });
 
 test('RECON-02 it reconciles against the same month the meter uses', async () => {
