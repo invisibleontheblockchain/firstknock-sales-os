@@ -577,7 +577,6 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
                     </div>
                     <div className="flex flex-wrap gap-x-2.5 gap-y-0.5 text-[10px] text-gray-600 mt-0.5 min-w-0">
                         <span>{route.houseCount || route.metrics?.house_count} doors</span>
-                        <span>{route.competitivenessScore || route.metrics?.score || 0} score</span>
                         {knockStats.knocked > 0 && (
                             <span className="text-yellow-500 font-bold">{knockStats.knocked}/{knockStats.total} knocked</span>
                         )}
