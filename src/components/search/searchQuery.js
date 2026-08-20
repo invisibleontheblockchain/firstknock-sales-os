@@ -68,7 +68,7 @@ function matchStrength(candidate, normalizedQuery) {
   return value.split(' ').some((word) => word.startsWith(normalizedQuery)) ? 2 : 0;
 }
 
-const TYPE_BASE = { route: 700, record: 600, address: 300, city: 250, county: 200 };
+const TYPE_BASE = { route: 725, record: 600, address: 300, city: 250, county: 200 };
 
 export function scoreResult(result, normalizedQuery) {
   const base = TYPE_BASE[result?.type] || 0;

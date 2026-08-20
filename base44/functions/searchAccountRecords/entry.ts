@@ -5,6 +5,18 @@ import { tenantManagerId, toEntityArray as toArray } from '../../shared/accountT
 
 const MAX_LIMIT = 12;
 const NAME_SCAN_LIMIT = 1000;
+const ROUTE_PAGE_SIZE = 200;
+const ROUTE_MAX_PAGES = 50;
+
+async function listAllAccessibleRoutes(entity) {
+  const routes = [];
+  for (let page = 0; page < ROUTE_MAX_PAGES; page += 1) {
+    const rows = toArray(await entity.list('-created_date', ROUTE_PAGE_SIZE, page * ROUTE_PAGE_SIZE));
+    routes.push(...rows);
+    if (rows.length < ROUTE_PAGE_SIZE) return routes;
+  }
+  throw new Error('Saved route search exceeded the supported account route window.');
+}
 
 /**
  * Workspace emails whose stored properties this caller may search.
@@ -101,7 +113,7 @@ export default async function(req) {
         base44.asServiceRole.entities.InteractionLog
           .filter({ manager_id: managerId }, '-created_date', NAME_SCAN_LIMIT)
           .catch(() => []),
-        base44.entities.SavedRoute.list('-created_date', NAME_SCAN_LIMIT).catch(() => []),
+        listAllAccessibleRoutes(base44.entities.SavedRoute).catch(() => []),
       ]);
 
       for (const route of toArray(savedRoutes)) {
@@ -179,9 +191,16 @@ export default async function(req) {
       }
     }
 
+    const rankedResults = [...byKey.values()].sort((left, right) => {
+      const leftRoute = left.type === 'route' ? 1 : 0;
+      const rightRoute = right.type === 'route' ? 1 : 0;
+      if (leftRoute !== rightRoute) return rightRoute - leftRoute;
+      return new Date(right.last_interaction_at || 0).getTime() - new Date(left.last_interaction_at || 0).getTime();
+    });
+
     return Response.json({
       success: true,
-      results: [...byKey.values()].slice(0, limit),
+      results: rankedResults.slice(0, limit),
     });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
