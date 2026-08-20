@@ -77,6 +77,7 @@ function trialPrecisionEvidence(subscription, userId) {
 }
 
 async function resolvePrecisionEntitlement(user) {
+    // Server grants bypass Stripe and card-on-file requirements by design.
     const grantedLimit = precisionGrantLimit(user);
     if (grantedLimit !== null) {
         return {

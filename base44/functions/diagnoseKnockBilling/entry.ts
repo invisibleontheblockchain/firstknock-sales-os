@@ -2,6 +2,7 @@
 // unpaid. Mirrors recordKnockOutcome's evidence checks without writing anything.
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 import Stripe from 'npm:stripe@14.14.0';
+import { precisionGrantLabel, precisionGrantLimit } from '../../shared/privilegedAccounts.js';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') || '');
 
@@ -86,10 +87,14 @@ Deno.serve(async (req: Request) => {
             });
         }
 
+        const precisionLimit = precisionGrantLimit(user);
         return Response.json({
             success: true,
             account: {
                 email: user.email,
+                user_id: user.id,
+                precision_grant_limit: precisionLimit,
+                precision_grant_label: precisionLimit === null ? null : precisionGrantLabel(precisionLimit),
                 outcomes_logged: user.outcomes_logged || 0,
                 subscription_status: user.subscription_status || null,
                 subscription_paid_confirmed: user.subscription_paid_confirmed === true,

@@ -43,7 +43,8 @@ function betaTimestampIso(value: any) {
 function betaPrecisionEvidence(user: any) {
     const grantEmail = user?.email?.toLowerCase();
     // A per-account ceiling from shared/privilegedAccounts.js. It is a number,
-    // not a flag, so this reports exactly what the pull path will honor.
+    // not a flag, so this reports exactly what the pull path will honor without
+    // requiring a Stripe customer or card on file.
     const grantedLimit = precisionGrantLimit(user);
     if (grantedLimit !== null) {
         return {

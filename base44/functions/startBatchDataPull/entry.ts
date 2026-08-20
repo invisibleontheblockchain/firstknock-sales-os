@@ -163,6 +163,7 @@ function stripeTimestampIso(value) {
 
 function betaPrecisionEvidence(user) {
     const grantEmail = user?.email?.toLowerCase();
+    // Server grants bypass Stripe and card-on-file requirements by design.
     const grantedLimit = precisionGrantLimit(user);
     if (grantedLimit !== null) {
         return {
