@@ -45,7 +45,14 @@
         window.location.replace(releaseUrl.toString());
       });
 
-      if ('serviceWorker' in navigator) {
+      const isBase44Preview = /(^|\.)preview(?:-sandbox)?--.*\.base44\.app$/i.test(window.location.hostname);
+      if ('serviceWorker' in navigator && isBase44Preview) {
+        // Preview deployments do not serve a stable production worker. Remove
+        // stale registrations without allowing preview fetch failures to escape.
+        navigator.serviceWorker.getRegistrations()
+          .then((registrations) => Promise.all(registrations.map((registration) => registration.unregister())))
+          .catch((error) => console.warn('Preview PWA cleanup skipped', error));
+      } else if ('serviceWorker' in navigator) {
         // 1. Reload when new SW takes control
         let refreshing = false;
         navigator.serviceWorker.addEventListener('controllerchange', () => {
@@ -82,11 +89,13 @@
           reg.addEventListener('updatefound', () => {
             handleUpdate(reg.installing);
           });
-        });
+        }).catch((error) => console.warn('PWA registration skipped', error));
 
         // 3. Check for updates every time app starts or returns to foreground.
         const checkForPwaUpdate = () => {
-          navigator.serviceWorker.getRegistration().then((reg) => reg?.update());
+          navigator.serviceWorker.getRegistration()
+            .then((reg) => reg?.update())
+            .catch((error) => console.warn('PWA foreground update check skipped', error));
         };
         window.addEventListener('pageshow', checkForPwaUpdate);
         document.addEventListener('visibilitychange', () => {

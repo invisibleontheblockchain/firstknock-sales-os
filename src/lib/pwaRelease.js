@@ -5,7 +5,8 @@ function publishedRelease(html) {
 }
 
 export function checkForPublishedRelease(currentRelease) {
-  if (!navigator.onLine || updateCheckInFlight) return updateCheckInFlight;
+  const isBase44Preview = /(^|\.)preview(?:-sandbox)?--.*\.base44\.app$/i.test(window.location.hostname);
+  if (isBase44Preview || !navigator.onLine || updateCheckInFlight) return updateCheckInFlight;
 
   updateCheckInFlight = (async () => {
     const url = new URL('/', window.location.origin);

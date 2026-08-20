@@ -35,6 +35,9 @@ test('every production build generates a new PWA release', () => {
   const worker = fs.readFileSync('public/sw.js', 'utf8');
   const refreshManager = fs.readFileSync('src/components/AppRefreshManager.jsx', 'utf8');
   assert.match(html, /serviceWorker\.register\('\/sw\.js'/);
+  assert.match(html, /preview\(\?:-sandbox\)\?.*base44.*getRegistrations/s);
+  assert.match(html, /PWA registration skipped/);
+  assert.match(html, /PWA foreground update check skipped/);
   assert.match(html, /__FK_BUILD_RELEASE__/);
   assert.match(vite, /Date\.now\(\).*transformIndexHtml.*dist\/sw\.js/s);
   assert.match(worker, /request\.mode === 'navigate'.*cache: 'no-store'/s);
