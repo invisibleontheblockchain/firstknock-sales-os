@@ -768,7 +768,7 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
                                             ? { background: (STATUS_COLORS[currentStatus] || '#333') + '22', color: STATUS_COLORS[currentStatus] || '#888', border: `1px solid ${(STATUS_COLORS[currentStatus] || '#333')}55` }
                                             : isFollowUp
                                                 ? { background: 'rgba(255,215,0,0.12)', color: BRAND.gold, border: '1px solid rgba(255,215,0,0.35)' }
-                                                : { background: 'rgba(46,235,87,0.12)', color: '#86efac', border: '1px solid rgba(46,235,87,0.3)' }}
+                                                : { background: 'rgba(255,255,255,0.08)', color: '#FFFFFF', border: '1px solid rgba(255,255,255,0.25)' }}
                                     >
                                         {routePosition}
                                     </div>
