@@ -71,11 +71,15 @@ export default function FindOverlay({
             <div className="rounded-xl border border-[#2EEB57]/30 bg-[#2EEB57]/10 p-3 text-center">
               <p className="text-3xl font-black text-[#39FF4A]">{estimate}</p>
               <p className="mt-0.5 text-[12px] font-semibold text-white">
-                estimated recent homeowners in this territory
+                estimated recent move-ins in this territory
               </p>
               <p className="mt-1 text-[10px] font-medium text-white/45">
                 Last {LOOKBACK_OPTIONS.find((o) => o.days === lookbackDays)?.label || `${lookbackDays} days`}
                 {searchedLabel ? ` · ${searchedLabel}` : ''}
+              </p>
+              <p className="mt-2 text-[9px] leading-snug text-white/35">
+                Modeled projection from area housing density and typical ownership turnover — not verified
+                sale records. Map pins show a sample of the area, not every opportunity.
               </p>
             </div>
 
