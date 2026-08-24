@@ -1,14 +1,27 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, Pencil, Check, X, Loader2, Lock, MapPin } from 'lucide-react';
+import { Search, Pencil, X, Loader2, MapPin, Navigation } from 'lucide-react';
 
 const LOOKBACK_OPTIONS = [
-  { days: 7, label: '7 days' },
-  { days: 14, label: '14 days' },
-  { days: 30, label: '30 days' },
   { days: 90, label: '3 months' },
   { days: 180, label: '6 months' },
 ];
+
+function BrandRow() {
+  return (
+    <div className="mb-3 flex items-center gap-2">
+      <img
+        src="https://media.base44.com/images/public/695eb764b077190880be21de/147abd69b_image.png"
+        alt="FirstKnock"
+        className="h-8 w-8 rounded-lg border border-white/10 object-cover"
+      />
+      <span className="text-sm font-extrabold tracking-tight text-white">FirstKnock</span>
+      <Link to="/login" className="ml-auto text-[11px] font-bold text-white/50 transition-colors hover:text-white">
+        Sign in
+      </Link>
+    </div>
+  );
+}
 
 export default function FindOverlay({
   phase,
@@ -21,32 +34,42 @@ export default function FindOverlay({
   pointCount,
   estimate,
   onStartDraw,
-  onFinishDraw,
   onCancelDraw,
   onReset,
 }) {
   const [query, setQuery] = useState('');
+  const [showLoginPrompt, setShowLoginPrompt] = useState(false);
 
   const submitSearch = (e) => {
     e.preventDefault();
     if (query.trim() && !searching) onSearch(query.trim());
   };
 
+  // While drawing the panel collapses to a slim bar so the map stays visible.
+  if (phase === 'drawing') {
+    return (
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex justify-center px-4 pt-[calc(env(safe-area-inset-top)+1rem)]">
+        <div className="pointer-events-auto flex w-full max-w-md items-center gap-3 rounded-full border border-[#2EEB57]/30 bg-black/85 px-4 py-2.5 shadow-[0_16px_50px_rgba(0,0,0,0.6)] backdrop-blur-xl">
+          <Pencil className="h-4 w-4 shrink-0 text-[#39FF4A]" />
+          <span className="flex-1 text-[11px] font-semibold leading-tight text-white">
+            {pointCount > 0 ? 'Release to close your territory' : 'Press and drag on the map to trace your territory'}
+          </span>
+          <button
+            onClick={onCancelDraw}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/15 text-white/60 transition-colors hover:text-white"
+            aria-label="Cancel drawing"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex justify-center px-4 pt-[calc(env(safe-area-inset-top)+1rem)]">
       <div className="pointer-events-auto w-full max-w-md rounded-2xl border border-white/10 bg-black/85 p-4 shadow-[0_20px_60px_rgba(0,0,0,0.6)] backdrop-blur-xl">
-        {/* Brand */}
-        <div className="mb-3 flex items-center gap-2">
-          <img
-            src="https://media.base44.com/images/public/695eb764b077190880be21de/147abd69b_image.png"
-            alt="FirstKnock"
-            className="h-8 w-8 rounded-lg border border-white/10 object-cover"
-          />
-          <span className="text-sm font-extrabold tracking-tight text-white">FirstKnock</span>
-          <Link to="/login" className="ml-auto text-[11px] font-bold text-white/50 transition-colors hover:text-white">
-            Sign in
-          </Link>
-        </div>
+        <BrandRow />
 
         {phase === 'results' ? (
           <div className="space-y-3">
@@ -56,18 +79,41 @@ export default function FindOverlay({
                 estimated recent homeowners in this territory
               </p>
               <p className="mt-1 text-[10px] font-medium text-white/45">
-                Last {LOOKBACK_OPTIONS.find((o) => o.days === lookbackDays)?.label || `${lookbackDays} days`}{searchedLabel ? ` · ${searchedLabel}` : ''}
+                Last {LOOKBACK_OPTIONS.find((o) => o.days === lookbackDays)?.label || `${lookbackDays} days`}
+                {searchedLabel ? ` · ${searchedLabel}` : ''}
               </p>
             </div>
-            <Link
-              to="/register?from=find"
-              className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#2EEB57] text-sm font-extrabold text-black shadow-[0_8px_28px_rgba(46,235,87,0.35)] transition-all hover:bg-[#39FF4A]"
-            >
-              <Lock className="h-4 w-4" />
-              Unlock homeowners &amp; generate route →
-            </Link>
+
+            {showLoginPrompt ? (
+              <div className="space-y-2 rounded-xl border border-white/10 bg-white/[0.04] p-3">
+                <p className="text-[12px] font-semibold leading-snug text-white">
+                  Create your free account to generate this route and unlock homeowner details.
+                </p>
+                <Link
+                  to="/register?from=find"
+                  className="flex h-11 w-full items-center justify-center rounded-xl bg-[#2EEB57] text-[13px] font-extrabold text-black transition-all hover:bg-[#39FF4A]"
+                >
+                  Create free account
+                </Link>
+                <Link
+                  to="/login"
+                  className="flex h-10 w-full items-center justify-center rounded-xl border border-white/15 text-[12px] font-bold text-white/70 transition-colors hover:text-white"
+                >
+                  I already have an account
+                </Link>
+              </div>
+            ) : (
+              <button
+                onClick={() => setShowLoginPrompt(true)}
+                className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#2EEB57] text-sm font-extrabold text-black shadow-[0_8px_28px_rgba(46,235,87,0.35)] transition-all hover:bg-[#39FF4A]"
+              >
+                <Navigation className="h-4 w-4" />
+                Generate Route
+              </button>
+            )}
+
             <button
-              onClick={onReset}
+              onClick={() => { setShowLoginPrompt(false); onReset(); }}
               className="w-full rounded-xl border border-white/10 py-2 text-[11px] font-bold text-white/60 transition-colors hover:text-white"
             >
               Draw another area
@@ -82,7 +128,6 @@ export default function FindOverlay({
               Draw an area to see recent move-in opportunities in your territory.
             </p>
 
-            {/* Search */}
             <form onSubmit={submitSearch} className="mt-3 flex gap-2">
               <div className="relative flex-1">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
@@ -104,10 +149,9 @@ export default function FindOverlay({
             </form>
             {searchError && <p className="mt-1.5 text-[11px] font-semibold text-red-400">{searchError}</p>}
 
-            {/* Lookback */}
             <div className="mt-3">
               <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-white/40">Lookback period</p>
-              <div className="mt-1.5 grid grid-cols-3 gap-1.5">
+              <div className="mt-1.5 grid grid-cols-2 gap-1.5">
                 {LOOKBACK_OPTIONS.map((option) => (
                   <button
                     key={option.days}
@@ -124,38 +168,13 @@ export default function FindOverlay({
               </div>
             </div>
 
-            {/* Draw controls */}
-            {phase === 'drawing' ? (
-              <div className="mt-3 space-y-2">
-                <p className="rounded-lg border border-[#2EEB57]/25 bg-[#2EEB57]/5 px-3 py-2 text-center text-[11px] font-semibold text-[#86efac]">
-                  Tap the map to outline your territory
-                  {pointCount > 0 && <span className="text-white/45"> · {pointCount} point{pointCount === 1 ? '' : 's'}</span>}
-                </p>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    onClick={onFinishDraw}
-                    disabled={pointCount < 3}
-                    className="flex h-11 items-center justify-center gap-1.5 rounded-xl bg-[#2EEB57] text-[12px] font-extrabold text-black transition-all hover:bg-[#39FF4A] disabled:opacity-40"
-                  >
-                    <Check className="h-4 w-4" /> Finish area
-                  </button>
-                  <button
-                    onClick={onCancelDraw}
-                    className="flex h-11 items-center justify-center gap-1.5 rounded-xl border border-white/15 text-[12px] font-bold text-white/60 transition-colors hover:text-white"
-                  >
-                    <X className="h-4 w-4" /> Cancel
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <button
-                onClick={onStartDraw}
-                className="mt-3 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#2EEB57] text-sm font-extrabold text-black shadow-[0_8px_28px_rgba(46,235,87,0.35)] transition-all hover:bg-[#39FF4A]"
-              >
-                <Pencil className="h-4 w-4" />
-                Draw Territory
-              </button>
-            )}
+            <button
+              onClick={onStartDraw}
+              className="mt-3 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#2EEB57] text-sm font-extrabold text-black shadow-[0_8px_28px_rgba(46,235,87,0.35)] transition-all hover:bg-[#39FF4A]"
+            >
+              <Pencil className="h-4 w-4" />
+              Draw Territory
+            </button>
           </>
         )}
       </div>
