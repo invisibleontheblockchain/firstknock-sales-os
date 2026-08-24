@@ -59,7 +59,7 @@ export function estimateHomeowners(points, lookbackDays) {
   if (area <= 0) return 0;
   const rand = seedFromPolygon(points);
   const homesPerSqMi = 300 + rand() * 120;
-  const annualTurnover = 0.030 + rand() * 0.012;
+  const annualTurnover = 0.075 + rand() * 0.030;
   const raw = area * homesPerSqMi * annualTurnover * COVERAGE_FACTOR * (lookbackDays / 365);
   return Math.max(4, Math.round(raw));
 }
