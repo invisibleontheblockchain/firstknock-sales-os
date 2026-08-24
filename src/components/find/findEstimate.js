@@ -49,15 +49,18 @@ export function pointInPolygon(point, polygon) {
   return inside;
 }
 
-// Suburban single-family density with a typical annual ownership turnover,
-// prorated to the chosen lookback window.
+// Deliberately conservative: knockable single-family density (not all parcels),
+// a low annual ownership-turnover rate, and a data-coverage haircut so the
+// preview under-promises rather than over-promises what a territory holds.
+const COVERAGE_FACTOR = 0.7;
+
 export function estimateHomeowners(points, lookbackDays) {
   const area = polygonAreaSqMi(points);
   if (area <= 0) return 0;
   const rand = seedFromPolygon(points);
-  const homesPerSqMi = 480 + rand() * 220;
-  const annualTurnover = 0.062 + rand() * 0.03;
-  const raw = area * homesPerSqMi * annualTurnover * (lookbackDays / 365);
+  const homesPerSqMi = 300 + rand() * 120;
+  const annualTurnover = 0.030 + rand() * 0.012;
+  const raw = area * homesPerSqMi * annualTurnover * COVERAGE_FACTOR * (lookbackDays / 365);
   return Math.max(4, Math.round(raw));
 }
 
