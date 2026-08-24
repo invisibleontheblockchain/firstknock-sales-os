@@ -1,6 +1,6 @@
 import React from "react";
 
-const MAP_IMAGE = "https://media.base44.com/images/public/695eb764b077190880be21de/cf5f340af_generated_image.png";
+const MAP_IMAGE = "https://media.base44.com/images/public/695eb764b077190880be21de/3f0e4a50d_generated_image.png";
 const WORDMARK = "https://media.base44.com/images/public/695eb764b077190880be21de/3a5836111_firstknockmaintransparentlogo.png";
 
 export default function CommandMapAuthLayout({ icon: Icon, title, subtitle, footer, children }) {
@@ -26,7 +26,7 @@ export default function CommandMapAuthLayout({ icon: Icon, title, subtitle, foot
             <img src={WORDMARK} alt="FirstKnock" className="h-auto w-[220px] max-w-[62vw] object-contain" />
           </div>
 
-          <div className="flex flex-1 flex-col justify-center border-b border-white/[0.04] bg-gradient-to-b from-[#031108] to-[#020a05] px-6 py-8 sm:px-8 lg:px-10 lg:pt-[28vh]">
+          <div className="flex flex-1 flex-col justify-center border-b border-white/[0.04] bg-gradient-to-b from-[#031108] to-[#020a05] px-6 py-8 sm:px-8 lg:px-10">
             <Icon className="mb-5 h-10 w-10 text-primary" strokeWidth={1.8} aria-hidden="true" />
             <h1 className="font-heading text-3xl font-extrabold tracking-tight text-white sm:text-4xl">{title}</h1>
             {subtitle && <p className="mt-2 text-base text-white/55">{subtitle}</p>}
