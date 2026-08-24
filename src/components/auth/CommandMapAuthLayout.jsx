@@ -1,6 +1,6 @@
 import React from "react";
 
-const MAP_IMAGE = "https://media.base44.com/images/public/695eb764b077190880be21de/eca53f465_generated_image.png";
+const MAP_IMAGE = "https://media.base44.com/images/public/695eb764b077190880be21de/cf5f340af_generated_image.png";
 const WORDMARK = "https://media.base44.com/images/public/695eb764b077190880be21de/3a5836111_firstknockmaintransparentlogo.png";
 
 export default function CommandMapAuthLayout({ icon: Icon, title, subtitle, footer, children }) {
