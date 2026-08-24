@@ -46,7 +46,9 @@ function PrivateHqAliasRedirect() {
   );
 }
 
-const AUTH_PAGE_KEYS = new Set(['Login', 'Register', 'ForgotPassword', 'ResetPassword']);
+// Pages served without authentication: the auth screens plus the public /find
+// acquisition page that ad traffic lands on.
+const AUTH_PAGE_KEYS = new Set(['Login', 'Register', 'ForgotPassword', 'ResetPassword', 'Find']);
 
 const RoutedApp = () => (
   <Routes>
@@ -54,6 +56,8 @@ const RoutedApp = () => (
     <Route path="/register" element={<Pages.Register />} />
     <Route path="/forgot-password" element={<Pages.ForgotPassword />} />
     <Route path="/reset-password" element={<Pages.ResetPassword />} />
+    {/* Public acquisition landing for ad traffic — no login wall. */}
+    <Route path="/find" element={<Pages.Find />} />
 
     <Route element={<ProtectedRoute />}>
       <Route path="/" element={
