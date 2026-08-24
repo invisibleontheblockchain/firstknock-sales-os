@@ -1,6 +1,7 @@
-import React, { useEffect } from 'react';
-import { MapContainer, TileLayer, Polygon, Polyline, CircleMarker, useMap } from 'react-leaflet';
+import React, { useEffect, useState } from 'react';
+import { MapContainer, TileLayer, Polygon, Polyline, CircleMarker, useMap, useMapEvents } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
+import StateBoundariesLayer from '@/components/map/StateBoundariesLayer';
 
 const SATELLITE_TILES = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
 const LABEL_TILES = 'https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png';
@@ -85,8 +86,15 @@ function FreehandCapture({ drawing, onAddPoint, onStrokeStart, onStrokeEnd }) {
   return null;
 }
 
+// Tracks zoom so the state-line overlay only shows on zoomed-out views.
+function ZoomWatcher({ onZoom }) {
+  const map = useMapEvents({ zoomend: () => onZoom(map.getZoom()) });
+  return null;
+}
+
 export default function FindMap({ center, drawing, polygonPoints, closed, teaser, onAddPoint, onStrokeStart, onStrokeEnd }) {
   const latlngs = polygonPoints.map((p) => [p.lat, p.lng]);
+  const [zoomLevel, setZoomLevel] = useState(5);
 
   return (
     <MapContainer
@@ -99,6 +107,8 @@ export default function FindMap({ center, drawing, polygonPoints, closed, teaser
     >
       <TileLayer url={SATELLITE_TILES} keepBuffer={3} updateWhenZooming updateWhenIdle={false} maxNativeZoom={19} maxZoom={20} />
       <TileLayer url={LABEL_TILES} zIndex={100} keepBuffer={3} updateWhenZooming updateWhenIdle={false} maxNativeZoom={19} maxZoom={20} />
+      <ZoomWatcher onZoom={setZoomLevel} />
+      <StateBoundariesLayer zoomLevel={zoomLevel} />
       <FlyToTarget target={center} />
       <FreehandCapture
         drawing={drawing}
