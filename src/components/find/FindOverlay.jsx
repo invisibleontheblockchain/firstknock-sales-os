@@ -4,6 +4,8 @@ import { Pencil, X, Navigation } from 'lucide-react';
 import FindSearchField from '@/components/find/FindSearchField';
 
 const LOOKBACK_OPTIONS = [
+  { days: 14, label: '14 days' },
+  { days: 30, label: '30 days' },
   { days: 90, label: '3 months' },
   { days: 180, label: '6 months' },
 ];
