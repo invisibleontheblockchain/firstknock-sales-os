@@ -77,10 +77,6 @@ export default function FindOverlay({
                 Last {LOOKBACK_OPTIONS.find((o) => o.days === lookbackDays)?.label || `${lookbackDays} days`}
                 {searchedLabel ? ` · ${searchedLabel}` : ''}
               </p>
-              <p className="mt-2 text-[9px] leading-snug text-white/35">
-                Modeled projection from area housing density and typical ownership turnover — not verified
-                sale records. Map pins show a sample of the area, not every opportunity.
-              </p>
             </div>
 
             {showLoginPrompt ? (
