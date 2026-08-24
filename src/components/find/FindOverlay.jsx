@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, Pencil, X, Loader2, MapPin, Navigation } from 'lucide-react';
+import { Pencil, X, Navigation } from 'lucide-react';
+import FindSearchField from '@/components/find/FindSearchField';
 
 const LOOKBACK_OPTIONS = [
   { days: 90, label: '3 months' },
@@ -27,9 +28,7 @@ export default function FindOverlay({
   phase,
   lookbackDays,
   onLookbackChange,
-  onSearch,
-  searching,
-  searchError,
+  onSelectPlace,
   searchedLabel,
   pointCount,
   estimate,
@@ -37,13 +36,7 @@ export default function FindOverlay({
   onCancelDraw,
   onReset,
 }) {
-  const [query, setQuery] = useState('');
   const [showLoginPrompt, setShowLoginPrompt] = useState(false);
-
-  const submitSearch = (e) => {
-    e.preventDefault();
-    if (query.trim() && !searching) onSearch(query.trim());
-  };
 
   // While drawing the panel collapses to a slim bar so the map stays visible.
   if (phase === 'drawing') {
@@ -128,26 +121,7 @@ export default function FindOverlay({
               Draw an area to see recent move-in opportunities in your territory.
             </p>
 
-            <form onSubmit={submitSearch} className="mt-3 flex gap-2">
-              <div className="relative flex-1">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
-                <input
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Search a city or address"
-                  className="h-11 w-full rounded-xl border border-white/15 bg-white/[0.05] pl-9 pr-3 text-sm text-white placeholder-white/35 outline-none transition-colors focus:border-[#2EEB57]/60"
-                />
-              </div>
-              <button
-                type="submit"
-                disabled={searching || !query.trim()}
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[#2EEB57]/30 bg-[#2EEB57]/10 text-[#39FF4A] transition-colors hover:bg-[#2EEB57] hover:text-black disabled:opacity-40"
-                aria-label="Search"
-              >
-                {searching ? <Loader2 className="h-4 w-4 animate-spin" /> : <MapPin className="h-4 w-4" />}
-              </button>
-            </form>
-            {searchError && <p className="mt-1.5 text-[11px] font-semibold text-red-400">{searchError}</p>}
+            <FindSearchField onSelect={onSelectPlace} />
 
             <div className="mt-3">
               <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-white/40">Lookback period</p>
