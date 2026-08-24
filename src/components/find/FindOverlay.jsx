@@ -2,7 +2,13 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Search, Pencil, Check, X, Loader2, Lock, MapPin } from 'lucide-react';
 
-const LOOKBACK_OPTIONS = [7, 14, 30];
+const LOOKBACK_OPTIONS = [
+  { days: 7, label: '7 days' },
+  { days: 14, label: '14 days' },
+  { days: 30, label: '30 days' },
+  { days: 90, label: '3 months' },
+  { days: 180, label: '6 months' },
+];
 
 export default function FindOverlay({
   phase,
@@ -50,7 +56,7 @@ export default function FindOverlay({
                 estimated recent homeowners in this territory
               </p>
               <p className="mt-1 text-[10px] font-medium text-white/45">
-                Last {lookbackDays} days{searchedLabel ? ` · ${searchedLabel}` : ''}
+                Last {LOOKBACK_OPTIONS.find((o) => o.days === lookbackDays)?.label || `${lookbackDays} days`}{searchedLabel ? ` · ${searchedLabel}` : ''}
               </p>
             </div>
             <Link
@@ -102,17 +108,17 @@ export default function FindOverlay({
             <div className="mt-3">
               <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-white/40">Lookback period</p>
               <div className="mt-1.5 grid grid-cols-3 gap-1.5">
-                {LOOKBACK_OPTIONS.map((days) => (
+                {LOOKBACK_OPTIONS.map((option) => (
                   <button
-                    key={days}
-                    onClick={() => onLookbackChange(days)}
+                    key={option.days}
+                    onClick={() => onLookbackChange(option.days)}
                     className={`h-9 rounded-xl border text-[11px] font-extrabold transition-all ${
-                      lookbackDays === days
+                      lookbackDays === option.days
                         ? 'border-[#2EEB57]/60 bg-[#2EEB57]/15 text-[#39FF4A]'
                         : 'border-white/10 bg-white/[0.04] text-white/55 hover:text-white'
                     }`}
                   >
-                    {days} days
+                    {option.label}
                   </button>
                 ))}
               </div>
