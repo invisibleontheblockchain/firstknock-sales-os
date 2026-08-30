@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
+import { normalizePrecisionPolygon } from '../base44/shared/precisionOrderSafety.js';
 
 function loadBatchDataMapper() {
     const source = fs.readFileSync('base44/functions/processFetchChunk/entry.ts', 'utf8')
@@ -12,6 +13,7 @@ function loadBatchDataMapper() {
             serve: () => {},
         },
         console,
+        normalizePrecisionPolygon,
         setTimeout,
         clearTimeout,
     };
