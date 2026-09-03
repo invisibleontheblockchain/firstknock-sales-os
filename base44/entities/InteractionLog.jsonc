@@ -167,10 +167,16 @@
           "created_by": "{{user.email}}"
         },
         {
-          "manager_id": "{{user.id}}"
+          "created_by_id": "{{user.id}}"
         },
         {
-          "manager_id": "{{user.data.team_manager_id}}"
+          "data.logged_by_user_id": "{{user.id}}"
+        },
+        {
+          "data.manager_id": "{{user.id}}"
+        },
+        {
+          "data.manager_id": "{{user.data.team_manager_id}}"
         },
         {
           "user_condition": {
@@ -187,7 +193,7 @@
     "delete": {
       "$or": [
         {
-          "manager_id": "{{user.id}}"
+          "data.manager_id": "{{user.id}}"
         },
         {
           "created_by": "{{user.email}}"
