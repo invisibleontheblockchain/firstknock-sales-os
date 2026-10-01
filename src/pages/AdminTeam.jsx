@@ -21,7 +21,7 @@ import TeamAnalyticsSummary from '@/components/analytics/team/TeamAnalyticsSumma
 import TeamActivityTrend from '@/components/analytics/team/TeamActivityTrend';
 import TeamOutcomeBreakdown from '@/components/analytics/team/TeamOutcomeBreakdown';
 import UserActivityHeatmap from '@/components/analytics/team/UserActivityHeatmap';
-import { getManagerIdForAccount, isManagerAccount, isRepAccount } from '@/lib/roles';
+import { getManagerIdForAccount, hasUnlimitedTeamAccess, isManagerAccount, isOwnerAccount, isRepAccount } from '@/lib/roles';
 import { isKnockActivityLog } from '@/lib/interactionLogs';
 import { fetchAllAnalyticsPages } from '@/lib/analyticsDateFilter';
 
@@ -78,6 +78,7 @@ export default function AdminTeam() {
 
     const isRepView = isRepAccount(user);
     const canManageTeam = isManagerAccount(user);
+    const hasOwnerAccess = hasUnlimitedTeamAccess(user);
     const managerId = getManagerIdForAccount(user);
 
     useEffect(() => {
@@ -385,16 +386,18 @@ export default function AdminTeam() {
     const selectedRoleSwitchMember = roleSwitchCandidates.find(member => member.id === roleSwitchMemberId);
 
     const teamToolsUnlocked = canManageTeam
-        ? (user?.is_owner || user?.subscription_status === 'active' || user?.subscription_status === 'trialing')
+        ? (isOwnerAccount(user) || user?.subscription_status === 'active' || user?.subscription_status === 'trialing')
         : !!managerId;
-    const paidSeatLimit = user?.is_owner || user?.subscription_paid_confirmed === true ? (user?.total_seats || 1) : 0;
+    const paidSeatLimit = hasOwnerAccess ? Infinity : (isOwnerAccount(user) || user?.subscription_paid_confirmed === true ? (user?.total_seats || 1) : 0);
+    const seatLimitLabel = hasOwnerAccess ? 'Unlimited' : paidSeatLimit;
     const normalizedSeatPlan = 'precision';
     const seatUnitPrice = 99;
-    const seatsToAddSafe = Math.max(1, Math.min(100, Number(seatsToAdd) || 1));
+    const maxSeatsToAdd = hasOwnerAccess ? Number.MAX_SAFE_INTEGER : 100;
+    const seatsToAddSafe = Math.max(1, Math.min(maxSeatsToAdd, Math.floor(Number(seatsToAdd) || 1)));
     const hasExistingStripeSubscription = !!user?.subscription_id && !!user?.stripe_customer_id;
-    const currentSeatCount = hasExistingStripeSubscription ? (user?.total_seats || 1) : 0;
+    const currentSeatCount = hasOwnerAccess ? (user?.total_seats || 0) : (hasExistingStripeSubscription ? (user?.total_seats || 1) : 0);
     const targetSeatCount = currentSeatCount + seatsToAddSafe;
-    const addedSeatMonthlyTotal = seatsToAddSafe * seatUnitPrice;
+    const addedSeatMonthlyTotal = hasOwnerAccess ? 0 : seatsToAddSafe * seatUnitPrice;
 
     const handleJoinTeam = async () => {
         const code = joinTeamCode.trim().toUpperCase();
@@ -442,12 +445,25 @@ export default function AdminTeam() {
     };
 
     const handleConfirmAddSeats = async () => {
-        if (window.self !== window.top) {
+        if (!hasOwnerAccess && window.self !== window.top) {
             toast.error("Open the app in a new tab to manage billing.");
             return;
         }
         setIsOpeningSeatBilling(true);
         try {
+            if (hasOwnerAccess) {
+                const res = await base44.functions.invoke('updateSubscriptionSeats', { quantity: targetSeatCount });
+                if (res.data?.status !== 'owner_exempt' || !res.data?.success) {
+                    throw new Error('Owner seat access could not be verified. Refresh your account and try again.');
+                }
+                await Promise.all([
+                    queryClient.invalidateQueries({ queryKey: ['user'] }),
+                    queryClient.invalidateQueries({ queryKey: ['inviteCodes'] })
+                ]);
+                toast.success('Seats added. Your team code supports unlimited reps.');
+                setIsSeatDialogOpen(false);
+                return;
+            }
             const res = hasExistingStripeSubscription
                 ? await base44.functions.invoke('updateSubscriptionSeats', {
                     quantity: targetSeatCount,
@@ -726,7 +742,7 @@ export default function AdminTeam() {
                                     </DialogTitle>
                                 </DialogHeader>
                                 <div className="py-6 text-center space-y-4">
-                                    <p className="text-gray-400">Share this code after a paid rep seat is active.</p>
+                                    <p className="text-gray-400">{hasOwnerAccess ? 'Share this code with your reps to join immediately.' : 'Share this code after a paid rep seat is active.'}</p>
                                     <div className="bg-gray-900 border-2 border-dashed border-yellow-500/30 rounded-xl p-6 relative group cursor-pointer hover:bg-gray-800 transition-colors"
                                          onClick={() => {
                                              navigator.clipboard.writeText(createdCode?.code);
@@ -739,7 +755,7 @@ export default function AdminTeam() {
                                         </div>
                                     </div>
                                     <p className="text-sm text-gray-500">
-                                        This code unlocks only after a paid rep seat is confirmed.
+                                        {hasOwnerAccess ? 'Owner access includes unlimited rep seats.' : 'This code unlocks only after a paid rep seat is confirmed.'}
                                     </p>
                                 </div>
                                 <div className="flex justify-center">
@@ -759,21 +775,21 @@ export default function AdminTeam() {
                 <Dialog open={isSeatDialogOpen} onOpenChange={setIsSeatDialogOpen}>
                     <DialogContent className="bg-[#111] border-gray-800 text-white sm:max-w-md">
                         <DialogHeader>
-                            <DialogTitle>Add Paid Rep Seats</DialogTitle>
+                            <DialogTitle>{hasOwnerAccess ? 'Add Rep Seats' : 'Add Paid Rep Seats'}</DialogTitle>
                         </DialogHeader>
                         <div className="space-y-5 py-2">
-                            <p className="text-sm text-gray-400">How many rep seats do you want to add? Reps can use your team code after Stripe confirms payment.</p>
+                            <p className="text-sm text-gray-400">{hasOwnerAccess ? 'Owner access includes unlimited reps. Add seats here and share your team code to let reps join immediately.' : 'How many rep seats do you want to add? Reps can use your team code after Stripe confirms payment.'}</p>
                             <div className="flex items-center justify-center gap-3">
                                 <Button type="button" variant="outline" className="h-10 w-10 p-0" onClick={() => setSeatsToAdd(Math.max(1, seatsToAddSafe - 1))}>-</Button>
                                 <Input
                                     type="number"
                                     min="1"
-                                    max="100"
+                                    max={maxSeatsToAdd}
                                     value={seatsToAdd}
-                                    onChange={(e) => setSeatsToAdd(Math.max(1, Math.min(100, Number(e.target.value) || 1)))}
+                                    onChange={(e) => setSeatsToAdd(Math.max(1, Math.min(maxSeatsToAdd, Math.floor(Number(e.target.value) || 1))))}
                                     className="h-12 w-24 bg-black border-gray-700 text-white text-center text-xl font-black"
                                 />
-                                <Button type="button" variant="outline" className="h-10 w-10 p-0" onClick={() => setSeatsToAdd(Math.min(100, seatsToAddSafe + 1))}>+</Button>
+                                <Button type="button" variant="outline" className="h-10 w-10 p-0" onClick={() => setSeatsToAdd(Math.min(maxSeatsToAdd, seatsToAddSafe + 1))}>+</Button>
                             </div>
                             <div className="rounded-xl bg-black/50 border border-yellow-500/20 p-4 space-y-2">
                                 <div className="flex justify-between text-sm">
@@ -790,7 +806,7 @@ export default function AdminTeam() {
                                 </div>
                             </div>
                             <Button onClick={handleConfirmAddSeats} disabled={isOpeningSeatBilling} className="w-full bg-yellow-500 text-black hover:bg-yellow-400 font-black">
-                                {isOpeningSeatBilling ? 'Opening Stripe...' : `Confirm ${seatsToAddSafe} Seat${seatsToAddSafe === 1 ? '' : 's'}`}
+                                {isOpeningSeatBilling ? (hasOwnerAccess ? 'Adding Seats...' : 'Opening Stripe...') : `Confirm ${seatsToAddSafe} Seat${seatsToAddSafe === 1 ? '' : 's'}`}
                             </Button>
                         </div>
                     </DialogContent>
@@ -812,7 +828,7 @@ export default function AdminTeam() {
                         <Users className="w-3 h-3 md:w-4 md:h-4 text-blue-500 mb-0.5 md:mb-1" />
                         <div className="flex items-baseline gap-0.5">
                             <span className="text-sm md:text-2xl font-extrabold text-white">{teamMembers.length}</span>
-                            <span className="text-[8px] md:text-sm font-bold text-gray-500">/{paidSeatLimit}</span>
+                            <span className="text-[8px] md:text-sm font-bold text-gray-500">/{seatLimitLabel}</span>
                         </div>
                         <span className="text-[7px] md:text-[10px] font-bold text-gray-500 uppercase">Seats</span>
                     </div>
@@ -1098,7 +1114,7 @@ export default function AdminTeam() {
                                         {isOpeningSeatBilling ? 'Opening...' : 'Add Seat'}
                                     </Button>
                                     <Button onClick={() => navigate(createPageUrl('Billing'))} variant="outline" size="sm" className="border-yellow-500 text-yellow-500 hover:bg-yellow-500/10 text-[10px] md:text-xs h-7 md:h-8 flex-1 md:flex-none">
-                                        Seats ({teamMembers.length}/{paidSeatLimit})
+                                        Seats ({teamMembers.length}/{seatLimitLabel})
                                     </Button>
                                 </div>
                             </CardHeader>
@@ -1116,7 +1132,7 @@ export default function AdminTeam() {
                                             </div>
                                             <div className="text-2xl md:text-4xl font-mono font-bold text-white tracking-wider my-1 md:my-2">{code.code}</div>
                                             <p className="text-[10px] md:text-sm text-gray-400">
-                                                {code.max_uses > 0 ? `${teamMembers.length} reps (Max ${code.max_uses})` : 'Locked until a rep seat is paid'}
+                                                {hasOwnerAccess ? `${teamMembers.length} reps · Unlimited seats` : (code.max_uses > 0 ? `${teamMembers.length} reps (Max ${code.max_uses})` : 'Locked until a rep seat is paid')}
                                             </p>
                                         </div>
                                         <Button 
