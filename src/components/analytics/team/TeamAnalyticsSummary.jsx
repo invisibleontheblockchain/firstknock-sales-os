@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { Activity, Phone, Route, TrendingUp, Users, DollarSign } from 'lucide-react';
 import { subDays } from 'date-fns';
 import { isKnockActivityLog } from '@/lib/interactionLogs';
+import { getActiveTeamSize } from '@/lib/teamRoster';
 
 const SALES = ['SOLD', 'QUALIFIED'];
 const NON_CONTACT = ['NO_ANSWER', 'ELIGIBLE'];
@@ -17,7 +18,7 @@ export default function TeamAnalyticsSummary({ members, logs, routes }) {
     const activeRoutes = routes.filter((route) => ['ACTIVE', 'IN_PROGRESS'].includes(route.status)).length;
     const totalRevenue = logs.reduce((sum, log) => sum + (log.sale_amount || 0), 0);
     return {
-      reps: members.length,
+      teamSize: getActiveTeamSize(members),
       activeReps,
       knocks: recentLogs.length,
       contactRate: recentLogs.length ? Math.round((contacts / recentLogs.length) * 100) : 0,
@@ -31,7 +32,7 @@ export default function TeamAnalyticsSummary({ members, logs, routes }) {
   const revenueDisplay = stats.totalRevenue >= 1000 ? `$${(stats.totalRevenue / 1000).toFixed(1)}k` : `$${stats.totalRevenue}`;
 
   const cards = [
-    { label: 'Team Size', value: stats.reps, sub: 'active roster', icon: Users, color: 'text-white' },
+    { label: 'Team Size', value: stats.teamSize, sub: 'manager + reps', icon: Users, color: 'text-white' },
     { label: 'Active Reps', value: stats.activeReps, sub: 'worked in last 7d', icon: Activity, color: 'text-cyan-400' },
     { label: '7D Knocks', value: stats.knocks, sub: 'team activity', icon: TrendingUp, color: 'text-yellow-400' },
     { label: 'Revenue', value: revenueDisplay, sub: 'total generated', icon: DollarSign, color: 'text-green-400' },
