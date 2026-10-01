@@ -5,12 +5,27 @@ import Papa from 'papaparse';
 import { base44 } from '@/api/base44Client';
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { storage } from '@/lib/storage';
+import { toast } from 'sonner';
 import { Button } from "@/components/ui/button";
 import { createPageUrl } from '@/utils';
 import RedfinImportSummary from '@/components/import/RedfinImportSummary';
 import { createRouteFromRedfinImport, prepareRedfinCsvImport } from '@/components/import/redfinCsvImport';
 import { optimizeRouteByDistance } from '@/components/logic/routeOptimizer';
 import { createOutcomeIdempotencyKey } from '@/components/upgrade/knockGate';
+import { prepareAddressListImport } from '@/lib/addressListImport';
+import { geocodeAddress } from '@/lib/geocoding';
+import { isExcelFileName, isLegacyExcelFileName, readExcelRows } from '@/lib/spreadsheetFile';
+
+const GEOCODE_PHASE_LABELS = {
+    batch: 'Locating addresses',
+    fallback: 'Retrying unmatched addresses'
+};
+
+// Census batch lookup runs on the backend (it has no CORS headers).
+const geocodeBatchViaBackend = async (items) => {
+    const response = await base44.functions.invoke('geocodeAddressBatch', { addresses: items });
+    return response?.data?.results || {};
+};
 
 export default function CsvUploader() {
     const navigate = useNavigate();
@@ -18,8 +33,8 @@ export default function CsvUploader() {
     const [uploadStatus, setUploadStatus] = useState(null);
     const [importMode, setImportMode] = useState('create'); // 'create', 'history', or 'analyze'
     const [analysisReport, setAnalysisReport] = useState(null);
-    const [pendingRedfinImport, setPendingRedfinImport] = useState(null);
-    const [isCreatingRedfinRoute, setIsCreatingRedfinRoute] = useState(false);
+    const [pendingImport, setPendingImport] = useState(null);
+    const [isCreatingRoute, setIsCreatingRoute] = useState(false);
     
     const queryClient = useQueryClient();
     const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me() });
@@ -77,40 +92,30 @@ export default function CsvUploader() {
             return;
         }
 
+        // Handle Excel workbooks
+        if (isExcelFileName(file.name)) {
+            try {
+                const rows = await readExcelRows(file);
+                await handleParsedRows(rows, file);
+            } catch (error) {
+                console.error('Excel parse error', error);
+                setUploadStatus({ success: false, message: 'Unable to read this Excel file. Make sure it is a valid .xlsx workbook, or save it as CSV and try again.' });
+                setIsUploading(false);
+            }
+            return;
+        }
+        if (isLegacyExcelFileName(file.name)) {
+            setUploadStatus({ success: false, message: 'Older .xls files are not supported. In Excel choose File → Save As → Excel Workbook (.xlsx) or CSV, then upload that.' });
+            setIsUploading(false);
+            return;
+        }
+
         // Handle CSV files
         Papa.parse(file, {
             header: true,
             skipEmptyLines: true,
             complete: async (results) => {
-                // PapaParse reports non-fatal row warnings (ragged rows, trailing
-                // empty fields) in results.errors even for valid files. Only reject
-                // if NO rows were parsed at all — otherwise import the usable rows.
-                const data = (results.data || []).filter(
-                    (r) => r && Object.values(r).some((v) => v != null && String(v).trim() !== '')
-                );
-                if (data.length === 0) {
-                    setUploadStatus({ success: false, message: 'Unable to read this file. Please upload a valid CSV file.' });
-                    setIsUploading(false);
-                    return;
-                }
-
-                if (importMode === 'create') {
-                    try {
-                        const redfinImport = await prepareRedfinCsvImport(data, file.name);
-                        if (redfinImport) {
-                            setPendingRedfinImport(redfinImport);
-                            setUploadStatus(null);
-                            setIsUploading(false);
-                            return;
-                        }
-                    } catch (error) {
-                        setUploadStatus({ success: false, message: error.message || 'Unable to read this file. Please upload a valid CSV file.' });
-                        setIsUploading(false);
-                        return;
-                    }
-                }
-
-                await processData(data);
+                await handleParsedRows(results.data, file);
             },
             error: () => {
                 setUploadStatus({ success: false, message: 'Unable to read this file. Please upload a valid CSV file.' });
@@ -119,27 +124,87 @@ export default function CsvUploader() {
         });
     };
 
-    const handleCreateRedfinRoute = async () => {
-        if (!pendingRedfinImport) return;
-        setIsCreatingRedfinRoute(true);
+    // Shared by CSV and Excel: both arrive here as an array of row objects.
+    const handleParsedRows = async (rows, file) => {
+        // PapaParse reports non-fatal row warnings (ragged rows, trailing
+        // empty fields) in results.errors even for valid files. Only reject
+        // if NO rows were parsed at all — otherwise import the usable rows.
+        const data = (rows || []).filter(
+            (r) => r && Object.values(r).some((v) => v != null && String(v).trim() !== '')
+        );
+        if (data.length === 0) {
+            setUploadStatus({ success: false, message: 'Unable to read this file. It appears to be empty.' });
+            setIsUploading(false);
+            return;
+        }
+
+        if (importMode === 'create') {
+            try {
+                const redfinImport = await prepareRedfinCsvImport(data, file.name);
+                if (redfinImport) {
+                    setPendingImport(redfinImport);
+                    setUploadStatus(null);
+                    setIsUploading(false);
+                    return;
+                }
+
+                // Address-only list (Address / City / State / Zip, no lat/lng):
+                // geocode it here instead of rejecting it for missing coordinates.
+                setUploadStatus({ success: null, message: 'Reading addresses...' });
+                const addressImport = await prepareAddressListImport(data, file.name, {
+                    geocodeBatch: geocodeBatchViaBackend,
+                    geocodeOne: (query) => geocodeAddress(query),
+                    onProgress: ({ phase, done, total }) => setUploadStatus({
+                        success: null,
+                        message: `${GEOCODE_PHASE_LABELS[phase] || 'Locating addresses'}... ${Math.min(done, total)}/${total}`
+                    })
+                });
+                if (addressImport) {
+                    // No confirm step: the file goes straight to a route on the map.
+                    await createRouteAndOpenMap(addressImport);
+                    return;
+                }
+            } catch (error) {
+                setUploadStatus({ success: false, message: error.message || 'Unable to read this file. Please upload a valid CSV or Excel file.' });
+                setIsUploading(false);
+                return;
+            }
+        }
+
+        await processData(data);
+    };
+
+    const createRouteAndOpenMap = async (importBatch) => {
+        setIsCreatingRoute(true);
+        setUploadStatus({ success: null, message: `Building route from ${importBatch.properties.length} properties...` });
         try {
             const currentUser = user || await base44.auth.me();
-            const route = await createRouteFromRedfinImport(pendingRedfinImport, { user: currentUser });
+            const route = await createRouteFromRedfinImport(importBatch, { user: currentUser });
             await Promise.all([
                 queryClient.invalidateQueries({ queryKey: ['masterProperties'], refetchType: 'all' }),
                 queryClient.invalidateQueries({ queryKey: ['savedRoutes'], refetchType: 'all' }),
                 queryClient.invalidateQueries({ queryKey: ['localProperties'], refetchType: 'all' })
             ]);
-            setPendingRedfinImport(null);
-            setUploadStatus({ success: true, message: `✓ Created route with ${route.houseCount} properties!` });
+            setPendingImport(null);
+            setUploadStatus({ success: true, message: `✓ Created route with ${route.houseCount} properties! Opening map...` });
+            const unmatched = importBatch.unmatched || [];
+            if (unmatched.length > 0) {
+                // The toast host lives at the app root, so this survives the navigation below.
+                toast.warning(`${unmatched.length} of ${unmatched.length + route.houseCount} addresses could not be located`, {
+                    description: `Left off the route: ${unmatched.slice(0, 4).map((row) => row.address).join('; ')}${unmatched.length > 4 ? `; +${unmatched.length - 4} more` : ''}`,
+                    duration: 20000
+                });
+            }
             navigate(`${createPageUrl('Home')}?savedRoute=${encodeURIComponent(route.id)}`);
         } catch (error) {
             setUploadStatus({ success: false, message: `Import failed: ${error.message}` });
         } finally {
-            setIsCreatingRedfinRoute(false);
+            setIsCreatingRoute(false);
             setIsUploading(false);
         }
     };
+
+    const handleCreateRoute = () => (pendingImport ? createRouteAndOpenMap(pendingImport) : undefined);
 
     const processData = async (data) => {
         // Get user email
@@ -436,7 +501,7 @@ export default function CsvUploader() {
         });
 
         if (entities.length === 0) {
-            const msg = `No valid rows found in ${data.length} items. \n\nRequirement: Properties must have 'lat' and 'lng' columns.\n\nCheck the browser console (F12) for debugging details.`;
+            const msg = `No valid rows found in ${data.length} items. \n\nRequirement: each row needs either 'lat' and 'lng' columns, or Address plus City/State/Zip columns so we can locate it.\n\nCheck the browser console (F12) for debugging details.`;
             setUploadStatus({ success: false, message: `No valid rows. See console.` });
             alert(msg);
             setIsUploading(false);
@@ -532,7 +597,7 @@ export default function CsvUploader() {
 
             <input
                 type="file"
-                accept=".csv,.json"
+                accept=".csv,.json,.xlsx,.xlsm,.xls"
                 onChange={handleFileUpload}
                 className="hidden"
                 id="file-upload"
@@ -545,19 +610,19 @@ export default function CsvUploader() {
                         <span className="block text-sm font-bold text-slate-300">
                             {isUploading ? 'PROCESSING...' : `CLICK TO UPLOAD ${importMode === 'create' ? 'NEW LIST' : 'HISTORY'}`}
                         </span>
-                        <span className="text-[10px] text-slate-500 mt-1 block">CSV or JSON</span>
+                        <span className="text-[10px] text-slate-500 mt-1 block">CSV, Excel (.xlsx) or JSON</span>
                     </div>
                 </div>
             </label>
 
             <RedfinImportSummary
-                importBatch={pendingRedfinImport}
-                isSaving={isCreatingRedfinRoute}
+                importBatch={pendingImport}
+                isSaving={isCreatingRoute}
                 onCancel={() => {
-                    setPendingRedfinImport(null);
+                    setPendingImport(null);
                     setUploadStatus(null);
                 }}
-                onCreateRoute={handleCreateRedfinRoute}
+                onCreateRoute={handleCreateRoute}
             />
 
             {uploadStatus && (

@@ -310,7 +310,7 @@ export async function createRouteFromRedfinImport(importBatch, { user, startLoca
     assigned_to: managerId,
     assigned_to_name: user?.full_name || 'Me',
     metadata: {
-      source: 'redfin_csv',
+      source: importBatch.source || 'redfin_csv',
       import_date: importDate,
       file_name: importBatch.fileName
     }
