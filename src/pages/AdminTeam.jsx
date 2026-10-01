@@ -833,7 +833,7 @@ export default function AdminTeam() {
                         <TeamAnalyticsSummary members={filteredTeamMembers} logs={logs} routes={routes} />
                         {canManageTeam && (
                             <UserActivityHeatmap
-                                members={analyticsMembers}
+                                members={filteredTeamMembers}
                                 managerId={managerId}
                                 mobileCardLayout
                             />
