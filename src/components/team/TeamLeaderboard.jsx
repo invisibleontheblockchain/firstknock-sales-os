@@ -4,70 +4,16 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Trophy, Flame, Target, Clock } from 'lucide-react';
 import { AreaChart, Area, ResponsiveContainer } from 'recharts';
-import { isKnockActivityLog } from '@/lib/interactionLogs';
+import { useTeamLeaderboard } from '@/lib/useTeamLeaderboard';
 
-export default function TeamLeaderboard({ members, logs, routes, onSelectRep }) {
-    const [period, setPeriod] = useState('all'); // 'week', 'month', 'all'
+export default function TeamLeaderboard({ members, currentUser, onSelectRep }) {
+    const [period, setPeriod] = useState('today'); // Reset to Today on each opening.
 
-    // Process Data for Leaderboard
-    const leaderboardData = useMemo(() => {
-        // 1. Filter logs by period
-        const now = new Date();
-        const filteredLogs = logs.filter(log => {
-            if (!isKnockActivityLog(log)) return false;
-            if (period === 'all') return true;
-            const logDate = new Date(log.created_date);
-            const diffDays = (now - logDate) / (1000 * 60 * 60 * 24);
-            return period === 'week' ? diffDays <= 7 : diffDays <= 30;
-        });
-
-        // 2. Aggregate Stats per Rep
-        const stats = members.map(member => {
-            const memberLogs = filteredLogs.filter(l => l.created_by === member.email);
-            const sales = memberLogs.filter(l => ['SOLD', 'QUALIFIED'].includes(l.parsed_status)).length;
-            const knocks = memberLogs.length;
-            const conversion = knocks > 0 ? (sales / knocks) * 100 : 0;
-            
-            // Estimate Doors Per Hour (heuristic: group logs by hour)
-            const hoursActive = new Set(memberLogs.map(l => {
-                const d = new Date(l.created_date);
-                return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}-${d.getHours()}`;
-            })).size;
-            const doorsPerHour = hoursActive > 0 ? (knocks / hoursActive) : 0;
-
-            // Historical Trend (Last 7 days relative to period)
-            const history = [];
-            for(let i=6; i>=0; i--) {
-                const d = new Date();
-                d.setDate(d.getDate() - i);
-                const dateStr = d.toISOString().split('T')[0];
-                const dayLogs = memberLogs.filter(l => l.created_date.startsWith(dateStr));
-                history.push({ 
-                    date: dateStr, 
-                    score: dayLogs.filter(l => ['SOLD', 'QUALIFIED'].includes(l.parsed_status)).length 
-                });
-            }
-
-            return {
-                id: member.id,
-                name: member.name,
-                email: member.email,
-                role: member.role,
-                color: member.color,
-                metrics: {
-                    sales,
-                    knocks,
-                    conversion,
-                    doorsPerHour
-                },
-                history
-            };
-        });
-
-        // 3. Sort by primary metric (Sales)
-        return stats.sort((a, b) => b.metrics.sales - a.metrics.sales);
-
-    }, [members, logs, period]);
+    const { data: rankedMembers = [], isLoading, isError, refetch } = useTeamLeaderboard(currentUser, period);
+    const leaderboardData = useMemo(
+        () => rankedMembers.filter(row => members.some(member => member.id === row.id)),
+        [rankedMembers, members]
+    );
 
     const MetricCard = ({ rank, rep, type }) => (
         <div
@@ -116,10 +62,11 @@ export default function TeamLeaderboard({ members, logs, routes, onSelectRep }) 
                         <Trophy className="w-3.5 h-3.5 md:w-4 md:h-4 text-yellow-500" /> Leaderboard
                     </CardTitle>
                     <div className="flex gap-1 bg-gray-900 rounded-lg p-1">
-                        {['week', 'month', 'all'].map(p => (
+                        {['today', 'week', 'month', 'all'].map(p => (
                             <button
                                 key={p}
                                 onClick={() => setPeriod(p)}
+                                aria-pressed={period === p}
                                 className={`px-2 py-1 rounded text-[10px] font-bold uppercase transition-all ${
                                     period === p ? 'bg-yellow-500 text-black' : 'text-gray-500 hover:text-white'
                                 }`}
@@ -131,6 +78,14 @@ export default function TeamLeaderboard({ members, logs, routes, onSelectRep }) 
                 </div>
             </CardHeader>
             <CardContent className="p-2.5 md:p-4">
+                {isLoading ? (
+                    <p className="py-6 text-center text-sm text-gray-500">Loading leaderboard...</p>
+                ) : isError ? (
+                    <div role="alert" className="py-6 text-center text-sm text-gray-400">
+                        <p>Couldn’t load the leaderboard.</p>
+                        <button onClick={() => refetch()} className="mt-2 font-bold text-yellow-500">Retry</button>
+                    </div>
+                ) : (
                 <Tabs defaultValue="sales" className="w-full">
                     <TabsList className="w-full bg-[#1F1F1F] mb-4">
                         <TabsTrigger value="sales" className="flex-1 text-xs">
@@ -162,6 +117,7 @@ export default function TeamLeaderboard({ members, logs, routes, onSelectRep }) 
                         ))}
                     </TabsContent>
                 </Tabs>
+                )}
             </CardContent>
         </Card>
     );
