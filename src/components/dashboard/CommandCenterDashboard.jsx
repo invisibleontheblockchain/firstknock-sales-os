@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Users, TrendingUp, Target, X, Zap, Gauge } from 'lucide-react';
 import { subDays, parseISO, startOfDay, isAfter, isToday } from 'date-fns';
 import { isKnockActivityLog } from '@/lib/interactionLogs';
+import { useTeamLeaderboard } from '@/lib/useTeamLeaderboard';
 import CommandKpiGrid from './CommandKpiGrid';
 import CommandLeaderboard from './CommandLeaderboard';
 import CommandStatusMix from './CommandStatusMix';
@@ -17,8 +18,10 @@ const TIME_FILTERS = [
 
 const SALE_STATUSES = ['SOLD', 'QUALIFIED'];
 
-export default function CommandCenterDashboard({ logs, routes, teamMembers = [], onSelectRoute, onClose }) {
-    const [timeFilter, setTimeFilter] = useState('30d');
+export default function CommandCenterDashboard({ logs, routes, currentUser, onSelectRoute, onClose }) {
+    const [timeFilter, setTimeFilter] = useState('today');
+    const leaderboardQuery = useTeamLeaderboard(currentUser, timeFilter);
+    const rankedMembers = leaderboardQuery.data || [];
 
     const stats = useMemo(() => {
         const startOfToday = startOfDay(new Date());
@@ -40,20 +43,12 @@ export default function CommandCenterDashboard({ logs, routes, teamMembers = [],
         const conversionRate = knocks > 0 ? ((sales / knocks) * 100).toFixed(1) : '0.0';
         const activeRepsCount = new Set(filteredLogs.map(l => l.created_by)).size;
 
-        // Rep leaderboard
-        const repStatsMap = {};
-        filteredLogs.forEach(log => {
-            const email = log.created_by || 'Unknown';
-            if (!repStatsMap[email]) {
-                const member = teamMembers.find(m => m.email === email);
-                repStatsMap[email] = { email, name: member ? member.name : email.split('@')[0], knocks: 0, sales: 0 };
-            }
-            repStatsMap[email].knocks++;
-            if (SALE_STATUSES.includes(log.parsed_status)) repStatsMap[email].sales++;
-        });
-        const leaderboard = Object.values(repStatsMap)
-            .map(rep => ({ ...rep, conversion: rep.knocks > 0 ? ((rep.sales / rep.knocks) * 100).toFixed(1) : '0.0' }))
-            .sort((a, b) => b.sales - a.sales || b.knocks - a.knocks);
+        const leaderboard = rankedMembers.map(row => ({
+            ...row,
+            knocks: row.metrics.knocks,
+            sales: row.metrics.sales,
+            conversion: row.metrics.conversion.toFixed(1),
+        }));
 
         // Outcome mix
         const statusMap = filteredLogs.reduce((acc, log) => {
@@ -116,7 +111,7 @@ export default function CommandCenterDashboard({ logs, routes, teamMembers = [],
             .slice(0, 5);
 
         return { knocks, sales, conversionRate, activeRepsCount, leaderboard, pieData, routeCounts, activeRoutes, bestRoutes };
-    }, [logs, routes, timeFilter, teamMembers]);
+    }, [logs, routes, timeFilter, rankedMembers]);
 
     const kpis = [
         { label: 'Total Knocks', value: stats.knocks.toLocaleString(), icon: Target, color: '#2EEB57' },
@@ -154,6 +149,7 @@ export default function CommandCenterDashboard({ logs, routes, teamMembers = [],
                                 <button
                                     key={f.id}
                                     onClick={() => setTimeFilter(f.id)}
+                                aria-pressed={timeFilter === f.id}
                                     className={`min-h-8 rounded-lg px-2.5 text-[10px] font-black uppercase tracking-[0.08em] transition-colors lg:text-[11px] ${
                                         timeFilter === f.id
                                             ? 'border border-[#2EEB57]/30 bg-[#2EEB57]/12 text-[#86efac]'
@@ -183,7 +179,7 @@ export default function CommandCenterDashboard({ logs, routes, teamMembers = [],
 
                     <div className="grid grid-cols-1 gap-3 lg:grid-cols-3 lg:gap-4">
                         <div className="lg:col-span-2">
-                            <CommandLeaderboard leaderboard={stats.leaderboard} />
+                            <CommandLeaderboard leaderboard={stats.leaderboard} isLoading={leaderboardQuery.isLoading} isError={leaderboardQuery.isError} onRetry={leaderboardQuery.refetch} />
                         </div>
                         <CommandStatusMix data={stats.pieData} total={stats.knocks} />
                     </div>
