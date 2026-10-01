@@ -24,6 +24,7 @@ import UserActivityHeatmap from '@/components/analytics/team/UserActivityHeatmap
 import { getManagerIdForAccount, hasUnlimitedTeamAccess, isManagerAccount, isOwnerAccount, isRepAccount } from '@/lib/roles';
 import { isKnockActivityLog } from '@/lib/interactionLogs';
 import { fetchAllAnalyticsPages } from '@/lib/analyticsDateFilter';
+import { buildTeamRoster, getRepSeatCount } from '@/lib/teamRoster';
 
 
 const BRAND = {
@@ -88,27 +89,25 @@ export default function AdminTeam() {
     }, [isRepView, activeTab]);
 
     const {
-        data: teamMembers = [],
+        data: teamRoster,
         error: teamLoadError,
         isError: teamLoadFailed,
         isLoading: teamLoading,
         refetch: refetchTeamMembers,
     } = useQuery({
-        queryKey: ['teamMembers', managerId],
+        queryKey: ['teamMembers', managerId, user?.id],
         queryFn: async () => {
-            if (!managerId) return [];
-            return fetchAllAnalyticsPages(
-                (limit, skip) => base44.entities.TeamMember.filter(
-                    { manager_id: managerId },
-                    '-created_date',
-                    limit,
-                    skip
-                ),
-                { pageSize: 500, maxPages: 100 }
-            );
+            const res = await base44.functions.invoke('getTeamRoster', {});
+            if (!res.data?.success || res.data.manager_id !== managerId) {
+                throw new Error('Unable to verify the team roster.');
+            }
+            return res.data;
         },
         enabled: !!managerId
     });
+
+    const teamMembers = teamRoster?.members || [];
+    const repSeatCount = getRepSeatCount(teamMembers);
 
     const { data: routes = [], isLoading: routesLoading } = useQuery({
         queryKey: ['allRoutes', managerId],
@@ -296,29 +295,10 @@ export default function AdminTeam() {
     // --- Derived State ---
     
     // Filter Team Members by Active Code
-    const filteredTeamMembers = useMemo(() => {
-        let members = [...teamMembers];
-        
-        // Add Manager Self — only if not already in TeamMember list
-        if (user && !members.some(m => m.email?.toLowerCase() === user.email?.toLowerCase())) {
-            const manager = {
-                id: user.id,
-                name: user.full_name || 'Me',
-                email: user.email,
-                role: 'manager',
-                status: 'active',
-                assigned_zip_codes: user.territory_zip_codes || [],
-                profile_image_url: user.profile_image_url || user.data?.profile_image_url,
-                color: '#FFD700',
-                isManagerSelf: true,
-                auto_assign_enabled: false 
-            };
-            members = [manager, ...members];
-        }
-
-        if (activeTeamCode === 'all') return members;
-        return members.filter(m => m.isManagerSelf || m.invite_code === activeTeamCode);
-    }, [teamMembers, activeTeamCode, user]);
+    const filteredTeamMembers = useMemo(
+        () => buildTeamRoster(teamMembers, teamRoster?.manager, user?.id, activeTeamCode),
+        [teamMembers, teamRoster?.manager, user?.id, activeTeamCode]
+    );
 
     const routesByRep = useMemo(() => {
         const grouped = { unassigned: [] };
@@ -378,7 +358,7 @@ export default function AdminTeam() {
     }, [teamTotals, metricsByRep]);
 
     const analyticsMembers = useMemo(
-        () => filteredTeamMembers.filter(member => !member.isManagerSelf),
+        () => filteredTeamMembers.filter(member => !member.isTeamManager),
         [filteredTeamMembers]
     );
 
@@ -520,7 +500,7 @@ export default function AdminTeam() {
             return;
         }
 
-        if (teamMembers.length >= paidSeatLimit) {
+        if (repSeatCount >= paidSeatLimit) {
              const message = `You have reached your paid seat limit (${paidSeatLimit}). Add a paid seat to add more users.`;
                 
              toast.error(message);
@@ -827,7 +807,7 @@ export default function AdminTeam() {
                     <div className="py-2 px-1 md:p-4 flex flex-col items-center justify-center cursor-pointer" onClick={() => navigate(createPageUrl('Billing'))}>
                         <Users className="w-3 h-3 md:w-4 md:h-4 text-blue-500 mb-0.5 md:mb-1" />
                         <div className="flex items-baseline gap-0.5">
-                            <span className="text-sm md:text-2xl font-extrabold text-white">{teamMembers.length}</span>
+                            <span className="text-sm md:text-2xl font-extrabold text-white">{repSeatCount}</span>
                             <span className="text-[8px] md:text-sm font-bold text-gray-500">/{seatLimitLabel}</span>
                         </div>
                         <span className="text-[7px] md:text-[10px] font-bold text-gray-500 uppercase">Seats</span>
@@ -850,7 +830,7 @@ export default function AdminTeam() {
 
                     {/* ANALYTICS TAB */}
                     <TabsContent value="analytics" className="space-y-3 md:space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                        <TeamAnalyticsSummary members={analyticsMembers} logs={logs} routes={routes} />
+                        <TeamAnalyticsSummary members={filteredTeamMembers} logs={logs} routes={routes} />
                         {canManageTeam && (
                             <UserActivityHeatmap
                                 members={analyticsMembers}
@@ -1114,7 +1094,7 @@ export default function AdminTeam() {
                                         {isOpeningSeatBilling ? 'Opening...' : 'Add Seat'}
                                     </Button>
                                     <Button onClick={() => navigate(createPageUrl('Billing'))} variant="outline" size="sm" className="border-yellow-500 text-yellow-500 hover:bg-yellow-500/10 text-[10px] md:text-xs h-7 md:h-8 flex-1 md:flex-none">
-                                        Seats ({teamMembers.length}/{seatLimitLabel})
+                                        Seats ({repSeatCount}/{seatLimitLabel})
                                     </Button>
                                 </div>
                             </CardHeader>
@@ -1132,7 +1112,7 @@ export default function AdminTeam() {
                                             </div>
                                             <div className="text-2xl md:text-4xl font-mono font-bold text-white tracking-wider my-1 md:my-2">{code.code}</div>
                                             <p className="text-[10px] md:text-sm text-gray-400">
-                                                {hasOwnerAccess ? `${teamMembers.length} reps · Unlimited seats` : (code.max_uses > 0 ? `${teamMembers.length} reps (Max ${code.max_uses})` : 'Locked until a rep seat is paid')}
+                                                {hasOwnerAccess ? `${repSeatCount} reps · Unlimited seats` : (code.max_uses > 0 ? `${repSeatCount} reps (Max ${code.max_uses})` : 'Locked until a rep seat is paid')}
                                             </p>
                                         </div>
                                         <Button 
