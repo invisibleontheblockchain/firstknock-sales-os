@@ -1,3 +1,5 @@
+export { hasUnlimitedTeamAccess } from './teamOwnerAccess.js';
+
 export function getAccountRole(user) {
   return user?.role || user?.data?.role || '';
 }
@@ -6,11 +8,15 @@ export function getAppRole(user) {
   return user?.app_role || user?.data?.app_role || '';
 }
 
+export function isOwnerAccount(user) {
+  return user?.is_owner === true || user?.data?.is_owner === true;
+}
+
 export function isManagerAccount(user) {
   if (!user) return false;
   const appRole = getAppRole(user);
   const accountRole = getAccountRole(user);
-  return user.is_owner === true || appRole === 'manager' || appRole === 'admin' || accountRole === 'manager' || accountRole === 'admin';
+  return isOwnerAccount(user) || appRole === 'manager' || appRole === 'admin' || accountRole === 'manager' || accountRole === 'admin';
 }
 
 export function isRepAccount(user) {
