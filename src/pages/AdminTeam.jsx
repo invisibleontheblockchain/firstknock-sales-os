@@ -357,11 +357,6 @@ export default function AdminTeam() {
         };
     }, [teamTotals, metricsByRep]);
 
-    const analyticsMembers = useMemo(
-        () => filteredTeamMembers.filter(member => !member.isTeamManager),
-        [filteredTeamMembers]
-    );
-
     const roleSwitchCandidates = filteredTeamMembers.filter(member => !member.isManagerSelf && member.role !== 'manager');
     const selectedRoleSwitchMember = roleSwitchCandidates.find(member => member.id === roleSwitchMemberId);
 
@@ -793,7 +788,7 @@ export default function AdminTeam() {
                 </Dialog>
 
                 {/* Streamlined Stats Bar */}
-                <div className="grid grid-cols-4 divide-x divide-gray-800 bg-[#111] border border-gray-800 rounded-lg md:rounded-xl overflow-hidden shadow-lg">
+                <div className={`grid ${isRepView ? 'grid-cols-3' : 'grid-cols-4'} divide-x divide-gray-800 bg-[#111] border border-gray-800 rounded-lg md:rounded-xl overflow-hidden shadow-lg`}>
                     <div className="py-2 px-1 md:p-4 flex flex-col items-center justify-center">
                         <TrendingUp className="w-3 h-3 md:w-4 md:h-4 text-yellow-500 mb-0.5 md:mb-1" />
                         <span className="text-sm md:text-2xl font-extrabold text-white">{teamTotals.doorsKnocked.toLocaleString()}</span>
@@ -804,6 +799,7 @@ export default function AdminTeam() {
                         <span className="text-sm md:text-2xl font-extrabold text-white">{teamTotals.sales.toLocaleString()}</span>
                         <span className="text-[7px] md:text-[10px] font-bold text-gray-500 uppercase">Sales</span>
                     </div>
+                    {!isRepView && (
                     <div className="py-2 px-1 md:p-4 flex flex-col items-center justify-center cursor-pointer" onClick={() => navigate(createPageUrl('Billing'))}>
                         <Users className="w-3 h-3 md:w-4 md:h-4 text-blue-500 mb-0.5 md:mb-1" />
                         <div className="flex items-baseline gap-0.5">
@@ -812,6 +808,7 @@ export default function AdminTeam() {
                         </div>
                         <span className="text-[7px] md:text-[10px] font-bold text-gray-500 uppercase">Seats</span>
                     </div>
+                    )}
                     <div className="py-2 px-1 md:p-4 flex flex-col items-center justify-center">
                         <Map className="w-3 h-3 md:w-4 md:h-4 text-purple-500 mb-0.5 md:mb-1" />
                         <span className="text-sm md:text-2xl font-extrabold text-white">{routes.length}</span>
@@ -843,7 +840,7 @@ export default function AdminTeam() {
                             <TeamOutcomeBreakdown logs={logs} />
                         </div>
                         <TeamLeaderboard
-                            members={analyticsMembers}
+                            members={filteredTeamMembers} currentUser={user}
                             logs={logs}
                             routes={routes}
                             onSelectRep={(member) => {
