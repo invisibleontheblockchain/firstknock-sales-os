@@ -5,7 +5,7 @@ const IMPORT_SOURCES = [
     { name: 'SalesRabbit', format: 'CSV', steps: 'Settings → Export → Download CSV' },
     { name: 'Spotio', format: 'CSV', steps: 'Reports → Export Pins → CSV' },
     { name: 'Redfin', format: 'CSV', steps: 'Search → Download All → CSV' },
-    { name: 'Custom Spreadsheet', format: 'CSV/JSON', steps: 'Needs: Address, City, State, Zip' },
+    { name: 'Custom Spreadsheet', format: 'Excel/CSV', steps: 'Needs: Address, City, State, Zip. We find the map coordinates for you.' },
 ];
 
 export default function ImportGuide() {
