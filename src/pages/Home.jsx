@@ -2767,6 +2767,7 @@ export default function Home() {
             {showDashboard && (
                 <React.Suspense fallback={null}>
                     <CommandCenterDashboard
+                        currentUser={user}
                         properties={effectiveProperties}
                         logs={logs}
                         routes={savedRoutes}
