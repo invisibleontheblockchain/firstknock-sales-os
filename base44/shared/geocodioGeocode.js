@@ -58,17 +58,33 @@ export function parseGeocodioResponse(body, items = []) {
   return results;
 }
 
+/**
+ * Secrets pasted into a dashboard often arrive wrapped in quotes, with a stray
+ * space or newline, or with a label/"Bearer" prefix. Geocodio answers any of
+ * those with "403 Invalid API key", so strip them rather than fail.
+ */
+export function normalizeGeocodioKey(raw) {
+  const tokens = String(raw ?? '').trim().replace(/^["'`]+|["'`]+$/g, '').split(/\s+/).filter(Boolean);
+  return (tokens.at(-1) || '').replace(/^["'`]+|["'`]+$/g, '');
+}
+
 export async function geocodeWithGeocodio(items, { apiKey, fetchImpl = globalThis.fetch, signal } = {}) {
   if (!Array.isArray(items) || items.length === 0) return {};
-  if (!apiKey) throw new Error('Geocodio API key is not configured.');
+  const key = normalizeGeocodioKey(apiKey);
+  if (!key) throw new Error('Geocodio API key is not configured.');
   if (items.length > GEOCODIO_MAX_BATCH) throw new Error(`Geocodio batches are limited to ${GEOCODIO_MAX_BATCH} addresses.`);
 
   const response = await fetchImpl(`${GEOCODIO_ENDPOINT}?limit=1`, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(buildGeocodioPayload(items)),
     signal
   });
-  if (!response?.ok) throw new Error(`Geocodio returned ${response?.status || 'no response'}.`);
+  if (!response?.ok) {
+    // Geocodio explains itself in the body ("Invalid API key"); surface that and
+    // the key length (never the key) so a bad secret is diagnosable from logs.
+    const detail = await response?.json?.().then((body) => body?.error).catch(() => null);
+    throw new Error(`Geocodio returned ${response?.status || 'no response'}${detail ? `: ${detail}` : ''} (key length ${key.length}).`);
+  }
   return parseGeocodioResponse(await response.json(), items);
 }

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { geocodeAddressItems } from '../base44/shared/addressGeocoder.js';
-import { buildGeocodioPayload, geocodeWithGeocodio, parseGeocodioResponse } from '../base44/shared/geocodioGeocode.js';
+import { buildGeocodioPayload, geocodeWithGeocodio, normalizeGeocodioKey, parseGeocodioResponse } from '../base44/shared/geocodioGeocode.js';
 
 const entry = (lat, lng, accuracy_type, accuracy = 1, state = 'FL') => ({
   response: { results: [{ location: { lat, lng }, accuracy, accuracy_type, formatted_address: 'x', address_components: { state_province: state } }] }
@@ -95,4 +95,25 @@ test('waterfall: throws only when every source failed and nothing resolved', asy
   // Geocodio failing after Census resolved something is not an error.
   const ok = await geocodeAddressItems([items[0], items[3]], { geocodioApiKey: 'k', fetchImpl: fakeServices({ geocodioDown: true }) });
   assert.deepEqual(Object.keys(ok.results), ['d']);
+});
+
+test('tolerates a secret pasted with quotes, whitespace, or a label prefix', () => {
+  const variants = ['abc123', '  abc123\n', '"abc123"', "'abc123'", 'Bearer abc123', 'Milecraft abc123', 'Milecraft\nabc123\n'];
+  for (const raw of variants) {
+    assert.equal(normalizeGeocodioKey(raw), 'abc123', JSON.stringify(raw));
+  }
+  assert.equal(normalizeGeocodioKey(''), '');
+  assert.equal(normalizeGeocodioKey(undefined), '');
+});
+
+test('sends the normalized key, and a rejected key reports the reason and key length', async () => {
+  let auth;
+  await assert.rejects(
+    geocodeWithGeocodio(items.slice(0, 1), {
+      apiKey: ' "secretkey" ',
+      fetchImpl: async (url, init) => { auth = init.headers.Authorization; return { ok: false, status: 403, json: async () => ({ error: 'Invalid API key' }) }; }
+    }),
+    /403: Invalid API key \(key length 9\)/
+  );
+  assert.equal(auth, 'Bearer secretkey');
 });
