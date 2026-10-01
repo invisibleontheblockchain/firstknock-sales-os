@@ -19,19 +19,19 @@ Deno.serve(async (req) => {
     }
 
     const items = addresses
-      .map((row) => ({
+      .map((row: Record<string, unknown>) => ({
         id: String(row?.id ?? '').trim(),
         address: String(row?.address ?? '').trim(),
         city: String(row?.city ?? '').trim(),
         state: String(row?.state ?? '').trim(),
         zip: String(row?.zip ?? '').trim(),
       }))
-      .filter((row) => row.id && row.address);
+      .filter((row: { id: string; address: string }) => row.id && row.address);
 
     const results = await geocodeWithCensus(items);
     return Response.json({ success: true, requested: items.length, matched: Object.keys(results).length, results });
   } catch (error) {
     console.error('geocodeAddressBatch failed', error);
-    return Response.json({ error: 'geocode_failed', message: error?.message || 'Geocoding failed.' }, { status: 502 });
+    return Response.json({ error: 'geocode_failed', message: (error as Error)?.message || 'Geocoding failed.' }, { status: 502 });
   }
 });
