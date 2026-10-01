@@ -151,7 +151,11 @@ async function readSourceFile(path) {
   return tiles;
 }
 
-async function atomicWriteNew(path, bytes) {
+// Takes an iterable of lines rather than one assembled string. A county-scale
+// release exceeds V8's maximum string length, which failed the entire normalize
+// with an opaque "Invalid string length". Exclusive create, fsync and the
+// hard-link swap are unchanged — only the assembly became incremental.
+async function atomicWriteNew(path, lines) {
   const output = resolve(path);
   await mkdir(dirname(output), { recursive: true });
   try {
@@ -164,7 +168,7 @@ async function atomicWriteNew(path, bytes) {
   let handle;
   try {
     handle = await open(temporary, 'wx', 0o600);
-    await handle.writeFile(bytes);
+    for (const line of lines) await handle.write(`${line}\n`);
     await handle.sync();
     await handle.close();
     handle = null;
@@ -204,8 +208,7 @@ export async function runCanvasSourceNormalizerCli(argv = process.argv.slice(2))
   }
   let outputPath = null;
   if (!options.validateOnly) {
-    const bytes = `${tiles.map((tile) => canonicalStringify(tile)).join('\n')}\n`;
-    outputPath = await atomicWriteNew(options.output, bytes);
+    outputPath = await atomicWriteNew(options.output, tiles.map((tile) => canonicalStringify(tile)));
   }
   return Object.freeze({
     mode: options.validateOnly ? 'validate-only' : 'normalize',
