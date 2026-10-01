@@ -1,8 +1,9 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
-import { CENSUS_MAX_BATCH, geocodeWithCensus } from '../../shared/censusGeocode.js';
+import { GEOCODE_BATCH_LIMIT, geocodeAddressItems } from '../../shared/addressGeocoder.js';
 
-// Resolves street addresses to coordinates for spreadsheet imports. The Census
-// geocoder has no CORS headers, so the browser cannot call it directly.
+// Resolves street addresses to coordinates for spreadsheet imports: Census first
+// (free), then Geocodio (GEOCODIO_API_KEY secret) for what Census misses. Neither
+// allows browser calls (no CORS / secret key), so the browser comes through here.
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -14,8 +15,8 @@ Deno.serve(async (req) => {
     if (addresses.length === 0) {
       return Response.json({ error: 'missing_addresses', message: 'Send at least one address to geocode.' }, { status: 400 });
     }
-    if (addresses.length > CENSUS_MAX_BATCH) {
-      return Response.json({ error: 'batch_too_large', message: `Send at most ${CENSUS_MAX_BATCH} addresses per call.` }, { status: 400 });
+    if (addresses.length > GEOCODE_BATCH_LIMIT) {
+      return Response.json({ error: 'batch_too_large', message: `Send at most ${GEOCODE_BATCH_LIMIT} addresses per call.` }, { status: 400 });
     }
 
     const items = addresses
@@ -28,8 +29,11 @@ Deno.serve(async (req) => {
       }))
       .filter((row: { id: string; address: string }) => row.id && row.address);
 
-    const results = await geocodeWithCensus(items);
-    return Response.json({ success: true, requested: items.length, matched: Object.keys(results).length, results });
+    const { results, counts, warnings } = await geocodeAddressItems(items, {
+      geocodioApiKey: Deno.env.get('GEOCODIO_API_KEY') || '',
+    });
+    if (warnings.length > 0) console.warn('geocodeAddressBatch warnings:', warnings.join('; '));
+    return Response.json({ success: true, requested: items.length, matched: Object.keys(results).length, counts, warnings, results });
   } catch (error) {
     console.error('geocodeAddressBatch failed', error);
     return Response.json({ error: 'geocode_failed', message: (error as Error)?.message || 'Geocoding failed.' }, { status: 502 });

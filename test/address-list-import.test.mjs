@@ -240,3 +240,16 @@ test('geocodeWithCensus posts the batch and surfaces HTTP failures', async () =>
   );
   assert.deepEqual(await geocodeWithCensus([], { fetchImpl: async () => { throw new Error('should not call'); } }), {});
 });
+
+test('results from the backend keep their own source (Census vs Geocodio)', async () => {
+  const batch = await prepareAddressListImport(tampaRows(), 'x.xlsx', {
+    geocodeBatch: async (items) => Object.fromEntries(items.map((item, i) => [
+      item.id,
+      { lat: 27.9 + i / 100, lng: -82.4, matchType: i === 0 ? 'rooftop' : 'Exact', source: i === 0 ? 'geocodio' : 'census' }
+    ]))
+  });
+  assert.equal(batch.summary.geocodedByGeocodio, 1);
+  assert.equal(batch.summary.geocodedByCensus, 3);
+  assert.equal(batch.properties[0].raw_metadata.geocode_source, 'geocodio');
+  assert.equal(batch.properties[0].raw_metadata.geocode_match, 'rooftop');
+});

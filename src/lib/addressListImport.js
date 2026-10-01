@@ -212,7 +212,7 @@ export async function geocodeCandidates(candidates, {
           const hit = results?.[c.id];
           const lat = parseCoordinate(hit?.lat, 90);
           const lng = parseCoordinate(hit?.lng, 180);
-          if (lat !== null && lng !== null) resolved.set(c.id, { lat, lng, source: 'census', matchType: hit.matchType || '' });
+          if (lat !== null && lng !== null) resolved.set(c.id, { lat, lng, source: hit.source || 'census', matchType: hit.matchType || '' });
         });
       } catch (error) {
         batchFailed = true;
@@ -319,6 +319,7 @@ export async function prepareAddressListImport(rows, fileName = 'Imported List.x
   const properties = [];
   const unmatched = [];
   let geocodedByCensus = 0;
+  let geocodedByGeocodio = 0;
   let geocodedByFallback = 0;
 
   candidates.forEach((candidate) => {
@@ -335,6 +336,7 @@ export async function prepareAddressListImport(rows, fileName = 'Imported List.x
       return;
     }
     if (hit.source === 'census') geocodedByCensus += 1;
+    if (hit.source === 'geocodio') geocodedByGeocodio += 1;
     if (hit.source === 'nominatim') geocodedByFallback += 1;
 
     const houseNumber = parseHouseNumber(candidate.displayStreet);
@@ -386,6 +388,7 @@ export async function prepareAddressListImport(rows, fileName = 'Imported List.x
       skippedMissingAddress,
       duplicatesRemoved,
       geocodedByCensus,
+      geocodedByGeocodio,
       geocodedByFallback,
       unmatched: unmatched.length,
       fallbackSkipped
