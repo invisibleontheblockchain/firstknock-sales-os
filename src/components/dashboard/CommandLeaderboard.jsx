@@ -3,7 +3,7 @@ import { Trophy, Medal } from 'lucide-react';
 
 const RANK_COLORS = ['#2EEB57', '#d4d4d8', '#cd7f32'];
 
-export default function CommandLeaderboard({ leaderboard }) {
+export default function CommandLeaderboard({ leaderboard, isLoading = false, isError = false, onRetry }) {
     const topKnocks = Math.max(1, ...leaderboard.map(r => r.knocks));
 
     return (
@@ -14,18 +14,25 @@ export default function CommandLeaderboard({ leaderboard }) {
                     Rep Leaderboard
                 </span>
                 <span className="ml-auto rounded-full bg-white/[0.06] px-2 py-0.5 text-[9px] font-bold text-white/50">
-                    {leaderboard.length} active
+                    {leaderboard.length} members
                 </span>
             </div>
 
-            {leaderboard.length === 0 ? (
+            {isLoading ? (
+                <p className="p-8 text-center text-[11px] text-white/35">Loading leaderboard...</p>
+            ) : isError ? (
+                <div role="alert" className="p-8 text-center text-[11px] text-white/50">
+                    <p>Couldn’t load the leaderboard.</p>
+                    <button onClick={onRetry} className="mt-2 font-bold text-[#39FF4A]">Retry</button>
+                </div>
+            ) : leaderboard.length === 0 ? (
                 <div className="p-8 text-center text-[11px] font-bold text-white/35">
                     No activity in this timeframe
                 </div>
             ) : (
                 <div className="divide-y divide-white/[0.06]">
                     {leaderboard.map((rep, idx) => (
-                        <div key={rep.email} className="flex items-center gap-3 px-3 py-2.5 transition-colors hover:bg-white/[0.03] lg:px-4 lg:py-3">
+                        <div key={rep.id} className="flex items-center gap-3 px-3 py-2.5 transition-colors hover:bg-white/[0.03] lg:px-4 lg:py-3">
                             <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-white/10 bg-black/50">
                                 {idx < 3
                                     ? <Medal className="h-3.5 w-3.5" style={{ color: RANK_COLORS[idx] }} />
@@ -34,6 +41,7 @@ export default function CommandLeaderboard({ leaderboard }) {
 
                             <div className="min-w-0 flex-1">
                                 <p className="truncate text-[12px] font-bold capitalize text-white lg:text-[13px]">{rep.name}</p>
+                                <p className="text-[9px] capitalize text-white/40">{rep.role}</p>
                                 <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-black/60">
                                     <div
                                         className="h-full rounded-full"
