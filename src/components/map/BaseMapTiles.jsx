@@ -1,15 +1,17 @@
 import React, { useEffect } from 'react';
 import { TileLayer, useMap } from 'react-leaflet';
 import CanvasBaseMapTiles from '@/components/canvas/CanvasBaseMapTiles';
+import MapAttributionControl from '@/components/map/MapAttributionControl';
+import { CARTO_ATTRIBUTION, ESRI_IMAGERY_ATTRIBUTION } from '@/components/map/mapAttribution';
 
 const BASEMAP_URLS = {
     satellite: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
     hybrid: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-    light: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
-    dark: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
-    streets: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
+    light: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=cb1_47jm_1_e43254c2ef5a3cbfc430e52f",
+    dark: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png?key=cb1_47jm_1_e43254c2ef5a3cbfc430e52f",
+    streets: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png?key=cb1_47jm_1_e43254c2ef5a3cbfc430e52f",
     terrain: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
-    minimal: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png",
+    minimal: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png?key=cb1_47jm_1_e43254c2ef5a3cbfc430e52f",
 };
 
 // The map container is black, so any hairline gap Leaflet leaves between tiles
@@ -26,7 +28,7 @@ const BASEMAP_BACKDROP = {
     minimal: '#f8f4f0',
 };
 
-const LABEL_URL = "https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png";
+const LABEL_URL = "https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png?key=cb1_47jm_1_e43254c2ef5a3cbfc430e52f";
 
 // Tuning that removes the zoom stutter and the blank/blurry frames:
 // - keepBuffer pre-loads a ring of off-screen tiles so panning and zooming
@@ -62,13 +64,14 @@ export default function BaseMapTiles({ mapTheme, routeMode = 'precision' }) {
     // Canvas honours the same Map Style choices; only the street source differs.
     if (routeMode === 'canvas') return (
         <>
+            <MapAttributionControl />
             <MapBackdrop mapTheme={mapTheme} />
             <CanvasBaseMapTiles theme={mapTheme} />
             {showLabels && (
                 <TileLayer
                     key={`canvas-basemap-labels-${mapTheme}`}
                     url={LABEL_URL}
-                    attribution=""
+                    attribution={CARTO_ATTRIBUTION}
                     zIndex={100}
                     {...TILE_PERF}
                 />
@@ -78,18 +81,19 @@ export default function BaseMapTiles({ mapTheme, routeMode = 'precision' }) {
 
     return (
         <>
+            <MapAttributionControl />
             <MapBackdrop mapTheme={mapTheme} />
             <TileLayer
                 key={`basemap-${precisionTheme}`}
                 url={BASEMAP_URLS[precisionTheme] || BASEMAP_URLS.dark}
-                attribution=""
+                attribution={['satellite', 'hybrid', 'terrain'].includes(precisionTheme) ? ESRI_IMAGERY_ATTRIBUTION : CARTO_ATTRIBUTION}
                 {...TILE_PERF}
             />
             {showLabels && (
                 <TileLayer
                     key={`basemap-labels-${mapTheme}`}
                     url={LABEL_URL}
-                    attribution=""
+                    attribution={CARTO_ATTRIBUTION}
                     zIndex={100}
                     {...TILE_PERF}
                 />
