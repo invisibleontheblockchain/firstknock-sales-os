@@ -1,10 +1,13 @@
-import React from 'react';
+import React, { useId, useState } from 'react';
 import { useQueryClient, useMutation } from "@tanstack/react-query";
 import { base44 } from '@/api/base44Client';
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { TrendingUp, Trash2, Camera, Loader2 } from 'lucide-react';
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { TrendingUp, Trash2, Camera, Loader2, Pencil } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 
@@ -18,6 +21,9 @@ const BRAND = {
 
 export default function TeamMemberCard({ member, routes, metrics, allRoutes, onAssignRoute, onDelete, action, canManage = true }) {
     const queryClient = useQueryClient();
+    const nameInputId = useId();
+    const [isNameEditorOpen, setIsNameEditorOpen] = useState(false);
+    const [nameDraft, setNameDraft] = useState('');
     const completedRoutes = routes.filter(r => r.status === 'COMPLETED');
     const activeRoutes = routes.filter(r => r.status === 'ACTIVE' || r.status === 'IN_PROGRESS');
 
@@ -53,6 +59,44 @@ export default function TeamMemberCard({ member, routes, metrics, allRoutes, onA
         event.target.value = '';
     };
 
+    const updateNameMutation = useMutation({
+        mutationFn: async (name) => {
+            if (member.isManagerSelf) {
+                await base44.auth.updateMe({ full_name: name });
+            } else {
+                await base44.entities.TeamMember.update(member.id, { name });
+            }
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['teamMembers'] });
+            queryClient.invalidateQueries({ queryKey: ['teamLeaderboard'] });
+            queryClient.invalidateQueries({ queryKey: ['repBases'] });
+            queryClient.invalidateQueries({ queryKey: ['repLocations'] });
+            queryClient.invalidateQueries({ queryKey: ['user'] });
+            setIsNameEditorOpen(false);
+            toast.success("Name updated");
+        },
+        onError: (error) => {
+            toast.error(error?.response?.data?.error || error?.message || "Could not update the name. Please try again.");
+        }
+    });
+
+    const handleNameSubmit = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (updateNameMutation.isPending || !(canManage || member.isManagerSelf)) return;
+        const name = nameDraft.trim();
+        if (!name || name.length > 100) {
+            toast.error("Enter a name between 1 and 100 characters.");
+            return;
+        }
+        if (name === member.name) {
+            setIsNameEditorOpen(false);
+            return;
+        }
+        updateNameMutation.mutate(name);
+    };
+
     // Calculate conversion rate
     const conversionRate = metrics.doorsKnocked > 0 
         ? ((metrics.sales / metrics.doorsKnocked) * 100).toFixed(1) 
@@ -86,7 +130,24 @@ export default function TeamMemberCard({ member, routes, metrics, allRoutes, onA
                         </div>
                         
                         <div className="min-w-0">
-                            <h3 className="font-bold text-sm md:text-base text-white tracking-tight truncate">{member.name}</h3>
+                            <div className="flex items-center gap-1">
+                                <h3 className="font-bold text-sm md:text-base text-white tracking-tight truncate">{member.name}</h3>
+                                {(canManage || member.isManagerSelf) && (
+                                    <button
+                                        type="button"
+                                        aria-label={`Change name for ${member.name || 'team member'}`}
+                                        title="Change name"
+                                        onClick={(event) => {
+                                            event.stopPropagation();
+                                            setNameDraft(member.name || '');
+                                            setIsNameEditorOpen(true);
+                                        }}
+                                        className="flex-shrink-0 p-1.5 rounded-md text-gray-400 hover:text-[#2EEB57] hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2EEB57]"
+                                    >
+                                        <Pencil className="w-3.5 h-3.5" />
+                                    </button>
+                                )}
+                            </div>
                             <div className="flex items-center gap-1.5 md:gap-2">
                                 <Badge variant="outline" className="bg-white/5 border-white/10 text-[8px] md:text-[10px] font-medium text-gray-400 h-4 md:h-5 px-1 md:px-2">
                                     {member.role?.toUpperCase()}
@@ -167,6 +228,38 @@ export default function TeamMemberCard({ member, routes, metrics, allRoutes, onA
                     )}
                 </div>
             )}
+            <Dialog open={isNameEditorOpen} onOpenChange={(open) => {
+                if (!updateNameMutation.isPending) setIsNameEditorOpen(open);
+            }}>
+                <DialogContent className="bg-[#111] border-gray-800 text-white sm:max-w-md" onClick={(event) => event.stopPropagation()}>
+                    <DialogHeader>
+                        <DialogTitle>Change name</DialogTitle>
+                        <DialogDescription className="text-gray-400">Update the name shown on your team.</DialogDescription>
+                    </DialogHeader>
+                    <form onSubmit={handleNameSubmit} className="space-y-4">
+                        <div className="space-y-2">
+                            <Label htmlFor={nameInputId}>Name</Label>
+                            <Input
+                                id={nameInputId}
+                                value={nameDraft}
+                                onChange={(event) => setNameDraft(event.target.value)}
+                                maxLength={100}
+                                required
+                                autoComplete="name"
+                                disabled={updateNameMutation.isPending}
+                                className="bg-black border-gray-700 text-white"
+                            />
+                        </div>
+                        <DialogFooter>
+                            <Button type="button" variant="outline" className="bg-transparent border-gray-700" disabled={updateNameMutation.isPending} onClick={() => setIsNameEditorOpen(false)}>Cancel</Button>
+                            <Button type="submit" className="bg-[#2EEB57] text-black hover:bg-[#26CC4B]" disabled={updateNameMutation.isPending || !nameDraft.trim()}>
+                                {updateNameMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                {updateNameMutation.isPending ? 'Saving...' : 'Save name'}
+                            </Button>
+                        </DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }
