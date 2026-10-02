@@ -3,14 +3,15 @@ import { cleanState, geocodeCandidates } from '../../lib/addressListImport.js';
 const normalizeHeader = value => String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 const text = value => value == null ? '' : String(value).trim();
 const FIELDS = {
-  address: ['address', 'fulladdress', 'streetaddress', 'propertyaddress'],
-  city: ['city', 'propertycity'], state: ['state', 'stateorprovince', 'propertystate', 'st'],
-  zip: ['zip', 'zipcode', 'postalcode', 'ziporpostalcode', 'propertyzip'],
-  lat: ['lat', 'latitude'], lng: ['lng', 'lon', 'longitude'],
+  address: ['address', 'fulladdress', 'streetaddress', 'propertyaddress', 'address1', 'siteaddress'],
+  city: ['city', 'propertycity', 'town'], state: ['state', 'stateorprovince', 'propertystate', 'st'],
+  zip: ['zip', 'zipcode', 'postalcode', 'ziporpostalcode', 'propertyzip', 'zip5'],
+  lat: ['lat', 'latitude'], lng: ['lng', 'lon', 'longitude', 'long'],
   house_number: ['housenumber', 'number'], street_name: ['streetname', 'street'],
   address_hash: ['addresshash', 'hash'],
-  owner: ['ownerfullname', 'ownername', 'homeownername'],
-  husband: ['husbandname'], wife: ['wifename'], last: ['lastname'],
+  owner: ['ownerfullname', 'ownername', 'homeownername', 'owner', 'fullname', 'name', 'homeowner', 'contactname'],
+  husband: ['husbandname', 'firstname', 'ownerfirstname'], wife: ['wifename', 'spousename'], last: ['lastname', 'surname', 'ownerlastname'],
+  county: ['county', 'countyname'],
   status: ['originalstatus', 'status'], beds: ['beds', 'bedrooms'], baths: ['baths', 'bathrooms'],
   sqft: ['sqft', 'squarefeet'], year_built: ['yearbuilt'], price: ['price', 'saleprice'],
   sale_date: ['solddate', 'saledate', 'lastsolddate'],
@@ -103,6 +104,8 @@ export async function preparePropertyImport(rows, fileName, { geocodeBatch, onPr
       status: text(read(row, 'status')), data_source: 'csv_import',
       raw_metadata: Object.fromEntries(Object.entries(row).map(([key, value]) => [key, value instanceof Date ? value.toISOString() : value])),
     };
+    const county = text(read(row, 'county')).replace(/\s+county$/i, '');
+    if (county) property.raw_metadata.county = county;
     for (const field of ['beds', 'baths', 'sqft', 'year_built', 'price']) {
       const parsed = number(read(row, field));
       if (parsed !== null) property[field] = field === 'year_built' ? Math.trunc(parsed) : parsed;

@@ -235,3 +235,10 @@ test('existing address service and fallback preserve input order and geocoder pr
   assert.deepEqual(results.map(result => result.source), ['census', 'nominatim', 'geocodio']);
   await assert.rejects(geocodePropertyImportBatch(addresses, { geocodeBatch: async () => { throw new Error('offline'); } }), /unavailable/);
 });
+
+test('existing address-list aliases and county metadata remain supported', async () => {
+  const batch = await prepare([{ SiteAddress: '1 Main St', Town: 'Tampa', State: 'Florida', Zip5: '33605', FirstName: 'Sam', Surname: 'Rivera', CountyName: 'Hillsborough County' }]);
+  assert.equal(batch.properties[0].owner_full_name, 'Sam Rivera');
+  assert.equal(batch.properties[0].state, 'FL');
+  assert.equal(batch.properties[0].raw_metadata.county, 'Hillsborough');
+});
