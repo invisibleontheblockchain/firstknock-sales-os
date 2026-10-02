@@ -27,11 +27,15 @@ function harness({ caller = rep, storedUser = caller, records = members, trips =
                 if (failPage && skip) throw new Error('Page failed');
                 const matches = (t, q) => Object.entries(q).every(([key, value]) => key === '$or' ? value.some(part => matches(t, part))
                     : typeof value === 'object' ? t[key] >= value.$gte && t[key] <= value.$lte : t[key] === value);
-                const rows = entityTrips.filter(t => matches(t, query)).slice(skip, skip + limit);
+                const rows = entityTrips.filter(t => matches(t, query)).slice(skip, skip + limit).map(t => ({ ...t }));
                 return wrapped ? { items: rows } : rows;
             },
             create: async data => { const trip = { ...data, id: `new-${entityTrips.length}` }; entityTrips.push(trip); writes.push(trip); return trip; },
-            update: async (id, data) => { const trip = entityTrips.find(t => t.id === id); Object.assign(trip, data); writes.push(data); return trip; },
+            updateMany: async (query, { $set: data }) => {
+                const trip = entityTrips.find(t => t.id === query.id && t.manager_id === query.manager_id && t.status === query.status);
+                if (!trip) return { success: true, updated: 0 };
+                Object.assign(trip, data); writes.push(data); return { success: true, updated: 1 };
+            },
         },
     };
     let handler;
@@ -136,6 +140,18 @@ test('submission retries are idempotent and overlapping readings cannot be doubl
     assert.equal((await h.invoke({ ...payload, odometer_end: '1270.1' })).status, 409);
     assert.equal((await h.invoke({ ...payload, submission_id: 'retry-new-id' })).status, 409);
     assert.equal((await h.invoke({ ...payload, submission_id: 'next', odometer_start: '1260.8', odometer_end: '1270.1' })).status, 200);
+});
+
+test('concurrent review and cancellation cannot overwrite an approved reimbursement', async () => {
+    const h = harness({ caller: manager, trips: [baseTrip] });
+    const results = await Promise.all([
+        h.invoke({ action: 'approve', trip_id: baseTrip.id, rate_per_mile: '0.725' }),
+        h.invoke({ action: 'cancel', trip_id: baseTrip.id, review_note: 'Concurrent correction' }),
+    ]);
+    assert.deepEqual(results.map(r => r.status), [200, 409]);
+    assert.equal(h.trips[0].status, 'approved');
+    assert.equal(h.trips[0].reimbursement_cents, 1907);
+    assert.equal(h.writes.length, 1);
 });
 
 test('cancelling preserves original trip and permits corrected readings', async () => {

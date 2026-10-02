@@ -126,7 +126,16 @@ Deno.serve(async (req) => {
                     review_note: text(body.review_note, 'Reason', 500), reviewed_by: user.id, reviewed_at: timestamp };
             }
         }
-        return Response.json({ success: true, trip: await service.DrivingTrip.update(trip.id, update) });
+        const mutation = await service.DrivingTrip.updateMany(
+            { id: trip.id, manager_id: managerId, status: trip.status }, { $set: update }
+        );
+        if (mutation?.success !== true || Number(mutation.updated) !== 1 || mutation.has_more === true) {
+            throw new DrivingError(409, 'This trip changed while you were reviewing it. Refresh the report and retry.');
+        }
+        const saved = asArray(await service.DrivingTrip.filter({ id: trip.id, manager_id: managerId }, '-created_date', 1))
+            .find(t => t.id === trip.id && t.manager_id === managerId);
+        if (!saved) throw new DrivingError(503, 'Unable to verify the saved trip. Refresh the report before retrying.');
+        return Response.json({ success: true, trip: saved });
     } catch (error) {
         const status = error instanceof DrivingError ? error.status : 500;
         if (status === 500) console.error('Driving accounting failed:', error);
