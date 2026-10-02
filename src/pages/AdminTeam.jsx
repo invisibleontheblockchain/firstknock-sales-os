@@ -26,6 +26,7 @@ import { getManagerIdForAccount, hasUnlimitedTeamAccess, isManagerAccount, isOwn
 import { isKnockActivityLog } from '@/lib/interactionLogs';
 import { fetchAllAnalyticsPages } from '@/lib/analyticsDateFilter';
 import { buildTeamRoster, getRepSeatCount } from '@/lib/teamRoster';
+import ActiveRepLocations from '@/components/team/ActiveRepLocations';
 
 
 const BRAND = {
@@ -84,7 +85,7 @@ export default function AdminTeam() {
     const managerId = getManagerIdForAccount(user);
 
     useEffect(() => {
-        if (isRepView && (activeTab === 'logistics' || activeTab === 'access')) {
+        if (isRepView && (activeTab === 'logistics' || activeTab === 'access' || activeTab === 'locations')) {
             setActiveTab('analytics');
         }
     }, [isRepView, activeTab]);
@@ -628,6 +629,10 @@ export default function AdminTeam() {
                             <Shield className="w-5 h-5 lg:w-8 lg:h-8 text-yellow-500 shrink-0" />
                             <span className="truncate">{canManageTeam ? 'Team Command Center' : 'Team'}</span>
                             </h1>
+                            {canManageTeam && <button type="button" onClick={() => setActiveTab('locations')}
+                                className="mt-2 flex min-h-9 items-center gap-1.5 self-start rounded-lg border border-green-500/30 bg-green-500/10 px-3 text-[10px] font-bold text-green-400 hover:bg-green-500/20">
+                                <Map className="h-3.5 w-3.5" />Active Rep Locations
+                            </button>}
                             <p className="hidden lg:block text-gray-400 text-sm mt-1">
                                 {canManageTeam
                                     ? 'See adoption, field activity, routes, and team performance.'
@@ -825,7 +830,12 @@ export default function AdminTeam() {
                         <TabsTrigger value="logistics" className={`${canManageTeam ? 'flex' : 'hidden'} flex-1 md:flex-none h-full px-2 md:px-6 data-[state=active]:bg-yellow-500 data-[state=active]:text-black font-bold text-[10px] md:text-xs uppercase tracking-wide`}>Routes</TabsTrigger>
                         <TabsTrigger value="access" className={`${canManageTeam ? 'flex' : 'hidden'} flex-1 md:flex-none h-full px-2 md:px-6 data-[state=active]:bg-yellow-500 data-[state=active]:text-black font-bold text-[10px] md:text-xs uppercase tracking-wide`}>Codes</TabsTrigger>
                         <TabsTrigger value="driving" className="flex-1 md:flex-none h-full px-2 md:px-6 data-[state=active]:bg-yellow-500 data-[state=active]:text-black font-bold text-[10px] md:text-xs uppercase tracking-wide">Driving</TabsTrigger>
+                        {canManageTeam && <TabsTrigger value="locations" className="flex-none h-full px-3 md:px-6 data-[state=active]:bg-yellow-500 data-[state=active]:text-black font-bold text-[10px] md:text-xs uppercase tracking-wide">Active Rep Locations</TabsTrigger>}
                     </TabsList>
+
+                    {canManageTeam && <TabsContent value="locations">
+                        <ActiveRepLocations managerId={managerId} activeTeamCode={activeTeamCode} />
+                    </TabsContent>}
 
                     <TabsContent value="driving" className="space-y-3 md:space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                         <DrivingTab members={filteredTeamMembers} currentUser={user} managerId={managerId} canManage={canManageTeam} allTeams={activeTeamCode === 'all'} teamLoading={teamLoading || teamLoadFailed} />
