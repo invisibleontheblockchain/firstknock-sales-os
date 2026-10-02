@@ -11,26 +11,28 @@
 // substitute is a second visual variation, and that is exactly the bug where the
 // Base44 preview and phones rendered different maps. The env vars below stay
 // supported as a deliberate override, applied the same way in every mode.
+import { CARTO_ATTRIBUTION } from '../map/mapAttribution.js';
+
 const DEFAULT_BASEMAP = Object.freeze({
-  url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-  attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+  url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png?key=cb1_47jm_1_e43254c2ef5a3cbfc430e52f',
+  attribution: CARTO_ATTRIBUTION,
 });
 
 // Map Style in Map Settings offers the same four choices in both modes. Dark and
 // satellite are their own sources, so they are pinned to constants instead of the
 // street override — a manager picking Dark must not get the light street tiles.
 const DARK_BASEMAP = Object.freeze({
-  url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-  attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+  url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png?key=cb1_47jm_1_e43254c2ef5a3cbfc430e52f',
+  attribution: CARTO_ATTRIBUTION,
 });
 
 // The remaining Map Style choices are their own raster sources, shared with
 // Precision so both modes render the same style for the same choice.
 const THEME_BASEMAPS = Object.freeze({
-  streets: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-  minimal: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png',
+  streets: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png?key=cb1_47jm_1_e43254c2ef5a3cbfc430e52f',
+  minimal: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png?key=cb1_47jm_1_e43254c2ef5a3cbfc430e52f',
   terrain: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
-  light: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+  light: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=cb1_47jm_1_e43254c2ef5a3cbfc430e52f',
 });
 
 const SATELLITE_BASEMAP = Object.freeze({
@@ -82,7 +84,7 @@ export function getCanvasBasemapConfiguration({ theme = 'light', satellite = fal
     ? env?.VITE_CANVAS_SATELLITE_ATTRIBUTION
     : env?.VITE_CANVAS_BASEMAP_ATTRIBUTION)
     || (url === SATELLITE_BASEMAP.url ? SATELLITE_BASEMAP.attribution : '')
-    || (url === DEFAULT_BASEMAP.url || url === DARK_BASEMAP.url ? DEFAULT_BASEMAP.attribution : '');
+    || (url?.includes('basemaps.cartocdn.com/') ? CARTO_ATTRIBUTION : '');
   const requestedFlavor = configured(env?.VITE_CANVAS_BASEMAP_PMTILES_FLAVOR)?.toLowerCase();
   const flavor = PMTILES_FLAVORS.has(requestedFlavor)
     ? requestedFlavor
