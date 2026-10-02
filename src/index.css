@@ -36,7 +36,10 @@ body,
   box-shadow: 0 0 0 8px hsl(var(--primary) / 0.18), 0 0 32px hsl(var(--primary) / 0.45) !important;
 }
 
-/* Tile provider attribution remains visible on maps. */
+/* Hide the bottom map attribution bar as requested. */
+.leaflet-control-attribution {
+  display: none !important;
+}
 
 button,
 a,
