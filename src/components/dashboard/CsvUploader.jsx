@@ -114,6 +114,7 @@ export default function CsvUploader() {
                 saveLocal: storage.saveProperties,
                 onProgress: message => setUploadStatus({ success: null, message }),
             });
+            queryClient.setQueryData(['routeMap', currentUser.email, result.route.id], result.route);
             await Promise.allSettled([
                 queryClient.invalidateQueries({ queryKey: ['masterProperties'], refetchType: 'all' }),
                 queryClient.invalidateQueries({ queryKey: ['savedRoutes'], refetchType: 'all' }),

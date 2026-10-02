@@ -80,7 +80,6 @@ const getRouteLinePoints = (route, properties) => {
 function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, pinSize, lineDashArray, setSelectedProperty, decisionFilterActive }) {
     const map = useMap();
     const layerRef = useRef(null);
-    const fittedRouteIdRef = useRef(null);
     // Only the styling *band* is tracked, never the raw zoom level: every stop
     // and label is rebuilt when this changes, so reacting to each zoom step is
     // what made zooming stutter. All thresholds below are band boundaries.
@@ -141,11 +140,7 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, pinSize, lineDashAr
 
         const routePoints = activeRoute.properties.filter(isRenderableMapPoint);
         const routeLinePoints = getRouteLinePoints(activeRoute, routePoints);
-        if (routeLinePoints.length > 0 && fittedRouteIdRef.current !== activeRoute.id) {
-            const bounds = L.latLngBounds(routeLinePoints.map(p => [Number(p.lat), Number(p.lng)]));
-            map.fitBounds(bounds, { padding: [40, 40], maxZoom: 16, animate: true });
-            fittedRouteIdRef.current = activeRoute.id;
-        }
+        // Home's MapController owns the camera after the complete manifest loads.
 
         const routeColor = getRouteColor(activeRoute, activeRoute.route_number || 1);
 

@@ -1,10 +1,4 @@
-function hasMapPoint(property) {
-    const lat = Number(property?.lat);
-    const lng = Number(property?.lng);
-    return Number.isFinite(lat)
-        && Number.isFinite(lng)
-        && !(Math.abs(lat) < 0.0001 && Math.abs(lng) < 0.0001);
-}
+import { isRenderableMapPoint as hasMapPoint } from '../map/mapLayerVisibility.js';
 
 export const ROUTE_HYDRATION_BATCH_LIMIT = 5000;
 

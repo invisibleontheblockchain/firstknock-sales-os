@@ -36,7 +36,9 @@ const CommandCenterDashboard = React.lazy(() => import('../components/dashboard/
 const MapSettingsPanel = React.lazy(() => import('../components/map/MapSettingsPanel'));
 import RouteBuilderSettings from '../components/map/RouteBuilderSettings';
 const TerritorySetupWizard = React.lazy(() => import('../components/manager/TerritorySetupWizard'));
-import { hydrateRoutesForMap } from '@/components/logic/routeHydration';
+import { hydrateRouteForMap, hydrateRoutesForMap } from '@/components/logic/routeHydration';
+import { hasCompleteRouteMapPoints, orderRouteProperties } from '@/components/logic/routeHydrationCore';
+import { getReadyRouteMapPoints, loadSavedRouteSelection } from '@/components/logic/routeMapSelection';
 import { mergeAnchoredRoute } from '@/lib/routeAnchorState';
 import { GpsMapLayer as GpsTrackerMapLayers, GpsHud as GpsTrackerHud } from '../components/map/GpsTracker';
 import ManagerPropertyDetailSheet from '../components/map/ManagerPropertyDetailSheet';
@@ -95,6 +97,7 @@ import { matchesDecisionFilter } from '../components/map/routeDecisionFilters'; 
 export default function Home() {
     const queryClient = useQueryClient();
     const [activeRoute, setActiveRoute] = useState(null);
+    const [loadingSavedRouteId, setLoadingSavedRouteId] = useState(null);
     const [activeRouteSoldFilter, setActiveRouteSoldFilter] = useState('all');
     const [activeRoutePriceFilter, setActiveRoutePriceFilter] = useState('all');
     const [showChecklist, setShowChecklist] = useState(false);
@@ -1322,10 +1325,12 @@ export default function Home() {
             if (p.legacy_hash) propsByHash.set(p.legacy_hash, p);
         });
 
-        const routesForDisplay = filterRoutesByStatus(
-            serverHydratedSavedRoutes.length > 0 ? serverHydratedSavedRoutes : savedRoutes,
-            'all'
-        );
+        // Keep the latest saved manifests authoritative while older hydration finishes.
+        const hydratedById = new Map(serverHydratedSavedRoutes.map(route => [route.id, route]));
+        const routesForDisplay = filterRoutesByStatus(savedRoutes.map(route => {
+            const hydrated = hydratedById.get(route.id);
+            return orderRouteProperties(route, hydrated?.allProperties || hydrated?.properties || []);
+        }), 'all');
 
         return routesForDisplay
             .filter(r => repFilter === 'all' || (r.assigned_to_name && r.assigned_to_name.includes(repFilter)))
@@ -1423,12 +1428,42 @@ export default function Home() {
     // when the route is closed.
     useEffect(() => {
         const savedRouteId = new URLSearchParams(window.location.search).get('savedRoute');
-        if (!savedRouteId || activeRoute || hydratedSavedRoutes.length === 0) return;
-        const saved = hydratedSavedRoutes.find(route => route.id === savedRouteId);
-        if (!saved?.properties?.length) return;
-        setModeRaw('analyze');
-        setActiveRoute(saved);
-    }, [hydratedSavedRoutes, activeRoute]);
+        let cancelled = false;
+        if (!savedRouteId || activeRoute) setLoadingSavedRouteId(null);
+        if (savedRouteId && user?.email && !activeRoute) {
+            const saved = savedRoutes.find(route => route.id === savedRouteId);
+            if (saved) {
+                setLoadingSavedRouteId(savedRouteId);
+                const cached = queryClient.getQueryData(['routeMap', user.email, saved.id]);
+                loadSavedRouteSelection(saved, [
+                    ...(cached?.allProperties || cached?.properties || []),
+                    ...effectivePropertiesRef.current,
+                ], route => hydrateRouteForMap(route, user.email)).then(selected => {
+                    if (cancelled) return;
+                    setModeRaw('analyze');
+                    setActiveRoute(selected);
+                }).catch(error => {
+                    if (!cancelled) toast.error(error.message);
+                }).finally(() => {
+                    if (!cancelled) setLoadingSavedRouteId(null);
+                });
+            }
+        }
+        return () => { cancelled = true; };
+    }, [savedRoutes, activeRoute, user?.email, queryClient, effectiveProperties.length]);
+
+    // Overview selection can also start with only a subset of cached pins.
+    useEffect(() => {
+        if (!activeRoute || !user?.email || hasCompleteRouteMapPoints(activeRoute)) return;
+        let cancelled = false;
+        loadSavedRouteSelection(activeRoute, [], route => hydrateRouteForMap(route, user.email))
+            .then(selected => {
+                if (!cancelled) setActiveRoute(selected);
+            }).catch(error => {
+                if (!cancelled) toast.error(error.message);
+            });
+        return () => { cancelled = true; };
+    }, [activeRoute, user?.email]);
 
     useAppointmentMapFocus({
         savedRoutes, activeRoute, effectiveProperties, mapRef,
@@ -2024,15 +2059,17 @@ export default function Home() {
     // Previously, any change to availableProperties or filteredActiveRoute (e.g. toggling a filter) would
     // create a new array reference, triggering MapController to re-fit and zoom the user out.
     const activeRouteId = filteredActiveRoute?.id || null;
+    const activeRouteMapReady = !!activeRoute && hasCompleteRouteMapPoints(activeRoute);
+    // Use the complete route for camera bounds even when outcome/date filters hide pins.
+    const cameraRoute = activeRoute?.route_origin_mode === 'anchor_round_trip'
+        ? { ...activeRoute, startLocation: activeRouteAnchor?.anchor || null, endLocation: activeRouteAnchor?.anchor || null }
+        : activeRoute;
+    const cameraStart = cameraRoute?.startLocation || cameraRoute?.start_location;
+    const cameraEnd = cameraRoute?.endLocation || cameraRoute?.end_location;
     const fitBounds = useMemo(() => {
-        if (filteredActiveRoute?.properties?.length > 0) {
-            return filteredActiveRoute.properties
-                .filter(p => p && p.lat !== undefined && p.lng !== undefined)
-                .map(p => [p.lat, p.lng]);
-        }
-        return null;
+        return getReadyRouteMapPoints(cameraRoute);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [activeRouteId]); const statusSyncedActiveRoute = useMemo(() => (filteredActiveRoute ? { ...filteredActiveRoute, properties: withDerivedStatus(filteredActiveRoute.properties || [], buildLogsByAddress([...logs, ...checklistLogs])) } : filteredActiveRoute), [filteredActiveRoute, logs, checklistLogs]); /* A decision filter turns the map into a pure outcome view: only doors with that outcome are drawn. */ const decisionFiltered = useCallback((route) => (decisionFilter === 'all' || !route ? route : { ...route, properties: (route.properties || []).filter(p => matchesDecisionFilter(p, decisionFilter)) }), [decisionFilter]); const decisionFilteredActiveRoute = useMemo(() => decisionFiltered(statusSyncedActiveRoute), [statusSyncedActiveRoute, decisionFiltered]); const decisionFilteredSavedRoutes = useMemo(() => (decisionFilter === 'all' ? hydratedSavedRoutes : hydratedSavedRoutes.map(decisionFiltered).filter(r => r.properties.length > 0)), [hydratedSavedRoutes, decisionFilter, decisionFiltered]);
+    }, [activeRouteId, activeRouteMapReady, cameraStart?.lat, cameraStart?.lng, cameraEnd?.lat, cameraEnd?.lng]); const statusSyncedActiveRoute = useMemo(() => (filteredActiveRoute ? { ...filteredActiveRoute, properties: withDerivedStatus(filteredActiveRoute.properties || [], buildLogsByAddress([...logs, ...checklistLogs])) } : filteredActiveRoute), [filteredActiveRoute, logs, checklistLogs]); /* A decision filter turns the map into a pure outcome view: only doors with that outcome are drawn. */ const decisionFiltered = useCallback((route) => (decisionFilter === 'all' || !route ? route : { ...route, properties: (route.properties || []).filter(p => matchesDecisionFilter(p, decisionFilter)) }), [decisionFilter]); const decisionFilteredActiveRoute = useMemo(() => decisionFiltered(statusSyncedActiveRoute), [statusSyncedActiveRoute, decisionFiltered]); const decisionFilteredSavedRoutes = useMemo(() => (decisionFilter === 'all' ? hydratedSavedRoutes : hydratedSavedRoutes.map(decisionFiltered).filter(r => r.properties.length > 0)), [hydratedSavedRoutes, decisionFilter, decisionFiltered]);
     const anchoredMapRoute = useMemo(() => decisionFilteredActiveRoute?.route_origin_mode === 'anchor_round_trip'
         ? { ...decisionFilteredActiveRoute, startLocation: activeRouteAnchor?.anchor || null, endLocation: activeRouteAnchor?.anchor || null }
         : decisionFilteredActiveRoute, [decisionFilteredActiveRoute, activeRouteAnchor?.anchor]);
@@ -2047,6 +2084,12 @@ export default function Home() {
     // Initial Account Working Area Map Load Effect
     const hasCenteredAccountWorkingAreaRef = useRef(false);
     useEffect(() => {
+        // Explicit route navigation owns the camera, including while its pins load.
+        // Child map effects run first, so a late account default must not undo their fit.
+        if (activeRoute || new URLSearchParams(window.location.search).get('savedRoute')) {
+            hasCenteredAccountWorkingAreaRef.current = true;
+            return;
+        }
         if (hasCenteredAccountWorkingAreaRef.current || !mapRef.current) return;
 
         const workingArea = resolveAccountWorkingArea();
@@ -2068,7 +2111,7 @@ export default function Home() {
                 }
             } catch (e) {}
         }
-    }, [resolveAccountWorkingArea]);
+    }, [resolveAccountWorkingArea, activeRoute]);
 
     // Determine Initial Map Center
     const [mapCenter, setMapCenter] = useState(() => {
@@ -2241,6 +2284,12 @@ export default function Home() {
 
     return (
         <div className={`h-full w-full relative ${showMapSettings ? 'lg:w-[calc(100%-24rem)]' : ''}`} style={{ background: BRAND.voidBlack }}>
+            {loadingSavedRouteId && (
+                <div role="status" className="absolute top-20 left-1/2 -translate-x-1/2 z-[2000] flex items-center gap-2 rounded-xl border border-white/10 bg-[#111] px-4 py-3 text-sm text-white shadow-xl">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Loading {savedRoutes.find(route => route.id === loadingSavedRouteId)?.property_hashes?.length || ''} route homes…
+                </div>
+            )}
             {/* Generation Overlay — immediate visual feedback */}
             <RouteGenerationOverlay
                 visible={routesGenerating || !!generationError}
