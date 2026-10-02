@@ -7,9 +7,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 
-export default function RouteAnchorSettings({ route, requesterId, onSaved }) {
+export default function RouteAnchorSettings({ route, requesterId, onSaved, open, onOpenChange: setOpen }) {
     const queryClient = useQueryClient();
-    const [open, setOpen] = useState(false);
     const [source, setSource] = useState('rep_base');
     const [address, setAddress] = useState('');
     const [resolved, setResolved] = useState(null);
@@ -39,7 +38,7 @@ export default function RouteAnchorSettings({ route, requesterId, onSaved }) {
         finally { setBusy(false); }
     }
     return <>
-        <button onClick={event => { event.stopPropagation(); setOpen(true); }} className="h-6 px-2 rounded-md border border-yellow-500/30 text-yellow-300 text-[10px] font-bold shrink-0">REP ANCHOR</button>
+        <button onClick={event => { event.stopPropagation(); setOpen(true); }} className="hidden xl:inline-flex items-center h-6 px-2 rounded-md border border-yellow-500/30 text-yellow-300 text-[10px] font-bold shrink-0">REP ANCHOR</button>
         <Dialog open={open} onOpenChange={value => { if (!busy) setOpen(value); }}>
             <DialogContent className="bg-[#111] border-gray-800 text-white sm:max-w-md" onClick={event => event.stopPropagation()}>
                 <DialogHeader><DialogTitle>Route anchor</DialogTitle></DialogHeader>
