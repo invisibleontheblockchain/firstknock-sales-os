@@ -8,17 +8,18 @@ const testDir = dirname(fileURLToPath(import.meta.url));
 const rootDir = resolve(testDir, '..');
 const readSource = (path) => readFileSync(resolve(rootDir, path), 'utf8');
 
-test('map views have attribution disabled as requested', () => {
+test('CARTO map views retain visible provider attribution', () => {
   const indexCss = readSource('src/index.css');
-  assert.match(indexCss, /\.leaflet-control-attribution\s*\{[^}]*display:\s*none\s*!important/s);
+  assert.doesNotMatch(indexCss, /\.leaflet-control-attribution\s*\{[^}]*display:\s*none/s);
 
   [
-    'src/pages/Home.jsx',
-    'src/components/rep/RepMapView.jsx',
-    'src/components/rep/CanvasFieldView.jsx',
-    'src/pages/ZipCodeExplorer.jsx',
+    'src/components/map/BaseMapTiles.jsx',
+    'src/components/routes/SplitRoutePreviewMap.jsx',
+    'src/components/find/FindMap.jsx',
   ].forEach((path) => {
     const source = readSource(path);
-    assert.match(source, /attribution=""/);
+    assert.match(source, /<MapAttributionControl\s*\/>/);
+    assert.match(source, /CARTO_ATTRIBUTION/);
+    assert.doesNotMatch(source, /attribution=""/);
   });
 });
