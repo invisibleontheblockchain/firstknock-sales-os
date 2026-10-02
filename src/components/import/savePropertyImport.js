@@ -1,3 +1,4 @@
+import { optimizeImportedRoute } from './optimizeImportedRoute.js';
 import { mergeImportedStops, validCoordinates } from './propertyImportData.js';
 
 function assertUser(user) {
@@ -28,8 +29,8 @@ export function routeDistanceMiles(properties) {
 }
 
 export async function savePropertyImport(importBatch, {
-  client, user, routeId = null, loadRouteProperties, optimize = properties => properties,
-  saveLocal = async () => {}, onProgress = () => {}, persistProperties,
+  client, user, routeId = null, loadRouteProperties, optimize,
+  saveLocal = async () => {}, onProgress = () => {}, persistProperties, optimizeRoad,
 }) {
   assertUser(user);
   if (!importBatch?.properties?.length) throw new Error('There are no properties to import.');
@@ -55,8 +56,8 @@ export async function savePropertyImport(importBatch, {
     if (!additions.length) return { route, added: 0, duplicatesRemoved, total: route.property_hashes.length };
   }
 
-  const last = existingProperties.at(-1);
-  additions = optimize(additions, last ? { lat: last.lat, lng: last.lng } : null);
+  // Existing-route imports optimize the whole manifest after persistence.
+  if (!route && optimize) additions = await optimize(additions, null);
   const persisted = [];
   // Reuse records on retries rather than creating the same imported hash twice.
   for (let i = 0; i < additions.length; i += 100) {
@@ -82,23 +83,46 @@ export async function savePropertyImport(importBatch, {
     persisted.push(...batch.map(property => byHash.get(property.address_hash) || { ...property, created_by: user.email }));
   }
 
-  const propertyHashes = [...(route?.property_hashes || []), ...persisted.map(property => property.address_hash)];
+  let propertyHashes = [...(route?.property_hashes || []), ...persisted.map(property => property.address_hash)];
   const allProperties = [...existingProperties, ...persisted];
   const importRecord = { file_name: importBatch.fileName, imported_at: new Date().toISOString(), added: persisted.length };
   let savedRoute;
+  let optimization = null;
   if (route) {
+    onProgress(`Checking optimization for all ${allProperties.length} stops...`);
+    optimization = await optimizeImportedRoute({ route, properties: allProperties, hashes: propertyHashes, client, user, optimizeRoad, optimizeLocal: optimize });
+    propertyHashes = optimization.hashes;
     const latest = await client.entities.SavedRoute.get(route.id);
     if (!canAppendToRoute(latest, user)) throw new Error('This route is no longer available for imports. Choose another active route.');
     if (JSON.stringify(latest.property_hashes) !== JSON.stringify(route.property_hashes)) {
       throw new Error('This route changed during the import. Retry to include its latest stops.');
     }
+    const optimizationInputs = value => JSON.stringify([value.assigned_to, value.route_origin_mode, value.start_location, value.end_location, value.metadata?.route_bounds, value.metadata?.anchor]);
+    if (optimizationInputs(latest) !== optimizationInputs(route)) {
+      throw new Error('The route assignment or starting point changed during the import. Retry with its latest settings.');
+    }
     onProgress('Adding properties to route...');
+    const metadata = { ...latest.metadata };
+    // Geometry and road measurements belong to the previous manifest. Keep
+    // unrelated campaign/import metadata, but never retain a stale road claim.
+    for (const key of Object.keys(metadata)) {
+      if (['road_', 'matrix_', 'final_route_', 'aerial_evaluation_'].some(prefix => key.startsWith(prefix)) || [
+        'routing', 'property_order_fingerprint', 'distance_estimate', 'objective', 'fallback', 'fallback_status', 'fallback_reason',
+        'intra_block_aerial_leg_count', 'input_measured', 'continuity_measured', 'improvement', 'strategy',
+        'current_route_distance', 'current_route_duration', 'winning_route_distance', 'winning_route_duration',
+        'distance_improvement', 'duration_improvement', 'candidate_count', 'optimality_status', 'selected_candidate_type',
+        'solver_runtime_ms', 'street_block_count', 'access_block_count', 'exact_once_verified',
+        'start_constraint', 'end_constraint', 'anchor_legs_measured', 'return_to_start', 'property_set_fingerprint',
+        'optimizer_version', 'objective_version', 'routing_profile', 'matrix_provider', 'duration_tie_tolerance_minutes',
+      ].includes(key)) delete metadata[key];
+    }
+    if (metadata.source === 'optimizeRouteRoadMatrix') delete metadata.source;
     const update = {
       property_hashes: propertyHashes,
-      metrics: { ...latest.metrics, house_count: propertyHashes.length, distance: routeDistanceMiles(allProperties) },
-      metadata: { ...latest.metadata, imports: [...(latest.metadata?.imports || []), importRecord] },
+      metrics: { ...latest.metrics, house_count: propertyHashes.length, distance: Math.round(optimization.distance * 100) / 100 },
+      metadata: { ...metadata, ...optimization.metadata, imports: [...(latest.metadata?.imports || []), importRecord] },
     };
-    // Keep name, assignment, status, origin bounds, and existing stop order untouched.
+    // Keep name, assignment, status, visit history, and origin bounds untouched.
     savedRoute = { ...latest, ...await client.entities.SavedRoute.update(route.id, update), ...update };
   } else {
     onProgress('Creating route...');
@@ -114,5 +138,5 @@ export async function savePropertyImport(importBatch, {
   }
   // Offline cache failure must not turn an already-saved route into a failed import.
   await saveLocal(persisted).catch(error => console.warn('Import saved; local cache unavailable:', error));
-  return { route: savedRoute, added: persisted.length, duplicatesRemoved, total: propertyHashes.length };
+  return { route: savedRoute, added: persisted.length, duplicatesRemoved, total: propertyHashes.length, optimization };
 }
