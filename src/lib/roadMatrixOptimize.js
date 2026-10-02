@@ -39,6 +39,11 @@ const MAX_ROAD_MATRIX_DOORS = 2500;
 const ROAD_MATRIX_DEADLINE_MS = 90000;
 
 const propertyKey = (property) => String(property.address_hash || property.legacy_hash || property.id || '');
+const measurementMiles = (value) => {
+    if (value === null || value === undefined || value === '') return null;
+    const miles = Number(value);
+    return Number.isFinite(miles) && miles >= 0 ? miles : null;
+};
 
 /**
  * The persisted `routing` provenance block for a road-matrix order.
@@ -77,8 +82,9 @@ export function buildRoadMatrixRoutingBlock(meta = {}) {
 /**
  * @param {Array} routeProperties the route's current order
  * @param {object} options `{ start, end, deadlineMs, onOutcome }`.
- *   `onOutcome(reason)` is called with a short machine-readable reason on every
- *   path that returns null. Returning a bare null told the caller nothing, so a
+ *   `onOutcome(reason, measurement)` supplies a reason on every null return,
+ *   plus the current-order measurement when it won. A bare null told callers
+ *   nothing, so a
  *   backend outage and "your route is already optimal" were the same event and
  *   both were recorded as neither. Callers that ignore it are unaffected.
  */
@@ -88,7 +94,7 @@ export async function tryRoadMatrixOptimize(routeProperties, {
     deadlineMs = ROAD_MATRIX_DEADLINE_MS,
     onOutcome = null
 } = {}) {
-    const decline = (reason) => { onOutcome?.(reason); return null; };
+    const decline = (reason, measurement = null) => { onOutcome?.(reason, measurement); return null; };
 
     if (!Array.isArray(routeProperties) || routeProperties.length < 2) {
         return decline('too_few_doors');
@@ -137,7 +143,15 @@ export async function tryRoadMatrixOptimize(routeProperties, {
         if (data.routing_metadata?.fallback === true) return decline('aerial_fallback');
         // The backend measured both orders and the saved one won. That IS a road
         // verification: the order is confirmed, not merely unimproved.
-        if (data.selected === 'current') return decline('current_order_measured_best');
+        if (data.selected === 'current') {
+            const meta = data.routing_metadata || {};
+            const measured = measurementMiles(meta.input_measured) ?? measurementMiles(meta.continuity_measured);
+            if (measured === null) return decline('backend_returned_no_measurement');
+            return decline('current_order_measured_best', {
+                distanceMiles: measured,
+                routingMetadata: { ...meta, source: 'optimizeRouteRoadMatrix', routing: buildRoadMatrixRoutingBlock(meta) }
+            });
+        }
         if (!Array.isArray(data.order)) return decline('backend_returned_no_order');
 
         const byKey = new Map(routeProperties.map((property) => [propertyKey(property), property]));
@@ -147,13 +161,9 @@ export async function tryRoadMatrixOptimize(routeProperties, {
         }
 
         const meta = data.routing_metadata || {};
-        const roadMiles = Number.isFinite(Number(meta.winning_route_distance))
-            ? Number(meta.winning_route_distance)
-            : Number(meta.road_aware_measured);
-        const baseline = Number.isFinite(Number(meta.input_measured))
-            ? Number(meta.input_measured)
-            : Number(meta.continuity_measured);
-        if (!Number.isFinite(roadMiles) || !Number.isFinite(baseline)) {
+        const roadMiles = measurementMiles(meta.winning_route_distance) ?? measurementMiles(meta.road_aware_measured);
+        const baseline = measurementMiles(meta.input_measured) ?? measurementMiles(meta.continuity_measured);
+        if (roadMiles === null || baseline === null) {
             return decline('backend_returned_no_measurement');
         }
         const savings = baseline - roadMiles;
@@ -161,7 +171,10 @@ export async function tryRoadMatrixOptimize(routeProperties, {
         // minutes is adopted even when the mileage is a wash. The backend gate
         // already refused to return anything worse than the current order.
         const durationGain = Number(meta.duration_improvement);
-        if (!(savings > 0) && !(durationGain > 0)) return decline('current_order_measured_best');
+        if (!(savings > 0) && !(durationGain > 0)) return decline('current_order_measured_best', {
+            distanceMiles: baseline,
+            routingMetadata: { ...meta, source: 'optimizeRouteRoadMatrix', routing: buildRoadMatrixRoutingBlock(meta) }
+        });
 
         return {
             order,

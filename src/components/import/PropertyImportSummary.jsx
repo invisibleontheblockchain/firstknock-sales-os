@@ -3,7 +3,7 @@ import Papa from 'papaparse';
 import { FileSpreadsheet, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
-export default function PropertyImportSummary({ importBatch, route, preview, isSaving, isLoading, error, onSave, onCancel, onNameChange }) {
+export default function PropertyImportSummary({ importBatch, route, preview, isSaving, progress, isLoading, error, onSave, onCancel, onNameChange }) {
   if (!importBatch) return null;
   const adding = !!importBatch.routeId;
   const { summary, skippedRows } = importBatch;
@@ -28,7 +28,7 @@ export default function PropertyImportSummary({ importBatch, route, preview, isS
         </div>
         <div className="space-y-4 p-5 text-sm">
           {adding ? (
-            <p>Add to <strong>{route?.name || 'selected route'}</strong>. Existing stops stay in their current order.</p>
+            <p>Add to <strong>{route?.name || 'selected route'}</strong>. We will check the full route, including existing stops, and automatically apply a better order when available. Assignment and visit history are preserved.</p>
           ) : (
             <label className="block text-xs text-gray-400">New route name
               <input value={importBatch.routeName} onChange={event => onNameChange(event.target.value)} disabled={isSaving} className="mt-2 w-full rounded-lg border border-white/15 bg-black/30 p-3 text-sm text-white" />
@@ -51,6 +51,7 @@ export default function PropertyImportSummary({ importBatch, route, preview, isS
             </ul>
             <button type="button" onClick={downloadSkipped} className="mt-3 underline">Download all skipped rows</button>
           </div>}
+          {progress && <p role="status" aria-live="polite" className="text-xs text-yellow-400">{progress}</p>}
           {error && <p role="alert" className="rounded-lg bg-red-500/10 p-3 text-xs text-red-400">{error}</p>}
         </div>
         <div className="flex gap-2 border-t border-white/10 p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))]">
