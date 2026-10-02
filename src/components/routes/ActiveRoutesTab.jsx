@@ -34,6 +34,7 @@ function getRouteBoundsBadge(route) {
     const bounds = route?.metadata?.route_bounds;
     const mode = String(route?.route_origin_mode || bounds?.mode || bounds?.origin_mode || '').toLowerCase();
     const startSource = String(bounds?.start_source || bounds?.start?.source || '').toLowerCase();
+    if (mode === 'anchor_round_trip') return 'Anchored round trip';
     const isEnabled = mode === 'home_round_trip' || mode === 'current_to_home' || mode === 'custom_bounds' || mode.includes('current');
 
     if (!isEnabled) return null;

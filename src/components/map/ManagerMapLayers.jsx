@@ -67,7 +67,7 @@ const getRouteLinePoints = (route, properties) => {
     if (roadGeometry) return roadGeometry;
     const doors = (properties || []).filter(isRenderableMapPoint);
     const mode = route?.routeOriginMode || route?.route_origin_mode || route?.metadata?.route_bounds?.mode || 'none';
-    if (!['home_round_trip', 'current_to_home'].includes(mode)) return doors;
+    if (!['home_round_trip', 'current_to_home', 'anchor_round_trip'].includes(mode)) return doors;
     const start = route?.startLocation || route?.start_location;
     const end = route?.endLocation || route?.end_location;
     return [

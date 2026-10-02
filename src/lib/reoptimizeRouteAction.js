@@ -64,6 +64,8 @@ export async function reoptimizeRoute(route, options = {}, deps = {}) {
     const optimizeFromHome = optimizeMode === OPTIMIZE_MODES.HOME_ROUND_TRIP;
     const optimizeFromCar = optimizeMode === OPTIMIZE_MODES.CAR_ROUND_TRIP;
     const usingCustomAnchors = Object.prototype.hasOwnProperty.call(options, 'anchors');
+    const usingPrivateAnchor = route?.route_origin_mode === ROUTE_ORIGIN_MODES.PRIVATE_ANCHOR_ROUND_TRIP
+        && !usingCustomAnchors && !options.mode && !options.fromHome;
     const customAnchors = usingCustomAnchors ? options.anchors : null;
 
     let carAnchor = null;
@@ -138,18 +140,25 @@ export async function reoptimizeRoute(route, options = {}, deps = {}) {
             return;
         }
 
+        let privateAnchor = null;
+        if (usingPrivateAnchor) {
+            const response = await base44.functions.invoke('manageRepAnchors', { action: 'get_route', route_id: route.id });
+            privateAnchor = response.data.anchor;
+            if (!isValidRoutePoint(privateAnchor)) throw new Error('Configure the route anchor before optimizing.');
+        }
+
         // route_only means EXACTLY the doors: no map centre, no current GPS, no Home
         // Base, no stale saved bound. This path once fell back to the map centre,
         // silently anchoring the route to wherever the user happened to be looking.
         const start = optimizeFromCar ? carAnchor
             : optimizeFromHome ? requestedHomeBase
             : usingCustomAnchors ? normalizeRouteAnchor(customAnchors?.start)
-            : null;
+            : usingPrivateAnchor ? privateAnchor : null;
         const end = optimizeFromCar ? carAnchor
             : optimizeFromHome ? requestedHomeBase
             : usingCustomAnchors ? normalizeRouteAnchor(customAnchors?.end)
-            : null;
-        const routeOriginMode = usingCustomAnchors
+            : usingPrivateAnchor ? privateAnchor : null;
+        const routeOriginMode = usingPrivateAnchor ? ROUTE_ORIGIN_MODES.PRIVATE_ANCHOR_ROUND_TRIP : usingCustomAnchors
             ? (start || end ? ROUTE_ORIGIN_MODES.CUSTOM_BOUNDS : ROUTE_ORIGIN_MODES.NONE)
             : routeOriginModeForOptimizeMode(optimizeMode);
         // Optimize is an explicit, user-initiated action, so unlike route
@@ -290,6 +299,12 @@ export async function reoptimizeRoute(route, options = {}, deps = {}) {
                 routingMetadata,
                 carCapture: carAnchor
             });
+        if (usingPrivateAnchor) {
+            routeUpdate.route_origin_mode = ROUTE_ORIGIN_MODES.PRIVATE_ANCHOR_ROUND_TRIP;
+            routeUpdate.metadata.route_bounds = { enabled: true, mode: ROUTE_ORIGIN_MODES.PRIVATE_ANCHOR_ROUND_TRIP };
+        } else {
+            delete routeUpdate.metadata.anchor;
+        }
         await base44.entities.SavedRoute.update(route.id, routeUpdate);
         queryClient?.invalidateQueries({ queryKey: ['savedRoutes'] });
         if (activeRoute && activeRoute.id === route.id && setActiveRoute) {

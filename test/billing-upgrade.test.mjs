@@ -16,6 +16,10 @@ import {
   normalizeExtraCreditBlocks
 } from '../base44/shared/precisionCredits.js';
 
+import * as privilegedAccounts from '../base44/shared/privilegedAccounts.js';
+import * as precisionCredits from '../base44/shared/precisionCredits.js';
+import { recordReferralInvoice } from '../base44/shared/referralLedger.js';
+
 const testDir = dirname(fileURLToPath(import.meta.url));
 const rootDir = resolve(testDir, '..');
 const readSource = (path) => readFileSync(resolve(rootDir, path), 'utf8');
@@ -44,6 +48,7 @@ function loadBackendHandler(path, { base44, stripeApi }) {
   const executable = transpiled.outputText.replace(/^import .*;\s*$/gm, '');
   vm.runInNewContext(executable, {
     console,
+    ...privilegedAccounts, ...precisionCredits, recordReferralInvoice,
     createClientFromRequest: () => base44,
     Deno: {
       env: { get: () => 'test_secret' },
@@ -124,6 +129,8 @@ function makeBase44(user, { updateMe, getUser, updateUser, teamMembers = [], sav
             await updateFetchJob?.(id, updates);
           }
         },
+        ReferralCommission: { filter: async () => [] },
+        Referral: { filter: async () => [] },
         InviteCode: {
           filter: async () => [],
           create: async () => {},

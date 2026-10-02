@@ -176,6 +176,7 @@ export default function RepMapView({
     focusProperty,
     startLocation = null,
     endLocation = null,
+    anchorLabel = 'Home',
     roadGeometry = null,
     roadGeometryFingerprint = '',
 }) {
@@ -395,7 +396,7 @@ export default function RepMapView({
                             radius={8}
                             pathOptions={{ color: '#ffffff', fillColor: BRAND.gold, fillOpacity: 1, weight: 2 }}
                         >
-                            <Tooltip permanent direction="top" offset={[0, -8]}>{endpointsMatch ? 'Home • Start / Finish' : 'Start'}</Tooltip>
+                            <Tooltip permanent direction="top" offset={[0, -8]}>{endpointsMatch ? `${anchorLabel} • Start / Finish` : 'Start'}</Tooltip>
                         </CircleMarker>
                     )}
                     {!endpointsMatch && isRoutePoint(endLocation) && (
