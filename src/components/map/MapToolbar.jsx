@@ -16,7 +16,7 @@ import RouteAnchorSettings from '@/components/map/RouteAnchorSettings';
 import { mergeAnchoredRoute } from '@/lib/routeAnchorState';
 import { isManagerAccount } from '@/lib/roles';
 import { useQueryClient } from "@tanstack/react-query";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuCheckboxItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { OptimizeRouteChoices, OptimizeRouteTrigger } from './OptimizeRouteInline';
 import { routeBelongsToActingUser } from '@/lib/routeOptimizeUpdate';
 import { findHydratedSearchRoute, GLOBAL_ROUTE_SEARCH_EVENT } from '@/components/search/globalSearchBridge';
@@ -109,6 +109,9 @@ export default function MapToolbar({
   });
   const [useRepBaseOnAssign, setUseRepBaseOnAssign] = useState(true);
   const [assigningRoute, setAssigningRoute] = useState(false);
+  const [showRepAnchorDialog, setShowRepAnchorDialog] = useState(false);
+
+  useEffect(() => setShowRepAnchorDialog(false), [activeRoute?.id]);
 
   const allowCanvasDiscard = useCallback((action) => routeMode !== 'canvas'
     || typeof onConfirmCanvasDiscard !== 'function'
@@ -602,24 +605,37 @@ export default function MapToolbar({
                                 )}
                                 <DropdownMenu>
                                   <DropdownMenuTrigger asChild>
-                                    <button onPointerDown={(e) => e.stopPropagation()} className="lg:hidden flex h-8 w-8 items-center justify-center rounded-md border border-white/10 bg-white/5 text-white touch-manipulation active:scale-95" aria-label="More route actions">
+                                    <button onPointerDown={(e) => e.stopPropagation()} className={`${isManagerAccount(user) && !isCompletedRoute ? 'xl:hidden' : 'lg:hidden'} flex h-8 w-8 items-center justify-center rounded-md border border-white/10 bg-white/5 text-white touch-manipulation active:scale-95`} aria-label="More route actions">
                                       <MoreVertical className="h-4 w-4" />
                                     </button>
                                   </DropdownMenuTrigger>
                                   <DropdownMenuContent align="end" className="z-[5000] bg-[#0A0A0A] border-white/10 text-white">
-                                    <DropdownMenuItem onClick={handleExportActiveRouteCsv} className="focus:bg-white/10 focus:text-white">
+                                    <DropdownMenuItem onClick={handleExportActiveRouteCsv} className="lg:hidden focus:bg-white/10 focus:text-white">
                                       <Download className="mr-2 h-4 w-4" /> Export CSV
                                     </DropdownMenuItem>
                                     {canSplitActiveRoute && (
-                                      <DropdownMenuItem onClick={(e) => {e.stopPropagation();setShowSplitRouteModal(true);}} className="focus:bg-white/10 focus:text-white">
+                                      <DropdownMenuItem onClick={(e) => {e.stopPropagation();setShowSplitRouteModal(true);}} className="lg:hidden focus:bg-white/10 focus:text-white">
                                         <Scissors className="mr-2 h-4 w-4" /> Create smaller routes
                                       </DropdownMenuItem>
                                     )}
-                                    <DropdownMenuItem onClick={(e) => {e.stopPropagation();setShowAnchorsDialog(true);}} className="focus:bg-white/10 focus:text-white">
+                                    <DropdownMenuItem onClick={(e) => {e.stopPropagation();setShowAnchorsDialog(true);}} className="lg:hidden focus:bg-white/10 focus:text-white">
                                       <Flag className="mr-2 h-4 w-4" /> Anchors
                                     </DropdownMenuItem>
+                                    {isManagerAccount(user) && !isCompletedRoute && <>
+                                      <DropdownMenuItem onSelect={() => setShowRepAnchorDialog(true)} className="min-h-11 focus:bg-white/10 focus:text-white">
+                                        <Flag className="mr-2 h-4 w-4 text-yellow-300" /> Rep anchor
+                                      </DropdownMenuItem>
+                                      <DropdownMenuCheckboxItem
+                                        checked={useRepBaseOnAssign}
+                                        onCheckedChange={setUseRepBaseOnAssign}
+                                        disabled={assigningRoute}
+                                        onSelect={event => event.preventDefault()}
+                                        className="min-h-11 focus:bg-white/10 focus:text-white">
+                                        Rep base on assign
+                                      </DropdownMenuCheckboxItem>
+                                    </>}
                                     {onDeleteRoute && (
-                                      <DropdownMenuItem onClick={(e) => {e.stopPropagation();onDeleteRoute(activeRoute);}} className="text-red-400 focus:bg-red-500/15 focus:text-red-300">
+                                      <DropdownMenuItem onClick={(e) => {e.stopPropagation();onDeleteRoute(activeRoute);}} className="lg:hidden text-red-400 focus:bg-red-500/15 focus:text-red-300">
                                         <Trash2 className="mr-2 h-4 w-4" /> Delete route
                                       </DropdownMenuItem>
                                     )}
@@ -669,10 +685,10 @@ export default function MapToolbar({
                             </select>
 
                             {isManagerAccount(user) && !isCompletedRoute && <>
-                                <label className="flex items-center gap-1 text-[10px] text-gray-300 shrink-0" title="Use the rep’s configured base and assignment preference">
-                                    <input type="checkbox" checked={useRepBaseOnAssign} onChange={event => setUseRepBaseOnAssign(event.target.checked)} className="accent-yellow-500" /> Rep base on assign
+                                <label className="hidden xl:flex items-center gap-1 text-[10px] text-gray-300 shrink-0" title="Use the rep’s configured base and assignment preference">
+                                    <input type="checkbox" checked={useRepBaseOnAssign} disabled={assigningRoute} onChange={event => setUseRepBaseOnAssign(event.target.checked)} className="accent-yellow-500" /> Rep base on assign
                                 </label>
-                                <RouteAnchorSettings route={activeRoute} requesterId={user?.id} onSaved={saved => setActiveRoute(current => current?.id === saved.id ? mergeAnchoredRoute(current, saved) : current)} />
+                                <RouteAnchorSettings key={activeRoute.id} route={activeRoute} requesterId={user?.id} open={showRepAnchorDialog} onOpenChange={setShowRepAnchorDialog} onSaved={saved => setActiveRoute(current => current?.id === saved.id ? mergeAnchoredRoute(current, saved) : current)} />
                             </>}
 
                             {setActiveRouteSoldFilter &&
