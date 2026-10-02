@@ -2,9 +2,11 @@ import React, { useEffect, useState } from 'react';
 import { MapContainer, TileLayer, Polygon, Polyline, CircleMarker, useMap, useMapEvents } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import StateBoundariesLayer from '@/components/map/StateBoundariesLayer';
+import MapAttributionControl from '@/components/map/MapAttributionControl';
+import { CARTO_ATTRIBUTION, ESRI_IMAGERY_ATTRIBUTION } from '@/components/map/mapAttribution';
 
 const SATELLITE_TILES = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
-const LABEL_TILES = 'https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png';
+const LABEL_TILES = 'https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png?key=cb1_47jm_1_e43254c2ef5a3cbfc430e52f';
 
 function FlyToTarget({ target }) {
   const map = useMap();
@@ -101,12 +103,13 @@ export default function FindMap({ center, drawing, polygonPoints, closed, teaser
       center={[39.5, -84.5]}
       zoom={5}
       zoomControl={false}
-      attributionControl={false}
+      attributionControl
       className="absolute inset-0 z-0"
       style={{ background: '#0b0b0b', cursor: drawing ? 'crosshair' : undefined }}
     >
-      <TileLayer url={SATELLITE_TILES} keepBuffer={3} updateWhenZooming updateWhenIdle={false} maxNativeZoom={19} maxZoom={20} />
-      <TileLayer url={LABEL_TILES} zIndex={100} keepBuffer={3} updateWhenZooming updateWhenIdle={false} maxNativeZoom={19} maxZoom={20} />
+      <TileLayer attribution={ESRI_IMAGERY_ATTRIBUTION} url={SATELLITE_TILES} keepBuffer={3} updateWhenZooming updateWhenIdle={false} maxNativeZoom={19} maxZoom={20} />
+      <TileLayer attribution={CARTO_ATTRIBUTION} url={LABEL_TILES} zIndex={100} keepBuffer={3} updateWhenZooming updateWhenIdle={false} maxNativeZoom={19} maxZoom={20} />
+      <MapAttributionControl />
       <ZoomWatcher onZoom={setZoomLevel} />
       <StateBoundariesLayer zoomLevel={zoomLevel} />
       <FlyToTarget target={center} />
