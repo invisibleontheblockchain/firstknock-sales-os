@@ -8,9 +8,9 @@ const testDir = dirname(fileURLToPath(import.meta.url));
 const rootDir = resolve(testDir, '..');
 const readSource = (path) => readFileSync(resolve(rootDir, path), 'utf8');
 
-test('CARTO map views retain visible provider attribution', () => {
+test('map attribution bar is hidden while provider metadata is retained', () => {
   const indexCss = readSource('src/index.css');
-  assert.doesNotMatch(indexCss, /\.leaflet-control-attribution\s*\{[^}]*display:\s*none/s);
+  assert.match(indexCss, /\.leaflet-control-attribution\s*\{[^}]*display:\s*none\s*!important/s);
 
   [
     'src/components/map/BaseMapTiles.jsx',
