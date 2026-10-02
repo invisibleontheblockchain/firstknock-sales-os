@@ -1,0 +1,23 @@
+{
+  "name": "RepLocation",
+  "type": "object",
+  "properties": {
+    "manager_id": { "type": "string" },
+    "member_id": { "type": "string" },
+    "rep_user_id": { "type": "string" },
+    "session_id": { "type": "string" },
+    "sharing": { "type": "boolean", "default": false },
+    "lat": { "type": "number", "minimum": -90, "maximum": 90 },
+    "lng": { "type": "number", "minimum": -180, "maximum": 180 },
+    "accuracy": { "type": "number", "minimum": 0 },
+    "observed_at": { "type": "string", "format": "date-time" },
+    "received_at": { "type": "string", "format": "date-time" }
+  },
+  "required": ["manager_id", "member_id", "rep_user_id", "session_id", "sharing", "received_at"],
+  "rls": {
+    "create": { "user_condition": { "id": "__service_role_only__" } },
+    "read": { "user_condition": { "id": "__service_role_only__" } },
+    "update": { "user_condition": { "id": "__service_role_only__" } },
+    "delete": { "user_condition": { "id": "__service_role_only__" } }
+  }
+}

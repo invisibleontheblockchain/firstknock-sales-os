@@ -14,6 +14,7 @@ import MarketOnboarding from '@/components/onboarding/MarketOnboarding'; import 
 import { ThemeProvider, useTheme } from '@/components/theme/ThemeProvider';
 import { getAppRole, isManagerAccount, isRepAccount } from '@/lib/roles';
 import { clearFieldRoutesInspectionQueue } from '@/components/fieldroutes/fieldRoutesInspectionQueue';
+import RepLocationSharing from '@/components/team/RepLocationSharing';
 import GlobalSearchLauncher from '@/components/search/GlobalSearchLauncher';
 import GlobalSearchBar from '@/components/search/GlobalSearchBar';
 
@@ -362,6 +363,7 @@ function LayoutInner({ children }) {
 
 
 
+            {!isRoleSelectPage && <RepLocationSharing />}
             <main className="flex-1 relative overflow-hidden">
                 <ErrorBoundary>{children}</ErrorBoundary>
                 <AiAssistant />

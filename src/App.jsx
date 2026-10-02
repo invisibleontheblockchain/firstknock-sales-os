@@ -10,6 +10,7 @@ import { AuthProvider } from '@/lib/AuthContext';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import AppRefreshManager from '@/components/AppRefreshManager';
 import Layout from './Layout.jsx';
+import { RepLocationProvider } from '@/components/team/RepLocationSharing';
 
 // Phase 5 — code-splitting: every page in ./pages is its own lazy-loaded chunk.
 // import.meta.glob bypasses the stale auto-generated pages.config.js — any new
@@ -94,14 +95,16 @@ function App() {
       <QueryClientProvider client={queryClientInstance}>
         <AppRefreshManager />
         <Router>
-          <NavigationTracker />
-          <React.Suspense fallback={
-            <div className="fixed inset-0 flex items-center justify-center bg-black">
-              <div className="w-8 h-8 border-4 border-slate-700 border-t-yellow-500 rounded-full animate-spin"></div>
-            </div>
-          }>
-            <RoutedApp />
-          </React.Suspense>
+          <RepLocationProvider>
+            <NavigationTracker />
+            <React.Suspense fallback={
+              <div className="fixed inset-0 flex items-center justify-center bg-black">
+                <div className="w-8 h-8 border-4 border-slate-700 border-t-yellow-500 rounded-full animate-spin"></div>
+              </div>
+            }>
+              <RoutedApp />
+            </React.Suspense>
+          </RepLocationProvider>
         </Router>
         <Toaster />
         {/* visibleToasts={1} keeps stacked/duplicate notifications from piling up —
