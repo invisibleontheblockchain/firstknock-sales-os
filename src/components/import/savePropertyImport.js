@@ -1,5 +1,6 @@
 import { optimizeImportedRoute } from './optimizeImportedRoute.js';
 import { mergeImportedStops, validCoordinates } from './propertyImportData.js';
+import { orderRouteProperties } from '../logic/routeHydrationCore.js';
 
 function assertUser(user) {
   if (!user?.id || !user?.email) throw new Error('Sign in before importing properties.');
@@ -53,7 +54,7 @@ export async function savePropertyImport(importBatch, {
     const merged = mergeImportedStops(route, existingProperties, importBatch.properties);
     additions = merged.additions;
     duplicatesRemoved = merged.duplicatesRemoved;
-    if (!additions.length) return { route, added: 0, duplicatesRemoved, total: route.property_hashes.length };
+    if (!additions.length) return { route: orderRouteProperties(route, existingProperties), added: 0, duplicatesRemoved, total: route.property_hashes.length };
   }
 
   // Existing-route imports optimize the whole manifest after persistence.
@@ -138,5 +139,5 @@ export async function savePropertyImport(importBatch, {
   }
   // Offline cache failure must not turn an already-saved route into a failed import.
   await saveLocal(persisted).catch(error => console.warn('Import saved; local cache unavailable:', error));
-  return { route: savedRoute, added: persisted.length, duplicatesRemoved, total: propertyHashes.length, optimization };
+  return { route: orderRouteProperties(savedRoute, allProperties), added: persisted.length, duplicatesRemoved, total: propertyHashes.length, optimization };
 }
