@@ -5,7 +5,7 @@ const IMPORT_SOURCES = [
     { name: 'SalesRabbit', format: 'CSV', steps: 'Settings → Export → Download CSV' },
     { name: 'Spotio', format: 'CSV', steps: 'Reports → Export Pins → CSV' },
     { name: 'Redfin', format: 'CSV', steps: 'Search → Download All → CSV' },
-    { name: 'Custom Spreadsheet', format: 'Excel/CSV', steps: 'Needs: Address, City, State, Zip. We find the map coordinates for you.' },
+    { name: 'Custom Spreadsheet', format: 'Excel/CSV/JSON', steps: 'Needs: Address, City, State, Zip. We find the map coordinates for you.' },
 ];
 
 export default function ImportGuide() {
@@ -15,7 +15,7 @@ export default function ImportGuide() {
                 <FileSpreadsheet className="w-4 h-4 text-green-400" />
                 <h3 className="text-sm font-bold text-white">Quick Import Guide</h3>
             </div>
-            <p className="text-xs text-gray-500 mb-3">Export your data from your current tool, then drag it into the uploader below.</p>
+            <p className="text-xs text-gray-500 mb-3">Export your data from your current tool, then choose a route destination and upload the file below.</p>
             
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {IMPORT_SOURCES.map((s, i) => (
