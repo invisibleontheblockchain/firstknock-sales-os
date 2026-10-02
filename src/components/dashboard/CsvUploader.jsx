@@ -1,3 +1,6 @@
+import { toast } from 'sonner';
+import { tryRoadMatrixOptimize } from '@/lib/roadMatrixOptimize';
+import { importOptimizationMessage } from '@/components/import/optimizeImportedRoute';
 import React, { useId, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Upload, History, FilePlus, AlertCircle } from 'lucide-react';
@@ -103,6 +106,7 @@ export default function CsvUploader() {
             const result = await savePropertyImport(pendingImport, {
                 client: base44, user: currentUser, routeId: pendingImport.routeId,
                 optimize: optimizeRouteByDistance,
+                optimizeRoad: tryRoadMatrixOptimize,
                 persistProperties: async (properties, routeId) => {
                     const response = await base44.functions.invoke('persistImportedProperties', { properties, route_id: routeId });
                     return response.data?.properties;
@@ -122,7 +126,9 @@ export default function CsvUploader() {
                 queryClient.invalidateQueries({ queryKey: ['importRoutePreview'] }),
             ]);
             setPendingImport(null);
-            setUploadStatus({ success: true, message: `${result.added} properties ${pendingImport.routeId ? 'added to' : 'imported into'} ${result.route.name}. ${result.duplicatesRemoved} existing stops skipped.` });
+            const message = `${result.added} properties ${pendingImport.routeId ? 'added to' : 'imported into'} ${result.route.name}. ${result.duplicatesRemoved} existing stops skipped. ${importOptimizationMessage(result.optimization)}`.trim();
+            setUploadStatus({ success: true, message });
+            toast.success(message, { duration: 8000 });
             navigate(`${createPageUrl('Home')}?savedRoute=${encodeURIComponent(result.route.id)}`);
         } catch (error) {
             setUploadStatus({ success: false, message: error.response?.data?.error || error.message || 'Import failed. Please retry.' });
@@ -415,7 +421,7 @@ export default function CsvUploader() {
                             </select>
                             {routesQuery.isError && <p role="alert" className="text-xs text-red-400">Could not load routes. <button type="button" onClick={() => routesQuery.refetch()} className="underline">Retry</button></p>}
                             {!routesQuery.isPending && !routesQuery.isError && !routes.length && <p className="text-xs text-gray-400">No active routes available. Create a new route first.</p>}
-                            {selectedRoute && <p className="text-xs text-gray-500">New stops will be added to this route. Duplicate addresses will be skipped.</p>}
+                            {selectedRoute && <p className="text-xs text-gray-500">Duplicate addresses will be skipped. We will check all stops together and apply a better route order automatically.</p>}
                         </div>
                     )}
                     <p className="text-[11px] text-gray-500">Addresses without coordinates use Census and fallback address lookup. Review unmatched rows before saving.</p>
@@ -448,6 +454,7 @@ export default function CsvUploader() {
                 route={existingStopsQuery.data?.route || selectedRoute}
                 preview={existingStopsQuery.data?.preview}
                 isSaving={isSaving}
+                progress={isSaving ? uploadStatus?.message : null}
                 isLoading={!!pendingImport?.routeId && existingStopsQuery.isPending}
                 error={existingStopsQuery.error?.message || (uploadStatus?.success === false ? uploadStatus.message : null)}
                 onCancel={() => {
