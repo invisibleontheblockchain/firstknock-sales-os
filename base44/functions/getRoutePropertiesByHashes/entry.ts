@@ -225,9 +225,25 @@ async function resolveRouteTenantEmail(base44, user, route, requestedOwner) {
     return { email: userEmail, repairEmail: null };
 }
 
-async function filterMasterProperties(entity, field, hashes) {
+// Editable route metadata cannot grant access to another workspace's imports.
+function verifiedImportManagerId(user, route) {
+    const managerId = String(route?.manager_id || '').trim();
+    if (!managerId) return null;
+    const teamManagerId = String(user?.data?.team_manager_id || user?.team_manager_id || '').trim();
+    return managerId === String(user?.id || '') || managerId === teamManagerId || normalized(user?.role) === 'admin'
+        ? managerId : null;
+}
+
+function isWorkspaceServiceImport(property, managerId) {
+    return !!managerId && property?.manager_id === managerId
+        && /^service\+[^@\s]+@no-reply\.base44\.com$/i.test(String(property?.created_by || ''))
+        && ['csv_import', 'redfin_csv'].includes(property?.data_source);
+}
+
+async function filterMasterProperties(entity, field, hashes, managerId = null) {
     const collected = [];
     const seen = new Set();
+    const tenantFilter = managerId ? { manager_id: managerId } : {};
     const collect = (result) => {
         for (const property of asArray(result)) {
             const id = String(property?.id || `${property?.address_hash || ''}:${property?.legacy_hash || ''}`);
@@ -238,12 +254,12 @@ async function filterMasterProperties(entity, field, hashes) {
     };
 
     try {
-        collect(await entity.filter({ [field]: hashes }, null, hashes.length));
+        collect(await entity.filter({ [field]: hashes, ...tenantFilter }, null, hashes.length));
     } catch {
         // Retry with the explicit operator below.
     }
     try {
-        collect(await entity.filter({ [field]: { $in: hashes } }, null, hashes.length));
+        collect(await entity.filter({ [field]: { $in: hashes }, ...tenantFilter }, null, hashes.length));
     } catch {
         // The caller will continue with the other canonical source.
     }
@@ -609,13 +625,14 @@ Deno.serve(async (req) => {
         // CSV-imported properties may exist only in Base44. Their fallback is
         // allowed only when a caller-visible route or interaction proves both
         // the requested hash and the original creator/workspace owner.
+        const importManagerId = verifiedImportManagerId(user, authorizedRoute);
         const missingHashes = hashes.filter(hash => !byHash.has(hash));
         if (missingHashes.length > 0) {
             const authorizedHashes = missingHashes.filter(hash => allowedOwnersByHash.has(hash));
             const BATCH = 100;
             for (let i = 0; i < authorizedHashes.length; i += BATCH) {
                 const slice = authorizedHashes.slice(i, i + BATCH);
-                const [primaryResult, legacyResult] = await Promise.all([
+                const [primaryResult, legacyResult, scopedPrimaryResult, scopedLegacyResult] = await Promise.all([
                     filterMasterProperties(
                         base44.asServiceRole.entities.MasterProperty,
                         'address_hash',
@@ -625,9 +642,11 @@ Deno.serve(async (req) => {
                         base44.asServiceRole.entities.MasterProperty,
                         'legacy_hash',
                         slice
-                    )
+                    ),
+                    importManagerId ? filterMasterProperties(base44.asServiceRole.entities.MasterProperty, 'address_hash', slice, importManagerId) : [],
+                    importManagerId ? filterMasterProperties(base44.asServiceRole.entities.MasterProperty, 'legacy_hash', slice, importManagerId) : [],
                 ]);
-                for (const property of [...asArray(primaryResult), ...asArray(legacyResult)]) {
+                for (const property of [...asArray(primaryResult), ...asArray(legacyResult), ...asArray(scopedPrimaryResult), ...asArray(scopedLegacyResult)]) {
                     if (!hasCoordinates(property)) continue;
                     const requestedMatches = slice.filter(hash =>
                         hash === String(property.address_hash || '')
@@ -635,7 +654,7 @@ Deno.serve(async (req) => {
                     );
                     for (const requestedHash of requestedMatches) {
                         const allowedOwners = allowedOwnersByHash.get(requestedHash);
-                        if (!allowedOwners?.has(normalized(property.created_by))) continue;
+                        if (!allowedOwners?.has(normalized(property.created_by)) && !isWorkspaceServiceImport(property, importManagerId)) continue;
                         byHash.set(requestedHash, property);
                     }
                 }
