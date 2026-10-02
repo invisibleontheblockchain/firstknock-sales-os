@@ -968,6 +968,8 @@ function refineAdjacentZoneBalance(groups, atomNeighbors, atomById, target) {
   const limit = result.reduce((sum, group) => sum + group.ids.size, 0) * result.length;
   for (let iteration = 0; iteration < limit; iteration += 1) {
     const currentScore = partitionScore(result, target);
+    // Zero deviation is the global lower bound; no move can improve it.
+    if (currentScore.maximum <= 1e-12) break;
     const owners = zoneByAtom();
     let best = null;
 
@@ -1092,17 +1094,17 @@ function balancedDistanceSplit(subset, zoneCount, weights, adjacency) {
         layers.get(coordinate).load += weights[rank];
       });
       const orderedLayers = [...layers.entries()].sort((left, right) => left[0] - right[0]);
-      const leftRanks = [];
+      let leftCount = 0;
       let leftLoad = 0;
       for (let layerIndex = 0; layerIndex < orderedLayers.length - 1; layerIndex += 1) {
         const [, layer] = orderedLayers[layerIndex];
-        leftRanks.push(...layer.ranks);
+        leftCount += layer.ranks.length;
         leftLoad += layer.load;
-        if (leftRanks.length < leftZoneCount || subset.length - leftRanks.length < rightZoneCount) continue;
+        if (leftCount < leftZoneCount || subset.length - leftCount < rightZoneCount) continue;
         const candidate = {
-          left: [...leftRanks].sort((left, right) => left - right),
+          leftIndex, rightIndex,
           loadError: Math.abs(leftLoad - targetLoad),
-          countError: Math.abs(leftRanks.length - targetCount),
+          countError: Math.abs(leftCount - targetCount),
           leftLandmark: landmarks[leftIndex],
           rightLandmark: landmarks[rightIndex],
           coordinate: orderedLayers[layerIndex][0],
@@ -1120,9 +1122,11 @@ function balancedDistanceSplit(subset, zoneCount, weights, adjacency) {
     }
   }
   if (!best) return null;
-  const leftSet = new Set(best.left);
+  // Materialize only the winning cut, avoiding a copy of every growing prefix.
+  const left = subset.filter(rank => landmarkDistances[best.leftIndex][rank] - landmarkDistances[best.rightIndex][rank] <= best.coordinate).sort((a, b) => a - b);
+  const leftSet = new Set(left);
   return {
-    left: best.left,
+    left,
     right: subset.filter((rank) => !leftSet.has(rank)),
     leftZoneCount,
     rightZoneCount,
@@ -1216,12 +1220,26 @@ function partitionComponent(component, zoneCount, byId, neighbors) {
   const target = component.reduce((sum, id) => sum + workload(byId.get(id)), 0) / zoneCount;
   const seedCount = Math.min(16, component.length);
   const generatedCandidates = [];
+  // Try balanced graph cuts first at national scale. A perfect partition
+  // cannot be beaten by exhaustive seed searches.
+  if (component.length > 1000) {
+    const balanced = distanceBisectedZones(component, zoneCount, byId, neighbors);
+    if (balanced && partitionScore(balanced, target).maximum <= 1e-12) return balanced;
+  }
   for (let seedOffset = 0; seedOffset < seedCount; seedOffset += 1) {
     for (const descending of [false, true]) {
       const peeled = peelConnectedZones(component, zoneCount, byId, neighbors, descending, seedOffset);
-      if (peeled) generatedCandidates.push({ zones: peeled, index: generatedCandidates.length, score: partitionScore(peeled, target) });
+      if (peeled) {
+        const score = partitionScore(peeled, target);
+        if (score.maximum <= 1e-12) return peeled;
+        generatedCandidates.push({ zones: peeled, index: generatedCandidates.length, score });
+      }
       const grown = connectedGrowthZones(component, zoneCount, byId, neighbors, seedOffset, descending);
-      if (grown) generatedCandidates.push({ zones: grown, index: generatedCandidates.length, score: partitionScore(grown, target) });
+      if (grown) {
+        const score = partitionScore(grown, target);
+        if (score.maximum <= 1e-12) return grown;
+        generatedCandidates.push({ zones: grown, index: generatedCandidates.length, score });
+      }
     }
   }
   const bisected = distanceBisectedZones(component, zoneCount, byId, neighbors);
