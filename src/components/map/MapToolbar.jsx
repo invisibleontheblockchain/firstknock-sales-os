@@ -12,6 +12,9 @@ import { isValidRoutePoint } from '@/lib/routeBounds';
 import { exportRouteToCsv } from '@/components/routes/exportRouteCsv';
 import { FOLLOW_UP_STATUSES, getRouteOutcomeStats, getRerunHashes, getRerunProperties, buildRerunRoutePayload } from '@/components/routes/routeRerunUtils';
 import { base44 } from '@/api/base44Client';
+import RouteAnchorSettings from '@/components/map/RouteAnchorSettings';
+import { mergeAnchoredRoute } from '@/lib/routeAnchorState';
+import { isManagerAccount } from '@/lib/roles';
 import { useQueryClient } from "@tanstack/react-query";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { OptimizeRouteChoices, OptimizeRouteTrigger } from './OptimizeRouteInline';
@@ -104,6 +107,8 @@ export default function MapToolbar({
   const [showGhostAreas, setShowGhostAreas] = useState(() => {
     try {return localStorage.getItem('fk_showGhostAreas') === 'true';} catch {return false;}
   });
+  const [useRepBaseOnAssign, setUseRepBaseOnAssign] = useState(true);
+  const [assigningRoute, setAssigningRoute] = useState(false);
 
   const allowCanvasDiscard = useCallback((action) => routeMode !== 'canvas'
     || typeof onConfirmCanvasDiscard !== 'function'
@@ -653,11 +658,22 @@ export default function MapToolbar({
 
                         {/* Row 2: Filters — scrollable grid on mobile, inline on desktop */}
                         <div className="flex items-center gap-1 md:gap-1.5 mt-1.5 overflow-x-auto scrollbar-hide pb-0.5 -mx-0.5 px-0.5" onClick={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()}>
-                            <select value={activeRoute.assigned_to || ""} onChange={(e) => {e.stopPropagation();handleAssignRoute(activeRoute.id, e.target.value);}} onPointerDown={(e) => e.stopPropagation()} className={routeSelectClass} style={routeSelectStyle}>
+                            <select value={activeRoute.assigned_to || ""} disabled={assigningRoute || isCompletedRoute} onChange={async (e) => {
+                                e.stopPropagation(); setAssigningRoute(true);
+                                try { await handleAssignRoute(activeRoute.id, e.target.value, useRepBaseOnAssign); }
+                                finally { setAssigningRoute(false); }
+                            }} onPointerDown={(e) => e.stopPropagation()} className={routeSelectClass} style={routeSelectStyle}>
                                 <option value="" style={routeOptionStyle}>Assign</option>
                                 <option value={user?.id || 'manager'} style={routeOptionStyle}>Me</option>
                                 {teamMembers.map((m) => <option key={m.id} value={m.id} style={routeOptionStyle}>{m.name}</option>)}
                             </select>
+
+                            {isManagerAccount(user) && !isCompletedRoute && <>
+                                <label className="flex items-center gap-1 text-[10px] text-gray-300 shrink-0" title="Use the rep’s configured base and assignment preference">
+                                    <input type="checkbox" checked={useRepBaseOnAssign} onChange={event => setUseRepBaseOnAssign(event.target.checked)} className="accent-yellow-500" /> Rep base on assign
+                                </label>
+                                <RouteAnchorSettings route={activeRoute} requesterId={user?.id} onSaved={saved => setActiveRoute(current => current?.id === saved.id ? mergeAnchoredRoute(current, saved) : current)} />
+                            </>}
 
                             {setActiveRouteSoldFilter &&
             <select value={activeRouteSoldFilter} onChange={(e) => {e.stopPropagation();setActiveRouteSoldFilter(e.target.value);}} onPointerDown={(e) => e.stopPropagation()} className={routeSelectClass} style={routeSelectStyle}>

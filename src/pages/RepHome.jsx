@@ -375,6 +375,11 @@ export default function RepHome() {
       activeRoute.assigned_to === user?.id || allTeamMemberIds.includes(activeRoute.assigned_to)
     )
   );
+  const { data: routeAnchor, error: routeAnchorError } = useQuery({
+    queryKey: ['routeAnchor', activeRoute?.id, user?.id],
+    queryFn: async () => (await base44.functions.invoke('manageRepAnchors', { action: 'get_route', route_id: activeRoute.id })).data,
+    enabled: !!user?.id && activeRouteBelongsToCurrentUser && activeRoute?.route_origin_mode === 'anchor_round_trip',
+  });
 
   const {
     data: residentialCanvasPackage,
@@ -1084,7 +1089,11 @@ export default function RepHome() {
           const homeBase = isValidRoutePoint(user?.home_base) ? user.home_base : null;
           let distanceBounds = null;
 
-          if (originMode === 'home_round_trip' && homeBase) {
+          if (originMode === 'anchor_round_trip') {
+            const response = await base44.functions.invoke('manageRepAnchors', { action: 'get_route', route_id: latestRoute.id });
+            if (!isValidRoutePoint(response.data.anchor)) throw new Error('The route anchor is unavailable. Ask your manager to configure it.');
+            distanceBounds = { startLocation: response.data.anchor, endLocation: response.data.anchor };
+          } else if (originMode === 'home_round_trip' && homeBase) {
             distanceBounds = { startLocation: homeBase, endLocation: homeBase };
           } else if (originMode === 'current_to_home') {
             const endLocation = savedEnd || homeBase;
@@ -1613,7 +1622,7 @@ export default function RepHome() {
     }
     setHomeRouteOptimizing(true);
     setHomeRouteError('');
-    toast.loading('Optimizing the selected route from home...', { id: 'rep-home-route' });
+    toast.loading(routeToOptimize.route_origin_mode === 'anchor_round_trip' ? 'Optimizing from your route anchor...' : 'Optimizing the selected route from home...', { id: 'rep-home-route' });
 
     try {
       let freshUser = null;
@@ -1624,7 +1633,10 @@ export default function RepHome() {
         freshUser = user;
       }
 
-      const exactHomeBase = freshUser?.home_base || user?.home_base;
+      const usesAnchor = routeToOptimize.route_origin_mode === 'anchor_round_trip';
+      const exactHomeBase = usesAnchor
+        ? (await base44.functions.invoke('manageRepAnchors', { action: 'get_route', route_id: routeToOptimize.id })).data.anchor
+        : freshUser?.home_base || user?.home_base;
       if (!isValidRoutePoint(exactHomeBase)) {
         throw new Error('Save a Home Base above before optimizing this route.');
       }
@@ -1678,11 +1690,11 @@ export default function RepHome() {
         },
         start_location: null,
         end_location: null,
-        route_origin_mode: 'home_round_trip',
+        route_origin_mode: usesAnchor ? 'anchor_round_trip' : 'home_round_trip',
         metadata: {
           ...existingMetadata,
           ...buildPersistedRoadRoutingMetadata(routingContext, null, propertyHashes),
-          route_bounds: { enabled: true, mode: 'home_round_trip' }
+          route_bounds: { enabled: true, mode: usesAnchor ? 'anchor_round_trip' : 'home_round_trip' }
         }
       };
 
@@ -1696,7 +1708,7 @@ export default function RepHome() {
         queryClient.invalidateQueries({ queryKey: ['myRoutes'] }),
         queryClient.invalidateQueries({ queryKey: ['routeProperties'] })
       ]);
-      toast.success(`Home round trip optimized (${distance} mi street-continuity estimate).`, {
+      toast.success(`${usesAnchor ? 'Anchored round trip' : 'Home round trip'} optimized (${distance} mi street-continuity estimate).`, {
         id: 'rep-home-route',
         duration: 5000
       });
@@ -1950,6 +1962,9 @@ export default function RepHome() {
 
                                 {homeBasePanelOpen &&
                   <div id="rep-home-base-controls" role="region" aria-labelledby="rep-home-base-toggle" className="border-t border-white/10 p-3">
+                                {activeRoute?.route_origin_mode === 'anchor_round_trip' && <p className="mb-3 text-xs text-yellow-300 break-words">
+                                    {routeAnchorError ? 'Could not load your route anchor. Retry or contact your manager.' : routeAnchor?.anchor?.address ? `Route anchor: ${routeAnchor.anchor.address}` : routeAnchor ? 'No route anchor configured. Contact your manager.' : 'Loading route anchor…'}
+                                </p>}
                                 <p className="mb-3 text-[11px] leading-relaxed text-white/55">
                                     Set your private start and finish, then optimize the selected route.
                                 </p>
@@ -1986,7 +2001,7 @@ export default function RepHome() {
                       className="h-11 w-full rounded-xl bg-gradient-to-r from-[#2EEB57] to-[#B6FF5C] px-3 text-[11px] font-black text-black hover:brightness-110 disabled:opacity-45">
                                             {homeRouteOptimizing ?
                         <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Optimizing...</> :
-                        <><Sparkles className="mr-2 h-4 w-4" />Optimize selected route from home</>
+                        <><Sparkles className="mr-2 h-4 w-4" />{activeRoute?.route_origin_mode === 'anchor_round_trip' ? 'Optimize from route anchor' : 'Optimize selected route from home'}</>
                       }
                                         </Button>
                                     </div>
@@ -2057,8 +2072,9 @@ export default function RepHome() {
         focusProperty={focusProperty}
         roadGeometry={activeRoute?.metadata?.road_geometry}
         roadGeometryFingerprint={activeRoute?.metadata?.routing?.property_order_fingerprint}
-        startLocation={activeRoute?.route_origin_mode === 'home_round_trip' ? user?.home_base : null}
-        endLocation={['home_round_trip', 'current_to_home'].includes(activeRoute?.route_origin_mode) ? user?.home_base : null} />
+        anchorLabel={activeRoute?.route_origin_mode === 'anchor_round_trip' ? 'Anchor' : 'Home'}
+        startLocation={activeRoute?.route_origin_mode === 'anchor_round_trip' ? routeAnchor?.anchor : activeRoute?.route_origin_mode === 'home_round_trip' ? user?.home_base : null}
+        endLocation={activeRoute?.route_origin_mode === 'anchor_round_trip' ? routeAnchor?.anchor : ['home_round_trip', 'current_to_home'].includes(activeRoute?.route_origin_mode) ? user?.home_base : null} />
 
       }
 

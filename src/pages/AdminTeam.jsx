@@ -15,6 +15,7 @@ import { createPageUrl } from '../utils';
 import { toast } from "sonner";
 import TeamMemberCard from "@/components/team/TeamMemberCard";
 import DrivingTab from "@/components/team/DrivingTab";
+import RepBasesTab from "@/components/team/RepBasesTab";
 import CreateTeamDialog from "@/components/team/CreateTeamDialog";
 import RepPerformanceDetail from "@/components/team/RepPerformanceDetail";
 import TeamLeaderboard from '@/components/team/TeamLeaderboard';
@@ -84,7 +85,7 @@ export default function AdminTeam() {
     const managerId = getManagerIdForAccount(user);
 
     useEffect(() => {
-        if (isRepView && (activeTab === 'logistics' || activeTab === 'access')) {
+        if (isRepView && (activeTab === 'logistics' || activeTab === 'access' || activeTab === 'bases')) {
             setActiveTab('analytics');
         }
     }, [isRepView, activeTab]);
@@ -161,22 +162,17 @@ export default function AdminTeam() {
     });
 
     const assignRouteMutation = useMutation({
-        mutationFn: ({ routeId, memberId, memberName }) => {
-            const route = routes.find(item => item.id === routeId);
-            const assignment = {
-                assigned_to: memberId,
-                assigned_to_name: memberName,
-                status: 'ACTIVE' 
-            };
-            return base44.entities.SavedRoute.update(
-                routeId,
-                route?.assigned_to === memberId ? assignment : assignmentWithoutRouteBounds(route, assignment)
-            );
-        },
-        onSuccess: () => {
+        mutationFn: async ({ routeId, memberId }) => (await base44.functions.invoke('manageRepAnchors', {
+            action: 'assign', route_id: routeId, member_id: memberId,
+        })).data,
+        onSuccess: (data) => {
             queryClient.invalidateQueries({ queryKey: ['allRoutes'] });
+            queryClient.invalidateQueries({ queryKey: ['savedRoutes'] });
+            queryClient.invalidateQueries({ queryKey: ['routeAnchor'] });
             toast.success("Route assigned");
-        }
+            if (data.notice) toast.info(data.notice);
+        },
+        onError: error => toast.error(error.response?.data?.error || 'Could not assign this route.'),
     });
 
     const updateMemberZipsMutation = useMutation({
@@ -822,11 +818,15 @@ export default function AdminTeam() {
                     <TabsList className="bg-[#111] border border-gray-800 p-0.5 md:p-1 h-9 md:h-12 w-full flex overflow-x-auto no-scrollbar justify-start">
                         <TabsTrigger value="analytics" className="flex-1 md:flex-none h-full px-2 md:px-6 data-[state=active]:bg-yellow-500 data-[state=active]:text-black font-bold text-[10px] md:text-xs uppercase tracking-wide">Analytics</TabsTrigger>
                         <TabsTrigger value="roster" className="flex-1 md:flex-none h-full px-2 md:px-6 data-[state=active]:bg-yellow-500 data-[state=active]:text-black font-bold text-[10px] md:text-xs uppercase tracking-wide">Roster</TabsTrigger>
+                        {canManageTeam && <TabsTrigger value="bases" className="flex-1 md:flex-none h-full px-2 md:px-6 data-[state=active]:bg-yellow-500 data-[state=active]:text-black font-bold text-[10px] md:text-xs uppercase tracking-wide">Bases</TabsTrigger>}
                         <TabsTrigger value="logistics" className={`${canManageTeam ? 'flex' : 'hidden'} flex-1 md:flex-none h-full px-2 md:px-6 data-[state=active]:bg-yellow-500 data-[state=active]:text-black font-bold text-[10px] md:text-xs uppercase tracking-wide`}>Routes</TabsTrigger>
                         <TabsTrigger value="access" className={`${canManageTeam ? 'flex' : 'hidden'} flex-1 md:flex-none h-full px-2 md:px-6 data-[state=active]:bg-yellow-500 data-[state=active]:text-black font-bold text-[10px] md:text-xs uppercase tracking-wide`}>Codes</TabsTrigger>
                         <TabsTrigger value="driving" className="flex-1 md:flex-none h-full px-2 md:px-6 data-[state=active]:bg-yellow-500 data-[state=active]:text-black font-bold text-[10px] md:text-xs uppercase tracking-wide">Driving</TabsTrigger>
                     </TabsList>
 
+                    {canManageTeam && <TabsContent value="bases" className="space-y-4">
+                        <RepBasesTab members={filteredTeamMembers} managerId={managerId} />
+                    </TabsContent>}
                     <TabsContent value="driving" className="space-y-3 md:space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                         <DrivingTab members={filteredTeamMembers} currentUser={user} managerId={managerId} canManage={canManageTeam} allTeams={activeTeamCode === 'all'} teamLoading={teamLoading || teamLoadFailed} />
                     </TabsContent>

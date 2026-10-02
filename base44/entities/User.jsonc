@@ -241,7 +241,7 @@
     },
     "home_base": {
       "type": "object",
-      "description": "Optional saved home/base location used only when the user explicitly enables bounded route optimization.",
+      "description": "Private home/base location available to the rep and their verified manager for anchor routing.",
       "properties": {
         "lat": {
           "type": "number"
@@ -253,6 +253,11 @@
           "type": "string"
         }
       }
+    },
+    "home_base_auto_assign": {
+      "type": "boolean",
+      "default": true,
+      "description": "Use this private Home Base automatically when a manager assigns a route."
     },
     "referral_code": {
       "type": "string",

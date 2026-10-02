@@ -87,6 +87,7 @@ export function getRerunHashes(route, stats, filter) {
 export function buildRerunRoutePayload(route, selectedHashes, filter, label) {
   const safeMetadata = { ...(route?.metadata || {}) };
   delete safeMetadata.route_bounds;
+  delete safeMetadata.anchor;
   const uniqueHashes = dedupeRerunHashes(route, selectedHashes);
   return {
     name: `${route?.name || 'Completed Route'} Rerun — ${label}`,

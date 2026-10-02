@@ -37,6 +37,7 @@ const MapSettingsPanel = React.lazy(() => import('../components/map/MapSettingsP
 import RouteBuilderSettings from '../components/map/RouteBuilderSettings';
 const TerritorySetupWizard = React.lazy(() => import('../components/manager/TerritorySetupWizard'));
 import { hydrateRoutesForMap } from '@/components/logic/routeHydration';
+import { mergeAnchoredRoute } from '@/lib/routeAnchorState';
 import { GpsMapLayer as GpsTrackerMapLayers, GpsHud as GpsTrackerHud } from '../components/map/GpsTracker';
 import ManagerPropertyDetailSheet from '../components/map/ManagerPropertyDetailSheet';
 import MapDrawTool from '../components/map/MapDrawTool';
@@ -289,6 +290,12 @@ export default function Home() {
     const showChecklistRef = useRef(false);
     const mapRefreshPendingRef = useRef(false);
     const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me(), staleTime: 1000 * 60 * 5 });
+    const { data: activeRouteAnchor } = useQuery({
+        queryKey: ['routeAnchor', activeRoute?.id, user?.id],
+        queryFn: async () => (await base44.functions.invoke('manageRepAnchors', { action: 'get_route', route_id: activeRoute.id })).data,
+        enabled: !!user?.id && !!activeRoute?.id && activeRoute.route_origin_mode === 'anchor_round_trip',
+    });
+
     useEffect(() => {
         if (!user?.id || routeModeHydratedUserRef.current === user.id) return;
         routeModeHydratedUserRef.current = user.id;
@@ -535,39 +542,25 @@ export default function Home() {
         }
     };
 
-    const handleAssignRoute = async (routeId, memberId) => {
+    const handleAssignRoute = async (routeId, memberId, useRepBase = true) => {
         try {
-            const member = teamMembers.find(m => m.id === memberId);
-            const isSelf = memberId === user?.id;
-            const assigneeName = isSelf ? (user?.full_name || 'Manager') : (member ? member.name : null);
-            const currentRoute = savedRoutes.find(route => route.id === routeId) || (activeRoute?.id === routeId ? activeRoute : null);
-            const assignmentChanged = !currentRoute || currentRoute.assigned_to !== memberId;
-            const assignmentUpdate = {
-                assigned_to: memberId,
-                assigned_to_name: assigneeName,
-                status: 'ACTIVE',
-                ...(assignmentChanged ? {
-                    start_location: null,
-                    end_location: null,
-                    route_origin_mode: 'none',
-                    metadata: {
-                        ...(currentRoute?.metadata || {}),
-                        route_bounds: { enabled: false, cleared_reason: 'assignee_changed' }
-                    }
-                } : {})
-            };
-
-            await base44.entities.SavedRoute.update(routeId, assignmentUpdate);
+            const response = await base44.functions.invoke('manageRepAnchors', {
+                action: 'assign', route_id: routeId, member_id: memberId, use_rep_base: useRepBase,
+            });
+            const saved = response.data.route;
             queryClient.invalidateQueries({ queryKey: ['savedRoutes'] });
-            toast.success(`Assigned to ${assigneeName || 'Unassigned'}`);
+            queryClient.invalidateQueries({ queryKey: ['allRoutes'] });
+            queryClient.invalidateQueries({ queryKey: ['routeAnchor'] });
+            toast.success(saved.assigned_to_name ? `Assigned to ${saved.assigned_to_name}` : 'Route unassigned');
+            if (response.data.notice) toast.info(response.data.notice);
 
             // Update local state if active
             if (activeRoute && activeRoute.id === routeId) {
-                setActiveRoute(prev => ({ ...prev, ...assignmentUpdate }));
+                setActiveRoute(prev => mergeAnchoredRoute(prev, saved));
             }
         } catch (e) {
             console.error(e);
-            toast.error("Assignment failed");
+            toast.error(e.response?.data?.error || 'Assignment failed');
         }
     };
 
@@ -848,6 +841,7 @@ export default function Home() {
             : null;
 
         const safeRouteMetadata = { ...(route.metadata || {}) };
+        delete safeRouteMetadata.anchor;
         if (!canPreserveRequestedBounds) delete safeRouteMetadata.route_bounds;
         if (!sourceGeometryMatchesSavedOrder) {
             delete safeRouteMetadata.road_geometry;
@@ -888,7 +882,7 @@ export default function Home() {
         }
 
         // @ts-ignore - 'mutateAsync' incorrectly expects 'void' instead of the data object
-        return await createRouteMutation.mutateAsync({
+        const saved = await createRouteMutation.mutateAsync({
             name: routeName,
             route_mode: routeMode,
             property_hashes: savedPropertyHashes,
@@ -907,6 +901,19 @@ export default function Home() {
             metadata: isGeneratedRoute ? { ...safeRouteMetadata, ...precisionAreaMetadata, newly_generated: true, generated_at: generatedAt } : safeRouteMetadata,
             silent // Pass silent flag to mutation
         });
+        if (assignedRepId && !String(saved.id).startsWith('local_') && saved.route_origin_mode === 'none') {
+            try {
+                const response = await base44.functions.invoke('manageRepAnchors', {
+                    action: 'assign', route_id: saved.id, member_id: assignedRepId,
+                });
+                queryClient.invalidateQueries({ queryKey: ['savedRoutes'] });
+                if (response.data.notice && !silent) toast.info(response.data.notice);
+                return response.data.route;
+            } catch (error) {
+                toast.warning(error.response?.data?.error || 'Route saved. Its rep base could not be applied; use the Anchor control to retry.');
+            }
+        }
+        return saved;
     };
 
     const handleSaveFilteredRoute = useCallback(() => {
@@ -2026,6 +2033,11 @@ export default function Home() {
         return null;
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeRouteId]); const statusSyncedActiveRoute = useMemo(() => (filteredActiveRoute ? { ...filteredActiveRoute, properties: withDerivedStatus(filteredActiveRoute.properties || [], buildLogsByAddress([...logs, ...checklistLogs])) } : filteredActiveRoute), [filteredActiveRoute, logs, checklistLogs]); /* A decision filter turns the map into a pure outcome view: only doors with that outcome are drawn. */ const decisionFiltered = useCallback((route) => (decisionFilter === 'all' || !route ? route : { ...route, properties: (route.properties || []).filter(p => matchesDecisionFilter(p, decisionFilter)) }), [decisionFilter]); const decisionFilteredActiveRoute = useMemo(() => decisionFiltered(statusSyncedActiveRoute), [statusSyncedActiveRoute, decisionFiltered]); const decisionFilteredSavedRoutes = useMemo(() => (decisionFilter === 'all' ? hydratedSavedRoutes : hydratedSavedRoutes.map(decisionFiltered).filter(r => r.properties.length > 0)), [hydratedSavedRoutes, decisionFilter, decisionFiltered]);
+    const anchoredMapRoute = useMemo(() => decisionFilteredActiveRoute?.route_origin_mode === 'anchor_round_trip'
+        ? { ...decisionFilteredActiveRoute, startLocation: activeRouteAnchor?.anchor || null, endLocation: activeRouteAnchor?.anchor || null }
+        : decisionFilteredActiveRoute, [decisionFilteredActiveRoute, activeRouteAnchor?.anchor]);
+
+
 
     // Account Active Working Area Resolver — see lib/accountWorkingArea.js
     const resolveAccountWorkingArea = useCallback(() => computeAccountWorkingArea({
@@ -2294,7 +2306,7 @@ export default function Home() {
                     mode={mode}
                     routeMode={routeMode}
                     canvasZonePreview={canvasZonePreview}
-                    activeRoute={decisionFilteredActiveRoute}
+                    activeRoute={anchoredMapRoute}
                     zoomLevel={zoomLevel}
                     viewMode={viewMode}
                     hydratedSavedRoutes={decisionFilteredSavedRoutes}

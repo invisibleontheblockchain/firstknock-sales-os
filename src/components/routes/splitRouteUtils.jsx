@@ -416,6 +416,7 @@ export function buildSplitRouteRecords({
   if (!plan?.routes?.length) return [];
   const safeMetadata = { ...(route?.metadata || {}) };
   delete safeMetadata.route_bounds;
+  delete safeMetadata.anchor;
   delete safeMetadata.road_geometry;
   delete safeMetadata.routing;
 

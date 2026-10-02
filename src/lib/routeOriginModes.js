@@ -15,7 +15,8 @@ export const ROUTE_ORIGIN_MODES = Object.freeze({
     // meeting spot). Unlike the other anchored modes its coordinates ARE stored
     // on the route, because the point is shared crew infrastructure, not a
     // personal location. See lib/routeAnchors.js.
-    CUSTOM_BOUNDS: 'custom_bounds'
+    CUSTOM_BOUNDS: 'custom_bounds',
+    PRIVATE_ANCHOR_ROUND_TRIP: 'anchor_round_trip'
 });
 
 /** Modes that carry an external start/end anchor. `none` deliberately does not. */
@@ -23,13 +24,15 @@ export const ANCHORED_ROUTE_ORIGIN_MODES = Object.freeze([
     ROUTE_ORIGIN_MODES.HOME_ROUND_TRIP,
     ROUTE_ORIGIN_MODES.CURRENT_TO_HOME,
     ROUTE_ORIGIN_MODES.CAR_ROUND_TRIP,
-    ROUTE_ORIGIN_MODES.CUSTOM_BOUNDS
+    ROUTE_ORIGIN_MODES.CUSTOM_BOUNDS,
+    ROUTE_ORIGIN_MODES.PRIVATE_ANCHOR_ROUND_TRIP
 ]);
 
 /** Modes whose start and finish are the same point. */
 export const ROUND_TRIP_ROUTE_ORIGIN_MODES = Object.freeze([
     ROUTE_ORIGIN_MODES.HOME_ROUND_TRIP,
-    ROUTE_ORIGIN_MODES.CAR_ROUND_TRIP
+    ROUTE_ORIGIN_MODES.CAR_ROUND_TRIP,
+    ROUTE_ORIGIN_MODES.PRIVATE_ANCHOR_ROUND_TRIP
 ]);
 
 export function isAnchoredRouteOriginMode(mode) {
@@ -58,6 +61,8 @@ export function routeAnchorMarkerLabels(mode) {
     switch (normalizeRouteOriginMode(mode)) {
         case ROUTE_ORIGIN_MODES.HOME_ROUND_TRIP:
             return { start: 'Home • Start / Finish', end: null };
+        case ROUTE_ORIGIN_MODES.PRIVATE_ANCHOR_ROUND_TRIP:
+            return { start: 'Anchor • Start / Finish', end: null };
         case ROUTE_ORIGIN_MODES.CAR_ROUND_TRIP:
             return { start: 'Car • Start / Finish', end: null };
         case ROUTE_ORIGIN_MODES.CURRENT_TO_HOME:
