@@ -14,6 +14,7 @@ import { Users, UserPlus, Map, CheckCircle2, AlertCircle, X, Key, Sparkles, Tren
 import { createPageUrl } from '../utils';
 import { toast } from "sonner";
 import TeamMemberCard from "@/components/team/TeamMemberCard";
+import DrivingTab from "@/components/team/DrivingTab";
 import CreateTeamDialog from "@/components/team/CreateTeamDialog";
 import RepPerformanceDetail from "@/components/team/RepPerformanceDetail";
 import TeamLeaderboard from '@/components/team/TeamLeaderboard';
@@ -823,7 +824,12 @@ export default function AdminTeam() {
                         <TabsTrigger value="roster" className="flex-1 md:flex-none h-full px-2 md:px-6 data-[state=active]:bg-yellow-500 data-[state=active]:text-black font-bold text-[10px] md:text-xs uppercase tracking-wide">Roster</TabsTrigger>
                         <TabsTrigger value="logistics" className={`${canManageTeam ? 'flex' : 'hidden'} flex-1 md:flex-none h-full px-2 md:px-6 data-[state=active]:bg-yellow-500 data-[state=active]:text-black font-bold text-[10px] md:text-xs uppercase tracking-wide`}>Routes</TabsTrigger>
                         <TabsTrigger value="access" className={`${canManageTeam ? 'flex' : 'hidden'} flex-1 md:flex-none h-full px-2 md:px-6 data-[state=active]:bg-yellow-500 data-[state=active]:text-black font-bold text-[10px] md:text-xs uppercase tracking-wide`}>Codes</TabsTrigger>
+                        <TabsTrigger value="driving" className="flex-1 md:flex-none h-full px-2 md:px-6 data-[state=active]:bg-yellow-500 data-[state=active]:text-black font-bold text-[10px] md:text-xs uppercase tracking-wide">Driving</TabsTrigger>
                     </TabsList>
+
+                    <TabsContent value="driving" className="space-y-3 md:space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        <DrivingTab members={filteredTeamMembers} currentUser={user} managerId={managerId} canManage={canManageTeam} allTeams={activeTeamCode === 'all'} teamLoading={teamLoading || teamLoadFailed} />
+                    </TabsContent>
 
                     {/* ANALYTICS TAB */}
                     <TabsContent value="analytics" className="space-y-3 md:space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">

@@ -1,0 +1,41 @@
+{
+  "name": "DrivingTrip",
+  "type": "object",
+  "properties": {
+    "manager_id": { "type": "string" },
+    "member_id": { "type": "string" },
+    "rep_user_id": { "type": "string" },
+    "rep_name": { "type": "string" },
+    "rep_email": { "type": "string" },
+    "invite_code": { "type": "string" },
+    "submission_id": { "type": "string" },
+    "trip_date": { "type": "string", "format": "date" },
+    "origin": { "type": "string", "maxLength": 300 },
+    "destination": { "type": "string", "maxLength": 300 },
+    "purpose": { "type": "string", "maxLength": 500 },
+    "vehicle": { "type": "string", "maxLength": 100 },
+    "notes": { "type": "string", "maxLength": 1000 },
+    "odometer_start": { "type": "number", "minimum": 0 },
+    "odometer_end": { "type": "number", "minimum": 0 },
+    "miles": { "type": "number", "minimum": 0, "description": "Ending minus starting odometer, in miles. Rep-reported, not a route estimate." },
+    "status": { "type": "string", "enum": ["submitted", "approved", "paid", "rejected", "cancelled"] },
+    "rate_per_mile": { "type": "number", "minimum": 0 },
+    "reimbursement_cents": { "type": "integer", "minimum": 0 },
+    "recorded_by": { "type": "string" },
+    "approved_by": { "type": "string" },
+    "approved_at": { "type": "string", "format": "date-time" },
+    "paid_by": { "type": "string" },
+    "paid_at": { "type": "string", "format": "date-time" },
+    "payment_reference": { "type": "string", "maxLength": 200 },
+    "review_note": { "type": "string", "maxLength": 500 },
+    "reviewed_by": { "type": "string" },
+    "reviewed_at": { "type": "string", "format": "date-time" }
+  },
+  "required": ["manager_id", "member_id", "rep_name", "submission_id", "trip_date", "origin", "destination", "purpose", "vehicle", "odometer_start", "odometer_end", "miles", "status", "recorded_by"],
+  "rls": {
+    "create": { "user_condition": { "id": "__service_role_only__" } },
+    "read": { "user_condition": { "id": "__service_role_only__" } },
+    "update": { "user_condition": { "id": "__service_role_only__" } },
+    "delete": { "user_condition": { "id": "__service_role_only__" } }
+  }
+}
