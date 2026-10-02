@@ -153,3 +153,66 @@ test('initial account viewport cannot overwrite an imported route or a pending r
     assert.equal(defaultLookups, 1);
     assert.equal(cameraMoves, 1);
 });
+
+
+function routeLinkEffect() {
+    const text = fs.readFileSync(new URL('../src/pages/Home.jsx', import.meta.url), 'utf8');
+    const source = ts.createSourceFile('Home.jsx', text, ts.ScriptTarget.Latest, true, ts.ScriptKind.JSX);
+    let selectionEffect;
+    const visit = node => {
+        if (ts.isCallExpression(node) && node.expression.getText(source) === 'useEffect'
+            && node.arguments[0]?.getText(source).includes("queryClient.getQueryData(['routeMap'")) {
+            selectionEffect = node.arguments[0].getText(source);
+            assert.ok(node.arguments[1].getText(source).includes('routeLocation.search'));
+        }
+        ts.forEachChild(node, visit);
+    };
+    visit(source);
+    assert.ok(selectionEffect);
+    return selectionEffect;
+}
+
+test('an import link replaces an already-open route on the same mounted page', async () => {
+    const opened = [];
+    const loading = [];
+    const dashboard = [];
+    const context = {
+        activeRoute: { id: 'north-carolina-route', properties: [{ lat: 35.78, lng: -78.64 }] },
+        user: { email: 'manager@example.com' }, savedRoutes: [route],
+        window: { location: { search: '?savedRoute=tampa-route' } }, URLSearchParams,
+        queryClient: { getQueryData: () => ({ properties }) },
+        effectivePropertiesRef: { current: [] }, loadSavedRouteSelection,
+        hydrateRouteForMap: () => assert.fail('Import already has all 39 pins'),
+        setLoadingSavedRouteId: id => loading.push(id),
+        setModeRaw() {}, setActiveRoute: selected => opened.push(selected),
+        setShowDashboard: value => dashboard.push(value),
+        toast: { error: message => assert.fail(message) },
+    };
+    vm.runInNewContext('(' + routeLinkEffect() + ')()', context);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(opened.length, 1);
+    assert.equal(opened[0].id, route.id);
+    assert.equal(opened[0].houseCount, 39);
+    assert.deepEqual(dashboard, [false]);
+    assert.deepEqual(loading, [route.id, null]);
+});
+
+test('a cancelled route link cannot restore its route after the user navigates away', async () => {
+    let release;
+    const pending = new Promise(resolve => { release = resolve; });
+    const updates = [];
+    const context = {
+        activeRoute: null, user: { email: 'manager@example.com' }, savedRoutes: [route],
+        window: { location: { search: '?savedRoute=tampa-route' } }, URLSearchParams,
+        queryClient: { getQueryData: () => null }, effectivePropertiesRef: { current: [] },
+        loadSavedRouteSelection: () => pending,
+        setLoadingSavedRouteId() {}, setModeRaw: value => updates.push(value),
+        setActiveRoute: selected => updates.push(selected), setShowDashboard: value => updates.push(value),
+        toast: { error: message => updates.push(message) },
+    };
+    const cancel = vm.runInNewContext('(' + routeLinkEffect() + ')()', context);
+    cancel();
+    release(route);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(updates, []);
+});

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
 import { MapContainer } from 'react-leaflet'; import BaseMapTiles from '@/components/map/BaseMapTiles';
 // Leaflet icon defaults and the unmount/scroll-zoom patches live in one module.
 import L from '../components/map/leafletPatches';
@@ -96,6 +97,7 @@ import { matchesDecisionFilter } from '../components/map/routeDecisionFilters'; 
 
 export default function Home() {
     const queryClient = useQueryClient();
+    const routeLocation = useLocation();
     const [activeRoute, setActiveRoute] = useState(null);
     const [loadingSavedRouteId, setLoadingSavedRouteId] = useState(null);
     const [activeRouteSoldFilter, setActiveRouteSoldFilter] = useState('all');
@@ -1429,8 +1431,8 @@ export default function Home() {
     useEffect(() => {
         const savedRouteId = new URLSearchParams(window.location.search).get('savedRoute');
         let cancelled = false;
-        if (!savedRouteId || activeRoute) setLoadingSavedRouteId(null);
-        if (savedRouteId && user?.email && !activeRoute) {
+        if (!savedRouteId || savedRouteId === activeRoute?.id) setLoadingSavedRouteId(null);
+        if (savedRouteId && user?.email && savedRouteId !== activeRoute?.id) {
             const saved = savedRoutes.find(route => route.id === savedRouteId);
             if (saved) {
                 setLoadingSavedRouteId(savedRouteId);
@@ -1441,6 +1443,7 @@ export default function Home() {
                 ], route => hydrateRouteForMap(route, user.email)).then(selected => {
                     if (cancelled) return;
                     setModeRaw('analyze');
+                    setShowDashboard(false);
                     setActiveRoute(selected);
                 }).catch(error => {
                     if (!cancelled) toast.error(error.message);
@@ -1450,7 +1453,7 @@ export default function Home() {
             }
         }
         return () => { cancelled = true; };
-    }, [savedRoutes, activeRoute, user?.email, queryClient, effectiveProperties.length]);
+    }, [savedRoutes, activeRoute, user?.email, queryClient, effectiveProperties.length, routeLocation.search]);
 
     // Overview selection can also start with only a subset of cached pins.
     useEffect(() => {
