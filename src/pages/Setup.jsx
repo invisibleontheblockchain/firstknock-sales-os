@@ -148,7 +148,7 @@ export default function Setup() {
                                 </div>
                                 <div>
                                     <h3 className="text-sm md:text-base font-bold text-white">Upload Your File</h3>
-                                    <p className="text-[11px] md:text-xs text-gray-500">Excel, CSV or JSON from any source — we'll auto-detect columns and locate every address</p>
+                                    <p className="text-[11px] md:text-xs text-gray-500">Excel, CSV or JSON — we'll auto-detect columns and locate addresses</p>
                                 </div>
                             </div>
                             <CsvUploader />

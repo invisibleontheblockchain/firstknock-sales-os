@@ -1,31 +1,20 @@
-import React, { useState } from 'react';
+import React, { useId, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Upload, History, FilePlus, AlertCircle } from 'lucide-react';
-import Papa from 'papaparse';
 import { base44 } from '@/api/base44Client';
 import { useQueryClient, useQuery } from "@tanstack/react-query";
+import { geocodeAddress } from '@/lib/geocoding';
 import { storage } from '@/lib/storage';
-import { toast } from 'sonner';
 import { Button } from "@/components/ui/button";
 import { createPageUrl } from '@/utils';
-import RedfinImportSummary from '@/components/import/RedfinImportSummary';
-import { createRouteFromRedfinImport, prepareRedfinCsvImport } from '@/components/import/redfinCsvImport';
+import PropertyImportSummary from '@/components/import/PropertyImportSummary';
+import { parsePropertyImportFile } from '@/components/import/propertyImportFile';
+import { preparePropertyImport, mergeImportedStops, geocodePropertyImportBatch } from '@/components/import/propertyImportData';
+import { savePropertyImport, canAppendToRoute } from '@/components/import/savePropertyImport';
+import { hydrateRouteForMap } from '@/components/logic/routeHydration';
+import { fetchAllSavedRoutePages } from '@/components/rep/repRouteCollection';
 import { optimizeRouteByDistance } from '@/components/logic/routeOptimizer';
 import { createOutcomeIdempotencyKey } from '@/components/upgrade/knockGate';
-import { prepareAddressListImport } from '@/lib/addressListImport';
-import { geocodeAddress } from '@/lib/geocoding';
-import { isExcelFileName, isLegacyExcelFileName, readExcelRows } from '@/lib/spreadsheetFile';
-
-const GEOCODE_PHASE_LABELS = {
-    batch: 'Locating addresses',
-    fallback: 'Retrying unmatched addresses'
-};
-
-// Census batch lookup runs on the backend (it has no CORS headers).
-const geocodeBatchViaBackend = async (items) => {
-    const response = await base44.functions.invoke('geocodeAddressBatch', { addresses: items });
-    return response?.data?.results || {};
-};
 
 export default function CsvUploader() {
     const navigate = useNavigate();
@@ -34,177 +23,112 @@ export default function CsvUploader() {
     const [importMode, setImportMode] = useState('create'); // 'create', 'history', or 'analyze'
     const [analysisReport, setAnalysisReport] = useState(null);
     const [pendingImport, setPendingImport] = useState(null);
-    const [isCreatingRoute, setIsCreatingRoute] = useState(false);
-    
+    const [isSaving, setIsSaving] = useState(false);
+    const [routeDestination, setRouteDestination] = useState('new');
+    const [selectedRouteId, setSelectedRouteId] = useState('');
+    const inputId = useId();
+    const inputRef = useRef(null);
+    const busy = isUploading || isSaving || !!pendingImport;
+    const uploadDisabled = busy || (importMode === 'create' && routeDestination === 'existing' && !selectedRouteId);
     const queryClient = useQueryClient();
     const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me() });
+    const routesQuery = useQuery({
+        queryKey: ['savedRoutes', 'import-destinations', user?.id],
+        enabled: !!user?.id && importMode === 'create' && routeDestination === 'existing',
+        queryFn: async () => {
+            // List only RLS-visible routes, with pagination so older routes remain selectable.
+            const routes = await fetchAllSavedRoutePages((limit, skip) => base44.entities.SavedRoute.list('-updated_date', limit, skip));
+            return routes.filter(route => canAppendToRoute(route, user));
+        },
+    });
+    const routes = routesQuery.data || [];
+    const selectedRoute = routes.find(route => route.id === selectedRouteId);
+    const existingStopsQuery = useQuery({
+        queryKey: ['importRoutePreview', pendingImport?.routeId, pendingImport?.fileName],
+        enabled: !!pendingImport?.routeId,
+        retry: 1,
+        queryFn: async () => {
+            const route = await base44.entities.SavedRoute.get(pendingImport.routeId);
+            if (!canAppendToRoute(route, user)) throw new Error('This route is no longer available for imports.');
+            const hydrated = await hydrateRouteForMap(route, user?.email);
+            const properties = hydrated?.allProperties || hydrated?.properties || [];
+            if (properties.length < (route.property_hashes || []).length) throw new Error('Some route stops could not be loaded. Cancel and retry the import.');
+            return { route, preview: mergeImportedStops(route, properties, pendingImport.properties) };
+        },
+    });
 
-    // Ensure auth session is active before upload
-    const ensureSession = async () => {
-        try {
-            const user = await base44.auth.me();
-            console.log("Upload session check - User:", user?.email);
-            return user;
-        } catch (e) {
-            console.warn("Upload session check failed:", e);
-            return null;
+    const handleFileUpload = async event => {
+        const file = event.target.files?.[0];
+        event.target.value = ''; // Allow retrying the same file after an error or cancellation.
+        if (!file || busy) return;
+        if (importMode === 'create' && routeDestination === 'existing' && !selectedRoute) {
+            setUploadStatus({ success: false, message: 'Choose an existing route before uploading.' });
+            return;
         }
-    };
-
-    const handleFileUpload = async (event) => {
-        await ensureSession();
-        const file = event.target.files[0];
-        if (!file) return;
-
         setIsUploading(true);
-        setUploadStatus({ success: null, message: 'Parsing file...' });
-
-        // Handle JSON files (Case insensitive)
-        if (file.name.toLowerCase().endsWith('.json')) {
-            const reader = new FileReader();
-            reader.onload = async (e) => {
-                try {
-                    const content = e.target.result;
-                    if (!content || content.trim().length === 0) {
-                         throw new Error("File is empty");
-                    }
-
-                    const jsonData = JSON.parse(content);
-                    let dataArray = Array.isArray(jsonData) ? jsonData : [jsonData];
-
-                    // Smart Unwrapping: Check for common wrapper keys if it's an object
-                    if (!Array.isArray(jsonData) && jsonData) {
-                        if (Array.isArray(jsonData.properties)) dataArray = jsonData.properties;
-                        else if (Array.isArray(jsonData.data)) dataArray = jsonData.data;
-                        else if (Array.isArray(jsonData.items)) dataArray = jsonData.items;
-                        else if (Array.isArray(jsonData.results)) dataArray = jsonData.results;
-                    }
-
-                    console.log(`[CsvUploader] JSON Parsed. Found ${dataArray.length} items.`);
-                    await processData(dataArray);
-                } catch (error) {
-                    console.error("JSON parse error", error);
-                    setUploadStatus({ success: false, message: `JSON parse failed: ${error.message}` });
-                    setIsUploading(false);
-                }
-            };
-            reader.readAsText(file);
-            return;
-        }
-
-        // Handle Excel workbooks
-        if (isExcelFileName(file.name)) {
-            try {
-                const rows = await readExcelRows(file);
-                await handleParsedRows(rows, file);
-            } catch (error) {
-                console.error('Excel parse error', error);
-                setUploadStatus({ success: false, message: 'Unable to read this Excel file. Make sure it is a valid .xlsx workbook, or save it as CSV and try again.' });
-                setIsUploading(false);
-            }
-            return;
-        }
-        if (isLegacyExcelFileName(file.name)) {
-            setUploadStatus({ success: false, message: 'Older .xls files are not supported. In Excel choose File → Save As → Excel Workbook (.xlsx) or CSV, then upload that.' });
-            setIsUploading(false);
-            return;
-        }
-
-        // Handle CSV files
-        Papa.parse(file, {
-            header: true,
-            skipEmptyLines: true,
-            complete: async (results) => {
-                await handleParsedRows(results.data, file);
-            },
-            error: () => {
-                setUploadStatus({ success: false, message: 'Unable to read this file. Please upload a valid CSV file.' });
-                setIsUploading(false);
-            }
-        });
-    };
-
-    // Shared by CSV and Excel: both arrive here as an array of row objects.
-    const handleParsedRows = async (rows, file) => {
-        // PapaParse reports non-fatal row warnings (ragged rows, trailing
-        // empty fields) in results.errors even for valid files. Only reject
-        // if NO rows were parsed at all — otherwise import the usable rows.
-        const data = (rows || []).filter(
-            (r) => r && Object.values(r).some((v) => v != null && String(v).trim() !== '')
-        );
-        if (data.length === 0) {
-            setUploadStatus({ success: false, message: 'Unable to read this file. It appears to be empty.' });
-            setIsUploading(false);
-            return;
-        }
-
-        if (importMode === 'create') {
-            try {
-                const redfinImport = await prepareRedfinCsvImport(data, file.name);
-                if (redfinImport) {
-                    setPendingImport(redfinImport);
-                    setUploadStatus(null);
-                    setIsUploading(false);
-                    return;
-                }
-
-                // Address-only list (Address / City / State / Zip, no lat/lng):
-                // geocode it here instead of rejecting it for missing coordinates.
-                setUploadStatus({ success: null, message: 'Reading addresses...' });
-                const addressImport = await prepareAddressListImport(data, file.name, {
-                    geocodeBatch: geocodeBatchViaBackend,
-                    geocodeOne: (query) => geocodeAddress(query),
-                    onProgress: ({ phase, done, total }) => setUploadStatus({
-                        success: null,
-                        message: `${GEOCODE_PHASE_LABELS[phase] || 'Locating addresses'}... ${Math.min(done, total)}/${total}`
-                    })
-                });
-                if (addressImport) {
-                    // No confirm step: the file goes straight to a route on the map.
-                    await createRouteAndOpenMap(addressImport);
-                    return;
-                }
-            } catch (error) {
-                setUploadStatus({ success: false, message: error.message || 'Unable to read this file. Please upload a valid CSV or Excel file.' });
-                setIsUploading(false);
+        setUploadStatus({ success: null, message: 'Reading file...' });
+        try {
+            const currentUser = await base44.auth.me();
+            if (!currentUser?.id || !currentUser?.email) throw new Error('Sign in before importing properties.');
+            const data = await parsePropertyImportFile(file);
+            if (importMode !== 'create') {
+                await processData(data);
                 return;
             }
-        }
-
-        await processData(data);
-    };
-
-    const createRouteAndOpenMap = async (importBatch) => {
-        setIsCreatingRoute(true);
-        setUploadStatus({ success: null, message: `Building route from ${importBatch.properties.length} properties...` });
-        try {
-            const currentUser = user || await base44.auth.me();
-            const route = await createRouteFromRedfinImport(importBatch, { user: currentUser });
-            await Promise.all([
-                queryClient.invalidateQueries({ queryKey: ['masterProperties'], refetchType: 'all' }),
-                queryClient.invalidateQueries({ queryKey: ['savedRoutes'], refetchType: 'all' }),
-                queryClient.invalidateQueries({ queryKey: ['localProperties'], refetchType: 'all' })
-            ]);
-            setPendingImport(null);
-            setUploadStatus({ success: true, message: `✓ Created route with ${route.houseCount} properties! Opening map...` });
-            const unmatched = importBatch.unmatched || [];
-            if (unmatched.length > 0) {
-                // The toast host lives at the app root, so this survives the navigation below.
-                toast.warning(`${unmatched.length} of ${unmatched.length + route.houseCount} addresses could not be located`, {
-                    description: `Left off the route: ${unmatched.slice(0, 4).map((row) => row.address).join('; ')}${unmatched.length > 4 ? `; +${unmatched.length - 4} more` : ''}`,
-                    duration: 20000
-                });
-            }
-            navigate(`${createPageUrl('Home')}?savedRoute=${encodeURIComponent(route.id)}`);
+            const prepared = await preparePropertyImport(data, file.name, {
+                onProgress: message => setUploadStatus({ success: null, message }),
+                geocodeBatch: addresses => geocodePropertyImportBatch(addresses, {
+                    geocodeBatch: async items => {
+                        const response = await base44.functions.invoke('geocodeAddressBatch', { addresses: items });
+                        return response.data?.results;
+                    },
+                    geocodeOne: geocodeAddress,
+                }),
+            });
+            setPendingImport({ ...prepared, routeId: routeDestination === 'existing' ? selectedRouteId : null });
+            setUploadStatus(null);
         } catch (error) {
-            setUploadStatus({ success: false, message: `Import failed: ${error.message}` });
+            setUploadStatus({ success: false, message: error.response?.data?.error || error.message || 'Unable to import this file.' });
         } finally {
-            setIsCreatingRoute(false);
             setIsUploading(false);
         }
     };
 
-    const handleCreateRoute = () => (pendingImport ? createRouteAndOpenMap(pendingImport) : undefined);
+    const handleSaveImport = async () => {
+        if (!pendingImport || isSaving) return;
+        setIsSaving(true);
+        setUploadStatus(null);
+        try {
+            const currentUser = await base44.auth.me();
+            const result = await savePropertyImport(pendingImport, {
+                client: base44, user: currentUser, routeId: pendingImport.routeId,
+                optimize: optimizeRouteByDistance,
+                persistProperties: async (properties, routeId) => {
+                    const response = await base44.functions.invoke('persistImportedProperties', { properties, route_id: routeId });
+                    return response.data?.properties;
+                },
+                loadRouteProperties: async route => {
+                    const hydrated = await hydrateRouteForMap(route, currentUser.email);
+                    return hydrated?.allProperties || hydrated?.properties || [];
+                },
+                saveLocal: storage.saveProperties,
+                onProgress: message => setUploadStatus({ success: null, message }),
+            });
+            await Promise.allSettled([
+                queryClient.invalidateQueries({ queryKey: ['masterProperties'], refetchType: 'all' }),
+                queryClient.invalidateQueries({ queryKey: ['savedRoutes'], refetchType: 'all' }),
+                queryClient.invalidateQueries({ queryKey: ['localProperties'], refetchType: 'all' }),
+                queryClient.invalidateQueries({ queryKey: ['importRoutePreview'] }),
+            ]);
+            setPendingImport(null);
+            setUploadStatus({ success: true, message: `${result.added} properties ${pendingImport.routeId ? 'added to' : 'imported into'} ${result.route.name}. ${result.duplicatesRemoved} existing stops skipped.` });
+            navigate(`${createPageUrl('Home')}?savedRoute=${encodeURIComponent(result.route.id)}`);
+        } catch (error) {
+            setUploadStatus({ success: false, message: error.response?.data?.error || error.message || 'Import failed. Please retry.' });
+        } finally {
+            setIsSaving(false);
+        }
+    };
 
     const processData = async (data) => {
         // Get user email
@@ -221,8 +145,6 @@ export default function CsvUploader() {
             await processCoverageAnalysis(data);
         } else if (importMode === 'history') {
             await processHistoryImport(data, userEmail);
-        } else {
-            await processPropertyImport(data, userEmail);
         }
     };
 
@@ -426,149 +348,23 @@ export default function CsvUploader() {
         }
     };
 
-    const processPropertyImport = async (data, userEmail) => {
-        const normalizeKey = (key) => key.toLowerCase().trim().replace(/[\s_-]+/g, '');
-        const entities = [];
-        let errorCount = 0;
-
-        data.forEach((row, idx) => {
-            const normalizedRow = {};
-            Object.keys(row).forEach(key => normalizedRow[normalizeKey(key)] = row[key]);
-
-            // Enhanced coordinate detection (Supports Redfin/Zillow/Standard)
-            const lat = parseFloat(
-                normalizedRow.lat || normalizedRow.latitude || 
-                row.Lat || row.LATITUDE || row.Latitude ||
-                row["LATITUDE"] || 
-                0
-            );
-            const lng = parseFloat(
-                normalizedRow.lng || normalizedRow.longitude || 
-                row.Lng || row.LONGITUDE || row.Longitude ||
-                row["LONGITUDE"] ||
-                0
-            );
-
-            if (isNaN(lat) || isNaN(lng) || (lat === 0 && lng === 0)) {
-                if (errorCount < 3) {
-                    console.warn("Skipping Invalid Row (No Coords):", row);
-                    console.warn("Normalized Keys:", Object.keys(normalizedRow));
-                    console.warn("Parsed Lat/Lng:", lat, lng);
-                }
-                errorCount++;
-                return;
-            }
-
-            let houseNumber = parseInt(normalizedRow.housenumber || normalizedRow.number || 0);
-            let streetName = normalizedRow.streetname || normalizedRow.street || '';
-            const fullAddress = normalizedRow.fulladdress || normalizedRow.address || `${houseNumber} ${streetName}`;
-
-            if ((!houseNumber || !streetName) && fullAddress) {
-                const parts = fullAddress.trim().split(' ');
-                if (parts.length > 1 && !isNaN(parseInt(parts[0]))) {
-                    houseNumber = parseInt(parts[0]);
-                    streetName = parts.slice(1).join(' ');
-                }
-            }
-            if (!streetName) streetName = 'Unknown Street';
-
-            let addressHash = normalizedRow.addresshash || normalizedRow.id || normalizedRow.hash || row["MLS#"] || normalizedRow["mls#"];
-            if (!addressHash) {
-                addressHash = btoa(`${streetName}-${houseNumber}-${lat}-${lng}`).replace(/[^a-zA-Z0-9]/g, '').substring(0, 16);
-            }
-
-            let importedStatus = normalizeStatus(normalizedRow.status || normalizedRow.originalstatus || row.Status);
-
-            // Robust field mapping for Redfin/Zillow formats
-            entities.push({
-                address_hash: String(addressHash),
-                house_number: houseNumber,
-                street_name: streetName,
-                full_address: fullAddress,
-                lat: lat,
-                lng: lng,
-                original_status: importedStatus,
-                beds: parseFloat(normalizedRow.beds || 0),
-                baths: parseFloat(normalizedRow.baths || 0),
-                sqft: parseFloat(normalizedRow.sqft || normalizedRow.squarefeet || normalizedRow["squarefeet"] || 0),
-                year_built: parseInt(normalizedRow.yearbuilt || normalizedRow["yearbuilt"] || 0),
-                price: parseFloat(normalizedRow.price || 0),
-                city: normalizedRow.city || null,
-                state: normalizedRow.state || normalizedRow["stateorprovince"] || null,
-                zip_code: normalizedRow.zipcode || normalizedRow.postalcode || normalizedRow["ziporpostalcode"] || null,
-                created_by: userEmail
-            });
-        });
-
-        if (entities.length === 0) {
-            const msg = `No valid rows found in ${data.length} items. \n\nRequirement: each row needs either 'lat' and 'lng' columns, or Address plus City/State/Zip columns so we can locate it.\n\nCheck the browser console (F12) for debugging details.`;
-            setUploadStatus({ success: false, message: `No valid rows. See console.` });
-            alert(msg);
-            setIsUploading(false);
-            return;
-        }
-
-        try {
-            const BATCH_SIZE = 500;
-            let importedCount = 0;
-            for (let i = 0; i < entities.length; i += BATCH_SIZE) {
-                const batch = entities.slice(i, i + BATCH_SIZE);
-                setUploadStatus({ success: null, message: `Importing batch ${Math.floor(i/BATCH_SIZE)+1}...` });
-                await base44.entities.MasterProperty.bulkCreate(batch);
-                importedCount += batch.length;
-            }
-
-            await storage.saveProperties(entities);
-
-            // Build a route from the imported list and open it on the map, so the
-            // CSV behaves like a Builder draw: it populates the map and feeds Knock
-            // & Analytics as another data source.
-            setUploadStatus({ success: null, message: 'Building route...' });
-            const currentUser = user || await base44.auth.me().catch(() => null);
-            const ordered = optimizeRouteByDistance(entities, null);
-            const route = await base44.entities.SavedRoute.create({
-                name: `Imported List ${new Date().toLocaleDateString()}`,
-                route_mode: 'precision',
-                status: 'ACTIVE',
-                property_hashes: ordered.map(p => p.address_hash),
-                metrics: { house_count: ordered.length, distance: 0, score: 100 },
-                manager_id: currentUser?.id || null,
-                assigned_to: currentUser?.id || null,
-                assigned_to_name: currentUser?.full_name || 'Me',
-                metadata: { source: 'csv_import', import_date: new Date().toISOString().slice(0, 10) }
-            });
-
-            await Promise.all([
-                queryClient.invalidateQueries({ queryKey: ['masterProperties'], refetchType: 'all' }),
-                queryClient.invalidateQueries({ queryKey: ['savedRoutes'], refetchType: 'all' }),
-                queryClient.invalidateQueries({ queryKey: ['localProperties'], refetchType: 'all' })
-            ]);
-
-            setUploadStatus({ success: true, message: `✓ ${importedCount} properties imported! Opening map...` });
-            navigate(`${createPageUrl('Home')}?savedRoute=${encodeURIComponent(route.id)}`);
-        } catch (error) {
-            console.error("Import error", error);
-            setUploadStatus({ success: false, message: `Import failed: ${error.message}` });
-        } finally {
-            setIsUploading(false);
-        }
-    };
-
     return (
         <div className="space-y-4">
             {/* Mode Switcher */}
-            <div className="flex items-center gap-2 p-1 bg-[#1F1F1F] rounded-lg border border-gray-800 w-fit">
+            <div className="flex flex-wrap items-center gap-2 p-1 bg-[#1F1F1F] rounded-lg border border-gray-800 w-fit">
                 <button
-                    onClick={() => setImportMode('create')}
+                    disabled={busy}
+                    onClick={() => { setImportMode('create'); setUploadStatus(null); }}
                     className={`flex items-center gap-2 px-3 py-2 rounded-md text-xs font-bold transition-all ${
                         importMode === 'create' ? 'bg-yellow-500 text-black shadow-lg' : 'text-gray-400 hover:text-white'
                     }`}
                 >
                     <FilePlus className="w-4 h-4" />
-                    NEW LIST
+                    PROPERTY LIST
                 </button>
                 <button
-                    onClick={() => setImportMode('history')}
+                    disabled={busy}
+                    onClick={() => { setImportMode('history'); setUploadStatus(null); }}
                     className={`flex items-center gap-2 px-3 py-2 rounded-md text-xs font-bold transition-all ${
                         importMode === 'history' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:text-white'
                     }`}
@@ -577,7 +373,8 @@ export default function CsvUploader() {
                     UPDATE HISTORY
                 </button>
                 <button
-                    onClick={() => setImportMode('analyze')}
+                    disabled={busy}
+                    onClick={() => { setImportMode('analyze'); setUploadStatus(null); }}
                     className={`flex items-center gap-2 px-3 py-2 rounded-md text-xs font-bold transition-all ${
                         importMode === 'analyze' ? 'bg-purple-600 text-white shadow-lg' : 'text-gray-400 hover:text-white'
                     }`}
@@ -589,40 +386,77 @@ export default function CsvUploader() {
 
                 <div className="text-xs text-gray-400 px-1">
                 {importMode === 'create' 
-                    ? "Upload a new list of properties to build routes." 
+                    ? "Upload properties to create a route or add stops to an existing route."
                     : importMode === 'analyze' 
                     ? "Scan a file to verify state/county coverage and sales history without importing."
                     : "Upload a list with statuses (Sold, Not Interested, etc) to update history."}
                 </div>
 
+            {importMode === 'create' && (
+                <div className="space-y-3 rounded-xl border border-white/10 bg-white/[0.02] p-3">
+                    <p className="text-xs font-semibold text-gray-300">Where should these properties go?</p>
+                    <div className="grid grid-cols-2 gap-2">
+                        {[['new', 'Create New Route'], ['existing', 'Add to Existing Route']].map(([value, label]) => (
+                            <button key={value} type="button" disabled={busy} aria-pressed={routeDestination === value}
+                                onClick={() => { setRouteDestination(value); setUploadStatus(null); }}
+                                className={`rounded-lg border px-3 py-3 text-xs font-bold disabled:opacity-50 ${routeDestination === value ? 'border-green-500/50 bg-green-500/10 text-green-400' : 'border-white/10 text-gray-400 hover:text-white'}`}>
+                                {label}
+                            </button>
+                        ))}
+                    </div>
+                    {routeDestination === 'existing' && (
+                        <div className="space-y-2">
+                            <label htmlFor={`${inputId}-route`} className="block text-xs text-gray-400">Choose a route</label>
+                            <select id={`${inputId}-route`} value={selectedRouteId} onChange={event => setSelectedRouteId(event.target.value)} disabled={busy || routesQuery.isPending}
+                                className="w-full rounded-lg border border-white/15 bg-[#1F1F1F] p-3 text-sm text-white">
+                                <option value="">{routesQuery.isPending ? 'Loading routes...' : 'Select an existing route'}</option>
+                                {routes.map(route => <option key={route.id} value={route.id}>{route.name} · {(route.property_hashes || []).length} {(route.property_hashes || []).length === 1 ? 'stop' : 'stops'}{route.assigned_to_name ? ` · ${route.assigned_to_name}` : ''}</option>)}
+                            </select>
+                            {routesQuery.isError && <p role="alert" className="text-xs text-red-400">Could not load routes. <button type="button" onClick={() => routesQuery.refetch()} className="underline">Retry</button></p>}
+                            {!routesQuery.isPending && !routesQuery.isError && !routes.length && <p className="text-xs text-gray-400">No active routes available. Create a new route first.</p>}
+                            {selectedRoute && <p className="text-xs text-gray-500">New stops will be added to this route. Duplicate addresses will be skipped.</p>}
+                        </div>
+                    )}
+                    <p className="text-[11px] text-gray-500">Addresses without coordinates use Census and fallback address lookup. Review unmatched rows before saving.</p>
+                </div>
+            )}
+
             <input
+                ref={inputRef}
                 type="file"
-                accept=".csv,.json,.xlsx,.xlsm,.xls"
+                accept=".csv,.xlsx,.xlsm,.json"
                 onChange={handleFileUpload}
                 className="hidden"
-                id="file-upload"
-                disabled={isUploading}
+                id={inputId}
+                disabled={uploadDisabled}
             />
-            <label htmlFor="file-upload" className="block">
+            <button type="button" onClick={() => inputRef.current?.click()} disabled={uploadDisabled} className="block w-full rounded-xl disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-green-400">
                 <div className={`flex items-center justify-center gap-2 px-4 py-6 rounded-xl border-2 border-dashed cursor-pointer transition-colors ${isUploading ? 'border-yellow-500 bg-yellow-500/10' : 'border-slate-700 hover:border-slate-500 hover:bg-slate-800/50'}`}>
                     <Upload className={`w-6 h-6 ${isUploading ? 'text-yellow-500 animate-bounce' : 'text-slate-400'}`} />
                     <div className="text-center">
                         <span className="block text-sm font-bold text-slate-300">
-                            {isUploading ? 'PROCESSING...' : `CLICK TO UPLOAD ${importMode === 'create' ? 'NEW LIST' : 'HISTORY'}`}
+                            {isUploading || isSaving ? 'PROCESSING...' : `CLICK TO UPLOAD ${importMode === 'create' ? (routeDestination === 'existing' ? 'ADDITIONAL LIST' : 'NEW LIST') : importMode === 'analyze' ? 'COVERAGE FILE' : 'HISTORY'}`}
                         </span>
                         <span className="text-[10px] text-slate-500 mt-1 block">CSV, Excel (.xlsx) or JSON</span>
                     </div>
                 </div>
-            </label>
+            </button>
 
-            <RedfinImportSummary
+            <PropertyImportSummary
                 importBatch={pendingImport}
-                isSaving={isCreatingRoute}
+                route={existingStopsQuery.data?.route || selectedRoute}
+                preview={existingStopsQuery.data?.preview}
+                isSaving={isSaving}
+                isLoading={!!pendingImport?.routeId && existingStopsQuery.isPending}
+                error={existingStopsQuery.error?.message || (uploadStatus?.success === false ? uploadStatus.message : null)}
                 onCancel={() => {
+                    if (isSaving) return;
                     setPendingImport(null);
                     setUploadStatus(null);
+                    queryClient.removeQueries({ queryKey: ['importRoutePreview'] });
                 }}
-                onCreateRoute={handleCreateRoute}
+                onNameChange={routeName => setPendingImport(batch => ({ ...batch, routeName }))}
+                onSave={handleSaveImport}
             />
 
             {uploadStatus && (
