@@ -7,8 +7,12 @@ const FIELDS = ['address_hash', 'legacy_hash', 'house_number', 'street_name', 'f
 const ORIGINAL_STATUSES = ['ELIGIBLE', 'SOLD', 'HARD_NO', 'DO_NOT_KNOCK', 'UNVERIFIED'];
 const rows = value => Array.isArray(value) ? value : value?.items || [];
 
-// Persist under the verified workspace owner so every assigned rep can hydrate
-// additions, even when a different teammate uploads the second spreadsheet.
+const normalized = value => String(value || '').trim().toLowerCase();
+const isServiceImport = property => /^service\+[^@\s]+@no-reply\.base44\.com$/i.test(String(property?.created_by || ''))
+  && ['csv_import', 'redfin_csv'].includes(property?.data_source);
+
+// created_by is platform-managed: service creates retain the service identity.
+// Stamp the verified workspace on manager_id instead of forging audit metadata.
 export async function persistProperties(client, user, body) {
   const properties = body?.properties;
   if (!Array.isArray(properties) || !properties.length || properties.length > 100) {
@@ -48,11 +52,23 @@ export async function persistProperties(client, user, body) {
       return { status: 400, error: 'Invalid imported property fields.' };
     }
     hashes.add(property.address_hash);
-    clean.push({ ...Object.fromEntries(FIELDS.filter(field => property[field] !== undefined).map(field => [field, property[field]])), created_by: ownerEmail });
+    clean.push({ ...Object.fromEntries(FIELDS.filter(field => property[field] !== undefined).map(field => [field, property[field]])), manager_id: managerId });
   }
   const entity = client.asServiceRole.entities.MasterProperty;
-  const existing = rows(await entity.filter({ created_by: ownerEmail, address_hash: { $in: [...hashes] } }, '-created_date', 500));
-  const byHash = new Map(existing.map(property => [property.address_hash, property]));
+  const belongsToWorkspace = property => (
+    isServiceImport(property) && property.manager_id === managerId
+  ) || (
+    normalized(property?.created_by) === normalized(ownerEmail)
+    && (!property.manager_id || property.manager_id === managerId)
+  );
+  const readExisting = async () => [
+    ...rows(await entity.filter({ manager_id: managerId, address_hash: { $in: [...hashes] } }, '-created_date', 500)),
+    ...rows(await entity.filter({ created_by: ownerEmail, address_hash: { $in: [...hashes] } }, '-created_date', 500)),
+  ].filter(belongsToWorkspace);
+  const byHash = new Map();
+  for (const property of await readExisting()) {
+    if (!byHash.has(property.address_hash)) byHash.set(property.address_hash, property);
+  }
   const missing = clean.filter(property => !byHash.has(property.address_hash));
   if (missing.length) {
     const created = rows(await entity.bulkCreate(missing));
@@ -60,11 +76,10 @@ export async function persistProperties(client, user, body) {
   }
   // Read back if the runtime bulk-create response doesn't include the records.
   if (clean.some(property => !byHash.has(property.address_hash))) {
-    rows(await entity.filter({ created_by: ownerEmail, address_hash: { $in: [...hashes] } }, '-created_date', 500))
-      .forEach(property => byHash.set(property.address_hash, property));
+    (await readExisting()).forEach(property => byHash.set(property.address_hash, property));
   }
   const saved = clean.map(property => byHash.get(property.address_hash));
-  if (saved.some(property => !property)) return { status: 502, error: 'Some imported properties could not be saved. Retry the import.' };
+  if (saved.some(property => !property || !belongsToWorkspace(property))) return { status: 502, error: 'Some imported properties could not be saved. Retry the import.' };
   return { status: 200, properties: saved };
 }
 

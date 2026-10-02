@@ -54,12 +54,12 @@ function loadHandler({
     }
     throw new Error(`Unexpected SQL in hydration test: ${query}`);
   };
-  const filterMasterProperty = async (query) => {
+  const filterMasterProperty = async (query, sort, limit) => {
     const [field, criterion] = Object.entries(query || {})[0] || [];
     const values = Array.isArray(criterion)
       ? criterion
       : (Array.isArray(criterion?.$in) ? criterion.$in : [criterion]);
-    return masterProperties.filter(property => values.includes(property?.[field]));
+    return masterProperties.filter(property => values.includes(property?.[field]) && (!query.manager_id || property.manager_id === query.manager_id)).slice(0, limit);
   };
   const base44 = {
     auth: { me: async () => user },
@@ -1053,4 +1053,51 @@ test('route hydration rejects hashes that are not on the caller-visible route', 
   assert.equal(response.status, 403);
   assert.equal(result.code, 'route_hash_mismatch');
   assert.equal(sqlCalls.length, 0);
+});
+
+const serviceImportRoute = { id: 'import-route', manager_id: 'manager_1', created_by: 'manager@example.com', created_date: '2026-10-02T19:08:28.934Z', property_hashes: ['import_hash'] };
+const serviceImportProperty = { id: 'import-property', address_hash: 'import_hash', manager_id: 'manager_1', created_by: 'service+runtime-id@no-reply.base44.com', data_source: 'csv_import', lat: 28.7, lng: -81.3 };
+
+test('service-created imported stops load for their verified manager and assigned workspace reps', async () => {
+  for (const user of [
+    {id:'manager_1',email:'manager@example.com',role:'user'},
+    {id:'rep_1',email:'rep@example.com',role:'user',data:{team_manager_id:'manager_1'}},
+  ]) {
+    const {handler}=loadHandler({user,route:serviceImportRoute,masterProperties:[serviceImportProperty]});
+    const {response,result}=await invoke(handler,{route_id:serviceImportRoute.id,address_hashes:serviceImportRoute.property_hashes});
+    assert.equal(response.status,200);
+    assert.equal(result.count,1);
+    assert.equal(result.properties[0].id,'import-property');
+  }
+});
+
+test('service import lookup scopes duplicate hashes before response limits', async () => {
+  const foreign={...serviceImportProperty,id:'foreign-property',manager_id:'other-manager'};
+  const user={id:'manager_1',email:'manager@example.com',role:'user'};
+  const {handler}=loadHandler({user,route:serviceImportRoute,masterProperties:[foreign,serviceImportProperty]});
+  const {result}=await invoke(handler,{route_id:serviceImportRoute.id,address_hashes:serviceImportRoute.property_hashes});
+  assert.equal(result.count,1);
+  assert.equal(result.properties[0].id,'import-property');
+});
+
+test('missing or foreign workspace tags and caller-forged import tags cannot authorize service recovery', async () => {
+  const user={id:'manager_1',email:'manager@example.com',role:'user'};
+  for (const property of [
+    {...serviceImportProperty,manager_id:undefined},
+    {...serviceImportProperty,manager_id:'foreign-manager'},
+    {...serviceImportProperty,created_by:'outsider@example.com'},
+    {...serviceImportProperty,data_source:'manual'},
+  ]) {
+    const {handler}=loadHandler({user,route:serviceImportRoute,masterProperties:[property]});
+    const {result}=await invoke(handler,{route_id:serviceImportRoute.id,address_hashes:serviceImportRoute.property_hashes});
+    assert.equal(result.count,0);
+  }
+});
+
+test('a caller-visible route with a forged foreign manager cannot expose that manager service imports', async () => {
+  const user={id:'attacker',email:'attacker@example.com',role:'user'};
+  const route={...serviceImportRoute,created_by:user.email};
+  const {handler}=loadHandler({user,route,masterProperties:[serviceImportProperty]});
+  const {result}=await invoke(handler,{route_id:route.id,address_hashes:route.property_hashes});
+  assert.equal(result.count,0);
 });

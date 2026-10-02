@@ -110,7 +110,7 @@ function mockClient(initialRoute, initialProperties = []) {
       update: async (id, payload) => { writes.routeUpdates.push({ id, payload }); route = { ...route, ...payload }; return route; },
     },
     MasterProperty: {
-      filter: async filter => properties.filter(p => p.created_by === filter.created_by && filter.address_hash.$in.includes(p.address_hash)),
+      filter: async filter => properties.filter(p => (!filter.created_by || p.created_by === filter.created_by) && (!filter.manager_id || p.manager_id === filter.manager_id) && filter.address_hash.$in.includes(p.address_hash)),
       bulkCreate: async batch => { writes.propertyBatches.push(batch); properties.push(...batch); return batch; },
     },
   } };
@@ -181,16 +181,16 @@ const { persistProperties } = await import(`data:text/javascript;base64,${Buffer
 test('trusted property persistence saves rep additions under their verified manager and strips forged system fields', async () => {
   const batch = await prepare([sourceRow()]);
   const mock = mockClient(existingRoute);
-  mock.client.asServiceRole = { entities: { MasterProperty: mock.client.entities.MasterProperty, User: { get: async id => id === user.id ? user : null } } };
+  mock.client.asServiceRole = { entities: { MasterProperty: serviceImportEntity(mock), User: { get: async id => id === user.id ? user : null } } };
   const rep = { id: 'rep-1', email: 'rep@example.com', data: { team_manager_id: user.id } };
   const result = await persistProperties(mock.client, rep, {
     route_id: existingRoute.id,
     properties: [{ ...batch.properties[0], id: 'forged-id', created_by: 'outsider@example.com', manager_id: 'other-team' }],
   });
   assert.equal(result.status, 200);
-  assert.equal(result.properties[0].created_by, user.email);
-  assert.equal('manager_id' in result.properties[0], false);
-  assert.equal('id' in result.properties[0], false);
+  assert.equal(result.properties[0].created_by, 'service+test-runtime@no-reply.base44.com');
+  assert.equal(result.properties[0].manager_id, user.id);
+  assert.notEqual(result.properties[0].id, 'forged-id');
   const again = await persistProperties(mock.client, rep, { route_id: existingRoute.id, properties: batch.properties });
   assert.equal(again.status, 200);
   assert.equal(mock.writes.propertyBatches.length, 1);
@@ -241,4 +241,48 @@ test('existing address-list aliases and county metadata remain supported', async
   assert.equal(batch.properties[0].owner_full_name, 'Sam Rivera');
   assert.equal(batch.properties[0].state, 'FL');
   assert.equal(batch.properties[0].raw_metadata.county, 'Hillsborough');
+});
+
+function serviceImportEntity(mock) {
+  return {
+    filter: mock.client.entities.MasterProperty.filter,
+    bulkCreate: async batch => {
+      assert.ok(batch.every(property => !('created_by' in property)), 'Audit ownership must be left to Base44');
+      const records = batch.map((property, index) => ({ ...property, id: 'service-record-' + index, created_by: 'service+test-runtime@no-reply.base44.com' }));
+      return mock.client.entities.MasterProperty.bulkCreate(records);
+    },
+  };
+}
+
+test('service-created records are reused by verified workspace without losing existing outcomes', async () => {
+  const batch = await prepare([sourceRow()]);
+  const owned = { ...batch.properties[0], id: 'owned', manager_id: user.id, created_by: 'service+test-runtime@no-reply.base44.com', original_status: 'HARD_NO' };
+  const foreign = { ...owned, id: 'foreign', manager_id: 'other-workspace', original_status: 'SOLD' };
+  const mock = mockClient(existingRoute, [foreign, owned]);
+  mock.client.asServiceRole = { entities: { MasterProperty: serviceImportEntity(mock) } };
+  const result = await persistProperties(mock.client, user, {route_id: existingRoute.id, properties: batch.properties});
+  assert.equal(result.status, 200);
+  assert.equal(result.properties[0].id, 'owned');
+  assert.equal(result.properties[0].original_status, 'HARD_NO');
+  assert.equal(mock.writes.propertyBatches.length, 0);
+});
+
+test('a platform that drops the verified workspace tag fails persistence instead of saving an unreadable route', async () => {
+  const batch = await prepare([sourceRow()]);
+  const mock = mockClient(existingRoute);
+  const entity = serviceImportEntity(mock);
+  mock.client.asServiceRole = { entities: { MasterProperty: { ...entity, bulkCreate: async batch => entity.bulkCreate(batch.map(({ manager_id, ...property }) => property)) } } };
+  const result = await persistProperties(mock.client, user, {properties: batch.properties});
+  assert.equal(result.status, 502);
+});
+
+test('service imports read back by manager id when bulk create returns no records', async () => {
+  const batch = await prepare([sourceRow()]);
+  const mock = mockClient(existingRoute);
+  const entity = serviceImportEntity(mock);
+  mock.client.asServiceRole = { entities: { MasterProperty: { ...entity, bulkCreate: async batch => { await entity.bulkCreate(batch); return []; } } } };
+  const result = await persistProperties(mock.client, user, { properties: batch.properties });
+  assert.equal(result.status, 200);
+  assert.equal(result.properties[0].manager_id, user.id);
+  assert.equal(result.properties[0].created_by, 'service+test-runtime@no-reply.base44.com');
 });
