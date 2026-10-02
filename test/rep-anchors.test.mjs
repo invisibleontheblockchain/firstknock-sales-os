@@ -5,7 +5,7 @@ import vm from 'node:vm';
 import ts from 'typescript';
 import { isValidRoutePoint, calculateRouteDistanceMiles } from '../base44/shared/routeBounds.js';
 import { optimizeAnchoredStreetRoute } from '../base44/shared/routeAnchorRouting.js';
-import { normalizeRouteOriginMode, isRoundTripRouteOriginMode, routeAnchorMarkerLabels } from '../src/lib/routeOriginModes.js';
+import { normalizeRouteOriginMode, isRoundTripRouteOriginMode, routeAnchorMarkerLabels, OPTIMIZE_MODES, ROUTE_ORIGIN_MODES, resolveOptimizeMode, routeOriginModeForOptimizeMode } from '../src/lib/routeOriginModes.js';
 import { mergeAnchoredRoute } from '../src/lib/routeAnchorState.js';
 
 const read = path => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
@@ -34,7 +34,7 @@ function setup({ actor = 'manager', base = home, auto = true, verified = true, p
     let failUpdate = false;
     const service = { entities: {
         User: { get: async id => users[id], update: async (id, value) => { writes.push(['user', id, value]); Object.assign(users[id], value); } },
-        TeamMember: { get: async id => members[id], filter: async query => Object.values(members).filter(member => member.manager_id === query.manager_id) },
+        TeamMember: { get: async id => members[id], filter: async query => Object.values(members).filter(member => member.manager_id === query.manager_id && (!query.user_id || member.user_id === query.user_id)) },
         SavedRoute: { get: async id => id === route.id ? JSON.parse(JSON.stringify(route)) : null, update: async (id, value) => { if (failUpdate) throw new Error('write failed'); writes.push(['route', id, value]); Object.assign(route, value); } },
         RouteAnchor: {
             filter: async query => records.filter(record => record.route_id === query.route_id && record.manager_id === query.manager_id),
@@ -211,4 +211,62 @@ test('pending reps can receive a custom route anchor without granting access to 
     const result = await state.call({ action: 'set_route', route_id: 'route', source: 'custom', location: custom });
     assert.equal(result.status, 200);
     assert.equal(state.route.metadata.anchor.source, 'custom');
+});
+
+test('reoptimization preserves a private anchor by default but explicit route-only clears it', async () => {
+    const executable = path => ts.transpileModule(read(path), {
+        compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
+    }).outputText.replace(/^import[\s\S]*?;\s*$/gm, '').replace(/^export\s*\{[^}]*\}\s*from[^;]*;\s*$/gm, '').replace(/^export\s+/gm, '');
+    for (const explicit of [false, true]) {
+        const requests = [];
+        const writes = [];
+        const errors = [];
+        const context = vm.createContext({
+            OPTIMIZE_MODES, ROUTE_ORIGIN_MODES, resolveOptimizeMode, routeOriginModeForOptimizeMode,
+            isValidRoutePoint, console,
+            base44: {
+                functions: { invoke: async (name, body) => { requests.push({ name, body }); return { data: { anchor: home } }; } },
+                entities: { SavedRoute: { update: async (id, update) => writes.push(update) } },
+            },
+            toast: { loading() {}, success() {}, error: message => errors.push(message) },
+            startOptimizeProgress: () => ({ update() {}, stop() {} }),
+            ROAD_VERIFICATION: { ADOPTED: 'adopted' }, stampRoadVerification: () => ({ metadata: {} }),
+            tryRoadMatrixOptimize: async (order, bounds) => {
+                assert.equal(bounds.start?.address || null, explicit ? null : home.address);
+                assert.equal(bounds.end?.address || null, explicit ? null : home.address);
+                return { order, objective: { applyCandidate: true, appliedDistance: 3, estimatedSavings: 1 }, routingMetadata: {} };
+            },
+        });
+        vm.runInContext(executable('src/lib/routeOptimizeUpdate.js'), context);
+        vm.runInContext(executable('src/lib/reoptimizeRouteAction.js'), context);
+        await context.reoptimizeRoute({
+            id: 'route', assigned_to: 'rep', route_origin_mode: 'anchor_round_trip',
+            property_hashes: ['a', 'b', 'c'], properties, metadata: { anchor: { source: 'rep_base' } },
+        }, explicit ? { mode: 'route_only' } : {}, { user: { id: 'manager' } });
+        assert.deepEqual(errors, []);
+        assert.equal(writes.length, 1);
+        assert.equal(requests.length, explicit ? 0 : 1);
+        assert.equal(writes[0].route_origin_mode, explicit ? 'none' : 'anchor_round_trip');
+        assert.equal(writes[0].metadata.anchor?.source, explicit ? undefined : 'rep_base');
+        assert.equal(writes[0].start_location, null);
+        assert.equal(writes[0].end_location, null);
+        assert.equal(JSON.stringify(writes[0]).includes(home.address), false);
+    }
+});
+test('legacy routes assigned by User ID resolve only the verified member of their owning team', async () => {
+    const manager = setup();
+    manager.route.assigned_to = 'rep';
+    assert.equal((await manager.call({ action: 'set_route', route_id: 'route', source: 'rep_base' })).status, 200);
+    for (const actor of ['rep', 'peer']) {
+        const reader = setup({ actor });
+        Object.assign(reader.route, manager.route);
+        const result = await reader.call({ action: 'get_route', route_id: 'route' });
+        assert.equal(result.status, actor === 'rep' ? 200 : 403);
+        if (actor === 'rep') assert.deepEqual(result.data.anchor, home);
+        else assert.equal(JSON.stringify(result.data).includes(home.address), false);
+    }
+    const unverified = setup({ verified: false });
+    unverified.route.assigned_to = 'rep';
+    assert.equal((await unverified.call({ action: 'set_route', route_id: 'route', source: 'rep_base' })).status, 409);
+    assert.equal(unverified.writes.length, 0);
 });

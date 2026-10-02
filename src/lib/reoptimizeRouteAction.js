@@ -150,14 +150,14 @@ export async function reoptimizeRoute(route, options = {}, deps = {}) {
         // route_only means EXACTLY the doors: no map centre, no current GPS, no Home
         // Base, no stale saved bound. This path once fell back to the map centre,
         // silently anchoring the route to wherever the user happened to be looking.
-        const start = usingPrivateAnchor ? privateAnchor : optimizeFromCar ? carAnchor
+        const start = optimizeFromCar ? carAnchor
             : optimizeFromHome ? requestedHomeBase
             : usingCustomAnchors ? normalizeRouteAnchor(customAnchors?.start)
-            : null;
-        const end = usingPrivateAnchor ? privateAnchor : optimizeFromCar ? carAnchor
+            : usingPrivateAnchor ? privateAnchor : null;
+        const end = optimizeFromCar ? carAnchor
             : optimizeFromHome ? requestedHomeBase
             : usingCustomAnchors ? normalizeRouteAnchor(customAnchors?.end)
-            : null;
+            : usingPrivateAnchor ? privateAnchor : null;
         const routeOriginMode = usingPrivateAnchor ? ROUTE_ORIGIN_MODES.PRIVATE_ANCHOR_ROUND_TRIP : usingCustomAnchors
             ? (start || end ? ROUTE_ORIGIN_MODES.CUSTOM_BOUNDS : ROUTE_ORIGIN_MODES.NONE)
             : routeOriginModeForOptimizeMode(optimizeMode);

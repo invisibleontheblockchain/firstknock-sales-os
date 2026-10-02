@@ -24,7 +24,11 @@ async function verifiedMember(service, managerId, memberId) {
         const user = await service.entities.User.get(managerId);
         return { user, member: { id: managerId, name: user.full_name || 'Manager' } };
     }
-    const member = await service.entities.TeamMember.get(memberId).catch(() => null);
+    let member = await service.entities.TeamMember.get(memberId).catch(() => null);
+    if (!member) {
+        member = rows(await service.entities.TeamMember.filter({ manager_id: managerId, user_id: memberId }, '-created_date', 100))
+            .find(row => row.manager_id === managerId && row.user_id === memberId && normalized(row.status) !== 'inactive');
+    }
     if (!member || member.manager_id !== managerId || normalized(member.status) === 'inactive') {
         throw new HttpError(403, 'Choose an active member of your team.');
     }
