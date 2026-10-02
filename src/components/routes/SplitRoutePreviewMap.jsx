@@ -7,6 +7,7 @@ import {
   useMap,
 } from 'react-leaflet';
 import { CARTO_ATTRIBUTION } from '@/components/map/mapAttribution';
+import MapAttributionControl from '@/components/map/MapAttributionControl';
 import '@/components/map/leafletPatches';
 
 const ROUTE_COLORS = [
@@ -64,9 +65,10 @@ export default function SplitRoutePreviewMap({ routes, className = 'h-full w-ful
       preferCanvas={false}
     >
       <TileLayer
-        url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+        url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png?key=cb1_47jm_1_e43254c2ef5a3cbfc430e52f"
         attribution={CARTO_ATTRIBUTION}
       />
+      <MapAttributionControl />
       <FitSplitPreview routes={routes} />
       {routes.map((route, routeIndex) => {
         const color = previewColor(routeIndex);
