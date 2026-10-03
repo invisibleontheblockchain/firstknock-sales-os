@@ -72,6 +72,18 @@ function toolbar(initialRoute = route, actor = manager) {
     return { props, render, select, setAssign: callback => { assign = callback; } };
 }
 
+test('toolbar renders with no active route and no pending assignment', () => {
+    const view = toolbar();
+    for (const activeRoute of [null, undefined, {}]) {
+        view.props.activeRoute = activeRoute;
+        assert.doesNotThrow(() => view.render());
+    }
+    view.props.activeRoute = { ...route };
+    assert.equal(view.select().props.value, 'manager');
+    view.props.activeRoute = null;
+    assert.doesNotThrow(() => view.render());
+});
+
 test('rep anchor controls appear only for another assigned team member', () => {
     for (const [assignedTo, expected] of [[null, false], ['manager', false], ['self-member', false], ['rep-member', true], ['rep', true], ['missing-member', false]]) {
         const view = toolbar({ ...route, assigned_to: assignedTo });

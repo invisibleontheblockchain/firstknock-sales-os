@@ -375,7 +375,7 @@ export default function MapToolbar({
     ? routeBelongsToActingUser(activeRoute, user, teamMembers)
       ? user.id : assignedTeamMember?.id || activeRoute.assigned_to
     : '';
-  const displayedAssigneeId = pendingAssignment?.routeId === activeRoute?.id
+  const displayedAssigneeId = pendingAssignment && pendingAssignment.routeId === activeRoute?.id
     ? pendingAssignment.memberId : selectedAssigneeId;
   const canSplitActiveRoute = Boolean(
     activeRoute
