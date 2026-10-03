@@ -21,7 +21,7 @@ export default function SatelliteLanding() {
   <div className="layer" id="lRegion"><img id="region" alt="" src="/landing/satellite-region.jpg" /></div>
   <div className="layer" id="lWide"><img alt="" src="/landing/satellite-zoom-lux.jpg" /></div>
   <div className="layer" id="lTight">
-    <video id="fly" muted playsInline preload="metadata" poster="/landing/house-lux.jpg"></video>
+    <video id="fly" muted playsInline preload="auto" poster="/landing/house-lux.jpg"></video>
     <img id="sat" alt="" src="/landing/satellite-lux.jpg" />
   </div>
   <svg className="layer" id="ov" viewBox="0 0 2688 1520"></svg>
