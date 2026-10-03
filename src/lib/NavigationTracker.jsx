@@ -7,8 +7,7 @@ import { pagesConfig } from '@/pages.config';
 export default function NavigationTracker() {
     const location = useLocation();
     const { isAuthenticated } = useAuth();
-    const { Pages, mainPage } = pagesConfig;
-    const mainPageKey = mainPage ?? Object.keys(Pages)[0];
+    const { Pages } = pagesConfig;
 
     // Log user activity when navigating to a page
     useEffect(() => {
@@ -17,7 +16,7 @@ export default function NavigationTracker() {
         let pageName;
 
         if (pathname === '/' || pathname === '') {
-            pageName = mainPageKey;
+            return; // The public landing page is not a RoleSelect app visit.
         } else {
             // Remove leading slash and get the first segment
             const pathSegment = pathname.replace(/^\//, '').split('/')[0];
@@ -36,7 +35,7 @@ export default function NavigationTracker() {
                 // Silently fail - logging shouldn't break the app
             });
         }
-    }, [location, isAuthenticated, Pages, mainPageKey]);
+    }, [location, isAuthenticated, Pages]);
 
     return null;
 }

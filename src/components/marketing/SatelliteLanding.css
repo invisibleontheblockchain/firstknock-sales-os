@@ -1,0 +1,256 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600&family=Space+Grotesk:wght@500;600;700&display=swap');
+
+/* Shared chrome for the FirstKnock landing prototypes.
+   Each prototype is a standalone HTML file: Three.js from a CDN, scene code inline. */
+.fk-satellite {
+  --bg: #030604;
+  --g: #39ff4a;
+  --g2: #2eeb57;
+  --ink: #eafff0;
+  --mut: rgba(234, 255, 240, 0.58);
+  --line: rgba(57, 255, 74, 0.22);
+  --display: 'Space Grotesk', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.fk-satellite * { box-sizing: border-box; margin: 0; padding: 0; }
+.fk-satellite { scroll-behavior: smooth; }
+.fk-satellite {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--display);
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+.fk-satellite canvas#bg {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  display: block;
+}
+/* soft vignette so copy stays legible over the particles */
+.fk-satellite .vignette {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse at 50% 45%, transparent 35%, rgba(3, 6, 4, 0.78) 100%);
+}
+.fk-satellite nav {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: calc(env(safe-area-inset-top) + 16px) clamp(16px, 4vw, 40px) 16px;
+}
+.fk-satellite nav .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; letter-spacing: -0.02em; font-size: 17px; color: var(--ink); text-decoration: none; }
+.fk-satellite nav .brand img { width: 30px; height: 30px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.12); object-fit: cover; }
+.fk-satellite nav .sp { flex: 1; }
+.fk-satellite nav a.link { color: var(--mut); text-decoration: none; font-size: 13px; font-weight: 600; transition: color 0.15s; }
+.fk-satellite nav a.link:hover { color: var(--ink); }
+.fk-satellite .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 24px;
+  border-radius: 999px;
+  font: 700 15px var(--display);
+  letter-spacing: -0.01em;
+  text-decoration: none;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: transform 0.15s, box-shadow 0.2s, background 0.2s;
+}
+.fk-satellite .btn.primary { background: var(--g); color: #021005; box-shadow: 0 0 0 0 rgba(57, 255, 74, 0.5), 0 10px 40px rgba(57, 255, 74, 0.25); }
+.fk-satellite .btn.primary:hover { transform: translateY(-2px); box-shadow: 0 0 0 6px rgba(57, 255, 74, 0.14), 0 14px 50px rgba(57, 255, 74, 0.4); }
+.fk-satellite .btn.ghost { border-color: rgba(255, 255, 255, 0.2); color: var(--ink); background: rgba(255, 255, 255, 0.04); backdrop-filter: blur(8px); }
+.fk-satellite .btn.ghost:hover { border-color: var(--g); }
+.fk-satellite .btn.small { padding: 9px 16px; font-size: 13px; }
+.fk-satellite section {
+  position: relative;
+  z-index: 1;
+  min-height: 100vh;
+  min-height: 100svh;
+  display: flex;
+  align-items: center;
+  padding: 96px clamp(16px, 6vw, 96px);
+}
+.fk-satellite section.center { justify-content: center; text-align: center; }
+.fk-satellite .col { max-width: 640px; }
+.fk-satellite .center .col { max-width: 860px; }
+.fk-satellite .eyebrow {
+  font: 600 12px var(--mono);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--g);
+  margin-bottom: 18px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.fk-satellite .center .eyebrow { justify-content: center; }
+.fk-satellite .eyebrow::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--g); box-shadow: 0 0 12px var(--g); animation: fk-satellite-blink 1.6s ease-in-out infinite; }
+@keyframes fk-satellite-blink { 50% { opacity: 0.25; } }
+.fk-satellite h1, .fk-satellite h2, .fk-satellite p.lede { text-shadow: 0 2px 24px rgba(3, 6, 4, 0.9), 0 0 6px rgba(3, 6, 4, 0.7); }
+.fk-satellite h1 {
+  font-size: clamp(2.7rem, 8.4vw, 6.8rem);
+  line-height: 0.94;
+  letter-spacing: -0.045em;
+  font-weight: 700;
+}
+.fk-satellite h2 {
+  font-size: clamp(2rem, 5vw, 3.8rem);
+  line-height: 1;
+  letter-spacing: -0.04em;
+  font-weight: 700;
+}
+.fk-satellite .glow { color: var(--g); text-shadow: 0 0 34px rgba(57, 255, 74, 0.55); }
+.fk-satellite p.lede { margin-top: 22px; font-size: clamp(1rem, 1.6vw, 1.25rem); line-height: 1.55; color: var(--mut); max-width: 52ch; }
+.fk-satellite .center p.lede { margin-left: auto; margin-right: auto; }
+.fk-satellite .cta { margin-top: 34px; display: flex; flex-wrap: wrap; gap: 12px; }
+.fk-satellite .center .cta { justify-content: center; }
+.fk-satellite .stats { margin-top: 34px; display: flex; flex-wrap: wrap; gap: 28px; }
+.fk-satellite .stat b { display: block; font: 700 clamp(1.6rem, 3vw, 2.3rem) var(--display); letter-spacing: -0.03em; color: var(--g); }
+.fk-satellite .stat span { font: 500 11px var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--mut); }
+.fk-satellite .chip {
+  display: inline-block;
+  margin-top: 22px;
+  padding: 8px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(3, 6, 4, 0.55);
+  backdrop-filter: blur(8px);
+  font: 500 12px var(--mono);
+  color: var(--mut);
+}
+.fk-satellite .hint {
+  position: fixed;
+  left: 50%;
+  bottom: calc(env(safe-area-inset-bottom) + 20px);
+  transform: translateX(-50%);
+  z-index: 5;
+  font: 500 11px var(--mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--mut);
+  pointer-events: none;
+  transition: opacity 0.4s;
+}
+.fk-satellite .hint.gone { opacity: 0; }
+.fk-satellite .proto-tag {
+  position: fixed;
+  right: 14px;
+  bottom: calc(env(safe-area-inset-bottom) + 14px);
+  z-index: 10;
+  font: 500 10px var(--mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--mut);
+  background: rgba(3, 6, 4, 0.7);
+  border: 1px solid var(--line);
+  padding: 6px 10px;
+  border-radius: 8px;
+  text-decoration: none;
+}
+.fk-satellite .proto-tag:hover { color: var(--g); }
+.fk-satellite .nogl { position: fixed; inset: 0; z-index: 0; display: none; background: radial-gradient(circle at 50% 40%, rgba(57, 255, 74, 0.18), transparent 60%), var(--bg); }
+.fk-satellite .nogl.on { display: block; }
+@media (max-width: 640px) {
+  .fk-satellite nav a.link { display: none; }
+  .fk-satellite section { align-items: flex-end; padding-bottom: 14vh; }
+  .fk-satellite section.center { align-items: center; }
+  .fk-satellite .proto-tag { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fk-satellite { scroll-behavior: auto; }
+  .fk-satellite .eyebrow::before { animation: none; }
+}
+
+
+  .fk-satellite { background: #0d0d0d; }
+  /* three nested views of one place: the drone shot (tight), the subdivision (wide) and the region.
+     Each layer is 2688 × 1520 CSS px and gets its own transform, so it stays crisp at any zoom. */
+  .fk-satellite #stage { position: fixed; inset: 0; overflow: hidden; z-index: 0; background: #0d0d0d; }
+  .fk-satellite .layer { position: absolute; left: 0; top: 0; width: 2688px; height: 1520px; transform-origin: 0 0; }
+  .fk-satellite .layer > img, .fk-satellite .layer > video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .fk-satellite #sat { opacity: 0; }
+  .fk-satellite #ov { overflow: visible; pointer-events: none; }
+  .fk-satellite #ov { overflow: visible; pointer-events: none; }
+  .fk-satellite .shade { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
+  .fk-satellite #shadeL { background: linear-gradient(90deg, rgba(10, 12, 11, .78) 0%, rgba(10, 12, 11, .45) 34%, rgba(10, 12, 11, 0) 60%); }
+  .fk-satellite #shadeB { background: linear-gradient(0deg, rgba(10, 12, 11, .55), rgba(10, 12, 11, 0) 30%); }
+
+  .fk-satellite .steps { position: fixed; right: clamp(14px, 3vw, 36px); top: 50%; transform: translateY(-50%); z-index: 5; display: flex; flex-direction: column; gap: 14px; }
+  .fk-satellite .steps i { display: block; width: 8px; height: 8px; border-radius: 50%; border: 1px solid var(--g); opacity: .55; transition: all .3s; background: rgba(10, 12, 11, .4); }
+  .fk-satellite .steps i.on { background: var(--g); opacity: 1; box-shadow: 0 0 14px var(--g); transform: scale(1.35); }
+  .fk-satellite section.right { justify-content: flex-end; text-align: right; }
+  .fk-satellite section.right .eyebrow { justify-content: flex-end; }
+  .fk-satellite section.right p.lede { margin-left: auto; }
+  .fk-satellite h1, .fk-satellite h2, .fk-satellite p.lede { text-shadow: 0 2px 22px rgba(0, 0, 0, .85), 0 0 10px rgba(0, 0, 0, .6), 0 1px 3px rgba(0, 0, 0, .7); }
+  .fk-satellite p.lede { color: rgba(240, 255, 244, .82); }
+  .fk-satellite nav { background: linear-gradient(180deg, rgba(10, 12, 11, .55), rgba(10, 12, 11, 0)); }
+  .fk-satellite .col { opacity: 0; transform: translateY(28px); transition: opacity .8s cubic-bezier(.2, .7, .2, 1), transform .8s cubic-bezier(.2, .7, .2, 1); }
+  .fk-satellite .col.in { opacity: 1; transform: none; }
+  .fk-satellite .stat b { font-variant-numeric: tabular-nums; }
+  .fk-satellite .hint { color: rgba(240, 255, 244, .8); text-shadow: 0 1px 6px rgba(0, 0, 0, .6); }
+
+  /* overlay styling, borrowed from the app */
+  .fk-satellite .poly { fill: rgba(57, 255, 74, .16); stroke: #39ff4a; stroke-width: 4; stroke-linejoin: round; }
+  .fk-satellite .tag rect { fill: #f4f4f4; stroke: rgba(0, 0, 0, .2); stroke-width: 1.5; }
+  .fk-satellite .tag text { font: 600 26px 'Space Grotesk', system-ui, sans-serif; fill: #111; }
+  .fk-satellite .lead { fill: none; stroke: #39ff4a; stroke-width: 4; }
+  .fk-satellite .pin circle { stroke: #0d0d0d; stroke-width: 5; }
+  .fk-satellite .pin text { font: 700 26px 'Space Grotesk', system-ui, sans-serif; fill: #0d0d0d; text-anchor: middle; dominant-baseline: central; }
+  .fk-satellite .route { fill: none; stroke-width: 9; stroke-linecap: round; stroke-linejoin: round; }
+  .fk-satellite .ring text { font: 700 34px 'Space Grotesk', system-ui, sans-serif; text-anchor: middle; dominant-baseline: central; }
+  /* hero copy sits low on the lawn so the house and its green door stay clear */
+  .fk-satellite section.hero { align-items: flex-end; padding-bottom: 10vh; }
+  /* the hero lockup: kicker pill, two-line headline (one sentence per line), subhead */
+  .fk-satellite section.hero .col { max-width: none; }
+  .fk-satellite section.hero h1 { font-size: clamp(2.1rem, 3.9vw, 4.3rem); line-height: 1.02; letter-spacing: -.04em; }
+  .fk-satellite section.hero h1 .ln { display: block; }
+  @media (min-width: 900px) { .fk-satellite section.hero h1 .ln { white-space: nowrap; } }
+  .fk-satellite section.hero p.lede { font-size: clamp(1.05rem, 1.45vw, 1.35rem); color: rgba(244, 255, 246, .92); margin-top: 18px; max-width: 62ch; }
+  .fk-satellite section.hero .cta { margin-top: 28px; }
+  .fk-satellite .kicker { display: inline-flex; align-items: center; gap: 10px; margin-bottom: 20px; padding: 8px 14px; border-radius: 999px;
+    background: rgba(10, 12, 11, .62); border: 1px solid rgba(57, 255, 74, .35); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    font: 600 12px var(--mono); letter-spacing: .16em; text-transform: uppercase; color: #eafff0; }
+  .fk-satellite .kicker i { width: 8px; height: 8px; border-radius: 50%; background: var(--g); box-shadow: 0 0 12px var(--g); animation: fk-satellite-blink 1.6s ease-in-out infinite; }
+  .fk-satellite #shadeB { background: linear-gradient(0deg, rgba(10, 12, 11, .9) 0%, rgba(10, 12, 11, .6) 28%, rgba(10, 12, 11, .15) 52%, rgba(10, 12, 11, 0) 64%), linear-gradient(90deg, rgba(10, 12, 11, .45) 0%, rgba(10, 12, 11, 0) 55%); }
+  .fk-satellite .legend { position: fixed; right: clamp(16px, 4vw, 48px); bottom: calc(env(safe-area-inset-bottom, 0px) + 64px); z-index: 6; width: 236px; padding: 14px 16px;
+    border-radius: 14px; background: rgba(13, 13, 13, .82); border: 1px solid rgba(255, 255, 255, .12); backdrop-filter: blur(10px); opacity: 0; pointer-events: none; }
+  .fk-satellite .lg-h { font: 600 11px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--mut); margin-bottom: 10px; }
+  .fk-satellite .lg-r { display: flex; align-items: center; gap: 10px; padding: 5px 0; font: 600 14px var(--display); color: var(--ink); }
+  .fk-satellite .lg-r i { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+  .fk-satellite .lg-r span { margin-left: auto; font: 500 12px var(--mono); color: var(--mut); font-variant-numeric: tabular-nums; }
+  .fk-satellite .lg-f { display: flex; justify-content: space-between; margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255, 255, 255, .1); font: 500 12px var(--mono); color: var(--mut); }
+  .fk-satellite .lg-f b { color: var(--g); font-weight: 600; }
+  .fk-satellite .walk-tag rect { fill: #f4f4f4; }
+  .fk-satellite .walk-tag text { font: 700 17px 'Space Grotesk', system-ui, sans-serif; fill: #111; }
+  @media (max-width: 640px) {
+    .fk-satellite .legend { display: none; }
+    .fk-satellite .steps { display: none; }
+    .fk-satellite #shadeL { background: linear-gradient(0deg, rgba(10, 12, 11, .85) 0%, rgba(10, 12, 11, .4) 45%, rgba(10, 12, 11, 0) 70%); }
+  }
+  @media (prefers-reduced-motion: reduce) { .fk-satellite .col { opacity: 1; transform: none; transition: none; } }
+
+
+.fk-satellite { height: 100%; width: 100%; overflow-y: auto; overflow-x: hidden; position: relative; isolation: isolate; scroll-behavior: smooth; }
+.fk-satellite .final-title { font-size: clamp(2.4rem, 7vw, 5.5rem); }
+.fk-satellite a:focus-visible { outline: 2px solid var(--g); outline-offset: 5px; }
+@media (max-width: 640px) {
+  .fk-satellite nav { gap: 8px; padding-left: 12px; padding-right: 12px; }
+  .fk-satellite nav .brand { gap: 6px; font-size: 14px; }
+  .fk-satellite nav .brand img { width: 24px; height: 24px; }
+  .fk-satellite nav a.link { display: inline-flex; white-space: nowrap; font-size: 12px; }
+  .fk-satellite nav .btn.small { padding: 9px 10px; font-size: 11px; gap: 4px; white-space: nowrap; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fk-satellite { scroll-behavior: auto; }
+  .fk-satellite .kicker i { animation: none; }
+}
