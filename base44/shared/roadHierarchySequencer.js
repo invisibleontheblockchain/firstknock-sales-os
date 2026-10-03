@@ -42,6 +42,7 @@ import { osrmCounters, resetOsrmCounters } from './osrmDispatcher.js';
 import { refineWindowSeams } from './roadSeamRefinement.js';
 import { repairBarrierWindows, DEFAULT_BARRIER_EXCESS_MILES } from './barrierWindowRepair.js';
 import { repairWorstTransitions } from './roadHotspotRepair.js';
+import { repairBranchReentries } from './branchConsolidationRepair.js';
 
 export const HIERARCHY_VERSION = 'road_hierarchy_v1';
 
@@ -448,7 +449,14 @@ export async function sequenceRoadHierarchy(properties, options = {}) {
         // injected explicitly: with no measurer the layer is skipped rather than
         // guessing which legs are long.
         measurePath = null,
-        hotspotOptions = null
+        hotspotOptions = null,
+        //   branchRepair - level 5. Detects single-entry areas from road cost
+        //                  (articulation points) and consolidates any that the
+        //                  finished order enters more than once. Off by default
+        //                  so it enters production the same way every other
+        //                  layer here did: by measuring shorter on real routes.
+        branchRepair = false,
+        branchOptions = null
     } = options;
     const maxWindowDoors = Math.max(2, Math.min(Number(windowDoors) || DEFAULT_WINDOW_DOORS, MAX_CLUSTER_DOORS));
 
@@ -798,6 +806,37 @@ export async function sequenceRoadHierarchy(properties, options = {}) {
         telemetry.matrix_request_count += hotspot.telemetry.hotspot_matrix_requests;
         telemetry.final_leg_distribution = hotspot.distribution;
         telemetry.pre_hotspot_leg_distribution = hotspot.startDistribution;
+
+        // ---- Level 5: enter a single-entry branch once, serve it, leave. ----
+        //
+        // Everything above optimizes distance. This is the one rule distance
+        // cannot express: re-entering a peninsula is not expensive, it is wrong,
+        // and a shortest-path search will do it whenever the arithmetic works
+        // out. Measured on Route 1H after the pipeline fix reached 394.1 road
+        // miles, 53% of its single-entry branches were still entered more than
+        // once (87 of 163 at a 0.35-mile adjacency threshold).
+        //
+        // Every consolidation is measured on the road network and kept only when
+        // it is shorter, so this layer can decline to help but cannot lengthen a
+        // route. It runs last because it needs a finished order to find the
+        // violations in.
+        if (branchRepair) {
+            const branches = await repairBranchReentries(finalOrder, {
+                startLocation,
+                endLocation,
+                measurePath,
+                fetchMatrix,
+                baseUrl,
+                profile,
+                timeoutMs,
+                refinementStepBudget: perClusterBudget,
+                ...(branchOptions || {})
+            });
+            finalOrder = branches.order;
+            Object.assign(telemetry, branches.telemetry);
+            telemetry.matrix_request_count += branches.telemetry.branch_adjacency_requests
+                + branches.telemetry.branch_repair_matrix_requests;
+        }
     }
 
     telemetry.cluster_seam_legs = Math.max(0, orderedClusters.length - 1);
