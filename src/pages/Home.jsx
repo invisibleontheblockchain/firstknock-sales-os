@@ -560,9 +560,8 @@ export default function Home() {
             if (response.data.notice) toast.info(response.data.notice);
 
             // Update local state if active
-            if (activeRoute && activeRoute.id === routeId) {
-                setActiveRoute(prev => mergeAnchoredRoute(prev, saved));
-            }
+            setActiveRoute(prev => prev?.id === routeId ? mergeAnchoredRoute(prev, saved) : prev);
+            return saved;
         } catch (e) {
             console.error(e);
             toast.error(e.response?.data?.error || 'Assignment failed');
