@@ -23,8 +23,7 @@ const Pages = Object.fromEntries(
   ])
 );
 
-const mainPageKey = 'RoleSelect';
-const MainPage = Pages[mainPageKey];
+const SatelliteLanding = React.lazy(() => import('@/components/marketing/SatelliteLanding'));
 
 const LayoutWrapper = ({ children, currentPageName }) => Layout ?
   <Layout currentPageName={currentPageName}>{children}</Layout>
@@ -53,6 +52,7 @@ const AUTH_PAGE_KEYS = new Set(['Login', 'Register', 'ForgotPassword', 'ResetPas
 
 const RoutedApp = () => (
   <Routes>
+    <Route path="/" element={<SatelliteLanding />} />
     <Route path="/login" element={<Pages.Login />} />
     <Route path="/register" element={<Pages.Register />} />
     <Route path="/forgot-password" element={<Pages.ForgotPassword />} />
@@ -61,11 +61,6 @@ const RoutedApp = () => (
     <Route path="/find" element={<Pages.Find />} />
 
     <Route element={<ProtectedRoute />}>
-      <Route path="/" element={
-        <LayoutWrapper currentPageName={mainPageKey}>
-          <MainPage />
-        </LayoutWrapper>
-      } />
       {Object.entries(Pages)
         .filter(([path]) => !AUTH_PAGE_KEYS.has(path))
         .map(([path, Page]) => (
