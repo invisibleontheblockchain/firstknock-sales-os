@@ -4,9 +4,7 @@ import { MapContainer, TileLayer, CircleMarker, Circle, Polyline, Tooltip, useMa
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { routePropertyOrderFingerprint } from '@/components/logic/routeRoadContext';
-import MapAttributionControl from '@/components/map/MapAttributionControl';
 import { DEFAULT_PIN_THEME } from '@/components/map/mapPinThemes';
-import { ESRI_IMAGERY_ATTRIBUTION } from '@/components/map/mapAttribution';
 import { outcomeColor } from '@/components/logic/outcomeStatus';
 
 // Fix Leaflet unmount error during scroll wheel zoom

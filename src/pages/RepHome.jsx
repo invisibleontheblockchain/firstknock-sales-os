@@ -66,6 +66,7 @@ import TeamChat from '@/components/rep/TeamChat';
 import KnockLimitSheet from '@/components/upgrade/KnockLimitSheet';
 import KnockLimitBanner from '@/components/upgrade/KnockLimitBanner';
 import { createOutcomeIdempotencyKey, getOutcomeGateFromError } from '@/components/upgrade/knockGate';
+import { ensureRepRouteIdentity, repRouteIdentityNeedsClaim } from '@/lib/repRouteIdentity';
 import { geocodeAddress } from '@/lib/geocoding';
 import { calculateRouteDistanceMiles, isValidRoutePoint } from '@/lib/routeBounds';
 import { getFieldRoutesCapability } from '@/api/fieldRoutes';
@@ -189,6 +190,22 @@ export default function RepHome() {
     return () => window.removeEventListener('fk-navigation-app-changed', handler);
   }, []);
 
+  const {
+    isLoading: routeIdentityLoading,
+    isError: routeIdentityError,
+    refetch: retryRouteIdentity,
+  } = useQuery({
+    queryKey: ['verifiedRepRouteIdentity', user?.id],
+    queryFn: async () => {
+      const verifiedUser = await ensureRepRouteIdentity(base44, user);
+      queryClient.setQueryData(['user'], verifiedUser);
+      return true;
+    },
+    enabled: repRouteIdentityNeedsClaim(user),
+    retry: false,
+    staleTime: Infinity,
+  });
+
   // 0. Fetch Team Member Profile (to link Auth User -> Team Member ID)
   const teamTenantIdentity = user?.team_manager_id || user?.data?.team_manager_id || user?.id || '';
   const userEmail = user?.email || user?.data?.email || '';
@@ -304,7 +321,7 @@ export default function RepHome() {
         return collectKnockRoutes([cached || []], routeScope);
       }
     },
-    enabled: !!user && !teamMembersLoading
+    enabled: !!user && !teamMembersLoading && !routeIdentityLoading && !routeIdentityError
   });
 
   // --- Derived State ---
@@ -369,7 +386,7 @@ export default function RepHome() {
   const activeRouteArchived = activeRouteStatus === 'ARCHIVED';
   const activeRouteCompleted = activeRouteStatus === 'COMPLETED';
   const activeRouteCanComplete = !activeRouteArchived && !activeRouteCompleted;
-  const routeIdentityUnavailable = teamMemberLookupFailed && !routeScope.managerAccount;
+  const routeIdentityUnavailable = (teamMemberLookupFailed || routeIdentityError) && !routeScope.managerAccount;
   const activeRouteBelongsToCurrentUser = Boolean(
     activeRoute?.assigned_to && (
       activeRoute.assigned_to === user?.id || allTeamMemberIds.includes(activeRoute.assigned_to)
@@ -1340,7 +1357,7 @@ export default function RepHome() {
     setSelectedPropertyKeys((previous) => togglePropertySelection(previous, property));
   }, [activeRouteArchived, bulkActionMutation.isPending]);
 
-  if (teamMembersLoading || routesLoading || propsLoading || logsLoading || (!activeRoute && canvasAssignmentsLoading)) {
+  if (routeIdentityLoading || teamMembersLoading || routesLoading || propsLoading || logsLoading || (!activeRoute && canvasAssignmentsLoading)) {
     return (
       <div className="flex h-screen items-center justify-center bg-black text-white">
                 <div className="text-center">
@@ -1411,6 +1428,7 @@ export default function RepHome() {
                   </p>
                 )}
                 <Button onClick={() => {
+                  if (routeIdentityError) retryRouteIdentity();
                   setCanvasFieldDismissed(false);
                   refetchCanvasAssignments();
                   queryClient.invalidateQueries({ queryKey: ['myTeamMember'] });

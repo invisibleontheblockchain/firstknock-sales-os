@@ -178,7 +178,7 @@ test('Knock UI uses the complete scoped collection and compact accessible Home B
   assert.match(repHome, /collectKnockRoutes\(routeGroups, routeScope\)/);
   assert.doesNotMatch(repHome, /\['completed', 'archived'\].*filter/i);
   assert.match(repHome, /await localforage\.setItem\(routeCacheKey, accountRoutes\)/);
-  assert.match(repHome, /if \(teamMembersLoading \|\| routesLoading/);
+  assert.match(repHome, /if \(routeIdentityLoading \|\| teamMembersLoading \|\| routesLoading/);
   assert.match(repHome, /aria-expanded=\{homeBasePanelOpen\}/);
   assert.match(repHome, /aria-controls="rep-home-base-controls"/);
   assert.match(repHome, /role="region" aria-labelledby="rep-home-base-toggle"/);
@@ -286,9 +286,24 @@ test('route switcher modal clears the persistent bottom navigation stacking laye
 test('identity outages are not presented as an empty assignment list', () => {
   const repHome = readSource('src/pages/RepHome.jsx');
 
-  assert.match(repHome, /const routeIdentityUnavailable = teamMemberLookupFailed && !routeScope\.managerAccount/);
+  assert.match(repHome, /const routeIdentityUnavailable = \(teamMemberLookupFailed \|\| routeIdentityError\) && !routeScope\.managerAccount/);
   assert.match(repHome, /Routes Temporarily Unavailable/);
   assert.match(repHome, /Your saved route cache was preserved/);
   assert.match(repHome, /queryKey: \['myTeamMember'\]/);
   assert.match(repHome, /routeIdentityUnavailable \? 'Try Again' : 'Check Again'/);
+});
+
+test('Maps can discover TeamMember assignments from the server-protected rep identity', () => {
+  for (const user of [
+    { id: 'rep', app_role: 'rep', team_manager_id: 'manager', team_member_id: 'member' },
+    { id: 'rep', data: { app_role: 'rep', team_manager_id: 'manager', team_member_id: 'member' } },
+  ]) {
+    const scope = buildRepRouteScope(user);
+    assert.deepEqual(buildSavedRouteQueryFilters(scope), [{ assigned_to: 'rep' }, { assigned_to: 'member' }]);
+    const routes = collectKnockRoutes([[
+      { id: 'mine', manager_id: 'manager', assigned_to: 'member' },
+      { id: 'peer', manager_id: 'manager', assigned_to: 'peer' },
+    ]], scope);
+    assert.deepEqual(routes.map(route => route.id), ['mine']);
+  }
 });

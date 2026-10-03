@@ -16,7 +16,7 @@ const properties = [
     { address_hash: 'b', lat: 33.471, lng: -112.064 },
     { address_hash: 'c', lat: 33.461, lng: -112.074 },
 ];
-function setup({ actor = 'manager', base = home, auto = true, verified = true, pending = false, missingDoor = false } = {}) {
+function setup({ actor = 'manager', base = home, auto = true, verified = true, pending = false, missingDoor = false, missingAnchorEntity = false } = {}) {
     const users = {
         manager: { id: 'manager', app_role: 'manager', full_name: 'Manager' },
         rep: { id: 'rep', app_role: 'rep', team_manager_id: verified ? 'manager' : 'other', email: 'rep@example.com', home_base: base, home_base_auto_assign: auto },
@@ -42,6 +42,11 @@ function setup({ actor = 'manager', base = home, auto = true, verified = true, p
             delete: async id => { const index = records.findIndex(record => record.id === id); if (index >= 0) records.splice(index, 1); },
         },
     } };
+    if (missingAnchorEntity) {
+        for (const method of ['filter', 'create', 'delete']) {
+            service.entities.RouteAnchor[method] = async () => { throw new Error('Entity schema RouteAnchor not found in app'); };
+        }
+    }
     const client = { auth: { me: async () => users[actor] }, asServiceRole: service, functions: { invoke: async (name, body) => {
         assert.equal(name, 'getRoutePropertiesByHashes'); assert.equal(body.route_id, 'route');
         return { data: { properties: properties.filter(property => body.address_hashes.includes(property.address_hash) && (!missingDoor || property.address_hash !== 'c')) } };
@@ -177,7 +182,7 @@ test('unassigning removes the private anchor and recalculates distance between d
     assert.equal(state.route.metrics.distance, Math.round(calculateRouteDistanceMiles(state.route.property_hashes.map(hash => properties.find(property => property.address_hash === hash))) * 100) / 100);
 });
 test('private anchor entity denies direct client access and hydrated map doors follow saved order', () => {
-    const schema = JSON.parse(read('base44/entities/route-anchor.jsonc'));
+    const schema = JSON.parse(read('base44/entities/RouteAnchor.jsonc'));
     for (const operation of ['read', 'create', 'update', 'delete']) assert.equal(schema.rls[operation], false);
     assert.equal(JSON.parse(read('base44/entities/TeamMember.jsonc')).properties.home_base, undefined);
     const merged = mergeAnchoredRoute({ properties, startLocation: home }, { property_hashes: ['c', 'a', 'b'], route_origin_mode: 'anchor_round_trip', metrics: { distance: 1, house_count: 3 } });
@@ -288,5 +293,50 @@ test('manager can repeatedly switch an anchored route from Me to a rep and back 
         assert.equal(state.route.route_origin_mode, 'none');
         assert.equal(state.records.length, 0);
         assert.deepEqual(new Set(state.route.property_hashes), new Set(['a', 'b', 'c']));
+    }
+});
+
+test('assignment and rep-to-manager reassignment work when custom anchor storage is unavailable', async () => {
+    for (const options of [{}, { base: null }, { auto: false }, { pending: true }]) {
+        const state = setup({ ...options, missingAnchorEntity: true });
+        for (const memberId of ['manager', 'member', 'manager', 'peerMember', '']) {
+            const result = await state.call({ action: 'assign', route_id: 'route', member_id: memberId });
+            assert.equal(result.status, 200, JSON.stringify({ options, memberId, result }));
+            assert.equal(state.route.assigned_to, memberId || null);
+        }
+        assert.equal(state.records.length, 0);
+    }
+});
+test('custom anchor storage failures preserve assignment and previous private anchor metadata', async () => {
+    const state = setup({ missingAnchorEntity: true });
+    const before = JSON.stringify(state.route);
+    assert.equal((await state.call({ action: 'set_route', route_id: 'route', source: 'custom', location: custom })).status, 500);
+    assert.equal(JSON.stringify(state.route), before);
+    assert.equal(state.writes.length, 0);
+    state.route.metadata.anchor = { source: 'custom', record_id: 'existing-anchor' };
+    state.route.route_origin_mode = 'anchor_round_trip';
+    const anchoredBefore = JSON.stringify(state.route);
+    assert.equal((await state.call({ action: 'assign', route_id: 'route', member_id: 'peerMember' })).status, 500);
+    assert.equal(JSON.stringify(state.route), anchoredBefore);
+    assert.equal(state.writes.length, 0);
+});
+
+test('rep loses both base and custom anchor access after manager reassignment', async () => {
+    for (const source of ['rep_base', 'custom']) {
+        const manager = setup();
+        assert.equal((await manager.call({ action: 'set_route', route_id: 'route', source, ...(source === 'custom' ? { location: custom } : {}) })).status, 200);
+        const previousRep = setup({ actor: 'rep' });
+        Object.assign(previousRep.route, manager.route);
+        previousRep.records.push(...manager.records);
+        assert.equal((await previousRep.call({ action: 'get_route', route_id: 'route' })).status, 200);
+        assert.equal((await manager.call({ action: 'assign', route_id: 'route', member_id: 'peerMember' })).status, 200);
+        Object.assign(previousRep.route, manager.route);
+        const denied = await previousRep.call({ action: 'get_route', route_id: 'route' });
+        assert.equal(denied.status, 403);
+        assert.equal(JSON.stringify(denied.data).includes(home.address), false);
+        assert.equal(JSON.stringify(denied.data).includes(custom.address), false);
+        const nextRep = setup({ actor: 'peer' });
+        Object.assign(nextRep.route, manager.route);
+        assert.equal((await nextRep.call({ action: 'get_route', route_id: 'route' })).status, 200);
     }
 });

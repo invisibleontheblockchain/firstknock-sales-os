@@ -54,7 +54,8 @@ export function buildRepRouteScope(user, teamMemberMatches = []) {
   const primaryTeamMember = scopedMatches.find((member) => normalizeId(member?.user_id) === userId)
     || scopedMatches[0]
     || null;
-  const teamMemberIds = [...new Set(scopedMatches.map((member) => normalizeId(member?.id)).filter(Boolean))];
+  const trustedMemberId = normalizeId(user?.team_member_id || user?.data?.team_member_id);
+  const teamMemberIds = [...new Set([trustedMemberId, ...scopedMatches.map((member) => normalizeId(member?.id))].filter(Boolean))];
   const assigneeIds = [...new Set([userId, ...teamMemberIds].filter(Boolean))];
 
   return {

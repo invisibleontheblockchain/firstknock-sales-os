@@ -103,7 +103,8 @@ async function claimExistingMembership(service, user) {
 
     const userUpdates = {
         app_role: 'rep',
-        team_manager_id: selectedManagerId
+        team_manager_id: selectedManagerId,
+        team_member_id: member.id
     };
     if (member.invite_code) userUpdates.team_invite_code = member.invite_code;
     await service.entities.User.update(user.id, userUpdates);
@@ -238,6 +239,7 @@ Deno.serve(async (req) => {
         await service.entities.User.update(user.id, {
             app_role: validCode.role,
             team_manager_id: managerId,
+            team_member_id: member.id,
             team_invite_code: validCode.code
         });
 
