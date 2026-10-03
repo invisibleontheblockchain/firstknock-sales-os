@@ -12,8 +12,14 @@
       "rls": {
         "write": {
           "$or": [
-            { "data.manager_id": "{{user.id}}" },
-            { "user_condition": { "role": "admin" } }
+            {
+              "data.manager_id": "{{user.id}}"
+            },
+            {
+              "user_condition": {
+                "role": "admin"
+              }
+            }
           ]
         }
       }
@@ -24,8 +30,14 @@
       "rls": {
         "write": {
           "$or": [
-            { "data.manager_id": "{{user.id}}" },
-            { "user_condition": { "role": "admin" } }
+            {
+              "data.manager_id": "{{user.id}}"
+            },
+            {
+              "user_condition": {
+                "role": "admin"
+              }
+            }
           ]
         }
       }
@@ -50,8 +62,14 @@
       "rls": {
         "write": {
           "$or": [
-            { "data.manager_id": "{{user.id}}" },
-            { "user_condition": { "role": "admin" } }
+            {
+              "data.manager_id": "{{user.id}}"
+            },
+            {
+              "user_condition": {
+                "role": "admin"
+              }
+            }
           ]
         }
       }
@@ -66,8 +84,14 @@
       "rls": {
         "write": {
           "$or": [
-            { "data.manager_id": "{{user.id}}" },
-            { "user_condition": { "role": "admin" } }
+            {
+              "data.manager_id": "{{user.id}}"
+            },
+            {
+              "user_condition": {
+                "role": "admin"
+              }
+            }
           ]
         }
       }
@@ -82,8 +106,14 @@
       "rls": {
         "write": {
           "$or": [
-            { "data.manager_id": "{{user.id}}" },
-            { "user_condition": { "role": "admin" } }
+            {
+              "data.manager_id": "{{user.id}}"
+            },
+            {
+              "user_condition": {
+                "role": "admin"
+              }
+            }
           ]
         }
       }
@@ -94,8 +124,14 @@
       "rls": {
         "write": {
           "$or": [
-            { "data.manager_id": "{{user.id}}" },
-            { "user_condition": { "role": "admin" } }
+            {
+              "data.manager_id": "{{user.id}}"
+            },
+            {
+              "user_condition": {
+                "role": "admin"
+              }
+            }
           ]
         }
       }
@@ -128,16 +164,16 @@
     "read": {
       "$or": [
         {
-          "manager_id": "{{user.id}}"
+          "data.manager_id": "{{user.id}}"
         },
         {
-          "email": "{{user.email}}"
+          "data.email": "{{user.email}}"
         },
         {
           "created_by": "{{user.email}}"
         },
         {
-          "manager_id": "{{user.data.team_manager_id}}"
+          "data.manager_id": "{{user.data.team_manager_id}}"
         },
         {
           "user_condition": {
@@ -149,13 +185,13 @@
     "update": {
       "$or": [
         {
-          "manager_id": "{{user.id}}"
+          "data.manager_id": "{{user.id}}"
         },
         {
           "created_by": "{{user.email}}"
         },
         {
-          "email": "{{user.email}}"
+          "data.email": "{{user.email}}"
         },
         {
           "user_condition": {
@@ -167,7 +203,7 @@
     "delete": {
       "$or": [
         {
-          "manager_id": "{{user.id}}"
+          "data.manager_id": "{{user.id}}"
         },
         {
           "created_by": "{{user.email}}"
