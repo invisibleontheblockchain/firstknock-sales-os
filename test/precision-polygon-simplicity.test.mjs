@@ -65,7 +65,7 @@ const VALID = [
   ['consecutive duplicate vertex', [RECTANGLE[0], RECTANGLE[1], RECTANGLE[1], RECTANGLE[2], RECTANGLE[3]]]
 ];
 
-/* ── Invalid geometry: every one of these must be rejected ── */
+/* ── Repairable geometry: every crossing must become a simple ring ── */
 
 const INVALID = [
   // Classic bow-tie: edge 0-1 crosses edge 2-3.
@@ -156,7 +156,25 @@ test('POLYSIMP-06 both start endpoints accept the same repaired crossing polygon
 
     assert.equal(result.status, 200, `${name} must accept repaired freehand input`);
     assert.ok(result.createdJob, `${name}: a FetchJob must be created`);
+    assert.equal(result.createdJob.dry_run_metadata.polygon_repaired, true, `${name}: repair must be auditable`);
     assert.equal(findPolygonSelfIntersection(result.createdJob.polygon), null, `${name}: stored polygon must be simple`);
+    assert.deepEqual(result.body.polygon, result.createdJob.polygon, `${name}: the client receives the stored canonical polygon`);
+    assert.equal(result.body.polygon_hash, result.createdJob.polygon_hash, `${name}: client and job identities must match`);
+    assert.equal(result.body.polygon_repaired, true, `${name}: the start response discloses repair`);
+  }
+});
+
+test('POLYSIMP-06b dry runs return the same canonical polygon that a real start stores', async () => {
+  const [, bowTie] = INVALID[0];
+
+  for (const [name, path] of START_PATHS) {
+    const dryRun = await runStartPath(path, { body: orderBody({ polygon: bowTie, dry_run: true }) });
+    const started = await runStartPath(path, { body: orderBody({ polygon: bowTie }) });
+
+    assert.equal(dryRun.status, 200, `${name}: dry run must accept repaired input`);
+    assert.deepEqual(dryRun.body.polygon, started.createdJob.polygon, `${name}: dry run and start geometry must match`);
+    assert.equal(dryRun.body.polygon_hash, started.createdJob.polygon_hash, `${name}: dry run and start hashes must match`);
+    assert.equal(dryRun.body.polygon_repaired, true, `${name}: dry run must disclose repair`);
   }
 });
 
@@ -213,13 +231,13 @@ test('POLYSIMP-10 winding order is preserved, not normalized', async () => {
   );
 });
 
-/* ══════ 4. Defense in depth: the processor fails before the network ══════ */
+/* ══════ 4. Defense in depth: the processor repairs before the network ══════ */
 //
 // A job stored before this validation existed can still carry a crossing
-// polygon. The processor must refuse it while building the request, so the
-// provider is never called and the user never sees a raw 500.
+// polygon. The processor must repair it while building the request, and local
+// containment must use that same usable boundary.
 
-test('POLYSIMP-11 the processor refuses a crossing polygon without calling the provider', async () => {
+test('POLYSIMP-11 the processor repairs a legacy crossing polygon in every polygon mode', async () => {
   const { readFileSync } = await import('node:fs');
   const { resolve } = await import('node:path');
   const vm = (await import('node:vm')).default;
@@ -237,9 +255,9 @@ test('POLYSIMP-11 the processor refuses a crossing polygon without calling the p
   let providerCalls = 0;
   let collected = null;
   vm.runInNewContext(`${transpiled.outputText.replace(/^import .*;\s*$/gm, '')}
-;__collect({ buildBatchDataRequest });`, {
+;__collect({ buildBatchDataRequest, canonicalizeStoredPrecisionPolygon, mapBatchDataProperty });`, {
     __collect: (value) => { collected = value; },
-    findPolygonSelfIntersection,
+    normalizePrecisionPolygon,
     Deno: { env: { get: () => undefined }, serve: () => {} },
     createClientFromRequest: () => ({}),
     neon: () => (() => {}),
@@ -252,18 +270,58 @@ test('POLYSIMP-11 the processor refuses a crossing polygon without calling the p
     Promise, Uint8Array, isNaN, isFinite, parseInt, parseFloat
   }, { filename: path });
 
-  const buildBatchDataRequest = collected.buildBatchDataRequest;
+  const { buildBatchDataRequest, canonicalizeStoredPrecisionPolygon, mapBatchDataProperty } = collected;
   const [, bowTie] = INVALID[0];
+  const legacyJob = {
+    id: 'legacy_crossing_job',
+    polygon: bowTie,
+    polygon_hash: 'legacy_raw_crossing_hash',
+    latitude: 33.865,
+    longitude: -83.39,
+    sold_months: 12,
+    dry_run_metadata: { filters: {} }
+  };
 
-  assert.throws(
-    () => buildBatchDataRequest(
-      { polygon: bowTie, latitude: 33.865, longitude: -83.39, sold_months: 12, dry_run_metadata: { filters: {} } },
-      0, 100, 'strict_polygon'
-    ),
-    /crosses itself/i,
-    'building a polygon request over a crossing boundary must fail'
-  );
+  for (const mode of ['strict_polygon', 'broad_polygon']) {
+    const request = buildBatchDataRequest(legacyJob, 0, 100, mode);
+    const points = request.searchCriteria.address.geoLocationPolygon.geoPoints
+      .map((point) => ({ lat: point.latitude, lng: point.longitude }));
+    assert.equal(findPolygonSelfIntersection(points), null, `${mode}: provider boundary must be simple`);
+  }
+
+  const mapped = mapBatchDataProperty({
+    address: {
+      street: '100 Main Street', city: 'Athens', state: 'GA', zip: '30601',
+      location: { latitude: 33.865, longitude: -83.39 }
+    },
+    general: { standardizedLandUseCode: 'R2', propertyType: 'Single Family' }
+  }, legacyJob);
+  assert.ok(mapped, 'local containment must use the repaired boundary too');
   assert.equal(providerCalls, 0, 'the provider must never be contacted');
+
+  const updates = [];
+  const canonicalJob = await canonicalizeStoredPrecisionPolygon({
+    asServiceRole: {
+      entities: {
+        FetchJob: {
+          get: async () => ({
+            ...legacyJob,
+            dry_run_metadata: { ...legacyJob.dry_run_metadata, processor_rekick_count: 2 }
+          }),
+          update: async (id, update) => updates.push({ id, update })
+        }
+      }
+    }
+  }, legacyJob);
+  assert.equal(updates.length, 1, 'legacy repair must be persisted exactly once');
+  assert.equal(updates[0].id, legacyJob.id);
+  assert.equal(findPolygonSelfIntersection(updates[0].update.polygon), null, 'persisted geometry must be simple');
+  assert.equal(updates[0].update.dry_run_metadata.polygon_repaired, true, 'persisted repair must be auditable');
+  assert.equal(updates[0].update.dry_run_metadata.processor_rekick_count, 2,
+    'canonicalization must preserve the freshest processor metadata');
+  assert.equal(updates[0].update.dry_run_metadata.polygon_repair_original_hash, legacyJob.polygon_hash);
+  assert.notEqual(updates[0].update.polygon_hash, legacyJob.polygon_hash, 'canonical identity replaces the raw crossing hash');
+  assert.deepEqual(canonicalJob.polygon, updates[0].update.polygon, 'processor continues with persisted canonical geometry');
 
   // And a valid polygon still builds normally.
   const ok = buildBatchDataRequest(
@@ -406,4 +464,33 @@ test('POLYSIMP-17 a dense ring with one small crossing loop is repaired', () => 
   assert.equal(result.ok, true);
   assert.equal(result.repaired, true);
   assert.equal(findPolygonSelfIntersection(result.points), null);
+});
+
+test('POLYSIMP-15b three distinct collinear points are rejected because they enclose no area', async () => {
+  const cases = [
+    [
+      { lat: 42.028, lng: -93.606 },
+      { lat: 42.030, lng: -93.604 },
+      { lat: 42.032, lng: -93.602 }
+    ],
+    [
+      { lat: 35.2271212, lng: -116.3027252 },
+      { lat: 35.2281084, lng: -116.3008492 },
+      { lat: 35.2290956, lng: -116.2989732 }
+    ]
+  ];
+
+  for (const collinear of cases) {
+    const normalized = normalizePrecisionPolygon(collinear);
+    assert.equal(normalized.ok, false);
+    assert.equal(normalized.code, 'invalid_polygon');
+    assert.match(normalized.message, /enclose a real area/i);
+  }
+
+  for (const [name, path] of START_PATHS) {
+    const result = await runStartPath(path, { body: orderBody({ polygon: cases[1] }) });
+    assert.equal(result.status, 400, `${name}: zero-area input must fail before reservation`);
+    assert.equal(result.body.error, 'invalid_polygon', name);
+    assert.equal(result.createdJob, null, name);
+  }
 });

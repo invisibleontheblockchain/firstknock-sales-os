@@ -82,8 +82,8 @@ const MAX_LONGITUDE = 180;
  *     failed to create query: Self-intersection at or near point [lng, lat]
  *
  * The pull then fails with an opaque provider 500 after a reservation has
- * already been taken. Rejecting the geometry up front turns that into a clear,
- * actionable 400 before anything is reserved or spent.
+ * already been taken. Canonicalizing the geometry up front prevents that
+ * provider failure before anything is reserved or spent.
  *
  * Valid polygons are never changed. Crossed freehand traces are untangled before
  * use; this is required because the provider cannot execute a search against the
@@ -178,6 +178,23 @@ function comparisonRing(points) {
 /** Distinct latitude/longitude pairs remaining after comparison normalization. */
 export function countDistinctPolygonVertices(points) {
     return new Set(comparisonRing(points).map((point) => `${point.lat},${point.lng}`)).size;
+}
+
+function polygonDoubleArea(points) {
+    const ring = comparisonRing(points);
+    if (ring.length < 3) return 0;
+    const origin = ring[0];
+    let area = 0;
+    for (let index = 0; index < ring.length; index += 1) {
+        const current = ring[index];
+        const next = ring[(index + 1) % ring.length];
+        const currentLng = current.lng - origin.lng;
+        const currentLat = current.lat - origin.lat;
+        const nextLng = next.lng - origin.lng;
+        const nextLat = next.lat - origin.lat;
+        area += currentLng * nextLat - nextLng * currentLat;
+    }
+    return Math.abs(area);
 }
 
 function findPolygonSelfIntersectionDetail(points) {
@@ -300,6 +317,13 @@ export function normalizePrecisionPolygon(input) {
             ok: false,
             code: 'self_intersecting_polygon',
             message: 'The selected area could not be converted into a usable boundary.'
+        };
+    }
+    if (polygonDoubleArea(repaired.points) <= COLLINEAR_EPSILON) {
+        return {
+            ok: false,
+            code: 'invalid_polygon',
+            message: 'The selected boundary must enclose a real area.'
         };
     }
 
@@ -427,12 +451,17 @@ export const COMPARED_ORDER_FIELDS = [
  * Reads the order out of a persisted job, reporting every field the record
  * cannot prove rather than guessing a default for it.
  */
-export function persistedOrderFromJob(job, { polygonHash = null } = {}) {
+export function persistedOrderFromJob(job, { polygonHash = null, preferPolygonHash = false } = {}) {
     const metadata = job?.dry_run_metadata || {};
     const unprovable = [];
     const order = {};
 
-    order.polygon_hash = job?.polygon_hash || polygonHash || null;
+    // Only a caller that actually repaired legacy crossing geometry may replace
+    // an existing stored hash. For an already-simple polygon, disagreement with
+    // its persisted identity must remain a conflict instead of being hidden.
+    order.polygon_hash = preferPolygonHash
+        ? (polygonHash || job?.polygon_hash || null)
+        : (job?.polygon_hash || polygonHash || null);
     if (!order.polygon_hash) unprovable.push('polygon_hash');
 
     order.count_mode = metadata.count_mode === 'max_available' || metadata.count_mode === 'fixed'
@@ -526,7 +555,10 @@ export function compareOrders(requested, persisted, fields = COMPARED_ORDER_FIEL
  * multiple_active. Only `one_exact_match` may be resumed. Nothing here
  * cancels, mutates or selects among several jobs.
  */
-export function classifyActivePrecisionJobs(activeJobs, requested, { polygonHash = null } = {}) {
+export function classifyActivePrecisionJobs(activeJobs, requested, {
+    polygonHash = null,
+    preferPolygonHash = false
+} = {}) {
     const jobs = [...(activeJobs || [])];
     if (jobs.length === 0) {
         return { outcome: 'zero', count: 0, job: null, mismatched_fields: [], unprovable_fields: [] };
@@ -543,7 +575,7 @@ export function classifyActivePrecisionJobs(activeJobs, requested, { polygonHash
     }
 
     const job = jobs[0];
-    const { order, unprovable } = persistedOrderFromJob(job, { polygonHash });
+    const { order, unprovable } = persistedOrderFromJob(job, { polygonHash, preferPolygonHash });
     if (unprovable.length > 0) {
         return {
             outcome: 'one_unverifiable',

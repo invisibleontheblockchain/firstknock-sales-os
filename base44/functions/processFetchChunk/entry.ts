@@ -1,6 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 import { neon } from 'npm:@neondatabase/serverless@0.9.0';
-import { findPolygonSelfIntersection } from '../../shared/precisionOrderSafety.js';
+import { normalizePrecisionPolygon } from '../../shared/precisionOrderSafety.js';
 
 const BATCHDATA_API_KEY = Deno.env.get('BATCH_DATA_API_KEY');
 const DATABASE_URL = Deno.env.get('DATABASE_URL');
@@ -278,12 +278,100 @@ function dateValue(...values) {
     return null;
 }
 
+const usablePolygonCache = new WeakMap();
+
+function precisionPolygonResult(points) {
+    if (!Array.isArray(points)) {
+        throw new Error('Invalid polygon: at least 3 polygon points are required.');
+    }
+
+    const cached = usablePolygonCache.get(points);
+    if (cached) return cached;
+
+    const normalized = normalizePrecisionPolygon(points.map(point => ({
+        lat: Number(point?.lat ?? point?.latitude),
+        lng: Number(point?.lng ?? point?.longitude)
+    })));
+    if (!normalized.ok) {
+        throw new Error(`Invalid polygon: ${normalized.message || 'the boundary could not be processed.'}`);
+    }
+
+    usablePolygonCache.set(points, normalized);
+    return normalized;
+}
+
+function usablePrecisionPolygon(points) {
+    return precisionPolygonResult(points).points;
+}
+
+function polygonAreaSqMi(points) {
+    const avgLat = points.reduce((sum, point) => sum + point.lat, 0) / points.length;
+    const milesPerLat = 69.0;
+    const milesPerLng = 69.0 * Math.cos(avgLat * Math.PI / 180);
+    const projected = points.map(point => ({ x: point.lng * milesPerLng, y: point.lat * milesPerLat }));
+    let sum = 0;
+    for (let index = 0; index < projected.length; index += 1) {
+        const current = projected[index];
+        const next = projected[(index + 1) % projected.length];
+        sum += current.x * next.y - next.x * current.y;
+    }
+    return Math.abs(sum) / 2;
+}
+
+function polygonCentroid(points) {
+    return {
+        lat: points.reduce((sum, point) => sum + point.lat, 0) / points.length,
+        lng: points.reduce((sum, point) => sum + point.lng, 0) / points.length
+    };
+}
+
+async function precisionPolygonHash(points) {
+    const normalized = points.map(point => [Number(point.lat.toFixed(6)), Number(point.lng.toFixed(6))]);
+    const bytes = new TextEncoder().encode(JSON.stringify(normalized));
+    const hashBuffer = await crypto.subtle.digest('SHA-256', bytes);
+    return Array.from(new Uint8Array(hashBuffer)).map(byte => byte.toString(16).padStart(2, '0')).join('').slice(0, 16);
+}
+
+async function canonicalizeStoredPrecisionPolygon(base44, job) {
+    const normalized = precisionPolygonResult(job?.polygon);
+    if (!normalized.repaired) return job;
+
+    let latestJob = job;
+    try {
+        latestJob = await base44.asServiceRole.entities.FetchJob.get(job.id) || job;
+    } catch {}
+
+    const polygon = normalized.points;
+    const center = polygonCentroid(polygon);
+    const areaSqMi = polygonAreaSqMi(polygon);
+    const repairedAt = new Date().toISOString();
+    const update = {
+        polygon,
+        polygon_hash: await precisionPolygonHash(polygon),
+        latitude: center.lat,
+        longitude: center.lng,
+        area_sq_mi: Number(areaSqMi.toFixed(2)),
+        radius: Math.sqrt(areaSqMi / Math.PI),
+        dry_run_metadata: {
+            ...(latestJob.dry_run_metadata || {}),
+            polygon_repaired: true,
+            polygon_repaired_at_processing: repairedAt,
+            ...(latestJob.polygon_hash ? { polygon_repair_original_hash: latestJob.polygon_hash } : {})
+        }
+    };
+
+    await base44.asServiceRole.entities.FetchJob.update(job.id, update);
+    usablePolygonCache.set(polygon, { ok: true, points: polygon, repaired: false });
+    return { ...latestJob, ...update };
+}
+
 function isPointInPolygon(point, polygon) {
     if (!Array.isArray(polygon) || polygon.length < 3) return true;
+    const usablePolygon = usablePrecisionPolygon(polygon);
     let inside = false;
-    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-        const xi = Number(polygon[i].lng), yi = Number(polygon[i].lat);
-        const xj = Number(polygon[j].lng), yj = Number(polygon[j].lat);
+    for (let i = 0, j = usablePolygon.length - 1; i < usablePolygon.length; j = i++) {
+        const xi = Number(usablePolygon[i].lng), yi = Number(usablePolygon[i].lat);
+        const xj = Number(usablePolygon[j].lng), yj = Number(usablePolygon[j].lat);
         const intersects = ((yi > point.lat) !== (yj > point.lat)) &&
             (point.lng < (xj - xi) * (point.lat - yi) / ((yj - yi) || 1e-12) + xi);
         if (intersects) inside = !inside;
@@ -292,30 +380,12 @@ function isPointInPolygon(point, polygon) {
 }
 
 function closePolygon(points) {
-    const polygon = Array.isArray(points) ? points
-        .map(point => ({ latitude: Number(point.lat ?? point.latitude), longitude: Number(point.lng ?? point.longitude) }))
-        .filter(point => Number.isFinite(point.latitude) && Number.isFinite(point.longitude)) : [];
-    if (polygon.length < 3) throw new Error(`Invalid polygon: minimum 3 distinct points required. Received ${polygon.length} distinct points.`);
+    const polygon = usablePrecisionPolygon(points)
+        .map(point => ({ latitude: point.lat, longitude: point.lng }));
     const first = polygon[0];
     const last = polygon[polygon.length - 1];
     if (first.latitude !== last.latitude || first.longitude !== last.longitude) {
         polygon.push({ ...first });
-    }
-    const distinct = new Set(polygon.slice(0, -1).map(point => `${point.latitude.toFixed(7)},${point.longitude.toFixed(7)}`));
-    if (distinct.size < 3) throw new Error(`Invalid polygon: minimum 3 distinct points required. Received ${distinct.size} distinct points.`);
-
-    // Defense in depth. The start paths already reject a crossing boundary, but
-    // a job stored before that validation existed can still reach here. The
-    // provider rejects such geometry with an opaque 500, so fail first — this
-    // runs while the request is being built, before any network call.
-    const intersection = findPolygonSelfIntersection(
-        polygon.map(point => ({ lat: point.latitude, lng: point.longitude }))
-    );
-    if (intersection) {
-        throw new Error(
-            `Invalid polygon: the boundary crosses itself near ${intersection.lat}, ${intersection.lng}. `
-            + 'Redraw the area without overlapping lines.'
-        );
     }
 
     return polygon;
@@ -1667,6 +1737,12 @@ Deno.serve(async (req) => {
             lockId = null;
             return Response.json({ skipped: true, reason: `job_${job.status || 'inactive'}`, job_id: job.id, status: job.status });
         }
+
+        // Jobs created before start-path repair can still contain a crossing
+        // boundary. Canonicalize and persist it while holding the processor
+        // lease so polling, resume, provider fetching, and local containment all
+        // observe the same polygon and hash.
+        job = await canonicalizeStoredPrecisionPolygon(base44, job);
 
         const startedAt = job.started_at || new Date().toISOString();
         await base44.asServiceRole.entities.FetchJob.update(job.id, {

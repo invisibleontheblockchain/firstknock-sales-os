@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+import { normalizePrecisionPolygon } from '../../shared/precisionOrderSafety.js';
 
 const FREE_PROPERTY_CAP = 50;
 const PAID_PROPERTY_CAP = 1000;
@@ -6,13 +7,6 @@ const MAX_COUNTIES_PER_PULL = 1;
 const PRECISION_PRICE_PER_USER = 99;
 const BATCHDATA_PLAN_COST = 1000;
 const BATCHDATA_PLAN_RECORDS = 100000;
-
-function normalizePolygon(input) {
-    if (!Array.isArray(input)) return [];
-    return input
-        .map(point => ({ lat: Number(point.lat), lng: Number(point.lng) }))
-        .filter(point => Number.isFinite(point.lat) && Number.isFinite(point.lng));
-}
 
 function polygonAreaSqMi(points) {
     if (points.length < 3) return 0;
@@ -129,10 +123,14 @@ Deno.serve(async (req) => {
         if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
         const body = await req.json().catch(() => ({}));
-        const polygon = normalizePolygon(body.polygon);
-        if (polygon.length < 3) {
-            return Response.json({ error: 'At least 3 polygon points are required for a freehand area preview.' }, { status: 400 });
+        const polygonResult = normalizePrecisionPolygon(body.polygon);
+        if (!polygonResult.ok) {
+            return Response.json({
+                error: polygonResult.code,
+                message: polygonResult.message
+            }, { status: 400 });
         }
+        const polygon = polygonResult.points;
 
         const areaSqMi = polygonAreaSqMi(polygon);
         const center = centroid(polygon);
@@ -166,7 +164,9 @@ Deno.serve(async (req) => {
             sandbox: true,
             paid_pull_enabled: true,
             phase: 'phase_1_precision_preview',
+            polygon,
             polygon_hash: await polygonHash(polygon),
+            polygon_repaired: polygonResult.repaired === true,
             centroid: center,
             area_sq_mi: Number(areaSqMi.toFixed(2)),
             bounds_miles: {

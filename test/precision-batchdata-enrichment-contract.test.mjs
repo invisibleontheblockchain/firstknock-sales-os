@@ -34,7 +34,7 @@ import test from 'node:test';
 import vm from 'node:vm';
 import ts from 'typescript';
 
-import { findPolygonSelfIntersection } from '../base44/shared/precisionOrderSafety.js';
+import { normalizePrecisionPolygon } from '../base44/shared/precisionOrderSafety.js';
 
 const PROCESSOR = 'base44/functions/processFetchChunk/entry.ts';
 
@@ -75,7 +75,7 @@ function loadProcessor(required = ['buildBatchDataRequest', 'mapBatchDataPropert
     __collect: (value) => { collected = value; },
     Deno: { env: { get: () => undefined }, serve: () => {} },
     createClientFromRequest: () => ({}),
-    findPolygonSelfIntersection,
+    normalizePrecisionPolygon,
     neon: () => (() => {}),
     Request, Response, TextEncoder, TextDecoder, URL,
     crypto: globalThis.crypto,
@@ -521,7 +521,7 @@ function runRealFetchLoop({ pages, jobOverrides = {}, requested = 10 }) {
     __collect: (value) => { collected = value; },
     Deno: { env: { get: (k) => (k === 'BATCHDATA_API_KEY' ? 'test-key' : undefined) }, serve: () => {} },
     createClientFromRequest: () => ({}),
-    findPolygonSelfIntersection,
+    normalizePrecisionPolygon,
     neon: () => (() => {}),
     Request, Response, TextEncoder, TextDecoder, URL,
     crypto: globalThis.crypto,

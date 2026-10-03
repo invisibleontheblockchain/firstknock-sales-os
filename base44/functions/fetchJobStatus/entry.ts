@@ -236,6 +236,8 @@ Deno.serve(async (req) => {
             ownership_range_days: customOwnershipRange,
             ownership_reference_date: job.created_date || job.started_at || null,
             polygon: job.polygon || [],
+            polygon_hash: job.polygon_hash || null,
+            polygon_repaired: metadata.polygon_repaired === true,
             diagnostics: {
                 requested_properties: metadata.requested_properties ?? job.total_expected ?? 0,
                 requested_properties_before_cap: metadata.requested_properties_before_cap ?? metadata.requested_properties ?? job.total_expected ?? 0,

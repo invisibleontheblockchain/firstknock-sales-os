@@ -32,8 +32,7 @@ export function normalizeHistoryPolygon(value) {
 }
 
 export function polygonHistoryKey(polygon = []) {
-    const first = polygon[0] || {};
-    return `${Number(first.lat || 0).toFixed(5)}:${Number(first.lng || 0).toFixed(5)}:${polygon.length}`;
+    return exactPolygonKey(polygon) || '';
 }
 
 export function exactPolygonKey(polygon = []) {

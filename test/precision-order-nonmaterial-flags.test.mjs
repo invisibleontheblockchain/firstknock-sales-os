@@ -38,7 +38,7 @@ import {
   plain,
   runStartPath
 } from './helpers/precisionOrderHarness.mjs';
-import { findPolygonSelfIntersection } from '../base44/shared/precisionOrderSafety.js';
+import { normalizePrecisionPolygon } from '../base44/shared/precisionOrderSafety.js';
 
 const NON_MATERIAL_FIELDS = ['force_full_refresh', 'include_unresolved_followups', 'pull_mode'];
 
@@ -74,7 +74,7 @@ function loadProductionRequestBuilder() {
     __collect: (value) => { collected = value; },
     Deno: { env: { get: () => undefined }, serve: () => {} },
     createClientFromRequest: () => ({}),
-    findPolygonSelfIntersection,
+    normalizePrecisionPolygon,
     neon: () => (() => {}),
     Request, Response, TextEncoder, TextDecoder, URL,
     crypto: globalThis.crypto,

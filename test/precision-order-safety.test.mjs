@@ -462,6 +462,42 @@ test('ACTIVE-06 an active job with no stored polygon_hash is still provable from
   assert.equal(result.body.active_job_outcome, 'one_exact_match');
 });
 
+test('ACTIVE-07 a legacy raw crossing hash is replaced by canonical geometry for exact resume', async () => {
+  const crossing = [
+    { lat: 33.86, lng: -83.4 }, { lat: 33.87, lng: -83.38 },
+    { lat: 33.86, lng: -83.38 }, { lat: 33.87, lng: -83.4 }
+  ];
+  const legacy = provableActiveJob({ id: 'job_crossing', polygon: crossing });
+  legacy.polygon_hash = 'legacy_raw_crossing_hash';
+
+  const result = await runStartPath(PATHS.startBatchDataPull, {
+    body: orderBody({ polygon: crossing, requested_properties: 25 }),
+    fetchJobs: [legacy]
+  });
+
+  assert.equal(result.status, 200);
+  assert.equal(result.body.active_job_outcome, 'one_exact_match');
+  assert.equal(result.body.job_id, legacy.id);
+  assert.equal(result.body.polygon_repaired, true);
+  assert.notEqual(result.body.polygon_hash, legacy.polygon_hash);
+  assert.equal(result.createdJob, null);
+});
+
+test('ACTIVE-08 a stored hash mismatch on simple geometry is never hidden by recomputation', async () => {
+  const active = provableActiveJob({ id: 'job_tampered_hash' });
+  active.polygon_hash = 'different_persisted_identity';
+
+  const result = await runStartPath(PATHS.startBatchDataPull, {
+    body: orderBody({ polygon: active.polygon, requested_properties: 25 }),
+    fetchJobs: [active]
+  });
+
+  assert.equal(result.status, 409);
+  assert.equal(result.body.error, 'active_job_criteria_conflict');
+  assert.deepEqual(result.body.mismatched_fields, ['polygon_hash']);
+  assert.equal(result.createdJob, null);
+});
+
 /* ════════════════ 5.7 No client-authorized cancellation ════════════════
  * Defect prevented: a client-supplied force_full_refresh destroyed a healthy
  * server-owned job. Failed on main: yes.
@@ -588,6 +624,24 @@ test('PREVIEW-03 no new provider call is introduced and the request shape is unc
     searchCriteria: { query: '33.86725,-83.39125' },
     options: { datasets: ['basic'], limit: 5 }
   }, 'request shape, centroid query and dataset selection are unchanged');
+});
+
+test('PREVIEW-04 a crossing preview uses the same repaired boundary as generation', async () => {
+  const crossing = [
+    { lat: 33.86, lng: -83.4 }, { lat: 33.87, lng: -83.38 },
+    { lat: 33.86, lng: -83.38 }, { lat: 33.87, lng: -83.4 }
+  ];
+  const { handler } = buildPreview();
+  const preview = await callHandler(handler, { ...previewBody(), polygon: crossing, sandbox_probe: false });
+  const generated = await runStartPath(PATHS.startBatchDataPull, {
+    body: orderBody({ polygon: crossing })
+  });
+
+  assert.equal(preview.status, 200);
+  assert.equal(preview.body.polygon_repaired, true);
+  assert.equal(generated.status, 200);
+  assert.equal(preview.body.polygon_hash, generated.createdJob.polygon_hash);
+  assert.deepEqual(preview.body.polygon, generated.createdJob.polygon);
 });
 
 /* ════════════════ Regression guards ════════════════
