@@ -270,3 +270,23 @@ test('legacy routes assigned by User ID resolve only the verified member of thei
     assert.equal((await unverified.call({ action: 'set_route', route_id: 'route', source: 'rep_base' })).status, 409);
     assert.equal(unverified.writes.length, 0);
 });
+test('manager can repeatedly switch an anchored route from Me to a rep and back to Me', async () => {
+    const state = setup();
+    for (const repId of ['member', 'peerMember', 'member']) {
+        assert.equal((await state.call({ action: 'assign', route_id: 'route', member_id: 'manager' })).status, 200);
+        assert.equal(state.route.assigned_to, 'manager');
+        assert.equal(state.route.status, 'ACTIVE');
+        const assigned = await state.call({ action: 'assign', route_id: 'route', member_id: repId });
+        assert.equal(assigned.status, 200);
+        assert.equal(state.route.assigned_to, repId);
+        assert.equal(state.route.route_origin_mode, 'anchor_round_trip');
+        assert.equal((await state.call({ action: 'set_route', route_id: 'route', source: 'custom', location: custom })).status, 200);
+        const returned = await state.call({ action: 'assign', route_id: 'route', member_id: 'manager' });
+        assert.equal(returned.status, 200);
+        assert.equal(state.route.assigned_to, 'manager');
+        assert.equal(state.route.assigned_to_name, 'Manager');
+        assert.equal(state.route.route_origin_mode, 'none');
+        assert.equal(state.records.length, 0);
+        assert.deepEqual(new Set(state.route.property_hashes), new Set(['a', 'b', 'c']));
+    }
+});

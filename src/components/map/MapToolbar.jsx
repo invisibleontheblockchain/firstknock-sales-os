@@ -108,10 +108,11 @@ export default function MapToolbar({
     try {return localStorage.getItem('fk_showGhostAreas') === 'true';} catch {return false;}
   });
   const [useRepBaseOnAssign, setUseRepBaseOnAssign] = useState(true);
-  const [assigningRoute, setAssigningRoute] = useState(false);
+  const [pendingAssignment, setPendingAssignment] = useState(null);
+  const assigningRoute = !!pendingAssignment;
   const [showRepAnchorDialog, setShowRepAnchorDialog] = useState(false);
 
-  useEffect(() => setShowRepAnchorDialog(false), [activeRoute?.id]);
+  useEffect(() => setShowRepAnchorDialog(false), [activeRoute?.id, activeRoute?.assigned_to]);
 
   const allowCanvasDiscard = useCallback((action) => routeMode !== 'canvas'
     || typeof onConfirmCanvasDiscard !== 'function'
@@ -366,6 +367,16 @@ export default function MapToolbar({
   }, [activeRoute, onReoptimizeRoute, onSaveHomeBase, reoptimizeBusy, runOptimize, teamMembers, user]);
 
   const isCompletedRoute = activeRoute?.status === 'COMPLETED';
+  const assignedTeamMember = teamMembers.find(member => activeRoute?.assigned_to
+    && (member.id === activeRoute.assigned_to || member.user_id === activeRoute.assigned_to));
+  const canManageRepAnchor = isManagerAccount(user) && !isCompletedRoute
+    && !!assignedTeamMember && !routeBelongsToActingUser(activeRoute, user, teamMembers);
+  const selectedAssigneeId = activeRoute?.assigned_to
+    ? routeBelongsToActingUser(activeRoute, user, teamMembers)
+      ? user.id : assignedTeamMember?.id || activeRoute.assigned_to
+    : '';
+  const displayedAssigneeId = pendingAssignment?.routeId === activeRoute?.id
+    ? pendingAssignment.memberId : selectedAssigneeId;
   const canSplitActiveRoute = Boolean(
     activeRoute
     && !['COMPLETED', 'ARCHIVED'].includes(String(activeRoute.status || '').toUpperCase())
@@ -605,7 +616,7 @@ export default function MapToolbar({
                                 )}
                                 <DropdownMenu>
                                   <DropdownMenuTrigger asChild>
-                                    <button onPointerDown={(e) => e.stopPropagation()} className={`${isManagerAccount(user) && !isCompletedRoute ? 'xl:hidden' : 'lg:hidden'} flex h-8 w-8 items-center justify-center rounded-md border border-white/10 bg-white/5 text-white touch-manipulation active:scale-95`} aria-label="More route actions">
+                                    <button onPointerDown={(e) => e.stopPropagation()} className={`${canManageRepAnchor ? 'xl:hidden' : 'lg:hidden'} flex h-8 w-8 items-center justify-center rounded-md border border-white/10 bg-white/5 text-white touch-manipulation active:scale-95`} aria-label="More route actions">
                                       <MoreVertical className="h-4 w-4" />
                                     </button>
                                   </DropdownMenuTrigger>
@@ -621,7 +632,7 @@ export default function MapToolbar({
                                     <DropdownMenuItem onClick={(e) => {e.stopPropagation();setShowAnchorsDialog(true);}} className="lg:hidden focus:bg-white/10 focus:text-white">
                                       <Flag className="mr-2 h-4 w-4" /> Anchors
                                     </DropdownMenuItem>
-                                    {isManagerAccount(user) && !isCompletedRoute && <>
+                                    {canManageRepAnchor && <>
                                       <DropdownMenuItem onSelect={() => setShowRepAnchorDialog(true)} className="min-h-11 focus:bg-white/10 focus:text-white">
                                         <Flag className="mr-2 h-4 w-4 text-yellow-300" /> Rep anchor
                                       </DropdownMenuItem>
@@ -674,21 +685,31 @@ export default function MapToolbar({
 
                         {/* Row 2: Filters — scrollable grid on mobile, inline on desktop */}
                         <div className="flex items-center gap-1 md:gap-1.5 mt-1.5 overflow-x-auto scrollbar-hide pb-0.5 -mx-0.5 px-0.5" onClick={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()}>
-                            <select value={activeRoute.assigned_to || ""} disabled={assigningRoute || isCompletedRoute} onChange={async (e) => {
-                                e.stopPropagation(); setAssigningRoute(true);
-                                try { await handleAssignRoute(activeRoute.id, e.target.value, useRepBaseOnAssign); }
-                                finally { setAssigningRoute(false); }
+                            <select aria-label="Assign route" aria-busy={assigningRoute} value={displayedAssigneeId} disabled={assigningRoute || isCompletedRoute} onChange={async (e) => {
+                                e.stopPropagation();
+                                if (assigningRoute) return;
+                                const routeId = activeRoute.id;
+                                const memberId = e.target.value;
+                                if (memberId === selectedAssigneeId) return;
+                                setPendingAssignment({ routeId, memberId });
+                                try { await handleAssignRoute(routeId, memberId, useRepBaseOnAssign); }
+                                finally { setPendingAssignment(null); }
                             }} onPointerDown={(e) => e.stopPropagation()} className={routeSelectClass} style={routeSelectStyle}>
                                 <option value="" style={routeOptionStyle}>Assign</option>
                                 <option value={user?.id || 'manager'} style={routeOptionStyle}>Me</option>
-                                {teamMembers.map((m) => <option key={m.id} value={m.id} style={routeOptionStyle}>{m.name}</option>)}
+                                {teamMembers.filter(member => !routeBelongsToActingUser({ assigned_to: member.id }, user, [member])).map(member =>
+                                    <option key={member.id} value={member.id} disabled={member.status?.toLowerCase() === 'inactive'} style={routeOptionStyle}>{member.name}{member.status?.toLowerCase() === 'inactive' ? ' (inactive)' : ''}</option>)}
+                                {selectedAssigneeId && selectedAssigneeId !== user?.id && !assignedTeamMember &&
+                                    <option value={selectedAssigneeId} disabled style={routeOptionStyle}>{activeRoute.assigned_to_name || 'Unavailable rep'}</option>}
                             </select>
 
-                            {isManagerAccount(user) && !isCompletedRoute && <>
+                            {assigningRoute && <span role="status" className="text-[10px] text-yellow-300 shrink-0">Assigning…</span>}
+
+                            {canManageRepAnchor && <>
                                 <label className="hidden xl:flex items-center gap-1 text-[10px] text-gray-300 shrink-0" title="Use the rep’s configured base and assignment preference">
                                     <input type="checkbox" checked={useRepBaseOnAssign} disabled={assigningRoute} onChange={event => setUseRepBaseOnAssign(event.target.checked)} className="accent-yellow-500" /> Rep base on assign
                                 </label>
-                                <RouteAnchorSettings key={activeRoute.id} route={activeRoute} requesterId={user?.id} open={showRepAnchorDialog} onOpenChange={setShowRepAnchorDialog} onSaved={saved => setActiveRoute(current => current?.id === saved.id ? mergeAnchoredRoute(current, saved) : current)} />
+                                <RouteAnchorSettings key={`${activeRoute.id}:${activeRoute.assigned_to}`} route={activeRoute} requesterId={user?.id} open={showRepAnchorDialog} onOpenChange={setShowRepAnchorDialog} onSaved={saved => setActiveRoute(current => current?.id === saved.id ? mergeAnchoredRoute(current, saved) : current)} />
                             </>}
 
                             {setActiveRouteSoldFilter &&
