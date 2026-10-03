@@ -40,6 +40,8 @@ async function verifiedMember(service, managerId, memberId) {
     return { user, member };
 }
 async function privateRows(service, route) {
+    // Rep bases live on User; only custom anchors require this private store.
+    if (route.metadata?.anchor?.source !== 'custom' || !route.metadata?.anchor?.record_id) return [];
     return rows(await service.entities.RouteAnchor.filter({ manager_id: route.manager_id, route_id: route.id }, '-created_date', 100));
 }
 async function getAnchor(service, route) {
