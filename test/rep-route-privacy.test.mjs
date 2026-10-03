@@ -3,13 +3,15 @@ import {readFileSync} from 'node:fs';
 import test from 'node:test';
 const schema=JSON.parse(readFileSync(new URL('../base44/entities/SavedRoute.jsonc',import.meta.url),'utf8'));
 const policy=schema.rls;
+const builtInFields=new Set(['id','created_date','updated_date','created_by']);
 function allows(rule,route,user) {
   if(typeof rule==='boolean') return rule;
   if(rule.$or) return rule.$or.some(r=>allows(r,route,user));
   if(rule.$and) return rule.$and.every(r=>allows(r,route,user));
   if(rule.user_condition) return Object.entries(rule.user_condition).every(([k,v])=>(user[k]??user.data?.[k])===v);
   return Object.entries(rule).every(([key,expected])=>{
-    const actual=route[key.replace(/^data\./,'')];
+    // Base44 stores custom entity fields under data, not on the record root.
+    const actual=key.startsWith('data.') ? route[key.slice(5)] : (builtInFields.has(key) ? route[key] : undefined);
     if(expected?.$nin) return !expected.$nin.includes(actual ?? null);
     if(expected?.$in) return expected.$in.includes(actual ?? null);
     if(typeof expected==='string'&&expected.startsWith('{{')) {
@@ -65,3 +67,28 @@ test('team member identity is service-only',()=>{
  const userSchema=JSON.parse(readFileSync(new URL('../base44/entities/User.jsonc',import.meta.url),'utf8'));
  assert.deepEqual(userSchema.properties.team_member_id.rls.write,{user_condition:{role:'admin'}});
 });
+
+test('route and roster permission rules use storage paths for custom fields',()=>{
+ const roster=JSON.parse(readFileSync(new URL('../base44/entities/TeamMember.jsonc',import.meta.url),'utf8'));
+ const check=rule=>{
+  if(typeof rule==='boolean') return;
+  for(const [key,value] of Object.entries(rule)) {
+   if(key==='user_condition') continue;
+   if(key.startsWith('$')) value.forEach(check);
+   else assert.ok(key.startsWith('data.')||builtInFields.has(key),`Custom field ${key} requires data. prefix`);
+  }
+ };
+ for(const entity of [schema,roster]) {
+  Object.values(entity.rls).forEach(check);
+  for(const field of Object.values(entity.properties)) Object.values(field.rls||{}).forEach(check);
+ }
+});
+
+test('a service-created roster profile is readable by its linked rep',()=>{
+ const roster=JSON.parse(readFileSync(new URL('../base44/entities/TeamMember.jsonc',import.meta.url),'utf8'));
+ const member={id:'member',manager_id:'manager',user_id:'rep',email:rep.email,created_by:'service@example.test'};
+ assert.equal(allows(roster.rls.read,member,rep),true);
+ assert.equal(allows(roster.rls.read,member,{id:'manager',app_role:'manager'}),true);
+ assert.equal(allows(roster.rls.read,member,{id:'foreign',email:'foreign@example.test',data:{team_manager_id:'foreign'}}),false);
+});
+
