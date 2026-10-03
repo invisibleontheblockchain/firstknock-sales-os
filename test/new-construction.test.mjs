@@ -38,6 +38,6 @@ test('NEWBUILD-04 junk year values are rejected rather than trusted', () => {
 
 test('NEWBUILD-05 the window rolls with the calendar', () => {
     // Same 2025 house is still new in 2026 and no longer new in 2027.
-    assert.equal(isNewConstruction({ year_built: 2025 }, new Date('2026-12-31T00:00:00Z')), true);
-    assert.equal(isNewConstruction({ year_built: 2025 }, new Date('2027-01-01T00:00:00Z')), false);
+    assert.equal(isNewConstruction({ year_built: 2025 }, new Date(2026, 11, 31)), true);
+    assert.equal(isNewConstruction({ year_built: 2025 }, new Date(2027, 0, 1)), false);
 });

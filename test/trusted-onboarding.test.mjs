@@ -133,7 +133,7 @@ test('invite redemption writes the authenticated User tenant link with service r
   assert.equal(state.authUpdates.length, 0);
   assert.deepEqual(state.userUpdates, [{
     id: 'rep_1',
-    updates: { app_role: 'rep', team_manager_id: 'manager_1', team_invite_code: 'JOIN12' },
+    updates: { app_role: 'rep', team_manager_id: 'manager_1', team_member_id: 'member_2', team_invite_code: 'JOIN12' },
   }]);
   assert.equal(state.createdMembers.length, 1);
   assert.equal(state.createdMembers[0].manager_id, 'manager_1');
@@ -168,7 +168,7 @@ test('returning rep claims a manager-created email roster record without client-
   assert.deepEqual(state.memberUpdates, [{ id: 'member_1', updates: { user_id: 'rep_1' } }]);
   assert.deepEqual(state.userUpdates, [{
     id: 'rep_1',
-    updates: { app_role: 'rep', team_manager_id: 'manager_1', team_invite_code: 'OLD123' },
+    updates: { app_role: 'rep', team_manager_id: 'manager_1', team_member_id: 'member_1', team_invite_code: 'OLD123' },
   }]);
   assert.equal(state.authUpdates.length, 0);
 });
@@ -193,6 +193,7 @@ test('already-linked returning rep remains claimable without mutable creator met
   assert.equal(data.manager_id, 'manager_1');
   assert.equal(state.memberUpdates.length, 0);
   assert.equal(state.userUpdates[0].updates.team_manager_id, 'manager_1');
+  assert.equal(state.userUpdates[0].updates.team_member_id, 'member_1');
 });
 
 test('claim-existing rejects an untrusted email-only roster record', async () => {

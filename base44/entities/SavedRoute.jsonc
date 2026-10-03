@@ -30,11 +30,29 @@
     },
     "assigned_to": {
       "type": "string",
-      "description": "TeamMember ID this route is assigned to"
+      "description": "TeamMember ID this route is assigned to",
+      "rls": {
+        "write": {
+          "$or": [
+            {"$and": [{"manager_id": "{{user.id}}"}, {"$or": [{"user_condition": {"app_role": "manager"}}, {"user_condition": {"app_role": "admin"}}, {"user_condition": {"role": "manager"}}, {"user_condition": {"is_owner": true}}, {"user_condition": {"role": "admin"}}]}]},
+            {"$and": [{"data.manager_id": {"$in": [null, ""]}}, {"created_by": "{{user.email}}"}, {"$or": [{"user_condition": {"app_role": "manager"}}, {"user_condition": {"app_role": "admin"}}, {"user_condition": {"role": "manager"}}, {"user_condition": {"is_owner": true}}, {"user_condition": {"role": "admin"}}]}]},
+            {"user_condition": {"role": "admin"}}
+          ]
+        }
+      }
     },
     "assigned_to_name": {
       "type": "string",
-      "description": "Cached name for display"
+      "description": "Cached name for display",
+      "rls": {
+        "write": {
+          "$or": [
+            {"$and": [{"manager_id": "{{user.id}}"}, {"$or": [{"user_condition": {"app_role": "manager"}}, {"user_condition": {"app_role": "admin"}}, {"user_condition": {"role": "manager"}}, {"user_condition": {"is_owner": true}}, {"user_condition": {"role": "admin"}}]}]},
+            {"$and": [{"data.manager_id": {"$in": [null, ""]}}, {"created_by": "{{user.email}}"}, {"$or": [{"user_condition": {"app_role": "manager"}}, {"user_condition": {"app_role": "admin"}}, {"user_condition": {"role": "manager"}}, {"user_condition": {"is_owner": true}}, {"user_condition": {"role": "admin"}}]}]},
+            {"user_condition": {"role": "admin"}}
+          ]
+        }
+      }
     },
     "priority": {
       "type": "integer",
@@ -106,7 +124,16 @@
     },
     "manager_id": {
       "type": "string",
-      "description": "ID of the manager who owns this route (tenant key)"
+      "description": "ID of the manager who owns this route (tenant key)",
+      "rls": {
+        "write": {
+          "$or": [
+            {"$and": [{"manager_id": "{{user.id}}"}, {"$or": [{"user_condition": {"app_role": "manager"}}, {"user_condition": {"app_role": "admin"}}, {"user_condition": {"role": "manager"}}, {"user_condition": {"is_owner": true}}, {"user_condition": {"role": "admin"}}]}]},
+            {"$and": [{"data.manager_id": {"$in": [null, ""]}}, {"created_by": "{{user.email}}"}, {"$or": [{"user_condition": {"app_role": "manager"}}, {"user_condition": {"app_role": "admin"}}, {"user_condition": {"role": "manager"}}, {"user_condition": {"is_owner": true}}, {"user_condition": {"role": "admin"}}]}]},
+            {"user_condition": {"role": "admin"}}
+          ]
+        }
+      }
     },
     "metadata": {
       "type": "object",
@@ -135,56 +162,28 @@
     "property_hashes"
   ],
   "rls": {
-    "create": true,
+    "create": {"$or": [{"user_condition": {"app_role": "manager"}}, {"user_condition": {"app_role": "admin"}}, {"user_condition": {"role": "manager"}}, {"user_condition": {"is_owner": true}}, {"user_condition": {"role": "admin"}}]},
     "read": {
       "$or": [
-        {
-          "manager_id": "{{user.id}}"
-        },
-        {
-          "created_by": "{{user.email}}"
-        },
-        {
-          "manager_id": "{{user.data.team_manager_id}}"
-        },
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        }
+        {"$and": [{"manager_id": "{{user.id}}"}, {"$or": [{"user_condition": {"app_role": "manager"}}, {"user_condition": {"app_role": "admin"}}, {"user_condition": {"role": "manager"}}, {"user_condition": {"is_owner": true}}, {"user_condition": {"role": "admin"}}]}]},
+        {"$and": [{"data.manager_id": {"$in": [null, ""]}}, {"created_by": "{{user.email}}"}, {"$or": [{"user_condition": {"app_role": "manager"}}, {"user_condition": {"app_role": "admin"}}, {"user_condition": {"role": "manager"}}, {"user_condition": {"is_owner": true}}, {"user_condition": {"role": "admin"}}]}]},
+        {"$and": [{"data.manager_id": {"$nin": [null, ""]}}, {"data.assigned_to": {"$nin": [null, ""]}}, {"manager_id": "{{user.data.team_manager_id}}"}, {"$or": [{"assigned_to": "{{user.id}}"}, {"assigned_to": "{{user.data.team_member_id}}"}]}]},
+        {"user_condition": {"role": "admin"}}
       ]
     },
     "update": {
       "$or": [
-        {
-          "manager_id": "{{user.id}}"
-        },
-        {
-          "created_by": "{{user.email}}"
-        },
-        {
-          "manager_id": "{{user.data.team_manager_id}}"
-        },
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        }
+        {"$and": [{"manager_id": "{{user.id}}"}, {"$or": [{"user_condition": {"app_role": "manager"}}, {"user_condition": {"app_role": "admin"}}, {"user_condition": {"role": "manager"}}, {"user_condition": {"is_owner": true}}, {"user_condition": {"role": "admin"}}]}]},
+        {"$and": [{"data.manager_id": {"$in": [null, ""]}}, {"created_by": "{{user.email}}"}, {"$or": [{"user_condition": {"app_role": "manager"}}, {"user_condition": {"app_role": "admin"}}, {"user_condition": {"role": "manager"}}, {"user_condition": {"is_owner": true}}, {"user_condition": {"role": "admin"}}]}]},
+        {"$and": [{"data.manager_id": {"$nin": [null, ""]}}, {"data.assigned_to": {"$nin": [null, ""]}}, {"manager_id": "{{user.data.team_manager_id}}"}, {"$or": [{"assigned_to": "{{user.id}}"}, {"assigned_to": "{{user.data.team_member_id}}"}]}]},
+        {"user_condition": {"role": "admin"}}
       ]
     },
     "delete": {
       "$or": [
-        {
-          "manager_id": "{{user.id}}"
-        },
-        {
-          "created_by": "{{user.email}}"
-        },
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        }
+        {"$and": [{"manager_id": "{{user.id}}"}, {"$or": [{"user_condition": {"app_role": "manager"}}, {"user_condition": {"app_role": "admin"}}, {"user_condition": {"role": "manager"}}, {"user_condition": {"is_owner": true}}, {"user_condition": {"role": "admin"}}]}]},
+        {"$and": [{"data.manager_id": {"$in": [null, ""]}}, {"created_by": "{{user.email}}"}, {"$or": [{"user_condition": {"app_role": "manager"}}, {"user_condition": {"app_role": "admin"}}, {"user_condition": {"role": "manager"}}, {"user_condition": {"is_owner": true}}, {"user_condition": {"role": "admin"}}]}]},
+        {"user_condition": {"role": "admin"}}
       ]
     }
   }

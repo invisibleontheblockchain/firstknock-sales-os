@@ -77,6 +77,5 @@ export default function useAppointmentMapFocus({
       toast.error("Couldn't find this appointment on the map yet.");
     }
     window.history.replaceState({}, '', window.location.pathname);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeRoute, effectiveProperties, savedRoutes]);
 }

@@ -13,6 +13,17 @@
         "write": { "user_condition": { "role": "admin" } }
       }
     },
+    "team_member_id": {
+      "type": "string",
+      "description": "Verified TeamMember ID set by trusted team onboarding for route access.",
+      "rls": {
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      }
+    },
     "team_manager_id": {
       "type": "string",
       "description": "Manager User ID for an invited rep; set by the trusted invite redemption flow and used for exact Canvas tenant binding",
