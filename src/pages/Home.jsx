@@ -27,6 +27,7 @@ import { calculateRouteDistanceMiles, isValidRoutePoint } from '@/lib/routeBound
 import { applyRouteFilters, formatStageCounts } from '../components/logic/routeFilterPipeline';
 import { normalizeOwnershipRangeDays as normalizeStrictOwnershipRangeDays } from '../components/logic/soldDateRange';
 import RouteGenerationOverlay from '../components/routes/RouteGenerationOverlay';
+import RouteAssignmentDialog from '@/components/routes/RouteAssignmentDialog';
 import { generateHeatmapGrid, generateStateClusters, getHeatColor } from '../components/logic/heatmapLogic';
 const RouteChecklist = React.lazy(() => import('../components/routes/RouteChecklist'));
 import RouteCommandPanel from '../components/routes/RouteCommandPanel';
@@ -547,7 +548,30 @@ export default function Home() {
         }
     };
 
-    const handleAssignRoute = async (routeId, memberId, useRepBase = true) => {
+    const [pendingAssignment, setPendingAssignment] = useState(null);
+    const assignmentCompletionRef = useRef(null);
+    const handleAssignRoute = (routeId, memberId, useRepBase = true) => {
+        const route = activeRoute?.id === routeId ? activeRoute : savedRoutes.find(r => r.id === routeId);
+        if (!route || (route.assigned_to || '') === memberId || assignmentCompletionRef.current) return Promise.resolve(null);
+        const member = teamMembers.find(m => m.id === memberId);
+        return new Promise(resolve => {
+            assignmentCompletionRef.current = resolve;
+            setPendingAssignment({ routeId, memberId, useRepBase, routeName: route.name || 'this route', memberName: member?.name || user?.full_name || 'Me' });
+        });
+    };
+    const cancelRouteAssignment = () => {
+        setPendingAssignment(null);
+        assignmentCompletionRef.current?.(null);
+        assignmentCompletionRef.current = null;
+    };
+    const confirmRouteAssignment = async ({ routeId, memberId, useRepBase }) => {
+        const saved = await saveRouteAssignment(routeId, memberId, useRepBase);
+        assignmentCompletionRef.current?.(saved);
+        assignmentCompletionRef.current = null;
+        return saved;
+    };
+    useEffect(() => () => { assignmentCompletionRef.current?.(null); }, []);
+    const saveRouteAssignment = async (routeId, memberId, useRepBase = true) => {
         try {
             const response = await base44.functions.invoke('manageRepAnchors', {
                 action: 'assign', route_id: routeId, member_id: memberId, use_rep_base: useRepBase,
@@ -555,6 +579,7 @@ export default function Home() {
             const saved = response.data.route;
             queryClient.invalidateQueries({ queryKey: ['savedRoutes'] });
             queryClient.invalidateQueries({ queryKey: ['allRoutes'] });
+            queryClient.invalidateQueries({ queryKey: ['myRoutes'] });
             queryClient.invalidateQueries({ queryKey: ['routeAnchor'] });
             toast.success(saved.assigned_to_name ? `Assigned to ${saved.assigned_to_name}` : 'Route unassigned');
             if (response.data.notice) toast.info(response.data.notice);
@@ -565,6 +590,7 @@ export default function Home() {
         } catch (e) {
             console.error(e);
             toast.error(e.response?.data?.error || 'Assignment failed');
+            throw e;
         }
     };
 
@@ -2286,6 +2312,7 @@ export default function Home() {
 
     return (
         <div className={`h-full w-full relative ${showMapSettings ? 'lg:w-[calc(100%-24rem)]' : ''}`} style={{ background: BRAND.voidBlack }}>
+            {pendingAssignment && <RouteAssignmentDialog assignment={pendingAssignment} onCancel={cancelRouteAssignment} onConfirm={confirmRouteAssignment} />}
             {loadingSavedRouteId && (
                 <div role="status" className="absolute top-20 left-1/2 -translate-x-1/2 z-[2000] flex items-center gap-2 rounded-xl border border-white/10 bg-[#111] px-4 py-3 text-sm text-white shadow-xl">
                     <Loader2 className="h-4 w-4 animate-spin" />

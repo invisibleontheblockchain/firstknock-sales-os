@@ -38,7 +38,9 @@ export function buildRepRouteScope(user, teamMemberMatches = []) {
     : normalizeId(user?.team_manager_id || user?.data?.team_manager_id);
 
   const linkedMatches = entityRows(teamMemberMatches).filter((member) => (
-    !userEmail || normalizeEmail(member?.email) === userEmail
+    (!userEmail || normalizeEmail(member?.email) === userEmail)
+    && normalizeId(member?.status).toLowerCase() !== 'inactive'
+    && (!normalizeId(member?.user_id) || normalizeId(member.user_id) === userId)
   ));
 
   // Older rep profiles may predate team_manager_id. Pick one deterministic

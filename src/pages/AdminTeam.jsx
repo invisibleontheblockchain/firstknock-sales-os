@@ -14,6 +14,8 @@ import { Users, UserPlus, Map, CheckCircle2, AlertCircle, X, Key, Sparkles, Tren
 import { createPageUrl } from '../utils';
 import { toast } from "sonner";
 import TeamMemberCard from "@/components/team/TeamMemberCard";
+import RouteAssignmentDialog from '@/components/routes/RouteAssignmentDialog';
+import { buildRepRouteScope, buildSavedRouteQueryFilters, collectKnockRoutes, fetchAllSavedRoutePages } from '@/components/rep/repRouteCollection';
 import DrivingTab from "@/components/team/DrivingTab";
 import RepBasesTab from "@/components/team/RepBasesTab";
 import CreateTeamDialog from "@/components/team/CreateTeamDialog";
@@ -55,6 +57,7 @@ export default function AdminTeam() {
     const queryClient = useQueryClient();
     const [isAddRepOpen, setIsAddRepOpen] = useState(false);
     const [routeSearch, setRouteSearch] = useState('');
+    const [pendingAssignment, setPendingAssignment] = useState(null);
     const [newRep, setNewRep] = useState({ name: '', email: '', phone: '', role: 'rep' });
     const [newCode, setNewCode] = useState({ code: '', role: 'manager', label: '' });
     const [selectedRep, setSelectedRep] = useState(null); 
@@ -111,16 +114,20 @@ export default function AdminTeam() {
 
     const teamMembers = teamRoster?.members || [];
     const repSeatCount = getRepSeatCount(teamMembers);
+    const routeScope = useMemo(() => buildRepRouteScope(user, teamMembers), [user, teamMembers]);
 
     const { data: routes = [], isLoading: routesLoading } = useQuery({
-        queryKey: ['allRoutes', managerId],
+        queryKey: ['allRoutes', managerId, user?.id, routeScope.assigneeIds.join(',')],
+        refetchInterval: 15_000,
         queryFn: async () => {
             if (!managerId) return [];
-            const res = await base44.entities.SavedRoute.filter({ manager_id: managerId }, '-created_date', 200);
-            const rows = Array.isArray(res) ? res : (res?.items || []);
+            const groups = await Promise.all(buildSavedRouteQueryFilters(routeScope).map(filter => (
+                fetchAllSavedRoutePages((limit, skip) => base44.entities.SavedRoute.filter(filter, '-created_date', limit, skip))
+            )));
+            const rows = collectKnockRoutes(groups, routeScope);
             return rows.filter((route) => route.status !== 'ARCHIVED');
         },
-        enabled: !!managerId
+        enabled: !!managerId && (canManageTeam || !!teamRoster)
     });
 
     const { data: inviteCodes = [] } = useQuery({
@@ -169,6 +176,7 @@ export default function AdminTeam() {
         onSuccess: (data) => {
             queryClient.invalidateQueries({ queryKey: ['allRoutes'] });
             queryClient.invalidateQueries({ queryKey: ['savedRoutes'] });
+            queryClient.invalidateQueries({ queryKey: ['myRoutes'] });
             queryClient.invalidateQueries({ queryKey: ['routeAnchor'] });
             toast.success("Route assigned");
             if (data.notice) toast.info(data.notice);
@@ -521,12 +529,10 @@ export default function AdminTeam() {
             navigate(createPageUrl('Billing'));
             return;
         }
-        const member = teamMembers.find(m => m.id === memberId);
-        assignRouteMutation.mutate({ 
-            routeId, 
-            memberId, 
-            memberName: member?.name 
-        });
+        const member = teamMembers.find(m => m.id === memberId) || (memberId === user?.id ? teamRoster?.manager : null);
+        const route = routes.find(r => r.id === routeId);
+        if (!route || !member || route.assigned_to === memberId) return;
+        setPendingAssignment({ routeId, memberId, routeName: route.name, memberName: member.name });
     };
 
     if (teamLoading || routesLoading) {
@@ -986,7 +992,7 @@ export default function AdminTeam() {
                                                 <p className="font-bold text-xs md:text-sm text-white truncate">{route.name}</p>
                                                 <p className="text-[9px] md:text-[10px] text-gray-500">{route.metrics?.house_count || 0} homes</p>
                                             </div>
-                                            <Select onValueChange={(memberId) => handleAssign(route.id, memberId)}>
+                                            <Select value={route.assigned_to || ''} onValueChange={(memberId) => handleAssign(route.id, memberId)} disabled={assignRouteMutation.isPending}>
                                                 <SelectTrigger className="w-[100px] h-7 text-[10px] bg-[#000] border-yellow-500/50 text-yellow-500">
                                                     <SelectValue placeholder="Assign" />
                                                 </SelectTrigger>
@@ -1064,7 +1070,7 @@ export default function AdminTeam() {
                                                     )}
                                                     
                                                     <div onClick={(e) => e.stopPropagation()}>
-                                                    <Select onValueChange={(memberId) => handleAssign(route.id, memberId)}>
+                                                    <Select value={route.assigned_to || ''} onValueChange={(memberId) => handleAssign(route.id, memberId)} disabled={assignRouteMutation.isPending}>
                                                        <SelectTrigger className="w-[90px] md:w-[160px] h-7 md:h-9 text-[9px] md:text-xs bg-[#000] border-gray-700">
                                                             <SelectValue placeholder="Assign" />
                                                         </SelectTrigger>
@@ -1177,6 +1183,11 @@ export default function AdminTeam() {
                         </Card>
                     </TabsContent>
                 </Tabs>
+                {pendingAssignment && <RouteAssignmentDialog
+                    assignment={pendingAssignment}
+                    onCancel={() => setPendingAssignment(null)}
+                    onConfirm={assignment => assignRouteMutation.mutateAsync(assignment)}
+                />}
             </div>
         </div>
     );

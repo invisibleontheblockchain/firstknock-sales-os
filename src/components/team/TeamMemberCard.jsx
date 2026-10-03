@@ -214,7 +214,7 @@ export default function TeamMemberCard({ member, routes, metrics, allRoutes, onA
                     </div>
                     {activeRoutes.length === 0 && (
                         <div className="mt-2">
-                            <Select onValueChange={(routeId) => onAssignRoute(routeId, member.id)}>
+                            <Select value="" onValueChange={(routeId) => onAssignRoute(routeId, member.id)}>
                                 <SelectTrigger className="w-full h-7 text-[10px] bg-yellow-500/10 border-yellow-500/50 text-yellow-500">
                                     <SelectValue placeholder="Assign route" />
                                 </SelectTrigger>

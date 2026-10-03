@@ -143,7 +143,7 @@ function assignmentHandler() {
     const source = ts.createSourceFile('Home.jsx', read('src/pages/Home.jsx'), ts.ScriptTarget.Latest, true, ts.ScriptKind.JSX);
     let declaration;
     const visit = node => {
-        if (ts.isVariableDeclaration(node) && node.name.getText(source) === 'handleAssignRoute') declaration = node.getText(source);
+        if (ts.isVariableDeclaration(node) && node.name.getText(source) === 'saveRouteAssignment') declaration = node.getText(source);
         ts.forEachChild(node, visit);
     };
     visit(source);
@@ -155,7 +155,7 @@ function assignmentHandler() {
         mergeAnchoredRoute,
         setActiveRoute: updater => { selected = updater(selected); },
     });
-    const handler = vm.runInContext(executable('const ' + declaration + ';') + '\nhandleAssignRoute;', context);
+    const handler = vm.runInContext(executable('const ' + declaration + ';') + '\nsaveRouteAssignment;', context);
     return { handler, errors, selected: () => selected, select: value => { selected = value; }, finish: saved => resolve({ data: { route: saved } }) };
 }
 
@@ -178,4 +178,58 @@ test('a successful assignment updates the same selected route with the persisted
     assert.equal(saved.assigned_to, 'rep-member');
     assert.equal(state.selected().assigned_to, 'rep-member');
     assert.deepEqual(state.errors, []);
+});
+
+function confirmationFlow() {
+    const source = ts.createSourceFile('Home.jsx', read('src/pages/Home.jsx'), ts.ScriptTarget.Latest, true, ts.ScriptKind.JSX);
+    const names = ['handleAssignRoute', 'cancelRouteAssignment', 'confirmRouteAssignment'];
+    const declarations = [];
+    const visit = node => {
+        if (ts.isVariableDeclaration(node) && names.includes(node.name.getText(source))) declarations.push('const ' + node.getText(source) + ';');
+        ts.forEachChild(node, visit);
+    };
+    visit(source);
+    let pending = null;
+    const writes = [];
+    let fail = false;
+    const context = vm.createContext({
+        activeRoute: route, savedRoutes: [route], teamMembers: members, user: manager,
+        assignmentCompletionRef: { current: null },
+        setPendingAssignment: value => { pending = value; },
+        saveRouteAssignment: async (routeId, memberId, useRepBase) => {
+            if (fail) throw new Error('Assignment failed');
+            writes.push({ routeId, memberId, useRepBase });
+            return { ...route, assigned_to: memberId };
+        },
+    });
+    const handlers = vm.runInContext(executable(declarations.join('\n')) + '\n({handleAssignRoute, cancelRouteAssignment, confirmRouteAssignment});', context);
+    return { ...handlers, writes, pending: () => pending, fail: value => { fail = value; } };
+}
+
+test('map selection waits for confirmation and cancellation restores it without a write', async () => {
+    const state = confirmationFlow();
+    const waiting = state.handleAssignRoute('route', 'rep-member', false);
+    assert.equal(state.pending().memberName, 'Rep');
+    assert.equal(state.writes.length, 0);
+    let settled = false;
+    waiting.then(() => { settled = true; });
+    await Promise.resolve();
+    assert.equal(settled, false);
+    state.cancelRouteAssignment();
+    assert.equal(await waiting, null);
+    assert.equal(state.pending(), null);
+    assert.equal(state.writes.length, 0);
+});
+
+test('failed confirmation stays pending until a successful retry saves the selected rep', async () => {
+    const state = confirmationFlow();
+    const waiting = state.handleAssignRoute('route', 'rep-member', false);
+    state.fail(true);
+    await assert.rejects(state.confirmRouteAssignment(state.pending()), /Assignment failed/);
+    assert.equal(state.writes.length, 0);
+    assert.equal(await state.handleAssignRoute('route', 'manager'), null);
+    state.fail(false);
+    await state.confirmRouteAssignment(state.pending());
+    assert.equal((await waiting).assigned_to, 'rep-member');
+    assert.deepEqual(state.writes, [{ routeId: 'route', memberId: 'rep-member', useRepBase: false }]);
 });

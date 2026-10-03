@@ -273,6 +273,7 @@ export default function RepHome() {
   const { data: routes = [], isLoading: routesLoading } = useQuery({
     queryKey: myRoutesQueryKey,
     refetchOnWindowFocus: true,
+    refetchInterval: 15_000,
     queryFn: async () => {
       if (!user) return [];
       if (teamMemberLookupFailed && !routeScope.managerAccount) {
@@ -281,7 +282,7 @@ export default function RepHome() {
         // network result built from incomplete TeamMember identities.
         try {
           const cached = await localforage.getItem(routeCacheKey);
-          return Array.isArray(cached) ? cached : [];
+          return collectKnockRoutes([Array.isArray(cached) ? cached : []], routeScope);
         } catch (cacheError) {
           console.warn('[RepHome] Could not read the offline route cache after identity lookup failed', cacheError);
           return [];
@@ -524,13 +525,13 @@ export default function RepHome() {
       if (isSelectedRoute) {
         queryClient.invalidateQueries({ queryKey: ['myRoutes'] });
         queryClient.invalidateQueries({ queryKey: ['routeProperties'] });
-      } else if (event.type === 'create' && isMine) {
+      } else if (isMine || routes.some(route => route.id === event.id)) {
         queryClient.invalidateQueries({ queryKey: ['myRoutes'] });
       }
     });
     return unsubscribe;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, activeRoute?.id, manualRouteId, queryClient, teamMemberIdsKey]);
+  }, [user, activeRoute?.id, manualRouteId, queryClient, teamMemberIdsKey, routeScope, routes]);
 
   const activeRouteOrderKey = React.useMemo(
     () => (activeRoute?.property_hashes || []).join('|'),

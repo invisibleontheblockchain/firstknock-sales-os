@@ -243,7 +243,7 @@ test('identity failures preserve scoped cached routes and never become a success
   assert.ok(fallbackStart >= 0 && normalFetchStart > fallbackStart);
   const fallbackBlock = repHome.slice(fallbackStart, normalFetchStart);
   assert.match(fallbackBlock, /localforage\.getItem\(routeCacheKey\)/);
-  assert.match(fallbackBlock, /return Array\.isArray\(cached\) \? cached : \[\]/);
+  assert.match(fallbackBlock, /return collectKnockRoutes\(\[Array\.isArray\(cached\) \? cached : \[\]\], routeScope\)/);
   assert.doesNotMatch(fallbackBlock, /localforage\.setItem/);
 });
 
