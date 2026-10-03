@@ -23,7 +23,7 @@ const Pages = Object.fromEntries(
   ])
 );
 
-const SatelliteLanding = React.lazy(() => import('@/components/marketing/SatelliteLanding'));
+const AppEntry = React.lazy(() => import('@/components/AppEntry'));
 
 const LayoutWrapper = ({ children, currentPageName }) => Layout ?
   <Layout currentPageName={currentPageName}>{children}</Layout>
@@ -52,7 +52,7 @@ const AUTH_PAGE_KEYS = new Set(['Login', 'Register', 'ForgotPassword', 'ResetPas
 
 const RoutedApp = () => (
   <Routes>
-    <Route path="/" element={<SatelliteLanding />} />
+    <Route path="/" element={<AppEntry />} />
     <Route path="/login" element={<Pages.Login />} />
     <Route path="/register" element={<Pages.Register />} />
     <Route path="/forgot-password" element={<Pages.ForgotPassword />} />

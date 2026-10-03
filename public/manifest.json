@@ -1,7 +1,8 @@
 {
   "name": "FirstKnock",
   "short_name": "FirstKnock",
-  "start_url": "/",
+  "id": "/",
+  "start_url": "/RoleSelect",
   "scope": "/",
   "display": "standalone",
   "background_color": "#000000",
