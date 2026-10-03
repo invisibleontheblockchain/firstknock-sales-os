@@ -34,9 +34,91 @@
       "rls": {
         "write": {
           "$or": [
-            {"$and": [{"manager_id": "{{user.id}}"}, {"$or": [{"user_condition": {"app_role": "manager"}}, {"user_condition": {"app_role": "admin"}}, {"user_condition": {"role": "manager"}}, {"user_condition": {"is_owner": true}}, {"user_condition": {"role": "admin"}}]}]},
-            {"$and": [{"data.manager_id": {"$in": [null, ""]}}, {"created_by": "{{user.email}}"}, {"$or": [{"user_condition": {"app_role": "manager"}}, {"user_condition": {"app_role": "admin"}}, {"user_condition": {"role": "manager"}}, {"user_condition": {"is_owner": true}}, {"user_condition": {"role": "admin"}}]}]},
-            {"user_condition": {"role": "admin"}}
+            {
+              "$and": [
+                {
+                  "data.manager_id": "{{user.id}}"
+                },
+                {
+                  "$or": [
+                    {
+                      "user_condition": {
+                        "app_role": "manager"
+                      }
+                    },
+                    {
+                      "user_condition": {
+                        "app_role": "admin"
+                      }
+                    },
+                    {
+                      "user_condition": {
+                        "role": "manager"
+                      }
+                    },
+                    {
+                      "user_condition": {
+                        "is_owner": true
+                      }
+                    },
+                    {
+                      "user_condition": {
+                        "role": "admin"
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "$and": [
+                {
+                  "data.manager_id": {
+                    "$in": [
+                      null,
+                      ""
+                    ]
+                  }
+                },
+                {
+                  "created_by": "{{user.email}}"
+                },
+                {
+                  "$or": [
+                    {
+                      "user_condition": {
+                        "app_role": "manager"
+                      }
+                    },
+                    {
+                      "user_condition": {
+                        "app_role": "admin"
+                      }
+                    },
+                    {
+                      "user_condition": {
+                        "role": "manager"
+                      }
+                    },
+                    {
+                      "user_condition": {
+                        "is_owner": true
+                      }
+                    },
+                    {
+                      "user_condition": {
+                        "role": "admin"
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "user_condition": {
+                "role": "admin"
+              }
+            }
           ]
         }
       }
@@ -47,9 +129,91 @@
       "rls": {
         "write": {
           "$or": [
-            {"$and": [{"manager_id": "{{user.id}}"}, {"$or": [{"user_condition": {"app_role": "manager"}}, {"user_condition": {"app_role": "admin"}}, {"user_condition": {"role": "manager"}}, {"user_condition": {"is_owner": true}}, {"user_condition": {"role": "admin"}}]}]},
-            {"$and": [{"data.manager_id": {"$in": [null, ""]}}, {"created_by": "{{user.email}}"}, {"$or": [{"user_condition": {"app_role": "manager"}}, {"user_condition": {"app_role": "admin"}}, {"user_condition": {"role": "manager"}}, {"user_condition": {"is_owner": true}}, {"user_condition": {"role": "admin"}}]}]},
-            {"user_condition": {"role": "admin"}}
+            {
+              "$and": [
+                {
+                  "data.manager_id": "{{user.id}}"
+                },
+                {
+                  "$or": [
+                    {
+                      "user_condition": {
+                        "app_role": "manager"
+                      }
+                    },
+                    {
+                      "user_condition": {
+                        "app_role": "admin"
+                      }
+                    },
+                    {
+                      "user_condition": {
+                        "role": "manager"
+                      }
+                    },
+                    {
+                      "user_condition": {
+                        "is_owner": true
+                      }
+                    },
+                    {
+                      "user_condition": {
+                        "role": "admin"
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "$and": [
+                {
+                  "data.manager_id": {
+                    "$in": [
+                      null,
+                      ""
+                    ]
+                  }
+                },
+                {
+                  "created_by": "{{user.email}}"
+                },
+                {
+                  "$or": [
+                    {
+                      "user_condition": {
+                        "app_role": "manager"
+                      }
+                    },
+                    {
+                      "user_condition": {
+                        "app_role": "admin"
+                      }
+                    },
+                    {
+                      "user_condition": {
+                        "role": "manager"
+                      }
+                    },
+                    {
+                      "user_condition": {
+                        "is_owner": true
+                      }
+                    },
+                    {
+                      "user_condition": {
+                        "role": "admin"
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "user_condition": {
+                "role": "admin"
+              }
+            }
           ]
         }
       }
@@ -128,9 +292,91 @@
       "rls": {
         "write": {
           "$or": [
-            {"$and": [{"manager_id": "{{user.id}}"}, {"$or": [{"user_condition": {"app_role": "manager"}}, {"user_condition": {"app_role": "admin"}}, {"user_condition": {"role": "manager"}}, {"user_condition": {"is_owner": true}}, {"user_condition": {"role": "admin"}}]}]},
-            {"$and": [{"data.manager_id": {"$in": [null, ""]}}, {"created_by": "{{user.email}}"}, {"$or": [{"user_condition": {"app_role": "manager"}}, {"user_condition": {"app_role": "admin"}}, {"user_condition": {"role": "manager"}}, {"user_condition": {"is_owner": true}}, {"user_condition": {"role": "admin"}}]}]},
-            {"user_condition": {"role": "admin"}}
+            {
+              "$and": [
+                {
+                  "data.manager_id": "{{user.id}}"
+                },
+                {
+                  "$or": [
+                    {
+                      "user_condition": {
+                        "app_role": "manager"
+                      }
+                    },
+                    {
+                      "user_condition": {
+                        "app_role": "admin"
+                      }
+                    },
+                    {
+                      "user_condition": {
+                        "role": "manager"
+                      }
+                    },
+                    {
+                      "user_condition": {
+                        "is_owner": true
+                      }
+                    },
+                    {
+                      "user_condition": {
+                        "role": "admin"
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "$and": [
+                {
+                  "data.manager_id": {
+                    "$in": [
+                      null,
+                      ""
+                    ]
+                  }
+                },
+                {
+                  "created_by": "{{user.email}}"
+                },
+                {
+                  "$or": [
+                    {
+                      "user_condition": {
+                        "app_role": "manager"
+                      }
+                    },
+                    {
+                      "user_condition": {
+                        "app_role": "admin"
+                      }
+                    },
+                    {
+                      "user_condition": {
+                        "role": "manager"
+                      }
+                    },
+                    {
+                      "user_condition": {
+                        "is_owner": true
+                      }
+                    },
+                    {
+                      "user_condition": {
+                        "role": "admin"
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "user_condition": {
+                "role": "admin"
+              }
+            }
           ]
         }
       }
@@ -162,28 +408,366 @@
     "property_hashes"
   ],
   "rls": {
-    "create": {"$or": [{"user_condition": {"app_role": "manager"}}, {"user_condition": {"app_role": "admin"}}, {"user_condition": {"role": "manager"}}, {"user_condition": {"is_owner": true}}, {"user_condition": {"role": "admin"}}]},
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "app_role": "manager"
+          }
+        },
+        {
+          "user_condition": {
+            "app_role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "manager"
+          }
+        },
+        {
+          "user_condition": {
+            "is_owner": true
+          }
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
     "read": {
       "$or": [
-        {"$and": [{"manager_id": "{{user.id}}"}, {"$or": [{"user_condition": {"app_role": "manager"}}, {"user_condition": {"app_role": "admin"}}, {"user_condition": {"role": "manager"}}, {"user_condition": {"is_owner": true}}, {"user_condition": {"role": "admin"}}]}]},
-        {"$and": [{"data.manager_id": {"$in": [null, ""]}}, {"created_by": "{{user.email}}"}, {"$or": [{"user_condition": {"app_role": "manager"}}, {"user_condition": {"app_role": "admin"}}, {"user_condition": {"role": "manager"}}, {"user_condition": {"is_owner": true}}, {"user_condition": {"role": "admin"}}]}]},
-        {"$and": [{"data.manager_id": {"$nin": [null, ""]}}, {"data.assigned_to": {"$nin": [null, ""]}}, {"manager_id": "{{user.data.team_manager_id}}"}, {"$or": [{"assigned_to": "{{user.id}}"}, {"assigned_to": "{{user.data.team_member_id}}"}]}]},
-        {"user_condition": {"role": "admin"}}
+        {
+          "$and": [
+            {
+              "data.manager_id": "{{user.id}}"
+            },
+            {
+              "$or": [
+                {
+                  "user_condition": {
+                    "app_role": "manager"
+                  }
+                },
+                {
+                  "user_condition": {
+                    "app_role": "admin"
+                  }
+                },
+                {
+                  "user_condition": {
+                    "role": "manager"
+                  }
+                },
+                {
+                  "user_condition": {
+                    "is_owner": true
+                  }
+                },
+                {
+                  "user_condition": {
+                    "role": "admin"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "$and": [
+            {
+              "data.manager_id": {
+                "$in": [
+                  null,
+                  ""
+                ]
+              }
+            },
+            {
+              "created_by": "{{user.email}}"
+            },
+            {
+              "$or": [
+                {
+                  "user_condition": {
+                    "app_role": "manager"
+                  }
+                },
+                {
+                  "user_condition": {
+                    "app_role": "admin"
+                  }
+                },
+                {
+                  "user_condition": {
+                    "role": "manager"
+                  }
+                },
+                {
+                  "user_condition": {
+                    "is_owner": true
+                  }
+                },
+                {
+                  "user_condition": {
+                    "role": "admin"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "$and": [
+            {
+              "data.manager_id": {
+                "$nin": [
+                  null,
+                  ""
+                ]
+              }
+            },
+            {
+              "data.assigned_to": {
+                "$nin": [
+                  null,
+                  ""
+                ]
+              }
+            },
+            {
+              "data.manager_id": "{{user.data.team_manager_id}}"
+            },
+            {
+              "$or": [
+                {
+                  "data.assigned_to": "{{user.id}}"
+                },
+                {
+                  "data.assigned_to": "{{user.data.team_member_id}}"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
       ]
     },
     "update": {
       "$or": [
-        {"$and": [{"manager_id": "{{user.id}}"}, {"$or": [{"user_condition": {"app_role": "manager"}}, {"user_condition": {"app_role": "admin"}}, {"user_condition": {"role": "manager"}}, {"user_condition": {"is_owner": true}}, {"user_condition": {"role": "admin"}}]}]},
-        {"$and": [{"data.manager_id": {"$in": [null, ""]}}, {"created_by": "{{user.email}}"}, {"$or": [{"user_condition": {"app_role": "manager"}}, {"user_condition": {"app_role": "admin"}}, {"user_condition": {"role": "manager"}}, {"user_condition": {"is_owner": true}}, {"user_condition": {"role": "admin"}}]}]},
-        {"$and": [{"data.manager_id": {"$nin": [null, ""]}}, {"data.assigned_to": {"$nin": [null, ""]}}, {"manager_id": "{{user.data.team_manager_id}}"}, {"$or": [{"assigned_to": "{{user.id}}"}, {"assigned_to": "{{user.data.team_member_id}}"}]}]},
-        {"user_condition": {"role": "admin"}}
+        {
+          "$and": [
+            {
+              "data.manager_id": "{{user.id}}"
+            },
+            {
+              "$or": [
+                {
+                  "user_condition": {
+                    "app_role": "manager"
+                  }
+                },
+                {
+                  "user_condition": {
+                    "app_role": "admin"
+                  }
+                },
+                {
+                  "user_condition": {
+                    "role": "manager"
+                  }
+                },
+                {
+                  "user_condition": {
+                    "is_owner": true
+                  }
+                },
+                {
+                  "user_condition": {
+                    "role": "admin"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "$and": [
+            {
+              "data.manager_id": {
+                "$in": [
+                  null,
+                  ""
+                ]
+              }
+            },
+            {
+              "created_by": "{{user.email}}"
+            },
+            {
+              "$or": [
+                {
+                  "user_condition": {
+                    "app_role": "manager"
+                  }
+                },
+                {
+                  "user_condition": {
+                    "app_role": "admin"
+                  }
+                },
+                {
+                  "user_condition": {
+                    "role": "manager"
+                  }
+                },
+                {
+                  "user_condition": {
+                    "is_owner": true
+                  }
+                },
+                {
+                  "user_condition": {
+                    "role": "admin"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "$and": [
+            {
+              "data.manager_id": {
+                "$nin": [
+                  null,
+                  ""
+                ]
+              }
+            },
+            {
+              "data.assigned_to": {
+                "$nin": [
+                  null,
+                  ""
+                ]
+              }
+            },
+            {
+              "data.manager_id": "{{user.data.team_manager_id}}"
+            },
+            {
+              "$or": [
+                {
+                  "data.assigned_to": "{{user.id}}"
+                },
+                {
+                  "data.assigned_to": "{{user.data.team_member_id}}"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
       ]
     },
     "delete": {
       "$or": [
-        {"$and": [{"manager_id": "{{user.id}}"}, {"$or": [{"user_condition": {"app_role": "manager"}}, {"user_condition": {"app_role": "admin"}}, {"user_condition": {"role": "manager"}}, {"user_condition": {"is_owner": true}}, {"user_condition": {"role": "admin"}}]}]},
-        {"$and": [{"data.manager_id": {"$in": [null, ""]}}, {"created_by": "{{user.email}}"}, {"$or": [{"user_condition": {"app_role": "manager"}}, {"user_condition": {"app_role": "admin"}}, {"user_condition": {"role": "manager"}}, {"user_condition": {"is_owner": true}}, {"user_condition": {"role": "admin"}}]}]},
-        {"user_condition": {"role": "admin"}}
+        {
+          "$and": [
+            {
+              "data.manager_id": "{{user.id}}"
+            },
+            {
+              "$or": [
+                {
+                  "user_condition": {
+                    "app_role": "manager"
+                  }
+                },
+                {
+                  "user_condition": {
+                    "app_role": "admin"
+                  }
+                },
+                {
+                  "user_condition": {
+                    "role": "manager"
+                  }
+                },
+                {
+                  "user_condition": {
+                    "is_owner": true
+                  }
+                },
+                {
+                  "user_condition": {
+                    "role": "admin"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "$and": [
+            {
+              "data.manager_id": {
+                "$in": [
+                  null,
+                  ""
+                ]
+              }
+            },
+            {
+              "created_by": "{{user.email}}"
+            },
+            {
+              "$or": [
+                {
+                  "user_condition": {
+                    "app_role": "manager"
+                  }
+                },
+                {
+                  "user_condition": {
+                    "app_role": "admin"
+                  }
+                },
+                {
+                  "user_condition": {
+                    "role": "manager"
+                  }
+                },
+                {
+                  "user_condition": {
+                    "is_owner": true
+                  }
+                },
+                {
+                  "user_condition": {
+                    "role": "admin"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
       ]
     }
   }
