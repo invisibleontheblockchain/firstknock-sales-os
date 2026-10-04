@@ -9,6 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Loader2, Settings2, Database, Map as MapIcon, Save } from 'lucide-react';
 import { generateOptimizedRoutes } from '../logic/routeOptimizer';
+import { completeBetaGeneratedRoutes, bindBetaGeneratedRoutes } from '@/lib/roadAwareRoutingBeta';
 import { createRouteContinuityContext } from '../logic/routeRoadContext';
 
 // Constants
@@ -109,13 +110,13 @@ export default function CampaignWizard({ open, onOpenChange, existingPlan = null
             await new Promise(r => setTimeout(r, 500));
 
             const routingContext = createRouteContinuityContext(filteredProps);
-            const generatedRoutes = generateOptimizedRoutes(
+            const generatedRoutes = await completeBetaGeneratedRoutes(generateOptimizedRoutes(
                 filteredProps,
                 config.houses_per_route,
                 null, // No specific start location, use clustering
                 [], // No logs for initial generation
                 { streetCooldownDays: config.street_cooldown_days, routingContext }
-            );
+            ), { entryPoint: 'campaign_generation' });
 
             setGenerationProgress(`Saving plan and ${generatedRoutes.length} routes...`);
 
@@ -146,6 +147,7 @@ export default function CampaignWizard({ open, onOpenChange, existingPlan = null
                     description: `Auto-generated route. Score: ${r.competitivenessScore}`,
                     status: 'PENDING',
                     property_hashes: r.properties.map(p => p.address_hash),
+                    ...(r.metadata ? { metadata: r.metadata } : {}),
                     metrics: {
                         distance: r.totalDistance,
                         house_count: r.houseCount,
@@ -160,7 +162,7 @@ export default function CampaignWizard({ open, onOpenChange, existingPlan = null
                 for (let i = 0; i < dbRoutes.length; i += chunkSize) {
                     const chunk = dbRoutes.slice(i, i + chunkSize);
                     setGenerationProgress(`Uploading routes ${i + 1} to ${Math.min(i + chunkSize, dbRoutes.length)}...`);
-                    await bulkCreateRoutesMutation.mutateAsync(chunk);
+                    await bindBetaGeneratedRoutes(await bulkCreateRoutesMutation.mutateAsync(chunk));
                 }
             }
 

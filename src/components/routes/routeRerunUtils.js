@@ -88,6 +88,12 @@ export function buildRerunRoutePayload(route, selectedHashes, filter, label) {
   const safeMetadata = { ...(route?.metadata || {}) };
   delete safeMetadata.route_bounds;
   delete safeMetadata.anchor;
+  delete safeMetadata.road_geometry;
+  delete safeMetadata.road_geometry_segments;
+  delete safeMetadata.routing;
+  delete safeMetadata.road_verification;
+  delete safeMetadata.road_aware_comparison_id;
+  delete safeMetadata.road_aware_legacy_order;
   const uniqueHashes = dedupeRerunHashes(route, selectedHashes);
   return {
     name: `${route?.name || 'Completed Route'} Rerun — ${label}`,

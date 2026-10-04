@@ -1136,7 +1136,7 @@ function routingDistance(first, second, routingContext = null) {
     return calculateDistanceFast(first.lat, first.lng, second.lat, second.lng);
 }
 
-function splitOrderedPropertiesByRoutingBoundaries(
+export function splitOrderedPropertiesByRoutingBoundaries(
     properties,
     housesPerRoute,
     routingContext = null

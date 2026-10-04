@@ -26,6 +26,7 @@ export function getRuntimeNavigationEnvironment() {
 export function getRouteNavigationPlan(properties, app = 'apple', options = {}) {
     return buildRouteNavigationPlan(properties, {
         ...options,
+        travelMode: options.travelMode ?? (options.routingMetadata?.road_aware_routing_beta ? 'driving' : null),
         provider: app,
         environment: options.environment || getRuntimeNavigationEnvironment()
     });

@@ -44,7 +44,7 @@ function safeRoutingMetadata(metadata) {
 }
 
 /** Optimize the complete merged manifest, keeping every original identifier. */
-export async function optimizeImportedRoute({ route, properties, hashes, client, user, optimizeRoad, optimizeLocal = (stops, start, end) => optimizeRouteWithBounds(stops, { startLocation: start, endLocation: end }) }) {
+export async function optimizeImportedRoute({ route, properties, hashes, client, user, optimizeRoad, optimizeBeta, optimizeLocal = (stops, start, end) => optimizeRouteWithBounds(stops, { startLocation: start, endLocation: end }) }) {
   const unchanged = (reason, bounds = null) => {
     const metadata = localMetadata('unavailable', reason);
     metadata.routing.distance_scope = bounds ? 'complete_route' : 'between_stops';
@@ -68,6 +68,19 @@ export async function optimizeImportedRoute({ route, properties, hashes, client,
     return keys.map(key => byHash.get(key).stop);
   };
   const originalHashes = order => order.map(stop => byHash.get(stop.address_hash).hash);
+  if (optimizeBeta) {
+    const beta = await optimizeBeta(stops, { bounds, client, entryPoint: 'csv_import_append' });
+    if (beta) {
+      const order = exactOrder(beta.properties);
+      if (!order) throw new Error('Imported route membership failed the beta integrity check.');
+      const metadata = { ...beta.metadata, road_aware_comparison_id: beta.comparisonId };
+      if (['home_round_trip', 'anchor_round_trip', 'private_anchor_round_trip'].includes(route.route_origin_mode)) {
+        delete metadata.road_geometry; delete metadata.road_geometry_segments;
+      }
+      return { hashes: originalHashes(order), status: beta.comparison.changedStops ? 'improved' : 'unchanged',
+        distance: beta.comparison.fullMeasurement ? beta.distanceMiles : calculateRouteDistanceMiles(order, bounds), metadata };
+    }
+  }
   let roadOutcome = 'road_service_unavailable';
   let roadMeasurement = null;
   if (optimizeRoad) {

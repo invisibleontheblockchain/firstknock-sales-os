@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "status": "frozen-modeled-baseline-not-field-evidence",
+  "privateArchive": "outputs/routing-regression-fixtures/charlotte-home-6965-v1",
+  "exportSha256": "41f6841d87e88bfa90863b5ef5935bb6b0ea9803691d3f53c2b04d393ce7caa2",
+  "manifestSha256": "ec72d0d95df11b6ae2f377e5e2e1780619d8480b111a88bfc32bc7656a20e328",
+  "providerFingerprint": "51541289021925fde23303e1e8325770e681d0929f2cf301069cdc7595b79b81",
+  "dataVersion": "2026-10-03T21:35:16Z",
+  "profileSha256": "48bbb716c2b68ce6803a11a4151fcac050c6ea8240295e7dde111f15f8bd3984",
+  "sourceHashes": {
+    "base44/shared/guardedDrivingWindows.js": "ef542236c6c47b03a70cd8ea44c0e7618ac5f8404292df628deeaa0b57e64ca7",
+    "base44/shared/vehicleRouting.js": "7f84d733d7a792366f8bebf16fb96d86fd391a0935521a791d9917954b73e572",
+    "src/components/logic/routeOptimizer.jsx": "8b79895c62cf6ad97586af47ae1d3373493fb51e993b6cd527e753a20649add2",
+    "src/components/logic/routeRoadContext.js": "0100c5c9a508e856e60bae38746416340cd729c937beccef2404e13bf00a87c0"
+  },
+  "archiveHashes": {
+    "export.csv": "41f6841d87e88bfa90863b5ef5935bb6b0ea9803691d3f53c2b04d393ce7caa2",
+    "window-manifest.json": "099a0b568ecce6bbae54584b0b2ef9a678427c4e9b5cedd573a8ade7cb5cae51",
+    "results.json": "d14fd589922e34727d0648a3cb1b33cefa15d370e28d7f6bd9e8ded5929185a8",
+    "selected-home-route.csv": "18aff4f1b7dc2ed29249847cb6f48db55618ba7769a26621648639adc028f2bd",
+    "home-pipeline-smoke.json": "26ed9ca418f7b71a109d230badaefd4f3a46474b8c3122dc44505f93c2cc67a5",
+    "source/base44/shared/guardedDrivingWindows.js": "ef542236c6c47b03a70cd8ea44c0e7618ac5f8404292df628deeaa0b57e64ca7",
+    "source/base44/shared/vehicleRouting.js": "7f84d733d7a792366f8bebf16fb96d86fd391a0935521a791d9917954b73e572",
+    "source/src/components/logic/routeOptimizer.jsx": "8b79895c62cf6ad97586af47ae1d3373493fb51e993b6cd527e753a20649add2",
+    "source/src/components/logic/routeRoadContext.js": "0100c5c9a508e856e60bae38746416340cd729c937beccef2404e13bf00a87c0"
+  },
+  "matchLimitMeters": 100,
+  "visibleRoutes": 1,
+  "stopCount": 6965,
+  "unresolvedStops": 44,
+  "metrics": {
+    "milesSaved": 382.9755478008328,
+    "secondsSaved": 94268.20000000123,
+    "distanceReductionPercent": 8.377231702120921,
+    "timeReductionPercent": 9.574866587170964,
+    "measuredLegs": 6883,
+    "unmeasurableLegs": 81,
+    "acceptedRegressions": 0
+  },
+  "policy": "Hard integrity/access/guard failures always fail. Lower savings, changed measurement coverage or graph/profile require a written explanation. A graph change does not require identical savings. Keep this original baseline immutable."
+}

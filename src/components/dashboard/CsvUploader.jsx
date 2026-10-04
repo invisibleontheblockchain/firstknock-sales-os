@@ -107,6 +107,9 @@ export default function CsvUploader() {
                 client: base44, user: currentUser, routeId: pendingImport.routeId,
                 optimize: optimizeRouteByDistance,
                 optimizeRoad: tryRoadMatrixOptimize,
+                optimizeBeta: (await import('@/lib/roadAwareRoutingBeta')).prepareRoadAwareBetaComparison,
+                completeGenerated: (await import('@/lib/roadAwareRoutingBeta')).completeBetaRouteRecords,
+                bindGenerated: (await import('@/lib/roadAwareRoutingBeta')).bindBetaGeneratedRoutes,
                 persistProperties: async (properties, routeId) => {
                     const response = await base44.functions.invoke('persistImportedProperties', { properties, route_id: routeId });
                     return response.data?.properties;

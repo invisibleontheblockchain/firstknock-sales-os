@@ -6,6 +6,7 @@ import 'leaflet/dist/leaflet.css';
 import { routePropertyOrderFingerprint } from '@/components/logic/routeRoadContext';
 import { DEFAULT_PIN_THEME } from '@/components/map/mapPinThemes';
 import { outcomeColor } from '@/components/logic/outcomeStatus';
+import { verifiedBetaSegments } from '@/lib/roadAwareRouteGeometry';
 
 // Fix Leaflet unmount error during scroll wheel zoom
 const originalGetMapPanePos = L.Map.prototype._getMapPanePos;
@@ -177,6 +178,7 @@ export default function RepMapView({
     anchorLabel = 'Home',
     roadGeometry = null,
     roadGeometryFingerprint = '',
+    roadMetadata = null,
 }) {
     const mapRef = useRef(null);
     const [position, setPosition] = useState(null);
@@ -374,7 +376,11 @@ export default function RepMapView({
                     ))}
 
                     {/* Route Path (Mail Carrier Style) */}
-                    {routePathPositions.length > 1 && (
+                    {roadMetadata?.routing?.road_aware_routing_beta
+                        ? (verifiedBetaSegments(roadMetadata, properties, properties) || []).map((points, index) =>
+                            <Polyline key={'road-beta-' + index} positions={points.map(p => [Number(p.lat), Number(p.lng)])}
+                                renderer={CANVAS_RENDERER} pathOptions={{ color: BRAND.gold, weight: 4, opacity: 0.85 }} />)
+                        : routePathPositions.length > 1 && (
                         <Polyline
                             positions={routePathPositions}
                             renderer={CANVAS_RENDERER}

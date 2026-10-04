@@ -106,6 +106,7 @@ export function buildRouteOptimizeUpdate({
     const routeOriginMode = routeOriginModeForOptimizeMode(optimizeMode);
     const metadata = { ...existingMetadata, ...routingMetadata };
     delete metadata.road_geometry;
+    delete metadata.road_geometry_segments;
 
     if (optimizeMode === OPTIMIZE_MODES.ROUTE_ONLY) {
         // Always clear, whatever the previous mode was — including car_round_trip

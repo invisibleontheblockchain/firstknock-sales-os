@@ -8,6 +8,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { generateOptimizedRoutes } from "@/components/logic/routeOptimizer";
+import { completeBetaGeneratedRoutes } from '@/lib/roadAwareRoutingBeta';
 import { createRouteContinuityContext } from "@/components/logic/routeRoadContext";
 import {
     Navigation, X, BarChart3, User, Shield, MapPin, Flame, Plus, Clock, CheckCircle2, ChevronRight, Zap, Trash2, Scissors, Pencil, Check, Play, Home, Search
@@ -296,7 +297,7 @@ export default function RouteCommandPanel({
                                                             />
                                                         ) : (
                                                             <Button
-                                                                onClick={() => {
+                                                                onClick={async () => {
                                                                     const baseRoutes = (filteredRoutes && filteredRoutes.length > 0) ? filteredRoutes : generatedRoutes;
                                                                     const seen = new Set();
                                                                     const allProps = [];
@@ -341,7 +342,7 @@ export default function RouteCommandPanel({
                                                                         ? (firstRoute.endLocation || firstRoute.end_location)
                                                                         : null;
                                                                     const routingContext = createRouteContinuityContext(allProps);
-                                                                    const merged = generateOptimizedRoutes(
+                                                                    const merged = await completeBetaGeneratedRoutes(generateOptimizedRoutes(
                                                                         allProps,
                                                                         allProps.length,
                                                                         mergeStart,
@@ -356,7 +357,7 @@ export default function RouteCommandPanel({
                                                                             preserveInputMembership: true,
                                                                             routingContext
                                                                         }
-                                                                    );
+                                                                    ), { entryPoint: 'generated_routes_merge' });
                                                                     if (merged && merged.length > 0) {
                                                                         const big = {
                                                                             ...merged[0],
@@ -576,13 +577,13 @@ function SplitRouteButton({ route, onReplaceRoutes }) {
                     {splitOptions.filter(n => n < totalHouses).map(n => (
                         <Button
                             key={n}
-                            onClick={() => {
+                            onClick={async () => {
                                 const perRoute = Math.ceil(totalHouses / n);
                                 const routingContext = createRouteContinuityContext(route.properties);
-                                const splits = generateOptimizedRoutes(
+                                const splits = await completeBetaGeneratedRoutes(generateOptimizedRoutes(
                                     route.properties, perRoute, null, [],
                                     { minimizeTurns: true, use2Opt: true, walkingPattern: 'nearest', excludeTerminal: false, preserveInputMembership: true, routingContext }
-                                );
+                                ), { entryPoint: 'generated_route_split' });
                                 if (splits && splits.length > 0 && onReplaceRoutes) {
                                     onReplaceRoutes(splits);
                                 }

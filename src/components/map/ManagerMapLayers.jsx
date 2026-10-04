@@ -7,6 +7,7 @@ import StateBoundariesLayer from './StateBoundariesLayer';
 import { getCompletedPinColor } from '@/components/routes/routeRerunUtils';
 import { isSoldDateInCustomOwnershipRange, normalizeOwnershipRangeDays } from '@/components/logic/soldDateRange';
 import { routePropertyOrderFingerprint } from '@/components/logic/routeRoadContext';
+import { verifiedBetaSegments } from '@/lib/roadAwareRouteGeometry';
 import { resolvePinSize, zoomAdjustedPinSize } from './densePinSize';
 import { buildPinStyle, pinKey, pinPropertyStyleKey, pinStyleContextKey } from './pinStyle';
 import { buildSavedRouteGroup, savedRouteStyleKey } from './savedRouteLayer';
@@ -63,6 +64,7 @@ const getPersistedRoadGeometry = (route, properties) => {
 };
 
 const getRouteLinePoints = (route, properties) => {
+    if (route?.metadata?.routing?.road_aware_routing_beta) return [];
     const roadGeometry = getPersistedRoadGeometry(route, properties);
     if (roadGeometry) return roadGeometry;
     const doors = (properties || []).filter(isRenderableMapPoint);
@@ -140,6 +142,7 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, pinSize, lineDashAr
 
         const routePoints = activeRoute.properties.filter(isRenderableMapPoint);
         const routeLinePoints = getRouteLinePoints(activeRoute, routePoints);
+        const betaSegments = verifiedBetaSegments(activeRoute.metadata, activeRoute.property_hashes || routePoints, routePoints);
         // Home's MapController owns the camera after the complete manifest loads.
 
         const routeColor = getRouteColor(activeRoute, activeRoute.route_number || 1);
@@ -174,9 +177,10 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, pinSize, lineDashAr
 
         // 1. Route line — suppressed while a decision filter is active so the
         // remaining outcome pins are readable without route noise.
-        if (!decisionFilterActive && routeLinePoints.length > 1) {
+        if (!decisionFilterActive && (routeLinePoints.length > 1 || betaSegments?.length)) {
             const line = L.polyline(
-                routeLinePoints.map(p => [Number(p.lat), Number(p.lng)]),
+                betaSegments ? betaSegments.map(points => points.map(p => [Number(p.lat), Number(p.lng)]))
+                    : routeLinePoints.map(p => [Number(p.lat), Number(p.lng)]),
                 {
                     // Deliberately restrained: the selected route used to draw at
                     // +2 weight and a 0.6 opacity floor, which washed out the
@@ -693,6 +697,7 @@ function SavedRoutesLayer({
                 const built = buildSavedRouteGroup({
                     doors: route.properties.filter(isRenderableMapPoint),
                     linePoints: getRouteLinePoints(route, route.properties),
+                    lineSegments: verifiedBetaSegments(route.metadata, route.property_hashes || route.properties, route.properties),
                     centerPoint: isRenderableMapPoint(centerProp)
                         ? [Number(centerProp.lat), Number(centerProp.lng)]
                         : null,
@@ -944,6 +949,11 @@ const ManagerMapLayers = React.memo(function ManagerMapLayers({
 
             {/* Preview Route (hover/tap from list) */}
             {previewRoute && !activeRoute && (
+                previewRoute.metadata?.routing?.road_aware_routing_beta
+                ? (verifiedBetaSegments(previewRoute.metadata, previewRoute.property_hashes || previewRoute.properties, previewRoute.properties) || []).map((points, i) =>
+                    <Polyline key={i} positions={points.map(p => [Number(p.lat), Number(p.lng)])}
+                        pathOptions={{ color: BRAND.gold, weight: 3, opacity: 0.6, dashArray: '5,10' }} />)
+                :
                 <Polyline
                     positions={getRouteLinePoints(previewRoute, previewRoute.properties)
                         .map(p => [Number(p.lat), Number(p.lng)])}

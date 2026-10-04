@@ -13,6 +13,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { generateOptimizedRoutes } from '../components/logic/routeOptimizer';
+import { completeBetaGeneratedRoutes, bindBetaGeneratedRoutes } from '@/lib/roadAwareRoutingBeta';
 import { createRouteContinuityContext } from '../components/logic/routeRoadContext';
 import { toast } from "sonner";
 
@@ -300,7 +301,7 @@ export default function ZipCodeExplorer() {
 
     setIsGenerating(true);
     // Add small delay to allow UI to update
-    setTimeout(() => {
+    setTimeout(async () => {
       try {
         // Apply filters to properties
         const now = new Date();
@@ -336,6 +337,7 @@ export default function ZipCodeExplorer() {
         if (routes.length > filters.maxRoutes) {
           routes = routes.slice(0, filters.maxRoutes);
         }
+        routes = await completeBetaGeneratedRoutes(routes, { entryPoint: 'zip_generation' });
 
         setGeneratedRoutes(routes);
         toast.success(`Generated ${routes.length} routes with ${filteredProps.length} filtered properties!`);
@@ -359,6 +361,7 @@ export default function ZipCodeExplorer() {
           name: `${zipCode} - ${route.name}`,
           description: `Auto-generated route in ${zipCode}. Score: ${route.competitivenessScore}`,
           property_hashes: route.properties.map(p => p.address_hash),
+          ...(route.metadata ? { metadata: route.metadata } : {}),
           metrics: {
             distance: route.totalDistance,
             house_count: route.houseCount,
@@ -373,7 +376,7 @@ export default function ZipCodeExplorer() {
         });
       });
 
-      await Promise.all(promises);
+      await bindBetaGeneratedRoutes(await Promise.all(promises));
       toast.success(`Successfully saved ${generatedRoutes.length} routes to registry!`);
 
       // Redirect back to Admin Team
@@ -387,7 +390,7 @@ export default function ZipCodeExplorer() {
     }
   };
 
-  const handleCombineAllRoutes = () => {
+  const handleCombineAllRoutes = async () => {
     if (generatedRoutes.length < 2) {
       toast.error("Need at least 2 routes to combine.");
       return;
@@ -405,13 +408,13 @@ export default function ZipCodeExplorer() {
 
     const avgScore = (generatedRoutes.reduce((sum, r) => sum + (r.competitivenessScore || 0), 0) / generatedRoutes.length).toFixed(1);
 
-    const combinedRoute = {
+    const [combinedRoute] = await completeBetaGeneratedRoutes([{
       name: `Combined Route (${generatedRoutes.length} merged)`,
       properties: combinedProps,
       houseCount: combinedProps.length,
       totalDistance: totalDist,
       competitivenessScore: avgScore
-    };
+    }], { entryPoint: 'zip_merge' });
 
     setGeneratedRoutes([combinedRoute]);
     setActiveRoute(combinedRoute);

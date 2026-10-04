@@ -71,6 +71,7 @@ import { BRAND, DEFAULT_STATUS_COLORS, COLOR_SCHEME_MAP, LINE_DASH_MAP, ROUTE_CO
 import { LocationMarker, MapRefHandler, MapController } from '../components/map/MapHelpers';
 import useViewportMapProperties from '../components/map/useViewportMapProperties';
 import { reoptimizeRoute } from '@/lib/reoptimizeRouteAction'; import { deleteSavedRoute } from '@/lib/deleteRouteAction';
+import { previewSavedRoadAwareBeta } from '@/lib/previewSavedRoadAwareBeta';
 import { buildRoadAwareGeneratedRoutes } from '@/lib/roadMatrixRouteGeneration'; import { requireUsableRouteContext } from '@/lib/routeContextGuard';
 import { computeAccountWorkingArea } from '@/lib/accountWorkingArea';
 
@@ -784,6 +785,14 @@ export default function Home() {
     const deriveRouteName = (route) => buildRouteName(route, savedRoutes);
 
     const handleSaveRoute = async (route, assignedRepId = null, assignedRepName = null, silent = false) => {
+        // Filtered/copy/imported generated routes reach the same completion tail.
+        // A fingerprint prevents re-running an already completed generation.
+        const { completeBetaGeneratedRoutes } = await import('@/lib/roadAwareRoutingBeta');
+        if (!route?.isSaved && route?.properties?.length
+            && (!route.metadata?.routing?.road_aware_routing_beta
+                || route.metadata.routing.property_order_fingerprint !== routePropertyOrderFingerprint(route.properties))) {
+            [route] = await completeBetaGeneratedRoutes([route], { entryPoint: 'home_filtered_or_generated_save' });
+        }
         const defaultAssigneeId = assignedRepId || user?.id;
         const defaultAssigneeName = assignedRepName || user?.full_name || 'Me';
         const baseRouteName = deriveRouteName(route);
@@ -875,6 +884,7 @@ export default function Home() {
         if (!canPreserveRequestedBounds) delete safeRouteMetadata.route_bounds;
         if (!sourceGeometryMatchesSavedOrder) {
             delete safeRouteMetadata.road_geometry;
+            delete safeRouteMetadata.road_geometry_segments;
             delete safeRouteMetadata.routing;
         }
 
@@ -931,6 +941,7 @@ export default function Home() {
             metadata: isGeneratedRoute ? { ...safeRouteMetadata, ...precisionAreaMetadata, newly_generated: true, generated_at: generatedAt } : safeRouteMetadata,
             silent // Pass silent flag to mutation
         });
+        await (await import('@/lib/roadAwareRoutingBeta')).bindBetaGeneratedRoutes(saved);
         if (assignedRepId && !String(saved.id).startsWith('local_') && saved.route_origin_mode === 'none') {
             try {
                 const response = await base44.functions.invoke('manageRepAnchors', {
@@ -2035,6 +2046,7 @@ export default function Home() {
     const handleReoptimizeRoute = useCallback((route, options = {}) => reoptimizeRoute(route, options, {
         user, teamMembers, effectiveProperties, mapRef, queryClient, activeRoute, setActiveRoute,
         confirmLowAccuracyLocation,
+        previewRoadAwareBeta: previewSavedRoadAwareBeta,
     }), [activeRoute, confirmLowAccuracyLocation, effectiveProperties, queryClient, teamMembers, user]);
 
     // Filter and sort routes

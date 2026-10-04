@@ -55,6 +55,7 @@ export async function reoptimizeRoute(route, options = {}, deps = {}) {
         activeRoute,
         setActiveRoute,
         confirmLowAccuracyLocation = () => true,
+        previewRoadAwareBeta = null,
     } = deps;
 
     // Explicit mode. The legacy { fromHome: true } shape still resolves, but every
@@ -161,6 +162,41 @@ export async function reoptimizeRoute(route, options = {}, deps = {}) {
         const routeOriginMode = usingPrivateAnchor ? ROUTE_ORIGIN_MODES.PRIVATE_ANCHOR_ROUND_TRIP : usingCustomAnchors
             ? (start || end ? ROUTE_ORIGIN_MODES.CUSTOM_BOUNDS : ROUTE_ORIGIN_MODES.NONE)
             : routeOriginModeForOptimizeMode(optimizeMode);
+        const beta = previewRoadAwareBeta ? await previewRoadAwareBeta({
+            route, properties: routeProperties, bounds: { startLocation: start, endLocation: end },
+            entryPoint: 'saved_route_optimize',
+            buildUpdate: result => {
+                const inputs = { start, end, optimizeMode, order: result.comparison.afterOrder,
+                    distanceMiles: result.comparison.fullMeasurement ? result.distanceMiles : route.metrics?.distance,
+                    existingMetrics: route.metrics, existingMetadata: route.metadata,
+                    routingMetadata: { ...result.metadata, road_aware_comparison_id: result.comparisonId }, carCapture: carAnchor };
+                const update = usingCustomAnchors ? buildRouteAnchorsUpdate(inputs) : buildRouteOptimizeUpdate(inputs);
+                if (routeOriginMode === ROUTE_ORIGIN_MODES.NONE || routeOriginMode === ROUTE_ORIGIN_MODES.CUSTOM_BOUNDS) {
+                    Object.assign(update.metadata, result.metadata);
+                } else {
+                    delete update.metadata.road_geometry;
+                    delete update.metadata.road_geometry_segments;
+                }
+                if (usingPrivateAnchor) {
+                    update.route_origin_mode = routeOriginMode;
+                    update.metadata.route_bounds = { enabled: true, mode: routeOriginMode };
+                } else delete update.metadata.anchor;
+                return update;
+            },
+        }) : null;
+        if (beta) {
+            toast.dismiss(TOAST_ID);
+            if (beta.applied) {
+                queryClient?.invalidateQueries({ queryKey: ['savedRoutes'] });
+                if (activeRoute?.id === route.id && setActiveRoute) setActiveRoute(prev => ({ ...prev, ...beta.update,
+                    properties: beta.result.properties, allProperties: beta.result.properties,
+                    startLocation: start, endLocation: end, routeOriginMode,
+                    totalDistance: beta.update.metrics.distance }));
+                toast.success('Road-aware order applied. The previous order remains available in Routing Beta history.');
+                if (beta.historyWarning) toast.warning(beta.historyWarning);
+            }
+            return;
+        }
         // Optimize is an explicit, user-initiated action, so unlike route
         // GENERATION it can afford to load the real street network and order the
         // doors by actual driving distance. createRouteRoadContext degrades to the
