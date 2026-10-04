@@ -418,6 +418,9 @@ export function buildSplitRouteRecords({
   delete safeMetadata.route_bounds;
   delete safeMetadata.anchor;
   delete safeMetadata.road_geometry;
+  delete safeMetadata.road_geometry_segments;
+  delete safeMetadata.road_aware_comparison_id;
+  delete safeMetadata.road_aware_legacy_order;
   delete safeMetadata.routing;
 
   return plan.routes.map((child, index) => {

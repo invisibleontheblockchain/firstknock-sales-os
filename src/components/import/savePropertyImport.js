@@ -31,7 +31,7 @@ export function routeDistanceMiles(properties) {
 
 export async function savePropertyImport(importBatch, {
   client, user, routeId = null, loadRouteProperties, optimize,
-  saveLocal = async () => {}, onProgress = () => {}, persistProperties, optimizeRoad,
+  saveLocal = async () => {}, onProgress = () => {}, persistProperties, optimizeRoad, optimizeBeta, completeGenerated, bindGenerated,
 }) {
   assertUser(user);
   if (!importBatch?.properties?.length) throw new Error('There are no properties to import.');
@@ -91,7 +91,7 @@ export async function savePropertyImport(importBatch, {
   let optimization = null;
   if (route) {
     onProgress(`Checking optimization for all ${allProperties.length} stops...`);
-    optimization = await optimizeImportedRoute({ route, properties: allProperties, hashes: propertyHashes, client, user, optimizeRoad, optimizeLocal: optimize });
+    optimization = await optimizeImportedRoute({ route, properties: allProperties, hashes: propertyHashes, client, user, optimizeRoad, optimizeBeta, optimizeLocal: optimize });
     propertyHashes = optimization.hashes;
     const latest = await client.entities.SavedRoute.get(route.id);
     if (!canAppendToRoute(latest, user)) throw new Error('This route is no longer available for imports. Choose another active route.');
@@ -127,7 +127,7 @@ export async function savePropertyImport(importBatch, {
     savedRoute = { ...latest, ...await client.entities.SavedRoute.update(route.id, update), ...update };
   } else {
     onProgress('Creating route...');
-    const payload = {
+    let payload = {
       name: importBatch.routeName, route_mode: 'precision', status: 'ACTIVE',
       property_hashes: propertyHashes,
       metrics: { house_count: propertyHashes.length, distance: routeDistanceMiles(allProperties), score: 100 },
@@ -135,9 +135,12 @@ export async function savePropertyImport(importBatch, {
       assigned_to: user.id, assigned_to_name: user.full_name || 'Me',
       metadata: { source: 'csv_import', file_name: importBatch.fileName, imports: [importRecord] },
     };
+    if (completeGenerated) [payload] = await completeGenerated([payload], allProperties, { client, entryPoint: 'csv_import_new' });
+    propertyHashes = payload.property_hashes;
     savedRoute = { ...await client.entities.SavedRoute.create(payload), ...payload };
   }
   // Offline cache failure must not turn an already-saved route into a failed import.
+  if (bindGenerated) await bindGenerated(savedRoute, client);
   await saveLocal(persisted).catch(error => console.warn('Import saved; local cache unavailable:', error));
   return { route: orderRouteProperties(savedRoute, allProperties), added: persisted.length, duplicatesRemoved, total: propertyHashes.length, optimization };
 }

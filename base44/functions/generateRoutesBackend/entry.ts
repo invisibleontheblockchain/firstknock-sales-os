@@ -1,4 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+import { secrets } from 'base44:runtime';
+import { completeServerRoadAwareRoutes } from '../../shared/roadAwareBetaServer.js';
 
 function distanceMiles(a, b) {
     if (!isValidPoint(a) || !isValidPoint(b)) return 9999;
@@ -693,10 +695,14 @@ Deno.serve(async (req) => {
             });
         }
 
+        const readSecret = name => { try { return String(secrets.get(name) || '').trim(); } catch { return ''; } };
+        const completedRoutes = readSecret('ROAD_AWARE_OSRM_BASE_URL')
+            ? await completeServerRoadAwareRoutes(routes, { client: base44, user, entryPoint: 'backend_generation', readSecret })
+            : routes;
         return Response.json({
             success: true,
             count: routes.length,
-            routes,
+            routes: completedRoutes,
             routing_metadata: responseRoutingMetadata
         });
     } catch (error) {

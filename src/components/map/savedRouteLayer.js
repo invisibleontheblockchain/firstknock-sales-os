@@ -53,7 +53,7 @@ function doorLabelText(property, style) {
  * @returns {{ group: L.LayerGroup, doorPins: L.CircleMarker[] }}
  * doorPins are returned so the caller can resize them on a zoom band change.
  */
-export function buildSavedRouteGroup({ doors, linePoints, centerPoint, number, color, style, dotSize, onSelect }) {
+export function buildSavedRouteGroup({ doors, linePoints, lineSegments, centerPoint, number, color, style, dotSize, onSelect }) {
     const group = L.layerGroup();
     const doorPins = [];
     const selectRoute = (event) => {
@@ -82,8 +82,9 @@ export function buildSavedRouteGroup({ doors, linePoints, centerPoint, number, c
 
     // Route lines are added before door pins so a route-colored line can never
     // cover a smaller outcome-colored pin at wide zoom levels.
-    if (style.showRouteLines && linePoints.length > 1) {
-        const latLngs = linePoints.map(p => [Number(p.lat), Number(p.lng)]);
+    if (style.showRouteLines && (linePoints.length > 1 || lineSegments?.length)) {
+        const latLngs = lineSegments ? lineSegments.map(points => points.map(p => [Number(p.lat), Number(p.lng)]))
+            : linePoints.map(p => [Number(p.lat), Number(p.lng)]);
 
         const hitLine = L.polyline(latLngs, { color: 'transparent', weight: 26, opacity: 0, interactive: true });
         hitLine.on('click', selectRoute);

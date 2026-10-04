@@ -11,6 +11,7 @@ import ProtectedRoute from '@/components/ProtectedRoute';
 import AppRefreshManager from '@/components/AppRefreshManager';
 import Layout from './Layout.jsx';
 import { RepLocationProvider } from '@/components/team/RepLocationSharing';
+import RoadAwareComparisonHost from '@/components/routes/RoadAwareComparisonHost';
 
 // Phase 5 — code-splitting: every page in ./pages is its own lazy-loaded chunk.
 // import.meta.glob bypasses the stale auto-generated pages.config.js — any new
@@ -89,6 +90,7 @@ function App() {
     <AuthProvider>
       <QueryClientProvider client={queryClientInstance}>
         <AppRefreshManager />
+        <RoadAwareComparisonHost />
         <Router>
           <RepLocationProvider>
             <NavigationTracker />

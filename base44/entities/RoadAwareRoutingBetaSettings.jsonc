@@ -1,0 +1,6 @@
+{
+  "name": "RoadAwareRoutingBetaSettings", "type": "object",
+  "properties": { "manager_id": { "type": "string" }, "enabled": { "type": "boolean", "default": false } },
+  "required": ["manager_id", "enabled"],
+  "rls": { "create": false, "read": false, "update": false, "delete": false }
+}

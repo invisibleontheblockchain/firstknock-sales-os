@@ -1,4 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
+import { secrets } from 'base44:runtime';
+import { completeServerRoadAwareRoutes } from '../../shared/roadAwareBetaServer.js';
 
 // Helper: Haversine Distance (Miles)
 const calcDist = (lat1, lng1, lat2, lng2) => {
@@ -88,21 +90,31 @@ Deno.serve(async (req) => {
                         assignedRep = reps.items[0];
                     }
                     
-                    await base44.asServiceRole.entities.SavedRoute.create({
+                    const baselineRoutes = [{
+                        properties: cluster.properties, totalDistance: 5, startLocation: cluster.center,
+                    }];
+                    const readSecret = name => { try { return String(secrets.get(name) || '').trim(); } catch { return ''; } };
+                    const [completed] = readSecret('ROAD_AWARE_OSRM_BASE_URL')
+                        ? await completeServerRoadAwareRoutes(baselineRoutes, { client: base44, user, entryPoint: 'auto_recent_sales', readSecret })
+                        : baselineRoutes;
+                    const created = await base44.asServiceRole.entities.SavedRoute.create({
                         name: routeName,
                         description: `Auto-generated route for ${cluster.properties.length} recent sales within 5 miles.`,
                         status: 'ACTIVE',
                         assigned_to: assignedRep ? assignedRep.id : null,
                         assigned_to_name: assignedRep ? assignedRep.name : null,
                         manager_id: user.id,
-                        property_hashes: cluster.properties.map(p => p.address_hash),
+                        property_hashes: completed.properties.map(p => p.address_hash),
+                        ...(completed.metadata ? { metadata: completed.metadata } : {}),
                         metrics: {
                             house_count: cluster.properties.length,
                             score: cluster.properties.length * 10, // High score for recent sales
-                            distance: 5 // approx radius
+                            distance: completed.totalDistance
                         },
                         start_location: cluster.center
                     });
+                    if (completed.metadata?.road_aware_comparison_id) await base44.asServiceRole.entities.RoadAwareRoutingComparison.update(
+                        completed.metadata.road_aware_comparison_id, { route_id: created.id }).catch(() => {});
                     
                     routesCreated++;
                 }

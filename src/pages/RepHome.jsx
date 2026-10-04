@@ -1231,6 +1231,7 @@ export default function RepHome() {
       if (canResumeNavigationBatch) {
         const resumePlan = getRouteNavigationPlan(navigationProgress.remainingStops, navigationApp, {
           startDelaySeconds: 0,
+          routingMetadata: activeRoute?.metadata?.routing,
         });
         openNavigationBatch(resumePlan, 0);
         return;
@@ -1239,6 +1240,7 @@ export default function RepHome() {
       if (hasNextNavigationBatch) {
         const continuationPlan = getRouteNavigationPlan(navigationProgress.continuationStops, navigationApp, {
           startDelaySeconds: 0,
+          routingMetadata: activeRoute?.metadata?.routing,
         });
         if (!continuationPlan.batches.length) return;
         const nextSession = { routeId: activeRoute?.id, plan: continuationPlan, batchIndex: 0 };
@@ -1247,7 +1249,7 @@ export default function RepHome() {
         return;
       }
 
-      const plan = getRouteNavigationPlan(remainingNavigationStops, navigationApp, { startDelaySeconds: 0 });
+      const plan = getRouteNavigationPlan(remainingNavigationStops, navigationApp, { startDelaySeconds: 0, routingMetadata: activeRoute?.metadata?.routing });
       if (!plan.batches.length) return;
       const nextSession = { routeId: activeRoute?.id, plan, batchIndex: 0 };
       setNavigationSession(nextSession);
@@ -1668,6 +1670,33 @@ export default function RepHome() {
       const invalidProperty = routeProperties.find((property) => !isValidRoutePoint(property));
       if (invalidProperty) throw new Error('A route property is missing map coordinates. Ask your manager to repair this route.');
 
+      const { previewSavedRoadAwareBeta } = await import('@/lib/previewSavedRoadAwareBeta');
+      const beta = await previewSavedRoadAwareBeta({
+        route: routeToOptimize, properties: routeProperties,
+        bounds: { startLocation: exactHomeBase, endLocation: exactHomeBase }, entryPoint: 'rep_home_optimize',
+        buildUpdate: result => {
+          const metadata = { ...routeToOptimize.metadata, ...result.metadata, road_aware_comparison_id: result.comparisonId,
+            route_bounds: { enabled: true, mode: usesAnchor ? 'anchor_round_trip' : 'home_round_trip' } };
+          delete metadata.road_geometry; delete metadata.road_geometry_segments;
+          return { property_hashes: result.comparison.afterOrder,
+            metrics: { ...routeToOptimize.metrics, house_count: result.properties.length,
+              distance: result.comparison.fullMeasurement ? result.distanceMiles : routeToOptimize.metrics?.distance },
+            start_location: null, end_location: null,
+            route_origin_mode: usesAnchor ? 'anchor_round_trip' : 'home_round_trip', metadata };
+        },
+      });
+      if (beta) {
+        toast.dismiss('rep-home-route');
+        if (beta.applied) {
+          queryClient.setQueryData(myRoutesQueryKey, current => Array.isArray(current)
+            ? current.map(route => route.id === routeToOptimize.id ? { ...route, ...beta.update } : route) : current);
+          await Promise.all([queryClient.invalidateQueries({ queryKey: ['myRoutes'] }),
+            queryClient.invalidateQueries({ queryKey: ['routeProperties'] })]);
+          toast.success('Road-aware order applied. Previous order is available in Routing Beta history.');
+          if (beta.historyWarning) toast.warning(beta.historyWarning);
+        }
+        return;
+      }
       const routingContext = createRouteContinuityContext(routeProperties);
       requireUsableRouteContext(routingContext);
       const optimized = optimizeRouteByStreetSweep(
@@ -2090,6 +2119,7 @@ export default function RepHome() {
         onClose={() => {setShowMap(false);setFocusProperty(null);}}
         focusProperty={focusProperty}
         roadGeometry={activeRoute?.metadata?.road_geometry}
+        roadMetadata={activeRoute?.metadata}
         roadGeometryFingerprint={activeRoute?.metadata?.routing?.property_order_fingerprint}
         anchorLabel={activeRoute?.route_origin_mode === 'anchor_round_trip' ? 'Anchor' : 'Home'}
         startLocation={activeRoute?.route_origin_mode === 'anchor_round_trip' ? routeAnchor?.anchor : activeRoute?.route_origin_mode === 'home_round_trip' ? user?.home_base : null}

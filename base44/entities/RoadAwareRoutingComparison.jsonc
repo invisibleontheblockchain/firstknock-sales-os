@@ -1,0 +1,14 @@
+{
+  "name": "RoadAwareRoutingComparison", "type": "object",
+  "properties": {
+    "manager_id": { "type": "string" }, "actor_user_id": { "type": "string" },
+    "route_id": { "type": "string" }, "entry_point": { "type": "string" },
+    "comparison": { "type": "object", "additionalProperties": true },
+    "original_route": { "type": "object", "additionalProperties": true },
+    "source_updated_date": { "type": "string" },
+    "decision": { "type": "string", "enum": ["pending", "used_new", "kept_current", "generated", "restored"] },
+    "applied_updated_date": { "type": "string" }
+  },
+  "required": ["manager_id", "actor_user_id", "comparison", "decision"],
+  "rls": { "create": false, "read": false, "update": false, "delete": false }
+}

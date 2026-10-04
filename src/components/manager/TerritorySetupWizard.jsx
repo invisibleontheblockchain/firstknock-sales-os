@@ -7,6 +7,7 @@ import { Slider } from "@/components/ui/slider";
 import { MapPin, CheckCircle2, ArrowRight, Sparkles, Loader2, Save, AlertCircle, Lock } from 'lucide-react';
 import { toast } from "sonner";
 import { generateOptimizedRoutes } from '../logic/routeOptimizer';
+import { completeBetaGeneratedRoutes, bindBetaGeneratedRoutes } from '@/lib/roadAwareRoutingBeta';
 import { createRouteContinuityContext } from '../logic/routeRoadContext';
 import { useTheme, contrastText } from '@/components/theme/ThemeProvider';
 import BetaUsageMeter from '../beta/BetaUsageMeter';
@@ -107,7 +108,7 @@ export default function TerritorySetupWizard({ user, onComplete }) {
             try {
                 const finalHousesPerRoute = isPaid ? housesPerRoute : Math.min(housesPerRoute, 25);
                 const routingContext = createRouteContinuityContext(fetchedProperties);
-                const routes = generateOptimizedRoutes(fetchedProperties, finalHousesPerRoute, null, [], { streetCooldownDays: 30, useStreetSweep: true, routingContext }, learnedWeights);
+                const routes = await completeBetaGeneratedRoutes(generateOptimizedRoutes(fetchedProperties, finalHousesPerRoute, null, [], { streetCooldownDays: 30, useStreetSweep: true, routingContext }, learnedWeights), { entryPoint: 'territory_generation' });
                 setGeneratedRoutes(routes);
                 setStep(3);
                 
@@ -123,15 +124,16 @@ export default function TerritorySetupWizard({ user, onComplete }) {
         setLoading(true);
         try {
             const routesToSave = generatedRoutes.slice(0, 20);
-            await Promise.all(routesToSave.map(route =>
+            await bindBetaGeneratedRoutes(await Promise.all(routesToSave.map(route =>
                 base44.entities.SavedRoute.create({
                     name: route.name,
                     property_hashes: route.properties.map(p => p.address_hash),
+                    ...(route.metadata ? { metadata: route.metadata } : {}),
                     metrics: { distance: route.totalDistance, house_count: route.houseCount, score: route.competitivenessScore },
                     status: 'PENDING',
                     manager_id: user.id
                 })
-            ));
+            )));
             toast.success(`Saved ${routesToSave.length} routes!`);
             onComplete();
         } catch (e) { toast.error("Failed to save routes"); }

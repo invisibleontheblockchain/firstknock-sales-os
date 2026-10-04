@@ -7,6 +7,7 @@ import {
     ChevronRight, Merge, Trash2, RefreshCw, Pencil, Check, Scissors, Play, Home
 } from 'lucide-react';
 import { generateOptimizedRoutes } from "@/components/logic/routeOptimizer";
+import { completeBetaGeneratedRoutes, completeBetaRouteRecords, bindBetaGeneratedRoutes } from '@/lib/roadAwareRoutingBeta';
 import { createRouteContinuityContext } from "@/components/logic/routeRoadContext";
 import { base44 } from '@/api/base44Client';
 import { useQueryClient } from "@tanstack/react-query";
@@ -157,10 +158,10 @@ export default function ActiveRoutesTab({
             const mergeStart = sharedRouteBounds ? firstSelectedRoute.start_location : null;
             const mergeEnd = sharedRouteBounds ? firstSelectedRoute.end_location : null;
             const routingContext = createRouteContinuityContext(allProps);
-            const merged = generateOptimizedRoutes(
+            const merged = await completeBetaGeneratedRoutes(generateOptimizedRoutes(
                 allProps, allProps.length, mergeStart, [],
                 { minimizeTurns: true, use2Opt: true, walkingPattern: 'nearest', endLocation: mergeEnd, routeOriginMode: sharedRouteBounds ? firstSelectedRoute.route_origin_mode : 'none', excludeTerminal: false, preserveInputMembership: true, routingContext }
-            );
+            ), { entryPoint: 'saved_routes_merge' });
 
             if (merged && merged.length > 0) {
                 const optimizedRoute = merged[0];
@@ -180,11 +181,12 @@ export default function ActiveRoutesTab({
                     start_location: null,
                     end_location: null,
                     route_origin_mode: sharedRouteBounds ? firstRoute.route_origin_mode : 'none',
-                    ...(sharedRouteBounds && firstRoute.metadata ? { metadata: firstRoute.metadata } : {})
+                    ...((optimizedRoute.metadata || (sharedRouteBounds && firstRoute.metadata)) ? { metadata: { ...(sharedRouteBounds ? firstRoute.metadata : {}), ...optimizedRoute.metadata } } : {})
                 };
 
                 // Save the merged route first so Optimize and Knock use a real SavedRoute ID.
                 const savedMergedRoute = await base44.entities.SavedRoute.create(mergedRouteData);
+                await bindBetaGeneratedRoutes(savedMergedRoute);
 
                 // Delete original routes only after the replacement exists.
                 await Promise.all(
@@ -472,7 +474,10 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
         setRerunBusy(true);
         try {
             const rerunProperties = getRerunProperties(route, selectedHashes);
-            const rerunRoute = await base44.entities.SavedRoute.create(buildRerunRoutePayload(route, selectedHashes, filter, label));
+            const [rerunPayload] = await completeBetaRouteRecords([buildRerunRoutePayload(route, selectedHashes, filter, label)],
+                rerunProperties, { entryPoint: 'route_rerun' });
+            const rerunRoute = await base44.entities.SavedRoute.create(rerunPayload);
+            await bindBetaGeneratedRoutes(rerunRoute);
 
             queryClient.invalidateQueries({ queryKey: ['savedRoutes'] });
             try { localStorage.setItem('fk_selectedKnockRouteId', rerunRoute.id); } catch {}

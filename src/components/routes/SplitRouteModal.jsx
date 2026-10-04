@@ -14,6 +14,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { base44 } from '@/api/base44Client';
 import SplitRoutePreviewMap, { previewColor } from './SplitRoutePreviewMap';
+import { completeBetaRouteRecords, bindBetaGeneratedRoutes } from '@/lib/roadAwareRoutingBeta';
 import {
   buildOptimizedSplitPlan,
   buildSplitRouteRecords,
@@ -218,7 +219,7 @@ export default function SplitRouteModal({
     setSaveError('');
     const createdAt = new Date().toISOString();
     const operationId = createSplitOperationId();
-    const records = buildSplitRouteRecords({
+    let records = buildSplitRouteRecords({
       route,
       plan,
       managerId,
@@ -230,6 +231,7 @@ export default function SplitRouteModal({
     let createdRoutes = [];
 
     try {
+      records = await completeBetaRouteRecords(records, getRouteStops(route), { entryPoint: 'split_route' });
       let createError = null;
       try {
         const createdResponse = await base44.entities.SavedRoute.bulkCreate(records);
@@ -258,6 +260,7 @@ export default function SplitRouteModal({
       if (createError) {
         console.warn('[SplitRouteModal] Recovered a completed child write after its response was lost', createError);
       }
+      await bindBetaGeneratedRoutes(createdRoutes);
 
       let sourceArchived = false;
 

@@ -1,6 +1,8 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 import { isValidRoutePoint, calculateRouteDistanceMiles } from '../../shared/routeBounds.js';
 import { optimizeAnchoredStreetRoute } from '../../shared/routeAnchorRouting.js';
+import { secrets } from 'base44:runtime';
+import { completeServerRoadAwareRoutes } from '../../shared/roadAwareBetaServer.js';
 
 const rows = (value) => Array.isArray(value) ? value : value?.items || [];
 const normalized = (value) => String(value || '').trim().toLowerCase();
@@ -57,7 +59,7 @@ async function getAnchor(service, route) {
     }
     return null;
 }
-async function optimize(base44, route, anchor) {
+async function optimize(base44, route, anchor, user) {
     if (!anchor && route.route_origin_mode !== 'anchor_round_trip') return {};
     const hashes = route.property_hashes || [];
     if (!hashes.length || new Set(hashes).size !== hashes.length) throw new HttpError(409, 'The route needs a valid list of unique doors before anchoring.');
@@ -76,10 +78,18 @@ async function optimize(base44, route, anchor) {
         throw new HttpError(409, 'Some route doors are missing coordinates. Reload or repair the route before applying an anchor.');
     }
     const bounds = anchor ? { startLocation: anchor, endLocation: anchor } : {};
-    const ordered = anchor ? optimizeAnchoredStreetRoute(properties, anchor) : properties;
+    const legacy = anchor ? optimizeAnchoredStreetRoute(properties, anchor) : properties;
+    const baselineRoutes = [{ properties: legacy.map(p => ({ ...p, address_hash: p.anchor_hash })),
+        totalDistance: calculateRouteDistanceMiles(legacy, bounds), ...bounds, routeOriginMode: anchor ? 'anchor_round_trip' : 'none' }];
+    const readSecret = name => { try { return String(secrets.get(name) || '').trim(); } catch { return ''; } };
+    const [completed] = readSecret('ROAD_AWARE_OSRM_BASE_URL')
+        ? await completeServerRoadAwareRoutes(baselineRoutes, { client: base44, user, entryPoint: 'rep_anchor_change', readSecret })
+        : baselineRoutes;
+    const ordered = completed.properties;
     return {
         property_hashes: ordered.map(property => property.anchor_hash),
-        metrics: { ...route.metrics, distance: Math.round(calculateRouteDistanceMiles(ordered, bounds) * 100) / 100, house_count: hashes.length },
+        metrics: { ...route.metrics, distance: Math.round(completed.totalDistance * 100) / 100, house_count: hashes.length },
+        ...(completed.metadata ? { metadata: completed.metadata } : {}),
     };
 }
 
@@ -166,7 +176,7 @@ Deno.serve(async (req) => {
             else throw new HttpError(409, 'Assign a rep with a configured base first.');
         }
         if (source === 'custom') anchor = location(body.location);
-        const optimized = await optimize(base44, route, anchor);
+        const optimized = await optimize(base44, route, anchor, user);
         const latest = await service.entities.SavedRoute.get(route.id);
         if (!latest || latest.assigned_to !== route.assigned_to || latest.status !== route.status
             || latest.updated_date !== route.updated_date
@@ -181,6 +191,7 @@ Deno.serve(async (req) => {
         if (source === 'custom') newRecord = await service.entities.RouteAnchor.create({ manager_id: user.id, route_id: route.id, location: anchor });
         const metadata = { ...(route.metadata || {}) };
         delete metadata.road_geometry;
+        delete metadata.road_geometry_segments;
         delete metadata.routing;
         if (optimized.property_hashes) {
             metadata.road_network_used = false;
@@ -189,10 +200,13 @@ Deno.serve(async (req) => {
         }
         metadata.anchor = { source, ...(newRecord ? { record_id: newRecord.id } : {}) };
         metadata.route_bounds = anchor ? { enabled: true, mode: 'anchor_round_trip' } : { enabled: false, cleared_reason: 'anchor_changed' };
+        Object.assign(metadata, optimized.metadata || {});
         const update = { ...optimized, start_location: null, end_location: null, route_origin_mode: anchor ? 'anchor_round_trip' : 'none', metadata,
             ...(action === 'assign' ? { assigned_to: memberId || null, assigned_to_name: assignee?.member.name || null, status: memberId ? 'ACTIVE' : 'PENDING' } : {}) };
         try { await service.entities.SavedRoute.update(route.id, update); }
         catch (error) { if (newRecord) await service.entities.RouteAnchor.delete(newRecord.id); throw error; }
+        if (optimized.metadata?.road_aware_comparison_id) await service.entities.RoadAwareRoutingComparison.update(
+            optimized.metadata.road_aware_comparison_id, { route_id: route.id }).catch(() => {});
         for (const record of oldRecords) await service.entities.RouteAnchor.delete(record.id).catch(() => {});
         return Response.json({ success: true, route: { ...route, ...update }, anchor, notice });
     } catch (error) {

@@ -18,6 +18,7 @@
 import { buildPersistedRoadRoutingMetadata } from '@/components/logic/routeRoadContext';
 import { isValidRoutePoint } from '@/lib/routeBounds';
 import { tryRoadMatrixOptimize } from '@/lib/roadMatrixOptimize';
+import { applyRoadAwareBetaToGeneratedRoutes } from '@/lib/roadAwareRoutingBeta';
 import {
     describeUnverifiedRoutes,
     ROAD_VERIFICATION,
@@ -54,7 +55,7 @@ const ROAD_MATRIX_RUN_CEILING_MS = 20 * 60 * 1000;
  */
 export async function buildRoadAwareGeneratedRoutes({ rawGenerated, routingContext = null, onStage, onPhase } = {}) {
     const continuityRoutes = Array.isArray(rawGenerated)
-        ? rawGenerated.map((route) => (routingContext
+        ? rawGenerated.map((route) => (routingContext && !route.metadata?.routing?.road_aware_routing_beta
             ? {
                 ...route,
                 metadata: {
@@ -78,6 +79,8 @@ export async function buildRoadAwareGeneratedRoutes({ rawGenerated, routingConte
 }
 
 export async function applyRoadMatrixToGeneratedRoutes(routes, { onProgress } = {}) {
+    const beta = await applyRoadAwareBetaToGeneratedRoutes(routes || [], { entryPoint: 'home_generation_or_reorder', onProgress });
+    if (beta) return beta;
     if (!Array.isArray(routes) || routes.length === 0) {
         return {
             routes,
