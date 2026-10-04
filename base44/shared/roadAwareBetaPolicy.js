@@ -1,7 +1,9 @@
 // Workspace-scoped beta configuration. Never accept an enable flag from a client.
-export const CHARLOTTE_BETA_COVERAGE = Object.freeze([34.65, -81.35, 35.48, -80.22]);
+import { NATIONAL_ROAD_COVERAGE, insideNationalRoadCoverage } from './nationalRoadCoverage.js';
+export const CHARLOTTE_BETA_COVERAGE = NATIONAL_ROAD_COVERAGE; // Retained export for existing callers.
 
 export function insideRoadBetaCoverage(point, bounds = CHARLOTTE_BETA_COVERAGE) {
+    if (bounds === NATIONAL_ROAD_COVERAGE) return insideNationalRoadCoverage(point);
     const lat = Number(point?.lat), lng = Number(point?.lng);
     return point?.lat != null && point?.lng != null && Number.isFinite(lat) && Number.isFinite(lng)
         && lat >= bounds[0] && lat <= bounds[2] && lng >= bounds[1] && lng <= bounds[3];

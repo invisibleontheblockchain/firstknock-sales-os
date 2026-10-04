@@ -31,7 +31,7 @@ export async function completeServerRoadAwareRoutes(routes, { client, user, read
         const query = Object.fromEntries(url.searchParams), coordinates = decodeURIComponent(match[2]);
         assertRoadBetaProxyRequest(match[1], coordinates, query);
         return fetchRoadBetaProxy({ provider: config, service: match[1], coordinates, query, dataVersion,
-            token: readSecret('ROAD_AWARE_OSRM_GATEWAY_TOKEN'), fetchImpl });
+            fingerprint, token: readSecret('ROAD_AWARE_OSRM_GATEWAY_TOKEN'), fetchImpl });
     };
     const partitionRun = (stops, limit) => {
         const membership = new Map(buildCanonicalStreetBlocks(stops).flatMap(block => block.doors.map(door =>
