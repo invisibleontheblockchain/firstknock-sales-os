@@ -25,7 +25,8 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 import ts from 'typescript';
-import { UNLIMITED_PROPERTY_CAP, precisionGrantLabel, precisionGrantLimit } from '../../base44/shared/privilegedAccounts.js';
+import { UNLIMITED_PROPERTY_CAP, currentGrantPeriod, precisionGrantLabel, precisionGrantLimit } from '../../base44/shared/privilegedAccounts.js';
+import { loadAuthoritativeUser } from '../../base44/shared/accountIdentity.js';
 
 const testDir = dirname(fileURLToPath(import.meta.url));
 export const rootDir = resolve(testDir, '..', '..');
@@ -239,7 +240,7 @@ export function makeBase44({
   user,
   fetchJobs = [],
   savedRoutes = [],
-  users = [],
+  users = user ? [user] : [],
   precisionCredits = [],
   invokeHandlers = {},
   onFetchJobCreate = null
@@ -473,6 +474,8 @@ export function loadPrecisionHandler(path, {
     ...loadSharedPrecisionCredits(),
     console: { log: () => {}, warn: () => {}, error: () => {} },
     createClientFromRequest: () => base44,
+    loadAuthoritativeUser,
+    currentGrantPeriod: () => currentGrantPeriod(new Date(nowMs)),
     UNLIMITED_PROPERTY_CAP,
     precisionGrantLabel,
     precisionGrantLimit,

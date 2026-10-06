@@ -364,7 +364,8 @@ test('Home routes both large generation paths locally and bounds save concurrenc
   assert.match(home, /import \{ optimizeLargeRoutesAsync \} from '\.\.\/components\/logic\/largeRouteOptimizer'/);
   assert.equal((home.match(/await optimizeLargeRoutesAsync\(/g) || []).length, 2);
   assert.doesNotMatch(home, /generateRoutesBackend/);
-  assert.equal((home.match(/mapWithConcurrency\(\s*(?:saveable|generated),\s*4,/g) || []).length, 2);
+  assert.equal((home.match(/mapWithConcurrency\(\s*(?:saveable|generated),\s*4,/g) || []).length, 1);
+  assert.match(home, /await savePrecisionRoutes\(\s*saveable,[\s\S]*?\(route\) => handleSaveRoute\(route, null, null, true\),\s*4\s*\)/);
   assert.match(home, /savedProperties\.some\(\(property\) => !isStrictRoutePropertyPoint\(property\)\)/);
   assert.match(
     home,

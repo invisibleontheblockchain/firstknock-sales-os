@@ -38,7 +38,7 @@ const chunkMaxSelected = Number(
 
 const evaluate = (code, scope) => vm.runInNewContext(
   `${code}\n__result;`,
-  { ...scope, Math, Number, Array, __result: undefined },
+  { pageRecoveryExhausted: false, pendingProviderPages: [], ...scope, Math, Number, Array, __result: undefined },
 );
 
 test('drainsUntilExhausted only trusts the persisted job flag', () => {
