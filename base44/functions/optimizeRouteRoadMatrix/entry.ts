@@ -28,6 +28,8 @@ import { measureRoadPath } from '../../shared/roadPathMeasure.js';
 import { reviewFinalNeighborhoodRoute } from '../../shared/finalNeighborhoodReview.js';
 import { reviewNeighborhoodExcursions } from '../../shared/neighborhoodExcursions.js';
 import { fetchOsrmJson } from '../../shared/osrmDispatcher.js';
+import { createOsrmRequestCache } from '../../shared/osrmRequestCache.js';
+import { createRoadCostCache } from '../../shared/roadCostCache.js';
 import {
     DURATION_TIE_TOLERANCE_MINUTES,
     measureRouteCandidate,
@@ -37,7 +39,7 @@ import {
 
 // Bump when candidate generation or the objective changes, so a stored route can
 // be told apart from one produced by an older solver.
-const OPTIMIZER_VERSION = 'road_matrix_neighborhood_review_v3';
+const OPTIMIZER_VERSION = 'road_matrix_exact_reuse_v4';
 
 function readSecret(name) {
     try {
@@ -139,13 +141,19 @@ export default async function (req: Request): Promise<Response> {
         const matrixPoints = plan.ok ? plan.matrixPoints : properties;
         const cacheKey = await buildRoadMatrixCacheKey(matrixPoints, profile);
         const solverStartedAt = Date.now();
+        const stageTimings: Record<string, number> = {};
+        const responseCache = createOsrmRequestCache(fetchOsrmJson);
+        const roadCosts = createRoadCostCache({
+            fetchMatrix: (points, options) => fetchRoadMatrix(points, { ...options, fetchJson: responseCache.fetchJson }),
+            measurePath: (order, options) => measureRoadPath(order, { ...options, fetchJson: responseCache.fetchJson }),
+        });
         const neighborhoodOptions = {
             startLocation, endLocation, baselineOrder: properties,
             vehicleBaseUrl: readSecret('OSRM_BASE_URL') || DEFAULT_OSRM_BASE_URL,
             vehicleProfile: profile,
             vehicleFetch: async (url, options) => {
                 if (options?.signal?.aborted) throw options.signal.reason;
-                const payload = await fetchOsrmJson(url, { timeoutMs });
+                const payload = await responseCache.fetchJson(url, { timeoutMs });
                 return { ok: true, json: async () => payload };
             },
             preferContiguousOnTie: body.neighborhood_review?.prefer_contiguous_on_tie === true,
@@ -206,7 +214,8 @@ export default async function (req: Request): Promise<Response> {
                 // finished route so it can find the transitions that are still bad
                 // and re-solve their neighbourhoods. Each round is kept only when a
                 // fresh measurement is shorter, so this cannot lengthen the route.
-                measurePath: measureRoadPath,
+                measurePath: roadCosts.measurePath,
+                fetchMatrix: roadCosts.fetchMatrix,
                 // A 1,000-door territory has ~560 street blocks against a 250-point
                 // matrix limit, so the road-ordered block path is unreachable and
                 // the windows are cut from lat/lng boxes. Those boxes straddle
@@ -232,10 +241,14 @@ export default async function (req: Request): Promise<Response> {
                 refinementStepBudget: HIERARCHY_REFINEMENT_STEP_BUDGET * 8
             });
 
+            stageTimings.hierarchy_ms = Date.now() - hierarchyStartedAt;
+
             if (hierarchy.ok && exactOnce(hierarchy.order, properties.length)) {
                 if (properties.some((p, i) => (p.order_locked || p.locked || p.routing_access?.resolution_status === 'unresolved')
                     && propertyIdentity(hierarchy.order[i]) !== propertyIdentity(p))) hierarchy.order = properties;
+                const reviewStarted = Date.now();
                 const neighborhood = await reviewFinalNeighborhoodRoute(hierarchy.order, neighborhoodOptions);
+                stageTimings.neighborhood_review_ms = Date.now() - reviewStarted;
                 hierarchy.order = neighborhood.properties;
                 const withAnchors = (order) => [
                     ...(startLocation ? [startLocation] : []),
@@ -245,10 +258,15 @@ export default async function (req: Request): Promise<Response> {
                 const measureOptions = { baseUrl: osrmBaseUrl, profile, timeoutMs };
                 // Product truth: both orders measured the same way, on the road
                 // network, in the units a manager cares about.
+                const validationStarted = Date.now();
                 const [proposedPath, currentPath] = await Promise.all([
-                    measureRoadPath(withAnchors(hierarchy.order), measureOptions),
-                    measureRoadPath(withAnchors(properties), measureOptions)
+                    roadCosts.measurePath(withAnchors(hierarchy.order), measureOptions),
+                    roadCosts.measurePath(withAnchors(properties), measureOptions)
                 ]);
+                stageTimings.final_validation_ms = Date.now() - validationStarted;
+                stageTimings.total_ms = Date.now() - solverStartedAt;
+                console.info('[Routing performance]', JSON.stringify({ property_count: properties.length,
+                    tier: plan.tier, timings: stageTimings, road_requests: responseCache.stats() }));
 
                 const telemetry = hierarchy.telemetry;
                 const round = (value) => (Number.isFinite(value) ? Math.round(value * 1000) / 1000 : null);
@@ -270,6 +288,9 @@ export default async function (req: Request): Promise<Response> {
                     routing_metadata: {
                         ...baseMetadata,
                         neighborhood_excursion_review: neighborhood.diagnostics,
+                        road_cost_cache: roadCosts.stats(),
+                        road_response_cache: responseCache.stats(),
+                        optimization_timings: stageTimings,
                         strategy: 'road_hierarchy_cluster_exact_door_matrix',
                         road_network_used: true,
                         fallback: false,
@@ -343,7 +364,7 @@ export default async function (req: Request): Promise<Response> {
         const matrixStartedAt = Date.now();
         if (plan.ok) {
             try {
-                matrix = await fetchRoadMatrix(matrixPoints, {
+                matrix = await roadCosts.fetchMatrix(matrixPoints, {
                     baseUrl: readSecret('OSRM_BASE_URL') || DEFAULT_OSRM_BASE_URL,
                     profile,
                     timeoutMs
@@ -353,11 +374,15 @@ export default async function (req: Request): Promise<Response> {
             }
         }
         const matrixMs = Date.now() - matrixStartedAt;
+        stageTimings.matrix_ms = matrixMs;
 
         // Fallback: never block route creation on the routing engine. The caller
         // must not overwrite a verified road-aware order with this — `fallback`
         // and `road_network_used: false` say so explicitly.
         if (!matrix) {
+            stageTimings.total_ms = Date.now() - solverStartedAt;
+            console.info('[Routing performance]', JSON.stringify({ property_count: properties.length,
+                tier: plan.ok ? plan.tier : null, fallback: true, timings: stageTimings, road_requests: responseCache.stats() }));
             return Response.json({
                 success: true,
                 selected: 'continuity',
@@ -365,6 +390,9 @@ export default async function (req: Request): Promise<Response> {
                 property_count: continuityOrder.length,
                 routing_metadata: {
                     ...baseMetadata,
+                    optimization_timings: stageTimings,
+                    road_cost_cache: roadCosts.stats(),
+                    road_response_cache: responseCache.stats(),
                     strategy: 'canonical_street_subdivision_continuity',
                     road_network_used: false,
                     fallback: true,
@@ -403,10 +431,12 @@ export default async function (req: Request): Promise<Response> {
                 ? { refinementStepBudget: BLOCK_TIER_REFINEMENT_STEP_BUDGET }
                 : {})
         };
+        const sweepStarted = Date.now();
         const roadDistanceOrder = roadAwareStreetSweep(canonicalProperties, { ...sweepOptions, distanceBetween });
         const roadDurationOrder = durationBetween
             ? roadAwareStreetSweep(canonicalProperties, { ...sweepOptions, distanceBetween: durationBetween })
             : null;
+        stageTimings.candidate_search_ms = Date.now() - sweepStarted;
 
         const rawCandidates = [
             // The route the caller has right now — always in the running, so the
@@ -446,7 +476,9 @@ export default async function (req: Request): Promise<Response> {
         if (!winner) {
             throw new Error('No route candidate could be measured on the road matrix.');
         }
+        const reviewStarted = Date.now();
         const neighborhood = await reviewFinalNeighborhoodRoute(winner.order, neighborhoodOptions);
+        stageTimings.neighborhood_review_ms = Date.now() - reviewStarted;
         if (neighborhood.diagnostics.applied) {
             winner = { ...winner, order: neighborhood.properties, is_current: false, type: 'road_aware',
                 distance: neighborhood.measurement.distanceMiles, duration: neighborhood.measurement.driveSeconds / 60,
@@ -470,6 +502,9 @@ export default async function (req: Request): Promise<Response> {
         // to describe itself as fully road-optimized while it has any.
         const finalLegs = classifyFinalRouteLegs(winner.order, plan);
         const roadAwareDegraded = finalLegs.aerialCrossStreetLegs > 0;
+        stageTimings.total_ms = Date.now() - solverStartedAt;
+        console.info('[Routing performance]', JSON.stringify({ property_count: properties.length,
+            tier: plan.tier, timings: stageTimings, road_requests: responseCache.stats() }));
 
         return Response.json({
             success: true,
@@ -480,6 +515,9 @@ export default async function (req: Request): Promise<Response> {
             routing_metadata: {
                 ...baseMetadata,
                 neighborhood_excursion_review: neighborhood.diagnostics,
+                road_cost_cache: roadCosts.stats(),
+                road_response_cache: responseCache.stats(),
+                optimization_timings: stageTimings,
                 strategy: winner.type === 'road_aware'
                     ? 'road_matrix_street_subdivision_continuity'
                     : 'canonical_street_subdivision_continuity',

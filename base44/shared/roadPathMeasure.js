@@ -50,7 +50,8 @@ export async function measureRoadPath(order, options = {}) {
     const {
         baseUrl = DEFAULT_OSRM_BASE_URL,
         profile = 'driving',
-        timeoutMs = 20000
+        timeoutMs = 20000,
+        fetchJson = fetchOsrmJson
     } = options;
 
     if (!Array.isArray(order) || order.length < 2) {
@@ -69,7 +70,7 @@ export async function measureRoadPath(order, options = {}) {
                 + `${chunk.map(coordinateParam).join(';')}`
                 + '?overview=full&geometries=geojson&steps=false&annotations=false&continue_straight=true'
                 + `&radiuses=${chunk.map(() => 100).join(';')}`;
-            const payload = await fetchOsrmJson(url, { timeoutMs });
+            const payload = await fetchJson(url, { timeoutMs });
             requestCount += 1;
 
             const route = payload?.routes?.[0];

@@ -6,6 +6,7 @@ import { routePropertyOrderFingerprint } from './routeFingerprint.js';
 import { insideRoadBetaCoverage } from './roadAwareBetaPolicy.js';
 import { calculateRouteDistanceMiles } from './routeBounds.js';
 import { reviewFinalNeighborhoodRoute } from './finalNeighborhoodReview.js';
+import { createOsrmRequestCache } from './osrmRequestCache.js';
 
 const id = p => String(p.address_hash || p.legacy_hash || p.id || '');
 const score = value => value ? { miles: value.distanceMiles, seconds: value.driveSeconds } : null;
@@ -23,14 +24,21 @@ const displaySegments = (points, extra = {}) => {
  * independent segments, never a line through an unresolved gap. */
 export async function compareRoadAwareBeta(legacyOrder, { propose, partitionRun, continuityFor, provider,
     bounds = {}, signal, resume, onCheckpoint } = {}) {
+    const started = Date.now(), timings = {};
     // The frozen engine uses address_hash/id; production also supports legacy_hash.
     // Normalize only its input, then return the original production records.
     const originals = new Map(legacyOrder.map(p => [id(p), p]));
     legacyOrder = legacyOrder.map(p => ({ ...p, address_hash: id(p) }));
     assertPilotMembership(legacyOrder, legacyOrder);
     const shapes = new Map();
+    const responseCache = createOsrmRequestCache(async (url, options) => {
+        const response = await provider.fetch(url, options.fetchOptions);
+        if (!response.ok) throw new Error(`Vehicle routing failed (${response.status}). The existing route was left unchanged.`);
+        return response.json();
+    });
     const result = (properties, before, after, details = {}) => {
         assertPilotMembership(legacyOrder, properties);
+        timings.total_ms = Date.now() - started;
         const comparison = {
             beforeOrder: legacyOrder.map(id), afterOrder: properties.map(id),
             beforeFingerprint: routePropertyOrderFingerprint(legacyOrder), afterFingerprint: routePropertyOrderFingerprint(properties),
@@ -38,6 +46,8 @@ export async function compareRoadAwareBeta(legacyOrder, { propose, partitionRun,
             milesSaved: before && after ? before.miles - after.miles : null,
             secondsSaved: before && after ? before.seconds - after.seconds : null,
             changedStops: properties.filter((p, i) => id(p) !== id(legacyOrder[i])).length,
+            road_response_cache: responseCache.stats(),
+            optimization_timings: { ...timings },
             graphFingerprint: provider.fingerprint, dataVersion: provider.dataVersion, acceptedRegressions: 0,
             ...details,
         };
@@ -48,7 +58,7 @@ export async function compareRoadAwareBeta(legacyOrder, { propose, partitionRun,
             distanceMiles: comparison.fullMeasurement && after ? after.miles : calculateRouteDistanceMiles(properties, bounds),
             metadata: { road_geometry: comparison.fullMeasurement && !comparison.optimizationWindows && geometry.selected.length === 1 ? geometry.selected[0]?.points || null : null,
                 road_geometry_segments: geometry.selected,
-                routing: { engine: 'guarded-road-aware-beta-neighborhood-v2', road_aware_routing_beta: true, travel_mode: 'driving',
+                routing: { engine: 'guarded-road-aware-beta-exact-reuse-v3', road_aware_routing_beta: true, travel_mode: 'driving',
                     road_aware: Boolean(after), fallback: !after, fallback_reason: comparison.reason || null,
                     property_order_fingerprint: comparison.afterFingerprint,
                     distance_estimate: comparison.fullMeasurement ? 'vehicle-road-network' : 'partial-road-measurement',
@@ -59,13 +69,16 @@ export async function compareRoadAwareBeta(legacyOrder, { propose, partitionRun,
                     fallback_window_count: comparison.fallbackWindows || 0, guard_result: comparison.guard,
                     provider_epoch: provider.fingerprint, access_match_meters: 100, accepted_regressions: 0,
                     neighborhood_excursion_review: comparison.neighborhood_excursion_review || null,
+                    road_response_cache: comparison.road_response_cache,
+                    optimization_timings: comparison.optimization_timings,
                     guard_policy: 'strictly-lower-complete-driving-time-and-no-more-road-miles; real-window-connectors' } } };
     };
     if (!provider.available) return result(legacyOrder, null, null, { guard: 'legacy_fallback', reason: 'PROVIDER_NOT_CONFIGURED' });
     const outside = legacyOrder.filter(point => !insideRoadBetaCoverage(point));
     if (outside.length === legacyOrder.length || [bounds.startLocation, bounds.endLocation].filter(Boolean)
         .some(point => !insideRoadBetaCoverage(point))) return result(legacyOrder, null, null, { guard: 'legacy_fallback', reason: 'OUTSIDE_GRAPH_COVERAGE' });
-    const options = { vehicleBaseUrl: provider.baseUrl, vehicleProfile: 'car', vehicleFetch: provider.fetch,
+    const options = { vehicleBaseUrl: provider.baseUrl, vehicleProfile: 'car',
+        vehicleFetch: async (url, fetchOptions) => Response.json(await responseCache.fetchJson(url, { timeoutMs: 15000, fetchOptions })),
         production: true, expectedDataVersion: provider.dataVersion, requireDirectedLegs: true,
         maxGeometryPoints: 100000, signal, servicePolicy: { enabled: true, parkingSecondsPerStop: 0 } };
     // Personal anchor coordinates stay in memory only. Curb/parking inference is
@@ -81,8 +94,10 @@ export async function compareRoadAwareBeta(legacyOrder, { propose, partitionRun,
         } };
     };
     const unknown = new Set([...outside, ...legacyOrder.filter(p => p.routing_access?.resolution_status === 'unresolved')].map(id));
+    const matchStarted = Date.now();
     try { for (const key of await identifyUnmatchedVehicleStops(legacyOrder.filter(p => insideRoadBetaCoverage(p)), options)) unknown.add(key); }
     catch (error) { fatal(error); return result(legacyOrder, null, null, { guard: 'legacy_fallback', reason: 'ROAD_EVIDENCE_UNAVAILABLE' }); }
+    timings.access_matching_ms = Date.now() - matchStarted;
     if (legacyOrder.length <= 500 && !unknown.size) {
         const outcome = await evaluateCoreDrivingRoute({ legacyOrder, bounds,
             createContext: stops => makeContext(stops, false, bounds), propose });

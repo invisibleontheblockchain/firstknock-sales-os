@@ -50,18 +50,52 @@ function stubOsrm({ holeAt = null, shapeBreak = false } = {}) {
     return calls;
 }
 
-test('MTX-01 a 183-door route assembles one complete matrix from 16 blocks', async () => {
+test('MTX-01 a 183-door route assembles one complete directed matrix from six packed tables', async () => {
     const calls = stubOsrm();
     const matrix = await fetchRoadMatrix(points(183));
 
     assert.equal(matrix.pointCount, 183);
-    assert.equal(matrix.blocks, 16);
-    assert.equal(calls.length, 16);
+    assert.equal(matrix.blocks, 6);
+    assert.equal(calls.length, 6);
     assert.equal(matrix.distances.length, 183);
     assert.ok(matrix.distances.every((row) => row.length === 183));
     assert.ok(matrix.durations.every((row) => row.length === 183));
     assert.ok(calls.every((call) => call.coordinates <= MAX_MATRIX_COORDINATES));
     assert.equal(matrix.snapped, 183);
+});
+
+test('a 215-door route needs ten tables instead of twenty-five, with every cell unchanged', async () => {
+    const calls = stubOsrm();
+    const matrix = await fetchRoadMatrix(points(215));
+    assert.equal(calls.length, 10);
+    for (let from = 0; from < 215; from++) for (let to = 0; to < 215; to++) {
+        assert.equal(matrix.distances[from][to], (from * 1000 + to) * 0.000621371);
+        assert.equal(matrix.durations[from][to], (from * 1000 + to) / 60);
+    }
+});
+
+test('all points that fit the provider limit use one complete table, including directed reverse cells', async () => {
+    for (const count of [58, 95, 100]) {
+        const calls = stubOsrm();
+        const matrix = await fetchRoadMatrix(points(count));
+        assert.equal(calls.length, 1);
+        assert.equal(matrix.distances[1][count - 1], (1000 + count - 1) * 0.000621371);
+        assert.equal(matrix.distances[count - 1][1], ((count - 1) * 1000 + 1) * 0.000621371);
+    }
+});
+
+test('overlapping tiles fail closed when the engine gives contradictory costs for the same directed leg', async () => {
+    stubOsrm();
+    const fetcher = globalThis.fetch;
+    globalThis.fetch = async (...args) => {
+        const response = await fetcher(...args);
+        const payload = await response.json();
+        const coordinates = new URL(args[0]).pathname.split('/').at(-1).split(';');
+        const index = coordinate => Math.round((Number(coordinate.split(',')[1]) - 35) * 1000);
+        if (index(coordinates[0]) === 0 && coordinates.some(c => index(c) === 92)) payload.distances[0][0] += 1;
+        return { ok: true, json: async () => payload };
+    };
+    await assert.rejects(fetchRoadMatrix(points(138)), /inconsistent overlapping costs/);
 });
 
 test('MTX-02 every cell lands on its canonical source and destination index', async () => {
