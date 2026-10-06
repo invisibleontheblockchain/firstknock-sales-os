@@ -25,7 +25,7 @@ import {
 } from '../components/logic/routeRoadContext';
 import { calculateRouteDistanceMiles, isValidRoutePoint } from '@/lib/routeBounds';
 import { applyRouteFilters, formatStageCounts } from '../components/logic/routeFilterPipeline';
-import { limitPrecisionCandidates, precisionAreaForJob, precisionReferenceDateForJob, savePrecisionRoutes } from '@/lib/precisionDelivery';
+import { loadPrecisionGenerationJob, limitPrecisionCandidates, precisionAreaForJob, precisionReferenceDateForJob, savePrecisionRoutes } from '@/lib/precisionDelivery';
 import { normalizeOwnershipRangeDays as normalizeStrictOwnershipRangeDays } from '../components/logic/soldDateRange';
 import RouteGenerationOverlay from '../components/routes/RouteGenerationOverlay';
 import RouteAssignmentDialog from '@/components/routes/RouteAssignmentDialog';
@@ -1602,8 +1602,7 @@ export default function Home() {
             const isCurrentBatchDataRun = !!activeFetchJobId && !!activeGenerationPolygon && !!activePolygonKey && activePolygonKey === currentJobPolygonKey;
             // Read mode from the actual job, including after a reload. A stale
             // local numeric target must never truncate a Max Available drain.
-            const precisionJob = isCurrentBatchDataRun ? await base44.entities.FetchJob.get(activeFetchJobId) : null;
-            if (isCurrentBatchDataRun && precisionJob?.status !== 'completed') throw new Error('The property pull must finish before routes can be built.');
+            const precisionJob = isCurrentBatchDataRun ? await loadPrecisionGenerationJob(base44, activeFetchJobId) : null;
             const precisionCountMode = precisionJob?.dry_run_metadata?.count_mode === 'max_available' ? 'max_available' : 'fixed';
             const requestedPrecisionCount = precisionJob
                 ? Number(precisionJob.total_expected || currentBatchDataRequestedCountRef.current) || null
@@ -2660,15 +2659,16 @@ export default function Home() {
 
                     const pm = pullFetchMonths || 12;
                     currentBatchDataSoldMonthsRef.current = pm;
-                    persistPrecisionJobContext(completedOwnershipRangeDays ? {
+                    persistPrecisionJobContext({
                         userEmail: user?.email || '',
                         jobId: completedJobId,
                         soldMonths: pm,
+                        ownershipRangeMode: completedOwnershipRangeDays ? 'custom' : 'quick',
                         ownershipRangeDays: completedOwnershipRangeDays,
                         ownershipReferenceDate: completedOwnershipReferenceDate,
                         requestedCount: completedRequestedCount,
                         polygon: normalizedPullPolygon
-                    } : null);
+                    });
                     setMaxDataMonths(pm);
                     try { localStorage.setItem('fk_maxDataMonths', String(pm)); } catch { }
                     setHasMlsData(!!pulledWithMls);
@@ -2697,12 +2697,14 @@ export default function Home() {
                             setDraftPolygon([]);
                             try { localStorage.removeItem('fk_drawnPolygonQueried'); } catch { }
                         }
+                        return routeBuilt === true;
                     } else {
                         preparePrecisionRouteBounds({ enabled: false });
                         const isUltraRecent = Number(pm) <= 0.25;
                         setGenerationError(isUltraRecent
                             ? 'No BatchData-confirmed sales were returned inside this exact area for the selected last-week window. Route generation was stopped so stale old data is not reused. Provider sale/intel records can lag — try 2 weeks or 1 month for this territory.'
                             : 'This pull produced no active routeable properties. Route generation was stopped so stale old data is not reused. Try a larger area or looser parameters.');
+                        return false;
                     }
                 }}
             />

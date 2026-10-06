@@ -1,5 +1,47 @@
 // Precision delivery helpers live outside the route optimizer: fetching,
 // filtering, generation, and saving are distinct steps in the delivery funnel.
+export async function loadPrecisionJob(client, jobId) {
+    // Jobs created by the service can be hidden by browser entity-read rules.
+    // The status endpoint reads with service privileges, then checks ownership
+    // before returning this allowlisted generation context.
+    const response = await client.functions.invoke('fetchJobStatus', { job_id: jobId });
+    const status = response?.data;
+    if (!jobId || status?.job_id !== jobId) {
+        throw new Error('The property pull status did not match the selected import.');
+    }
+    if (status.provider !== 'batchdata' || status.mode_tag !== 'PRECISION_TARGET') {
+        throw new Error('The selected import is not a Precision property pull.');
+    }
+    const diagnostics = status.diagnostics || {};
+    const range = diagnostics.ownership_range_days ?? status.ownership_range_days;
+    return {
+        id: status.job_id, status: status.status, provider: status.provider,
+        mode_tag: status.mode_tag, total_expected: status.total_expected,
+        progress_pct: status.progress_pct,
+        sold_months: diagnostics.sold_months,
+        created_date: status.ownership_reference_date ?? diagnostics.ownership_reference_date,
+        completed_at: status.completed_at,
+        pull_mode: status.pull_mode,
+        polygon: (status.polygon || []).map(point => ({ lat: point.lat, lng: point.lng })),
+        dry_run_metadata: {
+            count_mode: diagnostics.count_mode,
+            requested_properties: diagnostics.requested_properties,
+            route_bounds: diagnostics.route_bounds,
+            ownership_range_mode: diagnostics.ownership_range_mode ?? status.ownership_range_mode,
+            ownership_range_days: range ? { min: range.min, max: range.max } : null,
+            filters: diagnostics.filters ? { ...diagnostics.filters } : null
+        }
+    };
+}
+
+export async function loadPrecisionGenerationJob(client, jobId) {
+    const job = await loadPrecisionJob(client, jobId);
+    if (job.status !== 'completed') {
+        throw new Error('The property pull must finish before routes can be built.');
+    }
+    return job;
+}
+
 export function limitPrecisionCandidates(properties, { countMode, requestedCount }, rank) {
     if (countMode === 'max_available') return properties;
     const count = Math.floor(Number(requestedCount));

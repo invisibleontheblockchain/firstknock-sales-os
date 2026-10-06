@@ -13,6 +13,7 @@ import { FREE_PRECISION_PROPERTY_LIMIT } from '@/lib/precisionUsage';
 import { usePrecisionUsage } from '@/hooks/usePrecisionUsage';
 import { normalizeOwnershipRangeDays as normalizeStrictOwnershipRangeDays } from '@/components/logic/soldDateRange';
 import { validateCanvasBoundary } from '@/components/canvas/canvasPlannerUtils';
+import { loadPrecisionJob } from '@/lib/precisionDelivery';
 
 function formatWholeNumber(value) {
   const number = Math.max(0, Math.round(Number(value) || 0));
@@ -245,7 +246,10 @@ export default function TerritoryPrompt({
           ? localStorage.getItem(activePrecisionJobStorageKey)
           : null;
         if (rememberedJobId) {
-          const rememberedJob = await base44.entities.FetchJob.get(rememberedJobId).catch(() => null);
+          const rememberedJob = await loadPrecisionJob(base44, rememberedJobId).catch(error => {
+            if ([403, 404].includes(error?.response?.status)) return null;
+            throw error; // A transient status outage must not forget a paid import.
+          });
           if (rememberedJob && ['running', 'pending', 'completed'].includes(rememberedJob.status)) {
             job = rememberedJob;
           } else {
@@ -676,11 +680,12 @@ export default function TerritoryPrompt({
           };
 
           if (routeModeRef.current !== 'precision') return;
+          let routesBuilt = true;
           if (onPullComplete) {
             setMode('generate');
             setShowRoutePanel(false);
             setShowCompare(false);
-            await onPullComplete(completedSoldMonths, isPaid, completedJobStatus);
+            routesBuilt = await onPullComplete(completedSoldMonths, isPaid, completedJobStatus) !== false;
             if (routeModeRef.current !== 'precision') return;
           } else {
             queryClient.invalidateQueries({ queryKey: ['masterProperties'] });
@@ -690,7 +695,7 @@ export default function TerritoryPrompt({
             setShowCompare(false);
           }
           await refetchPrecisionUsage();
-          clearActivePrecisionJob(jobId);
+          if (routesBuilt) clearActivePrecisionJob(jobId);
           setPulling(false);
         } else if (d.status === 'cancelled') {
           clearInterval(pollRef.current);
