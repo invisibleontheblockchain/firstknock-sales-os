@@ -5,6 +5,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 import ts from 'typescript';
+import { completeServerRoadAwareRoutes } from '../base44/shared/roadAwareBetaServer.js';
 
 import { calculateRouteDistanceMiles } from '../src/lib/routeBounds.js';
 import { geocodeAddress } from '../src/lib/geocoding.js';
@@ -26,6 +27,7 @@ function loadBackendHandler(path, base44) {
   const executable = transpiled.outputText.replace(/^import .*;\s*$/gm, '');
   vm.runInNewContext(executable, {
     console,
+    completeServerRoadAwareRoutes,
     createClientFromRequest: () => base44,
     Deno: { serve: (registeredHandler) => { handler = registeredHandler; } },
     Request,

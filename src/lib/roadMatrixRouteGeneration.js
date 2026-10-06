@@ -78,8 +78,8 @@ export async function buildRoadAwareGeneratedRoutes({ rawGenerated, routingConte
     });
 }
 
-export async function applyRoadMatrixToGeneratedRoutes(routes, { onProgress } = {}) {
-    const beta = await applyRoadAwareBetaToGeneratedRoutes(routes || [], { entryPoint: 'home_generation_or_reorder', onProgress });
+export async function applyRoadMatrixToGeneratedRoutes(routes, { onProgress, client } = {}) {
+    const beta = await applyRoadAwareBetaToGeneratedRoutes(routes || [], { entryPoint: 'home_generation_or_reorder', onProgress, client });
     if (beta) return beta;
     if (!Array.isArray(routes) || routes.length === 0) {
         return {
@@ -131,11 +131,13 @@ export async function applyRoadMatrixToGeneratedRoutes(routes, { onProgress } = 
 
         onProgress?.({ index: index + 1, total: routes.length });
         let declineReason = null;
+        let roadMeasurement = null;
         const result = await tryRoadMatrixOptimize(properties, {
             start: isValidRoutePoint(route.startLocation) ? route.startLocation : null,
             end: isValidRoutePoint(route.endLocation) ? route.endLocation : null,
             deadlineMs: ROAD_MATRIX_PER_ROUTE_BUDGET_MS,
-            onOutcome: (reason) => { declineReason = reason; }
+            client,
+            onOutcome: (reason, measurement) => { declineReason = reason; roadMeasurement = measurement; }
         });
         if (!result) {
             // The road engine having measured the generated order and found
@@ -143,7 +145,13 @@ export async function applyRoadMatrixToGeneratedRoutes(routes, { onProgress } = 
             // confirmed on real roads. Every other decline leaves the route
             // straight-line ordered and unverified, and must say so.
             const outcome = verdictForOutcome({ doorCount: properties.length, declineReason });
-            out.push(stampRoadVerification(route, outcome.verdict, { reason: outcome.reason }));
+            const confirmed = outcome.verdict === ROAD_VERIFICATION.CONFIRMED && roadMeasurement ? {
+                ...route, totalDistance: roadMeasurement.distanceMiles,
+                metadata: { ...route.metadata, ...roadMeasurement.routingMetadata },
+            } : route;
+            out.push(stampRoadVerification(confirmed, outcome.verdict, {
+                reason: outcome.reason, measuredMiles: roadMeasurement?.distanceMiles,
+            }));
             if (outcome.verdict !== ROAD_VERIFICATION.CONFIRMED) unverifiedCount += 1;
             continue;
         }

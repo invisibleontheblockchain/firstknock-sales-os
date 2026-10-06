@@ -5,6 +5,7 @@ import { planGuardedDrivingWindows, optimizeGuardedDrivingWindows, measureUnchan
 import { routePropertyOrderFingerprint } from './routeFingerprint.js';
 import { insideRoadBetaCoverage } from './roadAwareBetaPolicy.js';
 import { calculateRouteDistanceMiles } from './routeBounds.js';
+import { reviewFinalNeighborhoodRoute } from './finalNeighborhoodReview.js';
 
 const id = p => String(p.address_hash || p.legacy_hash || p.id || '');
 const score = value => value ? { miles: value.distanceMiles, seconds: value.driveSeconds } : null;
@@ -47,7 +48,7 @@ export async function compareRoadAwareBeta(legacyOrder, { propose, partitionRun,
             distanceMiles: comparison.fullMeasurement && after ? after.miles : calculateRouteDistanceMiles(properties, bounds),
             metadata: { road_geometry: comparison.fullMeasurement && !comparison.optimizationWindows && geometry.selected.length === 1 ? geometry.selected[0]?.points || null : null,
                 road_geometry_segments: geometry.selected,
-                routing: { engine: 'guarded-road-aware-beta-v1', road_aware_routing_beta: true, travel_mode: 'driving',
+                routing: { engine: 'guarded-road-aware-beta-neighborhood-v2', road_aware_routing_beta: true, travel_mode: 'driving',
                     road_aware: Boolean(after), fallback: !after, fallback_reason: comparison.reason || null,
                     property_order_fingerprint: comparison.afterFingerprint,
                     distance_estimate: comparison.fullMeasurement ? 'vehicle-road-network' : 'partial-road-measurement',
@@ -57,6 +58,7 @@ export async function compareRoadAwareBeta(legacyOrder, { propose, partitionRun,
                     measured_leg_count: comparison.measuredLegs ?? null, unresolved_stop_count: comparison.unresolvedCount || 0,
                     fallback_window_count: comparison.fallbackWindows || 0, guard_result: comparison.guard,
                     provider_epoch: provider.fingerprint, access_match_meters: 100, accepted_regressions: 0,
+                    neighborhood_excursion_review: comparison.neighborhood_excursion_review || null,
                     guard_policy: 'strictly-lower-complete-driving-time-and-no-more-road-miles; real-window-connectors' } } };
     };
     if (!provider.available) return result(legacyOrder, null, null, { guard: 'legacy_fallback', reason: 'PROVIDER_NOT_CONFIGURED' });
@@ -90,6 +92,7 @@ export async function compareRoadAwareBeta(legacyOrder, { propose, partitionRun,
             measuredLegs: outcome.eligible ? Math.max(0, legacyOrder.length - 1) : 0,
             unmeasurableLegs: outcome.eligible ? 0 : Math.max(0, legacyOrder.length - 1), unresolvedCount: 0,
             rawProposal: score(outcome.candidate),
+            neighborhood_excursion_review: outcome.neighborhoodReview,
             geometry: { current: displaySegments(current), selected: displaySegments(selected) } });
     }
     const plan = planGuardedDrivingWindows(legacyOrder, { unresolvedIds: [...unknown], maxWindowStops: 500, partitionRun });
@@ -117,6 +120,19 @@ export async function compareRoadAwareBeta(legacyOrder, { propose, partitionRun,
         const points = shapes.get(routePropertyOrderFingerprint(stops));
         if (points) geometry[arm].push(...displaySegments(points, { firstStop: row.start, lastStop: row.end - 1 }));
     }
+    const neighborhood = await reviewFinalNeighborhoodRoute(output.properties, {
+        ...options, ...bounds, lockedStopIds: [...unknown], baselineOrder: legacyOrder,
+    });
+    // A complete, independently checked final trip supersedes window totals.
+    if (neighborhood.diagnostics.applied) {
+        geometry.current = displaySegments(neighborhood.baseline.geometry);
+        geometry.selected = displaySegments(neighborhood.measurement.geometry);
+        return result(neighborhood.properties, score(neighborhood.baseline), score(neighborhood.measurement), {
+            guard: 'road_aware_sections', fullMeasurement: true, measuredLegs: Math.max(0, legacyOrder.length - 1),
+            unmeasurableLegs: 0, unresolvedCount: unknown.size, optimizationWindows: plan.windows.length,
+            neighborhood_excursion_review: neighborhood.diagnostics, geometry,
+        });
+    }
     return result(output.properties,
         totals.measuredLegs ? { miles: totals.legacyMeasurableMiles, seconds: totals.legacyMeasurableSeconds } : null,
         totals.measuredLegs ? { miles: totals.selectedMeasurableMiles, seconds: totals.selectedMeasurableSeconds } : null, {
@@ -127,5 +143,6 @@ export async function compareRoadAwareBeta(legacyOrder, { propose, partitionRun,
             unresolvedCount: unknown.size, unresolvedIds: [...unknown], fallbackWindows: output.summary.fallbackWindows,
             improvedWindows: output.summary.improvedWindows, guardRetainedWindows: output.summary.guardRetainedWindows,
             optimizationWindows: plan.windows.length, geometry,
+            neighborhood_excursion_review: neighborhood.diagnostics,
         });
 }

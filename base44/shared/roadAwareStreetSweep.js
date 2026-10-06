@@ -9,6 +9,7 @@
 //     walked straight through along the street axis so no door is passed twice.
 
 import { haversineMiles, isValidPoint } from './routeContinuityOptimizer.js';
+import { reviewNeighborhoodOrder } from './neighborhoodExcursions.js';
 
 const DENSE_SIDE_DOOR_COUNT = 3;
 const MAX_AXIS_ORDER_DOORS = 60;
@@ -517,5 +518,10 @@ export function roadAwareStreetSweep(properties, options = {}) {
     });
 
     const { orientations } = blockOrderCost(blocks, true);
-    return blocks.flatMap((block, index) => block.variants[orientations[index]]);
+    return reviewNeighborhoodOrder(blocks.flatMap((block, index) => block.variants[orientations[index]]),
+        startLocation, endLocation, options.routingContext || {
+            neighborhoodRoadVerified: options.neighborhoodRoadVerified === true,
+            neighborhoodCostBetween: options.neighborhoodCostBetween,
+            neighborhoodExcursionOptions: options.neighborhoodExcursionOptions
+        }, { originalOrder: properties });
 }

@@ -25,6 +25,9 @@ import {
 } from '../../shared/roadMatrixTiers.js';
 import { HIERARCHY_REFINEMENT_STEP_BUDGET, sequenceRoadHierarchy } from '../../shared/roadHierarchySequencer.js';
 import { measureRoadPath } from '../../shared/roadPathMeasure.js';
+import { reviewFinalNeighborhoodRoute } from '../../shared/finalNeighborhoodReview.js';
+import { reviewNeighborhoodExcursions } from '../../shared/neighborhoodExcursions.js';
+import { fetchOsrmJson } from '../../shared/osrmDispatcher.js';
 import {
     DURATION_TIE_TOLERANCE_MINUTES,
     measureRouteCandidate,
@@ -34,7 +37,7 @@ import {
 
 // Bump when candidate generation or the objective changes, so a stored route can
 // be told apart from one produced by an older solver.
-const OPTIMIZER_VERSION = 'road_matrix_multistart_v2';
+const OPTIMIZER_VERSION = 'road_matrix_neighborhood_review_v3';
 
 function readSecret(name) {
     try {
@@ -136,6 +139,18 @@ export default async function (req: Request): Promise<Response> {
         const matrixPoints = plan.ok ? plan.matrixPoints : properties;
         const cacheKey = await buildRoadMatrixCacheKey(matrixPoints, profile);
         const solverStartedAt = Date.now();
+        const neighborhoodOptions = {
+            startLocation, endLocation, baselineOrder: properties,
+            vehicleBaseUrl: readSecret('OSRM_BASE_URL') || DEFAULT_OSRM_BASE_URL,
+            vehicleProfile: profile,
+            vehicleFetch: async (url, options) => {
+                if (options?.signal?.aborted) throw options.signal.reason;
+                const payload = await fetchOsrmJson(url, { timeoutMs });
+                return { ok: true, json: async () => payload };
+            },
+            preferContiguousOnTie: body.neighborhood_review?.prefer_contiguous_on_tie === true,
+            tieSeconds: Math.min(10, Math.max(0, Number(body.neighborhood_review?.tie_seconds) || 0)),
+        };
 
         // Candidate — straight-line continuity, the fallback path's answer.
         const continuity = createContinuityOptimizer(haversineMiles);
@@ -166,7 +181,8 @@ export default async function (req: Request): Promise<Response> {
             matrix_street_block_count: plan.ok ? plan.blockCount : null,
             optimizer_version: OPTIMIZER_VERSION,
             objective_version: OBJECTIVE_VERSION,
-            duration_tie_tolerance_minutes: DURATION_TIE_TOLERANCE_MINUTES
+            duration_tie_tolerance_minutes: DURATION_TIE_TOLERANCE_MINUTES,
+            neighborhood_excursion_review: reviewNeighborhoodExcursions(continuityOrder).diagnostics
         };
 
         // Cluster-tier routes take the hierarchical path instead of a single
@@ -217,6 +233,10 @@ export default async function (req: Request): Promise<Response> {
             });
 
             if (hierarchy.ok && exactOnce(hierarchy.order, properties.length)) {
+                if (properties.some((p, i) => (p.order_locked || p.locked || p.routing_access?.resolution_status === 'unresolved')
+                    && propertyIdentity(hierarchy.order[i]) !== propertyIdentity(p))) hierarchy.order = properties;
+                const neighborhood = await reviewFinalNeighborhoodRoute(hierarchy.order, neighborhoodOptions);
+                hierarchy.order = neighborhood.properties;
                 const withAnchors = (order) => [
                     ...(startLocation ? [startLocation] : []),
                     ...order,
@@ -236,7 +256,9 @@ export default async function (req: Request): Promise<Response> {
                 // An unvalidated order is never applied. Without a real-mileage
                 // comparison there is no evidence it is better, and "the
                 // computation finished" is not evidence.
-                const keepCurrent = !validated || currentPath.totalMiles <= proposedPath.totalMiles;
+                const reviewedTimeImproved = neighborhood.diagnostics.applied && neighborhood.baseline
+                    && neighborhood.measurement.driveSeconds < neighborhood.baseline.driveSeconds;
+                const keepCurrent = !validated || (!reviewedTimeImproved && currentPath.totalMiles <= proposedPath.totalMiles);
                 const winningOrder = keepCurrent ? properties : hierarchy.order;
                 const degraded = telemetry.degraded;
 
@@ -247,6 +269,7 @@ export default async function (req: Request): Promise<Response> {
                     property_count: winningOrder.length,
                     routing_metadata: {
                         ...baseMetadata,
+                        neighborhood_excursion_review: neighborhood.diagnostics,
                         strategy: 'road_hierarchy_cluster_exact_door_matrix',
                         road_network_used: true,
                         fallback: false,
@@ -405,6 +428,8 @@ export default async function (req: Request): Promise<Response> {
 
         const candidates = withReversals
             .filter((candidate) => exactOnce(candidate.order, properties.length))
+            .filter((candidate) => !properties.some((p, i) => (p.order_locked || p.locked || p.routing_access?.resolution_status === 'unresolved')
+                && propertyIdentity(candidate.order[i]) !== propertyIdentity(p)))
             .map((candidate) => measureRouteCandidate(candidate, {
                 distanceBetween,
                 durationBetween,
@@ -413,15 +438,25 @@ export default async function (req: Request): Promise<Response> {
                 startLocation: anchorsInMatrix ? startLocation : null,
                 endLocation: anchorsInMatrix ? endLocation : null
             }));
-        if (candidates.length !== withReversals.length) {
+        if (withReversals.some(candidate => !exactOnce(candidate.order, properties.length))) {
             throw new Error('A route candidate failed its exact-once property invariant.');
         }
 
-        const winner = selectBestRouteCandidate(candidates);
+        let winner = selectBestRouteCandidate(candidates);
         if (!winner) {
             throw new Error('No route candidate could be measured on the road matrix.');
         }
+        const neighborhood = await reviewFinalNeighborhoodRoute(winner.order, neighborhoodOptions);
+        if (neighborhood.diagnostics.applied) {
+            winner = { ...winner, order: neighborhood.properties, is_current: false, type: 'road_aware',
+                distance: neighborhood.measurement.distanceMiles, duration: neighborhood.measurement.driveSeconds / 60,
+                fingerprint: routePropertyOrderFingerprint(neighborhood.properties) };
+        }
         const current = candidates.find((candidate) => candidate.is_current);
+        if (neighborhood.diagnostics.applied && neighborhood.baseline && current) {
+            current.distance = neighborhood.baseline.distanceMiles;
+            current.duration = neighborhood.baseline.driveSeconds / 60;
+        }
         const bestRoadAware = candidates
             .filter((candidate) => candidate.type === 'road_aware')
             .sort((first, second) => (first.distance ?? Infinity) - (second.distance ?? Infinity))[0] || null;
@@ -444,6 +479,7 @@ export default async function (req: Request): Promise<Response> {
             property_count: winner.order.length,
             routing_metadata: {
                 ...baseMetadata,
+                neighborhood_excursion_review: neighborhood.diagnostics,
                 strategy: winner.type === 'road_aware'
                     ? 'road_matrix_street_subdivision_continuity'
                     : 'canonical_street_subdivision_continuity',

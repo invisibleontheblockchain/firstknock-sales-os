@@ -12,6 +12,7 @@
 import { fetchOsrmJson } from './osrmDispatcher.js';
 import { summarizeLegMiles } from './roadLegDistribution.js';
 import { DEFAULT_OSRM_BASE_URL } from './roadMatrix.js';
+import { vehicleServicePoint } from './serviceAccess.js';
 
 const METERS_TO_MILES = 0.000621371;
 // Coordinates per /route request. Chunks overlap by one point so the leg that
@@ -21,7 +22,10 @@ const ROUTE_CHUNK_POINTS = 50;
 // than 12,000 points, so the path is thinned rather than silently rejected.
 const MAX_GEOMETRY_POINTS = 12000;
 
-const coordinateParam = (point) => `${Number(point.lng).toFixed(6)},${Number(point.lat).toFixed(6)}`;
+const coordinateParam = (stop) => {
+    const point = vehicleServicePoint(stop);
+    return `${Number(point.lng).toFixed(6)},${Number(point.lat).toFixed(6)}`;
+};
 
 function thinGeometry(points) {
     if (points.length <= MAX_GEOMETRY_POINTS) return points;
@@ -63,7 +67,8 @@ export async function measureRoadPath(order, options = {}) {
             if (chunk.length < 2) break;
             const url = `${String(baseUrl).replace(/\/+$/, '')}/route/v1/${profile}/`
                 + `${chunk.map(coordinateParam).join(';')}`
-                + '?overview=full&geometries=geojson&steps=false&annotations=false';
+                + '?overview=full&geometries=geojson&steps=false&annotations=false&continue_straight=true'
+                + `&radiuses=${chunk.map(() => 100).join(';')}`;
             const payload = await fetchOsrmJson(url, { timeoutMs });
             requestCount += 1;
 
