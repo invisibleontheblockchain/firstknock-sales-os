@@ -83,12 +83,13 @@ function workspace({ enabled = true, outside = false, engine = roadEngine() } = 
     return { client, sdk, call, writes, comparisons, secrets, getRoute: () => route, setRoute: value => { route = value; } };
 }
 
-let vite, beta, preview;
+let vite, beta, preview, generation;
 before(async () => {
     process.env.VITE_BASE44_APP_ID = 'routing-beta-test';
     vite = await createServer({ server: { middlewareMode: true }, appType: 'custom', logLevel: 'silent' });
     beta = await vite.ssrLoadModule('/src/lib/roadAwareRoutingBeta.js');
     preview = await vite.ssrLoadModule('/src/lib/previewSavedRoadAwareBeta.js');
+    generation = await vite.ssrLoadModule('/src/lib/roadMatrixRouteGeneration.js');
 });
 after(async () => { await vite?.close(); delete process.env.VITE_BASE44_APP_ID; });
 
@@ -229,6 +230,18 @@ test('generation completion outside the beta sends an interrupted neighborhood t
     assert.deepEqual(result[0].properties, order);
     assert.deepEqual(new Set(result[0].properties), new Set(properties));
     assert.equal(result[0].metadata.neighborhood_excursion_review.applied, true);
+});
+
+test('a generated route that keeps its order still persists the completed neighborhood review and real mileage', async () => {
+    const properties = stops(), report = { status: 'checked', detected: 1, remaining: 1, relocated: 0 };
+    const client = { auth: { me: async () => ({ id: 'owner' }) }, functions: { invoke: async name => ({ data:
+        name === 'roadAwareRoutingBeta' ? { enabled: false } : { success: true, selected: 'current',
+            routing_metadata: { input_measured: 5, road_network_used: true, neighborhood_excursion_review: report } } }) } };
+    const result = await generation.applyRoadMatrixToGeneratedRoutes([{ properties, totalDistance: 50 }], { client });
+    assert.equal(result.routes[0].properties, properties);
+    assert.equal(result.routes[0].totalDistance, 5);
+    assert.deepEqual(result.routes[0].metadata.neighborhood_excursion_review, report);
+    assert.equal(result.routes[0].metadata.road_verification.verified, true);
 });
 test('saved preview workflow waits for an explicit decision and OFF reaches no comparison UI', async () => {
     const mock = workspace(), original = structuredClone(mock.getRoute());
