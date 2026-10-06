@@ -202,7 +202,10 @@ test('ENRICH-04 polygon, sold-window, value bounds and the R2 filter are preserv
   assert.match(criteria.intel.lastSoldDate.minDate, /^\d{4}-\d{2}-\d{2}$/);
 
   // Single-family land-use gate.
-  assert.deepEqual(criteria.general, { standardizedLandUseCode: { equals: 'R2' } });
+  assert.deepEqual(criteria.general, {
+    standardizedLandUseCode: { equals: 'R2' },
+    propertyTypeDetail: { inList: ['Single Family', 'Single Family Residential (Assumed)'] }
+  });
 
   // User home-value range.
   assert.deepEqual(criteria.valuation, { estimatedValue: { min: 150000, max: 900000 } });

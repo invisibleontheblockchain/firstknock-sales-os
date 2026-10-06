@@ -18,6 +18,7 @@ const CHUNK_MAX_SELECTED = 2500;
 // Provider pages are capped at 100 records each and are independent, so fetch a
 // wave of them concurrently instead of walking offsets one request at a time.
 const PAGE_CONCURRENCY = 5;
+const MAX_PAGE_RECOVERY_CHUNKS = 3;
 // Records per set-based write statement.
 const WRITE_BATCH_SIZE = 250;
 const PIPELINE_LOCK_TTL_MS = 8 * 60 * 1000;
@@ -503,7 +504,12 @@ function buildBatchDataRequest(job, skip = 0, take = 500, mode = 'strict_polygon
     // Precision routes should only contain residential single-family homes.
     // BatchData's R2 code is the single-family residential land-use bucket used
     // by the prior strict request path; apply it to the live broad request too.
-    searchCriteria.general = { standardizedLandUseCode: { equals: 'R2' } };
+    searchCriteria.general = {
+        standardizedLandUseCode: { equals: 'R2' },
+        // Match the detached single-family gate before records are returned and
+        // billed. These are the exact detail values supplied by BatchData support.
+        propertyTypeDetail: { inList: ['Single Family', 'Single Family Residential (Assumed)'] }
+    };
 
     // Home value range applies in ALL polygon modes. Previously it was only attached in
     // strict_polygon — but the live pull uses broad_polygon, so user price filters were
@@ -524,14 +530,17 @@ function extractBatchDataTotal(payload) {
     // the true match count. Without it every job recorded provider_total=null, so
     // the pager could only stop on an empty page — walking offsets past the end of
     // the area and spending API calls to learn nothing.
-    return Number(
+    const value = (
         payload?.results?.meta?.results?.resultsFound
         ?? payload?.meta?.results?.resultsFound
         ?? payload?.results?.totalRecordCount
         ?? payload?.totalRecordCount
         ?? payload?.meta?.totalRecordCount
-        ?? 0
-    ) || null;
+        ?? null
+    );
+    if (value === null || value === '') return null;
+    const total = Number(value);
+    return Number.isFinite(total) && total >= 0 ? total : null;
 }
 
 function normalizeBatchDataAddress(record) {
@@ -724,6 +733,40 @@ function mergeDiagnosticLedgers(attempts = []) {
     return total;
 }
 
+function buildCreditEfficiency(previous, summary, returned, persisted) {
+    const reasons = { ...(previous?.loss_breakdown || {}) };
+    const outcomes = summary.route_outcomes || {};
+    const current = {
+        price: outcomes.rejected_price || 0,
+        property_type: outcomes.rejected_property_type || 0,
+        land_use: outcomes.rejected_land_use || 0,
+        outside_polygon_or_invalid: outcomes.outside_polygon_or_invalid || 0,
+        ownership_date: (outcomes.custom_range_missing_sale_date || 0) + (outcomes.custom_range_outside_date_window || 0),
+        already_in_saved_route: summary.skipped_existing_route || 0,
+        duplicate: summary.skipped_duplicate || 0,
+        route_type: summary.skipped_route_type || 0
+    };
+    const usableBeforeSelection = Number(outcomes.mapped_route_active_before_selection) || 0;
+    current.selection_surplus = Math.max(0, usableBeforeSelection
+        - current.already_in_saved_route - current.duplicate - current.route_type
+        - (Number(summary.final_selected_records) || 0));
+    for (const [reason, count] of Object.entries(current)) reasons[reason] = (Number(reasons[reason]) || 0) + Number(count);
+    const recordsReturned = Math.max(0, Number(returned) || 0);
+    const recordsDelivered = Math.max(0, Number(persisted) || 0);
+    const loss = Math.max(0, recordsReturned - recordsDelivered);
+    return {
+        version: 1,
+        scope: 'whole_job',
+        // Returned-record estimate, not an invoice or a billed match count.
+        provider_records_returned: recordsReturned,
+        persisted_route_active_records: recordsDelivered,
+        records_not_delivered: loss,
+        loss_percent: recordsReturned > 0 ? Math.round(10000 * loss / recordsReturned) / 100 : 0,
+        loss_breakdown: reasons,
+        unclassified_records: Math.max(0, loss - Object.values(reasons).reduce((sum, count) => sum + count, 0))
+    };
+}
+
 function mapBatchDataProperty(record, job) {
     const p = record.property || record;
     const address = normalizeBatchDataAddress(p);
@@ -825,11 +868,19 @@ function mapBatchDataProperty(record, job) {
         intel.estimatedValue, intel.estimatedMarketValue, intel.totalMarketValue, intel.propertyValue, intel.estValue,
         intel.avm, intel.avmValue, intel.value, intel.amount,
         valuation.estimatedValue, valuation.value, valuation.avm, valuation.avmValue, valuation.amount,
-        assessment.totalValue, assessment.marketValue, assessment.assessedValue, assessment.totalMarketValue, assessment.market,
-        p.estimatedValue, p.estimated_value, p.avm, p.avmValue, p.assessedValue, p.price,
+        p.estimatedValue, p.estimated_value, p.avm, p.avmValue
+    );
+    // Tax assessments and asking prices are not either of the price fields sent
+    // to BatchData. Prefer the filtered recorded sale amount when AVM is absent;
+    // otherwise a $125k sale with an $80k assessment fails a $100k floor locally
+    // after the provider has already charged us for a qualifying record.
+    const fallbackPrice = numberValue(
+        assessment.totalValue, assessment.marketValue, assessment.assessedValue,
+        assessment.totalMarketValue, assessment.market, p.assessedValue,
         listing.price, listing.listPrice
     );
-    const price = estimatedValue ?? saleAmount;
+    const price = estimatedValue ?? saleAmount ?? fallbackPrice;
+    const filterPrice = estimatedValue ?? saleAmount;
     const landUseCode = firstValue(general.standardizedLandUseCode, p.standardizedLandUseCode);
     const propertyType = firstValue(general.propertyTypeDetail, general.propertyType, p.propertyType, p.landUse, building.propertyType) || 'Single Family';
     // Single-family-only gate. BatchData's standardized R2 code is the
@@ -846,8 +897,8 @@ function mapBatchDataProperty(record, job) {
     const jobFilters = job.dry_run_metadata?.filters || {};
     const filterMinPrice = Number(jobFilters.min_price) > 0 ? Number(jobFilters.min_price) : null;
     const filterMaxPrice = Number(jobFilters.max_price) > 0 ? Number(jobFilters.max_price) : null;
-    const priceKnown = Number.isFinite(Number(price)) && Number(price) > 0;
-    const priceRejected = priceKnown && ((filterMinPrice !== null && Number(price) < filterMinPrice) || (filterMaxPrice !== null && Number(price) > filterMaxPrice));
+    const priceKnown = Number.isFinite(Number(filterPrice)) && Number(filterPrice) > 0;
+    const priceRejected = priceKnown && ((filterMinPrice !== null && Number(filterPrice) < filterMinPrice) || (filterMaxPrice !== null && Number(filterPrice) > filterMaxPrice));
     const rejected = nonResidential || landUseRejected || priceRejected;
     const routeActive = !rejected && isInCustomOwnershipRange;
 
@@ -1297,6 +1348,23 @@ async function batchDataFetchWithRetry(requestBody) {
     throw new Error('Rate limit exceeded after 3 retries.');
 }
 
+function planBatchDataWave(skip, remaining, totalRecordCount = null) {
+    // Never buy more records in a wave than we could deliver. Keep concurrent
+    // pages for large pulls, but shrink the last page and the number of pages
+    // as the customer allowance (or this chunk's capacity) fills up.
+    let capacity = Math.max(0, Math.floor(Number(remaining) || 0));
+    let nextSkip = Math.max(0, Math.floor(Number(skip) || 0));
+    if (totalRecordCount !== null) capacity = Math.min(capacity, Math.max(0, totalRecordCount - nextSkip));
+    const pages = [];
+    while (capacity > 0 && pages.length < PAGE_CONCURRENCY) {
+        const take = Math.min(BATCHDATA_MAX_TAKE, capacity);
+        pages.push({ pageSkip: nextSkip, take });
+        nextSkip += take;
+        capacity -= take;
+    }
+    return pages;
+}
+
 async function fetchBatchDataRecordsForMode(job, mode, requested, onProgress = null, startSkip = 0, budgetMs = CHUNK_SCAN_BUDGET_MS) {
     const selected = [];
     const selectedHashes = new Set();
@@ -1320,11 +1388,25 @@ async function fetchBatchDataRecordsForMode(job, mode, requested, onProgress = n
     // provider until it runs out. A single invocation cannot page 24k records
     // inside the request budget, so each invocation scans for `budgetMs`, then
     // the caller persists `next_skip` and chains another invocation.
-    let providerExhausted = false;
+    let providerEndReached = job.dry_run_metadata?.batchdata_provider_end_reached === true;
+    let pendingPages = job.dry_run_metadata?.pending_batchdata_pages || [];
+    if (!Array.isArray(pendingPages) || pendingPages.length > PAGE_CONCURRENCY
+        || pendingPages.some(page => !Number.isInteger(page.pageSkip) || page.pageSkip < 0
+            || !Number.isInteger(page.take) || page.take < 1 || page.take > BATCHDATA_MAX_TAKE
+            || page.pageSkip + page.take > skip)
+        || new Set(pendingPages.map(page => page.pageSkip)).size !== pendingPages.length
+        || pendingPages.reduce((sum, page) => sum + page.take, 0) > requested) {
+        throw new Error('Invalid pending BatchData page checkpoint.');
+    }
+    pendingPages = pendingPages.map(({ pageSkip, take }) => ({ pageSkip, take }));
+    const failedPages = [];
     const deadline = Date.now() + Math.max(5000, Number(budgetMs) || CHUNK_SCAN_BUDGET_MS);
 
-    while (selected.length < requested && !providerExhausted && Date.now() < deadline) {
-        const take = BATCHDATA_MAX_TAKE;
+    while (selected.length < requested && (!providerEndReached || pendingPages.length > 0) && Date.now() < deadline) {
+        const isRetryWave = pendingPages.length > 0;
+        const pages = isRetryWave ? pendingPages : planBatchDataWave(skip, requested - selected.length, totalRecordCount);
+        if (pages.length === 0) { providerEndReached = true; break; }
+        const take = pages[0].take;
         const maxReviewed = null;
         if (typeof onProgress === 'function') {
             await onProgress({
@@ -1345,28 +1427,43 @@ async function fetchBatchDataRecordsForMode(job, mode, requested, onProgress = n
         // Offsets are deterministic and the pages are independent, so request a
         // wave of them at once. One 100-record page per round trip cannot cover
         // a 24k-record area inside any sane budget.
-        const waveSkips = [];
-        for (let offset = 0; offset < PAGE_CONCURRENCY; offset++) waveSkips.push(skip + offset * take);
-        const wave = await Promise.all(waveSkips.map(pageSkip =>
-            batchDataFetchWithRetry(buildBatchDataRequest(job, pageSkip, take, mode))
+        // A rejected page must not throw away other, already-paid pages. Persist
+        // every successful result, then checkpoint ONLY failed offsets for the
+        // next chunk. No successful offset is purchased again during recovery.
+        const settledWave = await Promise.allSettled(pages.map(({ pageSkip, take: pageTake }) =>
+            batchDataFetchWithRetry(buildBatchDataRequest(job, pageSkip, pageTake, mode))
                 .then(payload => ({
                     pageSkip,
+                    take: pageTake,
                     list: extractBatchDataRecords(payload),
                     total: extractBatchDataTotal(payload)
                 }))
         ));
         const pageElapsedMs = Date.now() - pageStartedAt;
+        const wave = [];
+        pendingPages = [];
+        for (let index = 0; index < settledWave.length; index++) {
+            const result = settledWave[index];
+            if (result.status === 'fulfilled') {
+                wave.push(result.value);
+            } else {
+                const page = pages[index];
+                pendingPages.push(page);
+                failedPages.push({ ...page, message: String(result.reason?.message || 'Provider page failed').slice(0, 300) });
+                pageTimings.push({ skip: page.pageSkip, take: page.take, returned: 0, failed: true, elapsed_ms: pageElapsedMs });
+            }
+        }
 
         for (const page of wave) {
-            pageTimings.push({ skip: page.pageSkip, take, returned: page.list.length, elapsed_ms: pageElapsedMs });
-            if (totalRecordCount === null && page.total) totalRecordCount = page.total;
+            pageTimings.push({ skip: page.pageSkip, take: page.take, returned: page.list.length, elapsed_ms: pageElapsedMs });
+            if (totalRecordCount === null && page.total !== null) totalRecordCount = page.total;
             reviewed += page.list.length;
             ledger.observeProviderPage(page.list);
             // Only an EMPTY page proves the area is exhausted. A short page is
             // not proof: "max available" must keep walking offsets until the
             // provider genuinely has nothing left, or until its reported total
             // is reached (checked after the wave advances the offset).
-            if (page.list.length === 0) providerExhausted = true;
+            if (page.list.length === 0) providerEndReached = true;
 
             for (const raw of page.list) {
                 const mapped = mapBatchDataProperty(raw, job);
@@ -1414,10 +1511,12 @@ async function fetchBatchDataRecordsForMode(job, mode, requested, onProgress = n
 
         // Always advance past every page just reviewed, even when the target was
         // met mid-wave: a resumed chunk must never re-request the same offset.
-        skip += PAGE_CONCURRENCY * take;
-        if (totalRecordCount !== null && skip >= totalRecordCount) providerExhausted = true;
+        if (!isRetryWave) skip = pages[pages.length - 1].pageSkip + pages[pages.length - 1].take;
+        if (totalRecordCount !== null && skip >= totalRecordCount) providerEndReached = true;
+        if (pendingPages.length > 0) break; // Save successes before retrying failures.
     }
 
+    const providerExhausted = providerEndReached && pendingPages.length === 0;
     const budgetExhausted = selected.length < requested && !providerExhausted;
 
     return {
@@ -1436,6 +1535,9 @@ async function fetchBatchDataRecordsForMode(job, mode, requested, onProgress = n
         skipped_route_type_breakdown: skippedRouteTypeBreakdown,
         next_skip: skip,
         provider_exhausted: providerExhausted,
+        provider_end_reached: providerEndReached,
+        pending_pages: pendingPages,
+        failed_pages: failedPages,
         budget_exhausted: budgetExhausted,
         scan_limit_reached: false,
         page_timings: pageTimings,
@@ -1472,7 +1574,7 @@ async function fetchBatchDataRecords(job, onProgress = null, options = {}) {
 
     for (const mode of modes) {
         const result = await fetchBatchDataRecordsForMode(job, mode, requested, onProgress, startSkip, budgetMs);
-        attempts.push({ mode, count: result.records.length, reviewed: result.reviewed, active: result.active, rejected_samples: result.rejected_samples, skipped_existing_route: result.skipped_existing_route, skipped_duplicate: result.skipped_duplicate, skipped_route_type: result.skipped_route_type, skipped_route_type_breakdown: result.skipped_route_type_breakdown, next_skip: result.next_skip, provider_exhausted: result.provider_exhausted, budget_exhausted: result.budget_exhausted, scan_limit_reached: result.scan_limit_reached, page_timings: result.page_timings, total: result.totalRecordCount, provider_fields: result.provider_fields, enrichment: result.enrichment, route_outcomes: result.route_outcomes });
+        attempts.push({ mode, count: result.records.length, reviewed: result.reviewed, active: result.active, rejected_samples: result.rejected_samples, skipped_existing_route: result.skipped_existing_route, skipped_duplicate: result.skipped_duplicate, skipped_route_type: result.skipped_route_type, skipped_route_type_breakdown: result.skipped_route_type_breakdown, next_skip: result.next_skip, provider_exhausted: result.provider_exhausted, provider_end_reached: result.provider_end_reached, pending_pages: result.pending_pages, failed_pages: result.failed_pages, budget_exhausted: result.budget_exhausted, scan_limit_reached: result.scan_limit_reached, page_timings: result.page_timings, total: result.totalRecordCount, provider_fields: result.provider_fields, enrichment: result.enrichment, route_outcomes: result.route_outcomes });
         if (result.active >= requested) return { records: result.records, attempts, mode_used: mode };
         if (result.active > fallbackActive || (fallback.length === 0 && result.records.length > 0)) {
             fallback = result.records;
@@ -1707,7 +1809,8 @@ Deno.serve(async (req) => {
         // still missing from the target so a chained pull cannot overshoot.
         const requestedTarget = requestedPropertyTarget(job);
         const drainMode = drainsUntilExhausted(job);
-        const deliveredBefore = await countPersistedPrecisionProperties(job.id).catch(() => 0);
+        // Stop before buying more data if delivery capacity cannot be verified.
+        const deliveredBefore = await countPersistedPrecisionProperties(job.id);
         // A draining pull always asks for a full chunk: there is no remaining
         // count to subtract, only pages left to read.
         const remainingTarget = drainMode
@@ -1716,6 +1819,8 @@ Deno.serve(async (req) => {
         const resumeSkip = Math.max(0, Number(job.current_offset) || 0);
         const batchFetch = Array.isArray(body.synthetic_records)
             ? { records: body.synthetic_records, attempts: [{ mode: 'synthetic_records', count: body.synthetic_records.length }], mode_used: 'synthetic_records' }
+            : !drainMode && deliveredBefore >= requestedTarget
+                ? { records: [], attempts: [], mode_used: 'target_already_met' }
             : await fetchBatchDataRecords(job, updateScanProgress, { requested: remainingTarget, startSkip: resumeSkip });
         const rawRecords = batchFetch.records;
         const seen = new Set();
@@ -1793,7 +1898,19 @@ Deno.serve(async (req) => {
                 0
             );
         const scanLimitReached = (batchFetch.attempts || []).some(attempt => attempt.scan_limit_reached === true);
-        const completionReason = activeCount >= requestedCount
+        const pendingProviderPages = (batchFetch.attempts || []).flatMap(attempt => attempt.pending_pages || []);
+        const pageRecoveryRounds = pendingProviderPages.length > 0
+            ? (Number(job.dry_run_metadata?.pending_page_retry_rounds) || 0) + 1
+            : 0;
+        const pageRecoveryExhausted = pageRecoveryRounds >= MAX_PAGE_RECOVERY_CHUNKS;
+        const pageCheckpoint = {
+            pending_batchdata_pages: pendingProviderPages,
+            pending_page_retry_rounds: pageRecoveryRounds,
+            batchdata_provider_end_reached: (batchFetch.attempts || []).some(attempt => attempt.provider_end_reached === true)
+        };
+        let completionReason = pageRecoveryExhausted
+            ? 'provider_pages_failed_after_partial_delivery'
+            : activeCount >= requestedCount
             ? 'target_met'
             : scanLimitReached
                 ? 'custom_range_scan_limit_reached'
@@ -1861,6 +1978,13 @@ Deno.serve(async (req) => {
         }
 
         const settledUsageCount = await countPersistedPrecisionProperties(job.id);
+        if (!pageRecoveryExhausted && !drainMode && settledUsageCount >= requestedTarget) completionReason = 'target_met';
+        batchdataSummary.credit_efficiency = buildCreditEfficiency(
+            job.dry_run_metadata?.batchdata_summary?.credit_efficiency,
+            batchdataSummary,
+            (Number(job.total_fetched) || 0) + (reviewedCount || rawRecords.length),
+            settledUsageCount
+        );
         const latestJob = await base44.asServiceRole.entities.FetchJob.get(job.id);
         if (cancellationRequested(latestJob)) {
             await base44.asServiceRole.entities.FetchJob.update(job.id, {
@@ -1891,9 +2015,12 @@ Deno.serve(async (req) => {
         );
         const providerExhausted = Array.isArray(body.synthetic_records)
             || (batchFetch.attempts || []).some(attempt => attempt.provider_exhausted === true);
+        if (!pageRecoveryExhausted && providerExhausted && settledUsageCount > 0
+            && (drainMode || job.dry_run_metadata?.count_mode === 'max_available')) completionReason = 'provider_exhausted';
         const moreWorkAvailable = !providerExhausted
-            && (drainMode || settledUsageCount < requestedTarget)
-            && nextSkip > resumeSkip;
+            && !pageRecoveryExhausted
+            && (drainMode || settledUsageCount < requestedTarget || pendingProviderPages.length > 0)
+            && (nextSkip > resumeSkip || pendingProviderPages.length > 0);
 
         if (moreWorkAvailable) {
             const nextChunk = (job.chunk_number || 0) + 1;
@@ -1918,6 +2045,7 @@ Deno.serve(async (req) => {
                 dry_run_metadata: {
                     ...(job.dry_run_metadata || {}),
                     completion_reason: 'chunk_in_progress',
+                    ...pageCheckpoint,
                     batchdata_summary: batchdataSummary
                 },
                 error_log: errorLog
@@ -1944,14 +2072,19 @@ Deno.serve(async (req) => {
         }
 
         await base44.asServiceRole.entities.FetchJob.update(job.id, {
-            status: 'completed',
+            // A terminal provider failure must not hide homes already paid for
+            // and imported. Completed-with-warning hands those homes to route
+            // generation; an entirely empty failed pull stays failed.
+            status: pageRecoveryExhausted && settledUsageCount === 0 ? 'failed' : 'completed',
             phase: 'complete',
             progress_pct: 100,
             completed_at: completedAt,
             precision_usage_reserved: 0,
             precision_usage_count: settledUsageCount,
             precision_usage_recorded_at: completedAt,
-            ...(integrityWarning ? { error_message: integrityWarning } : {}),
+            ...(pageRecoveryExhausted
+                ? { error_message: 'Some property pages could not be retrieved. Successfully imported homes were preserved.' }
+                : integrityWarning ? { error_message: integrityWarning } : {}),
             current_offset: nextSkip,
             total_fetched: (job.total_fetched || 0) + (reviewedCount || rawRecords.length),
             total_inserted: (job.total_inserted || 0) + result.inserted,
@@ -1967,6 +2100,8 @@ Deno.serve(async (req) => {
             dry_run_metadata: {
                 ...(job.dry_run_metadata || {}),
                 completion_reason: completionReason,
+                ...pageCheckpoint,
+                partial_delivery: pageRecoveryExhausted && settledUsageCount > 0,
                 batchdata_summary: batchdataSummary
             },
             error_log: errorLog
@@ -2000,7 +2135,8 @@ Deno.serve(async (req) => {
         await releasePipelineLock(base44, lockId);
         lockId = null;
         await sleep(10);
-        return Response.json({ success: true, status: 'completed', job_id: job.id, active_provider: 'batchdata', mode_used: batchFetch.mode_used, attempts: batchFetch.attempts, raw: rawRecords.length, mapped: mapped.length, active: activeCount });
+        const finalStatus = pageRecoveryExhausted && settledUsageCount === 0 ? 'failed' : 'completed';
+        return Response.json({ success: finalStatus === 'completed', status: finalStatus, partial_delivery: pageRecoveryExhausted, job_id: job.id, active_provider: 'batchdata', mode_used: batchFetch.mode_used, attempts: batchFetch.attempts, raw: rawRecords.length, mapped: mapped.length, active: activeCount });
     } catch (error) {
         if (base44 && lockId) await releasePipelineLock(base44, lockId);
         console.error('[processFetchChunk batchdata-only] Fatal:', error.message);

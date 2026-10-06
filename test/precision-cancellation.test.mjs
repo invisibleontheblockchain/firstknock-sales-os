@@ -44,7 +44,10 @@ function loadWatchdogHandler(base44) {
   assert.deepEqual(errors, [], 'watchdogStaleJobs contains TypeScript syntax errors');
 
   let handler;
-  const executable = transpiled.outputText.replace(/^import .*;\s*$/gm, '');
+  const sweepHelpers = ts.transpileModule(readSource('base44/shared/fetchJobSweep.ts'), {
+    compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 }
+  }).outputText.replace(/^export\s+/gm, '');
+  const executable = `${sweepHelpers}\n${transpiled.outputText.replace(/^import .*;\s*$/gm, '')}`;
   vm.runInNewContext(executable, {
     console,
     createClientFromRequest: () => base44,

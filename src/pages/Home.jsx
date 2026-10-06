@@ -25,6 +25,7 @@ import {
 } from '../components/logic/routeRoadContext';
 import { calculateRouteDistanceMiles, isValidRoutePoint } from '@/lib/routeBounds';
 import { applyRouteFilters, formatStageCounts } from '../components/logic/routeFilterPipeline';
+import { limitPrecisionCandidates, precisionAreaForJob, precisionReferenceDateForJob, savePrecisionRoutes } from '@/lib/precisionDelivery';
 import { normalizeOwnershipRangeDays as normalizeStrictOwnershipRangeDays } from '../components/logic/soldDateRange';
 import RouteGenerationOverlay from '../components/routes/RouteGenerationOverlay';
 import RouteAssignmentDialog from '@/components/routes/RouteAssignmentDialog';
@@ -805,7 +806,10 @@ export default function Home() {
             : [];
         const currentOwnershipRangeDays = normalizeOwnershipRangeDays(currentBatchDataOwnershipRangeDaysRef.current);
         const generatedAt = new Date().toISOString();
-        const precisionAreaMetadata = isGeneratedRoute && currentPrecisionPolygon.length >= 3
+        const capturedPrecisionArea = isGeneratedRoute && routeMode === 'precision' ? route.metadata?.precision_area : null;
+        const precisionAreaMetadata = capturedPrecisionArea?.job_id && normalizeHistoryPolygon(capturedPrecisionArea.polygon).length >= 3
+            ? { precision_area: capturedPrecisionArea }
+            : isGeneratedRoute && currentPrecisionPolygon.length >= 3
             ? {
                 precision_area: {
                     polygon: currentPrecisionPolygon,
@@ -1555,6 +1559,7 @@ export default function Home() {
         await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
 
         const t0 = performance.now();
+        let deliveryAttempt = null;
         try {
             // 1. DYNAMIC DATA FETCHING
             // If a drawn polygon is active, load candidates for that area on-demand.
@@ -1594,15 +1599,35 @@ export default function Home() {
             const currentJobPolygonKey = currentJobPolygon.length > 2
                 ? (activeCustomOwnershipRangeDays ? exactPolygonKey(currentJobPolygon) : polygonHistoryKey(currentJobPolygon))
                 : null;
-            const requestedPrecisionCount = activeFetchJobId ? currentBatchDataRequestedCountRef.current : null;
             const isCurrentBatchDataRun = !!activeFetchJobId && !!activeGenerationPolygon && !!activePolygonKey && activePolygonKey === currentJobPolygonKey;
-            const effectiveGenerationSoldFilter = isCurrentBatchDataRun ? (currentBatchDataSoldMonthsRef.current || soldDateFilter) : soldDateFilter;
+            // Read mode from the actual job, including after a reload. A stale
+            // local numeric target must never truncate a Max Available drain.
+            const precisionJob = isCurrentBatchDataRun ? await base44.entities.FetchJob.get(activeFetchJobId) : null;
+            if (isCurrentBatchDataRun && precisionJob?.status !== 'completed') throw new Error('The property pull must finish before routes can be built.');
+            const precisionCountMode = precisionJob?.dry_run_metadata?.count_mode === 'max_available' ? 'max_available' : 'fixed';
+            const requestedPrecisionCount = precisionJob
+                ? Number(precisionJob.total_expected || currentBatchDataRequestedCountRef.current) || null
+                : null;
+            if (precisionJob) deliveryAttempt = {
+                job_id: precisionJob.id, attempt_id: crypto.randomUUID(), status: 'failed',
+                failure_stage: 'candidates', candidate_homes: 0, generated_homes: 0,
+                in_memory_homes: 0, failed_route_saves: 0, filter_stages: []
+            };
+            const effectiveGenerationSoldFilter = isCurrentBatchDataRun ? precisionJob.sold_months : soldDateFilter;
             const effectiveGenerationOwnershipRangeDays = isCurrentBatchDataRun
-                ? activeCustomOwnershipRangeDays
+                ? normalizeOwnershipRangeDays(precisionJob.dry_run_metadata?.ownership_range_days)
                 : null;
             const effectiveGenerationOwnershipReferenceDate = isCurrentBatchDataRun
-                ? currentBatchDataOwnershipReferenceDateRef.current
+                ? precisionReferenceDateForJob(precisionJob)
                 : null;
+            if (precisionJob?.dry_run_metadata?.ownership_range_mode === 'custom'
+                && (!effectiveGenerationOwnershipRangeDays || !effectiveGenerationOwnershipReferenceDate)) {
+                throw new Error('The completed import is missing its custom date window. Route generation stopped.');
+            }
+            if (precisionJob) {
+                currentBatchDataOwnershipReferenceDateRef.current = effectiveGenerationOwnershipReferenceDate;
+                setCurrentBatchDataOwnershipReferenceDate(effectiveGenerationOwnershipReferenceDate);
+            }
             if (activeCustomOwnershipRangeDays && !isCurrentBatchDataRun) {
                 toast.dismiss('build-routes');
                 setGenerationError('The selected map area no longer matches the completed custom-range import. Route generation stopped so account-wide properties or properties from another date range cannot be substituted. Re-select the completed area and try again.');
@@ -1766,6 +1791,10 @@ export default function Home() {
 
             const initialSet = Array.from(combinedMap.values());
             const initialCount = initialSet.length;
+            if (deliveryAttempt) {
+                deliveryAttempt.candidate_homes = initialCount;
+                deliveryAttempt.failure_stage = 'filtering';
+            }
             console.log(`[RoutePipeline] before_route_command initial=${initialCount} base=${baseProps.length} dynamic=${processedDynamic.length} assigned=${assignedSet.size} polygon=${activeGenerationPolygon ? activeGenerationPolygon.length : 0} zipFilter=${zipCodeFilter || 'none'}`);
             setGenerationStage(`Filtering ${initialCount.toLocaleString()} properties...`);
             toast.loading(`Loaded ${initialCount.toLocaleString()} properties. Filtering...`, { id: 'build-routes' });
@@ -1784,6 +1813,7 @@ export default function Home() {
                 routeConfig: effectiveRouteConfig, lastPullMode, logsByAddress, assignedHashes,
             });
             console.log(`[generateRoutes] Filter funnel: ${formatStageCounts(filterResult.stages)}`);
+            if (deliveryAttempt) deliveryAttempt.filter_stages = [...filterResult.stages];
             if (filterResult.frozenSet) setFrozenWorkingSet(filterResult.frozenSet);
             if (filterResult.diagnostic) console.warn(`[generateRoutes] Sold-date diagnostic:`, filterResult.diagnostic);
             if (filterResult.error) {
@@ -1794,11 +1824,17 @@ export default function Home() {
             }
             let workingSet = filterResult.workingSet;
             const beforePrecisionRequestedCap = workingSet.length;
-            if (isCurrentBatchDataRun && requestedPrecisionCount && workingSet.length > requestedPrecisionCount) {
-                workingSet = [...workingSet]
-                    .sort((a, b) => precisionCandidateRank(b) - precisionCandidateRank(a))
-                    .slice(0, requestedPrecisionCount);
+            if (isCurrentBatchDataRun) {
+                workingSet = limitPrecisionCandidates(workingSet, {
+                    countMode: precisionCountMode, requestedCount: requestedPrecisionCount
+                }, precisionCandidateRank);
+            }
+            if (workingSet.length < beforePrecisionRequestedCap) {
                 console.log(`[generateRoutes] Precision fixed-count cap: requested=${requestedPrecisionCount} beforeCap=${beforePrecisionRequestedCap} routed=${workingSet.length}`);
+            }
+            if (deliveryAttempt) {
+                deliveryAttempt.filter_stages.push({ name: 'countLimit', count: workingSet.length });
+                deliveryAttempt.failure_stage = 'optimization';
             }
 
             // 4. UI UPDATES (Keep Builder available & Move Map)
@@ -1861,34 +1897,55 @@ export default function Home() {
             const roadMatrixPass = await buildRoadAwareGeneratedRoutes({ rawGenerated, routingContext, onStage: setGenerationStage });
             const generated = roadMatrixPass.routes;
             const generatedDoorCount = Array.isArray(generated) ? generated.reduce((sum, route) => sum + (route.properties?.length || route.houseCount || 0), 0) : 0;
+            if (deliveryAttempt) {
+                deliveryAttempt.generated_homes = generatedDoorCount;
+                deliveryAttempt.in_memory_homes = generatedDoorCount;
+                deliveryAttempt.failure_stage = generated?.length > 0 ? 'saving' : 'optimization';
+            }
             console.log(`[RoutePipeline] after_route_command routes=${generated?.length || 0} doors=${generatedDoorCount} elapsed_ms=${Math.round(performance.now() - optStart)}`);
             if (!generated || generated.length === 0) { toast.dismiss('build-routes'); setGenerationError(`Optimizer returned 0 routes from ${finalCount.toLocaleString()} properties. Try relaxing filters or pulling fresh data.`); return false; }
+            if (precisionJob) {
+                const precisionArea = precisionAreaForJob(precisionJob);
+                for (const route of generated) route.metadata = { ...(route.metadata || {}), precision_area: precisionArea };
+            }
             if (generated['_cooldownInfo']) setCooldownInfo(generated['_cooldownInfo']);
             setRoutes(generated);
             // AUTO-SAVE (skip routes >10K properties — payload too large)
             const saveable = generated.filter(r => r.houseCount <= 10000);
-            let savedRecords = [];
+            let savedByGeneratedRoute = new Map();
             if (saveable.length > 0) {
                 setGenerationStage(`Saving ${saveable.length} routes...`);
                 const bulkId = toast.loading(`Auto-saving ${saveable.length} routes...`);
                 try {
-                    savedRecords = await mapWithConcurrency(
+                    const saveResults = await savePrecisionRoutes(
                         saveable,
-                        4,
-                        (route) => handleSaveRoute(route, null, null, true)
+                        (route) => handleSaveRoute(route, null, null, true),
+                        4
                     );
-                    toast.success(`Saved ${saveable.length} routes`, { id: bulkId, duration: 3000 });
+                    savedByGeneratedRoute = new Map(saveResults.filter(result => result.status === 'fulfilled')
+                        .map(result => [result.route, result.value]));
+                    const remotelySaved = saveResults.filter(result => result.status === 'fulfilled'
+                        && result.value?.id && !String(result.value.id).startsWith('local_'));
+                    const savedRouteObjects = new Set(remotelySaved.map(result => result.route));
+                    const unsaved = generated.filter(route => !savedRouteObjects.has(route));
+                    const failedSaves = saveResults.filter(result => result.status === 'rejected').length;
+                    if (deliveryAttempt) {
+                        deliveryAttempt.failed_route_saves = failedSaves;
+                        deliveryAttempt.in_memory_homes = unsaved.reduce((sum, route) => sum + (route.properties?.length || route.houseCount || 0), 0);
+                    }
+                    if (unsaved.length > 0) toast.warning(`${remotelySaved.length} routes saved; ${unsaved.length} remain available on this device.`, { id: bulkId });
+                    else toast.success(`Saved ${remotelySaved.length} routes`, { id: bulkId, duration: 3000 });
                     setModeRaw('analyze');
-                    // Saved routes now live in Active (with NEW badge) — drop the in-memory copies so
-                    // Route Command doesn't show the same route twice. Keep only unsaveable >10K routes.
-                    setRoutes(generated.filter(r => r.houseCount > 10000));
+                    // Remove only confirmed remote saves. Offline, failed, and
+                    // oversized routes remain available instead of disappearing.
+                    setRoutes(unsaved);
                 } catch (error) { console.error('[Home] Auto-save failed:', error); toast.error('Auto-save failed.', { id: bulkId }); }
             } else if (generated.length > 0) {
                 toast.info(`Route has ${generated[0].houseCount} properties — too large to auto-save. View on map.`, { id: 'build-routes', duration: 5000 });
             }
             // Go straight to the map: activate the first generated route instead of opening the command panel
             const firstRoute = generated[0];
-            const firstSaved = savedRecords[0];
+            const firstSaved = savedByGeneratedRoute.get(firstRoute);
             setActiveRoute(firstSaved?.id ? { ...firstRoute, id: firstSaved.id, isSaved: true, status: firstSaved.status || 'ACTIVE' } : firstRoute);
             setPreviewRoute(null);
             setShowRoutePanel(false); setShowCompare(false);
@@ -1901,7 +1958,7 @@ export default function Home() {
             const routeWord = generated.length === 1 ? 'route' : 'routes';
             const totalHouses = generated.reduce((s, r) => s + r.houseCount, 0);
             const precisionShortfallMessage = buildPrecisionRouteShortfallMessage({
-                requested: isCurrentBatchDataRun ? requestedPrecisionCount : null,
+                requested: isCurrentBatchDataRun && precisionCountMode === 'fixed' ? requestedPrecisionCount : null,
                 routed: generatedDoorCount,
                 filtered: Math.max(0, initialCount - finalCount)
             });
@@ -1910,16 +1967,20 @@ export default function Home() {
             }
             const toastMsg = `Built ${generated.length} ${routeWord} (${totalHouses.toLocaleString()} doors)` + (skippedDueToAssigned > 0 ? ` — ${skippedDueToAssigned} already assigned` : '');
 
-            const requestedText = isCurrentBatchDataRun && requestedPrecisionCount
+            const requestedText = isCurrentBatchDataRun && precisionCountMode === 'fixed' && requestedPrecisionCount
                 ? `, ${Math.min(totalHouses, requestedPrecisionCount).toLocaleString()} of ${requestedPrecisionCount.toLocaleString()} requested`
                 : '';
-            const finalToastMsg = isCurrentBatchDataRun && requestedPrecisionCount
+            const finalToastMsg = isCurrentBatchDataRun && precisionCountMode === 'fixed' && requestedPrecisionCount
                 ? `Built ${generated.length} ${routeWord} (${totalHouses.toLocaleString()} doors${requestedText})` + (skippedDueToAssigned > 0 ? ` — ${skippedDueToAssigned} already assigned` : '')
                 : toastMsg;
 
             toast.success(finalToastMsg + (roadMatrixPass.appliedCount > 0 ? ` — real road distances saved ~${roadMatrixPass.savedMiles} mi` : ''), { id: 'build-routes', duration: 5000 });
             lastGeneratedRouteBoundsRef.current = preparedRouteBounds.enabled ? preparedRouteBounds : null;
             if (preparedRouteBounds.enabled) preparePrecisionRouteBounds({ enabled: false });
+            if (deliveryAttempt) {
+                deliveryAttempt.status = deliveryAttempt.in_memory_homes > 0 ? 'partial' : 'completed';
+                deliveryAttempt.failure_stage = null;
+            }
             return true;
 
         } catch (e) {
@@ -1928,6 +1989,10 @@ export default function Home() {
             setGenerationError(`Route generation failed: ${e?.message || 'Unknown error'}. Check console for details.`);
             return false;
         } finally {
+            if (deliveryAttempt) {
+                try { await base44.functions.invoke('recordPrecisionDelivery', deliveryAttempt); }
+                catch (error) { console.warn('[PrecisionDelivery] Could not record delivery reconciliation:', error.message); }
+            }
             // Hide overlay — but if an error was set, keep it visible until user dismisses
             // (we re-check generationError via a functional setState)
             routesGeneratingRef.current = false;
@@ -2573,12 +2638,15 @@ export default function Home() {
                     setCurrentBatchDataOwnershipRangeDays(completedOwnershipRangeDays);
                     currentBatchDataOwnershipRangeDaysRef.current = completedOwnershipRangeDays;
                     const rawOwnershipReferenceDate = jobStatus?.ownership_reference_date ?? jobStatus?.diagnostics?.ownership_reference_date;
-                    const completedOwnershipReferenceDate = completedOwnershipRangeDays && Number.isFinite(new Date(rawOwnershipReferenceDate).getTime())
-                        ? new Date(rawOwnershipReferenceDate).toISOString()
+                    const completedOwnershipReferenceDate = completedOwnershipRangeDays
+                        ? precisionReferenceDateForJob({ created_date: rawOwnershipReferenceDate })
                         : null;
                     setCurrentBatchDataOwnershipReferenceDate(completedOwnershipReferenceDate);
                     currentBatchDataOwnershipReferenceDateRef.current = completedOwnershipReferenceDate;
                     const completedRequestedCount = getRequestedPrecisionCount(jobStatus);
+                    if (jobStatus?.diagnostics?.partial_delivery) {
+                        toast.warning('Some homes could not be retrieved. The available homes will still be populated.', { duration: 12000 });
+                    }
                     currentBatchDataRequestedCountRef.current = completedRequestedCount;
                     currentBatchDataPolygonRef.current = normalizedPullPolygon;
                     try { localStorage.setItem('fk_drawnPolygonQueried', 'true'); } catch { }
