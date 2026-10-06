@@ -211,6 +211,7 @@ Deno.serve(async (req) => {
         return Response.json({
             job_id: job.id,
             status: ownershipRangeError ? 'failed' : job.status,
+            completed_at: job.completed_at || null,
             phase: job.phase || null,
             provider: job.provider || null,
             mode_tag: job.mode_tag || null,

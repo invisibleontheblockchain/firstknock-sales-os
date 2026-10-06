@@ -116,9 +116,12 @@ export function readPersistedPrecisionJobContext(expectedUserEmail) {
         const userEmail = String(parsed?.userEmail || '').trim().toLowerCase();
         if (!userEmail || userEmail !== String(expectedUserEmail || '').trim().toLowerCase()) return null;
         const jobId = parsed?.jobId ? String(parsed.jobId) : null;
-        const ownershipRangeDays = normalizeStrictOwnershipRangeDays(parsed?.ownershipRangeDays);
+        const ownershipRangeMode = parsed?.ownershipRangeMode ?? (parsed?.ownershipRangeDays != null ? 'custom' : 'quick');
+        if (!['quick', 'custom'].includes(ownershipRangeMode)) return null;
+        const ownershipRangeDays = ownershipRangeMode === 'custom' ? normalizeStrictOwnershipRangeDays(parsed?.ownershipRangeDays) : null;
         const polygon = normalizeHistoryPolygon(parsed?.polygon);
-        if (!jobId || !ownershipRangeDays || polygon.length < 3) return null;
+        if (!jobId || polygon.length < 3 || (ownershipRangeMode === 'custom' && !ownershipRangeDays)
+            || (ownershipRangeMode === 'quick' && parsed?.ownershipRangeDays != null)) return null;
         const soldMonths = Number(parsed?.soldMonths);
         const requestedCount = Number(parsed?.requestedCount);
         const ownershipReferenceDate = parsed?.ownershipReferenceDate && Number.isFinite(new Date(parsed.ownershipReferenceDate).getTime())
@@ -127,10 +130,11 @@ export function readPersistedPrecisionJobContext(expectedUserEmail) {
         return {
             jobId,
             userEmail,
+            ownershipRangeMode,
             ownershipRangeDays,
             ownershipReferenceDate,
             polygon,
-            soldMonths: Number.isFinite(soldMonths) && soldMonths > 0 ? soldMonths : ownershipRangeDays[1] / 30,
+            soldMonths: Number.isFinite(soldMonths) && soldMonths > 0 ? soldMonths : (ownershipRangeDays ? ownershipRangeDays[1] / 30 : 12),
             requestedCount: Number.isFinite(requestedCount) && requestedCount > 0 ? Math.round(requestedCount) : null
         };
     } catch {

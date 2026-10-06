@@ -2,8 +2,85 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
-import { limitPrecisionCandidates, precisionAreaForJob, precisionReferenceDateForJob, savePrecisionRoutes } from '../src/lib/precisionDelivery.js';
+import { loadPrecisionJob, loadPrecisionGenerationJob, limitPrecisionCandidates, precisionAreaForJob, precisionReferenceDateForJob, savePrecisionRoutes } from '../src/lib/precisionDelivery.js';
 import { isPrecisionJob, precisionJobBelongsToSubject } from '../base44/shared/precisionOrderSafety.js';
+import { normalizeOwnershipRangeDays } from '../src/components/logic/soldDateRange.js';
+
+const completedStatus = {
+    job_id: 'completed-job', status: 'completed', provider: 'batchdata', mode_tag: 'PRECISION_TARGET',
+    total_expected: 400, ownership_reference_date: '2026-10-06T23:30:00.123000',
+    completed_at: '2026-10-07T00:00:00Z', pull_mode: 'new_area',
+    polygon: [{ lat: 33, lng: -112 }],
+    diagnostics: { sold_months: 3, count_mode: 'max_available', ownership_range_mode: 'custom',
+        ownership_range_days: { min: 30, max: 90 }, filters: { min_price: 100000, max_price: 500000 } }
+};
+
+test('generation reads the owned status endpoint when browser FetchJob entity reads are denied', async () => {
+    const calls = [];
+    const client = {
+        entities: { FetchJob: { get: async () => { throw new Error('Entity FetchJob not found'); } } },
+        functions: { invoke: async (name, body) => { calls.push({ name, body }); return { data: completedStatus }; } }
+    };
+    const job = await loadPrecisionGenerationJob(client, completedStatus.job_id);
+    assert.deepEqual(calls, [{ name: 'fetchJobStatus', body: { job_id: completedStatus.job_id } }]);
+    assert.equal(precisionReferenceDateForJob(job), '2026-10-06T23:30:00.123Z');
+    assert.equal(precisionAreaForJob(job).last_pull_date, completedStatus.completed_at);
+    assert.deepEqual(job.dry_run_metadata.ownership_range_days, { min: 30, max: 90 });
+    const homes = Array.from({ length: 377 }, (_, id) => ({ id }));
+    assert.equal(limitPrecisionCandidates(homes, { countMode: job.dry_run_metadata.count_mode, requestedCount: 100 }), homes);
+    assert.notEqual(job.polygon, completedStatus.polygon);
+    assert.notEqual(job.dry_run_metadata.filters, completedStatus.diagnostics.filters);
+    const home = fs.readFileSync('src/pages/Home.jsx', 'utf8');
+    assert.match(home, /await loadPrecisionGenerationJob\(base44, activeFetchJobId\)/);
+    assert.doesNotMatch(home, /base44\.entities\.FetchJob\.get\(/);
+});
+
+test('generation rejects wrong, unfinished, foreign-mode, and inaccessible jobs without another provider pull', async () => {
+    for (const patch of [{ job_id: 'different-job' }, { status: 'running' }, { provider: 'manual' }, { mode_tag: 'CANVAS_DOOR' }]) {
+        const calls = [];
+        const client = { functions: { invoke: async name => { calls.push(name); return { data: { ...completedStatus, ...patch } }; } } };
+        await assert.rejects(loadPrecisionGenerationJob(client, completedStatus.job_id));
+        assert.deepEqual(calls, ['fetchJobStatus']);
+    }
+    const denied = new Error('Not your job');
+    await assert.rejects(loadPrecisionGenerationJob({ functions: { invoke: async () => { throw denied; } } }, completedStatus.job_id), error => error === denied);
+});
+
+test('remembered pulls use the same owned status path and keep recovery after a failed route build', async () => {
+    const client = { functions: { invoke: async () => ({ data: { ...completedStatus, status: 'running', progress_pct: 40 } }) } };
+    const running = await loadPrecisionJob(client, completedStatus.job_id);
+    assert.equal(running.status, 'running');
+    assert.equal(running.progress_pct, 40);
+    const prompt = fs.readFileSync('src/components/map/TerritoryPrompt.jsx', 'utf8');
+    assert.match(prompt, /await loadPrecisionJob\(base44, rememberedJobId\)/);
+    assert.doesNotMatch(prompt, /base44\.entities\.FetchJob\.get\(/);
+    assert.match(prompt, /if \(routesBuilt\) clearActivePrecisionJob\(jobId\)/);
+});
+
+test('quick and custom completed import contexts survive refresh without crossing accounts or relaxing date windows', () => {
+    const memory = new Map();
+    const helperSource = fs.readFileSync('src/components/map/homeMapHelpers.js', 'utf8')
+        .replace(/^import .*;\s*$/gm, '').replace(/\bexport /g, '');
+    const api = vm.runInNewContext(`${helperSource}; ({ persistPrecisionJobContext, readPersistedPrecisionJobContext });`, {
+        normalizeStrictOwnershipRangeDays: normalizeOwnershipRangeDays,
+        localStorage: { getItem: key => memory.get(key) || null, setItem: (key, value) => memory.set(key, value), removeItem: key => memory.delete(key) }
+    });
+    const context = { userEmail: 'owner@example.test', jobId: 'paid-job', soldMonths: 3, requestedCount: 400,
+        polygon: [{ lat: 33, lng: -113 }, { lat: 34, lng: -113 }, { lat: 33, lng: -112 }],
+        ownershipRangeMode: 'quick', ownershipRangeDays: null };
+    api.persistPrecisionJobContext(context);
+    const restored = api.readPersistedPrecisionJobContext(context.userEmail);
+    assert.equal(restored.jobId, context.jobId);
+    assert.equal(restored.soldMonths, 3);
+    assert.equal(restored.ownershipRangeDays, null);
+    assert.equal(api.readPersistedPrecisionJobContext('foreign@example.test'), null);
+    api.persistPrecisionJobContext({ ...context, ownershipRangeMode: 'custom', ownershipRangeDays: [30, 90] });
+    assert.deepEqual(JSON.parse(JSON.stringify(api.readPersistedPrecisionJobContext(context.userEmail).ownershipRangeDays)), [30, 90]);
+    api.persistPrecisionJobContext({ ...context, ownershipRangeMode: 'custom', ownershipRangeDays: [90, 30] });
+    assert.equal(api.readPersistedPrecisionJobContext(context.userEmail), null);
+    api.persistPrecisionJobContext({ ...context, ownershipRangeMode: 'quick', ownershipRangeDays: [30, 90] });
+    assert.equal(api.readPersistedPrecisionJobContext(context.userEmail), null);
+});
 
 test('Max Available keeps all homes while fixed and legacy count modes retain their limit', () => {
     const homes = Array.from({ length: 600 }, (_, i) => ({ id: i, rank: i }));
@@ -68,6 +145,63 @@ const report = { job_id: job.id, attempt_id: 'attempt-1', status: 'completed', c
     filter_stages: [{ name: 'initial', count: 4 }, { name: 'priceYear', count: 3 }, { name: 'countLimit', count: 3 }] };
 const ownedRoute = (overrides = {}) => ({ id: 'route-1', manager_id: user.id, status: 'ACTIVE',
     metadata: { precision_area: { job_id: job.id } }, property_hashes: ['a', 'b'], ...overrides });
+
+function statusEndpoint({ actor = user, fetchJob = { ...job, created_date: completedStatus.ownership_reference_date,
+    completed_at: completedStatus.completed_at, sold_months: 3, polygon: completedStatus.polygon,
+    dry_run_metadata: completedStatus.diagnostics } } = {}) {
+    let handler;
+    const writes = [];
+    const providerCalls = [];
+    const queries = [];
+    const statusSource = fs.readFileSync('base44/functions/fetchJobStatus/entry.ts', 'utf8').replace(/^import .*;\s*$/gm, '');
+    const client = { auth: { me: async () => actor },
+        entities: { FetchJob: { get: async () => { throw new Error('Entity FetchJob not found'); } } },
+        asServiceRole: {
+            entities: { FetchJob: {
+                filter: async query => { queries.push(query); return fetchJob ? [fetchJob] : []; },
+                update: async (...args) => { writes.push(args); }
+            } },
+            functions: { invoke: async (...args) => { providerCalls.push(args); } }
+        }
+    };
+    vm.runInNewContext(statusSource, { createClientFromRequest: () => client, Response, console, setTimeout,
+        Deno: { env: { get: () => 'test-db' }, serve: value => { handler = value; } },
+        neon: () => async () => [{ active_count: 377 }]
+    });
+    return { writes, providerCalls, queries, invoke: async () => {
+        const response = await handler(new Request('https://example.test/status', { method: 'POST', body: JSON.stringify({ job_id: job.id }) }));
+        return { status: response.status, body: await response.json() };
+    } };
+}
+
+test('owned completed job status exposes generation context without browser entity access or paid retry', async () => {
+    const api = statusEndpoint();
+    const result = await api.invoke();
+    assert.equal(result.status, 200);
+    assert.equal(result.body.job_id, job.id);
+    assert.equal(result.body.active_count, 377);
+    assert.equal(result.body.completed_at, completedStatus.completed_at);
+    assert.equal(result.body.diagnostics.count_mode, 'max_available');
+    assert.equal(result.body.diagnostics.sold_months, 3);
+    assert.deepEqual(JSON.parse(JSON.stringify(api.queries)), [{ id: job.id }]);
+    assert.equal(api.writes.length, 0);
+    assert.equal(api.providerCalls.length, 0);
+});
+
+test('generation status preserves immutable ownership and denies foreign, missing, and anonymous jobs', async () => {
+    for (const [options, expected] of [
+        [{ actor: { ...user, id: 'other', role: 'admin' } }, 403],
+        [{ actor: null }, 401],
+        [{ fetchJob: null }, 404]
+    ]) {
+        const api = statusEndpoint(options);
+        const result = await api.invoke();
+        assert.equal(result.status, expected);
+        assert.equal(result.body.diagnostics, undefined);
+        assert.equal(api.writes.length, 0);
+        assert.equal(api.providerCalls.length, 0);
+    }
+});
 
 function endpoint({ actor = user, fetchJob = job, routes = [ownedRoute()], imported = ['a', 'b', 'c', 'd'], routeFailure = false } = {}) {
     let handler;
