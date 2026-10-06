@@ -696,9 +696,7 @@ Deno.serve(async (req) => {
         }
 
         const readSecret = name => { try { return String(secrets.get(name) || '').trim(); } catch { return ''; } };
-        const completedRoutes = readSecret('ROAD_AWARE_OSRM_BASE_URL')
-            ? await completeServerRoadAwareRoutes(routes, { client: base44, user, entryPoint: 'backend_generation', readSecret })
-            : routes;
+        const completedRoutes = await completeServerRoadAwareRoutes(routes, { client: base44, user, entryPoint: 'backend_generation', readSecret });
         return Response.json({
             success: true,
             count: routes.length,

@@ -26,6 +26,7 @@ import { createServer } from 'vite';
 
 import { buildStreetBlocks, roadAwareStreetSweep } from '../base44/shared/roadAwareStreetSweep.js';
 import { buildRoutingUnits } from '../base44/shared/routingUnits.js';
+import { completeServerRoadAwareRoutes } from '../base44/shared/roadAwareBetaServer.js';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const rootDir = resolve(scriptDir, '..');
@@ -67,6 +68,7 @@ function loadBackendHandler() {
     let handler;
     vm.runInNewContext(transpiled.outputText.replace(/^import .*;\s*$/gm, ''), {
         console,
+        completeServerRoadAwareRoutes,
         createClientFromRequest: () => ({ auth: { me: async () => ({ id: 'stage1_baseline_user' }) } }),
         Deno: { serve: (registered) => { handler = registered; } },
         Request,

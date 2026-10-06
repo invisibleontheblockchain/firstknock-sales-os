@@ -30,6 +30,7 @@ import { partitionTerritory } from '../../../base44/shared/territoryPartitioner.
 import { MAX_HOMES_PER_ROUTE } from '../../../base44/shared/routingBudgets.js';
 import { refineBlockSequence } from './blockSequenceRefinement';
 import { resolveNeighborhoodPockets } from './streetBlockTopology';
+import { reviewNeighborhoodOrder, getNeighborhoodExcursionReview } from '../../../base44/shared/neighborhoodExcursions.js';
 
 function cleanAreaLabel(value) {
     if (value === undefined || value === null) return '';
@@ -841,7 +842,7 @@ export function generateOptimizedRoutes(
             && typeof effectiveRoutingContext?.distanceBetween === 'function';
 
         for (const orderedChunk of orderedChunks) {
-            const routeProperties = orderedChunks.length > 1 && !preserveGlobalChunkOrder
+            const chunkOrder = orderedChunks.length > 1 && !preserveGlobalChunkOrder
                 ? mailCarrierOrder(
                     orderedChunk,
                     startLocation,
@@ -849,6 +850,11 @@ export function generateOptimizedRoutes(
                     effectiveRoutingContext
                 )
                 : orderedChunk;
+            // Review the assembled customer route, including a chunk whose
+            // boundary differs from the global sweep's boundary.
+            const routeProperties = reviewNeighborhoodOrder(chunkOrder, startLocation,
+                hasFixedRouteBounds ? effectiveEndLocation : returnToStart ? chunkOrder[0] : null,
+                effectiveRoutingContext, options.neighborhoodExcursionOptions);
 
         // Street Sweep treats each street as an atomic walking block. Point-level
         // front-loading or endpoint optimization here can pull one door out of
@@ -979,11 +985,13 @@ export function generateOptimizedRoutes(
             competitivenessScore,
             status: 'NOT_STARTED',
             completedCount: 0,
+            metadata: { neighborhood_excursion_review: getNeighborhoodExcursionReview(routeProperties) },
             ...(hasFixedRouteBounds ? {
                 startLocation: { ...startLocation },
                 endLocation: { ...effectiveEndLocation },
                 routeOriginMode: normalizedRouteOriginMode,
                 metadata: {
+                    neighborhood_excursion_review: getNeighborhoodExcursionReview(routeProperties),
                     route_bounds: {
                         enabled: true,
                         mode: normalizedRouteOriginMode
@@ -2111,12 +2119,13 @@ export function mailCarrierOrder(
     );
     if (validProperties.length === 0) return [];
 
-    return mailCarrierOrderSingleCluster(
+    const ordered = mailCarrierOrderSingleCluster(
         validProperties,
         startLocation,
         endLocation,
         routingContext
     );
+    return reviewNeighborhoodOrder(ordered, startLocation, endLocation, routingContext, { originalOrder: validProperties });
 }
 
 export function optimizeRouteByStreetSweep(
@@ -2146,12 +2155,12 @@ export { batchScoreProperties, ownershipDurationScore, SCORING_CONSTANTS } from 
  * @param {Object|null} startLocation - Optional {lat, lng} starting point
  * @returns {Array} Properties in optimized order
  */
-export function optimizeRouteByDistance(properties, startLocation = null, endLocation = null) {
+export function optimizeRouteByDistance(properties, startLocation = null, endLocation = null, routingContext = null) {
     if (!properties || properties.length === 0) return [];
     if (properties.length === 1) return [...properties];
 
     if (isValidRoutePoint(endLocation)) {
-        return optimizeRouteWithBounds(properties, { startLocation, endLocation });
+        return reviewNeighborhoodOrder(optimizeRouteWithBounds(properties, { startLocation, endLocation }), startLocation, endLocation, routingContext, { originalOrder: properties });
     }
 
     // Build working copy
@@ -2168,7 +2177,7 @@ export function optimizeRouteByDistance(properties, startLocation = null, endLoc
     // Step 3: Or-Opt (link swap) for further improvements
     ordered = applyLinkSwap(ordered);
 
-    return ordered;
+    return reviewNeighborhoodOrder(ordered, startLocation, endLocation, routingContext, { originalOrder: properties });
 }
 
 /**

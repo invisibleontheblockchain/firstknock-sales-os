@@ -5,6 +5,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 import ts from 'typescript';
+import { completeServerRoadAwareRoutes } from '../base44/shared/roadAwareBetaServer.js';
 
 const testDir = dirname(fileURLToPath(import.meta.url));
 const rootDir = resolve(testDir, '..');
@@ -25,6 +26,7 @@ function loadBackendHandler() {
   const executable = transpiled.outputText.replace(/^import .*;\s*$/gm, '');
   vm.runInNewContext(executable, {
     console,
+    completeServerRoadAwareRoutes,
     createClientFromRequest: () => ({
       auth: { me: async () => ({ id: 'route_test_user' }) },
     }),

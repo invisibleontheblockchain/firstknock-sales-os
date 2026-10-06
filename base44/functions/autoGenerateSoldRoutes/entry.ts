@@ -94,9 +94,7 @@ Deno.serve(async (req) => {
                         properties: cluster.properties, totalDistance: 5, startLocation: cluster.center,
                     }];
                     const readSecret = name => { try { return String(secrets.get(name) || '').trim(); } catch { return ''; } };
-                    const [completed] = readSecret('ROAD_AWARE_OSRM_BASE_URL')
-                        ? await completeServerRoadAwareRoutes(baselineRoutes, { client: base44, user, entryPoint: 'auto_recent_sales', readSecret })
-                        : baselineRoutes;
+                    const [completed] = await completeServerRoadAwareRoutes(baselineRoutes, { client: base44, user, entryPoint: 'auto_recent_sales', readSecret });
                     const created = await base44.asServiceRole.entities.SavedRoute.create({
                         name: routeName,
                         description: `Auto-generated route for ${cluster.properties.length} recent sales within 5 miles.`,

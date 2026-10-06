@@ -5,10 +5,35 @@ import { vehicleProviderConfig } from './vehicleProviderConfig.js';
 import { roadAwareStreetSweep } from './roadAwareStreetSweep.js';
 import { buildCanonicalStreetBlocks, haversineMiles } from './routeContinuityOptimizer.js';
 import { fetchRoadBetaProxy } from './roadAwareBetaService.js';
+import { reviewFinalNeighborhoodRoute } from './finalNeighborhoodReview.js';
+import { reviewNeighborhoodExcursions } from './neighborhoodExcursions.js';
+import { fetchOsrmJson } from './osrmDispatcher.js';
+import { routePropertyOrderFingerprint } from './routeFingerprint.js';
 
 /** Server generation uses its current sweep and boundaries, then the same frozen
  * guard. The workspace comes from a verified user, never a request enable flag. */
 export async function completeServerRoadAwareRoutes(routes, { client, user, readSecret, entryPoint, fetchImpl = fetch }) {
+    const finishStandard = async () => {
+        const out = [];
+        const baseUrl = readSecret('OSRM_BASE_URL');
+        for (const route of routes) {
+            const bounds = { startLocation: route.startLocation, endLocation: route.endLocation };
+            const review = baseUrl ? await reviewFinalNeighborhoodRoute(route.properties, { ...bounds,
+                vehicleBaseUrl: baseUrl, vehicleFetch: async url => {
+                    const payload = await fetchOsrmJson(url);
+                    return { ok: true, json: async () => payload };
+                } }) : reviewNeighborhoodExcursions(route.properties, bounds);
+            out.push({ ...route, properties: review.properties,
+                totalDistance: review.measurement?.distanceMiles ?? route.totalDistance,
+                metadata: { ...route.metadata, neighborhood_excursion_review: review.diagnostics,
+                    routing: { ...route.metadata?.routing, neighborhood_excursion_review: review.diagnostics,
+                        property_order_fingerprint: routePropertyOrderFingerprint(review.properties),
+                        ...(review.diagnostics.applied ? { road_aware: true, fallback: false,
+                            distance_estimate: 'vehicle-road-network', engine: 'osrm-neighborhood-review',
+                            estimated_drive_seconds: review.measurement.driveSeconds } : {}) } } });
+        }
+        return out;
+    };
     const workspace = tenantManagerId(user), service = client.asServiceRole;
     if (isRepAccount(user)) {
         const members = toEntityArray(await service.entities.TeamMember.filter({ manager_id: workspace, user_id: user.id }, '-created_date', 100));
@@ -16,11 +41,11 @@ export async function completeServerRoadAwareRoutes(routes, { client, user, read
     }
     const owner = user.id === workspace ? user : await service.entities.User.get(workspace);
     if (!roadBetaEligibleOwner(owner, workspace, readSecret('ROAD_AWARE_ROUTING_BETA_WORKSPACE_IDS'))
-        || readSecret('ROAD_AWARE_ROUTING_BETA_DISABLED') === 'true') return routes;
+        || readSecret('ROAD_AWARE_ROUTING_BETA_DISABLED') === 'true') return finishStandard();
     let settings;
     try { settings = toEntityArray(await service.entities.RoadAwareRoutingBetaSettings.filter({ manager_id: workspace }, '-updated_date', 10)); }
-    catch { return routes; } // An undeployed OFF resource cannot break generation.
-    if (settings.find(s => s.manager_id === workspace)?.enabled !== true) return routes;
+    catch { return finishStandard(); } // An undeployed OFF resource cannot break generation.
+    if (settings.find(s => s.manager_id === workspace)?.enabled !== true) return finishStandard();
     const fingerprint = readSecret('ROAD_AWARE_OSRM_BUILD_FINGERPRINT'), dataVersion = readSecret('ROAD_AWARE_OSRM_DATA_VERSION');
     let config;
     try { config = vehicleProviderConfig({ baseUrl: readSecret('ROAD_AWARE_OSRM_BASE_URL'), profile: 'car', production: true }); } catch { /* Frozen fallback. */ }
@@ -53,7 +78,7 @@ export async function completeServerRoadAwareRoutes(routes, { client, user, read
             provider: { available, fingerprint, dataVersion, baseUrl: 'https://firstknock-routing.invalid', fetch: providerFetch },
             continuityFor: () => ({ distanceBetween: haversineMiles }), partitionRun,
             bounds: { startLocation: route.startLocation, endLocation: route.endLocation },
-            propose: (stops, context, bounds) => roadAwareStreetSweep(stops, { distanceBetween: context.distanceBetween, ...bounds }),
+            propose: (stops, context, bounds) => roadAwareStreetSweep(stops, { distanceBetween: context.distanceBetween, routingContext: context, ...bounds }),
         });
         // Do not adopt without history. A history failure keeps the full baseline.
         try {

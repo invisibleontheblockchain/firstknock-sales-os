@@ -1,6 +1,7 @@
 // Small driving pilot: uncertainty keeps the supplied legacy route intact.
 import { routePropertyOrderFingerprint } from './routeFingerprint.js';
 import { isValidRoutePoint } from './routeBounds.js';
+import { reviewNeighborhoodOrder, getNeighborhoodExcursionReview } from './neighborhoodExcursions.js';
 
 const identity = stop => String(stop?.address_hash || stop?.id || '').trim();
 export function assertPilotMembership(expected, actual) {
@@ -17,7 +18,7 @@ function measureIsComplete(result) {
         && result.geometry.every(isValidRoutePoint);
 }
 function propagateIntegrityOrCancellation(error) {
-    if (error?.name === 'AbortError' || /membership|stable identifiers|cancelled/i.test(error?.message || '')) throw error;
+    if (error?.name === 'AbortError' || /membership|stable identifiers|graph identity|cancelled/i.test(error?.message || '')) throw error;
 }
 
 /** Baseline and proposal use one context, graph, boundaries and snap policy.
@@ -42,7 +43,13 @@ export async function evaluateCoreDrivingRoute({ legacyOrder, createContext, pro
         return fallback('ROAD_EVIDENCE_UNAVAILABLE', error.message);
     }
     let candidateOrder, candidate = null, candidateError = null;
-    try { candidateOrder = await propose(legacyOrder, context, bounds); }
+    try {
+        candidateOrder = await propose(legacyOrder, context, bounds);
+        assertPilotMembership(legacyOrder, candidateOrder);
+        if (legacyOrder.some((stop, i) => (stop.locked || stop.order_locked || stop.routing_access?.resolution_status === 'unresolved')
+            && identity(candidateOrder[i]) !== identity(stop))) candidateOrder = legacyOrder;
+        candidateOrder = reviewNeighborhoodOrder(candidateOrder, bounds.startLocation, bounds.endLocation, context);
+    }
     catch (error) { propagateIntegrityOrCancellation(error); candidateError = error.message; }
     // An identity bug must fail the operation, never be disguised as fallback.
     if (candidateOrder) assertPilotMembership(legacyOrder, candidateOrder);
@@ -56,5 +63,6 @@ export async function evaluateCoreDrivingRoute({ legacyOrder, createContext, pro
     return { eligible: true, selection: accept ? 'road_aware' : 'legacy_guard',
         reason: accept ? null : candidate ? 'PROPOSAL_NOT_BETTER_IN_TIME_AND_MILES' : 'PROPOSAL_UNAVAILABLE',
         properties: accept ? candidateOrder : legacyOrder, baseline, candidate,
-        candidateOrder: candidateOrder || null, candidateError, selected: accept ? candidate : baseline, context };
+        candidateOrder: candidateOrder || null, candidateError, selected: accept ? candidate : baseline, context,
+        neighborhoodReview: candidateOrder ? getNeighborhoodExcursionReview(candidateOrder) : null };
 }

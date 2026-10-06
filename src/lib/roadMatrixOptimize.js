@@ -73,6 +73,7 @@ export function buildRoadMatrixRoutingBlock(meta = {}) {
         matrix_version: meta.road_matrix_version || null,
         matrix_cache_key: meta.road_matrix_cache_key || null,
         matrix_ms: meta.road_matrix_ms ?? null,
+        neighborhood_excursion_review: meta.neighborhood_excursion_review || null,
         fallback: meta.fallback === true,
         property_order_fingerprint: meta.property_order_fingerprint || null,
         optimized_at: new Date().toISOString()
@@ -92,7 +93,9 @@ export async function tryRoadMatrixOptimize(routeProperties, {
     start = null,
     end = null,
     deadlineMs = ROAD_MATRIX_DEADLINE_MS,
-    onOutcome = null
+    onOutcome = null,
+    neighborhoodReview = null,
+    client = base44
 } = {}) {
     const decline = (reason, measurement = null) => { onOutcome?.(reason, measurement); return null; };
 
@@ -114,16 +117,22 @@ export async function tryRoadMatrixOptimize(routeProperties, {
                 zip_code: property.zip_code || property.zip,
                 subdivision_name: property.subdivision_name,
                 lat: property.lat,
-                lng: property.lng
+                lng: property.lng,
+                routing_access: property.routing_access,
+                order_locked: property.order_locked === true || property.locked === true,
             })),
             timeout_ms: 12000
+        };
+        if (neighborhoodReview) payload.neighborhood_review = {
+            prefer_contiguous_on_tie: neighborhoodReview.preferContiguousOnTie === true,
+            tie_seconds: Math.min(10, Math.max(0, Number(neighborhoodReview.tieSeconds) || 0)),
         };
         if (start) payload.start_location = { lat: start.lat, lng: start.lng };
         if (end) payload.end_location = { lat: end.lat, lng: end.lng };
 
         let deadlineTimer = null;
         const response = await Promise.race([
-            base44.functions.invoke('optimizeRouteRoadMatrix', payload),
+            client.functions.invoke('optimizeRouteRoadMatrix', payload),
             new Promise((resolve) => {
                 deadlineTimer = setTimeout(() => resolve(null), deadlineMs);
             })
@@ -171,7 +180,8 @@ export async function tryRoadMatrixOptimize(routeProperties, {
         // minutes is adopted even when the mileage is a wash. The backend gate
         // already refused to return anything worse than the current order.
         const durationGain = Number(meta.duration_improvement);
-        if (!(savings > 0) && !(durationGain > 0)) return decline('current_order_measured_best', {
+        const preferredTie = neighborhoodReview?.preferContiguousOnTie === true && meta.neighborhood_excursion_review?.applied === true;
+        if (!(savings > 0) && !(durationGain > 0) && !preferredTie) return decline('current_order_measured_best', {
             distanceMiles: baseline,
             routingMetadata: { ...meta, source: 'optimizeRouteRoadMatrix', routing: buildRoadMatrixRoutingBlock(meta) }
         });

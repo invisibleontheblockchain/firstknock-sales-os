@@ -82,7 +82,7 @@ function validateSnaps(waypoints, points) {
 }
 
 export async function createVehicleRoutingContext(properties, accessContext, options = {}) {
-    if (properties.length > 500) throw new Error('Split driving routes into at most 500 stops before optimizing.');
+    if (properties.length > 500 && !options.sparseCosts) throw new Error('Split driving routes into at most 500 stops before optimizing.');
     if (!properties.every(isValidRoutePoint)) throw new Error('Every driving stop requires valid coordinates.');
     if (new Set(properties.map(identity)).size !== properties.length) throw new Error('Driving route stops must have unique stable identifiers.');
     const policy = streetSidePolicy({ ...options.servicePolicy, travelMode: 'driving' });
@@ -117,7 +117,7 @@ export async function createVehicleRoutingContext(properties, accessContext, opt
     // Table batches have at most 100 unique coordinates. No aerial substitution
     // or OSRM fallback_speed is used for an unreachable directed transition.
     const batchSize = 50;
-    for (let from = 0; !options.routeOnly && from < stops.length; from += batchSize) {
+    for (let from = 0; !options.routeOnly && !options.sparseCosts && from < stops.length; from += batchSize) {
         for (let to = 0; to < stops.length; to += batchSize) {
             const sources = stops.slice(from, from + batchSize);
             const targets = stops.slice(to, to + batchSize);
@@ -156,6 +156,39 @@ export async function createVehicleRoutingContext(properties, accessContext, opt
         servicePolicy: policy, vehicleAware: true, routeBetween: undefined, pathBetween: undefined,
         accessFor: stop => pointById.get(identity(stop))?.access || null,
         optimizationCostBetween: (left, right) => durationByPair.get(pair(left, right)) ?? Infinity,
+        // Final assembled routes only need the changed directed edges. Avoid a
+        // quadratic all-door matrix just to review a neighborhood interruption.
+        async prepareCosts(pairs) {
+            const missing = [...new Map(pairs.filter(([a, b]) => !durationByPair.has(pair(a, b)))
+                .map(([a, b]) => [pair(a, b), [a, b]])).values()];
+            let cursor = 0;
+            const deadline = timedSignal(options.signal, 60000);
+            try {
+                await Promise.all(Array.from({ length: Math.min(4, Math.ceil(missing.length / 50)) }, async () => {
+                    while (cursor < missing.length) {
+                        if (deadline.signal.aborted) throw deadline.signal.reason || new DOMException('Cancelled', 'AbortError');
+                        const requested = missing.slice(cursor, cursor += 50);
+                        const sources = [...new Map(requested.map(([a]) => [identity(a), a])).values()];
+                        const targets = [...new Map(requested.map(([, b]) => [identity(b), b])).values()];
+                        const batch = [...new Map([...sources, ...targets].map(p => [identity(p), p])).values()];
+                        const indexFor = p => batch.findIndex(q => identity(q) === identity(p));
+                        const points = batch.map(p => pointById.get(identity(p)) || vehicleWaypoint(p, accessContext.accessFor));
+                        const data = await providerRequest(providerUrl(baseUrl, profile, 'table', points, {
+                            sources: sources.map(indexFor).join(';'), destinations: targets.map(indexFor).join(';'),
+                            annotations: 'duration,distance',
+                        }), fetchImpl, deadline.signal);
+                        verifyDataVersion(data);
+                        validateSnaps(data.sources, sources.map(p => points[indexFor(p)]));
+                        validateSnaps(data.destinations, targets.map(p => points[indexFor(p)]));
+                        sources.forEach((a, i) => targets.forEach((b, j) => {
+                            const duration = data.durations?.[i]?.[j], distance = data.distances?.[i]?.[j];
+                            durationByPair.set(pair(a, b), Number.isFinite(duration) && duration >= 0 ? duration : Infinity);
+                            distanceByPair.set(pair(a, b), Number.isFinite(distance) && distance >= 0 ? distance : Infinity);
+                        }));
+                    }
+                }));
+            } catch (error) { deadline.abort(); throw error; } finally { deadline.close(); }
+        },
         distanceBetween: (left, right) => (distanceByPair.get(pair(left, right)) ?? Infinity) / METERS_PER_MILE,
         distanceBetweenMeters: (left, right) => distanceByPair.get(pair(left, right)) ?? Infinity,
         streetSegmentKey: stop => [accessContext.streetSegmentKey?.(stop) || '',
@@ -163,6 +196,42 @@ export async function createVehicleRoutingContext(properties, accessContext, opt
         diagnostics: Object.freeze({ ...accessContext.diagnostics, vehicleProfile: profile, vehicleBaseUrl: baseUrl,
             vehicleMatrixPointCount: stops.length, dataVersion: [...dataVersions][0] || null }),
         async routeSequence(sequence, bounds = {}) {
+            if (sequence.length + Number(Boolean(bounds.startLocation)) + Number(Boolean(bounds.endLocation)) > 500 && options.sparseCosts) {
+                const ordered = [bounds.startLocation, ...sequence, bounds.endLocation].filter(isValidRoutePoint);
+                const parts = [];
+                const geometry = [], directedLegs = [];
+                for (let start = 0; start < ordered.length - 1; start += 498) {
+                    const chunk = ordered.slice(start, start + 500);
+                    const context = await createVehicleRoutingContext(chunk, accessContext, { ...options, sparseCosts: false,
+                        routeOnly: true, requireDirectedLegs: true, startLocation: null, endLocation: null });
+                    const part = await context.routeSequence(chunk);
+                    if (options.expectedDataVersion && part.dataVersion !== options.expectedDataVersion) throw new Error('Vehicle provider graph identity changed.');
+                    if (part.dataVersion) verifyDataVersion({ data_version: part.dataVersion });
+                    if (parts.length) {
+                        // Two overlapping stops verify the arrival into the seam
+                        // under the next chunk's continue-straight constraint.
+                        // Different shared-leg paths make the whole trip uncertain.
+                        const prior = directedLegs.at(-1), overlap = part.directedLegs[0];
+                        if (prior.from !== overlap.from || prior.to !== overlap.to || prior.pathKey !== overlap.pathKey
+                            || Math.abs(prior.driveSeconds - overlap.driveSeconds) > 0.1
+                            || Math.abs(prior.distanceMiles - overlap.distanceMiles) > 0.0001) {
+                            throw new Error('Vehicle route has inconsistent turn continuity at a chunk seam.');
+                        }
+                        const tail = geometry.at(-1);
+                        const join = part.geometry.findIndex((p, i) => i > 0 && p.lat === tail.lat && p.lng === tail.lng);
+                        if (join < 0) throw new Error('Vehicle route omitted its shared seam geometry.');
+                        geometry.push(...part.geometry.slice(join + 1));
+                        directedLegs.push(...part.directedLegs.slice(1));
+                    } else {
+                        geometry.push(...part.geometry); directedLegs.push(...part.directedLegs);
+                    }
+                    parts.push(part);
+                }
+                return { distanceMiles: directedLegs.reduce((s, p) => s + p.distanceMiles, 0),
+                    driveSeconds: directedLegs.reduce((s, p) => s + p.driveSeconds, 0),
+                    objectiveSeconds: directedLegs.reduce((s, p) => s + p.driveSeconds, 0),
+                    geometry, directedLegs, dataVersion: [...dataVersions][0] || null };
+            }
             const ordered = [bounds.startLocation, ...sequence, bounds.endLocation].filter(isValidRoutePoint);
             const points = ordered.map(stop => pointById.get(identity(stop)) || vehicleWaypoint(stop, accessContext.accessFor));
             if (!points.length) throw new Error('A driving route needs a usable stop.');

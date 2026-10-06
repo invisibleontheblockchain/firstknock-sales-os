@@ -16,6 +16,7 @@ import {
     orderRouteProperties,
 } from '@/components/logic/routeHydrationCore';
 import { optimizeRouteByStreetSweep } from '@/components/logic/routeOptimizer';
+import { tryRoadMatrixOptimize } from '@/lib/roadMatrixOptimize';
 import {
   buildPersistedRoadRoutingMetadata,
   createRouteContinuityContext,
@@ -1699,12 +1700,17 @@ export default function RepHome() {
       }
       const routingContext = createRouteContinuityContext(routeProperties);
       requireUsableRouteContext(routingContext);
-      const optimized = optimizeRouteByStreetSweep(
+      let roadMeasurement = null;
+      const roadResult = await tryRoadMatrixOptimize(routeProperties, {
+        start: exactHomeBase, end: exactHomeBase,
+        onOutcome: (reason, measurement) => { if (reason === 'current_order_measured_best') roadMeasurement = measurement; },
+      });
+      const optimized = roadResult?.order || (roadMeasurement ? routeProperties : optimizeRouteByStreetSweep(
         routeProperties,
         exactHomeBase,
         exactHomeBase,
         routingContext,
-      );
+      ));
       if (optimized.length !== routeProperties.length) {
         throw new Error('The optimizer could not preserve every property in this route.');
       }
@@ -1723,12 +1729,18 @@ export default function RepHome() {
         throw new Error('Route integrity verification failed, so the existing route was left unchanged.');
       }
 
-      const distance = Math.round(calculateRouteDistanceMiles(optimized, {
+      const distance = Math.round((roadResult?.objective.appliedDistance ?? roadMeasurement?.distanceMiles ?? calculateRouteDistanceMiles(optimized, {
         startLocation: exactHomeBase,
         endLocation: exactHomeBase,
-      }) * 100) / 100;
+      })) * 100) / 100;
       const existingMetadata = { ...(routeToOptimize.metadata || {}) };
       delete existingMetadata.road_geometry;
+      const roadMetadata = { ...(roadResult?.routingMetadata || roadMeasurement?.routingMetadata || {}) };
+      // Home/anchor coordinates are an in-memory trip boundary. Persist the
+      // measured order and review counts without the private boundary or path.
+      for (const field of ['start_constraint', 'end_constraint', 'start_location', 'end_location', 'road_geometry', 'road_geometry_segments']) {
+        delete roadMetadata[field];
+      }
       const routeUpdate = {
         property_hashes: propertyHashes,
         metrics: {
@@ -1742,6 +1754,7 @@ export default function RepHome() {
         metadata: {
           ...existingMetadata,
           ...buildPersistedRoadRoutingMetadata(routingContext, null, propertyHashes),
+          ...roadMetadata,
           route_bounds: { enabled: true, mode: usesAnchor ? 'anchor_round_trip' : 'home_round_trip' }
         }
       };
@@ -1756,7 +1769,7 @@ export default function RepHome() {
         queryClient.invalidateQueries({ queryKey: ['myRoutes'] }),
         queryClient.invalidateQueries({ queryKey: ['routeProperties'] })
       ]);
-      toast.success(`${usesAnchor ? 'Anchored round trip' : 'Home round trip'} optimized (${distance} mi street-continuity estimate).`, {
+      toast.success(`${usesAnchor ? 'Anchored round trip' : 'Home round trip'} optimized (${distance} mi ${roadResult || roadMeasurement ? 'road measured' : 'street-continuity estimate'}).`, {
         id: 'rep-home-route',
         duration: 5000
       });
