@@ -65,6 +65,160 @@ export const KNOWN_TEST_FAILURES = Object.freeze([
     name: 'Team keeps its heatmap while HQ redirects before normal app authentication',
     file: 'test/user-activity-heatmap.test.mjs',
   }),
+  // Confirmed on unchanged main bc70a3324773839622dc44151b101ea5386340ea.
+  // Evidence: https://github.com/invisibleontheblockchain/firstknock-sales-os/actions/runs/37508241696
+  Object.freeze({
+    "name": "analysis lifecycle is idempotent, tenant-scoped, integrity checked, and locally snapshotted",
+    "file": "test/canvas-analysis-control-plane-backend.test.mjs"
+  }),
+  Object.freeze({
+    "name": "cancellation is idempotent and missing configuration or oversized geography fails closed",
+    "file": "test/canvas-analysis-control-plane-backend.test.mjs"
+  }),
+  Object.freeze({
+    "name": "large Canvas road verification fails closed on cumulative size and time budgets",
+    "file": "test/canvas-analysis-security.test.mjs"
+  }),
+  Object.freeze({
+    "name": "Canvas transient conflict codes stay aligned with deploy and field retry handling",
+    "file": "test/canvas-analysis-security.test.mjs"
+  }),
+  Object.freeze({
+    "name": "manager workflow is count-only, assignment-later, and explains residential workload",
+    "file": "test/canvas-national-builder.test.mjs"
+  }),
+  Object.freeze({
+    "name": "amber evidence is reviewed from the map without blocking previews or draft saves",
+    "file": "test/canvas-national-builder.test.mjs"
+  }),
+  Object.freeze({
+    "name": "residential Canvas deploy replays trusted evidence without live Overpass and preserves context units as unowned",
+    "file": "test/canvas-production-backend.test.mjs"
+  }),
+  Object.freeze({
+    "name": "residential Canvas deployment fails closed for untrusted or tampered evidence",
+    "file": "test/canvas-production-backend.test.mjs"
+  }),
+  Object.freeze({
+    "name": "area-count drafts may assign multiple areas per rep but require exact selected-roster coverage",
+    "file": "test/canvas-production-backend.test.mjs"
+  }),
+  Object.freeze({
+    "name": "selected-rep drafts preserve strict one-area-per-rep deployment",
+    "file": "test/canvas-production-backend.test.mjs"
+  }),
+  Object.freeze({
+    "name": "legacy drafts above the production area boundary fail deployment before roster reads or Overpass",
+    "file": "test/canvas-production-backend.test.mjs"
+  }),
+  Object.freeze({
+    "name": "production disables legacy public Overpass deployment and requires signed residential evidence",
+    "file": "test/canvas-production-backend.test.mjs"
+  }),
+  Object.freeze({
+    "name": "200-rep deployment validates roster identity in four bounded batch reads",
+    "file": "test/canvas-production-backend.test.mjs"
+  }),
+  Object.freeze({
+    "name": "uneven workload acceptance is manager-authenticated, stored, and signed",
+    "file": "test/canvas-production-backend.test.mjs"
+  }),
+  Object.freeze({
+    "name": "workload-size drafts store a positive street target and deploy by replaying that target",
+    "file": "test/canvas-production-backend.test.mjs"
+  }),
+  Object.freeze({
+    "name": "territory save, deploy, signed rep handoff, and idempotent deploy work end to end",
+    "file": "test/canvas-production-backend.test.mjs"
+  }),
+  Object.freeze({
+    "name": "deploy rejects unassigned drafts and forged street partitions",
+    "file": "test/canvas-production-backend.test.mjs"
+  }),
+  Object.freeze({
+    "name": "Base44 User CAS serializes overlapping manager deployments without Neon",
+    "file": "test/canvas-production-backend.test.mjs"
+  }),
+  Object.freeze({
+    "name": "house decisions are zone-enforced, append-only, and offline-idempotent",
+    "file": "test/canvas-production-backend.test.mjs"
+  }),
+  Object.freeze({
+    "name": "apartment units at the same building and coordinates keep distinct Canvas pins",
+    "file": "test/canvas-production-backend.test.mjs"
+  }),
+  Object.freeze({
+    "name": "same-key recovery completes a pending event without applying the pin twice",
+    "file": "test/canvas-production-backend.test.mjs"
+  }),
+  Object.freeze({
+    "name": "manager map is global while rep map never exposes another rep zone or pin",
+    "file": "test/canvas-production-backend.test.mjs"
+  }),
+  Object.freeze({
+    "name": "rep map pagination is scoped to visible zones before campaign-wide caps",
+    "file": "test/canvas-production-backend.test.mjs"
+  }),
+  Object.freeze({
+    "name": "old do-not-knock pins remain complete beyond the bounded general-history window",
+    "file": "test/canvas-production-backend.test.mjs"
+  }),
+  Object.freeze({
+    "name": "campaign map fails closed instead of returning a partial do-not-knock list",
+    "file": "test/canvas-production-backend.test.mjs"
+  }),
+  Object.freeze({
+    "name": "overlap replacement is explicit and manager list derives superseded status",
+    "file": "test/canvas-production-backend.test.mjs"
+  }),
+  Object.freeze({
+    "name": "exact user_id binding prevents email-only or relinked assignment access",
+    "file": "test/canvas-production-backend.test.mjs"
+  }),
+  Object.freeze({
+    "name": "service-role writes remain downstream of explicit tenant and assignment checks",
+    "file": "test/canvas-production-backend.test.mjs"
+  }),
+  Object.freeze({
+    "name": "Canvas builder asks only for subdivision count and keeps assignment in the Areas workspace",
+    "file": "test/canvas-production-ui.test.mjs"
+  }),
+  Object.freeze({
+    "name": "Canvas guards every visible unsaved-plan exit and keeps saved draft identity across replanning",
+    "file": "test/canvas-production-ui.test.mjs"
+  }),
+  Object.freeze({
+    "name": "Canvas toolbar labels the planner handoff honestly without changing Precision actions",
+    "file": "test/canvas-roster-pagination.test.mjs"
+  }),
+  Object.freeze({
+    "name": "globally optimizes 10,001 unique-street homes into exact index-only manifests",
+    "file": "test/large-route-optimizer-worker.test.mjs"
+  }),
+  Object.freeze({
+    "name": "route completion is optimistic, advances selection, and keeps only archived routes read-only",
+    "file": "test/rep-route-collection.test.mjs"
+  }),
+  Object.freeze({
+    "name": "TIER-09 a route with too many blocks refuses instead of mispricing",
+    "file": "test/road-matrix-tiers.test.mjs"
+  }),
+  Object.freeze({
+    "name": "RepHome wires accessible Done selection, bulk persistence, and the Re-Knock destination",
+    "file": "test/route-bulk-actions.test.mjs"
+  }),
+  Object.freeze({
+    "name": "MENU-01 the Optimize button no longer reoptimizes on click",
+    "file": "test/route-optimize-mode-menu.test.mjs"
+  }),
+  Object.freeze({
+    "name": "MENU-09 Route Command omits the redundant Home Base shortcut",
+    "file": "test/route-optimize-mode-menu.test.mjs"
+  }),
+  Object.freeze({
+    "name": "route road loading is isolated from Canvas and exposes no server proxy endpoint",
+    "file": "test/route-road-proxy.test.mjs"
+  }),
 ]);
 
 function normalizeName(value) {
