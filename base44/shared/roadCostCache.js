@@ -31,6 +31,7 @@ import {
     ROAD_MATRIX_VERSION,
     DEFAULT_OSRM_BASE_URL
 } from './roadMatrix.js';
+import { vehicleServicePoint } from './serviceAccess.js';
 
 // Cache schema version. Bumped whenever the stored shape or the meaning of a key
 // changes, so an old entry can never be served to new key semantics.
@@ -60,7 +61,7 @@ const questionIdentity = (options = {}) => [
 ].join('#');
 
 /** Ordered key for a measured path: the miles depend on the ORDER, not the set. */
-const measureRoadPathKey = (stops, identity) => [identity, ...stops.map(roadPointKey)].join('>');
+const measureRoadPathKey = (stops, identity) => [identity, ...stops.map(stop => roadPointKey(vehicleServicePoint(stop)))].join('>');
 
 // Pair-store ceiling. A 1,000-door candidate touches roughly 200k pairs, so a
 // full portfolio would exceed a function's memory if every pair were kept
@@ -93,6 +94,7 @@ export function createRoadCostCache(deps = {}) {
     const pairMeters = new Map();
     const pairSeconds = new Map();
     const measureMemo = new Map();
+    const measurePending = new Map();
     const counters = {
         matrix_calls: 0,
         matrix_memo_hits: 0,
@@ -210,7 +212,14 @@ export function createRoadCostCache(deps = {}) {
                 counters.measure_memo_hits += 1;
                 return measureMemo.get(key);
             }
-            const measured = await measurePathImpl(stops, options);
+            if (measurePending.has(key)) {
+                counters.measure_memo_hits += 1;
+                return measurePending.get(key);
+            }
+            const request = Promise.resolve().then(() => measurePathImpl(stops, options));
+            measurePending.set(key, request);
+            let measured;
+            try { measured = await request; } finally { measurePending.delete(key); }
             // Only successful measurements are memoized: a transient engine failure
             // must be retryable, not remembered as this order's verdict.
             if (measured?.ok) measureMemo.set(key, measured);

@@ -282,6 +282,31 @@ export function roadAwareStreetSweep(properties, options = {}) {
     /** DP over block orientations for a fixed block sequence. */
     function blockOrderCost(blocks, includePath = false) {
         if (blocks.length === 0) return includePath ? { cost: 0, orientations: [] } : 0;
+        if (!includePath) {
+            // Candidate scoring needs two rolling states, not a full traceback.
+            // Preserve the original addition order, epsilon and tie handling.
+            let forward = isValidPoint(startLocation) ? cost(startLocation, blocks[0].variants[0][0]) : 0;
+            let reverse = isValidPoint(startLocation) ? cost(startLocation, blocks[0].variants[1][0]) : 0;
+            for (let i = 1; i < blocks.length; i++) {
+                const left = blocks[i - 1].variants, right = blocks[i].variants;
+                const end0 = left[0][left[0].length - 1], end1 = left[1][left[1].length - 1];
+                let nextForward = Infinity, nextReverse = Infinity;
+                const ff = forward + cost(end0, right[0][0]), rf = reverse + cost(end1, right[0][0]);
+                const fr = forward + cost(end0, right[1][0]), rr = reverse + cost(end1, right[1][0]);
+                if (ff + 0.000000001 < nextForward) nextForward = ff;
+                if (rf + 0.000000001 < nextForward) nextForward = rf;
+                if (fr + 0.000000001 < nextReverse) nextReverse = fr;
+                if (rr + 0.000000001 < nextReverse) nextReverse = rr;
+                forward = nextForward; reverse = nextReverse;
+            }
+            const variants = blocks.at(-1).variants;
+            const first = forward + (isValidPoint(endLocation) ? cost(variants[0].at(-1), endLocation) : 0);
+            const second = reverse + (isValidPoint(endLocation) ? cost(variants[1].at(-1), endLocation) : 0);
+            let best = Infinity;
+            if (first + 0.000000001 < best) best = first;
+            if (second + 0.000000001 < best) best = second;
+            return best;
+        }
         const costs = blocks.map(() => [Infinity, Infinity]);
         const previous = blocks.map(() => [-1, -1]);
 

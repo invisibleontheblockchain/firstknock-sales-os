@@ -76,13 +76,13 @@ test('CACHE-03 a block whose pairs are all known is answered without an engine c
     const calls = stubOsrm();
     const cache = createRoadCostCache({ fetchMatrix: fetchRoadMatrix });
 
-    await cache.fetchMatrix(points(46));
+    await cache.fetchMatrix(points(92));
     const afterFirst = calls.length;
     assert.equal(afterFirst, 1);
 
-    // A superset: 4 blocks, of which the first is exactly the block already bought.
-    const wider = await cache.fetchMatrix(points(92));
-    assert.equal(calls.length - afterFirst, 3, 'only the genuinely new blocks may be fetched');
+    // Three packed tables: the first full 92-point tile is already bought.
+    const wider = await cache.fetchMatrix(points(138));
+    assert.equal(calls.length - afterFirst, 2, 'only the genuinely new tiles may be fetched');
     assert.equal(wider.cachedBlocks, 1);
 
     // Exactness across the seam between a cached block and a fetched one.
@@ -153,11 +153,11 @@ test('CACHE-06 A->B and B->A are cached and served as separate directed costs', 
     };
 
     const cache = createRoadCostCache({ fetchMatrix: fetchRoadMatrix });
-    const cold = await cache.fetchMatrix(points(46));
+    const cold = await cache.fetchMatrix(points(92));
     const coldCalls = calls.length;
 
     // Served from the pair store on the next, wider ask — the asymmetry must survive.
-    const warm = await cache.fetchMatrix(points(92));
+    const warm = await cache.fetchMatrix(points(138));
     assert.ok(cache.stats().pairs_served_from_cache > 0, 'the directed pairs must have been reused');
 
     [cold, warm].forEach((matrix, index) => {

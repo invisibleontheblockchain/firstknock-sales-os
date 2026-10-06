@@ -7,14 +7,14 @@
 
 import { fetchOsrmJson } from './osrmDispatcher.js';
 
-export const ROAD_MATRIX_VERSION = 'osrm_table_v1';
+export const ROAD_MATRIX_VERSION = 'osrm_table_v2_packed';
 export const DEFAULT_OSRM_BASE_URL = 'https://router.project-osrm.org';
 // How many coordinates one OSRM table request accepts. An IMPLEMENTATION limit:
-// larger routes are assembled from source-chunk x destination-chunk blocks.
+// larger routes are assembled from overlapping, fully directed square tables.
 export const MAX_MATRIX_COORDINATES = 100;
 // Chunk width, so one block request carries at most 2 x 46 = 92 coordinates.
-// 183 properties therefore assemble from 4 x 4 = 16 blocks, the shape the
-// Anderson audit proved returns a complete matrix with zero unresolved cells.
+// A table over a pair of ranges prices both directions and their internal legs.
+// 183 properties use six tables; the previous one-direction grid needed sixteen.
 export const MATRIX_CHUNK_SIZE = 46;
 // PRODUCT limit for one optimization request. Bounded because block count grows
 // quadratically (ceil(N/46)^2), not because of the per-request coordinate cap.
@@ -64,70 +64,46 @@ function chunkRanges(count, size) {
     return ranges;
 }
 
-/**
- * One OSRM table request for a source range x destination range block.
- * Sources and destinations are addressed by position inside the request, so the
- * caller can map the response back onto the canonical property indexes.
- */
-async function fetchMatrixBlock(points, sourceRange, destinationRange, { baseUrl, profile, timeoutMs, pairCache = null }) {
-    const sameRange = sourceRange.start === destinationRange.start
-        && sourceRange.end === destinationRange.end;
-    const sourcePoints = points.slice(sourceRange.start, sourceRange.end);
-    const destinationPoints = sameRange ? [] : points.slice(destinationRange.start, destinationRange.end);
-    const blockPoints = [...sourcePoints, ...destinationPoints];
-    if (blockPoints.length > MAX_MATRIX_COORDINATES) {
-        throw new Error(`Road matrix block exceeded ${MAX_MATRIX_COORDINATES} coordinates.`);
+// One table can return BOTH directions between two coordinate ranges. Those
+// directions remain independent cells; nothing is mirrored or approximated.
+export function packedRoadMatrixTiles(count) {
+    if (count <= MAX_MATRIX_COORDINATES) return [Array.from({ length: count }, (_, i) => i)];
+    const ranges = chunkRanges(count, MATRIX_CHUNK_SIZE);
+    const tiles = [];
+    for (let a = 0; a < ranges.length; a++) for (let b = a + 1; b < ranges.length; b++) {
+        tiles.push([ranges[a], ranges[b]].flatMap(range =>
+            Array.from({ length: range.end - range.start }, (_, i) => range.start + i)));
     }
+    return tiles;
+}
 
-    // A same-range diagonal block can be a SINGLE coordinate whenever the point
-    // count leaves a remainder of one (93 points chunk as 46/46/1). OSRM rejects a
-    // one-coordinate table with 400 InvalidOptions, which failed the whole matrix
-    // and — because a missing matrix is a hard failure by design — killed the
-    // route. The only cell such a block carries is the point's distance to itself,
-    // which is zero, so it is answered locally instead of asked for.
-    if (blockPoints.length < 2) {
-        return {
-            sourceRange,
-            destinationRange,
-            distances: [[0]],
-            durations: [[0]]
-        };
-    }
-
-    // Candidates competing over the same doors ask for many of the same pairs. A
-    // block whose every pair was already bought is answered from what we paid for,
-    // with the engine's own meters and seconds — never an approximation, so a
-    // cache-served block prices identically to a fetched one.
-    const lookupDestinations = sameRange ? sourcePoints : destinationPoints;
-    const cached = pairCache?.readBlock(profile, sourcePoints, lookupDestinations);
-    if (cached) {
-        return { sourceRange, destinationRange, ...cached, servedFromCache: true };
-    }
-
-    const sources = sourcePoints.map((_, index) => index);
-    const destinations = sameRange
-        ? sources
-        : destinationPoints.map((_, index) => index + sourcePoints.length);
+async function fetchMatrixTile(points, indexes, { baseUrl, profile, timeoutMs, pairCache, fetchJson }) {
+    const tilePoints = indexes.map(i => points[i]);
+    if (tilePoints.length > MAX_MATRIX_COORDINATES) throw new Error('Road matrix tile exceeded its coordinate limit.');
+    const cached = pairCache?.readBlock(profile, tilePoints, tilePoints);
+    if (cached) return { indexes, ...cached, servedFromCache: true };
+    const positions = tilePoints.map((_, i) => i).join(';');
     const url = `${String(baseUrl).replace(/\/+$/, '')}/table/v1/${profile}/`
-        + `${blockPoints.map(coordinateParam).join(';')}`
-        + `?annotations=distance,duration&sources=${sources.join(';')}&destinations=${destinations.join(';')}`;
-
-    const payload = await fetchOsrmJson(url, { timeoutMs });
-
+        + `${tilePoints.map(coordinateParam).join(';')}`
+        + `?annotations=distance,duration&sources=${positions}&destinations=${positions}`;
+    const payload = await fetchJson(url, { timeoutMs });
     const distances = Array.isArray(payload.distances) ? payload.distances : null;
     const durations = Array.isArray(payload.durations) ? payload.durations : null;
-    if (!distances && !durations) {
-        throw new Error('OSRM table response contained no distances or durations.');
+    if (!distances && !durations) throw new Error('OSRM table response contained no distances or durations.');
+    for (const table of [distances, durations].filter(Boolean)) {
+        if (table.length !== indexes.length || table.some(row => !Array.isArray(row) || row.length !== indexes.length)) {
+            throw new Error('OSRM matrix block did not match its requested source/destination shape.');
+        }
     }
-    pairCache?.writeBlock(profile, sourcePoints, lookupDestinations, distances, durations);
-    return { sourceRange, destinationRange, distances, durations };
+    pairCache?.writeBlock(profile, tilePoints, tilePoints, distances, durations);
+    return { indexes, distances, durations };
 }
 
 /**
  * Fetch a COMPLETE pairwise road matrix from OSRM, at any supported route size.
  *
- * Routes wider than one OSRM request are assembled from source-chunk x
- * destination-chunk blocks into one N x N matrix. Returns { distances,
+ * Routes wider than one OSRM request are assembled from packed directed
+ * tables into one N x N matrix. Returns { distances,
  * durations, objective, snapped, source, blocks, pointCount } — distances in
  * miles, durations in minutes. Throws when the matrix cannot be completed, so a
  * caller either optimizes on a whole matrix or takes the explicit fallback path.
@@ -140,7 +116,8 @@ export async function fetchRoadMatrix(points, options = {}) {
         timeoutMs = 20000,
         // Optional generation-scoped store of pairs already bought from the engine
         // (see roadCostCache.js). Absent, every block is fetched exactly as before.
-        pairCache = null
+        pairCache = null,
+        fetchJson = fetchOsrmJson
     } = options;
 
     if (!Array.isArray(points) || points.length < 1) {
@@ -168,49 +145,32 @@ export async function fetchRoadMatrix(points, options = {}) {
     }
 
     const count = points.length;
-    const ranges = chunkRanges(count, MATRIX_CHUNK_SIZE);
-    const blockRequests = ranges.flatMap((sourceRange) => (
-        ranges.map((destinationRange) => ({ sourceRange, destinationRange }))
-    ));
-
+    const tiles = packedRoadMatrixTiles(count);
     const distances = Array.from({ length: count }, () => new Array(count).fill(null));
     const durations = Array.from({ length: count }, () => new Array(count).fill(null));
-    let sawDistances = false;
-    let sawDurations = false;
-
-    // Every block is handed over at once; the dispatcher, not this function,
-    // decides how many reach OSRM simultaneously.
-    const blocks = await Promise.all(blockRequests.map(({ sourceRange, destinationRange }) => (
-        fetchMatrixBlock(points, sourceRange, destinationRange, { baseUrl, profile, timeoutMs, pairCache })
-    )));
-    blocks.forEach((block) => {
-        const rows = block.sourceRange.end - block.sourceRange.start;
-        const columns = block.destinationRange.end - block.destinationRange.start;
-        const table = block.distances || block.durations;
-        if (table.length !== rows || table.some((row) => row.length !== columns)) {
-            throw new Error('OSRM matrix block did not match its requested source/destination shape.');
-        }
+    const seen = new Uint8Array(count * count);
+    let sawDistances = false, sawDurations = false;
+    // The existing dispatcher cap and spacing still govern every physical call.
+    const blocks = await Promise.all(tiles.map(indexes => fetchMatrixTile(points, indexes,
+        { baseUrl, profile, timeoutMs, pairCache, fetchJson })));
+    for (const block of blocks) {
         if (block.distances) sawDistances = true;
         if (block.durations) sawDurations = true;
-        for (let row = 0; row < rows; row++) {
-            for (let column = 0; column < columns; column++) {
-                const target = block.sourceRange.start + row;
-                const destination = block.destinationRange.start + column;
-                if (block.distances) {
-                    const meters = block.distances[row][column];
-                    distances[target][destination] = Number.isFinite(meters)
-                        ? meters * METERS_TO_MILES
-                        : null;
-                }
-                if (block.durations) {
-                    const seconds = block.durations[row][column];
-                    durations[target][destination] = Number.isFinite(seconds)
-                        ? seconds / 60
-                        : null;
-                }
+        block.indexes.forEach((target, row) => block.indexes.forEach((destination, column) => {
+            const meters = block.distances?.[row]?.[column];
+            const seconds = block.durations?.[row]?.[column];
+            const miles = Number.isFinite(meters) ? meters * METERS_TO_MILES : null;
+            const minutes = Number.isFinite(seconds) ? seconds / 60 : null;
+            const index = target * count + destination;
+            if (seen[index] && ((block.distances && distances[target][destination] !== miles)
+                || (block.durations && durations[target][destination] !== minutes))) {
+                throw new Error('Road matrix has inconsistent overlapping costs.');
             }
-        }
-    });
+            if (block.distances) distances[target][destination] = miles;
+            if (block.durations) durations[target][destination] = minutes;
+            seen[index] = 1;
+        }));
+    }
 
     // Completeness gate. A hole anywhere means some candidate leg would be
     // unpriceable, which is exactly how an unmeasured order used to slip through.
@@ -232,7 +192,7 @@ export async function fetchRoadMatrix(points, options = {}) {
         objective: sawDistances ? 'distance_miles' : 'duration_minutes',
         snapped: count,
         source: `osrm:${profile}`,
-        blocks: blockRequests.length,
+        blocks: tiles.length,
         // Blocks answered from pairs already bought, so the saving is reported
         // rather than inferred from a request count that no longer explains itself.
         cachedBlocks: blocks.filter((block) => block.servedFromCache).length,
