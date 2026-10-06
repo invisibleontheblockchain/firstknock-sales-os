@@ -453,6 +453,10 @@ export default async function (req: Request): Promise<Response> {
                 fingerprint: routePropertyOrderFingerprint(neighborhood.properties) };
         }
         const current = candidates.find((candidate) => candidate.is_current);
+        if (neighborhood.diagnostics.applied && neighborhood.baseline && current) {
+            current.distance = neighborhood.baseline.distanceMiles;
+            current.duration = neighborhood.baseline.driveSeconds / 60;
+        }
         const bestRoadAware = candidates
             .filter((candidate) => candidate.type === 'road_aware')
             .sort((first, second) => (first.distance ?? Infinity) - (second.distance ?? Infinity))[0] || null;

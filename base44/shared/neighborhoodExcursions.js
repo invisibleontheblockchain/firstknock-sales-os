@@ -17,7 +17,8 @@ export function neighborhoodStreetKey(stop) {
 function unitsFor(order, options) {
     const units = [];
     order.forEach((stop, index) => {
-        const street = options.streetKeyFor?.(stop) || neighborhoodStreetKey(stop);
+        const suppliedStreet = options.streetKeyFor?.(stop);
+        const street = suppliedStreet?.replaceAll('|', '').trim() ? suppliedStreet : neighborhoodStreetKey(stop);
         const unitKey = street.replaceAll('|', '') ? street : `STOP:${key(stop) || index}`;
         const pocket = options.neighborhoodKeyFor?.(stop)
             || label(stop.subdivision_name || stop.neighborhood_name || stop.neighborhoodName)
