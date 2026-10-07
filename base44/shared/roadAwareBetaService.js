@@ -33,7 +33,7 @@ export function validateBetaComparison(c, fingerprint, dataVersion) {
     for (const id of c.unresolvedIds || []) if (!c.beforeOrder.includes(id) || c.beforeOrder.indexOf(id) !== c.afterOrder.indexOf(id)) throw new RoadBetaError(409, 'Unresolved access moved.');
 }
 
-export async function fetchRoadBetaProxy({ provider, service, coordinates, query, dataVersion, token, fetchImpl = fetch }) {
+export async function fetchRoadBetaProxy({ provider, service, coordinates, query, dataVersion, fingerprint, token, fetchImpl = fetch }) {
     assertRoadBetaProxyRequest(service, coordinates, query);
     const url = new URL(`${provider.baseUrl}/${service}/v1/car/${coordinates}`);
     for (const [key, value] of Object.entries(query)) url.searchParams.set(key, value);
@@ -52,7 +52,7 @@ export async function fetchRoadBetaProxy({ provider, service, coordinates, query
         const buffer = new Uint8Array(bytes); let offset = 0;
         for (const chunk of chunks) { buffer.set(chunk, offset); offset += chunk.byteLength; }
         const data = JSON.parse(new TextDecoder().decode(buffer));
-        if (data.data_version && data.data_version !== dataVersion) throw new RoadBetaError(409, 'Routing graph identity changed.');
+        if (data.data_version !== dataVersion || data.build_fingerprint !== fingerprint) throw new RoadBetaError(409, 'Routing graph identity changed.');
         return Response.json(data);
     } finally { clearTimeout(timer); }
 }
@@ -97,7 +97,7 @@ export function createRoadAwareBetaHandler({ createClient, readSecret, fetchImpl
             if (body.action === 'proxy') {
                 if (!enabled || !available) throw new RoadBetaError(409, 'Regional routing beta is unavailable.');
                 return await fetchRoadBetaProxy({ provider, service: body.service, coordinates: body.coordinates,
-                    query: body.query, dataVersion, token: readSecret('ROAD_AWARE_OSRM_GATEWAY_TOKEN'), fetchImpl });
+                    query: body.query, dataVersion, fingerprint, token: readSecret('ROAD_AWARE_OSRM_GATEWAY_TOKEN'), fetchImpl });
             }
             if (body.action === 'history') {
                 const rows = toEntityArray(await service.entities.RoadAwareRoutingComparison.filter({ manager_id: workspace }, '-created_date', 100));
