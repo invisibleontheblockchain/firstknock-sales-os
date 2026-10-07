@@ -11,6 +11,8 @@ import { verifiedBetaSegments } from '@/lib/roadAwareRouteGeometry';
 import { resolvePinSize, zoomAdjustedPinSize } from './densePinSize';
 import { buildPinStyle, pinKey, pinPropertyStyleKey, pinStyleContextKey } from './pinStyle';
 import { buildSavedRouteGroup, savedRouteStyleKey } from './savedRouteLayer';
+import { createLabelCanvas } from './labelCanvas';
+import { reconcileMapPins } from './reconcileMapPins';
 import { outcomeColor } from '@/components/logic/outcomeStatus';
 import {
     filterRoutesByStatus,
@@ -79,229 +81,116 @@ const getRouteLinePoints = (route, properties) => {
     ].filter(Boolean);
 };
 
-function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, pinSize, lineDashArray, setSelectedProperty, decisionFilterActive }) {
+export function ActiveRouteLayer({ activeRoute, mapSettings, pinSize, lineDashArray, setSelectedProperty, decisionFilterActive }) {
     const map = useMap();
-    const layerRef = useRef(null);
-    // Only the styling *band* is tracked, never the raw zoom level: every stop
-    // and label is rebuilt when this changes, so reacting to each zoom step is
-    // what made zooming stutter. All thresholds below are band boundaries.
-    const [zoom, setZoom] = React.useState(() => zoomStyleBand(map ? map.getZoom() : 0));
-    // Padded box already drawn. Leaflet re-projects existing layers for free, so
-    // the route only rebuilds once the view leaves that box — same approach as
-    // the property pin and saved route layers.
+    const groupRef = useRef(null);
+    const pinsRef = useRef(new Map());
+    const lineRef = useRef(null);
+    const selectedRef = useRef(setSelectedProperty);
+    selectedRef.current = setSelectedProperty;
+    const labelCanvas = useMemo(() => createLabelCanvas(L), [map]);
+    const [zoom, setZoom] = React.useState(() => zoomStyleBand(map.getZoom()));
     const [viewBox, setViewBox] = React.useState(null);
     const renderedBoxRef = useRef(null);
-
-    React.useEffect(() => {
-        if (!map) return;
-        let timeoutId = null;
-
-        const update = () => {
-            const b = map.getBounds();
-            const latPad = (b.getNorth() - b.getSouth()) * 0.25;
-            const lngPad = (b.getEast() - b.getWest()) * 0.25;
-            const box = {
-                north: b.getNorth() + latPad, south: b.getSouth() - latPad,
-                east: b.getEast() + lngPad, west: b.getWest() - lngPad
-            };
-            renderedBoxRef.current = box;
-            setViewBox(box);
-            setZoom(zoomStyleBand(map.getZoom()));
-        };
-
-        const insideRenderedBox = () => {
-            const box = renderedBoxRef.current;
-            if (!box) return false;
-            const b = map.getBounds();
-            return b.getNorth() <= box.north && b.getSouth() >= box.south
-                && b.getEast() <= box.east && b.getWest() >= box.west;
-        };
-
-        const debouncedUpdate = () => {
-            if (timeoutId) clearTimeout(timeoutId);
-            timeoutId = setTimeout(() => {
-                // A zoom change alters pin/label styling, so it always rebuilds;
-                // panning inside the drawn box costs nothing.
-                if (zoomStyleBand(map.getZoom()) === zoom && insideRenderedBox()) return;
-                update();
-            }, 120);
-        };
-
-        update();
-        map.on('moveend', debouncedUpdate);
-        map.on('zoomend', debouncedUpdate);
-        return () => {
-            if (timeoutId) clearTimeout(timeoutId);
-            map.off('moveend', debouncedUpdate);
-            map.off('zoomend', debouncedUpdate);
-        };
-    }, [map, zoom]);
+    const routePoints = useMemo(() => (activeRoute?.properties || []).filter(isRenderableMapPoint), [activeRoute?.properties]);
+    const routeLinePoints = useMemo(() => getRouteLinePoints(activeRoute, routePoints), [activeRoute, routePoints]);
+    const betaSegments = useMemo(() => verifiedBetaSegments(activeRoute?.metadata, activeRoute?.property_hashes || routePoints, routePoints), [activeRoute, routePoints]);
 
     useEffect(() => {
-        if (!map || !viewBox || !activeRoute?.properties?.length) return;
+        let timeoutId;
+        const update = () => {
+            const b = map.getBounds();
+            const old = renderedBoxRef.current;
+            if (old && b.getNorth() <= old.north && b.getSouth() >= old.south
+                && b.getEast() <= old.east && b.getWest() >= old.west) return;
+            const padded = b.pad(0.25);
+            const box = { north: padded.getNorth(), south: padded.getSouth(), east: padded.getEast(), west: padded.getWest() };
+            renderedBoxRef.current = box;
+            setViewBox(box);
+        };
+        const settle = () => {
+            clearTimeout(timeoutId);
+            timeoutId = setTimeout(() => { setZoom(zoomStyleBand(map.getZoom())); update(); }, 120);
+        };
+        update();
+        map.on('moveend zoomend', settle);
+        return () => { clearTimeout(timeoutId); map.off('moveend zoomend', settle); };
+    }, [map]);
 
-        const routePoints = activeRoute.properties.filter(isRenderableMapPoint);
-        const routeLinePoints = getRouteLinePoints(activeRoute, routePoints);
-        const betaSegments = verifiedBetaSegments(activeRoute.metadata, activeRoute.property_hashes || routePoints, routePoints);
-        // Home's MapController owns the camera after the complete manifest loads.
-
-        const routeColor = getRouteColor(activeRoute, activeRoute.route_number || 1);
-
-        // Clean up previous layer
-        if (layerRef.current) {
-            map.removeLayer(layerRef.current);
-            layerRef.current = null;
-        }
-
-        const group = L.layerGroup();
-        const props = routePoints;
-
-        // Stop numbers turning a route into a black smear. Labels overlap into
-        // solid text at normal zoom, so they stay hidden until the doors are far
-        // enough apart to read, and they render small even then. Pins and the
-        // route line always show; tapping a pin still gives its exact position.
-        // Numbers appear as soon as the doors are far enough apart to read them.
-        // A route that fits the screen at zoom 14 was previously numberless until
-        // you zoomed two more steps, which read as "the numbers don't work".
-        // One zoom step earlier than before at every size — reps were having to
-        // zoom past the useful working view before stop numbers appeared.
-        // A full Precision route (up to 1,000 doors) now numbers from the widest
-        // band: at zoom 14 the numbers were only findable after zooming past the
-        // view where the route is actually being read. The label budget and
-        // viewport culling below, not the zoom gate, keep the wide view readable.
-        const showNumbers = props.length <= 1000 ? zoom >= 12 : zoom >= 14;
+    useEffect(() => {
+        if (!viewBox) return;
+        if (!groupRef.current) groupRef.current = L.layerGroup().addTo(map);
+        const group = groupRef.current;
+        const routeColor = getRouteColor(activeRoute, activeRoute?.route_number || 1);
+        const showNumbers = routePoints.length <= 1000 ? zoom >= 12 : zoom >= 14;
         const numberFontSize = zoom >= 17 ? 11 : zoom >= 15 ? 10 : 9;
-        // Zoomed out the doors sit on top of each other, so the route reads as a
-        // bright blob. Fade the dots and the line back until the view is close
-        // enough for individual stops to mean something.
-
-        // 1. Route line — suppressed while a decision filter is active so the
-        // remaining outcome pins are readable without route noise.
-        if (!decisionFilterActive && (routeLinePoints.length > 1 || betaSegments?.length)) {
-            const line = L.polyline(
-                betaSegments ? betaSegments.map(points => points.map(p => [Number(p.lat), Number(p.lng)]))
-                    : routeLinePoints.map(p => [Number(p.lat), Number(p.lng)]),
-                {
-                    // Deliberately restrained: the selected route used to draw at
-                    // +2 weight and a 0.6 opacity floor, which washed out the
-                    // satellite imagery and the outcome pins underneath it.
-                    // Thin and faint on purpose, but always visible: reps need to
-                    // see the walking order between houses, so the line keeps a
-                    // minimum opacity even when the user's line settings are low.
-                    color: routeColor,
-                    weight: 2.5,
-                    opacity: Math.max(0.75, mapSettings.lineOpacity || 0),
-                    dashArray: lineDashArray || null,
-                }
-            );
-            group.addLayer(line);
-        }
-
-        // 2. Property pins with number labels.
-        // Off-screen stops are skipped entirely: on a large route, drawing every
-        // door plus a DOM label for each is what makes panning and zooming crawl.
-        // The route line above still shows the full shape of the territory.
-        const inView = (p) => (
-            Number(p.lat) >= viewBox.south && Number(p.lat) <= viewBox.north
-            && Number(p.lng) >= viewBox.west && Number(p.lng) <= viewBox.east
-        );
-        // Number labels are DOM markers, far heavier than canvas dots, so they
-        // get their own budget on top of the zoom gate. A full Precision route is
-        // 1,000 doors and every stop number has to be there — a 150 label budget
-        // silently numbered only part of the route, which read as "half the
-        // numbers are missing". Viewport culling above keeps the drawn count to
-        // what is actually on screen.
-        const MAX_NUMBER_LABELS = 1000;
+        const wideView = zoom < 14;
+        const dotSize = wideView ? Math.max(1.2, zoomAdjustedPinSize(pinSize, zoom) * 0.5)
+            : Math.max(2.5, zoomAdjustedPinSize(pinSize, zoom) * 0.8);
         let labelsDrawn = 0;
-
-        props.forEach((p, idx) => {
-            const isFirst = idx === 0;
-            const num = idx + 1;
+        const entries = [];
+        routePoints.forEach((p, idx) => {
             const point = [Number(p.lat), Number(p.lng)];
-            if (!inView(p)) return;
-
-            // No separate transparent hitbox layer: leafletPatches gives every
-            // canvas pin ~12px of tap slop, so a second layer per stop only
-            // doubled the layers Leaflet hit-tests on every mouse move.
+            if (point[0] < viewBox.south || point[0] > viewBox.north || point[1] < viewBox.west || point[1] > viewBox.east) return;
             const sold = isConfirmedSale(p);
             const status = p.effective_status || p.parsed_status || p.original_status || 'ELIGIBLE';
             const hasDecision = status !== 'ELIGIBLE';
-            const completedColor = activeRoute.status === 'COMPLETED'
-                ? getCompletedPinColor(status, routeColor)
-                : routeColor;
-            const baseColor = hasDecision
-                ? outcomeColor(status)
-                : isFirst && activeRoute.status !== 'COMPLETED' ? '#FFFFFF' : completedColor;
-
-            // Circle pin (canvas-rendered, fast)
-            // Emphasis is reserved for outcomes that matter (sales, qualified) —
-            // ordinary stops stay small with a thin ring so a long route reads as
-            // a path rather than a wall of bright dots.
-            const emphasized = sold || (activeRoute.status === 'COMPLETED' && p.effective_status === 'QUALIFIED');
-            // Same dense dot size as the Routes-mode pins, so a 10k-door route
-            // reads as pin detail instead of a solid yellow blob when zoomed out.
-            // Floor of 3px: a 2px dense dot with no zoom bump disappeared at wide
-            // views, which is what made an active route look like it wasn't there.
-            // Soloed route stops render smaller than territory pins so a selected
-            // route reads as a path instead of a chain of fat dots. Wide views of
-            // a big route pack thousands of doors into a few hundred pixels, so
-            // the dot (and its white ring) shrink further there — that overlap is
-            // what turned a soloed route into one solid yellow blob.
-            const wideView = zoom < 14;
-            const activeDotSize = wideView
-                ? Math.max(1.2, zoomAdjustedPinSize(pinSize, zoom) * 0.5)
-                : Math.max(2.5, zoomAdjustedPinSize(pinSize, zoom) * 0.8);
-            const circle = L.circleMarker(point, {
-                radius: emphasized ? activeDotSize + 1.5 : activeDotSize,
-                fillColor: baseColor,
-                // Zoomed out the stops sit on top of each other, so plain doors
-                // dim back and only sales / first stop stay at full strength.
-                // Route stops keep the same solid look at every zoom — dimming
-                // them made a zoomed-out route read as missing entirely.
-                fillOpacity: 1,
-                color: '#fff',
-                weight: emphasized ? 1.5 : (wideView ? 0.4 : 1),
+            const completed = activeRoute?.status === 'COMPLETED';
+            const color = hasDecision ? outcomeColor(status) : idx === 0 && !completed ? '#FFFFFF'
+                : completed ? getCompletedPinColor(status, routeColor) : routeColor;
+            const emphasized = sold || (completed && p.effective_status === 'QUALIFIED');
+            const showLabel = (showNumbers || sold) && labelsDrawn < 1000;
+            if (showLabel) labelsDrawn++;
+            entries.push({
+                key: `${pinKey(p)}:${idx}`, point, payload: { ...p, route_position: idx + 1 },
+                style: {
+                    radius: emphasized ? dotSize + 1.5 : dotSize, fillColor: color, fillOpacity: 1,
+                    color: '#fff', weight: emphasized ? 1.5 : wideView ? 0.4 : 1,
+                    stopLabel: showLabel ? { text: idx + 1, color: hasDecision ? outcomeColor(status) : 'rgba(255,255,255,0.9)',
+                        size: sold ? Math.max(11, numberFontSize) : numberFontSize, weight: sold ? 800 : 600, offsetY: -5 } : null,
+                },
             });
-            circle.on('click', (e) => {
-                L.DomEvent.stopPropagation(e);
-                setSelectedProperty({ ...p, route_position: num });
-            });
-            group.addLayer(circle);
-
-            // Number label (lightweight DivIcon marker).
-            // A sale always shows its stop number, at any zoom — there are few of
-            // them, they never crowd the map, and knowing which stop sold is the
-            // whole point of looking at a worked route.
-            if (!showNumbers && !sold) return;
-            if (labelsDrawn >= MAX_NUMBER_LABELS) return;
-            labelsDrawn++;
-            const labelColor = hasDecision ? outcomeColor(status) : 'rgba(255,255,255,0.9)';
-            const labelSize = sold ? Math.max(11, numberFontSize) : numberFontSize;
-            const label = L.marker(point, {
-                icon: L.divIcon({
-                    className: '',
-                    html: `<div style="color:${labelColor};font-weight:${sold ? 800 : 600};font-size:${labelSize}px;text-shadow:0 1px 3px #000;pointer-events:none;transform:translate(-50%,-100%);white-space:nowrap">${num}</div>`,
-                    iconSize: [0, 0],
-                    iconAnchor: [0, 5],
-                }),
-                interactive: false,
-                keyboard: false,
-            });
-            group.addLayer(label);
         });
+        reconcileMapPins(pinsRef.current, entries, {
+            create: ({ point, style }) => {
+                const circle = labelCanvas.circleMarker(point, style);
+                circle.on('click', event => { L.DomEvent.stopPropagation(event); selectedRef.current(circle.__payload); });
+                group.addLayer(circle);
+                return circle;
+            },
+            remove: marker => group.removeLayer(marker),
+        });
+    }, [map, viewBox, activeRoute, routePoints, zoom, pinSize, labelCanvas]);
 
-        group.addTo(map);
-        layerRef.current = group;
+    // Viewport movement never replaces or reprojects the full road geometry.
+    useEffect(() => {
+        if (!groupRef.current) groupRef.current = L.layerGroup().addTo(map);
+        const group = groupRef.current;
+        const visible = !decisionFilterActive && (routeLinePoints.length > 1 || betaSegments?.length);
+        if (!visible) {
+            if (lineRef.current) group.removeLayer(lineRef.current);
+            lineRef.current = null;
+            return;
+        }
+        const points = betaSegments ? betaSegments.map(segment => segment.map(p => [Number(p.lat), Number(p.lng)]))
+            : routeLinePoints.map(p => [Number(p.lat), Number(p.lng)]);
+        const style = { color: getRouteColor(activeRoute, activeRoute?.route_number || 1), weight: 2.5,
+            opacity: Math.max(0.75, mapSettings.lineOpacity || 0), dashArray: lineDashArray || null, interactive: false };
+        if (!lineRef.current) {
+            lineRef.current = L.polyline(points, style);
+            group.addLayer(lineRef.current);
+        } else lineRef.current.setLatLngs(points).setStyle(style);
+        lineRef.current.bringToBack();
+    }, [map, activeRoute, routeLinePoints, betaSegments, mapSettings.lineOpacity, lineDashArray, decisionFilterActive]);
 
-        return () => {
-            if (layerRef.current) {
-                map.removeLayer(layerRef.current);
-                layerRef.current = null;
-            }
-        };
-    }, [map, viewBox, activeRoute, zoom, pinSize, mapSettings.lineWidth, mapSettings.lineOpacity, lineDashArray, setSelectedProperty, decisionFilterActive]);
-
-    return null; // Imperative layer — no React DOM output
+    useEffect(() => () => {
+        if (groupRef.current) map.removeLayer(groupRef.current);
+        if (map.hasLayer(labelCanvas.renderer)) map.removeLayer(labelCanvas.renderer);
+        groupRef.current = null;
+        lineRef.current = null;
+        pinsRef.current.clear();
+    }, [map, labelCanvas]);
+    return null;
 }
 
 /**
@@ -572,6 +461,7 @@ function SavedRoutesLayer({
     // attaches and detaches those groups instead of rebuilding their markers.
     const containerRef = useRef(null);
     const cacheRef = useRef(new Map());
+    const labelCanvas = useMemo(() => createLabelCanvas(L), [map]);
     // Zoom band only — rebuilding these layers on every zoom step made zooming stutter.
     const routesZoomEnabled = zoomLevel >= 8;
 
@@ -695,6 +585,7 @@ function SavedRoutesLayer({
             if (!entry) {
                 const centerProp = route.properties[Math.floor(route.properties.length / 2)];
                 const built = buildSavedRouteGroup({
+                    circleMarker: labelCanvas.circleMarker,
                     doors: route.properties.filter(isRenderableMapPoint),
                     linePoints: getRouteLinePoints(route, route.properties),
                     lineSegments: verifiedBetaSegments(route.metadata, route.property_hashes || route.properties, route.properties),
@@ -731,7 +622,7 @@ function SavedRoutesLayer({
         });
     }, [map, viewBox, mode, activeRoute, routesZoomEnabled, hydratedSavedRoutes, analyzeZipFilter, quickFilter,
         routeStatusView, showRouteDetails, showRouteLines, styleKey, mapSettings, lineDashArray, setActiveRoute,
-        allSavedRoutes, decisionFilterActive]);
+        allSavedRoutes, decisionFilterActive, labelCanvas]);
 
     // Zoom band change: resize the cached pins in place.
     useEffect(() => {
@@ -745,9 +636,10 @@ function SavedRoutesLayer({
     // change is what would make the cache pointless.
     useEffect(() => () => {
         if (containerRef.current && map) map.removeLayer(containerRef.current);
+        if (map.hasLayer(labelCanvas.renderer)) map.removeLayer(labelCanvas.renderer);
         containerRef.current = null;
         cacheRef.current = new Map();
-    }, [map]);
+    }, [map, labelCanvas]);
 
     return null; // Imperative layer — no React DOM output
 }

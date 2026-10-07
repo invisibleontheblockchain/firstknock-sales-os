@@ -30,13 +30,9 @@ const BASEMAP_BACKDROP = {
 
 const LABEL_URL = "https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png?key=cb1_47jm_1_e43254c2ef5a3cbfc430e52f";
 
-// Tuning that removes the zoom stutter and the blank/blurry frames:
-// - keepBuffer pre-loads a ring of off-screen tiles so panning and zooming
-//   reveal already-decoded imagery instead of empty squares.
-// - updateWhenZooming stops Leaflet requesting a whole new tile grid on every
-//   intermediate frame of the zoom animation; the new level loads once it lands.
-// - maxNativeZoom lets deep zoom scale the provider's sharpest tile rather than
-//   requesting a level that does not exist and rendering nothing.
+// Retain visited tiles for reverse pans; load the new grid during zoom while
+// the previous imagery stays visible. Deep zoom scales the provider's highest
+// native level. These settings apply to desktop and installed PWAs.
 const TILE_PERF = {
     keepBuffer: 3,
     // Zooming out used to leave the whole screen black until the animation
@@ -69,7 +65,7 @@ export default function BaseMapTiles({ mapTheme, routeMode = 'precision' }) {
             <CanvasBaseMapTiles theme={mapTheme} />
             {showLabels && (
                 <TileLayer
-                    key={`canvas-basemap-labels-${mapTheme}`}
+                    key="canvas-basemap-labels"
                     url={LABEL_URL}
                     attribution={CARTO_ATTRIBUTION}
                     zIndex={100}
@@ -84,14 +80,14 @@ export default function BaseMapTiles({ mapTheme, routeMode = 'precision' }) {
             <MapAttributionControl />
             <MapBackdrop mapTheme={mapTheme} />
             <TileLayer
-                key={`basemap-${precisionTheme}`}
+                key={BASEMAP_URLS[precisionTheme] || BASEMAP_URLS.dark}
                 url={BASEMAP_URLS[precisionTheme] || BASEMAP_URLS.dark}
                 attribution={['satellite', 'hybrid', 'terrain'].includes(precisionTheme) ? ESRI_IMAGERY_ATTRIBUTION : CARTO_ATTRIBUTION}
                 {...TILE_PERF}
             />
             {showLabels && (
                 <TileLayer
-                    key={`basemap-labels-${mapTheme}`}
+                    key="basemap-labels"
                     url={LABEL_URL}
                     attribution={CARTO_ATTRIBUTION}
                     zIndex={100}

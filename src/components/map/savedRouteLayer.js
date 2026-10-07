@@ -53,7 +53,7 @@ function doorLabelText(property, style) {
  * @returns {{ group: L.LayerGroup, doorPins: L.CircleMarker[] }}
  * doorPins are returned so the caller can resize them on a zoom band change.
  */
-export function buildSavedRouteGroup({ doors, linePoints, lineSegments, centerPoint, number, color, style, dotSize, onSelect }) {
+export function buildSavedRouteGroup({ doors, linePoints, lineSegments, centerPoint, number, color, style, dotSize, onSelect, circleMarker = L.circleMarker }) {
     const group = L.layerGroup();
     const doorPins = [];
     const selectRoute = (event) => {
@@ -116,28 +116,18 @@ export function buildSavedRouteGroup({ doors, linePoints, lineSegments, centerPo
             const decisionColor = hasDecision ? outcomeColor(decisionStatus(property)) : null;
             // No separate transparent hitbox: the global 12px canvas tap slop
             // covers tapping without doubling the layer count.
-            const circle = L.circleMarker(point, {
+            const circle = circleMarker(point, {
                 radius: property.effective_status === 'SOLD' ? dotSize + 2 : dotSize,
                 fillColor: decisionColor || color,
                 fillOpacity: hasDecision ? 1 : (style.pinOpacity || 1),
                 color: hasDecision ? (decisionColor === '#FFFFFF' ? '#111827' : '#FFFFFF') : (style.fillStyle === 'outline' ? color : (style.pinBorderColor || '#000')),
                 weight: hasDecision ? 2 : (style.fillStyle === 'outline' ? 2 : (style.pinBorderWidth || 1)),
+                stopLabel: style.showLabels ? { text: doorLabelText(property, style), size: 8, weight: 700, centered: true } : null,
             });
             circle.__sold = property.effective_status === 'SOLD';
             circle.on('click', selectRoute);
             group.addLayer(circle);
             doorPins.push(circle);
-
-            if (style.showLabels) {
-                group.addLayer(L.marker(point, {
-                    icon: L.divIcon({
-                        className: '',
-                        html: `<div style="color:#fff;font-weight:bold;font-size:8px;text-shadow:0 0 3px #000;pointer-events:none;transform:translate(-50%,-50%);white-space:nowrap">${doorLabelText(property, style)}</div>`,
-                        iconSize: [0, 0], iconAnchor: [0, 0],
-                    }),
-                    interactive: false, keyboard: false,
-                }));
-            }
         }
     }
 

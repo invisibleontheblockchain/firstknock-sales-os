@@ -67,7 +67,7 @@ export default function CanvasBaseMapTiles({ theme = 'light', satellite = false 
   if (config.mode === 'pmtiles') return <CanvasPmtilesLayer key={`${theme}-${config.url}`} config={config} tileClass={tileClass} />;
   return (
     <TileLayer
-      key={`canvas-basemap-${theme}-${config.url}`}
+      key={`canvas-basemap-${tileClass}-${config.url}`}
       url={config.url}
       attribution={config.attribution}
       className={tileClass}

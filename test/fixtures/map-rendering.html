@@ -1,0 +1,88 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>body{margin:0;background:#0b1a26}#map{width:100vw;height:100vh}</style></head><body><div id="map"></div>
+<script type="module">
+import React from 'react';
+import { createRoot } from 'react-dom/client';
+import { MapContainer, useMap } from 'react-leaflet';
+import L from 'leaflet';
+import '/node_modules/leaflet/dist/leaflet.css';
+import { ActiveRouteLayer } from '/src/components/map/ManagerMapLayers.jsx';
+import { PropertyPinLayer } from '/src/components/rep/RepMapView.jsx';
+import { createLabelCanvas } from '/src/components/map/labelCanvas.js';
+import { buildSavedRouteGroup } from '/src/components/map/savedRouteLayer.js';
+
+const h = React.createElement;
+const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+const assert = (condition, message) => { if (!condition) throw Error(message); };
+const doors = Array.from({ length: 1000 }, (_, index) => ({ address_hash: String(index), lat: 33.45 + Math.floor(index / 32) * .00015,
+    lng: -112.07 + index % 32 * .00015, effective_status: 'ELIGIBLE', house_number: index + 1 }));
+let map, selected;
+function Capture() { map = useMap(); return null; }
+const root = createRoot(document.getElementById('map'));
+function render(kind, properties = doors) {
+    root.render(h(MapContainer, { center: [33.4522, -112.0678], zoom: 15, preferCanvas: true, style: { height: '100%', width: '100%' }, zoomAnimation: false },
+        h(Capture), kind === 'manager' ? h(ActiveRouteLayer, { activeRoute: { id: 'fixture', properties }, mapSettings: { lineOpacity: .8 }, pinSize: 3,
+            setSelectedProperty: p => selected = p }) : h(PropertyPinLayer, { properties, nearbyHashes: new Set(['1']), onSelectProperty: p => selected = p })));
+}
+window.previewMap = async kind => { render(kind); await wait(700); };
+const pins = () => Object.values(map._layers).filter(layer => layer instanceof L.CircleMarker && layer.__payload);
+window.runMapChecks = async kind => {
+    const started = performance.now();
+    render(kind);
+    await wait(700);
+    const initial = pins();
+    assert(initial.length === 1000, `${kind}: expected 1,000 stops, got ${initial.length}`);
+    assert(document.querySelectorAll('.leaflet-marker-icon').length === 0, 'door labels must not create DOM markers');
+    if (kind === 'manager') assert(initial.every(pin => pin.options.stopLabel), 'every stop must keep its number');
+    map.panBy([20, 0], { animate: false });
+    await wait(200);
+    assert(initial.every(pin => pins().includes(pin)), 'small pan must retain all markers');
+    map.setZoom(17, { animate: false });
+    await wait(300);
+    const zoomed = pins();
+    assert(zoomed.length > 0 && zoomed.every(pin => initial.includes(pin)), 'zoom must reuse visible markers');
+    map.setZoom(15, { animate: false });
+    await wait(300);
+    const first = pins().find(pin => (kind === 'manager' ? pin.__payload.address_hash : pin.__payload.property.address_hash) === '0');
+    const updated = doors.map((door, i) => i === 0 ? { ...door, effective_status: 'SOLD' } : door);
+    render(kind, updated);
+    await wait(200);
+    assert(pins().includes(first), 'outcome update must retain marker');
+    first.fire('click');
+    assert(selected.effective_status === 'SOLD', 'selection must use latest property data');
+    if (kind === 'manager') assert(selected.route_position === 1, 'stop number must survive updates');
+    else assert(first._containsPoint(first._point.add([21, 0])), 'phone/tablet must keep a 44px touch target');
+    // Real canvas redraw bounds must clear old text when its size/position changes.
+    const canvas = createLabelCanvas(L);
+    const testPin = canvas.circleMarker(map.getCenter(), { radius: 3, stopLabel: { text: '100000', size: 18, offsetY: -20 } }).addTo(map);
+    await wait(80);
+    const old = testPin._pxBounds;
+    testPin.setStyle({ stopLabel: { text: '1', size: 8 }, radius: 3 });
+    assert(canvas.renderer._redrawBounds.contains(old), 'style redraw must clear entire old label');
+    await wait(80);
+    const previous = testPin._pxBounds;
+    testPin.setLatLng([33.453, -112.068]);
+    assert(canvas.renderer._redrawBounds.contains(previous), 'move must clear old label');
+    await wait(80);
+    testPin.remove();
+    assert(canvas.renderer._redrawBounds.contains(testPin._pxBounds), 'removal must clear full label');
+    await wait(80);
+    map.removeLayer(canvas.renderer);
+    const savedCanvas = createLabelCanvas(L);
+    const saved = buildSavedRouteGroup({ doors, linePoints: doors, centerPoint: null, number: 1, color: '#FFD700', dotSize: 3,
+        circleMarker: savedCanvas.circleMarker, style: { quickFilter: 'all', showRouteDetails: true, showLabels: true, labelType: 'number' }, onSelect: () => {} });
+    saved.group.addTo(map);
+    await wait(100);
+    assert(saved.doorPins.length === 1000 && saved.doorPins.every(pin => pin.options.stopLabel), 'saved routes retain every door label');
+    assert(document.querySelectorAll('.leaflet-marker-icon').length === 0, 'saved door labels must also use canvas');
+    saved.group.remove();
+    map.removeLayer(savedCanvas.renderer);
+    render(kind, []);
+    await wait(150);
+    assert(pins().length === 0, 'empty route must remove every pin');
+    root.unmount();
+    assert(document.querySelectorAll('canvas').length === 0, 'unmount must clean up renderers');
+    return { kind, stops: initial.length, domDoorLabels: 0, elapsedMs: Math.round(performance.now() - started), checks: 'passed' };
+};
+</script></body></html>

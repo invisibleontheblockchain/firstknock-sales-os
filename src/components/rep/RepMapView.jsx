@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { MapContainer, TileLayer, CircleMarker, Circle, Polyline, Tooltip, useMap, LayerGroup } from 'react-leaflet';
+import { MapContainer, TileLayer, CircleMarker, Circle, Polyline, Tooltip, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { routePropertyOrderFingerprint } from '@/components/logic/routeRoadContext';
+import { createLabelCanvas } from '@/components/map/labelCanvas';
+import { reconcileMapPins } from '@/components/map/reconcileMapPins';
 import { DEFAULT_PIN_THEME } from '@/components/map/mapPinThemes';
 import { outcomeColor } from '@/components/logic/outcomeStatus';
 import { verifiedBetaSegments } from '@/lib/roadAwareRouteGeometry';
@@ -32,10 +34,8 @@ import { Button } from "@/components/ui/button";
 import { Navigation, X, Locate, ChevronUp, ChevronDown } from 'lucide-react';
 
 const BRAND = { gold: '#2EEB57', voidBlack: '#0A0A0F' };
-const CANVAS_RENDERER = L.canvas({ padding: 0.5 });
-// Thumb-sized hit area drawn into the shared canvas. A DOM marker per door is
-// what made zooming stutter: every pin was an element the browser had to
-// re-transform on each animation frame.
+
+// Keep a 44px thumb target using hit testing, without a second layer per door.
 const TOUCH_TARGET_RADIUS = 22;
 
 function isRoutePoint(point) {
@@ -93,15 +93,15 @@ function FlyToProperty({ focusProperty }) {
     return null;
 }
 
-const GpsLayer = React.memo(function GpsLayer({ position, accuracy }) {
+const GpsLayer = React.memo(function GpsLayer({ position, accuracy, renderer }) {
     if (!position) return null;
     return (
         <>
             <Circle center={[position.lat, position.lng]} radius={accuracy}
-                renderer={CANVAS_RENDERER}
-                pathOptions={{ fillColor: BRAND.gold, fillOpacity: 0.08, color: BRAND.gold, weight: 1, dashArray: '4,4' }} />
+                renderer={renderer}
+                pathOptions={{ interactive: false, fillColor: BRAND.gold, fillOpacity: 0.08, color: BRAND.gold, weight: 1, dashArray: '4,4' }} />
             <CircleMarker center={[position.lat, position.lng]} radius={10}
-                renderer={CANVAS_RENDERER}
+                renderer={renderer}
                 pathOptions={{ fillColor: BRAND.gold, fillOpacity: 1, color: '#000', weight: 3 }}>
                 <Tooltip permanent direction="top" className="route-number-tooltip">
                     <span style={{ color: BRAND.gold, fontWeight: '900', fontSize: '10px', textShadow: '0 0 6px #000' }}>YOU</span>
@@ -111,59 +111,71 @@ const GpsLayer = React.memo(function GpsLayer({ position, accuracy }) {
     );
 });
 
-function PropertyPinLayer({ properties, nearbyHashes, onSelectProperty }) {
-    // Same rule as the manager map: zoomed out, route doors sit on top of each
-    // other, so the dot and its white ring shrink instead of merging into one
-    // solid blob. Only the band is tracked so pinching doesn't rebuild pins.
+export function PropertyPinLayer({ properties, nearbyHashes, onSelectProperty }) {
     const map = useMap();
-    const [wideView, setWideView] = useState(() => (map ? map.getZoom() < 16 : false));
+    const labelCanvas = useMemo(() => createLabelCanvas(L), [map]);
+    const groupRef = useRef(null);
+    const pinsRef = useRef(new Map());
+    const selectRef = useRef(onSelectProperty);
+    selectRef.current = onSelectProperty;
+    const [wideView, setWideView] = useState(() => map.getZoom() < 16);
+    const [box, setBox] = useState(null);
+    const boxRef = useRef(null);
     useEffect(() => {
-        if (!map) return undefined;
-        const onZoom = () => setWideView(map.getZoom() < 16);
-        map.on('zoomend', onZoom);
-        return () => map.off('zoomend', onZoom);
+        let timeout;
+        const update = () => {
+            setWideView(map.getZoom() < 16);
+            const b = map.getBounds();
+            const old = boxRef.current;
+            if (old && old.contains(b)) return;
+            boxRef.current = b.pad(0.25);
+            setBox(boxRef.current);
+        };
+        const settle = () => { clearTimeout(timeout); timeout = setTimeout(update, 120); };
+        update();
+        map.on('moveend zoomend', settle);
+        return () => { clearTimeout(timeout); map.off('moveend zoomend', settle); };
     }, [map]);
-
-    return properties?.map((p, idx) => {
-        const isNearby = nearbyHashes.has(p.address_hash);
-        const color = getOutcomeDotColor(p);
-        return (
-            <LayerGroup key={p.address_hash}>
-                <CircleMarker
-                    center={[p.lat, p.lng]}
-                    radius={TOUCH_TARGET_RADIUS}
-                    renderer={CANVAS_RENDERER}
-                    eventHandlers={{ click: () => onSelectProperty(p) }}
-                    bubblingMouseEvents={false}
-                    pathOptions={{ fillOpacity: 0, opacity: 0, weight: 0 }}
-                />
-                <CircleMarker
-                    center={[p.lat, p.lng]}
-                    radius={wideView ? (isNearby ? 4 : 3) : (isNearby ? 8 : 6)}
-                    renderer={CANVAS_RENDERER}
-                    eventHandlers={{ click: () => onSelectProperty(p) }}
-                    bubblingMouseEvents={false}
-                    pathOptions={{
-                        fillColor: color,
-                        fillOpacity: 1,
-                        color: '#fff',
-                        weight: wideView ? 0.5 : (isNearby ? 2 : 1)
-                    }}
-                >
-                    <Tooltip direction="top" offset={[0, -5]} className="route-number-tooltip">
-                        <span style={{
-                            color: '#fff',
-                            fontSize: isNearby ? '12px' : '10px',
-                            fontWeight: 'bold',
-                            textShadow: '0 1px 3px #000, 0 0 5px #000'
-                        }}>
-                            {p.house_number || idx + 1}
-                        </span>
-                    </Tooltip>
-                </CircleMarker>
-            </LayerGroup>
-        );
-    }) || null;
+    useEffect(() => {
+        if (!box) return;
+        if (!groupRef.current) groupRef.current = L.layerGroup().addTo(map);
+        const group = groupRef.current;
+        const entries = [];
+        (properties || []).forEach((p, idx) => {
+            if (!isRoutePoint(p)) return;
+            const point = [Number(p.lat), Number(p.lng)];
+            if (!box.contains(point)) return;
+            const nearby = nearbyHashes.has(p.address_hash);
+            entries.push({ key: `${p.address_hash || p.id || ''}:${idx}`, point, payload: { property: p, number: idx + 1, nearby },
+                style: { radius: wideView ? (nearby ? 4 : 3) : (nearby ? 8 : 6), touchRadius: TOUCH_TARGET_RADIUS,
+                    fillColor: getOutcomeDotColor(p), fillOpacity: 1, color: '#fff', weight: wideView ? 0.5 : nearby ? 2 : 1,
+                    bubblingMouseEvents: false } });
+        });
+        reconcileMapPins(pinsRef.current, entries, {
+            create: ({ point, style }) => {
+                const marker = labelCanvas.circleMarker(point, style);
+                marker.on('click', () => selectRef.current(marker.__payload.property));
+                // Build text only when opened; never inject property data as HTML.
+                marker.bindTooltip(() => {
+                    const payload = marker.__payload;
+                    const text = document.createElement('span');
+                    text.textContent = String(payload.property.house_number || payload.number);
+                    Object.assign(text.style, { color: '#fff', fontSize: payload.nearby ? '12px' : '10px', fontWeight: 'bold', textShadow: '0 1px 3px #000, 0 0 5px #000' });
+                    return text;
+                }, { direction: 'top', offset: [0, -5], className: 'route-number-tooltip' });
+                group.addLayer(marker);
+                return marker;
+            },
+            remove: marker => group.removeLayer(marker),
+        });
+    }, [map, properties, nearbyHashes, box, wideView, labelCanvas]);
+    useEffect(() => () => {
+        if (groupRef.current) map.removeLayer(groupRef.current);
+        if (map.hasLayer(labelCanvas.renderer)) map.removeLayer(labelCanvas.renderer);
+        groupRef.current = null;
+        pinsRef.current.clear();
+    }, [map, labelCanvas]);
+    return null;
 }
 
 const MemoizedPropertyPinLayer = React.memo(PropertyPinLayer);
@@ -181,6 +193,7 @@ export default function RepMapView({
     roadMetadata = null,
 }) {
     const mapRef = useRef(null);
+    const renderer = useMemo(() => L.canvas({ padding: 0.25 }), []);
     const [position, setPosition] = useState(null);
     const [accuracy, setAccuracy] = useState(50);
     const [hudExpanded, setHudExpanded] = useState(true);
@@ -364,14 +377,14 @@ export default function RepMapView({
                     />
 
                     {/* GPS Position */}
-                    <GpsLayer position={position} accuracy={accuracy} />
+                    <GpsLayer position={position} accuracy={accuracy} renderer={renderer} />
 
                     {/* Lines to nearest 3 */}
                     {position && nearbyProps.slice(0, 3).map((p, i) => (
                         <Polyline key={`line-${i}`}
                             positions={[[position.lat, position.lng], [p.lat, p.lng]]}
-                            renderer={CANVAS_RENDERER}
-                            pathOptions={{ color: BRAND.gold, weight: 1.5, opacity: 0.4, dashArray: '4,8' }}
+                            renderer={renderer}
+                            pathOptions={{ interactive: false, color: BRAND.gold, weight: 1.5, opacity: 0.4, dashArray: '4,8' }}
                         />
                     ))}
 
@@ -379,14 +392,14 @@ export default function RepMapView({
                     {roadMetadata?.routing?.road_aware_routing_beta
                         ? (verifiedBetaSegments(roadMetadata, properties, properties) || []).map((points, index) =>
                             <Polyline key={'road-beta-' + index} positions={points.map(p => [Number(p.lat), Number(p.lng)])}
-                                renderer={CANVAS_RENDERER} pathOptions={{ color: BRAND.gold, weight: 4, opacity: 0.85 }} />)
+                                renderer={renderer} pathOptions={{ interactive: false, color: BRAND.gold, weight: 4, opacity: 0.85 }} />)
                         : routePathPositions.length > 1 && (
                         <Polyline
                             positions={routePathPositions}
-                            renderer={CANVAS_RENDERER}
+                            renderer={renderer}
                             smoothFactor={2}
                             pathOptions={{ 
-                                color: BRAND.gold, 
+                                interactive: false, color: BRAND.gold,
                                 weight: mapSettings.lineWidth ? mapSettings.lineWidth + 2 : 4, 
                                 opacity: mapSettings.lineOpacity ? Math.max(0.6, mapSettings.lineOpacity) : 0.8,
                                 dashArray: lineDashArray 
