@@ -396,6 +396,8 @@ test('completed totals and both CSV formats exclude open time and preserve selec
     assert.ok(details.includes('"2.50","1.50","America/Phoenix","Yes"'));
     assert.equal(details.includes('open-shift'), false);
     assert.equal(details.split('\r\n').length, 2);
+    const boundaryShift = sample({ status: 'closed', clock_in_at: new Date(range.start - 3600000).toISOString(), clock_out_at: range.start_at });
+    assert.equal(clockHelpers.summarizeTimeClock([boundaryShift], range, now).length, 0);
 });
 
 test('manager screen renders personal controls and the whole live roster before filtered timesheets, including its empty state', () => {

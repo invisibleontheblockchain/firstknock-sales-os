@@ -21,7 +21,7 @@ export function shiftMilliseconds(shift, now = Date.now(), range = null) {
 
 export function shiftOverlaps(shift, range, now = Date.now()) {
     return Date.parse(shift.clock_in_at) < range.end
-        && (shift.clock_out_at ? Date.parse(shift.clock_out_at) : now) >= range.start;
+        && (shift.clock_out_at ? Date.parse(shift.clock_out_at) > range.start : now >= range.start);
 }
 
 export function durationLabel(milliseconds) {
