@@ -19,17 +19,21 @@ async function allPages(entity, query, sort = '-clock_in_at') {
     throw new TimeClockError(503, 'Too many time records. Choose a shorter date range.');
 }
 
-async function clearPointer(service, userId, shiftId) {
-    await service.User.updateMany({ id: userId, time_clock_active_shift_id: shiftId },
+async function clearPointer(service, memberId, shiftId) {
+    await service.TeamMember.updateMany({ id: memberId, time_clock_active_shift_id: shiftId },
         { $set: { time_clock_active_shift_id: '' } });
 }
 
-// A pending row becomes a real shift only after an atomic claim on the unique User row.
+// A pending row becomes a real shift only after an atomic claim on the existing membership.
 // Recover that claim if the request stopped before it could mark the shift active.
 async function recoverShift(service, shift) {
     if (!shift || shift.status !== 'pending') return shift;
-    const owner = await service.User.get(shift.rep_user_id);
-    if (owner?.time_clock_active_shift_id !== shift.id) return null;
+    const owner = await service.TeamMember.get(shift.member_id).catch(error => {
+        if (error?.status === 404) return null;
+        throw error;
+    });
+    if (owner?.user_id !== shift.rep_user_id || owner?.manager_id !== shift.manager_id
+        || owner?.time_clock_active_shift_id !== shift.id) return null;
     await service.TimeShift.updateMany({ id: shift.id, status: 'pending' }, { $set: { status: 'active' } });
     return service.TimeShift.get(shift.id);
 }
@@ -58,15 +62,17 @@ Deno.serve(async req => {
         if (!manager || manager.id !== managerId || !isManager(manager)) throw new TimeClockError(403, 'Team manager could not be verified.');
         const members = (await allPages(service.TeamMember, { manager_id: managerId }, '-created_date'))
             .filter(member => member.manager_id === managerId);
-        const ownMember = members.find(member => member.user_id === user.id && activeRep(member));
+        const ownMatches = members.filter(member => member.user_id === user.id && activeRep(member))
+            .sort((a, b) => String(a.id).localeCompare(String(b.id)));
+        const ownMember = ownMatches.find(member => member.id === (user.team_member_id || user.data?.team_member_id)) || ownMatches[0];
         if (!managesTeam && !ownMember) throw new TimeClockError(403, 'An active team membership is required.');
         const scope = { manager_id: managerId, ...(!managesTeam ? { rep_user_id: user.id } : {}) };
         const inScope = shift => shift?.manager_id === managerId && (managesTeam || shift.rep_user_id === user.id);
         const now = new Date().toISOString();
-        let current = user.time_clock_active_shift_id ? await service.TimeShift.get(user.time_clock_active_shift_id) : null;
+        let current = ownMember?.time_clock_active_shift_id ? await service.TimeShift.get(ownMember.time_clock_active_shift_id) : null;
         if (current && current.rep_user_id !== user.id) throw new TimeClockError(409, 'Time clock identity could not be verified.');
         if (current?.status === 'closed') {
-            await clearPointer(service, user.id, current.id);
+            await clearPointer(service, current.member_id, current.id);
             current = null;
         }
         if (current && current.manager_id !== managerId) {
@@ -91,10 +97,11 @@ Deno.serve(async req => {
                 if (shift?.status === 'active') activeShifts.push(shift);
             }
             return Response.json({ success: true, manager_id: managerId, shifts, active_shifts: activeShifts,
-                current_shift: current, server_time: new Date().toISOString() });
+                current_shift: current, can_clock: !!ownMember, server_time: new Date().toISOString() });
         }
 
         if (action === 'clock_in') {
+            if (!ownMember) throw new TimeClockError(403, 'Clock-in is available to active canvassers. Managers can review and close team shifts.');
             if (typeof body.request_id !== 'string' || !/^[a-zA-Z0-9_-]{8,100}$/.test(body.request_id)) {
                 throw new TimeClockError(400, 'A valid clock-in request is required.');
             }
@@ -105,12 +112,19 @@ Deno.serve(async req => {
                 if (saved) return Response.json({ success: true, shift: saved, server_time: now });
             }
             if (current) throw new TimeClockError(409, 'You are already clocked in. Refresh to see your current shift.');
-            const shift = await service.TimeShift.create({ manager_id: managerId, member_id: ownMember?.id || user.id,
+            // A transferred rep must close their previous membership's shift before starting another.
+            const openRows = await allPages(service.TimeShift, { rep_user_id: user.id, status: { $in: ['pending', 'active'] } });
+            for (const row of openRows.filter(row => row.rep_user_id === user.id)) {
+                const open = await recoverShift(service, row);
+                if (open?.status === 'active') throw new TimeClockError(409, 'You already have an open shift. Ask its team manager to close it first.');
+            }
+            const shift = await service.TimeShift.create({ manager_id: managerId, member_id: ownMember.id,
                 rep_user_id: user.id, rep_name: ownMember?.name || user.full_name || user.email || 'Team Manager',
                 rep_email: user.email || '', invite_code: ownMember?.invite_code || '', request_id: body.request_id,
                 status: 'pending', clock_in_at: now });
             // Never replace another device's claim. Empty and unset are both supported for existing users.
-            const result = await service.User.updateMany({ id: user.id,
+            const result = await service.TeamMember.updateMany({ id: ownMember.id, user_id: user.id, manager_id: managerId,
+                role: ownMember.role ?? null, status: ownMember.status ?? null,
                 $or: [{ time_clock_active_shift_id: '' }, { time_clock_active_shift_id: null }, { time_clock_active_shift_id: { $exists: false } }] },
                 { $set: { time_clock_active_shift_id: shift.id } });
             if (!changed(result)) {
@@ -135,7 +149,7 @@ Deno.serve(async req => {
             if (shift.status !== 'closed') throw new TimeClockError(409, 'The shift changed. Refresh before trying again.');
         }
         // A delayed clock-out can never clear a newer shift's pointer.
-        await clearPointer(service, shift.rep_user_id, shift.id);
+        await clearPointer(service, shift.member_id, shift.id);
         return Response.json({ success: true, shift, server_time: new Date().toISOString() });
     } catch (error) {
         const status = error instanceof TimeClockError ? error.status : 500;
@@ -143,3 +157,4 @@ Deno.serve(async req => {
         return Response.json({ error: status === 500 ? 'Unable to save the time clock. Refresh to check your status, then retry.' : error.message }, { status });
     }
 });
+
