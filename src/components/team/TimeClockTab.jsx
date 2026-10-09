@@ -60,14 +60,12 @@ export default function TimeClockTab({ currentUser, managerId, canManage, active
         catch { return false; }
     }, [dates.start, dates.end, timezone]);
     const queryKey = ['timeClock', managerId, currentUser?.id, dates.start, dates.end, timezone];
-    const query = useQuery({
-        queryKey,
+    const statusKey = ['timeClock', managerId, currentUser?.id, 'status'];
+    const status = useQuery({
+        queryKey: statusKey,
         queryFn: async () => {
-            // A bad timesheet filter must never prevent ending a personal shift.
-            const fallback = clockPresetDates('today', Date.now(), timezone);
-            const response = await base44.functions.invoke('timeClock', { action: 'report',
-                start_date: datesValid ? dates.start : fallback.start, end_date: datesValid ? dates.end : fallback.end });
-            if (!response.data?.success || response.data.manager_id !== managerId) throw new Error('Time clock records could not be verified.');
+            const response = await base44.functions.invoke('timeClock', { action: 'status' });
+            if (!response.data?.success || response.data.manager_id !== managerId) throw new Error('Time clock status could not be verified.');
             return response.data;
         },
         enabled: !!managerId && !!currentUser?.id,
@@ -75,7 +73,20 @@ export default function TimeClockTab({ currentUser, managerId, canManage, active
         refetchIntervalInBackground: false,
         retry: 1,
     });
-    useEffect(() => { if (query.data?.timezone) setTimezone(query.data.timezone); }, [query.data?.timezone]);
+    const query = useQuery({
+        queryKey,
+        queryFn: async () => {
+            const response = await base44.functions.invoke('timeClock', { action: 'report',
+                start_date: dates.start, end_date: dates.end });
+            if (!response.data?.success || response.data.manager_id !== managerId) throw new Error('Time clock records could not be verified.');
+            return response.data;
+        },
+        enabled: !!managerId && !!currentUser?.id && datesValid,
+        refetchInterval: 5000,
+        refetchIntervalInBackground: false,
+        retry: 1,
+    });
+    useEffect(() => { if (status.data?.timezone) setTimezone(status.data.timezone); }, [status.data?.timezone]);
     useEffect(() => {
         const timer = setInterval(() => setNow(Date.now()), 1000);
         const onOnline = () => { setOnline(true); queryClient.invalidateQueries({ queryKey: ['timeClock'] }); };
@@ -99,7 +110,7 @@ export default function TimeClockTab({ currentUser, managerId, canManage, active
                 toast.success('Reporting timezone saved');
                 return;
             }
-            queryClient.setQueryData(queryKey, previous => previous ? {
+            queryClient.setQueryData(statusKey, previous => previous ? {
                 ...previous,
                 ...(data.shift.rep_user_id === currentUser?.id && (payload.action === 'clock_in' || previous.current_shift?.id === data.shift.id)
                     ? { current_shift: data.shift.status === 'active' ? data.shift : null } : {}),
@@ -112,20 +123,21 @@ export default function TimeClockTab({ currentUser, managerId, canManage, active
         onSettled: () => queryClient.invalidateQueries({ queryKey: ['timeClock'] }),
     });
     useEffect(() => {
-        if (query.isSuccess && !query.isFetching && !mutation.isPending) clockInRequest.current = null;
-    }, [query.dataUpdatedAt, query.isSuccess, query.isFetching, mutation.isPending]);
-    const offset = query.data?.server_time ? Date.parse(query.data.server_time) - query.dataUpdatedAt : 0;
+        if (status.isSuccess && !status.isFetching && !mutation.isPending) clockInRequest.current = null;
+    }, [status.dataUpdatedAt, status.isSuccess, status.isFetching, mutation.isPending]);
+    const offset = status.data?.server_time ? Date.parse(status.data.server_time) - status.dataUpdatedAt : 0;
     const serverNow = now + offset;
     const timestamp = value => value ? new Date(value).toLocaleString([], {
         timeZone: timezone, month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit',
     }) : 'Open';
-    const current = query.data?.current_shift;
-    const canClock = query.data?.can_clock === true;
+    const current = status.data?.current_shift;
+    const canClock = status.data?.can_clock === true;
     const teamFilter = shift => !canManage || activeTeamCode === 'all' || shift.rep_user_id === managerId || shift.invite_code === activeTeamCode;
     const history = datesValid ? (query.data?.shifts || []).filter(teamFilter) : [];
     // The live roster is the entire current team, independent of every timesheet filter.
-    const active = query.data?.active_shifts || [];
-    const people = (query.data?.people || []).filter(value => !canManage || activeTeamCode === 'all' || value.id === managerId || value.invite_code === activeTeamCode);
+    const active = status.data?.active_shifts || [];
+    const people = [...new Map([...(status.data?.people || []), ...(query.data?.people || [])].map(value => [value.id, value])).values()]
+        .filter(value => !canManage || activeTeamCode === 'all' || value.id === managerId || value.invite_code === activeTeamCode);
     // Retain a selected former member when a different range contains none of their shifts.
     if (person !== 'all' && !people.some(value => value.id === person)) people.push({ id: person, name: selectedPersonName || 'Selected team member', can_add: false });
     const selectedPeople = people.filter(value => !canManage || person === 'all' || value.id === person);
@@ -134,8 +146,8 @@ export default function TimeClockTab({ currentUser, managerId, canManage, active
     const summaries = range && datesValid ? summarizeTimeClock(displayed, range, serverNow, selectedPeople) : [];
     const total = summaries.reduce((sum, group) => sum + group.completed_ms, 0);
     const openCount = summaries.reduce((sum, group) => sum + group.open_shifts, 0);
-    const ready = online && !!query.data && !query.isError && !query.isFetching && !mutation.isPending;
-    const exportReady = ready && datesValid && !!range && summaries.length > 0;
+    const ready = online && !!status.data && !status.isError && !status.isFetching && !mutation.isPending;
+    const exportReady = ready && datesValid && !!range && !query.isError && !query.isFetching && summaries.length > 0;
     const timezones = useMemo(() => [...new Set([DEFAULT_CLOCK_TIMEZONE, timezone,
         ...(typeof Intl.supportedValuesOf === 'function' ? Intl.supportedValuesOf('timeZone') : ['UTC', 'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles'])])].sort(), [timezone]);
 
@@ -168,11 +180,11 @@ export default function TimeClockTab({ currentUser, managerId, canManage, active
         <section className={`${panel} flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between`}>
             <div>
                 <h2 className="flex items-center gap-2 text-lg font-bold"><Clock3 className="h-5 w-5 text-yellow-500" />Your shift</h2>
-                {query.data && <p className={`mt-3 text-base font-semibold ${current ? 'text-green-400' : 'text-gray-300'}`}>
+                {status.data && <p className={`mt-3 text-base font-semibold ${current ? 'text-green-400' : 'text-gray-300'}`}>
                     {current ? `Clocked in · ${durationLabel(shiftMilliseconds(current, serverNow))}` : 'Clocked out'}
                 </p>}
                 {current ? <p className="mt-1 text-xs text-gray-400">Started {timestamp(current.clock_in_at)}</p>
-                    : query.data && <p className="mt-1 text-xs text-gray-400">{durationLabel(query.data.completed_today_ms || 0)} completed today</p>}
+                    : status.data && <p className="mt-1 text-xs text-gray-400">{durationLabel(status.data.completed_today_ms || 0)} completed today</p>}
             </div>
             {canClock && <Button onClick={current ? () => mutation.mutate({ action: 'clock_out', shift_id: current.id }) : clockIn}
                 disabled={!ready} className={`min-h-12 shrink-0 font-bold ${current ? 'border border-red-400/40 bg-red-500/15 text-red-200 hover:bg-red-500/25' : 'bg-yellow-500 text-black hover:bg-yellow-400'}`}>
@@ -181,16 +193,16 @@ export default function TimeClockTab({ currentUser, managerId, canManage, active
             </Button>}
         </section>
         {!online && <p role="alert" className="text-sm text-amber-300">Offline · Reconnect to save clock actions.</p>}
-        {query.isPending && <p role="status" className="text-sm text-gray-400">Loading time clock…</p>}
-        {(query.isError || mutation.isError) && <div role="alert" className={`${panel} text-sm text-amber-300`}>
-            {errorMessage(query.error || mutation.error)} <button type="button" className="ml-2 underline" onClick={() => { mutation.reset(); query.refetch(); }}>Refresh status</button>
+        {status.isPending && <p role="status" className="text-sm text-gray-400">Loading time clock…</p>}
+        {(status.isError || query.isError || mutation.isError) && <div role="alert" className={`${panel} text-sm text-amber-300`}>
+            {errorMessage(status.error || query.error || mutation.error)} <button type="button" className="ml-2 underline" onClick={() => { mutation.reset(); status.refetch(); query.refetch(); }}>Refresh status</button>
         </div>}
         {canManage && <section className={`${panel} space-y-3`} aria-label="Clocked in now">
             <div className="flex items-center justify-between gap-2">
-                <h3 className="font-bold">Clocked in now{query.data ? ` · ${active.length}` : ''}</h3>
-                <Button size="sm" variant="outline" className="border-gray-700 bg-black" disabled={!online || query.isFetching} onClick={() => query.refetch()} aria-label="Refresh time clock"><RefreshCw className={`h-4 w-4 ${query.isFetching ? 'animate-spin' : ''}`} /></Button>
+                <h3 className="font-bold">Clocked in now{status.data ? ` · ${active.length}` : ''}</h3>
+                <Button size="sm" variant="outline" className="border-gray-700 bg-black" disabled={!online || status.isFetching} onClick={() => status.refetch()} aria-label="Refresh time clock"><RefreshCw className={`h-4 w-4 ${status.isFetching ? 'animate-spin' : ''}`} /></Button>
             </div>
-            {query.data && active.length === 0 && <p className="text-sm text-gray-400">No one is clocked in.</p>}
+            {status.data && active.length === 0 && <p className="text-sm text-gray-400">No one is clocked in.</p>}
             {active.map(shift => <div key={shift.id} className="flex items-center justify-between gap-3 border-t border-gray-800 pt-3">
                 <div className="min-w-0"><p className="text-sm font-semibold">{shift.rep_name || shift.rep_email || 'Team member'}{shift.rep_user_id === currentUser?.id && <span className="ml-2 text-xs text-gray-400">You</span>}</p>
                     <p className="mt-1 text-xs text-gray-400">Started {timestamp(shift.clock_in_at)}</p>

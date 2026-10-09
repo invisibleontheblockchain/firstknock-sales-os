@@ -101,7 +101,7 @@ Deno.serve(async req => {
         try { body = await req.json(); } catch { throw new TimeClockError(400, 'Invalid request.'); }
         if (!body || typeof body !== 'object' || Array.isArray(body)) throw new TimeClockError(400, 'Invalid request.');
         const action = body.action || 'report';
-        if (!['report', 'clock_in', 'clock_out', 'close_shift', 'edit_shift', 'add_shift', 'request_correction', 'set_timezone', 'check_saving'].includes(action)) throw new TimeClockError(400, 'Unknown time clock action.');
+        if (!['report', 'status', 'clock_in', 'clock_out', 'close_shift', 'edit_shift', 'add_shift', 'request_correction', 'set_timezone', 'check_saving'].includes(action)) throw new TimeClockError(400, 'Unknown time clock action.');
         const managesTeam = isManager(user);
         const managerId = managesTeam ? user.id : (user.team_manager_id || user.data?.team_manager_id);
         if (!managerId || (!managesTeam && normalized(user.app_role || user.data?.app_role) !== 'rep')) throw new TimeClockError(403, 'Join a team to use the time clock.');
@@ -127,9 +127,11 @@ Deno.serve(async req => {
             await service.User.update(managerId, { time_clock_timezone: validateClockTimezone(body.timezone) });
             return Response.json({ success: true, timezone: body.timezone });
         }
-        if (action === 'report') {
-            const range = body.start_date || body.end_date ? clockDateRangeInZone(body.start_date, body.end_date, timezone) : timeClockRange(body.start_at, body.end_at);
-            const records = await allPages(service.TimeShift, { ...scope, clock_in_at: { $lt: new Date(range.end).toISOString() },
+        if (action === 'report' || action === 'status') {
+            const today = zonedClockDate(Date.now(), timezone);
+            const todayRange = clockDateRangeInZone(today, today, timezone);
+            const range = action === 'status' ? todayRange : body.start_date || body.end_date ? clockDateRangeInZone(body.start_date, body.end_date, timezone) : timeClockRange(body.start_at, body.end_at);
+            const records = action === 'status' ? [] : await allPages(service.TimeShift, { ...scope, clock_in_at: { $lt: new Date(range.end).toISOString() },
                 $or: [{ status: { $in: ['active', 'pending'] } }, { clock_out_at: { $gte: new Date(range.start).toISOString() } }] });
             const shifts = [];
             for (const row of records.filter(inScope)) {
@@ -144,8 +146,6 @@ Deno.serve(async req => {
             }
             const ownRows = await accountShifts(service, user.id);
             const current = ownRows.find(row => row.status === 'active');
-            const today = zonedClockDate(Date.now(), timezone);
-            const todayRange = clockDateRangeInZone(today, today, timezone);
             const todayMs = ownRows.filter(row => row.status === 'closed').reduce((sum, row) => sum + shiftMilliseconds(row, Date.now(), todayRange), 0);
             const people = new Map();
             if (managesTeam) {

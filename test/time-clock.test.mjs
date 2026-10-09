@@ -407,7 +407,7 @@ test('manager screen renders personal controls and the whole live roster before 
     const Button = ({ children, onClick, disabled, 'aria-label': label }) => React.createElement('button', { onClick, disabled, 'aria-label': label }, children);
     const modules = {
         react: React,
-        '@tanstack/react-query': { useQuery: () => ({ data, dataUpdatedAt: Date.now(), isSuccess: true }), useMutation: () => ({ mutate() {} }), useQueryClient: () => ({}) },
+        '@tanstack/react-query': { useQuery: options => ({ data: options.queryKey.includes('status') ? data : { ...data, active_shifts: [] }, dataUpdatedAt: Date.now(), isSuccess: true }), useMutation: () => ({ mutate() {} }), useQueryClient: () => ({}) },
         'lucide-react': new Proxy({}, { get: () => () => null }), sonner: { toast: {} }, '@/api/base44Client': { base44: {} },
         '@/components/ui/button': { Button }, '@/components/ui/input': { Input: native },
         '@/components/ui/dialog': { Dialog: () => null, DialogContent: native, DialogHeader: native, DialogTitle: native, DialogDescription: native },
