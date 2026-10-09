@@ -2,6 +2,11 @@
   "name": "User",
   "type": "object",
   "properties": {
+    "time_clock_active_shift_id": {
+      "type": "string",
+      "description": "Server-managed active time clock shift. Atomic claims prevent overlapping shifts across devices.",
+      "rls": { "write": { "user_condition": { "id": "__service_role_only__" } } }
+    },
     "app_role": {
       "type": "string",
       "enum": [

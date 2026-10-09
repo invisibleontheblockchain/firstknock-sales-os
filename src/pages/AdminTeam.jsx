@@ -30,6 +30,7 @@ import { isKnockActivityLog } from '@/lib/interactionLogs';
 import { fetchAllAnalyticsPages } from '@/lib/analyticsDateFilter';
 import { buildTeamRoster, getRepSeatCount } from '@/lib/teamRoster';
 import ActiveRepLocations from '@/components/team/ActiveRepLocations';
+import TimeClockTab from '@/components/team/TimeClockTab';
 
 
 const BRAND = {
@@ -833,6 +834,7 @@ export default function AdminTeam() {
                         <TabsTrigger value="logistics" className={`${canManageTeam ? 'flex' : 'hidden'} flex-1 md:flex-none h-full px-2 md:px-6 data-[state=active]:bg-yellow-500 data-[state=active]:text-black font-bold text-[10px] md:text-xs uppercase tracking-wide`}>Routes</TabsTrigger>
                         <TabsTrigger value="access" className={`${canManageTeam ? 'flex' : 'hidden'} flex-1 md:flex-none h-full px-2 md:px-6 data-[state=active]:bg-yellow-500 data-[state=active]:text-black font-bold text-[10px] md:text-xs uppercase tracking-wide`}>Codes</TabsTrigger>
                         <TabsTrigger value="driving" className="flex-1 md:flex-none h-full px-2 md:px-6 data-[state=active]:bg-yellow-500 data-[state=active]:text-black font-bold text-[10px] md:text-xs uppercase tracking-wide">Driving</TabsTrigger>
+                        <TabsTrigger value="time-clock" className="flex-none h-full px-3 md:px-6 data-[state=active]:bg-yellow-500 data-[state=active]:text-black font-bold text-[10px] md:text-xs uppercase tracking-wide">Time Clock</TabsTrigger>
                         {canManageTeam && <TabsTrigger value="locations" className="flex-none h-full px-3 md:px-6 data-[state=active]:bg-yellow-500 data-[state=active]:text-black font-bold text-[10px] md:text-xs uppercase tracking-wide">Active Rep Locations</TabsTrigger>}
                     </TabsList>
 
@@ -845,6 +847,9 @@ export default function AdminTeam() {
 
                     <TabsContent value="driving" className="space-y-3 md:space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                         <DrivingTab members={filteredTeamMembers} currentUser={user} managerId={managerId} canManage={canManageTeam} allTeams={activeTeamCode === 'all'} teamLoading={teamLoading || teamLoadFailed} />
+                    </TabsContent>
+                    <TabsContent value="time-clock">
+                        <TimeClockTab currentUser={user} managerId={managerId} canManage={canManageTeam} activeTeamCode={activeTeamCode} />
                     </TabsContent>
 
                     {/* ANALYTICS TAB */}
