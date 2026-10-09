@@ -1,6 +1,5 @@
-export { durationLabel, shiftMilliseconds } from '../../base44/shared/timeClock.js';
-export { clockPresetDates, clockDateRangeInZone, zonedClockDate, summarizeTimeClock, DEFAULT_CLOCK_TIMEZONE } from '../../base44/shared/timeClock.js';
-import { shiftMilliseconds, summarizeTimeClock } from '../../base44/shared/timeClock.js';
+export { durationLabel, shiftMilliseconds, clockPresetDates, clockDateRangeInZone, zonedClockDate, summarizeTimeClock, DEFAULT_CLOCK_TIMEZONE } from './timeClockCore.js';
+import { shiftMilliseconds, summarizeTimeClock, shiftOverlaps } from './timeClockCore.js';
 
 export function localClockDate(date = new Date()) {
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
@@ -58,7 +57,7 @@ export function timesheetCsv(shifts, range, now, timezone, format = 'totals', pe
             (person.completed_ms / 3600000).toFixed(2), person.completed_shifts, person.open_shifts, person.requests, timezone, range.start_at, range.end_at]);
     } else {
         rows = [['Name', 'User ID', 'Clock in (UTC)', 'Clock out (UTC)', 'Shift hours', 'Completed hours in selected range', 'Reporting timezone', 'Adjusted', 'Shift ID', 'Range start (UTC)', 'Range end exclusive (UTC)']];
-        for (const shift of shifts.filter(shift => shift.status === 'closed')) rows.push([shift.rep_name || shift.rep_email, shift.rep_user_id,
+        for (const shift of shifts.filter(shift => shift.status === 'closed' && shiftOverlaps(shift, range, now))) rows.push([shift.rep_name || shift.rep_email, shift.rep_user_id,
             shift.clock_in_at, shift.clock_out_at, (shiftMilliseconds(shift, now) / 3600000).toFixed(2),
             (shiftMilliseconds(shift, now, range) / 3600000).toFixed(2), timezone, shift.adjusted ? 'Yes' : 'No', shift.id, range.start_at, range.end_at]);
     }
