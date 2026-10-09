@@ -2,6 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
+import os from 'node:os';
+import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import ts from 'typescript';
 import { TimeClockError, timeClockRange, shiftOverlaps, shiftMilliseconds, durationLabel } from '../base44/shared/timeClock.js';
 import { clockDateRange, timeClockCsv } from '../src/lib/timeClock.js';
@@ -206,8 +209,33 @@ test('time clock is placed in Teams and all shift writes are restricted to backe
     const page = fs.readFileSync('src/pages/AdminTeam.jsx', 'utf8');
     assert.match(page, /TabsTrigger value="time-clock"/);
     assert.match(page, /TabsContent value="time-clock"/);
-    const entity = JSON.parse(fs.readFileSync('base44/entities/time-shift.jsonc', 'utf8'));
+    const entity = JSON.parse(fs.readFileSync('base44/entities/TimeShift.jsonc', 'utf8'));
+    assert.equal(entity.name, 'TimeShift');
     for (const action of ['read', 'create', 'update', 'delete']) assert.equal(entity.rls[action].user_condition.id, '__service_role_only__');
     const user = JSON.parse(fs.readFileSync('base44/entities/User.jsonc', 'utf8'));
     assert.equal(user.properties.time_clock_active_shift_id.rls.write.user_condition.id, '__service_role_only__');
+});
+
+test('backend deployment validation rejects schema filenames that differ from the SDK entity identity', () => {
+    const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'firstknock-time-clock-schema-'));
+    try {
+        fs.mkdirSync(path.join(fixture, 'base44/entities'), { recursive: true });
+        fs.mkdirSync(path.join(fixture, 'base44/functions'));
+        fs.writeFileSync(path.join(fixture, 'base44/config.jsonc'), '{}');
+        fs.writeFileSync(path.join(fixture, 'package.json'), '{}');
+        const wrongPath = path.join(fixture, 'base44/entities/time-shift.jsonc');
+        fs.writeFileSync(wrongPath, fs.readFileSync('base44/entities/TimeShift.jsonc'));
+        const validator = path.resolve('scripts/validate-backend.mjs');
+        const invalid = spawnSync(process.execPath, [validator], { cwd: fixture, encoding: 'utf8' });
+        assert.equal(invalid.status, 1);
+        assert.match(invalid.stderr, /filename.*must match the schema name exactly/);
+        fs.renameSync(wrongPath, path.join(fixture, 'base44/entities/TimeShift.jsonc'));
+        const valid = spawnSync(process.execPath, [validator], { cwd: fixture, encoding: 'utf8' });
+        assert.equal(valid.status, 0, valid.stderr);
+    } finally {
+        // Only remove the dedicated fixture created above, never an unchecked computed path.
+        assert.equal(path.dirname(path.resolve(fixture)), path.resolve(os.tmpdir()));
+        assert.ok(path.basename(fixture).startsWith('firstknock-time-clock-schema-'));
+        fs.rmSync(fixture, { recursive: true, force: true });
+    }
 });
