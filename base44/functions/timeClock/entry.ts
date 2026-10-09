@@ -122,7 +122,7 @@ Deno.serve(async req => {
                 rep_user_id: user.id, rep_name: ownMember?.name || user.full_name || user.email || 'Team Manager',
                 rep_email: user.email || '', invite_code: ownMember?.invite_code || '', request_id: body.request_id,
                 status: 'pending', clock_in_at: now });
-            // Never replace another device's claim. Empty and unset are both supported for existing users.
+            // Never replace another device's claim. Empty and unset are both supported for existing memberships.
             const result = await service.TeamMember.updateMany({ id: ownMember.id, user_id: user.id, manager_id: managerId,
                 role: ownMember.role ?? null, status: ownMember.status ?? null,
                 $or: [{ time_clock_active_shift_id: '' }, { time_clock_active_shift_id: null }, { time_clock_active_shift_id: { $exists: false } }] },

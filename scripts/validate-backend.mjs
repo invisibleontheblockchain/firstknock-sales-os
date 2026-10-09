@@ -33,6 +33,12 @@ const jsonFiles = [
   'base44/config.jsonc',
   'package.json'
 ];
-for (const file of jsonFiles) JSON.parse(fs.readFileSync(file, 'utf8'));
+for (const file of jsonFiles) {
+  const schema = JSON.parse(fs.readFileSync(file, 'utf8'));
+  if (path.dirname(file) === path.join('base44', 'entities')) {
+    assert.equal(path.basename(file, '.jsonc'), schema.name,
+      `${file}: Base44 derives the entity identity from the filename; it must match the schema name exactly.`);
+  }
+}
 
 console.log(`Validated ${functionFiles.length} Base44 functions and ${jsonFiles.length} JSON configuration files.`);
