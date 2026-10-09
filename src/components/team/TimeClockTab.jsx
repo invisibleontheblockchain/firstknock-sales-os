@@ -46,6 +46,7 @@ export default function TimeClockTab({ currentUser, managerId, canManage, active
     const [preset, setPreset] = useState('this-week');
     const [customDates, setCustomDates] = useState(() => clockPresetDates('this-week'));
     const [person, setPerson] = useState('all');
+    const [selectedPersonName, setSelectedPersonName] = useState('');
     const [editing, setEditing] = useState(null);
     const [form, setForm] = useState({ person_id: '', start: '', end: '', reason: '' });
     const [exportOpen, setExportOpen] = useState(false);
@@ -100,7 +101,8 @@ export default function TimeClockTab({ currentUser, managerId, canManage, active
             }
             queryClient.setQueryData(queryKey, previous => previous ? {
                 ...previous,
-                ...(data.shift.rep_user_id === currentUser?.id ? { current_shift: data.shift.status === 'active' ? data.shift : null } : {}),
+                ...(data.shift.rep_user_id === currentUser?.id && (payload.action === 'clock_in' || previous.current_shift?.id === data.shift.id)
+                    ? { current_shift: data.shift.status === 'active' ? data.shift : null } : {}),
             } : previous);
             toast.success(payload.action === 'clock_in' ? (data.shift.status === 'active' ? 'Clocked in' : 'Shift already completed')
                 : payload.action === 'clock_out' ? 'Clocked out'
@@ -124,6 +126,8 @@ export default function TimeClockTab({ currentUser, managerId, canManage, active
     // The live roster is the entire current team, independent of every timesheet filter.
     const active = query.data?.active_shifts || [];
     const people = (query.data?.people || []).filter(value => !canManage || activeTeamCode === 'all' || value.id === managerId || value.invite_code === activeTeamCode);
+    // Retain a selected former member when a different range contains none of their shifts.
+    if (person !== 'all' && !people.some(value => value.id === person)) people.push({ id: person, name: selectedPersonName || 'Selected team member', can_add: false });
     const selectedPeople = people.filter(value => !canManage || person === 'all' || value.id === person);
     const displayed = history.filter(shift => !canManage || person === 'all' || shift.rep_user_id === person);
     const range = query.data?.range;
@@ -213,7 +217,9 @@ export default function TimeClockTab({ currentUser, managerId, canManage, active
                 <label className="text-xs text-gray-400">Date range<select className={`mt-1 ${selectStyle}`} value={preset} onChange={event => {
                     setCustomDates(dates); setPreset(event.target.value);
                 }}><option value="today">Today</option><option value="yesterday">Yesterday</option><option value="this-week">This week</option><option value="last-week">Last week</option><option value="custom">Custom dates</option></select></label>
-                {canManage && <label className="text-xs text-gray-400">People<select className={`mt-1 ${selectStyle}`} value={person} onChange={event => setPerson(event.target.value)}><option value="all">All team members</option>{people.map(value => <option key={value.id} value={value.id}>{value.name}{value.id === currentUser?.id ? ' (You)' : ''}</option>)}</select></label>}
+                {canManage && <label className="text-xs text-gray-400">People<select className={`mt-1 ${selectStyle}`} value={person} onChange={event => {
+                    setSelectedPersonName(people.find(value => value.id === event.target.value)?.name || ''); setPerson(event.target.value);
+                }}><option value="all">All team members</option>{people.map(value => <option key={value.id} value={value.id}>{value.name}{value.id === currentUser?.id ? ' (You)' : ''}</option>)}</select></label>}
             </div>
             {preset === 'custom' && <div className="grid gap-3 sm:grid-cols-2">
                 <label className="text-xs text-gray-400">From<Input type="date" className="mt-1 border-gray-700 bg-black text-white" value={customDates.start} onChange={event => setCustomDates(value => ({ ...value, start: event.target.value }))} /></label>
