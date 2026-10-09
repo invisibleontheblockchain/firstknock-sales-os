@@ -473,12 +473,12 @@ Full detail: [Canvas production runbook](docs/CANVAS_PRODUCTION_RUNBOOK.md) · [
 ### `AdminTeam.jsx` — Command Center & Roster Management (918 lines)
 
 **Route:** `/AdminTeam`  
-**Purpose:** Team management hub with analytics, roster, route assignment, and access codes.
+**Purpose:** Team management hub with analytics, roster, route assignment, access codes, and time tracking.
 
 **Stats Bar (top):**
 - Total Knocks (across team) | Total Sales | Active Seats (used/total) | Total Routes
 
-**4 Tabs:**
+**Team tabs:**
 
 #### Analytics Tab
 - `TeamAnalyticsSummary` — KPI cards: total knocks, talk rate, conversion rate, avg knocks per rep
@@ -510,6 +510,14 @@ Full detail: [Canvas production runbook](docs/CANVAS_PRODUCTION_RUNBOOK.md) · [
 
 **Backup Handler:**
 - Invokes `backupData` cloud function → Downloads all team data as JSON file
+
+#### Time Clock Tab
+- Canvassers clock in and out from **Teams → Time Clock** and view their own shift history.
+- Managers see current team shifts, filter hours by dates and member, export CSV, and close forgotten shifts with manager attribution.
+- Shifts use server timestamps and remain open when the app closes. An internet connection is required to clock in or out.
+- Overnight shifts are included in reports; totals count only the time inside the selected local dates. CSV timestamps and range bounds use UTC.
+- `timeClock` validates saved account roles and team membership. `TimeShift` records and the protected User shift pointer are server-managed; atomic claims prevent overlapping shifts across devices.
+- Deployment includes `base44/entities/time-shift.jsonc`, the updated User schema, and `base44/functions/timeClock/entry.ts`, plus the frontend.
 
 ---
 
