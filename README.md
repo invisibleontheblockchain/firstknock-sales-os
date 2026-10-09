@@ -516,8 +516,8 @@ Full detail: [Canvas production runbook](docs/CANVAS_PRODUCTION_RUNBOOK.md) · [
 - Managers see current team shifts, filter hours by dates and member, export CSV, and close forgotten shifts with manager attribution.
 - Shifts use server timestamps and remain open when the app closes. An internet connection is required to clock in or out.
 - Overnight shifts are included in reports; totals count only the time inside the selected local dates. CSV timestamps and range bounds use UTC.
-- `timeClock` validates saved account roles and team membership. `TimeShift` records and the protected User shift pointer are server-managed; atomic claims prevent overlapping shifts across devices.
-- Deployment includes `base44/entities/TimeShift.jsonc`, the updated User schema, and `base44/functions/timeClock/entry.ts`, plus the frontend. Entity filenames must match their schema names exactly so Base44 registers the identity used by the SDK.
+- `timeClock` validates saved account roles and team membership. `TimeShift` records and the protected TeamMember shift pointer are server-managed; atomic claims on the existing membership prevent overlapping shifts across devices. Base44 disallows bulk User updates, so User records are used only to verify identity.
+- Deployment includes `base44/entities/TimeShift.jsonc`, the updated TeamMember schema, and `base44/functions/timeClock/entry.ts`, plus the frontend. Entity filenames must match their schema names exactly so Base44 registers the identity used by the SDK. Clock-in controls require an active canvasser membership; managers without one can review and close team shifts.
 
 ---
 

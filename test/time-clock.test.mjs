@@ -30,7 +30,8 @@ function matches(row, query) {
     });
 }
 
-function harness({ caller = rep, savedUser = caller, members = [member], shifts = [], users = [], ignoreShiftScope = false, failActivation = false, failClear = false } = {}) {
+function harness({ caller = rep, savedUser = caller, members = [member], activeShiftId = '', shifts = [], users = [], ignoreShiftScope = false, failActivation = false, failClear = false } = {}) {
+    members = members.map(row => ({ ...row, ...(row.user_id === rep.id && activeShiftId ? { time_clock_active_shift_id: activeShiftId } : {}) }));
     const accounts = [structuredClone(manager), ...(savedUser?.id !== manager.id && savedUser ? [structuredClone(savedUser)] : []), ...users];
     if (savedUser?.id === manager.id) accounts[0] = structuredClone(savedUser);
     const queries = [];
@@ -43,14 +44,15 @@ function harness({ caller = rep, savedUser = caller, members = [member], shifts 
     };
     const updateMany = (rows, entity) => async (query, data) => {
         if (entity === 'TimeShift' && data.$set.status === 'active' && failActivation) { failActivation = false; throw new Error('Activation interrupted'); }
-        if (entity === 'User' && data.$set.time_clock_active_shift_id === '' && failClear) { failClear = false; throw new Error('Cleanup interrupted'); }
+        if (entity === 'TeamMember' && data.$set.time_clock_active_shift_id === '' && failClear) { failClear = false; throw new Error('Cleanup interrupted'); }
         const selected = rows.filter(row => matches(row, query));
         for (const row of selected) Object.assign(row, data.$set);
         return { success: true, updated: selected.length };
     };
     const service = {
-        User: { get: async id => structuredClone(accounts.find(user => user.id === id)), updateMany: updateMany(accounts, 'User') },
-        TeamMember: { filter: filter(members) },
+        User: { get: async id => structuredClone(accounts.find(user => user.id === id)),
+            updateMany: async () => { throw Object.assign(new Error('Bulk user update not allowed'), { status: 405 }); } },
+        TeamMember: { filter: filter(members), get: async id => structuredClone(members.find(row => row.id === id)), updateMany: updateMany(members, 'TeamMember') },
         TimeShift: { filter: filter(shifts, ignoreShiftScope), get: async id => structuredClone(shifts.find(shift => shift.id === id)),
             create: async data => { const row = { id: `new-${shifts.length}`, ...data }; shifts.push(row); return structuredClone(row); },
             updateMany: updateMany(shifts, 'TimeShift') },
@@ -60,7 +62,7 @@ function harness({ caller = rep, savedUser = caller, members = [member], shifts 
     }).outputText.replace(/^import .*;\s*$/gm, '');
     vm.runInNewContext(code, { createClientFromRequest: () => ({ auth: { me: async () => caller }, asServiceRole: { entities: service } }),
         Deno: { serve: fn => { handler = fn; } }, TimeClockError, timeClockRange, shiftOverlaps, Response, console: { error() {} } });
-    return { shifts, accounts, queries, invoke: async (body = {}) => {
+    return { shifts, accounts, members, queries, invoke: async (body = {}) => {
         const response = await handler(new Request('https://team.test/time-clock', { method: 'POST', body: JSON.stringify(body) }));
         return { status: response.status, data: await response.json() };
     } };
@@ -112,7 +114,7 @@ test('an interrupted clock-in recovers its durable claim without duplicating a s
 
 test('clock out records server time once; delayed retries cannot clear a newer shift', async () => {
     const shift = sample();
-    const h = harness({ savedUser: { ...rep, time_clock_active_shift_id: shift.id }, shifts: [shift] });
+    const h = harness({ activeShiftId: shift.id, shifts: [shift] });
     const before = Date.now();
     const first = await h.invoke({ action: 'clock_out', shift_id: shift.id, clock_out_at: '2000-01-01' });
     assert.equal(first.status, 200);
@@ -122,11 +124,11 @@ test('clock out records server time once; delayed retries cannot clear a newer s
     assert.equal(newer.status, 200);
     const retry = await h.invoke({ action: 'clock_out', shift_id: shift.id });
     assert.equal(retry.data.shift.clock_out_at, first.data.shift.clock_out_at);
-    assert.equal(h.accounts.find(user => user.id === rep.id).time_clock_active_shift_id, newer.data.shift.id);
+    assert.equal(h.members.find(row => row.id === member.id).time_clock_active_shift_id, newer.data.shift.id);
 });
 
 test('clock-out cleanup failure is recovered by refresh and permits the next shift', async () => {
-    const h = harness({ shifts: [sample()], savedUser: { ...rep, time_clock_active_shift_id: 'shift-a' }, failClear: true });
+    const h = harness({ shifts: [sample()], activeShiftId: 'shift-a', failClear: true });
     assert.equal((await h.invoke({ action: 'clock_out', shift_id: 'shift-a' })).status, 500);
     assert.equal(h.shifts[0].status, 'closed');
     assert.equal((await h.invoke(rangeBody)).data.current_shift, null);
@@ -135,7 +137,7 @@ test('clock-out cleanup failure is recovered by refresh and permits the next shi
 
 test('rep reports exclude other reps and tenants even when the entity filter overreturns', async () => {
     const shifts = [sample(), sample({ id: 'other-rep', rep_user_id: 'rep-b' }), sample({ id: 'foreign', manager_id: 'other-manager' })];
-    const h = harness({ shifts, savedUser: { ...rep, time_clock_active_shift_id: 'shift-a' }, ignoreShiftScope: true });
+    const h = harness({ shifts, activeShiftId: 'shift-a', ignoreShiftScope: true });
     const report = await h.invoke({ ...rangeBody, manager_id: 'other-manager' });
     assert.equal(report.data.manager_id, manager.id);
     assert.deepEqual(report.data.shifts.map(shift => shift.id), ['shift-a']);
@@ -156,20 +158,20 @@ test('stored roles and active linked membership govern access', async () => {
 test('manager reports retain historical and inactive members and can close a forgotten shift with attribution', async () => {
     const shifts = [sample(), sample({ id: 'foreign', manager_id: 'other-manager' })];
     const h = harness({ caller: manager, shifts, members: [{ ...member, status: 'inactive' }], ignoreShiftScope: true,
-        users: [{ ...rep, time_clock_active_shift_id: 'shift-a' }] });
+        activeShiftId: 'shift-a', users: [rep] });
     assert.deepEqual((await h.invoke(rangeBody)).data.shifts.map(shift => shift.id), ['shift-a']);
     assert.equal((await h.invoke({ action: 'close_shift', shift_id: 'foreign' })).status, 403);
     assert.equal((await h.invoke({ action: 'clock_out', shift_id: 'shift-a' })).status, 403);
     const result = await h.invoke({ action: 'close_shift', shift_id: 'shift-a' });
     assert.equal(result.status, 200);
     assert.equal(result.data.shift.closed_by, manager.id);
-    assert.equal(h.accounts.find(user => user.id === rep.id).time_clock_active_shift_id, '');
+    assert.equal(h.members.find(row => row.id === member.id).time_clock_active_shift_id, '');
 });
 
 test('historical range includes overnight overlaps; active status remains visible outside history filters', async () => {
     const shifts = [sample({ clock_in_at: '2026-10-07T23:00:00.000Z', clock_out_at: '2026-10-08T02:00:00.000Z', status: 'closed' }),
         sample({ id: 'open-now', clock_in_at: '2026-10-09T00:00:00.000Z' })];
-    const h = harness({ shifts, savedUser: { ...rep, time_clock_active_shift_id: 'open-now' } });
+    const h = harness({ shifts, activeShiftId: 'open-now' });
     const result = await h.invoke({ action: 'report', start_at: '2026-10-08T00:00:00.000Z', end_at: '2026-10-09T00:00:00.000Z' });
     assert.deepEqual(result.data.shifts.map(shift => shift.id), ['shift-a']);
     assert.equal(result.data.active_shifts[0].id, 'open-now');
@@ -212,8 +214,31 @@ test('time clock is placed in Teams and all shift writes are restricted to backe
     const entity = JSON.parse(fs.readFileSync('base44/entities/TimeShift.jsonc', 'utf8'));
     assert.equal(entity.name, 'TimeShift');
     for (const action of ['read', 'create', 'update', 'delete']) assert.equal(entity.rls[action].user_condition.id, '__service_role_only__');
-    const user = JSON.parse(fs.readFileSync('base44/entities/User.jsonc', 'utf8'));
-    assert.equal(user.properties.time_clock_active_shift_id.rls.write.user_condition.id, '__service_role_only__');
+    const membership = JSON.parse(fs.readFileSync('base44/entities/TeamMember.jsonc', 'utf8'));
+    assert.equal(membership.properties.time_clock_active_shift_id.rls.write.user_condition.id, '__service_role_only__');
+});
+
+test('managers without canvasser membership can report and close shifts but cannot clock in themselves', async () => {
+    const h = harness({ caller: manager });
+    assert.equal((await h.invoke(rangeBody)).data.can_clock, false);
+    assert.equal((await h.invoke({ action: 'clock_in', request_id: 'request-1' })).status, 403);
+    assert.equal(h.shifts.length, 0);
+    assert.equal((await harness().invoke(rangeBody)).data.can_clock, true);
+});
+
+test('duplicate roster memberships resolve to one stable claim across devices', async () => {
+    const h = harness({ members: [{ ...member, id: 'member-b' }, member] });
+    const results = await Promise.all(['request-1', 'request-2'].map(request_id => h.invoke({ action: 'clock_in', request_id })));
+    assert.deepEqual(results.map(result => result.status).sort(), [200, 409]);
+    assert.equal(h.shifts.filter(row => row.status === 'active').length, 1);
+    assert.equal(h.shifts.find(row => row.status === 'active').member_id, member.id);
+});
+
+test('a transferred canvasser cannot start a new shift while a previous membership still has an open shift', async () => {
+    const oldMember = { ...member, id: 'old-member', manager_id: 'old-manager', time_clock_active_shift_id: 'old-shift' };
+    const h = harness({ members: [member, oldMember], shifts: [sample({ id: 'old-shift', manager_id: 'old-manager', member_id: oldMember.id })] });
+    assert.equal((await h.invoke({ action: 'clock_in', request_id: 'request-1' })).status, 409);
+    assert.equal(h.shifts.length, 1);
 });
 
 test('backend deployment validation rejects schema filenames that differ from the SDK entity identity', () => {
