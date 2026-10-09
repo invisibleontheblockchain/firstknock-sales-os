@@ -11,6 +11,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { TimeClockError, timeClockRange, shiftOverlaps, shiftMilliseconds, durationLabel } from '../base44/shared/timeClock.js';
 import { clockDateRange, timeClockCsv } from '../src/lib/timeClock.js';
 import * as clockHelpers from '../base44/shared/timeClock.js';
+import * as clientClockCore from '../src/lib/timeClockCore.js';
 import { timesheetCsv, clockInputValue, clockInputInstant } from '../src/lib/timeClock.js';
 
 const manager = { id: 'manager-a', app_role: 'manager' };
@@ -398,6 +399,17 @@ test('completed totals and both CSV formats exclude open time and preserve selec
     assert.equal(details.split('\r\n').length, 2);
     const boundaryShift = sample({ status: 'closed', clock_in_at: new Date(range.start - 3600000).toISOString(), clock_out_at: range.start_at });
     assert.equal(clockHelpers.summarizeTimeClock([boundaryShift], range, now).length, 0);
+    assert.equal(timesheetCsv([boundaryShift], range, now, 'America/Phoenix', 'details').split('\r\n').length, 1);
+});
+
+test('browser and server date boundaries and payroll totals agree across reporting zones and DST', () => {
+    for (const [date, zone] of [['2026-03-08', 'America/New_York'], ['2026-11-01', 'America/New_York'], ['2026-10-09', 'America/Phoenix']]) {
+        const server = clockHelpers.clockDateRangeInZone(date, date, zone);
+        const client = clientClockCore.clockDateRangeInZone(date, date, zone);
+        assert.deepEqual(client, server);
+        const row = sample({ status: 'closed', clock_in_at: new Date(server.start - 3600000).toISOString(), clock_out_at: new Date(server.end + 3600000).toISOString() });
+        assert.equal(clientClockCore.summarizeTimeClock([row], client)[0].completed_ms, server.end - server.start);
+    }
 });
 
 test('manager screen renders personal controls and the whole live roster before filtered timesheets, including its empty state', () => {
