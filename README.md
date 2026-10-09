@@ -513,11 +513,13 @@ Full detail: [Canvas production runbook](docs/CANVAS_PRODUCTION_RUNBOOK.md) · [
 
 #### Time Clock Tab
 - Canvassers clock in and out from **Teams → Time Clock** and view their own shift history.
-- Managers see current team shifts, filter hours by dates and member, export CSV, and close forgotten shifts with manager attribution.
+- Managers and reps record their own shifts. Managers see the entire live clocked-in roster above Timesheets, independently of reporting dates and people filters.
 - Shifts use server timestamps and remain open when the app closes. An internet connection is required to clock in or out.
-- Overnight shifts are included in reports; totals count only the time inside the selected local dates. CSV timestamps and range bounds use UTC.
-- `timeClock` validates saved account roles and team membership. `TimeShift` records and the protected TeamMember shift pointer are server-managed; atomic claims on the existing membership prevent overlapping shifts across devices. Base44 disallows bulk User updates, so User records are used only to verify identity.
-- Deployment includes `base44/entities/TimeShift.jsonc`, the updated TeamMember schema, and `base44/functions/timeClock/entry.ts`, plus the frontend. Entity filenames must match their schema names exactly so Base44 registers the identity used by the SDK. Clock-in controls require an active canvasser membership; managers without one can review and close team shifts.
+- Timesheets default to This week (Monday through today), with Today, Yesterday, Last week, and Custom dates. Each team uses its manager's saved reporting timezone (America/Phoenix by default). Date boundaries, today's completed hours, input times, and exports agree across daylight-saving transitions and overnight shifts.
+- Completed hours exclude open shifts. Expand a person to inspect shifts, pending corrections, and the adjustment history. Export previews follow the selected dates and people, with CSV choices for totals by person or completed shift details; timestamps and range bounds are explicit UTC and include the reporting timezone.
+- Managers can close forgotten shifts at their actual finish, edit times, or add a missing shift with a reason. Audit entries retain original and corrected timestamps, editor, and time. Reps request corrections; managers resolve them by editing recorded times. Revisions prevent stale changes; retries are idempotent and overlapping/future/invalid recorded times are rejected. Open shifts over 12 hours are marked Needs review without changing their finish.
+- `timeClock` validates saved roles and team membership. All attendance actions serialize by account using transaction advisory locks in the existing `DATABASE_URL` connection, across devices, teams and role changes. Attendance stays in protected Base44 `TimeShift` records; existing TeamMember claims still recover interrupted legacy clock-ins. No User bulk updates are used. Saving fails closed when locking is unavailable; reports remain readable.
+- Deployment includes `base44/entities/TimeShift.jsonc`, the protected User reporting-timezone field, `base44/shared/timeClock.js`, and `base44/functions/timeClock/entry.ts`, plus the frontend. Entity filenames must match their schema names exactly. The authenticated manager-only `check_saving` diagnostic tests connection/locking without creating attendance records.
 
 ---
 

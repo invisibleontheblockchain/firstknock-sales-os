@@ -2,6 +2,19 @@
   "name": "TimeShift",
   "type": "object",
   "properties": {
+    "revision": { "type": "integer", "default": 0 },
+    "adjusted": { "type": "boolean", "default": false },
+    "audit_trail": { "type": "array", "items": { "type": "object", "properties": {
+      "request_id": { "type": "string" }, "action": { "type": "string" },
+      "actor_id": { "type": "string" }, "actor_name": { "type": "string" }, "at": { "type": "string" },
+      "reason": { "type": "string" }, "before_start": { "type": "string" }, "before_end": { "type": "string" },
+      "after_start": { "type": "string" }, "after_end": { "type": "string" }
+    } } },
+    "correction_requests": { "type": "array", "items": { "type": "object", "properties": {
+      "request_id": { "type": "string" }, "actor_id": { "type": "string" }, "at": { "type": "string" },
+      "reason": { "type": "string" }, "start_at": { "type": "string" }, "end_at": { "type": "string" },
+      "status": { "type": "string", "enum": ["pending", "resolved"] }, "resolved_at": { "type": "string" }, "resolved_by": { "type": "string" }
+    } } },
     "manager_id": {
       "type": "string"
     },
