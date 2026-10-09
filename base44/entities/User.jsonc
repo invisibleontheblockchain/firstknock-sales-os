@@ -2,6 +2,10 @@
   "name": "User",
   "type": "object",
   "properties": {
+    "time_clock_timezone": {
+      "type": "string", "description": "Service-managed reporting timezone for this manager's team time clock.",
+      "rls": { "write": { "user_condition": { "id": "__service_role_only__" } } }
+    },
     "app_role": {
       "type": "string",
       "enum": [

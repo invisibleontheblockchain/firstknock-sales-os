@@ -6,8 +6,12 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import ts from 'typescript';
+import React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { TimeClockError, timeClockRange, shiftOverlaps, shiftMilliseconds, durationLabel } from '../base44/shared/timeClock.js';
 import { clockDateRange, timeClockCsv } from '../src/lib/timeClock.js';
+import * as clockHelpers from '../base44/shared/timeClock.js';
+import { timesheetCsv, clockInputValue, clockInputInstant } from '../src/lib/timeClock.js';
 
 const manager = { id: 'manager-a', app_role: 'manager' };
 const rep = { id: 'rep-a', app_role: 'rep', team_manager_id: manager.id, email: 'rep@example.com' };
@@ -30,7 +34,7 @@ function matches(row, query) {
     });
 }
 
-function harness({ caller = rep, savedUser = caller, members = [member], activeShiftId = '', shifts = [], users = [], ignoreShiftScope = false, failActivation = false, failClear = false } = {}) {
+function harness({ caller = rep, savedUser = caller, members = [member], activeShiftId = '', shifts = [], users = [], ignoreShiftScope = false, failActivation = false, failClear = false, databaseAvailable = true } = {}) {
     members = members.map(row => ({ ...row, ...(row.user_id === rep.id && activeShiftId ? { time_clock_active_shift_id: activeShiftId } : {}) }));
     const accounts = [structuredClone(manager), ...(savedUser?.id !== manager.id && savedUser ? [structuredClone(savedUser)] : []), ...users];
     if (savedUser?.id === manager.id) accounts[0] = structuredClone(savedUser);
@@ -51,6 +55,7 @@ function harness({ caller = rep, savedUser = caller, members = [member], activeS
     };
     const service = {
         User: { get: async id => structuredClone(accounts.find(user => user.id === id)),
+            update: async (id, data) => Object.assign(accounts.find(user => user.id === id), data),
             updateMany: async () => { throw Object.assign(new Error('Bulk user update not allowed'), { status: 405 }); } },
         TeamMember: { filter: filter(members), get: async id => structuredClone(members.find(row => row.id === id)), updateMany: updateMany(members, 'TeamMember') },
         TimeShift: { filter: filter(shifts, ignoreShiftScope), get: async id => structuredClone(shifts.find(shift => shift.id === id)),
@@ -60,8 +65,21 @@ function harness({ caller = rep, savedUser = caller, members = [member], activeS
     const code = ts.transpileModule(fs.readFileSync('base44/functions/timeClock/entry.ts', 'utf8'), {
         compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
     }).outputText.replace(/^import .*;\s*$/gm, '');
-    vm.runInNewContext(code, { createClientFromRequest: () => ({ auth: { me: async () => caller }, asServiceRole: { entities: service } }),
-        Deno: { serve: fn => { handler = fn; } }, TimeClockError, timeClockRange, shiftOverlaps, Response, console: { error() {} } });
+    const locks = new Map();
+    class Client {
+        async connect() {}
+        async query(sql, args) {
+            if (sql.includes('pg_advisory_xact_lock')) {
+                const previous = locks.get(args[0]) || Promise.resolve();
+                locks.set(args[0], new Promise(resolve => { this.release = resolve; }));
+                await previous;
+            } else if (sql === 'COMMIT' || sql === 'ROLLBACK') this.release?.();
+            return { rows: [] };
+        }
+        async end() { this.release?.(); }
+    }
+    vm.runInNewContext(code, { createClientFromRequest: () => ({ auth: { me: async () => caller }, asServiceRole: { entities: service } }), Client,
+        Deno: { env: { get: () => databaseAvailable ? 'test-database' : '' }, serve: fn => { handler = fn; } }, ...clockHelpers, Response, console: { error() {} } });
     return { shifts, accounts, members, queries, invoke: async (body = {}) => {
         const response = await handler(new Request('https://team.test/time-clock', { method: 'POST', body: JSON.stringify(body) }));
         return { status: response.status, data: await response.json() };
@@ -156,13 +174,14 @@ test('stored roles and active linked membership govern access', async () => {
 });
 
 test('manager reports retain historical and inactive members and can close a forgotten shift with attribution', async () => {
-    const shifts = [sample(), sample({ id: 'foreign', manager_id: 'other-manager' })];
+    const shifts = [sample(), sample({ id: 'foreign', manager_id: 'other-manager', rep_user_id: 'other-rep' })];
     const h = harness({ caller: manager, shifts, members: [{ ...member, status: 'inactive' }], ignoreShiftScope: true,
         activeShiftId: 'shift-a', users: [rep] });
     assert.deepEqual((await h.invoke(rangeBody)).data.shifts.map(shift => shift.id), ['shift-a']);
-    assert.equal((await h.invoke({ action: 'close_shift', shift_id: 'foreign' })).status, 403);
+    assert.equal((await h.invoke({ action: 'close_shift', shift_id: 'foreign', request_id: 'close-foreign' })).status, 403);
     assert.equal((await h.invoke({ action: 'clock_out', shift_id: 'shift-a' })).status, 403);
-    const result = await h.invoke({ action: 'close_shift', shift_id: 'shift-a' });
+    const result = await h.invoke({ action: 'close_shift', shift_id: 'shift-a', request_id: 'close-missing', revision: 0,
+        start_at: shifts[0].clock_in_at, end_at: '2026-10-09T00:00:00.000Z', reason: 'Finished yesterday' });
     assert.equal(result.status, 200);
     assert.equal(result.data.shift.closed_by, manager.id);
     assert.equal(h.members.find(row => row.id === member.id).time_clock_active_shift_id, '');
@@ -218,11 +237,14 @@ test('time clock is placed in Teams and all shift writes are restricted to backe
     assert.equal(membership.properties.time_clock_active_shift_id.rls.write.user_condition.id, '__service_role_only__');
 });
 
-test('managers without canvasser membership can report and close shifts but cannot clock in themselves', async () => {
+test('managers without canvasser membership record their own shifts in team reports', async () => {
     const h = harness({ caller: manager });
-    assert.equal((await h.invoke(rangeBody)).data.can_clock, false);
-    assert.equal((await h.invoke({ action: 'clock_in', request_id: 'request-1' })).status, 403);
-    assert.equal(h.shifts.length, 0);
+    assert.equal((await h.invoke(rangeBody)).data.can_clock, true);
+    const results = await Promise.all(['manager-1', 'manager-2'].map(request_id => h.invoke({ action: 'clock_in', request_id })));
+    assert.deepEqual(results.map(result => result.status).sort(), [200, 409]);
+    assert.equal(h.shifts.length, 1);
+    assert.equal(h.shifts[0].rep_user_id, manager.id);
+    assert.equal((await h.invoke(rangeBody)).data.active_shifts[0].rep_user_id, manager.id);
     assert.equal((await harness().invoke(rangeBody)).data.can_clock, true);
 });
 
@@ -263,4 +285,153 @@ test('backend deployment validation rejects schema filenames that differ from th
         assert.ok(path.basename(fixture).startsWith('firstknock-time-clock-schema-'));
         fs.rmSync(fixture, { recursive: true, force: true });
     }
+});
+
+test('corrections preserve original values, reason, editor, and idempotency', async () => {
+    const shift = sample({ status: 'closed', clock_out_at: '2026-10-09T01:00:00.000Z' });
+    const h = harness({ caller: manager, shifts: [shift] });
+    const body = { action: 'edit_shift', shift_id: shift.id, revision: 0, request_id: 'edit-times-1',
+        start_at: '2026-10-08T22:00:00.000Z', end_at: '2026-10-09T00:00:00.000Z', reason: 'Corrected finish' };
+    const result = await h.invoke(body);
+    assert.equal(result.status, 200);
+    assert.equal(result.data.shift.adjusted, true);
+    assert.equal(result.data.shift.audit_trail[0].before_start, '2026-10-08T23:00:00.000Z');
+    assert.equal(result.data.shift.audit_trail[0].before_end, '2026-10-09T01:00:00.000Z');
+    assert.equal(result.data.shift.audit_trail[0].actor_id, manager.id);
+    assert.equal(result.data.shift.audit_trail[0].reason, body.reason);
+    assert.equal((await h.invoke(body)).data.shift.audit_trail.length, 1);
+    assert.equal((await h.invoke({ ...body, request_id: 'another-edit' })).status, 409);
+    const visible = await harness({ shifts: h.shifts }).invoke(rangeBody);
+    assert.equal(visible.data.shifts[0].audit_trail[0].reason, body.reason);
+});
+
+test('reps request corrections; only their manager changes actual recorded times', async () => {
+    const h = harness({ shifts: [sample({ status: 'closed', clock_out_at: '2026-10-09T01:00:00.000Z' })] });
+    const request = { action: 'request_correction', shift_id: 'shift-a', revision: 0, request_id: 'request-change',
+        start_at: '2026-10-08T22:00:00.000Z', end_at: '2026-10-09T00:00:00.000Z', reason: 'Stopped earlier' };
+    assert.equal((await h.invoke({ ...request, action: 'edit_shift' })).status, 403);
+    const result = await h.invoke(request);
+    assert.equal(result.status, 200);
+    assert.equal(result.data.shift.clock_out_at, '2026-10-09T01:00:00.000Z');
+    assert.equal(result.data.shift.correction_requests[0].status, 'pending');
+    const reviewer = harness({ caller: manager, shifts: h.shifts });
+    const corrected = await reviewer.invoke({ ...request, action: 'edit_shift', revision: 1, request_id: 'approve-change' });
+    assert.equal(corrected.status, 200);
+    assert.equal(corrected.data.shift.correction_requests[0].status, 'resolved');
+    assert.equal(corrected.data.shift.correction_requests[0].resolved_by, manager.id);
+    assert.equal((await harness({ caller: { ...rep, id: 'rep-b' }, members: [{ ...member, user_id: 'rep-b' }], shifts: h.shifts }).invoke(request)).status, 403);
+});
+
+test('missing shifts are audited, linked to the selected account, and reject overlaps and foreign people', async () => {
+    const h = harness({ caller: manager, shifts: [], users: [rep] });
+    const body = { action: 'add_shift', person_id: rep.id, request_id: 'missing-time',
+        start_at: '2026-10-08T20:00:00.000Z', end_at: '2026-10-08T22:00:00.000Z', reason: 'Missed clock-in' };
+    assert.equal((await h.invoke({ ...body, person_id: 'foreign-person' })).status, 403);
+    const saved = await h.invoke(body);
+    assert.equal(saved.status, 200);
+    assert.equal(saved.data.shift.rep_user_id, rep.id);
+    assert.equal(saved.data.shift.status, 'closed');
+    assert.equal(saved.data.shift.audit_trail[0].before_start, '');
+    assert.equal((await h.invoke(body)).data.shift.id, saved.data.shift.id);
+    assert.equal((await h.invoke({ ...body, request_id: 'overlap-time' })).status, 409);
+    assert.equal((await h.invoke({ ...body, request_id: 'backward-time', end_at: body.start_at })).status, 400);
+    assert.equal((await h.invoke({ ...body, request_id: 'no-reason-1', reason: '' })).status, 400);
+    assert.equal(h.shifts.length, 1);
+});
+
+test('simultaneous corrections keep one audit and require refresh before overwriting', async () => {
+    const h = harness({ caller: manager, shifts: [sample({ status: 'closed', clock_out_at: '2026-10-09T01:00:00.000Z' })] });
+    const body = { action: 'edit_shift', shift_id: 'shift-a', revision: 0,
+        start_at: '2026-10-08T22:00:00.000Z', end_at: '2026-10-09T00:00:00.000Z', reason: 'Correction' };
+    const results = await Promise.all(['correction-a', 'correction-b'].map(request_id => h.invoke({ ...body, request_id })));
+    assert.deepEqual(results.map(result => result.status).sort(), [200, 409]);
+    assert.equal(h.shifts[0].audit_trail.length, 1);
+});
+
+test('transferred people can end their own old-team shift without exposing another person’s shift', async () => {
+    const h = harness({ shifts: [sample({ manager_id: 'old-manager' })] });
+    assert.equal((await h.invoke({ action: 'clock_out', shift_id: 'shift-a' })).status, 200);
+    const foreign = harness({ shifts: [sample({ manager_id: 'old-manager', rep_user_id: 'someone-else' })] });
+    assert.equal((await foreign.invoke({ action: 'clock_out', shift_id: 'shift-a' })).status, 403);
+});
+
+test('saving fails closed if account locking is unavailable; reports remain readable', async () => {
+    const h = harness({ databaseAvailable: false });
+    assert.equal((await h.invoke(rangeBody)).status, 200);
+    assert.equal((await h.invoke({ action: 'clock_in', request_id: 'lock-required' })).status, 503);
+    assert.equal(h.shifts.length, 0);
+});
+
+test('one team timezone governs date bounds, daily hours, presets, and correction inputs across DST', async () => {
+    const { clockDateRangeInZone, clockPresetDates } = clockHelpers;
+    const spring = clockDateRangeInZone('2026-03-08', '2026-03-08', 'America/New_York');
+    const fall = clockDateRangeInZone('2026-11-01', '2026-11-01', 'America/New_York');
+    assert.equal(spring.end - spring.start, 23 * 3600000);
+    assert.equal(fall.end - fall.start, 25 * 3600000);
+    assert.throws(() => clockInputInstant('2026-03-08T02:30:00', 'America/New_York'), /does not exist/);
+    assert.equal(clockInputInstant(clockInputValue('2026-11-01T06:30:00.000Z', 'America/New_York'), 'America/New_York', '2026-11-01T06:30:00.000Z'), '2026-11-01T06:30:00.000Z');
+    assert.deepEqual(clockPresetDates('this-week', Date.parse('2026-10-09T16:00:00Z'), 'America/Phoenix'), { start: '2026-10-05', end: '2026-10-09' });
+    assert.deepEqual(clockPresetDates('last-week', Date.parse('2026-10-09T16:00:00Z'), 'America/Phoenix'), { start: '2026-09-28', end: '2026-10-04' });
+    const h = harness({ caller: manager, shifts: [sample({ status: 'closed', clock_in_at: '2026-10-09T06:00:00.000Z', clock_out_at: '2026-10-09T08:00:00.000Z' })] });
+    assert.equal((await h.invoke({ action: 'set_timezone', timezone: 'America/Phoenix' })).status, 200);
+    const report = await h.invoke({ action: 'report', start_date: '2026-10-09', end_date: '2026-10-09' });
+    assert.equal(report.data.range.start_at, '2026-10-09T07:00:00.000Z');
+    const personal = await harness({ shifts: h.shifts }).invoke({ action: 'report', start_date: '2026-10-09', end_date: '2026-10-09' });
+    assert.equal(personal.data.completed_today_ms, 3600000);
+    assert.equal((await harness().invoke({ action: 'set_timezone', timezone: 'UTC' })).status, 403);
+});
+
+test('completed totals and both CSV formats exclude open time and preserve selected-period allocation', () => {
+    const range = clockHelpers.clockDateRangeInZone('2026-10-09', '2026-10-09', 'America/Phoenix');
+    const now = range.start + 5 * 3600000;
+    const shifts = [sample({ status: 'closed', clock_in_at: new Date(range.start - 3600000).toISOString(), clock_out_at: new Date(range.start + 90 * 60000).toISOString(), adjusted: true }),
+        sample({ id: 'open-shift', clock_in_at: range.start_at })];
+    const summaries = clockHelpers.summarizeTimeClock(shifts, range, now);
+    assert.equal(summaries[0].completed_ms, 90 * 60000);
+    assert.equal(summaries[0].completed_shifts, 1);
+    assert.equal(summaries[0].open_shifts, 1);
+    const totals = timesheetCsv(shifts, range, now, 'America/Phoenix');
+    assert.ok(totals.includes('"1.50"'));
+    const details = timesheetCsv(shifts, range, now, 'America/Phoenix', 'details');
+    assert.ok(details.includes('"2.50","1.50","America/Phoenix","Yes"'));
+    assert.equal(details.includes('open-shift'), false);
+    assert.equal(details.split('\r\n').length, 2);
+    const boundaryShift = sample({ status: 'closed', clock_in_at: new Date(range.start - 3600000).toISOString(), clock_out_at: range.start_at });
+    assert.equal(clockHelpers.summarizeTimeClock([boundaryShift], range, now).length, 0);
+});
+
+test('manager screen renders personal controls and the whole live roster before filtered timesheets, including its empty state', () => {
+    const range = clockHelpers.clockDateRangeInZone('2026-10-05', '2026-10-09');
+    const data = { success: true, can_clock: true, timezone: 'America/Phoenix', range, completed_today_ms: 0,
+        people: [{ id: manager.id, name: 'Morgan', can_add: true }, { id: rep.id, name: 'Alex', can_add: true }],
+        active_shifts: [sample(), sample({ id: 'manager-shift', rep_user_id: manager.id, rep_name: 'Morgan' })], shifts: [], current_shift: null };
+    const native = ({ children }) => React.createElement('div', null, children);
+    const Button = ({ children, onClick, disabled, 'aria-label': label }) => React.createElement('button', { onClick, disabled, 'aria-label': label }, children);
+    const modules = {
+        react: React,
+        '@tanstack/react-query': { useQuery: options => ({ data: options.queryKey.includes('status') ? data : { ...data, active_shifts: [] }, dataUpdatedAt: Date.now(), isSuccess: true }), useMutation: () => ({ mutate() {} }), useQueryClient: () => ({}) },
+        'lucide-react': new Proxy({}, { get: () => () => null }), sonner: { toast: {} }, '@/api/base44Client': { base44: {} },
+        '@/components/ui/button': { Button }, '@/components/ui/input': { Input: native },
+        '@/components/ui/dialog': { Dialog: () => null, DialogContent: native, DialogHeader: native, DialogTitle: native, DialogDescription: native },
+        '@/components/ui/dropdown-menu': { DropdownMenu: native, DropdownMenuContent: native, DropdownMenuItem: native, DropdownMenuTrigger: native },
+        '@/lib/timeClock': { ...clockHelpers, clockInputValue, clockInputInstant },
+    };
+    const code = ts.transpileModule(fs.readFileSync('src/components/team/TimeClockTab.jsx', 'utf8'), {
+        compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.React, esModuleInterop: true, target: ts.ScriptTarget.ES2022 },
+    }).outputText;
+    const exports = {};
+    vm.runInNewContext(code, { exports, require: name => modules[name], navigator: { onLine: true }, crypto: { randomUUID: () => 'render-test-id' } });
+    const render = () => renderToStaticMarkup(React.createElement(exports.default, { currentUser: manager, managerId: manager.id, canManage: true, activeTeamCode: 'OTHER_TEAM' }));
+    let html = render();
+    assert.match(html, /Your shift/);
+    assert.match(html, /Clock in/);
+    assert.match(html, /Clocked in now · 2/);
+    assert.ok(html.indexOf('Clocked in now') < html.indexOf('Timesheets'));
+    assert.match(html, /Alex/);
+    assert.match(html, /Morgan/);
+    assert.doesNotMatch(html, /Clock in when you start canvassing|Canvassers clock in and out here/);
+    data.active_shifts = [];
+    html = render();
+    assert.match(html, /Clocked in now · 0/);
+    assert.match(html, /No one is clocked in\./);
 });
