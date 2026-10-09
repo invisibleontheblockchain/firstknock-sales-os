@@ -2,6 +2,17 @@
   "name": "TeamMember",
   "type": "object",
   "properties": {
+    "time_clock_active_shift_id": {
+      "type": "string",
+      "description": "Server-managed active time clock shift. Conditional updates on the existing membership prevent overlapping shifts across devices.",
+      "rls": {
+        "write": {
+          "user_condition": {
+            "id": "__service_role_only__"
+          }
+        }
+      }
+    },
     "name": {
       "type": "string",
       "description": "Full name of team member"
