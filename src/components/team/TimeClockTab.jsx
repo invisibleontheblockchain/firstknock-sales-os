@@ -73,6 +73,7 @@ export default function TimeClockTab({ currentUser, managerId, canManage, active
     const offset = query.data?.server_time ? Date.parse(query.data.server_time) - query.dataUpdatedAt : 0;
     const serverNow = now + offset;
     const current = query.data?.current_shift;
+    const canClock = query.data?.can_clock === true;
     const teamFilter = shift => !canManage || activeTeamCode === 'all' || shift.invite_code === activeTeamCode;
     const history = range ? (query.data?.shifts || []).filter(teamFilter) : [];
     const active = (query.data?.active_shifts || []).filter(teamFilter);
@@ -94,15 +95,16 @@ export default function TimeClockTab({ currentUser, managerId, canManage, active
             <div>
                 <h2 className="flex items-center gap-2 text-lg font-bold"><Clock3 className="h-5 w-5 text-yellow-500" />Time Clock</h2>
                 <p className="mt-1 text-xs text-gray-400">Clock in when you start canvassing and clock out when you finish. Your shift stays open when you leave the app.</p>
-                {query.data && <p className={`mt-3 text-sm font-semibold ${current ? 'text-green-400' : 'text-gray-300'}`}>
+                {query.data && canClock && <p className={`mt-3 text-sm font-semibold ${current ? 'text-green-400' : 'text-gray-300'}`}>
                     {current ? `Clocked in · ${durationLabel(shiftMilliseconds(current, serverNow))} elapsed` : 'You are clocked out'}
                 </p>}
                 {current && <p className="mt-1 text-xs text-gray-400">Started {timestamp(current.clock_in_at)}</p>}
+                {query.data && !canClock && <p className="mt-3 text-xs text-gray-400">Canvassers clock in and out here. Managers review hours and can close forgotten team shifts below.</p>}
             </div>
-            <Button onClick={current ? closeOwnShift : clockIn} disabled={!ready} className={`min-h-12 shrink-0 font-bold ${current ? 'border border-red-400/40 bg-red-500/15 text-red-200 hover:bg-red-500/25' : 'bg-yellow-500 text-black hover:bg-yellow-400'}`}>
+            {canClock && <Button onClick={current ? closeOwnShift : clockIn} disabled={!ready} className={`min-h-12 shrink-0 font-bold ${current ? 'border border-red-400/40 bg-red-500/15 text-red-200 hover:bg-red-500/25' : 'bg-yellow-500 text-black hover:bg-yellow-400'}`}>
                 {current ? <LogOut className="mr-2 h-4 w-4" /> : <LogIn className="mr-2 h-4 w-4" />}
                 {mutation.isPending ? 'Saving…' : current ? 'Clock Out' : 'Clock In'}
-            </Button>
+            </Button>}
         </section>
         {!online && <p role="alert" className="text-sm text-amber-300">Connect to the internet to clock in or out. Your saved shift continues while offline.</p>}
         {query.isPending && <p role="status" className="text-sm text-gray-400">Loading time clock…</p>}
@@ -149,3 +151,4 @@ export default function TimeClockTab({ currentUser, managerId, canManage, active
         </Dialog>
     </div>;
 }
+
