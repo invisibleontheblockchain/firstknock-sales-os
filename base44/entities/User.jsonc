@@ -2,11 +2,6 @@
   "name": "User",
   "type": "object",
   "properties": {
-    "time_clock_active_shift_id": {
-      "type": "string",
-      "description": "Server-managed active time clock shift. Atomic claims prevent overlapping shifts across devices.",
-      "rls": { "write": { "user_condition": { "id": "__service_role_only__" } } }
-    },
     "app_role": {
       "type": "string",
       "enum": [
@@ -15,7 +10,11 @@
         "admin"
       ],
       "rls": {
-        "write": { "user_condition": { "role": "admin" } }
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
       }
     },
     "team_member_id": {
@@ -33,7 +32,11 @@
       "type": "string",
       "description": "Manager User ID for an invited rep; set by the trusted invite redemption flow and used for exact Canvas tenant binding",
       "rls": {
-        "write": { "user_condition": { "role": "admin" } }
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
       }
     },
     "is_owner": {
@@ -41,26 +44,42 @@
       "default": false,
       "description": "Owner level tier with unlimited caps and elevated permissions",
       "rls": {
-        "write": { "user_condition": { "role": "admin" } }
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
       }
     },
     "subscription_status": {
       "type": "string",
       "rls": {
-        "write": { "user_condition": { "role": "admin" } }
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
       }
     },
     "subscription_tier": {
       "type": "string",
       "rls": {
-        "write": { "user_condition": { "role": "admin" } }
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
       }
     },
     "subscription_id": {
       "type": "string",
       "description": "Client-visible Stripe subscription locator cache. Server access still requires affirmative Stripe metadata ownership.",
       "rls": {
-        "write": { "user_condition": { "role": "admin" } }
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
       }
     },
     "subscription_paid_confirmed": {
@@ -68,14 +87,22 @@
       "default": false,
       "description": "Client-visible webhook cache only. Paid entitlement is re-verified from live Stripe state by server functions.",
       "rls": {
-        "write": { "user_condition": { "role": "admin" } }
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
       }
     },
     "subscription_paid_confirmed_at": {
       "type": "string",
       "format": "date-time",
       "rls": {
-        "write": { "user_condition": { "role": "admin" } }
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
       }
     },
     "subscription_period_start": {
@@ -83,7 +110,11 @@
       "format": "date-time",
       "description": "Client-visible Stripe period cache; never authoritative for allowance enforcement",
       "rls": {
-        "write": { "user_condition": { "role": "admin" } }
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
       }
     },
     "subscription_period_end": {
@@ -91,13 +122,21 @@
       "format": "date-time",
       "description": "Current Stripe subscription period end, updated only from verified Stripe state",
       "rls": {
-        "write": { "user_condition": { "role": "admin" } }
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
       }
     },
     "subscription_plan_id": {
       "type": "string",
       "rls": {
-        "write": { "user_condition": { "role": "admin" } }
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
       }
     },
     "precision_usage_period_start": {
@@ -105,14 +144,22 @@
       "format": "date-time",
       "description": "Client-visible audit cache. Service-owned FetchJob usage and live Stripe state are authoritative.",
       "rls": {
-        "write": { "user_condition": { "role": "admin" } }
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
       }
     },
     "precision_usage_period_end": {
       "type": "string",
       "format": "date-time",
       "rls": {
-        "write": { "user_condition": { "role": "admin" } }
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
       }
     },
     "precision_usage_reconciled_at": {
@@ -120,14 +167,22 @@
       "format": "date-time",
       "description": "Set once when an existing paid account receives its included-trial reconciliation",
       "rls": {
-        "write": { "user_condition": { "role": "admin" } }
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
       }
     },
     "precision_usage_reconciliation_version": {
       "type": "integer",
       "default": 0,
       "rls": {
-        "write": { "user_condition": { "role": "admin" } }
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
       }
     },
     "precision_trial_properties_credited": {
@@ -135,19 +190,31 @@
       "default": 0,
       "description": "Audit value for the one-time included trial-property credit, capped at 50",
       "rls": {
-        "write": { "user_condition": { "role": "admin" } }
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
       }
     },
     "total_seats": {
       "type": "integer",
       "rls": {
-        "write": { "user_condition": { "role": "admin" } }
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
       }
     },
     "stripe_customer_id": {
       "type": "string",
       "rls": {
-        "write": { "user_condition": { "role": "admin" } }
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
       }
     },
     "stripe_card_on_file_confirmed": {
@@ -155,14 +222,22 @@
       "default": false,
       "description": "Display cache only. Outcome enforcement verifies attached cards live with Stripe.",
       "rls": {
-        "write": { "user_condition": { "role": "admin" } }
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
       }
     },
     "stripe_card_confirmed_at": {
       "type": "string",
       "format": "date-time",
       "rls": {
-        "write": { "user_condition": { "role": "admin" } }
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
       }
     },
     "has_seen_onboarding": {
@@ -206,7 +281,11 @@
       "default": 0,
       "description": "Service-owned lifetime count of Knock Mode outcomes logged by this user. Never decrements.",
       "rls": {
-        "write": { "user_condition": { "role": "admin" } }
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
       }
     },
     "outcomes_reconciled_at": {
@@ -214,32 +293,64 @@
       "format": "date-time",
       "description": "When legacy outcomes were reconciled into the protected lifetime counter",
       "rls": {
-        "read": { "user_condition": { "role": "admin" } },
-        "write": { "user_condition": { "role": "admin" } }
+        "read": {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
       }
     },
     "knock_outcome_lock_token": {
       "type": "string",
       "description": "Short-lived service-owned lease serializing outcome writes for this actor",
       "rls": {
-        "read": { "user_condition": { "role": "admin" } },
-        "write": { "user_condition": { "role": "admin" } }
+        "read": {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
       }
     },
     "knock_outcome_lock_acquired_at": {
       "type": "string",
       "format": "date-time",
       "rls": {
-        "read": { "user_condition": { "role": "admin" } },
-        "write": { "user_condition": { "role": "admin" } }
+        "read": {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
       }
     },
     "knock_outcome_lock_expires_at": {
       "type": "string",
       "format": "date-time",
       "rls": {
-        "read": { "user_condition": { "role": "admin" } },
-        "write": { "user_condition": { "role": "admin" } }
+        "read": {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
       }
     },
     "working_area": {
@@ -309,24 +420,48 @@
       "type": "string",
       "description": "Short-lived service-owned token serializing Canvas deployments for this manager",
       "rls": {
-        "read": { "user_condition": { "role": "admin" } },
-        "write": { "user_condition": { "role": "admin" } }
+        "read": {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
       }
     },
     "canvas_deployment_lock_acquired_at": {
       "type": "string",
       "format": "date-time",
       "rls": {
-        "read": { "user_condition": { "role": "admin" } },
-        "write": { "user_condition": { "role": "admin" } }
+        "read": {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
       }
     },
     "canvas_deployment_lock_expires_at": {
       "type": "string",
       "format": "date-time",
       "rls": {
-        "read": { "user_condition": { "role": "admin" } },
-        "write": { "user_condition": { "role": "admin" } }
+        "read": {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
       }
     }
   },
