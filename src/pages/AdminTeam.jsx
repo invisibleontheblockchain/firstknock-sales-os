@@ -681,6 +681,17 @@ export default function AdminTeam() {
                         )}
                     </div>
                     <div className={`${canManageTeam ? 'flex' : 'hidden'} w-full flex-wrap items-center gap-2 lg:w-auto lg:flex-nowrap`}>
+                        {inviteCodes.filter(c => c.linked_user_id === user?.id && c.is_active !== false).map(code => (
+                            <button
+                                key={code.id}
+                                type="button"
+                                onClick={() => { navigator.clipboard.writeText(code.code); toast.success("Team code copied!"); }}
+                                className="h-10 lg:h-9 rounded-md border border-yellow-500/40 bg-yellow-500/10 px-3 text-xs font-bold text-yellow-500 hover:bg-yellow-500/20"
+                                title="Click to copy"
+                            >
+                                Team Code: <span className="font-mono">{code.code}</span>{code.label ? ` · ${code.label}` : ''}
+                            </button>
+                        ))}
                         <Dialog open={isRoleSwitchOpen} onOpenChange={(open) => { setIsRoleSwitchOpen(open); if (!open) setRoleSwitchMemberId(''); }}>
                             <DialogTrigger asChild>
                                 <Button
