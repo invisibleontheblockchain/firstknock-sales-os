@@ -20,6 +20,7 @@ test('opening motion has the same speed at 60 and 120 Hz', () => {
 test('reverse scrolls enter the opening smoothly without slowing the rest of the map', () => {
   assert.ok(advance(6, 0, 1 / 60) < 5.9);
   assert.equal(advance(2.8, 0, 0.05), 2.75);
+  assert.ok(advance(advance(2.8, 0, 0.05), 0, 1 / 60) < 2.75);
   assert.ok(advance(2.7, 0, 1 / 60) >= 2.685);
 });
 

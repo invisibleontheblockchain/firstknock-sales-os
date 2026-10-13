@@ -4,7 +4,7 @@ export function advanceSatelliteProgress(current, target, dt, reducedMotion = fa
   if (reducedMotion) return destination;
   const elapsed = Math.max(0, Math.min(0.05, dt));
   const delta = (destination - current) * (1 - Math.pow(0.004, elapsed));
-  if (current < 2.75) {
+  if (current <= 2.75) {
     const maxStep = elapsed * 0.9;
     return current + Math.max(-maxStep, Math.min(maxStep, delta));
   }
