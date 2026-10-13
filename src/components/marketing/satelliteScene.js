@@ -1,5 +1,7 @@
 // Satellite presentation adapted from the original FirstKnock prototype.
 // All DOM access, listeners, and animation resources belong to this landing page.
+import { advanceSatelliteProgress } from './satelliteMotion';
+
 export function startSatelliteScene(root) {
   if (!root) return undefined;
   let frameId;
@@ -7,6 +9,7 @@ export function startSatelliteScene(root) {
   const NS = 'http://www.w3.org/2000/svg', IW = 2688, IH = 1520;
   const $ = (id) => root.querySelector(`#${id}`);
   const fly = $('fly'), sat = $('sat'), ov = $('ov'), hint = $('hint');
+  const state = $('state'), shadeL = $('shadeL'), shadeB = $('shadeB'), legend = $('legend');
   const L = { state: $('lState'), metro: $('lMetro'), region: $('lRegion'), wide: $('lWide'), tight: $('lTight'), ov };
   const dots = [...root.querySelectorAll('#steps i')];
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -152,28 +155,18 @@ export function startSatelliteScene(root) {
   window.addEventListener('resize', layout); layout();
   function place(layer, rect, cx, cy, zoom) { // rect: where this layer's 2688×1520 image lives, in region px
     const sc = base * zoom, k = (rect.w / IW) * sc;
-    layer.style.transform = `translate(${vw / 2 + (rect.x - cx) * sc}px, ${vh / 2 + (rect.y - cy) * sc}px) scale(${k})`;
+    layer.style.transform = `translate3d(${vw / 2 + (rect.x - cx) * sc}px, ${vh / 2 + (rect.y - cy) * sc}px, 0) scale(${k})`;
   }
 
   let target = 0, cur = 0, leadsAt = null, runAt = null, teamAt = null, last = performance.now(), dur = 8;
-  const onMetadata = () => { dur = fly.duration || 8; };
+  const onMetadata = () => { dur = Number.isFinite(fly.duration) && fly.duration > 0 ? fly.duration : 8; };
   fly.addEventListener('loadedmetadata', onMetadata);
-  // pull the whole clip into memory so scroll-scrubbing can seek anywhere instantly, even on servers without range requests
-  const controller = new AbortController();
-  let videoUrl;
-  // Load on first exploration so the hero appears without downloading a 30 MB clip.
-  const loadVideo = () => {
-    if (reduce) return;
-    fetch('/landing/flyover-lux.mp4', { signal: controller.signal })
-      .then(response => { if (!response.ok) throw new Error('Video unavailable'); return response.blob(); })
-      .then(blob => {
-        if (controller.signal.aborted) return;
-        videoUrl = URL.createObjectURL(blob);
-        fly.src = videoUrl;
-        fly.load();
-      }).catch(() => { if (!controller.signal.aborted) fly.src = '/landing/flyover-lux.mp4'; });
-  };
-  root.addEventListener('scroll', loadVideo, { once: true, passive: true });
+  // Let the browser buffer immediately and seek using range requests. Waiting for
+  // a complete 30 MB blob after the first scroll left the poster frozen mid-move.
+  if (!reduce) {
+    fly.src = '/landing/flyover-lux.mp4';
+    fly.load();
+  }
   const onScroll = () => { target = root.scrollTop / Math.max(1, innerHeight); hint.classList.toggle('gone', root.scrollTop > 40); };
   root.addEventListener('scroll', onScroll, { passive: true }); onScroll();
   const cT = center(RTs), cW = center(RWs), cR = center(RRs), cM = center(RMs), cS = center(RS);
@@ -181,11 +174,14 @@ export function startSatelliteScene(root) {
   function frame(t) {
     const dt = Math.min(0.05, (t - last) / 1000); last = t;
     const now = t / 1000;
-    cur += (Math.min(6, target) - cur) * (reduce ? 1 : 1 - Math.pow(0.004, dt));
+    cur = advanceSatelliteProgress(cur, target, dt, reduce);
 
     // flyover: scroll scrubs the drone shot, then the crisp satellite still takes over
-    const want = band(0.08, 1.7, cur) * Math.max(0, dur - 0.05);
-    if (fly.readyState >= 2 && Math.abs(fly.currentTime - want) > 1 / 60 && !fly.seeking) fly.currentTime = want;
+    // The clip is 24 fps: coalesce scroll updates to actual frames instead of
+    // asking the decoder for sub-frame seeks on every display refresh.
+    const videoFrame = 1 / 24;
+    const want = Math.min(Math.max(0, dur - videoFrame), Math.round(band(0.08, 1.7, cur) * dur / videoFrame) * videoFrame);
+    if (!reduce && fly.readyState >= 2 && Math.abs(fly.currentTime - want) >= videoFrame / 2 && !fly.seeking) fly.currentTime = want;
     sat.style.opacity = band(1.55, 1.75, cur);
 
     // pull back twice: the street -> the subdivision -> the whole side of town (zoom is relative to the region filling the screen)
@@ -208,11 +204,21 @@ export function startSatelliteScene(root) {
     L.ov.style.visibility = cur > 2.7 ? 'visible' : 'hidden';
     const dim = band(2.7, 3, cur);
     const back = 0;
-    $('state').style.filter = `brightness(${(1 - 0.28 * dim) * (1 - 0.55 * back)}) saturate(${1 - 0.25 * dim - 0.4 * back}) blur(${back * 3}px)`;
+    state.style.filter = `brightness(${(1 - 0.28 * dim) * (1 - 0.55 * back)}) saturate(${1 - 0.25 * dim - 0.4 * back}) blur(${back * 3}px)`;
     L.ov.style.opacity = 1 - 0.75 * back;
     const mapOn = band(2.2, 2.6, cur); // once the map is up, no gradients: the same full brightness edge to edge
-    $('shadeL').style.opacity = band(0.6, 1.2, cur) * (1 - mapOn);
-    $('shadeB').style.opacity = (1 - 0.7 * band(0.3, 1, cur)) * (1 - mapOn);
+    shadeL.style.opacity = band(0.6, 1.2, cur) * (1 - mapOn);
+    shadeB.style.opacity = (1 - 0.7 * band(0.3, 1, cur)) * (1 - mapOn);
+
+    dots.forEach((d, k) => d.classList.toggle('on', Math.min(5, Math.round(cur)) === k));
+    // Hundreds of route markers are hidden during the flyover. Save that work
+    // for the map so video decoding and camera compositing get the frame budget.
+    if (cur <= 2.7) {
+      leadsAt = null; runAt = null; teamAt = null;
+      legend.style.opacity = 0;
+      frameId = requestAnimationFrame(frame);
+      return;
+    }
 
     // boundary traces itself across town, then fills and shows its size
     const team = band(4.55, 5.1, cur);
@@ -259,9 +265,8 @@ export function startSatelliteScene(root) {
         c.at.forEach((s0, j) => { const t = (pos - s0) / 30 * (d < L ? 1 : -1); const v = visitRings[c.first + j]; if (t > 0 && t < 1) { v.setAttribute('r', 8 + 20 * t); v.setAttribute('opacity', (1 - t) * 0.9); v.setAttribute('stroke', REPS[i].c); } });
       } else c.w.setAttribute('opacity', 0);
     });
-    $('legend').style.opacity = clamp01(team * 1.4 - 0.3) * (1 - back);
+    legend.style.opacity = clamp01(team * 1.4 - 0.3) * (1 - back);
 
-    dots.forEach((d, k) => d.classList.toggle('on', Math.min(5, Math.round(cur)) === k));
     frameId = requestAnimationFrame(frame);
   }
   frameId = requestAnimationFrame(frame);
@@ -270,13 +275,10 @@ export function startSatelliteScene(root) {
     cancelAnimationFrame(frameId);
     window.removeEventListener('resize', layout);
     root.removeEventListener('scroll', onScroll);
-    root.removeEventListener('scroll', loadVideo);
     fly.removeEventListener('loadedmetadata', onMetadata);
-    controller.abort();
     fly.pause();
     fly.removeAttribute('src');
     fly.load();
-    if (videoUrl) URL.revokeObjectURL(videoUrl);
     io.disconnect();
     ov.replaceChildren();
   };
