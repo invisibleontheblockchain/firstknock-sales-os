@@ -35,6 +35,8 @@ import { isNewConstruction } from '@/lib/newConstruction';
 import { applyRouteScopeFilters, countRouteScope } from '@/lib/routeScopeFilters';
 import NewBuildBadge from '@/components/rep/NewBuildBadge';
 import { base44 } from '@/api/base44Client';
+import RemoveRouteStopButton from './RemoveRouteStopButton';
+import { applyRouteStopRemoval } from '@/lib/routeStopRemoval';
 
 const BRAND = {
     voidBlack: '#0A0A0A',
@@ -66,7 +68,7 @@ const formatNumber = (value) => {
     return Number.isFinite(n) && n > 0 ? n.toLocaleString() : null;
 };
 
-export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, onClose, navigationApp = 'apple', activeRouteSoldFilter, setActiveRouteSoldFilter }) {
+export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, onRouteUpdated, onClose, navigationApp = 'apple', activeRouteSoldFilter, setActiveRouteSoldFilter }) {
     const [latestRoute, setLatestRoute] = useState(route);
     const [expandedId, setExpandedId] = useState(null);
     const [filter, setFilter] = useState('all');
@@ -106,21 +108,26 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
 
     useEffect(() => {
         if (!route?.id) return;
+        let cancelled = false;
 
         const applySavedRouteOrder = (savedRoute) => {
-            if (!savedRoute?.property_hashes?.length) return;
-            const propsByHash = new Map((route.properties || []).map(p => [p.address_hash || p.id, p]));
+            if (cancelled || !Array.isArray(savedRoute?.property_hashes)) return;
+            const propsByHash = new Map();
+            (route.properties || []).forEach(property => {
+                [property.address_hash, property.legacy_hash, property.id].filter(Boolean)
+                    .forEach(hash => propsByHash.set(hash, property));
+            });
             const orderedProperties = savedRoute.property_hashes
                 .map(hash => propsByHash.get(hash))
                 .filter(Boolean);
 
-            if (orderedProperties.length === 0) return;
+            if (orderedProperties.length === 0 && savedRoute.property_hashes.length > 0) return;
             setLatestRoute(prev => ({
                 ...(prev || route),
                 ...savedRoute,
                 properties: orderedProperties,
                 houseCount: orderedProperties.length,
-                totalDistance: savedRoute.metrics?.distance ?? prev?.totalDistance ?? route.totalDistance,
+                totalDistance: savedRoute.metrics?.distance ?? 0,
                 competitivenessScore: savedRoute.metrics?.score ?? prev?.competitivenessScore ?? route.competitivenessScore
             }));
         };
@@ -128,12 +135,12 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
         base44.entities.SavedRoute.filter({ id: route.id }, '-updated_date', 1).then(res => {
             const savedRoute = Array.isArray(res) ? res[0] : res?.items?.[0];
             applySavedRouteOrder(savedRoute);
-        });
+        }).catch(() => { /* Keep the already loaded route if this refresh fails. */ });
 
         const unsubscribe = base44.entities.SavedRoute.subscribe((event) => {
             if (event?.id === route.id && event.data) applySavedRouteOrder(event.data);
         });
-        return unsubscribe;
+        return () => { cancelled = true; unsubscribe(); };
     }, [route]);
 
     const displayRoute = latestRoute || route;
@@ -995,6 +1002,17 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
                                         )}
 
                                         {/* Navigate */}
+                                        <RemoveRouteStopButton
+                                            route={displayRoute}
+                                            property={prop}
+                                            disabled={isSaving}
+                                            onRemoved={(saved) => {
+                                                setLatestRoute(current => applyRouteStopRemoval(current, saved));
+                                                setNavigationSession(null);
+                                                setExpandedId(null);
+                                                onRouteUpdated?.(saved);
+                                            }}
+                                        />
                                         <button
                                             onClick={() => handleNavigate(prop)}
                                             className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg text-[10px] font-bold"

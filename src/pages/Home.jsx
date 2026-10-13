@@ -73,6 +73,7 @@ import { LocationMarker, MapRefHandler, MapController } from '../components/map/
 import useViewportMapProperties from '../components/map/useViewportMapProperties';
 import { reoptimizeRoute } from '@/lib/reoptimizeRouteAction'; import { deleteSavedRoute } from '@/lib/deleteRouteAction';
 import { previewSavedRoadAwareBeta } from '@/lib/previewSavedRoadAwareBeta';
+import { applyRouteStopRemoval } from '@/lib/routeStopRemoval';
 import { buildRoadAwareGeneratedRoutes } from '@/lib/roadMatrixRouteGeneration'; import { requireUsableRouteContext } from '@/lib/routeContextGuard';
 import { computeAccountWorkingArea } from '@/lib/accountWorkingArea';
 
@@ -102,6 +103,9 @@ export default function Home() {
     const queryClient = useQueryClient();
     const routeLocation = useLocation();
     const [activeRoute, setActiveRoute] = useState(null);
+    const handleRouteStopRemoved = useCallback((saved) => {
+        setActiveRoute(current => current?.id === saved.id ? applyRouteStopRemoval(current, saved) : current);
+    }, []);
     const [loadingSavedRouteId, setLoadingSavedRouteId] = useState(null);
     const [activeRouteSoldFilter, setActiveRouteSoldFilter] = useState('all');
     const [activeRoutePriceFilter, setActiveRoutePriceFilter] = useState('all');
@@ -2910,6 +2914,7 @@ export default function Home() {
                                 route={filteredActiveRoute}
                                 logs={checklistLogs}
                                 onLogResult={handleLogResult}
+                                onRouteUpdated={handleRouteStopRemoved}
                                 onNoteSaved={() => {
                                     queryClient.invalidateQueries({ queryKey: ['routeChecklistLogs'] });
                                     queryClient.invalidateQueries({ queryKey: ['selectedPropertyHistory'] });
@@ -2983,7 +2988,7 @@ export default function Home() {
             )}
 
 
-            <ManagerPropertyDetailSheet selectedProperty={selectedProperty ? withDerivedStatus([selectedProperty], buildLogsByAddress(selectedPropertyLogs))[0] : null} setSelectedProperty={(next) => { setSelectedProperty(next); if (!next) setAppointmentPin(null); }} STATUS_COLORS={STATUS_COLORS} navigationApp={navigationApp} selectedPropertyLogs={selectedPropertyLogs} handleLogResult={handleLogResult} onClearInteraction={handleDeleteInteraction} onNoteSaved={() => queryClient.invalidateQueries({ queryKey: ['selectedPropertyHistory'] })} toast={toast} />
+            <ManagerPropertyDetailSheet route={activeRoute} onRouteUpdated={handleRouteStopRemoved} selectedProperty={selectedProperty ? withDerivedStatus([selectedProperty], buildLogsByAddress(selectedPropertyLogs))[0] : null} setSelectedProperty={(next) => { setSelectedProperty(next); if (!next) setAppointmentPin(null); }} STATUS_COLORS={STATUS_COLORS} navigationApp={navigationApp} selectedPropertyLogs={selectedPropertyLogs} handleLogResult={handleLogResult} onClearInteraction={handleDeleteInteraction} onNoteSaved={() => queryClient.invalidateQueries({ queryKey: ['selectedPropertyHistory'] })} toast={toast} />
             <KnockLimitSheet
                 open={showKnockLimitSheet}
                 mode={knockGateMode}
