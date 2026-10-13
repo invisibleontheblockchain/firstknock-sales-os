@@ -19,11 +19,12 @@ export default function SatelliteLanding() {
   <div className="layer" id="lState"><img id="state" alt="" src="/landing/satellite-state.jpg" /></div>
   <div className="layer" id="lMetro"><img id="metro" alt="" src="/landing/satellite-metro.jpg" /></div>
   <div className="layer" id="lRegion"><img id="region" alt="" src="/landing/satellite-region.jpg" /></div>
-  <div className="layer" id="lWide"><img alt="" src="/landing/satellite-zoom-lux.jpg" /></div>
+  <div className="layer" id="lWide"><img alt="" src="/landing/satellite-zoom-roof-consistent.jpg" /></div>
   <div className="layer" id="lTight">
     <video id="fly" muted playsInline preload="auto" poster="/landing/house-lux.jpg"></video>
-    <img id="sat" alt="" src="/landing/satellite-lux.jpg" />
+    <img id="sat" alt="" src="/landing/satellite-roof-consistent.jpg" />
   </div>
+  <div className="layer" id="lHouse"><img alt="" src="/landing/satellite-roof-consistent.jpg" /></div>
   <svg className="layer" id="ov" viewBox="0 0 2688 1520"></svg>
 </div>
 <div className="shade" id="shadeL"></div><div className="shade" id="shadeB"></div>

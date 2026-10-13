@@ -10,7 +10,7 @@ export function startSatelliteScene(root) {
   const $ = (id) => root.querySelector(`#${id}`);
   const fly = $('fly'), sat = $('sat'), ov = $('ov'), hint = $('hint');
   const state = $('state'), shadeL = $('shadeL'), shadeB = $('shadeB'), legend = $('legend');
-  const L = { state: $('lState'), metro: $('lMetro'), region: $('lRegion'), wide: $('lWide'), tight: $('lTight'), ov };
+  const L = { state: $('lState'), metro: $('lMetro'), region: $('lRegion'), wide: $('lWide'), tight: $('lTight'), house: $('lHouse'), ov };
   const dots = [...root.querySelectorAll('#steps i')];
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const clamp01 = (v) => Math.min(1, Math.max(0, v));
@@ -164,7 +164,7 @@ export function startSatelliteScene(root) {
   // Let the browser buffer immediately and seek using range requests. Waiting for
   // a complete 30 MB blob after the first scroll left the poster frozen mid-move.
   if (!reduce) {
-    fly.src = '/landing/flyover-lux.mp4';
+    fly.src = '/landing/flyover-roof-consistent.mp4';
     fly.load();
   }
   const onScroll = () => { target = root.scrollTop / Math.max(1, innerHeight); hint.classList.toggle('gone', root.scrollTop > 40); };
@@ -191,12 +191,17 @@ export function startSatelliteScene(root) {
     const zoom = Math.exp(lz); // log-space so the climb feels constant
     const cx = lerp(lerp(lerp(lerp(cT[0], cW[0], p1), cR[0], p2), cM[0], p3), cS[0], p4), cy = lerp(lerp(lerp(lerp(cT[1], cW[1], p1), cR[1], p2), cM[1], p3), cS[1], p4);
     place(L.tight, RTs, cx, cy, zoom); place(L.wide, RWs, cx, cy, zoom); place(L.region, RRs, cx, cy, zoom); place(L.metro, RMs, cx, cy, zoom); place(L.state, RS, cx, cy, zoom); place(L.ov, RS, cx, cy, zoom);
+    // Keep one photographic roof registered to the camera while the wider
+    // backgrounds crossfade. Independently generated views can shift its edges.
+    place(L.house, RTs, cx, cy, zoom);
+    L.house.style.opacity = band(1.65, 1.75, cur) * (1 - band(2.3, 2.52, cur));
     L.tight.style.opacity = 1 - band(1.7, 1.9, cur);
     L.wide.style.opacity = 1 - band(2.03, 2.22, cur);
     L.region.style.opacity = 1 - band(2.3, 2.47, cur);
     L.metro.style.opacity = 1 - band(2.55, 2.72, cur);
     // only paint what is on stage, so the browser never has to hold a hugely magnified layer
     L.tight.style.visibility = cur < 1.95 ? 'visible' : 'hidden';
+    L.house.style.visibility = cur > 1.65 && cur < 2.52 ? 'visible' : 'hidden';
     L.wide.style.visibility = cur > 1.6 && cur < 2.27 ? 'visible' : 'hidden';
     L.region.style.visibility = cur > 1.8 && cur < 2.52 ? 'visible' : 'hidden';
     L.metro.style.visibility = cur > 2.0 && cur < 2.77 ? 'visible' : 'hidden';
