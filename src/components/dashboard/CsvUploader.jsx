@@ -14,6 +14,7 @@ import PropertyImportSummary from '@/components/import/PropertyImportSummary';
 import { parsePropertyImportFile } from '@/components/import/propertyImportFile';
 import { preparePropertyImport, mergeImportedStops, geocodePropertyImportBatch } from '@/components/import/propertyImportData';
 import { savePropertyImport, canAppendToRoute } from '@/components/import/savePropertyImport';
+import { isRepAccount } from '@/lib/roles';
 import { hydrateRouteForMap } from '@/components/logic/routeHydration';
 import { fetchAllSavedRoutePages } from '@/components/rep/repRouteCollection';
 import { optimizeRouteByDistance } from '@/components/logic/routeOptimizer';
@@ -118,6 +119,11 @@ export default function CsvUploader() {
                     const hydrated = await hydrateRouteForMap(route, currentUser.email);
                     return hydrated?.allProperties || hydrated?.properties || [];
                 },
+                // Reps cannot create SavedRoute directly; the backend creates it assigned to them.
+                createRoute: isRepAccount(currentUser) ? async route => {
+                    const response = await base44.functions.invoke('createImportedRoute', { route });
+                    return response.data.route;
+                } : null,
                 saveLocal: storage.saveProperties,
                 onProgress: message => setUploadStatus({ success: null, message }),
             });

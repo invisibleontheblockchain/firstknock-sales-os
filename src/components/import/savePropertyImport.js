@@ -31,7 +31,7 @@ export function routeDistanceMiles(properties) {
 
 export async function savePropertyImport(importBatch, {
   client, user, routeId = null, loadRouteProperties, optimize,
-  saveLocal = async () => {}, onProgress = () => {}, persistProperties, optimizeRoad, optimizeBeta, completeGenerated, bindGenerated,
+  saveLocal = async () => {}, onProgress = () => {}, persistProperties, optimizeRoad, optimizeBeta, completeGenerated, bindGenerated, createRoute = null,
 }) {
   assertUser(user);
   if (!importBatch?.properties?.length) throw new Error('There are no properties to import.');
@@ -137,7 +137,8 @@ export async function savePropertyImport(importBatch, {
     };
     if (completeGenerated) [payload] = await completeGenerated([payload], allProperties, { client, entryPoint: 'csv_import_new' });
     propertyHashes = payload.property_hashes;
-    savedRoute = { ...await client.entities.SavedRoute.create(payload), ...payload };
+    const created = createRoute ? await createRoute(payload) : await client.entities.SavedRoute.create(payload);
+    savedRoute = { ...payload, ...created };
   }
   // Offline cache failure must not turn an already-saved route into a failed import.
   if (bindGenerated) await bindGenerated(savedRoute, client);
