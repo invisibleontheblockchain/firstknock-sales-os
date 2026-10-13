@@ -2144,6 +2144,8 @@ export default function RepHome() {
             {selectedProperty &&
       <PropertyDetailSheet
         property={selectedProperty}
+        route={activeRoute ? { ...activeRoute, properties: routeProperties } : null}
+        onRouteUpdated={() => setNavigationSession(null)}
         logs={selectedPropertyLogs}
         onLog={handleLog}
         outcomeDisabled={outcomeLoggingDisabled}

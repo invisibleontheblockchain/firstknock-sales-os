@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Navigation, Camera, Loader2, Phone, Clock, ChevronUp, ChevronLeft, Check, Home, Ban, MapPin, UserX, History } from 'lucide-react';
 import { format } from 'date-fns';
 import PropertyHistory from './PropertyHistory';
+import RemoveRouteStopButton from '@/components/routes/RemoveRouteStopButton';
 import { buildFullAddress, openInMaps } from '@/components/logic/navigation';
 import { parseOptionalSaleAmount } from '@/components/analytics/salesManagement';
 
@@ -27,6 +28,8 @@ export default function PropertyDetailSheet({
     onViewOnMap,
     routePosition,
     totalStops,
+    route,
+    onRouteUpdated,
     navigationApp = 'apple',
 }) {
     const [showMore, setShowMore] = useState(false);
@@ -387,6 +390,10 @@ export default function PropertyDetailSheet({
                         </div>
                     )}
 
+                    <RemoveRouteStopButton route={route} property={property} disabled={isSavingOutcome} onRemoved={(saved) => {
+                        onRouteUpdated?.(saved);
+                        onClose();
+                    }} />
                     {/* History — collapsed by default so a long log never buries the outcome grid */}
                     {logs?.length > 0 && (
                         <div className="space-y-2">

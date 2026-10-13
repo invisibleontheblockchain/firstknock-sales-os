@@ -116,7 +116,11 @@ export function orderRouteProperties(route, additionalProperties = []) {
     const hashes = Array.isArray(route.property_hashes)
         ? route.property_hashes.map(String)
         : [];
-    if (hashes.length === 0) return route;
+    if (hashes.length === 0) {
+        return Array.isArray(route.property_hashes)
+            ? { ...route, properties: [], allProperties: [], houseCount: 0 }
+            : route;
+    }
 
     // Server records fill gaps, while in-memory records win for matching
     // hashes because they carry the freshest effective outcome status.
@@ -174,7 +178,7 @@ export async function hydrateRouteWithLookup(route, lookup) {
     const hashes = Array.isArray(route.property_hashes)
         ? route.property_hashes.map(String)
         : [];
-    if (hashes.length === 0) return route;
+    if (hashes.length === 0) return orderRouteProperties(route);
 
     let hydrated = orderRouteProperties(route);
     if (hasCompleteRouteMapPoints(hydrated)) return hydrated;

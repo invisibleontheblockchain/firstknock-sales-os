@@ -10,6 +10,7 @@ import QuickMarkButtons from '@/components/rep/QuickMarkButtons';
 import { buildFullAddress, openInMaps } from '@/components/logic/navigation';
 import { parseOptionalSaleAmount } from '@/components/analytics/salesManagement';
 import PropertyNoteSection from './PropertyNoteSection';
+import RemoveRouteStopButton from '@/components/routes/RemoveRouteStopButton';
 import { outcomeBorder, outcomeColor, outcomeLabel, outcomeTint, withoutHouseNotes } from '@/components/logic/outcomeStatus';
 
 // The badge under the address reflects the most recent logged decision, so a
@@ -59,6 +60,8 @@ export default function ManagerPropertyDetailSheet({
     handleLogResult,
     onClearInteraction,
     onNoteSaved,
+    route,
+    onRouteUpdated,
     toast
 }) {
     const [showCallbackPrompt, setShowCallbackPrompt] = React.useState(false);
@@ -387,6 +390,10 @@ export default function ManagerPropertyDetailSheet({
                         )}
                     </div>
 
+                    <RemoveRouteStopButton route={route} property={selectedProperty} onRemoved={(saved) => {
+                        onRouteUpdated?.(saved);
+                        setSelectedProperty(null);
+                    }} />
                     {/* Map Link */}
                     <Button 
                         onClick={() => openInMaps(selectedProperty.lat, selectedProperty.lng, buildFullAddress(selectedProperty), navigationApp)}

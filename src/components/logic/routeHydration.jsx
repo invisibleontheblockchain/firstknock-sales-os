@@ -93,7 +93,7 @@ export async function hydrateRouteForMap(route, userEmail = null) {
         const ordered = orderRouteProperties(route);
         if (hasCompleteRouteMapPoints(ordered)) return ordered;
     }
-    if (hashes.length === 0) return route;
+    if (hashes.length === 0) return orderRouteProperties(route);
 
     const cacheKey = `${route.id || 'route'}:${route.updated_date || ''}:${manifestSignature(hashes)}`;
     const cachedRoute = readHydratedRouteCache(cacheKey);
