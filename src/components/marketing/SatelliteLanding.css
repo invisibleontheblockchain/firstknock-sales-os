@@ -180,6 +180,8 @@
   .fk-satellite #lTight { visibility: visible; will-change: transform, opacity; }
   .fk-satellite .layer > img, .fk-satellite .layer > video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
   .fk-satellite #sat { opacity: 0; }
+  /* Hold the same roof through the independently rendered neighborhood views. */
+  .fk-satellite #lHouse { pointer-events: none; mask-image: radial-gradient(ellipse 190px 130px at 1329px 695px, #000 76%, transparent 100%); }
   .fk-satellite #ov { overflow: visible; pointer-events: none; }
   .fk-satellite #ov { overflow: visible; pointer-events: none; }
   .fk-satellite .shade { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
