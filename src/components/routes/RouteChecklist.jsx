@@ -971,6 +971,27 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
                                             onFlush={flushHouseNote}
                                         />
 
+                                        <RemoveRouteStopButton
+                                            route={displayRoute}
+                                            property={prop}
+                                            disabled={isSaving}
+                                            onRemoved={(saved, nextStop) => {
+                                                setLatestRoute(current => applyRouteStopRemoval(current, saved));
+                                                setNavigationSession(null);
+                                                const nextProperty = nextStop?.property;
+                                                const nextKey = nextProperty?.address_hash || nextProperty?.id || null;
+                                                setExpandedId(nextKey);
+                                                setDetailsOpenHash(null);
+                                                setHistoryOpenHash(null);
+                                                if (nextKey) {
+                                                    window.requestAnimationFrame(() => {
+                                                        stopRefs.current[nextKey]?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                                                    });
+                                                }
+                                                onRouteUpdated?.(saved);
+                                            }}
+                                        />
+
                                         {/* History — collapsed so a long log never buries the outcome grid */}
                                         {houseLogs.length > 0 && (
                                             <div className="space-y-2">
@@ -1002,17 +1023,6 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
                                         )}
 
                                         {/* Navigate */}
-                                        <RemoveRouteStopButton
-                                            route={displayRoute}
-                                            property={prop}
-                                            disabled={isSaving}
-                                            onRemoved={(saved) => {
-                                                setLatestRoute(current => applyRouteStopRemoval(current, saved));
-                                                setNavigationSession(null);
-                                                setExpandedId(null);
-                                                onRouteUpdated?.(saved);
-                                            }}
-                                        />
                                         <button
                                             onClick={() => handleNavigate(prop)}
                                             className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg text-[10px] font-bold"

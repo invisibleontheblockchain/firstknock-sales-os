@@ -49,10 +49,24 @@ export function applyRouteStopRemoval(route, savedRoute) {
         ...route,
         ...savedRoute,
         properties: ordered(route.properties || []),
-        allProperties: ordered(route.allProperties || route.properties || []),
+        allProperties: ordered([...(route.allProperties || []), ...(route.properties || [])]),
         houseCount: savedRoute.property_hashes.length,
         totalDistance: savedRoute.metrics?.distance ?? 0,
     };
+}
+
+export function getRouteStopRemovalContinuation(route, property, savedRoute, properties = []) {
+    const removedKeys = new Set([property?.address_hash, property?.legacy_hash, property?.id].filter(Boolean));
+    const removedIndex = (route.property_hashes || []).findIndex(hash => removedKeys.has(hash));
+    if (removedIndex < 0) return null;
+    const remainingKeys = new Set(savedRoute.property_hashes);
+    const nextHash = route.property_hashes.slice(removedIndex + 1).find(hash => remainingKeys.has(hash));
+    if (!nextHash) return null;
+    let nextProperty = null;
+    properties.forEach(stop => {
+        if ([stop?.address_hash, stop?.legacy_hash, stop?.id].includes(nextHash)) nextProperty = stop;
+    });
+    return { hash: nextHash, property: nextProperty || null, index: savedRoute.property_hashes.indexOf(nextHash) };
 }
 
 export async function removeSavedRouteStop({ route, property, entities }) {
@@ -62,9 +76,11 @@ export async function removeSavedRouteStop({ route, property, entities }) {
     const current = await entities.SavedRoute.get(route.id);
     if (!current) throw new Error('This route could not be found.');
     if (current.status === 'ARCHIVED') throw new Error('Archived routes are read-only.');
-    const update = buildRouteStopRemovalUpdate(current, property, [
+    const properties = [
         ...(route.allProperties || []), ...(route.properties || []),
-    ]);
+    ];
+    const update = buildRouteStopRemovalUpdate(current, property, properties);
     const saved = await entities.SavedRoute.update(route.id, update);
-    return { ...current, ...update, ...saved };
+    const savedRoute = { ...current, ...update, ...saved };
+    return { savedRoute, nextStop: getRouteStopRemovalContinuation(current, property, savedRoute, properties) };
 }

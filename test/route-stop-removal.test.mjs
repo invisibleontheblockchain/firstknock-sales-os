@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
     applyRouteStopRemoval,
     buildRouteStopRemovalUpdate,
+    getRouteStopRemovalContinuation,
     removeSavedRouteStop,
     routeContainsProperty,
 } from '../src/lib/routeStopRemoval.js';
@@ -43,7 +44,7 @@ test('persists only this route and uses the current server manifest even with a 
         get: async id => { assert.equal(id, route.id); return server; },
         update: async (id, update) => { writes.push({ id, update }); return { id, ...update }; },
     } };
-    const result = await removeSavedRouteStop({ route: { ...route, properties: [outlier], allProperties: [] }, property: outlier, entities });
+    const { savedRoute: result } = await removeSavedRouteStop({ route: { ...route, properties: [outlier], allProperties: [] }, property: outlier, entities });
     assert.deepEqual(result.property_hashes, ['c', 'a', 'new-stop']);
     assert.equal(result.assigned_to, 'rep-1');
     assert.equal(writes.length, 1);
@@ -111,4 +112,38 @@ test('a failed save propagates without changing the current route or its propert
     } };
     await assert.rejects(removeSavedRouteStop({ route, property: outlier, entities }), /offline/);
     assert.deepEqual(route, original);
+});
+
+test('confirmed removal advances from 101 to 102 and connects 100 directly to 102', async () => {
+    const before = { ...route, property_hashes: ['100', '101', '102'], properties: [
+        { ...a, address_hash: '100' }, { ...outlier, address_hash: '101' }, { ...c, address_hash: '102' },
+    ], allProperties: [] };
+    let writes = 0;
+    const result = await removeSavedRouteStop({ route: before, property: before.properties[1], entities: { SavedRoute: {
+        get: async () => before,
+        update: async (_id, update) => { writes++; return { id: before.id, ...update }; },
+    } } });
+    const after = applyRouteStopRemoval(before, result.savedRoute);
+    assert.equal(writes, 1);
+    assert.deepEqual(after.property_hashes, ['100', '102']);
+    assert.deepEqual(after.properties.map(stop => stop.address_hash), ['100', '102']);
+    assert.deepEqual(after.allProperties.map(stop => stop.address_hash), ['100', '102']);
+    assert.equal(result.nextStop.property.address_hash, '102');
+    assert.equal(result.nextStop.index, 1, 'the next stop takes the removed stop’s position');
+});
+
+test('continuation uses the latest server order and resolves legacy next-stop hashes', async () => {
+    const server = { ...route, property_hashes: ['b', 'old-c', 'a'] };
+    const result = await removeSavedRouteStop({ route: { ...route, properties: [a, outlier, { ...c, legacy_hash: 'old-c' }] },
+        property: outlier, entities: { SavedRoute: { get: async () => server,
+            update: async (_id, update) => ({ id: server.id, ...update }),
+        } } });
+    assert.equal(result.nextStop.hash, 'old-c');
+    assert.equal(result.nextStop.property.address_hash, 'c');
+    assert.equal(result.nextStop.index, 0);
+});
+
+test('removing the final stop finishes instead of reopening an earlier stop', () => {
+    assert.equal(getRouteStopRemovalContinuation(route, c, { property_hashes: ['a', 'b'] }, route.properties), null);
+    assert.equal(getRouteStopRemovalContinuation({ ...route, property_hashes: ['b'] }, outlier, { property_hashes: [] }, [outlier]), null);
 });
