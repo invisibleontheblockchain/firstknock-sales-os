@@ -2143,9 +2143,15 @@ export default function RepHome() {
             {/* Property Detail - Bottom Sheet (overlays map when map is open) */}
             {selectedProperty &&
       <PropertyDetailSheet
+        key={getPropertySelectionKey(selectedProperty)}
         property={selectedProperty}
         route={activeRoute ? { ...activeRoute, properties: routeProperties } : null}
-        onRouteUpdated={() => setNavigationSession(null)}
+        onRouteUpdated={(_saved, nextStop) => {
+          setNavigationSession(null);
+          setSelectedProperty(nextStop?.property || null);
+          setSelectedPropertyIndex(nextStop?.property ? nextStop.index : null);
+          if (nextStop?.property) setFocusProperty(nextStop.property);
+        }}
         logs={selectedPropertyLogs}
         onLog={handleLog}
         outcomeDisabled={outcomeLoggingDisabled}

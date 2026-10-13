@@ -298,6 +298,13 @@ export default function ManagerPropertyDetailSheet({
                             onSaved={onNoteSaved}
                         />
 
+                        <RemoveRouteStopButton route={route} property={selectedProperty} onRemoved={(saved, nextStop) => {
+                            onRouteUpdated?.(saved);
+                            setSelectedProperty(nextStop?.property ? {
+                                ...nextStop.property, route_position: nextStop.index + 1, route_id: saved.id,
+                            } : null);
+                        }} />
+
                         {/* Interaction History */}
                         <div>
                             <h4 className="text-xs font-bold text-gray-500 uppercase mb-3 flex items-center gap-2">
@@ -390,10 +397,6 @@ export default function ManagerPropertyDetailSheet({
                         )}
                     </div>
 
-                    <RemoveRouteStopButton route={route} property={selectedProperty} onRemoved={(saved) => {
-                        onRouteUpdated?.(saved);
-                        setSelectedProperty(null);
-                    }} />
                     {/* Map Link */}
                     <Button 
                         onClick={() => openInMaps(selectedProperty.lat, selectedProperty.lng, buildFullAddress(selectedProperty), navigationApp)}

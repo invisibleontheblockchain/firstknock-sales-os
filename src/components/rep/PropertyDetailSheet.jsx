@@ -342,6 +342,43 @@ export default function PropertyDetailSheet({
                     )}
                 </div>
 
+                <div className="px-5 pb-3 space-y-3">
+                    <RemoveRouteStopButton route={route} property={property} disabled={isSavingOutcome} onRemoved={(saved, nextStop) => {
+                        if (onRouteUpdated) onRouteUpdated(saved, nextStop);
+                        else onClose();
+                    }} />
+                    {/* History — collapsed by default so a long log never buries the outcome grid */}
+                    {logs?.length > 0 && (
+                        <div className="space-y-2">
+                            <button
+                                type="button"
+                                onClick={() => setShowHistory(current => !current)}
+                                aria-expanded={showHistory}
+                                aria-controls="property-history-panel"
+                                className="w-full flex items-center justify-between rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-left active:scale-[0.99] transition-all"
+                            >
+                                <span className="flex items-center gap-2">
+                                    <History className="w-3.5 h-3.5 text-white/45" />
+                                    <span className="text-[11px] font-black uppercase tracking-[0.18em] text-white/80">History</span>
+                                    <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-bold text-white/70">
+                                        {logs.length}
+                                    </span>
+                                </span>
+                                <ChevronUp className={`w-4 h-4 text-white/60 transition-transform ${showHistory ? '' : 'rotate-180'}`} />
+                            </button>
+
+                            {showHistory && (
+                                <div
+                                    id="property-history-panel"
+                                    className="max-h-[45vh] overflow-y-auto pr-0.5 animate-in slide-in-from-top-2 duration-200"
+                                >
+                                    <PropertyHistory logs={logs} onClearDecision={onClearDecision} />
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+
                 {/* Navigate */}
                 <div className="px-5 pb-3 space-y-2">
                     <button
@@ -390,40 +427,6 @@ export default function PropertyDetailSheet({
                         </div>
                     )}
 
-                    <RemoveRouteStopButton route={route} property={property} disabled={isSavingOutcome} onRemoved={(saved) => {
-                        onRouteUpdated?.(saved);
-                        onClose();
-                    }} />
-                    {/* History — collapsed by default so a long log never buries the outcome grid */}
-                    {logs?.length > 0 && (
-                        <div className="space-y-2">
-                            <button
-                                type="button"
-                                onClick={() => setShowHistory(current => !current)}
-                                aria-expanded={showHistory}
-                                aria-controls="property-history-panel"
-                                className="w-full flex items-center justify-between rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-left active:scale-[0.99] transition-all"
-                            >
-                                <span className="flex items-center gap-2">
-                                    <History className="w-3.5 h-3.5 text-white/45" />
-                                    <span className="text-[11px] font-black uppercase tracking-[0.18em] text-white/80">History</span>
-                                    <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-bold text-white/70">
-                                        {logs.length}
-                                    </span>
-                                </span>
-                                <ChevronUp className={`w-4 h-4 text-white/60 transition-transform ${showHistory ? '' : 'rotate-180'}`} />
-                            </button>
-
-                            {showHistory && (
-                                <div
-                                    id="property-history-panel"
-                                    className="max-h-[45vh] overflow-y-auto pr-0.5 animate-in slide-in-from-top-2 duration-200"
-                                >
-                                    <PropertyHistory logs={logs} onClearDecision={onClearDecision} />
-                                </div>
-                            )}
-                        </div>
-                    )}
                 </div>
                 </div>
             </div>
