@@ -35,40 +35,7 @@
         "write": {
           "$or": [
             {
-              "$and": [
-                {
-                  "data.manager_id": "{{user.id}}"
-                },
-                {
-                  "$or": [
-                    {
-                      "user_condition": {
-                        "app_role": "manager"
-                      }
-                    },
-                    {
-                      "user_condition": {
-                        "app_role": "admin"
-                      }
-                    },
-                    {
-                      "user_condition": {
-                        "role": "manager"
-                      }
-                    },
-                    {
-                      "user_condition": {
-                        "is_owner": true
-                      }
-                    },
-                    {
-                      "user_condition": {
-                        "role": "admin"
-                      }
-                    }
-                  ]
-                }
-              ]
+              "data.manager_id": "{{user.id}}"
             },
             {
               "$and": [
@@ -130,40 +97,7 @@
         "write": {
           "$or": [
             {
-              "$and": [
-                {
-                  "data.manager_id": "{{user.id}}"
-                },
-                {
-                  "$or": [
-                    {
-                      "user_condition": {
-                        "app_role": "manager"
-                      }
-                    },
-                    {
-                      "user_condition": {
-                        "app_role": "admin"
-                      }
-                    },
-                    {
-                      "user_condition": {
-                        "role": "manager"
-                      }
-                    },
-                    {
-                      "user_condition": {
-                        "is_owner": true
-                      }
-                    },
-                    {
-                      "user_condition": {
-                        "role": "admin"
-                      }
-                    }
-                  ]
-                }
-              ]
+              "data.manager_id": "{{user.id}}"
             },
             {
               "$and": [
@@ -293,40 +227,7 @@
         "write": {
           "$or": [
             {
-              "$and": [
-                {
-                  "data.manager_id": "{{user.id}}"
-                },
-                {
-                  "$or": [
-                    {
-                      "user_condition": {
-                        "app_role": "manager"
-                      }
-                    },
-                    {
-                      "user_condition": {
-                        "app_role": "admin"
-                      }
-                    },
-                    {
-                      "user_condition": {
-                        "role": "manager"
-                      }
-                    },
-                    {
-                      "user_condition": {
-                        "is_owner": true
-                      }
-                    },
-                    {
-                      "user_condition": {
-                        "role": "admin"
-                      }
-                    }
-                  ]
-                }
-              ]
+              "data.manager_id": "{{user.id}}"
             },
             {
               "$and": [
@@ -440,40 +341,7 @@
     "read": {
       "$or": [
         {
-          "$and": [
-            {
-              "data.manager_id": "{{user.id}}"
-            },
-            {
-              "$or": [
-                {
-                  "user_condition": {
-                    "app_role": "manager"
-                  }
-                },
-                {
-                  "user_condition": {
-                    "app_role": "admin"
-                  }
-                },
-                {
-                  "user_condition": {
-                    "role": "manager"
-                  }
-                },
-                {
-                  "user_condition": {
-                    "is_owner": true
-                  }
-                },
-                {
-                  "user_condition": {
-                    "role": "admin"
-                  }
-                }
-              ]
-            }
-          ]
+          "data.manager_id": "{{user.id}}"
         },
         {
           "$and": [
@@ -562,40 +430,7 @@
     "update": {
       "$or": [
         {
-          "$and": [
-            {
-              "data.manager_id": "{{user.id}}"
-            },
-            {
-              "$or": [
-                {
-                  "user_condition": {
-                    "app_role": "manager"
-                  }
-                },
-                {
-                  "user_condition": {
-                    "app_role": "admin"
-                  }
-                },
-                {
-                  "user_condition": {
-                    "role": "manager"
-                  }
-                },
-                {
-                  "user_condition": {
-                    "is_owner": true
-                  }
-                },
-                {
-                  "user_condition": {
-                    "role": "admin"
-                  }
-                }
-              ]
-            }
-          ]
+          "data.manager_id": "{{user.id}}"
         },
         {
           "$and": [
@@ -684,40 +519,7 @@
     "delete": {
       "$or": [
         {
-          "$and": [
-            {
-              "data.manager_id": "{{user.id}}"
-            },
-            {
-              "$or": [
-                {
-                  "user_condition": {
-                    "app_role": "manager"
-                  }
-                },
-                {
-                  "user_condition": {
-                    "app_role": "admin"
-                  }
-                },
-                {
-                  "user_condition": {
-                    "role": "manager"
-                  }
-                },
-                {
-                  "user_condition": {
-                    "is_owner": true
-                  }
-                },
-                {
-                  "user_condition": {
-                    "role": "admin"
-                  }
-                }
-              ]
-            }
-          ]
+          "data.manager_id": "{{user.id}}"
         },
         {
           "$and": [
