@@ -3,6 +3,14 @@
 export const FREE_PRECISION_PROPERTY_LIMIT = 50;
 export const PAID_PRECISION_PROPERTY_LIMIT = 1000;
 
+export function precisionAllowanceMessage({ usage, isLoading = false, isFetching = false, isError = false }) {
+  if (isLoading || isFetching) return 'Checking your property allowance…';
+  if (isError) return 'Property allowance unavailable. Try again.';
+  if (!usage) return 'Checking your property allowance…';
+  if (usage.unlimited) return 'Unlimited Precision access.';
+  return `Pulls up to ${usage.remaining.toLocaleString()} properties for this account.`;
+}
+
 // Precision usage is intentionally not calculated from SavedRoute or User
 // records. Both are client-mutable. Consumers must use getPrecisionUsage via
 // usePrecisionUsage(), which verifies Stripe and reads service-owned FetchJobs.
