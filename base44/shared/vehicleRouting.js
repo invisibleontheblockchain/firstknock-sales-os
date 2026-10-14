@@ -5,6 +5,9 @@ import { vehicleServicePoint, VEHICLE_MATCH_RADIUS_METERS } from './serviceAcces
 import { roadNetworkRoutingInternals } from './roadNetworkRouting.js';
 
 const METERS_PER_MILE = 1609.344;
+// Keep the coordinate path plus per-waypoint query arrays comfortably below
+// gateway URL limits. Two shared stops prove turn continuity at each join.
+export const MAX_VEHICLE_ROUTE_POINTS = 100;
 
 function timedSignal(source, milliseconds) {
     const controller = new AbortController();
@@ -201,15 +204,18 @@ export async function createVehicleRoutingContext(properties, accessContext, opt
         diagnostics: Object.freeze({ ...accessContext.diagnostics, vehicleProfile: profile, vehicleBaseUrl: baseUrl,
             vehicleMatrixPointCount: stops.length, dataVersion: [...dataVersions][0] || null }),
         async routeSequence(sequence, bounds = {}) {
-            if (sequence.length + Number(Boolean(bounds.startLocation)) + Number(Boolean(bounds.endLocation)) > 500 && options.sparseCosts) {
+            if (sequence.length + Number(Boolean(bounds.startLocation)) + Number(Boolean(bounds.endLocation)) > MAX_VEHICLE_ROUTE_POINTS) {
                 const ordered = [bounds.startLocation, ...sequence, bounds.endLocation].filter(isValidRoutePoint);
                 const parts = [];
                 const geometry = [], directedLegs = [];
-                for (let start = 0; start < ordered.length - 1; start += 498) {
-                    const chunk = ordered.slice(start, start + 500);
-                    const context = await createVehicleRoutingContext(chunk, accessContext, { ...options, sparseCosts: false,
-                        routeOnly: true, requireDirectedLegs: true, startLocation: null, endLocation: null });
-                    const part = await context.routeSequence(chunk);
+                for (let start = 0; start < ordered.length - 1; start += MAX_VEHICLE_ROUTE_POINTS - 2) {
+                    const chunk = ordered.slice(start, start + MAX_VEHICLE_ROUTE_POINTS);
+                    const startLocation = start === 0 ? bounds.startLocation : null;
+                    const endLocation = start + MAX_VEHICLE_ROUTE_POINTS >= ordered.length ? bounds.endLocation : null;
+                    const chunkStops = chunk.filter(p => p !== startLocation && p !== endLocation);
+                    const context = await createVehicleRoutingContext(chunkStops, accessContext, { ...options, sparseCosts: false,
+                        routeOnly: true, requireDirectedLegs: true, startLocation, endLocation });
+                    const part = await context.routeSequence(chunkStops, { startLocation, endLocation });
                     if (options.expectedDataVersion && part.dataVersion !== options.expectedDataVersion) throw new Error('Vehicle provider graph identity changed.');
                     if (part.dataVersion) verifyDataVersion({ data_version: part.dataVersion });
                     if (parts.length) {
@@ -232,9 +238,16 @@ export async function createVehicleRoutingContext(properties, accessContext, opt
                     }
                     parts.push(part);
                 }
-                return { distanceMiles: directedLegs.reduce((s, p) => s + p.distanceMiles, 0),
-                    driveSeconds: directedLegs.reduce((s, p) => s + p.driveSeconds, 0),
-                    objectiveSeconds: directedLegs.reduce((s, p) => s + p.driveSeconds, 0),
+                const driveSeconds = directedLegs.reduce((s, p) => s + p.driveSeconds, 0);
+                const walkingAccessSeconds = sequence.reduce((sum, stop) => {
+                    const access = accessContext.accessFor?.(stop);
+                    return sum + (isValidRoutePoint(access?.point) ? haversineDistanceMiles(stop, access.point) * METERS_PER_MILE * 2 / policy.walkingMetersPerSecond : 0);
+                }, 0);
+                const parkingSeconds = sequence.length * Math.max(0, Number(policy.parkingSecondsPerStop) || 0);
+                return { distanceMiles: directedLegs.reduce((s, p) => s + p.distanceMiles, 0), driveSeconds,
+                    objectiveSeconds: driveSeconds + walkingAccessSeconds + parkingSeconds,
+                    walkingAccessSeconds, parkingSeconds,
+                    estimatedTurnarounds: directedLegs.reduce((s, p) => s + p.turnarounds, 0),
                     geometry, directedLegs, dataVersion: [...dataVersions][0] || null };
             }
             const ordered = [bounds.startLocation, ...sequence, bounds.endLocation].filter(isValidRoutePoint);
@@ -278,6 +291,7 @@ export async function createVehicleRoutingContext(properties, accessContext, opt
                     }
                     return { from: identity(ordered[index]), to: identity(ordered[index + 1]),
                         driveSeconds: leg.duration, distanceMiles: leg.distance / METERS_PER_MILE,
+                        turnarounds: (leg.steps || []).filter(step => step.maneuver?.modifier === 'uturn').length,
                         pathKey: JSON.stringify(legGeometry), };
                 });
                 if (Math.abs(directedLegs.reduce((sum, leg) => sum + leg.driveSeconds, 0) - route.duration) > 0.11 * directedLegs.length
