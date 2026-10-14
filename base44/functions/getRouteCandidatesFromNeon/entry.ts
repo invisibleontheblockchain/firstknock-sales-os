@@ -217,7 +217,98 @@ Deno.serve(async (req) => {
             return Response.json({ success: true, user_email: targetEmail, fetch_job_id: fetchJobId, count: properties.length, breakdown, properties });
         }
 
+        if (body.response_mode === 'analytics_summary') {
+            const requestedHashes = body.analytics_hashes ?? [];
+            if (!Array.isArray(requestedHashes) || requestedHashes.length > 5000
+                || requestedHashes.some(hash => typeof hash !== 'string' || hash.length > 256)) {
+                return Response.json({ error: 'analytics_hashes must contain at most 5000 address hashes.' }, { status: 400 });
+            }
+            const analyticsHashes = Array.from(new Set(requestedHashes.filter(Boolean)));
+            const summaryRows = await sql`
+                WITH candidate_keys AS MATERIALIZED (
+                    SELECT p.id, COALESCE(NULLIF(p.address_hash, ''), p.id::text) AS address_hash,
+                           p.original_status, p.lat, p.lng
+                    FROM workspace_properties wp
+                    JOIN properties p ON p.id = wp.property_id
+                    WHERE wp.user_email = ${targetEmail}
+                      AND (${fetchJobId === null} OR wp.fetch_job_id = ${fetchJobId})
+                      AND wp.route_active = TRUE
+                      AND p.lat IS NOT NULL
+                      AND p.lng IS NOT NULL
+                      AND COALESCE(wp.status, '') <> 'REJECTED'
+                      AND COALESCE(p.original_status, '') <> 'REJECTED'
+                      AND COALESCE(p.sale_confidence, '') <> 'REJECTED'
+                      AND (${zipCodes.length === 0} OR p.zip_code = ANY(${zipCodes}))
+                      AND (${fetchJobId !== null || soldAfter === null} OR p.sold_date IS NULL OR p.sold_date >= ${soldAfter})
+                      AND (${customOwnershipRange === null} OR (p.sold_date IS NOT NULL AND p.sold_date >= ${customSoldAtOrAfter} AND p.sold_date < ${customSoldBefore}))
+                      AND (${!bounds?.minLat} OR p.lat >= ${bounds?.minLat || 0})
+                      AND (${!bounds?.maxLat} OR p.lat <= ${bounds?.maxLat || 0})
+                      AND (${!bounds?.minLng} OR p.lng >= ${bounds?.minLng || 0})
+                      AND (${!bounds?.maxLng} OR p.lng <= ${bounds?.maxLng || 0})
+                    ORDER BY p.sold_date DESC NULLS LAST, p.updated_at DESC
+                    LIMIT ${limit}
+                ), analytics_candidates AS (
+                    -- Match List's former truthy/non-NaN coordinate filter.
+                    SELECT *, CASE WHEN original_status IN ('HARD_NO', 'DO_NOT_KNOCK', 'UNVERIFIED')
+                                   THEN original_status ELSE 'ELIGIBLE' END AS baseline_status
+                    FROM candidate_keys
+                    WHERE lat <> 0 AND lng <> 0 AND lat::text <> 'NaN' AND lng::text <> 'NaN'
+                )
+                SELECT COUNT(DISTINCT id)::int AS count,
+                       (SELECT COUNT(*)::int FROM candidate_keys) AS candidate_count,
+                       jsonb_build_object(
+                           'ELIGIBLE', COUNT(DISTINCT id) FILTER (WHERE baseline_status = 'ELIGIBLE'),
+                           'HARD_NO', COUNT(DISTINCT id) FILTER (WHERE baseline_status = 'HARD_NO'),
+                           'DO_NOT_KNOCK', COUNT(DISTINCT id) FILTER (WHERE baseline_status = 'DO_NOT_KNOCK'),
+                           'UNVERIFIED', COUNT(DISTINCT id) FILTER (WHERE baseline_status = 'UNVERIFIED')
+                       ) AS status_counts,
+                       COALESCE(jsonb_agg(DISTINCT jsonb_build_object(
+                           'id', id::text, 'address_hash', address_hash,
+                           'original_status', original_status, 'lat', lat, 'lng', lng
+                       )) FILTER (WHERE address_hash = ANY(${analyticsHashes})), '[]'::jsonb) AS properties
+                FROM analytics_candidates
+            `;
+            const summary = summaryRows[0] || {};
+            return Response.json({
+                success: true,
+                response_mode: 'analytics_summary',
+                user_email: targetEmail,
+                count: Number(summary.count || 0),
+                status_counts: summary.status_counts || {},
+                properties: summary.properties || [],
+                capped: Number(summary.candidate_count || 0) >= limit,
+                limit,
+            });
+        }
+
         const rows = await sql`
+            -- Limit narrow keys before reading raw_payload or converting the
+            -- complete property row to JSON for subdivision fallback. Doing
+            -- that work inside the sorted join made even a small map request
+            -- process every eligible property's potentially large raw payload.
+            WITH candidate_keys AS MATERIALIZED (
+                SELECT p.id AS property_id, wp.route_active, wp.status,
+                       wp.fetch_job_id, wp.assigned_route_id
+                FROM workspace_properties wp
+                JOIN properties p ON p.id = wp.property_id
+                WHERE wp.user_email = ${targetEmail}
+                  AND (${fetchJobId === null} OR wp.fetch_job_id = ${fetchJobId})
+                  AND wp.route_active = TRUE
+                  AND p.lat IS NOT NULL
+                  AND p.lng IS NOT NULL
+                  AND COALESCE(wp.status, '') <> 'REJECTED'
+                  AND COALESCE(p.original_status, '') <> 'REJECTED'
+                  AND COALESCE(p.sale_confidence, '') <> 'REJECTED'
+                  AND (${zipCodes.length === 0} OR p.zip_code = ANY(${zipCodes}))
+                  AND (${fetchJobId !== null || soldAfter === null} OR p.sold_date IS NULL OR p.sold_date >= ${soldAfter})
+                  AND (${customOwnershipRange === null} OR (p.sold_date IS NOT NULL AND p.sold_date >= ${customSoldAtOrAfter} AND p.sold_date < ${customSoldBefore}))
+                  AND (${!bounds?.minLat} OR p.lat >= ${bounds?.minLat || 0})
+                  AND (${!bounds?.maxLat} OR p.lat <= ${bounds?.maxLat || 0})
+                  AND (${!bounds?.minLng} OR p.lng >= ${bounds?.minLng || 0})
+                  AND (${!bounds?.maxLng} OR p.lng <= ${bounds?.maxLng || 0})
+                ORDER BY p.sold_date DESC NULLS LAST, p.updated_at DESC
+                LIMIT ${limit}
+            )
             SELECT
                 p.id,
                 p.address_hash,
@@ -261,25 +352,9 @@ Deno.serve(async (req) => {
                 wp.assigned_route_id,
                 p.created_at,
                 p.updated_at
-            FROM workspace_properties wp
+            FROM candidate_keys wp
             JOIN properties p ON p.id = wp.property_id
-            WHERE wp.user_email = ${targetEmail}
-              AND (${fetchJobId === null} OR wp.fetch_job_id = ${fetchJobId})
-              AND wp.route_active = TRUE
-              AND p.lat IS NOT NULL
-              AND p.lng IS NOT NULL
-              AND COALESCE(wp.status, '') <> 'REJECTED'
-              AND COALESCE(p.original_status, '') <> 'REJECTED'
-              AND COALESCE(p.sale_confidence, '') <> 'REJECTED'
-              AND (${zipCodes.length === 0} OR p.zip_code = ANY(${zipCodes}))
-              AND (${fetchJobId !== null || soldAfter === null} OR p.sold_date IS NULL OR p.sold_date >= ${soldAfter})
-              AND (${customOwnershipRange === null} OR (p.sold_date IS NOT NULL AND p.sold_date >= ${customSoldAtOrAfter} AND p.sold_date < ${customSoldBefore}))
-              AND (${!bounds?.minLat} OR p.lat >= ${bounds?.minLat || 0})
-              AND (${!bounds?.maxLat} OR p.lat <= ${bounds?.maxLat || 0})
-              AND (${!bounds?.minLng} OR p.lng >= ${bounds?.minLng || 0})
-              AND (${!bounds?.maxLng} OR p.lng <= ${bounds?.maxLng || 0})
             ORDER BY p.sold_date DESC NULLS LAST, p.updated_at DESC
-            LIMIT ${limit}
         `;
 
         const rangeCheckedRows = customOwnershipRange

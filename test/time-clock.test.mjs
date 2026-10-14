@@ -13,6 +13,7 @@ import { clockDateRange, timeClockCsv } from '../src/lib/timeClock.js';
 import * as clockHelpers from '../base44/shared/timeClock.js';
 import * as clientClockCore from '../src/lib/timeClockCore.js';
 import { timesheetCsv, clockInputValue, clockInputInstant } from '../src/lib/timeClock.js';
+import * as readHelpers from '../src/lib/readRequest.js';
 
 const manager = { id: 'manager-a', app_role: 'manager' };
 const rep = { id: 'rep-a', app_role: 'rep', team_manager_id: manager.id, email: 'rep@example.com' };
@@ -427,6 +428,7 @@ test('manager screen renders personal controls and the whole live roster before 
         '@/components/ui/dialog': { Dialog: () => null, DialogContent: native, DialogHeader: native, DialogTitle: native, DialogDescription: native },
         '@/components/ui/dropdown-menu': { DropdownMenu: native, DropdownMenuContent: native, DropdownMenuItem: native, DropdownMenuTrigger: native },
         '@/lib/timeClock': { ...clockHelpers, clockInputValue, clockInputInstant },
+        '@/lib/readRequest': readHelpers,
     };
     const code = ts.transpileModule(fs.readFileSync('src/components/team/TimeClockTab.jsx', 'utf8'), {
         compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.React, esModuleInterop: true, target: ts.ScriptTarget.ES2022 },

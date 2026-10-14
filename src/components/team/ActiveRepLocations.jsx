@@ -5,7 +5,7 @@ import { LocateFixed, MapPin, RefreshCw, Radio } from 'lucide-react';
 import 'leaflet/dist/leaflet.css';
 import { base44 } from '@/api/base44Client';
 import BaseMapTiles from '@/components/map/BaseMapTiles';
-import { locationStatus, locationAgeLabel } from '../../../base44/shared/repLocations';
+import { locationStatus, locationAgeLabel, LOCATION_REPORT_MS, LOCATION_RETRY_MAX_MS } from '../../../base44/shared/repLocations';
 
 const COLORS = ['#FFD700', '#38bdf8', '#a78bfa', '#fb923c', '#f472b6', '#2dd4bf'];
 const markerColor = (rep, index) => /^#[\da-f]{6}$/i.test(rep.color || '') ? rep.color : COLORS[index % COLORS.length];
@@ -47,7 +47,13 @@ export default function ActiveRepLocations({ managerId, activeTeamCode = 'all' }
       if (!response.data?.success || response.data.manager_id !== managerId) throw new Error('Unable to verify rep locations.');
       return response.data;
     },
-    enabled: !!managerId, refetchInterval: 10_000, refetchIntervalInBackground: false, retry: 1,
+    enabled: !!managerId,
+    // Preserve freshness/expiry locally while reducing repeated roster/location
+    // reads. Failed polling backs off instead of adding immediate retries.
+    refetchInterval: query => Math.min(LOCATION_REPORT_MS * 2 ** (query.state.status === 'error' ? Math.min(query.state.errorUpdateCount || 1, 2) : 0), LOCATION_RETRY_MAX_MS),
+    refetchIntervalInBackground: false,
+    staleTime: LOCATION_REPORT_MS,
+    retry: false,
   });
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 5000);
@@ -70,7 +76,7 @@ export default function ActiveRepLocations({ managerId, activeTeamCode = 'all' }
         <div>
           <h2 className="flex items-center gap-2 text-lg font-bold"><Radio className="h-5 w-5 text-green-400" />Active Rep Locations</h2>
           <p className="mt-1 text-xs text-gray-400">{liveCount} live · {staleCount} signal delayed · {reps.length - liveCount - staleCount} offline</p>
-          <p className="mt-1 text-xs text-gray-500">Refreshes every 10 seconds. Reps share location from their app while in the field.</p>
+          <p className="mt-1 text-xs text-gray-500">Refreshes every 30 seconds. Reps share location from their app while in the field.</p>
         </div>
         <div className="flex gap-2">
           <button type="button" onClick={() => { setSelectedId(null); setFitVersion(value => value + 1); }}

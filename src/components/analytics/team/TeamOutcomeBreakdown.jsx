@@ -9,7 +9,7 @@ const LABELS = {
   HARD_NO: { label: 'Hard No', color: '#ef4444' },
 };
 
-export default function TeamOutcomeBreakdown({ logs }) {
+export default function TeamOutcomeBreakdown({ logs, historyLabel = 'All Time' }) {
   const items = useMemo(() => {
     const counts = logs.filter(isKnockActivityLog).reduce((acc, log) => {
       acc[log.parsed_status] = (acc[log.parsed_status] || 0) + 1;
@@ -30,7 +30,7 @@ export default function TeamOutcomeBreakdown({ logs }) {
     <div className="rounded-xl md:rounded-2xl border border-white/5 bg-gradient-to-b from-[#151515] to-[#0A0A0A] p-3 md:p-5 shadow-2xl">
       <div className="mb-3 md:mb-4">
         <h3 className="text-sm md:text-lg font-black text-white tracking-tight">Outcome Mix</h3>
-        <p className="text-[10px] md:text-sm text-gray-500">What your team is producing</p>
+        <p className="text-[10px] md:text-sm text-gray-500">{historyLabel} team outcomes</p>
       </div>
       <div className="space-y-2 md:space-y-3">
         {items.map((item) => (

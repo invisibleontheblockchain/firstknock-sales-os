@@ -53,6 +53,7 @@ export default function RouteCommandPanel({
     genStats,
     repColors = {},
     teamMembers = [],
+    viewerEmail = null,
     getRepRecommendations,
     onSelectRoute,
     onSaveRoute,
@@ -71,7 +72,7 @@ export default function RouteCommandPanel({
     mode = 'analyze'
 }) {
     const selectRouteForMapAndKnock = async (route) => {
-        const hydratedRoute = await hydrateRouteForMap(route);
+        const hydratedRoute = await hydrateRouteForMap(route, viewerEmail);
         if (hydratedRoute?.id) {
             try { localStorage.setItem('fk_selectedKnockRouteId', hydratedRoute.id); } catch {}
         }
@@ -526,7 +527,7 @@ export default function RouteCommandPanel({
                                                 routeNumber={routeNumberMap.get(route.id)}
                                                 repColor="#666"
                                                 isActive={activeRouteId === route.id}
-                                                onSelect={async () => onSelectRoute(await hydrateRouteForMap(route))}
+                                                onSelect={async () => onSelectRoute(await hydrateRouteForMap(route, viewerEmail))}
                                                 onDelete={() => onDeleteRoute && onDeleteRoute(route)}
                                                 logs={logs}
                                                 onReoptimize={onReoptimizeRoute}

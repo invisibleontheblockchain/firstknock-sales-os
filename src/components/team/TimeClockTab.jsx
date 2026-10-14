@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Clock3, Download, LogIn, LogOut, MoreHorizontal, Plus, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { base44 } from '@/api/base44Client';
+import { shouldRetryRead, withReadDeadline } from '@/lib/readRequest';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
@@ -64,27 +65,31 @@ export default function TimeClockTab({ currentUser, managerId, canManage, active
     const status = useQuery({
         queryKey: statusKey,
         queryFn: async () => {
-            const response = await base44.functions.invoke('timeClock', { action: 'status' });
+            const response = await withReadDeadline(() => base44.functions.invoke('timeClock', { action: 'status' }));
             if (!response.data?.success || response.data.manager_id !== managerId) throw new Error('Time clock status could not be verified.');
             return response.data;
         },
         enabled: !!managerId && !!currentUser?.id,
-        refetchInterval: 5000,
+        staleTime: 30000,
+        refetchOnWindowFocus: true,
+        refetchInterval: 30000,
         refetchIntervalInBackground: false,
-        retry: 1,
+        retry: shouldRetryRead,
     });
     const query = useQuery({
         queryKey,
         queryFn: async () => {
-            const response = await base44.functions.invoke('timeClock', { action: 'report',
-                start_date: dates.start, end_date: dates.end });
+            const response = await withReadDeadline(() => base44.functions.invoke('timeClock', { action: 'report',
+                start_date: dates.start, end_date: dates.end }));
             if (!response.data?.success || response.data.manager_id !== managerId) throw new Error('Time clock records could not be verified.');
             return response.data;
         },
         enabled: !!managerId && !!currentUser?.id && datesValid,
-        refetchInterval: 5000,
+        staleTime: 30000,
+        refetchOnWindowFocus: true,
+        refetchInterval: 30000,
         refetchIntervalInBackground: false,
-        retry: 1,
+        retry: shouldRetryRead,
     });
     useEffect(() => { if (status.data?.timezone) setTimezone(status.data.timezone); }, [status.data?.timezone]);
     useEffect(() => {

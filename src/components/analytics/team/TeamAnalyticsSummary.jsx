@@ -7,7 +7,7 @@ import { getActiveTeamSize } from '@/lib/teamRoster';
 const SALES = ['SOLD', 'QUALIFIED'];
 const NON_CONTACT = ['NO_ANSWER', 'ELIGIBLE'];
 
-export default function TeamAnalyticsSummary({ members, logs, routes }) {
+export default function TeamAnalyticsSummary({ members, logs, routes, historyLabel = 'All Time' }) {
   const stats = useMemo(() => {
     const cutoff = subDays(new Date(), 7);
     const recentLogs = logs.filter((log) => isKnockActivityLog(log) && new Date(log.created_date) >= cutoff);
@@ -35,7 +35,7 @@ export default function TeamAnalyticsSummary({ members, logs, routes }) {
     { label: 'Team Size', value: stats.teamSize, sub: 'manager + reps', icon: Users, color: 'text-white' },
     { label: 'Active Reps', value: stats.activeReps, sub: 'worked in last 7d', icon: Activity, color: 'text-cyan-400' },
     { label: '7D Knocks', value: stats.knocks, sub: 'team activity', icon: TrendingUp, color: 'text-yellow-400' },
-    { label: 'Revenue', value: revenueDisplay, sub: 'total generated', icon: DollarSign, color: 'text-green-400' },
+    { label: 'Revenue', value: revenueDisplay, sub: `${historyLabel} generated`, icon: DollarSign, color: 'text-green-400' },
     { label: 'Contact Rate', value: `${stats.contactRate}%`, sub: 'team average', icon: Phone, color: 'text-orange-400' },
     { label: 'Active Routes', value: stats.activeRoutes, sub: `${stats.conversion}% conversion`, icon: Route, color: 'text-purple-400' },
   ];

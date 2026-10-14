@@ -12,10 +12,10 @@ class LocationError extends Error {
     constructor(status, message) { super(message); this.status = status; }
 }
 
-async function allPages(entity, query, sort = '-created_date') {
+async function allPages(entity, query, sort = '-created_date', fields = undefined) {
     const result = [];
     for (let page = 0; page < 100; page += 1) {
-        const rows = asArray(await entity.filter(query, sort, 500, page * 500));
+        const rows = asArray(await entity.filter(query, sort, 500, page * 500, fields));
         result.push(...rows);
         if (rows.length < 500) return result;
     }
@@ -30,7 +30,12 @@ Deno.serve(async (req) => {
         const identity = await base44.auth.me();
         if (!identity?.id) throw new LocationError(401, 'Sign in to use rep locations.');
         const service = base44.asServiceRole.entities;
-        const user = await service.User.get(identity.id);
+        // Load the saved caller and the token's manager hint together. The hint
+        // only selects a record to prefetch; saved account fields still select
+        // the authoritative tenant, with a fresh lookup if the hint is stale.
+        const accountIds = Array.from(new Set([identity.id, identity.team_manager_id || identity.data?.team_manager_id].filter(Boolean)));
+        const accounts = asArray(await service.User.filter({ id: accountIds }, '-created_date', accountIds.length, 0));
+        const user = accounts.find(account => account.id === identity.id);
         if (!user || user.id !== identity.id) throw new LocationError(401, 'Account could not be verified.');
         let body;
         try { body = await req.json(); } catch { throw new LocationError(400, 'Invalid request.'); }
@@ -45,19 +50,26 @@ Deno.serve(async (req) => {
         // Derive all identity and tenant fields from the saved account and membership.
         const managerId = managesTeam ? user.id : (user.team_manager_id || user.data?.team_manager_id);
         if (!managerId) throw new LocationError(403, 'Join a team before sharing your location.');
-        const manager = managesTeam ? user : await service.User.get(managerId);
+        const manager = managesTeam ? user : (accounts.find(account => account.id === managerId) || await service.User.get(managerId));
         if (!manager || manager.id !== managerId || !isManager(manager)) throw new LocationError(403, 'Team manager could not be verified.');
         const members = (await allPages(service.TeamMember, { manager_id: managerId,
-            ...(action !== 'report' ? { user_id: user.id } : {}) }))
+            ...(action !== 'report' ? { user_id: user.id } : {}) }, '-created_date',
+            ['id', 'manager_id', 'user_id', 'name', 'color', 'invite_code', 'status', 'role']))
             .filter(m => m.manager_id === managerId && activeRep(m));
         const now = Date.now();
 
         if (action === 'report') {
-            const locations = (await allPages(service.RepLocation, { manager_id: managerId }, '-received_at'))
+            const locations = (await allPages(service.RepLocation, { manager_id: managerId }, '-received_at',
+                ['id', 'manager_id', 'member_id', 'rep_user_id', 'sharing', 'lat', 'lng', 'accuracy', 'observed_at', 'received_at']))
                 .filter(l => l.manager_id === managerId)
                 .sort((a, b) => Date.parse(b.received_at) - Date.parse(a.received_at));
+            const latestByRep = new Map();
+            for (const location of locations) {
+                const key = `${location.member_id}:${location.rep_user_id}`;
+                if (!latestByRep.has(key)) latestByRep.set(key, location);
+            }
             const reps = members.map(member => {
-                const latest = locations.find(l => l.member_id === member.id && l.rep_user_id === member.user_id);
+                const latest = latestByRep.get(`${member.id}:${member.user_id}`);
                 const status = locationStatus(latest, now);
                 // Expired or stopped locations never expose coordinates to the UI.
                 const location = status === 'offline' ? null : {
@@ -74,11 +86,10 @@ Deno.serve(async (req) => {
         if (typeof body.session_id !== 'string' || !body.session_id.trim() || body.session_id.length > 100) {
             throw new LocationError(400, 'A location sharing session is required.');
         }
-        const records = (await allPages(service.RepLocation, { manager_id: managerId, member_id: member.id, rep_user_id: user.id }, '-received_at'))
-            .filter(l => l.manager_id === managerId && l.member_id === member.id && l.rep_user_id === user.id);
         if (action === 'stop') {
-            await Promise.all(records.filter(l => l.session_id === body.session_id && l.sharing)
-                .map(l => service.RepLocation.update(l.id, { sharing: false, received_at: new Date(now).toISOString() })));
+            await service.RepLocation.updateMany({ manager_id: managerId, member_id: member.id, rep_user_id: user.id,
+                session_id: body.session_id, sharing: true },
+                { $set: { sharing: false, received_at: new Date(now).toISOString() } });
             return Response.json({ success: true });
         }
         const observed = typeof body.observed_at === 'string' ? Date.parse(body.observed_at) : NaN;
@@ -86,8 +97,11 @@ Deno.serve(async (req) => {
             || !Number.isFinite(observed) || observed > now + 10_000 || now - observed > LOCATION_FIX_MAX_AGE_MS) {
             throw new LocationError(400, 'A fresh, valid GPS location is required.');
         }
-        records.sort((a, b) => Date.parse(b.received_at) - Date.parse(a.received_at));
-        const latest = records[0];
+        // Publishing overwrites the latest record; historical sessions are not
+        // needed to validate or persist the next point.
+        const records = asArray(await service.RepLocation.filter({ manager_id: managerId, member_id: member.id,
+            rep_user_id: user.id }, '-received_at', 1, 0));
+        const latest = records.find(l => l.manager_id === managerId && l.member_id === member.id && l.rep_user_id === user.id);
         if (latest?.sharing && Date.parse(latest.observed_at) > observed) return Response.json({ success: true, ignored: true });
         const data = { manager_id: managerId, member_id: member.id, rep_user_id: user.id, session_id: body.session_id,
             sharing: true, lat: body.lat, lng: body.lng, accuracy: body.accuracy,

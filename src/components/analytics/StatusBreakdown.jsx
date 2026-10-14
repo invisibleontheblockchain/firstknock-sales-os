@@ -10,22 +10,26 @@ const STATUS_CONFIG = {
   OTHER: { color: '#8b5cf6', label: 'Other' },
 };
 
-export default function StatusBreakdown({ properties }) {
+export default function StatusBreakdown({ properties = [], statusCounts = null }) {
+  const doorCount = statusCounts
+    ? Object.values(statusCounts).reduce((sum, count) => sum + Number(count || 0), 0)
+    : properties.length;
   const data = useMemo(() => {
-    const counts = {};
-    properties.forEach(p => {
-      const s = p.effective_status || 'ELIGIBLE';
-      counts[s] = (counts[s] || 0) + 1;
-    });
+    const counts = statusCounts ? { ...statusCounts } : {};
+    if (!statusCounts) properties.forEach(p => {
+        const s = p.effective_status || 'ELIGIBLE';
+        counts[s] = (counts[s] || 0) + 1;
+      });
     return Object.entries(counts)
+      .filter(([, count]) => count > 0)
       .map(([status, count]) => ({
         name: STATUS_CONFIG[status]?.label || status,
         value: count,
         color: STATUS_CONFIG[status]?.color || '#666',
-        pct: properties.length > 0 ? ((count / properties.length) * 100) : 0,
+        pct: doorCount > 0 ? ((count / doorCount) * 100) : 0,
       }))
       .sort((a, b) => b.value - a.value);
-  }, [properties]);
+  }, [properties, statusCounts, doorCount]);
 
   const maxVal = data[0]?.value || 1;
 
@@ -35,7 +39,7 @@ export default function StatusBreakdown({ properties }) {
       <div className="relative z-10">
         <div className="flex items-center justify-between mb-2">
           <h3 className="text-xs md:text-sm font-black text-white">Status Breakdown</h3>
-          <span className="text-[9px] font-bold text-gray-400 bg-white/[0.04] px-2 py-0.5 rounded">{properties.length.toLocaleString()} doors</span>
+          <span className="text-[9px] font-bold text-gray-400 bg-white/[0.04] px-2 py-0.5 rounded">{doorCount.toLocaleString()} doors</span>
         </div>
         {data.length > 0 ? (
           <div className="space-y-2">

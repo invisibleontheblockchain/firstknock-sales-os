@@ -6,7 +6,7 @@ import { filterKnockActivityLogs } from '@/lib/interactionLogs';
 const SALES_STATUSES = ['SOLD', 'QUALIFIED'];
 const CONTACT_EXCLUDE = ['NO_ANSWER', 'ELIGIBLE'];
 
-export default function RepAnalytics({ logs, routeProperties, activeRoute, onClose }) {
+export default function RepAnalytics({ logs, routeProperties, activeRoute, onClose, loading = false, loadFailed = false, onRetry }) {
     const stats = useMemo(() => {
         const activityLogs = filterKnockActivityLogs(logs);
         if (!activityLogs.length) return null;
@@ -53,6 +53,18 @@ export default function RepAnalytics({ logs, routeProperties, activeRoute, onClo
 
         return { knocks, sales, callbacks, noAnswer, hardNo, contacts, revenue, contactRate, convRate, streak, totalProps, doneProps, hourly, maxHourly };
     }, [logs, routeProperties, activeRoute]);
+
+    if (loading || loadFailed) {
+        return (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-6 text-center" onClick={onClose}>
+                <div className="max-w-sm rounded-2xl border border-gray-800 bg-[#111] p-8" onClick={event => event.stopPropagation()}>
+                    <p className="text-sm text-gray-300" role="status">{loadFailed ? 'Performance data could not be loaded.' : 'Loading your performance…'}</p>
+                    {loadFailed && <button onClick={onRetry} className="mt-4 rounded-lg bg-[#2EEB57] px-4 py-2 font-bold text-black">Try Again</button>}
+                    <button onClick={onClose} className="mt-4 block w-full text-sm font-bold text-yellow-500">Close</button>
+                </div>
+            </div>
+        );
+    }
 
     if (!stats) {
         return (

@@ -7,6 +7,7 @@ import { QueryClient } from '@tanstack/react-query';
 import { shouldRetryRead, withReadDeadline } from '../src/lib/readRequest.js';
 import * as hydration from '../src/components/logic/routeHydrationCore.js';
 import * as collection from '../src/components/rep/repRouteCollection.js';
+import { createRouteHydrationRuntime } from './helpers/routeHydrationRuntime.mjs';
 
 // Execute the actual page query functions so swallowing a failure in JSX
 // cannot leave the reusable retry helper green while the rep remains stuck.
@@ -34,7 +35,8 @@ function query(name, extra) {
     ROUTE_RECOVERY_POLL_MS: 65_000,
     localforage: { getItem: async () => null, setItem: async () => {}, removeItem: async () => {} },
     localStorage: { getItem: () => null }, console: { log() {}, warn() {}, error() {} },
-    ...hydration, ...collection, withReadDeadline, ...extra,
+    ...hydration, ...collection, withReadDeadline,
+    ...createRouteHydrationRuntime(extra.base44), ...extra,
   };
   vm.runInNewContext('globalThis.query = ' + descriptors[name], sandbox);
   return sandbox.query;

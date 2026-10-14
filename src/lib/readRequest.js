@@ -20,9 +20,10 @@ export async function withReadDeadline(read, timeoutMs = 15_000) {
             Promise.resolve().then(read),
             new Promise((_, reject) => {
                 timer = setTimeout(() => {
-                    const error = new Error('Loading took too long. Please try again.');
-                    error.code = 'READ_TIMEOUT';
-                    error.status = 408;
+                    const error = Object.assign(new Error('Loading took too long. Please try again.'), {
+                        code: 'READ_TIMEOUT',
+                        status: 408,
+                    });
                     reject(error);
                 }, timeoutMs);
             }),

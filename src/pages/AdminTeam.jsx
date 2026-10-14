@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Users, UserPlus, Map, CheckCircle2, AlertCircle, X, Key, Sparkles, TrendingUp, DollarSign, Home, Shield, Lock, Search } from 'lucide-react';
+import { Users, UserPlus, Map, CheckCircle2, AlertCircle, X, Key, Sparkles, TrendingUp, DollarSign, Home, Shield, Lock, Search, Loader2 } from 'lucide-react';
 import { createPageUrl } from '../utils';
 import { toast } from "sonner";
 import TeamMemberCard from "@/components/team/TeamMemberCard";
@@ -28,6 +28,8 @@ import UserActivityHeatmap from '@/components/analytics/team/UserActivityHeatmap
 import { getManagerIdForAccount, hasUnlimitedTeamAccess, isManagerAccount, isOwnerAccount, isRepAccount } from '@/lib/roles';
 import { isKnockActivityLog } from '@/lib/interactionLogs';
 import { fetchAllAnalyticsPages } from '@/lib/analyticsDateFilter';
+import { withReadDeadline } from '@/lib/readRequest';
+import { getTeamPerformanceQueryPlan, subscribeToTeamUpdates, TEAM_LOG_FIELDS, TEAM_ROUTE_FIELDS } from '@/lib/teamQueryLoading';
 import { buildTeamRoster, getRepSeatCount } from '@/lib/teamRoster';
 import ActiveRepLocations from '@/components/team/ActiveRepLocations';
 import TimeClockTab from '@/components/team/TimeClockTab';
@@ -53,6 +55,21 @@ function assignmentWithoutRouteBounds(route, assignment) {
     };
 }
 
+function TeamDataState({ failed, onRetry, label = 'team performance' }) {
+    return (
+        <div role={failed ? 'alert' : 'status'} className="rounded-xl border border-white/10 bg-[#111] px-4 py-5 text-center text-sm text-gray-400">
+            {failed ? (
+                <>
+                    <p>Could not load {label}. Totals are unavailable.</p>
+                    <Button type="button" onClick={onRetry} variant="outline" className="mt-3">Try again</Button>
+                </>
+            ) : (
+                <div className="flex items-center justify-center gap-2"><Loader2 className="h-4 w-4 animate-spin" />Loading {label}...</div>
+            )}
+        </div>
+    );
+}
+
 export default function AdminTeam() {
     const navigate = useNavigate();
     const queryClient = useQueryClient();
@@ -63,6 +80,7 @@ export default function AdminTeam() {
     const [newCode, setNewCode] = useState({ code: '', role: 'manager', label: '' });
     const [selectedRep, setSelectedRep] = useState(null); 
     const [activeTab, setActiveTab] = useState("analytics");
+    const [historyDays, setHistoryDays] = useState(30);
     const [createdCode, setCreatedCode] = useState(null); // For popup
     const [activeTeamCode, setActiveTeamCode] = useState('all'); // 'all' or specific code
     const [editingZips, setEditingZips] = useState(null); // { memberId, zips: string }
@@ -78,9 +96,9 @@ export default function AdminTeam() {
     const [roleSwitchMemberId, setRoleSwitchMemberId] = useState('');
 
     // --- Queries ---
-    const { data: user } = useQuery({
+    const { data: user, isLoading: userLoading } = useQuery({
         queryKey: ['user'],
-        queryFn: () => base44.auth.me(),
+        queryFn: () => withReadDeadline(() => base44.auth.me()),
         staleTime: 1000 * 60 * 5
     });
 
@@ -104,60 +122,84 @@ export default function AdminTeam() {
     } = useQuery({
         queryKey: ['teamMembers', managerId, user?.id],
         queryFn: async () => {
-            const res = await base44.functions.invoke('getTeamRoster', {});
+            const res = await withReadDeadline(() => base44.functions.invoke('getTeamRoster', {}));
             if (!res.data?.success || res.data.manager_id !== managerId) {
                 throw new Error('Unable to verify the team roster.');
             }
             return res.data;
         },
-        enabled: !!managerId
+        enabled: !!managerId,
+        staleTime: 1000 * 60 * 2,
+        refetchOnWindowFocus: true,
     });
 
     const teamMembers = teamRoster?.members || [];
     const repSeatCount = getRepSeatCount(teamMembers);
     const routeScope = useMemo(() => buildRepRouteScope(user, teamMembers), [user, teamMembers]);
 
-    const { data: routes = [], isLoading: routesLoading } = useQuery({
+    const needsRouteInventory = ['analytics', 'roster', 'logistics'].includes(activeTab);
+    const performancePlan = useMemo(() => getTeamPerformanceQueryPlan(activeTab, historyDays), [activeTab, historyDays]);
+    const { data: routes = [], isSuccess: routesReady, isError: routesFailed, refetch: refetchRoutes } = useQuery({
         queryKey: ['allRoutes', managerId, user?.id, routeScope.assigneeIds.join(',')],
-        refetchInterval: 15_000,
+        staleTime: 1000 * 60 * 2,
+        refetchOnWindowFocus: true,
         queryFn: async () => {
             if (!managerId) return [];
             const groups = await Promise.all(buildSavedRouteQueryFilters(routeScope).map(filter => (
-                fetchAllSavedRoutePages((limit, skip) => base44.entities.SavedRoute.filter(filter, '-created_date', limit, skip))
+                fetchAllSavedRoutePages((limit, skip) => withReadDeadline(() => base44.entities.SavedRoute.filter(filter, '-created_date', limit, skip, TEAM_ROUTE_FIELDS)))
             )));
             const rows = collectKnockRoutes(groups, routeScope);
             return rows.filter((route) => route.status !== 'ARCHIVED');
         },
-        enabled: !!managerId && (canManageTeam || !!teamRoster)
+        enabled: !!managerId && !!teamRoster && needsRouteInventory,
     });
 
     const { data: inviteCodes = [] } = useQuery({
         queryKey: ['inviteCodes', managerId],
         queryFn: async () => {
             if (!managerId || !canManageTeam) return [];
-            const res = await base44.entities.InviteCode.filter({ linked_user_id: managerId }, '-created_date', 50);
+            const res = await withReadDeadline(() => base44.entities.InviteCode.filter({ linked_user_id: managerId }, '-created_date', 50));
             return Array.isArray(res) ? res : (res?.items || []);
         },
         enabled: !!managerId && canManageTeam
     });
 
-    const { data: logs = [] } = useQuery({
-        queryKey: ['teamLogs', managerId],
+    const { data: logs = [], isSuccess: performanceReady, isError: performanceFailed, refetch: refetchPerformance } = useQuery({
+        queryKey: ['teamLogs', managerId, performancePlan.start || 'all'],
         staleTime: 1000 * 60 * 2,
         queryFn: async () => {
             if (!managerId) return [];
             return fetchAllAnalyticsPages(
-                (limit, skip) => base44.entities.InteractionLog.filter(
-                    { manager_id: managerId },
+                (limit, skip) => withReadDeadline(() => base44.entities.InteractionLog.filter(
+                    { manager_id: managerId, ...performancePlan.filter },
                     '-created_date',
                     limit,
-                    skip
-                ),
+                    skip,
+                    TEAM_LOG_FIELDS
+                )),
                 { pageSize: 5000, maxPages: 100 }
             );
         },
-        enabled: !!managerId
+        enabled: !!managerId && !!teamRoster && performancePlan.enabled,
+        refetchOnWindowFocus: true,
     });
+    const currentTeamRows = useRef({ routes, logs });
+    currentTeamRows.current = { routes, logs };
+    useEffect(() => {
+        if (!managerId) return undefined;
+        return subscribeToTeamUpdates({
+            entities: base44.entities,
+            managerId,
+            routeScope,
+            getRoutes: () => currentTeamRows.current.routes,
+            getLogs: () => currentTeamRows.current.logs,
+            onRoutesChanged: () => queryClient.invalidateQueries({ queryKey: ['allRoutes', managerId] }),
+            onLogsChanged: () => {
+                queryClient.invalidateQueries({ queryKey: ['teamLogs', managerId] });
+                queryClient.invalidateQueries({ queryKey: ['teamLeaderboard', managerId] });
+            },
+        });
+    }, [managerId, queryClient, routeScope]);
 
     // --- Mutations ---
     const createRepMutation = useMutation({
@@ -536,7 +578,7 @@ export default function AdminTeam() {
         setPendingAssignment({ routeId, memberId, routeName: route.name, memberName: member.name });
     };
 
-    if (teamLoading || routesLoading) {
+    if (userLoading || teamLoading) {
         return <div className="p-10 text-center text-white">Loading Team Data...</div>;
     }
 
@@ -811,13 +853,13 @@ export default function AdminTeam() {
                 <div className={`grid ${isRepView ? 'grid-cols-3' : 'grid-cols-4'} divide-x divide-gray-800 bg-[#111] border border-gray-800 rounded-lg md:rounded-xl overflow-hidden shadow-lg`}>
                     <div className="py-2 px-1 md:p-4 flex flex-col items-center justify-center">
                         <TrendingUp className="w-3 h-3 md:w-4 md:h-4 text-yellow-500 mb-0.5 md:mb-1" />
-                        <span className="text-sm md:text-2xl font-extrabold text-white">{teamTotals.doorsKnocked.toLocaleString()}</span>
-                        <span className="text-[7px] md:text-[10px] font-bold text-gray-500 uppercase">Knocks</span>
+                        <span aria-label={!performanceReady ? 'Knock totals unavailable' : undefined} className="text-sm md:text-2xl font-extrabold text-white">{performanceReady ? teamTotals.doorsKnocked.toLocaleString() : performanceFailed ? '—' : '…'}</span>
+                        <span className="text-[7px] md:text-[10px] font-bold text-gray-500 uppercase">{performancePlan.label} Knocks</span>
                     </div>
                     <div className="py-2 px-1 md:p-4 flex flex-col items-center justify-center">
                         <DollarSign className="w-3 h-3 md:w-4 md:h-4 text-green-500 mb-0.5 md:mb-1" />
-                        <span className="text-sm md:text-2xl font-extrabold text-white">{teamTotals.sales.toLocaleString()}</span>
-                        <span className="text-[7px] md:text-[10px] font-bold text-gray-500 uppercase">Sales</span>
+                        <span aria-label={!performanceReady ? 'Sales totals unavailable' : undefined} className="text-sm md:text-2xl font-extrabold text-white">{performanceReady ? teamTotals.sales.toLocaleString() : performanceFailed ? '—' : '…'}</span>
+                        <span className="text-[7px] md:text-[10px] font-bold text-gray-500 uppercase">{performancePlan.label} Sales</span>
                     </div>
                     {!isRepView && (
                     <div className="py-2 px-1 md:p-4 flex flex-col items-center justify-center cursor-pointer" onClick={() => navigate(createPageUrl('Billing'))}>
@@ -831,7 +873,7 @@ export default function AdminTeam() {
                     )}
                     <div className="py-2 px-1 md:p-4 flex flex-col items-center justify-center">
                         <Map className="w-3 h-3 md:w-4 md:h-4 text-purple-500 mb-0.5 md:mb-1" />
-                        <span className="text-sm md:text-2xl font-extrabold text-white">{routes.length}</span>
+                        <span aria-label={!routesReady ? 'Route totals unavailable' : undefined} className="text-sm md:text-2xl font-extrabold text-white">{routesReady ? routes.length : routesFailed ? '—' : '…'}</span>
                         <span className="text-[7px] md:text-[10px] font-bold text-gray-500 uppercase">Routes</span>
                     </div>
                 </div>
@@ -865,7 +907,16 @@ export default function AdminTeam() {
 
                     {/* ANALYTICS TAB */}
                     <TabsContent value="analytics" className="space-y-3 md:space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                        <TeamAnalyticsSummary members={filteredTeamMembers} logs={logs} routes={routes} />
+                        <label className="flex items-center justify-end gap-2 text-xs text-gray-400">Activity history
+                            <select aria-label="Team activity history" value={historyDays} onChange={(event) => setHistoryDays(Number(event.target.value))} className="min-h-10 rounded-lg border border-gray-700 bg-[#111] px-3 text-white">
+                                <option value={30}>Last 30 days</option><option value={90}>Last 90 days</option><option value={99999}>All Time</option>
+                            </select>
+                        </label>
+                        {performanceReady && routesReady ? (
+                            <TeamAnalyticsSummary members={filteredTeamMembers} logs={logs} routes={routes} historyLabel={performancePlan.label} />
+                        ) : (
+                            <TeamDataState failed={performanceFailed || routesFailed} onRetry={() => { refetchPerformance(); refetchRoutes(); }} />
+                        )}
                         {canManageTeam && (
                             <UserActivityHeatmap
                                 members={filteredTeamMembers}
@@ -873,10 +924,10 @@ export default function AdminTeam() {
                                 mobileCardLayout
                             />
                         )}
-                        <div className="grid grid-cols-1 xl:grid-cols-[1.15fr,0.85fr] gap-3 md:gap-6">
+                        {performanceReady && <div className="grid grid-cols-1 xl:grid-cols-[1.15fr,0.85fr] gap-3 md:gap-6">
                             <TeamActivityTrend logs={logs} />
-                            <TeamOutcomeBreakdown logs={logs} />
-                        </div>
+                            <TeamOutcomeBreakdown logs={logs} historyLabel={performancePlan.label} />
+                        </div>}
                         <TeamLeaderboard
                             members={filteredTeamMembers} currentUser={user}
                             logs={logs}
@@ -891,7 +942,7 @@ export default function AdminTeam() {
 
                     {/* ROSTER TAB */}
                     <TabsContent value="roster" className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-                        {selectedRep ? (
+                        {selectedRep ? (performanceReady && routesReady ? (
                              <RepPerformanceDetail 
                                 member={selectedRep}
                                 logs={logs}
@@ -899,7 +950,7 @@ export default function AdminTeam() {
                                 onClose={() => setSelectedRep(null)}
                                 routes={routesByRep[selectedRep.id] || []}
                                 />
-                        ) : (
+                        ) : <TeamDataState failed={performanceFailed || routesFailed} onRetry={() => { refetchPerformance(); refetchRoutes(); }} />) : (
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-6">
                                 {filteredTeamMembers.map(member => {
                                     const memberRoutes = routesByRep[member.id] || [];
@@ -965,6 +1016,9 @@ export default function AdminTeam() {
                                                     member={member} 
                                                     routes={memberRoutes} 
                                                     metrics={memberMetrics}
+                                                    metricsLoading={!performanceReady && !performanceFailed}
+                                                    metricsFailed={performanceFailed}
+                                                    routesLoading={!routesReady}
                                                     allRoutes={routesByRep.unassigned}
                                                     onAssignRoute={(rId, mId) => handleAssign(rId, mId)}
                                                     onUnassignAll={() => {
@@ -990,6 +1044,7 @@ export default function AdminTeam() {
 
                     {/* LOGISTICS TAB */}
                     <TabsContent value="logistics" className="space-y-3 md:space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        {!routesReady && <TeamDataState failed={routesFailed} onRetry={() => refetchRoutes()} label="route inventory" />}
                         {/* Unassigned Routes Summary */}
                         {routesByRep.unassigned.length > 0 && (
                             <Card className="bg-[#111] border-red-900/30">

@@ -9,6 +9,7 @@ import useAppointmentMapFocus from '@/hooks/useAppointmentMapFocus'; import Appo
 import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { storage } from '@/lib/storage';
+import { withReadDeadline } from '@/lib/readRequest';
 
 import { Loader2 } from 'lucide-react';
 import { toast } from "sonner";
@@ -611,6 +612,10 @@ export default function Home() {
         baseProperties: userProperties,
         viewportProperties,
         isLoading: propsLoading,
+        isOverviewReady: territoryOverviewReady,
+        isLoadingOverview: territoryOverviewLoading,
+        error: territoryLoadError,
+        retry: retryTerritory,
         onMapMoveEnd
     } = useViewportMapProperties(user);
 
@@ -989,12 +994,12 @@ export default function Home() {
         return unretired.length ? [...rows, ...unretired] : rows;
     }, []);
 
-    const { data: logsRaw = [], isLoading: logsLoading } = useQuery({
+    const { data: logsRaw = [], isLoading: logsLoading, isSuccess: logsReady, error: logsLoadError, refetch: retryLogs } = useQuery({
         queryKey: ['interactionLogs', user?.email],
         staleTime: 1000 * 60 * 2,
         queryFn: async () => {
             if (!user) return withPendingOutcomes([]);
-            return withPendingOutcomes(await fetchAccountInteractionLogs(user));
+            return withPendingOutcomes(await withReadDeadline(() => fetchAccountInteractionLogs(user)));
         },
         enabled: !!user
     });
@@ -1005,24 +1010,25 @@ export default function Home() {
         () => scopeInteractionLogsToAccount(logsRaw, user, teamMembers),
         [logsRaw, user, teamMembers]
     );
+    const territoryActionsReady = territoryOverviewReady && logsReady;
 
     // The checklist reads its outcomes exactly the way the knock tab does: a
     // route-scoped filter, no 5000-row global list and no org email filter on
     // top. Those two extra hops are what kept losing a freshly logged row and
     // letting a stop revert to Todo.
-    const { data: checklistLogs = [] } = useQuery({
+    const { data: checklistLogs = [], isSuccess: checklistLogsReady, error: checklistLogsError, refetch: retryChecklistLogs } = useQuery({
         queryKey: ['routeChecklistLogs', activeRoute?.id],
         queryFn: async () => {
             const hashes = activeRoute?.property_hashes || [];
             if (!hashes.length && !activeRoute?.id) return withPendingOutcomes([]);
-            const [hashLogsRes, routeLogsRes] = await Promise.all([
+            const [hashLogsRes, routeLogsRes] = await withReadDeadline(() => Promise.all([
                 hashes.length
                     ? base44.entities.InteractionLog.filter({ address_hash: hashes }, '-created_date', 1000)
                     : [],
                 activeRoute?.id
                     ? base44.entities.InteractionLog.filter({ route_id: activeRoute.id }, '-created_date', 1000)
                     : []
-            ]);
+            ]));
             const merged = [
                 ...(Array.isArray(hashLogsRes) ? hashLogsRes : hashLogsRes?.items || []),
                 ...(Array.isArray(routeLogsRes) ? routeLogsRes : routeLogsRes?.items || [])
@@ -1335,11 +1341,14 @@ export default function Home() {
         let cancelled = false;
         (async () => {
             if (!user?.email || savedRoutes.length === 0) return setServerHydratedSavedRoutes([]);
+            // Let the lightweight overview arrive before hydrating every saved
+            // route. Opening a selected route still hydrates it immediately.
+            if (!territoryOverviewReady) return;
             const hydrated = await hydrateRoutesForMap(savedRoutes, user.email, effectivePropertiesRef.current);
             if (!cancelled) setServerHydratedSavedRoutes(hydrated);
         })();
         return () => { cancelled = true; };
-    }, [savedRoutes, user?.email, effectiveProperties.length]);
+    }, [savedRoutes, user?.email, effectiveProperties.length, territoryOverviewReady]);
 
     // Smart Auto-Open/Close for Generate Mode
     useEffect(() => {
@@ -1541,6 +1550,10 @@ export default function Home() {
     }, [effectiveProperties, zoomLevel, activeRoute]);
 
     const generateRoutes = useCallback(async () => {
+        if (!territoryActionsReady) {
+            toast.info('Territory homes and door history are still loading. Please try again when loading finishes.');
+            return false;
+        }
         if (routesGeneratingRef.current) {
             toast.info('Route generation is already running.');
             return false;
@@ -2001,10 +2014,11 @@ export default function Home() {
             routesGeneratingRef.current = false;
             setRoutesGenerating(false);
         }
-    }, [availableProperties, housesPerRoute, startLocation, logs, streetCooldownDays, zipCodeFilter, assignedHashes, routeConfig, soldDateFilter, drawnPolygon, draftPolygon, frozenWorkingSet, effectiveProperties, fetchRouteCandidatesFromNeon, currentBatchDataJobId, preparePrecisionRouteBounds, user?.territory_zip_codes, user?.generated_zip_codes, user?.email]);
+    }, [territoryActionsReady, availableProperties, housesPerRoute, startLocation, logs, streetCooldownDays, zipCodeFilter, assignedHashes, routeConfig, soldDateFilter, drawnPolygon, draftPolygon, frozenWorkingSet, effectiveProperties, fetchRouteCandidatesFromNeon, currentBatchDataJobId, preparePrecisionRouteBounds, user?.territory_zip_codes, user?.generated_zip_codes, user?.email]);
 
     // Reorder: re-run filtering + routing on frozen data without re-fetching
     const handleReorder = useCallback(async () => {
+        if (!territoryActionsReady) { toast.info('Territory homes and door history are still loading.'); return false; }
         if (!frozenWorkingSet || frozenWorkingSet.length === 0) { toast.error('No data to reorder.'); return false; }
         setGenerationError(null);
         setGenerationStage(`Reordering ${frozenWorkingSet.length.toLocaleString()} doors...`);
@@ -2096,7 +2110,7 @@ export default function Home() {
             return false;
         }
         finally { setRoutesGenerating(false); }
-    }, [frozenWorkingSet, housesPerRoute, startLocation, logs, streetCooldownDays, zipCodeFilter, routeConfig, soldDateFilter, drawnPolygon, lastPullMode, learnedWeights, user?.territory_zip_codes, assignedHashes]);
+    }, [territoryActionsReady, frozenWorkingSet, housesPerRoute, startLocation, logs, streetCooldownDays, zipCodeFilter, routeConfig, soldDateFilter, drawnPolygon, lastPullMode, learnedWeights, user?.territory_zip_codes, assignedHashes]);
 
     // Re-optimize a single saved route while keeping each street sweep contiguous.
     // Injectable so the low-accuracy interaction is executable in tests rather
@@ -2111,11 +2125,17 @@ export default function Home() {
     // Optimize modes AND custom ANCHORS both run through the extracted action —
     // see lib/reoptimizeRouteAction.js. Options are either { mode } / { fromHome }
     // or { anchors: { start, end } } (anchors: null clears them).
-    const handleReoptimizeRoute = useCallback((route, options = {}) => reoptimizeRoute(route, options, {
-        user, teamMembers, effectiveProperties, mapRef, queryClient, activeRoute, setActiveRoute,
-        confirmLowAccuracyLocation,
-        previewRoadAwareBeta: previewSavedRoadAwareBeta,
-    }), [activeRoute, confirmLowAccuracyLocation, effectiveProperties, queryClient, teamMembers, user]);
+    const handleReoptimizeRoute = useCallback((route, options = {}) => {
+        if (!territoryActionsReady) {
+            toast.info('Territory homes and door history are still loading.');
+            return Promise.resolve(null);
+        }
+        return reoptimizeRoute(route, options, {
+            user, teamMembers, effectiveProperties, mapRef, queryClient, activeRoute, setActiveRoute,
+            confirmLowAccuracyLocation,
+            previewRoadAwareBeta: previewSavedRoadAwareBeta,
+        });
+    }, [territoryActionsReady, activeRoute, confirmLowAccuracyLocation, effectiveProperties, queryClient, teamMembers, user]);
 
     // Filter and sort routes
     const filteredRoutes = useMemo(() => {
@@ -2272,14 +2292,14 @@ export default function Home() {
         : (gpsInitialLocation || mapCenter);
 
     // Fetch full history for selected property (manager view)
-    const { data: selectedPropertyLogs = [] } = useQuery({
+    const { data: selectedPropertyLogs = [], isSuccess: selectedPropertyHistoryReady, error: selectedPropertyHistoryError, refetch: retrySelectedPropertyHistory } = useQuery({
         queryKey: ['selectedPropertyHistory', selectedProperty?.address_hash],
         queryFn: async () => {
             if (!selectedProperty?.address_hash) return [];
-            const res = await base44.entities.InteractionLog.filter(
+            const res = await withReadDeadline(() => base44.entities.InteractionLog.filter(
                 { address_hash: selectedProperty.address_hash },
                 '-created_date', 100
-            );
+            ));
             return withPendingOutcomes(
                 Array.isArray(res) ? res : (res?.items || []),
                 selectedProperty.address_hash
@@ -2290,6 +2310,11 @@ export default function Home() {
 
     const handleLogResult = useCallback(async (property, statusOrLogData, note = null) => {
         if (!property?.address_hash) return false;
+        if (!logsReady || (showChecklist && !checklistLogsReady)
+            || (property.address_hash === selectedProperty?.address_hash && !selectedPropertyHistoryReady)) {
+            toast.info('Door history is still loading. Please try again when loading finishes.');
+            return false;
+        }
 
         const logData = typeof statusOrLogData === 'object'
             ? statusOrLogData
@@ -2339,7 +2364,7 @@ export default function Home() {
             });
 
         return true;
-    }, [activeRoute, applyOptimisticLog, createLogMutation, user]);
+    }, [activeRoute, applyOptimisticLog, createLogMutation, user, logsReady, showChecklist, checklistLogsReady, selectedProperty?.address_hash, selectedPropertyHistoryReady]);
 
     const handleDeleteInteraction = useCallback(async (log) => {
         if (!log?.id) return;
@@ -2361,13 +2386,13 @@ export default function Home() {
 
     // Run auto generation when data is fresh after Precision's unified pull+generate flow.
     useEffect(() => {
-        if (!pendingAutoGenerate || routesGenerating) return;
+        if (!pendingAutoGenerate || routesGenerating || !territoryActionsReady) return;
         const timer = setTimeout(() => {
             setPendingAutoGenerate(false);
             generateRoutesRef.current?.();
         }, 100);
         return () => clearTimeout(timer);
-    }, [pendingAutoGenerate, routesGenerating, effectiveProperties.length]);
+    }, [pendingAutoGenerate, routesGenerating, effectiveProperties.length, territoryActionsReady]);
 
     // Dynamic status colors based on selected color scheme
     const STATUS_COLORS = useMemo(() => {
@@ -2377,21 +2402,25 @@ export default function Home() {
     // Compute line dash array from settings
     const lineDashArray = mapSettings.lineStyle === 'solid' ? undefined : (LINE_DASH_MAP[mapSettings.lineStyle] || '8,6');
 
-    const isLoading = propsLoading || logsLoading;
-
-    if (isLoading) {
-        return (
-            <div className="h-full flex items-center justify-center" style={{ background: BRAND.voidBlack }}>
-                <div className="text-center">
-                    <Loader2 className="w-10 h-10 animate-spin mx-auto mb-3" style={{ color: BRAND.gold }} />
-                    <p className="text-sm font-medium tracking-wide" style={{ color: BRAND.offWhite }}>LOADING TERRITORY</p>
-                </div>
-            </div>
-        );
-    }
+    const mapDataError = territoryLoadError || logsLoadError
+        || (showChecklist && checklistLogsError) || (selectedProperty && selectedPropertyHistoryError);
+    const loadingDoorHistory = logsLoading || (showChecklist && !checklistLogsReady)
+        || (selectedProperty && !selectedPropertyHistoryReady);
+    const mapDataLoading = propsLoading || territoryOverviewLoading || loadingDoorHistory;
 
     return (
         <div className={`h-full w-full relative ${showMapSettings ? 'lg:w-[calc(100%-24rem)]' : ''}`} style={{ background: BRAND.voidBlack }}>
+            {(mapDataError || mapDataLoading) && (
+                <div role="status" className="absolute top-24 left-1/2 -translate-x-1/2 z-[1600] flex max-w-[90%] items-center gap-2 rounded-xl border border-white/10 bg-[#111]/95 px-3 py-2 text-xs text-white shadow-xl">
+                    {!mapDataError && <Loader2 className="h-4 w-4 shrink-0 animate-spin" style={{ color: BRAND.gold }} />}
+                    <span>{mapDataError ? 'Some map data could not load.' : propsLoading ? 'Loading territory homes…' : loadingDoorHistory ? 'Loading door history…' : 'Loading more territory homes…'}</span>
+                    {mapDataError && <button type="button" className="shrink-0 font-semibold text-[#FFD700]" onClick={() => Promise.all([
+                        retryTerritory(), retryLogs(),
+                        ...(showChecklist ? [retryChecklistLogs()] : []),
+                        ...(selectedProperty ? [retrySelectedPropertyHistory()] : []),
+                    ])}>Try again</button>}
+                </div>
+            )}
             {pendingAssignment && <RouteAssignmentDialog assignment={pendingAssignment} onCancel={cancelRouteAssignment} onConfirm={confirmRouteAssignment} />}
             {loadingSavedRouteId && (
                 <div role="status" className="absolute top-20 left-1/2 -translate-x-1/2 z-[2000] flex items-center gap-2 rounded-xl border border-white/10 bg-[#111] px-4 py-3 text-sm text-white shadow-xl">
@@ -2460,7 +2489,7 @@ export default function Home() {
                 />
 
                 {/* All map data layers extracted to ManagerMapLayers */}
-                <ManagerMapLayers
+                {logsReady && <ManagerMapLayers
                     mode={mode}
                     routeMode={routeMode}
                     canvasZonePreview={canvasZonePreview}
@@ -2503,7 +2532,7 @@ export default function Home() {
                     subMonths={subMonths}
                     isAfter={isAfter}
                     darkRoom={darkRoom}
-                />
+                />}
 
                 {/* ZIP + county boundary lines (toggled in Map Settings) */}
                 <BoundaryOverlays properties={effectiveProperties} />
@@ -2518,11 +2547,11 @@ export default function Home() {
                 )}
 
                 {/* GPS TRACKER LAYERS */}
-                <GpsTrackerMapLayers
+                {logsReady && <GpsTrackerMapLayers
                     properties={effectiveProperties}
                     isTracking={gpsTracking}
                     onSelectProperty={setSelectedProperty}
-                />
+                />}
             </MapContainer>
 
             {/* Map UI Overlays extracted to MapToolbar */}
@@ -2727,6 +2756,7 @@ export default function Home() {
                         genStats={genStats}
                         repColors={repColors}
                         teamMembers={teamMembers}
+                        viewerEmail={user?.email}
                         getRepRecommendations={getRepRecommendations}
                         onSelectRoute={(route) => {
                             setActiveRoute(route);
@@ -2894,15 +2924,15 @@ export default function Home() {
             )}
 
             {/* GPS HUD Overlay */}
-            <GpsTrackerHud
+            {logsReady && <GpsTrackerHud
                 properties={effectiveProperties}
                 isTracking={gpsTracking}
                 onToggleTracking={() => setGpsTracking(false)}
                 onSelectProperty={setSelectedProperty}
-            />
+            />}
 
             {/* Route Checklist */}
-            {showChecklist && filteredActiveRoute && (
+            {showChecklist && filteredActiveRoute && checklistLogsReady && logsReady && (
                 <div className="fixed inset-0 z-[2000]">
                     <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowChecklist(false)} />
                     <div
@@ -2940,7 +2970,7 @@ export default function Home() {
 
             {/* Property Details Drawer */}
             {/* Command Center Dashboard Overlay */}
-            {showDashboard && (
+            {showDashboard && territoryActionsReady && (
                 <React.Suspense fallback={null}>
                     <CommandCenterDashboard
                         currentUser={user}
@@ -2987,7 +3017,7 @@ export default function Home() {
             )}
 
 
-            <ManagerPropertyDetailSheet route={activeRoute} onRouteUpdated={handleRouteStopRemoved} selectedProperty={selectedProperty ? withDerivedStatus([selectedProperty], buildLogsByAddress(selectedPropertyLogs))[0] : null} setSelectedProperty={(next) => { setSelectedProperty(next); if (!next) setAppointmentPin(null); }} STATUS_COLORS={STATUS_COLORS} navigationApp={navigationApp} selectedPropertyLogs={selectedPropertyLogs} handleLogResult={handleLogResult} onClearInteraction={handleDeleteInteraction} onNoteSaved={() => queryClient.invalidateQueries({ queryKey: ['selectedPropertyHistory'] })} toast={toast} />
+            <ManagerPropertyDetailSheet route={activeRoute} onRouteUpdated={handleRouteStopRemoved} selectedProperty={selectedProperty && selectedPropertyHistoryReady ? withDerivedStatus([selectedProperty], buildLogsByAddress(selectedPropertyLogs))[0] : null} setSelectedProperty={(next) => { setSelectedProperty(next); if (!next) setAppointmentPin(null); }} STATUS_COLORS={STATUS_COLORS} navigationApp={navigationApp} selectedPropertyLogs={selectedPropertyLogs} handleLogResult={handleLogResult} onClearInteraction={handleDeleteInteraction} onNoteSaved={() => queryClient.invalidateQueries({ queryKey: ['selectedPropertyHistory'] })} toast={toast} />
             <KnockLimitSheet
                 open={showKnockLimitSheet}
                 mode={knockGateMode}

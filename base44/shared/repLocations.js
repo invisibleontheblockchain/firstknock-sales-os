@@ -1,6 +1,9 @@
 export const LOCATION_LIVE_MS = 60_000;
 export const LOCATION_MAX_AGE_MS = 5 * 60_000;
-export const LOCATION_PUBLISH_MS = 15_000;
+// Two fresh heartbeats fit inside the unchanged one-minute live window.
+export const LOCATION_PUBLISH_MS = 30_000;
+export const LOCATION_REPORT_MS = 30_000;
+export const LOCATION_RETRY_MAX_MS = 2 * 60_000;
 export const LOCATION_FIX_MAX_AGE_MS = 30_000;
 
 export function validLocation(point) {

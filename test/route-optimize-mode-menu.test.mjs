@@ -449,6 +449,6 @@ test('ROUTEONLY-01 route_only passes no anchor at all', async () => {
   assert.match(action, /const start = optimizeFromCar \? carAnchor/);
   assert.match(action, /: null;/);
   const home = await readFile(new URL('../src/pages/Home.jsx', import.meta.url), 'utf8');
-  assert.match(home, /const handleReoptimizeRoute = useCallback\(\(route, options = \{\}\) => reoptimizeRoute\(/,
+  assert.match(home, /const handleReoptimizeRoute = useCallback\(\(route, options = \{\}\) => \{[\s\S]*?return reoptimizeRoute\(/,
     'Home still owns the single wiring point for the action');
 });
