@@ -2,6 +2,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import { neon } from 'npm:@neondatabase/serverless@0.9.0';
 
 const LEGACY_CANONICAL_RECOVERY_CUTOFF = Date.parse('2026-07-24T01:52:18.000Z');
+const ROUTE_HYDRATION_VERSION = '2026-10-14-rate-limit-retry';
 
 class HttpError extends Error {
     constructor(status, code, message) {
@@ -17,6 +18,26 @@ function asArray(value) {
 
 function normalized(value) {
     return String(value || '').trim().toLowerCase();
+}
+
+function isTransientDataRead(error) {
+    const status = Number(error?.status || error?.response?.status || 0);
+    return status === 408 || status === 429 || status >= 500;
+}
+
+async function retryDataRead(read) {
+    for (let attempt = 0; ; attempt++) {
+        try {
+            return await read();
+        } catch (error) {
+            if (!isTransientDataRead(error) || attempt >= 3) throw error;
+            const retryAfter = Number(error?.response?.headers?.['retry-after']);
+            const delay = Number.isFinite(retryAfter) && retryAfter > 0
+                ? Math.min(retryAfter * 1000, 2500)
+                : 400 * 2 ** attempt + Math.floor(Math.random() * 200);
+            await new Promise(resolve => setTimeout(resolve, delay));
+        }
+    }
 }
 
 function normalizedHashes(value) {
@@ -109,7 +130,7 @@ function chooseExactVisibleRoute(rows, hashes, requestedOwner = '') {
 }
 
 async function findExactVisibleRoute(entity, query, hashes, requestedOwner = '') {
-    const rows = asArray(await entity.filter(query, '-updated_date', 5000));
+    const rows = asArray(await retryDataRead(() => entity.filter(query, '-updated_date', 5000)));
     return chooseExactVisibleRoute(rows, hashes, requestedOwner);
 }
 
@@ -121,13 +142,14 @@ async function findLegacyVisibleRoute(base44, user, requestedOwner, hashes) {
     // or return no rows for $all instead of throwing.
     if (requestedOwner) {
         try {
-            const fastRows = asArray(await routes.filter({
+            const fastRows = asArray(await retryDataRead(() => routes.filter({
                 created_by: requestedOwner,
                 property_hashes: { $all: [...new Set(hashes)] }
-            }, '-updated_date', 100));
+            }, '-updated_date', 100)));
             const exact = chooseExactVisibleRoute(fastRows, hashes, requestedOwner);
             if (exact) return exact;
-        } catch {
+        } catch (error) {
+            if (isTransientDataRead(error)) throw error;
             // Continue into RLS-scoped exact-manifest scans below.
         }
     }
@@ -150,17 +172,18 @@ async function findLegacyVisibleRoute(base44, user, requestedOwner, hashes) {
 
     for (const query of scopedQueries) {
         try {
-            const fastRows = asArray(await routes.filter({
+            const fastRows = asArray(await retryDataRead(() => routes.filter({
                 ...query,
                 property_hashes: { $all: [...new Set(hashes)] }
-            }, '-updated_date', 100));
+            }, '-updated_date', 100)));
             const fastExact = chooseExactVisibleRoute(
                 fastRows,
                 hashes,
                 requestedOwner
             );
             if (fastExact) return fastExact;
-        } catch {
+        } catch (error) {
+            if (isTransientDataRead(error)) throw error;
             // Continue to the bounded exact-manifest scan for runtimes without
             // reliable array-operator support.
         }
@@ -172,7 +195,8 @@ async function findLegacyVisibleRoute(base44, user, requestedOwner, hashes) {
                 requestedOwner
             );
             if (exact) return exact;
-        } catch {
+        } catch (error) {
+            if (isTransientDataRead(error)) throw error;
             // A narrower legacy index may not exist. Continue with the other
             // tenant-scoped queries; never fall back to an unbounded scan.
         }
@@ -201,7 +225,10 @@ async function resolveRouteTenantEmail(base44, user, route, requestedOwner) {
     if (managerId && managerId === teamManagerId) {
         const managerEntity = base44.asServiceRole?.entities?.User;
         const manager = managerEntity?.get
-            ? await managerEntity.get(managerId).catch(() => null)
+            ? await retryDataRead(() => managerEntity.get(managerId)).catch(error => {
+                if (isTransientDataRead(error)) throw error;
+                return null;
+            })
             : null;
         if (manager?.email) {
             const managerEmail = String(manager.email).trim();
@@ -254,16 +281,48 @@ async function filterMasterProperties(entity, field, hashes, managerId = null) {
     };
 
     try {
-        collect(await entity.filter({ [field]: hashes, ...tenantFilter }, null, hashes.length));
-    } catch {
-        // Retry with the explicit operator below.
+        const result = await retryDataRead(() => entity.filter({ [field]: { $in: hashes }, ...tenantFilter }, '-created_date', hashes.length));
+        collect(result);
+    } catch (error) {
+        if (isTransientDataRead(error)) throw error;
+        // Retry below for older runtimes without explicit array operators.
     }
+    if (hashes.every(hash => collected.some(property => String(property[field] || '') === hash))) return collected;
     try {
-        collect(await entity.filter({ [field]: { $in: hashes }, ...tenantFilter }, null, hashes.length));
-    } catch {
+        const result = await retryDataRead(() => entity.filter({ [field]: hashes, ...tenantFilter }, '-created_date', hashes.length));
+        collect(result);
+    } catch (error) {
+        if (isTransientDataRead(error)) throw error;
         // The caller will continue with the other canonical source.
     }
     return collected;
+}
+
+async function loadWorkspaceServiceImports(base44, user, route, hashes) {
+    const managerId = verifiedImportManagerId(user, route);
+    if (!managerId) return new Map();
+
+    const byHash = new Map();
+    // Imported doors live in Base44, not necessarily in Neon. Read the verified
+    // team's copy first, without issuing eight overlapping lookups per batch.
+    for (let offset = 0; offset < hashes.length; offset += 100) {
+        const slice = hashes.slice(offset, offset + 100);
+        const primary = await filterMasterProperties(base44.asServiceRole.entities.MasterProperty, 'address_hash', slice, managerId);
+        const addProperties = (properties) => {
+            for (const property of properties) {
+                if (!hasCoordinates(property) || !isWorkspaceServiceImport(property, managerId)) continue;
+                for (const hash of [property.address_hash, property.legacy_hash].map(String)) {
+                    if (slice.includes(hash) && !byHash.has(hash)) byHash.set(hash, property);
+                }
+            }
+        };
+        addProperties(primary);
+        const missing = slice.filter(hash => !byHash.has(hash));
+        if (missing.length) {
+            addProperties(await filterMasterProperties(base44.asServiceRole.entities.MasterProperty, 'legacy_hash', missing, managerId));
+        }
+    }
+    return byHash;
 }
 
 async function loadVisibleInteractionOwners(base44, hashes) {
@@ -296,9 +355,6 @@ Deno.serve(async (req) => {
         const user = await base44.auth.me();
         if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
-        const databaseUrl = Deno.env.get('DATABASE_URL');
-        if (!databaseUrl) return Response.json({ error: 'DATABASE_URL is not configured' }, { status: 500 });
-
         const body = await req.json().catch(() => ({}));
         const hashes = Array.isArray(body.address_hashes)
             ? body.address_hashes.map(String).map(h => h.trim()).filter(Boolean)
@@ -311,7 +367,6 @@ Deno.serve(async (req) => {
             return Response.json({ success: true, count: 0, properties: [] });
         }
 
-        const sql = neon(databaseUrl);
         let targetEmail = String(user.email || '').trim();
         const limit = Math.min(Math.max(Number(body.limit || hashes.length), 1), 5000);
         const routeId = body.route_id ? String(body.route_id).trim() : null;
@@ -343,7 +398,10 @@ Deno.serve(async (req) => {
             }
         }
         if (routeId) {
-            authorizedRoute = await base44.entities.SavedRoute.get(routeId).catch(() => null);
+            authorizedRoute = await retryDataRead(() => base44.entities.SavedRoute.get(routeId)).catch(error => {
+                if (isTransientDataRead(error)) throw error;
+                return null;
+            });
             if (!authorizedRoute) {
                 throw new HttpError(403, 'route_access_denied', 'This route is not visible to the authenticated account.');
             }
@@ -389,6 +447,22 @@ Deno.serve(async (req) => {
         if (!targetEmail) {
             throw new HttpError(403, 'workspace_owner_missing', 'No verifiable workspace owner is available for this lookup.');
         }
+
+        const importedByHash = await loadWorkspaceServiceImports(base44, user, authorizedRoute, hashes);
+        if (hashes.every(hash => importedByHash.has(hash))) {
+            return Response.json({
+                success: true,
+                hydration_version: ROUTE_HYDRATION_VERSION,
+                user_email: targetEmail,
+                requested_count: hashes.length,
+                count: hashes.length,
+                properties: hashes.map(hash => importedByHash.get(hash))
+            });
+        }
+
+        const databaseUrl = Deno.env.get('DATABASE_URL');
+        if (!databaseUrl) return Response.json({ error: 'DATABASE_URL is not configured' }, { status: 500 });
+        const sql = neon(databaseUrl);
 
         const interactionWorkspaceEmails = [];
         for (const owners of interactionOwnersByHash.values()) {
@@ -467,7 +541,7 @@ Deno.serve(async (req) => {
         }
         const rows = [...rowsById.values()];
 
-        const byHash = new Map();
+        const byHash = new Map(importedByHash);
         rows.forEach(row => {
             const property = {
                 ...row,
@@ -654,6 +728,10 @@ Deno.serve(async (req) => {
                     );
                     for (const requestedHash of requestedMatches) {
                         const allowedOwners = allowedOwnersByHash.get(requestedHash);
+                        // Runtime service identities are shared by many teams;
+                        // their audit email alone is never tenant ownership.
+                        if (/^service\+[^@\s]+@no-reply\.base44\.com$/i.test(String(property.created_by || ''))
+                            && !isWorkspaceServiceImport(property, importManagerId)) continue;
                         if (!allowedOwners?.has(normalized(property.created_by)) && !isWorkspaceServiceImport(property, importManagerId)) continue;
                         byHash.set(requestedHash, property);
                     }
@@ -665,6 +743,7 @@ Deno.serve(async (req) => {
 
         return Response.json({
             success: true,
+            hydration_version: ROUTE_HYDRATION_VERSION,
             user_email: targetEmail,
             requested_count: hashes.length,
             count: properties.length,
@@ -673,7 +752,8 @@ Deno.serve(async (req) => {
     } catch (error) {
         return Response.json({
             error: error.message,
+            hydration_version: ROUTE_HYDRATION_VERSION,
             code: error.code || 'route_property_lookup_failed'
-        }, { status: Number(error.status || 500) });
+        }, { status: Number(error.status || error.response?.status || 500) });
     }
 });
