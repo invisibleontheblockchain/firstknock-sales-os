@@ -21,16 +21,16 @@ export async function loadAuthorizedTeamRoster(base44) {
     const identity = await base44.auth.me();
     if (!identity?.id) throw new TeamRosterError(401, 'Sign in to view your team.');
     const service = base44.asServiceRole.entities;
-    const accountIds = Array.from(new Set([identity.id, identity.team_manager_id || identity.data?.team_manager_id].filter(Boolean)));
-    const accounts = asArray(await service.User.filter({ id: accountIds }, '-created_date', accountIds.length, 0));
-    const user = accounts.find(account => account.id === identity.id);
-    if (!user) throw new TeamRosterError(401, 'Account could not be verified.');
+    // Built-in User records require the supported direct get path. Keep both
+    // account and manager checks authoritative on every request.
+    const user = await service.User.get(identity.id);
+    if (!user || user.id !== identity.id) throw new TeamRosterError(401, 'Account could not be verified.');
     const managesTeam = isManager(user);
     const managerId = managesTeam ? user.id : (user.team_manager_id || user.data?.team_manager_id);
     if (!managerId || (!managesTeam && normalized(user.app_role || user.data?.app_role) !== 'rep')) {
         throw new TeamRosterError(403, 'Join a team before viewing its roster.');
     }
-    const manager = managesTeam ? user : (accounts.find(account => account.id === managerId) || await service.User.get(managerId));
+    const manager = managesTeam ? user : await service.User.get(managerId);
     if (!manager || manager.id !== managerId || !isManager(manager)) {
         throw new TeamRosterError(403, 'Your team manager could not be verified.');
     }

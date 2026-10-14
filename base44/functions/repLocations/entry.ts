@@ -30,12 +30,9 @@ Deno.serve(async (req) => {
         const identity = await base44.auth.me();
         if (!identity?.id) throw new LocationError(401, 'Sign in to use rep locations.');
         const service = base44.asServiceRole.entities;
-        // Load the saved caller and the token's manager hint together. The hint
-        // only selects a record to prefetch; saved account fields still select
-        // the authoritative tenant, with a fresh lookup if the hint is stale.
-        const accountIds = Array.from(new Set([identity.id, identity.team_manager_id || identity.data?.team_manager_id].filter(Boolean)));
-        const accounts = asArray(await service.User.filter({ id: accountIds }, '-created_date', accountIds.length, 0));
-        const user = accounts.find(account => account.id === identity.id);
+        // User is a built-in entity: load saved account records by direct get,
+        // then derive the manager solely from the verified saved account.
+        const user = await service.User.get(identity.id);
         if (!user || user.id !== identity.id) throw new LocationError(401, 'Account could not be verified.');
         let body;
         try { body = await req.json(); } catch { throw new LocationError(400, 'Invalid request.'); }
@@ -50,7 +47,7 @@ Deno.serve(async (req) => {
         // Derive all identity and tenant fields from the saved account and membership.
         const managerId = managesTeam ? user.id : (user.team_manager_id || user.data?.team_manager_id);
         if (!managerId) throw new LocationError(403, 'Join a team before sharing your location.');
-        const manager = managesTeam ? user : (accounts.find(account => account.id === managerId) || await service.User.get(managerId));
+        const manager = managesTeam ? user : await service.User.get(managerId);
         if (!manager || manager.id !== managerId || !isManager(manager)) throw new LocationError(403, 'Team manager could not be verified.');
         const members = (await allPages(service.TeamMember, { manager_id: managerId,
             ...(action !== 'report' ? { user_id: user.id } : {}) }, '-created_date',
