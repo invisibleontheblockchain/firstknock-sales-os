@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
+import { transformSync } from 'esbuild';
 
 const releaseSource = readFileSync(new URL('../src/lib/pwaRelease.js', import.meta.url), 'utf8');
 const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
@@ -37,6 +38,54 @@ function releaseModule(context) {
   vm.runInNewContext(releaseSource.replaceAll('import.meta.env.DEV', 'false').replace(/^export /gm, '')
     + '\nglobalThis.api = { checkForPublishedRelease, refreshToPublishedRelease };', context);
   return context.api;
+}
+
+function refreshManager(context) {
+  const invalidations = [];
+  const events = new Map();
+  const intervals = new Map();
+  const states = [];
+  let hookIndex = 0;
+  let started = false;
+  let cleanup;
+  context.window.__FK_PWA_RELEASE__ = 'old-release';
+  context.window.addEventListener = (event, callback) => events.set(event, callback);
+  context.window.removeEventListener = event => events.delete(event);
+  context.document.addEventListener = (event, callback) => events.set(event, callback);
+  context.document.removeEventListener = event => events.delete(event);
+  context.window.setInterval = (callback, delay) => {
+    const id = intervals.size + 1;
+    intervals.set(id, { callback, delay });
+    return id;
+  };
+  context.window.clearInterval = id => intervals.delete(id);
+  context.React = {
+    createElement: (type, props, ...children) => ({ type, props: props || {}, children }),
+    useState: initial => {
+      const index = hookIndex++;
+      if (!(index in states)) states[index] = typeof initial === 'function' ? initial() : initial;
+      return [states[index], value => { states[index] = value; }];
+    },
+    useEffect: callback => { if (!started) cleanup = callback(); },
+  };
+  context.useQueryClient = () => ({ invalidateQueries: value => invalidations.push(value.queryKey[0]) });
+  context.toast = () => assert.fail('update adoption must not depend on routine toast visibility');
+  Object.assign(context, releaseModule(context));
+  const manager = readFileSync(new URL('../src/components/AppRefreshManager.jsx', import.meta.url), 'utf8');
+  const code = transformSync(manager.replace(/^import .*;$/gm, '').replace('export default ', ''), { loader: 'jsx', jsx: 'transform' }).code;
+  vm.runInNewContext(code, context);
+  const render = () => {
+    hookIndex = 0;
+    const result = context.AppRefreshManager();
+    started = true;
+    return result;
+  };
+  render();
+  return { render, events, intervals, invalidations, cleanup: () => cleanup() };
+}
+
+function refreshButton(banner) {
+  return banner.children.find(child => child?.type === 'button');
 }
 
 test('startup cache cleanup does not repeatedly navigate when storage loses its release marker', async () => {
@@ -97,33 +146,178 @@ test('a stalled release check aborts without restarting the app', async () => {
   assert.deepEqual(navigations, []);
 });
 
-test('foreground events offer one update prompt and refresh only when its action is clicked', async () => {
+test('foreground events keep a durable update banner and refresh only when its action is clicked', async () => {
   const { context, navigations } = browser();
-  const prompts = [];
-  const invalidations = [];
+  let requests = 0;
+  context.fetch = async () => { requests++; return { ok: true, text: async () => "const FK_PWA_RELEASE = 'new-release';" }; };
+  context.caches.delete = async () => assert.fail('update notice must preserve offline storage');
+  const manager = refreshManager(context);
+  await flush();
+  manager.events.get('pageshow')();
+  manager.events.get('visibilitychange')();
+  manager.events.get('focus')();
+  await flush();
+  const banner = manager.render();
+  assert.equal(banner.type, 'aside');
+  assert.equal(banner.props.role, 'status');
+  assert.equal(requests, 1);
+  assert.deepEqual(manager.invalidations, ['user', 'precisionUsage']);
+  assert.deepEqual(navigations, []);
+  refreshButton(banner).props.onClick();
+  assert.equal(navigations.length, 1);
+  manager.cleanup();
+  assert.equal(manager.events.size, 0);
+  assert.equal(manager.intervals.size, 0);
+});
+
+test('open PWAs poll for releases every five minutes without refetching account data', async () => {
+  const { context, navigations } = browser();
+  let now = 1000;
+  let requests = 0;
+  let published = 'old-release';
+  context.Date = { now: () => now };
+  context.fetch = async () => { requests++; return { ok: true, text: async () => `const FK_PWA_RELEASE='${published}';` }; };
+  const manager = refreshManager(context);
+  await flush();
+  assert.equal(manager.render(), null);
+  assert.equal(manager.intervals.size, 1);
+  const poll = manager.intervals.values().next().value;
+  assert.equal(poll.delay, 300_000);
+  published = 'new-release';
+  now += poll.delay;
+  poll.callback();
+  await flush();
+  assert.equal(manager.render().type, 'aside');
+  assert.equal(requests, 2);
+  assert.deepEqual(manager.invalidations, ['user', 'precisionUsage']);
+  assert.deepEqual(navigations, []);
+  context.document.visibilityState = 'hidden';
+  now += poll.delay;
+  poll.callback();
+  await flush();
+  assert.equal(requests, 2);
+  context.document.visibilityState = 'visible';
+  context.navigator.onLine = false;
+  poll.callback();
+  await flush();
+  assert.equal(requests, 2);
+  manager.cleanup();
+});
+
+test('foreground account recovery keeps user reads at thirty seconds and billing usage at two minutes', async () => {
+  const { context } = browser();
+  let now = 1000;
+  context.Date = { now: () => now };
+  context.fetch = async () => ({ ok: true, text: async () => "const FK_PWA_RELEASE = 'old-release';" });
+  const manager = refreshManager(context);
+  await flush();
+  now += 30_000;
+  manager.events.get('focus')();
+  assert.deepEqual(manager.invalidations, ['user', 'precisionUsage', 'user']);
+  now += 89_000;
+  manager.events.get('pageshow')();
+  assert.deepEqual(manager.invalidations, ['user', 'precisionUsage', 'user', 'user']);
+  now += 1000;
+  manager.events.get('visibilitychange')();
+  assert.deepEqual(manager.invalidations, ['user', 'precisionUsage', 'user', 'user', 'precisionUsage']);
+  manager.cleanup();
+});
+
+test('reconnection checks a recently published update immediately and blocks refresh while offline', async () => {
+  const { context, navigations } = browser();
+  let requests = 0;
+  let published = 'old-release';
+  context.Date = { now: () => 1000 };
+  context.fetch = async () => { requests++; return { ok: true, text: async () => `const FK_PWA_RELEASE='${published}';` }; };
+  const manager = refreshManager(context);
+  await flush();
+  context.navigator.onLine = false;
+  manager.events.get('offline')();
+  published = 'new-release';
+  context.navigator.onLine = true;
+  manager.events.get('online')();
+  await flush();
+  assert.equal(requests, 2);
+  assert.equal(refreshButton(manager.render()).props.disabled, false);
+  context.navigator.onLine = false;
+  manager.events.get('offline')();
+  const banner = manager.render();
+  assert.equal(banner.type, 'aside');
+  assert.equal(refreshButton(banner).props.disabled, true);
+  // Guard the action itself too, in case connectivity changed before the UI.
+  refreshButton(banner).props.onClick();
+  assert.deepEqual(navigations, []);
+  manager.cleanup();
+});
+
+test('an offline launch recovers through online without needing to relaunch the installed app', async () => {
+  const { context, navigations } = browser();
+  let requests = 0;
+  context.navigator.onLine = false;
+  context.fetch = async () => { requests++; return { ok: true, text: async () => "const FK_PWA_RELEASE = 'new-release';" }; };
+  const manager = refreshManager(context);
+  await flush();
+  assert.equal(requests, 0);
+  assert.equal(manager.render(), null);
+  context.navigator.onLine = true;
+  manager.events.get('online')();
+  await flush();
+  assert.equal(requests, 1);
+  assert.equal(manager.render().type, 'aside');
+  assert.deepEqual(navigations, []);
+  manager.cleanup();
+});
+
+test('an update check finishing after unmount cannot show a banner', async () => {
+  const { context } = browser();
+  let finish;
+  context.fetch = () => new Promise(resolve => { finish = resolve; });
+  const manager = refreshManager(context);
+  manager.cleanup();
+  finish({ ok: true, text: async () => "const FK_PWA_RELEASE = 'new-release';" });
+  await flush();
+  assert.equal(manager.render(), null);
+  assert.equal(manager.events.size, 0);
+  assert.equal(manager.intervals.size, 0);
+});
+
+test('reconnection asks the service worker for updated assets without navigating', async () => {
+  const { context, navigations } = browser();
   const events = new Map();
-  let cleanup;
+  let workerChecks = 0;
+  context.window.addEventListener = (event, callback) => events.set(event, callback);
+  context.navigator.serviceWorker.getRegistration = async () => ({ update: async () => { workerChecks++; } });
+  vm.runInNewContext(inline, context);
+  await flush();
+  events.get('online')();
+  await flush();
+  assert.equal(workerChecks, 1);
+  assert.deepEqual(navigations, []);
+});
+
+test('failed checks recover on reconnect while concurrent events share one request', async () => {
+  const { context, navigations } = browser();
+  let requests = 0;
+  let finish;
+  context.Date = { now: () => 1000 };
+  context.fetch = async () => { requests++; return { ok: false }; };
+  const api = releaseModule(context);
+  assert.equal(await api.checkForPublishedRelease('old-release'), false);
+  context.fetch = () => { requests++; return new Promise(resolve => { finish = resolve; }); };
+  const reconnect = api.checkForPublishedRelease('old-release', { force: true });
+  const foreground = api.checkForPublishedRelease('old-release');
+  assert.equal(reconnect, foreground);
+  finish({ ok: true, text: async () => "const FK_PWA_RELEASE = 'new-release';" });
+  assert.equal(await reconnect, 'new-release');
+  assert.equal(requests, 2);
+  assert.deepEqual(navigations, []);
+});
+
+test('unchanged or unidentifiable releases never offer a refresh', async () => {
+  const { context } = browser();
   context.fetch = async () => ({ ok: true, text: async () => "const FK_PWA_RELEASE = 'new-release';" });
   const api = releaseModule(context);
-  context.window.__FK_PWA_RELEASE__ = 'old-release';
-  context.window.addEventListener = (event, callback) => events.set(event, callback);
-  context.window.removeEventListener = event => events.delete(event);
-  context.document.addEventListener = (event, callback) => events.set(event, callback);
-  context.document.removeEventListener = event => events.delete(event);
-  context.React = { useEffect: callback => { cleanup = callback(); } };
-  context.useQueryClient = () => ({ invalidateQueries: value => invalidations.push(value.queryKey[0]) });
-  context.toast = (_message, options) => prompts.push(options);
-  Object.assign(context, api);
-  const manager = readFileSync(new URL('../src/components/AppRefreshManager.jsx', import.meta.url), 'utf8');
-  vm.runInNewContext(manager.replace(/^import .*;$/gm, '').replace('export default ', '') + '\nAppRefreshManager();', context);
-  await flush();
-  events.get('pageshow')();
-  events.get('visibilitychange')();
-  await flush();
-  assert.equal(prompts.length, 1);
-  assert.deepEqual(invalidations, ['user', 'precisionUsage']);
-  assert.deepEqual(navigations, []);
-  prompts[0].action.onClick();
-  assert.equal(navigations.length, 1);
-  cleanup();
+  assert.equal(await api.checkForPublishedRelease('new-release'), false);
+  context.fetch = async () => ({ ok: true, text: async () => '<h1>Unavailable</h1>' });
+  assert.equal(await api.checkForPublishedRelease('old-release', { force: true }), false);
 });

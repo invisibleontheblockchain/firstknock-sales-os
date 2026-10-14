@@ -3,15 +3,15 @@ let lastReleaseCheckAt = 0;
 const RELEASE_CHECK_INTERVAL_MS = 60_000;
 
 function publishedRelease(html) {
-  return html.match(/const FK_PWA_RELEASE = ['"]([^'"]+)['"]/)?.[1] || null;
+  return html.match(/const\s+FK_PWA_RELEASE\s*=\s*['"]([^'"]+)['"]/)?.[1] || null;
 }
 
-export function checkForPublishedRelease(currentRelease) {
+export function checkForPublishedRelease(currentRelease, { force = false } = {}) {
   const isBase44Preview = /(^|\.)preview(?:-sandbox)?--.*\.base44\.app$/i.test(window.location.hostname);
   // import.meta.env.DEV covers every Vite dev-server host, not just the known
   // preview domains — dev HTML should never offer a production update.
-  if (import.meta.env.DEV || isBase44Preview || !navigator.onLine || updateCheckInFlight) return updateCheckInFlight;
-  if (lastReleaseCheckAt && Date.now() - lastReleaseCheckAt < RELEASE_CHECK_INTERVAL_MS) return null;
+  if (import.meta.env.DEV || isBase44Preview || navigator.onLine === false || updateCheckInFlight) return updateCheckInFlight;
+  if (!force && lastReleaseCheckAt && Date.now() - lastReleaseCheckAt < RELEASE_CHECK_INTERVAL_MS) return null;
   lastReleaseCheckAt = Date.now();
 
   updateCheckInFlight = (async () => {
@@ -43,7 +43,7 @@ export function checkForPublishedRelease(currentRelease) {
 }
 
 export function refreshToPublishedRelease(release) {
-  if (!release) return;
+  if (!release || navigator.onLine === false) return;
   const destination = new URL(window.location.href);
   destination.searchParams.set('fk_release', release);
   window.location.replace(destination.toString());

@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
-import { TileLayer, useMap } from 'react-leaflet';
+import { useMap } from 'react-leaflet';
+import RecoveringTileLayer from '@/components/map/RecoveringTileLayer';
 import CanvasBaseMapTiles from '@/components/canvas/CanvasBaseMapTiles';
 import MapAttributionControl from '@/components/map/MapAttributionControl';
 import { CARTO_ATTRIBUTION, ESRI_IMAGERY_ATTRIBUTION } from '@/components/map/mapAttribution';
@@ -64,8 +65,9 @@ export default function BaseMapTiles({ mapTheme, routeMode = 'precision' }) {
             <MapBackdrop mapTheme={mapTheme} />
             <CanvasBaseMapTiles theme={mapTheme} />
             {showLabels && (
-                <TileLayer
+                <RecoveringTileLayer
                     key="canvas-basemap-labels"
+                    recoveryLabel="Map labels"
                     url={LABEL_URL}
                     attribution={CARTO_ATTRIBUTION}
                     zIndex={100}
@@ -79,15 +81,16 @@ export default function BaseMapTiles({ mapTheme, routeMode = 'precision' }) {
         <>
             <MapAttributionControl />
             <MapBackdrop mapTheme={mapTheme} />
-            <TileLayer
+            <RecoveringTileLayer
                 key={BASEMAP_URLS[precisionTheme] || BASEMAP_URLS.dark}
                 url={BASEMAP_URLS[precisionTheme] || BASEMAP_URLS.dark}
                 attribution={['satellite', 'hybrid', 'terrain'].includes(precisionTheme) ? ESRI_IMAGERY_ATTRIBUTION : CARTO_ATTRIBUTION}
                 {...TILE_PERF}
             />
             {showLabels && (
-                <TileLayer
+                <RecoveringTileLayer
                     key="basemap-labels"
+                    recoveryLabel="Map labels"
                     url={LABEL_URL}
                     attribution={CARTO_ATTRIBUTION}
                     zIndex={100}
