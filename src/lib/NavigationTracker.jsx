@@ -2,40 +2,26 @@ import { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from './AuthContext';
 import { base44 } from '@/api/base44Client';
-import { pagesConfig } from '@/pages.config';
+import { getNavigationPageNames, matchNavigationPage } from './navigationPageNames.js';
+
+// Page names are enough for activity logging. Importing pages.config also loads
+// every page component and defeats App's lazy route chunks on a cold start.
+const pageNames = getNavigationPageNames(import.meta.glob('../pages/*.{jsx,js}'));
 
 export default function NavigationTracker() {
     const location = useLocation();
     const { isAuthenticated } = useAuth();
-    const { Pages } = pagesConfig;
 
     // Log user activity when navigating to a page
     useEffect(() => {
-        // Extract page name from pathname
-        const pathname = location.pathname;
-        let pageName;
-
-        if (pathname === '/' || pathname === '') {
-            return; // The public landing page is not a RoleSelect app visit.
-        } else {
-            // Remove leading slash and get the first segment
-            const pathSegment = pathname.replace(/^\//, '').split('/')[0];
-
-            // Try case-insensitive lookup in Pages config
-            const pageKeys = Object.keys(Pages);
-            const matchedKey = pageKeys.find(
-                key => key.toLowerCase() === pathSegment.toLowerCase()
-            );
-
-            pageName = matchedKey || null;
-        }
+        const pageName = matchNavigationPage(location.pathname, pageNames);
 
         if (isAuthenticated && pageName) {
             base44.appLogs.logUserInApp(pageName).catch(() => {
                 // Silently fail - logging shouldn't break the app
             });
         }
-    }, [location, isAuthenticated, Pages]);
+    }, [location, isAuthenticated]);
 
     return null;
 }
