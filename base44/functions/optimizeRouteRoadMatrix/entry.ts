@@ -30,6 +30,7 @@ import { reviewNeighborhoodExcursions } from '../../shared/neighborhoodExcursion
 import { fetchOsrmJson } from '../../shared/osrmDispatcher.js';
 import { createOsrmRequestCache } from '../../shared/osrmRequestCache.js';
 import { createRoadCostCache } from '../../shared/roadCostCache.js';
+import { createMemoizedRouteMetrics } from '../../shared/routeMetricMemo.js';
 import {
     DURATION_TIE_TOLERANCE_MINUTES,
     measureRouteCandidate,
@@ -39,7 +40,7 @@ import {
 
 // Bump when candidate generation or the objective changes, so a stored route can
 // be told apart from one produced by an older solver.
-const OPTIMIZER_VERSION = 'road_matrix_neighborhood_area_service_v9';
+const OPTIMIZER_VERSION = 'road_matrix_neighborhood_area_service_v10';
 
 function readSecret(name) {
     try {
@@ -448,9 +449,18 @@ export default async function (req: Request): Promise<Response> {
                 : {})
         };
         const sweepStarted = Date.now();
-        const roadDistanceOrder = roadAwareStreetSweep(canonicalProperties, { ...sweepOptions, distanceBetween });
+        // Both sweeps repeatedly price the same fixed, directed endpoint pairs.
+        // Reuse values while preserving the original search depth and telemetry.
+        const sweepMetrics = createMemoizedRouteMetrics({ distanceBetween, durationBetween }, {
+            evaluationCounters: [
+                { target: intraBlockLegCount, key: 'count' },
+                { target: aerialEvaluationCounts, key: 'sameStreetBlock' },
+                { target: aerialEvaluationCounts, key: 'crossStreetSameUnit' },
+            ],
+        });
+        const roadDistanceOrder = roadAwareStreetSweep(canonicalProperties, { ...sweepOptions, distanceBetween: sweepMetrics.distanceBetween });
         const roadDurationOrder = durationBetween
-            ? roadAwareStreetSweep(canonicalProperties, { ...sweepOptions, distanceBetween: durationBetween })
+            ? roadAwareStreetSweep(canonicalProperties, { ...sweepOptions, distanceBetween: sweepMetrics.durationBetween })
             : null;
         stageTimings.candidate_search_ms = Date.now() - sweepStarted;
 

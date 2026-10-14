@@ -45,7 +45,8 @@ import {
 // The per-route budget therefore has to clear the measured cost with headroom
 // for a slow road engine, and the run ceiling has to scale with how many routes
 // were actually generated rather than capping the batch at two.
-const ROAD_MATRIX_PER_ROUTE_BUDGET_MS = 90000;
+// Match Optimize's headroom for the continuous area and curb-side review.
+const ROAD_MATRIX_PER_ROUTE_BUDGET_MS = 120000;
 const ROAD_MATRIX_RUN_CEILING_MS = 20 * 60 * 1000;
 
 /**
