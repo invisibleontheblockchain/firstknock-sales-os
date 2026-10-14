@@ -1144,7 +1144,10 @@ export function createRoadNetworkRoutingContext(input = {}) {
             if (other.streetSegmentKey === segment.streetSegmentKey) return false;
             return projectPointToSegment(snap.point, other.start, other.end).distanceMeters < 12;
         });
-        const competingFrontage = !pointFrom(value?.routing_access?.point)
+        // A provider-matched service-side calculation describes where to park
+        // on the addressed road, independently of driveway frontage. Its caller
+        // must verify that exact named road and point with the driving provider.
+        const competingFrontage = input.serviceSideOnly !== true && !pointFrom(value?.routing_access?.point)
             && graph.spatialIndex.query(displayPoint, 100).some(other => {
                 if (other.id === segment.id || (chain && other.chain?.chainKey === chain.chainKey)) return false;
                 return projectPointToSegment(displayPoint, other.start, other.end).distanceMeters <= snap.distanceMeters + 15;

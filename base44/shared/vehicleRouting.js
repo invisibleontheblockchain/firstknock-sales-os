@@ -305,6 +305,12 @@ export async function createVehicleRoutingContext(properties, accessContext, opt
                 driveSeconds: route.duration, walkingAccessSeconds, parkingSeconds, estimatedTurnarounds: turnarounds,
                 geometry: geometry.map(([lng, lat]) => ({ lat, lng })),
                 directedLegs, dataVersion: [...dataVersions][0] || null,
+                ...(options.discoverStreetSides ? { streetSideEvidence: {
+                    waypoints: data.waypoints.map(p => ({ name: p.name, location: p.location })),
+                    steps: (route.legs || []).flatMap(leg => leg.steps || []).map(step => ({
+                        name: step.name, driving_side: step.driving_side, geometry: step.geometry,
+                    })),
+                } } : {}),
             };
             if (routeCache.size >= 100) routeCache.delete(routeCache.keys().next().value);
             routeCache.set(key, { at: Date.now(), result });

@@ -17,9 +17,9 @@ export function describeRoadOptimizationOutcome(reason, measurement = null) {
         status: 'verification_failed', tone: 'error',
         message: 'Improvements were found, but the final driving check failed. Your route was kept unchanged. Try again.',
     };
-    if (review?.budgetExhausted || review?.checked < review?.planned || review?.skipped?.length) return {
+    if (review?.budgetExhausted || review?.checked < review?.planned || review?.skipped?.length || review?.streetSideService?.unknownStops > 0) return {
         status: 'incomplete', tone: 'warning',
-        message: 'Optimization was incomplete: some neighborhoods could not be checked. Your route was kept unchanged.',
+        message: 'Some neighborhoods or street sides could not be verified. Your route was kept unchanged.',
     };
     if (!review || (meta.matrix_tier && meta.matrix_tier !== 'door' && review.validation !== 'whole_route')) return {
         status: 'limited', tone: 'warning',
@@ -33,6 +33,15 @@ export function describeRoadOptimizationOutcome(reason, measurement = null) {
 
 export function describeAppliedRoadOptimization(routingMetadata) {
     const review = routingMetadata?.neighborhood_excursion_review?.local_driving_review;
+    if (review?.applied && review.streetSideService?.mode === 'mail_carrier_right_curb') return {
+        tone: review.validation !== 'whole_route' || review.budgetExhausted || review.skipped?.length
+            || review.streetSideService.unknownStops > 0 ? 'warning' : 'success',
+        message: review.streetSideService.unknownStops > 0
+            ? 'Mail-carrier passes applied where street sides are verified. Some stops still need checking.'
+            : review.validation !== 'whole_route' || review.budgetExhausted || review.skipped?.length
+                ? 'Verified mail-carrier improvements applied. Some neighborhoods still need checking.'
+                : 'Mail-carrier order applied with verified curb-side approaches.',
+    };
     if (review?.applied && (review.validation !== 'whole_route' || review.budgetExhausted || review.skipped?.length)) return {
         tone: 'warning',
         message: 'Verified neighborhood improvements applied. Some parts of the route still need checking.',

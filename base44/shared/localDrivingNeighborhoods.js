@@ -5,8 +5,9 @@ import { haversineMiles } from './routeContinuityOptimizer.js';
 import { neighborhoodStreetKey } from './neighborhoodExcursions.js';
 import { createVehicleRoutingContext } from './vehicleRouting.js';
 import { trustedAccess } from './streetSideRouting.js';
+import { buildMailCarrierCandidates, hasCoherentMailCarrierPasses, inferMailCarrierAccess, mailCarrierPassViolations, planMailCarrierWindows } from './mailCarrierRouting.js';
 
-export const LOCAL_DRIVING_REVIEW_VERSION = 'entry_branch_return_v1';
+export const LOCAL_DRIVING_REVIEW_VERSION = 'entry_branch_return_v2_mail_carrier';
 const id = p => String(p?.address_hash || p?.legacy_hash || p?.id || '');
 const protectedStop = (p, locks) => locks.has(id(p)) || p.order_locked || p.locked
     || p.routing_access?.resolution_status === 'unresolved';
@@ -167,21 +168,24 @@ export async function reviewLocalDrivingNeighborhoods(order, options = {}) {
         skipped: [], budgetExhausted: false, validation: 'unchanged', applied: false };
     const original = order;
     order = [...order];
-    const windows = planLocalDrivingWindows(order, options)
+    const mailCarrier = options.mailCarrierMode === true;
+    const windows = [...(mailCarrier ? planMailCarrierWindows(order, options) : []), ...planLocalDrivingWindows(order, options)]
         .map(window => ({ ...window, priority: windowExcessMiles(order, window) }))
-        .sort((a, b) => b.priority - a.priority || a.start - b.start);
+        .sort((a, b) => Number(Boolean(b.service)) - Number(Boolean(a.service)) || b.priority - a.priority || a.start - b.start);
     report.planned = windows.length;
     const maxWindows = Math.max(0, Math.min(100, options.maxLocalWindows ?? 64));
     const deadline = Date.now() + Math.max(1, Math.min(60000, options.localReviewBudgetMs ?? 45000));
     const maxCandidates = Math.max(1, Math.min(8, options.maxLocalCandidates || 3));
     const contextOptions = { ...options, startLocation: null, endLocation: null, maxGeometryPoints: 100000,
         requireDirectedLegs: true, servicePolicy: { enabled: false, parkingSecondsPerStop: 0 } };
-    const accessContext = { accessFor: p => p.routing_access || null, streetSegmentKey: neighborhoodStreetKey };
+    const inferredAccess = new Map(), discovered = new Set();
+    const accessContext = { accessFor: p => trustedAccess(p.routing_access) ? p.routing_access
+        : inferredAccess.get(id(p)) || p.routing_access || null, streetSegmentKey: neighborhoodStreetKey };
     const createContext = options.createLocalDrivingContext || ((points, config) => createVehicleRoutingContext(points, accessContext, config));
     for (let index = 0; index < windows.length; index++) {
         if (report.checked >= maxWindows || Date.now() >= deadline) { report.budgetExhausted = true; break; }
         if (options.signal?.aborted) throw options.signal.reason || new DOMException('Cancelled', 'AbortError');
-        const { start, end } = windows[index];
+        const { start, end, service } = windows[index];
         const left = order.slice(Math.max(0, start - 2), start);
         const right = order.slice(end, end + 2);
         if (!left.length && options.startLocation) left.push(options.startLocation);
@@ -189,10 +193,39 @@ export async function reviewLocalDrivingNeighborhoods(order, options = {}) {
         const stops = order.slice(start, end), section = [...left, ...stops, ...right];
         report.checked++;
         try {
-            const context = await createContext(section, contextOptions);
-            const candidates = buildLocalDrivingCandidates(stops, context, left.at(-1), right[0], options);
+            if (mailCarrier && section.some(p => !trustedAccess(accessContext.accessFor(p)) && !discovered.has(id(p)))) {
+                const discovery = await createContext(section, { ...contextOptions, sparseCosts: true,
+                    routeOnly: true, discoverStreetSides: true });
+                const observation = await discovery.routeSequence(section);
+                for (const [key, access] of inferMailCarrierAccess(section, observation.streetSideEvidence)) {
+                    if (!discovered.has(key) && !trustedAccess(accessContext.accessFor(section.find(p => id(p) === key)))) inferredAccess.set(key, access);
+                }
+                section.forEach(p => discovered.add(id(p)));
+            }
+            let context, baseline;
+            for (let retry = 0; retry < 9; retry++) {
+                try {
+                    context = await createContext(section, contextOptions);
+                    baseline = await context.routeSequence(section);
+                    break;
+                } catch (error) {
+                    fatal(error);
+                    const coordinate = /NoSegment.*coordinate (\d+)/i.exec(error.message);
+                    const key = coordinate && id(section[Number(coordinate[1])]);
+                    // A proposed heading on a one-way or restricted service
+                    // point can be infeasible. Remove only that inferred curb
+                    // constraint; keep the original pin and road-match radius.
+                    if (!key || !inferredAccess.has(key) || retry === 8) throw error;
+                    inferredAccess.delete(key);
+                }
+            }
+            const exactCandidates = stops.length <= 12 ? buildLocalDrivingCandidates(stops, context, left.at(-1), right[0], options) : [];
+            let candidates = service ? [...buildMailCarrierCandidates(stops, context, left.at(-1), right[0]), ...exactCandidates]
+                .sort((a, b) => a.seconds - b.seconds || a.miles - b.miles) : exactCandidates;
+            candidates = [...new Map(candidates.map(c => [JSON.stringify(c.order.map(id)), c])).values()];
+            if (mailCarrier) candidates = candidates.filter(candidate => hasCoherentMailCarrierPasses([...left, ...candidate.order, ...right], context));
+            if (service && !candidates.length) continue;
             if (!candidates.length) { report.skipped.push({ start, end, reason: 'unreachable_local_roads' }); continue; }
-            const baseline = await context.routeSequence(section);
             let selected = stops, best = baseline, bestPreference = preferenceFor(stops, context);
             for (const candidate of candidates.slice(0, maxCandidates)) {
                 if (Date.now() >= deadline) { report.budgetExhausted = true; break; }
@@ -206,8 +239,14 @@ export async function reviewLocalDrivingNeighborhoods(order, options = {}) {
                 // states consistent with the route outside this neighborhood.
                 if (left.length >= 2 && !sameBoundaryLeg(baseline.directedLegs?.[0], measured.directedLegs?.[0])) continue;
                 if (right.length >= 2 && !sameBoundaryLeg(baseline.directedLegs?.at(-1), measured.directedLegs?.at(-1))) continue;
-                if (!improves(measured, best, candidate, bestPreference)) continue;
-                selected = candidate.order; best = measured; bestPreference = candidate;
+                const preference = preferenceFor(candidate.order, context);
+                // Mail-carrier service is the user's first objective. A legal
+                // coherent pass may drive farther than a zig-zag order. Once
+                // passes are coherent, real driving time/miles decide the win.
+                const fixesPasses = mailCarrier && mailCarrierPassViolations([...left, ...candidate.order, ...right], context)
+                    < mailCarrierPassViolations([...left, ...selected, ...right], context);
+                if (!fixesPasses && !improves(measured, best, preference, bestPreference)) continue;
+                selected = candidate.order; best = measured; bestPreference = preference;
             }
             if (selected !== stops) {
                 order.splice(start, stops.length, ...selected);
@@ -224,8 +263,8 @@ export async function reviewLocalDrivingNeighborhoods(order, options = {}) {
                 const failed = section[Number(match[1])];
                 const split = stops.indexOf(failed);
                 if (split >= 0) {
-                    if (split >= 3) windows.splice(index + 1, 0, { start, end: start + split });
-                    if (stops.length - split - 1 >= 3) windows.splice(index + 1, 0, { start: start + split + 1, end });
+                    if (split >= 3) windows.splice(index + 1, 0, { start, end: start + split, service });
+                    if (stops.length - split - 1 >= 3) windows.splice(index + 1, 0, { start: start + split + 1, end, service });
                 }
             }
         }
@@ -233,9 +272,19 @@ export async function reviewLocalDrivingNeighborhoods(order, options = {}) {
     if (order.length !== original.length || new Set(order.map(id)).size !== original.length
         || order.some(p => !identities.includes(id(p)))) throw new Error('Local driving review changed route membership.');
     original.forEach((stop, i) => { if (protectedStop(stop, locks) && order[i] !== stop) throw new Error('Local driving review moved a locked stop.'); });
+    if (mailCarrier) report.streetSideService = {
+        mode: 'mail_carrier_right_curb',
+        objective: 'coherent_side_passes_then_driving_cost',
+        knownStops: order.filter(p => trustedAccess(accessContext.accessFor(p))).length,
+        totalStops: order.length, inferredStops: inferredAccess.size,
+        unknownStops: order.filter(p => !trustedAccess(accessContext.accessFor(p))).length,
+        passViolationsBefore: mailCarrierPassViolations(original, accessContext),
+        passViolationsAfter: mailCarrierPassViolations(order, accessContext),
+    };
     if (!report.repaired) return { properties: original, diagnostics: report };
     report.applied = true; report.validation = 'overlapping_boundary_legs';
-    report.status = report.skipped.length || report.budgetExhausted ? 'partially_reviewed' : 'locally_verified';
+    report.status = report.skipped.length || report.budgetExhausted || report.streetSideService?.unknownStops > 0
+        ? 'partially_reviewed' : 'locally_verified';
     // If all road matches are available, independently measure the complete
     // trip as well. A NoSegment outside a repaired window cannot erase the
     // section's exact boundary validation or become a made-up full-route total.
@@ -245,8 +294,13 @@ export async function reviewLocalDrivingNeighborhoods(order, options = {}) {
         const before = await context.routeSequence(original, options);
         const after = await context.routeSequence(order, options);
         const baseline = options.baselineOrder ? await context.routeSequence(options.baselineOrder, options) : before;
-        if (after.driveSeconds > before.driveSeconds + 0.1 || after.distanceMiles > before.distanceMiles + 0.0001
-            || after.driveSeconds > baseline.driveSeconds + 0.1 || after.distanceMiles > baseline.distanceMiles + 0.0001) {
+        const afterPasses = mailCarrier ? mailCarrierPassViolations(order, accessContext) : 0;
+        const worseThan = (measurement, priorOrder) => {
+            const priorPasses = mailCarrier ? mailCarrierPassViolations(priorOrder, accessContext) : 0;
+            return afterPasses > priorPasses || (afterPasses === priorPasses
+                && (after.driveSeconds > measurement.driveSeconds + 0.1 || after.distanceMiles > measurement.distanceMiles + 0.0001));
+        };
+        if (worseThan(before, original) || worseThan(baseline, options.baselineOrder || original)) {
             return { properties: original, diagnostics: { ...report, applied: false, status: 'whole_route_guard_retained', validation: 'whole_route' } };
         }
         report.validation = 'whole_route';

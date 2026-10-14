@@ -72,6 +72,15 @@ test('partial adoption explicitly identifies verified neighborhood improvements 
     assert.equal(outcomes.describeAppliedRoadOptimization(meta), null);
 });
 
+test('mail-carrier messages identify unverified street sides even after a complete driving comparison', () => {
+    const meta = measured({ ...complete, applied: true, validation: 'whole_route', streetSideService: {
+        mode: 'mail_carrier_right_curb', knownStops: 20, totalStops: 24, unknownStops: 4,
+    } }).routingMetadata;
+    assert.equal(outcomes.describeAppliedRoadOptimization(meta).tone, 'warning');
+    meta.neighborhood_excursion_review.local_driving_review.applied = false;
+    assert.equal(outcomes.describeRoadOptimizationOutcome('current_order_measured_best', { distanceMiles: 10, routingMetadata: meta }).status, 'incomplete');
+});
+
 test('attempt history contains evidence counts but never home/car anchors or raw provider URLs', () => {
     const measurement = measured(complete);
     measurement.routingMetadata.start_constraint = { lat: 33.45, lng: -112.01 };

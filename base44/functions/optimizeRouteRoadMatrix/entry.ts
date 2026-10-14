@@ -39,7 +39,7 @@ import {
 
 // Bump when candidate generation or the objective changes, so a stored route can
 // be told apart from one produced by an older solver.
-const OPTIMIZER_VERSION = 'road_matrix_neighborhood_bounded_validation_v6';
+const OPTIMIZER_VERSION = 'road_matrix_mail_carrier_service_v7';
 
 function readSecret(name) {
     try {
@@ -150,6 +150,7 @@ export default async function (req: Request): Promise<Response> {
         const neighborhoodOptions = {
             startLocation, endLocation, baselineOrder: properties,
             localDrivingReview: profile === 'driving',
+            mailCarrierMode: profile === 'driving',
             vehicleBaseUrl: readSecret('OSRM_BASE_URL') || DEFAULT_OSRM_BASE_URL,
             vehicleProfile: profile,
             vehicleFetch: async (url, options) => {
