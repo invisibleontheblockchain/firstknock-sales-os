@@ -9,7 +9,7 @@ import useAppointmentMapFocus from '@/hooks/useAppointmentMapFocus'; import Appo
 import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { storage } from '@/lib/storage';
-import { withReadDeadline } from '@/lib/readRequest';
+import { retryRead, withReadDeadline } from '@/lib/readRequest';
 
 import { Loader2 } from 'lucide-react';
 import { toast } from "sonner";
@@ -361,7 +361,7 @@ export default function Home() {
 
     const fetchRouteCandidatesFromNeon = useCallback(async ({ zipCodes = [], zipCodeFilterValue = '', soldMonths = null, ownershipRangeDays = null, polygon = null, limit = 100000, fetchJobId = null } = {}) => {
         const customOwnershipRange = normalizeOwnershipRangeDays(ownershipRangeDays);
-        const res = await base44.functions.invoke('getRouteCandidatesFromNeon', {
+        const res = await retryRead(() => base44.functions.invoke('getRouteCandidatesFromNeon', {
             zip_codes: zipCodes,
             zip_code_filter: zipCodeFilterValue,
             sold_months: soldMonths,
@@ -373,7 +373,7 @@ export default function Home() {
             polygon,
             limit,
             fetch_job_id: fetchJobId
-        });
+        }));
         const data = res.data || {};
         if (data.capped === true) {
             const confirmedLimit = Math.max(
@@ -647,7 +647,7 @@ export default function Home() {
     }, [userProperties, viewportProperties, localProperties, darkRoomProperties, fetchedProperties]);
 
     const savedRouteScope = useMemo(() => buildRepRouteScope(user), [user]);
-    const { data: savedRoutesRaw = [] } = useQuery({
+    const { data: savedRoutesRaw } = useQuery({
         queryKey: [
             'savedRoutes',
             savedRouteScope.userId,
@@ -669,7 +669,10 @@ export default function Home() {
         },
         enabled: !!user?.id
     });
-    const allSavedRoutes = Array.isArray(savedRoutesRaw) ? savedRoutesRaw : (savedRoutesRaw?.items || []);
+    const allSavedRoutes = useMemo(
+        () => Array.isArray(savedRoutesRaw) ? savedRoutesRaw : (savedRoutesRaw?.items || []),
+        [savedRoutesRaw]
+    );
     const savedRoutes = useMemo(
         () => filterRoutesByStatus(allSavedRoutes, 'all'),
         [allSavedRoutes]
@@ -2002,7 +2005,9 @@ export default function Home() {
         } catch (e) {
             console.error(`[generateRoutes] Failed after ${Math.round((performance.now() - t0) / 1000)}s:`, e);
             toast.dismiss('build-routes');
-            setGenerationError(`Route generation failed: ${e?.message || 'Unknown error'}. Check console for details.`);
+            const errorBody = e?.response?.data || e?.data;
+            const message = errorBody?.message || errorBody?.error || e?.message || 'The route service is temporarily unavailable';
+            setGenerationError(`Route generation failed: ${message}. Retry building the route from your existing area.`);
             return false;
         } finally {
             if (deliveryAttempt) {

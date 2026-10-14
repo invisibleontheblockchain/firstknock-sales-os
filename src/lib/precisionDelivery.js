@@ -1,10 +1,12 @@
 // Precision delivery helpers live outside the route optimizer: fetching,
 // filtering, generation, and saving are distinct steps in the delivery funnel.
+import { retryRead } from './readRequest.js';
+
 export async function loadPrecisionJob(client, jobId) {
     // Jobs created by the service can be hidden by browser entity-read rules.
     // The status endpoint reads with service privileges, then checks ownership
     // before returning this allowlisted generation context.
-    const response = await client.functions.invoke('fetchJobStatus', { job_id: jobId });
+    const response = await retryRead(() => client.functions.invoke('fetchJobStatus', { job_id: jobId }));
     const status = response?.data;
     if (!jobId || status?.job_id !== jobId) {
         throw new Error('The property pull status did not match the selected import.');

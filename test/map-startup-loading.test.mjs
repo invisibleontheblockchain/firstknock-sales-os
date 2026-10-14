@@ -4,7 +4,7 @@ import test from 'node:test';
 import vm from 'node:vm';
 import ts from 'typescript';
 import { QueryClient } from '@tanstack/react-query';
-import { shouldRetryRead, withReadDeadline } from '../src/lib/readRequest.js';
+import { retryRead, shouldRetryRead, withReadDeadline } from '../src/lib/readRequest.js';
 import * as loading from '../src/components/map/mapTerritoryLoading.js';
 
 const user = { email: 'manager@example.com', territory_zip_codes: ['85001'], generated_zip_codes: ['85002'] };
@@ -171,6 +171,43 @@ function callback(name, bindings) {
     visit(home);
     return vm.runInNewContext(`(${expression})`, { toast: { info() {} }, ...bindings });
 }
+
+test('route candidate recovery retries the same completed import and preserves its polygon', async () => {
+    const calls = [];
+    const polygon = [{ lat: 33, lng: -112 }, { lat: 34, lng: -112 }, { lat: 33, lng: -113 }];
+    const load = callback('fetchRouteCandidatesFromNeon', {
+        normalizeOwnershipRangeDays: () => null,
+        retryRead: read => retryRead(read, { delay: () => 0, wait: async () => {} }),
+        base44: { functions: { invoke: async (name, body) => {
+            calls.push({ name, body });
+            if (calls.length === 1) throw Object.assign(new Error('Server busy'), { response: { status: 500 } });
+            return { data: { properties: [property], capped: false } };
+        } } }
+    });
+    const properties = await load({ polygon, fetchJobId: 'completed-import', soldMonths: 12 });
+    assert.equal(properties[0], property);
+    assert.equal(calls.length, 2);
+    for (const call of calls) {
+        assert.equal(call.name, 'getRouteCandidatesFromNeon');
+        assert.equal(call.body.fetch_job_id, 'completed-import');
+        assert.equal(call.body.polygon, polygon);
+        assert.equal(call.body.sold_months, 12);
+    }
+});
+
+test('a candidate response that hits the safety cap still blocks generation after request recovery', async () => {
+    let calls = 0;
+    const load = callback('fetchRouteCandidatesFromNeon', {
+        normalizeOwnershipRangeDays: () => null,
+        retryRead: read => retryRead(read, { delay: () => 0, wait: async () => {} }),
+        base44: { functions: { invoke: async () => {
+            if (++calls === 1) throw Object.assign(new Error('Server busy'), { status: 503 });
+            return { data: { properties: [property], capped: true, limit: 50000 } };
+        } } }
+    });
+    await assert.rejects(load({ fetchJobId: 'completed-import' }), /safety window/);
+    assert.equal(calls, 2);
+});
 
 test('Home always mounts the map while territory loads and keeps history-dependent layers gated', () => {
     const topLevelReturns = home.body.statements.filter(ts.isReturnStatement);
