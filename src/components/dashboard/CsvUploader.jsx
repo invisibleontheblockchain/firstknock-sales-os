@@ -1,3 +1,4 @@
+import { createManagedRoute } from '@/lib/createManagedRoute';
 import { toast } from 'sonner';
 import { tryRoadMatrixOptimize } from '@/lib/roadMatrixOptimize';
 import { importOptimizationMessage } from '@/components/import/optimizeImportedRoute';
@@ -120,8 +121,7 @@ export default function CsvUploader() {
                 },
                 // The backend creates the route in the caller's workspace, assigned to them.
                 createRoute: async route => {
-                    const response = await base44.functions.invoke('createImportedRoute', { route });
-                    return response.data.route;
+                    return await createManagedRoute(base44, route);
                 },
                 saveLocal: storage.saveProperties,
                 onProgress: message => setUploadStatus({ success: null, message }),

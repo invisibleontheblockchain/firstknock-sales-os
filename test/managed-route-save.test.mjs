@@ -17,6 +17,20 @@ function harness({ actor = manager, stored = actor, member = null, job = null, r
   const writes = [];
   const records = [...routes];
   const account = stored ? { ...stored } : null;
+  let locked = false;
+  class Client {
+    acquired = false;
+    async connect() {}
+    async query(sql) {
+      if (sql.includes('pg_try_advisory_xact_lock')) {
+        this.acquired = !locked;
+        if (this.acquired) locked = true;
+        return { rows: [{ acquired: this.acquired }] };
+      }
+      return { rows: [] };
+    }
+    async end() { if (this.acquired) locked = false; }
+  }
   const client = { auth: { me: async () => actor }, asServiceRole: { entities: {
     User: { get: async () => account, updateMany: async (filter, update) => {
       if (filter.route_save_lock_token && filter.route_save_lock_token !== account.route_save_lock_token) return { updated: 0 };
@@ -34,7 +48,7 @@ function harness({ actor = manager, stored = actor, member = null, job = null, r
   const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
   vm.runInNewContext(compiled.replace(/^import .*;\s*$/gm, ''), {
     createClientFromRequest: () => client, loadAuthoritativeUser, isPrecisionJob, precisionJobBelongsToSubject, isValidRoutePoint, isRepAccount, tenantManagerId,
-    Response, crypto, console: { error() {}, warn() {} }, Deno: { serve: callback => { handler = callback; } },
+    Response, crypto, Client, console: { error() {}, warn() {} }, Deno: { env: { get: () => 'postgresql://test' }, serve: callback => { handler = callback; } },
   });
   return { writes, run: async (route = payload, requestId) => {
     const response = await handler(new Request('https://firstknock.test/save', { method: 'POST', body: JSON.stringify({ route, request_id: requestId }) }));
@@ -143,7 +157,7 @@ test('all browser route creation uses the verified saver instead of direct entit
   const files = ['src/pages/Home.jsx', 'src/pages/ZipCodeExplorer.jsx', 'src/components/map/MapToolbar.jsx',
     'src/components/routes/ActiveRoutesTab.jsx', 'src/components/routes/SplitRouteModal.jsx',
     'src/components/team/CampaignWizard.jsx', 'src/components/manager/TerritorySetupWizard.jsx',
-    'src/components/import/redfinCsvImport.jsx', 'src/components/import/savePropertyImport.js'];
+    'src/components/import/redfinCsvImport.jsx', 'src/components/import/savePropertyImport.js', 'src/components/dashboard/CsvUploader.jsx'];
   for (const file of files) {
     const text = readFileSync(new URL(`../${file}`, import.meta.url), 'utf8');
     assert.doesNotMatch(text, /\.entities\.SavedRoute\.(create|bulkCreate)\(/, file);

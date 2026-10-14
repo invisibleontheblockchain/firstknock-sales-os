@@ -2,14 +2,6 @@
   "name": "User",
   "type": "object",
   "properties": {
-    "route_save_lock_token": {
-      "type": "string",
-      "rls": { "write": { "user_condition": { "role": "admin" } }, "read": { "user_condition": { "role": "admin" } } }
-    },
-    "route_save_lock_expires_at": {
-      "type": "string", "format": "date-time",
-      "rls": { "write": { "user_condition": { "role": "admin" } }, "read": { "user_condition": { "role": "admin" } } }
-    },
     "precision_trial_bonus_credits": {
       "type": "integer", "minimum": 0, "maximum": 1000000,
       "description": "Service-managed cumulative one-time extra included Precision properties. Never renews or grants paid features.",

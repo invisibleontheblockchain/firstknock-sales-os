@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+import { Client } from 'npm:@neondatabase/serverless@0.9.0';
 import { loadAuthoritativeUser } from '../../shared/accountIdentity.js';
 import { isPrecisionJob, precisionJobBelongsToSubject } from '../../shared/precisionOrderSafety.js';
 import { isValidRoutePoint } from '../../shared/routeBounds.js';
@@ -61,14 +62,16 @@ Deno.serve(async req => {
         delete metadata.save_request_id;
         if (requestId !== undefined) {
             if (typeof requestId !== 'string' || !/^route-[a-f0-9]{64}$/.test(requestId)) throw new HttpError(400, 'Invalid save request identifier.');
-            const token = crypto.randomUUID();
-            const now = new Date().toISOString();
-            const lock = await service.User.updateMany({ id: user.id, $or: [
-                { route_save_lock_token: null }, { route_save_lock_token: '' }, { route_save_lock_expires_at: { $lt: now } },
-            ] }, { $set: { route_save_lock_token: token, route_save_lock_expires_at: new Date(Date.now() + 60000).toISOString() } });
-            if (Number(lock?.updated) !== 1 || lock?.has_more === true) throw new HttpError(409, 'Another route is being saved. Retry in a moment.');
-            release = () => service.User.updateMany({ id: user.id, route_save_lock_token: token },
-                { $set: { route_save_lock_token: null, route_save_lock_expires_at: null } });
+            const databaseUrl = Deno.env.get('DATABASE_URL');
+            if (!databaseUrl) throw new HttpError(503, 'Route save locking is temporarily unavailable.');
+            const lockClient = new Client(databaseUrl);
+            await lockClient.connect();
+            try {
+                await lockClient.query('BEGIN');
+                const lock = await lockClient.query('SELECT pg_try_advisory_xact_lock(hashtextextended($1, 0)) AS acquired', [`route-save:${user.id}`]);
+                if (lock.rows?.[0]?.acquired !== true) throw new HttpError(409, 'Another route is being saved. Retry in a moment.');
+            } catch (error) { await lockClient.end().catch(() => {}); throw error; }
+            release = async () => { try { await lockClient.query('COMMIT'); } finally { await lockClient.end(); } };
             const existing = rows(await service.SavedRoute.filter({ manager_id: managerId, 'metadata.save_request_id': requestId }, '-created_date', 2))
                 .find(saved => saved.manager_id === managerId && saved.metadata?.save_request_id === requestId);
             if (existing) {
