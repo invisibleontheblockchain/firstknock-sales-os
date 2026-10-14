@@ -39,7 +39,7 @@ import {
 
 // Bump when candidate generation or the objective changes, so a stored route can
 // be told apart from one produced by an older solver.
-const OPTIMIZER_VERSION = 'road_matrix_exact_reuse_v4';
+const OPTIMIZER_VERSION = 'road_matrix_neighborhood_entry_return_v5';
 
 function readSecret(name) {
     try {
@@ -149,6 +149,7 @@ export default async function (req: Request): Promise<Response> {
         });
         const neighborhoodOptions = {
             startLocation, endLocation, baselineOrder: properties,
+            localDrivingReview: profile === 'driving',
             vehicleBaseUrl: readSecret('OSRM_BASE_URL') || DEFAULT_OSRM_BASE_URL,
             vehicleProfile: profile,
             vehicleFetch: async (url, options) => {
@@ -201,6 +202,7 @@ export default async function (req: Request): Promise<Response> {
         // order-affecting comparison inside a cluster is made without roads, and
         // the result is then validated against real driving mileage before it is
         // allowed to replace the route the caller already has.
+        let hierarchyValidationFailed = false;
         if (plan.ok && plan.tier === TIER_CLUSTER) {
             const hierarchyStartedAt = Date.now();
             const osrmBaseUrl = readSecret('OSRM_BASE_URL') || DEFAULT_OSRM_BASE_URL;
@@ -246,10 +248,9 @@ export default async function (req: Request): Promise<Response> {
             if (hierarchy.ok && exactOnce(hierarchy.order, properties.length)) {
                 if (properties.some((p, i) => (p.order_locked || p.locked || p.routing_access?.resolution_status === 'unresolved')
                     && propertyIdentity(hierarchy.order[i]) !== propertyIdentity(p))) hierarchy.order = properties;
-                const reviewStarted = Date.now();
-                const neighborhood = await reviewFinalNeighborhoodRoute(hierarchy.order, neighborhoodOptions);
-                stageTimings.neighborhood_review_ms = Date.now() - reviewStarted;
-                hierarchy.order = neighborhood.properties;
+                let neighborhood = { properties: hierarchy.order,
+                    diagnostics: reviewNeighborhoodExcursions(hierarchy.order).diagnostics,
+                    measurement: null, baseline: null };
                 const withAnchors = (order) => [
                     ...(startLocation ? [startLocation] : []),
                     ...order,
@@ -259,10 +260,23 @@ export default async function (req: Request): Promise<Response> {
                 // Product truth: both orders measured the same way, on the road
                 // network, in the units a manager cares about.
                 const validationStarted = Date.now();
-                const [proposedPath, currentPath] = await Promise.all([
+                let [proposedPath, currentPath] = await Promise.all([
                     roadCosts.measurePath(withAnchors(hierarchy.order), measureOptions),
                     roadCosts.measurePath(withAnchors(properties), measureOptions)
                 ]);
+                // Do not spend the local review budget on a global proposal
+                // whose complete drive cannot be compared with the incumbent.
+                // Such routes fall through below and repair the current order
+                // with independently checked neighborhood boundaries instead.
+                if (proposedPath.ok && currentPath.ok) {
+                    const reviewStarted = Date.now();
+                    neighborhood = await reviewFinalNeighborhoodRoute(hierarchy.order, neighborhoodOptions);
+                    stageTimings.neighborhood_review_ms = Date.now() - reviewStarted;
+                    if (neighborhood.diagnostics.applied) {
+                        hierarchy.order = neighborhood.properties;
+                        proposedPath = await roadCosts.measurePath(withAnchors(hierarchy.order), measureOptions);
+                    }
+                }
                 stageTimings.final_validation_ms = Date.now() - validationStarted;
                 stageTimings.total_ms = Date.now() - solverStartedAt;
                 console.info('[Routing performance]', JSON.stringify({ property_count: properties.length,
@@ -271,16 +285,17 @@ export default async function (req: Request): Promise<Response> {
                 const telemetry = hierarchy.telemetry;
                 const round = (value) => (Number.isFinite(value) ? Math.round(value * 1000) / 1000 : null);
                 const validated = proposedPath.ok && currentPath.ok;
+                hierarchyValidationFailed = !validated;
                 // An unvalidated order is never applied. Without a real-mileage
                 // comparison there is no evidence it is better, and "the
                 // computation finished" is not evidence.
-                const reviewedTimeImproved = neighborhood.diagnostics.applied && neighborhood.baseline
+                const reviewedTimeImproved = neighborhood.diagnostics.applied && neighborhood.measurement && neighborhood.baseline
                     && neighborhood.measurement.driveSeconds < neighborhood.baseline.driveSeconds;
                 const keepCurrent = !validated || (!reviewedTimeImproved && currentPath.totalMiles <= proposedPath.totalMiles);
                 const winningOrder = keepCurrent ? properties : hierarchy.order;
                 const degraded = telemetry.degraded;
 
-                return Response.json({
+                if (validated) return Response.json({
                     success: true,
                     selected: keepCurrent ? 'current' : 'road_aware',
                     order: winningOrder.map(propertyIdentity),
@@ -472,7 +487,9 @@ export default async function (req: Request): Promise<Response> {
             throw new Error('A route candidate failed its exact-once property invariant.');
         }
 
-        let winner = selectBestRouteCandidate(candidates);
+        let winner = hierarchyValidationFailed
+            ? candidates.find(candidate => candidate.is_current)
+            : selectBestRouteCandidate(candidates);
         if (!winner) {
             throw new Error('No route candidate could be measured on the road matrix.');
         }
@@ -480,9 +497,17 @@ export default async function (req: Request): Promise<Response> {
         const neighborhood = await reviewFinalNeighborhoodRoute(winner.order, neighborhoodOptions);
         stageTimings.neighborhood_review_ms = Date.now() - reviewStarted;
         if (neighborhood.diagnostics.applied) {
-            winner = { ...winner, order: neighborhood.properties, is_current: false, type: 'road_aware',
-                distance: neighborhood.measurement.distanceMiles, duration: neighborhood.measurement.driveSeconds / 60,
-                fingerprint: routePropertyOrderFingerprint(neighborhood.properties) };
+            // A pin outside the road-match radius can prevent a complete trip
+            // measurement. Reprice the actual revised order on the same matrix
+            // in that case. Subtracting exact local savings from an approximate
+            // block total mixes incompatible measurements and can go negative.
+            winner = measureRouteCandidate({ ...winner, order: neighborhood.properties,
+                is_current: false, type: 'road_aware' }, {
+                distanceBetween, durationBetween, startLocation, endLocation,
+            });
+            if (neighborhood.measurement) winner = { ...winner,
+                distance: neighborhood.measurement.distanceMiles,
+                duration: neighborhood.measurement.driveSeconds / 60 };
         }
         const current = candidates.find((candidate) => candidate.is_current);
         if (neighborhood.diagnostics.applied && neighborhood.baseline && current) {

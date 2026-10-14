@@ -109,7 +109,10 @@ export async function fetchOsrmJson(url, { timeoutMs = 20000 } = {}) {
                     throw new RetryableOsrmError(`OSRM request failed with status ${response.status}.`);
                 }
                 if (!response.ok) {
-                    throw new Error(`OSRM request failed with status ${response.status}.`);
+                    const payload = await response.json().catch(() => null);
+                    const error = new Error(`OSRM request failed with status ${response.status}${payload?.code ? ` (${payload.code})` : ''}. ${payload?.message || ''}`.trim());
+                    error.code = payload?.code;
+                    throw error;
                 }
                 const payload = await response.json();
                 if (payload?.code !== 'Ok') {

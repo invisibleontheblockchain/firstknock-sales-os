@@ -55,7 +55,12 @@ async function providerRequest(url, fetchImpl, signal) {
     const request = timedSignal(signal, 15000);
     try {
     const res = await fetchImpl(url.toString(), { signal: request.signal, redirect: 'error' });
-    if (!res.ok) throw new Error(`Vehicle routing failed (${res.status}). The existing route was left unchanged.`);
+    if (!res.ok) {
+        const payload = typeof res.json === 'function' ? await res.json().catch(() => null) : null;
+        const error = new Error(`Vehicle routing failed (${res.status}${payload?.code ? `: ${payload.code}` : ''}). ${payload?.message || 'The existing route was left unchanged.'}`);
+        error.code = payload?.code;
+        throw error;
+    }
     const data = await res.json();
     if (data.code !== 'Ok') throw new Error(`Vehicle routing failed (${data.code || 'invalid response'}). The existing route was left unchanged.`);
     return data;
