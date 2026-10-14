@@ -1457,15 +1457,16 @@ export default function Home() {
     }, [hydratedSavedRoutes, routeStatusView]);
 
     const savedRouteOverviewPoints = useMemo(() => {
-        const points = [];
+        const bounds = L.latLngBounds([]);
         for (const route of hydratedSavedRoutes) {
             for (const property of route.properties || []) {
                 if (!isRenderableMapPoint(property)) continue;
-                points.push([Number(property.lat), Number(property.lng)]);
-                if (points.length >= 2000) return points;
+                bounds.extend([Number(property.lat), Number(property.lng)]);
             }
         }
-        return points;
+        // Two corners cover every route without truncating to the first 2,000
+        // homes or passing thousands of coordinates to camera controls.
+        return bounds.isValid() ? [bounds.getSouthWest(), bounds.getNorthEast()] : [];
     }, [hydratedSavedRoutes]);
 
     const savedRouteOverviewKey = useMemo(() => (
@@ -2245,8 +2246,11 @@ export default function Home() {
 
     // Account Active Working Area Resolver — see lib/accountWorkingArea.js
     const resolveAccountWorkingArea = useCallback(() => computeAccountWorkingArea({
-        drawnPolygon, user, savedRoutes, hydratedSavedRoutes, precisionFetchJobs, availableProperties,
-    }), [drawnPolygon, user, savedRoutes, hydratedSavedRoutes, precisionFetchJobs, availableProperties]);
+        drawnPolygon, user,
+        savedRoutes: savedRoutes.filter(route => repFilter === 'all' || route.assigned_to_name?.includes(repFilter)),
+        hydratedSavedRoutes, precisionFetchJobs, availableProperties,
+        preferSavedRoutes: mode === 'analyze',
+    }), [drawnPolygon, user, savedRoutes, hydratedSavedRoutes, precisionFetchJobs, availableProperties, repFilter, mode]);
 
     // Initial Account Working Area Map Load Effect
     const hasCenteredAccountWorkingAreaRef = useRef(false);
@@ -2621,7 +2625,7 @@ export default function Home() {
                 hydratedSavedRoutes={hydratedSavedRoutes}
                 routes={routes}
                 filteredRoutes={filteredRoutes}
-                fitBounds={fitBounds}
+                fitBounds={activeRoute ? fitBounds : savedRouteOverviewPoints}
                 repColors={repColors}
                 user={user}
                 mapRef={mapRef}
