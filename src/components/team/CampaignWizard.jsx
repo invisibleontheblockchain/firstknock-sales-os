@@ -1,3 +1,4 @@
+import { createManagedRoutes } from '@/lib/createManagedRoute';
 import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from '@/api/base44Client';
@@ -76,7 +77,7 @@ export default function CampaignWizard({ open, onOpenChange, existingPlan = null
     });
 
     const bulkCreateRoutesMutation = useMutation({
-        mutationFn: (routes) => base44.entities.SavedRoute.bulkCreate(routes),
+        mutationFn: (routes) => createManagedRoutes(base44, routes),
         onSuccess: () => queryClient.invalidateQueries({ queryKey: ['savedRoutes'] })
     });
 

@@ -1,3 +1,4 @@
+import { createManagedRoute } from '@/lib/createManagedRoute';
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { base44 } from '@/api/base44Client';
@@ -125,7 +126,7 @@ export default function TerritorySetupWizard({ user, onComplete }) {
         try {
             const routesToSave = generatedRoutes.slice(0, 20);
             await bindBetaGeneratedRoutes(await Promise.all(routesToSave.map(route =>
-                base44.entities.SavedRoute.create({
+                createManagedRoute(base44, {
                     name: route.name,
                     property_hashes: route.properties.map(p => p.address_hash),
                     ...(route.metadata ? { metadata: route.metadata } : {}),

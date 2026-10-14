@@ -1,3 +1,4 @@
+import { createManagedRoute } from '@/lib/createManagedRoute';
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { MapContainer } from 'react-leaflet'; import BaseMapTiles from '@/components/map/BaseMapTiles';
@@ -786,16 +787,10 @@ export default function Home() {
             // Save locally first (Optimistic / Offline First)
             // We give it a temporary ID so it has a unique key
             const localRoute = { ...routeData, id: `local_${Date.now()}_${Math.random().toString(36).substr(2, 9)}` };
-            await storage.saveRoute(localRoute);
+            await storage.saveRoute(localRoute).catch(error => console.warn('[Home] Local backup unavailable; saving to account:', error.message));
             console.log('[Home] Saved route locally');
 
-            // Try backend (might fail if offline/auth issue)
-            try {
-                return await base44.entities.SavedRoute.create(routeData);
-            } catch (e) {
-                console.warn('[Home] Failed to save route to backend, but saved locally:', e);
-                return localRoute;
-            }
+            return await createManagedRoute(base44, routeData);
         },
         onSuccess: (data, variables) => {
             queryClient.invalidateQueries({ queryKey: ['savedRoutes'] });
@@ -2001,8 +1996,12 @@ export default function Home() {
             const firstRoute = generated[0];
             const firstSaved = savedByGeneratedRoute.get(firstRoute);
             const firstRemotelySaved = firstSaved?.id && !String(firstSaved.id).startsWith('local_');
+            const persistenceComplete = generated.every(route => {
+                const saved = savedByGeneratedRoute.get(route);
+                return saved?.id && !String(saved.id).startsWith('local_');
+            });
             setActiveRoute(firstRemotelySaved ? { ...firstRoute, id: firstSaved.id, isSaved: true, status: firstSaved.status || 'ACTIVE' } : { ...firstRoute, isSaved: false });
-            claimFirstAreaRouteHandoff(user, localStorage);
+            if (persistenceComplete) claimFirstAreaRouteHandoff(user, localStorage);
             finishRouteBuild();
             const params = new URLSearchParams(window.location.search);
             if (params.has('onboarding')) {
@@ -2035,14 +2034,19 @@ export default function Home() {
                 ? `Built ${generated.length} ${routeWord} (${totalHouses.toLocaleString()} doors${requestedText})` + (skippedDueToAssigned > 0 ? ` — ${skippedDueToAssigned} already assigned` : '')
                 : toastMsg;
 
-            toast.success(finalToastMsg + (roadMatrixPass.appliedCount > 0 ? ` — real road distances saved ~${roadMatrixPass.savedMiles} mi` : ''), { id: 'build-routes', duration: 5000 });
+            if (persistenceComplete) {
+                toast.success(finalToastMsg + (roadMatrixPass.appliedCount > 0 ? ` — real road distances saved ~${roadMatrixPass.savedMiles} mi` : ''), { id: 'build-routes', duration: 5000 });
+            } else {
+                setGenerationError('Your route was generated, but some homes could not be saved to your account. The route is still available on this device. Retry saving it; the completed import is retained so you do not need to spend credits on another pull.');
+                toast.error('Route generated, but not fully saved to your account.', { id: 'build-routes', duration: 10000 });
+            }
             lastGeneratedRouteBoundsRef.current = preparedRouteBounds.enabled ? preparedRouteBounds : null;
             if (preparedRouteBounds.enabled) preparePrecisionRouteBounds({ enabled: false });
             if (deliveryAttempt) {
                 deliveryAttempt.status = deliveryAttempt.in_memory_homes > 0 ? 'partial' : 'completed';
-                deliveryAttempt.failure_stage = null;
+                deliveryAttempt.failure_stage = persistenceComplete ? null : 'saving';
             }
-            return true;
+            return persistenceComplete;
 
         } catch (e) {
             console.error(`[generateRoutes] Failed after ${Math.round((performance.now() - t0) / 1000)}s:`, e);

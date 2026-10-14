@@ -1,3 +1,4 @@
+import { createManagedRoute } from '@/lib/createManagedRoute';
 import React, { useCallback, useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Loader2, Navigation, Locate, List, X, Filter, MapPin, Zap, Eye, EyeOff, Save, Pencil, Check, RotateCcw, Download, MoreVertical, Scissors, Ghost, Flag, Trash2 } from 'lucide-react';
@@ -290,7 +291,7 @@ export default function MapToolbar({
     if (activeRoutePriceFilter !== 'all') filterLabels.push(`$${Number(activeRoutePriceFilter).toLocaleString()}+`);
 
     const routeName = `${activeRoute.name || 'Route'} (${filterLabels.join(', ') || 'Filtered'} Filter)`;
-    await base44.entities.SavedRoute.create({
+    await createManagedRoute(base44, {
       name: routeName,
       property_hashes: activeRoute.properties.map((p) => p.address_hash || p.id).filter(Boolean),
       metrics: {
@@ -400,7 +401,7 @@ export default function MapToolbar({
     setRerunBusy(true);
     try {
       const rerunProperties = getRerunProperties(activeRoute, selectedHashes);
-      const rerunRoute = await base44.entities.SavedRoute.create(buildRerunRoutePayload(activeRoute, selectedHashes, filter, label));
+      const rerunRoute = await createManagedRoute(base44, buildRerunRoutePayload(activeRoute, selectedHashes, filter, label));
       queryClient.invalidateQueries({ queryKey: ['savedRoutes'] });
       try { localStorage.setItem('fk_selectedKnockRouteId', rerunRoute.id); } catch {}
       setShowRerunMenu(false);

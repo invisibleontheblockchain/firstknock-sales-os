@@ -13,6 +13,7 @@ import {
     selectOwnedPrecisionJobs
 } from '../../shared/precisionOrderSafety.js';
 import { loadAuthoritativeUser } from '../../shared/accountIdentity.js';
+import { precisionTrialLimit } from '../../shared/precisionTrialLimit.js';
 import {
     calculatePrecisionCreditState,
     isPaidPrecisionCreditInvoice,
@@ -489,6 +490,7 @@ async function getPrecisionJobs(base44, user) {
 }
 
 async function getPrecisionAllowance(base44, user, entitlement) {
+    const trialLimit = precisionTrialLimit(user);
     if (entitlement.kind === 'unmetered') return { used: 0, reserved: 0, remaining: PAID_PROPERTY_CAP, trialUsed: 0, lifetimeUsed: 0 };
     const jobs = await getPrecisionJobs(base44, user);
     const periodStart = asTimestamp(entitlement.periodStart);
@@ -521,12 +523,12 @@ async function getPrecisionAllowance(base44, user, entitlement) {
         }
     }
     if (entitlement.kind !== 'paid' && entitlement.kind !== 'beta') {
-        used = Math.min(FREE_PROPERTY_CAP, trialUsed);
+        used = Math.min(trialLimit, trialUsed);
         reserved = 0;
     }
     let limit = entitlement.kind === 'beta'
         ? entitlement.precisionLimit
-        : entitlement.kind === 'paid' ? PAID_PROPERTY_CAP : FREE_PROPERTY_CAP;
+        : entitlement.kind === 'paid' ? PAID_PROPERTY_CAP : trialLimit;
     let rolloverRemaining = 0;
     if (entitlement.kind === 'paid') {
         const ledger = await listPrecisionCreditLedger(base44, user.id);
@@ -544,7 +546,7 @@ async function getPrecisionAllowance(base44, user, entitlement) {
     }
     used = Math.min(limit, used);
     reserved = Math.min(Math.max(0, limit - used), reserved);
-    return { used, reserved, remaining: Math.max(0, limit - used - reserved), trialUsed: Math.min(FREE_PROPERTY_CAP, trialUsed), lifetimeUsed, limit, rolloverRemaining };
+    return { used, reserved, remaining: Math.max(0, limit - used - reserved), trialUsed: Math.min(trialLimit, trialUsed), lifetimeUsed, limit, rolloverRemaining };
 }
 
 Deno.serve(async (req) => {
@@ -635,7 +637,7 @@ Deno.serve(async (req) => {
         if (!hasPaidPrecisionCapacity && freeHomesRemaining <= 0) {
             return Response.json({
                 error: 'paid_precision_required',
-                message: 'This account has already received its included 50 single-family Precision route homes. Upgrade to Precision for larger routes.'
+                message: 'This account has used all of its included Precision properties. Upgrade to Precision for additional properties.'
             }, { status: 403 });
         }
         if (hasPaidPrecisionCapacity && paidPropertiesRemaining <= 0) {

@@ -1,3 +1,4 @@
+import { usePendingRouteSaves } from '@/hooks/usePendingRouteSaves';
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
@@ -46,6 +47,7 @@ function LayoutInner({ children }) {
   const restoringCanvasHistoryRef = React.useRef(false);
   const queryClient = useQueryClient();
   const { data: user, isLoading } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me(), retry: false });
+  usePendingRouteSaves(user, queryClient);
 
   React.useEffect(() => {
     const onCanvasDraftDirtyChanged = (event) => setCanvasDraftDirty(event?.detail?.dirty === true);

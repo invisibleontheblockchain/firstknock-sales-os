@@ -1,3 +1,4 @@
+import { createManagedRoute } from '@/lib/createManagedRoute';
 import React, { useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -357,7 +358,7 @@ export default function ZipCodeExplorer() {
     try {
       // Save all routes to DB
       const promises = generatedRoutes.map(route => {
-        return base44.entities.SavedRoute.create({
+        return createManagedRoute(base44, {
           name: `${zipCode} - ${route.name}`,
           description: `Auto-generated route in ${zipCode}. Score: ${route.competitivenessScore}`,
           property_hashes: route.properties.map(p => p.address_hash),

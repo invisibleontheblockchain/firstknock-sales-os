@@ -9,6 +9,7 @@ import {
 import { UNLIMITED_PROPERTY_CAP, currentGrantPeriod, precisionGrantLabel, precisionGrantLimit } from '../../shared/privilegedAccounts.js';
 import { selectOwnedPrecisionJobs } from '../../shared/precisionOrderSafety.js';
 import { loadAuthoritativeUser } from '../../shared/accountIdentity.js';
+import { precisionTrialLimit } from '../../shared/precisionTrialLimit.js';
 
 const FREE_PROPERTY_LIMIT = 50;
 const PAID_PROPERTY_LIMIT = 1000;
@@ -381,6 +382,7 @@ function samePeriod(left: any, right: any) {
 }
 
 function calculateUsage(jobs: any[], entitlement: any) {
+    const trialLimit = entitlement.trialLimit || FREE_PROPERTY_LIMIT;
     const paidPeriodStartMs = asTimestamp(entitlement.periodStart);
     const paidPeriodEndMs = asTimestamp(entitlement.periodEnd);
     let trialUsed = 0;
@@ -427,8 +429,8 @@ function calculateUsage(jobs: any[], entitlement: any) {
         }
     }
 
-    trialUsed = Math.min(FREE_PROPERTY_LIMIT, trialUsed);
-    trialReserved = Math.min(Math.max(0, FREE_PROPERTY_LIMIT - trialUsed), trialReserved);
+    trialUsed = Math.min(trialLimit, trialUsed);
+    trialReserved = Math.min(Math.max(0, trialLimit - trialUsed), trialReserved);
     const bucketUsed = isMeteredEntitlement(entitlement) ? paidUsed : trialUsed;
     const bucketReserved = isMeteredEntitlement(entitlement) ? paidReserved : trialReserved;
     const used = Math.min(entitlement.limit, bucketUsed);
@@ -442,7 +444,7 @@ function calculateUsage(jobs: any[], entitlement: any) {
         remaining: Math.max(0, entitlement.limit - meterUsed),
         lifetimeUsed,
         trialUsed,
-        trialRemaining: Math.max(0, FREE_PROPERTY_LIMIT - trialUsed)
+        trialRemaining: Math.max(0, trialLimit - trialUsed)
     };
 }
 
@@ -526,6 +528,8 @@ Deno.serve(async (req: Request) => {
         const user = await withRateLimitRetry(() => loadAuthoritativeUser(base44, authenticatedUser));
 
         const entitlement = await resolveEntitlement(user);
+        entitlement.trialLimit = precisionTrialLimit(user);
+        if (!isMeteredEntitlement(entitlement)) entitlement.limit = entitlement.trialLimit;
         let jobs = await getUserPrecisionJobs(base44, user);
         const reconciliation = await reconcileLegacyJobs(base44, user, jobs, entitlement);
         jobs = reconciliation.jobs;

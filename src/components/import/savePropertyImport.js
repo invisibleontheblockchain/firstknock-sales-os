@@ -1,3 +1,4 @@
+import { createManagedRoute } from '../../lib/createManagedRoute.js';
 import { optimizeImportedRoute } from './optimizeImportedRoute.js';
 import { mergeImportedStops, validCoordinates } from './propertyImportData.js';
 import { orderRouteProperties } from '../logic/routeHydrationCore.js';
@@ -137,7 +138,7 @@ export async function savePropertyImport(importBatch, {
     };
     if (completeGenerated) [payload] = await completeGenerated([payload], allProperties, { client, entryPoint: 'csv_import_new' });
     propertyHashes = payload.property_hashes;
-    const created = createRoute ? await createRoute(payload) : await client.entities.SavedRoute.create(payload);
+    const created = createRoute ? await createRoute(payload) : await createManagedRoute(client, payload);
     savedRoute = { ...payload, ...created };
   }
   // Offline cache failure must not turn an already-saved route into a failed import.

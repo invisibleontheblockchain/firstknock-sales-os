@@ -1,3 +1,4 @@
+import { createManagedRoute } from '@/lib/createManagedRoute';
 import { base44 } from '@/api/base44Client';
 import { storage } from '@/lib/storage';
 import { optimizeRouteByDistance } from '@/components/logic/routeOptimizer';
@@ -316,7 +317,7 @@ export async function createRouteFromRedfinImport(importBatch, { user, startLoca
     }
   };
 
-  const savedRoute = await base44.entities.SavedRoute.create(routePayload);
+  const savedRoute = await createManagedRoute(base44, routePayload);
   return {
     ...savedRoute,
     ...routePayload,

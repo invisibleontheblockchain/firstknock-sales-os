@@ -1,3 +1,4 @@
+import { createManagedRoutes } from '@/lib/createManagedRoute';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
@@ -234,7 +235,7 @@ export default function SplitRouteModal({
       records = await completeBetaRouteRecords(records, getRouteStops(route), { entryPoint: 'split_route' });
       let createError = null;
       try {
-        const createdResponse = await base44.entities.SavedRoute.bulkCreate(records);
+        const createdResponse = await createManagedRoutes(base44, records);
         createdRoutes = entityRows(createdResponse);
       } catch (error) {
         createError = error;

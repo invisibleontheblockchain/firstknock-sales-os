@@ -1,3 +1,4 @@
+import { createManagedRoute } from '@/lib/createManagedRoute';
 import React, { useState, useMemo } from 'react';
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -185,7 +186,7 @@ export default function ActiveRoutesTab({
                 };
 
                 // Save the merged route first so Optimize and Knock use a real SavedRoute ID.
-                const savedMergedRoute = await base44.entities.SavedRoute.create(mergedRouteData);
+                const savedMergedRoute = await createManagedRoute(base44, mergedRouteData);
                 await bindBetaGeneratedRoutes(savedMergedRoute);
 
                 // Delete original routes only after the replacement exists.
@@ -477,7 +478,7 @@ export function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelec
             const rerunProperties = getRerunProperties(route, selectedHashes);
             const [rerunPayload] = await completeBetaRouteRecords([buildRerunRoutePayload(route, selectedHashes, filter, label)],
                 rerunProperties, { entryPoint: 'route_rerun' });
-            const rerunRoute = await base44.entities.SavedRoute.create(rerunPayload);
+            const rerunRoute = await createManagedRoute(base44, rerunPayload);
             await bindBetaGeneratedRoutes(rerunRoute);
 
             queryClient.invalidateQueries({ queryKey: ['savedRoutes'] });

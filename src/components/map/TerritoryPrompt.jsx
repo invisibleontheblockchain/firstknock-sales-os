@@ -258,24 +258,8 @@ export default function TerritoryPrompt({
         }
 
         if (!job) {
-          const jobs = await base44.entities.FetchJob.filter(
-            { user_email: user.email, status: 'running' },
-            '-created_date',
-            1
-          );
-          const jobList = Array.isArray(jobs) ? jobs : jobs?.items || [];
-          job = jobList[0];
-        }
-
-        // Also check pending
-        if (!job) {
-          const pendingJobs = await base44.entities.FetchJob.filter(
-            { user_email: user.email, status: 'pending' },
-            '-created_date',
-            1
-          );
-          const pendingList = Array.isArray(pendingJobs) ? pendingJobs : pendingJobs?.items || [];
-          job = pendingList[0];
+          const recovery = (await base44.functions.invoke('getPrecisionRecovery', {})).data;
+          if (recovery?.job_id) job = await loadPrecisionJob(base44, recovery.job_id);
         }
 
         if (!job) {

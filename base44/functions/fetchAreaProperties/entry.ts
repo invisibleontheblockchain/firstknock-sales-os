@@ -3,6 +3,7 @@ import { Client } from 'npm:@neondatabase/serverless@0.9.0';
 import Stripe from 'npm:stripe@14.14.0';
 import { UNLIMITED_PROPERTY_CAP, currentGrantPeriod, precisionGrantLabel, precisionGrantLimit } from '../../shared/privilegedAccounts.js';
 import { loadAuthoritativeUser } from '../../shared/accountIdentity.js';
+import { precisionTrialLimit } from '../../shared/precisionTrialLimit.js';
 import {
     ACTIVE_PRECISION_STATUSES,
     classifyActivePrecisionJobs,
@@ -396,6 +397,7 @@ async function getPrecisionJobs(base44, user) {
 }
 
 async function getPrecisionAllowance(base44, user, entitlement) {
+    const trialLimit = precisionTrialLimit(user);
     if (entitlement.kind === 'unmetered') return { used: 0, reserved: 0, remaining: PAID_PROPERTY_CAP, trialUsed: 0, lifetimeUsed: 0 };
     if (entitlement.kind === 'beta') return { used: 0, reserved: 0, remaining: entitlement.precisionLimit, trialUsed: 0, lifetimeUsed: 0 };
     const jobs = await getPrecisionJobs(base44, user);
@@ -422,13 +424,13 @@ async function getPrecisionAllowance(base44, user, entitlement) {
         }
     }
     if (entitlement.kind !== 'paid') {
-        used = Math.min(FREE_PROPERTY_CAP, trialUsed);
+        used = Math.min(trialLimit, trialUsed);
         reserved = 0;
     }
-    const limit = entitlement.kind === 'paid' ? PAID_PROPERTY_CAP : FREE_PROPERTY_CAP;
+    const limit = entitlement.kind === 'paid' ? PAID_PROPERTY_CAP : trialLimit;
     used = Math.min(limit, used);
     reserved = Math.min(Math.max(0, limit - used), reserved);
-    return { used, reserved, remaining: Math.max(0, limit - used - reserved), trialUsed: Math.min(FREE_PROPERTY_CAP, trialUsed), lifetimeUsed };
+    return { used, reserved, remaining: Math.max(0, limit - used - reserved), trialUsed: Math.min(trialLimit, trialUsed), lifetimeUsed };
 }
 
 Deno.serve(async (req) => {

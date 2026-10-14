@@ -92,7 +92,10 @@ Deno.serve(async req => {
         };
         // Observations cannot alter usage, reservations, job state, or provider counters.
         await service.FetchJob.update(job.id, {
-            dry_run_metadata: { ...(job.dry_run_metadata || {}), final_delivery: finalDelivery }
+            dry_run_metadata: { ...(job.dry_run_metadata || {}), final_delivery: finalDelivery,
+                ...(report.status === 'completed' && report.generated_homes_reported > 0
+                    && deliveredHashes.size >= report.generated_homes_reported
+                    ? { precision_route_delivery_confirmed_at: finalDelivery.recorded_at } : {}) }
         });
         return Response.json({ success: true, final_delivery: finalDelivery });
     } catch (error) {
