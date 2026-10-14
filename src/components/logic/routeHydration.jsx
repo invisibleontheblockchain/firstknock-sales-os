@@ -1,4 +1,6 @@
 import { base44 } from '@/api/base44Client';
+import { retryRead } from '@/lib/readRequest';
+import { mapWithConcurrency } from '@/lib/mapWithConcurrency';
 import {
     hasCompleteRouteMapPoints,
     hydrateRouteWithLookup,
@@ -72,12 +74,12 @@ async function lookupRouteProperties({ hashes, routeId, userEmail }) {
         hashes,
         routeId,
         lookupBatch: async ({ hashes: batchHashes, routeId: authorizedRouteId }) => {
-            const response = await base44.functions.invoke('getRoutePropertiesByHashes', {
+            const response = await retryRead(() => base44.functions.invoke('getRoutePropertiesByHashes', {
                 address_hashes: batchHashes,
                 ...(authorizedRouteId ? { route_id: authorizedRouteId } : {}),
                 user_email: userEmail,
                 limit: batchHashes.length
-            });
+            }));
             return Array.isArray(response.data?.properties) ? response.data.properties : [];
         }
     });
@@ -134,7 +136,7 @@ export async function hydrateRoutesForMap(routes = [], userEmail = null, existin
     if (routeCollectionHydrationCache.has(collectionKey)) return routeCollectionHydrationCache.get(collectionKey);
 
     const existingByHash = indexRouteProperties(existingProperties);
-    const hydrated = await Promise.all(routes.map(async route => {
+    const hydrated = await mapWithConcurrency(routes, async route => {
         const hashes = Array.isArray(route.property_hashes) ? route.property_hashes : [];
         // Local data may only be used when it covers EVERY hash in the route.
         // Partial coverage (e.g. map cache holds 33 of 66 doors) must go to the backend,
@@ -153,7 +155,7 @@ export async function hydrateRoutesForMap(routes = [], userEmail = null, existin
             };
         }
         return hydrateRouteForMap(route, userEmail);
-    }));
+    });
 
     // As above, never make an empty/partial hydration result permanent.
     if (hydrated.every(isRouteHydrationCacheable)) {

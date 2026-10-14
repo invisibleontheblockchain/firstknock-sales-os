@@ -59,12 +59,9 @@
           return false;
         }
       };
-      clearOldPwaCachesOnce().then((cacheWasCleared) => {
-        if (!cacheWasCleared) return;
-        const releaseUrl = new URL(window.location.href);
-        releaseUrl.searchParams.set('fk_release', FK_PWA_RELEASE);
-        window.location.replace(releaseUrl.toString());
-      });
+      // Cleaning stored assets does not require throwing away the page that
+      // just loaded. AppRefreshManager offers new releases without auto-reload.
+      clearOldPwaCachesOnce();
 
       const isBase44Preview = /(^|\.)preview(?:-sandbox)?--.*\.base44\.app$/i.test(window.location.hostname);
       // The Vite dev server injects its client script; its presence means dev
@@ -86,16 +83,9 @@
             .catch((error) => console.warn('Preview cache cleanup skipped', error));
         }
       } else if ('serviceWorker' in navigator) {
-        // 1. Reload when new SW takes control
-        let refreshing = false;
-        navigator.serviceWorker.addEventListener('controllerchange', () => {
-          if (!refreshing) {
-            refreshing = true;
-            window.location.reload(true);
-          }
-        });
-
-        // 2. Force new service workers to skip waiting when installed
+        // The worker only handles navigation and does not cache app JS. A new
+        // controller can claim this page without reloading its current work.
+        // Force new service workers to skip waiting when installed.
         navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).then(reg => {
           reg.update().catch((error) => console.warn('PWA startup update check skipped', error));
 
@@ -124,7 +114,7 @@
           });
         }).catch((error) => console.warn('PWA registration skipped', error));
 
-        // 3. Check for updates every time app starts or returns to foreground.
+        // Check for updates every time app starts or returns to foreground.
         const checkForPwaUpdate = () => {
           navigator.serviceWorker.getRegistration()
             .then((reg) => reg?.update())
