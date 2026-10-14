@@ -13,7 +13,8 @@ import {
 const routeHydrationCache = new Map();
 const routeHydrationInflight = new Map();
 const routeCollectionHydrationCache = new Map();
-const MAX_ROUTE_HYDRATION_CACHE_ENTRIES = 12;
+const importedCollectionInflight = new Map();
+const MAX_ROUTE_HYDRATION_CACHE_ENTRIES = 128;
 const MAX_ROUTE_HYDRATION_CACHE_PROPERTIES = 25_000;
 const MAX_ROUTE_COLLECTION_CACHE_ENTRIES = 5;
 let routeHydrationCachedPropertyCount = 0;
@@ -154,11 +155,69 @@ export async function hydrateRoutesForMap(routes = [], userEmail = null, existin
     }
 
     const existingByHash = indexRouteProperties(existingProperties);
-    const hydrated = await mapWithConcurrency(routes, async (route, index) => {
-        if (!shouldContinue()) return route;
+    const prepared = routes.map(route => {
         const hashes = Array.isArray(route.property_hashes) ? route.property_hashes : [];
-        const ordered = orderRouteProperties(route, hashes.map(hash => existingByHash.get(String(hash))).filter(Boolean));
-        const result = await hydrateRouteForMap(ordered, userEmail);
+        const cached = readHydratedRouteCache(hydrationCacheKey(route, userEmail));
+        return orderRouteProperties(route, [
+            ...(cached?.allProperties || cached?.properties || []),
+            ...hashes.map(hash => existingByHash.get(String(hash))).filter(Boolean),
+        ]);
+    });
+    const imported = prepared.filter(route => !hasCompleteRouteMapPoints(route) && route.id && (
+        ['csv_import', 'redfin_csv'].includes(route.metadata?.source)
+        || route.metadata?.imports?.length > 0
+        || route.property_hashes?.some(hash => String(hash).startsWith('import_'))
+    ));
+    const batchedIds = new Set();
+    // Imported collections need one authorized read per group, rather than a
+    // function/auth/manifest read for every route whenever the map mounts.
+    if (viewer && imported.length > 1) {
+        let batch = [];
+        let hashCount = 0;
+        const loadBatch = async () => {
+            if (!batch.length || !shouldContinue()) return;
+            const current = batch;
+            const requestKey = `${viewer}::${manifestSignature(current.map(route => hydrationCacheKey(route, userEmail)))}`;
+            let request = importedCollectionInflight.get(requestKey);
+            if (!request) {
+                request = withReadDeadline(() => base44.functions.invoke('getRoutePropertiesByHashes', {
+                    route_ids: current.map(route => route.id),
+                }), 30_000).finally(() => importedCollectionInflight.delete(requestKey));
+                importedCollectionInflight.set(requestKey, request);
+            }
+            const response = await request;
+            if (!Array.isArray(response.data?.routes)) throw new Error('Route homes could not be loaded.');
+            const byId = new Map(response.data.routes.map(route => [route.id, route]));
+            for (const route of current) {
+                const index = prepared.findIndex(item => item.id === route.id);
+                const hydrated = orderRouteProperties(route, byId.get(route.id)?.properties || []);
+                prepared[index] = hydrated;
+                batchedIds.add(route.id);
+                const key = hydrationCacheKey(route, userEmail);
+                if (key && isRouteHydrationCacheable(hydrated)) cacheHydratedRoute(key, hydrated);
+                if (shouldContinue()) onRouteHydrated(hydrated, index);
+            }
+        };
+        for (const route of imported) {
+            const count = route.property_hashes?.length || 0;
+            // Larger individual manifests keep the established paged loader.
+            if (count > 5000) continue;
+            if (batch.length >= 40 || hashCount + count > 5000) {
+                await loadBatch();
+                batch = [];
+                hashCount = 0;
+            }
+            batch.push(route);
+            hashCount += count;
+        }
+        await loadBatch();
+    }
+    const hydrated = await mapWithConcurrency(prepared, async (route, index) => {
+        if (!shouldContinue()) return route;
+        // A partial/throttled bulk read must not fan out into dozens of
+        // individual recovery calls. The page retries just the missing routes.
+        if (batchedIds.has(route.id)) return route;
+        const result = await hydrateRouteForMap(route, userEmail);
         // A slow route must not hold every other route's pins behind the
         // collection promise. Cache and publish each finished route separately.
         if (shouldContinue()) onRouteHydrated(result, index);
