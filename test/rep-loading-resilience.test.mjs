@@ -80,3 +80,21 @@ test('complete offline properties remain usable during an outage but a partial c
     else await assert.rejects(descriptor.queryFn(), /could not be loaded/);
   }
 });
+
+test('rep maps hydrate routes larger than the backend limit in authorized batches', async () => {
+  const hashes = Array.from({ length: 5001 }, (_, index) => `house-${index}`);
+  const activeRoute = { ...route, property_hashes: hashes };
+  const requests = [];
+  const descriptor = query('propsLoading', {
+    activeRoute,
+    base44: { functions: { invoke: async (_name, request) => {
+      requests.push(request);
+      return { data: { properties: request.address_hashes.map(address_hash => ({ ...property, address_hash })) } };
+    } } },
+  });
+  const properties = await descriptor.queryFn();
+  assert.deepEqual(requests.map(request => request.address_hashes.length), [5000, 1]);
+  assert.ok(requests.every(request => request.route_id === route.id));
+  assert.equal(properties.length, 5001);
+  assert.deepEqual(properties.map(property => property.address_hash), hashes);
+});

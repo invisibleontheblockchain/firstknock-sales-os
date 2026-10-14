@@ -1341,18 +1341,34 @@ export default function Home() {
     // saved-route layer on every outcome logged, so it reads properties through a ref.
     const effectivePropertiesRef = useRef(effectiveProperties);
     effectivePropertiesRef.current = effectiveProperties;
-    useEffect(() => {
-        let cancelled = false;
-        (async () => {
-            if (!user?.email || savedRoutes.length === 0) return setServerHydratedSavedRoutes([]);
-            // Let the lightweight overview arrive before hydrating every saved
-            // route. Opening a selected route still hydrates it immediately.
-            if (!territoryOverviewReady) return;
-            const hydrated = await hydrateRoutesForMap(savedRoutes, user.email, effectivePropertiesRef.current);
-            if (!cancelled) setServerHydratedSavedRoutes(hydrated);
-        })();
-        return () => { cancelled = true; };
-    }, [savedRoutes, user?.email, effectiveProperties.length, territoryOverviewReady]);
+    const savedRouteMapManifestKey = savedRoutes.map(route => (
+        `${route.id}:${route.updated_date || ''}:${(route.property_hashes || []).join(',')}`
+    )).join('|');
+    const { data: cachedHydratedSavedRoutes, isFetching: savedRoutePinsLoading, error: savedRoutePinsError, refetch: retrySavedRoutePins } = useQuery({
+        queryKey: ['savedRouteMapProperties', user?.id, user?.email, savedRouteMapManifestKey, effectiveProperties.length],
+        enabled: !!user?.email && savedRoutes.length > 0,
+        staleTime: 60_000,
+        refetchOnWindowFocus: true,
+        queryFn: async ({ signal }) => {
+            const hydrated = await hydrateRoutesForMap(savedRoutes, user.email, effectivePropertiesRef.current, {
+                shouldContinue: () => !signal.aborted,
+                onRouteHydrated: route => {
+                    setServerHydratedSavedRoutes(current => {
+                        const byId = new Map(current.map(item => [item.id, item]));
+                        const previous = byId.get(route.id);
+                        // Keep known pins during a transient partial refresh.
+                        byId.set(route.id, orderRouteProperties(route, previous?.allProperties || previous?.properties || []));
+                        return savedRoutes.map(saved => byId.get(saved.id) || saved);
+                    });
+                },
+            });
+            const incompleteCount = hydrated.filter(route => !hasCompleteRouteMapPoints(route)).length;
+            if (incompleteCount) {
+                throw new Error(`${incompleteCount} route${incompleteCount === 1 ? '' : 's'} could not load all homes.`);
+            }
+            return hydrated;
+        },
+    });
 
     // Smart Auto-Open/Close for Generate Mode
     useEffect(() => {
@@ -1385,7 +1401,7 @@ export default function Home() {
         });
 
         // Keep the latest saved manifests authoritative while older hydration finishes.
-        const hydratedById = new Map(serverHydratedSavedRoutes.map(route => [route.id, route]));
+        const hydratedById = new Map([...(cachedHydratedSavedRoutes || []), ...serverHydratedSavedRoutes].map(route => [route.id, route]));
         const routesForDisplay = filterRoutesByStatus(savedRoutes.map(route => {
             const hydrated = hydratedById.get(route.id);
             return orderRouteProperties(route, hydrated?.allProperties || hydrated?.properties || []);
@@ -1428,7 +1444,7 @@ export default function Home() {
                 };
             }).filter(r => r.houseCount > 0)
             .sort((a, b) => (b.competitivenessScore || 0) - (a.competitivenessScore || 0));
-    }, [savedRoutes, serverHydratedSavedRoutes, effectiveProperties, repFilter, logs]);
+    }, [savedRoutes, serverHydratedSavedRoutes, cachedHydratedSavedRoutes, effectiveProperties, repFilter, logs]);
 
     useEffect(() => {
         if (!hydratedSavedRoutes.length || routeStatusView === 'all') return;
@@ -2449,6 +2465,14 @@ export default function Home() {
                 <div role="status" className="absolute top-20 left-1/2 -translate-x-1/2 z-[2000] flex items-center gap-2 rounded-xl border border-white/10 bg-[#111] px-4 py-3 text-sm text-white shadow-xl">
                     <Loader2 className="h-4 w-4 animate-spin" />
                     Loading {savedRoutes.find(route => route.id === loadingSavedRouteId)?.property_hashes?.length || ''} route homes…
+                </div>
+            )}
+            {!loadingSavedRouteId && savedRoutes.length > 0 && (savedRoutePinsLoading || savedRoutePinsError) && (
+                <div role="status" className="absolute top-20 left-1/2 -translate-x-1/2 z-[2000] flex items-center gap-2 rounded-xl border border-white/10 bg-[#111] px-4 py-3 text-sm text-white shadow-xl">
+                    {savedRoutePinsLoading ? <><Loader2 className="h-4 w-4 animate-spin" />Loading route homes…</> : <>
+                        <span>{savedRoutePinsError.message}</span>
+                        <button type="button" className="rounded-lg bg-white/10 px-3 py-2" onClick={() => retrySavedRoutePins()}>Retry</button>
+                    </>}
                 </div>
             )}
             {/* Generation Overlay — immediate visual feedback */}
