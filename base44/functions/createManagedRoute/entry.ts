@@ -68,7 +68,7 @@ Deno.serve(async req => {
             await lockClient.connect();
             try {
                 await lockClient.query('BEGIN');
-                const lock = await lockClient.query('SELECT pg_try_advisory_xact_lock(hashtextextended($1, 0)) AS acquired', [`route-save:${user.id}`]);
+                const lock = await lockClient.query('SELECT pg_try_advisory_xact_lock(hashtextextended($1, 0)) AS acquired', [`route-save:${managerId}:${requestId}`]);
                 if (lock.rows?.[0]?.acquired !== true) throw new HttpError(409, 'Another route is being saved. Retry in a moment.');
             } catch (error) { await lockClient.end().catch(() => {}); throw error; }
             release = async () => { try { await lockClient.query('COMMIT'); } finally { await lockClient.end(); } };
@@ -142,3 +142,4 @@ Deno.serve(async req => {
         if (release) await release().catch(error => console.warn('[createManagedRoute] Could not release save lock:', error.message));
     }
 });
+
