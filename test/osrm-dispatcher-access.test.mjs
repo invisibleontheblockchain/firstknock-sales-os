@@ -28,3 +28,18 @@ test('OSRM requests identify FirstKnock and retry a temporary 403 refusal', asyn
         globalThis.fetch = originalFetch;
     }
 });
+
+test('unmatched road pins preserve the provider code and coordinate index without retrying', async () => {
+    const originalFetch = globalThis.fetch;
+    let calls = 0;
+    globalThis.fetch = async () => {
+        calls++;
+        return Response.json({ code: 'NoSegment', message: 'Could not find a matching segment for coordinate 12' }, { status: 400 });
+    };
+    try {
+        await assert.rejects(fetchOsrmJson('https://router.example/table', { timeoutMs: 1000 }), error => {
+            assert.equal(error.code, 'NoSegment'); assert.match(error.message, /coordinate 12/); return true;
+        });
+        assert.equal(calls, 1);
+    } finally { globalThis.fetch = originalFetch; }
+});

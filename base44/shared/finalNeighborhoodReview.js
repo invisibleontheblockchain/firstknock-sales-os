@@ -1,9 +1,10 @@
 import { reviewNeighborhoodExcursions, reviewNeighborhoodExcursionsAsync, neighborhoodStreetKey } from './neighborhoodExcursions.js';
 import { createVehicleRoutingContext } from './vehicleRouting.js';
+import { reviewLocalDrivingNeighborhoods } from './localDrivingNeighborhoods.js';
 
 // This runs on the final assembled order, including seams between optimization
 // windows. Labels flag a review; snapped directed road costs decide the move.
-export async function reviewFinalNeighborhoodRoute(order, options = {}) {
+async function reviewFinalNeighborhoodExcursions(order, options = {}) {
     const initial = reviewNeighborhoodExcursions(order, options);
     if (!initial.diagnostics.detected) return { ...initial, diagnostics: { ...initial.diagnostics, status: 'checked' } };
     try {
@@ -35,4 +36,18 @@ export async function reviewFinalNeighborhoodRoute(order, options = {}) {
         if (error?.name === 'AbortError' || /membership|locked stop|graph identity|cancelled/i.test(error?.message || '')) throw error;
         return { properties: order, diagnostics: { ...initial.diagnostics, reason: error.message } };
     }
+}
+
+export async function reviewFinalNeighborhoodRoute(order, options = {}) {
+    const excursions = await reviewFinalNeighborhoodExcursions(order, options);
+    if (options.localDrivingReview !== true) return excursions;
+    const local = await reviewLocalDrivingNeighborhoods(excursions.properties, options);
+    if (!local.diagnostics.applied) return { ...excursions, diagnostics: {
+        ...excursions.diagnostics, local_driving_review: local.diagnostics,
+    } };
+    return { ...local, diagnostics: {
+        ...excursions.diagnostics, applied: true, status: local.diagnostics.status,
+        secondsSaved: (excursions.diagnostics.secondsSaved || 0) + local.diagnostics.localSecondsSaved,
+        local_driving_review: local.diagnostics,
+    } };
 }

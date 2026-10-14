@@ -181,17 +181,26 @@ export async function tryRoadMatrixOptimize(routeProperties, {
         // already refused to return anything worse than the current order.
         const durationGain = Number(meta.duration_improvement);
         const preferredTie = neighborhoodReview?.preferContiguousOnTie === true && meta.neighborhood_excursion_review?.applied === true;
-        if (!(savings > 0) && !(durationGain > 0) && !preferredTie) return decline('current_order_measured_best', {
+        const serviceReview = meta.neighborhood_excursion_review?.local_driving_review;
+        const preferredServiceTie = serviceReview?.applied === true
+            && ['whole_route', 'overlapping_boundary_legs'].includes(serviceReview.validation);
+        if (!(savings > 0) && !(durationGain > 0) && !preferredTie && !preferredServiceTie) return decline('current_order_measured_best', {
             distanceMiles: baseline,
             routingMetadata: { ...meta, source: 'optimizeRouteRoadMatrix', routing: buildRoadMatrixRoutingBlock(meta) }
         });
+
+        // A partially matched route has an estimated matrix total and separately
+        // verified local savings. Keep those scopes separate instead of treating
+        // their difference as a measured whole-route improvement.
+        const verifiedLocalSavings = preferredServiceTie && serviceReview.validation === 'overlapping_boundary_legs'
+            ? measurementMiles(serviceReview.localMilesSaved) : null;
 
         return {
             order,
             objective: {
                 applyCandidate: true,
                 appliedDistance: roadMiles,
-                estimatedSavings: savings
+                estimatedSavings: verifiedLocalSavings ?? (preferredServiceTie ? Math.max(0, savings) : savings)
             },
             routingMetadata: {
                 ...meta,
