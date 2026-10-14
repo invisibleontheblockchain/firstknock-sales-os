@@ -24,6 +24,7 @@
       "enum": [
         "ELIGIBLE",
         "HARD_NO",
+        "NOT_QUALIFIED",
         "CALLBACK",
         "QUALIFIED",
         "SOLD",

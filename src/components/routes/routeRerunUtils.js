@@ -34,7 +34,7 @@ export function getRouteOutcomeStats(route, logs = []) {
       if (canonical && !latestByHash.has(canonical)) latestByHash.set(canonical, log.parsed_status || 'OTHER');
     });
 
-  const byStatus = { SOLD: 0, NO_ANSWER: 0, CALLBACK: 0, HARD_NO: 0, NOT_MOVED_IN: 0, DM_NOT_HOME: 0, OTHER: 0 };
+  const byStatus = { SOLD: 0, NO_ANSWER: 0, CALLBACK: 0, HARD_NO: 0, NOT_MOVED_IN: 0, DM_NOT_HOME: 0, NOT_QUALIFIED: 0, OTHER: 0 };
   latestByHash.forEach((status) => {
     if (byStatus[status] === undefined) byStatus.OTHER += 1;
     else byStatus[status] += 1;

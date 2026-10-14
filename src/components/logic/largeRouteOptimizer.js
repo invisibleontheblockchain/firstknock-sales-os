@@ -175,7 +175,7 @@ function selectEligibleProperties(properties, allLogs, options) {
   }
 
   if (options?.excludeTerminal !== false) {
-    const terminalStatuses = new Set(['HARD_NO', 'DO_NOT_KNOCK', 'COOLDOWN']);
+    const terminalStatuses = new Set(['HARD_NO', 'NOT_QUALIFIED', 'DO_NOT_KNOCK', 'COOLDOWN']);
     eligible = eligible.filter((property) => !terminalStatuses.has(property.effective_status));
   }
 

@@ -15,7 +15,7 @@ import { outcomeColor } from '@/components/logic/outcomeStatus';
 
 // Allocated once instead of once per pin.
 const UNVISITED_STATUSES = new Set(['ELIGIBLE', 'OTHER']);
-const RECORDED_DECISION_STATUSES = new Set(['SOLD', 'NO_ANSWER', 'CALLBACK', 'HARD_NO', 'NOT_MOVED_IN', 'DM_NOT_HOME', 'DO_NOT_KNOCK']);
+const RECORDED_DECISION_STATUSES = new Set(['SOLD', 'NO_ANSWER', 'CALLBACK', 'HARD_NO', 'NOT_MOVED_IN', 'DM_NOT_HOME', 'NOT_QUALIFIED', 'DO_NOT_KNOCK']);
 const ORIGINAL_STATUS_OVERRIDES = new Set(['SOLD', 'RECENT_OFF_MARKET', 'PENDING']);
 
 /** Stable identity for a rendered pin, used as the marker-store key. */

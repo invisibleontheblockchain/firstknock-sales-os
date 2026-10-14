@@ -24,6 +24,7 @@ export const FOLLOW_UP_STATUSES = Object.freeze([
 export const COMPLETED_STATUSES = Object.freeze([
     'SOLD',
     'HARD_NO',
+    'NOT_QUALIFIED',
 ]);
 
 const FOLLOW_UP_SET = new Set(FOLLOW_UP_STATUSES);
@@ -71,5 +72,6 @@ export const STAGE_DECISION_OPTIONS = Object.freeze({
     [CHECKLIST_STAGES.COMPLETED]: [
         { value: 'SOLD', label: 'Sold' },
         { value: 'HARD_NO', label: 'Not Interested' },
+        { value: 'NOT_QUALIFIED', label: 'Not Qualified' },
     ],
 });

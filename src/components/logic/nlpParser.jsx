@@ -4,6 +4,10 @@ export const parseResult = (input) => {
     const lowerInput = input.toLowerCase();
     const now = new Date();
 
+    if (/\b(?:not qualified|unqualified|nq)\b/.test(lowerInput)) {
+        return { status: 'NOT_QUALIFIED', nextDate: null };
+    }
+
     // SOLD: Matches /(sold|closed|signed|deal)/i
     if (/(sold|closed|signed|deal)/.test(lowerInput)) {
         return { status: 'SOLD', nextDate: null };

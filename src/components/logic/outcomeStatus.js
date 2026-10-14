@@ -1,4 +1,4 @@
-import { Check, Phone, Ban, Home, Clock, UserX } from 'lucide-react';
+import { Check, Phone, Ban, Home, Clock, UserX, CircleSlash } from 'lucide-react';
 
 // Single source of truth for how a logged outcome looks. These values are the
 // knock tab's (PropertyDetailSheet) — it is the established surface, so the
@@ -21,6 +21,7 @@ export const OUTCOME_OPTIONS = [
     { id: 'HARD_NO', label: 'Not Int.', icon: Ban, color: '#FF6B6B' },
     { id: 'NOT_MOVED_IN', label: 'Not Moved In', icon: Clock, color: '#FFBC66' },
     { id: 'DM_NOT_HOME', label: 'DM Not Home', icon: UserX, color: '#FFFFFF' },
+    { id: 'NOT_QUALIFIED', label: 'Not Qualified', icon: CircleSlash, color: '#94A3B8' },
 ];
 
 export const OUTCOME_COLORS = {
@@ -30,6 +31,7 @@ export const OUTCOME_COLORS = {
     HARD_NO: '#FF6B6B',
     NOT_MOVED_IN: '#FFBC66',
     DM_NOT_HOME: '#FFFFFF',
+    NOT_QUALIFIED: '#94A3B8',
     DO_NOT_KNOCK: '#FF6B6B',
     OTHER: '#6b7280',
     // No knock-tab equivalent — these describe route state, not a door outcome.
@@ -54,6 +56,7 @@ export const OUTCOME_SHORT_LABELS = {
     HARD_NO: 'NO',
     NOT_MOVED_IN: 'NMI',
     DM_NOT_HOME: 'DM',
+    NOT_QUALIFIED: 'NQ',
 };
 
 export const outcomeShortLabel = (status) => OUTCOME_SHORT_LABELS[status] || status;

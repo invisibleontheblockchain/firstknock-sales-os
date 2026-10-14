@@ -165,7 +165,7 @@ export function scoreProperty(property, logs = [], neighborhoodStats = {}, learn
     if (property.effective_status === 'NOT_MOVED_IN') score += 20; // Come back later
     if (property.effective_status === 'DM_NOT_HOME') score += 50; // Decision maker absent — high re-visit value
     if (property.effective_status === 'QUALIFIED') score += 80;
-    if (property.effective_status === 'HARD_NO') return 0;
+    if (['HARD_NO', 'NOT_QUALIFIED'].includes(property.effective_status)) return 0;
     // 'SOLD' = recently sold home from MLS (new homeowner = prime lead), score based on recency
     if (property.effective_status === 'SOLD') {
         if (property.sold_date) {
@@ -732,9 +732,9 @@ export function generateOptimizedRoutes(
     // Double Dip Protection: Exclude Terminal Statuses
     // NOTE: 'SOLD' here means the property's original MLS sale record, NOT that a rep already sold them.
     // 'UNVERIFIED' = legacy CSV data, still actionable for routing (treated like ELIGIBLE)
-    // so we only exclude HARD_NO / DO_NOT_KNOCK / COOLDOWN — NOT 'SOLD' or 'UNVERIFIED'.
+    // so we exclude rejected or ineligible doors while keeping MLS sales and unverified data.
     if (!preserveInputMembership && excludeTerminal) {
-        const terminalStatuses = ['HARD_NO', 'DO_NOT_KNOCK', 'COOLDOWN'];
+        const terminalStatuses = ['HARD_NO', 'NOT_QUALIFIED', 'DO_NOT_KNOCK', 'COOLDOWN'];
         eligible = eligible.filter(p => !terminalStatuses.includes(p.effective_status));
     }
 
@@ -755,7 +755,7 @@ export function generateOptimizedRoutes(
             if (p.effective_status === 'QUALIFIED') score += 80;
             if (p.effective_status === 'UNVERIFIED') score += 40;
             if (p.effective_status === 'NO_ANSWER') score += 30;
-            if (p.effective_status === 'HARD_NO') score = 0;
+            if (['HARD_NO', 'NOT_QUALIFIED'].includes(p.effective_status)) score = 0;
             if (p.effective_status === 'SOLD' && p.sold_date) {
                 const monthsAgo = (Date.now() - new Date(p.sold_date).getTime()) / (1000 * 60 * 60 * 24 * 30.44);
                 if (monthsAgo <= 3) score += 80;

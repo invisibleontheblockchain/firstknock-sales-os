@@ -12,6 +12,7 @@ const OUTCOMES = new Set([
     'SOLD',
     'QUALIFIED',
     'HARD_NO',
+    'NOT_QUALIFIED',
     'CALLBACK',
     'NO_ANSWER',
     'ELIGIBLE',

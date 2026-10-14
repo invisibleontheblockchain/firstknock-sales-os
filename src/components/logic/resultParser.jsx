@@ -9,6 +9,10 @@ export function parseResultText(text) {
     }
 
     const lower = text.toLowerCase().trim();
+
+    if (/\b(?:not qualified|unqualified|nq)\b/.test(lower)) {
+        return { status: 'NOT_QUALIFIED', notes: text, nextDate: null, callbackTarget: null };
+    }
     
     // SOLD / CLOSED
     if (lower.includes('sold') || lower.includes('closed') || lower.includes('signed') || lower.includes('deal')) {
@@ -123,8 +127,8 @@ export function isPropertyEligible(property, dailyResults) {
     const sorted = propResults.sort((a, b) => new Date(b.date_visited) - new Date(a.date_visited));
     const latest = sorted[0];
     
-    // SOLD and HARD_NO are permanent exclusions
-    if (latest.parsed_status === 'SOLD' || latest.parsed_status === 'HARD_NO') {
+    // Terminal decisions stay out of follow-up routes.
+    if (['SOLD', 'HARD_NO', 'NOT_QUALIFIED'].includes(latest.parsed_status)) {
         return false;
     }
     

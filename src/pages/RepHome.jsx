@@ -973,8 +973,8 @@ export default function RepHome() {
     const total = expectedRoutePropertyCount || routeProperties.length;
     if (!total) return { total: 0, done: 0, todo: 0, sold: 0, percent: 0 };
     const sold = routeProperties.filter((p) => p.effective_status === 'SOLD').length;
-    const done = routeProperties.filter((p) => ['SOLD', 'HARD_NO'].includes(p.effective_status)).length;
-    const todo = routeProperties.filter((p) => !['SOLD', 'HARD_NO'].includes(p.effective_status)).length;
+    const done = routeProperties.filter((p) => ['SOLD', 'HARD_NO', 'NOT_QUALIFIED'].includes(p.effective_status)).length;
+    const todo = routeProperties.filter((p) => !['SOLD', 'HARD_NO', 'NOT_QUALIFIED'].includes(p.effective_status)).length;
     return {
       total,
       done,
@@ -1021,7 +1021,7 @@ export default function RepHome() {
       // Sales-funnel views: Todo keeps every non-terminal opportunity, Done
       // contains only closed-won and closed-lost outcomes.
       if (filterStatus === 'todo') return matchesTodoRouteFilters(p, todoRouteTypes);
-      if (filterStatus === 'done') return ['SOLD', 'HARD_NO'].includes(p.effective_status);
+      if (filterStatus === 'done') return ['SOLD', 'HARD_NO', 'NOT_QUALIFIED'].includes(p.effective_status);
       if (filterStatus === 'sold') return p.effective_status === 'SOLD';
       return true;
     });
