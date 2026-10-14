@@ -31,6 +31,7 @@ export function savedRouteStyleKey(style) {
         style.showRouteDetails ? 1 : 0,
         style.showRouteLines ? 1 : 0,
         style.decisionFilterActive ? 1 : 0,
+        style.overviewOnly ? 1 : 0,
         style.pinOpacity,
         style.fillStyle,
         style.pinBorderColor,
@@ -82,7 +83,7 @@ export function buildSavedRouteGroup({ doors, linePoints, lineSegments, centerPo
 
     // Route lines are added before door pins so a route-colored line can never
     // cover a smaller outcome-colored pin at wide zoom levels.
-    if (style.showRouteLines && (linePoints.length > 1 || lineSegments?.length)) {
+    if (!style.overviewOnly && style.showRouteLines && (linePoints.length > 1 || lineSegments?.length)) {
         const latLngs = lineSegments ? lineSegments.map(points => points.map(p => [Number(p.lat), Number(p.lng)]))
             : linePoints.map(p => [Number(p.lat), Number(p.lng)]);
 
@@ -103,6 +104,7 @@ export function buildSavedRouteGroup({ doors, linePoints, lineSegments, centerPo
     {
         let drawn = 0;
         for (const property of doors) {
+            if (style.overviewOnly) break;
             if (drawn >= MAX_DOOR_PINS_PER_ROUTE) break;
             if (!passesQuickFilter(property, style.quickFilter)) continue;
             const hasDecision = hasRecordedDecision(property);
