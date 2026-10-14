@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { X, Navigation, Flame, ChevronRight } from 'lucide-react';
 import { scoreProperty } from '../logic/routeOptimizer';
+import { buildFullAddress, openInMaps } from '../logic/navigation';
 
 // Haversine distance in miles
 function getDistance(lat1, lng1, lat2, lng2) {
@@ -35,18 +36,7 @@ export default function NearbyHotLeads({ properties, radiusMiles = 1, maxLeads =
     const [expanded, setExpanded] = useState(false);
 
     const handleNavigate = (prop) => {
-        let query = "";
-        if (prop.full_address) {
-            query = prop.full_address;
-            if (prop.city) query += `, ${prop.city}`;
-            if (prop.state) query += `, ${prop.state}`;
-            if (prop.zip_code) query += ` ${prop.zip_code}`;
-        }
-
-        const url = query 
-            ? `https://maps.apple.com/?daddr=${encodeURIComponent(query)}&dirflg=d`
-            : `https://maps.apple.com/?daddr=${prop.lat},${prop.lng}&dirflg=d`;
-        window.location.href = url;
+        openInMaps(prop.lat, prop.lng, buildFullAddress(prop), 'apple', { travelMode: 'driving' });
     };
 
     // Watch user's location
