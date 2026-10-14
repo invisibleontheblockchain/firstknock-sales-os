@@ -11,7 +11,6 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { storage } from '@/lib/storage';
 import { retryRead, withReadDeadline } from '@/lib/readRequest'; import useRemoveInteraction from '@/components/map/useRemoveInteraction';
 
-import { Loader2 } from 'lucide-react';
 import { toast } from "sonner";
 import { determineEffectiveStatus, isPointInPolygon } from '../components/logic/territoryLogic';
 import { subMonths, subDays, isAfter, parseISO } from 'date-fns';
@@ -612,9 +611,7 @@ export default function Home() {
     const {
         baseProperties: userProperties,
         viewportProperties,
-        isLoading: propsLoading,
         isOverviewReady: territoryOverviewReady,
-        isLoadingOverview: territoryOverviewLoading,
         error: territoryLoadError,
         retry: retryTerritory,
         onMapMoveEnd
@@ -998,7 +995,7 @@ export default function Home() {
         return unretired.length ? [...rows, ...unretired] : rows;
     }, []);
 
-    const { data: logsRaw = [], isLoading: logsLoading, isSuccess: logsReady, error: logsLoadError, refetch: retryLogs } = useQuery({
+    const { data: logsRaw = [], isSuccess: logsReady, error: logsLoadError, refetch: retryLogs } = useQuery({
         queryKey: ['interactionLogs', user?.email],
         staleTime: 1000 * 60 * 2,
         queryFn: async () => {
@@ -2441,36 +2438,24 @@ export default function Home() {
 
     const mapDataError = territoryLoadError || logsLoadError
         || (showChecklist && checklistLogsError) || (selectedProperty && selectedPropertyHistoryError);
-    const loadingDoorHistory = logsLoading || (showChecklist && !checklistLogsReady)
-        || (selectedProperty && !selectedPropertyHistoryReady);
-    const mapDataLoading = propsLoading || territoryOverviewLoading || loadingDoorHistory;
 
     return (
         <div className={`h-full w-full relative ${showMapSettings ? 'lg:w-[calc(100%-24rem)]' : ''}`} style={{ background: BRAND.voidBlack }}>
-            {(mapDataError || mapDataLoading) && (
-                <div role="status" className="absolute top-24 left-1/2 -translate-x-1/2 z-[1600] flex max-w-[90%] items-center gap-2 rounded-xl border border-white/10 bg-[#111]/95 px-3 py-2 text-xs text-white shadow-xl">
-                    {!mapDataError && <Loader2 className="h-4 w-4 shrink-0 animate-spin" style={{ color: BRAND.gold }} />}
-                    <span>{mapDataError ? 'Some map data could not load.' : propsLoading ? 'Loading territory homes…' : loadingDoorHistory ? 'Loading door history…' : 'Loading more territory homes…'}</span>
-                    {mapDataError && <button type="button" className="shrink-0 font-semibold text-[#FFD700]" onClick={() => Promise.all([
+            {mapDataError && (
+                <div role="alert" className="absolute top-24 left-1/2 -translate-x-1/2 z-[1600] flex max-w-[90%] items-center gap-2 rounded-xl border border-white/10 bg-[#111]/95 px-3 py-2 text-xs text-white shadow-xl">
+                    <span>Some map data could not load.</span>
+                    <button type="button" className="shrink-0 font-semibold text-[#FFD700]" onClick={() => Promise.all([
                         retryTerritory(), retryLogs(),
                         ...(showChecklist ? [retryChecklistLogs()] : []),
                         ...(selectedProperty ? [retrySelectedPropertyHistory()] : []),
-                    ])}>Try again</button>}
+                    ])}>Try again</button>
                 </div>
             )}
             {pendingAssignment && <RouteAssignmentDialog assignment={pendingAssignment} onCancel={cancelRouteAssignment} onConfirm={confirmRouteAssignment} />}
-            {loadingSavedRouteId && (
-                <div role="status" className="absolute top-20 left-1/2 -translate-x-1/2 z-[2000] flex items-center gap-2 rounded-xl border border-white/10 bg-[#111] px-4 py-3 text-sm text-white shadow-xl">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Loading {savedRoutes.find(route => route.id === loadingSavedRouteId)?.property_hashes?.length || ''} route homes…
-                </div>
-            )}
-            {!loadingSavedRouteId && savedRoutes.length > 0 && (savedRoutePinsLoading || savedRoutePinsError) && (
-                <div role="status" className="absolute top-20 left-1/2 -translate-x-1/2 z-[2000] flex items-center gap-2 rounded-xl border border-white/10 bg-[#111] px-4 py-3 text-sm text-white shadow-xl">
-                    {savedRoutePinsLoading ? <><Loader2 className="h-4 w-4 animate-spin" />Loading route homes…</> : <>
-                        <span>{savedRoutePinsError.message}</span>
-                        <button type="button" className="rounded-lg bg-white/10 px-3 py-2" onClick={() => retrySavedRoutePins()}>Retry</button>
-                    </>}
+            {!loadingSavedRouteId && savedRoutes.length > 0 && !savedRoutePinsLoading && savedRoutePinsError && (
+                <div role="alert" className="absolute top-20 left-1/2 -translate-x-1/2 z-[2000] flex items-center gap-2 rounded-xl border border-white/10 bg-[#111] px-4 py-3 text-sm text-white shadow-xl">
+                    <span>{savedRoutePinsError.message}</span>
+                    <button type="button" className="rounded-lg bg-white/10 px-3 py-2" onClick={() => retrySavedRoutePins()}>Retry</button>
                 </div>
             )}
             {/* Generation Overlay — immediate visual feedback */}

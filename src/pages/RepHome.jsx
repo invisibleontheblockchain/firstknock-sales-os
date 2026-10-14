@@ -1366,14 +1366,8 @@ export default function RepHome() {
   }, [activeRouteArchived, bulkActionMutation.isPending]);
 
   if (userLoading || routeIdentityLoading || teamMembersLoading || routesLoading || propsLoading || logsLoading || (!activeRoute && canvasAssignmentsLoading)) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-black text-white">
-                <div className="text-center">
-                    <Loader2 className="w-10 h-10 animate-spin text-[#2EEB57] mx-auto mb-4" />
-                    <p className="font-medium animate-pulse text-white/70">Loading Route Data...</p>
-                </div>
-            </div>);
-
+    // Wait for route identity and data without flashing a loader or empty-route state.
+    return <div className="h-screen w-full bg-black" aria-hidden="true" />;
   }
 
   if (userLoadFailed || routesLoadFailed || propertiesLoadFailed || logsLoadFailed) {
