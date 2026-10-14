@@ -163,11 +163,7 @@ function LayoutInner({ children }) {
   }
 
   if (isLoading) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-black text-white">
-                <div className="animate-spin rounded-full h-8 w-8 border-t-2" style={{ borderColor: accent }}></div>
-            </div>);
-
+    return <div className="h-screen w-full bg-black" aria-hidden="true" />;
   }
 
   if (!user) {

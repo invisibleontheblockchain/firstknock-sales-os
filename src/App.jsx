@@ -95,9 +95,7 @@ function App() {
           <RepLocationProvider>
             <NavigationTracker />
             <React.Suspense fallback={
-              <div className="fixed inset-0 flex items-center justify-center bg-black">
-                <div className="w-8 h-8 border-4 border-slate-700 border-t-yellow-500 rounded-full animate-spin"></div>
-              </div>
+              <div className="fixed inset-0 bg-black" aria-hidden="true" />
             }>
               <RoutedApp />
             </React.Suspense>
