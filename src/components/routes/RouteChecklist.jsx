@@ -35,8 +35,6 @@ import { isNewConstruction } from '@/lib/newConstruction';
 import { applyRouteScopeFilters, countRouteScope } from '@/lib/routeScopeFilters';
 import NewBuildBadge from '@/components/rep/NewBuildBadge';
 import { base44 } from '@/api/base44Client';
-import RemoveRouteStopButton from './RemoveRouteStopButton';
-import { applyRouteStopRemoval } from '@/lib/routeStopRemoval';
 
 const BRAND = {
     voidBlack: '#0A0A0A',
@@ -68,7 +66,7 @@ const formatNumber = (value) => {
     return Number.isFinite(n) && n > 0 ? n.toLocaleString() : null;
 };
 
-export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, onRouteUpdated, onClose, navigationApp = 'apple', activeRouteSoldFilter, setActiveRouteSoldFilter }) {
+export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, onClose, navigationApp = 'apple', activeRouteSoldFilter, setActiveRouteSoldFilter }) {
     const [latestRoute, setLatestRoute] = useState(route);
     const [expandedId, setExpandedId] = useState(null);
     const [filter, setFilter] = useState('all');
@@ -969,27 +967,6 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
                                             noteError={noteError[prop.address_hash]}
                                             onChange={handleNoteChange}
                                             onFlush={flushHouseNote}
-                                        />
-
-                                        <RemoveRouteStopButton
-                                            route={displayRoute}
-                                            property={prop}
-                                            disabled={isSaving}
-                                            onRemoved={(saved, nextStop) => {
-                                                setLatestRoute(current => applyRouteStopRemoval(current, saved));
-                                                setNavigationSession(null);
-                                                const nextProperty = nextStop?.property;
-                                                const nextKey = nextProperty?.address_hash || nextProperty?.id || null;
-                                                setExpandedId(nextKey);
-                                                setDetailsOpenHash(null);
-                                                setHistoryOpenHash(null);
-                                                if (nextKey) {
-                                                    window.requestAnimationFrame(() => {
-                                                        stopRefs.current[nextKey]?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-                                                    });
-                                                }
-                                                onRouteUpdated?.(saved);
-                                            }}
                                         />
 
                                         {/* History — collapsed so a long log never buries the outcome grid */}
