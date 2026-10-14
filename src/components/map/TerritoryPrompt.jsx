@@ -9,7 +9,7 @@ import { createPageUrl } from '@/utils';
 import { calculatePolygonAreaSqMiles, formatSqMiles } from '@/components/logic/geoArea';
 import { savePolygonToHistory } from '@/components/map/PolygonHistory';
 import PrecisionPullPanel from '@/components/map/PrecisionPullPanel';
-import { FREE_PRECISION_PROPERTY_LIMIT } from '@/lib/precisionUsage';
+import { FREE_PRECISION_PROPERTY_LIMIT, precisionAllowanceMessage } from '@/lib/precisionUsage';
 import { usePrecisionUsage } from '@/hooks/usePrecisionUsage';
 import { normalizeOwnershipRangeDays as normalizeStrictOwnershipRangeDays } from '@/components/logic/soldDateRange';
 import { validateCanvasBoundary } from '@/components/canvas/canvasPlannerUtils';
@@ -1328,8 +1328,14 @@ export default function TerritoryPrompt({
                     <div className="static sm:absolute sm:top-full sm:left-0 sm:right-auto mt-1 sm:mt-2 w-full sm:w-72 bg-white/5 sm:bg-black/90 border border-gray-800 rounded-xl sm:rounded-lg p-2 shadow-xl animate-in fade-in slide-in-from-top-1">
                         <p className="text-[9px] text-gray-400 leading-tight">
                             <span className="text-[#2EEB57] font-bold">Area:</span> selected freehand polygon is about <span className="text-white">{actualAreaLabel}</span>.
-                            <br /><span className="text-[#39FF4A] font-bold">FirstKnock:</span> pulls up to <span className="text-white">{maxRequestedProperties}</span> properties for this account.
+                            <br /><span className="text-[#39FF4A] font-bold">FirstKnock:</span>{' '}
+                            <span className="text-white" role="status">{precisionAllowanceMessage({ usage: precisionUsage, isLoading: precisionUsageLoading, isFetching: precisionUsageFetching, isError: precisionUsageError })}</span>
                         </p>
+                        {precisionUsageError && !precisionUsageFetching && (
+                          <button type="button" onClick={() => refetchPrecisionUsage()} className="mt-2 text-[10px] font-bold text-[#39FF4A]">
+                            Retry allowance check
+                          </button>
+                        )}
                     </div>
                 </div>
       }
