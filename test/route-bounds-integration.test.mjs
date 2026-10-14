@@ -222,12 +222,12 @@ test('Precision route bounds are explicit, off by default, and wired through per
   assert.match(readSource('src/pages/RepHome.jsx'), /start_location: null[\s\S]*end_location: null/);
 });
 
-test('MERGE ALL preserves route bounds only for identical bounds and assignee', () => {
-  const routeCommandPanel = readSource('src/components/routes/RouteCommandPanel.jsx');
+test('regular route merge preserves route bounds only for identical bounds and assignee', () => {
+  const routeCommandPanel = readSource('src/components/routes/ActiveRoutesTab.jsx');
 
-  assert.match(routeCommandPanel, /const sameAssignee = baseRoutes\.every/);
-  assert.match(routeCommandPanel, /const sharedRouteBounds = sameAssignee && firstOriginMode !== 'none'/);
+  assert.match(routeCommandPanel, /const sameAssignee = selectedRoutes\.every/);
+  assert.match(routeCommandPanel, /const sharedRouteBounds = sameAssignee && firstSelectedRoute\?\.route_origin_mode/);
   assert.match(routeCommandPanel, /endLocation: mergeEnd/);
-  assert.match(routeCommandPanel, /routeOriginMode: sharedRouteBounds \? firstOriginMode : 'none'/);
-  assert.match(routeCommandPanel, /assigned_to: sameAssignee \? firstRoute\?\.assigned_to \|\| null : null/);
+  assert.match(routeCommandPanel, /routeOriginMode: sharedRouteBounds \? firstSelectedRoute\.route_origin_mode : 'none'/);
+  assert.match(routeCommandPanel, /assigned_to: sameAssignee \? firstRoute\.assigned_to : null/);
 });

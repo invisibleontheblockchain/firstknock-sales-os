@@ -1,19 +1,11 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { Button } from "@/components/ui/button";
-import { HelpCircle } from 'lucide-react';
-import ActiveRoutesTab from './ActiveRoutesTab';
+import React, { useState, useMemo } from 'react';
+import ActiveRoutesTab, { SavedRouteCard } from './ActiveRoutesTab';
 import SplitRouteModal from './SplitRouteModal';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-// cache-bust v2
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { generateOptimizedRoutes } from "@/components/logic/routeOptimizer";
-import { completeBetaGeneratedRoutes } from '@/lib/roadAwareRoutingBeta';
-import { createRouteContinuityContext } from "@/components/logic/routeRoadContext";
 import {
-    Navigation, X, BarChart3, User, Shield, MapPin, Flame, Plus, Clock, CheckCircle2, ChevronRight, Zap, Trash2, Scissors, Pencil, Check, Play, Home, Search
+    Navigation, X, User, Clock, Search
 } from 'lucide-react';
-import { base44 } from '@/api/base44Client';
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 import { hydrateRouteForMap } from '@/components/logic/routeHydration';
@@ -33,55 +25,32 @@ const canSplitRoute = (route) => isOperationalRoute(route)
     && !['COMPLETED'].includes(String(route?.status || '').toUpperCase())
     && (route?.houseCount || route?.properties?.length || route?.property_hashes?.length || 0) > 1;
 
-function getRouteBoundsBadge(route) {
-    const bounds = route?.metadata?.route_bounds;
-    const mode = String(route?.route_origin_mode || bounds?.mode || bounds?.origin_mode || '').toLowerCase();
-    const startSource = String(bounds?.start_source || bounds?.start?.source || '').toLowerCase();
-    const isEnabled = mode === 'home_round_trip' || mode === 'current_to_home' || mode === 'custom_bounds' || mode.includes('current');
-
-    if (!isEnabled) return null;
-    if (mode === 'custom_bounds') return 'Custom start/finish';
-    return mode === 'current_to_home' || mode.includes('current') || startSource.includes('current') || startSource.includes('gps')
-        ? 'Current → home'
-        : 'Home round trip';
-}
-
 export default function RouteCommandPanel({
     generatedRoutes = [],
     savedRoutes = [],
-    filteredRoutes = [],
-    genStats,
     repColors = {},
     teamMembers = [],
     viewerEmail = null,
-    getRepRecommendations,
     onSelectRoute,
     onSaveRoute,
-    onAutoAssignAll,
     onDeleteAllRoutes,
     onDeleteRoute,
     onReplaceRoutes,
     onClose,
     activeRouteId,
-    streetCooldownDays = 30,
-    zipCodeFilter = '',
-    housesPerRoute = 50,
     logs = [],
     onReoptimizeRoute,
-    routeConfig,
-    mode = 'analyze'
+    routeConfig
 }) {
     const selectRouteForMapAndKnock = async (route) => {
-        const hydratedRoute = await hydrateRouteForMap(route, viewerEmail);
+        const hydratedRoute = route.isSaved === false ? route : await hydrateRouteForMap(route, viewerEmail);
         if (hydratedRoute?.id) {
             try { localStorage.setItem('fk_selectedKnockRouteId', hydratedRoute.id); } catch {}
         }
         onSelectRoute(hydratedRoute);
     };
 
-    // NEW ROUTES tab is available whenever generated routes exist — routes now auto-activate
-    // on the map after generation, so this must not depend on builder mode or active route.
-    const [activeTab, setActiveTab] = useState(generatedRoutes.length > 0 ? 'new' : 'active');
+    const [activeTab, setActiveTab] = useState('active');
     const [splitRoute, setSplitRoute] = useState(null);
     const [routeSearch, setRouteSearch] = useState('');
     const queryClient = useQueryClient();
@@ -91,14 +60,10 @@ export default function RouteCommandPanel({
         () => savedRoutes.filter(route => isOperationalRoute(route) && matchesRouteSearch(route)),
         [savedRoutes, normalizedRouteSearch]
     );
-    const visibleFilteredRoutes = useMemo(
-        () => filteredRoutes.filter(matchesRouteSearch),
-        [filteredRoutes, normalizedRouteSearch]
-    );
-
-    useEffect(() => {
-        if (generatedRoutes.length === 0 && activeTab === 'new') setActiveTab('active');
-    }, [generatedRoutes.length, activeTab]);
+    const pendingGeneratedRoutes = useMemo(() => {
+        const savedIds = new Set(savedRoutes.map(route => route.id));
+        return generatedRoutes.filter(route => !savedIds.has(route.id) && matchesRouteSearch(route));
+    }, [generatedRoutes, savedRoutes, normalizedRouteSearch]);
 
     // Build a global route number map: route.id → #1, #2, #3...
     const routeNumberMap = useMemo(() => {
@@ -165,8 +130,7 @@ export default function RouteCommandPanel({
                             ROUTE COMMAND
                         </h2>
                         <p className="text-[10px] mt-1" style={{ color: '#666' }}>
-                            {generatedRoutes.length > 0 && <span className="text-yellow-500 font-bold mr-2">{generatedRoutes.length} New</span>}
-                            {operationalSavedRoutes.length} Active Campaigns
+                            {operationalSavedRoutes.length + pendingGeneratedRoutes.length} Routes
                         </p>
                     </div>
                     <button
@@ -197,25 +161,10 @@ export default function RouteCommandPanel({
                 </div>
 
                 {/* Tab Navigation */}
-                <div className="grid grid-cols-3 border-b px-1 sm:px-4 shrink-0 overflow-hidden" style={{ borderColor: BRAND.charcoal }}>
+                <div className="grid grid-cols-2 border-b px-1 sm:px-4 shrink-0 overflow-hidden" style={{ borderColor: BRAND.charcoal }}>
                     <button
-                        onClick={() => generatedRoutes.length > 0 && setActiveTab('new')}
-                        disabled={generatedRoutes.length === 0}
-                        className={`min-w-0 py-3 text-[9px] sm:text-xs font-bold tracking-wide border-b-2 transition-all flex items-center justify-center gap-1 sm:gap-2 ${generatedRoutes.length === 0 ? 'opacity-50 cursor-not-allowed' : ''} ${activeTab === 'new'
-                            ? 'border-yellow-500 text-yellow-500'
-                            : 'border-transparent text-gray-500 hover:text-white'
-                            }`}
-                    >
-                        <Zap className="w-4 h-4" />
-                        NEW ROUTES
-                        {generatedRoutes.length > 0 && (
-                            <Badge variant="default" className="bg-yellow-500 text-black text-[9px] h-4 px-1.5">{generatedRoutes.length}</Badge>
-                        )}
-                    </button>
-                    <button
-                        onClick={() => !activeRouteId && setActiveTab('active')}
-                        disabled={!!activeRouteId}
-                        className={`min-w-0 py-3 text-[9px] sm:text-xs font-bold tracking-wide border-b-2 transition-all flex items-center justify-center gap-1 sm:gap-2 ${activeRouteId ? 'opacity-50 cursor-not-allowed' : ''} ${activeTab === 'active'
+                        onClick={() => setActiveTab('active')}
+                        className={`min-w-0 py-3 text-[9px] sm:text-xs font-bold tracking-wide border-b-2 transition-all flex items-center justify-center gap-1 sm:gap-2 ${activeTab === 'active'
                             ? 'border-blue-500 text-blue-500'
                             : 'border-transparent text-gray-500 hover:text-white'
                             }`}
@@ -223,13 +172,12 @@ export default function RouteCommandPanel({
                         <Clock className="w-3 h-3 sm:w-4 sm:h-4" />
                         ACTIVE
                         <Badge variant="default" className="bg-blue-600 text-white text-[9px] h-4 px-1.5">
-                            {routesByStatus.IN_PROGRESS.length + routesByStatus.ACTIVE.length}
+                            {routesByStatus.IN_PROGRESS.length + routesByStatus.ACTIVE.length + pendingGeneratedRoutes.length}
                         </Badge>
                     </button>
                     <button
-                        onClick={() => !activeRouteId && setActiveTab('team')}
-                        disabled={!!activeRouteId}
-                        className={`min-w-0 py-3 text-[9px] sm:text-xs font-bold tracking-wide border-b-2 transition-all flex items-center justify-center gap-1 sm:gap-2 ${activeRouteId ? 'opacity-50 cursor-not-allowed' : ''} ${activeTab === 'team'
+                        onClick={() => setActiveTab('team')}
+                        className={`min-w-0 py-3 text-[9px] sm:text-xs font-bold tracking-wide border-b-2 transition-all flex items-center justify-center gap-1 sm:gap-2 ${activeTab === 'team'
                             ? 'border-green-500 text-green-500'
                             : 'border-transparent text-gray-500 hover:text-white'
                             }`}
@@ -244,232 +192,45 @@ export default function RouteCommandPanel({
                     <ScrollArea className="h-full w-full [&_[data-radix-scroll-area-viewport]>div]:!block [&_[data-radix-scroll-area-viewport]>div]:!w-full [&_[data-radix-scroll-area-viewport]>div]:!min-w-0">
                         <div className="p-2 sm:p-4 space-y-2 sm:space-y-4 w-full max-w-full overflow-x-hidden">
 
-                        {/* NEW ROUTES TAB */}
-                        {activeTab === 'new' && (
-                            <>
-                                {generatedRoutes.length === 0 ? (
-                                    <div className="text-center py-12">
-                                        <div className="w-16 h-16 rounded-full bg-[#1A1A1A] flex items-center justify-center mx-auto mb-4">
-                                            <Plus className="w-8 h-8 text-gray-600" />
-                                        </div>
-                                        <h3 className="text-lg font-bold text-gray-400 mb-2">No New Routes</h3>
-                                        <p className="text-xs text-gray-600 max-w-xs mx-auto">
-                                            Switch to "Build Routes" mode and generate new routes from available properties.
-                                        </p>
-                                    </div>
-                                ) : (
-                                    <>
-                                        {/* Generation Summary */}
-                                        {genStats && (
-                                            <div className="bg-gradient-to-br from-[#1A1A1A] to-[#0F0F0F] rounded-xl p-4 border border-yellow-900/30 relative overflow-hidden">
-                                                <div className="absolute top-0 right-0 w-32 h-32 bg-yellow-500/5 rounded-full blur-3xl pointer-events-none" />
-
-                                                <div className="flex flex-col mb-4 gap-3">
-                                                    <div className="flex-1 min-w-0">
-                                                        <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                                                            <BarChart3 className="w-4 h-4 text-yellow-500" />
-                                                            GENERATION SUMMARY
-                                                        </h3>
-                                                        <p className="text-[10px] text-gray-500 mt-1">
-                                                            {genStats.totalHouses?.toLocaleString?.() || genStats.totalHouses} doors ready • {genStats.routeCount} route{genStats.routeCount === 1 ? '' : 's'}
-                                                        </p>
-                                                    </div>
-                                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 w-full">
-                                                        {/* @ts-ignore */}
-                                                        <Button
-                                                            onClick={onAutoAssignAll}
-                                                            size="sm"
-                                                            className="w-full h-8 bg-green-600 hover:bg-green-500 text-white font-bold text-[10px]"
-                                                        >
-                                                            <User className="w-3 h-3 mr-1" />
-                                                            AUTO-DISPATCH
-                                                        </Button>
-                                                        <div className="w-full flex items-center justify-center p-2 bg-green-500/10 border border-green-500/30 rounded-lg">
-                                                            <span className="text-[10px] font-bold text-green-500 flex items-center gap-1.5">
-                                                                <CheckCircle2 className="w-3 h-3" />
-                                                                AUTO-SAVING TO ACTIVE
-                                                            </span>
-                                                        </div>
-                                                        {/* @ts-ignore */}
-                                                        {generatedRoutes.length === 1 ? (
-                                                            <SplitRouteButton
-                                                                route={generatedRoutes[0]}
-                                                                onReplaceRoutes={onReplaceRoutes}
-                                                            />
-                                                        ) : (
-                                                            <Button
-                                                                onClick={async () => {
-                                                                    const baseRoutes = (filteredRoutes && filteredRoutes.length > 0) ? filteredRoutes : generatedRoutes;
-                                                                    const seen = new Set();
-                                                                    const allProps = [];
-                                                                    baseRoutes.forEach(r => {
-                                                                        const props = r.allProperties || r.properties || [];
-                                                                        console.log(`[RoutePipeline] merge_all_input route=${r.id} hashes=${r.property_hashes?.length || 0} props=${props.length}`);
-                                                                        props.forEach(p => {
-                                                                            const key = p.address_hash || p.id;
-                                                                            if (key && !seen.has(key)) { seen.add(key); allProps.push(p); }
-                                                                        });
-                                                                    });
-                                                                    console.log(`[RoutePipeline] after_merge_all_union routes=${baseRoutes.length} union=${allProps.length}`);
-                                                                    if (allProps.length === 0) return;
-                                                                    const firstRoute = baseRoutes[0];
-                                                                    const routeBoundsKey = (route) => {
-                                                                        const start = route?.startLocation || route?.start_location;
-                                                                        const end = route?.endLocation || route?.end_location;
-                                                                        return JSON.stringify({
-                                                                            mode: route?.routeOriginMode || route?.route_origin_mode || 'none',
-                                                                            start: start ? [Number(start.lat), Number(start.lng)] : null,
-                                                                            end: end ? [Number(end.lat), Number(end.lng)] : null
-                                                                        });
-                                                                    };
-                                                                    const sameAssignee = baseRoutes.every(route =>
-                                                                        (route?.assigned_to || null) === (firstRoute?.assigned_to || null)
-                                                                    );
-                                                                    const firstOriginMode = firstRoute?.routeOriginMode || firstRoute?.route_origin_mode || 'none';
-                                                                    const firstStart = firstRoute?.startLocation || firstRoute?.start_location;
-                                                                    const firstEnd = firstRoute?.endLocation || firstRoute?.end_location;
-                                                                    const hasFirstBounds = firstStart && firstEnd
-                                                                        && firstStart.lat != null && firstStart.lat !== '' && firstStart.lng != null && firstStart.lng !== ''
-                                                                        && firstEnd.lat != null && firstEnd.lat !== '' && firstEnd.lng != null && firstEnd.lng !== ''
-                                                                        && Number.isFinite(Number(firstStart.lat)) && Number.isFinite(Number(firstStart.lng))
-                                                                        && Number.isFinite(Number(firstEnd.lat)) && Number.isFinite(Number(firstEnd.lng));
-                                                                    const sharedRouteBounds = sameAssignee && firstOriginMode !== 'none' &&
-                                                                        hasFirstBounds &&
-                                                                        baseRoutes.every(route => routeBoundsKey(route) === routeBoundsKey(firstRoute));
-                                                                    const mergeStart = sharedRouteBounds
-                                                                        ? (firstRoute.startLocation || firstRoute.start_location)
-                                                                        : null;
-                                                                    const mergeEnd = sharedRouteBounds
-                                                                        ? (firstRoute.endLocation || firstRoute.end_location)
-                                                                        : null;
-                                                                    const routingContext = createRouteContinuityContext(allProps);
-                                                                    const merged = await completeBetaGeneratedRoutes(generateOptimizedRoutes(
-                                                                        allProps,
-                                                                        allProps.length,
-                                                                        mergeStart,
-                                                                        [],
-                                                                        {
-                                                                            minimizeTurns: true,
-                                                                            use2Opt: true,
-                                                                            walkingPattern: 'nearest',
-                                                                            endLocation: mergeEnd,
-                                                                            routeOriginMode: sharedRouteBounds ? firstOriginMode : 'none',
-                                                                            excludeTerminal: false,
-                                                                            preserveInputMembership: true,
-                                                                            routingContext
-                                                                        }
-                                                                    ), { entryPoint: 'generated_routes_merge' });
-                                                                    if (merged && merged.length > 0) {
-                                                                        const big = {
-                                                                            ...merged[0],
-                                                                            id: 'route_merged',
-                                                                            name: 'All-in-One Route',
-                                                                            assigned_to: sameAssignee ? firstRoute?.assigned_to || null : null,
-                                                                            assigned_to_name: sameAssignee ? firstRoute?.assigned_to_name || null : null
-                                                                        };
-                                                                        if (onSaveRoute) {
-                                                                            onSaveRoute(big, big.assigned_to, big.assigned_to_name);
-                                                                        }
-                                                                        if (onReplaceRoutes) {
-                                                                            onReplaceRoutes([big]);
-                                                                        } else {
-                                                                            onSelectRoute(big);
-                                                                        }
-                                                                    }
-                                                                }}
-                                                                size="sm"
-                                                                className="w-full h-8 bg-yellow-600 hover:bg-yellow-500 text-black font-bold text-[10px]" title="Combine all into one optimized mega route"
-                                                            >
-                                                                MERGE ALL
-                                                            </Button>
-                                                        )}
-                                                        <Button
-                                                            onClick={() => {
-                                                                if (confirm("Are you sure you want to clear all generated routes?")) {
-                                                                    if (onReplaceRoutes) onReplaceRoutes([]);
-                                                                }
-                                                            }}
-                                                            size="sm"
-                                                            className="w-full h-8 bg-red-900/40 hover:bg-red-900/60 text-red-500 border border-red-900/50 font-bold text-[10px]"
-                                                        >
-                                                            <Trash2 className="w-3 h-3 mr-1" />
-                                                            CLEAR ALL
-                                                        </Button>
-                                                    </div>
-                                                </div>
-
-                                                <div className="grid grid-cols-4 gap-2">
-                                                    <StatBox label="Doors" value={genStats.totalHouses} />
-                                                    <StatBox label="Routes" value={genStats.routeCount} highlight />
-                                                    <StatBox label="Avg Score" value={genStats.avgScore} tooltip="Score based on Equity, Sales Activity, and Efficiency. High Score = Better Route." />
-                                                    <StatBox label="Miles" value={genStats.totalDist} />
-                                                </div>
-
-                                                {genStats.excludedCount > 0 && (
-                                                    <div className="flex items-center gap-2 text-[10px] text-gray-400 bg-black/30 p-2 rounded-lg mt-3 border border-red-900/30">
-                                                        <Shield className="w-3 h-3 text-red-500" />
-                                                        <span className="text-white font-bold">{genStats.excludedCount}</span> properties excluded (Sold/Hard No/Cooldown) to prevent double dipping.
-                                                    </div>
-                                                )}
-
-                                                {genStats.highPotentialCount > 0 && (
-                                                    <div className="flex items-center gap-2 text-[10px] text-gray-400 bg-black/30 p-2 rounded-lg mt-3">
-                                                        <Flame className="w-3 h-3 text-orange-500" />
-                                                        <span className="text-white font-bold">{genStats.highPotentialCount}</span> high potential routes (100+ score)
-                                                    </div>
-                                                )}
-                                            </div>
-                                        )}
-
-                                        {/* Route List */}
-                                        <div className="space-y-3">
-                                            {visibleFilteredRoutes.map((route, idx) => (
-                                                <NewRouteCard
-                                                    key={route.id}
-                                                    route={route}
-                                                    rank={idx + 1}
-                                                    isActive={activeRouteId === route.id}
-                                                    recommendation={getRepRecommendations?.(route.properties[0])?.[0]}
-                                                    onSelect={() => selectRouteForMapAndKnock({
-                                                        ...route,
-                                                        route_number: idx + 1,
-                                                        name: (!route.name || /^Route\s+\d+$/i.test(route.name)) ? `Route ${idx + 1}` : route.name
-                                                    })}
-                                                    onSave={(repId, repName) => onSaveRoute({
-                                                        ...route,
-                                                        route_number: idx + 1,
-                                                        name: (!route.name || /^Route\s+\d+$/i.test(route.name)) ? `Route ${idx + 1}` : route.name
-                                                    }, repId, repName)}
-                                                    logs={logs}
-                                                />
-                                            ))}
-                                        </div>
-                                    </>
-                                )}
-                            </>
-                        )}
-
-                        {normalizedRouteSearch && operationalSavedRoutes.length === 0 && visibleFilteredRoutes.length === 0 && (
+                        {normalizedRouteSearch && operationalSavedRoutes.length === 0 && pendingGeneratedRoutes.length === 0 && (
                             <div className="py-12 text-center text-sm font-bold text-white/40">No routes match “{routeSearch.trim()}”.</div>
                         )}
 
                         {/* ACTIVE ROUTES TAB */}
                         {activeTab === 'active' && (
-                            <ActiveRoutesTab
-                                savedRoutes={operationalSavedRoutes}
-                                routesByStatus={routesByStatus}
-                                repColors={repColors}
-                                onSelectRoute={selectRouteForMapAndKnock}
-                                activeRouteId={activeRouteId}
-                                onDeleteRoute={onDeleteRoute}
-                                onDeleteAllRoutes={onDeleteAllRoutes}
-                                onReoptimizeRoute={onReoptimizeRoute}
-                                routeConfig={routeConfig}
-                                logs={logs}
-                                onReplaceRoutes={onReplaceRoutes}
-                                teamMembers={teamMembers}
-                                onSplitRoute={setSplitRoute}
-                            />
+                            <>
+                                {pendingGeneratedRoutes.map((route, index) => (
+                                    <SavedRouteCard
+                                        key={route.id}
+                                        route={{ ...route, isSaved: false, status: 'ACTIVE',
+                                            metadata: { ...route.metadata, newly_generated: true },
+                                            created_date: route.created_date || new Date().toISOString() }}
+                                        routeNumber={operationalSavedRoutes.length + index + 1}
+                                        repColor="#666"
+                                        isActive={activeRouteId === route.id}
+                                        onSelect={() => selectRouteForMapAndKnock({ ...route, isSaved: false })}
+                                        onSave={() => onSaveRoute?.(route)}
+                                        logs={logs}
+                                    />
+                                ))}
+                                {(operationalSavedRoutes.length > 0 || pendingGeneratedRoutes.length === 0) && (
+                                    <ActiveRoutesTab
+                                        savedRoutes={operationalSavedRoutes}
+                                        routesByStatus={routesByStatus}
+                                        repColors={repColors}
+                                        onSelectRoute={selectRouteForMapAndKnock}
+                                        activeRouteId={activeRouteId}
+                                        onDeleteRoute={onDeleteRoute}
+                                        onDeleteAllRoutes={onDeleteAllRoutes}
+                                        onReoptimizeRoute={onReoptimizeRoute}
+                                        routeConfig={routeConfig}
+                                        logs={logs}
+                                        onReplaceRoutes={onReplaceRoutes}
+                                        teamMembers={teamMembers}
+                                        onSplitRoute={setSplitRoute}
+                                    />
+                                )}
+                            </>
                         )}
 
                         {/* BY REP TAB */}
@@ -527,7 +288,7 @@ export default function RouteCommandPanel({
                                                 routeNumber={routeNumberMap.get(route.id)}
                                                 repColor="#666"
                                                 isActive={activeRouteId === route.id}
-                                                onSelect={async () => onSelectRoute(await hydrateRouteForMap(route, viewerEmail))}
+                                                onSelect={() => selectRouteForMapAndKnock(route)}
                                                 onDelete={() => onDeleteRoute && onDeleteRoute(route)}
                                                 logs={logs}
                                                 onReoptimize={onReoptimizeRoute}
@@ -565,361 +326,3 @@ export default function RouteCommandPanel({
 }
 
 // Sub-components
-function SplitRouteButton({ route, onReplaceRoutes }) {
-    const [showSplit, setShowSplit] = useState(false);
-    const splitOptions = [2, 3, 4, 5, 10];
-    const totalHouses = route?.houseCount || route?.properties?.length || 0;
-
-    if (showSplit) {
-        return (
-            <div className="w-full flex flex-col gap-1">
-                <p className="text-[9px] text-gray-400 font-bold text-center">SPLIT INTO:</p>
-                <div className="flex gap-1 flex-wrap justify-center">
-                    {splitOptions.filter(n => n < totalHouses).map(n => (
-                        <Button
-                            key={n}
-                            onClick={async () => {
-                                const perRoute = Math.ceil(totalHouses / n);
-                                const routingContext = createRouteContinuityContext(route.properties);
-                                const splits = await completeBetaGeneratedRoutes(generateOptimizedRoutes(
-                                    route.properties, perRoute, null, [],
-                                    { minimizeTurns: true, use2Opt: true, walkingPattern: 'nearest', excludeTerminal: false, preserveInputMembership: true, routingContext }
-                                ), { entryPoint: 'generated_route_split' });
-                                if (splits && splits.length > 0 && onReplaceRoutes) {
-                                    onReplaceRoutes(splits);
-                                }
-                                setShowSplit(false);
-                            }}
-                            size="sm"
-                            className="h-7 px-3 bg-purple-600 hover:bg-purple-500 text-white font-bold text-[10px]"
-                        >
-                            {n} routes (~{Math.ceil(totalHouses / n)} ea)
-                        </Button>
-                    ))}
-                    <Button onClick={() => setShowSplit(false)} size="sm" className="h-7 px-2 bg-gray-800 hover:bg-gray-700 text-gray-400 text-[10px]">
-                        <X className="w-3 h-3" />
-                    </Button>
-                </div>
-            </div>
-        );
-    }
-
-    return (
-        <Button
-            onClick={() => setShowSplit(true)}
-            size="sm"
-            className="w-full h-8 bg-purple-600 hover:bg-purple-500 text-white font-bold text-[10px]"
-            title="Split this route into smaller routes"
-        >
-            <Scissors className="w-3 h-3 mr-1" />
-            SPLIT ROUTE
-        </Button>
-    );
-}
-
-function StatBox({ label, value, highlight = false, tooltip = undefined }) {
-    return (
-        <div className="bg-black/40 p-2 rounded-lg border border-white/5 text-center relative group">
-            {tooltip && (
-                <div className="absolute top-1 right-1 opacity-50 hover:opacity-100 cursor-help">
-                    <TooltipProvider>
-                        <Tooltip>
-                            <TooltipTrigger><HelpCircle className="w-3 h-3 text-gray-500" /></TooltipTrigger>
-                            <TooltipContent className="bg-black border border-gray-800 text-white text-xs max-w-[200px]">
-                                <p>{tooltip}</p>
-                            </TooltipContent>
-                        </Tooltip>
-                    </TooltipProvider>
-                </div>
-            )}
-            <p className={`text-lg font-bold ${highlight ? 'text-yellow-500' : 'text-white'}`}>{value}</p>
-            <p className="text-[9px] text-gray-500 uppercase font-bold">{label}</p>
-        </div>
-    );
-}
-
-function RouteSection({ title, icon, routes, repColors, onSelectRoute, activeRouteId, collapsed = false, onDeleteRoute, logs = [], onReoptimize, routeConfig }) {
-    const [isExpanded, setIsExpanded] = useState(!collapsed);
-
-    return (
-        <div className="space-y-2">
-            <button
-                onClick={() => setIsExpanded(!isExpanded)}
-                className="flex items-center gap-2 px-1 w-full text-left"
-            >
-                {icon}
-                <span className="text-xs font-bold text-gray-400 uppercase">{title}</span>
-                <Badge variant="outline" className="bg-white/10 text-white text-[9px]">{routes.length}</Badge>
-                <ChevronRight className={`w-4 h-4 text-gray-600 ml-auto transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
-            </button>
-
-            {isExpanded && routes.map(route => (
-                <SavedRouteCard
-                    key={route.id}
-                    route={route}
-                    repColor={route.assigned_to ? repColors[route.assigned_to] : '#666'}
-                    isActive={activeRouteId === route.id}
-                    onSelect={() => onSelectRoute(route)}
-                    onDelete={() => onDeleteRoute && onDeleteRoute(route)}
-                    logs={logs}
-                    onReoptimize={onReoptimize}
-                    routeConfig={routeConfig}
-                />
-            ))}
-        </div>
-    );
-}
-
-function NewRouteCard({ route, rank, isActive, recommendation, onSelect, onSave, logs = [] }) {
-    const displayName = (!route.name || /^Route\s+\d+$/i.test(route.name)) ? `Route ${rank}` : route.name;
-
-    // Compute knock stats from logs
-    const knockStats = useMemo(() => {
-        const hashes = new Set((route.properties || []).map(p => p.address_hash).filter(Boolean));
-        const routeLogs = logs.filter(l => hashes.has(l.address_hash));
-        const knockedHashes = new Set(routeLogs.map(l => l.address_hash));
-        return { knocked: knockedHashes.size, total: hashes.size };
-    }, [route.properties, logs]);
-
-    const dateRange = useMemo(() => {
-        const dates = (route.properties || [])
-            .map(p => p.sold_date ? new Date(p.sold_date).getTime() : null)
-            .filter(Boolean);
-        if (dates.length === 0) return null;
-        const min = new Date(Math.min(...dates));
-        const max = new Date(Math.max(...dates));
-        return formatDateRange(min, max);
-    }, [route.properties]);
-
-    return (
-        <div
-            className="p-2 sm:p-3 rounded-xl border transition-all relative overflow-hidden w-full max-w-full box-border"
-            style={{
-                background: isActive ? `${BRAND.gold}15` : BRAND.charcoal,
-                borderColor: isActive ? BRAND.gold : '#333'
-            }}
-        >
-            {/* Rank Ribbon */}
-            {rank <= 3 && (
-                <div className={`absolute top-0 left-0 w-12 h-12 flex items-center justify-center rounded-br-2xl text-black font-bold text-lg shadow-lg z-10 ${rank === 1 ? 'bg-yellow-400' : rank === 2 ? 'bg-gray-300' : rank === 3 ? 'bg-orange-700' : ''
-                    }`}>
-                    #{rank}
-                </div>
-            )}
-
-            <button onClick={onSelect} className={`w-full max-w-full text-left overflow-hidden ${rank <= 3 ? 'pl-8' : ''}`}>
-                <div className="flex items-center justify-between mb-1.5 gap-2 min-w-0">
-                    <span className="font-bold text-white flex items-center gap-2 min-w-0 flex-1">
-                        {rank > 3 && <span className="text-gray-500 text-xs">#{rank}</span>}
-                        <span className="truncate">{displayName}</span>
-                    </span>
-                    <div className="flex items-center gap-1.5 shrink-0 max-w-[120px] sm:max-w-none overflow-hidden">
-                        {dateRange && (
-                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 border border-blue-500/30 truncate max-w-[80px] sm:max-w-none">
-                                {dateRange}
-                            </span>
-                        )}
-                        <Badge variant="default" className="shrink-0" style={{
-                            background: route.competitivenessScore >= 150 ? '#22c55e' :
-                                route.competitivenessScore >= 100 ? '#eab308' : '#666',
-                            color: '#000'
-                        }}>
-                            {route.competitivenessScore || 0}
-                        </Badge>
-                    </div>
-                </div>
-                <div className="flex flex-wrap gap-x-2.5 gap-y-0.5 text-[11px] text-gray-500">
-                    <span>{route.houseCount} doors</span>
-                    <span>{route.streetCount || '?'} streets</span>
-                    <span>{route.totalDistance} mi</span>
-                    {knockStats.knocked > 0 && (
-                        <span className="text-yellow-500 font-bold">{knockStats.knocked}/{knockStats.total} knocked</span>
-                    )}
-                </div>
-                {knockStats.total > 0 && (
-                    <div className="mt-1 h-1 rounded-full overflow-hidden" style={{ background: '#222' }}>
-                        <div className="h-full rounded-full transition-all" style={{ width: `${(knockStats.knocked / knockStats.total) * 100}%`, background: knockStats.knocked === knockStats.total ? '#22c55e' : '#FFD700' }} />
-                    </div>
-                )}
-            </button>
-
-            {/* Rep Info */}
-            {recommendation && (
-                <div className="flex items-center justify-between text-[9px] text-gray-500 mt-2 px-1">
-                    <span className="flex items-center gap-1">
-                        <MapPin className="w-3 h-3" />
-                        {recommendation.distance ? `${recommendation.distance}mi` : 'N/A'}
-                    </span>
-                    <span>Perf: {recommendation.performanceScore}</span>
-                    {recommendation.activeRoutesCount > 0 && (
-                        <span className="text-yellow-500">{recommendation.activeRoutesCount} active</span>
-                    )}
-                </div>
-            )}
-        </div>
-    );
-}
-
-function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDelete, logs = [], onReoptimize, routeConfig, onSplit }) {
-    const [editing, setEditing] = useState(false);
-    const [newName, setNewName] = useState(route.name);
-    const queryClient = useQueryClient();
-
-    // Compute knock stats from logs
-    const knockStats = useMemo(() => {
-        const hashes = new Set(
-            (route.property_hashes || (route.properties || []).map(p => p.address_hash)).filter(Boolean)
-        );
-        const routeLogs = logs.filter(l => hashes.has(l.address_hash));
-        const knockedHashes = new Set(routeLogs.map(l => l.address_hash));
-        return { knocked: knockedHashes.size, total: hashes.size };
-    }, [route.property_hashes, route.properties, logs]);
-
-    const dateRange = useMemo(() => {
-        const props = route.properties || [];
-        const dates = props
-            .map(p => p.sold_date ? new Date(p.sold_date).getTime() : null)
-            .filter(Boolean);
-        if (dates.length === 0) return null;
-        const min = new Date(Math.min(...dates));
-        const max = new Date(Math.max(...dates));
-        return formatDateRange(min, max);
-    }, [route.properties]);
-
-    const handleRename = async () => {
-        if (!newName.trim() || newName === route.name) { setEditing(false); return; }
-        await base44.entities.SavedRoute.update(route.id, { name: newName.trim() });
-        queryClient.invalidateQueries({ queryKey: ['savedRoutes'] });
-        setEditing(false);
-    };
-
-    const displayName = routeNumber && (!route.name || /^Route\s+\d+$/i.test(route.name)) ? `Route ${routeNumber}` : route.name;
-    const routeBoundsBadge = getRouteBoundsBadge(route);
-
-    return (
-        <div className="relative group max-w-full overflow-hidden">
-            <div
-                onClick={onSelect}
-                role="button"
-                tabIndex={0}
-                className="w-full max-w-full overflow-hidden rounded-2xl border p-3 text-left shadow-[0_10px_28px_rgba(0,0,0,0.28)] transition-all hover:-translate-y-0.5 hover:border-[#2EEB57]/40 cursor-pointer"
-                style={{
-                    background: isActive ? 'linear-gradient(135deg, rgba(46,235,87,0.16), rgba(21,21,21,0.98))' : 'linear-gradient(135deg, rgba(255,255,255,0.045), rgba(10,10,10,0.98))',
-                    borderColor: isActive ? '#2EEB57' : 'rgba(255,255,255,0.08)',
-                    borderLeftWidth: '3px',
-                    borderLeftColor: repColor
-                }}
-            >
-                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between min-w-0 gap-1.5 pr-12 sm:pr-0">
-                    <div className="flex-1 min-w-0">
-                        {editing ? (
-                            <div className="flex items-center gap-1 min-w-0" onClick={e => e.stopPropagation()}>
-                                <input
-                                    value={newName}
-                                    onChange={e => setNewName(e.target.value)}
-                                    onKeyDown={e => { if (e.key === 'Enter') handleRename(); if (e.key === 'Escape') setEditing(false); }}
-                                    className="bg-black/60 border border-gray-600 text-white text-sm font-bold rounded px-2 py-0.5 w-full min-w-0"
-                                    autoFocus
-                                />
-                                <button onClick={handleRename} className="p-1 text-green-500 hover:text-green-400"><Check className="w-4 h-4" /></button>
-                                <button onClick={() => { setNewName(route.name); setEditing(false); }} className="p-1 text-gray-500 hover:text-white"><X className="w-4 h-4" /></button>
-                            </div>
-                        ) : (
-                            <div className="flex items-center gap-1.5 min-w-0">
-                                {routeNumber && (
-                                    <span className="shrink-0 w-6 h-6 rounded-md bg-white/10 border border-white/20 flex items-center justify-center text-[11px] font-bold text-yellow-400">
-                                        {routeNumber}
-                                    </span>
-                                )}
-                                <span className="font-bold text-sm text-white truncate">{displayName}</span>
-                                <button
-                                    onClick={e => { e.stopPropagation(); setEditing(true); }}
-                                    className="p-0.5 text-gray-600 hover:text-white transition-colors opacity-0 group-hover:opacity-100"
-                                    title="Rename"
-                                >
-                                    <Pencil className="w-3 h-3" />
-                                </button>
-                            </div>
-                        )}
-                        {route.assigned_to_name && (
-                            <span className="text-[10px] text-gray-500">{route.assigned_to_name}</span>
-                        )}
-                    </div>
-                    <div className="flex flex-row sm:flex-col items-center sm:items-end gap-1 min-w-0 sm:shrink-0">
-                        {dateRange && (
-                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 leading-none truncate max-w-[120px]">
-                                {dateRange}
-                            </span>
-                        )}
-                        <Badge variant="default" className="shrink-0" style={{
-                            background: route.status === 'COMPLETED' ? '#22c55e' :
-                                route.status === 'IN_PROGRESS' ? '#3b82f6' : '#333',
-                            color: '#fff'
-                        }}>
-                            {route.status}
-                        </Badge>
-                    </div>
-                </div>
-                <div className="flex flex-wrap gap-x-2.5 gap-y-0.5 text-[10px] text-gray-600 mt-0.5 min-w-0">
-                    <span>{route.houseCount || route.metrics?.house_count} doors</span>
-                    <span>{route.competitivenessScore || route.metrics?.score || 0} score</span>
-                    {knockStats.knocked > 0 && (
-                        <span className="text-yellow-500 font-bold">{knockStats.knocked}/{knockStats.total} knocked</span>
-                    )}
-                    {routeBoundsBadge && (
-                        <span className="inline-flex items-center gap-1 rounded-full border border-amber-400/20 bg-amber-400/10 px-1.5 py-0.5 font-bold text-amber-300">
-                            <Home className="h-3 w-3" /> {routeBoundsBadge}
-                        </span>
-                    )}
-                </div>
-                {knockStats.total > 0 && (
-                    <div className="mt-1 h-1 rounded-full overflow-hidden" style={{ background: '#222' }}>
-                        <div className="h-full rounded-full transition-all" style={{ width: `${(knockStats.knocked / knockStats.total) * 100}%`, background: knockStats.knocked === knockStats.total ? '#22c55e' : '#FFD700' }} />
-                    </div>
-                )}
-                <div className="mt-3 grid grid-cols-[1fr_auto] gap-2" onClick={(e) => e.stopPropagation()}>
-                    <button
-                        onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); onSelect(); }}
-                        className="flex h-11 items-center justify-center gap-2 rounded-xl border border-[#2EEB57]/25 bg-[#2EEB57]/10 text-[11px] font-black text-[#86efac] shadow-none hover:border-[#2EEB57]/45 hover:bg-[#2EEB57]/15 md:h-9"
-                        title="Start this route"
-                    >
-                        <Play className="h-4 w-4 fill-[#86efac]" /> START ROUTE
-                    </button>
-                    {onSplit && (
-                        <button
-                            onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); onSplit(); }}
-                            className="flex h-11 items-center justify-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.04] px-3 text-[10px] font-black text-white/70 hover:bg-white/10 hover:text-white md:h-9"
-                            title="Create smaller optimized routes"
-                        >
-                            <Scissors className="h-4 w-4" /> SPLIT
-                        </button>
-                    )}
-                </div>
-            </div>
-            {onDelete && (
-                <button
-                    onClick={(e) => { e.stopPropagation(); onDelete(); }}
-                    className="absolute top-2 right-2 p-1.5 bg-red-500/20 hover:bg-red-500/40 text-red-500 rounded opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity touch-manipulation"
-                    title="Delete Route"
-                >
-                    <Trash2 className="w-3.5 h-3.5" />
-                </button>
-            )}
-        </div>
-    );
-}
-
-function formatDateRange(min, max) {
-    if (!min || !max) return null;
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const minM = months[min.getMonth()];
-    const minY = min.getFullYear();
-    const maxM = months[max.getMonth()];
-    const maxY = max.getFullYear();
-
-    if (minY === maxY && minM === maxM) return `${minM} ${minY}`;
-    if (minY === maxY) return `${minM} – ${maxM} ${minY}`;
-    return `${minM} ${minY} – ${maxM} ${maxY}`;
-}

@@ -77,6 +77,7 @@ import { previewSavedRoadAwareBeta } from '@/lib/previewSavedRoadAwareBeta';
 import { applyRouteStopRemoval } from '@/lib/routeStopRemoval';
 import { buildRoadAwareGeneratedRoutes } from '@/lib/roadMatrixRouteGeneration'; import { requireUsableRouteContext } from '@/lib/routeContextGuard';
 import { computeAccountWorkingArea } from '@/lib/accountWorkingArea';
+import { getInitialMapMode, claimFirstAreaRouteHandoff } from '@/components/onboarding/firstAreaNavigation';
 
 // Pure polygon/precision-context helpers live in components/map/homeMapHelpers.js
 import {
@@ -163,7 +164,7 @@ export default function Home() {
     const [highlightRecentlySold, setHighlightRecentlySold] = useState(false);
     const [showAllProperties, setShowAllProperties] = useState(false);
     const [viewMode, setViewMode] = useState('pins'); // 'pins' or 'heatmap'
-    const [mode, setModeRaw] = useState('analyze'); // Default to routes mode
+    const [mode, setModeRaw] = useState(() => getInitialMapMode(window.location.search));
     const setMode = (newMode) => setModeRaw(newMode);
     useEffect(() => {
         const openRunRoute = () => { setModeRaw('analyze'); setShowCompare(false); setShowChecklist(false); setShowRoutePanel(true); }, openMap = () => { setShowChecklist(false); setShowRoutePanel(false); }; window.addEventListener('fk-run-route-open', openRunRoute); window.addEventListener('fk-map-tab-open', openMap); if (new URLSearchParams(window.location.search).get('runRoute') === '1') openRunRoute(); return () => { window.removeEventListener('fk-run-route-open', openRunRoute); window.removeEventListener('fk-map-tab-open', openMap); };
@@ -1468,13 +1469,19 @@ export default function Home() {
         const params = new URLSearchParams(window.location.search);
         if (params.get('startDraw') === 'true') {
             const shapeParam = params.get('drawShape');
+            setModeRaw('generate');
+            setShowCompare(false);
+            setShowRoutePanel(false);
             setDrawnPolygon(null);
             setDraftPolygon([]);
             if (shapeParam && ['circle', 'square', 'triangle'].includes(shapeParam)) {
                 setDrawShape(shapeParam);
             }
             setDrawingMode(true);
-            window.history.replaceState({}, '', window.location.pathname);
+            params.delete('startDraw');
+            params.delete('drawShape');
+            const query = params.toString();
+            window.history.replaceState({}, '', `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`);
         }
     }, []);
 
@@ -1959,12 +1966,23 @@ export default function Home() {
             } else if (generated.length > 0) {
                 toast.info(`Route has ${generated[0].houseCount} properties — too large to auto-save. View on map.`, { id: 'build-routes', duration: 5000 });
             }
-            // Go straight to the map: activate the first generated route instead of opening the command panel
+            // The first tutorial generation opens the regular route list once.
+            // Subsequent generations keep the existing map activation behavior.
             const firstRoute = generated[0];
             const firstSaved = savedByGeneratedRoute.get(firstRoute);
-            setActiveRoute(firstSaved?.id ? { ...firstRoute, id: firstSaved.id, isSaved: true, status: firstSaved.status || 'ACTIVE' } : firstRoute);
+            const firstRemotelySaved = firstSaved?.id && !String(firstSaved.id).startsWith('local_');
+            setActiveRoute(firstRemotelySaved ? { ...firstRoute, id: firstSaved.id, isSaved: true, status: firstSaved.status || 'ACTIVE' } : { ...firstRoute, isSaved: false });
             setPreviewRoute(null);
-            setShowRoutePanel(false); setShowCompare(false);
+            const openFirstAreaRoutes = claimFirstAreaRouteHandoff(user, localStorage);
+            if (openFirstAreaRoutes) setModeRaw('analyze');
+            setShowRoutePanel(openFirstAreaRoutes);
+            setShowCompare(false);
+            const params = new URLSearchParams(window.location.search);
+            if (params.has('onboarding')) {
+                params.delete('onboarding');
+                const query = params.toString();
+                window.history.replaceState({}, '', `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`);
+            }
             let skippedDueToAssigned = 0;
             if (effectiveRouteConfig.excludeAssigned) {
                 skippedDueToAssigned = (effectiveProperties.length - availableProperties.length) +
@@ -2752,19 +2770,25 @@ export default function Home() {
                     <RouteCommandPanel
                         generatedRoutes={routes}
                         savedRoutes={hydratedSavedRoutes}
-                        filteredRoutes={filteredRoutes}
-                        genStats={genStats}
                         repColors={repColors}
                         teamMembers={teamMembers}
                         viewerEmail={user?.email}
-                        getRepRecommendations={getRepRecommendations}
                         onSelectRoute={(route) => {
                             setActiveRoute(route);
                             setPreviewRoute(null);
                             setShowRoutePanel(false);
                         }}
-                        onSaveRoute={handleSaveRoute}
-                        onAutoAssignAll={handleAutoAssignAll}
+                        onSaveRoute={async (route) => {
+                            const saved = await handleSaveRoute(route, null, null, true);
+                            if (!saved?.id || String(saved.id).startsWith('local_')) {
+                                toast.warning('Route is available on this device. Retry saving when online.');
+                                return;
+                            }
+                            await queryClient.refetchQueries({ queryKey: ['savedRoutes'] });
+                            setRoutes(current => current.filter(candidate => candidate.id !== route.id));
+                            setActiveRoute(current => current?.id === route.id ? { ...current, ...saved, isSaved: true } : current);
+                            toast.success('Route saved');
+                        }}
                         onDeleteAllRoutes={async () => {
                             try {
                                 const ids = hydratedSavedRoutes.map(r => r.id);
@@ -2784,12 +2808,9 @@ export default function Home() {
                         onReplaceRoutes={(newRoutes) => setRoutes(newRoutes)}
                         onClose={() => setShowRoutePanel(false)}
                         activeRouteId={activeRoute?.id}
-                        streetCooldownDays={streetCooldownDays}
-                        zipCodeFilter={zipCodeFilter}
-                        housesPerRoute={housesPerRoute}
                         logs={logs}
                         onReoptimizeRoute={handleReoptimizeRoute}
-                        routeConfig={routeConfig} mode={mode}
+                        routeConfig={routeConfig}
                     />
                 </React.Suspense>
             )}
