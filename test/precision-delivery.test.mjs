@@ -42,8 +42,47 @@ test('generation rejects wrong, unfinished, foreign-mode, and inaccessible jobs 
         await assert.rejects(loadPrecisionGenerationJob(client, completedStatus.job_id));
         assert.deepEqual(calls, ['fetchJobStatus']);
     }
-    const denied = new Error('Not your job');
+    const denied = Object.assign(new Error('Not your job'), { status: 403 });
     await assert.rejects(loadPrecisionGenerationJob({ functions: { invoke: async () => { throw denied; } } }, completedStatus.job_id), error => error === denied);
+});
+
+test('generation retries a transient status 500 using the same import without another paid pull', async () => {
+    const calls = [];
+    const client = { functions: { invoke: async (name, body) => {
+        calls.push({ name, body });
+        if (calls.length === 1) throw Object.assign(new Error('Request failed with status code 500'), { response: { status: 500 } });
+        return { data: completedStatus };
+    } } };
+    const job = await loadPrecisionGenerationJob(client, completedStatus.job_id);
+    assert.equal(job.id, completedStatus.job_id);
+    assert.deepEqual(calls, Array.from({ length: 2 }, () => ({ name: 'fetchJobStatus', body: { job_id: completedStatus.job_id } })));
+});
+
+test('generation does not retry inaccessible imports or bypass ownership validation', async () => {
+    for (const status of [401, 403, 404, 409]) {
+        let calls = 0;
+        const denied = Object.assign(new Error('Import unavailable'), { response: { status } });
+        const client = { functions: { invoke: async name => {
+            assert.equal(name, 'fetchJobStatus');
+            calls++;
+            throw denied;
+        } } };
+        await assert.rejects(loadPrecisionGenerationJob(client, completedStatus.job_id), error => error === denied);
+        assert.equal(calls, 1);
+    }
+});
+
+test('a persistent status 500 exhausts bounded retries and never creates a new import', async () => {
+    let calls = 0;
+    const failure = Object.assign(new Error('Request failed with status code 500'), { response: { status: 500, data: { error: 'Rate limit exceeded' } } });
+    const client = { functions: { invoke: async (name, body) => {
+        assert.equal(name, 'fetchJobStatus');
+        assert.equal(body.job_id, completedStatus.job_id);
+        calls++;
+        throw failure;
+    } } };
+    await assert.rejects(loadPrecisionGenerationJob(client, completedStatus.job_id), error => error === failure);
+    assert.equal(calls, 3);
 });
 
 test('remembered pulls use the same owned status path and keep recovery after a failed route build', async () => {

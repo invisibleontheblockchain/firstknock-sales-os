@@ -28,11 +28,7 @@ function harness({ caller = manager, savedUser = caller, members = [member], loc
   const base44 = { auth: { me: async () => caller }, asServiceRole: { entities: {
     User: {
       get: async id => { reads.push({ userId: id }); return id === savedUser?.id ? savedUser : id === manager.id ? manager : null; },
-      filter: async query => {
-        reads.push({ userIds: query.id });
-        return [savedUser, manager].filter((account, index, accounts) => account && query.id.includes(account.id)
-          && accounts.findIndex(value => value?.id === account.id) === index);
-      },
+      filter: async () => assert.fail('Built-in User records must use the production-compatible get path'),
     },
     TeamMember: { filter: filter(members) },
     RepLocation: {
@@ -90,12 +86,11 @@ test('publishing binds location to the saved rep identity and membership', async
   assert.equal(writes[0].rep_user_id, rep.id);
 });
 
-test('publish verifies caller and manager in one saved-account read and only loads the latest location', async () => {
+test('publish verifies caller and manager with supported account reads and only loads the latest location', async () => {
   const locations = Array.from({ length: 501 }, (_, index) => fresh({ id: `location-${index}` }));
   const { invoke, reads, writes } = harness({ caller: rep, locations });
   assert.equal((await invoke({ ...fresh(), action: 'publish' })).status, 200);
-  assert.deepEqual([...reads[0].userIds], [rep.id, manager.id]);
-  assert.equal(reads.some(read => read.userId), false);
+  assert.deepEqual(reads.filter(read => read.userId).map(read => read.userId), [rep.id, manager.id]);
   const locationReads = reads.filter(read => read.query?.rep_user_id);
   assert.equal(locationReads.length, 1);
   assert.equal(locationReads[0].limit, 1);
