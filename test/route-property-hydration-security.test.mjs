@@ -31,12 +31,17 @@ function loadHandler({
   workspaceError = null,
   canonicalError = null,
   managerRecord,
+  masterPropertyFilter,
+  databaseUrl = 'postgres://test',
+  routeGet,
+  managerGet,
 } = {}) {
   let handler;
   const sqlCalls = [];
   const sqlValueCalls = [];
   const routeFilterQueries = [];
   const interactionFilterQueries = [];
+  const masterPropertyQueries = [];
   const sql = async (strings, ...values) => {
     const query = strings.join(' ');
     sqlCalls.push(query);
@@ -55,6 +60,8 @@ function loadHandler({
     throw new Error(`Unexpected SQL in hydration test: ${query}`);
   };
   const filterMasterProperty = async (query, sort, limit) => {
+    masterPropertyQueries.push({ query, sort, limit });
+    if (masterPropertyFilter) return masterPropertyFilter({ query, sort, limit });
     const [field, criterion] = Object.entries(query || {})[0] || [];
     const values = Array.isArray(criterion)
       ? criterion
@@ -65,7 +72,7 @@ function loadHandler({
     auth: { me: async () => user },
     entities: {
       SavedRoute: {
-        get: async (id) => id === route?.id ? route : null,
+        get: async (id) => routeGet ? routeGet(id) : (id === route?.id ? route : null),
         filter: async (query, sort, limit, skip) => {
           routeFilterQueries.push(query);
           if (routeFilter) return routeFilter({ query, sort, limit, skip, route });
@@ -87,6 +94,7 @@ function loadHandler({
         MasterProperty: { filter: filterMasterProperty },
         User: {
           get: async (id) => {
+            if (managerGet) return managerGet(id);
             if (managerRecord !== undefined) return managerRecord;
             return id === user?.data?.team_manager_id
               ? { id, email: 'manager@example.com' }
@@ -100,11 +108,12 @@ function loadHandler({
     createClientFromRequest: () => base44,
     neon: () => sql,
     Deno: {
-      env: { get: () => 'postgres://test' },
+      env: { get: () => databaseUrl },
       serve: (candidate) => { handler = candidate; },
     },
     Response,
     console,
+    setTimeout: callback => setTimeout(callback, 0),
   };
   vm.runInNewContext(source, sandbox);
   return {
@@ -113,6 +122,7 @@ function loadHandler({
     routeFilterQueries,
     sqlCalls,
     sqlValueCalls,
+    masterPropertyQueries,
   };
 }
 
@@ -1055,7 +1065,7 @@ test('route hydration rejects hashes that are not on the caller-visible route', 
   assert.equal(sqlCalls.length, 0);
 });
 
-const serviceImportRoute = { id: 'import-route', manager_id: 'manager_1', created_by: 'manager@example.com', created_date: '2026-10-02T19:08:28.934Z', property_hashes: ['import_hash'] };
+const serviceImportRoute = { id: 'import-route', manager_id: 'manager_1', created_by: 'manager@example.com', created_date: '2026-10-02T19:08:28.934Z', property_hashes: ['import_hash'], metadata: { source: 'csv_import' } };
 const serviceImportProperty = { id: 'import-property', address_hash: 'import_hash', manager_id: 'manager_1', created_by: 'service+runtime-id@no-reply.base44.com', data_source: 'csv_import', lat: 28.7, lng: -81.3 };
 
 test('service-created imported stops load for their verified manager and assigned workspace reps', async () => {
@@ -1100,4 +1110,227 @@ test('a caller-visible route with a forged foreign manager cannot expose that ma
   const {handler}=loadHandler({user,route,masterProperties:[serviceImportProperty]});
   const {result}=await invoke(handler,{route_id:route.id,address_hashes:route.property_hashes});
   assert.equal(result.count,0);
+});
+
+test('service-created team imports hydrate every batch for managers and reps without Neon', async () => {
+  const properties = Array.from({ length: 263 }, (_, index) => ({
+    ...serviceImportProperty, id: `import-${index}`, address_hash: `hash-${index}`,
+  }));
+  const route = {
+    ...serviceImportRoute, created_by: serviceImportProperty.created_by,
+    property_hashes: properties.map(property => property.address_hash),
+  };
+  for (const user of [
+    { id: 'manager_1', email: 'manager@example.com', role: 'user', app_role: 'manager' },
+    { id: 'rep_1', email: 'rep@example.com', role: 'user', data: { team_manager_id: 'manager_1' } },
+    { id: 'rep_2', email: 'rep2@example.com', role: 'user', team_manager_id: 'manager_1' },
+  ]) {
+    const { handler, sqlCalls, masterPropertyQueries } = loadHandler({ user, route, masterProperties: properties, databaseUrl: null });
+    const { response, result } = await invoke(handler, { route_id: route.id, address_hashes: route.property_hashes });
+    assert.equal(response.status, 200);
+    assert.equal(result.count, 263);
+    assert.deepEqual(result.properties.map(property => property.address_hash), route.property_hashes);
+    assert.equal(sqlCalls.length, 0);
+    assert.equal(masterPropertyQueries.length, 1);
+    assert.ok(masterPropertyQueries.every(({ query }) => query.manager_id === 'manager_1' && Array.isArray(query.address_hash?.$in)));
+  }
+});
+
+test('service import fast lookup retries the alternate filter when the first read fails', async () => {
+  let calls = 0;
+  const { handler, sqlCalls } = loadHandler({
+    user: { id: 'manager_1', email: 'manager@example.com', role: 'user' },
+    route: serviceImportRoute,
+    masterPropertyFilter: () => {
+      if (++calls === 1) throw new Error('temporarily unavailable');
+      return [serviceImportProperty];
+    },
+    databaseUrl: null,
+  });
+  const { response, result } = await invoke(handler, { route_id: serviceImportRoute.id, address_hashes: ['import_hash'] });
+  assert.equal(response.status, 200);
+  assert.equal(result.count, 1);
+  assert.equal(calls, 2);
+  assert.equal(sqlCalls.length, 0);
+});
+
+test('a shared service audit email cannot authorize another team properties', async () => {
+  const { handler } = loadHandler({
+    user: { id: 'manager_1', email: 'manager@example.com', role: 'user' },
+    route: { ...serviceImportRoute, created_by: serviceImportProperty.created_by },
+    masterProperties: [{ ...serviceImportProperty, manager_id: 'foreign-manager' }],
+  });
+  const { result } = await invoke(handler, { route_id: serviceImportRoute.id, address_hashes: ['import_hash'] });
+  assert.equal(result.count, 0);
+});
+
+test('service import legacy aliases load in manifest order and remain route-authorized', async () => {
+  const property = { ...serviceImportProperty, legacy_hash: 'old-import-hash' };
+  const route = { ...serviceImportRoute, property_hashes: ['old-import-hash'] };
+  const { handler, sqlCalls } = loadHandler({
+    user: { id: 'manager_1', email: 'manager@example.com', role: 'user' },
+    route, masterProperties: [property], databaseUrl: null,
+  });
+  const { response, result } = await invoke(handler, { route_id: route.id, address_hashes: ['old-import-hash'] });
+  assert.equal(response.status, 200);
+  assert.equal(result.properties[0].id, property.id);
+  assert.equal(sqlCalls.length, 0);
+  const denied = await invoke(handler, { route_id: route.id, address_hashes: ['import_hash'] });
+  assert.equal(denied.response.status, 403);
+});
+
+test('rate-limited imported property reads retry the same tenant query instead of returning empty routes', async () => {
+  let calls = 0;
+  const { handler, sqlCalls, masterPropertyQueries } = loadHandler({
+    user: { id: 'manager_1', email: 'manager@example.com', role: 'user' },
+    route: serviceImportRoute,
+    masterPropertyFilter: () => {
+      if (++calls <= 2) throw Object.assign(new Error('Rate limit exceeded'), { status: 429 });
+      return [serviceImportProperty];
+    },
+  });
+  const { response, result } = await invoke(handler, { route_id: serviceImportRoute.id, address_hashes: ['import_hash'] });
+  assert.equal(response.status, 200);
+  assert.equal(result.count, 1);
+  assert.equal(calls, 3);
+  assert.ok(masterPropertyQueries.every(({ query }) => query.manager_id === 'manager_1' && query.address_hash.$in));
+  assert.equal(sqlCalls.length, 0);
+});
+
+test('persistent import rate limits remain retryable failures and never become successful empty loads', async () => {
+  let calls = 0;
+  const { handler, sqlCalls } = loadHandler({
+    user: { id: 'manager_1', email: 'manager@example.com', role: 'user' },
+    route: serviceImportRoute,
+    masterPropertyFilter: () => {
+      calls++;
+      throw Object.assign(new Error('Rate limit exceeded'), { response: { status: 429 } });
+    },
+  });
+  const { response, result } = await invoke(handler, { route_id: serviceImportRoute.id, address_hashes: ['import_hash'] });
+  assert.equal(response.status, 429);
+  assert.equal(result.count, undefined);
+  assert.equal(calls, 4);
+  assert.equal(sqlCalls.length, 0);
+});
+
+test('route authorization throttling retries instead of reporting access denied', async () => {
+  let calls = 0;
+  const { handler } = loadHandler({
+    user: { id: 'manager_1', email: 'manager@example.com', role: 'user' },
+    route: serviceImportRoute, masterProperties: [serviceImportProperty],
+    routeGet: () => {
+      if (++calls === 1) throw Object.assign(new Error('Rate limit exceeded'), { status: 429 });
+      return serviceImportRoute;
+    },
+  });
+  const { response, result } = await invoke(handler, { route_id: serviceImportRoute.id, address_hashes: ['import_hash'] });
+  assert.equal(response.status, 200);
+  assert.equal(result.count, 1);
+  assert.equal(calls, 2);
+});
+
+test('rep manager resolution recovers from throttling without switching workspaces', async () => {
+  let calls = 0;
+  const { handler } = loadHandler({
+    user: { id: 'rep_1', email: 'rep@example.com', role: 'user', team_manager_id: 'manager_1' },
+    route: { ...serviceImportRoute, created_by: serviceImportProperty.created_by },
+    masterProperties: [serviceImportProperty],
+    managerGet: () => {
+      if (++calls === 1) throw Object.assign(new Error('Rate limit exceeded'), { status: 429 });
+      return { id: 'manager_1', email: 'manager@example.com' };
+    },
+  });
+  const { response, result } = await invoke(handler, { route_id: serviceImportRoute.id, address_hashes: ['import_hash'] });
+  assert.equal(response.status, 200);
+  assert.equal(result.count, 1);
+  assert.equal(result.user_email, 'manager@example.com');
+  assert.equal(calls, 2);
+});
+
+test('older clients do not turn throttled route discovery into empty successful hydration', async () => {
+  let calls = 0;
+  const { handler, sqlCalls } = loadHandler({
+    user: { id: 'manager_1', email: 'manager@example.com', role: 'user' },
+    route: serviceImportRoute,
+    routeFilter: () => {
+      calls++;
+      throw Object.assign(new Error('Rate limit exceeded'), { status: 429 });
+    },
+  });
+  const { response, result } = await invoke(handler, { user_email: 'manager@example.com', address_hashes: ['import_hash'] });
+  assert.equal(response.status, 429);
+  assert.equal(result.count, undefined);
+  assert.equal(calls, 4);
+  assert.equal(sqlCalls.length, 0);
+});
+
+test('Precision routes use their Neon workspace without scanning Base44 imports', async () => {
+  const route = { ...serviceImportRoute, property_hashes: ['provider-hash'], metadata: { source: 'precision_generation_job' } };
+  const property = { id: 'provider-property', address_hash: 'provider-hash', lat: 28.7, lng: -81.3 };
+  const { handler, masterPropertyQueries } = loadHandler({
+    user: { id: 'manager_1', email: 'manager@example.com', role: 'user' },
+    route, workspaceRows: [property],
+  });
+  const { response, result } = await invoke(handler, { route_id: route.id, address_hashes: route.property_hashes });
+  assert.equal(response.status, 200);
+  assert.equal(result.count, 1);
+  assert.equal(masterPropertyQueries.length, 0);
+});
+
+test('the 17-route import overview reads manifests once and 2,774 homes in six tenant-scoped batches', async () => {
+  const properties = Array.from({ length: 2774 }, (_, index) => ({
+    ...serviceImportProperty, id: `door-${index}`, address_hash: `import_${index}`,
+  }));
+  const routes = Array.from({ length: 17 }, (_, index) => ({
+    ...serviceImportRoute, id: `route-${index}`,
+    property_hashes: properties.slice(index * 160, index === 16 ? undefined : (index + 1) * 160).map(property => property.address_hash),
+  }));
+  for (const user of [
+    { id: 'manager_1', email: 'manager@example.com', role: 'user' },
+    { id: 'rep_1', email: 'rep@example.com', role: 'user', team_manager_id: 'manager_1' },
+  ]) {
+    const harness = loadHandler({ user, visibleOwnerRoutes: routes, masterProperties: properties, databaseUrl: null });
+    const { response, result } = await invoke(harness.handler, { route_ids: routes.map(route => route.id), user_email: 'foreign@example.com' });
+    assert.equal(response.status, 200);
+    assert.equal(result.routes.length, 17);
+    assert.equal(result.routes.reduce((count, route) => count + route.properties.length, 0), 2774);
+    assert.equal(harness.routeFilterQueries.length, 1);
+    assert.equal(harness.masterPropertyQueries.length, 6);
+    assert.equal(harness.sqlCalls.length, 0);
+    assert.ok(harness.masterPropertyQueries.every(({ query }) => query.manager_id === 'manager_1'));
+  }
+});
+
+test('a batch cannot expose unassigned/foreign routes or forged manager identities', async () => {
+  for (const options of [
+    { visibleOwnerRoutes: [] },
+    { visibleOwnerRoutes: [{ ...serviceImportRoute, manager_id: 'foreign-manager' }] },
+  ]) {
+    const harness = loadHandler({
+      user: { id: 'rep_1', email: 'rep@example.com', role: 'user', team_manager_id: 'manager_1' },
+      masterProperties: [serviceImportProperty], ...options,
+    });
+    const { response } = await invoke(harness.handler, { route_ids: [serviceImportRoute.id] });
+    assert.equal(response.status, 403);
+    assert.equal(harness.masterPropertyQueries.length, 0);
+  }
+});
+
+test('bulk import reads reject oversized requests and preserve persistent rate limits', async () => {
+  const malformed = loadHandler();
+  for (const route_ids of [[], [''], [42], Array.from({ length: 41 }, (_, index) => `route-${index}`)]) {
+    const { response } = await invoke(malformed.handler, { route_ids });
+    assert.equal(response.status, 400);
+  }
+  assert.equal(malformed.routeFilterQueries.length, 0);
+  const throttled = loadHandler({
+    user: { id: 'manager_1', email: 'manager@example.com', role: 'user' },
+    visibleOwnerRoutes: [serviceImportRoute],
+    masterPropertyFilter: () => { throw Object.assign(new Error('Rate limit exceeded'), { status: 429, response: { headers: { 'retry-after': '30' } } }); },
+  });
+  const { response } = await invoke(throttled.handler, { route_ids: [serviceImportRoute.id] });
+  assert.equal(response.status, 429);
+  assert.equal(throttled.masterPropertyQueries.length, 1);
+  assert.equal(response.headers.get('retry-after'), '30');
 });
