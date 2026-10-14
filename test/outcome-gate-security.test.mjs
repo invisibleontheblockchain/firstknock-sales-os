@@ -825,7 +825,7 @@ test('outcome and identity fields are service-owned and legacy bypass endpoints 
 test('assigned-route hydration uses the verified tenant manager and guards canonical fallback by route membership', () => {
   const lookup = readSource('base44/functions/getRoutePropertiesByHashes/entry.ts');
 
-  assert.match(lookup, /authorizedRoute\s*=\s*await base44\.entities\.SavedRoute\.get\(routeId\)/);
+  assert.match(lookup, /authorizedRoute\s*=\s*await retryDataRead\(\(\) => base44\.entities\.SavedRoute\.get\(routeId\)/);
   assert.match(lookup, /manager_id is the SavedRoute tenant key/);
   assert.match(lookup, /resolveRouteTenantEmail\(/);
   assert.match(lookup, /findLegacyVisibleRoute\(/);
