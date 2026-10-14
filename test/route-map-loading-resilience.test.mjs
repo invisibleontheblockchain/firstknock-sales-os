@@ -30,6 +30,80 @@ function hydrationModule(invoke) {
     return exports;
 }
 
+const importedRoutes = () => Array.from({ length: 17 }, (_, index) => ({
+    ...route(`import-${index}`), metadata: { source: 'csv_import' },
+    property_hashes: Array.from({ length: index === 16 ? 214 : 160 }, (_, door) => `import_${index}_${door}`),
+}));
+
+test('all 17 imported routes and 2,774 homes use one map request and remain cached after territory changes', async () => {
+    const routes = importedRoutes();
+    const calls = [];
+    const progress = [];
+    const module = hydrationModule(async (_name, request) => {
+        calls.push(request);
+        assert.equal(request.route_ids.length, 17);
+        return { data: { routes: routes.map(route => ({ id: route.id, properties: route.property_hashes.map(property) })) } };
+    });
+    const first = await module.hydrateRoutesForMap(routes, 'manager@example.com', [], {
+        onRouteHydrated: loaded => progress.push(loaded.id),
+    });
+    assert.equal(calls.length, 1);
+    assert.equal(progress.length, 17);
+    assert.equal(first.reduce((count, route) => count + route.properties.length, 0), 2774);
+    assert.ok(first.every(core.hasCompleteRouteMapPoints));
+    const second = await module.hydrateRoutesForMap(routes, 'manager@example.com', [property('unrelated-territory')]);
+    assert.ok(second.every(core.hasCompleteRouteMapPoints));
+    assert.equal(calls.length, 1);
+});
+
+test('concurrent imported map loads share one request and keep viewer isolation', async () => {
+    const routes = importedRoutes();
+    let release;
+    const gate = new Promise(resolve => { release = resolve; });
+    let calls = 0;
+    const module = hydrationModule(async () => {
+        calls++;
+        await gate;
+        return { data: { routes: routes.map(route => ({ id: route.id, properties: route.property_hashes.map(property) })) } };
+    });
+    const first = module.hydrateRoutesForMap(routes, 'manager@example.com');
+    const second = module.hydrateRoutesForMap(routes, 'manager@example.com', [property('extra')]);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(calls, 1);
+    release();
+    await Promise.all([first, second]);
+    await module.hydrateRoutesForMap(routes, 'rep@example.com');
+    assert.equal(calls, 2);
+});
+
+test('partial bulk hydration repairs only missing routes without per-route request storms', async () => {
+    const routes = importedRoutes();
+    const requests = [];
+    const module = hydrationModule(async (_name, request) => {
+        requests.push(request);
+        assert.ok(request.route_ids);
+        const returned = requests.length === 1 ? routes.slice(0, 7) : routes.filter(route => request.route_ids.includes(route.id));
+        return { data: { routes: returned.map(route => ({ id: route.id, properties: route.property_hashes.map(property) })) } };
+    });
+    const partial = await module.hydrateRoutesForMap(routes, 'manager@example.com');
+    assert.equal(partial.filter(core.hasCompleteRouteMapPoints).length, 7);
+    assert.equal(requests.length, 1);
+    const recovered = await module.hydrateRoutesForMap(routes, 'manager@example.com');
+    assert.ok(recovered.every(core.hasCompleteRouteMapPoints));
+    assert.equal(requests[1].route_ids.length, 10);
+    assert.equal(requests.length, 2);
+});
+
+test('throttled bulk hydration propagates a retryable failure without individual fallbacks', async () => {
+    let calls = 0;
+    const module = hydrationModule(async () => {
+        calls++;
+        throw Object.assign(new Error('Rate limit exceeded'), { status: 429 });
+    });
+    await assert.rejects(module.hydrateRoutesForMap(importedRoutes(), 'manager@example.com'), error => error.status === 429);
+    assert.equal(calls, 1);
+});
+
 test('map publishes healthy routes before a slow route finishes', async () => {
     let release;
     const slow = new Promise(resolve => { release = resolve; });

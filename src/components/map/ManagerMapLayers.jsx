@@ -463,7 +463,7 @@ function SavedRoutesLayer({
     const cacheRef = useRef(new Map());
     const labelCanvas = useMemo(() => createLabelCanvas(L), [map]);
     // Zoom band only — rebuilding these layers on every zoom step made zooming stutter.
-    const routesZoomEnabled = zoomLevel >= 8;
+    const overviewOnly = zoomLevel < 8 && !decisionFilterActive;
 
     // Viewport culling. Routes mode used to draw every door, number label and
     // line of every saved route in the account at once, which is what spiked the
@@ -524,11 +524,12 @@ function SavedRoutesLayer({
 
     const styleKey = useMemo(() => savedRouteStyleKey({
         quickFilter, showRouteDetails, showRouteLines, decisionFilterActive,
+        overviewOnly,
         pinOpacity: mapSettings.pinOpacity, fillStyle: mapSettings.fillStyle,
         pinBorderColor: mapSettings.pinBorderColor, pinBorderWidth: mapSettings.pinBorderWidth,
         showLabels: mapSettings.showLabels, labelType: mapSettings.labelType,
         lineWidth: mapSettings.lineWidth, lineOpacity: mapSettings.lineOpacity, lineDashArray,
-    }), [quickFilter, showRouteDetails, showRouteLines, decisionFilterActive, mapSettings.pinOpacity,
+    }), [quickFilter, showRouteDetails, showRouteLines, decisionFilterActive, overviewOnly, mapSettings.pinOpacity,
         mapSettings.fillStyle, mapSettings.pinBorderColor, mapSettings.pinBorderWidth, mapSettings.showLabels,
         mapSettings.labelType, mapSettings.lineWidth, mapSettings.lineOpacity, lineDashArray]);
 
@@ -546,7 +547,7 @@ function SavedRoutesLayer({
         // Only show saved route overlays in Routes mode. Builder/draw mode stays visually clean,
         // while selecting an individual route still shows it through ActiveRouteLayer.
         const activeRouteHasMapPoints = activeRoute?.properties?.some(isRenderableMapPoint);
-        const routesVisible = !activeRouteHasMapPoints && mode === 'analyze' && routesZoomEnabled;
+        const routesVisible = !activeRouteHasMapPoints && mode === 'analyze';
 
         const visibleRoutes = routesVisible
             ? filterRoutesByStatus(hydratedSavedRoutes, routeStatusView).filter(route => {
@@ -583,10 +584,11 @@ function SavedRoutesLayer({
                 entry = null;
             }
             if (!entry) {
-                const centerProp = route.properties[Math.floor(route.properties.length / 2)];
+                const doors = route.properties.filter(isRenderableMapPoint);
+                const centerProp = doors[Math.floor(doors.length / 2)];
                 const built = buildSavedRouteGroup({
                     circleMarker: labelCanvas.circleMarker,
-                    doors: route.properties.filter(isRenderableMapPoint),
+                    doors,
                     linePoints: getRouteLinePoints(route, route.properties),
                     lineSegments: verifiedBetaSegments(route.metadata, route.property_hashes || route.properties, route.properties),
                     centerPoint: isRenderableMapPoint(centerProp)
@@ -596,6 +598,7 @@ function SavedRoutesLayer({
                     color: repColor,
                     style: {
                         quickFilter, showRouteDetails, showRouteLines, decisionFilterActive,
+                        overviewOnly,
                         pinOpacity: mapSettings.pinOpacity, fillStyle: mapSettings.fillStyle,
                         pinBorderColor: mapSettings.pinBorderColor, pinBorderWidth: mapSettings.pinBorderWidth,
                         showLabels: mapSettings.showLabels, labelType: mapSettings.labelType,
@@ -620,7 +623,7 @@ function SavedRoutesLayer({
             container.removeLayer(entry.group);
             entry.attached = false;
         });
-    }, [map, viewBox, mode, activeRoute, routesZoomEnabled, hydratedSavedRoutes, analyzeZipFilter, quickFilter,
+    }, [map, viewBox, mode, activeRoute, overviewOnly, hydratedSavedRoutes, analyzeZipFilter, quickFilter,
         routeStatusView, showRouteDetails, showRouteLines, styleKey, mapSettings, lineDashArray, setActiveRoute,
         allSavedRoutes, decisionFilterActive, labelCanvas]);
 

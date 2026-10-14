@@ -1,5 +1,6 @@
 import L from '@/components/map/leafletPatches';
 import { isRenderableMapPoint } from '@/components/map/mapLayerVisibility.js';
+import { hasCompleteRouteMapPoints } from '@/components/logic/routeHydrationCore.js';
 
 function toLatLngPoints(points = []) {
     return points
@@ -25,7 +26,17 @@ export function computeAccountWorkingArea({
     hydratedSavedRoutes = [],
     precisionFetchJobs = [],
     availableProperties = [],
+    preferSavedRoutes = false,
 } = {}) {
+    // Routes overview must wait for every displayed manifest before locking
+    // its initial camera. The first completed request may cover only one city.
+    if (preferSavedRoutes && savedRoutes.length > 0) {
+        const byId = new Map(hydratedSavedRoutes.map(route => [route.id, route]));
+        const complete = savedRoutes.map(route => byId.get(route.id));
+        if (complete.some(route => !route || !hasCompleteRouteMapPoints(route))) return null;
+        const points = complete.flatMap(routePinPoints);
+        return points.length ? { type: 'bounds', bounds: L.latLngBounds(points) } : null;
+    }
     // 1. Precision drawn boundary (state or persisted)
     let polygonToUse = drawnPolygon;
     if (!Array.isArray(polygonToUse) || polygonToUse.length < 3) {

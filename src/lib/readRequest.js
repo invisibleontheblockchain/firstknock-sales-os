@@ -8,9 +8,17 @@ export function shouldRetryRead(failureCount, error) {
     return failureCount < 2 && isTransientReadError(error);
 }
 
-export function readRetryDelay(attempt) {
+export function readRetryDelay(attempt, error) {
+    const headers = error?.response?.headers || error?.originalError?.response?.headers || error?.headers;
+    const retryAfter = headers?.get?.('retry-after') ?? headers?.['retry-after'];
+    const seconds = Number(retryAfter);
+    const retryAt = retryAfter && !Number.isFinite(seconds) ? Date.parse(retryAfter) : NaN;
+    const serverDelay = Number.isFinite(seconds) && seconds > 0 ? seconds * 1000
+        : Number.isFinite(retryAt) ? retryAt - Date.now() : 0;
+    const status = Number(error?.status || error?.response?.status || 0);
     // Jitter keeps simultaneous rep logins from retrying in lockstep.
-    return Math.min(1000 * 2 ** attempt, 8000) + Math.floor(Math.random() * 500);
+    return Math.max(Math.min(1000 * 2 ** attempt, 8000), serverDelay, status === 429 ? 5000 : 0)
+        + Math.floor(Math.random() * 500);
 }
 
 export async function withReadDeadline(read, timeoutMs = 15_000) {
@@ -44,7 +52,7 @@ export async function retryRead(read, {
             return await withReadDeadline(read, timeoutMs);
         } catch (error) {
             if (attempt >= retries || !isTransientReadError(error)) throw error;
-            await wait(delay(attempt));
+            await wait(delay(attempt, error));
         }
     }
 }
