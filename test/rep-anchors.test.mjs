@@ -242,6 +242,7 @@ test('reoptimization preserves a private anchor by default but explicit route-on
                 return { order, objective: { applyCandidate: true, appliedDistance: 3, estimatedSavings: 1 }, routingMetadata: {} };
             },
         });
+        vm.runInContext(executable('src/lib/routeOptimizationOutcome.js'), context);
         vm.runInContext(executable('src/lib/routeOptimizeUpdate.js'), context);
         vm.runInContext(executable('src/lib/reoptimizeRouteAction.js'), context);
         await context.reoptimizeRoute({
