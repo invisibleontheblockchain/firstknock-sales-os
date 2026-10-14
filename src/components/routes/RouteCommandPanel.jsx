@@ -9,6 +9,7 @@ import {
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 import { hydrateRouteForMap } from '@/components/logic/routeHydration';
+import { loadSavedRouteSelection } from '@/components/logic/routeMapSelection';
 
 const BRAND = {
     voidBlack: '#0A0A0A',
@@ -43,11 +44,15 @@ export default function RouteCommandPanel({
     routeConfig
 }) {
     const selectRouteForMapAndKnock = async (route) => {
-        const hydratedRoute = route.isSaved === false ? route : await hydrateRouteForMap(route, viewerEmail);
-        if (hydratedRoute?.id) {
-            try { localStorage.setItem('fk_selectedKnockRouteId', hydratedRoute.id); } catch {}
+        try {
+            const hydratedRoute = route.isSaved === false ? route : await loadSavedRouteSelection(route, [], candidate => hydrateRouteForMap(candidate, viewerEmail));
+            if (hydratedRoute?.id) {
+                try { localStorage.setItem('fk_selectedKnockRouteId', hydratedRoute.id); } catch {}
+            }
+            onSelectRoute(hydratedRoute);
+        } catch (error) {
+            toast.error(error.message || 'Route homes could not be loaded. Please try again.');
         }
-        onSelectRoute(hydratedRoute);
     };
 
     const [activeTab, setActiveTab] = useState('active');
