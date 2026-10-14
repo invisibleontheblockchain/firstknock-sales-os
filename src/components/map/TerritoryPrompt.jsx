@@ -363,6 +363,7 @@ export default function TerritoryPrompt({
       setDraftPolygon([]);
       setForceFullRefresh(false);
       setSelectedHistoryArea(null);
+      setShowPrecisionPullPanel(false);
     }
   }, [mode]);
 
@@ -1301,7 +1302,7 @@ export default function TerritoryPrompt({
       }
 
             {/* Drawn Polygon Controls */}
-            {!drawingMode && !pulling && routeMode === 'precision' && drawnPolygon && drawnPolygon.length > 2 && mode === 'generate' &&
+            {!activeRoute && !routesGenerating && !drawingMode && !pulling && routeMode === 'precision' && drawnPolygon && drawnPolygon.length > 2 && mode === 'generate' &&
       <div className="absolute top-3 sm:top-16 left-3 right-3 sm:left-4 sm:right-auto z-[1001] max-w-[calc(100vw-1.5rem)] sm:max-w-none backdrop-blur-md border border-gray-800 rounded-2xl sm:rounded-full p-3 sm:px-4 sm:py-2 shadow-2xl flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 animate-in fade-in slide-in-from-top-2 overflow-visible bg-[#000000]">
                     <div className="flex items-center gap-2 shrink-0">
                         <div className="w-2 h-2 rounded-full bg-[#2EEB57] animate-pulse shrink-0" />
@@ -1340,7 +1341,7 @@ export default function TerritoryPrompt({
                 </div>
       }
 
-            {showPrecisionPullPanel && !drawingMode && !pulling && routeMode === 'precision' && drawnPolygon && drawnPolygon.length > 2 &&
+            {showPrecisionPullPanel && mode === 'generate' && !activeRoute && !routesGenerating && !drawingMode && !pulling && routeMode === 'precision' && drawnPolygon && drawnPolygon.length > 2 &&
       <PrecisionPullPanel
         areaLabel={actualAreaLabel}
         maxProperties={maxRequestedProperties}

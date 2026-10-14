@@ -13,7 +13,7 @@ const manager = { id: 'new-manager', app_role: 'manager', has_seen_onboarding: f
 const walkthroughKey = `fk_firstAreaWalkthrough_${manager.id}`;
 function memoryStorage(initial = {}) {
   const values = new Map(Object.entries(initial));
-  return { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value) };
+  return { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value), removeItem: key => values.delete(key) };
 }
 
 const home = readFileSync(new URL('../src/pages/Home.jsx', import.meta.url), 'utf8');
@@ -21,7 +21,11 @@ const ast = ts.createSourceFile('Home.jsx', home, ts.ScriptTarget.Latest, true, 
 let entryEffect;
 let modeInitializer;
 let completion;
+let finishRouteBuild;
 function visit(node) {
+  if (ts.isVariableDeclaration(node) && node.name.getText(ast) === 'finishRouteBuild') {
+    finishRouteBuild = node.initializer.arguments[0].getText(ast);
+  }
   if (ts.isVariableDeclaration(node) && node.name.getText(ast) === '[mode, setModeRaw]') {
     modeInitializer = node.initializer.getText(ast);
   }
@@ -52,9 +56,10 @@ function pageSandbox(search, storage = memoryStorage(), user = manager) {
     } } },
     useState: initial => [typeof initial === 'function' ? initial() : initial, () => {}],
   };
-  for (const name of ['ModeRaw', 'ShowCompare', 'ShowRoutePanel', 'DrawnPolygon', 'DraftPolygon', 'DrawShape', 'DrawingMode', 'ActiveRoute', 'PreviewRoute']) {
+  for (const name of ['ModeRaw', 'ShowCompare', 'ShowRoutePanel', 'ShowChecklist', 'ShowMapSettings', 'DrawnPolygon', 'DraftPolygon', 'DrawShape', 'DrawingMode', 'ActiveRoute', 'PreviewRoute']) {
     sandbox[`set${name}`] = value => { state[name] = value; };
   }
+  sandbox.finishRouteBuild = vm.runInNewContext(`(${finishRouteBuild})`, sandbox);
   return { sandbox, state };
 }
 
@@ -76,15 +81,20 @@ test('drawing setup activates Builder and preserves tutorial and unrelated URL s
   assert.equal(state.url, '/Home?onboarding=precision&keep=1#map');
 });
 
-test('successful tutorial generation opens regular Routes once, including after a refresh', () => {
+test('successful tutorial generation opens the full route map, including after a refresh', () => {
   const storage = memoryStorage({ [walkthroughKey]: 'active' });
-  for (const expectedOpen of [true, false]) {
+  for (let attempt = 0; attempt < 2; attempt++) {
     const { sandbox, state } = pageSandbox('?onboarding=precision&keep=1', storage);
     vm.runInNewContext(completion, sandbox);
-    assert.equal(state.ModeRaw, expectedOpen ? 'analyze' : undefined);
-    assert.equal(state.ShowRoutePanel, expectedOpen);
+    assert.equal(state.ModeRaw, 'analyze');
+    assert.equal(state.ShowRoutePanel, false);
     assert.equal(state.ActiveRoute.id, 'generated-1');
     assert.equal(state.ShowCompare, false);
+    assert.equal(state.DrawingMode, false);
+    assert.equal(state.DrawnPolygon, null);
+    assert.equal(state.DraftPolygon.length, 0);
+    assert.equal(state.ShowChecklist, false);
+    assert.equal(state.ShowMapSettings, false);
     assert.equal(state.url, '/Home?keep=1#map');
   }
 });
@@ -96,7 +106,8 @@ test('the handoff selects the remote saved route, while offline saves retain the
     vm.runInNewContext(completion, sandbox);
     assert.equal(state.ActiveRoute.id, expectedId);
     assert.equal(state.ActiveRoute.isSaved, expectedSaved);
-    assert.equal(state.ShowRoutePanel, true);
+    assert.equal(state.ShowRoutePanel, false);
+    assert.equal(state.ModeRaw, 'analyze');
   }
 });
 

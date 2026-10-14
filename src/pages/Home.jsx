@@ -176,7 +176,7 @@ export default function Home() {
             return saved ? JSON.parse(saved) : null;
         } catch { return null; }
     });
-    const setDrawnPolygon = (val, persist = false) => {
+    const setDrawnPolygon = useCallback((val, persist = false) => {
         setDrawnPolygonRaw(val);
         try {
             if (persist && val && val.length > 2) {
@@ -185,7 +185,7 @@ export default function Home() {
                 localStorage.removeItem('fk_drawnPolygon');
             }
         } catch { }
-    };
+    }, []);
     const [draftPolygon, setDraftPolygon] = useState([]);
     const [canvasDrawnPolygon, setCanvasDrawnPolygon] = useState(null);
     const [canvasDraftPolygon, setCanvasDraftPolygon] = useState([]);
@@ -197,6 +197,21 @@ export default function Home() {
     const [zoomLevel, setZoomLevel] = useState(15);
     const [showMapSettings, setShowMapSettings] = useState(false);
     const [navigationApp, setNavigationApp] = useState('apple');
+
+    const finishRouteBuild = useCallback(() => {
+        setModeRaw('analyze');
+        setDrawingMode(false);
+        setDrawnPolygon(null);
+        setDraftPolygon([]);
+        setPreviewRoute(null);
+        setShowRoutePanel(false);
+        setShowCompare(false);
+        setShowChecklist(false);
+        setShowMapSettings(false);
+        // The completed route owns the camera, including after a quick build.
+        window.__fkSuppressMapFitUntil = 0;
+        try { localStorage.removeItem('fk_drawnPolygonQueried'); } catch { }
+    }, [setDrawnPolygon]);
 
     // Precision v3 stays Hybrid; Canvas v2 rolls the stock Terrain map out as its default.
     const [mapTheme, setMapTheme] = useState(() => { const canvasMode = localStorage.getItem('fk_routeMode') === 'canvas'; return localStorage.getItem(canvasMode ? 'fk_mapTheme_canvas_v2' : 'fk_mapTheme_v3') || (canvasMode ? 'terrain' : 'hybrid'); });
@@ -1975,7 +1990,6 @@ export default function Home() {
                     }
                     if (unsaved.length > 0) toast.warning(`${remotelySaved.length} routes saved; ${unsaved.length} remain available on this device.`, { id: bulkId });
                     else toast.success(`Saved ${remotelySaved.length} routes`, { id: bulkId, duration: 3000 });
-                    setModeRaw('analyze');
                     // Remove only confirmed remote saves. Offline, failed, and
                     // oversized routes remain available instead of disappearing.
                     setRoutes(unsaved);
@@ -1983,17 +1997,13 @@ export default function Home() {
             } else if (generated.length > 0) {
                 toast.info(`Route has ${generated[0].houseCount} properties — too large to auto-save. View on map.`, { id: 'build-routes', duration: 5000 });
             }
-            // The first tutorial generation opens the regular route list once.
-            // Subsequent generations keep the existing map activation behavior.
+            // Every completed build, including the tutorial, opens the full route map.
             const firstRoute = generated[0];
             const firstSaved = savedByGeneratedRoute.get(firstRoute);
             const firstRemotelySaved = firstSaved?.id && !String(firstSaved.id).startsWith('local_');
             setActiveRoute(firstRemotelySaved ? { ...firstRoute, id: firstSaved.id, isSaved: true, status: firstSaved.status || 'ACTIVE' } : { ...firstRoute, isSaved: false });
-            setPreviewRoute(null);
-            const openFirstAreaRoutes = claimFirstAreaRouteHandoff(user, localStorage);
-            if (openFirstAreaRoutes) setModeRaw('analyze');
-            setShowRoutePanel(openFirstAreaRoutes);
-            setShowCompare(false);
+            claimFirstAreaRouteHandoff(user, localStorage);
+            finishRouteBuild();
             const params = new URLSearchParams(window.location.search);
             if (params.has('onboarding')) {
                 params.delete('onboarding');
@@ -2051,7 +2061,7 @@ export default function Home() {
             routesGeneratingRef.current = false;
             setRoutesGenerating(false);
         }
-    }, [territoryActionsReady, availableProperties, housesPerRoute, startLocation, logs, streetCooldownDays, zipCodeFilter, assignedHashes, routeConfig, soldDateFilter, drawnPolygon, draftPolygon, frozenWorkingSet, effectiveProperties, fetchRouteCandidatesFromNeon, currentBatchDataJobId, preparePrecisionRouteBounds, user?.territory_zip_codes, user?.generated_zip_codes, user?.email]);
+    }, [territoryActionsReady, availableProperties, housesPerRoute, startLocation, logs, streetCooldownDays, zipCodeFilter, assignedHashes, routeConfig, soldDateFilter, drawnPolygon, draftPolygon, frozenWorkingSet, effectiveProperties, fetchRouteCandidatesFromNeon, currentBatchDataJobId, preparePrecisionRouteBounds, finishRouteBuild, user?.territory_zip_codes, user?.generated_zip_codes, user?.email]);
 
     // Reorder: re-run filtering + routing on frozen data without re-fetching
     const handleReorder = useCallback(async () => {
@@ -2125,7 +2135,6 @@ export default function Home() {
                         (route) => handleSaveRoute(route, null, null, true)
                     );
                     toast.success(`Reordered into ${generated.length} routes`, { id: bulkId, duration: 3000 });
-                    setModeRaw('analyze');
                     setRoutes([]);
                 } catch (e) { toast.error('Auto-save failed.', { id: bulkId }); }
             }
@@ -2133,7 +2142,7 @@ export default function Home() {
             if (generated.length > 0) {
                 const firstSaved = savedRecords[0];
                 setActiveRoute(firstSaved?.id ? { ...generated[0], id: firstSaved.id, isSaved: true, status: firstSaved.status || 'ACTIVE' } : generated[0]);
-                setPreviewRoute(null);
+                finishRouteBuild();
             }
             setShowRoutePanel(false); setShowCompare(false);
             toast.success(`Reordered! ${generated.length} route(s)`, { id: 'reorder-routes', duration: 5000 });
@@ -2147,7 +2156,7 @@ export default function Home() {
             return false;
         }
         finally { setRoutesGenerating(false); }
-    }, [territoryActionsReady, frozenWorkingSet, housesPerRoute, startLocation, logs, streetCooldownDays, zipCodeFilter, routeConfig, soldDateFilter, drawnPolygon, lastPullMode, learnedWeights, user?.territory_zip_codes, assignedHashes]);
+    }, [territoryActionsReady, frozenWorkingSet, housesPerRoute, startLocation, logs, streetCooldownDays, zipCodeFilter, routeConfig, soldDateFilter, drawnPolygon, lastPullMode, learnedWeights, user?.territory_zip_codes, assignedHashes, finishRouteBuild]);
 
     // Re-optimize a single saved route while keeping each street sweep contiguous.
     // Injectable so the low-accuracy interaction is executable in tests rather
@@ -2494,6 +2503,7 @@ export default function Home() {
                 />
 
                 <MapDrawTool
+                    mode={mode}
                     active={drawingMode}
                     onPointsUpdate={setActiveDraftPolygon}
                     confirmOnRelease={routeMode === 'canvas'}
@@ -2755,11 +2765,6 @@ export default function Home() {
                     setSoldDateFilterRaw(pm);
                     if ((jobStatus?.active_count || pulledProperties.length) > 0) {
                         const routeBuilt = await generateRoutesRef.current?.();
-                        if (routeBuilt === true) {
-                            setDrawnPolygon(null);
-                            setDraftPolygon([]);
-                            try { localStorage.removeItem('fk_drawnPolygonQueried'); } catch { }
-                        }
                         return routeBuilt === true;
                     } else {
                         preparePrecisionRouteBounds({ enabled: false });
