@@ -167,18 +167,17 @@ test('manager Home Base lookup rejects an unverified roster-to-user link', async
 });
 
 test('address lookup returns reusable coordinates without a live network request', async () => {
-  let requestedUrl = '';
+  let requestedAddresses;
   const location = await geocodeAddress('123 Main St, Phoenix, AZ', {
-    fetchImpl: async (url) => {
-      requestedUrl = url;
+    invokeGeocoder: async (addresses) => {
+      requestedAddresses = addresses;
       return {
-        ok: true,
-        json: async () => [{ lat: '33.4484', lon: '-112.0740', display_name: '123 Main St, Phoenix, AZ' }],
+        data: { success: true, results: { location: { lat: '33.4484', lng: '-112.0740', matchedAddress: '123 Main St, Phoenix, AZ' } } },
       };
     },
   });
 
-  assert.equal(new URL(requestedUrl).searchParams.get('q'), '123 Main St, Phoenix, AZ');
+  assert.deepEqual(requestedAddresses, [{ id: 'location', address: '123 Main St, Phoenix, AZ' }]);
   assert.deepEqual(location, { address: '123 Main St, Phoenix, AZ', lat: 33.4484, lng: -112.074 });
 });
 
