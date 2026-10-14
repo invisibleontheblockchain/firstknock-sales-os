@@ -2,7 +2,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import { neon } from 'npm:@neondatabase/serverless@0.9.0';
 
 const LEGACY_CANONICAL_RECOVERY_CUTOFF = Date.parse('2026-07-24T01:52:18.000Z');
-const ROUTE_HYDRATION_VERSION = '2026-10-14-rate-limit-retry';
+const ROUTE_HYDRATION_VERSION = '2026-10-14-batched-map-imports';
 
 class HttpError extends Error {
     constructor(status, code, message) {
@@ -31,9 +31,13 @@ async function retryDataRead(read) {
             return await read();
         } catch (error) {
             if (!isTransientDataRead(error) || attempt >= 3) throw error;
-            const retryAfter = Number(error?.response?.headers?.['retry-after']);
+            const headers = error?.response?.headers || error?.originalError?.response?.headers;
+            const retryAfter = Number(headers?.get?.('retry-after') ?? headers?.['retry-after']);
+            // Let the browser honor long cooldowns instead of retrying inside
+            // the same rate-limit window or holding a function past its deadline.
+            if (retryAfter > 5) throw error;
             const delay = Number.isFinite(retryAfter) && retryAfter > 0
-                ? Math.min(retryAfter * 1000, 2500)
+                ? retryAfter * 1000
                 : 400 * 2 ** attempt + Math.floor(Math.random() * 200);
             await new Promise(resolve => setTimeout(resolve, delay));
         }
@@ -301,12 +305,20 @@ async function filterMasterProperties(entity, field, hashes, managerId = null) {
 async function loadWorkspaceServiceImports(base44, user, route, hashes) {
     const managerId = verifiedImportManagerId(user, route);
     if (!managerId) return new Map();
+    // Metadata is only a lookup hint; manager ownership and each property's
+    // service creator/source are still verified below. Precision routes should
+    // go straight to Neon instead of scanning Base44 for every provider hash.
+    const metadata = route?.metadata || {};
+    const importHint = ['csv_import', 'redfin_csv'].includes(metadata.source)
+        || (Array.isArray(metadata.imports) && metadata.imports.length > 0)
+        || hashes.some(hash => hash.startsWith('import_'));
+    if (!importHint) return new Map();
 
     const byHash = new Map();
     // Imported doors live in Base44, not necessarily in Neon. Read the verified
     // team's copy first, without issuing eight overlapping lookups per batch.
-    for (let offset = 0; offset < hashes.length; offset += 100) {
-        const slice = hashes.slice(offset, offset + 100);
+    for (let offset = 0; offset < hashes.length; offset += 500) {
+        const slice = hashes.slice(offset, offset + 500);
         const primary = await filterMasterProperties(base44.asServiceRole.entities.MasterProperty, 'address_hash', slice, managerId);
         const addProperties = (properties) => {
             for (const property of properties) {
@@ -323,6 +335,49 @@ async function loadWorkspaceServiceImports(base44, user, route, hashes) {
         }
     }
     return byHash;
+}
+
+async function loadImportedRouteCollection(base44, user, routeIds) {
+    if (!Array.isArray(routeIds) || !routeIds.length || routeIds.length > 40
+        || routeIds.some(id => typeof id !== 'string' || !id.trim() || id.length > 256)) {
+        throw new HttpError(400, 'invalid_route_collection', 'Select between 1 and 40 saved routes.');
+    }
+    const ids = [...new Set(routeIds.map(id => id.trim()))];
+    // Resolve manifests through caller RLS, never service-role route reads or
+    // a client-supplied manager id. Reps can only request their visible routes.
+    const visible = asArray(await retryDataRead(() => base44.entities.SavedRoute.filter({
+        id: { $in: ids }
+    }, '-created_date', ids.length)));
+    const byId = new Map(visible.filter(route => ids.includes(route.id)).map(route => [route.id, route]));
+    if (ids.some(id => !byId.has(id))) {
+        throw new HttpError(403, 'route_access_denied', 'One of these routes is not visible to the authenticated account.');
+    }
+    const routes = ids.map(id => byId.get(id));
+    const groups = new Map();
+    const allHashes = new Set();
+    for (const route of routes) {
+        const managerId = verifiedImportManagerId(user, route);
+        if (!managerId) throw new HttpError(403, 'workspace_access_denied', 'The route workspace could not be verified.');
+        const hashes = normalizedHashes(route.property_hashes);
+        if (hashes.some(hash => hash.length > 256)) throw new HttpError(400, 'invalid_property_lookup', 'Invalid route property hash.');
+        hashes.forEach(hash => allHashes.add(hash));
+        if (!groups.has(managerId)) groups.set(managerId, { route, hashes: new Set() });
+        hashes.forEach(hash => groups.get(managerId).hashes.add(hash));
+    }
+    if (allHashes.size > 5000) throw new HttpError(400, 'invalid_property_lookup', 'A route collection accepts at most 5,000 homes.');
+    const propertiesByManager = new Map();
+    for (const [managerId, group] of groups) {
+        propertiesByManager.set(managerId, await loadWorkspaceServiceImports(base44, user, group.route, [...group.hashes]));
+    }
+    return {
+        success: true,
+        hydration_version: ROUTE_HYDRATION_VERSION,
+        routes: routes.map(route => ({
+            id: route.id,
+            properties: normalizedHashes(route.property_hashes)
+                .map(hash => propertiesByManager.get(route.manager_id)?.get(hash)).filter(Boolean)
+        }))
+    };
 }
 
 async function loadVisibleInteractionOwners(base44, hashes) {
@@ -356,6 +411,9 @@ Deno.serve(async (req) => {
         if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
         const body = await req.json().catch(() => ({}));
+        if (Object.prototype.hasOwnProperty.call(body, 'route_ids')) {
+            return Response.json(await loadImportedRouteCollection(base44, user, body.route_ids));
+        }
         const hashes = Array.isArray(body.address_hashes)
             ? body.address_hashes.map(String).map(h => h.trim()).filter(Boolean)
             : [];
@@ -750,10 +808,13 @@ Deno.serve(async (req) => {
             properties
         });
     } catch (error) {
+        const status = Number(error.status || error.response?.status || 500);
+        const headers = error.response?.headers || error.originalError?.response?.headers;
+        const retryAfter = headers?.get?.('retry-after') ?? headers?.['retry-after'];
         return Response.json({
             error: error.message,
             hydration_version: ROUTE_HYDRATION_VERSION,
             code: error.code || 'route_property_lookup_failed'
-        }, { status: Number(error.status || error.response?.status || 500) });
+        }, { status, headers: status === 429 && retryAfter ? { 'Retry-After': String(retryAfter) } : {} });
     }
 });
