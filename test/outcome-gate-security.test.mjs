@@ -259,6 +259,20 @@ async function invoke(handler, body = requestBody()) {
   return { response, result: await response.json() };
 }
 
+test('not-qualified decisions persist as distinct outcomes and count as a knock', async () => {
+  const { base44, state } = makeBase44();
+  const { response, result } = await invoke(loadHandler({ base44, stripeApi: {} }), requestBody({
+    interaction: { parsed_status: 'NOT_QUALIFIED', raw_input_text: 'Not qualified' }
+  }));
+
+  assert.equal(response.status, 200);
+  assert.equal(result.outcomes_logged, 1);
+  assert.equal(state.logs.length, 1);
+  assert.equal(state.logs[0].parsed_status, 'NOT_QUALIFIED');
+  assert.equal(state.logs[0].counts_as_knock, true);
+  assert.equal(state.logs[0].next_eligible_date == null, true);
+});
+
 test('outcomes 1 through 25 do not require Stripe and commit one protected sequence', async () => {
   const actor = {
     id: 'user_1',

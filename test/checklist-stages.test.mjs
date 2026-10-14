@@ -25,8 +25,8 @@ test('visited stops that still owe a return visit never land in Completed', () =
     });
 });
 
-test('only sold and not interested are treated as fully completed', () => {
-    ['SOLD', 'HARD_NO'].forEach((status) => {
+test('sold, not interested, and not qualified are treated as fully completed', () => {
+    ['SOLD', 'HARD_NO', 'NOT_QUALIFIED'].forEach((status) => {
         assert.equal(checklistStageFor(status), CHECKLIST_STAGES.COMPLETED);
     });
 });
@@ -79,6 +79,7 @@ test('Todo routing defaults to every non-terminal outcome', () => {
     assert.equal(matchesTodoRouteFilters({ effective_status: 'NOT_MOVED_IN' }, DEFAULT_TODO_ROUTE_FILTERS), true);
     assert.equal(matchesTodoRouteFilters({ effective_status: 'DM_NOT_HOME' }, DEFAULT_TODO_ROUTE_FILTERS), true);
     assert.equal(matchesTodoRouteFilters({ effective_status: 'QUALIFIED' }, DEFAULT_TODO_ROUTE_FILTERS), true);
+    assert.equal(matchesTodoRouteFilters({ effective_status: 'NOT_QUALIFIED' }, DEFAULT_TODO_ROUTE_FILTERS), false);
 });
 
 test('Run Route keeps every stop visible with explicit outcome presentation', () => {
@@ -94,7 +95,7 @@ test('Run Route keeps every stop visible with explicit outcome presentation', ()
     assert.match(repHome, /useState\('all'\)/);
     assert.match(repHome, /if \(filterStatus === 'todo'\) return matchesTodoRouteFilters\(p, todoRouteTypes\)/);
     assert.match(repHome, /if \(filterStatus === 'sold'\) return p\.effective_status === 'SOLD'/);
-    assert.match(repHome, /if \(filterStatus === 'done'\) return \['SOLD', 'HARD_NO'\]\.includes\(p\.effective_status\)/);
+    assert.match(repHome, /if \(filterStatus === 'done'\) return \['SOLD', 'HARD_NO', 'NOT_QUALIFIED'\]\.includes\(p\.effective_status\)/);
     assert.doesNotMatch(repHome, /selectable=\{filterStatus === 'done'/);
     assert.doesNotMatch(repHome, /Select All.*visible completed stops/s);
     assert.match(repHome, /label: 'All', count: stats\.total/);

@@ -7,6 +7,7 @@ export const DECISION_FILTERS = [
     { id: 'qualified', label: 'QUALIFIED', statuses: ['QUALIFIED'] },
     { id: 'not_home', label: 'NOT HOME', statuses: ['NO_ANSWER', 'DM_NOT_HOME'] },
     { id: 'not_interested', label: 'NOT INTERESTED', statuses: ['HARD_NO'] },
+    { id: 'not_qualified', label: 'NOT QUALIFIED', statuses: ['NOT_QUALIFIED'] },
     { id: 'not_knocked', label: 'NOT KNOCKED', statuses: ['ELIGIBLE', 'OTHER'] },
 ];
 

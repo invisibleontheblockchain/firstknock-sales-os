@@ -264,7 +264,7 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
         const statuses = visibleRouteProperties.map(p => propertyStatuses[p.address_hash] || 'ELIGIBLE');
         return {
             ...stageCounts,
-            todo: statuses.filter(status => !['SOLD', 'HARD_NO'].includes(status)).length,
+            todo: statuses.filter(status => !['SOLD', 'HARD_NO', 'NOT_QUALIFIED'].includes(status)).length,
             done: visibleRouteProperties.filter(p => (
                 propertyStages[p.address_hash] === CHECKLIST_STAGES.COMPLETED
             )).length,
@@ -512,6 +512,7 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
             let status = 'ELIGIBLE';
             const lower = text.toLowerCase();
             if (lower.includes('sold') || lower.includes('bought')) status = 'SOLD';
+            else if (/\b(?:not qualified|unqualified|nq)\b/.test(lower)) status = 'NOT_QUALIFIED';
             else if (lower.includes('not interested') || lower.includes('no') || lower.includes('go away')) status = 'HARD_NO';
             else if (lower.includes('call') || lower.includes('back') || lower.includes('busy')) status = 'CALLBACK';
             else if (lower.includes('no answer') || lower.includes('nobody')) status = 'NO_ANSWER';
@@ -929,14 +930,14 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
                                                 </div>
                                             </div>
                                         ) : (
-                                            <div className="grid grid-cols-3 gap-1.5">
+                                            <div className="grid grid-cols-2 gap-1.5">
                                                 {STATUS_OPTIONS.map(opt => (
                                                     <button
                                                         key={opt.id}
                                                         onClick={() => handleSelectStatus(prop, opt.id)}
                                                         disabled={isSaving}
                                                         aria-busy={isSaving}
-                                                        className={`flex flex-col items-center gap-1 py-2.5 rounded-xl text-center transition-all ${isSaving ? 'opacity-50' : 'active:scale-95'}`}
+                                                        className={`flex items-center justify-center rounded-xl text-center transition-all ${opt.id === 'SOLD' ? 'col-span-2 flex-row min-h-14 gap-2 py-3.5' : 'flex-col gap-1 py-2.5'} ${isSaving ? 'opacity-50' : 'active:scale-95'}`}
                                                         style={{
                                                             background: outcomeTint(opt.color, '18'),
                                                             border: `1px solid ${outcomeBorder(opt.color, '30')}`
@@ -945,7 +946,7 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
                                                         {isSaving
                                                             ? <Loader2 className="w-4 h-4 animate-spin" style={{ color: opt.color }} />
                                                             : <opt.icon className="w-4 h-4" style={{ color: opt.color }} />}
-                                                        <span className="text-[9px] font-bold leading-tight" style={{ color: opt.color }}>{opt.label}</span>
+                                                        <span className={`${opt.id === 'SOLD' ? 'text-sm font-black' : 'text-[10px] font-bold'} leading-tight`} style={{ color: opt.color }}>{opt.label}</span>
                                                     </button>
                                                 ))}
                                             </div>

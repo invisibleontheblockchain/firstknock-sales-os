@@ -1,19 +1,12 @@
 import React, { useState } from 'react';
-import { Navigation, Camera, Loader2, Phone, Clock, ChevronUp, ChevronLeft, Check, Home, Ban, MapPin, UserX, History } from 'lucide-react';
+import { Navigation, Camera, Loader2, ChevronUp, ChevronLeft, MapPin, History } from 'lucide-react';
 import { format } from 'date-fns';
 import PropertyHistory from './PropertyHistory';
 import RemoveRouteStopButton from '@/components/routes/RemoveRouteStopButton';
 import { buildFullAddress, openInMaps } from '@/components/logic/navigation';
 import { parseOptionalSaleAmount } from '@/components/analytics/salesManagement';
 
-const STATUS_OPTIONS = [
-    { id: 'SOLD', label: 'Sold', icon: Check, color: '#39FF4A' },
-    { id: 'NO_ANSWER', label: 'No Answer', icon: Home, color: '#FFFFFF' },
-    { id: 'CALLBACK', label: 'Callback', icon: Phone, color: '#A855F7' },
-    { id: 'HARD_NO', label: 'Not Int.', icon: Ban, color: '#FF6B6B' },
-    { id: 'NOT_MOVED_IN', label: 'Not Moved In', icon: Clock, color: '#FFBC66' },
-    { id: 'DM_NOT_HOME', label: 'DM Not Home', icon: UserX, color: '#FFFFFF' },
-];
+import { OUTCOME_OPTIONS as STATUS_OPTIONS } from '@/components/logic/outcomeStatus';
 
 export default function PropertyDetailSheet({
     property,
@@ -178,7 +171,7 @@ export default function PropertyDetailSheet({
                     <div className="flex items-center justify-between mb-2">
                         <span className="text-[10px] font-black uppercase text-white/45 tracking-[0.2em]">Log outcome</span>
                     </div>
-                    <div className="grid grid-cols-3 gap-1.5">
+                    <div className="grid grid-cols-2 gap-1.5">
                         {STATUS_OPTIONS.map(opt => {
                             const isPending = savingStatus === opt.id;
                             const isDimmed = isSavingOutcome && !isPending;
@@ -188,13 +181,13 @@ export default function PropertyDetailSheet({
                                     onClick={() => handleMark(opt.id)}
                                     disabled={isSavingOutcome}
                                     aria-busy={isPending}
-                                    className={`relative flex flex-col items-center gap-1 py-3.5 rounded-2xl text-center transition-all ${outcomeDisabled ? 'opacity-40 cursor-not-allowed' : 'active:scale-95'} ${isDimmed ? 'opacity-40' : ''} ${isPending ? 'scale-[0.97]' : ''} ${(showSaleAmount && opt.id === 'SOLD') || isPending ? 'ring-2 ring-[#2EEB57]' : ''}`}
+                                    className={`relative flex items-center justify-center gap-1 rounded-2xl text-center transition-all ${opt.id === 'SOLD' ? 'col-span-2 flex-row min-h-16 gap-2 py-4' : 'flex-col py-3.5'} ${outcomeDisabled ? 'opacity-40 cursor-not-allowed' : 'active:scale-95'} ${isDimmed ? 'opacity-40' : ''} ${isPending ? 'scale-[0.97]' : ''} ${(showSaleAmount && opt.id === 'SOLD') || isPending ? 'ring-2 ring-[#2EEB57]' : ''}`}
                                     style={{ background: opt.color === '#FFFFFF' ? 'rgba(255,255,255,0.055)' : opt.color + '14', border: `1px solid ${opt.color === '#FFFFFF' ? 'rgba(255,255,255,0.14)' : opt.color + '2e'}`, boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)' }}
                                 >
                                     {isPending
                                         ? <Loader2 className="w-5 h-5 animate-spin" style={{ color: opt.color }} />
                                         : <opt.icon className="w-5 h-5" style={{ color: opt.color }} />}
-                                    <span className="text-[9px] font-bold leading-tight" style={{ color: opt.color }}>
+                                    <span className={`${opt.id === 'SOLD' ? 'text-sm font-black' : 'text-[10px] font-bold'} leading-tight`} style={{ color: opt.color }}>
                                         {isPending ? 'Saving...' : opt.label}
                                     </span>
                                 </button>

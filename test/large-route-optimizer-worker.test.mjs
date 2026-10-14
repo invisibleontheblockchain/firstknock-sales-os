@@ -178,6 +178,23 @@ test('large worker applies terminal and street-cooldown eligibility before exact
   assert.equal(result.cooldownInfo.propertiesExcluded, 7);
 });
 
+test('not-qualified doors stay out of small and large follow-up routes', () => {
+  const eligible = property(1);
+  const notQualified = property(2, { effective_status: 'NOT_QUALIFIED' });
+  const properties = [eligible, notQualified];
+  const smallRoutes = generateOptimizedRoutes(properties, 10, null, [], {
+    excludeTerminal: true,
+  });
+  assert.deepEqual(smallRoutes.flatMap(route => route.properties).map(p => p.id), [eligible.id]);
+
+  const manifest = buildLargeRouteManifests({
+    properties,
+    housesPerRoute: 10,
+    optimizerOptions: { excludeTerminal: true },
+  });
+  assert.deepEqual(materializeLargeRoutes(properties, manifest).flatMap(route => route.properties).map(p => p.id), [eligible.id]);
+});
+
 test('property-level street cooldown is route-size independent without interaction logs', () => {
   const futureCooldown = property(1, {
     street_name: 'Future Cooldown Street',

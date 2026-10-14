@@ -74,12 +74,9 @@ test('the checklist renders outcomes from the shared status source', () => {
 
   // Equivalent statuses share the knock tab's values.
   const knock = readSource('src/components/rep/PropertyDetailSheet.jsx');
+  assert.match(knock, /OUTCOME_OPTIONS as STATUS_OPTIONS/);
   for (const option of OUTCOME_OPTIONS) {
     assert.equal(OUTCOME_COLORS[option.id], option.color);
-    assert.ok(
-      knock.includes(option.color),
-      `${option.id} colour ${option.color} should match the knock tab`
-    );
   }
 });
 

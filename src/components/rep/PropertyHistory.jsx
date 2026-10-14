@@ -6,6 +6,7 @@ import { CheckCircle2, XCircle, Clock, Home, MessageSquare, Image, MapPin, Trash
 const STATUS_ICONS = {
     SOLD: { icon: CheckCircle2, color: 'text-[#39FF4A]', bg: 'bg-[#2EEB57]/10' },
     HARD_NO: { icon: XCircle, color: 'text-red-400', bg: 'bg-red-500/10' },
+    NOT_QUALIFIED: { icon: XCircle, color: 'text-slate-400', bg: 'bg-slate-500/10' },
     CALLBACK: { icon: Clock, color: 'text-[#2EEB57]', bg: 'bg-[#2EEB57]/10' },
     NO_ANSWER: { icon: Home, color: 'text-white', bg: 'bg-white/10' },
     ELIGIBLE: { icon: Home, color: 'text-gray-500', bg: 'bg-gray-500/10' },
