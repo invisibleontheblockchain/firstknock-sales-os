@@ -1,8 +1,10 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 import { buildTeamRoster } from '../../shared/teamRoster.js';
 import { buildTeamLeaderboard } from '../../shared/teamLeaderboard.js';
+import { loadAuthorizedTeamRoster, TeamRosterError } from '../../shared/teamRosterAuthorization.js';
 
 const asArray = (value) => Array.isArray(value) ? value : value?.items || [];
+const LEADERBOARD_LOG_FIELDS = ['id', 'manager_id', 'created_date', 'created_by', 'rep_id', 'actor_user_id', 'parsed_status', 'counts_as_knock'];
 
 class HttpError extends Error {
     constructor(status, message) { super(message); this.status = status; }
@@ -20,9 +22,9 @@ Deno.serve(async (req) => {
         try { new Intl.DateTimeFormat('en-US', { timeZone }).format(new Date()); }
         catch { throw new HttpError(400, 'Choose a valid time zone.'); }
 
-        // Reuse the roster endpoint's service-loaded account and active membership
+        // Reuse the roster's service-loaded account and active membership
         // checks. Caller-supplied team/user IDs never select the reporting scope.
-        const roster = (await base44.functions.invoke('getTeamRoster', {})).data;
+        const roster = await loadAuthorizedTeamRoster(base44);
         if (!roster?.success || !roster.manager_id || roster.manager?.id !== roster.manager_id) {
             throw new HttpError(403, 'Your team could not be verified.');
         }
@@ -39,7 +41,7 @@ Deno.serve(async (req) => {
         const logs = [];
         let complete = false;
         for (let page = 0; page < 100; page += 1) {
-            const rows = asArray(await base44.asServiceRole.entities.InteractionLog.filter(query, '-created_date', 5000, page * 5000));
+            const rows = asArray(await base44.asServiceRole.entities.InteractionLog.filter(query, '-created_date', 5000, page * 5000, LEADERBOARD_LOG_FIELDS));
             logs.push(...rows.filter((log) => log.manager_id === roster.manager_id));
             if (rows.length < 5000) { complete = true; break; }
         }
@@ -53,9 +55,9 @@ Deno.serve(async (req) => {
             rows: buildTeamLeaderboard({ members, logs, period, timeZone, now }),
         });
     } catch (error) {
-        const status = error instanceof HttpError ? error.status : (error?.response?.status === 401 || error?.response?.status === 403 ? error.response.status : 500);
+        const status = error instanceof HttpError || error instanceof TeamRosterError ? error.status : (error?.response?.status === 401 || error?.response?.status === 403 ? error.response.status : 500);
         if (status === 500) console.error('Team leaderboard load failed:', error);
-        return Response.json({ error: error instanceof HttpError ? error.message : 'Unable to load your team leaderboard. Please retry.' }, { status });
+        return Response.json({ error: error instanceof HttpError || error instanceof TeamRosterError ? error.message : 'Unable to load your team leaderboard. Please retry.' }, { status });
     }
 });
 

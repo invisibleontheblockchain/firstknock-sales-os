@@ -14,8 +14,7 @@ export function useTeamLeaderboard(user, period = 'today') {
             return response.data.rows;
         },
         enabled: !!managerId && (isManagerAccount(user) || isRepAccount(user)),
-        staleTime: 30000,
-        refetchOnMount: 'always',
+        staleTime: 60000,
         refetchInterval: 60000,
     });
 }

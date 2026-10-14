@@ -3,7 +3,7 @@ import { Navigation, MapPin } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { useTheme } from '@/components/theme/ThemeProvider';
-import { isKnockActivityLog } from '@/lib/interactionLogs';
+import { buildAnalyticsRouteStats } from '@/lib/analyticsLoading';
 
 const STATUS_STYLES = {
     IN_PROGRESS: { bg: '#3b82f620', border: '#3b82f640', color: '#3b82f6', label: 'In Progress' },
@@ -15,25 +15,7 @@ const STATUS_STYLES = {
 export default function RouteProgress({ routes, logs }) {
     const { accent } = useTheme();
 
-    const routeStats = useMemo(() => {
-        return routes
-            .filter(r => r.status !== 'ARCHIVED')
-            .map(route => {
-                const hashes = route.property_hashes || [];
-                const hydratedCount = Array.isArray(route.allProperties) ? route.allProperties.length : Array.isArray(route.properties) ? route.properties.length : 0;
-                const metricCount = route.metrics?.house_count || route.houseCount || 0;
-                const routeLogs = logs.filter(l => isKnockActivityLog(l) && hashes.includes(l.address_hash));
-                const uniqueKnocked = new Set(routeLogs.map(l => l.address_hash)).size;
-                const total = Math.max(hydratedCount, metricCount, hashes.length);
-                const percent = total > 0 ? Math.round((uniqueKnocked / total) * 100) : 0;
-                const sales = routeLogs.filter(l => ['SOLD', 'QUALIFIED'].includes(l.parsed_status)).length;
-                return { ...route, uniqueKnocked, total, percent, sales, logCount: routeLogs.length };
-            })
-            .sort((a, b) => {
-                const order = { IN_PROGRESS: 0, ACTIVE: 1, PENDING: 2, COMPLETED: 3 };
-                return (order[a.status] ?? 4) - (order[b.status] ?? 4);
-            });
-    }, [routes, logs]);
+    const routeStats = useMemo(() => buildAnalyticsRouteStats(routes, logs), [routes, logs]);
 
     if (routeStats.length === 0) {
         return (

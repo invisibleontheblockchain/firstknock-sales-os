@@ -2,10 +2,22 @@ import React, { useMemo, useState } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle, BarChart3, DollarSign, Loader2, Navigation, Sparkles } from 'lucide-react';
-import { format, startOfDay, subDays } from 'date-fns';
-import { determineEffectiveStatus } from '../components/logic/territoryLogic';
+import { startOfDay, subDays } from 'date-fns';
+import { buildLogsByAddress, withDerivedStatus } from '@/components/logic/routePropertyStatus';
 import { hydrateRoutesForMap } from '@/components/logic/routeHydration';
 import { isManagerAccount } from '@/lib/roles';
+import { withReadDeadline } from '@/lib/readRequest';
+import {
+    ANALYTICS_APPOINTMENT_FIELDS,
+    ANALYTICS_ROUTE_FIELDS,
+    adjustAnalyticsStatusCounts,
+    collectAnalyticsRouteProperties,
+    countAnalyticsWorkedDoors,
+    fetchAnalyticsTerritorySummary,
+    fetchPersonalAnalyticsLogs,
+    getAnalyticsAppointmentDateFilter,
+    requireCompleteAnalyticsRouteProperties,
+} from '@/lib/analyticsLoading';
 import {
     filterAnalyticsRecords,
     fetchAllAnalyticsPages,
@@ -58,6 +70,10 @@ export default function ListPage() {
     const [activeTab, setActiveTab] = useState('performance');
     const [dateDays, setDateDays] = useState(30);
     const [selectedDate, setSelectedDate] = useState(null);
+    const [loadRouteStatuses, setLoadRouteStatuses] = useState(false);
+    const isAnalyticsTab = activeTab === 'performance' || activeTab === 'advanced';
+    const isSalesTab = activeTab === 'sales';
+    const isRoutesTab = activeTab === 'routes';
     const dateWindow = useMemo(
         () => getAnalyticsDateWindow({ dateDays, selectedDate }),
         [dateDays, selectedDate]
@@ -79,23 +95,21 @@ export default function ListPage() {
         setDateDays(1);
     };
 
-    const { data: user, isLoading: userLoading, isFetching: userFetching } = useQuery({
+    const { data: user, isLoading: userLoading, isError: userError, refetch: refetchUser } = useQuery({
         queryKey: ['user'],
-        queryFn: () => base44.auth.me(),
-        staleTime: 0,
-        refetchOnMount: 'always',
-        retry: false,
+        queryFn: () => withReadDeadline(() => base44.auth.me()),
+        staleTime: 1000 * 60 * 5,
     });
 
-    const userReady = !!user && !userFetching;
+    const userReady = !!user;
     const userEmail = getUserEmail(user);
     const tenantManagerId = getTenantManagerId(user);
 
-    const { data: teamMemberData = { primary: null, allIds: [] } } = useQuery({
+    const { data: teamMemberData = { primary: null, allIds: [] }, isLoading: identityLoading, isError: identityError, refetch: refetchIdentity } = useQuery({
         queryKey: ['currentTeamMember', 'analytics', user?.id, userEmail, tenantManagerId],
         queryFn: async () => {
             if (!userEmail) return { primary: null, allIds: [] };
-            const res = await base44.entities.TeamMember.filter({ email: userEmail }, '-created_date', 50);
+            const res = await withReadDeadline(() => base44.entities.TeamMember.filter({ email: userEmail }, '-created_date', 50));
             const allMatches = toEntityArray(res).filter((member) => normalizeEmail(member.email) === userEmail);
             const accountMatches = tenantManagerId
                 ? allMatches.filter((member) => member.manager_id === tenantManagerId)
@@ -109,6 +123,7 @@ export default function ListPage() {
             };
         },
         enabled: userReady && !!userEmail,
+        staleTime: 1000 * 60 * 5,
     });
     const currentTeamMember = teamMemberData.primary;
     const currentTeamMemberIds = teamMemberData.allIds || [];
@@ -119,10 +134,11 @@ export default function ListPage() {
         queryKey: ['teamMembers', 'salesManager', tenantManagerId, userEmail],
         queryFn: async () => {
             if (!tenantManagerId || !managerAnalytics) return [];
-            const response = await base44.entities.TeamMember.filter({ manager_id: tenantManagerId }, '-created_date', 5000);
+            const response = await withReadDeadline(() => base44.entities.TeamMember.filter({ manager_id: tenantManagerId }, '-created_date', 5000));
             return toEntityArray(response).filter((member) => member.manager_id === tenantManagerId);
         },
-        enabled: userReady && managerAnalytics && !!tenantManagerId,
+        enabled: userReady && managerAnalytics && !!tenantManagerId && isSalesTab,
+        staleTime: 1000 * 60 * 2,
     });
     const salesTeamMembers = managerAnalytics
         ? toEntityArray(salesTeamMembersRaw)
@@ -142,32 +158,17 @@ export default function ListPage() {
     )];
     const analyticsZipCodesKey = analyticsZipCodes.join(',');
 
-    const { data: properties = [], isLoading: propsLoading } = useQuery({
-        queryKey: ['masterProperties', 'analytics', userEmail, tenantManagerId, analyticsZipCodesKey],
-        staleTime: 1000 * 60 * 3,
-        queryFn: async () => {
-            if (!userReady || !analyticsZipCodes.length) return [];
-            const response = await base44.functions.invoke('getRouteCandidatesFromNeon', {
-                zip_codes: analyticsZipCodes,
-                sold_months: 'all',
-                limit: 100000
-            });
-            return Array.isArray(response.data?.properties) ? response.data.properties : [];
-        },
-        enabled: userReady && analyticsZipCodes.length > 0,
-    });
-
-    const { data: savedRoutesRaw = [], isLoading: routesLoading } = useQuery({
+    const { data: savedRoutesRaw = [], isLoading: routesLoading, isSuccess: routesReady, isError: routesError, refetch: refetchRoutes } = useQuery({
         queryKey: ['savedRoutes', 'analytics', user?.id, userEmail, tenantManagerId, myRepIdsKey],
         queryFn: async () => {
             if (!userReady) return [];
             const queries = [];
             if (myRepIds.length > 0) {
-                queries.push(base44.entities.SavedRoute.filter({ assigned_to: myRepIds }, '-created_date', 500));
+                queries.push(withReadDeadline(() => base44.entities.SavedRoute.filter({ assigned_to: myRepIds }, '-created_date', 500, 0, ANALYTICS_ROUTE_FIELDS)));
             }
             if (isManagerAccount(user)) {
-                if (tenantManagerId) queries.push(base44.entities.SavedRoute.filter({ manager_id: tenantManagerId }, '-created_date', 500));
-                if (user?.email) queries.push(base44.entities.SavedRoute.filter({ created_by: user.email }, '-created_date', 500));
+                if (tenantManagerId) queries.push(withReadDeadline(() => base44.entities.SavedRoute.filter({ manager_id: tenantManagerId }, '-created_date', 500, 0, ANALYTICS_ROUTE_FIELDS)));
+                if (user?.email) queries.push(withReadDeadline(() => base44.entities.SavedRoute.filter({ created_by: user.email }, '-created_date', 500, 0, ANALYTICS_ROUTE_FIELDS)));
             }
             const results = await Promise.all(queries);
             return dedupeEntities(results.flatMap(toEntityArray)).filter((route) => {
@@ -176,54 +177,53 @@ export default function ListPage() {
                 return isManagerAccount(user) && recordBelongsToCurrentAccount(route, user);
             });
         },
-        enabled: userReady,
-    });
-    const savedRoutes = toEntityArray(savedRoutesRaw).filter((route) => route.status !== 'ARCHIVED');
-
-    const { data: hydratedRoutes = [], isLoading: hydratedRoutesLoading } = useQuery({
-        queryKey: ['analyticsHydratedRoutes', savedRoutes.map(route => route.id).join(','), userEmail, tenantManagerId],
-        queryFn: () => savedRoutes.length ? hydrateRoutesForMap(savedRoutes, user?.email, []) : [],
-        enabled: userReady && !!userEmail && savedRoutes.length > 0,
+        enabled: userReady && !identityLoading && !identityError,
         staleTime: 1000 * 60 * 2,
     });
+    const savedRoutes = toEntityArray(savedRoutesRaw).filter((route) => route.status !== 'ARCHIVED');
+    const routeManifestProperties = useMemo(() => collectAnalyticsRouteProperties(savedRoutes), [savedRoutesRaw]);
 
     const {
         data: logsRaw = [],
         isLoading: logsLoading,
+        isSuccess: logsReady,
         isError: logsError,
         refetch: refetchLogs,
     } = useQuery({
-        queryKey: ['interactionLogs', 'analytics', userEmail, tenantManagerId, selectedDateKey],
+        queryKey: ['interactionLogs', 'analytics', userEmail, tenantManagerId, selectedDateKey, dateWindow.isAllTime || isRoutesTab],
         staleTime: 1000 * 60 * 2,
         queryFn: async () => {
             if (!userEmail) return [];
-            const creatorEmails = [...new Set([user?.email, userEmail].filter(Boolean))];
-            const recentResults = await Promise.all(
-                creatorEmails.map((email) => base44.entities.InteractionLog.filter({ created_by: email }, '-created_date', 5000))
-            );
-
-            const selectedResults = selectedDate && dateWindow.start && dateWindow.end
-                ? await Promise.all(creatorEmails.map((email) => fetchAllAnalyticsPages(
-                    (limit, skip) => base44.entities.InteractionLog.filter({
-                        created_by: email,
-                        created_date: {
-                            $gte: dateWindow.start.toISOString(),
-                            $lt: dateWindow.end.toISOString(),
-                        },
-                    }, '-created_date', limit, skip)
-                )))
-                : [];
-
-            return dedupeEntities([
-                ...recentResults.flatMap(toEntityArray),
-                ...selectedResults.flatMap(toEntityArray),
-            ])
+            const rows = await fetchPersonalAnalyticsLogs(base44.entities.InteractionLog, [user?.email, userEmail], {
+                selectedWindow: selectedDate ? dateWindow : null,
+                allTime: dateWindow.isAllTime || isRoutesTab,
+            });
+            return dedupeEntities(rows)
                 .filter((log) => personalRecordBelongsToCurrentAccount(log, user));
         },
-        enabled: userReady && !!userEmail,
+        enabled: userReady && !!userEmail && !isSalesTab,
     });
     const logs = toEntityArray(logsRaw);
     const activityLogs = useMemo(() => filterKnockActivityLogs(logs), [logs]);
+    const territoryLogHashes = useMemo(() => [...new Set(logs.map((log) => log.address_hash).filter(Boolean))], [logsRaw]);
+    const { data: territorySummary, isLoading: propsLoading, isError: propsError, refetch: refetchProperties } = useQuery({
+        queryKey: ['masterProperties', 'analyticsSummary', userEmail, tenantManagerId, analyticsZipCodesKey, territoryLogHashes.join(',')],
+        staleTime: 1000 * 60 * 3,
+        queryFn: () => fetchAnalyticsTerritorySummary(territoryLogHashes, async (hashes) => {
+            const response = await withReadDeadline(() => base44.functions.invoke('getRouteCandidatesFromNeon', {
+                zip_codes: analyticsZipCodes,
+                sold_months: 'all',
+                response_mode: 'analytics_summary',
+                analytics_hashes: hashes,
+                limit: 100000,
+            }));
+            return response.data;
+        }),
+        // Route inventory is already present in SavedRoute. The territory
+        // fallback returns aggregate counts and only doors with outcome logs.
+        enabled: userReady && isAnalyticsTab && routesReady && logsReady && !routeManifestProperties.length && analyticsZipCodes.length > 0,
+    });
+    const properties = territorySummary?.properties || [];
 
     const {
         data: salesLogsRaw = [],
@@ -239,21 +239,22 @@ export default function ListPage() {
 
             if (managerAnalytics && tenantManagerId) {
                 queries.push(fetchAllAnalyticsPages(
-                    (limit, skip) => base44.entities.InteractionLog.filter({
+                    (limit, skip) => withReadDeadline(() => base44.entities.InteractionLog.filter({
                         manager_id: tenantManagerId,
                         parsed_status: 'SOLD',
-                    }, '-created_date', limit, skip)
+                    }, '-created_date', limit, skip))
                 ));
             }
 
-            salesCreatorEmails.forEach((email) => {
+            // A single creator-set query avoids one full-history request per rep.
+            if (salesCreatorEmails.length) {
                 queries.push(fetchAllAnalyticsPages(
-                    (limit, skip) => base44.entities.InteractionLog.filter({
-                        created_by: email,
+                    (limit, skip) => withReadDeadline(() => base44.entities.InteractionLog.filter({
+                        created_by: { $in: salesCreatorEmails },
                         parsed_status: 'SOLD',
-                    }, '-created_date', limit, skip)
+                    }, '-created_date', limit, skip))
                 ));
-            });
+            }
 
             const results = await Promise.all(queries);
             return dedupeEntities(results.flatMap(toEntityArray)).filter((log) => salesLogBelongsToScope(log, {
@@ -266,6 +267,21 @@ export default function ListPage() {
         enabled: userReady && !!userEmail && activeTab === 'sales' && (!managerAnalytics || !salesMembersLoading),
     });
     const salesLogs = toEntityArray(salesLogsRaw);
+    const legacySalesHashes = new Set(salesLogs.filter((log) => !log.property_address && !log.full_address).map((log) => log.address_hash).filter(Boolean));
+    const legacySalesRoutes = savedRoutes.filter((route) => route.property_hashes?.some((hash) => legacySalesHashes.has(hash)));
+    const routesToHydrate = isAnalyticsTab && loadRouteStatuses ? savedRoutes : legacySalesRoutes;
+    const { data: hydratedRoutes = [], isSuccess: statusesReady, isLoading: statusesLoading, isError: statusesError, refetch: refetchStatuses } = useQuery({
+        queryKey: ['analyticsHydratedRoutes', routesToHydrate.map(route => `${route.id}:${route.updated_date || ''}`).join(','), userEmail, tenantManagerId, isAnalyticsTab && loadRouteStatuses],
+        queryFn: async () => {
+            const hydrated = await hydrateRoutesForMap(routesToHydrate, user?.email, []);
+            return isAnalyticsTab && loadRouteStatuses ? requireCompleteAnalyticsRouteProperties(hydrated) : hydrated;
+        },
+        // Legacy sales without address snapshots enrich in the background.
+        // Performance and Routes need manifests, never map geometry.
+        enabled: userReady && !!userEmail && ((isSalesTab && legacySalesRoutes.length > 0) || (isAnalyticsTab && loadRouteStatuses && savedRoutes.length > 0)),
+        staleTime: 1000 * 60 * 2,
+        retry: false,
+    });
 
     const {
         data: appointmentsRaw = [],
@@ -273,61 +289,26 @@ export default function ListPage() {
         isError: apptsError,
         refetch: refetchAppointments,
     } = useQuery({
-        queryKey: ['appointments', 'analytics', userEmail, tenantManagerId, myRepIdsKey, selectedDateKey],
+        queryKey: ['appointments', 'analytics', userEmail, tenantManagerId, myRepIdsKey, dateWindow.start?.toISOString(), dateWindow.end?.toISOString()],
+        staleTime: 1000 * 60 * 2,
         queryFn: async () => {
             if (!userReady) return [];
-            const recentQueries = [];
-            if (myRepIds.length > 0) {
-                recentQueries.push(base44.entities.Appointment.filter({ assigned_rep: myRepIds }, '-scheduled_date', 5000));
-            }
             const creatorEmails = [...new Set([user?.email, userEmail].filter(Boolean))];
-            creatorEmails.forEach((email) => {
-                recentQueries.push(base44.entities.Appointment.filter({ created_by: email }, '-scheduled_date', 5000));
-            });
-
-            const recentResults = await Promise.all(recentQueries);
-            const selectedDayFilter = selectedDate && dateWindow.start && dateWindow.end
-                ? {
-                    $or: [
-                        {
-                            scheduled_date: {
-                                $gte: dateWindow.start.toISOString(),
-                                $lt: dateWindow.end.toISOString(),
-                            },
-                        },
-                        { scheduled_date: format(dateWindow.start, 'yyyy-MM-dd') },
-                    ],
-                }
-                : null;
-            const selectedQueries = [];
-
-            if (selectedDayFilter && myRepIds.length > 0) {
-                selectedQueries.push(fetchAllAnalyticsPages(
-                    (limit, skip) => base44.entities.Appointment.filter({
-                        assigned_rep: myRepIds,
-                        ...selectedDayFilter,
-                    }, '-scheduled_date', limit, skip)
-                ));
-            }
-            if (selectedDayFilter) {
-                creatorEmails.forEach((email) => {
-                    selectedQueries.push(fetchAllAnalyticsPages(
-                        (limit, skip) => base44.entities.Appointment.filter({
-                            created_by: email,
-                            ...selectedDayFilter,
-                        }, '-scheduled_date', limit, skip)
-                    ));
-                });
-            }
-
-            const selectedResults = await Promise.all(selectedQueries);
-            return dedupeEntities([
-                ...recentResults.flatMap(toEntityArray),
-                ...selectedResults.flatMap(toEntityArray),
-            ])
+            const scopes = [
+                ...(myRepIds.length ? [{ assigned_rep: myRepIds }] : []),
+                ...creatorEmails.map((email) => ({ created_by: email })),
+            ];
+            const periodFilter = getAnalyticsAppointmentDateFilter(dateWindow);
+            const results = await Promise.all(scopes.map((scope) => fetchAllAnalyticsPages(
+                (limit, skip) => withReadDeadline(() => base44.entities.Appointment.filter({
+                    ...scope,
+                    ...periodFilter,
+                }, '-scheduled_date', limit, skip, ANALYTICS_APPOINTMENT_FIELDS))
+            )));
+            return dedupeEntities(results.flatMap(toEntityArray))
                 .filter((appointment) => isPersonalAppointmentForUser(appointment, user, myRepIds));
         },
-        enabled: userReady,
+        enabled: userReady && isAnalyticsTab && !identityLoading && !identityError,
     });
     const appointments = toEntityArray(appointmentsRaw);
 
@@ -337,34 +318,28 @@ export default function ListPage() {
 
     const effectiveProperties = useMemo(() => {
         const propsArray = Array.isArray(properties) ? properties : (properties?.items || []);
-        return propsArray
+        return withDerivedStatus(propsArray
             .filter((property) => property?.lat && property?.lng && !isNaN(property.lat) && !isNaN(property.lng))
             .map((property) => {
-                const propertyLogs = logs.filter((log) => log.address_hash === property.address_hash);
                 return {
                     ...property,
                     lat: parseFloat(property.lat),
                     lng: parseFloat(property.lng),
-                    effective_status: determineEffectiveStatus(property, propertyLogs),
                 };
-            });
+            }), buildLogsByAddress(logs));
     }, [properties, logs]);
 
     const analyticsProperties = useMemo(() => {
-        const seen = new Set();
-        const routeProps = [];
-        hydratedRoutes.forEach(route => {
-            const props = route.allProperties || route.properties || [];
-            props.forEach(property => {
-                const key = property.address_hash || property.id;
-                if (key && !seen.has(key)) {
-                    seen.add(key);
-                    routeProps.push(property);
-                }
-            });
-        });
-        return routeProps.length > 0 ? routeProps : effectiveProperties;
-    }, [hydratedRoutes, effectiveProperties]);
+        return routeManifestProperties.length > 0
+            ? withDerivedStatus(statusesReady && isAnalyticsTab && loadRouteStatuses
+                ? collectAnalyticsRouteProperties(hydratedRoutes)
+                : routeManifestProperties, buildLogsByAddress(logs))
+            : effectiveProperties;
+    }, [routeManifestProperties, effectiveProperties, logs, statusesReady, isAnalyticsTab, loadRouteStatuses, hydratedRoutes]);
+    const analyticsStatusCounts = useMemo(() => routeManifestProperties.length
+        ? null
+        : adjustAnalyticsStatusCounts(territorySummary?.statusCounts, effectiveProperties),
+    [routeManifestProperties, territorySummary, effectiveProperties]);
 
     const filteredLogs = useMemo(() => {
         return filterAnalyticsRecords(activityLogs, 'created_date', dateWindow);
@@ -405,8 +380,8 @@ export default function ListPage() {
         });
         const analyticsHashes = new Set(analyticsProperties.map((property) => property.address_hash || property.id).filter(Boolean));
         const coverageLogs = selectedDate ? filteredLogs : activityLogs;
-        const workedDoors = new Set(coverageLogs.map((log) => log.address_hash).filter(hash => hash && (!analyticsHashes.size || analyticsHashes.has(hash)))).size;
-        const totalDoors = analyticsProperties.length;
+        const workedDoors = countAnalyticsWorkedDoors(coverageLogs, analyticsHashes, routeManifestProperties.length > 0 || !!territorySummary);
+        const totalDoors = routeManifestProperties.length || territorySummary?.count || 0;
         const activeRoutes = savedRoutes.filter((route) => ['ACTIVE', 'IN_PROGRESS'].includes(route.status)).length;
         const totalRevenue = filteredLogs
             .filter((log) => SALES_STATUSES.includes(log.parsed_status))
@@ -452,15 +427,17 @@ export default function ListPage() {
             streak,
             totalRevenue,
         };
-    }, [activityLogs, filteredLogs, filteredAppointments, analyticsProperties, savedRoutes, selectedDate]);
+    }, [activityLogs, filteredLogs, filteredAppointments, analyticsProperties, routeManifestProperties, territorySummary, savedRoutes, selectedDate]);
 
-    const isAnalyticsTab = activeTab === 'performance' || activeTab === 'advanced';
-    const isSalesTab = activeTab === 'sales';
-    const isLoading = userLoading || userFetching || propsLoading || logsLoading || routesLoading || hydratedRoutesLoading || (isAnalyticsTab && apptsLoading) || (isSalesTab && (salesMembersLoading || salesLogsLoading));
-    const hasAnalyticsError = (isSalesTab ? salesLogsError : logsError) || (isAnalyticsTab && apptsError);
+    const isLoading = userLoading || identityLoading || routesLoading || (isAnalyticsTab && (propsLoading || logsLoading || apptsLoading)) || (isRoutesTab && logsLoading) || (isSalesTab && (salesMembersLoading || salesLogsLoading));
+    const hasAnalyticsError = userError || identityError || routesError || (isSalesTab ? salesLogsError : logsError) || (isAnalyticsTab && (apptsError || propsError));
 
     const retryAnalytics = () => {
-        refetchLogs();
+        if (userError) refetchUser();
+        if (identityError) refetchIdentity();
+        if (!isSalesTab) refetchLogs();
+        if (routesError) refetchRoutes();
+        if (isAnalyticsTab && propsError) refetchProperties();
         if (isAnalyticsTab) refetchAppointments();
         if (isSalesTab) refetchSalesLogs();
     };
@@ -553,7 +530,19 @@ export default function ListPage() {
                                 <RepAnalyticsKpis metrics={analytics} dateDays={dateDays} selectedDate={selectedDate} />
                                 <RevenueMetrics logs={filteredLogs} dateDays={dateDays} selectedDate={selectedDate} />
                                 <RepAnalyticsPipeline metrics={analytics} />
-                                <StatusBreakdown properties={selectedDate ? periodOutcomeProperties : analyticsProperties} />
+                                {selectedDate || !routeManifestProperties.length || (loadRouteStatuses && statusesReady) ? (
+                                    <StatusBreakdown properties={selectedDate ? periodOutcomeProperties : analyticsProperties} statusCounts={selectedDate ? null : analyticsStatusCounts} />
+                                ) : (
+                                    <div className="rounded-xl border border-white/[0.06] bg-[#111113] p-4">
+                                        <h3 className="text-sm font-black text-white">Status Breakdown</h3>
+                                        <p role={statusesError ? 'alert' : 'status'} className="mt-2 text-xs text-gray-400">
+                                            {statusesLoading ? 'Loading door statuses...' : statusesError ? 'Door statuses could not be verified. Please try again.' : 'Load current door statuses for all of your saved routes.'}
+                                        </p>
+                                        {!statusesLoading && <button type="button" onClick={() => statusesError ? refetchStatuses() : setLoadRouteStatuses(true)} className="mt-3 min-h-10 rounded-lg border border-white/10 px-3 text-xs font-bold text-white">
+                                            {statusesError ? 'Try again' : 'Load door statuses'}
+                                        </button>}
+                                    </div>
+                                )}
                             </div>
                         )}
 
@@ -588,7 +577,7 @@ export default function ListPage() {
 
                         {activeTab === 'routes' && (
                             <div className="p-3 md:p-6 max-w-7xl mx-auto pb-24">
-                                <RouteProgress routes={hydratedRoutes.length > 0 ? hydratedRoutes : savedRoutes} logs={logs} />
+                                <RouteProgress routes={savedRoutes} logs={logs} />
                             </div>
                         )}
                         </>

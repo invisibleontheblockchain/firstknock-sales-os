@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
-import { locationStatus, locationAgeLabel, validLocation, LOCATION_FIX_MAX_AGE_MS } from '../base44/shared/repLocations.js';
+import { locationStatus, locationAgeLabel, validLocation, LOCATION_FIX_MAX_AGE_MS, LOCATION_PUBLISH_MS, LOCATION_REPORT_MS, LOCATION_RETRY_MAX_MS, LOCATION_LIVE_MS } from '../base44/shared/repLocations.js';
 import { startRepLocationSession } from '../src/lib/repLocationSession.js';
 
 const manager = { id: 'manager-a', app_role: 'manager', role: 'user' };
@@ -16,20 +16,36 @@ const fresh = (overrides = {}) => ({ id: 'location-a', manager_id: manager.id, m
 function harness({ caller = manager, savedUser = caller, members = [member], locations = [], ignoreScope = false } = {}) {
   const writes = [];
   const queries = [];
+  const reads = [];
   let handler;
   const filter = (records) => async (query, sort, limit, skip) => {
     queries.push(query);
+    reads.push({ query, sort, limit, skip });
     const rows = (ignoreScope ? records : records.filter(row => Object.entries(query).every(([k, v]) => row[k] === v)))
       .sort((a, b) => sort === '-received_at' ? Date.parse(b.received_at) - Date.parse(a.received_at) : 0);
     return { items: rows.slice(skip, skip + limit) };
   };
   const base44 = { auth: { me: async () => caller }, asServiceRole: { entities: {
-    User: { get: async id => id === savedUser?.id ? savedUser : id === manager.id ? manager : null },
+    User: {
+      get: async id => { reads.push({ userId: id }); return id === savedUser?.id ? savedUser : id === manager.id ? manager : null; },
+      filter: async query => {
+        reads.push({ userIds: query.id });
+        return [savedUser, manager].filter((account, index, accounts) => account && query.id.includes(account.id)
+          && accounts.findIndex(value => value?.id === account.id) === index);
+      },
+    },
     TeamMember: { filter: filter(members) },
     RepLocation: {
       filter: filter(locations),
       create: async data => { writes.push(data); locations.push({ id: `new-${locations.length}`, ...data }); },
       update: async (id, data) => { writes.push({ id, ...data }); Object.assign(locations.find(row => row.id === id), data); },
+      updateMany: async (query, update) => {
+        queries.push(query);
+        for (const location of locations.filter(row => Object.entries(query).every(([key, value]) => row[key] === value))) {
+          writes.push({ id: location.id, ...update.$set });
+          Object.assign(location, update.$set);
+        }
+      },
     },
   } } };
   const code = ts.transpileModule(fs.readFileSync('base44/functions/repLocations/entry.ts', 'utf8'), {
@@ -37,7 +53,7 @@ function harness({ caller = manager, savedUser = caller, members = [member], loc
   }).outputText.replace(/^import .*;\s*$/gm, '');
   vm.runInNewContext(code, { createClientFromRequest: () => base44, Deno: { serve: fn => { handler = fn; } },
     locationStatus, validLocation, LOCATION_FIX_MAX_AGE_MS, Response, console });
-  return { writes, queries, invoke: async (body = {}) => {
+  return { writes, queries, reads, invoke: async (body = {}) => {
     const response = await handler(new Request('https://team.test/locations', { method: 'POST', body: JSON.stringify(body) }));
     return { status: response.status, data: await response.json() };
   } };
@@ -74,6 +90,26 @@ test('publishing binds location to the saved rep identity and membership', async
   assert.equal(writes[0].rep_user_id, rep.id);
 });
 
+test('publish verifies caller and manager in one saved-account read and only loads the latest location', async () => {
+  const locations = Array.from({ length: 501 }, (_, index) => fresh({ id: `location-${index}` }));
+  const { invoke, reads, writes } = harness({ caller: rep, locations });
+  assert.equal((await invoke({ ...fresh(), action: 'publish' })).status, 200);
+  assert.deepEqual([...reads[0].userIds], [rep.id, manager.id]);
+  assert.equal(reads.some(read => read.userId), false);
+  const locationReads = reads.filter(read => read.query?.rep_user_id);
+  assert.equal(locationReads.length, 1);
+  assert.equal(locationReads[0].limit, 1);
+  assert.equal(writes.length, 1);
+});
+
+test('a stale token manager hint cannot select the location tenant', async () => {
+  const { invoke, reads, writes } = harness({ caller: { ...rep, team_manager_id: 'foreign-manager' }, savedUser: rep });
+  assert.equal((await invoke({ ...fresh(), action: 'publish', manager_id: 'foreign-manager' })).status, 200);
+  assert.ok(reads.some(read => read.userId === manager.id));
+  assert.equal(writes[0].manager_id, manager.id);
+  assert.equal(writes[0].rep_user_id, rep.id);
+});
+
 test('removed, inactive and promoted reps cannot publish through a stale team link', async () => {
   for (const members of [[], [{ ...member, status: 'inactive' }], [{ ...member, role: 'manager' }], [{ ...member, user_id: 'other' }]]) {
     const { invoke, writes } = harness({ caller: rep, members });
@@ -99,6 +135,22 @@ test('stopping affects only the current sharing session and hides its coordinate
   assert.equal(writes.length, 1);
   assert.equal(locations[0].sharing, false);
   assert.equal(locations[1].sharing, true);
+});
+
+test('stop clears duplicate current-session rows in one strictly scoped update', async () => {
+  const locations = Array.from({ length: 501 }, (_, index) => fresh({ id: `location-${index}` }));
+  locations.push(fresh({ id: 'other-session', session_id: 'other' }));
+  locations.push(fresh({ id: 'other-rep', rep_user_id: 'other' }));
+  const { invoke, queries } = harness({ caller: rep, locations });
+  assert.equal((await invoke({ action: 'stop', session_id: 'session-a' })).status, 200);
+  const updates = queries.filter(query => query.session_id);
+  assert.equal(updates.length, 1);
+  assert.equal(updates[0].manager_id, manager.id);
+  assert.equal(updates[0].member_id, member.id);
+  assert.equal(updates[0].rep_user_id, rep.id);
+  assert.equal(locations.slice(0, 501).every(location => !location.sharing), true);
+  assert.equal(locations[501].sharing, true);
+  assert.equal(locations[502].sharing, true);
 });
 
 test('a delayed GPS update cannot move a rep back to an older position', async () => {
@@ -158,7 +210,7 @@ test('stationary reps publish fresh GPS heartbeats and rapid fixes are throttled
   gps.emit(); await flush();
   gps.emit(); await flush();
   assert.equal(gps.calls.length, 1);
-  gps.advance(15_000); gps.heartbeat(); await flush();
+  gps.advance(LOCATION_PUBLISH_MS); gps.heartbeat(); await flush();
   assert.equal(gps.calls.length, 2);
   assert.notEqual(gps.calls[0].observed_at, gps.calls[1].observed_at);
   await gps.session.stop();
@@ -186,4 +238,51 @@ test('GPS errors and sync failures never falsely report a successful live publis
   assert.ok(gps.updates.at(-1).error);
   assert.equal(gps.updates.some(update => update.lastPublished), false);
   await assert.rejects(gps.session.stop());
+});
+
+test('rate-limited sharing backs off and resumes the normal fresh heartbeat after recovery', async () => {
+  let attempts = 0;
+  const gps = gpsHarness(async () => {
+    if (++attempts <= 2) throw Object.assign(new Error('Busy'), { status: 429 });
+  });
+  gps.emit(); await flush();
+  gps.advance(LOCATION_PUBLISH_MS); gps.heartbeat(); await flush();
+  assert.equal(gps.calls.length, 1);
+  gps.advance(LOCATION_PUBLISH_MS); gps.heartbeat(); await flush();
+  assert.equal(gps.calls.length, 2);
+  gps.advance(LOCATION_RETRY_MAX_MS); gps.heartbeat(); await flush();
+  assert.equal(gps.calls.length, 3);
+  assert.equal(gps.updates.at(-1).error, '');
+  gps.advance(LOCATION_PUBLISH_MS); gps.heartbeat(); await flush();
+  assert.equal(gps.calls.length, 4);
+  await gps.session.stop();
+});
+
+test('revoked sharing permission does not repeatedly request GPS or publish', async () => {
+  for (const status of [401, 403]) {
+    const gps = gpsHarness(async () => { throw Object.assign(new Error('Access revoked'), { status }); });
+    gps.emit(); await flush();
+    gps.advance(10 * 60_000); gps.heartbeat(); gps.emit(); await flush();
+    assert.equal(gps.calls.length, 1);
+    assert.match(gps.updates.at(-1).error, /permission changed/);
+    await assert.rejects(gps.session.stop());
+  }
+});
+
+test('healthy polling returns to 30 seconds after an error and expiry thresholds remain unchanged', () => {
+  assert.equal(LOCATION_PUBLISH_MS, 30_000);
+  assert.equal(LOCATION_REPORT_MS, 30_000);
+  assert.equal(LOCATION_LIVE_MS, 60_000);
+  const source = fs.readFileSync('src/components/team/ActiveRepLocations.jsx', 'utf8');
+  const ast = ts.createSourceFile('ActiveRepLocations.jsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JSX);
+  let callback;
+  function visit(node) {
+    if (ts.isPropertyAssignment(node) && node.name.getText(ast) === 'refetchInterval') callback = node.initializer.getText(ast);
+    ts.forEachChild(node, visit);
+  }
+  visit(ast);
+  const interval = vm.runInNewContext(`(${callback})`, { LOCATION_REPORT_MS, LOCATION_RETRY_MAX_MS });
+  assert.equal(interval({ state: { status: 'error', errorUpdateCount: 1 } }), 60_000);
+  assert.equal(interval({ state: { status: 'error', errorUpdateCount: 4 } }), 120_000);
+  assert.equal(interval({ state: { status: 'success', errorUpdateCount: 4 } }), 30_000);
 });

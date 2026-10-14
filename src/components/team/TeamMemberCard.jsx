@@ -19,7 +19,7 @@ const BRAND = {
     blue: '#3b82f6'
 };
 
-export default function TeamMemberCard({ member, routes, metrics, allRoutes, onAssignRoute, onDelete, action, canManage = true }) {
+export default function TeamMemberCard({ member, routes, metrics, allRoutes, onAssignRoute, onDelete, action, canManage = true, metricsLoading = false, metricsFailed = false, routesLoading = false }) {
     const queryClient = useQueryClient();
     const nameInputId = useId();
     const [isNameEditorOpen, setIsNameEditorOpen] = useState(false);
@@ -154,7 +154,7 @@ export default function TeamMemberCard({ member, routes, metrics, allRoutes, onA
                                 </Badge>
                                 <div className="flex items-center gap-0.5 md:gap-1 bg-yellow-500/10 border border-yellow-500/20 rounded-full px-1.5 md:px-2 h-4 md:h-5">
                                     <TrendingUp className="w-2.5 h-2.5 md:w-3 md:h-3 text-yellow-500" />
-                                    <span className="text-[8px] md:text-[10px] font-bold text-yellow-500">{conversionRate}%</span>
+                                    <span className="text-[8px] md:text-[10px] font-bold text-yellow-500">{metricsLoading ? '…' : metricsFailed ? '—' : `${conversionRate}%`}</span>
                                 </div>
                             </div>
                         </div>
@@ -162,7 +162,7 @@ export default function TeamMemberCard({ member, routes, metrics, allRoutes, onA
 
                     <div className="flex items-center gap-2 md:gap-3 flex-shrink-0">
                         <div className="text-right">
-                            <p className="text-lg md:text-2xl font-bold text-white tracking-tighter">{metrics.sales}</p>
+                            <p className="text-lg md:text-2xl font-bold text-white tracking-tighter">{metricsLoading ? '…' : metricsFailed ? '—' : metrics.sales}</p>
                             <p className="text-[8px] md:text-[9px] text-gray-500 font-bold uppercase">Sales</p>
                         </div>
                         {canManage && !member.isManagerSelf && onDelete && (
@@ -181,15 +181,15 @@ export default function TeamMemberCard({ member, routes, metrics, allRoutes, onA
             {/* Metrics Grid - Compact */}
             <div className="grid grid-cols-3 divide-x divide-gray-800 border-b border-gray-800 bg-[#0F0F0F]">
                 <div className="py-1.5 md:p-2 text-center">
-                    <p className="text-sm md:text-lg font-bold text-white">{metrics.doorsKnocked}</p>
+                    <p className="text-sm md:text-lg font-bold text-white">{metricsLoading ? '…' : metricsFailed ? '—' : metrics.doorsKnocked}</p>
                     <p className="text-[7px] md:text-[9px] font-bold text-gray-600 uppercase">Knocked</p>
                 </div>
                 <div className="py-1.5 md:p-2 text-center">
-                    <p className="text-sm md:text-lg font-bold text-white">{metrics.talkedTo}</p>
+                    <p className="text-sm md:text-lg font-bold text-white">{metricsLoading ? '…' : metricsFailed ? '—' : metrics.talkedTo}</p>
                     <p className="text-[7px] md:text-[9px] font-bold text-gray-600 uppercase">Talked</p>
                 </div>
                 <div className="py-1.5 md:p-2 text-center">
-                    <p className="text-sm md:text-lg font-bold text-blue-400">{routes.length}</p>
+                    <p className="text-sm md:text-lg font-bold text-blue-400">{routesLoading ? '…' : routes.length}</p>
                     <p className="text-[7px] md:text-[9px] font-bold text-gray-600 uppercase">Routes</p>
                 </div>
             </div>
@@ -212,7 +212,7 @@ export default function TeamMemberCard({ member, routes, metrics, allRoutes, onA
                         ) : <div />}
                         <div>{action}</div>
                     </div>
-                    {activeRoutes.length === 0 && (
+                    {!routesLoading && activeRoutes.length === 0 && (
                         <div className="mt-2">
                             <Select value="" onValueChange={(routeId) => onAssignRoute(routeId, member.id)}>
                                 <SelectTrigger className="w-full h-7 text-[10px] bg-yellow-500/10 border-yellow-500/50 text-yellow-500">

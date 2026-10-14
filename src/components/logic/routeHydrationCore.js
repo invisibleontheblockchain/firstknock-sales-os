@@ -189,7 +189,15 @@ export async function hydrateRouteWithLookup(route, lookup) {
             hashes: missingRouteHashes(hydrated),
             routeId: route.id || null,
         });
-    } catch {
+    } catch (error) {
+        const status = Number(error?.status || error?.response?.status || 0);
+        // A timed-out/rate-limited endpoint will not become faster through its
+        // more expensive legacy workspace-discovery path. Preserve loaded
+        // pins and let the caller retry this route once the service recovers.
+        const networkFailure = ['ERR_NETWORK', 'ECONNABORTED', 'ETIMEDOUT', 'READ_TIMEOUT'].includes(error?.code)
+            || error?.name === 'AbortError'
+            || (error instanceof TypeError && /fetch|network/i.test(error.message));
+        if (status === 408 || status === 429 || status >= 500 || networkFailure) return hydrated;
         routeScopedProperties = [];
     }
     hydrated = orderRouteProperties(

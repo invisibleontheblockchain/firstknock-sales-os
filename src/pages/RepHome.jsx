@@ -11,12 +11,13 @@ import { Input } from "@/components/ui/input";
 import { getKnockWindowLabel } from '@/components/logic/knockTimeOptimizer';
 import { determineEffectiveStatus } from '@/components/logic/territoryLogic';
 import {
-    hydrateRouteWithLookup,
     hasCompleteRouteMapPoints,
     isRecoveryLimitedProperty,
     isRouteHydrationCacheable,
     orderRouteProperties,
 } from '@/components/logic/routeHydrationCore';
+import { hydrateRouteForMap } from '@/components/logic/routeHydration';
+import { indexRouteLogs, logsForRouteProperty } from '@/components/logic/routeLogIndex';
 import { optimizeRouteByStreetSweep } from '@/components/logic/routeOptimizer';
 import { tryRoadMatrixOptimize } from '@/lib/roadMatrixOptimize';
 import {
@@ -560,15 +561,9 @@ export default function RepHome() {
       try {
         console.log(`[RepHome] Fetching ${hashes.length} route properties from route lookup`);
 
-        const hydratedRoute = await hydrateRouteWithLookup(activeRoute, async ({ hashes: requestedHashes, routeId }) => {
-          const response = await withReadDeadline(() => base44.functions.invoke('getRoutePropertiesByHashes', {
-            address_hashes: requestedHashes,
-            ...(routeId ? { route_id: routeId } : {}),
-            user_email: activeRoute.created_by,
-            limit: requestedHashes.length
-          }));
-          return Array.isArray(response.data?.properties) ? response.data.properties : [];
-        });
+        // Reuse the manager/map lookup and its in-flight/cache entry. Opening
+        // Run Route must not download homes that this tab already hydrated.
+        const hydratedRoute = await hydrateRouteForMap(activeRoute, user?.email);
         let bestRoute = hydratedRoute;
         let loaded = Array.isArray(hydratedRoute?.properties) ? hydratedRoute.properties : [];
 
@@ -649,14 +644,14 @@ export default function RepHome() {
   });
 
   // Fetch ALL logs by this rep for analytics
-  const { data: allMyLogs = [] } = useQuery({
+  const { data: allMyLogs = [], isLoading: analyticsLoading, isLoadingError: analyticsLoadFailed, refetch: retryAnalytics } = useQuery({
     queryKey: ['allMyLogs', user?.email],
     queryFn: async () => {
       if (!user?.email) return [];
-      const res = await base44.entities.InteractionLog.filter({ created_by: user.email }, '-created_date', 2000);
+      const res = await withReadDeadline(() => base44.entities.InteractionLog.filter({ created_by: user.email }, '-created_date', 2000));
       return Array.isArray(res) ? res : res?.items || [];
     },
-    enabled: !!user?.email
+    enabled: !!user?.email && showAnalytics
   });
 
   // The server mutation is authoritative; cached browser billing flags never
@@ -915,19 +910,13 @@ export default function RepHome() {
     });
 
     const rerunCreatedAt = activeRoute?.metadata?.rerun_created_at ? new Date(activeRoute.metadata.rerun_created_at).getTime() : null;
+    const logsByHash = indexRouteLogs(logs);
 
     const orderedProps = (activeRoute.property_hashes || []).
     map((hash) => byHash.get(hash)).
     filter(Boolean).
     map((p) => {
-      const pLogs = logs.filter((l) => {
-        const matchesProperty = l.address_hash === p.address_hash || p.legacy_hash && l.address_hash === p.legacy_hash;
-        if (!matchesProperty) return false;
-        if (!rerunCreatedAt) return true;
-        if (l.route_id === activeRoute.id) return true;
-        const logTime = new Date(l.created_date || 0).getTime();
-        return !Number.isNaN(logTime) && logTime >= rerunCreatedAt;
-      });
+      const pLogs = logsForRouteProperty(logsByHash, p, { routeId: activeRoute.id, rerunCreatedAt });
       const derivedStatus = determineEffectiveStatus(p, pLogs);
       const latestLog = getLatestInteractionLog(pLogs);
       const status = resolveWorkflowEffectiveStatus(derivedStatus, pLogs);
@@ -2230,6 +2219,9 @@ export default function RepHome() {
             {showAnalytics &&
       <RepAnalytics
         logs={allMyLogs}
+        loading={analyticsLoading}
+        loadFailed={analyticsLoadFailed}
+        onRetry={retryAnalytics}
         routeProperties={routeProperties}
         activeRoute={activeRoute}
         onClose={() => setShowAnalytics(false)} />
