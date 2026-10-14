@@ -7,7 +7,7 @@ import { createVehicleRoutingContext } from './vehicleRouting.js';
 import { trustedAccess } from './streetSideRouting.js';
 import { buildMailCarrierCandidates, hasCoherentMailCarrierPasses, inferMailCarrierAccess, mailCarrierPassViolations, planMailCarrierWindows } from './mailCarrierRouting.js';
 
-export const LOCAL_DRIVING_REVIEW_VERSION = 'entry_branch_return_v2_mail_carrier';
+export const LOCAL_DRIVING_REVIEW_VERSION = 'entry_branch_return_v3_prepriced_search';
 const id = p => String(p?.address_hash || p?.legacy_hash || p?.id || '');
 const protectedStop = (p, locks) => locks.has(id(p)) || p.order_locked || p.locked
     || p.routing_access?.resolution_status === 'unresolved';
@@ -91,43 +91,70 @@ export function buildLocalDrivingCandidates(stops, context, start = null, end = 
     const width = Math.max(1, Math.min(8, options.localSearchWidth || 4));
     const duration = (a, b) => a && b ? context.optimizationCostBetween(a, b) : 0;
     const distance = (a, b) => a && b ? context.distanceBetween(a, b) : 0;
-    const states = new Map();
+    const size = stops.length, full = (1 << size) - 1;
+    // Costs and access evidence are fixed for this search. Resolve them once,
+    // rather than doing provider-map lookups, street normalization and an
+    // unvisited-stop scan for every exponential DP transition.
+    const keys = stops.map(id), streets = stops.map(neighborhoodStreetKey);
+    const accesses = stops.map(p => context.accessFor?.(p));
+    const trusted = accesses.map(a => Boolean(trustedAccess(a)));
+    const secondsByPair = [], milesByPair = [], crossingByPair = [], betweenByPair = [];
+    for (let first = 0; first < size; first++) {
+        for (let last = 0; last < size; last++) {
+            const pair = first * size + last;
+            secondsByPair[pair] = first === last ? 0 : duration(stops[first], stops[last]);
+            milesByPair[pair] = first === last ? 0 : distance(stops[first], stops[last]);
+            crossingByPair[pair] = 0; betweenByPair[pair] = 0;
+            const a = accesses[first], b = accesses[last];
+            if (!trusted[first] || !trusted[last] || a.chainKey !== b.chainKey) continue;
+            crossingByPair[pair] = Number(a.side !== b.side);
+            const low = Math.min(a.positionMeters, b.positionMeters);
+            const high = Math.max(a.positionMeters, b.positionMeters);
+            for (let i = 0; i < size; i++) {
+                const access = accesses[i];
+                if (trusted[i] && access.chainKey === a.chainKey && access.side === a.side
+                    && access.positionMeters > low + 0.1 && access.positionMeters < high - 0.1) betweenByPair[pair] |= 1 << i;
+            }
+        }
+    }
+    const startSeconds = stops.map(p => duration(start, p)), startMiles = stops.map(p => distance(start, p));
+    const endSeconds = stops.map(p => duration(p, end)), endMiles = stops.map(p => distance(p, end));
+    const countBits = new Uint8Array(full + 1);
+    for (let mask = 1; mask <= full; mask++) countBits[mask] = countBits[mask >>> 1] + (mask & 1);
+    const states = [];
     const insert = (mask, last, candidate) => {
         if (!Number.isFinite(candidate.seconds) || !Number.isFinite(candidate.miles)) return;
-        const key = `${mask}:${last}`;
-        const choices = states.get(key) || [];
+        const key = mask * size + last;
+        const choices = states[key] || [];
         choices.push(candidate); choices.sort(compareSearch);
-        states.set(key, choices.slice(0, width));
+        states[key] = choices.slice(0, width);
     };
-    for (let i = 0; i < stops.length; i++) {
-        const seconds = duration(start, stops[i]);
-        insert(1 << i, i, { path: [i], seconds, miles: distance(start, stops[i]), startSeconds: seconds,
-            endSeconds: 0, entrySeconds: 0, crossings: 0, passovers: 0, fingerprint: id(stops[i]) });
+    for (let i = 0; i < size; i++) {
+        const seconds = startSeconds[i];
+        insert(1 << i, i, { path: [i], seconds, miles: startMiles[i], startSeconds: seconds,
+            endSeconds: 0, entrySeconds: 0, crossings: 0, passovers: 0, fingerprint: keys[i] });
     }
-    const full = (1 << stops.length) - 1;
     for (let mask = 1; mask <= full; mask++) {
-        for (let last = 0; last < stops.length; last++) {
-            for (const prior of states.get(`${mask}:${last}`) || []) {
-                for (let next = 0; next < stops.length; next++) {
+        for (let last = 0; last < size; last++) {
+            for (const prior of states[mask * size + last] || []) {
+                for (let next = 0; next < size; next++) {
                     if (mask & (1 << next)) continue;
-                    const a = stops[last], b = stops[next];
-                    const preference = serviceTransition(a, b, stops.filter((_, i) => !(mask & (1 << i)) && i !== next), context);
-                    const seconds = duration(a, b);
+                    const pair = last * size + next, seconds = secondsByPair[pair];
+                    const passovers = countBits[betweenByPair[pair] & (full ^ mask) & ~(1 << next)];
                     insert(mask | (1 << next), next, { ...prior, path: [...prior.path, next],
-                        seconds: prior.seconds + seconds, miles: prior.miles + distance(a, b),
-                        crossings: prior.crossings + preference.crossings, passovers: prior.passovers + preference.passovers,
-                        entrySeconds: prior.entrySeconds + (neighborhoodStreetKey(a) !== neighborhoodStreetKey(b) ? seconds : 0),
-                        fingerprint: `${prior.fingerprint}|${id(b)}` });
+                        seconds: prior.seconds + seconds, miles: prior.miles + milesByPair[pair],
+                        crossings: prior.crossings + crossingByPair[pair], passovers: prior.passovers + passovers,
+                        entrySeconds: prior.entrySeconds + (streets[last] !== streets[next] ? seconds : 0),
+                        fingerprint: `${prior.fingerprint}|${keys[next]}` });
                 }
             }
         }
     }
     const candidates = [];
-    for (let last = 0; last < stops.length; last++) {
-        for (const prior of states.get(`${full}:${last}`) || []) {
-            const endSeconds = duration(stops[last], end);
-            candidates.push({ ...prior, seconds: prior.seconds + endSeconds,
-                miles: prior.miles + distance(stops[last], end), endSeconds,
+    for (let last = 0; last < size; last++) {
+        for (const prior of states[full * size + last] || []) {
+            candidates.push({ ...prior, seconds: prior.seconds + endSeconds[last],
+                miles: prior.miles + endMiles[last], endSeconds: endSeconds[last],
                 order: prior.path.map(i => stops[i]) });
         }
     }

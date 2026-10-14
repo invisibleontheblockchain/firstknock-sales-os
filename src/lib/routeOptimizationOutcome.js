@@ -2,6 +2,14 @@
 // previously verified route must survive a failed attempt without that failure
 // being turned into a success message or fresh verification.
 export function describeRoadOptimizationOutcome(reason, measurement = null) {
+    if (reason === 'backend_cpu_limit') return {
+        status: 'processing_limit', tone: 'error',
+        message: 'The driving optimizer reached its processing limit. Your route was kept unchanged.',
+    };
+    if (reason === 'backend_rate_limited') return {
+        status: 'rate_limited', tone: 'warning',
+        message: 'The driving optimizer is busy. Your route was kept unchanged. Wait a moment and try again.',
+    };
     if (reason === 'deadline_exceeded') return {
         status: 'timed_out', tone: 'warning',
         message: 'Optimization timed out. Your route was kept unchanged. Try again.',
@@ -56,9 +64,14 @@ export function buildRoadOptimizationAttempt(reason, measurement, { mode, doorCo
     const meta = measurement?.routingMetadata || {};
     const review = meta.neighborhood_excursion_review?.local_driving_review;
     const reasonCode = String(reason || 'no_result').split(':')[0];
+    const diagnostic = measurement?.diagnostic;
     return {
         finished_at: finishedAt, mode, door_count: doorCount,
         status: outcome.status, reason: /^[a-z_]+$/.test(reasonCode) ? reasonCode : 'no_result',
+        http_status: Number.isInteger(diagnostic?.httpStatus) && diagnostic.httpStatus >= 100 && diagnostic.httpStatus <= 599
+            ? diagnostic.httpStatus : null,
+        elapsed_ms: Number.isFinite(diagnostic?.elapsedMs) && diagnostic.elapsedMs >= 0
+            ? Math.round(diagnostic.elapsedMs) : null,
         optimizer_version: meta.optimizer_version || null,
         matrix_tier: meta.matrix_tier || null,
         neighborhoods_planned: review?.planned ?? null,

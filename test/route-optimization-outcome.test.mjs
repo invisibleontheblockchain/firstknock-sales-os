@@ -31,6 +31,18 @@ test('timeouts and failed requests never become a no-improvement success', () =>
     }
 });
 
+test('a processing limit differs from ordinary throttling without claiming optimality', () => {
+    const cpu = outcomes.describeRoadOptimizationOutcome('backend_cpu_limit', { diagnostic: {
+        httpStatus: 429, errorCode: 'cpu-exceeded', elapsedMs: 71000,
+    } });
+    assert.equal(cpu.status, 'processing_limit'); assert.equal(cpu.tone, 'error');
+    assert.match(cpu.message, /reached its processing limit/);
+    assert.doesNotMatch(cpu.message, /try again|no faster|already optimized/i);
+    const throttle = outcomes.describeRoadOptimizationOutcome('backend_rate_limited');
+    assert.equal(throttle.status, 'rate_limited'); assert.equal(throttle.tone, 'warning');
+    assert.match(throttle.message, /busy/);
+});
+
 test('the real Troutman rejection reports improvements found and a failed final check', () => {
     const result = outcomes.describeRoadOptimizationOutcome('current_order_measured_best', measured({
         planned: 64, checked: 52, repaired: 25, applied: false,
@@ -91,6 +103,20 @@ test('attempt history contains evidence counts but never home/car anchors or raw
     assert.doesNotMatch(JSON.stringify(result), /33\.45|-112\.01|https:|start_constraint|end_constraint/);
 });
 
+test('attempt history saves HTTP status and elapsed time with no raw failure data', () => {
+    const result = outcomes.buildRoadOptimizationAttempt('backend_cpu_limit', { diagnostic: {
+        httpStatus: 429, errorCode: 'cpu-exceeded', elapsedMs: 71000.4,
+        detail: 'https://provider/33.45,-112.01', error: { private: 'anchor' },
+    } }, { mode: 'route_only', doorCount: 377 });
+    assert.equal(result.status, 'processing_limit'); assert.equal(result.reason, 'backend_cpu_limit');
+    assert.equal(result.http_status, 429); assert.equal(result.elapsed_ms, 71000);
+    assert.doesNotMatch(JSON.stringify(result), /cpu-exceeded|33\.45|-112\.01|https:|detail|private|anchor/);
+    const invalid = outcomes.buildRoadOptimizationAttempt('backend_unavailable', {
+        diagnostic: { httpStatus: '429', elapsedMs: -1 },
+    });
+    assert.equal(invalid.http_status, null); assert.equal(invalid.elapsed_ms, null);
+});
+
 function actionHarness(reason, measurement) {
     const calls = [], writes = [];
     const toast = Object.fromEntries(['loading', 'success', 'info', 'warning', 'error', 'dismiss'].map(tone =>
@@ -137,6 +163,8 @@ test('the real Optimize action distinguishes completed, incomplete, and failed c
         ['current_order_measured_best', measured(complete), 'info'],
         ['current_order_measured_best', measured({ ...complete, budgetExhausted: true }), 'warning'],
         ['backend_unavailable: failed', null, 'error'],
+        ['backend_cpu_limit', { diagnostic: { httpStatus: 429, errorCode: 'cpu-exceeded', elapsedMs: 71000 } }, 'error'],
+        ['backend_rate_limited', { diagnostic: { httpStatus: 429, errorCode: 'rate-limited', elapsedMs: 500 } }, 'warning'],
     ]) {
         const harness = actionHarness(reason, measurement);
         const properties = ['A', 'B', 'C'].map((address_hash, i) => ({ address_hash, lat: 35, lng: -81 + i / 10000 }));
@@ -144,5 +172,10 @@ test('the real Optimize action distinguishes completed, incomplete, and failed c
             metadata: { routing: { road_aware: true, fallback: false } } }, { mode: 'route_only' },
         { user: { id: 'manager' }, effectiveProperties: properties });
         assert.equal(harness.calls.at(-1).tone, expected); assert.equal(harness.writes.length, 1);
+        if (measurement?.diagnostic) {
+            assert.equal(harness.writes[0].patch.metadata.last_optimization_attempt.http_status, 429);
+            assert.equal(harness.writes[0].patch.metadata.last_optimization_attempt.elapsed_ms, measurement.diagnostic.elapsedMs);
+            assert.equal('property_hashes' in harness.writes[0].patch, false);
+        }
     }
 });
