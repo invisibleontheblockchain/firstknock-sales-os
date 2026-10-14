@@ -19,6 +19,23 @@ const UNLIMITED_PROPERTY_LIMIT = UNLIMITED_PROPERTY_CAP;
 const RECONCILIATION_VERSION = 2;
 const PRECISION_PRICE_FLOOR_CENTS = 9900;
 
+// The usage check must survive brief entity throttling without granting an
+// allowance from cached user fields. Retry individual reads and deterministic
+// reconciliation updates, never restart the entire reconciliation pass.
+async function withRateLimitRetry<T>(operation: () => Promise<T>): Promise<T> {
+    for (let attempt = 0; ; attempt++) {
+        try {
+            return await operation();
+        } catch (error: any) {
+            const status = Number(error?.status || error?.response?.status || 0);
+            const rateLimited = status === 429
+                || (!status && /^rate limit exceeded[.!]?$/i.test(String(error?.message || '').trim()));
+            if (!rateLimited || attempt >= 3) throw error;
+            await new Promise(resolve => setTimeout(resolve, 1000 * 2 ** attempt + Math.floor(Math.random() * 250)));
+        }
+    }
+}
+
 function asArray(value: any) {
     return Array.isArray(value) ? value : (value?.items || []);
 }
@@ -296,7 +313,7 @@ function jobMatchesMeteredEntitlement(job: any, entitlement: any) {
 async function listAll(entity: any, filter: any, sort = 'created_date', pageSize = 500) {
     const records: any[] = [];
     for (let skip = 0; skip < 20000; skip += pageSize) {
-        const page = await entity.filter(filter, sort, pageSize, skip);
+        const page = await withRateLimitRetry(() => entity.filter(filter, sort, pageSize, skip));
         const items = asArray(page);
         records.push(...items);
         if (items.length < pageSize) return records;
@@ -459,7 +476,7 @@ async function reconcileLegacyJobs(base44: any, user: any, jobs: any[], entitlem
             includedTrialAssigned += count;
         }
 
-        await base44.asServiceRole.entities.FetchJob.update(job.id, {
+        await withRateLimitRetry(() => base44.asServiceRole.entities.FetchJob.update(job.id, {
             precision_usage_user_id: user.id,
             precision_usage_kind: kind,
             ...(kind === 'paid' ? {
@@ -471,7 +488,7 @@ async function reconcileLegacyJobs(base44: any, user: any, jobs: any[], entitlem
             precision_usage_reserved: 0,
             precision_usage_count: count,
             precision_usage_recorded_at: job.completed_at || new Date().toISOString()
-        });
+        }));
         Object.assign(job, {
             precision_usage_user_id: user.id,
             precision_usage_kind: kind,
@@ -487,7 +504,7 @@ async function reconcileLegacyJobs(base44: any, user: any, jobs: any[], entitlem
     }
 
     const reconciledUsage = calculateUsage(jobs, entitlement);
-    await base44.asServiceRole.entities.User.update(user.id, {
+    await withRateLimitRetry(() => base44.asServiceRole.entities.User.update(user.id, {
         precision_usage_reconciled_at: new Date().toISOString(),
         precision_usage_reconciliation_version: RECONCILIATION_VERSION,
         precision_trial_properties_credited: Math.min(FREE_PROPERTY_LIMIT, reconciledUsage.trialUsed),
@@ -497,16 +514,16 @@ async function reconcileLegacyJobs(base44: any, user: any, jobs: any[], entitlem
             precision_usage_period_start: entitlement.periodStart,
             precision_usage_period_end: entitlement.periodEnd
         } : {})
-    });
+    }));
     return { jobs, reconciledCount };
 }
 
 Deno.serve(async (req: Request) => {
     try {
         const base44 = createClientFromRequest(req);
-        const authenticatedUser = await base44.auth.me();
+        const authenticatedUser = await withRateLimitRetry(() => base44.auth.me());
         if (!authenticatedUser) return Response.json({ error: 'Unauthorized' }, { status: 401 });
-        const user = await loadAuthoritativeUser(base44, authenticatedUser);
+        const user = await withRateLimitRetry(() => loadAuthoritativeUser(base44, authenticatedUser));
 
         const entitlement = await resolveEntitlement(user);
         let jobs = await getUserPrecisionJobs(base44, user);
@@ -520,7 +537,7 @@ Deno.serve(async (req: Request) => {
             limit: entitlement.limit
         };
         if (entitlement.kind === 'paid') {
-            const ledger = await listPrecisionCreditLedger(base44, user.id);
+            const ledger = await withRateLimitRetry(() => listPrecisionCreditLedger(base44, user.id));
             creditState = calculatePrecisionCreditState({
                 ledger,
                 currentPeriodStart: entitlement.periodStart,

@@ -7,7 +7,7 @@ import vm from 'node:vm';
 import ts from 'typescript';
 
 import { normalizePrecisionUsageResponse } from '../src/lib/precisionUsage.js';
-import { UNLIMITED_PROPERTY_CAP, precisionGrantLabel, precisionGrantLimit } from '../base44/shared/privilegedAccounts.js';
+import { UNLIMITED_PROPERTY_CAP, currentGrantPeriod, precisionGrantLabel, precisionGrantLimit } from '../base44/shared/privilegedAccounts.js';
 import { loadAuthoritativeUser } from '../base44/shared/accountIdentity.js';
 import { selectOwnedPrecisionJobs } from '../base44/shared/precisionOrderSafety.js';
 import {
@@ -22,7 +22,7 @@ const rootDir = resolve(testDir, '..');
 const readSource = (path) => readFileSync(resolve(rootDir, path), 'utf8');
 const endpointPath = 'base44/functions/getPrecisionUsage/entry.ts';
 
-function loadHandler({ base44, stripeApi }) {
+function loadHandler({ base44, stripeApi, retryDelays = [] }) {
   const transpiled = ts.transpileModule(readSource(endpointPath), {
     compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
     fileName: endpointPath,
@@ -40,6 +40,7 @@ function loadHandler({ base44, stripeApi }) {
     console,
     createClientFromRequest: () => base44,
     UNLIMITED_PROPERTY_CAP,
+    currentGrantPeriod,
     precisionGrantLabel,
     precisionGrantLimit,
     loadAuthoritativeUser,
@@ -53,6 +54,7 @@ function loadHandler({ base44, stripeApi }) {
     configuredExtraCredits,
     isPaidPrecisionCreditInvoice,
     listPrecisionCreditLedger,
+    setTimeout: (callback, milliseconds) => { retryDelays.push(milliseconds); callback(); },
     Request,
     Response
   }, { filename: endpointPath });
@@ -127,21 +129,23 @@ function makeBase44(user, initialJobs, initialCredits = []) {
   };
 }
 
-async function invoke({ user, jobs, credits = [], subscription, searchSubscriptions = [] }) {
+async function invoke({ user, jobs, credits = [], subscription, searchSubscriptions = [], configureClient = () => {} }) {
   const base44 = makeBase44(user, jobs, credits);
+  configureClient(base44.client);
+  const retryDelays = [];
   const stripeApi = {
     subscriptions: {
       retrieve: async () => subscription,
       search: async () => ({ data: searchSubscriptions })
     }
   };
-  const handler = loadHandler({ base44: base44.client, stripeApi });
+  const handler = loadHandler({ base44: base44.client, stripeApi, retryDelays });
   const response = await handler(new Request('https://app.example.com/getPrecisionUsage', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: '{}'
   }));
-  return { response, result: await response.json(), base44 };
+  return { response, result: await response.json(), base44, retryDelays };
 }
 
 function completedJob({ id, created, count, kind, periodStart, userId = 'user_1' }) {
@@ -375,4 +379,140 @@ test('frontend validation fails closed on partial or inconsistent usage snapshot
     trial_used: 50,
     trial_remaining: 0
   }), /inconsistent/i);
+});
+
+test('the unlimited grant survives transient throttling of authenticated identity reads', async () => {
+  const user = { id: 'owner', email: 'invisibleontheblockchain@gmail.com' };
+  let authAttempts = 0;
+  let identityAttempts = 0;
+  const { response, result, retryDelays } = await invoke({
+    user, jobs: [],
+    configureClient(client) {
+      client.auth.me = async () => {
+        if (++authAttempts === 1) throw Object.assign(new Error('Throttled'), { response: { status: 429 } });
+        return user;
+      };
+      client.asServiceRole.entities.User.get = async () => {
+        if (++identityAttempts === 1) throw new Error('Rate limit exceeded');
+        return user;
+      };
+    }
+  });
+  assert.equal(response.status, 200);
+  assert.equal(result.unlimited, true);
+  assert.equal(normalizePrecisionUsageResponse(result).remaining, UNLIMITED_PROPERTY_CAP);
+  assert.equal(authAttempts, 2);
+  assert.equal(identityAttempts, 2);
+  assert.equal(retryDelays.length, 2);
+});
+
+test('throttled history reads back off and still count usage against the grant', async () => {
+  const user = { id: 'owner', email: 'invisibleontheblockchain@gmail.com' };
+  const period = currentGrantPeriod();
+  const job = {
+    ...completedJob({ id: 'owner_job', created: period.periodStart, count: 2121, kind: 'paid', periodStart: period.periodStart, userId: user.id }),
+    user_email: user.email,
+    precision_subscription_id: 'owner_unlimited_grant',
+    precision_usage_period_end: period.periodEnd
+  };
+  let attempts = 0;
+  const { response, result, retryDelays } = await invoke({
+    user, jobs: [job],
+    configureClient(client) {
+      const read = client.asServiceRole.entities.FetchJob.filter;
+      client.asServiceRole.entities.FetchJob.filter = async (...args) => {
+        if (args[0].precision_usage_user_id && ++attempts <= 2) {
+          throw Object.assign(new Error('Rate limit exceeded'), { status: 429 });
+        }
+        return read(...args);
+      };
+    }
+  });
+  assert.equal(response.status, 200);
+  assert.equal(result.used, 2121);
+  assert.equal(result.remaining, UNLIMITED_PROPERTY_CAP - 2121);
+  assert.equal(attempts, 3);
+  assert.equal(retryDelays.length, 2);
+  assert.ok(retryDelays[0] >= 1000 && retryDelays[0] < 1250);
+  assert.ok(retryDelays[1] >= 2000 && retryDelays[1] < 2250);
+});
+
+test('a throttled reconciliation update retries only that job without double counting', async () => {
+  const subscription = paidSubscription();
+  const user = { id: 'user_1', email: 'austenwaugh@gmail.com', subscription_id: subscription.id };
+  const job = completedJob({ id: 'legacy', created: new Date(subscription.current_period_start * 1000 + 1000).toISOString(), count: 50 });
+  let attempts = 0;
+  const { response, result, base44, retryDelays } = await invoke({
+    user, jobs: [job], subscription,
+    configureClient(client) {
+      const update = client.asServiceRole.entities.FetchJob.update;
+      client.asServiceRole.entities.FetchJob.update = async (...args) => {
+        if (++attempts === 1) throw Object.assign(new Error('Throttled'), { status: 429 });
+        return update(...args);
+      };
+    }
+  });
+  assert.equal(response.status, 200);
+  assert.equal(result.used, 50);
+  assert.equal(result.remaining, 950);
+  assert.equal(result.reconciled_jobs, 1);
+  assert.equal(base44.jobUpdates.length, 1);
+  assert.equal(attempts, 2);
+  assert.equal(retryDelays.length, 1);
+});
+
+test('paid credit ledger reads recover from throttling without losing rollover credits', async () => {
+  const subscription = paidSubscription();
+  const user = { id: 'user_1', email: 'austenwaugh@gmail.com', subscription_id: subscription.id };
+  let attempts = 0;
+  const { response, result, retryDelays } = await invoke({
+    user, jobs: [], subscription,
+    configureClient(client) {
+      client.asServiceRole.entities.PrecisionCreditLedger.filter = async () => {
+        if (++attempts === 1) throw Object.assign(new Error('Throttled'), { status: 429 });
+        return [{ id: 'credit', user_id: user.id, credits_delta: 250 }];
+      };
+    }
+  });
+  assert.equal(response.status, 200);
+  assert.equal(result.remaining, 1250);
+  assert.equal(attempts, 2);
+  assert.equal(retryDelays.length, 1);
+});
+
+test('persistent throttling stops after bounded retries and grants no unverifiable allowance', async () => {
+  const user = { id: 'owner', email: 'invisibleontheblockchain@gmail.com' };
+  let attempts = 0;
+  const { response, result, retryDelays } = await invoke({
+    user, jobs: [],
+    configureClient(client) {
+      client.auth.me = async () => {
+        attempts++;
+        throw Object.assign(new Error('Throttled'), { status: 429 });
+      };
+    }
+  });
+  assert.equal(response.status, 503);
+  assert.equal(result.complete, false);
+  assert.equal(result.limit, undefined);
+  assert.equal(attempts, 4);
+  assert.equal(retryDelays.length, 3);
+});
+
+test('permission errors do not retry or bypass authoritative account verification', async () => {
+  const user = { id: 'owner', email: 'invisibleontheblockchain@gmail.com' };
+  let attempts = 0;
+  const { response, result, retryDelays } = await invoke({
+    user, jobs: [],
+    configureClient(client) {
+      client.asServiceRole.entities.User.get = async () => {
+        attempts++;
+        throw Object.assign(new Error('Forbidden'), { status: 403 });
+      };
+    }
+  });
+  assert.equal(response.status, 503);
+  assert.equal(result.complete, false);
+  assert.equal(attempts, 1);
+  assert.deepEqual(retryDelays, []);
 });
