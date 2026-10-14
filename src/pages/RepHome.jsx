@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { base44 } from '@/api/base44Client';
+import { shouldRetryRead, withReadDeadline } from '@/lib/readRequest';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Loader2, Navigation, CheckCircle2, Search, X, TrendingUp, MessageCircle, CalendarDays, Sparkles, ChevronDown } from 'lucide-react';
 import localforage from 'localforage';
@@ -11,6 +12,7 @@ import { getKnockWindowLabel } from '@/components/logic/knockTimeOptimizer';
 import { determineEffectiveStatus } from '@/components/logic/territoryLogic';
 import {
     hydrateRouteWithLookup,
+    hasCompleteRouteMapPoints,
     isRecoveryLimitedProperty,
     isRouteHydrationCacheable,
     orderRouteProperties,
@@ -76,6 +78,9 @@ import { useFieldRoutesInspectionQueue } from '@/components/fieldroutes/useField
 // Assignment packages are immutable and versioned. Window focus and online
 // events handle normal refreshes; this is only a low-frequency recovery poll.
 const CANVAS_ASSIGNMENT_POLL_MS = 5 * 60_000;
+// Subscriptions and focus deliver assignments promptly. Spread the recovery
+// poll across devices instead of listing every rep's routes four times/minute.
+const ROUTE_RECOVERY_POLL_MS = 60_000 + Math.floor(Math.random() * 10_000);
 // A device fix is warmed while the rep reads the house card, so an outcome tap
 // almost always reuses it instead of waiting on the GPS radio.
 const GPS_FIX_MAX_AGE_MS = 90_000;
@@ -165,7 +170,9 @@ export default function RepHome() {
     };
   }, []);
 
-  const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me().catch(() => null) });
+  const { data: user, isLoading: userLoading, isLoadingError: userLoadFailed, refetch: retryUser } = useQuery({
+    queryKey: ['user'], queryFn: () => withReadDeadline(() => base44.auth.me()), retry: shouldRetryRead,
+  });
 
   React.useEffect(() => {
     if (!user?.id || hydratedHomeBaseUserRef.current === user.id) return;
@@ -220,7 +227,7 @@ export default function RepHome() {
       if (!userEmail) return [];
       try {
         const emailLower = userEmail.trim().toLowerCase();
-        const res = await base44.entities.TeamMember.filter({ email: emailLower }, '-created_date', 50);
+        const res = await withReadDeadline(() => base44.entities.TeamMember.filter({ email: emailLower }, '-created_date', 50));
         const allMatches = Array.isArray(res) ? res : res?.items || [];
         console.log(`[RepHome] TeamMember lookup returned ${allMatches.length} email match${allMatches.length === 1 ? '' : 'es'} before tenant scoping`);
         return allMatches;
@@ -230,7 +237,7 @@ export default function RepHome() {
       }
     },
     enabled: !!userEmail,
-    retry: 2,
+    retry: shouldRetryRead,
   });
 
   const routeScope = useMemo(
@@ -271,10 +278,10 @@ export default function RepHome() {
     routeScope.assigneeIds.join(','),
     teamMemberLookupFailed ? 'identity-error' : 'identity-ok',
   ];
-  const { data: routes = [], isLoading: routesLoading } = useQuery({
+  const { data: routes = [], isLoading: routesLoading, isLoadingError: routesLoadFailed, refetch: retryRoutes } = useQuery({
     queryKey: myRoutesQueryKey,
     refetchOnWindowFocus: true,
-    refetchInterval: 15_000,
+    refetchInterval: ROUTE_RECOVERY_POLL_MS,
     queryFn: async () => {
       if (!user) return [];
       if (teamMemberLookupFailed && !routeScope.managerAccount) {
@@ -293,7 +300,7 @@ export default function RepHome() {
         // Server-side scoped queries: assigned-to-me + (managers) owned-by-me.
         // Name-based fallback removed — backfillRouteAssignments resolves legacy name-only assignments to IDs.
         const fetchRouteGroup = (filter) => fetchAllSavedRoutePages((limit, skip) => (
-          base44.entities.SavedRoute.filter(filter, '-created_date', limit, skip)
+          withReadDeadline(() => base44.entities.SavedRoute.filter(filter, '-created_date', limit, skip))
         ));
         // Legacy routes may predate manager_id. The shared query plan includes
         // exact creator fallback for managers, then collectKnockRoutes applies
@@ -319,8 +326,11 @@ export default function RepHome() {
         return accountRoutes;
       } catch (e) {
         console.error("Error fetching routes", e);
-        const cached = await localforage.getItem(routeCacheKey);
-        return collectKnockRoutes([cached || []], routeScope);
+        const cached = await localforage.getItem(routeCacheKey).catch(() => null);
+        if (Array.isArray(cached)) return collectKnockRoutes([cached], routeScope);
+        // A failed request is not evidence of an empty account. Let Query
+        // retry and show a recoverable error if this device has no snapshot.
+        throw e;
       }
     },
     enabled: !!user && !teamMembersLoading && !routeIdentityLoading && !routeIdentityError
@@ -540,7 +550,7 @@ export default function RepHome() {
   );
 
   // 2. Fetch Route Properties - batch filter by address_hash
-  const { data: properties = [], isLoading: propsLoading } = useQuery({
+  const { data: properties = [], isLoading: propsLoading, isLoadingError: propertiesLoadFailed, refetch: retryProperties } = useQuery({
     queryKey: ['routeProperties', activeRoute?.id, activeRoute?.updated_date, activeRouteOrderKey],
     refetchOnWindowFocus: true,
     queryFn: async () => {
@@ -551,12 +561,12 @@ export default function RepHome() {
         console.log(`[RepHome] Fetching ${hashes.length} route properties from route lookup`);
 
         const hydratedRoute = await hydrateRouteWithLookup(activeRoute, async ({ hashes: requestedHashes, routeId }) => {
-          const response = await base44.functions.invoke('getRoutePropertiesByHashes', {
+          const response = await withReadDeadline(() => base44.functions.invoke('getRoutePropertiesByHashes', {
             address_hashes: requestedHashes,
             ...(routeId ? { route_id: routeId } : {}),
             user_email: activeRoute.created_by,
             limit: requestedHashes.length
-          });
+          }));
           return Array.isArray(response.data?.properties) ? response.data.properties : [];
         });
         let bestRoute = hydratedRoute;
@@ -578,22 +588,27 @@ export default function RepHome() {
         }
         console.log(`[RepHome] Found ${loaded.length}/${hashes.length} properties`);
 
+        if (!hasCompleteRouteMapPoints(bestRoute)) {
+          throw new Error('Some route homes could not be loaded. Please try again.');
+        }
+
         if (isRouteHydrationCacheable(bestRoute)) {
-          await localforage.setItem(`cached_props_${activeRoute.id}`, loaded);
+          await localforage.setItem(`cached_props_${activeRoute.id}`, loaded).catch(cacheError => {
+            console.warn('[RepHome] Could not save the offline property snapshot', cacheError);
+          });
         }
         return loaded;
       } catch (e) {
         console.error("Error fetching properties", e);
-        const cached = await localforage.getItem(`cached_props_${activeRoute.id}`);
-        if (!Array.isArray(cached) || cached.length === 0) return [];
+        const cached = await localforage.getItem(`cached_props_${activeRoute.id}`).catch(() => null);
+        if (!Array.isArray(cached) || cached.length === 0) throw e;
         if (cached.some(isRecoveryLimitedProperty)) {
           await localforage.removeItem(`cached_props_${activeRoute.id}`);
-          return [];
+          throw e;
         }
         const cachedRoute = orderRouteProperties(activeRoute, cached);
-        return isRouteHydrationCacheable(cachedRoute)
-          ? cachedRoute.properties
-          : [];
+        if (isRouteHydrationCacheable(cachedRoute)) return cachedRoute.properties;
+        throw e;
       }
     },
     enabled: !!activeRoute
@@ -607,13 +622,13 @@ export default function RepHome() {
   }, []);
 
   // 3. Fetch Interaction Logs (History for this route)
-  const { data: logs = [], isLoading: logsLoading } = useQuery({
+  const { data: logs = [], isLoading: logsLoading, isLoadingError: logsLoadFailed, refetch: retryLogs } = useQuery({
     queryKey: ['routeLogs', activeRoute?.id],
     queryFn: async () => {
       if (activeRoute?.property_hashes?.length > 0) {
         const [hashLogsRes, routeLogsRes] = await Promise.all([
-          base44.entities.InteractionLog.filter({ address_hash: activeRoute.property_hashes }, '-created_date', 1000),
-          activeRoute.id ? base44.entities.InteractionLog.filter({ route_id: activeRoute.id }, '-created_date', 1000) : []
+          withReadDeadline(() => base44.entities.InteractionLog.filter({ address_hash: activeRoute.property_hashes }, '-created_date', 1000)),
+          activeRoute.id ? withReadDeadline(() => base44.entities.InteractionLog.filter({ route_id: activeRoute.id }, '-created_date', 1000)) : []
         ]);
         const merged = [...(Array.isArray(hashLogsRes) ? hashLogsRes : hashLogsRes?.items || []), ...(Array.isArray(routeLogsRes) ? routeLogsRes : routeLogsRes?.items || [])];
         const seen = new Set();
@@ -625,7 +640,7 @@ export default function RepHome() {
         }));
       }
       if (user?.email) {
-        const res = await base44.entities.InteractionLog.filter({ created_by: user.email }, '-created_date', 500);
+        const res = await withReadDeadline(() => base44.entities.InteractionLog.filter({ created_by: user.email }, '-created_date', 500));
         return withPendingOutcomes(Array.isArray(res) ? res : res?.items || []);
       }
       return withPendingOutcomes([]);
@@ -1361,7 +1376,7 @@ export default function RepHome() {
     setSelectedPropertyKeys((previous) => togglePropertySelection(previous, property));
   }, [activeRouteArchived, bulkActionMutation.isPending]);
 
-  if (routeIdentityLoading || teamMembersLoading || routesLoading || propsLoading || logsLoading || (!activeRoute && canvasAssignmentsLoading)) {
+  if (userLoading || routeIdentityLoading || teamMembersLoading || routesLoading || propsLoading || logsLoading || (!activeRoute && canvasAssignmentsLoading)) {
     return (
       <div className="flex h-screen items-center justify-center bg-black text-white">
                 <div className="text-center">
@@ -1370,6 +1385,23 @@ export default function RepHome() {
                 </div>
             </div>);
 
+  }
+
+  if (userLoadFailed || routesLoadFailed || propertiesLoadFailed || logsLoadFailed) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-black p-6 text-center text-white">
+        <div className="max-w-sm">
+          <h1 className="text-xl font-bold">Route data temporarily unavailable</h1>
+          <p className="mt-3 text-sm text-gray-400">We could not finish loading your route. Check your connection and try again.</p>
+          <Button className="mt-5 bg-[#2EEB57] font-bold text-black" onClick={() => {
+            if (userLoadFailed) retryUser();
+            if (routesLoadFailed) retryRoutes();
+            if (propertiesLoadFailed) retryProperties();
+            if (logsLoadFailed) retryLogs();
+          }}>Try Again</Button>
+        </div>
+      </div>
+    );
   }
 
   if (canvasAssignments.length > 0 && (canvasFieldOpen || (!activeRoute && !canvasFieldDismissed))) {

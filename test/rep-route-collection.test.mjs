@@ -178,7 +178,7 @@ test('Knock UI uses the complete scoped collection and compact accessible Home B
   assert.match(repHome, /collectKnockRoutes\(routeGroups, routeScope\)/);
   assert.doesNotMatch(repHome, /\['completed', 'archived'\].*filter/i);
   assert.match(repHome, /await localforage\.setItem\(routeCacheKey, accountRoutes\)/);
-  assert.match(repHome, /if \(routeIdentityLoading \|\| teamMembersLoading \|\| routesLoading/);
+  assert.match(repHome, /if \(userLoading \|\| routeIdentityLoading \|\| teamMembersLoading \|\| routesLoading/);
   assert.match(repHome, /aria-expanded=\{homeBasePanelOpen\}/);
   assert.match(repHome, /aria-controls="rep-home-base-controls"/);
   assert.match(repHome, /role="region" aria-labelledby="rep-home-base-toggle"/);
@@ -235,7 +235,7 @@ test('identity failures preserve scoped cached routes and never become a success
   const repHome = readSource('src/pages/RepHome.jsx');
 
   assert.match(repHome, /console\.error\("Error fetching team member profile", e\);\s*throw e;/);
-  assert.match(repHome, /retry: 2/);
+  assert.match(repHome, /retry: shouldRetryRead/);
   assert.match(repHome, /teamMemberLookupFailed && !routeScope\.managerAccount/);
 
   const fallbackStart = repHome.indexOf('if (teamMemberLookupFailed && !routeScope.managerAccount)');

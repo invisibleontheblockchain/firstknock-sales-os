@@ -1,7 +1,9 @@
-import React, { createContext, useState, useContext, useEffect } from 'react';
+import React, { createContext, useState, useContext, useEffect, useRef } from 'react';
 import { base44 } from '@/api/base44Client';
 import { appParams } from '@/lib/app-params';
 import { createAxiosClient } from '@base44/sdk/dist/utils/axios-client';
+import { retryRead } from './readRequest.js';
+import { queryClientInstance } from './query-client.js';
 
 const AuthContext = createContext();
 
@@ -12,6 +14,7 @@ export const AuthProvider = ({ children }) => {
   const [isLoadingPublicSettings, setIsLoadingPublicSettings] = useState(true);
   const [authError, setAuthError] = useState(null);
   const [appPublicSettings, setAppPublicSettings] = useState(null); // Contains only { id, public_settings }
+  const appStateCheck = useRef(null);
 
   useEffect(() => {
     // Defer initial network call to allow app to launch fully
@@ -24,8 +27,20 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const checkAppState = async () => {
+    if (appStateCheck.current) return appStateCheck.current;
+    const request = loadAppState();
+    appStateCheck.current = request;
+    try {
+      return await request;
+    } finally {
+      appStateCheck.current = null;
+    }
+  };
+
+  const loadAppState = async () => {
     try {
       setIsLoadingPublicSettings(true);
+      setIsLoadingAuth(true);
       setAuthError(null);
 
       // First, check app public settings (with token if available)
@@ -40,7 +55,7 @@ export const AuthProvider = ({ children }) => {
       });
 
       try {
-        const publicSettings = await appClient.get(`/prod/public-settings/by-id/${appParams.appId}`);
+        const publicSettings = await retryRead(() => appClient.get(`/prod/public-settings/by-id/${appParams.appId}`, { timeout: 15_000 }));
         setAppPublicSettings(publicSettings);
 
         // If we got the app public settings successfully, check if user is authenticated
@@ -75,7 +90,7 @@ export const AuthProvider = ({ children }) => {
           }
         } else {
           setAuthError({
-            type: 'unknown',
+            type: 'load_failed',
             message: appError.message || 'Failed to load app'
           });
         }
@@ -85,7 +100,7 @@ export const AuthProvider = ({ children }) => {
     } catch (error) {
       console.error('Unexpected error:', error);
       setAuthError({
-        type: 'unknown',
+        type: 'load_failed',
         message: error.message || 'An unexpected error occurred'
       });
       setIsLoadingPublicSettings(false);
@@ -97,8 +112,11 @@ export const AuthProvider = ({ children }) => {
     try {
       // Now check if the user is authenticated
       setIsLoadingAuth(true);
-      const currentUser = await base44.auth.me();
+      const currentUser = await retryRead(() => base44.auth.me());
       setUser(currentUser);
+      // The layout and every page share this identity query. Seeding it avoids
+      // a second auth request before route/team data can start loading.
+      queryClientInstance.setQueryData(['user'], currentUser);
       setIsAuthenticated(true);
       setIsLoadingAuth(false);
     } catch (error) {
@@ -112,6 +130,8 @@ export const AuthProvider = ({ children }) => {
           type: 'auth_required',
           message: 'Authentication required'
         });
+      } else {
+        setAuthError({ type: 'load_failed', message: 'We could not load your account. Please try again.' });
       }
     }
   };

@@ -56,7 +56,7 @@ test('rep screen waits for verified identity and retries failed onboarding befor
  }
  visit(ast);
  const make=(source,extra={})=>{
-  const sandbox={useQuery:config=>config,user:rep,myRoutesQueryKey:['myRoutes','rep'],teamMembersLoading:false,routeIdentityLoading:false,routeIdentityError:false,...extra};
+  const sandbox={useQuery:config=>config,user:rep,myRoutesQueryKey:['myRoutes','rep'],teamMembersLoading:false,routeIdentityLoading:false,routeIdentityError:false,ROUTE_RECOVERY_POLL_MS:65000,...extra};
   vm.runInNewContext('globalThis.descriptor = '+source,sandbox);
   return sandbox.descriptor;
  };
