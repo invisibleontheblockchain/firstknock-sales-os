@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import L from 'leaflet';
-import { TileLayer, useMap } from 'react-leaflet';
+import { useMap } from 'react-leaflet';
+import RecoveringTileLayer from '@/components/map/RecoveringTileLayer';
 import { leafletLayer } from 'protomaps-leaflet';
 import { getCanvasBasemapConfiguration } from '@/components/canvas/canvasBasemapConfiguration';
 import { CANVAS_CARTO_FLAVOR } from '@/components/canvas/canvasCartoFlavor';
@@ -66,7 +67,7 @@ export default function CanvasBaseMapTiles({ theme = 'light', satellite = false 
   if (!config.url) return null;
   if (config.mode === 'pmtiles') return <CanvasPmtilesLayer key={`${theme}-${config.url}`} config={config} tileClass={tileClass} />;
   return (
-    <TileLayer
+    <RecoveringTileLayer
       key={`canvas-basemap-${tileClass}-${config.url}`}
       url={config.url}
       attribution={config.attribution}

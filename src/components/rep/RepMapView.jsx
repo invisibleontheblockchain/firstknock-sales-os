@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { MapContainer, TileLayer, CircleMarker, Circle, Polyline, Tooltip, useMap } from 'react-leaflet';
+import { MapContainer, CircleMarker, Circle, Polyline, Tooltip, useMap } from 'react-leaflet';
+import RecoveringTileLayer from '@/components/map/RecoveringTileLayer';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { routePropertyOrderFingerprint } from '@/components/logic/routeRoadContext';
@@ -365,7 +366,7 @@ export default function RepMapView({
                 >
                     <MapRefCapture mapRef={mapRef} />
                     {focusProperty && <FlyToProperty focusProperty={focusProperty} />}
-                    <TileLayer
+                    <RecoveringTileLayer
                         url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
                         attribution=""
                         maxNativeZoom={19}

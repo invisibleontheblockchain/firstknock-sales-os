@@ -121,6 +121,7 @@
             .catch((error) => console.warn('PWA foreground update check skipped', error));
         };
         window.addEventListener('pageshow', checkForPwaUpdate);
+        window.addEventListener('online', checkForPwaUpdate);
         document.addEventListener('visibilitychange', () => {
           if (document.visibilityState === 'visible') checkForPwaUpdate();
         });
