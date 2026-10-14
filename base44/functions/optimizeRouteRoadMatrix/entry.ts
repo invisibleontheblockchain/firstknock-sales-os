@@ -33,6 +33,9 @@ import { createRoadCostCache } from '../../shared/roadCostCache.js';
 import { createMemoizedRouteMetrics } from '../../shared/routeMetricMemo.js';
 import { recoverRouteVehicleAccess } from '../../shared/routeAccessRecovery.js';
 import { reviewLocalDrivingNeighborhoods } from '../../shared/localDrivingNeighborhoods.js';
+import { createCountyRoadRoutingAdapter } from '../../shared/countyRoadRouting.js';
+import { verifyCompleteDrivingCandidate } from '../../shared/completeDrivingVerification.js';
+import { summarizeLegMiles } from '../../shared/roadLegDistribution.js';
 import {
     DURATION_TIE_TOLERANCE_MINUTES,
     measureRouteCandidate,
@@ -42,7 +45,7 @@ import {
 
 // Bump when candidate generation or the objective changes, so a stored route can
 // be told apart from one produced by an older solver.
-const OPTIMIZER_VERSION = 'road_matrix_address_access_recovery_v12';
+const OPTIMIZER_VERSION = 'road_matrix_county_access_roads_v13';
 
 function readSecret(name) {
     try {
@@ -71,6 +74,13 @@ function exactOnce(order, expectedCount) {
     return order.length === expectedCount
         && new Set(order.map(propertyIdentity)).size === expectedCount;
 }
+
+const measuredPathView = measurement => {
+    const legMiles = measurement.directedLegs.map(leg => leg.distanceMiles);
+    return { ok: true, totalMiles: measurement.distanceMiles,
+        longestLegMiles: Math.max(0, ...legMiles), legDistribution: summarizeLegMiles(legMiles),
+        geometry: measurement.geometry };
+};
 
 export default async function (req: Request): Promise<Response> {
     let recoveryReport = null;
@@ -128,11 +138,15 @@ export default async function (req: Request): Promise<Response> {
         // recover it from a qualified full-address match before pricing any order.
         const accessRecovery = profile === 'driving'
             ? await recoverRouteVehicleAccess(properties, { vehicleBaseUrl, vehicleProfile: profile,
-                vehicleFetch, geocodioApiKey: readSecret('GEOCODIO_API_KEY') })
+                vehicleFetch, geocodioApiKey: readSecret('GEOCODIO_API_KEY'),
+                collectCountyDiagnostics: body.inspect_access_only === true })
             : { properties, report: null };
         properties = accessRecovery.properties;
         recoveryReport = accessRecovery.report;
         stageTimings.address_access_ms = Date.now() - solverStartedAt;
+        if (body.inspect_access_only === true) return Response.json({ success: true,
+            optimizer_version: OPTIMIZER_VERSION, road_access_recovery: recoveryReport,
+            elapsed_ms: stageTimings.address_access_ms });
         if (accessRecovery.report?.status === 'provider_unavailable'
             && (accessRecovery.report?.inventory_complete === false
                 || accessRecovery.report?.unresolved?.some(issue => issue.reason === 'road_provider_unavailable'))) {
@@ -140,6 +154,10 @@ export default async function (req: Request): Promise<Response> {
                 routing_metadata: { optimizer_version: OPTIMIZER_VERSION, road_access_recovery: accessRecovery.report,
                     optimization_timings: stageTimings } });
         }
+        const countyRouting = createCountyRoadRoutingAdapter(properties, {
+            fetchJson: responseCache.fetchJson, baseUrl: vehicleBaseUrl, profile,
+        });
+        const roadSource = source => countyRouting.graphIdentity ? `${source}+nc_ng911` : source;
 
         // Canonical input: candidate GENERATION never sees the caller's array
         // order, so a shuffled or reversed request cannot change the winner. The
@@ -169,10 +187,11 @@ export default async function (req: Request): Promise<Response> {
         const plan = planTieredRoadMatrix(properties, anchorPoints);
         const anchorsInMatrix = plan.ok && plan.anchorsIncluded;
         const matrixPoints = plan.ok ? plan.matrixPoints : properties;
-        const cacheKey = await buildRoadMatrixCacheKey(matrixPoints, profile);
+        const cacheKey = [await buildRoadMatrixCacheKey(matrixPoints, profile), countyRouting.graphIdentity].filter(Boolean).join('#');
         const roadCosts = createRoadCostCache({
-            fetchMatrix: (points, options) => fetchRoadMatrix(points, { ...options, fetchJson: responseCache.fetchJson }),
-            measurePath: (order, options) => measureRoadPath(order, { ...options, fetchJson: responseCache.fetchJson }),
+            graphIdentity: countyRouting.graphIdentity,
+            fetchMatrix: (points, options) => fetchRoadMatrix(points, { ...options, fetchJson: countyRouting.fetchJson }),
+            measurePath: (order, options) => measureRoadPath(order, { ...options, fetchJson: countyRouting.fetchJson }),
         });
         const neighborhoodOptions = {
             startLocation, endLocation, baselineOrder: properties,
@@ -180,7 +199,7 @@ export default async function (req: Request): Promise<Response> {
             mailCarrierMode: profile === 'driving',
             vehicleBaseUrl,
             vehicleProfile: profile,
-            vehicleFetch,
+            vehicleFetch: countyRouting.vehicleFetch,
             preferContiguousOnTie: body.neighborhood_review?.prefer_contiguous_on_tie === true,
             tieSeconds: Math.min(10, Math.max(0, Number(body.neighborhood_review?.tie_seconds) || 0)),
         };
@@ -192,7 +211,7 @@ export default async function (req: Request): Promise<Response> {
             anchor_legs_measured: Boolean((startLocation || endLocation) && anchorsInMatrix),
             return_to_start: false,
             routing_profile: profile,
-            matrix_provider: 'osrm',
+            matrix_provider: roadSource('osrm'),
             road_matrix_version: ROAD_MATRIX_VERSION,
             road_matrix_cache_key: cacheKey,
             // The tier a route was measured at, so a stored order can never
@@ -201,6 +220,7 @@ export default async function (req: Request): Promise<Response> {
             matrix_street_block_count: plan.ok ? plan.blockCount : null,
             optimizer_version: OPTIMIZER_VERSION,
             road_access_recovery: accessRecovery.report,
+            county_road_routing: countyRouting.stats(),
             objective_version: OBJECTIVE_VERSION,
             duration_tie_tolerance_minutes: DURATION_TIE_TOLERANCE_MINUTES,
             neighborhood_excursion_review: reviewNeighborhoodExcursions(properties).diagnostics
@@ -328,6 +348,16 @@ export default async function (req: Request): Promise<Response> {
                         proposedPath = await roadCosts.measurePath(withAnchors(hierarchy.order), measureOptions);
                     }
                 }
+                let complete = null;
+                if (profile === 'driving' && proposedPath.ok && currentPath.ok) {
+                    complete = await verifyCompleteDrivingCandidate({ baselineOrder: properties,
+                        candidateOrder: hierarchy.order, neighborhood, options: neighborhoodOptions });
+                    hierarchy.order = complete.properties;
+                    neighborhood = { ...neighborhood, properties: complete.properties,
+                        diagnostics: complete.diagnostics, measurement: complete.measurement, baseline: complete.baseline };
+                    proposedPath = measuredPathView(complete.measurement);
+                    currentPath = measuredPathView(complete.baseline);
+                }
                 stageTimings.final_validation_ms = Date.now() - validationStarted;
                 stageTimings.total_ms = Date.now() - solverStartedAt;
                 console.info('[Routing performance]', JSON.stringify({ property_count: properties.length,
@@ -342,7 +372,8 @@ export default async function (req: Request): Promise<Response> {
                 // computation finished" is not evidence.
                 const reviewedTimeImproved = neighborhood.diagnostics.applied && neighborhood.measurement && neighborhood.baseline
                     && neighborhood.measurement.driveSeconds < neighborhood.baseline.driveSeconds;
-                const keepCurrent = !validated || (!reviewedTimeImproved && currentPath.totalMiles <= proposedPath.totalMiles);
+                const keepCurrent = complete ? !complete.applied
+                    : !validated || (!reviewedTimeImproved && currentPath.totalMiles <= proposedPath.totalMiles);
                 const winningOrder = keepCurrent ? properties : hierarchy.order;
                 const degraded = telemetry.degraded;
 
@@ -361,7 +392,8 @@ export default async function (req: Request): Promise<Response> {
                         road_network_used: true,
                         fallback: false,
                         objective: 'measured_road_miles',
-                        road_matrix_source: `osrm:${profile}`,
+                        road_matrix_source: roadSource(`osrm:${profile}`),
+                        county_road_routing: countyRouting.stats(),
                         road_matrix_ms: Date.now() - hierarchyStartedAt,
                         // Computational truth: how the decisions were priced.
                         ...telemetry,
@@ -459,6 +491,7 @@ export default async function (req: Request): Promise<Response> {
                     optimization_timings: stageTimings,
                     road_cost_cache: roadCosts.stats(),
                     road_response_cache: responseCache.stats(),
+                    county_road_routing: countyRouting.stats(),
                     strategy: 'canonical_street_subdivision_continuity',
                     road_network_used: false,
                     fallback: true,
@@ -554,7 +587,7 @@ export default async function (req: Request): Promise<Response> {
             throw new Error('No route candidate could be measured on the road matrix.');
         }
         const reviewStarted = Date.now();
-        const neighborhood = await reviewFinalNeighborhoodRoute(winner.order, neighborhoodOptions);
+        let neighborhood = await reviewFinalNeighborhoodRoute(winner.order, neighborhoodOptions);
         stageTimings.neighborhood_review_ms = Date.now() - reviewStarted;
         if (neighborhood.diagnostics.applied) {
             // A pin outside the road-match radius can prevent a complete trip
@@ -569,8 +602,18 @@ export default async function (req: Request): Promise<Response> {
                 distance: neighborhood.measurement.distanceMiles,
                 duration: neighborhood.measurement.driveSeconds / 60 };
         }
+        if (profile === 'driving') {
+            const complete = await verifyCompleteDrivingCandidate({ baselineOrder: properties,
+                candidateOrder: winner.order, neighborhood, options: neighborhoodOptions });
+            winner = complete.applied ? { ...winner, order: complete.properties, is_current: false,
+                distance: complete.measurement.distanceMiles, duration: complete.measurement.driveSeconds / 60 }
+                : { ...candidates.find(candidate => candidate.is_current), order: complete.properties,
+                    distance: complete.measurement.distanceMiles, duration: complete.measurement.driveSeconds / 60 };
+            neighborhood = { ...neighborhood, properties: complete.properties, diagnostics: complete.diagnostics,
+                measurement: complete.measurement, baseline: complete.baseline };
+        }
         const current = candidates.find((candidate) => candidate.is_current);
-        if (neighborhood.diagnostics.applied && neighborhood.baseline && current) {
+        if (neighborhood.baseline && current) {
             current.distance = neighborhood.baseline.distanceMiles;
             current.duration = neighborhood.baseline.driveSeconds / 60;
         }
@@ -606,10 +649,12 @@ export default async function (req: Request): Promise<Response> {
                 strategy: winner.type === 'road_aware'
                     ? 'road_matrix_street_subdivision_continuity'
                     : 'canonical_street_subdivision_continuity',
-                road_network_used: winner.type === 'road_aware',
+                road_network_used: profile === 'driving' || winner.type === 'road_aware',
+                road_path_validated: profile === 'driving',
                 fallback: false,
                 objective: matrix.objective,
-                road_matrix_source: matrix.source,
+                road_matrix_source: roadSource(matrix.source),
+                county_road_routing: countyRouting.stats(),
                 road_matrix_ms: matrixMs,
                 road_matrix_snapped: matrix.snapped,
                 road_matrix_unresolved_legs: unresolved.count,
@@ -632,7 +677,7 @@ export default async function (req: Request): Promise<Response> {
                 road_aware_degradation_reason: roadAwareDegraded
                     ? 'aerial_cross_street_sequencing_within_matrix_unit'
                     : null,
-                distance_estimate: plan.tier === TIER_DOOR
+                distance_estimate: profile === 'driving' ? 'road_measured' : plan.tier === TIER_DOOR
                     ? 'road'
                     : roadAwareDegraded
                         ? 'road_partial_aerial_sequencing'

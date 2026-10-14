@@ -54,6 +54,12 @@ function provider(ordered, settings = {}) {
                 if (settings.inconsistentInterior === 'distance') distance += 1;
                 if (settings.inconsistentInterior === 'path') path[1][1] += 0.00001;
             }
+            if (settings.arrivalContext?.legIndex === index && index - start < settings.arrivalContext.predecessorLegs) {
+                // OSRM can choose the opposite departure along the same road
+                // when several earlier waypoints are absent. A longer request
+                // restores the original path and cost; overlap must prove it.
+                path[1][1] += 0.0001; duration += 50; distance += 500;
+            }
             return { duration, distance, steps: [{
                 geometry: { coordinates: path }, maneuver: { modifier: turnaroundsFor(index) ? 'uturn' : 'straight' },
             }] };
@@ -88,7 +94,7 @@ async function measure(stops, settings = {}, bounds = {}, options = {}) {
     return { ordered, engine, context, run: () => context.routeSequence(stops, bounds) };
 }
 
-function assertComplete(result, ordered, engine) {
+function assertComplete(result, ordered, engine, { maxRequests = Math.ceil(ordered.length / 90), allowFinalRetries = false } = {}) {
     assert.deepEqual(result.directedLegs.map(leg => [leg.from, leg.to]),
         ordered.slice(1).map((stop, i) => [ordered[i].id, stop.id]),
         'every submitted consecutive directed leg must occur once and in order');
@@ -99,8 +105,8 @@ function assertComplete(result, ordered, engine) {
     assert.ok(result.geometry.length >= 2);
     assert.ok(result.geometry.every(p => Number.isFinite(p.lat) && Number.isFinite(p.lng)));
     assert.ok(engine.calls.every(call => call.points.length >= 2 && call.points.length <= 100));
-    assert.ok(engine.calls.length <= Math.ceil(ordered.length / 90), 'route requests must remain bounded and must stop at the final stop');
-    assert.ok(engine.calls.every((call, i) => call.start + call.points.length < ordered.length || i === engine.calls.length - 1),
+    assert.ok(engine.calls.length <= maxRequests, 'route requests must remain bounded and must stop at the final stop');
+    assert.ok(allowFinalRetries || engine.calls.every((call, i) => call.start + call.points.length < ordered.length || i === engine.calls.length - 1),
         'a request that reaches the final stop must be the final request');
     assert.equal(result.objectiveSeconds, result.driveSeconds + result.walkingAccessSeconds + result.parkingSeconds);
 }
@@ -151,15 +157,38 @@ test('looping roads preserve the complete path instead of joining at an earlier 
 
 for (const inconsistentInterior of ['path', 'time', 'distance']) {
     test(`a real shared interior ${inconsistentInterior} disagreement rejects the assembled drive`, async () => {
-        const { run } = await measure(makeStops(316), { inconsistentInterior });
+        const { run, engine } = await measure(makeStops(316), { inconsistentInterior });
         await assert.rejects(run(), /inconsistent turn continuity/);
+        assert.equal(engine.calls.length, 5, 'one original chunk and at most four shared-context attempts');
     });
 }
 
 test('a road-graph change between successful chunks prevents a completed route measurement', async () => {
-    const { run } = await measure(makeStops(316), { changedGraph: true });
+    const { run, engine } = await measure(makeStops(316), { changedGraph: true });
     await assert.rejects(run(), /graph identity changed/);
+    assert.equal(engine.calls.length, 2, 'a changed graph must never be retried with broader context');
 });
+
+test('a final seam dependent on earlier arrival waypoints retries with enough context and retains each leg once', async () => {
+    const { run, ordered, engine } = await measure(makeStops(377), { arrivalContext: { legIndex: 289, predecessorLegs: 5 } });
+    const result = await run();
+    assertComplete(result, ordered, engine, { maxRequests: 5, allowFinalRetries: true });
+    const matching = engine.calls.filter(call => call.start <= 289 && call.start + call.points.length > 290);
+    assert.ok(matching.some(call => call.data.routes[0].legs[289 - call.start].duration === 60));
+    assert.ok(matching.some(call => call.start > 0 && call.data.routes[0].legs[289 - call.start].duration === 10));
+    assert.equal(engine.calls.at(-1).start + engine.calls.at(-1).points.length, ordered.length);
+});
+
+for (const predecessorLegs of [5, 13, 29]) {
+    test(`an interior seam needing ${predecessorLegs} predecessors can shorten chunk coverage without omitting or double-counting stops`, async () => {
+        const { run, ordered, engine } = await measure(makeStops(277), { loops: true, arrivalContext: { legIndex: 97, predecessorLegs } });
+        const result = await run();
+        assertComplete(result, ordered, engine, { maxRequests: 7 });
+        assert.deepEqual(result.geometry.map(p => [p.lng, p.lat]), deduplicateAdjacent(ordered.slice(1).flatMap((_, i) => engine.legPath(i))));
+        assert.ok(engine.calls.some(call => call.start > 0 && call.start <= 97 - predecessorLegs));
+        assert.equal(engine.calls.at(-1).start + engine.calls.at(-1).points.length, ordered.length);
+    });
+}
 
 test('personal start and destination retain their directed legs and heading while stop service time is counted once', async () => {
     const all = makeStops(197);

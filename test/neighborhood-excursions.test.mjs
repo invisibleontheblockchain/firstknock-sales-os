@@ -111,6 +111,7 @@ test('async sparse preparation produces the same result; provider failure preser
 
 function provider({ slower = false, wrongSnap = false, unreachable = false, tied = false, badSeam = false } = {}) {
     const calls = [];
+    let routeRequests = 0;
     const fetch = async input => {
         const url = new URL(input); calls.push(url);
         const coordinates = url.pathname.split('/').at(-1).split(';').map(p => p.split(',').map(Number));
@@ -130,12 +131,15 @@ function provider({ slower = false, wrongSnap = false, unreachable = false, tied
             const legs = items.slice(1).map((p, i) => ({ duration: cost(items[i], p), distance: cost(items[i], p) * 10,
                 steps: [{ geometry: { coordinates: [coordinates[i], coordinates[i + 1]] } }] }));
             data.routes = [{ duration: seconds, distance: seconds * 10, geometry: { coordinates }, legs }];
-            if (badSeam && coordinates.length < 500) {
-                // A changed interior shared leg must still fail verification;
-                // the request's first leg now supplies arrival context only.
-                legs[1].duration += 5; legs[1].distance += 50;
-                data.routes[0].duration += 5; data.routes[0].distance += 50;
+            if (badSeam && routeRequests > 0) {
+                // A real disagreement persists when arrival context expands;
+                // corrupt every interior leg after the first measured chunk.
+                for (const leg of legs.slice(1, -1)) {
+                    leg.duration += 5; leg.distance += 50;
+                    data.routes[0].duration += 5; data.routes[0].distance += 50;
+                }
             }
+            routeRequests++;
         }
         return Response.json(data);
     };

@@ -5,6 +5,7 @@ import vm from 'node:vm';
 import ts from 'typescript';
 import * as continuity from '../base44/shared/routeContinuityOptimizer.js';
 import * as candidateSelection from '../base44/shared/routeCandidateSelection.js';
+import * as legDistribution from '../base44/shared/roadLegDistribution.js';
 
 const source = fs.readFileSync(new URL('../base44/functions/optimizeRouteRoadMatrix/entry.ts', import.meta.url), 'utf8');
 const compiled = ts.transpileModule(source, { compilerOptions: {
@@ -19,11 +20,15 @@ const inputStops = () => ['L', 'C', 'K', 'A', 'I', 'B', 'H', 'D', 'G', 'E', 'F',
 const readyReport = () => ({ status: 'ready', attempted: 0, recovered: 0, reused: 0,
     unresolved: [], access_overrides: {}, inventory_complete: true, unverified_count: 0, failure_reason: null });
 
-function endpoint({ recover, local, failProvider = false } = {}) {
+const drivingMeasurement = (distanceMiles = 100, driveSeconds = 3000) => ({ distanceMiles, driveSeconds,
+    directedLegs: [], geometry: [[-81, 35], [-80.99, 35]], graphIdentity: 'osrm-test-graph' });
+
+function endpoint({ recover, local, finalReview, verify, failProvider = false, authenticated = true } = {}) {
     const calls = { events: [], recovery: [], plan: [], continuity: [], matrix: [], provider: [], local: [],
-        globalReview: [], sweep: 0, hierarchy: 0, candidateComparison: 0 };
+        globalReview: [], county: [], roadCosts: [], paths: [], completeVerification: [],
+        sweep: 0, hierarchy: 0, candidateComparison: 0 };
     const modules = {
-        'npm:@base44/sdk@0.8.40': { createClientFromRequest: () => ({ auth: { me: async () => ({ id: 'manager' }) } }) },
+        'npm:@base44/sdk@0.8.40': { createClientFromRequest: () => ({ auth: { me: async () => authenticated ? { id: 'manager' } : null } }) },
         'base44:runtime': { secrets: { get: key => key === 'OSRM_BASE_URL' ? 'https://roads.test' : 'test-geocoder-key' } },
         '../../shared/routeContinuityOptimizer.js': { ...continuity,
             createContinuityOptimizer: metric => {
@@ -56,9 +61,12 @@ function endpoint({ recover, local, failProvider = false } = {}) {
         },
         '../../shared/roadHierarchySequencer.js': { HIERARCHY_REFINEMENT_STEP_BUDGET: 100,
             sequenceRoadHierarchy: async () => { calls.hierarchy++; assert.fail('door-tier integration must not use hierarchy'); } },
-        '../../shared/roadPathMeasure.js': { measureRoadPath: async () => assert.fail('unexpected whole-route path call') },
+        '../../shared/roadPathMeasure.js': { measureRoadPath: async (properties, options) => {
+            calls.paths.push({ properties, options }); return drivingMeasurement();
+        } },
         '../../shared/finalNeighborhoodReview.js': { reviewFinalNeighborhoodRoute: async (properties, options) => {
-            calls.globalReview.push({ properties, options }); return { properties, diagnostics: { applied: false } };
+            calls.globalReview.push({ properties, options });
+            return finalReview ? finalReview(properties, options) : { properties, diagnostics: { applied: false } };
         } },
         '../../shared/neighborhoodExcursions.js': { reviewNeighborhoodExcursions: properties => ({ properties,
             diagnostics: { detected: 0, remaining: 0, applied: false } }) },
@@ -70,7 +78,10 @@ function endpoint({ recover, local, failProvider = false } = {}) {
                 return { code: 'Ok' };
             }, stats: () => ({ requests: calls.provider.length }),
         }) },
-        '../../shared/roadCostCache.js': { createRoadCostCache: config => ({ ...config, stats: () => ({}) }) },
+        '../../shared/roadCostCache.js': { createRoadCostCache: config => {
+            calls.roadCosts.push(config); return { ...config, stats: () => ({}) };
+        } },
+        '../../shared/roadLegDistribution.js': legDistribution,
         '../../shared/routeMetricMemo.js': { createMemoizedRouteMetrics: metrics => metrics },
         '../../shared/routeAccessRecovery.js': { recoverRouteVehicleAccess: async (properties, options) => {
             calls.events.push('recovery'); calls.recovery.push({ properties, options });
@@ -79,6 +90,22 @@ function endpoint({ recover, local, failProvider = false } = {}) {
         '../../shared/localDrivingNeighborhoods.js': { reviewLocalDrivingNeighborhoods: async (properties, options) => {
             calls.events.push('local'); calls.local.push({ properties, options });
             return local ? local(properties, options) : { properties, diagnostics: { applied: false, validation: 'unchanged' } };
+        } },
+        '../../shared/countyRoadRouting.js': { createCountyRoadRoutingAdapter: (properties, config) => {
+            const adapter = { graphIdentity: '', fetchJson: (...args) => config.fetchJson(...args),
+                vehicleFetch: async (url, options) => ({ ok: true,
+                    json: async () => adapter.fetchJson(url, options) }),
+                stats: () => ({ networks: 0, localSpeedMph: 15 }) };
+            calls.county.push({ properties, config, adapter }); return adapter;
+        } },
+        '../../shared/completeDrivingVerification.js': { verifyCompleteDrivingCandidate: async input => {
+            calls.events.push('complete-driving-verification'); calls.completeVerification.push(input);
+            if (verify) return verify(input);
+            const applied = JSON.stringify(ids(input.candidateOrder)) !== JSON.stringify(ids(input.baselineOrder));
+            return { properties: input.candidateOrder, measurement: drivingMeasurement(), baseline: drivingMeasurement(),
+                applied, keptCurrent: !applied, diagnostics: { ...input.neighborhood?.diagnostics, applied,
+                    local_driving_review: { ...input.neighborhood?.diagnostics?.local_driving_review,
+                        applied, validation: 'whole_route' } } };
         } },
         '../../shared/routeCandidateSelection.js': { ...candidateSelection, selectBestRouteCandidate: candidates => {
             calls.candidateComparison++; return candidateSelection.selectBestRouteCandidate(candidates);
@@ -91,8 +118,8 @@ function endpoint({ recover, local, failProvider = false } = {}) {
             return modules[name];
         }, Response, Request, URL, console: { info() {}, warn() {}, error() {} },
     }, { filename: 'optimizeRouteRoadMatrix/entry.ts' });
-    return { calls, async invoke(properties) {
-        const response = await exports.default({ json: async () => ({ properties: structuredClone(properties) }) });
+    return { calls, async invoke(properties, request = {}) {
+        const response = await exports.default({ json: async () => ({ properties: structuredClone(properties), ...request }) });
         return { status: response.status, body: await response.json() };
     } };
 }
@@ -151,6 +178,7 @@ test('residual unresolved access applies only a verified local incumbent repair 
     assert.equal(reviewed.properties[6].routing_access.resolution_status, 'unresolved');
     assert.equal(calls.matrix.length, 0); assert.equal(calls.hierarchy, 0); assert.equal(calls.sweep, 0);
     assert.equal(calls.candidateComparison, 0); assert.equal(calls.globalReview.length, 0);
+    assert.equal(calls.completeVerification.length, 0, 'unresolved access bypasses the complete-route proof gate');
     assert.equal(calls.continuity.length, 0, 'unresolved access must not spend work generating global reshuffles');
     const expected = ids(properties); [expected[0], expected[1]] = [expected[1], expected[0]];
     assert.deepEqual(body.order, expected);
@@ -174,6 +202,7 @@ test('a road-access inventory outage returns diagnostic failure before any solve
     assert.equal(calls.provider.length, 1);
     assert.equal(calls.plan.length + calls.continuity.length + calls.matrix.length + calls.local.length + calls.globalReview.length, 0);
     assert.equal(calls.candidateComparison + calls.sweep + calls.hierarchy, 0);
+    assert.equal(calls.county.length + calls.completeVerification.length, 0);
     assert.equal('order' in body, false);
 });
 
@@ -251,4 +280,140 @@ test('a geocoder-only outage leaves healthy road sections eligible for a verifie
     assert.equal(calls.local.length, 1);
     assert.equal(calls.matrix.length + calls.continuity.length, 0);
     assert.equal(body.routing_metadata.road_access_recovery.unresolved[0].reason, 'address_provider_unavailable');
+});
+
+test('resolved routes send one county adapter through matrix, path, neighborhood, and complete driving checks', async () => {
+    const properties = inputStops();
+    const { calls, invoke } = endpoint();
+    const { status, body } = await invoke(properties);
+    assert.equal(status, 200); assert.equal(body.success, true);
+    assert.equal(calls.county.length, 1); assert.equal(calls.completeVerification.length, 1);
+    const { adapter, config } = calls.county[0];
+    assert.equal(adapter.graphIdentity, '');
+    assert.deepEqual(ids(calls.county[0].properties), ids(properties));
+    assert.equal(config.baseUrl, 'https://roads.test'); assert.equal(config.profile, 'driving');
+    assert.equal(calls.roadCosts[0].graphIdentity, '');
+    assert.equal(calls.matrix[0].options.fetchJson, adapter.fetchJson);
+    assert.equal(calls.globalReview[0].options.vehicleFetch, adapter.vehicleFetch);
+    assert.equal(calls.completeVerification[0].options.vehicleFetch, adapter.vehicleFetch);
+    assert.deepEqual(ids(calls.completeVerification[0].baselineOrder), ids(properties));
+    await calls.roadCosts[0].measurePath(properties, { timeoutMs: 1234 });
+    assert.equal(calls.paths.at(-1).options.fetchJson, adapter.fetchJson);
+    assert.equal(calls.paths.at(-1).options.timeoutMs, 1234);
+    assert.equal(body.routing_metadata.road_path_validated, true);
+    assert.equal(body.routing_metadata.distance_estimate, 'road_measured');
+    assert.equal(body.routing_metadata.neighborhood_excursion_review.local_driving_review.validation, 'whole_route');
+    assert.equal(body.routing_metadata.road_matrix_source, 'osrm:driving');
+});
+
+test('a continuous driving gate can adopt a changed local order using measured candidate and baseline totals', async () => {
+    const properties = inputStops();
+    const { calls, invoke } = endpoint({ finalReview: submitted => {
+        const proposal = partialImprovement(submitted);
+        return { properties: proposal.properties, diagnostics: { applied: true, local_driving_review: proposal.diagnostics } };
+    }, verify: input => ({ properties: input.candidateOrder, measurement: drivingMeasurement(90, 2400),
+        baseline: drivingMeasurement(100, 3000), applied: true, keptCurrent: false,
+        diagnostics: { ...input.neighborhood.diagnostics, applied: true,
+            local_driving_review: { ...input.neighborhood.diagnostics.local_driving_review,
+                applied: true, validation: 'whole_route' } } }) });
+    const { body } = await invoke(properties);
+    const expected = ids(properties); [expected[0], expected[1]] = [expected[1], expected[0]];
+    assert.equal(calls.completeVerification.length, 1);
+    assert.deepEqual(ids(calls.completeVerification[0].baselineOrder), ids(properties));
+    assert.deepEqual(ids(calls.completeVerification[0].candidateOrder), expected);
+    assert.deepEqual(body.order, expected); assert.equal(body.selected, 'road_aware');
+    assert.equal(body.routing_metadata.input_measured, 100);
+    assert.equal(body.routing_metadata.winning_route_distance, 90);
+    assert.equal(body.routing_metadata.duration_improvement, 10);
+    assert.equal(body.routing_metadata.road_path_validated, true);
+});
+
+test('a worse final driving candidate retains the complete measured incumbent without a partial-failure warning', async () => {
+    const properties = inputStops();
+    const { calls, invoke } = endpoint({ finalReview: submitted => {
+        const proposal = partialImprovement(submitted);
+        return { properties: proposal.properties, diagnostics: { applied: true, local_driving_review: proposal.diagnostics } };
+    }, verify: input => ({ properties: input.baselineOrder, measurement: drivingMeasurement(100, 3000),
+        baseline: drivingMeasurement(100, 3000), applied: false, keptCurrent: true,
+        diagnostics: { ...input.neighborhood.diagnostics, applied: false,
+            local_driving_review: { applied: false, repaired: 1, status: 'whole_route_guard_retained',
+                validation: 'whole_route', reason: null } } }) });
+    const { body } = await invoke(properties);
+    assert.equal(calls.completeVerification.length, 1);
+    assert.equal(body.selected, 'current'); assert.deepEqual(body.order, ids(properties));
+    assert.equal(body.routing_metadata.input_measured, 100);
+    assert.equal(body.routing_metadata.winning_route_distance, 100);
+    assert.equal(body.routing_metadata.duration_improvement, 0);
+    assert.equal(body.routing_metadata.road_path_validated, true);
+    assert.equal(body.routing_metadata.neighborhood_excursion_review.applied, false);
+    assert.equal(body.routing_metadata.neighborhood_excursion_review.local_driving_review.validation, 'whole_route');
+});
+
+test('an unchanged order with zero neighborhood repairs still receives complete driving verification', async () => {
+    const { calls, invoke } = endpoint();
+    const properties = inputStops();
+    const { body } = await invoke(properties);
+    assert.equal(calls.globalReview.length, 1);
+    assert.equal(calls.completeVerification.length, 1);
+    assert.equal(calls.completeVerification[0].neighborhood.diagnostics.applied, false);
+    assert.equal(body.selected, 'current'); assert.deepEqual(body.order, ids(properties));
+    assert.equal(body.routing_metadata.road_path_validated, true);
+    assert.equal(body.routing_metadata.input_measured, 100);
+    assert.equal(body.routing_metadata.winning_route_distance, 100);
+    assert.equal(body.routing_metadata.neighborhood_excursion_review.local_driving_review.validation, 'whole_route');
+});
+
+test('a failed complete driving check returns no order and preserves recovered access for the next attempt', async () => {
+    const properties = inputStops();
+    const access = { resolution_status: 'resolved', source: 'address_geocode_recovery',
+        point: { lat: 35.0005, lng: -80.9995 }, displayPoint: { lat: properties[1].lat, lng: properties[1].lng } };
+    const report = { ...readyReport(), status: 'recovered', attempted: 1, recovered: 1,
+        access_overrides: { [properties[1].address_hash]: access } };
+    const { calls, invoke } = endpoint({ recover: submitted => ({ properties: submitted, report }),
+        verify: () => { throw new Error('Final continuous driving verification failed.'); } });
+    const { status, body } = await invoke(properties);
+    assert.equal(calls.completeVerification.length, 1);
+    assert.equal(status, 500);
+    assert.equal('order' in body, false);
+    assert.notEqual(body.success, true);
+    assert.match(body.error, /continuous driving verification failed/);
+    assert.deepEqual(body.routing_metadata.road_access_recovery.access_overrides, report.access_overrides);
+    assert.notEqual(body.routing_metadata.road_path_validated, true);
+});
+
+test('access inspection retains authentication and input guards while collecting diagnostics without running a solver', async () => {
+    const properties = inputStops();
+    const unauthorized = endpoint({ authenticated: false });
+    const blocked = await unauthorized.invoke(properties, { inspect_access_only: true });
+    assert.equal(blocked.status, 401);
+    assert.equal(blocked.body.error, 'Unauthorized');
+    assert.equal(unauthorized.calls.recovery.length, 0);
+
+    const invalidCoordinates = properties.map((property, index) => index === 2 ? { ...property, lat: 95 } : property);
+    const duplicates = properties.map((property, index) => index === 2 ? { ...property, address_hash: properties[0].address_hash } : property);
+    const tooMany = Array.from({ length: 2501 }, (_, index) => ({ ...properties[0], address_hash: `unique-${index}` }));
+    for (const [invalid, code] of [[properties.slice(0, 1), 'TOO_FEW_PROPERTIES'],
+        [tooMany, 'TOO_MANY_PROPERTIES'], [invalidCoordinates, 'INVALID_PROPERTY_COORDINATES'], [duplicates, 'DUPLICATE_PROPERTIES']]) {
+        const guarded = endpoint();
+        const result = await guarded.invoke(invalid, { inspect_access_only: true });
+        assert.equal(result.status, 400); assert.equal(result.body.code, code);
+        assert.equal(guarded.calls.recovery.length, 0, `${code} must stop before diagnostic recovery`);
+    }
+
+    const report = { ...readyReport(), county_diagnostics: [{ stop_number: 3, service: 'county_roads',
+        stage: 'response', httpStatus: 200, featureCount: 12 }] };
+    const inspection = endpoint({ recover: (submitted, options) => {
+        assert.equal(options.collectCountyDiagnostics, true);
+        return { properties: submitted, report };
+    } });
+    const { status, body } = await inspection.invoke(properties, { inspect_access_only: true });
+    assert.equal(status, 200); assert.equal(body.success, true);
+    assert.deepEqual(body.road_access_recovery, report);
+    assert.equal(typeof body.elapsed_ms, 'number');
+    assert.equal(inspection.calls.recovery.length, 1);
+    assert.equal('order' in body, false, 'inspection is not an optimization result');
+    assert.equal(inspection.calls.plan.length + inspection.calls.matrix.length + inspection.calls.paths.length
+        + inspection.calls.county.length + inspection.calls.local.length + inspection.calls.globalReview.length
+        + inspection.calls.completeVerification.length + inspection.calls.continuity.length
+        + inspection.calls.sweep + inspection.calls.hierarchy + inspection.calls.candidateComparison, 0);
 });

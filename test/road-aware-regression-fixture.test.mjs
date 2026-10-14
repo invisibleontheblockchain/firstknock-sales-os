@@ -19,12 +19,17 @@ test('neighborhood v5 explicitly versions the driving review while preserving fr
     // vehicle-route-chunk-validation.test.mjs covers chunk boundaries, omitted
     // overview points, genuine path/cost disagreement and exact leg coverage.
     // A live 316-stop comparison also passed all three shared-leg checks.
+    // V13 retries a disagreeing shared leg with 8/16/32 predecessor stops,
+    // preserving the 100-point cap and the exact directed path/cost guard.
+    // Added fixtures cover final and interior adaptive seams, rejected graph
+    // changes and mismatches, and exact-once coverage after shorter chunks.
+    // The live 377-stop county/public composite passed with an eight-stop retry.
     // Match radii, headings, parking and frozen connector scoring stay fixed.
     // This does not remeasure
     // the private export or change its historical source hashes.
     const frozen = { 'coreDrivingPilot.js': '44ecbfad3d3578258d4d4a19d5ce7f1a43e345f61e5f0f362a71118a5e5d8f90',
         'guardedDrivingWindows.js': baseline.sourceHashes['base44/shared/guardedDrivingWindows.js'],
-        'vehicleRouting.js': 'd680c7aa7be23a891f150076f87e90263de810e21f8b1277bbb1a4023ea59be5' };
+        'vehicleRouting.js': '94168f09c8be3a7c15459509f5b6b5c93f33cae00b83df89146c3b8a58b20261' };
     for (const [file, hash] of Object.entries(frozen)) {
         const source = readFileSync(new URL('../base44/shared/' + file, import.meta.url), 'utf8').replace(/\r\n/g, '\n');
         assert.equal(createHash('sha256').update(source).digest('hex'), hash, file + ' needs explicit regression review');

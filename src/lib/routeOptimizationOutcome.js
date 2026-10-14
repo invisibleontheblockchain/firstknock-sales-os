@@ -65,6 +65,28 @@ const skippedMessage = review => {
         ? `Driving data could not be loaded for ${skipped.length} ${skipped.length === 1 ? 'neighborhood check' : 'neighborhood checks'}.`
         : `${skipped.length} ${skipped.length === 1 ? 'neighborhood check could' : 'neighborhood checks could'} not be verified.`;
 };
+const validDistance = value => Number.isFinite(value) && value >= 0;
+function completeDrivingVerification(meta, measurement = null, applied = false) {
+    const review = meta?.neighborhood_excursion_review?.local_driving_review;
+    const recovery = roadAccessRecovery(meta);
+    if (meta?.road_path_validated !== true || meta?.fallback === true || review?.validation !== 'whole_route'
+        || recovery?.unresolved.length || recovery?.inventory_complete === false) return false;
+    return applied ? validDistance(meta.winning_route_distance) || validDistance(meta.road_aware_measured)
+        : validDistance(measurement?.distanceMiles) || validDistance(meta.input_measured) || validDistance(meta.continuity_measured);
+}
+const countyRoadsIncluded = meta => typeof meta?.road_matrix_source === 'string' && meta.road_matrix_source.endsWith('+nc_ng911');
+function completedRouteDetails(meta, recovery) {
+    const review = meta?.neighborhood_excursion_review?.local_driving_review;
+    const counts = Number.isInteger(review?.checked) && Number.isInteger(review?.planned)
+        ? ` after checking ${review.checked} of ${review.planned} neighborhoods` : '';
+    const search = review?.budgetExhausted
+        ? ` The neighborhood search reached its time limit${counts}.`
+        : review?.checked < review?.planned ? ` ${review.checked} of ${review.planned} neighborhoods were searched.` : '';
+    const skipped = review?.skipped?.length
+        ? ` ${review.skipped.length} neighborhood search ${review.skipped.length === 1 ? 'candidate was' : 'candidates were'} skipped.` : '';
+    return `${search}${skipped}${sideMessage(review)}${recoveryMessage(recovery)}${countyRoadsIncluded(meta)
+        ? ' County-mapped local roads included; local-road travel times are estimated.' : ''}`;
+}
 
 // A retained route is an outcome, not proof of optimality. In particular, a
 // previously verified route must survive a failed attempt without that failure
@@ -95,7 +117,7 @@ export function describeRoadOptimizationOutcome(reason, measurement = null) {
             ? 'The road or address data provider could not complete automatic road-access recovery. Your route was kept unchanged.'
             : 'Automatic road-access recovery could not verify the complete driving route. Your route was kept unchanged.',
     });
-    if (reason !== 'current_order_measured_best' || !Number.isFinite(measurement?.distanceMiles)) return finish({
+    if (reason !== 'current_order_measured_best' || !validDistance(measurement?.distanceMiles)) return finish({
         status: 'failed', tone: 'error',
         message: 'Could not complete the driving check. Your route was kept unchanged. Try again.',
     });
@@ -105,6 +127,12 @@ export function describeRoadOptimizationOutcome(reason, measurement = null) {
         status: 'verification_failed', tone: 'error',
         message: 'Improvements were found, but they could not be verified for driving. Your route was kept unchanged.',
     });
+    // Exhausting the search budget or lacking a curb-side label does not undo
+    // the separate continuous driving check for the returned complete route.
+    if (completeDrivingVerification(meta, measurement)) return {
+        status: 'no_improvement', tone: 'info',
+        message: 'Complete driving route verified. No faster order found among orders checked. Your route was kept unchanged.',
+    };
     if (review?.budgetExhausted) return finish({
         status: 'incomplete', tone: 'warning',
         message: `The optimization time limit was reached${Number.isInteger(review.checked) && Number.isInteger(review.planned)
@@ -140,6 +168,10 @@ export function describeAppliedRoadOptimization(routingMetadata) {
         status: 'applied_partial', tone: 'warning',
         message: 'Verified route improvements applied; the complete driving route remains unverified.',
     });
+    if (completeDrivingVerification(routingMetadata, null, true)) return {
+        status: 'applied', tone: 'success',
+        message: 'Route updated. The complete driving route was verified.',
+    };
     const limited = review?.validation !== 'whole_route' || review?.budgetExhausted || review?.skipped?.length
         || review?.checked < review?.planned;
     const remaining = `${review?.budgetExhausted ? ' The optimization time limit was reached.' : review?.skipped?.length
@@ -178,11 +210,14 @@ export function buildRoadOptimizationAttempt(reason, measurement, {
     } : describeRoadOptimizationOutcome(reason, measurement);
     const review = meta.neighborhood_excursion_review?.local_driving_review;
     const recovery = roadAccessRecovery(meta);
+    const verificationComplete = ['applied', 'no_improvement'].includes(outcome.status)
+        && (applied || reason === 'current_order_measured_best') && completeDrivingVerification(meta, measurement, applied);
     const reasonCode = String(reason || 'no_result').split(':')[0];
     const diagnostic = measurement?.diagnostic;
     return {
         finished_at: finishedAt, mode, door_count: doorCount,
-        status: outcome.status, message: outcome.message, route_changed: applied === true,
+        status: outcome.status, message: `${outcome.message}${verificationComplete ? completedRouteDetails(meta, recovery) : ''}`,
+        route_changed: applied === true, route_verification_complete: verificationComplete,
         reason: /^[a-z_]+$/.test(reasonCode) ? reasonCode : 'no_result',
         http_status: Number.isInteger(diagnostic?.httpStatus) && diagnostic.httpStatus >= 100 && diagnostic.httpStatus <= 599
             ? diagnostic.httpStatus : null,
@@ -195,6 +230,7 @@ export function buildRoadOptimizationAttempt(reason, measurement, {
         neighborhoods_skipped: Array.isArray(review?.skipped) ? review.skipped.length : null,
         budget_exhausted: review?.budgetExhausted === true,
         curb_sides_unconfirmed: unknownSides(review),
+        county_roads_included: countyRoadsIncluded(meta),
         ...(recovery ? { road_access_recovery: recovery } : {}),
     };
 }

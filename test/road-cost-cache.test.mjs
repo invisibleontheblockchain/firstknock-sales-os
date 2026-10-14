@@ -268,3 +268,23 @@ test('CACHE-05 at the pair ceiling the cache stops storing and keeps returning e
     assert.equal(calls.length - afterFirst, 1, 'an uncached block is still fetched');
     assert.ok(Math.abs(second.distances[0][0] - expectedMiles(46, 46)) < 1e-9);
 });
+
+test('county graph revisions separate matrix and complete-path cache entries at unchanged coordinates', async () => {
+    let matrixCalls = 0, pathCalls = 0;
+    const cache = createRoadCostCache({
+        fetchMatrix: async values => ({ pointCount: values.length,
+            distances: values.map(() => values.map(() => ++matrixCalls)),
+            durations: values.map(() => values.map(() => 1)) }),
+        measurePath: async () => ({ ok: true, totalMiles: ++pathCalls }),
+    });
+    const route = points(2);
+    const first = await cache.fetchMatrix(route, { routingGraphVersion: 'county:original' });
+    const repeated = await cache.fetchMatrix(route, { routingGraphVersion: 'county:original' });
+    const changed = await cache.fetchMatrix(route, { routingGraphVersion: 'county:corrected' });
+    assert.deepEqual(repeated.distances, first.distances);
+    assert.notDeepEqual(changed.distances, first.distances);
+    assert.equal(matrixCalls, 8);
+    assert.equal((await cache.measurePath(route, { routingGraphVersion: 'county:original' })).totalMiles, 1);
+    assert.equal((await cache.measurePath(route, { routingGraphVersion: 'county:original' })).totalMiles, 1);
+    assert.equal((await cache.measurePath(route, { routingGraphVersion: 'county:corrected' })).totalMiles, 2);
+});

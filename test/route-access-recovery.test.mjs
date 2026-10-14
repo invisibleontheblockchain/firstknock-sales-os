@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { recoverRouteVehicleAccess } from '../base44/shared/routeAccessRecovery.js';
+import { recoverRouteVehicleAccess as recoverAccess } from '../base44/shared/routeAccessRecovery.js';
+
+// Isolate the geocoding stage; county topology has its own provider/graph tests.
+const recoverRouteVehicleAccess = (properties, options = {}) => recoverAccess(properties, { countyAccessLookup: false, ...options });
 
 const stop = index => ({ address_hash: `${6100 + index} LONG BRANCH RD|28147`, house_number: String(6100 + index),
     street_name: 'Long Branch Rd', city: 'Salisbury', state: 'NC', zip_code: '28147', lat: 35.7 + index / 10000, lng: -80.6 });

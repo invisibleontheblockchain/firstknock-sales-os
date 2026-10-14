@@ -6,8 +6,8 @@ import { roadNetworkRoutingInternals } from './roadNetworkRouting.js';
 
 const METERS_PER_MILE = 1609.344;
 // Keep the coordinate path plus per-waypoint query arrays comfortably below
-// gateway URL limits. Four shared stops place the verified shared leg inside
-// both requests, with an arrival leg and a departure leg on either side.
+// gateway URL limits. Start with four shared stops and expand predecessor
+// context only when the provider disagrees on the shared interior leg.
 export const MAX_VEHICLE_ROUTE_POINTS = 100;
 
 function timedSignal(source, milliseconds) {
@@ -209,35 +209,44 @@ export async function createVehicleRoutingContext(properties, accessContext, opt
                 const ordered = [bounds.startLocation, ...sequence, bounds.endLocation].filter(isValidRoutePoint);
                 const parts = [];
                 const directedLegs = [];
-                for (let start = 0; start < ordered.length - 1; start += MAX_VEHICLE_ROUTE_POINTS - 4) {
-                    const chunk = ordered.slice(start, start + MAX_VEHICLE_ROUTE_POINTS);
-                    const finalChunk = start + MAX_VEHICLE_ROUTE_POINTS >= ordered.length;
-                    const startLocation = start === 0 ? bounds.startLocation : null;
-                    const endLocation = finalChunk ? bounds.endLocation : null;
-                    const chunkStops = chunk.filter(p => p !== startLocation && p !== endLocation);
-                    const context = await createVehicleRoutingContext(chunkStops, accessContext, { ...options, sparseCosts: false,
-                        routeOnly: true, requireDirectedLegs: true, startLocation, endLocation });
-                    const part = await context.routeSequence(chunkStops, { startLocation, endLocation });
-                    if (options.expectedDataVersion && part.dataVersion !== options.expectedDataVersion) throw new Error('Vehicle provider graph identity changed.');
-                    if (part.dataVersion) verifyDataVersion({ data_version: part.dataVersion });
-                    if (parts.length) {
-                        // Each request sees the same predecessor and successor
-                        // around this leg. A terminal/origin leg has different
-                        // turn constraints and cannot prove the shared arrival.
-                        const prior = directedLegs.at(-1), overlap = part.directedLegs[1];
-                        if (!prior || !overlap || prior.from !== overlap.from || prior.to !== overlap.to || prior.pathKey !== overlap.pathKey
-                            || Math.abs(prior.driveSeconds - overlap.driveSeconds) > 0.1
-                            || Math.abs(prior.distanceMiles - overlap.distanceMiles) > 0.0001) {
-                            throw new Error('Vehicle route has inconsistent turn continuity at a chunk seam.');
+                let retainedEnd = 0;
+                while (retainedEnd < ordered.length - 1) {
+                    let accepted = false;
+                    for (const sharedStops of parts.length ? [4, 8, 16, 32] : [0]) {
+                        const start = parts.length ? Math.max(0, retainedEnd - (sharedStops - 2)) : 0;
+                        const chunk = ordered.slice(start, start + MAX_VEHICLE_ROUTE_POINTS);
+                        const finalChunk = start + MAX_VEHICLE_ROUTE_POINTS >= ordered.length;
+                        const startLocation = start === 0 ? bounds.startLocation : null;
+                        const endLocation = finalChunk ? bounds.endLocation : null;
+                        const chunkStops = chunk.filter(p => p !== startLocation && p !== endLocation);
+                        const context = await createVehicleRoutingContext(chunkStops, accessContext, { ...options, sparseCosts: false,
+                            routeOnly: true, requireDirectedLegs: true, startLocation, endLocation });
+                        const part = await context.routeSequence(chunkStops, { startLocation, endLocation });
+                        // A graph change or provider failure is fatal. Earlier
+                        // arrival context cannot make a different graph valid.
+                        if (options.expectedDataVersion && part.dataVersion !== options.expectedDataVersion) throw new Error('Vehicle provider graph identity changed.');
+                        if (part.dataVersion) verifyDataVersion({ data_version: part.dataVersion });
+                        if (parts.length) {
+                            const prior = directedLegs.at(-1), overlap = part.directedLegs[retainedEnd - 1 - start];
+                            // Global waypoint direction can depend on more than
+                            // one predecessor. Expand context without accepting
+                            // any changed shared path, cost or directed endpoint.
+                            if (!prior || !overlap || prior.from !== overlap.from || prior.to !== overlap.to || prior.pathKey !== overlap.pathKey
+                                || Math.abs(prior.driveSeconds - overlap.driveSeconds) > 0.1
+                                || Math.abs(prior.distanceMiles - overlap.distanceMiles) > 0.0001) continue;
                         }
+                        // Discard all earlier context and the retained shared
+                        // leg. A nonfinal tail supplies departure context only.
+                        const freshLegs = part.directedLegs.slice(parts.length ? retainedEnd - start : 0,
+                            finalChunk ? undefined : -1);
+                        if (!freshLegs.length) throw new Error('Vehicle route made no progress across chunks.');
+                        directedLegs.push(...freshLegs);
+                        parts.push(part);
+                        retainedEnd = start + chunk.length - (finalChunk ? 1 : 2);
+                        accepted = true;
+                        break;
                     }
-                    // The first two legs of a later request supply arrival
-                    // context and the already-retained shared leg. Its final
-                    // leg supplies departure context for the next request.
-                    directedLegs.push(...part.directedLegs.slice(parts.length ? 2 : 0,
-                        finalChunk ? undefined : -1));
-                    parts.push(part);
-                    if (finalChunk) break;
+                    if (!accepted) throw new Error('Vehicle route has inconsistent turn continuity at a chunk seam.');
                 }
                 if (directedLegs.length !== ordered.length - 1 || directedLegs.some((leg, index) =>
                     leg.from !== identity(ordered[index]) || leg.to !== identity(ordered[index + 1]))) {

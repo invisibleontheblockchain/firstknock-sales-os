@@ -57,7 +57,8 @@ const questionIdentity = (options = {}) => [
     // fetchRoadMatrix asks for distance AND duration, and readBlock only serves a
     // block when both are known. A caller narrowing the annotation set is asking a
     // different question, so it is keyed as one.
-    options.annotations || 'distance,duration'
+    options.annotations || 'distance,duration',
+    options.routingGraphVersion || 'provider_default'
 ].join('#');
 
 /** Ordered key for a measured path: the miles depend on the ORDER, not the set. */
@@ -89,6 +90,8 @@ export function createRoadCostCache(deps = {}) {
         measurePath: measurePathImpl = null,
         maxPairs = MAX_CACHED_ROAD_PAIRS
     } = deps;
+    const identityFor = options => questionIdentity({ ...options,
+        routingGraphVersion: deps.graphIdentity || options.routingGraphVersion });
 
     const matrixMemo = new Map();
     const pairMeters = new Map();
@@ -182,7 +185,7 @@ export function createRoadCostCache(deps = {}) {
     return {
         async fetchMatrix(points, options = {}) {
             counters.matrix_calls += 1;
-            const identity = questionIdentity(options);
+            const identity = identityFor(options);
             const key = matrixKey(points, identity);
             const memoized = matrixMemo.get(key);
             // The memo is keyed by the coordinate SET, so a reuse must be re-indexed
@@ -207,7 +210,7 @@ export function createRoadCostCache(deps = {}) {
                 throw new Error('Road cost cache was created without a path measurer.');
             }
             counters.measure_calls += 1;
-            const key = measureRoadPathKey(stops, questionIdentity(options));
+            const key = measureRoadPathKey(stops, identityFor(options));
             if (measureMemo.has(key)) {
                 counters.measure_memo_hits += 1;
                 return measureMemo.get(key);

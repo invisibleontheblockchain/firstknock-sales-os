@@ -84,18 +84,137 @@ test('partial adoption explicitly identifies verified neighborhood improvements 
     assert.equal(outcomes.describeAppliedRoadOptimization(meta), null);
 });
 
-test('mail-carrier messages identify unverified street sides even after a complete driving comparison', () => {
+test('a verified complete driving route succeeds even when curb-side approaches remain unconfirmed', () => {
     const meta = measured({ ...complete, applied: true, validation: 'whole_route', streetSideService: {
         mode: 'mail_carrier_right_curb', knownStops: 20, totalStops: 24, unknownStops: 4,
     } }).routingMetadata;
+    meta.road_path_validated = true;
+    meta.winning_route_distance = 10;
     const applied = outcomes.describeAppliedRoadOptimization(meta);
-    assert.equal(applied.tone, 'warning');
-    assert.match(applied.message, /Curb-side approaches are unconfirmed for 4 stops/);
-    assert.doesNotMatch(applied.message, /could not be loaded|unresolved|addresses/);
+    assert.equal(applied.tone, 'success');
+    assert.equal(applied.message, 'Route updated. The complete driving route was verified.');
     meta.neighborhood_excursion_review.local_driving_review.applied = false;
     const unchanged = outcomes.describeRoadOptimizationOutcome('current_order_measured_best', { distanceMiles: 10, routingMetadata: meta });
-    assert.equal(unchanged.status, 'curb_side_incomplete');
-    assert.match(unchanged.message, /does not mean the addresses are invalid/);
+    assert.equal(unchanged.status, 'no_improvement');
+    assert.equal(unchanged.tone, 'info');
+    assert.match(unchanged.message, /^Complete driving route verified/);
+    const attempt = outcomes.buildRoadOptimizationAttempt('current_order_measured_best', { distanceMiles: 10, routingMetadata: meta });
+    assert.equal(attempt.curb_sides_unconfirmed, 4);
+    assert.equal(attempt.route_verification_complete, true);
+    assert.match(attempt.message, /Curb-side approaches are unconfirmed for 4 stops/);
+});
+
+const verifiedWhole = (review = {}) => ({ distanceMiles: 241.95, routingMetadata: {
+    road_path_validated: true, input_measured: 241.95, winning_route_distance: 220,
+    matrix_tier: 'block', optimizer_version: 'road_matrix_neighborhood_area_service_v13',
+    neighborhood_excursion_review: { local_driving_review: { ...complete,
+        applied: true, validation: 'whole_route', ...review } },
+} });
+
+test('a completed driving check succeeds while the separate neighborhood search runs out of time', () => {
+    const measurement = verifiedWhole({ planned: 108, checked: 58, budgetExhausted: true,
+        skipped: [{ reason: 'https://provider/private' }], streetSideService: { unknownStops: 256 } });
+    const applied = outcomes.describeAppliedRoadOptimization(measurement.routingMetadata);
+    assert.equal(applied.status, 'applied');
+    assert.equal(applied.tone, 'success');
+    assert.equal(applied.message, 'Route updated. The complete driving route was verified.');
+    const saved = outcomes.buildRoadOptimizationAttempt(null, measurement, { applied: true });
+    assert.equal(saved.status, 'applied');
+    assert.equal(saved.route_verification_complete, true);
+    assert.equal(saved.budget_exhausted, true);
+    assert.equal(saved.neighborhoods_planned, 108); assert.equal(saved.neighborhoods_checked, 58);
+    assert.equal(saved.neighborhoods_skipped, 1); assert.equal(saved.curb_sides_unconfirmed, 256);
+    assert.match(saved.message, /neighborhood search reached its time limit after checking 58 of 108 neighborhoods/);
+    assert.match(saved.message, /1 neighborhood search candidate was skipped/);
+    assert.match(saved.message, /Curb-side approaches are unconfirmed for 256 stops/);
+    assert.doesNotMatch(saved.message, /https:|private|route.*unverified/i);
+});
+
+test('a complete unchanged driving route is informational when the neighborhood search is incomplete', () => {
+    const measurement = verifiedWhole({ applied: false, planned: 108, checked: 58, budgetExhausted: true,
+        streetSideService: { unknownStops: 256 } });
+    const result = outcomes.describeRoadOptimizationOutcome('current_order_measured_best', measurement);
+    assert.equal(result.status, 'no_improvement'); assert.equal(result.tone, 'info');
+    assert.equal(result.message, 'Complete driving route verified. No faster order found among orders checked. Your route was kept unchanged.');
+    assert.doesNotMatch(result.message, /optimal|best route|unverified|time limit|curb-side/i);
+    const saved = outcomes.buildRoadOptimizationAttempt('current_order_measured_best', measurement);
+    assert.equal(saved.route_changed, false); assert.equal(saved.route_verification_complete, true);
+    assert.equal(saved.budget_exhausted, true); assert.equal(saved.curb_sides_unconfirmed, 256);
+    assert.match(saved.message, /neighborhood search reached its time limit/);
+});
+
+test('whole-route wording requires both a verified continuous path and a usable candidate distance', () => {
+    for (const distance of [null, undefined, NaN, Infinity, -1, '220']) {
+        const measurement = verifiedWhole({ budgetExhausted: true });
+        measurement.routingMetadata.winning_route_distance = distance;
+        const result = outcomes.describeAppliedRoadOptimization(measurement.routingMetadata);
+        assert.equal(result.tone, 'warning');
+        assert.doesNotMatch(result.message, /complete driving route was verified/);
+        assert.equal(outcomes.buildRoadOptimizationAttempt(null, measurement, { applied: true }).route_verification_complete, false);
+    }
+    for (const change of [{ road_path_validated: false }, { fallback: true },
+        { neighborhood_excursion_review: { local_driving_review: { applied: true, validation: 'overlapping_boundary_legs' } } }]) {
+        const measurement = verifiedWhole({ budgetExhausted: true });
+        Object.assign(measurement.routingMetadata, change);
+        const result = outcomes.describeAppliedRoadOptimization(measurement.routingMetadata);
+        assert.equal(result.tone, 'warning');
+        assert.doesNotMatch(result.message, /complete driving route was verified/);
+    }
+});
+
+test('unresolved access remains visible even when returned metadata incorrectly claims a complete path', () => {
+    const measurement = verifiedWhole();
+    measurement.routingMetadata.road_access_recovery = roadRecovery(roadIssues);
+    const applied = outcomes.describeAppliedRoadOptimization(measurement.routingMetadata);
+    assert.equal(applied.status, 'applied_partial'); assert.equal(applied.tone, 'warning');
+    assert.ok(applied.message.includes(roadIssues[0].address));
+    assert.doesNotMatch(applied.message, /complete driving route was verified/);
+    const unchanged = outcomes.describeRoadOptimizationOutcome('current_order_measured_best', measurement);
+    assert.equal(unchanged.status, 'road_access_unresolved');
+    const saved = outcomes.buildRoadOptimizationAttempt(null, measurement, { applied: true });
+    assert.equal(saved.route_verification_complete, false);
+});
+
+test('an incomplete road-match inventory cannot become a full-route success', () => {
+    const measurement = verifiedWhole();
+    measurement.routingMetadata.road_access_recovery = { status: 'provider_unavailable', attempted: 0, recovered: 0,
+        unresolved: [], inventory_complete: false, unverified_count: 377 };
+    assert.equal(outcomes.describeAppliedRoadOptimization(measurement.routingMetadata).status, 'applied_partial');
+    assert.equal(outcomes.describeRoadOptimizationOutcome('current_order_measured_best', measurement).status, 'road_provider_unavailable');
+    assert.equal(outcomes.buildRoadOptimizationAttempt(null, measurement, { applied: true }).route_verification_complete, false);
+});
+
+test('failed attempts cannot inherit complete verification from stale measurement metadata', () => {
+    for (const reason of ['backend_unavailable', 'deadline_exceeded', 'backend_cpu_limit']) {
+        const measurement = verifiedWhole();
+        const saved = outcomes.buildRoadOptimizationAttempt(reason, measurement);
+        assert.equal(saved.route_verification_complete, false);
+        assert.equal(saved.route_changed, false);
+        assert.doesNotMatch(saved.message, /complete driving route verified/);
+    }
+    const guarded = verifiedWhole({ applied: false, repaired: 3, status: 'whole_route_guard_retained',
+        reason: 'Final driving provider check failed' });
+    const saved = outcomes.buildRoadOptimizationAttempt('current_order_measured_best', guarded);
+    assert.equal(saved.status, 'verification_failed');
+    assert.equal(saved.route_verification_complete, false);
+});
+
+test('county-mapped road evidence is disclosed in the saved full result without exposing graph or anchor data', () => {
+    const measurement = verifiedWhole({ budgetExhausted: true });
+    measurement.routingMetadata.road_matrix_source = 'osrm:driving+nc_ng911';
+    measurement.routingMetadata.start_constraint = { lat: 33.45, lng: -112.01 };
+    measurement.routingMetadata.county_road_routing = { graph: 'https://county/33.45,-112.01',
+        localSpeedMph: 15, networks: [{ privateAnchor: { lat: 33.45, lng: -112.01 } }] };
+    const toast = outcomes.describeAppliedRoadOptimization(measurement.routingMetadata);
+    assert.equal(toast.message, 'Route updated. The complete driving route was verified.');
+    const saved = outcomes.buildRoadOptimizationAttempt(null, measurement, { applied: true });
+    assert.equal(saved.county_roads_included, true);
+    assert.match(saved.message, /County-mapped local roads included; local-road travel times are estimated/);
+    assert.doesNotMatch(JSON.stringify(saved), /https:|33\.45|-112\.01|privateAnchor|localSpeedMph|start_constraint/);
+    delete measurement.routingMetadata.road_matrix_source;
+    const ordinary = outcomes.buildRoadOptimizationAttempt(null, measurement, { applied: true });
+    assert.equal(ordinary.county_roads_included, false);
+    assert.doesNotMatch(ordinary.message, /County-mapped/);
 });
 
 test('attempt history contains evidence counts but never home/car anchors or raw provider URLs', () => {
