@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  buildFullAddress,
   buildRouteNavigationPlan,
   detectNavigationEnvironment,
   getNavigationSessionProgress,
@@ -67,8 +68,8 @@ test('Google mobile web batches four stops and preserves current-location origin
   const firstUrl = new URL(plan.batches[0].url);
   assert.equal(firstUrl.searchParams.has('origin'), false);
   assert.equal(firstUrl.searchParams.get('dir_action'), 'navigate');
-  assert.equal(firstUrl.searchParams.get('destination'), '33.403,-112.103');
-  assert.equal(firstUrl.searchParams.get('waypoints'), '33.4,-112.1|33.401,-112.101|33.402,-112.102');
+  assert.equal(firstUrl.searchParams.get('destination'), '4 Main St');
+  assert.equal(firstUrl.searchParams.get('waypoints'), '1 Main St|2 Main St|3 Main St');
   assert.equal(firstUrl.searchParams.get('travelmode'), 'walking');
 });
 
@@ -117,11 +118,11 @@ test('modern Apple unified URLs repeat waypoint parameters and omit source for c
   assert.equal(url.pathname, '/directions');
   assert.equal(url.searchParams.has('source'), false);
   assert.deepEqual(url.searchParams.getAll('waypoint'), [
-    '33.4,-112.1',
-    '33.401,-112.101',
-    '33.402,-112.102',
+    '1 Main St',
+    '2 Main St',
+    '3 Main St',
   ]);
-  assert.equal(url.searchParams.get('destination'), '33.403,-112.103');
+  assert.equal(url.searchParams.get('destination'), '4 Main St');
   assert.equal(url.searchParams.get('mode'), 'driving');
   assert.equal(url.searchParams.get('start'), '0');
 });
@@ -181,6 +182,36 @@ test('missing coordinates fall back to the address instead of Null Island', () =
   }], { provider: 'google' });
 
   assert.equal(new URL(plan.batches[0].url).searchParams.get('destination'), '107 Beechnut Dr, Phoenix, AZ 85001');
+});
+
+test('Google and both Apple formats preserve the written house number over a neighboring pin', () => {
+  const property = { full_address: '317 Main St', city: 'Phoenix', state: 'AZ', zip_code: '85001', lat: 33.4, lng: -112.1 };
+  for (const options of [
+    { provider: 'google' },
+    { provider: 'apple' },
+    { provider: 'apple', environment: detectNavigationEnvironment({ userAgent: 'iPhone OS 17_7', platform: 'ios' }) },
+  ]) {
+    const plan = buildRouteNavigationPlan([property], options);
+    const url = new URL(plan.batches[0].url);
+    assert.equal(url.searchParams.get('destination') || url.searchParams.get('daddr'), '317 Main St, Phoenix, AZ 85001');
+    assert.equal(plan.batches[0].stops[0].navigationLocation.includes('33.4'), false);
+  }
+});
+
+test('complete imported addresses do not repeat city, state or ZIP', () => {
+  assert.equal(buildFullAddress({ full_address: '317 Main St, Phoenix, AZ 85001', city: 'Phoenix', state: 'AZ', zip_code: '85001' }), '317 Main St, Phoenix, AZ 85001');
+  assert.equal(buildFullAddress({ full_address: '317 Main St, Phoenix', city: 'Phoenix', state: 'AZ', zip: '85001' }), '317 Main St, Phoenix, AZ 85001');
+  assert.equal(buildFullAddress({ house_number: '317B', street_name: 'Main St', city: 'Phoenix', state: 'AZ' }), '317B Main St, Phoenix, AZ');
+  assert.equal(buildFullAddress({ full_address: '317 Phoenix Rd', city: 'Phoenix', state: 'AZ' }), '317 Phoenix Rd, Phoenix, AZ');
+  assert.equal(buildFullAddress({ full_address: '317 Main St Phoenix AZ 85001-1234', city: 'Phoenix', state: 'AZ', zip_code: '85001' }), '317 Main St Phoenix AZ 85001-1234');
+});
+
+test('coordinate-only records use the pin rather than a locality-only address', () => {
+  for (const provider of ['google', 'apple']) {
+    const plan = buildRouteNavigationPlan([{ lat: 33.4, lng: -112.1, city: 'Phoenix', state: 'AZ', house_number: 0, street_name: 'Unknown Street' }], { provider });
+    const url = new URL(plan.batches[0].url);
+    assert.equal(url.searchParams.get('destination'), '33.4,-112.1');
+  }
 });
 
 test('a navigation session resumes unfinished stops before advancing a batch', () => {

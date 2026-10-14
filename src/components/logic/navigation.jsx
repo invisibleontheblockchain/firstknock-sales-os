@@ -1,14 +1,7 @@
 import { Capacitor } from '@capacitor/core';
 import { buildRouteNavigationPlan, detectNavigationEnvironment } from './routeNavigation';
 
-export function buildFullAddress(property = {}) {
-    const street = property.full_address || property.address || `${property.house_number || ''} ${property.street_name || ''}`.trim();
-    return [
-        street,
-        property.city,
-        [property.state, property.zip_code || property.zip].filter(Boolean).join(' ')
-    ].filter(Boolean).join(', ');
-}
+export { buildFullAddress } from './routeNavigation';
 
 export function getRuntimeNavigationEnvironment() {
     const userAgent = typeof navigator !== 'undefined' ? navigator.userAgent : '';
