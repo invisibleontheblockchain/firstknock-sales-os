@@ -19,9 +19,8 @@ function clientFor({ identity = rep, savedUser = rep, members = [member], logs =
         functions: { invoke: async () => assert.fail('roster authorization must not make a nested function call') },
         asServiceRole: { entities: {
             User: {
-                filter: async query => { calls.push({ users: query.id }); return [savedUser, manager]
-                    .filter((user, index, users) => user && query.id.includes(user.id) && users.findIndex(value => value?.id === user.id) === index); },
-                get: async id => { calls.push({ user: id }); return id === manager.id ? manager : null; },
+                filter: async () => assert.fail('Built-in User records must use the production-compatible get path'),
+                get: async id => { calls.push({ user: id }); return id === savedUser?.id ? savedUser : id === manager.id ? manager : null; },
             },
             TeamMember: { filter: async (query, sort, limit, skip, fields) => {
                 calls.push({ members: query, fields });
@@ -37,12 +36,12 @@ function clientFor({ identity = rep, savedUser = rep, members = [member], logs =
     return { client, calls };
 }
 
-test('roster checks saved caller and manager together while keeping rep contact data private', async () => {
+test('roster uses supported direct saved-account reads while keeping rep contact data private', async () => {
     const { client, calls } = clientFor();
     const roster = await loadAuthorizedTeamRoster(client);
     assert.equal(roster.manager_id, manager.id);
-    assert.equal(calls.length, 3, 'auth + one saved-account read + membership page');
-    assert.deepEqual(calls[1].users, [rep.id, manager.id]);
+    assert.equal(calls.length, 4, 'auth + caller get + manager get + membership page');
+    assert.deepEqual(calls.filter(call => call.user).map(call => call.user), [rep.id, manager.id]);
     for (const key of ['phone', 'invite_code', 'private_notes']) assert.equal(roster.members[0][key], undefined);
     assert.equal(roster.manager.assigned_zip_codes, undefined);
 });
@@ -92,7 +91,7 @@ function leaderboardHandler(client) {
     };
 }
 
-test('leaderboard uses four direct reads and compact logs while preserving actor identity and metrics', async () => {
+test('leaderboard uses supported direct reads and compact logs while preserving actor identity and metrics', async () => {
     const date = new Date(Date.now() - 1000).toISOString();
     const logs = [
         { id: 'one', manager_id: manager.id, created_date: date, actor_user_id: rep.id, parsed_status: 'SOLD', private_notes: 'secret', gps_proof_lat: 33 },
@@ -107,7 +106,7 @@ test('leaderboard uses four direct reads and compact logs while preserving actor
     assert.equal(row.metrics.sales, 1);
     assert.equal(row.metrics.knocks, 2);
     assert.equal(row.metrics.conversion, 50);
-    assert.equal(calls.length, 4);
+    assert.equal(calls.length, 5);
     const projected = calls.find(call => call.logs).fields;
     assert.ok(projected.includes('actor_user_id') && projected.includes('rep_id') && projected.includes('counts_as_knock'));
     assert.ok(!projected.includes('private_notes') && !projected.includes('gps_proof_lat') && !projected.includes('raw_input_text'));
