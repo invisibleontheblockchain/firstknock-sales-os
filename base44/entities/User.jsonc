@@ -2,9 +2,40 @@
   "name": "User",
   "type": "object",
   "properties": {
+    "precision_trial_bonus_credits": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1000000,
+      "description": "Service-managed cumulative one-time extra included Precision properties. Never renews or grants paid features.",
+      "rls": {
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      }
+    },
+    "precision_trial_bonus_audit": {
+      "type": "object",
+      "description": "Admin grant references, amounts, reasons and timestamps for one-time included credits.",
+      "rls": {
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      }
+    },
     "time_clock_timezone": {
-      "type": "string", "description": "Service-managed reporting timezone for this manager's team time clock.",
-      "rls": { "write": { "user_condition": { "id": "__service_role_only__" } } }
+      "type": "string",
+      "description": "Service-managed reporting timezone for this manager's team time clock.",
+      "rls": {
+        "write": {
+          "user_condition": {
+            "id": "__service_role_only__"
+          }
+        }
+      }
     },
     "app_role": {
       "type": "string",
