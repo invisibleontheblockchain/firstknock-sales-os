@@ -4,6 +4,8 @@ import { getLandingDestinations } from '@/lib/landingNavigation';
 import { startSatelliteScene } from './satelliteScene';
 import './SatelliteLanding.css';
 
+const CONTACT_URL = 'https://calendly.com/firstknockhelp/30min';
+
 export default function SatelliteLanding() {
   const rootRef = React.useRef(null);
   const { search } = useLocation();
@@ -42,7 +44,11 @@ export default function SatelliteLanding() {
     <div className="kicker"><i></i>FirstKnock · Your D2D sales ecosystem</div>
     <h1><span className="ln">Stop pounding pavement.</span><span className="ln glow">Start driving to opportunities.</span></h1>
     <p className="lede">Verified new homeowners, optimized into one efficient driving route.</p>
-    <div className="cta"><Link className="btn primary" to={appEntry}>Launch FirstKnock &#8599;</Link><Link className="btn ghost" to={signInUrl}>Sign in</Link></div>
+    <div className="cta">
+      <Link className="btn primary" to={appEntry}>Launch FirstKnock &#8599;</Link>
+      <a className="btn ghost" href={CONTACT_URL} target="_blank" rel="noopener noreferrer" aria-label="Contact FirstKnock (opens in a new tab)">Contact us <span aria-hidden="true">&#8599;</span></a>
+      <Link className="btn ghost" to={signInUrl}>Sign in</Link>
+    </div>
   </div>
 </section>
 <section className="right">
@@ -85,7 +91,11 @@ export default function SatelliteLanding() {
   <div className="col">
     <div className="eyebrow">Your D2D sales ecosystem</div>
     <h2 className="final-title">Start driving to<br /><span className="glow">opportunities.</span></h2>
-    <div className="cta"><Link className="btn primary" to={appEntry}>Launch FirstKnock &#8599;</Link><Link className="btn ghost" to={signInUrl}>Sign in</Link></div>
+    <div className="cta">
+      <Link className="btn primary" to={appEntry}>Launch FirstKnock &#8599;</Link>
+      <a className="btn ghost" href={CONTACT_URL} target="_blank" rel="noopener noreferrer" aria-label="Contact FirstKnock (opens in a new tab)">Contact us <span aria-hidden="true">&#8599;</span></a>
+      <Link className="btn ghost" to={signInUrl}>Sign in</Link>
+    </div>
   </div>
 </section>
 
