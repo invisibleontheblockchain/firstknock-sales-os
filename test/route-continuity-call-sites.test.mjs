@@ -169,7 +169,6 @@ test('every non-Home route generator supplies synchronous continuity context', a
     ['../src/pages/ZipCodeExplorer.jsx', 1],
     ['../src/components/team/CampaignWizard.jsx', 1],
     ['../src/components/routes/ActiveRoutesTab.jsx', 1],
-    ['../src/components/routes/RouteCommandPanel.jsx', 2],
   ];
 
   for (const [relativePath, expectedCalls] of auditedCallSites) {
@@ -208,16 +207,8 @@ test('every non-Home route generator supplies synchronous continuity context', a
     /generateOptimizedRoutes\([\s\S]*?excludeTerminal:\s*false[\s\S]*?preserveInputMembership:\s*true[\s\S]*?routingContext/,
     'saved-route merge must preserve terminal members',
   );
-  assert.equal(
-    (routeCommand.match(/excludeTerminal:\s*false/g) || []).length,
-    2,
-    'MERGE ALL and split must both preserve every saved route member',
-  );
-  assert.equal(
-    (routeCommand.match(/preserveInputMembership:\s*true/g) || []).length,
-    2,
-    'MERGE ALL and split must fail closed instead of deduplicating saved members',
-  );
+  assert.doesNotMatch(routeCommand, /generateOptimizedRoutes\(/,
+    'Route Command must delegate to the regular saved-route workflow');
 });
 
 test('Home and RepHome interactive optimizers never depend on live road loading', async () => {

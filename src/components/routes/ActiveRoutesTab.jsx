@@ -435,8 +435,9 @@ function RouteSection({ title, icon, routes, repColors, onSelectRoute, activeRou
     );
 }
 
-function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDelete, logs = [], onReoptimize, routeConfig, isSelected, onToggleSelect, isMultiSelect, onSplit }) {
+export function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDelete, onSave, logs = [], onReoptimize, routeConfig, isSelected, onToggleSelect, isMultiSelect, onSplit }) {
     const [editing, setEditing] = useState(false);
+    const [saving, setSaving] = useState(false);
     const [newName, setNewName] = useState(route.name);
     const [showRerunMenu, setShowRerunMenu] = useState(false);
     const [rerunBusy, setRerunBusy] = useState(false);
@@ -551,7 +552,7 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
                                     {isNew && (
                                         <span className="shrink-0 rounded-full bg-[#2EEB57] px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wide text-black">New</span>
                                     )}
-                                    {!isMultiSelect && (
+                                    {!isMultiSelect && route.isSaved !== false && (
                                         <button
                                             onClick={e => { e.stopPropagation(); setEditing(true); }}
                                             className="p-0.5 text-gray-600 hover:text-white transition-colors opacity-0 group-hover:opacity-100"
@@ -606,7 +607,22 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
                         </div>
                     )}
                     {!isMultiSelect && (
-                        <div className="mt-3" onClick={(e) => e.stopPropagation()}>
+                        <div className="mt-3 space-y-2" onClick={(e) => e.stopPropagation()}>
+                            {onSave && (
+                                <button
+                                    disabled={saving}
+                                    onClick={async (event) => {
+                                        event.stopPropagation();
+                                        setSaving(true);
+                                        try { await onSave(); }
+                                        catch (error) { toast.error(error?.message || 'Could not save route. Try again.'); }
+                                        finally { setSaving(false); }
+                                    }}
+                                    className="h-10 w-full rounded-xl border border-amber-400/25 bg-amber-400/10 text-[11px] font-black text-amber-300 disabled:opacity-50"
+                                >
+                                    {saving ? 'SAVING…' : 'SAVE ROUTE'}
+                                </button>
+                            )}
                             {isCompletedRoute ? (
                                 <div className="space-y-2">
                                     <button

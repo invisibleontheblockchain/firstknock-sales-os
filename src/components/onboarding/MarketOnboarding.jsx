@@ -84,7 +84,7 @@ export default function MarketOnboarding({ user, onComplete }) {
                             disabled={isStarting}
                             className="bg-[#2EEB57] hover:bg-[#39FF4A] text-black font-bold h-14 text-base w-full rounded-xl border-none"
                         >
-                            {isStarting ? 'Opening Map...' : 'Start Quick Setup'} <ArrowRight className="w-5 h-5 ml-2" />
+                            {isStarting ? 'Opening Builder...' : 'Start Quick Setup'} <ArrowRight className="w-5 h-5 ml-2" />
                         </Button>
                     </div>
                 </div>
