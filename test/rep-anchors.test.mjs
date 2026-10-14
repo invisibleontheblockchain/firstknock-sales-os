@@ -233,7 +233,7 @@ test('reoptimization preserves a private anchor by default but explicit route-on
                 functions: { invoke: async (name, body) => { requests.push({ name, body }); return { data: { anchor: home } }; } },
                 entities: { SavedRoute: { update: async (id, update) => writes.push(update) } },
             },
-            toast: { loading() {}, success() {}, error: message => errors.push(message) },
+            toast: { loading() {}, success() {}, info() {}, error: message => errors.push(message) },
             startOptimizeProgress: () => ({ update() {}, stop() {} }),
             ROAD_VERIFICATION: { ADOPTED: 'adopted' }, stampRoadVerification: () => ({ metadata: {} }),
             tryRoadMatrixOptimize: async (order, bounds) => {
@@ -241,6 +241,8 @@ test('reoptimization preserves a private anchor by default but explicit route-on
                 assert.equal(bounds.end?.address || null, explicit ? null : home.address);
                 return { order, objective: { applyCandidate: true, appliedDistance: 3, estimatedSavings: 1 }, routingMetadata: {} };
             },
+            countChangedRouteStops: (before, after) => after.filter((hash, i) => hash !== before[i]).length,
+            persistOptimizedRoute: async ({ route, update, client }) => client.entities.SavedRoute.update(route.id, update),
         });
         vm.runInContext(executable('src/lib/routeOptimizationOutcome.js'), context);
         vm.runInContext(executable('src/lib/routeOptimizeUpdate.js'), context);

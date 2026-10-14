@@ -23,6 +23,7 @@ import { captureParkedCarLocation, isLowAccuracyCapture, lowAccuracyConfirmation
 import { startOptimizeProgress } from '@/lib/optimizeProgressToast';
 import { tryRoadMatrixOptimize } from '@/lib/roadMatrixOptimize';
 import { buildRoadOptimizationAttempt, describeAppliedRoadOptimization, describeRoadOptimizationOutcome } from '@/lib/routeOptimizationOutcome';
+import { countChangedRouteStops, persistOptimizedRoute, syncOptimizedRoute } from '@/lib/routeOptimizePersistence';
 import { ROAD_VERIFICATION, stampRoadVerification } from '@/lib/routeRoadVerification';
 import { requireUsableRouteContext } from '@/lib/routeContextGuard';
 import { OPTIMIZE_MODES, ROUTE_ORIGIN_MODES, resolveOptimizeMode, routeOriginModeForOptimizeMode } from '@/lib/routeOriginModes';
@@ -53,10 +54,10 @@ export async function reoptimizeRoute(route, options = {}, deps = {}) {
         effectiveProperties = [],
         mapRef,
         queryClient,
-        activeRoute,
         setActiveRoute,
         confirmLowAccuracyLocation = () => true,
         previewRoadAwareBeta = null,
+        client = base44,
     } = deps;
 
     // Explicit mode. The legacy { fromHome: true } shape still resolves, but every
@@ -102,7 +103,7 @@ export async function reoptimizeRoute(route, options = {}, deps = {}) {
     let progress = null;
     try {
         const hashes = (route.property_hashes || (route.properties || []).map(propertyKey)).filter(Boolean);
-        const routePropsByHash = new Map((route.properties || route.allProperties || []).map(p => [propertyKey(p), p]));
+        const routePropsByHash = new Map([...(route.allProperties || []), ...(route.properties || [])].map(p => [propertyKey(p), p]));
         const effectivePropsByHash = new Map(effectiveProperties.map(p => [propertyKey(p), p]));
         const routeProperties = hashes.map(hash => effectivePropsByHash.get(hash) || routePropsByHash.get(hash)).filter(Boolean);
         if (routeProperties.length === 0) { toast.error('No properties found for this route.', { id: TOAST_ID }); return; }
@@ -126,7 +127,7 @@ export async function reoptimizeRoute(route, options = {}, deps = {}) {
             : routeBelongsToCurrentUser ? user?.home_base : null;
         if (optimizeFromHome && !routeBelongsToCurrentUser) {
             try {
-                const response = await base44.functions.invoke('getRouteHomeBase', { route_id: route.id });
+                const response = await client.functions.invoke('getRouteHomeBase', { route_id: route.id });
                 requestedHomeBase = response?.data?.home_base || null;
             } catch (error) {
                 console.warn('[reoptimizeRoute] Could not load assigned rep Home Base:', error);
@@ -144,7 +145,7 @@ export async function reoptimizeRoute(route, options = {}, deps = {}) {
 
         let privateAnchor = null;
         if (usingPrivateAnchor) {
-            const response = await base44.functions.invoke('manageRepAnchors', { action: 'get_route', route_id: route.id });
+            const response = await client.functions.invoke('manageRepAnchors', { action: 'get_route', route_id: route.id });
             privateAnchor = response.data.anchor;
             if (!isValidRoutePoint(privateAnchor)) throw new Error('Configure the route anchor before optimizing.');
         }
@@ -188,11 +189,9 @@ export async function reoptimizeRoute(route, options = {}, deps = {}) {
         if (beta) {
             toast.dismiss(TOAST_ID);
             if (beta.applied) {
-                queryClient?.invalidateQueries({ queryKey: ['savedRoutes'] });
-                if (activeRoute?.id === route.id && setActiveRoute) setActiveRoute(prev => ({ ...prev, ...beta.update,
-                    properties: beta.result.properties, allProperties: beta.result.properties,
-                    startLocation: start, endLocation: end, routeOriginMode,
-                    totalDistance: beta.update.metrics.distance }));
+                await syncOptimizedRoute({ saved: { ...route, ...beta.update, ...beta.route },
+                    properties: beta.result.properties, queryClient, setActiveRoute,
+                    session: { startLocation: start, endLocation: end, routeOriginMode } });
                 toast.success('Road-aware order applied. The previous order remains available in Routing Beta history.');
                 if (beta.historyWarning) toast.warning(beta.historyWarning);
             }
@@ -222,6 +221,7 @@ export async function reoptimizeRoute(route, options = {}, deps = {}) {
         let roadDeclineReason = null;
         let roadMeasurement = null;
         const roadMatrixResult = await tryRoadMatrixOptimize(routeProperties, {
+            client,
             start: isValidRoutePoint(start) ? start : null,
             end: isValidRoutePoint(end) ? end : null,
             onOutcome: (reason, measurement) => { roadDeclineReason = reason; roadMeasurement = measurement; }
@@ -247,9 +247,9 @@ export async function reoptimizeRoute(route, options = {}, deps = {}) {
                 last_optimization_attempt: buildRoadOptimizationAttempt(roadDeclineReason, roadMeasurement, {
                     mode: optimizeMode, doorCount: routeProperties.length,
                 }) };
-            await base44.entities.SavedRoute.update(route.id, { metadata });
+            await client.entities.SavedRoute.update(route.id, { metadata });
             queryClient?.invalidateQueries({ queryKey: ['savedRoutes'] });
-            if (activeRoute?.id === route.id && setActiveRoute) setActiveRoute(prev => ({ ...prev, metadata }));
+            setActiveRoute?.(prev => prev?.id === route.id ? { ...prev, metadata } : prev);
             toast[outcome.tone](outcome.message, {
                 id: TOAST_ID,
                 duration: 4000
@@ -351,39 +351,38 @@ export async function reoptimizeRoute(route, options = {}, deps = {}) {
         } else {
             delete routeUpdate.metadata.anchor;
         }
-        await base44.entities.SavedRoute.update(route.id, routeUpdate);
-        queryClient?.invalidateQueries({ queryKey: ['savedRoutes'] });
-        if (activeRoute && activeRoute.id === route.id && setActiveRoute) {
-            setActiveRoute(prev => ({
-                ...prev,
-                ...routeUpdate,
-                // For the Optimize modes the exact anchor lives in SESSION state only;
-                // SavedRoute must not carry a personal home/current coordinate.
+        await persistOptimizedRoute({
+            route, update: routeUpdate, properties: appliedProperties, client, queryClient, setActiveRoute,
+            // Personal anchors belong only to the current map session.
+            session: {
                 startLocation: routeOriginMode !== ROUTE_ORIGIN_MODES.NONE ? start : null,
                 endLocation: routeOriginMode !== ROUTE_ORIGIN_MODES.NONE ? end : null,
                 routeOriginMode,
-                property_hashes: appliedHashes,
-                properties: appliedProperties,
-                allProperties: appliedProperties,
-                houseCount: appliedProperties.length,
-                totalDistance: newDistanceRounded,
-                metrics: { ...prev?.metrics, distance: newDistanceRounded, house_count: appliedProperties.length }
-            }));
-        }
+            },
+        });
         // Restore the map view so fitBounds cannot zoom out on a reorder.
         if (savedView && mapRef?.current) { try { mapRef.current.setView(savedView.center, savedView.zoom, { animate: false }); } catch { /* map already gone */ } }
         const savedMiles = Math.round(objective.estimatedSavings * 100) / 100;
         const partialOutcome = roadMatrixResult && describeAppliedRoadOptimization(roadMatrixResult.routingMetadata);
-        const base = partialOutcome?.message || (usingCustomAnchors
+        const changedStops = countChangedRouteStops(hashes, appliedHashes);
+        const localReview = roadMatrixResult?.routingMetadata?.neighborhood_excursion_review?.local_driving_review;
+        const base = usingCustomAnchors
             ? (routeOriginMode === ROUTE_ORIGIN_MODES.CUSTOM_BOUNDS
                 ? 'Route anchors set. The door order was rebuilt around your start and finish.'
                 : 'Route anchors cleared.')
-            : optimizeSuccessMessage(optimizeMode, { alreadyOptimal: !objective.applyCandidate }));
+            : changedStops > 0
+                ? `${partialOutcome?.message || optimizeSuccessMessage(optimizeMode)} ${changedStops} stops reordered.`
+                : 'The stop order is unchanged.';
         const estimateLabel = roadAware ? 'road-distance estimate' : 'street-continuity estimate';
-        const msg = objective.applyCandidate && savedMiles > 0
-            ? `${base} Saved ~${savedMiles} estimated miles (${newDistanceRounded} mi ${estimateLabel}).`
+        const savingsLabel = localReview?.validation === 'overlapping_boundary_legs'
+            ? `Verified neighborhood savings: ~${savedMiles} mi` : `Saved ~${savedMiles} estimated miles`;
+        const msg = changedStops > 0 && objective.applyCandidate && savedMiles > 0
+            ? `${base} ${savingsLabel} (${newDistanceRounded} mi ${estimateLabel}).`
             : `${base} (${newDistanceRounded} mi ${estimateLabel})`;
-        toast[partialOutcome?.tone || 'success'](msg, { id: TOAST_ID, duration: 4000 });
+        toast[changedStops > 0 ? partialOutcome?.tone || 'success' : usingCustomAnchors ? 'success' : 'info'](
+            msg,
+            { id: TOAST_ID, duration: 4000 }
+        );
     } catch (e) {
         console.error('Re-optimize error:', e);
         toast.error(

@@ -130,6 +130,7 @@ function actionHarness(reason, measurement) {
         '@/lib/routeBounds': bounds, '@/lib/parkedCarLocation': {},
         '@/lib/optimizeProgressToast': { startOptimizeProgress: () => ({ update() {}, stop() {} }) },
         '@/lib/roadMatrixOptimize': { tryRoadMatrixOptimize: async (_, options) => { options.onOutcome(reason, measurement); return null; } },
+        '@/lib/routeOptimizePersistence': {},
         '@/lib/routeOptimizationOutcome': outcomes, '@/lib/routeRoadVerification': {},
         '@/lib/routeContextGuard': {}, '@/lib/routeOriginModes': origins, '@/lib/routeOptimizeUpdate': updates,
     };

@@ -278,7 +278,7 @@ test('MENU-01 the Optimize button no longer reoptimizes on click', async () => {
   );
   assert.match(source, /<OptimizeRouteTrigger/, 'the banner renders the expanding trigger');
   assert.match(source, /<OptimizeRouteChoices/, 'and the three choices');
-  assert.match(source, /onReoptimizeRoute\(activeRoute, \{ mode \}\)/, 'and passes an explicit mode');
+  assert.match(source, /onReoptimizeRoute\(activeRoute, \{ mode(?:, \.\.\.extra)? \}\)/, 'and passes an explicit mode');
 });
 
 test('MENU-02 the control offers exactly the three labelled choices', async () => {
@@ -396,7 +396,7 @@ test('MENU-09 Route Command omits the redundant Home Base shortcut', async () =>
 
   const toolbar = await readToolbar();
   assert.match(toolbar, /<OptimizeRouteChoices/, 'the solo-route choices remain available');
-  assert.match(toolbar, /onReoptimizeRoute\(activeRoute, \{ mode \}\)/,
+  assert.match(toolbar, /onReoptimizeRoute\(activeRoute, \{ mode(?:, \.\.\.extra)? \}\)/,
     'the solo-route optimizer still passes the chosen mode');
 });
 

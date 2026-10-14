@@ -185,6 +185,14 @@ export async function tryRoadMatrixOptimize(routeProperties, {
         if (roadMiles === null || baseline === null) {
             return decline('backend_returned_no_measurement');
         }
+        // Applied review diagnostics can describe an earlier candidate. They
+        // cannot turn the exact current manifest into a newly reordered route.
+        if (order.every((property, index) => propertyKey(property) === propertyKey(routeProperties[index]))) {
+            return decline('current_order_measured_best', {
+                distanceMiles: baseline,
+                routingMetadata: { ...meta, source: 'optimizeRouteRoadMatrix', routing: buildRoadMatrixRoutingBlock(meta) }
+            });
+        }
         const savings = baseline - roadMiles;
         // Driving time is the primary objective, so a candidate that saves
         // minutes is adopted even when the mileage is a wash. The backend gate

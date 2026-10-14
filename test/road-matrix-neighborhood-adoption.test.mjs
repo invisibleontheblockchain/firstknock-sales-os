@@ -49,3 +49,16 @@ test('a mail-carrier service improvement that drives farther never fabricates mi
     assert.equal(result.objective.estimatedSavings, 0);
     assert.deepEqual(result.order.map(p => p.address_hash), ['B', 'A', 'C']);
 });
+test('old applied-review diagnostics cannot claim savings when the returned stop order is unchanged', async () => {
+    let outcome;
+    const api = client({ applied: true, validation: 'overlapping_boundary_legs', localMilesSaved: 24.32 });
+    const invoke = api.functions.invoke;
+    api.functions.invoke = async () => {
+        const response = await invoke();
+        response.data.order = properties.map(p => p.address_hash);
+        return response;
+    };
+    const result = await optimize(properties, { client: api, onOutcome: reason => { outcome = reason; } });
+    assert.equal(result, null);
+    assert.equal(outcome, 'current_order_measured_best');
+});
