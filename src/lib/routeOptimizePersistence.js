@@ -37,14 +37,17 @@ export async function persistOptimizedRoute({ route, update, properties, client,
     return saved;
 }
 
-export async function syncOptimizedRoute({ saved, properties, queryClient, setActiveRoute, session = {} }) {
+export async function syncOptimizedRoute({ saved, properties, queryClient, setActiveRoute, session = {}, metadataOnly = false }) {
     const roots = ['savedRoutes', 'myRoutes', 'savedRouteMapProperties', 'routeMap'];
     // An older hydration/list request must not finish after this write and put
     // the original order back into the cache when the route is reopened.
     await queryClient?.cancelQueries({ predicate: query => roots.includes(query.queryKey[0]) });
+    const updateRoute = current => metadataOnly
+        ? { ...current, metadata: saved.metadata, ...(saved.updated_date ? { updated_date: saved.updated_date } : {}) }
+        : applySavedOrder(current, saved, properties);
     const replace = current => {
         if (Array.isArray(current)) return current.map(replace);
-        if (current?.id === saved.id) return applySavedOrder(current, saved, properties);
+        if (current?.id === saved.id) return updateRoute(current);
         if (Array.isArray(current?.items)) return { ...current, items: current.items.map(replace) };
         return current;
     };
@@ -52,7 +55,7 @@ export async function syncOptimizedRoute({ saved, properties, queryClient, setAc
     // Read the current selection when the request finishes, not the selection
     // captured when a potentially minute-long optimization was started.
     setActiveRoute?.(current => current?.id === saved.id
-        ? { ...applySavedOrder(current, saved, properties), ...session }
+        ? { ...updateRoute(current), ...session }
         : current);
     await Promise.allSettled(['savedRoutes', 'myRoutes'].map(root =>
         queryClient?.invalidateQueries({ queryKey: [root] })

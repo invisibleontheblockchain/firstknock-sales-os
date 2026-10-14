@@ -186,6 +186,21 @@ function preferenceFor(order, context) {
     return preference;
 }
 
+function rangesAwayFromUnmatched(window, failedIndexes) {
+    let ranges = [window];
+    for (const failed of failedIndexes) ranges = ranges.flatMap(range => {
+        if (failed < range.start - 2 || failed >= range.end + 2) return [range];
+        // The failed pin and its two neighbors on either side stay fixed.
+        // The neighbors become valid, unchanged context for either repair;
+        // including the failed pin in a child's context would fail again.
+        return [
+            { ...range, end: Math.min(range.end, failed - 2) },
+            { ...range, start: Math.max(range.start, failed + 3) },
+        ].filter(child => child.end - child.start >= 3);
+    });
+    return ranges;
+}
+
 export async function reviewLocalDrivingNeighborhoods(order, options = {}) {
     const identities = order.map(id);
     if (identities.some(key => !key) || new Set(identities).size !== order.length) throw new Error('Local driving review requires unique stop membership.');
@@ -196,6 +211,11 @@ export async function reviewLocalDrivingNeighborhoods(order, options = {}) {
         skipped: [], budgetExhausted: false, validation: 'unchanged', applied: false };
     const original = order;
     order = [...order];
+    const unmatchedIds = new Set([
+        ...(options.unresolvedStopIds || []).map(String),
+        ...order.filter(p => p.routing_access?.resolution_status === 'unresolved').map(id),
+    ]);
+    const unmatchedIndexes = () => order.flatMap((p, i) => unmatchedIds.has(id(p)) ? [i] : []);
     const mailCarrier = options.mailCarrierMode === true;
     const areaWindows = options.areaDrivingReview !== false ? planDrivingAreaWindows(order, options) : [];
     report.areaReview = { planned: areaWindows.length, checked: 0, repaired: 0, candidatesMeasured: 0 };
@@ -209,6 +229,16 @@ export async function reviewLocalDrivingNeighborhoods(order, options = {}) {
         .map(window => ({ ...window, priority: windowExcessMiles(order, window) }))
         .sort((a, b) => Number(Boolean(b.area)) - Number(Boolean(a.area))
             || Number(Boolean(b.service)) - Number(Boolean(a.service)) || b.priority - a.priority || a.start - b.start);
+    const scheduled = new Map(windows.map(window => [`${window.start}:${window.end}`, window]));
+    const unscheduled = children => children.filter(child => {
+        const key = `${child.start}:${child.end}`, existing = scheduled.get(key);
+        if (existing) {
+            for (const flag of ['area', 'service', 'local']) existing[flag] ||= child[flag];
+            return false;
+        }
+        scheduled.set(key, child);
+        return true;
+    });
     report.planned = windows.length;
     const maxWindows = Math.max(0, Math.min(100, options.maxLocalWindows ?? 64));
     const deadline = Date.now() + Math.max(1, Math.min(60000, options.localReviewBudgetMs ?? 45000));
@@ -219,9 +249,30 @@ export async function reviewLocalDrivingNeighborhoods(order, options = {}) {
     const accessContext = { accessFor: p => trustedAccess(p.routing_access) ? p.routing_access
         : inferredAccess.get(id(p)) || p.routing_access || null, streetSegmentKey: neighborhoodStreetKey };
     const createContext = options.createLocalDrivingContext || ((points, config) => createVehicleRoutingContext(points, accessContext, config));
+    const retryInferredHeading = async (section, run) => {
+        for (let retry = 0; retry < 9; retry++) {
+            try { return await run(); }
+            catch (error) {
+                fatal(error);
+                const coordinate = /NoSegment.*coordinate (\d+)/i.exec(error.message);
+                const key = coordinate && id(section[Number(coordinate[1])]);
+                // Only an inferred curb constraint may be removed. The source
+                // pin and the provider's fixed road-match radius stay intact.
+                if (!key || !inferredAccess.has(key) || retry === 8) throw error;
+                inferredAccess.delete(key);
+            }
+        }
+    };
     for (let index = 0; index < windows.length; index++) {
         if (report.checked >= maxWindows || Date.now() >= deadline) { report.budgetExhausted = true; break; }
         if (options.signal?.aborted) throw options.signal.reason || new DOMException('Cancelled', 'AbortError');
+        const safeRanges = rangesAwayFromUnmatched(windows[index], unmatchedIndexes());
+        if (safeRanges.length !== 1 || safeRanges[0].start !== windows[index].start || safeRanges[0].end !== windows[index].end) {
+            windows.splice(index, 1, ...unscheduled(safeRanges));
+            report.planned = windows.length;
+            index--;
+            continue;
+        }
         const { start, end, service, area, local } = windows[index];
         const left = order.slice(Math.max(0, start - 2), start);
         const right = order.slice(end, end + 2);
@@ -232,31 +283,20 @@ export async function reviewLocalDrivingNeighborhoods(order, options = {}) {
         if (area) report.areaReview.checked++;
         try {
             if (mailCarrier && section.some(p => !trustedAccess(accessContext.accessFor(p)) && !discovered.has(id(p)))) {
-                const discovery = await createContext(section, { ...contextOptions, sparseCosts: true,
-                    routeOnly: true, discoverStreetSides: true });
-                const observation = await discovery.routeSequence(section);
+                const observation = await retryInferredHeading(section, async () => {
+                    const discovery = await createContext(section, { ...contextOptions, sparseCosts: true,
+                        routeOnly: true, discoverStreetSides: true });
+                    return discovery.routeSequence(section);
+                });
                 for (const [key, access] of inferMailCarrierAccess(section, observation.streetSideEvidence)) {
                     if (!discovered.has(key) && !trustedAccess(accessContext.accessFor(section.find(p => id(p) === key)))) inferredAccess.set(key, access);
                 }
                 section.forEach(p => discovered.add(id(p)));
             }
-            let context, baseline;
-            for (let retry = 0; retry < 9; retry++) {
-                try {
-                    context = await createContext(section, contextOptions);
-                    baseline = await context.routeSequence(section);
-                    break;
-                } catch (error) {
-                    fatal(error);
-                    const coordinate = /NoSegment.*coordinate (\d+)/i.exec(error.message);
-                    const key = coordinate && id(section[Number(coordinate[1])]);
-                    // A proposed heading on a one-way or restricted service
-                    // point can be infeasible. Remove only that inferred curb
-                    // constraint; keep the original pin and road-match radius.
-                    if (!key || !inferredAccess.has(key) || retry === 8) throw error;
-                    inferredAccess.delete(key);
-                }
-            }
+            const { context, baseline } = await retryInferredHeading(section, async () => {
+                const context = await createContext(section, contextOptions);
+                return { context, baseline: await context.routeSequence(section) };
+            });
             // Larger area questions move whole service runs. The existing
             // bounded door search still handles local branch/return details.
             const exactCandidates = (!area || service || local) && stops.length <= 12
@@ -308,10 +348,11 @@ export async function reviewLocalDrivingNeighborhoods(order, options = {}) {
             const match = /NoSegment.*coordinate (\d+)/i.exec(error.message);
             if (match) {
                 const failed = section[Number(match[1])];
-                const split = stops.indexOf(failed);
-                if (split >= 0) {
-                    if (split >= 3) windows.splice(index + 1, 0, { start, end: start + split, service, area, local });
-                    if (stops.length - split - 1 >= 3) windows.splice(index + 1, 0, { start: start + split + 1, end, service, area, local });
+                if (failed && order.includes(failed)) {
+                    unmatchedIds.add(id(failed));
+                    const children = unscheduled(rangesAwayFromUnmatched({ start, end, service, area, local }, unmatchedIndexes()));
+                    windows.splice(index + 1, 0, ...children);
+                    report.planned = windows.length;
                 }
             }
         }
@@ -319,6 +360,11 @@ export async function reviewLocalDrivingNeighborhoods(order, options = {}) {
     if (order.length !== original.length || new Set(order.map(id)).size !== original.length
         || order.some(p => !identities.includes(id(p)))) throw new Error('Local driving review changed route membership.');
     original.forEach((stop, i) => { if (protectedStop(stop, locks) && order[i] !== stop) throw new Error('Local driving review moved a locked stop.'); });
+    for (const failed of original.flatMap((p, i) => unmatchedIds.has(id(p)) ? [i] : [])) {
+        for (let i = Math.max(0, failed - 2); i <= Math.min(order.length - 1, failed + 2); i++) {
+            if (order[i] !== original[i]) throw new Error('Local driving review moved an unresolved stop boundary.');
+        }
+    }
     if (mailCarrier) report.streetSideService = {
         mode: 'mail_carrier_right_curb',
         objective: 'coherent_side_passes_then_driving_cost',

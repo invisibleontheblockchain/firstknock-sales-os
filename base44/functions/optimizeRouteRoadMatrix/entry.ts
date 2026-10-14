@@ -31,6 +31,8 @@ import { fetchOsrmJson } from '../../shared/osrmDispatcher.js';
 import { createOsrmRequestCache } from '../../shared/osrmRequestCache.js';
 import { createRoadCostCache } from '../../shared/roadCostCache.js';
 import { createMemoizedRouteMetrics } from '../../shared/routeMetricMemo.js';
+import { recoverRouteVehicleAccess } from '../../shared/routeAccessRecovery.js';
+import { reviewLocalDrivingNeighborhoods } from '../../shared/localDrivingNeighborhoods.js';
 import {
     DURATION_TIE_TOLERANCE_MINUTES,
     measureRouteCandidate,
@@ -40,7 +42,7 @@ import {
 
 // Bump when candidate generation or the objective changes, so a stored route can
 // be told apart from one produced by an older solver.
-const OPTIMIZER_VERSION = 'road_matrix_neighborhood_area_service_v11';
+const OPTIMIZER_VERSION = 'road_matrix_address_access_recovery_v12';
 
 function readSecret(name) {
     try {
@@ -71,13 +73,14 @@ function exactOnce(order, expectedCount) {
 }
 
 export default async function (req: Request): Promise<Response> {
+    let recoveryReport = null;
     try {
         const base44 = createClientFromRequest(req);
         const user = await base44.auth.me();
         if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
         const body = await req.json().catch(() => ({}));
-        const properties = Array.isArray(body.properties) ? body.properties : [];
+        let properties = Array.isArray(body.properties) ? body.properties : [];
         const startLocation = isValidPoint(body.start_location) ? body.start_location : null;
         const endLocation = isValidPoint(body.end_location) ? body.end_location : null;
         const profile = body.profile === 'walking' ? 'walking' : 'driving';
@@ -112,6 +115,32 @@ export default async function (req: Request): Promise<Response> {
             }, { status: 400 });
         }
 
+        const solverStartedAt = Date.now();
+        const stageTimings: Record<string, number> = {};
+        const responseCache = createOsrmRequestCache(fetchOsrmJson);
+        const vehicleBaseUrl = readSecret('OSRM_BASE_URL') || DEFAULT_OSRM_BASE_URL;
+        const vehicleFetch = async (url, options) => {
+            if (options?.signal?.aborted) throw options.signal.reason;
+            const payload = await responseCache.fetchJson(url, { timeoutMs });
+            return { ok: true, json: async () => payload };
+        };
+        // Property pins identify the parcel. Driving access is a separate point:
+        // recover it from a qualified full-address match before pricing any order.
+        const accessRecovery = profile === 'driving'
+            ? await recoverRouteVehicleAccess(properties, { vehicleBaseUrl, vehicleProfile: profile,
+                vehicleFetch, geocodioApiKey: readSecret('GEOCODIO_API_KEY') })
+            : { properties, report: null };
+        properties = accessRecovery.properties;
+        recoveryReport = accessRecovery.report;
+        stageTimings.address_access_ms = Date.now() - solverStartedAt;
+        if (accessRecovery.report?.status === 'provider_unavailable'
+            && (accessRecovery.report?.inventory_complete === false
+                || accessRecovery.report?.unresolved?.some(issue => issue.reason === 'road_provider_unavailable'))) {
+            return Response.json({ success: false, code: 'ROAD_ACCESS_PROVIDER_UNAVAILABLE',
+                routing_metadata: { optimizer_version: OPTIMIZER_VERSION, road_access_recovery: accessRecovery.report,
+                    optimization_timings: stageTimings } });
+        }
+
         // Canonical input: candidate GENERATION never sees the caller's array
         // order, so a shuffled or reversed request cannot change the winner. The
         // request order is preserved separately as the current-route candidate.
@@ -141,9 +170,6 @@ export default async function (req: Request): Promise<Response> {
         const anchorsInMatrix = plan.ok && plan.anchorsIncluded;
         const matrixPoints = plan.ok ? plan.matrixPoints : properties;
         const cacheKey = await buildRoadMatrixCacheKey(matrixPoints, profile);
-        const solverStartedAt = Date.now();
-        const stageTimings: Record<string, number> = {};
-        const responseCache = createOsrmRequestCache(fetchOsrmJson);
         const roadCosts = createRoadCostCache({
             fetchMatrix: (points, options) => fetchRoadMatrix(points, { ...options, fetchJson: responseCache.fetchJson }),
             measurePath: (order, options) => measureRoadPath(order, { ...options, fetchJson: responseCache.fetchJson }),
@@ -152,29 +178,12 @@ export default async function (req: Request): Promise<Response> {
             startLocation, endLocation, baselineOrder: properties,
             localDrivingReview: profile === 'driving',
             mailCarrierMode: profile === 'driving',
-            vehicleBaseUrl: readSecret('OSRM_BASE_URL') || DEFAULT_OSRM_BASE_URL,
+            vehicleBaseUrl,
             vehicleProfile: profile,
-            vehicleFetch: async (url, options) => {
-                if (options?.signal?.aborted) throw options.signal.reason;
-                const payload = await responseCache.fetchJson(url, { timeoutMs });
-                return { ok: true, json: async () => payload };
-            },
+            vehicleFetch,
             preferContiguousOnTie: body.neighborhood_review?.prefer_contiguous_on_tie === true,
             tieSeconds: Math.min(10, Math.max(0, Number(body.neighborhood_review?.tie_seconds) || 0)),
         };
-
-        // Candidate — straight-line continuity, the fallback path's answer.
-        const continuity = createContinuityOptimizer(haversineMiles);
-        const continuityChunks = continuity.buildRouteChunks(
-            canonicalProperties,
-            canonicalProperties.length,
-            startLocation,
-            endLocation
-        );
-        if (!verifyExactOnceDoors(continuityChunks.doorChunks, properties.length)) {
-            throw new Error('Continuity candidate failed its exact-once property invariant.');
-        }
-        const continuityOrder = continuityChunks.doorChunks.flat().map((door) => door.property);
 
         const baseMetadata = {
             property_set_fingerprint: setFingerprint,
@@ -191,10 +200,50 @@ export default async function (req: Request): Promise<Response> {
             matrix_tier: plan.ok ? plan.tier : null,
             matrix_street_block_count: plan.ok ? plan.blockCount : null,
             optimizer_version: OPTIMIZER_VERSION,
+            road_access_recovery: accessRecovery.report,
             objective_version: OBJECTIVE_VERSION,
             duration_tie_tolerance_minutes: DURATION_TIE_TOLERANCE_MINUTES,
-            neighborhood_excursion_review: reviewNeighborhoodExcursions(continuityOrder).diagnostics
+            neighborhood_excursion_review: reviewNeighborhoodExcursions(properties).diagnostics
         };
+
+        if (accessRecovery.report?.unresolved?.length) {
+            // Unknown access cannot justify a global reshuffle. Repair only the
+            // incumbent's healthy spans with unchanged incoming/outgoing legs.
+            const neighborhood = await reviewLocalDrivingNeighborhoods(properties, neighborhoodOptions);
+            let local = neighborhood.diagnostics;
+            const proof = local?.applied === true && local.validation === 'overlapping_boundary_legs';
+            const winningOrder = proof ? neighborhood.properties : properties;
+            if (!exactOnce(winningOrder, properties.length)
+                || JSON.stringify(winningOrder.map(propertyIdentity).sort()) !== JSON.stringify(properties.map(propertyIdentity).sort())
+                || properties.some((stop, i) => (stop.order_locked || stop.locked || stop.routing_access?.resolution_status === 'unresolved')
+                    && propertyIdentity(winningOrder[i]) !== propertyIdentity(stop))) {
+                throw new Error('Local driving repair changed route membership or moved a locked stop.');
+            }
+            const applied = proof && winningOrder.some((stop, i) => propertyIdentity(stop) !== propertyIdentity(properties[i]));
+            if (proof && !applied) local = { ...local, applied: false, repaired: 0,
+                localMilesSaved: 0, localSecondsSaved: 0, validation: 'unchanged' };
+            return Response.json({ success: true, selected: applied ? 'road_aware' : 'current',
+                order: winningOrder.map(propertyIdentity), property_count: properties.length,
+                routing_metadata: { ...baseMetadata, neighborhood_excursion_review: {
+                    ...reviewNeighborhoodExcursions(properties).diagnostics,
+                    applied, local_driving_review: local },
+                    strategy: 'access_guarded_neighborhood_repair', road_network_used: applied,
+                    fallback: false, road_path_validated: false, distance_estimate: 'unavailable',
+                    input_measured: null, winning_route_distance: null,
+                    property_order_fingerprint: routePropertyOrderFingerprint(winningOrder), exact_once_verified: true,
+                    optimization_timings: { ...stageTimings, total_ms: Date.now() - solverStartedAt } } });
+        }
+
+        // Global candidate generation starts only after every stop has road access.
+        const continuity = createContinuityOptimizer(haversineMiles);
+        const continuityChunks = continuity.buildRouteChunks(
+            canonicalProperties, canonicalProperties.length, startLocation, endLocation
+        );
+        if (!verifyExactOnceDoors(continuityChunks.doorChunks, properties.length)) {
+            throw new Error('Continuity candidate failed its exact-once property invariant.');
+        }
+        const continuityOrder = continuityChunks.doorChunks.flat().map((door) => door.property);
+        baseMetadata.neighborhood_excursion_review = reviewNeighborhoodExcursions(continuityOrder).diagnostics;
 
         // Cluster-tier routes take the hierarchical path instead of a single
         // representative matrix. A representative matrix leaves every leg INSIDE a
@@ -638,6 +687,8 @@ export default async function (req: Request): Promise<Response> {
             }
         });
     } catch (error) {
-        return Response.json({ error: error.message }, { status: 500 });
+        return Response.json({ error: error.message,
+            ...(recoveryReport ? { routing_metadata: { optimizer_version: OPTIMIZER_VERSION,
+                road_access_recovery: recoveryReport } } : {}) }, { status: 500 });
     }
 }

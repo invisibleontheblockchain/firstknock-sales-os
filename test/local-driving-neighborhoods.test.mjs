@@ -165,3 +165,132 @@ test('new generation and Optimize both reach the same enabled driving review', (
     assert.match(backend, /localDrivingReview: profile === 'driving'/);
     assert.match(generation, /tryRoadMatrixOptimize/); assert.match(optimize, /invoke\('optimizeRouteRoadMatrix'/);
 });
+
+function unmatchedNeighborhood({ known = false, locked = false, extraFailure = false } = {}) {
+    const input = Array.from({ length: extraFailure ? 20 : 12 }, (_, i) => ({
+        id: `door-${i}`, street_name: 'Recovery Lane', lat: 35, lng: -81 + i / 100000,
+        ...(i === 6 && known ? { routing_access: { resolution_status: 'unresolved' } } : {}),
+        ...(i === 6 && locked ? { locked: true } : {}),
+    }));
+    const failedIds = new Set(extraFailure ? ['door-5', 'door-6'] : ['door-6']);
+    const desired = [...input];
+    [desired[0], desired[1]] = [desired[1], desired[0]];
+    const rightStart = extraFailure ? 10 : 9;
+    [desired[rightStart], desired[rightStart + 1]] = [desired[rightStart + 1], desired[rightStart]];
+    const preferredEdges = new Set(desired.slice(1).map((p, i) => `${desired[i].id}>${p.id}`));
+    const duration = (a, b) => preferredEdges.has(`${a.id}>${b.id}`) ? 1 : 40;
+    const attempts = [];
+    const createLocalDrivingContext = async (section, config) => {
+        const failedIndex = section.findIndex(p => failedIds.has(p.id));
+        attempts.push({ ids: section.map(p => p.id), failed: section[failedIndex]?.id,
+            wholeRoute: config.sparseCosts === true });
+        if (failedIndex >= 0) throw new Error(`Vehicle routing failed (400: NoSegment). Could not find a matching segment for coordinate ${failedIndex}`);
+        return {
+            optimizationCostBetween: duration, distanceBetween: (a, b) => duration(a, b) / 1000,
+            async routeSequence(sequence) {
+                const directedLegs = sequence.slice(1).map((p, i) => ({ from: sequence[i].id, to: p.id,
+                    pathKey: `${sequence[i].id}>${p.id}`, driveSeconds: duration(sequence[i], p),
+                    distanceMiles: duration(sequence[i], p) / 1000 }));
+                return { directedLegs, driveSeconds: directedLegs.reduce((s, leg) => s + leg.driveSeconds, 0),
+                    distanceMiles: directedLegs.reduce((s, leg) => s + leg.distanceMiles, 0) };
+            },
+        };
+    };
+    const options = { areaDrivingReview: false, maxLocalStops: 12, maxLocalWindows: 100,
+        localReviewBudgetMs: 10000, createLocalDrivingContext };
+    return { input, desired, attempts, failedIds, options };
+}
+
+function assertUnknownBoundariesPreserved(result, input, failedIds) {
+    assert.deepEqual(result.properties.map(p => p.id).sort(), input.map(p => p.id).sort());
+    input.forEach((p, failed) => {
+        if (!failedIds.has(p.id)) return;
+        for (let i = Math.max(0, failed - 2); i <= Math.min(input.length - 1, failed + 2); i++) {
+            assert.equal(result.properties[i], input[i], 'unmatched pins and two neighbors on either side must retain their exact slots');
+        }
+    });
+    assert.ok(result.diagnostics.checked <= result.diagnostics.planned);
+    assert.equal(result.diagnostics.budgetExhausted, false);
+    assert.equal(result.diagnostics.applied, true);
+    assert.equal(result.diagnostics.validation, 'overlapping_boundary_legs');
+}
+
+test('a discovered unmatched interior pin does not poison either healthy child window boundary', async () => {
+    const { input, desired, attempts, failedIds, options } = unmatchedNeighborhood();
+    const result = await reviewLocalDrivingNeighborhoods(input, options);
+    assert.deepEqual(result.properties, desired);
+    assertUnknownBoundariesPreserved(result, input, failedIds);
+    assert.equal(attempts.filter(row => row.failed && !row.wholeRoute).length, 1,
+        'overlapping scheduled windows must share the discovered unmatched-pin inventory');
+    assert.match(result.diagnostics.wholeRouteUnavailableReason, /NoSegment/);
+    assert.equal(result.measurement, undefined, 'verified local savings must not become a fabricated whole-route total');
+});
+
+test('an unmatched pin already in a fixed context is trimmed away while both healthy interiors remain searchable', async () => {
+    const { input, desired, attempts, failedIds, options } = unmatchedNeighborhood({ locked: true });
+    const result = await reviewLocalDrivingNeighborhoods(input, options);
+    assert.deepEqual(result.properties, desired);
+    assertUnknownBoundariesPreserved(result, input, failedIds);
+    assert.equal(attempts.filter(row => row.failed && !row.wholeRoute).length, 1);
+});
+
+test('preflight unresolved flags or IDs keep failed pins out of local provider calls and preserve ordinary locks', async () => {
+    for (const known of [false, true]) {
+        const { input, attempts, failedIds, options } = unmatchedNeighborhood({ known });
+        input[10].order_locked = true;
+        const result = await reviewLocalDrivingNeighborhoods(input, {
+            ...options, ...(known ? {} : { unresolvedStopIds: ['door-6'] }),
+        });
+        assertUnknownBoundariesPreserved(result, input, failedIds);
+        assert.equal(result.properties[10], input[10]);
+        assert.equal(attempts.filter(row => row.failed && !row.wholeRoute).length, 0);
+        assert.notEqual(result.properties[0], input[0], 'a healthy unlocked interior must still improve');
+    }
+});
+
+test('adjacent unmatched pins are discovered once each without retry cycles or inflated checked counts', async () => {
+    const { input, attempts, failedIds, options } = unmatchedNeighborhood({ extraFailure: true });
+    const result = await reviewLocalDrivingNeighborhoods(input, options);
+    assertUnknownBoundariesPreserved(result, input, failedIds);
+    const failedLocal = attempts.filter(row => row.failed && !row.wholeRoute);
+    assert.equal(failedLocal.length, failedIds.size);
+    assert.deepEqual(new Set(failedLocal.map(row => row.failed)), failedIds);
+    assert.equal(result.diagnostics.checked, result.diagnostics.planned);
+});
+
+test('discovery retries an infeasible previously inferred heading before classifying a healthy pin as unmatched', async () => {
+    const input = Array.from({ length: 16 }, (_, i) => ({ id: `carrier-${i}`, street_name: 'Carrier Lane',
+        lat: 35 + (i === 11 ? 0.0001 : -0.0001), lng: -81 + i / 100000 }));
+    const original = JSON.stringify(input), calls = [];
+    let rejectedDiscoveryHeadings = 0;
+    const vehicleFetch = async value => {
+        const url = new URL(value); calls.push(url);
+        const coordinates = url.pathname.split('/').at(-1).split(';').map(p => p.split(',').map(Number));
+        const bearings = url.searchParams.get('bearings').split(';');
+        const failed = bearings.findIndex(Boolean);
+        if (url.pathname.includes('/route/') && bearings.includes('') && failed >= 0 && rejectedDiscoveryHeadings === 0) {
+            rejectedDiscoveryHeadings++;
+            return Response.json({ code: 'NoSegment', message: `Could not find a matching segment for coordinate ${failed}` }, { status: 400 });
+        }
+        const waypoints = coordinates.map(p => ({ location: [p[0], 35], name: 'Carrier Lane' }));
+        if (url.pathname.includes('/table/')) {
+            const sources = url.searchParams.get('sources').split(';').map(Number);
+            const targets = url.searchParams.get('destinations').split(';').map(Number);
+            return Response.json({ code: 'Ok', sources: sources.map(i => waypoints[i]), destinations: targets.map(i => waypoints[i]),
+                durations: sources.map(a => targets.map(b => a === b ? 0 : 10)), distances: sources.map(a => targets.map(b => a === b ? 0 : 100)) });
+        }
+        const legs = coordinates.slice(1).map(() => ({ duration: 10, distance: 100, steps: [{ name: 'Carrier Lane',
+            driving_side: 'right', geometry: { coordinates: [[-81.00005, 35], [-80.9998, 35]] } }] }));
+        return Response.json({ code: 'Ok', waypoints, routes: [{ duration: legs.length * 10, distance: legs.length * 100,
+            geometry: { coordinates: waypoints.map(p => p.location) }, legs }] });
+    };
+    const result = await reviewLocalDrivingNeighborhoods(input, { mailCarrierMode: true, areaDrivingReview: false,
+        maxServiceWindowStops: 10, vehicleFetch, localReviewBudgetMs: 10000 });
+    assert.equal(rejectedDiscoveryHeadings, 1);
+    assert.ok(result.diagnostics.skipped.every(row => !/NoSegment/.test(row.reason)),
+        `inferred heading failure must not quarantine the raw pin: ${JSON.stringify(result.diagnostics.skipped)}`);
+    assert.equal(result.diagnostics.streetSideService.knownStops, 15);
+    assert.equal(result.diagnostics.streetSideService.unknownStops, 1);
+    assert.equal(JSON.stringify(input), original);
+    assert.ok(calls.every(url => url.searchParams.get('radiuses').split(';').every(radius => ['40', '100'].includes(radius))));
+});

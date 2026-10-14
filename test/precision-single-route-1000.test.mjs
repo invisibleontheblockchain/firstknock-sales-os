@@ -216,7 +216,7 @@ test('generation and the Optimize action share one road/topology pipeline, with 
     // Requirement 8: an unmeasured aerial fallback order is never adopted.
     assert.match(
         roadMatrixSource,
-        /data\.routing_metadata\?\.fallback === true/,
+        /if \(responseMeta\.fallback === true\) return decline\('aerial_fallback'/,
         'an aerial fallback order must be rejected rather than shipped as optimized',
     );
 

@@ -13,24 +13,17 @@
 import { toast } from 'sonner';
 
 import { base44 } from '@/api/base44Client';
-import { optimizeRouteByStreetSweep } from '@/components/logic/routeOptimizer';
-import {
-    buildPersistedRoadRoutingMetadata,
-    createRouteRoadContext,
-} from '@/components/logic/routeRoadContext';
-import { haversineDistanceMiles, isValidRoutePoint } from '@/lib/routeBounds';
+import { isValidRoutePoint } from '@/lib/routeBounds';
 import { captureParkedCarLocation, isLowAccuracyCapture, lowAccuracyConfirmationMessage } from '@/lib/parkedCarLocation';
 import { startOptimizeProgress } from '@/lib/optimizeProgressToast';
 import { tryRoadMatrixOptimize } from '@/lib/roadMatrixOptimize';
 import { buildRoadOptimizationAttempt, describeAppliedRoadOptimization, describeRoadOptimizationOutcome } from '@/lib/routeOptimizationOutcome';
 import { countChangedRouteStops, persistOptimizedRoute, syncOptimizedRoute } from '@/lib/routeOptimizePersistence';
 import { ROAD_VERIFICATION, stampRoadVerification } from '@/lib/routeRoadVerification';
-import { requireUsableRouteContext } from '@/lib/routeContextGuard';
 import { OPTIMIZE_MODES, ROUTE_ORIGIN_MODES, resolveOptimizeMode, routeOriginModeForOptimizeMode } from '@/lib/routeOriginModes';
 import {
     buildRouteAnchorsUpdate,
     buildRouteOptimizeUpdate,
-    compareRouteObjective,
     normalizeRouteAnchor,
     optimizeSuccessMessage,
     routeBelongsToActingUser,
@@ -105,7 +98,10 @@ export async function reoptimizeRoute(route, options = {}, deps = {}) {
         const hashes = (route.property_hashes || (route.properties || []).map(propertyKey)).filter(Boolean);
         const routePropsByHash = new Map([...(route.allProperties || []), ...(route.properties || [])].map(p => [propertyKey(p), p]));
         const effectivePropsByHash = new Map(effectiveProperties.map(p => [propertyKey(p), p]));
-        const routeProperties = hashes.map(hash => effectivePropsByHash.get(hash) || routePropsByHash.get(hash)).filter(Boolean);
+        const cachedAccess = route.metadata?.road_access_recovery?.access_overrides || {};
+        const routeProperties = hashes.map(hash => effectivePropsByHash.get(hash) || routePropsByHash.get(hash)).filter(Boolean)
+            .map(property => cachedAccess[propertyKey(property)]
+                ? { ...property, routing_access: cachedAccess[propertyKey(property)] } : property);
         if (routeProperties.length === 0) { toast.error('No properties found for this route.', { id: TOAST_ID }); return; }
         if (routeProperties.length !== hashes.length) {
             toast.error(`Only ${routeProperties.length} of ${hashes.length} route properties loaded. Refresh and try again.`, { id: TOAST_ID, duration: 6000 });
@@ -197,19 +193,8 @@ export async function reoptimizeRoute(route, options = {}, deps = {}) {
             }
             return;
         }
-        // Optimize is an explicit, user-initiated action, so unlike route
-        // GENERATION it can afford to load the real street network and order the
-        // doors by actual driving distance. createRouteRoadContext degrades to the
-        // synchronous continuity context on every failure path (point limits, no
-        // routable roads, network unavailable), so a slow or offline road service
-        // still produces exactly today's route rather than an error.
-        // OSRM ROAD-MATRIX BETA: try the backend optimizer first. It fetches a
-        // real driving-distance matrix, prices BOTH today's continuity order and
-        // a road-aware street sweep with that same matrix, and only returns a
-        // result when the road-aware order beats the route's current order.
-        // Every failure mode (timeout, rate limit, unsnapped door, a route beyond
-        // the supported size, no improvement) returns null and the existing local
-        // path runs instead.
+        // Address recovery and real driving checks run on the backend. Every
+        // decline is saved and displayed before this action finishes.
         progress = startOptimizeProgress({
             id: TOAST_ID,
             label: `Checking real road distances for ${routeProperties.length} doors...`
@@ -227,60 +212,27 @@ export async function reoptimizeRoute(route, options = {}, deps = {}) {
             onOutcome: (reason, measurement) => { roadDeclineReason = reason; roadMeasurement = measurement; }
         });
 
-        // A route whose saved order was already validated on a real road matrix
-        // must not be re-ordered by the straight-line fallback: that is exactly how
-        // Anderson's 449-minute route was replaced by a 454.6-minute one. Either the
-        // road pipeline found something faster, or this route stays as it is.
-        // ...but only when the ANCHORS are unchanged. Choosing HOME on a route
-        // previously optimized without a start/finish used to stop here and
-        // report "already optimized", so the requested Home anchor was never
-        // applied and nothing moved on screen.
-        const savedRoadRouting = route.metadata?.routing;
-        const anchorModeUnchanged = (route.route_origin_mode || ROUTE_ORIGIN_MODES.NONE) === routeOriginMode;
-        if (!roadMatrixResult
-            && !usingCustomAnchors
-            && anchorModeUnchanged
-            && savedRoadRouting?.road_aware === true
-            && savedRoadRouting?.fallback !== true) {
+        // Every explicit Optimize click needs a visible driving verdict. A failed
+        // check cannot fall through to an unverified reorder, even on a new route.
+        if (!roadMatrixResult) {
             const outcome = describeRoadOptimizationOutcome(roadDeclineReason, roadMeasurement);
             const metadata = { ...(route.metadata || {}),
+                ...(roadMeasurement?.routingMetadata?.road_access_recovery
+                    ? { road_access_recovery: roadMeasurement.routingMetadata.road_access_recovery } : {}),
                 last_optimization_attempt: buildRoadOptimizationAttempt(roadDeclineReason, roadMeasurement, {
                     mode: optimizeMode, doorCount: routeProperties.length,
                 }) };
-            await client.entities.SavedRoute.update(route.id, { metadata });
-            queryClient?.invalidateQueries({ queryKey: ['savedRoutes'] });
-            setActiveRoute?.(prev => prev?.id === route.id ? { ...prev, metadata } : prev);
+            const saved = await client.entities.SavedRoute.update(route.id, { metadata });
+            await syncOptimizedRoute({ saved: { ...route, ...saved, metadata }, properties: routeProperties,
+                queryClient, setActiveRoute, metadataOnly: true });
             toast[outcome.tone](outcome.message, {
                 id: TOAST_ID,
-                duration: 4000
+                duration: outcome.tone === 'info' ? 6000 : 12000
             });
             return;
         }
 
-        let routingContext = null;
-        let roadAware = true;
-        let optimized;
-        if (roadMatrixResult) {
-            optimized = roadMatrixResult.order;
-        } else {
-            progress.update('Loading road distances...');
-            routingContext = await createRouteRoadContext(routeProperties, {
-                startLocation: isValidRoutePoint(start) ? start : null,
-                endLocation: isValidRoutePoint(end) ? end : null,
-            });
-            requireUsableRouteContext(routingContext);
-            // Cost-only mode prices street blocks by a single representative door, so
-            // only full mode can measure a whole door order.
-            roadAware = routingContext.roadAware === true
-                && routingContext.costOnly !== true
-                && typeof routingContext.distanceBetween === 'function';
-            // This local sweep is synchronous and blocks the main thread, so the
-            // ticker cannot repaint during it. Yield one frame first, otherwise the
-            // last message the user sees is whatever was on screen before it began.
-            progress.update('Building the best door order...');
-            await new Promise(resolve => requestAnimationFrame(() => resolve()));
-            optimized = optimizeRouteByStreetSweep(routeProperties, start, end, routingContext);
-        }
+        const optimized = roadMatrixResult.order;
         if (!optimized || optimized.length === 0) { toast.error('Optimization produced no results.', { id: TOAST_ID }); return; }
         const optimizedHashes = optimized.map(propertyKey).filter(Boolean);
         const expectedHashes = new Set(hashes);
@@ -291,39 +243,20 @@ export async function reoptimizeRoute(route, options = {}, deps = {}) {
         ) {
             throw new Error('Route integrity verification failed, so the existing route was left unchanged.');
         }
-        // Compare the CURRENT order against the CANDIDATE order under the SAME
-        // anchors. Comparing a stored metric from a previous mode would report the
-        // gap between two anchors as optimizer savings.
-        const objective = roadMatrixResult ? roadMatrixResult.objective : compareRouteObjective({
-            currentOrder: routeProperties,
-            candidateOrder: optimized,
-            start: isValidRoutePoint(start) ? start : null,
-            end: isValidRoutePoint(end) ? end : null,
-            // Both sides must be measured with the objective the order was built
-            // for. Judging a road-aware order by straight-line distance can reject
-            // a genuinely shorter drive, which would silently discard the gain.
-            distanceFn: roadAware
-                ? (from, to) => routingContext.distanceBetween(from, to)
-                : (from, to) => haversineDistanceMiles(from, to)
-        });
+        const objective = roadMatrixResult.objective;
         const appliedProperties = objective.applyCandidate ? optimized : routeProperties;
         const appliedHashes = appliedProperties.map(propertyKey).filter(Boolean);
-        const newDistanceRounded = Math.round(objective.appliedDistance * 100) / 100;
+        const hasWholeRouteDistance = Number.isFinite(objective.appliedDistance);
+        const newDistanceRounded = hasWholeRouteDistance ? Math.round(objective.appliedDistance * 100) / 100
+            : route.metrics?.distance ?? null;
         const existingMetadata = { ...(route.metadata || {}) };
         // The same verdict contract generation writes, so a route's provenance
         // means one thing regardless of which entry point last touched it.
-        const verificationVerdict = roadMatrixResult
-            ? ROAD_VERIFICATION.ADOPTED
-            : roadDeclineReason === 'current_order_measured_best'
-                ? ROAD_VERIFICATION.CONFIRMED
-                : ROAD_VERIFICATION.LOCAL_FALLBACK;
         const routingMetadata = {
-            ...(roadMatrixResult
-                ? roadMatrixResult.routingMetadata
-                : buildPersistedRoadRoutingMetadata(routingContext, null, appliedHashes)),
-            ...stampRoadVerification({}, verificationVerdict, {
-                reason: roadMatrixResult ? null : roadDeclineReason,
-                measuredMiles: newDistanceRounded
+            ...roadMatrixResult.routingMetadata,
+            ...stampRoadVerification({}, hasWholeRouteDistance ? ROAD_VERIFICATION.ADOPTED : ROAD_VERIFICATION.PARTIAL, {
+                reason: hasWholeRouteDistance ? null : 'verified_neighborhoods_only',
+                measuredMiles: hasWholeRouteDistance ? newDistanceRounded : null
             }).metadata
         };
         const routeUpdate = usingCustomAnchors
@@ -351,6 +284,15 @@ export async function reoptimizeRoute(route, options = {}, deps = {}) {
         } else {
             delete routeUpdate.metadata.anchor;
         }
+        routeUpdate.metadata.last_optimization_attempt = buildRoadOptimizationAttempt(null, {
+            routingMetadata: roadMatrixResult.routingMetadata,
+        }, { mode: optimizeMode, doorCount: routeProperties.length, applied: true });
+        routeUpdate.metadata.last_optimization_attempt.stops_reordered = countChangedRouteStops(hashes, appliedHashes);
+        if (!hasWholeRouteDistance) {
+            // Preserve the prior estimate; independently checked local savings
+            // cannot be subtracted from an unverified whole-trip total.
+            routeUpdate.metrics = { ...(route.metrics || {}), house_count: appliedHashes.length };
+        }
         await persistOptimizedRoute({
             route, update: routeUpdate, properties: appliedProperties, client, queryClient, setActiveRoute,
             // Personal anchors belong only to the current map session.
@@ -373,15 +315,17 @@ export async function reoptimizeRoute(route, options = {}, deps = {}) {
             : changedStops > 0
                 ? `${partialOutcome?.message || optimizeSuccessMessage(optimizeMode)} ${changedStops} stops reordered.`
                 : 'The stop order is unchanged.';
-        const estimateLabel = roadAware ? 'road-distance estimate' : 'street-continuity estimate';
+        const estimateLabel = 'road-distance estimate';
         const savingsLabel = localReview?.validation === 'overlapping_boundary_legs'
             ? `Verified neighborhood savings: ~${savedMiles} mi` : `Saved ~${savedMiles} estimated miles`;
-        const msg = changedStops > 0 && objective.applyCandidate && savedMiles > 0
+        const msg = !hasWholeRouteDistance
+            ? `${base}${savedMiles > 0 ? ` Verified neighborhood savings: ~${savedMiles} mi.` : ''} Whole-route distance remains unverified.`
+            : changedStops > 0 && objective.applyCandidate && savedMiles > 0
             ? `${base} ${savingsLabel} (${newDistanceRounded} mi ${estimateLabel}).`
             : `${base} (${newDistanceRounded} mi ${estimateLabel})`;
         toast[changedStops > 0 ? partialOutcome?.tone || 'success' : usingCustomAnchors ? 'success' : 'info'](
             msg,
-            { id: TOAST_ID, duration: 4000 }
+            { id: TOAST_ID, duration: partialOutcome?.tone === 'warning' ? 12000 : 6000 }
         );
     } catch (e) {
         console.error('Re-optimize error:', e);

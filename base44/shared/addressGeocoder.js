@@ -8,19 +8,24 @@ export const GEOCODE_BATCH_LIMIT = CENSUS_MAX_BATCH;
 
 /**
  * @param {Array<{ id: string, address: string, city?: string, state?: string, zip?: string }>} items
- * @param {{ geocodioApiKey?: string, fetchImpl?: typeof fetch }} [options]
+ * @param {{ geocodioApiKey?: string, fetchImpl?: typeof fetch, acceptResult?: (hit: object, item: object) => boolean }} [options]
  * @returns {Promise<{ results: Record<string, object>, counts: { census: number, geocodio: number }, warnings: string[] }>}
  * Each result carries `source`. Throws only when every configured source failed
  * and nothing was resolved, so the caller can fall back to its own lookup.
  */
-export async function geocodeAddressItems(items, { geocodioApiKey, fetchImpl = globalThis.fetch } = {}) {
+export async function geocodeAddressItems(items, { geocodioApiKey, fetchImpl = globalThis.fetch,
+  acceptResult = () => true } = {}) {
   const results = {};
   const warnings = [];
   const failures = [];
+  const itemById = new Map(items.map(item => [String(item.id), item]));
 
   try {
     const census = await geocodeWithCensus(items, { fetchImpl });
-    Object.entries(census).forEach(([id, hit]) => { results[id] = { ...hit, source: 'census' }; });
+    Object.entries(census).forEach(([id, hit]) => {
+      const candidate = { ...hit, source: 'census' };
+      if (acceptResult(candidate, itemById.get(String(id)))) results[id] = candidate;
+    });
   } catch (error) {
     failures.push(error);
     warnings.push(`census: ${error?.message || error}`);
@@ -30,7 +35,10 @@ export async function geocodeAddressItems(items, { geocodioApiKey, fetchImpl = g
   if (missed.length > 0 && geocodioApiKey) {
     try {
       const geocodio = await geocodeWithGeocodio(missed, { apiKey: geocodioApiKey, fetchImpl });
-      Object.entries(geocodio).forEach(([id, hit]) => { results[id] = { ...hit, source: 'geocodio' }; });
+      Object.entries(geocodio).forEach(([id, hit]) => {
+        const candidate = { ...hit, source: 'geocodio' };
+        if (acceptResult(candidate, itemById.get(String(id)))) results[id] = candidate;
+      });
     } catch (error) {
       failures.push(error);
       warnings.push(`geocodio: ${error?.message || error}`);

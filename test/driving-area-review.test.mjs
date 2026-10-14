@@ -92,5 +92,5 @@ test('applied area repairs identify neighborhood order and remaining verificatio
     assert.match(describeAppliedRoadOptimization(meta).message, /Neighborhood order improved/);
     review.streetSideService.unknownStops = 7;
     assert.equal(describeAppliedRoadOptimization(meta).tone, 'warning');
-    assert.match(describeAppliedRoadOptimization(meta).message, /Some stops still need checking/);
+    assert.match(describeAppliedRoadOptimization(meta).message, /Curb-side approaches are unconfirmed for 7 stops/);
 });

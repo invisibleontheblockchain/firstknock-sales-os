@@ -29,6 +29,10 @@ const MAX_ROAD_MATRIX_DOORS = 2500;
 const ROAD_MATRIX_DEADLINE_MS = 120000;
 
 const propertyKey = (property) => String(property.address_hash || property.legacy_hash || property.id || '');
+const withRecoveredAccess = (order, meta) => order.map(property => {
+    const access = meta.road_access_recovery?.access_overrides?.[propertyKey(property)];
+    return access ? { ...property, routing_access: access } : property;
+});
 const measurementMiles = (value) => {
     if (value === null || value === undefined || value === '') return null;
     const miles = Number(value);
@@ -46,7 +50,8 @@ const failureMeasurement = (failure, elapsedMs) => {
     const httpStatus = Number.isInteger(rawStatus) && rawStatus >= 100 && rawStatus <= 599 ? rawStatus : null;
     const rawCode = typeof data?.error === 'string' ? data.error : data?.error?.code ?? data?.code;
     const errorCode = rawCode === 'cpu-exceeded' ? 'cpu-exceeded' : httpStatus === 429 ? 'rate-limited' : null;
-    return { diagnostic: { httpStatus, errorCode, elapsedMs: Math.max(0, Math.round(elapsedMs)) } };
+    return { diagnostic: { httpStatus, errorCode, elapsedMs: Math.max(0, Math.round(elapsedMs)) },
+        ...(data?.routing_metadata ? { routingMetadata: data.routing_metadata } : {}) };
 };
 const failureReason = (measurement, fallback) => measurement.diagnostic.errorCode === 'cpu-exceeded'
     ? 'backend_cpu_limit' : measurement.diagnostic.httpStatus === 429 ? 'backend_rate_limited' : fallback;
@@ -62,7 +67,7 @@ const failureReason = (measurement, fallback) => measurement.diagnostic.errorCod
 export function buildRoadMatrixRoutingBlock(meta = {}) {
     return {
         engine: meta.road_matrix_source || 'osrm:driving',
-        status: 'ok',
+        status: meta.strategy === 'access_guarded_neighborhood_repair' ? 'partial' : 'ok',
         road_aware: meta.road_network_used === true,
         mode: 'road_matrix',
         cost_only: false,
@@ -80,6 +85,7 @@ export function buildRoadMatrixRoutingBlock(meta = {}) {
         matrix_cache_key: meta.road_matrix_cache_key || null,
         matrix_ms: meta.road_matrix_ms ?? null,
         neighborhood_excursion_review: meta.neighborhood_excursion_review || null,
+        road_access_recovery: meta.road_access_recovery || null,
         fallback: meta.fallback === true,
         property_order_fingerprint: meta.property_order_fingerprint || null,
         optimized_at: new Date().toISOString()
@@ -121,6 +127,7 @@ export async function tryRoadMatrixOptimize(routeProperties, {
                 house_number: property.house_number,
                 street_name: property.street_name,
                 city: property.city,
+                state: property.state || property.state_code,
                 zip_code: property.zip_code || property.zip,
                 subdivision_name: property.subdivision_name,
                 lat: property.lat,
@@ -156,34 +163,55 @@ export async function tryRoadMatrixOptimize(routeProperties, {
         // even though OSRM had already priced a shorter one.
         if (!data?.success) {
             const measurement = failureMeasurement(response, Date.now() - startedAt);
+            if (data?.routing_metadata) measurement.routingMetadata = data.routing_metadata;
             return decline(failureReason(measurement, 'backend_reported_failure'), measurement);
         }
-        // Aerial fallback orders are unmeasured — never adopt one.
-        if (data.routing_metadata?.fallback === true) return decline('aerial_fallback');
+        const responseMeta = data.routing_metadata || {};
+        const routingMetadata = { ...responseMeta, source: 'optimizeRouteRoadMatrix',
+            routing: buildRoadMatrixRoutingBlock(responseMeta) };
+        if (responseMeta.fallback === true) return decline('aerial_fallback', { routingMetadata });
+        // Access-limited results carry proof for changed neighborhoods only.
+        // A missing whole-trip total must not discard that proof or become zero miles.
+        if (responseMeta.strategy === 'access_guarded_neighborhood_repair') {
+            const byKey = new Map(routeProperties.map(property => [propertyKey(property), property]));
+            const order = Array.isArray(data.order) ? data.order.map(hash => byKey.get(String(hash))) : [];
+            if (order.length !== routeProperties.length || order.some(p => !p) || new Set(order).size !== routeProperties.length) {
+                return decline('order_failed_exact_once', { routingMetadata });
+            }
+            const review = responseMeta.neighborhood_excursion_review?.local_driving_review;
+            if (data.selected === 'current' || order.every((p, i) => p === routeProperties[i])) {
+                return decline('road_access_unresolved', { routingMetadata });
+            }
+            if (review?.applied !== true || review.validation !== 'overlapping_boundary_legs') {
+                return decline('unverified_partial_order', { routingMetadata });
+            }
+            return { order: withRecoveredAccess(order, responseMeta), objective: { applyCandidate: true, appliedDistance: null,
+                estimatedSavings: Math.max(0, measurementMiles(review.localMilesSaved) ?? 0) }, routingMetadata };
+        }
         // The backend measured both orders and the saved one won. That IS a road
         // verification: the order is confirmed, not merely unimproved.
         if (data.selected === 'current') {
             const meta = data.routing_metadata || {};
             const measured = measurementMiles(meta.input_measured) ?? measurementMiles(meta.continuity_measured);
-            if (measured === null) return decline('backend_returned_no_measurement');
+            if (measured === null) return decline('backend_returned_no_measurement', { routingMetadata });
             return decline('current_order_measured_best', {
                 distanceMiles: measured,
                 routingMetadata: { ...meta, source: 'optimizeRouteRoadMatrix', routing: buildRoadMatrixRoutingBlock(meta) }
             });
         }
-        if (!Array.isArray(data.order)) return decline('backend_returned_no_order');
+        if (!Array.isArray(data.order)) return decline('backend_returned_no_order', { routingMetadata });
 
         const byKey = new Map(routeProperties.map((property) => [propertyKey(property), property]));
         const order = data.order.map((hash) => byKey.get(String(hash))).filter(Boolean);
         if (order.length !== routeProperties.length || new Set(order).size !== routeProperties.length) {
-            return decline('order_failed_exact_once');
+            return decline('order_failed_exact_once', { routingMetadata });
         }
 
         const meta = data.routing_metadata || {};
         const roadMiles = measurementMiles(meta.winning_route_distance) ?? measurementMiles(meta.road_aware_measured);
         const baseline = measurementMiles(meta.input_measured) ?? measurementMiles(meta.continuity_measured);
         if (roadMiles === null || baseline === null) {
-            return decline('backend_returned_no_measurement');
+            return decline('backend_returned_no_measurement', { routingMetadata });
         }
         // Applied review diagnostics can describe an earlier candidate. They
         // cannot turn the exact current manifest into a newly reordered route.
@@ -214,7 +242,7 @@ export async function tryRoadMatrixOptimize(routeProperties, {
             ? Math.max(0, measurementMiles(serviceReview.localMilesSaved) ?? 0) : null;
 
         return {
-            order,
+            order: withRecoveredAccess(order, meta),
             objective: {
                 applyCandidate: true,
                 appliedDistance: roadMiles,

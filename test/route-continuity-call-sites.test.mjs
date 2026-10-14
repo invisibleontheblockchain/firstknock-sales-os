@@ -265,11 +265,10 @@ test('Home and RepHome interactive optimizers never depend on live road loading'
     /const routingContext = workingSet\.length <= 5000\s*\?\s*createRouteContinuityContext\(workingSet\)/,
     'manager reorder must construct local continuity before routing',
   );
-  assert.match(
-    optimizeActionSource,
-    /routingContext = await createRouteRoadContext\(routeProperties,[\s\S]*?optimizeRouteByStreetSweep\(routeProperties, start, end, routingContext\)/,
-    'the extracted manager Optimize action must pass its route context to the street sweep',
-  );
+  assert.doesNotMatch(optimizeActionSource, /\b(?:createRouteRoadContext|optimizeRouteByStreetSweep)\b/,
+    'explicit saved-route Optimize must not silently reorder after the driving check declines');
+  assert.match(optimizeActionSource, /await tryRoadMatrixOptimize\(routeProperties,/,
+    'explicit Optimize must use the address recovery and driving verification pipeline');
 
   const largeRouteSource = await readFile(
     new URL('../src/components/logic/largeRouteOptimizer.js', import.meta.url),

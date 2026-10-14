@@ -34,6 +34,8 @@ export const ROAD_VERIFICATION = {
     ADOPTED: 'road_adopted',
     /** The road pass ran and measured the existing order as already best. */
     CONFIRMED: 'road_confirmed_current',
+    /** Only changed neighborhoods have verified driving paths and boundaries. */
+    PARTIAL: 'road_verified_neighborhoods',
     /** The pass was attempted and did not return a usable measured order. */
     PASS_FAILED: 'unverified_pass_failed',
     /** The batch spent its whole-run ceiling before reaching this route. */
