@@ -5,10 +5,11 @@ import { haversineMiles } from './routeContinuityOptimizer.js';
 import { neighborhoodStreetKey } from './neighborhoodExcursions.js';
 import { createVehicleRoutingContext } from './vehicleRouting.js';
 import { trustedAccess } from './streetSideRouting.js';
-import { buildMailCarrierCandidates, hasCoherentMailCarrierPasses, inferMailCarrierAccess, mailCarrierPassViolations, planMailCarrierWindows } from './mailCarrierRouting.js';
+import { buildMailCarrierCandidates, inferMailCarrierAccess, mailCarrierPassViolations, planMailCarrierWindows } from './mailCarrierRouting.js';
 import { buildDrivingAreaCandidates, planDrivingAreaWindows } from './drivingAreaRouting.js';
+import { buildDrivingAreaDoorCandidates } from './drivingAreaDoorSearch.js';
 
-export const LOCAL_DRIVING_REVIEW_VERSION = 'entry_branch_return_v4_area_relocation';
+export const LOCAL_DRIVING_REVIEW_VERSION = 'entry_branch_return_v5_balanced_search';
 const id = p => String(p?.address_hash || p?.legacy_hash || p?.id || '');
 const protectedStop = (p, locks) => locks.has(id(p)) || p.order_locked || p.locked
     || p.routing_access?.resolution_status === 'unresolved';
@@ -57,6 +58,19 @@ function windowExcessMiles(order, window) {
         reached.add(nearest); tree += distance;
     }
     return driven - tree;
+}
+
+function balanceDrivingWindows(windows) {
+    // Each scale gets work before another scale consumes the finite budget.
+    // A detailed window may also be a service/area window; process it once.
+    const queues = [[], [], []];
+    for (const window of windows) queues[window.local ? 1 : window.area ? 0 : 2].push(window);
+    for (const queue of queues) queue.sort((a, b) => b.priority - a.priority || a.start - b.start);
+    const result = [];
+    for (let index = 0; queues.some(queue => index < queue.length); index++) {
+        for (const queue of queues) if (queue[index]) result.push(queue[index]);
+    }
+    return result;
 }
 
 function compareSearch(a, b) {
@@ -225,10 +239,8 @@ export async function reviewLocalDrivingNeighborhoods(order, options = {}) {
         const key = `${window.start}:${window.end}`;
         ranges.set(key, { ...ranges.get(key), ...window });
     }
-    const windows = [...ranges.values()]
-        .map(window => ({ ...window, priority: windowExcessMiles(order, window) }))
-        .sort((a, b) => Number(Boolean(b.area)) - Number(Boolean(a.area))
-            || Number(Boolean(b.service)) - Number(Boolean(a.service)) || b.priority - a.priority || a.start - b.start);
+    const windows = balanceDrivingWindows([...ranges.values()]
+        .map(window => ({ ...window, priority: windowExcessMiles(order, window) })));
     const scheduled = new Map(windows.map(window => [`${window.start}:${window.end}`, window]));
     const unscheduled = children => children.filter(child => {
         const key = `${child.start}:${child.end}`, existing = scheduled.get(key);
@@ -297,24 +309,40 @@ export async function reviewLocalDrivingNeighborhoods(order, options = {}) {
                 const context = await createContext(section, contextOptions);
                 return { context, baseline: await context.routeSequence(section) };
             });
-            // Larger area questions move whole service runs. The existing
-            // bounded door search still handles local branch/return details.
+            // Whole-run moves cannot repair a scrambled long street inside an
+            // area. Ask bounded directed door questions as well; all proposals
+            // still need the same continuous drive and unchanged boundary proof.
             const exactCandidates = (!area || service || local) && stops.length <= 12
                 ? buildLocalDrivingCandidates(stops, context, left.at(-1), right[0], options) : [];
+            const areaCandidates = area ? buildDrivingAreaCandidates(stops, context, left.at(-1), right[0], options) : [];
+            const serviceCandidates = service || (area && mailCarrier)
+                ? buildMailCarrierCandidates(stops, context, left.at(-1), right[0]) : [];
+            const priorViolations = mailCarrier ? mailCarrierPassViolations(section, context) : 0;
+            const acceptablePasses = candidateOrder => !mailCarrier
+                || mailCarrierPassViolations([...left, ...candidateOrder, ...right], context) <= priorViolations;
             let candidates = [
-                ...(area ? buildDrivingAreaCandidates(stops, context, left.at(-1), right[0], options) : []),
-                ...(service || (area && mailCarrier) ? buildMailCarrierCandidates(stops, context, left.at(-1), right[0]) : []),
+                ...areaCandidates,
+                ...serviceCandidates,
+                ...(area ? buildDrivingAreaDoorCandidates(stops, context, left.at(-1), right[0], {
+                    lockedStopIds: options.lockedStopIds,
+                    seedOrders: [...serviceCandidates, ...areaCandidates].map(candidate => candidate.order),
+                    acceptOrder: acceptablePasses,
+                }).map(candidate => ({ ...candidate, areaMove: true })) : []),
                 ...exactCandidates,
             ];
             if (service || area) candidates.sort((a, b) => a.seconds - b.seconds || a.miles - b.miles);
-            candidates = [...new Map(candidates.map(c => [JSON.stringify(c.order.map(id)), c])).values()];
-            if (mailCarrier) candidates = candidates.filter(candidate => hasCoherentMailCarrierPasses([...left, ...candidate.order, ...right], context));
+            candidates = [...new Map(candidates.filter(candidate => candidate.order.some((p, i) => id(p) !== id(stops[i])))
+                .map(c => [JSON.stringify(c.order.map(id)), c])).values()];
+            if (mailCarrier) {
+                // Fixed context may already contain an unavoidable violation.
+                // Permit measured reductions without introducing a new one.
+                candidates = candidates.filter(candidate => acceptablePasses(candidate.order));
+            }
             if ((service || area) && !candidates.length) continue;
             if (!candidates.length) { report.skipped.push({ start, end, reason: 'unreachable_local_roads' }); continue; }
             let selected = stops, selectedCandidate = null, best = baseline, bestPreference = preferenceFor(stops, context);
             for (const candidate of candidates.slice(0, maxCandidates)) {
                 if (Date.now() >= deadline) { report.budgetExhausted = true; break; }
-                if (candidate.order.every((p, i) => p === stops[i])) continue;
                 const proposed = [...left, ...candidate.order, ...right];
                 let measured;
                 try { measured = await context.routeSequence(proposed); }
@@ -404,6 +432,12 @@ export async function reviewLocalDrivingNeighborhoods(order, options = {}) {
         // access uncertainty. Only a named unmatched pin permits local proof.
         if (!/NoSegment|outside the fixed road-match radius|different service road/i.test(error.message)) {
             return { properties: original, diagnostics: { ...report, applied: false, status: 'whole_route_guard_retained', reason: error.message } };
+        }
+        // A partial road proof cannot excuse a known curb-pass regression
+        // involving another occurrence of this street outside the window.
+        if (report.streetSideService?.passViolationsAfter > report.streetSideService?.passViolationsBefore) {
+            return { properties: original, diagnostics: { ...report, applied: false,
+                status: 'whole_route_guard_retained', reason: 'Known curb-side passes would become less coherent.' } };
         }
         report.wholeRouteUnavailableReason = error.message;
         return { properties: order, diagnostics: report };

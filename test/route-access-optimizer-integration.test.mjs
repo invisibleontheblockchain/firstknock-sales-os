@@ -23,7 +23,7 @@ const readyReport = () => ({ status: 'ready', attempted: 0, recovered: 0, reused
 const drivingMeasurement = (distanceMiles = 100, driveSeconds = 3000) => ({ distanceMiles, driveSeconds,
     directedLegs: [], geometry: [[-81, 35], [-80.99, 35]], graphIdentity: 'osrm-test-graph' });
 
-function endpoint({ recover, local, finalReview, verify, failProvider = false, authenticated = true } = {}) {
+function endpoint({ recover, local, finalReview, verify, winner, failProvider = false, authenticated = true } = {}) {
     const calls = { events: [], recovery: [], plan: [], continuity: [], matrix: [], provider: [], local: [],
         globalReview: [], county: [], roadCosts: [], paths: [], completeVerification: [],
         sweep: 0, hierarchy: 0, candidateComparison: 0 };
@@ -65,6 +65,7 @@ function endpoint({ recover, local, finalReview, verify, failProvider = false, a
             calls.paths.push({ properties, options }); return drivingMeasurement();
         } },
         '../../shared/finalNeighborhoodReview.js': { reviewFinalNeighborhoodRoute: async (properties, options) => {
+            calls.events.push('global-review');
             calls.globalReview.push({ properties, options });
             return finalReview ? finalReview(properties, options) : { properties, diagnostics: { applied: false } };
         } },
@@ -100,7 +101,7 @@ function endpoint({ recover, local, finalReview, verify, failProvider = false, a
         } },
         '../../shared/completeDrivingVerification.js': { verifyCompleteDrivingCandidate: async input => {
             calls.events.push('complete-driving-verification'); calls.completeVerification.push(input);
-            if (verify) return verify(input);
+            if (verify) return verify(input, calls.completeVerification.length - 1);
             const applied = JSON.stringify(ids(input.candidateOrder)) !== JSON.stringify(ids(input.baselineOrder));
             return { properties: input.candidateOrder, measurement: drivingMeasurement(), baseline: drivingMeasurement(),
                 applied, keptCurrent: !applied, diagnostics: { ...input.neighborhood?.diagnostics, applied,
@@ -108,7 +109,8 @@ function endpoint({ recover, local, finalReview, verify, failProvider = false, a
                         applied, validation: 'whole_route' } } };
         } },
         '../../shared/routeCandidateSelection.js': { ...candidateSelection, selectBestRouteCandidate: candidates => {
-            calls.candidateComparison++; return candidateSelection.selectBestRouteCandidate(candidates);
+            calls.candidateComparison++;
+            return winner ? winner(candidates) : candidateSelection.selectBestRouteCandidate(candidates);
         } },
     };
     const exports = {};
@@ -328,6 +330,91 @@ test('a continuous driving gate can adopt a changed local order using measured c
     assert.equal(body.routing_metadata.road_path_validated, true);
 });
 
+const differentMatrixWinner = candidates => {
+    const current = candidates.find(candidate => candidate.is_current);
+    const order = [...current.order]; [order[4], order[5]] = [order[5], order[4]];
+    return { ...current, order, type: 'road_aware', is_current: false, distance: 80, duration: 35 };
+};
+const proof = (input, { applied, miles = 90, seconds = 2400 } = {}) => ({
+    properties: applied ? input.candidateOrder : input.baselineOrder,
+    measurement: drivingMeasurement(applied ? miles : 100, applied ? seconds : 3000),
+    baseline: drivingMeasurement(100, 3000), applied, keptCurrent: !applied,
+    diagnostics: { ...input.neighborhood?.diagnostics, applied,
+        local_driving_review: { ...input.neighborhood?.diagnostics?.local_driving_review,
+            applied, validation: 'whole_route', status: applied ? 'whole_route_verified' : 'whole_route_guard_retained' } },
+});
+
+test('a rejected global matrix winner cannot consume the incumbent neighborhood budget or discard its valid repair', async () => {
+    const properties = inputStops();
+    const { calls, invoke } = endpoint({ winner: differentMatrixWinner,
+        finalReview: submitted => {
+            assert.deepEqual(ids(submitted), ids(properties), 'the bad global order must be discarded before neighborhood review');
+            const repaired = partialImprovement(submitted);
+            return { properties: repaired.properties, diagnostics: { applied: true, local_driving_review: repaired.diagnostics } };
+        }, verify: (input, index) => {
+            if (index === 0) {
+                assert.equal(input.neighborhood, undefined);
+                assert.notDeepEqual(ids(input.candidateOrder), ids(properties));
+                return proof(input, { applied: false });
+            }
+            assert.ok(input.neighborhood, 'the final proof receives the neighborhood repair');
+            return proof(input, { applied: true });
+        } });
+    const { status, body } = await invoke(properties);
+    const expected = ids(properties); [expected[0], expected[1]] = [expected[1], expected[0]];
+    assert.equal(status, 200); assert.equal(body.success, true);
+    assert.equal(calls.globalReview.length, 1);
+    assert.equal(calls.completeVerification.length, 2);
+    assert.ok(calls.events.indexOf('complete-driving-verification') < calls.events.indexOf('global-review'));
+    assert.equal(calls.completeVerification[0].options.vehicleFetch, calls.county[0].adapter.vehicleFetch);
+    assert.equal(calls.completeVerification[1].options.vehicleFetch, calls.county[0].adapter.vehicleFetch);
+    assert.deepEqual(ids(calls.globalReview[0].options.baselineOrder), ids(properties));
+    assert.deepEqual(ids(calls.completeVerification[1].candidateOrder), expected);
+    assert.deepEqual(body.order, expected); assert.equal(body.selected, 'road_aware');
+    assert.equal(body.order[3], properties[3].address_hash);
+    assert.equal(body.routing_metadata.exact_once_verified, true);
+    assert.equal(body.routing_metadata.input_measured, 100);
+    assert.equal(body.routing_metadata.winning_route_distance, 90);
+    assert.equal(body.routing_metadata.global_candidate_verification, 'incumbent_retained');
+    assert.equal(body.routing_metadata.road_path_validated, true);
+});
+
+test('a better complete global proposal receives neighborhood review and retains its proof in the final measured result', async () => {
+    const properties = inputStops();
+    const expected = ids(properties); [expected[4], expected[5]] = [expected[5], expected[4]];
+    const { calls, invoke } = endpoint({ winner: differentMatrixWinner,
+        finalReview: submitted => {
+            assert.deepEqual(ids(submitted), expected);
+            return { properties: submitted, diagnostics: { applied: false, checked: 1, repaired: 0 } };
+        }, verify: input => proof(input, { applied: true, miles: 80, seconds: 2100 }) });
+    const { status, body } = await invoke(properties);
+    assert.equal(status, 200); assert.equal(body.success, true);
+    assert.equal(calls.completeVerification.length, 2);
+    assert.equal(calls.completeVerification[0].neighborhood, undefined);
+    assert.deepEqual(ids(calls.completeVerification[0].baselineOrder), ids(properties));
+    assert.deepEqual(ids(calls.completeVerification[0].candidateOrder), expected);
+    assert.deepEqual(ids(calls.globalReview[0].properties), expected);
+    assert.deepEqual(ids(calls.completeVerification[1].candidateOrder), expected);
+    assert.deepEqual(body.order, expected); assert.equal(body.selected, 'road_aware');
+    assert.equal(body.routing_metadata.input_measured, 100);
+    assert.equal(body.routing_metadata.winning_route_distance, 80);
+    assert.equal(body.routing_metadata.global_candidate_verification, 'accepted');
+    assert.equal(body.routing_metadata.duration_improvement, 15);
+    assert.equal(body.routing_metadata.neighborhood_excursion_review.local_driving_review.validation, 'whole_route');
+});
+
+test('a failed global complete-driving precheck cannot start local search or return a verified proposed order', async () => {
+    const { calls, invoke } = endpoint({ winner: differentMatrixWinner,
+        verify: () => { throw new Error('Driving provider graph identity changed.'); } });
+    const { status, body } = await invoke(inputStops());
+    assert.equal(status, 500);
+    assert.equal(calls.completeVerification.length, 1);
+    assert.equal(calls.globalReview.length, 0);
+    assert.equal('order' in body, false);
+    assert.notEqual(body.success, true);
+    assert.notEqual(body.routing_metadata?.road_path_validated, true);
+});
+
 test('a worse final driving candidate retains the complete measured incumbent without a partial-failure warning', async () => {
     const properties = inputStops();
     const { calls, invoke } = endpoint({ finalReview: submitted => {
@@ -361,6 +448,7 @@ test('an unchanged order with zero neighborhood repairs still receives complete 
     assert.equal(body.routing_metadata.input_measured, 100);
     assert.equal(body.routing_metadata.winning_route_distance, 100);
     assert.equal(body.routing_metadata.neighborhood_excursion_review.local_driving_review.validation, 'whole_route');
+    assert.equal(body.routing_metadata.global_candidate_verification, 'not_required');
 });
 
 test('a failed complete driving check returns no order and preserves recovered access for the next attempt', async () => {

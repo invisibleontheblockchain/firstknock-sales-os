@@ -45,7 +45,7 @@ import {
 
 // Bump when candidate generation or the objective changes, so a stored route can
 // be told apart from one produced by an older solver.
-const OPTIMIZER_VERSION = 'road_matrix_county_access_roads_v13';
+const OPTIMIZER_VERSION = 'road_matrix_incumbent_neighborhood_search_v14';
 
 function readSecret(name) {
     try {
@@ -219,6 +219,7 @@ export default async function (req: Request): Promise<Response> {
             matrix_tier: plan.ok ? plan.tier : null,
             matrix_street_block_count: plan.ok ? plan.blockCount : null,
             optimizer_version: OPTIMIZER_VERSION,
+            global_candidate_verification: 'not_required',
             road_access_recovery: accessRecovery.report,
             county_road_routing: countyRouting.stats(),
             objective_version: OBJECTIVE_VERSION,
@@ -335,6 +336,20 @@ export default async function (req: Request): Promise<Response> {
                     roadCosts.measurePath(withAnchors(hierarchy.order), measureOptions),
                     roadCosts.measurePath(withAnchors(properties), measureOptions)
                 ]);
+                // A matrix winner is a proposal. Measure its complete drive
+                // before spending the neighborhood budget on it; otherwise a
+                // worse global reshuffle can erase every useful local repair
+                // when the final guard restores the incumbent.
+                if (profile === 'driving' && proposedPath.ok && currentPath.ok
+                    && hierarchy.order.some((stop, index) => propertyIdentity(stop) !== propertyIdentity(properties[index]))) {
+                    const checked = await verifyCompleteDrivingCandidate({ baselineOrder: properties,
+                        candidateOrder: hierarchy.order, options: neighborhoodOptions });
+                    hierarchy.order = checked.properties;
+                    neighborhood.properties = checked.properties;
+                    proposedPath = measuredPathView(checked.measurement);
+                    currentPath = measuredPathView(checked.baseline);
+                    baseMetadata.global_candidate_verification = checked.applied ? 'accepted' : 'incumbent_retained';
+                }
                 // Do not spend the local review budget on a global proposal
                 // whose complete drive cannot be compared with the incumbent.
                 // Such routes fall through below and repair the current order
@@ -585,6 +600,12 @@ export default async function (req: Request): Promise<Response> {
             : selectBestRouteCandidate(candidates);
         if (!winner) {
             throw new Error('No route candidate could be measured on the road matrix.');
+        }
+        if (profile === 'driving' && !winner.is_current) {
+            const checked = await verifyCompleteDrivingCandidate({ baselineOrder: properties,
+                candidateOrder: winner.order, options: neighborhoodOptions });
+            baseMetadata.global_candidate_verification = checked.applied ? 'accepted' : 'incumbent_retained';
+            if (!checked.applied) winner = candidates.find(candidate => candidate.is_current);
         }
         const reviewStarted = Date.now();
         let neighborhood = await reviewFinalNeighborhoodRoute(winner.order, neighborhoodOptions);

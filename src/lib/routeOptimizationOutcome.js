@@ -75,16 +75,21 @@ function completeDrivingVerification(meta, measurement = null, applied = false) 
         : validDistance(measurement?.distanceMiles) || validDistance(meta.input_measured) || validDistance(meta.continuity_measured);
 }
 const countyRoadsIncluded = meta => typeof meta?.road_matrix_source === 'string' && meta.road_matrix_source.endsWith('+nc_ng911');
+const searchIncomplete = review => review?.budgetExhausted === true || review?.skipped?.length > 0
+    || (optionalCount(review?.checked) !== null && optionalCount(review?.planned) !== null && review.checked < review.planned);
+function incompleteSearchMessage(review) {
+    const reasons = [];
+    const counts = optionalCount(review?.checked) !== null && optionalCount(review?.planned) !== null && review.planned > 0
+        ? `${review.checked} of ${review.planned} neighborhoods` : '';
+    if (review?.budgetExhausted) reasons.push(`the time limit was reached${counts ? ` after checking ${counts}` : ''}`);
+    else if (review?.checked < review?.planned) reasons.push(`only ${counts} were checked`);
+    const skipped = Array.isArray(review?.skipped) ? review.skipped.length : 0;
+    if (skipped) reasons.push(`${skipped} candidate ${skipped === 1 ? 'check was' : 'checks were'} skipped`);
+    return `Neighborhood search is incomplete${reasons.length ? `: ${reasons.join('; ')}` : ''}.`;
+}
 function completedRouteDetails(meta, recovery) {
     const review = meta?.neighborhood_excursion_review?.local_driving_review;
-    const counts = Number.isInteger(review?.checked) && Number.isInteger(review?.planned)
-        ? ` after checking ${review.checked} of ${review.planned} neighborhoods` : '';
-    const search = review?.budgetExhausted
-        ? ` The neighborhood search reached its time limit${counts}.`
-        : review?.checked < review?.planned ? ` ${review.checked} of ${review.planned} neighborhoods were searched.` : '';
-    const skipped = review?.skipped?.length
-        ? ` ${review.skipped.length} neighborhood search ${review.skipped.length === 1 ? 'candidate was' : 'candidates were'} skipped.` : '';
-    return `${search}${skipped}${sideMessage(review)}${recoveryMessage(recovery)}${countyRoadsIncluded(meta)
+    return `${sideMessage(review)}${recoveryMessage(recovery)}${countyRoadsIncluded(meta)
         ? ' County-mapped local roads included; local-road travel times are estimated.' : ''}`;
 }
 
@@ -129,9 +134,13 @@ export function describeRoadOptimizationOutcome(reason, measurement = null) {
     });
     // Exhausting the search budget or lacking a curb-side label does not undo
     // the separate continuous driving check for the returned complete route.
+    if (completeDrivingVerification(meta, measurement) && searchIncomplete(review)) return {
+        status: 'incomplete', tone: 'warning',
+        message: `Your route was kept unchanged. ${incompleteSearchMessage(review)} The complete driving route was verified.`,
+    };
     if (completeDrivingVerification(meta, measurement)) return {
         status: 'no_improvement', tone: 'info',
-        message: 'Complete driving route verified. No faster order found among orders checked. Your route was kept unchanged.',
+        message: 'Complete driving route verified. No better order found among the orders checked. Your route was kept unchanged.',
     };
     if (review?.budgetExhausted) return finish({
         status: 'incomplete', tone: 'warning',
@@ -156,7 +165,7 @@ export function describeRoadOptimizationOutcome(reason, measurement = null) {
     });
     return finish({
         status: 'no_improvement', tone: 'info',
-        message: 'No faster order found among the orders checked. Your route was kept unchanged.',
+        message: 'No better order found among the orders checked. Your route was kept unchanged.',
     });
 }
 
@@ -168,6 +177,10 @@ export function describeAppliedRoadOptimization(routingMetadata) {
         status: 'applied_partial', tone: 'warning',
         message: 'Verified route improvements applied; the complete driving route remains unverified.',
     });
+    if (completeDrivingVerification(routingMetadata, null, true) && searchIncomplete(review)) return {
+        status: 'applied_partial', tone: 'warning',
+        message: `Route updated. ${incompleteSearchMessage(review)} The complete driving route was verified.`,
+    };
     if (completeDrivingVerification(routingMetadata, null, true)) return {
         status: 'applied', tone: 'success',
         message: 'Route updated. The complete driving route was verified.',
@@ -210,7 +223,7 @@ export function buildRoadOptimizationAttempt(reason, measurement, {
     } : describeRoadOptimizationOutcome(reason, measurement);
     const review = meta.neighborhood_excursion_review?.local_driving_review;
     const recovery = roadAccessRecovery(meta);
-    const verificationComplete = ['applied', 'no_improvement'].includes(outcome.status)
+    const verificationComplete = ['applied', 'no_improvement', 'applied_partial', 'incomplete'].includes(outcome.status)
         && (applied || reason === 'current_order_measured_best') && completeDrivingVerification(meta, measurement, applied);
     const reasonCode = String(reason || 'no_result').split(':')[0];
     const diagnostic = measurement?.diagnostic;

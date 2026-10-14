@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { buildLocalDrivingCandidates, planLocalDrivingWindows, reviewLocalDrivingNeighborhoods } from '../base44/shared/localDrivingNeighborhoods.js';
 import { reviewFinalNeighborhoodRoute } from '../base44/shared/finalNeighborhoodReview.js';
+import { mailCarrierPassViolations } from '../base44/shared/mailCarrierRouting.js';
 
 const fixture = JSON.parse(fs.readFileSync(new URL('./fixtures/troutman-neighborhood-311-317.json', import.meta.url), 'utf8'));
 const points = fixture.properties, stops = points.slice(1, -1);
@@ -30,6 +31,134 @@ const frozenContext = options => {
     };
 };
 const create = options => async () => frozenContext(options);
+
+const measuredContext = (cost, accessFor = p => p.routing_access || null) => ({
+    accessFor, optimizationCostBetween: cost, distanceBetween: (a, b) => cost(a, b) / 1609.344,
+    async routeSequence(order) {
+        const directedLegs = order.slice(1).map((p, i) => ({ from: order[i].id, to: p.id,
+            pathKey: `${order[i].id}>${p.id}`, driveSeconds: cost(order[i], p), distanceMiles: cost(order[i], p) / 1609.344 }));
+        return { directedLegs, driveSeconds: directedLegs.reduce((s, leg) => s + leg.driveSeconds, 0),
+            distanceMiles: directedLegs.reduce((s, leg) => s + leg.distanceMiles, 0), estimatedTurnarounds: 0 };
+    },
+});
+
+test('a finite neighborhood budget reaches high-impact detailed work before area and service queues can consume it', async () => {
+    const order = Array.from({ length: 96 }, (_, i) => ({ id: `balanced-${i}`, street_name: `Street ${Math.floor(i / 4)}`,
+        lat: 35, lng: -81 + Math.floor(i / 12) * 0.01 + [0, 9, 1, 8, 2, 7, 3, 6, 4, 5, 2, 8][i % 12] / 10000 }));
+    const contexts = [];
+    const result = await reviewLocalDrivingNeighborhoods(order, { mailCarrierMode: true,
+        minAreaWindowStops: 20, maxAreaWindowStops: 24, maxLocalWindows: 2, localReviewBudgetMs: 5000,
+        createLocalDrivingContext: async (section, config) => {
+            if (!config.routeOnly) contexts.push(section);
+            return measuredContext(() => 1);
+        } });
+    assert.equal(result.diagnostics.checked, 2);
+    assert.ok(result.diagnostics.planned > result.diagnostics.checked);
+    assert.equal(result.diagnostics.budgetExhausted, true);
+    assert.ok(contexts.some(section => section.length >= 20), 'a larger area still receives its review');
+    assert.ok(contexts.some(section => section.length <= 14), 'a detailed ten-door window receives review within the same finite budget');
+    assert.equal(result.properties, order);
+});
+
+test('an unavoidable pass violation in fixed boundary stops does not block a verified interior reduction', async () => {
+    const positions = [10, 0, 20, 0, 10, 30, 40];
+    const order = positions.map((position, i) => ({ id: `boundary-${i}`, street_name: i >= 2 && i <= 4 ? 'Inside Lane' : 'Outside Lane',
+        lat: 35, lng: -81 + i / 100000, locked: i < 2 || i > 4,
+        routing_access: { confidence: 'high', chainKey: i >= 2 && i <= 4 ? 'inside' : 'outside', side: 'right',
+            positionMeters: position, serviceBearing: 90, point: { lat: 35, lng: -81 + i / 100000 } } }));
+    const desired = [order[0], order[1], order[3], order[4], order[2], order[5], order[6]];
+    const position = new Map(desired.map((p, i) => [p.id, i]));
+    const context = measuredContext((a, b) => 1 + Math.abs(position.get(a.id) - position.get(b.id)));
+    const measured = [];
+    const result = await reviewLocalDrivingNeighborhoods(order, { mailCarrierMode: true, areaDrivingReview: false,
+        createLocalDrivingContext: async () => ({ ...context, routeSequence: async path => {
+            measured.push(path.map(p => p.id)); return context.routeSequence(path);
+        } }) });
+    assert.deepEqual(result.properties.map(p => p.id), desired.map(p => p.id));
+    assert.equal(result.diagnostics.validation, 'whole_route');
+    assert.equal(result.diagnostics.streetSideService.passViolationsBefore, 2);
+    assert.equal(result.diagnostics.streetSideService.passViolationsAfter, 1);
+    assert.ok(measured.some(path => path.join() === desired.map(p => p.id).join()), 'the reduced-violation candidate must be measured on roads');
+    for (const i of [0, 1, 5, 6]) assert.equal(result.properties[i], order[i]);
+});
+
+test('an unchanged table winner does not consume the one useful continuous-candidate allowance', async () => {
+    const order = ['a', 'b', 'c'].map((id, i) => ({ id, street_name: 'Short Lane', lat: 35, lng: -81 + i / 100000 }));
+    const tableCost = (a, b) => ['a>b', 'b>c'].includes(`${a.id}>${b.id}`) ? 1 : 10;
+    const tableContext = measuredContext(tableCost);
+    const wanted = buildLocalDrivingCandidates(order, tableContext).find(c => c.order.some((p, i) => p !== order[i])).order;
+    const calls = [];
+    const result = await reviewLocalDrivingNeighborhoods(order, { areaDrivingReview: false, maxLocalCandidates: 1,
+        createLocalDrivingContext: async () => ({ ...tableContext, async routeSequence(path) {
+            calls.push(path.map(p => p.id));
+            return measuredContext(() => path.every((p, i) => p === wanted[i]) ? 1 : 10).routeSequence(path);
+        } }) });
+    assert.equal(result.diagnostics.candidatesMeasured, 1);
+    assert.equal(result.diagnostics.applied, true);
+    assert.deepEqual(result.properties, wanted);
+    assert.ok(calls.some(path => path.join() === wanted.map(p => p.id).join()));
+});
+
+test('one area review repairs the interior of a thirteen-door street run with fixed outer driving legs', async () => {
+    const desired = Array.from({ length: 20 }, (_, rank) => ({ id: `long-street-${rank}`, rank,
+        lat: 35, lng: -81 + rank / 100000,
+        street_name: rank < 2 || rank > 17 ? 'Boundary Road' : rank < 15 ? 'Long Zigzag Lane' : 'Branch Court',
+        locked: rank < 2 || rank > 17 }));
+    const scrambled = [2, 8, 3, 9, 4, 10, 5, 11, 6, 12, 7, 13, 14].map(rank => desired[rank]);
+    const order = [...desired.slice(0, 2), ...scrambled, ...desired.slice(15)];
+    const originalIds = order.map(p => p.id);
+    const context = measuredContext((a, b) => b.rank === a.rank + 1 ? 1 : 100 + Math.abs(b.rank - a.rank));
+    const measured = [];
+    const result = await reviewLocalDrivingNeighborhoods(order, { maxLocalWindows: 1, localReviewBudgetMs: 5000,
+        createLocalDrivingContext: async () => ({ ...context, async routeSequence(path) {
+            measured.push(path.map(p => p.id)); return context.routeSequence(path);
+        } }) });
+    assert.equal(scrambled.length, 13, 'the street run exceeds the twelve-door exact search cap');
+    assert.equal(result.diagnostics.checked, 1);
+    assert.equal(result.diagnostics.areaReview.checked, 1);
+    assert.equal(result.diagnostics.areaReview.repaired, 1);
+    assert.equal(result.diagnostics.validation, 'whole_route');
+    assert.equal(result.diagnostics.applied, true);
+    assert.deepEqual(result.properties, desired, 'the run must be repaired internally, rather than merely moved as one unit');
+    assert.ok(measured.some(path => path.join() === desired.map(p => p.id).join()), 'the exact proposed full drive must be measured');
+    assert.ok(result.measurement.driveSeconds < result.baseline.driveSeconds);
+    assert.equal(result.measurement.directedLegs.length, order.length - 1);
+    assert.deepEqual(new Set(result.properties.map(p => p.id)), new Set(originalIds));
+    assert.deepEqual(order.map(p => p.id), originalIds);
+    for (const i of [0, 1, 18, 19]) assert.equal(result.properties[i], order[i]);
+    assert.deepEqual(result.measurement.directedLegs[0], result.baseline.directedLegs[0]);
+    assert.deepEqual(result.measurement.directedLegs.at(-1), result.baseline.directedLegs.at(-1));
+});
+
+test('an unmatched full-route pin cannot approve a local repair that adds a known curb-pass violation beyond its context', async () => {
+    const order = Array.from({ length: 9 }, (_, i) => ({ id: `distant-curb-${i}`, street_name: 'Context Lane',
+        lat: 35, lng: -81 + i / 100000, locked: i < 3 || i > 5 }));
+    for (const [index, positionMeters, side] of [[0, 0, 'right'], [3, 10, 'right'], [4, 20, 'left']]) {
+        order[index].routing_access = { confidence: 'high', chainKey: 'same-road-outside-context',
+            side, positionMeters, serviceBearing: side === 'right' ? 90 : 270,
+            point: { lat: order[index].lat, lng: order[index].lng } };
+    }
+    const desired = [...order]; [desired[3], desired[4]] = [desired[4], desired[3]];
+    const preferred = new Set(desired.slice(1).map((p, i) => `${desired[i].id}>${p.id}`));
+    const context = measuredContext((a, b) => preferred.has(`${a.id}>${b.id}`) ? 1 : 50);
+    assert.equal(mailCarrierPassViolations(order, context), 0);
+    assert.equal(mailCarrierPassViolations(desired, context), 1);
+    const measured = []; let fullRouteFailures = 0;
+    const result = await reviewLocalDrivingNeighborhoods(order, { areaDrivingReview: false, mailCarrierMode: true,
+        createLocalDrivingContext: async section => {
+            if (section.includes(order[8])) {
+                fullRouteFailures++;
+                throw new Error('Vehicle routing failed (400: NoSegment). Could not find a matching segment for coordinate 8');
+            }
+            return { ...context, async routeSequence(path) { measured.push(path); return context.routeSequence(path); } };
+        } });
+    assert.ok(measured.some(path => path.indexOf(order[4]) < path.indexOf(order[3])), 'the locally faster order must reach continuous road validation');
+    assert.ok(fullRouteFailures > 0, 'the full-route match must be unavailable outside the reviewed section');
+    assert.equal(result.properties, order);
+    assert.equal(result.diagnostics.applied, false);
+    assert.equal(result.diagnostics.status, 'whole_route_guard_retained');
+    assert.deepEqual(result.properties.map(p => p.id), order.map(p => p.id));
+});
 
 test('Troutman exact local search discovers the entrance/branch/return order without street atomicity', () => {
     const context = frozenContext();
