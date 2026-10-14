@@ -19,7 +19,7 @@ const UNLIMITED_PROPERTY_LIMIT = UNLIMITED_PROPERTY_CAP;
 const RECONCILIATION_VERSION = 2;
 const PRECISION_PRICE_FLOOR_CENTS = 9900;
 
-// The usage check must survive brief entity throttling without granting an
+// The usage check must survive brief entity throttling and server errors without granting an
 // allowance from cached user fields. Retry individual reads and deterministic
 // reconciliation updates, never restart the entire reconciliation pass.
 async function withRateLimitRetry<T>(operation: () => Promise<T>): Promise<T> {
@@ -28,9 +28,9 @@ async function withRateLimitRetry<T>(operation: () => Promise<T>): Promise<T> {
             return await operation();
         } catch (error: any) {
             const status = Number(error?.status || error?.response?.status || 0);
-            const rateLimited = status === 429
+            const retryable = status === 408 || status === 429 || status >= 500
                 || (!status && /^rate limit exceeded[.!]?$/i.test(String(error?.message || '').trim()));
-            if (!rateLimited || attempt >= 3) throw error;
+            if (!retryable || attempt >= 3) throw error;
             await new Promise(resolve => setTimeout(resolve, 1000 * 2 ** attempt + Math.floor(Math.random() * 250)));
         }
     }
