@@ -3,10 +3,10 @@ import { useMapEvents, useMap, Polygon, CircleMarker, Tooltip } from 'react-leaf
 import L from 'leaflet';
 import { calculatePolygonAreaSqMiles, formatSqMiles } from '@/components/logic/geoArea';
 
-export default function MapDrawTool({ active, onPointsUpdate, onConfirm, drawnPolygon, confirmOnRelease = false }) {
+export default function MapDrawTool({ mode, active, onPointsUpdate, onConfirm, drawnPolygon, confirmOnRelease = false }) {
     const [points, setPoints] = useState([]);
     const [isDrawing, setIsDrawing] = useState(false);
-    const [builderMode, setBuilderMode] = useState(false);
+    const builderMode = mode === 'generate';
     const map = useMap();
     const pointsRef = useRef([]);
     const drawingRef = useRef(false);
@@ -72,12 +72,6 @@ export default function MapDrawTool({ active, onPointsUpdate, onConfirm, drawnPo
             if (confirmImmediately) onConfirm?.(finalPoints);
         }
     };
-
-    useEffect(() => {
-        const handler = (event) => setBuilderMode(event.detail?.mode === 'generate');
-        window.addEventListener('fk-builder-mode-change', handler);
-        return () => window.removeEventListener('fk-builder-mode-change', handler);
-    }, []);
 
     useEffect(() => {
         const container = map.getContainer();
