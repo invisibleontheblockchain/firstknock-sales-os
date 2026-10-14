@@ -45,6 +45,22 @@ const measurementMiles = (value) => {
     return Number.isFinite(miles) && miles >= 0 ? miles : null;
 };
 
+// Base44 wraps Axios failures, but keeps the response body in `data`. A 429
+// can mean a processing limit rather than throttling, so identify that exact
+// code before classifying the HTTP status. Keep raw messages and URLs out of
+// the outcome callback and its saved attempt history.
+const failureMeasurement = (failure, elapsedMs) => {
+    const response = failure?.response || failure?.originalError?.response;
+    const data = response?.data ?? failure?.data ?? failure;
+    const rawStatus = response?.status ?? failure?.status;
+    const httpStatus = Number.isInteger(rawStatus) && rawStatus >= 100 && rawStatus <= 599 ? rawStatus : null;
+    const rawCode = typeof data?.error === 'string' ? data.error : data?.error?.code ?? data?.code;
+    const errorCode = rawCode === 'cpu-exceeded' ? 'cpu-exceeded' : httpStatus === 429 ? 'rate-limited' : null;
+    return { diagnostic: { httpStatus, errorCode, elapsedMs: Math.max(0, Math.round(elapsedMs)) } };
+};
+const failureReason = (measurement, fallback) => measurement.diagnostic.errorCode === 'cpu-exceeded'
+    ? 'backend_cpu_limit' : measurement.diagnostic.httpStatus === 429 ? 'backend_rate_limited' : fallback;
+
 /**
  * The persisted `routing` provenance block for a road-matrix order.
  *
@@ -106,6 +122,7 @@ export async function tryRoadMatrixOptimize(routeProperties, {
         return decline('route_exceeds_supported_size');
     }
 
+    const startedAt = Date.now();
     try {
         const payload = {
             // Current saved order — the backend measures it so savings are honest.
@@ -147,7 +164,10 @@ export async function tryRoadMatrixOptimize(routeProperties, {
         // reversed or continuity-shaped candidate. Requiring the 'road_aware'
         // label discarded those, which is why routes kept their zig-zag order
         // even though OSRM had already priced a shorter one.
-        if (!data?.success) return decline('backend_reported_failure');
+        if (!data?.success) {
+            const measurement = failureMeasurement(response, Date.now() - startedAt);
+            return decline(failureReason(measurement, 'backend_reported_failure'), measurement);
+        }
         // Aerial fallback orders are unmeasured — never adopt one.
         if (data.routing_metadata?.fallback === true) return decline('aerial_fallback');
         // The backend measured both orders and the saved one won. That IS a road
@@ -209,7 +229,8 @@ export async function tryRoadMatrixOptimize(routeProperties, {
             }
         };
     } catch (error) {
-        console.warn('[roadMatrixOptimize] Road-matrix backend unavailable; using local optimize path', error);
-        return decline(`backend_unavailable: ${error.message}`);
+        const measurement = failureMeasurement(error, Date.now() - startedAt);
+        console.warn('[roadMatrixOptimize] Road-matrix backend unavailable', measurement.diagnostic);
+        return decline(failureReason(measurement, 'backend_unavailable'), measurement);
     }
 }

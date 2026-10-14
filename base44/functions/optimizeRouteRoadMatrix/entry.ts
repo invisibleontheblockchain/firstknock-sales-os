@@ -39,7 +39,7 @@ import {
 
 // Bump when candidate generation or the objective changes, so a stored route can
 // be told apart from one produced by an older solver.
-const OPTIMIZER_VERSION = 'road_matrix_mail_carrier_service_v7';
+const OPTIMIZER_VERSION = 'road_matrix_mail_carrier_prepriced_v8';
 
 function readSecret(name) {
     try {
