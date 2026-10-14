@@ -53,11 +53,11 @@ const STREET_TOKEN_ALIASES = Object.freeze({
     southwest: 'sw',
 });
 
+// Graph construction compares these identifiers thousands of times. Reuse the
+// same collation rules instead of recreating the locale machinery per edge.
+const ROAD_ID_COLLATOR = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });
 function compareIds(left, right) {
-    return String(left).localeCompare(String(right), 'en', {
-        numeric: true,
-        sensitivity: 'base',
-    });
+    return ROAD_ID_COLLATOR.compare(String(left), String(right));
 }
 
 function canonicalId(value) {

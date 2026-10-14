@@ -41,6 +41,15 @@ export function describeRoadOptimizationOutcome(reason, measurement = null) {
 
 export function describeAppliedRoadOptimization(routingMetadata) {
     const review = routingMetadata?.neighborhood_excursion_review?.local_driving_review;
+    if (review?.applied && review.areaReview?.repaired > 0) {
+        const partial = review.validation !== 'whole_route' || review.budgetExhausted || review.skipped?.length
+            || review.streetSideService?.unknownStops > 0;
+        return {
+            tone: partial ? 'warning' : 'success',
+            message: partial ? 'Verified neighborhood order improvements applied. Some stops still need checking.'
+                : 'Neighborhood order improved with verified driving paths and curb-side approaches.',
+        };
+    }
     if (review?.applied && review.streetSideService?.mode === 'mail_carrier_right_curb') return {
         tone: review.validation !== 'whole_route' || review.budgetExhausted || review.skipped?.length
             || review.streetSideService.unknownStops > 0 ? 'warning' : 'success',

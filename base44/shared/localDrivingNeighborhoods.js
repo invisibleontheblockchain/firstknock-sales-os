@@ -6,8 +6,9 @@ import { neighborhoodStreetKey } from './neighborhoodExcursions.js';
 import { createVehicleRoutingContext } from './vehicleRouting.js';
 import { trustedAccess } from './streetSideRouting.js';
 import { buildMailCarrierCandidates, hasCoherentMailCarrierPasses, inferMailCarrierAccess, mailCarrierPassViolations, planMailCarrierWindows } from './mailCarrierRouting.js';
+import { buildDrivingAreaCandidates, planDrivingAreaWindows } from './drivingAreaRouting.js';
 
-export const LOCAL_DRIVING_REVIEW_VERSION = 'entry_branch_return_v3_prepriced_search';
+export const LOCAL_DRIVING_REVIEW_VERSION = 'entry_branch_return_v4_area_relocation';
 const id = p => String(p?.address_hash || p?.legacy_hash || p?.id || '');
 const protectedStop = (p, locks) => locks.has(id(p)) || p.order_locked || p.locked
     || p.routing_access?.resolution_status === 'unresolved';
@@ -196,9 +197,18 @@ export async function reviewLocalDrivingNeighborhoods(order, options = {}) {
     const original = order;
     order = [...order];
     const mailCarrier = options.mailCarrierMode === true;
-    const windows = [...(mailCarrier ? planMailCarrierWindows(order, options) : []), ...planLocalDrivingWindows(order, options)]
+    const areaWindows = options.areaDrivingReview !== false ? planDrivingAreaWindows(order, options) : [];
+    report.areaReview = { planned: areaWindows.length, checked: 0, repaired: 0, candidatesMeasured: 0 };
+    const ranges = new Map();
+    for (const window of [...areaWindows, ...(mailCarrier ? planMailCarrierWindows(order, options) : []),
+        ...planLocalDrivingWindows(order, options).map(window => ({ ...window, local: true }))]) {
+        const key = `${window.start}:${window.end}`;
+        ranges.set(key, { ...ranges.get(key), ...window });
+    }
+    const windows = [...ranges.values()]
         .map(window => ({ ...window, priority: windowExcessMiles(order, window) }))
-        .sort((a, b) => Number(Boolean(b.service)) - Number(Boolean(a.service)) || b.priority - a.priority || a.start - b.start);
+        .sort((a, b) => Number(Boolean(b.area)) - Number(Boolean(a.area))
+            || Number(Boolean(b.service)) - Number(Boolean(a.service)) || b.priority - a.priority || a.start - b.start);
     report.planned = windows.length;
     const maxWindows = Math.max(0, Math.min(100, options.maxLocalWindows ?? 64));
     const deadline = Date.now() + Math.max(1, Math.min(60000, options.localReviewBudgetMs ?? 45000));
@@ -212,13 +222,14 @@ export async function reviewLocalDrivingNeighborhoods(order, options = {}) {
     for (let index = 0; index < windows.length; index++) {
         if (report.checked >= maxWindows || Date.now() >= deadline) { report.budgetExhausted = true; break; }
         if (options.signal?.aborted) throw options.signal.reason || new DOMException('Cancelled', 'AbortError');
-        const { start, end, service } = windows[index];
+        const { start, end, service, area, local } = windows[index];
         const left = order.slice(Math.max(0, start - 2), start);
         const right = order.slice(end, end + 2);
         if (!left.length && options.startLocation) left.push(options.startLocation);
         if (!right.length && options.endLocation) right.push(options.endLocation);
         const stops = order.slice(start, end), section = [...left, ...stops, ...right];
         report.checked++;
+        if (area) report.areaReview.checked++;
         try {
             if (mailCarrier && section.some(p => !trustedAccess(accessContext.accessFor(p)) && !discovered.has(id(p)))) {
                 const discovery = await createContext(section, { ...contextOptions, sparseCosts: true,
@@ -246,14 +257,21 @@ export async function reviewLocalDrivingNeighborhoods(order, options = {}) {
                     inferredAccess.delete(key);
                 }
             }
-            const exactCandidates = stops.length <= 12 ? buildLocalDrivingCandidates(stops, context, left.at(-1), right[0], options) : [];
-            let candidates = service ? [...buildMailCarrierCandidates(stops, context, left.at(-1), right[0]), ...exactCandidates]
-                .sort((a, b) => a.seconds - b.seconds || a.miles - b.miles) : exactCandidates;
+            // Larger area questions move whole service runs. The existing
+            // bounded door search still handles local branch/return details.
+            const exactCandidates = (!area || service || local) && stops.length <= 12
+                ? buildLocalDrivingCandidates(stops, context, left.at(-1), right[0], options) : [];
+            let candidates = [
+                ...(area ? buildDrivingAreaCandidates(stops, context, left.at(-1), right[0], options) : []),
+                ...(service || (area && mailCarrier) ? buildMailCarrierCandidates(stops, context, left.at(-1), right[0]) : []),
+                ...exactCandidates,
+            ];
+            if (service || area) candidates.sort((a, b) => a.seconds - b.seconds || a.miles - b.miles);
             candidates = [...new Map(candidates.map(c => [JSON.stringify(c.order.map(id)), c])).values()];
             if (mailCarrier) candidates = candidates.filter(candidate => hasCoherentMailCarrierPasses([...left, ...candidate.order, ...right], context));
-            if (service && !candidates.length) continue;
+            if ((service || area) && !candidates.length) continue;
             if (!candidates.length) { report.skipped.push({ start, end, reason: 'unreachable_local_roads' }); continue; }
-            let selected = stops, best = baseline, bestPreference = preferenceFor(stops, context);
+            let selected = stops, selectedCandidate = null, best = baseline, bestPreference = preferenceFor(stops, context);
             for (const candidate of candidates.slice(0, maxCandidates)) {
                 if (Date.now() >= deadline) { report.budgetExhausted = true; break; }
                 if (candidate.order.every((p, i) => p === stops[i])) continue;
@@ -262,6 +280,7 @@ export async function reviewLocalDrivingNeighborhoods(order, options = {}) {
                 try { measured = await context.routeSequence(proposed); }
                 catch (error) { fatal(error); report.skipped.push({ start, end, candidate: true, reason: error.message }); continue; }
                 report.candidatesMeasured++;
+                if (candidate.areaMove) report.areaReview.candidatesMeasured++;
                 // These unchanged overlapping legs keep the arrival and exit
                 // states consistent with the route outside this neighborhood.
                 if (left.length >= 2 && !sameBoundaryLeg(baseline.directedLegs?.[0], measured.directedLegs?.[0])) continue;
@@ -273,12 +292,13 @@ export async function reviewLocalDrivingNeighborhoods(order, options = {}) {
                 const fixesPasses = mailCarrier && mailCarrierPassViolations([...left, ...candidate.order, ...right], context)
                     < mailCarrierPassViolations([...left, ...selected, ...right], context);
                 if (!fixesPasses && !improves(measured, best, preference, bestPreference)) continue;
-                selected = candidate.order; best = measured; bestPreference = preference;
+                selected = candidate.order; selectedCandidate = candidate; best = measured; bestPreference = preference;
             }
             if (selected !== stops) {
                 order.splice(start, stops.length, ...selected);
                 report.repaired++; report.localMilesSaved += baseline.distanceMiles - best.distanceMiles;
                 report.localSecondsSaved += baseline.driveSeconds - best.driveSeconds;
+                if (selectedCandidate?.areaMove) report.areaReview.repaired++;
             }
         } catch (error) {
             fatal(error);
@@ -290,8 +310,8 @@ export async function reviewLocalDrivingNeighborhoods(order, options = {}) {
                 const failed = section[Number(match[1])];
                 const split = stops.indexOf(failed);
                 if (split >= 0) {
-                    if (split >= 3) windows.splice(index + 1, 0, { start, end: start + split, service });
-                    if (stops.length - split - 1 >= 3) windows.splice(index + 1, 0, { start: start + split + 1, end, service });
+                    if (split >= 3) windows.splice(index + 1, 0, { start, end: start + split, service, area, local });
+                    if (stops.length - split - 1 >= 3) windows.splice(index + 1, 0, { start: start + split + 1, end, service, area, local });
                 }
             }
         }
