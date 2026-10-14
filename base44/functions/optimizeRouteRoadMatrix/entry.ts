@@ -39,7 +39,7 @@ import {
 
 // Bump when candidate generation or the objective changes, so a stored route can
 // be told apart from one produced by an older solver.
-const OPTIMIZER_VERSION = 'road_matrix_neighborhood_entry_return_v5';
+const OPTIMIZER_VERSION = 'road_matrix_neighborhood_bounded_validation_v6';
 
 function readSecret(name) {
     try {

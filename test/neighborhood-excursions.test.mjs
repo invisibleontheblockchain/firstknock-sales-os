@@ -171,6 +171,27 @@ test('sparse contexts avoid all-door matrices, cache pairs and retain unreachabl
     assert.equal(unreachable.optimizationCostBetween(doors[0], doors[1]), Infinity);
 });
 
+test('a 377-stop continuous drive uses four bounded requests with matching overlap legs', async () => {
+    const input = Array.from({ length: 377 }, (_, i) => stop(1000 + i, 'Y', 'Main'));
+    const engine = provider();
+    const bounds = { startLocation: { ...stop(999, 'Y', 'Main'), vehicle_heading_degrees: 85 },
+        endLocation: stop(1377, 'Y', 'Main') };
+    const context = await createVehicleRoutingContext(input, { accessFor: p => ({ point: { lat: p.lat + 0.00001, lng: p.lng } }) }, {
+        sparseCosts: true, vehicleFetch: engine.fetch, ...bounds, servicePolicy: { parkingSecondsPerStop: 15 },
+    });
+    const result = await context.routeSequence(input, bounds);
+    const routes = engine.calls.filter(u => u.pathname.includes('/route/'));
+    assert.equal(routes.length, 4);
+    assert.ok(routes.every(u => u.pathname.split('/').at(-1).split(';').length <= 100));
+    assert.ok(routes.every(u => u.href.length < 8000));
+    assert.equal(result.driveSeconds, total([bounds.startLocation, ...input, bounds.endLocation]));
+    assert.equal(result.directedLegs.length, input.length + 1);
+    assert.equal(routes[0].searchParams.get('bearings').split(';')[0], '85,45');
+    assert.equal(result.parkingSeconds, 377 * 15);
+    assert.ok(result.walkingAccessSeconds > 0);
+    assert.equal(result.objectiveSeconds, result.driveSeconds + result.walkingAccessSeconds + result.parkingSeconds);
+});
+
 test('shared driving pilot reviews a custom proposal before saving its final order', async () => {
     const result = await evaluateCoreDrivingRoute({ legacyOrder: doors, propose: () => doors,
         createContext: async () => ({ vehicleAware: true, optimizationCostBetween: cost,

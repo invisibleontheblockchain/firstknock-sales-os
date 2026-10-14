@@ -22,6 +22,7 @@ import { haversineDistanceMiles, isValidRoutePoint } from '@/lib/routeBounds';
 import { captureParkedCarLocation, isLowAccuracyCapture, lowAccuracyConfirmationMessage } from '@/lib/parkedCarLocation';
 import { startOptimizeProgress } from '@/lib/optimizeProgressToast';
 import { tryRoadMatrixOptimize } from '@/lib/roadMatrixOptimize';
+import { buildRoadOptimizationAttempt, describeAppliedRoadOptimization, describeRoadOptimizationOutcome } from '@/lib/routeOptimizationOutcome';
 import { ROAD_VERIFICATION, stampRoadVerification } from '@/lib/routeRoadVerification';
 import { requireUsableRouteContext } from '@/lib/routeContextGuard';
 import { OPTIMIZE_MODES, ROUTE_ORIGIN_MODES, resolveOptimizeMode, routeOriginModeForOptimizeMode } from '@/lib/routeOriginModes';
@@ -219,10 +220,11 @@ export async function reoptimizeRoute(route, options = {}, deps = {}) {
         // is a verification; "the road engine was unreachable" is not, and the two
         // used to be the same anonymous null.
         let roadDeclineReason = null;
+        let roadMeasurement = null;
         const roadMatrixResult = await tryRoadMatrixOptimize(routeProperties, {
             start: isValidRoutePoint(start) ? start : null,
             end: isValidRoutePoint(end) ? end : null,
-            onOutcome: (reason) => { roadDeclineReason = reason; }
+            onOutcome: (reason, measurement) => { roadDeclineReason = reason; roadMeasurement = measurement; }
         });
 
         // A route whose saved order was already validated on a real road matrix
@@ -240,7 +242,15 @@ export async function reoptimizeRoute(route, options = {}, deps = {}) {
             && anchorModeUnchanged
             && savedRoadRouting?.road_aware === true
             && savedRoadRouting?.fallback !== true) {
-            toast.success('Already optimized on real road distances — no faster order found.', {
+            const outcome = describeRoadOptimizationOutcome(roadDeclineReason, roadMeasurement);
+            const metadata = { ...(route.metadata || {}),
+                last_optimization_attempt: buildRoadOptimizationAttempt(roadDeclineReason, roadMeasurement, {
+                    mode: optimizeMode, doorCount: routeProperties.length,
+                }) };
+            await base44.entities.SavedRoute.update(route.id, { metadata });
+            queryClient?.invalidateQueries({ queryKey: ['savedRoutes'] });
+            if (activeRoute?.id === route.id && setActiveRoute) setActiveRoute(prev => ({ ...prev, metadata }));
+            toast[outcome.tone](outcome.message, {
                 id: TOAST_ID,
                 duration: 4000
             });
@@ -363,16 +373,17 @@ export async function reoptimizeRoute(route, options = {}, deps = {}) {
         // Restore the map view so fitBounds cannot zoom out on a reorder.
         if (savedView && mapRef?.current) { try { mapRef.current.setView(savedView.center, savedView.zoom, { animate: false }); } catch { /* map already gone */ } }
         const savedMiles = Math.round(objective.estimatedSavings * 100) / 100;
-        const base = usingCustomAnchors
+        const partialOutcome = roadMatrixResult && describeAppliedRoadOptimization(roadMatrixResult.routingMetadata);
+        const base = partialOutcome?.message || (usingCustomAnchors
             ? (routeOriginMode === ROUTE_ORIGIN_MODES.CUSTOM_BOUNDS
                 ? 'Route anchors set. The door order was rebuilt around your start and finish.'
                 : 'Route anchors cleared.')
-            : optimizeSuccessMessage(optimizeMode, { alreadyOptimal: !objective.applyCandidate });
+            : optimizeSuccessMessage(optimizeMode, { alreadyOptimal: !objective.applyCandidate }));
         const estimateLabel = roadAware ? 'road-distance estimate' : 'street-continuity estimate';
         const msg = objective.applyCandidate && savedMiles > 0
             ? `${base} Saved ~${savedMiles} estimated miles (${newDistanceRounded} mi ${estimateLabel}).`
             : `${base} (${newDistanceRounded} mi ${estimateLabel})`;
-        toast.success(msg, { id: TOAST_ID, duration: 4000 });
+        toast[partialOutcome?.tone || 'success'](msg, { id: TOAST_ID, duration: 4000 });
     } catch (e) {
         console.error('Re-optimize error:', e);
         toast.error(
