@@ -67,6 +67,15 @@ test('retry jitter stays within its backoff budget', () => {
   }
 });
 
+test('rate-limit retries respect server cooldowns and do not immediately repeat requests', () => {
+  const cooldown = readRetryDelay(0, { status: 429, response: { headers: { 'retry-after': '30' } } });
+  assert.ok(cooldown >= 30_000 && cooldown < 30_500);
+  const sdkCooldown = readRetryDelay(0, { status: 429, originalError: { response: { headers: new Headers({ 'retry-after': '30' }) } } });
+  assert.ok(sdkCooldown >= 30_000 && sdkCooldown < 30_500);
+  const fallback = readRetryDelay(0, { status: 429 });
+  assert.ok(fallback >= 5000 && fallback < 5500);
+});
+
 test('large collections limit simultaneous lookups and preserve route order', async () => {
   let active = 0;
   let peak = 0;
