@@ -9,7 +9,7 @@ import useAppointmentMapFocus from '@/hooks/useAppointmentMapFocus'; import Appo
 import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { storage } from '@/lib/storage';
-import { retryRead, withReadDeadline } from '@/lib/readRequest';
+import { retryRead, withReadDeadline } from '@/lib/readRequest'; import useRemoveInteraction from '@/components/map/useRemoveInteraction';
 
 import { Loader2 } from 'lucide-react';
 import { toast } from "sonner";
@@ -2410,14 +2410,7 @@ export default function Home() {
         return true;
     }, [activeRoute, applyOptimisticLog, createLogMutation, user, logsReady, showChecklist, checklistLogsReady, selectedProperty?.address_hash, selectedPropertyHistoryReady]);
 
-    const handleDeleteInteraction = useCallback(async (log) => {
-        if (!log?.id) return;
-        if (!confirm('Remove this interaction history?')) return;
-        await base44.entities.InteractionLog.delete(log.id);
-        queryClient.invalidateQueries({ queryKey: ['interactionLogs'] });
-        queryClient.invalidateQueries({ queryKey: ['selectedPropertyHistory'] });
-        toast.success('Interaction removed');
-    }, [queryClient]);
+    const handleDeleteInteraction = useRemoveInteraction(queryClient, pendingOutcomesRef);
 
     const generateRoutesRef = useRef(generateRoutes);
     useEffect(() => {
