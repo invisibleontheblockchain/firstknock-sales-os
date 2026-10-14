@@ -131,7 +131,9 @@ function provider({ slower = false, wrongSnap = false, unreachable = false, tied
                 steps: [{ geometry: { coordinates: [coordinates[i], coordinates[i + 1]] } }] }));
             data.routes = [{ duration: seconds, distance: seconds * 10, geometry: { coordinates }, legs }];
             if (badSeam && coordinates.length < 500) {
-                legs[0].duration += 5; legs[0].distance += 50;
+                // A changed interior shared leg must still fail verification;
+                // the request's first leg now supplies arrival context only.
+                legs[1].duration += 5; legs[1].distance += 50;
                 data.routes[0].duration += 5; data.routes[0].distance += 50;
             }
         }

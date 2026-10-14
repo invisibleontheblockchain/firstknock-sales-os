@@ -6,7 +6,8 @@ import { roadNetworkRoutingInternals } from './roadNetworkRouting.js';
 
 const METERS_PER_MILE = 1609.344;
 // Keep the coordinate path plus per-waypoint query arrays comfortably below
-// gateway URL limits. Two shared stops prove turn continuity at each join.
+// gateway URL limits. Four shared stops place the verified shared leg inside
+// both requests, with an arrival leg and a departure leg on either side.
 export const MAX_VEHICLE_ROUTE_POINTS = 100;
 
 function timedSignal(source, milliseconds) {
@@ -207,11 +208,12 @@ export async function createVehicleRoutingContext(properties, accessContext, opt
             if (sequence.length + Number(Boolean(bounds.startLocation)) + Number(Boolean(bounds.endLocation)) > MAX_VEHICLE_ROUTE_POINTS) {
                 const ordered = [bounds.startLocation, ...sequence, bounds.endLocation].filter(isValidRoutePoint);
                 const parts = [];
-                const geometry = [], directedLegs = [];
-                for (let start = 0; start < ordered.length - 1; start += MAX_VEHICLE_ROUTE_POINTS - 2) {
+                const directedLegs = [];
+                for (let start = 0; start < ordered.length - 1; start += MAX_VEHICLE_ROUTE_POINTS - 4) {
                     const chunk = ordered.slice(start, start + MAX_VEHICLE_ROUTE_POINTS);
+                    const finalChunk = start + MAX_VEHICLE_ROUTE_POINTS >= ordered.length;
                     const startLocation = start === 0 ? bounds.startLocation : null;
-                    const endLocation = start + MAX_VEHICLE_ROUTE_POINTS >= ordered.length ? bounds.endLocation : null;
+                    const endLocation = finalChunk ? bounds.endLocation : null;
                     const chunkStops = chunk.filter(p => p !== startLocation && p !== endLocation);
                     const context = await createVehicleRoutingContext(chunkStops, accessContext, { ...options, sparseCosts: false,
                         routeOnly: true, requireDirectedLegs: true, startLocation, endLocation });
@@ -219,25 +221,37 @@ export async function createVehicleRoutingContext(properties, accessContext, opt
                     if (options.expectedDataVersion && part.dataVersion !== options.expectedDataVersion) throw new Error('Vehicle provider graph identity changed.');
                     if (part.dataVersion) verifyDataVersion({ data_version: part.dataVersion });
                     if (parts.length) {
-                        // Two overlapping stops verify the arrival into the seam
-                        // under the next chunk's continue-straight constraint.
-                        // Different shared-leg paths make the whole trip uncertain.
-                        const prior = directedLegs.at(-1), overlap = part.directedLegs[0];
-                        if (prior.from !== overlap.from || prior.to !== overlap.to || prior.pathKey !== overlap.pathKey
+                        // Each request sees the same predecessor and successor
+                        // around this leg. A terminal/origin leg has different
+                        // turn constraints and cannot prove the shared arrival.
+                        const prior = directedLegs.at(-1), overlap = part.directedLegs[1];
+                        if (!prior || !overlap || prior.from !== overlap.from || prior.to !== overlap.to || prior.pathKey !== overlap.pathKey
                             || Math.abs(prior.driveSeconds - overlap.driveSeconds) > 0.1
                             || Math.abs(prior.distanceMiles - overlap.distanceMiles) > 0.0001) {
                             throw new Error('Vehicle route has inconsistent turn continuity at a chunk seam.');
                         }
-                        const tail = geometry.at(-1);
-                        const join = part.geometry.findIndex((p, i) => i > 0 && p.lat === tail.lat && p.lng === tail.lng);
-                        if (join < 0) throw new Error('Vehicle route omitted its shared seam geometry.');
-                        geometry.push(...part.geometry.slice(join + 1));
-                        directedLegs.push(...part.directedLegs.slice(1));
-                    } else {
-                        geometry.push(...part.geometry); directedLegs.push(...part.directedLegs);
                     }
+                    // The first two legs of a later request supply arrival
+                    // context and the already-retained shared leg. Its final
+                    // leg supplies departure context for the next request.
+                    directedLegs.push(...part.directedLegs.slice(parts.length ? 2 : 0,
+                        finalChunk ? undefined : -1));
                     parts.push(part);
+                    if (finalChunk) break;
                 }
+                if (directedLegs.length !== ordered.length - 1 || directedLegs.some((leg, index) =>
+                    leg.from !== identity(ordered[index]) || leg.to !== identity(ordered[index + 1]))) {
+                    throw new Error('Vehicle route omitted or repeated consecutive stops across chunks.');
+                }
+                // OSRM's overview can omit an intermediate leg endpoint. Build
+                // the full path from the exact step geometry that passed the
+                // directed-leg check, without searching a separate overview.
+                const geometry = [];
+                for (const leg of directedLegs) for (const point of leg.geometry) {
+                    const prior = geometry.at(-1);
+                    if (!prior || prior.lat !== point.lat || prior.lng !== point.lng) geometry.push(point);
+                }
+                if (geometry.length === 1) geometry.push({ ...geometry[0] });
                 const driveSeconds = directedLegs.reduce((s, p) => s + p.driveSeconds, 0);
                 const walkingAccessSeconds = sequence.reduce((sum, stop) => {
                     const access = accessContext.accessFor?.(stop);
@@ -292,6 +306,7 @@ export async function createVehicleRoutingContext(properties, accessContext, opt
                     return { from: identity(ordered[index]), to: identity(ordered[index + 1]),
                         driveSeconds: leg.duration, distanceMiles: leg.distance / METERS_PER_MILE,
                         turnarounds: (leg.steps || []).filter(step => step.maneuver?.modifier === 'uturn').length,
+                        geometry: legGeometry.map(([lng, lat]) => ({ lat, lng })),
                         pathKey: JSON.stringify(legGeometry), };
                 });
                 if (Math.abs(directedLegs.reduce((sum, leg) => sum + leg.driveSeconds, 0) - route.duration) > 0.11 * directedLegs.length

@@ -14,15 +14,17 @@ test('the modeled 6965-stop baseline remains identifiable without publishing the
 });
 test('neighborhood v5 explicitly versions the driving review while preserving frozen window connector scoring', () => {
     // The original modeled baseline and its source hashes remain historical
-    // evidence. V5 exposes the provider's named, unsimplified driving geometry
-    // for optional street-side service discovery. Vehicle match radii, headings,
-    // parking and seam checks are unchanged. vehicle-routing.test.mjs and
-    // mail-carrier-routing.test.mjs cover
-    // the reviewed change. This does not remeasure
+    // evidence. V11 verifies an interior shared driving leg with arrival and
+    // departure context in both requests and uses its validated step geometry.
+    // vehicle-route-chunk-validation.test.mjs covers chunk boundaries, omitted
+    // overview points, genuine path/cost disagreement and exact leg coverage.
+    // A live 316-stop comparison also passed all three shared-leg checks.
+    // Match radii, headings, parking and frozen connector scoring stay fixed.
+    // This does not remeasure
     // the private export or change its historical source hashes.
     const frozen = { 'coreDrivingPilot.js': '44ecbfad3d3578258d4d4a19d5ce7f1a43e345f61e5f0f362a71118a5e5d8f90',
         'guardedDrivingWindows.js': baseline.sourceHashes['base44/shared/guardedDrivingWindows.js'],
-        'vehicleRouting.js': 'f3b1ffb76a138249e1272e40092ffa984b294b666da12f079fdbeebfc9b6cb23' };
+        'vehicleRouting.js': 'd680c7aa7be23a891f150076f87e90263de810e21f8b1277bbb1a4023ea59be5' };
     for (const [file, hash] of Object.entries(frozen)) {
         const source = readFileSync(new URL('../base44/shared/' + file, import.meta.url), 'utf8').replace(/\r\n/g, '\n');
         assert.equal(createHash('sha256').update(source).digest('hex'), hash, file + ' needs explicit regression review');
