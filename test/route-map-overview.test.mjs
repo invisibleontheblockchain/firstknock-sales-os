@@ -94,3 +94,32 @@ test('wide zoom keeps all 17 saved route markers without drawing thousands of do
     assert.ok(routeMarkers.some(marker => marker.options.icon.html.includes('#17')));
 });
 
+test('Home does not lock its camera to stale history before the saved-route list arrives', () => {
+    const source = read('src/pages/Home.jsx');
+    const ast = ts.createSourceFile('Home.jsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JSX);
+    let effect;
+    function visit(node) {
+        if (ts.isCallExpression(node) && node.expression.getText(ast) === 'useEffect'
+            && node.arguments[0].getText(ast).includes('hasCenteredAccountWorkingAreaRef.current = true')) {
+            effect = node.arguments[0].getText(ast);
+        }
+        ts.forEachChild(node, visit);
+    }
+    visit(ast);
+    let fits = 0;
+    const ref = { current: false };
+    const context = {
+        activeRoute: null, window: { location: { search: '' } }, URLSearchParams,
+        mode: 'analyze', savedRoutesReady: false, hasCenteredAccountWorkingAreaRef: ref,
+        mapRef: { current: { _mapPane: {}, fitBounds() { fits++; } } },
+        resolveAccountWorkingArea: () => ({ type: 'bounds', bounds: { isValid: () => true } }),
+    };
+    vm.createContext(context);
+    vm.runInContext(`(${effect})()`, context);
+    assert.equal(fits, 0);
+    assert.equal(ref.current, false);
+    context.savedRoutesReady = true;
+    vm.runInContext(`(${effect})()`, context);
+    assert.equal(fits, 1);
+    assert.equal(ref.current, true);
+});
