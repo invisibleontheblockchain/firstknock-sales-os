@@ -6,12 +6,34 @@ import ts from 'typescript';
 import { parsePropertyImportFile, workbookToRows } from '../src/components/import/propertyImportFile.js';
 import { preparePropertyImport, propertyAddressKey, mergeImportedStops, geocodePropertyImportBatch } from '../src/components/import/propertyImportData.js';
 import { savePropertyImport, canAppendToRoute } from '../src/components/import/savePropertyImport.js';
+import { buildRouteNavigationPlan } from '../src/components/logic/routeNavigation.js';
 
 const user = { id: 'manager-1', email: 'manager@example.com', full_name: 'Manager' };
 const sourceRow = (overrides = {}) => ({ 'Husband Name': 'Jody', 'Wife Name': 'April', 'Last Name': 'Davis ', Address: '3103 E 23rd Ave', City: 'Tampa', State: 'FL', Zip: 33605, County: 'Hills', ...overrides });
 const locate = async addresses => addresses.map(() => ({ lat: 27.95, lng: -82.46, source: 'census' }));
 const prepare = (rows, options = {}) => preparePropertyImport(rows, 'Tampa.xlsx', { geocodeBatch: locate, ...options });
 const property = (hash, address, zip = '33605') => ({ address_hash: hash, address, full_address: address, zip_code: zip, city: 'Tampa', state: 'FL', lat: 27.95, lng: -82.46 });
+
+test('CSV and Excel imports navigate to the written house number even with imprecise coordinates', async () => {
+  const csv = 'Address,City,State,ZIP,Latitude,Longitude\n317 Main St,Phoenix,AZ,85001,33.4,-112.1';
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet('Addresses');
+  sheet.addRow(['Address', 'City', 'State', 'ZIP', 'Latitude', 'Longitude']);
+  sheet.addRow(['317 Main St', 'Phoenix', 'AZ', '85001', 33.4, -112.1]);
+  const buffer = await workbook.xlsx.writeBuffer();
+  for (const file of [
+    { name: 'homes.csv', text: async () => csv },
+    { name: 'homes.xlsx', arrayBuffer: async () => buffer },
+  ]) {
+    const rows = await parsePropertyImportFile(file);
+    const prepared = await preparePropertyImport(rows, file.name);
+    assert.equal(prepared.properties[0].full_address, '317 Main St');
+    for (const provider of ['google', 'apple']) {
+      const plan = buildRouteNavigationPlan(prepared.properties, { provider });
+      assert.equal(new URL(plan.batches[0].url).searchParams.get('destination'), '317 Main St, Phoenix, AZ 85001');
+    }
+  }
+});
 
 test('Tampa columns preserve names, county and ZIP and deduplicate before geocoding', async () => {
   let requested;

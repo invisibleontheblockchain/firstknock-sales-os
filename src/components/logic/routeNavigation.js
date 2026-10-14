@@ -43,15 +43,29 @@ function propertyKey(property, index) {
     return property?.address_hash || property?.legacy_hash || property?.id || `stop-${index + 1}`;
 }
 
-function propertyAddress(property = {}) {
-    const street = property.full_address
-        || property.address
-        || `${property.house_number || ''} ${property.street_name || ''}`.trim();
-    return [
-        street,
-        property.city,
-        [property.state, property.zip_code || property.zip].filter(Boolean).join(' ')
-    ].filter(Boolean).join(', ').trim();
+export function buildFullAddress(property = {}) {
+    const clean = value => String(value ?? '').trim();
+    const streetName = clean(property.street_name);
+    const street = clean(property.full_address) || clean(property.address)
+        || (streetName && !/^unknown street$/i.test(streetName)
+            ? `${clean(property.house_number)} ${streetName}`.trim() : '');
+    if (!street) return '';
+
+    // Imported full_address columns may already include the locality. Do not
+    // append a second city/state/ZIP to the address sent to the maps provider.
+    const contains = (value, tail = '(?=$|[\\s,])') => {
+        const escaped = value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        return !value || new RegExp(`(?:^|[\\s,])${escaped}${tail}`, 'i').test(street);
+    };
+    const city = clean(property.city);
+    const state = clean(property.state);
+    const zip = clean(property.zip_code || property.zip);
+    // A city name appearing within the street name is not a locality suffix.
+    const escapedState = state.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const cityTail = `(?=$|,|\\s+(?:${escapedState || '(?!)'})(?=$|[\\s,]))`;
+    return [street, contains(city, cityTail) ? '' : city,
+        [contains(state) ? '' : state, contains(zip, '(?=$|[\\s,]|-\\d{4}\\b)') ? '' : zip].filter(Boolean).join(' ')
+    ].filter(Boolean).join(', ');
 }
 
 function validCoordinates(lat, lng) {
@@ -77,7 +91,7 @@ export function normalizeNavigationStop(property, index = 0) {
         throw new TypeError(`Route stop ${index + 1} is missing.`);
     }
 
-    const address = propertyAddress(property);
+    const address = buildFullAddress(property);
     const hasCoordinates = validCoordinates(property.lat, property.lng);
     if (!hasCoordinates && !address) {
         throw new TypeError(`Route stop ${propertyKey(property, index)} has no usable coordinates or address.`);
@@ -87,9 +101,10 @@ export function normalizeNavigationStop(property, index = 0) {
         ...property,
         navigationKey: propertyKey(property, index),
         navigationAddress: address,
-        navigationLocation: hasCoordinates
-            ? `${formatCoordinate(property.lat)},${formatCoordinate(property.lng)}`
-            : address
+        // Parcel/file/geocoder coordinates can resolve to a neighboring house.
+        // Preserve the street number from the property; use a pin only when
+        // the record has no street address (for example an unlabeled Canvas pin).
+        navigationLocation: address || `${formatCoordinate(property.lat)},${formatCoordinate(property.lng)}`
     };
 }
 
