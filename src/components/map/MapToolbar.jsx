@@ -20,7 +20,6 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuCheckb
 import { OptimizeRouteChoices, OptimizeRouteTrigger } from './OptimizeRouteInline';
 import { routeBelongsToActingUser } from '@/lib/routeOptimizeUpdate';
 import { findHydratedSearchRoute, GLOBAL_ROUTE_SEARCH_EVENT } from '@/components/search/globalSearchBridge';
-import RouteOptimizationResult from './RouteOptimizationResult';
 
 /**
  * MapToolbar — extracted from Home.jsx
@@ -658,9 +657,6 @@ export default function MapToolbar({
                                 </button>
                             </div>
                         </div>
-
-                        <RouteOptimizationResult attempt={activeRoute.metadata?.last_optimization_attempt}
-                            busy={reoptimizeBusy} onRetry={() => handleSelectOptimizeMode(OPTIMIZE_MODES.ROUTE_ONLY)} />
 
                         {showOptimizeMenu && (
                             <OptimizeRouteChoices
