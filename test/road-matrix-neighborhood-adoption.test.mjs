@@ -40,3 +40,12 @@ test('an unverified or unapplied local preference cannot replace a tied current 
         assert.equal(await optimize(properties, { client: client(review) }), null);
     }
 });
+
+test('a mail-carrier service improvement that drives farther never fabricates mileage savings', async () => {
+    const result = await optimize(properties, { client: client({ applied: true,
+        validation: 'overlapping_boundary_legs', localMilesSaved: -0.25 }, {
+        input_measured: 10, winning_route_distance: 9, duration_improvement: 0,
+    }) });
+    assert.equal(result.objective.estimatedSavings, 0);
+    assert.deepEqual(result.order.map(p => p.address_hash), ['B', 'A', 'C']);
+});

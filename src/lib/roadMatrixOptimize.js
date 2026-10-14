@@ -193,7 +193,7 @@ export async function tryRoadMatrixOptimize(routeProperties, {
         // verified local savings. Keep those scopes separate instead of treating
         // their difference as a measured whole-route improvement.
         const verifiedLocalSavings = preferredServiceTie && serviceReview.validation === 'overlapping_boundary_legs'
-            ? measurementMiles(serviceReview.localMilesSaved) : null;
+            ? Math.max(0, measurementMiles(serviceReview.localMilesSaved) ?? 0) : null;
 
         return {
             order,
