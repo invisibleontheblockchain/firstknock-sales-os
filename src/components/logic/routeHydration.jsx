@@ -133,7 +133,10 @@ export async function hydrateRouteForMap(route, userEmail = null) {
     return request;
 }
 
-export async function hydrateRoutesForMap(routes = [], userEmail = null, existingProperties = []) {
+export async function hydrateRoutesForMap(routes = [], userEmail = null, existingProperties = [], {
+    onRouteHydrated = () => {},
+    shouldContinue = () => true,
+} = {}) {
     if (!Array.isArray(routes) || routes.length === 0) return [];
 
     const routeSig = manifestSignature(routes.map(route => (
@@ -144,28 +147,22 @@ export async function hydrateRoutesForMap(routes = [], userEmail = null, existin
     )));
     const viewer = String(userEmail || '').trim().toLowerCase();
     const collectionKey = viewer ? `${viewer}::${routeSig}::${propSig}` : null;
-    if (collectionKey && routeCollectionHydrationCache.has(collectionKey)) return routeCollectionHydrationCache.get(collectionKey);
+    if (collectionKey && routeCollectionHydrationCache.has(collectionKey)) {
+        const cached = routeCollectionHydrationCache.get(collectionKey);
+        cached.forEach((route, index) => { if (shouldContinue()) onRouteHydrated(route, index); });
+        return cached;
+    }
 
     const existingByHash = indexRouteProperties(existingProperties);
-    const hydrated = await mapWithConcurrency(routes, async route => {
+    const hydrated = await mapWithConcurrency(routes, async (route, index) => {
+        if (!shouldContinue()) return route;
         const hashes = Array.isArray(route.property_hashes) ? route.property_hashes : [];
-        // Local data may only be used when it covers EVERY hash in the route.
-        // Partial coverage (e.g. map cache holds 33 of 66 doors) must go to the backend,
-        // otherwise Route Command / map / checklist show fewer doors than Knock.
-        if (Array.isArray(route?.properties) && route.properties.length > 0) {
-            const ordered = orderRouteProperties(route);
-            if (hasCompleteRouteMapPoints(ordered)) return hydrateRouteForMap(ordered, userEmail);
-        }
-        const existingOrdered = hashes.map(hash => existingByHash.get(hash)).filter(Boolean);
-        if (existingOrdered.length >= hashes.length && existingOrdered.length > 0) {
-            return hydrateRouteForMap({
-                ...route,
-                properties: existingOrdered,
-                allProperties: existingOrdered,
-                houseCount: existingOrdered.length,
-            }, userEmail);
-        }
-        return hydrateRouteForMap(route, userEmail);
+        const ordered = orderRouteProperties(route, hashes.map(hash => existingByHash.get(String(hash))).filter(Boolean));
+        const result = await hydrateRouteForMap(ordered, userEmail);
+        // A slow route must not hold every other route's pins behind the
+        // collection promise. Cache and publish each finished route separately.
+        if (shouldContinue()) onRouteHydrated(result, index);
+        return result;
     });
 
     // As above, never make an empty/partial hydration result permanent.
