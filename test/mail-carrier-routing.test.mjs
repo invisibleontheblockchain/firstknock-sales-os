@@ -127,3 +127,31 @@ test('mail-carrier service wins over a slightly shorter zig-zag, and reports the
     assert.ok(result.diagnostics.localMilesSaved < 0);
     assert.equal(result.measurement.distanceMiles, 1.01);
 });
+
+test('infeasible inferred one-way headings are removed while original pins and match radii survive', async () => {
+    const calls = [];
+    const vehicleFetch = async input => {
+        const url = new URL(input); calls.push(url);
+        const coordinates = url.pathname.split('/').at(-1).split(';').map(p => p.split(',').map(Number));
+        const bearings = url.searchParams.get('bearings').split(';');
+        const failed = bearings.findIndex(b => b.startsWith('270,'));
+        if (failed >= 0) return Response.json({ code: 'NoSegment', message: `Could not find a matching segment for coordinate ${failed}` }, { status: 400 });
+        const waypoints = coordinates.map(p => ({ location: [p[0], 35], name: 'Carrier Lane' }));
+        if (url.pathname.includes('/table/')) {
+            const sources = url.searchParams.get('sources').split(';').map(Number), targets = url.searchParams.get('destinations').split(';').map(Number);
+            return Response.json({ code: 'Ok', sources: sources.map(i => waypoints[i]), destinations: targets.map(i => waypoints[i]),
+                durations: sources.map(a => targets.map(b => a === b ? 0 : 10)), distances: sources.map(a => targets.map(b => a === b ? 0 : 100)) });
+        }
+        const legs = coordinates.slice(1).map(() => ({ duration: 10, distance: 100, steps: [{ name: 'Carrier Lane',
+            driving_side: 'right', geometry: { coordinates: [[-81, 35], [-80.9995, 35]] } }] }));
+        return Response.json({ code: 'Ok', waypoints, routes: [{ duration: legs.length * 10,
+            distance: legs.length * 100, geometry: { coordinates: waypoints.map(p => p.location) }, legs }] });
+    };
+    const before = JSON.stringify(pins);
+    const result = await reviewLocalDrivingNeighborhoods(pins, { mailCarrierMode: true, vehicleFetch });
+    assert.equal(JSON.stringify(pins), before);
+    assert.equal(result.diagnostics.streetSideService.knownStops, 2);
+    assert.equal(result.diagnostics.streetSideService.unknownStops, 2);
+    assert.deepEqual(new Set(result.properties), new Set(pins));
+    assert.ok(calls.every(u => u.searchParams.get('radiuses').split(';').every(r => ['40', '100'].includes(r))));
+});

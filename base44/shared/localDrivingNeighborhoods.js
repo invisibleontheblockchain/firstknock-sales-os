@@ -263,8 +263,8 @@ export async function reviewLocalDrivingNeighborhoods(order, options = {}) {
                 const failed = section[Number(match[1])];
                 const split = stops.indexOf(failed);
                 if (split >= 0) {
-                    if (split >= 3) windows.splice(index + 1, 0, { start, end: start + split });
-                    if (stops.length - split - 1 >= 3) windows.splice(index + 1, 0, { start: start + split + 1, end });
+                    if (split >= 3) windows.splice(index + 1, 0, { start, end: start + split, service });
+                    if (stops.length - split - 1 >= 3) windows.splice(index + 1, 0, { start: start + split + 1, end, service });
                 }
             }
         }
