@@ -648,7 +648,7 @@ export default function Home() {
     }, [userProperties, viewportProperties, localProperties, darkRoomProperties, fetchedProperties]);
 
     const savedRouteScope = useMemo(() => buildRepRouteScope(user), [user]);
-    const { data: savedRoutesRaw } = useQuery({
+    const { data: savedRoutesRaw, isSuccess: savedRoutesReady } = useQuery({
         queryKey: [
             'savedRoutes',
             savedRouteScope.userId,
@@ -2261,6 +2261,7 @@ export default function Home() {
             hasCenteredAccountWorkingAreaRef.current = true;
             return;
         }
+        if (mode === 'analyze' && !savedRoutesReady) return;
         if (hasCenteredAccountWorkingAreaRef.current || !mapRef.current) return;
 
         const workingArea = resolveAccountWorkingArea();
@@ -2282,7 +2283,7 @@ export default function Home() {
                 }
             } catch (e) {}
         }
-    }, [resolveAccountWorkingArea, activeRoute]);
+    }, [resolveAccountWorkingArea, activeRoute, mode, savedRoutesReady]);
 
     // Determine Initial Map Center
     const [mapCenter, setMapCenter] = useState(() => {
