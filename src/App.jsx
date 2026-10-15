@@ -12,6 +12,7 @@ import AppRefreshManager from '@/components/AppRefreshManager';
 import Layout from './Layout.jsx';
 import { RepLocationProvider } from '@/components/team/RepLocationSharing';
 import RoadAwareComparisonHost from '@/components/routes/RoadAwareComparisonHost';
+import { isHqPath } from '@/admin/hqNavigation';
 
 // Phase 5 — code-splitting: every page in ./pages is its own lazy-loaded chunk.
 // import.meta.glob bypasses the stale auto-generated pages.config.js — any new
@@ -25,27 +26,11 @@ const Pages = Object.fromEntries(
 );
 
 const AppEntry = React.lazy(() => import('@/components/AppEntry'));
+const AdminApp = React.lazy(() => import('@/admin/AdminApp'));
 
 const LayoutWrapper = ({ children, currentPageName }) => Layout ?
   <Layout currentPageName={currentPageName}>{children}</Layout>
   : <>{children}</>;
-
-function isPrivateHqAlias(pathname) {
-  return String(pathname || '').replace(/\/+$/, '').toLowerCase() === '/hq';
-}
-
-function PrivateHqAliasRedirect() {
-  React.useEffect(() => {
-    const destination = `/hq/index.html${window.location.search}${window.location.hash}`;
-    window.location.replace(destination);
-  }, []);
-
-  return (
-    <div className="fixed inset-0 flex items-center justify-center bg-black">
-      <div className="h-8 w-8 animate-spin rounded-full border-4 border-white/10 border-t-[#39FF6E]" />
-    </div>
-  );
-}
 
 // Pages served without authentication: the auth screens plus the public /find
 // acquisition page that ad traffic lands on.
@@ -82,8 +67,16 @@ const RoutedApp = () => (
 
 
 function App() {
-  if (typeof window !== 'undefined' && isPrivateHqAlias(window.location.pathname)) {
-    return <PrivateHqAliasRedirect />;
+  // Base44 serves the main entry for nested HTML paths, including installed
+  // HQ apps. Render the dashboard here instead of redirecting into a 404.
+  if (typeof window !== 'undefined' && isHqPath(window.location.pathname)) {
+    return (
+      <QueryClientProvider client={queryClientInstance}>
+        <React.Suspense fallback={<div className="fixed inset-0 bg-black" aria-hidden="true" />}>
+          <AdminApp />
+        </React.Suspense>
+      </QueryClientProvider>
+    );
   }
 
   return (
