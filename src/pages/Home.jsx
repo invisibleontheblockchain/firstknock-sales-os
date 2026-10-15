@@ -26,7 +26,7 @@ import {
 } from '../components/logic/routeRoadContext';
 import { calculateRouteDistanceMiles, isValidRoutePoint } from '@/lib/routeBounds';
 import { applyRouteFilters, formatStageCounts } from '../components/logic/routeFilterPipeline';
-import { loadPrecisionGenerationJob, limitPrecisionCandidates, precisionAreaForJob, precisionReferenceDateForJob, savePrecisionRoutes } from '@/lib/precisionDelivery';
+import { loadPrecisionGenerationJob, limitPrecisionCandidates, precisionAreaForJob, precisionReferenceDateForJob, savePrecisionRoutes, getCompletedPrecisionRoutes } from '@/lib/precisionDelivery';
 import { normalizeOwnershipRangeDays as normalizeStrictOwnershipRangeDays } from '../components/logic/soldDateRange';
 import RouteGenerationOverlay from '../components/routes/RouteGenerationOverlay';
 import RouteAssignmentDialog from '@/components/routes/RouteAssignmentDialog';
@@ -165,7 +165,17 @@ export default function Home() {
     const [showAllProperties, setShowAllProperties] = useState(false);
     const [viewMode, setViewMode] = useState('pins'); // 'pins' or 'heatmap'
     const [mode, setModeRaw] = useState(() => getInitialMapMode(window.location.search));
-    const setMode = (newMode) => setModeRaw(newMode);
+    const setMode = useCallback((newMode) => {
+        if (newMode === 'generate') {
+            setActiveRoute(null);
+            setPreviewRoute(null);
+            setShowChecklist(false);
+            setSelectedProperty(null);
+        } else {
+            setDrawingMode(false);
+        }
+        setModeRaw(newMode);
+    }, []);
     useEffect(() => {
         const openRunRoute = () => { setModeRaw('analyze'); setShowCompare(false); setShowChecklist(false); setShowRoutePanel(true); }, openMap = () => { setShowChecklist(false); setShowRoutePanel(false); }; window.addEventListener('fk-run-route-open', openRunRoute); window.addEventListener('fk-map-tab-open', openMap); if (new URLSearchParams(window.location.search).get('runRoute') === '1') openRunRoute(); return () => { window.removeEventListener('fk-run-route-open', openRunRoute); window.removeEventListener('fk-map-tab-open', openMap); };
     }, []);
@@ -1654,6 +1664,24 @@ export default function Home() {
             // Read mode from the actual job, including after a reload. A stale
             // local numeric target must never truncate a Max Available drain.
             const precisionJob = isCurrentBatchDataRun ? await loadPrecisionGenerationJob(base44, activeFetchJobId) : null;
+            const savedPrecisionRoutes = precisionJob ? await fetchAllSavedRoutePages((limit, skip) => (
+                base44.entities.SavedRoute.filter({ manager_id: user.id, 'metadata.precision_area.job_id': precisionJob.id }, '-created_date', limit, skip)
+            )) : [];
+            const restoreCompletedRoute = async (candidates = []) => {
+                const completed = getCompletedPrecisionRoutes(precisionJob, savedPrecisionRoutes, candidates);
+                if (!completed.length) return false;
+                const selected = await loadSavedRouteSelection(completed[0], effectivePropertiesRef.current,
+                    route => hydrateRouteForMap(route, user.email));
+                // This is an existing successful delivery, not another attempt.
+                deliveryAttempt = null;
+                setActiveRoute(selected);
+                setRoutes([]);
+                setGenerationError(null);
+                finishRouteBuild();
+                toast.success('Your completed route is ready.', { id: 'build-routes' });
+                return true;
+            };
+            if (await restoreCompletedRoute()) return true;
             const precisionCountMode = precisionJob?.dry_run_metadata?.count_mode === 'max_available' ? 'max_available' : 'fixed';
             const requestedPrecisionCount = precisionJob
                 ? Number(precisionJob.total_expected || currentBatchDataRequestedCountRef.current) || null
@@ -1802,7 +1830,8 @@ export default function Home() {
             // 2. PREPARE DATA FOR ROUTING
             // Combine current available (memoized) with newly fetched dynamic props
             // Need to apply same processing (dedup, assigned filtering) to dynamicProps
-            const assignedSet = assignedHashes; // closed over from render
+            const assignedSet = new Set([...assignedHashes, ...savedPrecisionRoutes
+                .filter(route => route.status !== 'ARCHIVED').flatMap(route => route.property_hashes || [])]);
 
             const logsByAddress = new Map();
             logs.forEach(l => {
@@ -1840,6 +1869,7 @@ export default function Home() {
             processedDynamic.forEach(p => combinedMap.set(p.address_hash, p));
 
             const initialSet = Array.from(combinedMap.values());
+            if (await restoreCompletedRoute(initialSet)) return true;
             const initialCount = initialSet.length;
             if (deliveryAttempt) {
                 deliveryAttempt.candidate_homes = initialCount;
@@ -1860,7 +1890,7 @@ export default function Home() {
                 soldDateFilter: effectiveGenerationSoldFilter,
                 ownershipRangeDays: effectiveGenerationOwnershipRangeDays,
                 ownershipRangeReferenceDate: effectiveGenerationOwnershipReferenceDate,
-                routeConfig: effectiveRouteConfig, lastPullMode, logsByAddress, assignedHashes,
+                routeConfig: effectiveRouteConfig, lastPullMode, logsByAddress, assignedHashes: assignedSet,
             });
             console.log(`[generateRoutes] Filter funnel: ${formatStageCounts(filterResult.stages)}`);
             if (deliveryAttempt) deliveryAttempt.filter_stages = [...filterResult.stages];
@@ -2508,7 +2538,7 @@ export default function Home() {
 
                 <MapDrawTool
                     mode={mode}
-                    active={drawingMode}
+                    active={mode === 'generate' && drawingMode}
                     onPointsUpdate={setActiveDraftPolygon}
                     confirmOnRelease={routeMode === 'canvas'}
                     onConfirm={(polygon) => {
@@ -2604,7 +2634,7 @@ export default function Home() {
                 setMode={setMode}
                 onRequestRouteModeChange={requestRouteModeChange}
                 onConfirmCanvasDiscard={confirmCanvasDiscard}
-                activeRoute={filteredActiveRoute}
+                activeRoute={mode === 'analyze' ? filteredActiveRoute : null}
                 setActiveRoute={setActiveRoute}
                 routesGenerating={routesGenerating}
                 setShowDashboard={setShowDashboard}
@@ -2925,7 +2955,7 @@ export default function Home() {
                     }}
                     onLoadTemplate={loadTemplate}
                     filteredRoutes={filteredRoutes}
-                    onSelectRoute={(route) => { setActiveRoute(route); setShowCompare(false); }}
+                    onSelectRoute={(route) => { setModeRaw('analyze'); setActiveRoute(route); setShowCompare(false); }}
                     onClose={() => setShowCompare(false)}
                     onForceSync={async () => {
                         if (!confirm(`Force sync properties for ${zipCodeFilter}?`)) return;
@@ -3019,7 +3049,7 @@ export default function Home() {
                         properties={effectiveProperties}
                         logs={logs}
                         routes={savedRoutes}
-                        teamMembers={teamMembers} onSelectRoute={(routeId) => { const target = hydratedSavedRoutes.find(r => r.id === routeId); if (!target) return toast.error("Route data is still loading"); setActiveRoute(target); setPreviewRoute(null); setShowDashboard(false); }}
+                        teamMembers={teamMembers} onSelectRoute={(routeId) => { const target = hydratedSavedRoutes.find(r => r.id === routeId); if (!target) return toast.error("Route data is still loading"); setModeRaw('analyze'); setActiveRoute(target); setPreviewRoute(null); setShowDashboard(false); }}
                         onClose={() => setShowDashboard(false)}
                     />
                 </React.Suspense>

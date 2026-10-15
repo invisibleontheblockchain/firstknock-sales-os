@@ -179,7 +179,7 @@ export default function TerritoryPrompt({
   const animRef = useRef(null);
   const pctHistoryRef = useRef([]);
   const targetPctRef = useRef(0);
-  const restoredCompletedJobRef = useRef(false);
+  const pollSessionRef = useRef(null);
   const pullIntentRef = useRef({});
   const routeModeRef = useRef(routeMode);
   routeModeRef.current = routeMode;
@@ -222,6 +222,7 @@ export default function TerritoryPrompt({
   useEffect(() => {
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
+      pollSessionRef.current = null;
     };
   }, []);
 
@@ -229,6 +230,7 @@ export default function TerritoryPrompt({
     if (routeMode === 'precision') return;
     if (pollRef.current) clearInterval(pollRef.current);
     pollRef.current = null;
+    pollSessionRef.current = null;
     activeJobIdRef.current = null;
     setPulling(false);
   }, [routeMode]);
@@ -279,6 +281,7 @@ export default function TerritoryPrompt({
           return;
         }
 
+        if (cancelled || pollSessionRef.current) return;
         setRecoverableJob(null);
         if (job && !cancelled && !pulling) {
           console.log('[TerritoryPrompt] Resuming running job:', job.id);
@@ -301,6 +304,7 @@ export default function TerritoryPrompt({
             routeBounds: resumedRouteBounds
           };
           await onRouteBoundsPrepared?.(resumedRouteBounds);
+          if (cancelled) return;
           rememberActivePrecisionJob(job.id);
           if (Array.isArray(job.polygon) && job.polygon.length >= 3) {
             try { localStorage.setItem('fk_drawnPolygonQueried', 'true'); } catch {}
@@ -325,8 +329,13 @@ export default function TerritoryPrompt({
     };
 
     checkRunningJobs();
-    return () => {cancelled = true;};
-  }, [routeMode, user?.email, drawnPolygon]);
+    return () => {
+      cancelled = true;
+      if (pollRef.current) clearInterval(pollRef.current);
+      pollRef.current = null;
+      pollSessionRef.current = null;
+    };
+  }, [routeMode, user?.email]);
 
   // Clear unqueried restored areas so draft polygons do not come back as ghost map areas.
   useEffect(() => {
@@ -524,7 +533,12 @@ export default function TerritoryPrompt({
 
   const startPolling = (jobId) => {
     if (routeModeRef.current !== 'precision') return;
+    // Keep the session through route saving. A resume or late response must not
+    // deliver this job again while its first completion is still being handled.
+    if (pollSessionRef.current?.jobId === jobId) return;
     if (pollRef.current) clearInterval(pollRef.current);
+    const session = { jobId, inFlight: false, terminal: false };
+    pollSessionRef.current = session;
     activeJobIdRef.current = jobId;
 
     let pollCount = 0;
@@ -533,10 +547,12 @@ export default function TerritoryPrompt({
 
     const doPoll = async () => {
       if (routeModeRef.current !== 'precision') return;
+      if (pollSessionRef.current !== session || session.inFlight || session.terminal) return;
       pollCount++;
       if (pollCount > MAX_POLLS) {
         clearInterval(pollRef.current);
         pollRef.current = null;
+        pollSessionRef.current = null;
         setPulling(false);
         toast.info("Still running in the background — come back and your data will be here!");
         return;
@@ -548,9 +564,11 @@ export default function TerritoryPrompt({
         pollRef.current = setInterval(doPoll, 5000);
       }
 
+      session.inFlight = true;
       try {
         const res = await base44.functions.invoke('fetchJobStatus', { job_id: jobId });
         if (routeModeRef.current !== 'precision') return;
+        if (pollSessionRef.current !== session) return;
         const d = res.data;
 
         if (!d) return;
@@ -605,6 +623,7 @@ export default function TerritoryPrompt({
         }
 
         if (d.status === 'completed') {
+          session.terminal = true;
           clearInterval(pollRef.current);
           pollRef.current = null;
           activeJobIdRef.current = null;
@@ -647,6 +666,7 @@ export default function TerritoryPrompt({
               last_data_pull: new Date().toISOString()
             });
           } catch (e) {console.warn('Failed to update pull status', e);}
+          if (pollSessionRef.current !== session) return;
 
           // Signal to MapToolbar that data is now available for this territory
           window.dispatchEvent(new CustomEvent('fk-territory-data-ready'));
@@ -672,6 +692,7 @@ export default function TerritoryPrompt({
             setShowCompare(false);
             routesBuilt = await onPullComplete(completedSoldMonths, isPaid, completedJobStatus) !== false;
             if (routeModeRef.current !== 'precision') return;
+            if (pollSessionRef.current !== session) return;
           } else {
             queryClient.invalidateQueries({ queryKey: ['masterProperties'] });
             queryClient.invalidateQueries({ queryKey: ['user'] });
@@ -679,12 +700,14 @@ export default function TerritoryPrompt({
             setShowRoutePanel(false);
             setShowCompare(false);
           }
-          await refetchPrecisionUsage();
           if (routesBuilt) clearActivePrecisionJob(jobId);
           setPulling(false);
+          await refetchPrecisionUsage();
         } else if (d.status === 'cancelled') {
+          session.terminal = true;
           clearInterval(pollRef.current);
           pollRef.current = null;
+          pollSessionRef.current = null;
           activeJobIdRef.current = null;
           setPulling(false);
           setEtaText('');
@@ -694,8 +717,10 @@ export default function TerritoryPrompt({
           await onRouteBoundsPrepared?.({ enabled: false });
           toast.info('Data import cancelled.');
         } else if (d.status === 'failed') {
+          session.terminal = true;
           clearInterval(pollRef.current);
           pollRef.current = null;
+          pollSessionRef.current = null;
           activeJobIdRef.current = null;
           setPulling(false);
           clearActivePrecisionJob(jobId);
@@ -706,6 +731,9 @@ export default function TerritoryPrompt({
       } catch (e) {
         // Silent — network hiccup, keep polling
         console.warn('Poll error:', e.message);
+        if (pollSessionRef.current === session && session.terminal) setPulling(false);
+      } finally {
+        session.inFlight = false;
       }
     };
 
@@ -725,6 +753,7 @@ export default function TerritoryPrompt({
     await base44.functions.invoke('cancelFetchJob', { job_id: jobId });
     if (pollRef.current) clearInterval(pollRef.current);
     pollRef.current = null;
+    pollSessionRef.current = null;
     activeJobIdRef.current = null;
     setPulling(false);
     setEtaText('');
@@ -1153,7 +1182,7 @@ export default function TerritoryPrompt({
             {/* Returning user prompt — skip straight to map, no modal blocking */}
 
             {/* Active Drawing Controls */}
-            {drawingMode &&
+            {mode === 'generate' && drawingMode &&
       <div
         className="absolute top-3 left-3 right-3 sm:top-16 sm:left-4 sm:right-auto z-[2000] animate-in slide-in-from-top-4"
         onPointerDown={stopMapTouch}

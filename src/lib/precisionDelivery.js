@@ -27,6 +27,7 @@ export async function loadPrecisionJob(client, jobId) {
         polygon: (status.polygon || []).map(point => ({ lat: point.lat, lng: point.lng })),
         dry_run_metadata: {
             count_mode: diagnostics.count_mode,
+            final_delivery: diagnostics.final_delivery || null,
             requested_properties: diagnostics.requested_properties,
             route_bounds: diagnostics.route_bounds,
             ownership_range_mode: diagnostics.ownership_range_mode ?? status.ownership_range_mode,
@@ -49,6 +50,25 @@ export function limitPrecisionCandidates(properties, { countMode, requestedCount
     const count = Math.floor(Number(requestedCount));
     if (!(count > 0) || properties.length <= count) return properties;
     return [...properties].sort((a, b) => rank(b) - rank(a)).slice(0, count);
+}
+
+// A recovered import can already have finished saving before the tab closed.
+// Only reuse this job's remote routes, with complete delivery or full candidate
+// coverage as evidence; a partial save must still build the remaining homes.
+export function getCompletedPrecisionRoutes(job, routes, candidates = []) {
+    if (!job?.id) return [];
+    const saved = routes.filter(route => route?.id && !String(route.id).startsWith('local_')
+        && route.status !== 'ARCHIVED' && route.metadata?.precision_area?.job_id === job.id
+        && route.property_hashes?.length > 0);
+    if (!saved.length) return [];
+    const hashes = new Set(saved.flatMap(route => route.property_hashes).map(String));
+    const delivery = job.dry_run_metadata?.final_delivery;
+    const generated = Number(delivery?.generated_homes_reported) || 0;
+    const verified = delivery?.status === 'completed' && generated > 0
+        && Number(delivery.saved_route_homes_verified) >= generated && hashes.size >= generated;
+    const covered = candidates.length > 0 && candidates.every(property =>
+        hashes.has(String(property.address_hash || property.id)));
+    return verified || covered ? saved : [];
 }
 
 export function precisionAreaForJob(job, generatedAt = new Date().toISOString()) {

@@ -41,7 +41,7 @@ test('opening 39 homes with only 3 cached waits for all pins and excludes other 
 test('import hands every saved pin to route opening without another network lookup', async () => {
     const saved = await savePropertyImport({ properties, fileName: 'Tampa.xlsx', routeName: 'Tampa' }, {
         user: { id: 'manager', email: 'manager@example.com' },
-        client: { entities: { SavedRoute: { create: async payload => ({ ...payload, id: route.id }) } } },
+        client: { functions: { invoke: async (_, body) => ({ data: { route: { ...body.route, id: route.id } } }) } },
         persistProperties: async batch => batch,
     });
     const selected = await loadSavedRouteSelection(saved.route, [], () => assert.fail('Imported pins should already be ready'));

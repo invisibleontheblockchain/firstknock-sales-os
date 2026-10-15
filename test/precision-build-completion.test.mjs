@@ -119,11 +119,12 @@ test('offline, rejected, and oversized saves still finish on the route map with 
     { houseCount: 10001, save: async () => assert.fail('Oversized route should not be saved') },
   ]) {
     const build = buildSandbox(options);
-    assert.equal(await build.run(), true);
+    assert.equal(await build.run(), false, 'The completed import must remain recoverable until its routes are remotely saved');
     assertFinished(build);
     assert.equal(build.state.ActiveRoute.id, 'generated-route');
     assert.equal(build.state.ActiveRoute.isSaved, false);
     assert.equal(build.state.Routes.length, 1);
+    assert.match(build.state.GenerationError, /could not be saved to your account/);
   }
 });
 
