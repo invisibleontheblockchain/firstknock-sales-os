@@ -23,7 +23,7 @@ const readyReport = () => ({ status: 'ready', attempted: 0, recovered: 0, reused
 const drivingMeasurement = (distanceMiles = 100, driveSeconds = 3000) => ({ distanceMiles, driveSeconds,
     directedLegs: [], geometry: [[-81, 35], [-80.99, 35]], graphIdentity: 'osrm-test-graph' });
 
-function endpoint({ recover, local, finalReview, verify, winner, failProvider = false, authenticated = true } = {}) {
+function endpoint({ recover, local, finalReview, verify, winner, planTier = 'door', failProvider = false, authenticated = true } = {}) {
     const calls = { events: [], recovery: [], plan: [], continuity: [], matrix: [], provider: [], local: [],
         globalReview: [], county: [], roadCosts: [], paths: [], completeVerification: [],
         sweep: 0, hierarchy: 0, candidateComparison: 0 };
@@ -51,7 +51,7 @@ function endpoint({ recover, local, finalReview, verify, winner, failProvider = 
             MAX_TIERED_ROUTE_DOORS: 2500, TIER_CLUSTER: 'cluster', TIER_DOOR: 'door', BLOCK_TIER_REFINEMENT_STEP_BUDGET: 100,
             planTieredRoadMatrix: (properties, anchors) => {
                 calls.events.push('plan'); calls.plan.push({ properties, anchors });
-                return { ok: true, tier: 'door', matrixPoints: properties, anchorsIncluded: true, blockCount: properties.length };
+                return { ok: true, tier: planTier, matrixPoints: properties, anchorsIncluded: true, blockCount: properties.length };
             },
             createTieredMatrixMetricFns: () => ({ distanceBetween: () => 1, durationBetween: () => 1,
                 unresolved: { count: 0 }, intraBlockLegCount: { count: 0 },
@@ -60,9 +60,16 @@ function endpoint({ recover, local, finalReview, verify, winner, failProvider = 
                 aerialCrossStreetLegs: 0, aerialSameStreetBlockLegs: 0 }),
         },
         '../../shared/roadHierarchySequencer.js': { HIERARCHY_REFINEMENT_STEP_BUDGET: 100,
-            sequenceRoadHierarchy: async () => { calls.hierarchy++; assert.fail('door-tier integration must not use hierarchy'); } },
+            sequenceRoadHierarchy: async properties => {
+                calls.hierarchy++;
+                assert.equal(planTier, 'cluster', 'door-tier integration must not use hierarchy');
+                return { ok: true, order: properties, telemetry: { degraded: false, degraded_cluster_reasons: [],
+                    matrix_request_count: 1, street_block_count: properties.length } };
+            } },
         '../../shared/roadPathMeasure.js': { measureRoadPath: async (properties, options) => {
-            calls.paths.push({ properties, options }); return drivingMeasurement();
+            calls.paths.push({ properties, options });
+            return planTier === 'cluster' ? { ok: true, totalMiles: 100, totalSeconds: 3000,
+                longestLegMiles: 10, legDistribution: null } : drivingMeasurement();
         } },
         '../../shared/finalNeighborhoodReview.js': { reviewFinalNeighborhoodRoute: async (properties, options) => {
             calls.events.push('global-review');
@@ -176,6 +183,7 @@ test('residual unresolved access applies only a verified local incumbent repair 
     const reviewed = calls.local[0];
     assert.deepEqual(ids(reviewed.properties), ids(properties), 'partial review must begin from the saved incumbent, never canonical/global order');
     assert.deepEqual(ids(reviewed.options.baselineOrder), ids(properties));
+    assert.equal(reviewed.options.shortDrivingCleanup, true);
     assert.equal(reviewed.properties[3].order_locked, true);
     assert.equal(reviewed.properties[6].routing_access.resolution_status, 'unresolved');
     assert.equal(calls.matrix.length, 0); assert.equal(calls.hierarchy, 0); assert.equal(calls.sweep, 0);
@@ -297,6 +305,7 @@ test('resolved routes send one county adapter through matrix, path, neighborhood
     assert.equal(calls.roadCosts[0].graphIdentity, '');
     assert.equal(calls.matrix[0].options.fetchJson, adapter.fetchJson);
     assert.equal(calls.globalReview[0].options.vehicleFetch, adapter.vehicleFetch);
+    assert.equal(calls.globalReview[0].options.shortDrivingCleanup, true);
     assert.equal(calls.completeVerification[0].options.vehicleFetch, adapter.vehicleFetch);
     assert.deepEqual(ids(calls.completeVerification[0].baselineOrder), ids(properties));
     await calls.roadCosts[0].measurePath(properties, { timeoutMs: 1234 });
@@ -306,6 +315,30 @@ test('resolved routes send one county adapter through matrix, path, neighborhood
     assert.equal(body.routing_metadata.distance_estimate, 'road_measured');
     assert.equal(body.routing_metadata.neighborhood_excursion_review.local_driving_review.validation, 'whole_route');
     assert.equal(body.routing_metadata.road_matrix_source, 'osrm:driving');
+});
+
+test('hierarchical driving review receives the bounded final cleanup flag before complete verification', async () => {
+    const { calls, invoke } = endpoint({ planTier: 'cluster' });
+    const { status, body } = await invoke(inputStops());
+    assert.equal(status, 200); assert.equal(body.success, true);
+    assert.equal(calls.hierarchy, 1); assert.equal(calls.matrix.length, 0, 'hierarchical success does not fall through to the door matrix');
+    assert.equal(calls.globalReview.length, 1);
+    assert.equal(calls.globalReview[0].options.vehicleProfile, 'driving');
+    assert.equal(calls.globalReview[0].options.shortDrivingCleanup, true);
+    assert.equal(calls.completeVerification.at(-1).options.shortDrivingCleanup, true);
+    assert.equal(body.routing_metadata.strategy, 'road_hierarchy_cluster_exact_door_matrix');
+    assert.equal(body.routing_metadata.road_path_validated, true);
+});
+
+test('walking review does not enable driving cleanup or invoke the driving verifier', async () => {
+    const { calls, invoke } = endpoint();
+    const { status, body } = await invoke(inputStops(), { profile: 'walking' });
+    assert.equal(status, 200); assert.equal(body.success, true);
+    assert.equal(calls.globalReview.length, 1);
+    assert.equal(calls.globalReview[0].options.vehicleProfile, 'walking');
+    assert.equal(calls.globalReview[0].options.shortDrivingCleanup, false);
+    assert.equal(calls.recovery.length, 0); assert.equal(calls.completeVerification.length, 0);
+    assert.equal(body.routing_metadata.road_path_validated, false);
 });
 
 test('a continuous driving gate can adopt a changed local order using measured candidate and baseline totals', async () => {

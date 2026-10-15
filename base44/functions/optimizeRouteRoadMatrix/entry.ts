@@ -45,7 +45,7 @@ import {
 
 // Bump when candidate generation or the objective changes, so a stored route can
 // be told apart from one produced by an older solver.
-const OPTIMIZER_VERSION = 'road_matrix_incumbent_neighborhood_search_v14';
+const OPTIMIZER_VERSION = 'road_matrix_short_branch_cleanup_v15';
 
 function readSecret(name) {
     try {
@@ -196,6 +196,7 @@ export default async function (req: Request): Promise<Response> {
         const neighborhoodOptions = {
             startLocation, endLocation, baselineOrder: properties,
             localDrivingReview: profile === 'driving',
+            shortDrivingCleanup: profile === 'driving',
             mailCarrierMode: profile === 'driving',
             vehicleBaseUrl,
             vehicleProfile: profile,
