@@ -289,9 +289,26 @@ async function tryRoadMatrixOptimizePass(routeProperties, {
     }
 }
 
-/** Continue only fresh, fully verified no-op checks, bounded per click and in
- * wall time. Every pass still compares against the original saved door order
- * and exact same bounds; accepting an order ends this action immediately. */
+function completeDrivingPass(meta, miles) {
+    const review = meta?.neighborhood_excursion_review?.local_driving_review;
+    const recovery = meta?.road_access_recovery;
+    return measurementMiles(miles) !== null && meta?.road_path_validated === true
+        && meta.fallback !== true && review?.validation === 'whole_route'
+        && !recovery?.unresolved?.length && recovery?.inventory_complete !== false;
+}
+
+function consistentDrivingPass(previous, meta, inputMiles) {
+    // Each pass measures its input again. Chain savings only when that
+    // measurement agrees with the last verified winner on the same road graph.
+    return measurementMiles(inputMiles) !== null
+        && Math.abs(inputMiles - previous.objective.appliedDistance) <= 0.002
+        && ['road_matrix_source', 'road_matrix_version'].every(key =>
+            (previous.routingMetadata[key] ?? null) === (meta[key] ?? null));
+}
+
+/** Continue verified improvements AND no-op checks while fresh questions remain.
+ * Every pass prices the latest accepted order under the same bounds. Keep the
+ * original click's mileage baseline and save only once after the bounded action. */
 export async function tryRoadMatrixOptimize(routeProperties, {
     searchCoverage = null, maxSearchPasses = 1,
     totalDeadlineMs = OPTIMIZE_ACTION_DEADLINE_MS, deadlineMs = ROAD_MATRIX_DEADLINE_MS,
@@ -302,10 +319,11 @@ export async function tryRoadMatrixOptimize(routeProperties, {
     const requestBudget = Number.isFinite(deadlineMs) ? Math.max(1, Math.min(ROAD_MATRIX_DEADLINE_MS, deadlineMs)) : ROAD_MATRIX_DEADLINE_MS;
     const started = Date.now();
     let coverage = normalizeRoadSearchCoverage(searchCoverage), lastReason, lastMeasurement;
+    let currentProperties = routeProperties, accepted = null, baselineMiles = null;
     for (let pass = 1; pass <= limit; pass++) {
         if (pass > 1) onProgress?.({ pass, maxPasses: limit, remainingWindows: coverage.remaining_windows });
         let reason, measurement;
-        const result = await tryRoadMatrixOptimizePass(routeProperties, { ...options, searchCoverage: coverage,
+        const result = await tryRoadMatrixOptimizePass(currentProperties, { ...options, searchCoverage: coverage,
             deadlineMs: Math.min(requestBudget, Math.max(1, budget - (Date.now() - started))),
             onOutcome: (value, details) => { reason = value; measurement = details; } });
         const meta = result?.routingMetadata || measurement?.routingMetadata;
@@ -316,19 +334,45 @@ export async function tryRoadMatrixOptimize(routeProperties, {
             delete finalMeta.road_search_coverage;
             if (returnedCoverage) finalMeta.road_search_coverage = returnedCoverage;
         }
-        if (result) return { ...result, routingMetadata: finalMeta };
         lastReason = reason;
         lastMeasurement = finalMeta ? { ...(measurement || {}), routingMetadata: finalMeta } : measurement;
-        const review = meta?.neighborhood_excursion_review?.local_driving_review;
-        const recovery = meta?.road_access_recovery;
-        const canContinue = reason === 'current_order_measured_best' && measurement?.verifiedCurrentOrder === true
-            && measurementMiles(measurement.distanceMiles) !== null && meta?.road_path_validated === true
-            && meta.fallback !== true && review?.validation === 'whole_route'
-            && !recovery?.unresolved?.length && recovery?.inventory_complete !== false
-            && returnedCoverage?.remaining_windows > 0 && returnedCoverage.progress_this_pass > 0
+        const inputMiles = result
+            ? measurementMiles(meta?.input_measured) ?? measurementMiles(meta?.continuity_measured)
+            : measurementMiles(measurement?.distanceMiles);
+        const measuredMiles = result ? result.objective.appliedDistance : measurement?.distanceMiles;
+        const verified = completeDrivingPass(meta, measuredMiles)
+            && (Boolean(result) || reason === 'current_order_measured_best' && measurement?.verifiedCurrentOrder === true);
+        if (accepted && (!verified || !consistentDrivingPass(accepted, meta, inputMiles))) {
+            // A later outage, incomplete proof or changed graph must not erase
+            // the improvement already verified during this click.
+            accepted.routingMetadata = { ...accepted.routingMetadata, road_search_passes: pass,
+                road_search_stop_reason: verified ? 'measurement_changed' : reason || 'incomplete_verification' };
+            break;
+        }
+        // Earlier no-ops still leave the original order in place. Its fresh
+        // measurement on the first accepted pass is the savings baseline.
+        if (!accepted && result && verified) baselineMiles = inputMiles;
+        if (result || accepted) {
+            accepted = {
+                ...(result || accepted),
+                ...(!result ? { order: withRecoveredAccess(currentProperties, meta) } : {}),
+                objective: verified && baselineMiles !== null
+                    ? { applyCandidate: true, appliedDistance: measuredMiles,
+                        estimatedSavings: Math.max(0, baselineMiles - measuredMiles) }
+                    : result.objective,
+                routingMetadata: { ...finalMeta,
+                    // A verified no-op measured the retained winner itself.
+                    ...(!result ? { winning_route_distance: measuredMiles } : {}),
+                    ...(baselineMiles !== null ? { road_search_baseline_distance: baselineMiles } : {}) },
+            };
+            currentProperties = accepted.order;
+        }
+        const canContinue = verified && returnedCoverage?.remaining_windows > 0
+            && (result || returnedCoverage.progress_this_pass > 0)
             && !returnedCoverage.cycle_complete && pass < limit && budget - (Date.now() - started) >= requestBudget;
         if (!canContinue) break;
     }
+    if (accepted) return accepted;
     onOutcome?.(lastReason, lastMeasurement);
     return null;
 }

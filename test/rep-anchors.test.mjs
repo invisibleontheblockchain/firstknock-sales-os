@@ -7,6 +7,8 @@ import { isValidRoutePoint, calculateRouteDistanceMiles } from '../base44/shared
 import { optimizeAnchoredStreetRoute } from '../base44/shared/routeAnchorRouting.js';
 import { normalizeRouteOriginMode, isRoundTripRouteOriginMode, routeAnchorMarkerLabels, OPTIMIZE_MODES, ROUTE_ORIGIN_MODES, resolveOptimizeMode, routeOriginModeForOptimizeMode } from '../src/lib/routeOriginModes.js';
 import { mergeAnchoredRoute } from '../src/lib/routeAnchorState.js';
+import { hasCompleteRouteMapPoints } from '../src/components/logic/routeHydrationCore.js';
+import { loadSavedRouteSelection } from '../src/components/logic/routeMapSelection.js';
 
 const read = path => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 const home = { address: '123 Private Base, Phoenix, AZ', lat: 33.45, lng: -112.075 };
@@ -227,6 +229,8 @@ test('reoptimization preserves a private anchor by default but explicit route-on
         const writes = [];
         const errors = [];
         const context = vm.createContext({
+            hasCompleteRouteMapPoints, loadSavedRouteSelection,
+            hydrateRouteForMap: () => assert.fail('anchor fixture homes are already loaded'),
             OPTIMIZE_MODES, ROUTE_ORIGIN_MODES, resolveOptimizeMode, routeOriginModeForOptimizeMode,
             isValidRoutePoint, console,
             base44: {

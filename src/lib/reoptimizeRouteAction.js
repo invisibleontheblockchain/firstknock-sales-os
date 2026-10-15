@@ -13,6 +13,9 @@
 import { toast } from 'sonner';
 
 import { base44 } from '@/api/base44Client';
+import { hydrateRouteForMap } from '@/components/logic/routeHydration';
+import { hasCompleteRouteMapPoints } from '@/components/logic/routeHydrationCore';
+import { loadSavedRouteSelection } from '@/components/logic/routeMapSelection';
 import { isValidRoutePoint } from '@/lib/routeBounds';
 import { captureParkedCarLocation, isLowAccuracyCapture, lowAccuracyConfirmationMessage } from '@/lib/parkedCarLocation';
 import { startOptimizeProgress } from '@/lib/optimizeProgressToast';
@@ -50,6 +53,7 @@ export async function reoptimizeRoute(route, options = {}, deps = {}) {
         setActiveRoute,
         confirmLowAccuracyLocation = () => true,
         previewRoadAwareBeta = null,
+        hydrateRoute = hydrateRouteForMap,
         client = base44,
     } = deps;
 
@@ -96,10 +100,15 @@ export async function reoptimizeRoute(route, options = {}, deps = {}) {
     let progress = null;
     try {
         const hashes = (route.property_hashes || (route.properties || []).map(propertyKey)).filter(Boolean);
-        const routePropsByHash = new Map([...(route.allProperties || []), ...(route.properties || [])].map(p => [propertyKey(p), p]));
-        const effectivePropsByHash = new Map(effectiveProperties.map(p => [propertyKey(p), p]));
+        if (!hashes.length) { toast.error('No properties found for this route.', { id: TOAST_ID }); return; }
+        const selectedRoute = await loadSavedRouteSelection({ ...route, property_hashes: hashes },
+            hasCompleteRouteMapPoints({ ...route, property_hashes: hashes }) ? [] : effectiveProperties,
+            selected => {
+                toast.loading('Loading homes for this route...', { id: TOAST_ID });
+                return hydrateRoute(selected, user?.email);
+            });
         const cachedAccess = route.metadata?.road_access_recovery?.access_overrides || {};
-        const routeProperties = hashes.map(hash => effectivePropsByHash.get(hash) || routePropsByHash.get(hash)).filter(Boolean)
+        const routeProperties = selectedRoute.properties
             .map(property => cachedAccess[propertyKey(property)]
                 ? { ...property, routing_access: cachedAccess[propertyKey(property)] } : property);
         if (routeProperties.length === 0) { toast.error('No properties found for this route.', { id: TOAST_ID }); return; }

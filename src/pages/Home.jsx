@@ -2206,16 +2206,14 @@ export default function Home() {
     // see lib/reoptimizeRouteAction.js. Options are either { mode } / { fromHome }
     // or { anchors: { start, end } } (anchors: null clears them).
     const handleReoptimizeRoute = useCallback((route, options = {}) => {
-        if (!territoryActionsReady) {
-            toast.info('Territory homes and door history are still loading.');
-            return Promise.resolve(null);
-        }
+        // Reordering a saved manifest needs only that route's homes. Territory
+        // inventory/history readiness still guards generation and bulk reorder.
         return reoptimizeRoute(route, options, {
             user, teamMembers, effectiveProperties, mapRef, queryClient, activeRoute, setActiveRoute,
             confirmLowAccuracyLocation,
             previewRoadAwareBeta: previewSavedRoadAwareBeta,
         });
-    }, [territoryActionsReady, activeRoute, confirmLowAccuracyLocation, effectiveProperties, queryClient, teamMembers, user]);
+    }, [activeRoute, confirmLowAccuracyLocation, effectiveProperties, queryClient, teamMembers, user]);
 
     // Filter and sort routes
     const filteredRoutes = useMemo(() => {
