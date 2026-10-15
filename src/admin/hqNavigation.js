@@ -12,6 +12,11 @@ export const HQ_SECTION_IDS = Object.freeze([
 
 export const DEFAULT_HQ_SECTION = 'field';
 
+export function isHqPath(pathname = '') {
+  const path = String(pathname).replace(/\/+$/, '').toLowerCase();
+  return path === '/hq' || path === '/hq/index.html';
+}
+
 export function sectionFromHash(hash = '') {
   const candidate = String(hash).replace(/^#/, '').trim().toLowerCase();
   return HQ_SECTION_IDS.includes(candidate) ? candidate : DEFAULT_HQ_SECTION;
