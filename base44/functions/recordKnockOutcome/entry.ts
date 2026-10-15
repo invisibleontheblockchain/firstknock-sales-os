@@ -36,9 +36,9 @@ var PRECISION_GRANTS_BY_EMAIL_DOMAIN = /* @__PURE__ */ new Map([
   ["nativepestmanagement.com", 1e3]
 ]);
 function emailDomain(email) {
-  const normalized4 = normalizeAccountEmail(email);
-  const at = normalized4.lastIndexOf("@");
-  return at > 0 && at < normalized4.length - 1 ? normalized4.slice(at + 1) : "";
+  const normalized5 = normalizeAccountEmail(email);
+  const at = normalized5.lastIndexOf("@");
+  return at > 0 && at < normalized5.length - 1 ? normalized5.slice(at + 1) : "";
 }
 function usableLimit(value) {
   return Number.isSafeInteger(value) && value > 0 ? value : null;
@@ -158,14 +158,71 @@ async function verifyCompanySeatAllocation(base44, billingUser, teamMember, seat
   };
 }
 
+// base44/shared/teamMembershipLifecycle.js
+var normalized2 = (value) => String(value || "").trim().toLowerCase();
+var identifier2 = (value) => String(value || "").trim();
+function isActiveTeamRep(member) {
+  return normalized2(member?.role) === "rep" && normalized2(member?.status) === "active";
+}
+async function loadAllTeamRows(entity, query, { sort = "-created_date", pageSize = 100, maxPages = 100 } = {}) {
+  const rows = /* @__PURE__ */ new Map();
+  const pages = /* @__PURE__ */ new Set();
+  for (let pageIndex = 0; pageIndex < maxPages; pageIndex += 1) {
+    const response = await entity.filter(query, sort, pageSize, pageIndex * pageSize);
+    const page = Array.isArray(response) ? response : response?.items;
+    if (!Array.isArray(page)) throw new Error("The team membership response could not be verified.");
+    for (const row of page) if (row?.id) rows.set(String(row.id), row);
+    if (page.length < pageSize) return [...rows.values()];
+    const signature = JSON.stringify(page.map((row) => String(row?.id || "")));
+    if (pages.has(signature)) throw new Error("The team membership lookup repeated a page. Please retry.");
+    pages.add(signature);
+  }
+  throw new Error("The team membership lookup exceeded its verification limit.");
+}
+function chronologicalMemberOrder(left, right) {
+  const leftTime = Date.parse(left?.created_date);
+  const rightTime = Date.parse(right?.created_date);
+  if (Number.isFinite(leftTime) && Number.isFinite(rightTime) && leftTime !== rightTime) return leftTime - rightTime;
+  if (Number.isFinite(leftTime) !== Number.isFinite(rightTime)) return Number.isFinite(leftTime) ? -1 : 1;
+  const leftId = identifier2(left?.id);
+  const rightId = identifier2(right?.id);
+  return leftId < rightId ? -1 : leftId > rightId ? 1 : 0;
+}
+function selectCanonicalTeamMember(rows, user, {
+  managerId,
+  memberId = "",
+  allowUnlinked = false,
+  includeInactive = false
+} = {}) {
+  const userId = identifier2(user?.id);
+  const email = normalized2(user?.email);
+  const expectedManager = identifier2(managerId);
+  if (!userId || !email || !expectedManager) return null;
+  const matching = rows.filter((member) => {
+    const linkedUser = identifier2(member?.user_id);
+    const status = normalized2(member?.status);
+    return identifier2(member?.id) && identifier2(member?.manager_id) === expectedManager && normalized2(member?.role) === "rep" && normalized2(member?.email) === email && (status === "active" || includeInactive && status === "inactive") && (linkedUser === userId || allowUnlinked && !linkedUser);
+  });
+  matching.sort((left, right) => {
+    const activeDifference = Number(isActiveTeamRep(right)) - Number(isActiveTeamRep(left));
+    if (activeDifference) return activeDifference;
+    const linkedDifference = Number(identifier2(right.user_id) === userId) - Number(identifier2(left.user_id) === userId);
+    if (linkedDifference) return linkedDifference;
+    const cachedDifference = Number(identifier2(right.id) === identifier2(memberId)) - Number(identifier2(left.id) === identifier2(memberId));
+    return cachedDifference || chronologicalMemberOrder(left, right);
+  });
+  return matching[0] || null;
+}
+
 // base44/shared/companySeatAccess.js
 var COMPANY_SEAT_GRANTS_BY_MANAGER_ID = /* @__PURE__ */ new Map([
   // Kevin Kussmaul / Flotilla: 13 company-paid rep seats, billed outside Stripe.
   ["6abaa09e961945efded82229", 13]
 ]);
-var normalized2 = (value) => String(value || "").trim().toLowerCase();
-var asArray2 = (value) => Array.isArray(value) ? value : value?.items || [];
-var isActiveRep2 = (member) => normalized2(member?.role || "rep") === "rep" && normalized2(member?.status || "active") === "active";
+var normalized3 = (value) => String(value || "").trim().toLowerCase();
+function isCompanyManager(user) {
+  return user?.is_owner === true || ["manager", "admin"].includes(normalized3(user?.app_role || user?.data?.app_role)) || ["manager", "admin"].includes(normalized3(user?.role || user?.data?.role));
+}
 function membershipRequired() {
   return Object.assign(new Error("Your company membership needs to be verified. Ask your manager to check your team access."), {
     status: 403,
@@ -174,7 +231,7 @@ function membershipRequired() {
 }
 async function resolveOutcomeBillingContext(base44, authenticatedUser) {
   const actor = await base44.asServiceRole.entities.User.get(authenticatedUser.id).catch(() => null);
-  if (!actor || normalized2(actor.email) !== normalized2(authenticatedUser.email)) {
+  if (!actor || normalized3(actor.email) !== normalized3(authenticatedUser.email)) {
     throw Object.assign(new Error("The authenticated account could not be verified."), {
       status: 401,
       code: "invalid_authenticated_user"
@@ -183,39 +240,51 @@ async function resolveOutcomeBillingContext(base44, authenticatedUser) {
   const personalContext = { actor, billingUser: actor, managerId: actor.id, teamMember: null };
   let managerId = String(actor.team_manager_id || actor.data?.team_manager_id || "").trim();
   const memberId = String(actor.team_member_id || actor.data?.team_member_id || "").trim();
-  const appRole = normalized2(actor.app_role || actor.data?.app_role);
+  const appRole = normalized3(actor.app_role || actor.data?.app_role);
   const teamAccount = appRole === "rep" || !!memberId && !["manager", "admin"].includes(appRole);
   if (managerId === String(actor.id)) {
     if (teamAccount) throw membershipRequired();
     return personalContext;
   }
-  if (!managerId && !teamAccount) return personalContext;
-  const memberships = [];
-  for (let skip = 0; ; skip += 100) {
-    const page = asArray2(await base44.asServiceRole.entities.TeamMember.filter({
-      user_id: actor.id,
-      ...managerId ? { manager_id: managerId } : {}
-    }, "-updated_date", 100, skip));
-    memberships.push(...page);
-    if (page.length < 100) break;
-  }
+  if (!managerId && !teamAccount && (actor.is_owner === true || normalized3(actor.role) === "admin")) return personalContext;
+  const memberships = await loadAllTeamRows(base44.asServiceRole.entities.TeamMember, {
+    user_id: actor.id,
+    ...managerId ? { manager_id: managerId } : {}
+  }, { sort: "-updated_date" });
   const verified = memberships.filter(
-    (member) => String(member?.user_id || "") === String(actor.id) && !!member?.manager_id && (!managerId || String(member.manager_id) === managerId) && normalized2(member?.email) === normalized2(actor.email) && isActiveRep2(member)
+    (member) => String(member?.user_id || "") === String(actor.id) && !!member?.manager_id && (!managerId || String(member.manager_id) === managerId) && normalized3(member?.email) === normalized3(actor.email) && String(member.manager_id) !== String(actor.id) && isActiveTeamRep(member)
   );
   if (!managerId) {
     const managerIds = [...new Set(verified.map((member) => String(member.manager_id)))];
+    if (!managerIds.length && !teamAccount) return personalContext;
     if (managerIds.length !== 1) throw membershipRequired();
     managerId = managerIds[0];
   }
-  const teamMember = verified.find((member) => String(member.id) === memberId) || verified[0];
+  const teamMember = selectCanonicalTeamMember(verified, actor, { managerId, memberId });
   if (!teamMember) throw membershipRequired();
   const billingUser = await base44.asServiceRole.entities.User.get(managerId).catch(() => null);
-  if (!billingUser) throw membershipRequired();
+  if (!billingUser || !isCompanyManager(billingUser)) throw membershipRequired();
   return { actor, billingUser, managerId, teamMember };
 }
+async function teamDecisionAccess(base44, billingUser, teamMember) {
+  if (!isCompanyManager(billingUser)) return null;
+  const managerId = String(billingUser.id || "");
+  if (teamMember) {
+    if (!isActiveTeamRep(teamMember) || String(teamMember.manager_id || "") !== managerId || !teamMember.user_id || !teamMember.email) return null;
+    return {
+      source: "active_team_membership",
+      manager_id: managerId,
+      team_member_id: teamMember.id,
+      billing_managed_by_company: true
+    };
+  }
+  const roster = await loadAllTeamRows(base44.asServiceRole.entities.TeamMember, { manager_id: managerId });
+  if (!roster.some((member) => String(member.manager_id || "") === managerId && isActiveTeamRep(member) && String(member.user_id || "") !== managerId && !!member.email)) return null;
+  return { source: "company_workspace", manager_id: managerId, billing_managed_by_company: true };
+}
 async function companySeatAccess(base44, billingUser, teamMember, encodedGrants) {
-  const appRole = normalized2(billingUser?.app_role || billingUser?.data?.app_role);
-  const role = normalized2(billingUser?.role || billingUser?.data?.role);
+  const appRole = normalized3(billingUser?.app_role || billingUser?.data?.app_role);
+  const role = normalized3(billingUser?.role || billingUser?.data?.role);
   if (!(billingUser?.is_owner === true || ["manager", "admin"].includes(appRole) || ["manager", "admin"].includes(role))) return null;
   const configured = resolveConfiguredCompanySeatGrant(billingUser, encodedGrants);
   if (configured.present) {
@@ -229,7 +298,7 @@ async function companySeatAccess(base44, billingUser, teamMember, encodedGrants)
   }
   const grantedSeats = COMPANY_SEAT_GRANTS_BY_MANAGER_ID.get(String(billingUser?.id || ""));
   const allocatedSeats = billingUser?.total_seats;
-  if (!Number.isSafeInteger(grantedSeats) || grantedSeats < 1 || !Number.isSafeInteger(allocatedSeats) || allocatedSeats < 1 || normalized2(billingUser?.subscription_status) !== "active") return null;
+  if (!Number.isSafeInteger(grantedSeats) || grantedSeats < 1 || !Number.isSafeInteger(allocatedSeats) || allocatedSeats < 1 || normalized3(billingUser?.subscription_status) !== "active") return null;
   return verifyCompanySeatAllocation(base44, billingUser, teamMember, Math.min(grantedSeats, allocatedSeats));
 }
 
@@ -269,7 +338,7 @@ async function loadOwnedKnockSubscriptions(stripe2, billingUser) {
   if (!userId) throw new Error("A billing account is required to verify subscriptions.");
   const candidates = /* @__PURE__ */ new Map();
   const rememberOwned = (subscription) => {
-    if (subscription?.id && String(subscription?.metadata?.base44_user_id || "") === userId) {
+    if (subscription?.id && !candidates.has(subscription.id) && String(subscription?.metadata?.base44_user_id || "") === userId) {
       candidates.set(subscription.id, subscription);
     }
   };
@@ -410,7 +479,8 @@ async function findCurrentPaidKnockSubscription(stripe2, billingUser, subscripti
 }
 
 // base44/functions/recordKnockOutcome/entry.ts
-var stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY") || "");
+var stripeSecret = Deno.env.get("STRIPE_SECRET_KEY");
+var stripe = stripeSecret ? new Stripe(stripeSecret) : null;
 var CARD_REQUIRED_AFTER = 25;
 var FREE_OUTCOME_LIMIT = 50;
 var OUTCOME_LEASE_MS = 3e4;
@@ -455,10 +525,10 @@ var HttpError = class extends Error {
     this.details = details;
   }
 };
-function asArray3(value) {
+function asArray2(value) {
   return Array.isArray(value) ? value : Array.isArray(value?.items) ? value.items : [];
 }
-function normalized3(value) {
+function normalized4(value) {
   return String(value || "").trim().toLowerCase();
 }
 function requiredString(value, field, maxLength = 256) {
@@ -522,7 +592,7 @@ function boundedServerString(value, maxLength) {
   return result ? result.slice(0, maxLength) : null;
 }
 function isAdminActor(user) {
-  return normalized3(user?.role || user?.data?.role) === "admin";
+  return normalized4(user?.role || user?.data?.role) === "admin";
 }
 function idempotencyKey(value, maxLength = 128) {
   const result = requiredString(value, "idempotency_key", maxLength);
@@ -595,7 +665,7 @@ async function resolveActorAndBillingUser(base44, authenticatedUser) {
   return await resolveOutcomeBillingContext(base44, authenticatedUser);
 }
 function isPrivilegedBillingAccount(user) {
-  const role = normalized3(user?.role || user?.data?.role);
+  const role = normalized4(user?.role || user?.data?.role);
   return user?.is_owner === true || role === "admin" || isKnockGateExempt(user);
 }
 function customerBelongsToUser(customer, user) {
@@ -641,7 +711,7 @@ async function resolveCanonicalCustomer(user, subscriptions, paidSubscription) {
   }
   return owned[0] || null;
 }
-async function liveBillingEvidence(base44, billingUser, verifyPersonalCard = true) {
+async function liveBillingEvidence(base44, billingUser) {
   if (!Deno.env.get("STRIPE_SECRET_KEY")) {
     throw new HttpError(
       503,
@@ -660,7 +730,6 @@ async function liveBillingEvidence(base44, billingUser, verifyPersonalCard = tru
         subscription: paidEvidence.subscription
       };
     }
-    if (!verifyPersonalCard) return { paid: false, hasCard: false, subscription: null };
     const customer = await resolveCanonicalCustomer(
       billingUser,
       subscriptions,
@@ -735,7 +804,7 @@ async function loadVisibleRoute(base44, actor, managerId, routeId) {
     throw new HttpError(403, "route_access_denied", "This route is not available to the authenticated account.");
   }
   const routeManagerId = String(route.manager_id || "").trim();
-  const belongsToActor = normalized3(route.created_by) === normalized3(actor.email);
+  const belongsToActor = normalized4(route.created_by) === normalized4(actor.email);
   if (routeManagerId && routeManagerId !== String(managerId) && !belongsToActor && !isAdminActor(actor)) {
     throw new HttpError(403, "route_tenant_mismatch", "This route belongs to a different workspace.");
   }
@@ -765,13 +834,13 @@ async function verifyHashesOnRoute(base44, route, requestedHashes) {
       }
     }
   };
-  remember(asArray3(await base44.asServiceRole.entities.MasterProperty.filter({
+  remember(asArray2(await base44.asServiceRole.entities.MasterProperty.filter({
     address_hash: missing
   }, "-updated_date", Math.min(500, missing.length))));
-  remember(asArray3(await base44.asServiceRole.entities.MasterProperty.filter({
+  remember(asArray2(await base44.asServiceRole.entities.MasterProperty.filter({
     legacy_hash: missing
   }, "-updated_date", Math.min(500, missing.length))));
-  remember(asArray3(await base44.asServiceRole.entities.MasterProperty.filter({
+  remember(asArray2(await base44.asServiceRole.entities.MasterProperty.filter({
     id: missing
   }, "-updated_date", Math.min(500, missing.length))));
   const unauthorized = missing.filter((hash) => {
@@ -805,7 +874,7 @@ function saleIdentitySnapshot(actor, teamMember, route) {
 }
 async function currentProtectedCount(base44, actor) {
   let count = Math.max(0, Math.floor(Number(actor.outcomes_logged || 0)));
-  const latest = asArray3(await base44.asServiceRole.entities.InteractionLog.filter({
+  const latest = asArray2(await base44.asServiceRole.entities.InteractionLog.filter({
     logged_by_user_id: actor.id,
     counts_toward_free_limit: true
   }, "-outcome_sequence", 1));
@@ -815,7 +884,7 @@ async function currentProtectedCount(base44, actor) {
     let legacyCount = 0;
     const pageSize = 500;
     for (let skip = 0; skip < 1e4 && legacyCount < FREE_OUTCOME_LIMIT; skip += pageSize) {
-      const page = asArray3(await base44.asServiceRole.entities.InteractionLog.filter({
+      const page = asArray2(await base44.asServiceRole.entities.InteractionLog.filter({
         created_by: actor.email
       }, "-created_date", pageSize, skip));
       legacyCount += page.filter(
@@ -843,7 +912,7 @@ async function syncProtectedCount(base44, actorId, lease, count, reconciledAt) {
   });
 }
 async function existingIdempotentLog(base44, actorId, key) {
-  const rows = asArray3(await base44.asServiceRole.entities.InteractionLog.filter({
+  const rows = asArray2(await base44.asServiceRole.entities.InteractionLog.filter({
     logged_by_user_id: actorId,
     idempotency_key: key
   }, "-created_date", 2));
@@ -856,6 +925,15 @@ async function enforceGate(base44, billingUser, count, teamMember = null) {
   if (isPrivilegedBillingAccount(billingUser)) {
     return { privileged: true, paid: true, hasCard: true };
   }
+  const teamAccess = await teamDecisionAccess(base44, billingUser, teamMember);
+  if (teamAccess) return { privileged: false, paid: false, hasCard: false, teamAccess };
+  if (teamMember) {
+    throw new HttpError(
+      403,
+      "team_membership_required",
+      "Your active company membership could not be verified. Ask your manager to check team access."
+    );
+  }
   if (count < CARD_REQUIRED_AFTER) {
     return { privileged: false, paid: false, hasCard: false };
   }
@@ -863,32 +941,7 @@ async function enforceGate(base44, billingUser, count, teamMember = null) {
   if (companySeats) {
     return { privileged: false, paid: true, hasCard: false, companySeats };
   }
-  const evidence = await liveBillingEvidence(base44, billingUser, !teamMember);
-  if (teamMember) {
-    const seatLimit = evidence.paid ? paidKnockSeatCount(evidence.subscription) : null;
-    if (evidence.paid && seatLimit === null) {
-      throw new HttpError(
-        503,
-        "billing_verification_unavailable",
-        "Your company seat allocation could not be verified. Ask your manager to review team access."
-      );
-    }
-    const paidSeats = seatLimit === null ? null : await verifyCompanySeatAllocation(
-      base44,
-      billingUser,
-      teamMember,
-      seatLimit,
-      "company_subscription"
-    );
-    if (!paidSeats) {
-      throw new HttpError(
-        403,
-        "team_seat_access_required",
-        "Your team needs active seat access. Ask your manager to review the company subscription."
-      );
-    }
-    return { privileged: false, ...evidence, companySeats: paidSeats };
-  }
+  const evidence = await liveBillingEvidence(base44, billingUser);
   if (count >= FREE_OUTCOME_LIMIT && !evidence.paid) {
     throw new HttpError(
       402,
@@ -952,7 +1005,7 @@ async function recordOne(base44, authenticatedUser, body, clearDecision = false)
       };
     }
     if (countsTowardLimit) {
-      const recent = asArray3(await base44.asServiceRole.entities.InteractionLog.filter({
+      const recent = asArray2(await base44.asServiceRole.entities.InteractionLog.filter({
         logged_by_user_id: actor.id,
         address_hash: interaction.address_hash,
         source: "knock_mode"
@@ -1080,7 +1133,7 @@ async function importHistory(base44, authenticatedUser, body) {
     });
   }
   const keys = prepared.map((item) => item.idempotency_key);
-  const existing = asArray3(await base44.asServiceRole.entities.InteractionLog.filter({
+  const existing = asArray2(await base44.asServiceRole.entities.InteractionLog.filter({
     logged_by_user_id: actor.id,
     idempotency_key: keys
   }, "-created_date", prepared.length));
@@ -1137,7 +1190,7 @@ function workflowRequest(body) {
 }
 function verifyWorkflowRouteOwner(actor, managerId, teamMember, route) {
   const assignedTo = String(route?.assigned_to || "").trim();
-  const actorOwnsRoute = normalized3(route?.created_by) === normalized3(actor.email) || String(route?.manager_id || "") === String(actor.id);
+  const actorOwnsRoute = normalized4(route?.created_by) === normalized4(actor.email) || String(route?.manager_id || "") === String(actor.id);
   const assignedToActor = [actor.id, teamMember?.id].filter(Boolean).map(String).includes(assignedTo);
   if (!actorOwnsRoute && !assignedToActor && !isAdminActor(actor)) {
     throw new HttpError(
@@ -1149,7 +1202,7 @@ function verifyWorkflowRouteOwner(actor, managerId, teamMember, route) {
   if (String(route?.manager_id || "").trim() && String(route.manager_id) !== String(managerId) && !isAdminActor(actor)) {
     throw new HttpError(403, "route_tenant_mismatch", "This route belongs to a different workspace.");
   }
-  if (normalized3(route?.status) === "archived") {
+  if (normalized4(route?.status) === "archived") {
     throw new HttpError(409, "route_archived", "Archived routes are read-only.");
   }
 }
@@ -1168,7 +1221,7 @@ async function workflowTransition(base44, authenticatedUser, body) {
   let lease = null;
   try {
     lease = await acquireOutcomeLease(base44, actor.id);
-    const existing = asArray3(await base44.asServiceRole.entities.InteractionLog.filter({
+    const existing = asArray2(await base44.asServiceRole.entities.InteractionLog.filter({
       logged_by_user_id: actor.id,
       idempotency_key: request.key
     }, "-created_date", 501));
@@ -1211,7 +1264,7 @@ async function workflowTransition(base44, authenticatedUser, body) {
       source: "workflow_transition"
     }));
     const bulkResult = missingRows.length > 0 ? await base44.asServiceRole.entities.InteractionLog.bulkCreate(missingRows) : [];
-    const created = asArray3(bulkResult);
+    const created = asArray2(bulkResult);
     return {
       success: true,
       reused: missingRows.length === 0,
@@ -1238,7 +1291,7 @@ async function saveHouseNote(base44, authenticatedUser, body) {
       address_hash: addressHash
     });
   }
-  const existing = asArray3(await base44.asServiceRole.entities.InteractionLog.filter({
+  const existing = asArray2(await base44.asServiceRole.entities.InteractionLog.filter({
     address_hash: addressHash,
     manager_id: managerId,
     source: "house_note"
@@ -1291,7 +1344,7 @@ async function editSale(base44, authenticatedUser, body) {
   if (!existing) {
     throw new HttpError(404, "interaction_not_found", "The sale interaction was not found.");
   }
-  const isCreator = String(existing.logged_by_user_id || "") === String(actor.id) || normalized3(existing.created_by) === normalized3(actor.email);
+  const isCreator = String(existing.logged_by_user_id || "") === String(actor.id) || normalized4(existing.created_by) === normalized4(actor.email);
   const isExactTenantManager = String(managerId) === String(actor.id) && String(existing.manager_id || "") === String(actor.id);
   if (!isCreator && !isExactTenantManager && !isAdminActor(actor)) {
     throw new HttpError(403, "sale_edit_denied", "This sale is outside the authenticated account scope.");
