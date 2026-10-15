@@ -221,7 +221,19 @@ test('Home always mounts the map while territory loads and keeps history-depende
 test('generation and reorder do not use the incomplete bootstrap inventory', async () => {
     assert.equal(await callback('generateRoutes', { territoryActionsReady: false })(), false);
     assert.equal(await callback('handleReorder', { territoryActionsReady: false })(), false);
-    assert.equal(await callback('handleReoptimizeRoute', { territoryActionsReady: false })({}, {}), null);
+});
+
+test('single-route Optimize starts while territory homes and account history are still loading', async () => {
+    const route = { id: 'selected', property_hashes: ['door-1'], properties: [property] };
+    const options = { mode: 'route_only' }, calls = [];
+    const bindings = { territoryActionsReady: false, territoryOverviewReady: false, logsReady: false,
+        user: { id: 'manager' }, teamMembers: [], effectiveProperties: [], mapRef: null, queryClient: null,
+        activeRoute: route, setActiveRoute() {}, confirmLowAccuracyLocation() {}, previewSavedRoadAwareBeta: null,
+        reoptimizeRoute: async (...args) => { calls.push(args); return 'optimized'; } };
+    assert.equal(await callback('handleReoptimizeRoute', bindings)(route, options), 'optimized');
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0][0], route);
+    assert.equal(calls[0][1], options);
 });
 
 test('manager outcomes wait for account, checklist and selected-property history', async () => {

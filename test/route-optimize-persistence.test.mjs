@@ -191,6 +191,66 @@ test('a map display filter does not omit stops from route-only optimization', as
     assert.equal(messages.some(message => message.type === 'error'), false);
 });
 
+test('a complete selected route optimizes without reading the territory inventory or loading other routes', async () => {
+    messages.length = 0;
+    let calls = 0, saved;
+    const unrelatedInventory = new Proxy([], { get(target, key) {
+        if (key === 'map' || key === Symbol.iterator) assert.fail('complete route must not scan territory homes');
+        return Reflect.get(target, key);
+    } });
+    await optimize(route, { mode: 'route_only' }, {
+        effectiveProperties: unrelatedInventory,
+        hydrateRoute: () => assert.fail('complete route must not queue hydration'),
+        client: { functions: { invoke: async (name, payload) => {
+            calls++;
+            assert.equal(name, 'optimizeRouteRoadMatrix');
+            assert.deepEqual(payload.properties.map(hash), originalHashes);
+            return { data: { success: true, selected: 'road_aware', order: candidateHashes,
+                routing_metadata: { input_measured: 10, winning_route_distance: 8 } } };
+        } }, entities: { SavedRoute: { update: async (_id, patch) => { saved = { ...route, ...patch }; return saved; } } } },
+    });
+    assert.equal(calls, 1);
+    assert.deepEqual(saved.property_hashes, candidateHashes);
+    assert.equal(messages.some(message => message.type === 'error'), false);
+});
+
+test('missing selected-route homes load on demand before Optimize without waiting for account history', async () => {
+    messages.length = 0;
+    const partial = { ...route, properties: properties.slice(0, 1), allProperties: [] };
+    const requests = [];
+    let saved;
+    await optimize(partial, { mode: 'route_only' }, {
+        user: { email: 'manager@example.test' },
+        effectiveProperties: [],
+        hydrateRoute: async (selected, email) => {
+            requests.push('selected-route');
+            assert.equal(email, 'manager@example.test');
+            assert.equal(selected.id, route.id);
+            assert.deepEqual(selected.property_hashes, originalHashes);
+            return route;
+        },
+        client: { functions: { invoke: async (name, payload) => {
+            requests.push(name);
+            assert.deepEqual(payload.properties.map(hash), originalHashes);
+            return { data: { success: true, selected: 'road_aware', order: candidateHashes,
+                routing_metadata: { input_measured: 10, winning_route_distance: 8 } } };
+        } }, entities: { SavedRoute: { update: async (_id, patch) => { saved = { ...route, ...patch }; return saved; } } } },
+    });
+    assert.deepEqual(requests, ['selected-route', 'optimizeRouteRoadMatrix']);
+    assert.deepEqual(saved.property_hashes, candidateHashes);
+});
+
+test('an incomplete selected-route lookup cannot optimize or save a smaller route', async () => {
+    messages.length = 0;
+    const partial = { ...route, properties: properties.slice(0, 1), allProperties: [] };
+    await optimize(partial, { mode: 'route_only' }, {
+        hydrateRoute: async () => partial,
+        client: { functions: { invoke: () => assert.fail('incomplete route cannot be optimized') },
+            entities: { SavedRoute: { update: () => assert.fail('incomplete route cannot be saved') } } },
+    });
+    assert.ok(messages.some(message => message.type === 'error' && /route homes could not be loaded/.test(message.message)));
+});
+
 const fullReview = { applied: false, planned: 1, checked: 1, skipped: [], budgetExhausted: false, validation: 'whole_route' };
 const recoveredAccess = { resolution_status: 'resolved', confidence: 'medium', source: 'address_geocode_recovery',
     point: { lat: properties[0].lat + 0.0002, lng: properties[0].lng + 0.0002 },

@@ -6,6 +6,8 @@ import ts from 'typescript';
 import * as outcomes from '../src/lib/routeOptimizationOutcome.js';
 import * as origins from '../src/lib/routeOriginModes.js';
 import * as bounds from '../src/lib/routeBounds.js';
+import * as hydrationCore from '../src/components/logic/routeHydrationCore.js';
+import * as routeSelection from '../src/components/logic/routeMapSelection.js';
 
 const updates = {};
 vm.runInNewContext(ts.transpileModule(fs.readFileSync(new URL('../src/lib/routeOptimizeUpdate.js', import.meta.url), 'utf8'), {
@@ -459,6 +461,9 @@ function actionHarness(reason, measurement) {
     const noFallback = () => assert.fail('a verified route must not be reordered by a failed-attempt fallback');
     const modules = {
         sonner: { toast }, '@/api/base44Client': { base44: client },
+        '@/components/logic/routeHydration': { hydrateRouteForMap: () => assert.fail('fixture homes are already loaded') },
+        '@/components/logic/routeHydrationCore': hydrationCore,
+        '@/components/logic/routeMapSelection': routeSelection,
         '@/components/logic/routeOptimizer': { optimizeRouteByStreetSweep: noFallback },
         '@/components/logic/routeRoadContext': { createRouteRoadContext: noFallback, buildPersistedRoadRoutingMetadata: noFallback },
         '@/lib/routeBounds': bounds, '@/lib/parkedCarLocation': {},
