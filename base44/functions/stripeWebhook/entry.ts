@@ -407,8 +407,18 @@ async function recordPrecisionCreditPack(base44, userId, session) {
 }
 async function syncInviteCode(base44, userId, totalSeats) {
   try {
-    const existingCodes = await base44.asServiceRole.entities.InviteCode.filter({ linked_user_id: userId });
-    const items2 = Array.isArray(existingCodes) ? existingCodes : existingCodes?.items || [];
+    const items2 = [];
+    for (let skip = 0; ; skip += 100) {
+      const existingCodes = await base44.asServiceRole.entities.InviteCode.filter(
+        { linked_user_id: userId },
+        "created_date",
+        100,
+        skip
+      );
+      const page = Array.isArray(existingCodes) ? existingCodes : existingCodes?.items || [];
+      items2.push(...page.filter((code) => code.is_active !== false && normalizeSubscriptionTier(code.role || "rep") === "rep"));
+      if (page.length < 100) break;
+    }
     if (items2.length > 0) {
       await Promise.all(items2.map((code) => base44.asServiceRole.entities.InviteCode.update(code.id, {
         max_uses: totalSeats,
