@@ -544,8 +544,7 @@ function SavedRoutesLayer({
             && Number(p.lng) >= viewBox.west && Number(p.lng) <= viewBox.east
         );
 
-        // Only show saved route overlays in Routes mode. Builder/draw mode stays visually clean,
-        // while selecting an individual route still shows it through ActiveRouteLayer.
+        // Saved overviews and the separate ActiveRouteLayer both belong to Routes mode.
         const activeRouteHasMapPoints = activeRoute?.properties?.some(isRenderableMapPoint);
         const routesVisible = !activeRouteHasMapPoints && mode === 'analyze';
 
@@ -746,7 +745,7 @@ const ManagerMapLayers = React.memo(function ManagerMapLayers({
                 setActiveRoute={setActiveRoute}
             />
 
-            {/* Builder mode stays clean: generated route overviews are hidden until a specific route is selected. */}
+            {/* Route selection and previews belong exclusively to Routes mode. */}
 
             {/* HEATMAP LAYER (Only at Zoom >= 10) */}
             {viewMode === 'heatmap' && zoomLevel >= 10 && heatmapData.map(cell => (
@@ -843,7 +842,7 @@ const ManagerMapLayers = React.memo(function ManagerMapLayers({
             />
 
             {/* Preview Route (hover/tap from list) */}
-            {previewRoute && !activeRoute && (
+            {mode === 'analyze' && previewRoute && !activeRoute && (
                 previewRoute.metadata?.routing?.road_aware_routing_beta
                 ? (verifiedBetaSegments(previewRoute.metadata, previewRoute.property_hashes || previewRoute.properties, previewRoute.properties) || []).map((points, i) =>
                     <Polyline key={i} positions={points.map(p => [Number(p.lat), Number(p.lng)])}
@@ -857,7 +856,7 @@ const ManagerMapLayers = React.memo(function ManagerMapLayers({
             )}
 
             {/* Active Route - Mail Carrier Style (Canvas-optimized) */}
-            {activeRoute && (
+            {mode === 'analyze' && activeRoute && (
                 <ActiveRouteLayer
                     activeRoute={activeRoute}
                     BRAND={BRAND}

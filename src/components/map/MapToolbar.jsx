@@ -450,16 +450,13 @@ export default function MapToolbar({
                         </button>
                         <button
               onClick={() => {
-                if (activeRoute) {
-                  toast.error("Close the active route first");
-                  return;
-                }
                 if (!allowCanvasDiscard('Closing the Canvas planner')) return;
+                setActiveRoute(null);
                 setMode('generate');
                 setShowRoutePanel(false);
                 setShowCompare(false);
               }}
-              className={`px-2.5 py-2 sm:px-4 sm:py-2.5 rounded-lg text-[10px] sm:text-xs font-bold transition-all whitespace-nowrap ${mode === 'generate' ? 'bg-[#2EEB57] text-black shadow-lg' : activeRoute ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 hover:text-white'}`}>
+              className={`px-2.5 py-2 sm:px-4 sm:py-2.5 rounded-lg text-[10px] sm:text-xs font-bold transition-all whitespace-nowrap ${mode === 'generate' ? 'bg-[#2EEB57] text-black shadow-lg' : 'text-gray-400 hover:text-white'}`}>
               
                             BUILDER
                         </button>
@@ -539,7 +536,7 @@ export default function MapToolbar({
 
 
                 {/* Active Route Banner */}
-                {activeRoute &&
+                {mode === 'analyze' && activeRoute &&
         <div className="pointer-events-auto rounded-xl px-2 py-1.5 md:px-3 md:py-2 shadow-2xl border border-[#2EEB57]/30 animate-in slide-in-from-top-2 backdrop-blur-md" style={{ background: 'rgba(10,10,10,0.95)' }}>
                         {/* Row 1: Name + Actions — always horizontal */}
                         <div className="flex items-center gap-1.5 min-w-0">
@@ -906,7 +903,7 @@ export default function MapToolbar({
                         </>
           }
 
-                    {activeRoute &&
+                    {mode === 'analyze' && activeRoute &&
           <Button
             data-onboarding="route-checklist"
             onClick={() => { setShowRoutePanel(false); setShowChecklist(true); }}
