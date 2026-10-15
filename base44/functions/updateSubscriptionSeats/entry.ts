@@ -128,7 +128,7 @@ async function syncOwnerInviteCodes(base44, userId, totalSeats) {
   const codes = [];
   for (let skip = 0; ; skip += 100) {
     const page = asArray(await entity.filter({ linked_user_id: userId }, "created_date", 100, skip));
-    codes.push(...page.filter((code) => normalized(code.role || "rep") === "rep"));
+    codes.push(...page.filter((code) => normalized(code.role || "rep") === "rep" && code.is_active !== false));
     if (page.length < 100) break;
   }
   if (codes.length) {
