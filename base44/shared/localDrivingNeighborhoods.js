@@ -9,8 +9,9 @@ import { buildMailCarrierCandidates, inferMailCarrierAccess, mailCarrierPassViol
 import { buildDrivingAreaCandidates, planDrivingAreaWindows } from './drivingAreaRouting.js';
 import { buildDrivingAreaDoorCandidates } from './drivingAreaDoorSearch.js';
 import { planShortDrivingWindows } from './shortDrivingWindows.js';
+import { createRoadSearchCoverage } from './roadSearchCoverage.js';
 
-export const LOCAL_DRIVING_REVIEW_VERSION = 'entry_branch_return_v6_short_cleanup';
+export const LOCAL_DRIVING_REVIEW_VERSION = 'entry_branch_return_v7_search_coverage';
 const id = p => String(p?.address_hash || p?.legacy_hash || p?.id || '');
 const protectedStop = (p, locks) => locks.has(id(p)) || p.order_locked || p.locked
     || p.routing_access?.resolution_status === 'unresolved';
@@ -216,6 +217,23 @@ function rangesAwayFromUnmatched(window, failedIndexes) {
     return ranges;
 }
 
+function plannedDrivingWindows(order, options, unmatchedIds, rank = true) {
+    const explicit = Array.isArray(options.reviewWindows) ? options.reviewWindows : null;
+    const areas = options.areaDrivingReview !== false ? planDrivingAreaWindows(order, options) : [];
+    const failed = order.flatMap((p, i) => unmatchedIds.has(id(p)) ? [i] : []);
+    const ranges = new Map();
+    for (const window of explicit || [...areas, ...(options.mailCarrierMode === true ? planMailCarrierWindows(order, options) : []),
+        ...planLocalDrivingWindows(order, options).map(window => ({ ...window, local: true }))]) {
+        for (const safe of rangesAwayFromUnmatched(window, failed)) {
+            const key = `${safe.start}:${safe.end}`;
+            ranges.set(key, { ...ranges.get(key), ...safe });
+        }
+    }
+    return rank ? balanceDrivingWindows([...ranges.values()].map(window => ({ ...window,
+        priority: window.short && Number.isFinite(window.priority) ? window.priority : windowExcessMiles(order, window) })))
+        : [...ranges.values()];
+}
+
 async function reviewDrivingWindows(order, options = {}) {
     const identities = order.map(id);
     if (identities.some(key => !key) || new Set(identities).size !== order.length) throw new Error('Local driving review requires unique stop membership.');
@@ -229,6 +247,7 @@ async function reviewDrivingWindows(order, options = {}) {
     const unmatchedIds = new Set([
         ...(options.unresolvedStopIds || []).map(String),
         ...order.filter(p => p.routing_access?.resolution_status === 'unresolved').map(id),
+        ...(options._roadSearchCoverage?.unmatchedIds || []),
     ]);
     const unmatchedIndexes = () => order.flatMap((p, i) => unmatchedIds.has(id(p)) ? [i] : []);
     const mailCarrier = options.mailCarrierMode === true;
@@ -237,28 +256,24 @@ async function reviewDrivingWindows(order, options = {}) {
         || window.start < 0 || window.end > order.length || window.end - window.start < 3 || window.end - window.start > 12)) {
         throw new Error('Local driving review received invalid window membership.');
     }
-    const areaWindows = explicitWindows ? explicitWindows.filter(window => window.area)
-        : options.areaDrivingReview !== false ? planDrivingAreaWindows(order, options) : [];
-    report.areaReview = { planned: areaWindows.length, checked: 0, repaired: 0, candidatesMeasured: 0 };
-    const ranges = new Map();
-    for (const window of explicitWindows || [...areaWindows, ...(mailCarrier ? planMailCarrierWindows(order, options) : []),
-        ...planLocalDrivingWindows(order, options).map(window => ({ ...window, local: true }))]) {
-        const key = `${window.start}:${window.end}`;
-        ranges.set(key, { ...ranges.get(key), ...window });
-    }
-    const windows = balanceDrivingWindows([...ranges.values()]
-        .map(window => ({ ...window, priority: window.short && Number.isFinite(window.priority)
-            ? window.priority : windowExcessMiles(order, window) })));
+    const coverage = options._roadSearchCoverage?.state;
+    const questionKey = window => coverage?.key(order, window, { ...options, unresolvedStopIds: [...unmatchedIds] });
+    const planned = plannedDrivingWindows(order, options, unmatchedIds);
+    const windows = coverage ? coverage.prioritize(planned, questionKey) : planned;
+    report.areaReview = { planned: windows.filter(window => window.area).length, checked: 0, repaired: 0, candidatesMeasured: 0 };
     const scheduled = new Map(windows.map(window => [`${window.start}:${window.end}`, window]));
-    const unscheduled = children => children.filter(child => {
-        const key = `${child.start}:${child.end}`, existing = scheduled.get(key);
-        if (existing) {
-            for (const flag of ['area', 'service', 'local']) existing[flag] ||= child[flag];
-            return false;
-        }
-        scheduled.set(key, child);
-        return true;
-    });
+    const unscheduled = children => {
+        const additions = children.filter(child => {
+            const key = `${child.start}:${child.end}`, existing = scheduled.get(key);
+            if (existing) {
+                for (const flag of ['area', 'service', 'local']) existing[flag] ||= child[flag];
+                return false;
+            }
+            scheduled.set(key, child);
+            return true;
+        });
+        return coverage ? coverage.prioritize(additions, questionKey) : additions;
+    };
     report.planned = windows.length;
     const maxWindows = Math.max(0, Math.min(100, options.maxLocalWindows ?? 64));
     const deadline = Date.now() + Math.max(1, Math.min(60000, options.localReviewBudgetMs ?? 45000));
@@ -302,6 +317,9 @@ async function reviewDrivingWindows(order, options = {}) {
         if (!left.length && options.startLocation) left.push(options.startLocation);
         if (!right.length && options.endLocation) right.push(options.endLocation);
         const stops = order.slice(start, end), section = [...left, ...stops, ...right];
+        const coverageKey = questionKey(windows[index]);
+        let fullyConsidered = false;
+        coverage?.attempt();
         report.checked++;
         if (area) report.areaReview.checked++;
         try {
@@ -350,15 +368,16 @@ async function reviewDrivingWindows(order, options = {}) {
                 // Permit measured reductions without introducing a new one.
                 candidates = candidates.filter(candidate => acceptablePasses(candidate.order));
             }
-            if ((service || area) && !candidates.length) continue;
-            if (!candidates.length) { report.skipped.push({ start, end, reason: 'unreachable_local_roads' }); continue; }
+            fullyConsidered = true;
+            if ((service || area || exactCandidates.length) && !candidates.length) continue;
+            if (!candidates.length) { fullyConsidered = false; report.skipped.push({ start, end, reason: 'unreachable_local_roads' }); continue; }
             let selected = stops, selectedCandidate = null, best = baseline, bestPreference = preferenceFor(stops, context);
             for (const candidate of candidates.slice(0, maxCandidates)) {
-                if (Date.now() >= deadline) { report.budgetExhausted = true; break; }
+                if (Date.now() >= deadline) { fullyConsidered = false; report.budgetExhausted = true; break; }
                 const proposed = [...left, ...candidate.order, ...right];
                 let measured;
                 try { measured = await context.routeSequence(proposed); }
-                catch (error) { fatal(error); report.skipped.push({ start, end, candidate: true, reason: error.message }); continue; }
+                catch (error) { fullyConsidered = false; fatal(error); report.skipped.push({ start, end, candidate: true, reason: error.message }); continue; }
                 report.candidatesMeasured++;
                 if (candidate.areaMove) report.areaReview.candidatesMeasured++;
                 // These unchanged overlapping legs keep the arrival and exit
@@ -383,6 +402,7 @@ async function reviewDrivingWindows(order, options = {}) {
                 if (selectedCandidate?.areaMove) report.areaReview.repaired++;
             }
         } catch (error) {
+            fullyConsidered = false;
             fatal(error);
             report.skipped.push({ start, end, reason: error.message });
             // A bad pin stays in its exact slot. Review the bounded runs on
@@ -392,11 +412,14 @@ async function reviewDrivingWindows(order, options = {}) {
                 const failed = section[Number(match[1])];
                 if (failed && order.includes(failed)) {
                     unmatchedIds.add(id(failed));
-                    const children = unscheduled(rangesAwayFromUnmatched({ start, end, service, area, local }, unmatchedIndexes()));
+                    options._roadSearchCoverage?.unmatchedIds.add(id(failed));
+                    const children = unscheduled(rangesAwayFromUnmatched(windows[index], unmatchedIndexes()));
                     windows.splice(index + 1, 0, ...children);
                     report.planned = windows.length;
                 }
             }
+        } finally {
+            if (fullyConsidered) coverage?.complete(coverageKey);
         }
     }
     if (order.length !== original.length || new Set(order.map(id)).size !== original.length
@@ -461,7 +484,7 @@ async function reviewDrivingWindows(order, options = {}) {
     }
 }
 
-export async function reviewLocalDrivingNeighborhoods(order, options = {}) {
+async function reviewDrivingPhases(order, options = {}) {
     const reviewed = await reviewDrivingWindows(order, options);
     if (options.shortDrivingCleanup !== true) return reviewed;
     const major = reviewed.diagnostics.applied ? reviewed : { ...reviewed, diagnostics: { ...reviewed.diagnostics,
@@ -521,4 +544,28 @@ export async function reviewLocalDrivingNeighborhoods(order, options = {}) {
             inferredStops: count(original.streetSideService?.inferredStops),
             passViolationsBefore: original.streetSideService?.passViolationsBefore ?? short.streetSideService.passViolationsBefore } } : {}),
         shortCleanup: short } };
+}
+
+export async function reviewLocalDrivingNeighborhoods(order, options = {}) {
+    const state = createRoadSearchCoverage(options.searchCoverage, LOCAL_DRIVING_REVIEW_VERSION);
+    const unmatchedIds = new Set([...(options.unresolvedStopIds || []).map(String),
+        ...order.filter(p => p.routing_access?.resolution_status === 'unresolved').map(id)]);
+    const configured = { ...options, _roadSearchCoverage: { state, unmatchedIds } };
+    const result = await reviewDrivingPhases(order, configured);
+    // Rebuild questions for the accepted order. A repair invalidates only the
+    // sections whose ordered doors or fixed context changed; unrelated work
+    // survives. No measurement or inferred curb label is reused across calls.
+    const finalOptions = { ...configured, unresolvedStopIds: [...unmatchedIds] };
+    const keys = plannedDrivingWindows(result.properties, finalOptions, unmatchedIds, false)
+        .map(window => state.key(result.properties, window, finalOptions));
+    if (options.shortDrivingCleanup === true) {
+        const shortOptions = { ...finalOptions, knownDrivingAccessFor: result.accessFor,
+            inferStreetSides: false, requireNoDrivingIncrease: true,
+            reviewWindows: planShortDrivingWindows(result.properties, finalOptions) };
+        keys.push(...plannedDrivingWindows(result.properties, shortOptions, unmatchedIds, false)
+            .map(window => state.key(result.properties, window, shortOptions)));
+    }
+    // This ephemeral field is lifted into routing_metadata by the endpoint;
+    // keeping it outside diagnostics prevents nested personal-bound ledgers.
+    return { ...result, searchCoverage: state.report(keys) };
 }

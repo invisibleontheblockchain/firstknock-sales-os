@@ -538,3 +538,68 @@ test('access inspection retains authentication and input guards while collecting
         + inspection.calls.completeVerification.length + inspection.calls.continuity.length
         + inspection.calls.sweep + inspection.calls.hierarchy + inspection.calls.candidateComparison, 0);
 });
+
+const coverageReport = () => ({ version: 1, policy: 'entry_branch_return_v7_search_coverage',
+    completed_window_keys: ['a'.repeat(32), 'b'.repeat(32)], total_windows: 3, remaining_windows: 1,
+    checked_this_pass: 1, progress_this_pass: 1, cycle_complete: false });
+
+for (const planTier of ['door', 'cluster']) {
+    test(`unchanged ${planTier} driving responses carry scheduling coverage only at top-level metadata`, async () => {
+        const properties = inputStops(), history = coverageReport(), report = coverageReport();
+        const f = endpoint({ planTier, winner: candidates => candidates.find(candidate => candidate.is_current),
+            finalReview: (submitted, options) => {
+                assert.equal(JSON.stringify(options.searchCoverage), JSON.stringify(history));
+                return { properties: submitted, searchCoverage: report, diagnostics: { applied: false,
+                    local_driving_review: { applied: false, validation: 'unchanged' } } };
+            } });
+        const { status, body } = await f.invoke(properties, { search_coverage: history });
+        assert.equal(status, 200);
+        assert.deepEqual(body.order, ids(properties));
+        assert.deepEqual(body.routing_metadata.road_search_coverage, report);
+        assert.equal(JSON.stringify(body.routing_metadata.neighborhood_excursion_review).includes('completed_window_keys'), false);
+        assert.equal(f.calls.globalReview.length, 1);
+        assert.equal(f.calls.completeVerification.length, 1);
+    });
+}
+
+test('access-limited incumbent search forwards coverage and returns the ledger outside neighborhood diagnostics', async () => {
+    const history = coverageReport(), report = coverageReport();
+    const f = endpoint({ recover: unresolvedRecovery, local: (submitted, options) => {
+        assert.equal(JSON.stringify(options.searchCoverage), JSON.stringify(history));
+        return { properties: submitted, searchCoverage: report,
+            diagnostics: { applied: false, validation: 'unchanged' } };
+    } });
+    const { status, body } = await f.invoke(inputStops(), { search_coverage: history });
+    assert.equal(status, 200);
+    assert.deepEqual(body.routing_metadata.road_search_coverage, report);
+    assert.equal(JSON.stringify(body.routing_metadata.neighborhood_excursion_review).includes('completed_window_keys'), false);
+});
+
+test('final driving rejection cannot attach completion history for a different proposed order', async () => {
+    const properties = inputStops(), report = { ...coverageReport(), total_windows: 2, remaining_windows: 0, cycle_complete: true };
+    const f = endpoint({ winner: candidates => candidates.find(candidate => candidate.is_current),
+        finalReview: submitted => {
+            const proposed = [...submitted];
+            [proposed[1], proposed[2]] = [proposed[2], proposed[1]];
+            return { properties: proposed, searchCoverage: report, diagnostics: { applied: true,
+                local_driving_review: { applied: true, validation: 'whole_route' } } };
+        },
+        verify: input => ({ properties: input.baselineOrder, measurement: drivingMeasurement(), baseline: drivingMeasurement(),
+            applied: false, keptCurrent: true, diagnostics: { applied: false,
+                local_driving_review: { applied: false, validation: 'whole_route' } } }) });
+    const { status, body } = await f.invoke(properties);
+    assert.equal(status, 200);
+    assert.deepEqual(body.order, ids(properties));
+    assert.equal('road_search_coverage' in body.routing_metadata, false);
+});
+
+test('an unproved partial proposal cannot attach completion history for its discarded order', async () => {
+    const properties = inputStops();
+    const f = endpoint({ recover: unresolvedRecovery, local: submitted => ({ properties: [...submitted].reverse(),
+        searchCoverage: { ...coverageReport(), remaining_windows: 0, cycle_complete: true },
+        diagnostics: { applied: false, validation: 'unchanged' } }) });
+    const { status, body } = await f.invoke(properties);
+    assert.equal(status, 200);
+    assert.deepEqual(body.order, ids(properties));
+    assert.equal('road_search_coverage' in body.routing_metadata, false);
+});

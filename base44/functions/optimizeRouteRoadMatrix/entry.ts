@@ -45,7 +45,7 @@ import {
 
 // Bump when candidate generation or the objective changes, so a stored route can
 // be told apart from one produced by an older solver.
-const OPTIMIZER_VERSION = 'road_matrix_short_branch_cleanup_v15';
+const OPTIMIZER_VERSION = 'road_matrix_search_continuation_v16';
 
 function readSecret(name) {
     try {
@@ -198,6 +198,7 @@ export default async function (req: Request): Promise<Response> {
             localDrivingReview: profile === 'driving',
             shortDrivingCleanup: profile === 'driving',
             mailCarrierMode: profile === 'driving',
+            searchCoverage: body.search_coverage,
             vehicleBaseUrl,
             vehicleProfile: profile,
             vehicleFetch: countyRouting.vehicleFetch,
@@ -205,7 +206,7 @@ export default async function (req: Request): Promise<Response> {
             tieSeconds: Math.min(10, Math.max(0, Number(body.neighborhood_review?.tie_seconds) || 0)),
         };
 
-        const baseMetadata = {
+        const baseMetadata: Record<string, unknown> = {
             property_set_fingerprint: setFingerprint,
             start_constraint: startLocation,
             end_constraint: endLocation,
@@ -235,6 +236,9 @@ export default async function (req: Request): Promise<Response> {
             let local = neighborhood.diagnostics;
             const proof = local?.applied === true && local.validation === 'overlapping_boundary_legs';
             const winningOrder = proof ? neighborhood.properties : properties;
+            if (winningOrder.every((stop, i) => propertyIdentity(stop) === propertyIdentity(neighborhood.properties[i]))) {
+                baseMetadata.road_search_coverage = neighborhood.searchCoverage;
+            }
             if (!exactOnce(winningOrder, properties.length)
                 || JSON.stringify(winningOrder.map(propertyIdentity).sort()) !== JSON.stringify(properties.map(propertyIdentity).sort())
                 || properties.some((stop, i) => (stop.order_locked || stop.locked || stop.routing_access?.resolution_status === 'unresolved')
@@ -369,6 +373,9 @@ export default async function (req: Request): Promise<Response> {
                     complete = await verifyCompleteDrivingCandidate({ baselineOrder: properties,
                         candidateOrder: hierarchy.order, neighborhood, options: neighborhoodOptions });
                     hierarchy.order = complete.properties;
+                    if (complete.properties.every((stop, i) => propertyIdentity(stop) === propertyIdentity(neighborhood.properties[i]))) {
+                        baseMetadata.road_search_coverage = neighborhood.searchCoverage;
+                    }
                     neighborhood = { ...neighborhood, properties: complete.properties,
                         diagnostics: complete.diagnostics, measurement: complete.measurement, baseline: complete.baseline };
                     proposedPath = measuredPathView(complete.measurement);
@@ -627,6 +634,9 @@ export default async function (req: Request): Promise<Response> {
         if (profile === 'driving') {
             const complete = await verifyCompleteDrivingCandidate({ baselineOrder: properties,
                 candidateOrder: winner.order, neighborhood, options: neighborhoodOptions });
+            if (complete.properties.every((stop, i) => propertyIdentity(stop) === propertyIdentity(neighborhood.properties[i]))) {
+                baseMetadata.road_search_coverage = neighborhood.searchCoverage;
+            }
             winner = complete.applied ? { ...winner, order: complete.properties, is_current: false,
                 distance: complete.measurement.distanceMiles, duration: complete.measurement.driveSeconds / 60 }
                 : { ...candidates.find(candidate => candidate.is_current), order: complete.properties,

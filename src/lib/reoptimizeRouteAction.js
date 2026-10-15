@@ -160,6 +160,8 @@ export async function reoptimizeRoute(route, options = {}, deps = {}) {
         const routeOriginMode = usingPrivateAnchor ? ROUTE_ORIGIN_MODES.PRIVATE_ANCHOR_ROUND_TRIP : usingCustomAnchors
             ? (start || end ? ROUTE_ORIGIN_MODES.CUSTOM_BOUNDS : ROUTE_ORIGIN_MODES.NONE)
             : routeOriginModeForOptimizeMode(optimizeMode);
+        // Hashes derived from personal trip bounds stay in this action only.
+        const shareSearchCoverage = [ROUTE_ORIGIN_MODES.NONE, ROUTE_ORIGIN_MODES.CUSTOM_BOUNDS].includes(routeOriginMode);
         const beta = previewRoadAwareBeta ? await previewRoadAwareBeta({
             route, properties: routeProperties, bounds: { startLocation: start, endLocation: end },
             entryPoint: 'saved_route_optimize',
@@ -209,6 +211,9 @@ export async function reoptimizeRoute(route, options = {}, deps = {}) {
             client,
             start: isValidRoutePoint(start) ? start : null,
             end: isValidRoutePoint(end) ? end : null,
+            searchCoverage: shareSearchCoverage ? route.metadata?.road_search_coverage : null,
+            maxSearchPasses: 3,
+            onProgress: ({ pass, maxPasses }) => progress.update(`Checking remaining neighborhoods (pass ${pass} of ${maxPasses})...`),
             onOutcome: (reason, measurement) => { roadDeclineReason = reason; roadMeasurement = measurement; }
         });
 
@@ -219,9 +224,12 @@ export async function reoptimizeRoute(route, options = {}, deps = {}) {
             const metadata = { ...(route.metadata || {}),
                 ...(roadMeasurement?.routingMetadata?.road_access_recovery
                     ? { road_access_recovery: roadMeasurement.routingMetadata.road_access_recovery } : {}),
+                ...(shareSearchCoverage && roadMeasurement?.routingMetadata?.road_search_coverage
+                    ? { road_search_coverage: roadMeasurement.routingMetadata.road_search_coverage } : {}),
                 last_optimization_attempt: buildRoadOptimizationAttempt(roadDeclineReason, roadMeasurement, {
                     mode: optimizeMode, doorCount: routeProperties.length,
                 }) };
+            if (!shareSearchCoverage) delete metadata.road_search_coverage;
             const saved = await client.entities.SavedRoute.update(route.id, { metadata });
             await syncOptimizedRoute({ saved: { ...route, ...saved, metadata }, properties: routeProperties,
                 queryClient, setActiveRoute, metadataOnly: true });
@@ -250,6 +258,7 @@ export async function reoptimizeRoute(route, options = {}, deps = {}) {
         const newDistanceRounded = hasWholeRouteDistance ? Math.round(objective.appliedDistance * 100) / 100
             : route.metrics?.distance ?? null;
         const existingMetadata = { ...(route.metadata || {}) };
+        if (!shareSearchCoverage) delete existingMetadata.road_search_coverage;
         // The same verdict contract generation writes, so a route's provenance
         // means one thing regardless of which entry point last touched it.
         const routingMetadata = {
@@ -259,6 +268,7 @@ export async function reoptimizeRoute(route, options = {}, deps = {}) {
                 measuredMiles: hasWholeRouteDistance ? newDistanceRounded : null
             }).metadata
         };
+        if (!shareSearchCoverage) delete routingMetadata.road_search_coverage;
         const routeUpdate = usingCustomAnchors
             ? buildRouteAnchorsUpdate({
                 start,

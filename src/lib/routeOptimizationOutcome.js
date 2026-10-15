@@ -75,9 +75,21 @@ function completeDrivingVerification(meta, measurement = null, applied = false) 
         : validDistance(measurement?.distanceMiles) || validDistance(meta.input_measured) || validDistance(meta.continuity_measured);
 }
 const countyRoadsIncluded = meta => typeof meta?.road_matrix_source === 'string' && meta.road_matrix_source.endsWith('+nc_ng911');
-const searchIncomplete = review => review?.budgetExhausted === true || review?.skipped?.length > 0
-    || (optionalCount(review?.checked) !== null && optionalCount(review?.planned) !== null && review.checked < review.planned);
-function incompleteSearchMessage(review) {
+const coverageSummary = meta => {
+    const coverage = meta?.road_search_coverage;
+    return coverage?.version === 1 && optionalCount(coverage.total_windows) !== null
+        && optionalCount(coverage.remaining_windows) !== null && coverage.remaining_windows <= coverage.total_windows
+        && coverage.cycle_complete === (coverage.remaining_windows === 0) ? coverage : null;
+};
+const searchIncomplete = (review, meta) => coverageSummary(meta) ? coverageSummary(meta).remaining_windows > 0
+    : review?.budgetExhausted === true || review?.skipped?.length > 0
+        || (optionalCount(review?.checked) !== null && optionalCount(review?.planned) !== null && review.checked < review.planned);
+function incompleteSearchMessage(review, meta) {
+    const coverage = coverageSummary(meta);
+    if (coverage) {
+        const passes = safeCount(meta?.road_search_passes);
+        return `Neighborhood search is incomplete: ${coverage.remaining_windows} of ${coverage.total_windows} checks remain${passes > 1 ? ` after ${passes} passes` : ''}.`;
+    }
     const reasons = [];
     const counts = optionalCount(review?.checked) !== null && optionalCount(review?.planned) !== null && review.planned > 0
         ? `${review.checked} of ${review.planned} neighborhoods` : '';
@@ -134,9 +146,9 @@ export function describeRoadOptimizationOutcome(reason, measurement = null) {
     });
     // Exhausting the search budget or lacking a curb-side label does not undo
     // the separate continuous driving check for the returned complete route.
-    if (completeDrivingVerification(meta, measurement) && searchIncomplete(review)) return {
+    if (completeDrivingVerification(meta, measurement) && searchIncomplete(review, meta)) return {
         status: 'incomplete', tone: 'warning',
-        message: `Your route was kept unchanged. ${incompleteSearchMessage(review)} The complete driving route was verified.`,
+        message: `Your route was kept unchanged. ${incompleteSearchMessage(review, meta)} The complete driving route was verified.`,
     };
     if (completeDrivingVerification(meta, measurement)) return {
         status: 'no_improvement', tone: 'info',
@@ -177,9 +189,9 @@ export function describeAppliedRoadOptimization(routingMetadata) {
         status: 'applied_partial', tone: 'warning',
         message: 'Verified route improvements applied; the complete driving route remains unverified.',
     });
-    if (completeDrivingVerification(routingMetadata, null, true) && searchIncomplete(review)) return {
+    if (completeDrivingVerification(routingMetadata, null, true) && searchIncomplete(review, routingMetadata)) return {
         status: 'applied_partial', tone: 'warning',
-        message: `Route updated. ${incompleteSearchMessage(review)} The complete driving route was verified.`,
+        message: `Route updated. ${incompleteSearchMessage(review, routingMetadata)} The complete driving route was verified.`,
     };
     if (completeDrivingVerification(routingMetadata, null, true)) return {
         status: 'applied', tone: 'success',
@@ -227,6 +239,7 @@ export function buildRoadOptimizationAttempt(reason, measurement, {
         && (applied || reason === 'current_order_measured_best') && completeDrivingVerification(meta, measurement, applied);
     const reasonCode = String(reason || 'no_result').split(':')[0];
     const diagnostic = measurement?.diagnostic;
+    const coverage = coverageSummary(meta);
     return {
         finished_at: finishedAt, mode, door_count: doorCount,
         status: outcome.status, message: `${outcome.message}${verificationComplete ? completedRouteDetails(meta, recovery) : ''}`,
@@ -238,10 +251,11 @@ export function buildRoadOptimizationAttempt(reason, measurement, {
             ? Math.round(diagnostic.elapsedMs) : null,
         optimizer_version: safeToken(meta.optimizer_version),
         matrix_tier: safeToken(meta.matrix_tier),
-        neighborhoods_planned: optionalCount(review?.planned),
-        neighborhoods_checked: optionalCount(review?.checked),
+        neighborhoods_planned: coverage ? coverage.total_windows : optionalCount(review?.planned),
+        neighborhoods_checked: coverage ? coverage.total_windows - coverage.remaining_windows : optionalCount(review?.checked),
         neighborhoods_skipped: Array.isArray(review?.skipped) ? review.skipped.length : null,
-        budget_exhausted: review?.budgetExhausted === true,
+        budget_exhausted: review?.budgetExhausted === true && (!coverage || coverage.remaining_windows > 0),
+        ...(safeCount(meta.road_search_passes) ? { search_passes: safeCount(meta.road_search_passes) } : {}),
         curb_sides_unconfirmed: unknownSides(review),
         county_roads_included: countyRoadsIncluded(meta),
         ...(recovery ? { road_access_recovery: recovery } : {}),

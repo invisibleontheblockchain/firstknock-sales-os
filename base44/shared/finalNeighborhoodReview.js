@@ -42,7 +42,7 @@ export async function reviewFinalNeighborhoodRoute(order, options = {}) {
     const excursions = await reviewFinalNeighborhoodExcursions(order, options);
     if (options.localDrivingReview !== true) return excursions;
     const local = await reviewLocalDrivingNeighborhoods(excursions.properties, options);
-    if (!local.diagnostics.applied) return { ...excursions, diagnostics: {
+    if (!local.diagnostics.applied) return { ...excursions, searchCoverage: local.searchCoverage, diagnostics: {
         ...excursions.diagnostics, local_driving_review: local.diagnostics,
     } };
     return { ...local, diagnostics: {
