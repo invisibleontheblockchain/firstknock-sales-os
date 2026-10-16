@@ -8,7 +8,6 @@ import { createLabelCanvas } from '@/components/map/labelCanvas';
 import { reconcileMapPins } from '@/components/map/reconcileMapPins';
 import { DEFAULT_PIN_THEME } from '@/components/map/mapPinThemes';
 import { outcomeColor } from '@/components/logic/outcomeStatus';
-import { verifiedRouteSegments } from '@/lib/roadAwareRouteGeometry';
 import RoutePathLegend from '@/components/map/RoutePathLegend';
 
 // Fix Leaflet unmount error during scroll wheel zoom
@@ -189,9 +188,6 @@ export default function RepMapView({
     startLocation = null,
     endLocation = null,
     anchorLabel = 'Home',
-    roadGeometry = null,
-    roadGeometryFingerprint = '',
-    roadMetadata = null,
 }) {
     const mapRef = useRef(null);
     const renderer = useMemo(() => L.canvas({ padding: 0.25 }), []);
@@ -264,9 +260,6 @@ export default function RepMapView({
     }, [position, properties]);
 
     const nearbyHashes = useMemo(() => new Set(nearbyProps.map(p => p.address_hash)), [nearbyProps]);
-    const roadSegments = useMemo(() => verifiedRouteSegments(roadMetadata || { road_geometry: roadGeometry,
-        routing: { property_order_fingerprint: roadGeometryFingerprint } }, properties, properties),
-        [roadMetadata, roadGeometry, roadGeometryFingerprint, properties]);
     const routePathPositions = useMemo(() => {
         const positions = (properties || []).filter(isRoutePoint).map(p => [Number(p.lat), Number(p.lng)]);
         const effectiveStart = isRoutePoint(startLocation)
@@ -332,7 +325,7 @@ export default function RepMapView({
             </div>
 
             <div className="absolute top-[calc(env(safe-area-inset-top)+4.5rem)] left-3 z-[1200] pointer-events-none rounded-md bg-black/90 px-3 py-2 shadow-lg">
-                <RoutePathLegend hasDrivingGeometry={roadSegments.length > 0} />
+                <RoutePathLegend />
             </div>
 
             {/* Map */}
@@ -383,12 +376,8 @@ export default function RepMapView({
                         />
                     ))}
 
-                    {/* Route Path (Mail Carrier Style) */}
-                    {roadSegments.length > 0
-                        ? roadSegments.map((points, index) =>
-                            <Polyline key={'road-beta-' + index} positions={points.map(p => [Number(p.lat), Number(p.lng)])}
-                                renderer={renderer} pathOptions={{ interactive: false, color: BRAND.gold, weight: 4, opacity: 0.85 }} />)
-                        : !roadMetadata?.routing?.road_aware_routing_beta && routePathPositions.length > 1 && (
+                    {/* Straight connectors show the saved stop order. */}
+                    {routePathPositions.length > 1 && (
                         <Polyline
                             positions={routePathPositions}
                             renderer={renderer}

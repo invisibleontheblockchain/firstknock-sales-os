@@ -12,6 +12,7 @@
  */
 
 import { base44 } from '@/api/base44Client';
+import { routePropertyOrderFingerprint } from '../../base44/shared/routeFingerprint.js';
 
 // The product ceiling for one road-aware optimization request, mirroring the
 // backend's MAX_TIERED_ROUTE_DOORS. It is NOT the OSRM per-request coordinate
@@ -154,6 +155,8 @@ async function tryRoadMatrixOptimizePass(routeProperties, {
     onOutcome = null,
     neighborhoodReview = null,
     searchCoverage = null,
+    comparisonOrder = null,
+    searchPhase = null,
     client = base44
 } = {}) {
     const decline = (reason, measurement = null) => { onOutcome?.(reason, measurement); return null; };
@@ -186,6 +189,8 @@ async function tryRoadMatrixOptimizePass(routeProperties, {
         };
         const coverage = normalizeRoadSearchCoverage(searchCoverage);
         if (coverage) payload.search_coverage = coverage;
+        if (searchPhase === 'remaining_neighborhoods') payload.search_phase = searchPhase;
+        if (Array.isArray(comparisonOrder)) payload.comparison_order = comparisonOrder.map(propertyKey);
         if (neighborhoodReview) payload.neighborhood_review = {
             prefer_contiguous_on_tie: neighborhoodReview.preferContiguousOnTie === true,
             tie_seconds: Math.min(10, Math.max(0, Number(neighborhoodReview.tieSeconds) || 0)),
@@ -344,6 +349,55 @@ function consistentDrivingPass(previous, meta, inputMiles) {
             (previous.routingMetadata[key] ?? null) === (meta[key] ?? null));
 }
 
+// A new neighborhood can discover curb-side restrictions that change the
+// mileage of an unchanged order. Reconcile that only with a fresh, complete
+// comparison of all three orders under one backend road/service policy.
+// Never add savings measured under incompatible policies from separate passes.
+function freshDrivingComparison(meta, original, input, output, inputMiles, outputMiles) {
+    const proof = meta?.road_search_comparison;
+    if (measurementMiles(inputMiles) === null || measurementMiles(outputMiles) === null
+        || !proof || proof.version !== 1 || proof.service_objective !== 'coherent_side_passes_then_driving_cost'
+        || !(proof.graph_version === null || typeof proof.graph_version === 'string' && proof.graph_version.length > 0
+            && proof.graph_version.length <= 512)) return null;
+    const orders = { original, input, output };
+    const originalIds = new Set(original.map(propertyKey));
+    const safe = { version: 1, service_objective: proof.service_objective, graph_version: proof.graph_version };
+    for (const [name, order] of Object.entries(orders)) {
+        const ids = order.map(propertyKey);
+        if (ids.length !== original.length || ids.some(id => !id) || new Set(ids).size !== ids.length
+            || ids.some(id => !originalIds.has(id))) return null;
+        const fingerprint = routePropertyOrderFingerprint(order);
+        if (!fingerprint || proof[`${name}_order_fingerprint`] !== fingerprint) return null;
+        safe[`${name}_order_fingerprint`] = fingerprint;
+        for (const unit of ['miles', 'seconds', 'pass_violations']) {
+            const key = `${name}_${unit}`, value = proof[key];
+            if (typeof value !== 'number' || !Number.isFinite(value) || value < 0
+                || unit === 'pass_violations' && !Number.isSafeInteger(value)) return null;
+            safe[key] = value;
+        }
+    }
+    if (Math.abs(proof.input_miles - inputMiles) > 0.002 || Math.abs(proof.output_miles - outputMiles) > 0.002) return null;
+    if (meta.property_order_fingerprint && meta.property_order_fingerprint !== safe.output_order_fingerprint) return null;
+    const notWorse = reference => proof.output_pass_violations < proof[`${reference}_pass_violations`]
+        || proof.output_pass_violations === proof[`${reference}_pass_violations`]
+            && proof.output_miles <= proof[`${reference}_miles`] + 0.0001
+            && proof.output_seconds <= proof[`${reference}_seconds`] + 0.1;
+    if (!notWorse('input') || !notWorse('original')) return null;
+    // One context must report the same costs when two labels name one order.
+    for (const [left, right] of [['original', 'input'], ['original', 'output'], ['input', 'output']]) {
+        if (safe[`${left}_order_fingerprint`] !== safe[`${right}_order_fingerprint`]) continue;
+        if (Math.abs(safe[`${left}_miles`] - safe[`${right}_miles`]) > 0.0001
+            || Math.abs(safe[`${left}_seconds`] - safe[`${right}_seconds`]) > 0.1
+            || safe[`${left}_pass_violations`] !== safe[`${right}_pass_violations`]) return null;
+    }
+    return safe;
+}
+
+function sameDrivingProvider(previous, meta) {
+    return ['road_matrix_source', 'road_matrix_version'].every(key =>
+        (previous[key] ?? null) === (meta[key] ?? null));
+}
+
 function partialSearchProof(meta, input, order, unchanged) {
     const recovery = meta?.road_access_recovery;
     const review = meta?.neighborhood_excursion_review?.local_driving_review;
@@ -399,10 +453,25 @@ export async function tryRoadMatrixOptimize(routeProperties, {
     let coverage = normalizeRoadSearchCoverage(searchCoverage), lastReason, lastMeasurement;
     let currentProperties = routeProperties, accepted = null, baselineMiles = null;
     let acceptedPartialProof = null, localSavings = 0;
+    const shouldContinue = (proof, result, returnedCoverage, pass) => {
+        if (returnedCoverage?.cycle_complete) return false;
+        const stopReason = !proof ? 'incomplete_verification'
+            : !returnedCoverage ? 'invalid_search_coverage'
+            : !result && returnedCoverage.progress_this_pass === 0 ? 'no_progress'
+            : pass >= limit ? 'pass_limit'
+            : budget - (Date.now() - started) < requestBudget ? 'action_budget' : null;
+        if (stopReason) {
+            const target = accepted?.routingMetadata || lastMeasurement?.routingMetadata;
+            if (target) target.road_search_stop_reason = stopReason;
+            return false;
+        }
+        return returnedCoverage.remaining_windows > 0;
+    };
     for (let pass = 1; pass <= limit; pass++) {
         if (pass > 1) onProgress?.({ pass, maxPasses: limit, remainingWindows: coverage.remaining_windows });
         let reason, measurement;
         const result = await tryRoadMatrixOptimizePass(currentProperties, { ...options, searchCoverage: coverage,
+            ...(pass > 1 ? { searchPhase: 'remaining_neighborhoods', comparisonOrder: routeProperties } : {}),
             deadlineMs: Math.min(requestBudget, Math.max(1, budget - (Date.now() - started))),
             onOutcome: (value, details) => { reason = value; measurement = details; } });
         const meta = result?.routingMetadata || measurement?.routingMetadata;
@@ -446,22 +515,35 @@ export async function tryRoadMatrixOptimize(routeProperties, {
                 currentProperties = accepted.order;
                 acceptedPartialProof = proof;
             }
-            const canContinue = proof && returnedCoverage?.remaining_windows > 0
-                && (result || returnedCoverage.progress_this_pass > 0)
-                && !returnedCoverage.cycle_complete && pass < limit && budget - (Date.now() - started) >= requestBudget;
-            if (!canContinue) break;
+            if (!shouldContinue(proof, result, returnedCoverage, pass)) break;
+            if (!accepted) currentProperties = withRecoveredAccess(currentProperties, meta);
             continue;
         }
-        if (accepted && (!verified || !consistentDrivingPass(accepted, meta, inputMiles))) {
+        const comparison = verified && pass > 1
+            ? freshDrivingComparison(meta, routeProperties, currentProperties, result?.order || currentProperties, inputMiles, measuredMiles)
+            : null;
+        const invalidComparison = pass > 1 && meta?.road_search_comparison !== undefined && !comparison;
+        if (finalMeta) {
+            delete finalMeta.road_search_comparison;
+            if (comparison) finalMeta.road_search_comparison = comparison;
+        }
+        if (accepted && (!verified || invalidComparison || !(comparison
+            ? sameDrivingProvider(accepted.routingMetadata, meta) : consistentDrivingPass(accepted, meta, inputMiles)))) {
             // A later outage, incomplete proof or changed graph must not erase
             // the improvement already verified during this click.
             accepted.routingMetadata = { ...accepted.routingMetadata, road_search_passes: pass,
                 road_search_stop_reason: verified ? 'measurement_changed' : reason || 'incomplete_verification' };
             break;
         }
+        if (invalidComparison) {
+            lastReason = 'invalid_search_comparison';
+            lastMeasurement = { routingMetadata: { ...finalMeta, road_search_stop_reason: 'measurement_changed' } };
+            break;
+        }
         // Earlier no-ops still leave the original order in place. Its fresh
         // measurement on the first accepted pass is the savings baseline.
         if (!accepted && result && verified) baselineMiles = inputMiles;
+        if (comparison) baselineMiles = comparison.original_miles;
         if (result || accepted) {
             accepted = {
                 ...(result || accepted),
@@ -477,10 +559,8 @@ export async function tryRoadMatrixOptimize(routeProperties, {
             };
             currentProperties = accepted.order;
         }
-        const canContinue = verified && returnedCoverage?.remaining_windows > 0
-            && (result || returnedCoverage.progress_this_pass > 0)
-            && !returnedCoverage.cycle_complete && pass < limit && budget - (Date.now() - started) >= requestBudget;
-        if (!canContinue) break;
+        if (!shouldContinue(verified, result, returnedCoverage, pass)) break;
+        if (!accepted) currentProperties = withRecoveredAccess(currentProperties, meta);
     }
     if (accepted) return accepted;
     onOutcome?.(lastReason, lastMeasurement);

@@ -117,6 +117,24 @@ const verifiedWhole = (review = {}) => ({ distanceMiles: 241.95, routingMetadata
         applied: true, validation: 'whole_route', ...review } },
 } });
 
+for (const [reason, wording] of [
+    ['action_budget', /search time limit was reached/], ['pass_limit', /limit for this run/],
+    ['no_progress', /remaining checks made no verified progress/], ['measurement_changed', /last verified result was kept/],
+]) test(`incomplete search explains ${reason} without claiming the driving path failed`, () => {
+    const measurement = verifiedWhole();
+    Object.assign(measurement.routingMetadata, { road_search_passes: 2, road_search_stop_reason: reason,
+        road_search_coverage: { version: 1, total_windows: 122, remaining_windows: 34, cycle_complete: false } });
+    const outcome = outcomes.describeAppliedRoadOptimization(measurement.routingMetadata);
+    assert.match(outcome.message, /34 of 122 checks remain after 2 passes/);
+    assert.match(outcome.message, wording);
+    assert.match(outcome.message, /complete driving route was verified/);
+    const saved = outcomes.buildRoadOptimizationAttempt(null, measurement, { applied: true });
+    assert.equal(saved.search_stop_reason, reason);
+    assert.equal(saved.route_verification_complete, true);
+    measurement.routingMetadata.road_search_stop_reason = 'https://provider/35.1,-81.2';
+    assert.equal(outcomes.buildRoadOptimizationAttempt(null, measurement, { applied: true }).search_stop_reason, undefined);
+});
+
 test('an applied complete driving route prominently reports the unfinished neighborhood search', () => {
     const measurement = verifiedWhole({ planned: 108, checked: 58, budgetExhausted: true,
         skipped: [{ reason: 'https://provider/private' }], streetSideService: { unknownStops: 256 } });
