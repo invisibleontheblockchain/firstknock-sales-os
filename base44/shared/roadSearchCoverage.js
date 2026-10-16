@@ -26,7 +26,7 @@ function opaqueHash(value) {
     return hashes.map(value => value.toString(16).padStart(8, '0')).join('');
 }
 
-export function roadSearchWindowKey(order, window, options = {}, policy = '') {
+export function roadSearchWindowDescriptor(order, window, options = {}, policy = '') {
     const locks = new Set((options.lockedStopIds || []).map(String));
     const unresolved = new Set((options.unresolvedStopIds || []).map(String));
     const discoveryNames = ['house_number', 'street_name', 'street', 'address', 'address_line_1', 'city', 'state',
@@ -41,41 +41,57 @@ export function roadSearchWindowKey(order, window, options = {}, policy = '') {
         'areaDrivingReview', 'maxLocalStops', 'localRadiusMiles', 'minAreaWindowStops', 'maxAreaWindowStops',
         'areaRadiusMiles', 'maxServiceWindowStops',
         'maxShortWindows', 'shortRadiusMiles', 'minShortGainMiles', 'requireNoDrivingIncrease'];
-    return opaqueHash({ policy, phase: window.short ? 'short' : 'main', size: window.end - window.start,
+    return { policy, phase: window.short ? 'short' : 'main', size: window.end - window.start,
         kinds: [Boolean(window.area), Boolean(window.service), Boolean(window.local)],
         offset: Math.min(2, window.start), section: order.slice(Math.max(0, window.start - 2), window.end + 2).map(point),
         start: point(options.startLocation), end: point(options.endLocation), returnToStart: options.returnToStart === true,
-        settings: Object.fromEntries(settingNames.map(name => [name, options[name] ?? null])) });
+        settings: Object.fromEntries(settingNames.map(name => [name, options[name] ?? null])) };
 }
 
-export function createRoadSearchCoverage(history, policy) {
+export function roadSearchWindowKey(order, window, options = {}, policy = '') {
+    return opaqueHash(roadSearchWindowDescriptor(order, window, options, policy));
+}
+
+export function createRoadSearchCoverage(history, policy, { certified = false } = {}) {
+    const acceptedKey = value => validKey(value) || (certified && typeof value === 'string' && /^[a-f0-9]{64}$/.test(value));
+    const completionKey = value => certified ? typeof value === 'string' && /^[a-f0-9]{64}$/.test(value) : validKey(value);
     const valid = history?.version === ROAD_SEARCH_COVERAGE_VERSION && history.policy === policy
         && Array.isArray(history.completed_window_keys) && history.completed_window_keys.length <= MAX_ROAD_SEARCH_COVERAGE_KEYS
-        && history.completed_window_keys.every(validKey);
+        && history.completed_window_keys.every(acceptedKey);
     const previous = new Set(valid && history.cycle_complete !== true ? history.completed_window_keys : []);
-    const completed = new Set(previous);
+    // Unsigned history may rank work, but only this pass's measurements or a
+    // separately authenticated proof can certify completion in proof mode.
+    const completed = new Set(certified ? [] : previous);
+    const reused = new Set();
     let checked = 0;
     return {
         key: (order, window, options) => roadSearchWindowKey(order, window, options, policy),
         prioritize(windows, keyFor) {
             const unseen = [], seen = [];
-            for (const window of windows) (completed.has(keyFor(window)) ? seen : unseen).push(window);
+            for (const window of windows) ((completed.has(keyFor(window)) || previous.has(keyFor(window))) ? seen : unseen).push(window);
             return [...unseen, ...seen];
         },
         attempt() { checked++; },
+        has(key) { return completed.has(key); },
+        reuse(key) {
+            if (completionKey(key) && completed.size < MAX_ROAD_SEARCH_COVERAGE_KEYS + 124) {
+                completed.add(key); reused.add(key);
+            }
+        },
         complete(key) {
             // A pass can add at most 100 main and 24 short questions. Allow
             // those transient entries before pruning obsolete local contexts;
             // an old full ledger must not block new progress after a repair.
-            if (validKey(key) && completed.size < MAX_ROAD_SEARCH_COVERAGE_KEYS + 124) completed.add(key);
+            if (completionKey(key) && completed.size < MAX_ROAD_SEARCH_COVERAGE_KEYS + 124) completed.add(key);
         },
         report(eligibleKeys) {
-            const eligible = [...new Set(eligibleKeys)].filter(validKey);
+            const eligible = [...new Set(eligibleKeys)].filter(completionKey);
             const retained = eligible.filter(key => completed.has(key)).slice(0, MAX_ROAD_SEARCH_COVERAGE_KEYS);
             const remaining = eligible.length - retained.length;
             return { version: ROAD_SEARCH_COVERAGE_VERSION, policy, completed_window_keys: retained,
                 total_windows: eligible.length, remaining_windows: remaining, checked_this_pass: checked,
-                progress_this_pass: retained.filter(key => !previous.has(key)).length, cycle_complete: remaining === 0 };
+                ...(certified ? { reused_this_pass: retained.filter(key => reused.has(key)).length } : {}),
+                progress_this_pass: retained.filter(key => !(certified ? reused : previous).has(key)).length, cycle_complete: remaining === 0 };
         },
     };
 }

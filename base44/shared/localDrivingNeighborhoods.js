@@ -10,6 +10,7 @@ import { buildDrivingAreaCandidates, planDrivingAreaWindows } from './drivingAre
 import { buildDrivingAreaDoorCandidates } from './drivingAreaDoorSearch.js';
 import { planShortDrivingWindows } from './shortDrivingWindows.js';
 import { createRoadSearchCoverage } from './roadSearchCoverage.js';
+import { isRoadSearchProof } from './roadSearchProof.js';
 
 export const LOCAL_DRIVING_REVIEW_VERSION = 'entry_branch_return_v7_search_coverage';
 const id = p => String(p?.address_hash || p?.legacy_hash || p?.id || '');
@@ -262,10 +263,11 @@ async function reviewDrivingWindows(order, options = {}) {
     const finish = result => ({ ...result, diagnostics: { ...result.diagnostics,
         timings: { ...timings, total_ms: Date.now() - reviewStarted } } });
     const identities = order.map(id);
+    const routeIdentities = new Set(identities);
     if (identities.some(key => !key) || new Set(identities).size !== order.length) throw new Error('Local driving review requires unique stop membership.');
     const locks = new Set((options.lockedStopIds || []).map(String));
     if ([...locks].some(key => !identities.includes(key))) throw new Error('Locked stop is not in route membership.');
-    const report = { version: LOCAL_DRIVING_REVIEW_VERSION, status: 'checked', planned: 0, checked: 0,
+    const report = { version: LOCAL_DRIVING_REVIEW_VERSION, status: 'checked', planned: 0, checked: 0, reused: 0,
         repaired: 0, candidatesMeasured: 0, localMilesSaved: 0, localSecondsSaved: 0,
         skipped: [], budgetExhausted: false, validation: 'unchanged', applied: false };
     const original = order;
@@ -283,6 +285,7 @@ async function reviewDrivingWindows(order, options = {}) {
         throw new Error('Local driving review received invalid window membership.');
     }
     const coverage = options._roadSearchCoverage?.state;
+    const proof = options._roadSearchCoverage?.proof;
     const questionKey = window => coverage?.key(order, window, { ...options, unresolvedStopIds: [...unmatchedIds] });
     const planned = plannedDrivingWindows(order, options, unmatchedIds);
     const windows = coverage ? coverage.prioritize(planned, questionKey) : planned;
@@ -306,7 +309,7 @@ async function reviewDrivingWindows(order, options = {}) {
     const maxCandidates = Math.max(1, Math.min(8, options.maxLocalCandidates || 3));
     const contextOptions = { ...options, startLocation: null, endLocation: null, maxGeometryPoints: 100000,
         requireDirectedLegs: true, servicePolicy: { enabled: false, parkingSecondsPerStop: 0 } };
-    const inferredAccess = new Map(), discovered = new Set();
+    const inferredAccess = proof?.inferredAccess || new Map(), discovered = proof?.discovered || new Set();
     const accessContext = { accessFor: p => {
         const known = options.knownDrivingAccessFor?.(p);
         return trustedAccess(p.routing_access) ? p.routing_access : trustedAccess(known) ? known
@@ -344,27 +347,45 @@ async function reviewDrivingWindows(order, options = {}) {
         if (!right.length && options.endLocation) right.push(options.endLocation);
         const stops = order.slice(start, end), section = [...left, ...stops, ...right];
         const coverageKey = questionKey(windows[index]);
-        let fullyConsidered = false;
-        coverage?.attempt();
-        report.checked++;
-        if (area) report.areaReview.checked++;
+        let fullyConsidered = false, unchanged = true, certifiedKey = null, attempted = false;
+        const markAttempt = () => {
+            if (attempted) return;
+            attempted = true; coverage?.attempt(); report.checked++;
+            if (area) report.areaReview.checked++;
+        };
+        const currentProofKey = () => proof.key(order, windows[index], { ...options,
+            unresolvedStopIds: [...unmatchedIds], knownDrivingAccessFor: accessContext.accessFor });
         try {
             if (mailCarrier && options.inferStreetSides !== false
-                && section.some(p => !trustedAccess(accessContext.accessFor(p)) && !discovered.has(id(p)))) {
+                && section.some(p => (!proof || routeIdentities.has(id(p)))
+                    && !trustedAccess(accessContext.accessFor(p)) && !discovered.has(id(p)))) {
+                markAttempt();
                 const observation = await timed('curb_discovery_ms', () => retryInferredHeading(section, async () => {
                     const discovery = await createContext(section, { ...contextOptions, sparseCosts: true,
                         routeOnly: true, discoverStreetSides: true });
                     return discovery.routeSequence(section);
                 }));
                 for (const [key, access] of inferMailCarrierAccess(section, observation.streetSideEvidence)) {
-                    if (!discovered.has(key) && !trustedAccess(accessContext.accessFor(section.find(p => id(p) === key)))) inferredAccess.set(key, access);
+                    if ((!proof || routeIdentities.has(key)) && !discovered.has(key)
+                        && !trustedAccess(accessContext.accessFor(section.find(p => id(p) === key)))) inferredAccess.set(key, access);
                 }
-                section.forEach(p => discovered.add(id(p)));
+                section.forEach(p => { if (!proof || routeIdentities.has(id(p))) discovered.add(id(p)); });
             }
+            if (proof) {
+                certifiedKey = await currentProofKey();
+                if (proof.has(certifiedKey)) {
+                    coverage?.reuse(certifiedKey); report.reused++;
+                    continue;
+                }
+            }
+            markAttempt();
             const { context, baseline } = await timed('road_context_ms', () => retryInferredHeading(section, async () => {
                 const context = await createContext(section, contextOptions);
                 return { context, baseline: await context.routeSequence(section) };
             }));
+            // A failed inferred heading can be removed while building the
+            // baseline. Certify the policy actually used by the candidates.
+            if (proof) certifiedKey = await currentProofKey();
             // Whole-run moves cannot repair a scrambled long street inside an
             // area. Ask bounded directed door questions as well; all proposals
             // still need the same continuous drive and unchanged boundary proof.
@@ -441,12 +462,14 @@ async function reviewDrivingWindows(order, options = {}) {
                 }
             }
             if (selected !== stops) {
+                unchanged = false;
                 order.splice(start, stops.length, ...selected);
                 report.repaired++; report.localMilesSaved += baseline.distanceMiles - best.distanceMiles;
                 report.localSecondsSaved += baseline.driveSeconds - best.driveSeconds;
                 if (selectedCandidate?.areaMove) report.areaReview.repaired++;
             }
         } catch (error) {
+            markAttempt();
             fullyConsidered = false;
             fatal(error);
             report.skipped.push({ start, end, reason: error.message });
@@ -464,7 +487,10 @@ async function reviewDrivingWindows(order, options = {}) {
                 }
             }
         } finally {
-            if (fullyConsidered) coverage?.complete(coverageKey);
+            if (fullyConsidered) {
+                coverage?.complete(proof ? certifiedKey : coverageKey);
+                if (proof && unchanged && certifiedKey && Date.now() < deadline && !options.signal?.aborted) proof.complete(certifiedKey);
+            }
         }
     }
     if (order.length !== original.length || new Set(order.map(id)).size !== original.length
@@ -539,17 +565,29 @@ async function reviewDrivingPhases(order, options = {}) {
         ...(reviewed.diagnostics.streetSideService ? { streetSideService: { ...reviewed.diagnostics.streetSideService,
             passViolationsAfter: reviewed.diagnostics.streetSideService.passViolationsBefore } } : {}) } };
     const shortWindows = planShortDrivingWindows(major.properties, options);
+    const accessSnapshot = () => JSON.stringify(major.properties.map(stop => [id(stop), major.accessFor?.(stop) || null]));
+    const majorAccessSnapshot = options._roadSearchCoverage?.proof ? accessSnapshot() : null;
     const count = value => Number.isFinite(value) ? value : 0;
     const combinedTimings = short => ({ ...Object.fromEntries(['curb_discovery_ms', 'road_context_ms',
         'candidate_search_ms', 'candidate_measurement_ms'].map(key =>
         [key, count(major.diagnostics.timings?.[key]) + count(short?.timings?.[key])])), total_ms: Date.now() - phasesStarted });
-    const retain = shortCleanup => ({ ...major, diagnostics: { ...major.diagnostics,
+    const retain = shortCleanup => {
+        const retained = { ...major };
+        if (majorAccessSnapshot !== null && accessSnapshot() !== majorAccessSnapshot) {
+            // Short cleanup shares the action's inference map. Removing an
+            // infeasible heading invalidates measurements made before removal,
+            // even when the short move is rejected and the main order survives.
+            delete retained.measurement; delete retained.baseline; delete retained.previousMeasurement;
+        }
+        return { ...retained, diagnostics: { ...major.diagnostics,
         planned: count(major.diagnostics.planned) + count(shortCleanup.planned),
         checked: count(major.diagnostics.checked) + count(shortCleanup.checked),
+        reused: count(major.diagnostics.reused) + count(shortCleanup.reused),
         candidatesMeasured: count(major.diagnostics.candidatesMeasured) + count(shortCleanup.candidatesMeasured),
         budgetExhausted: major.diagnostics.budgetExhausted || shortCleanup.budgetExhausted === true,
         skipped: [...(major.diagnostics.skipped || []), ...(shortCleanup.skipped || [])],
-        timings: combinedTimings(shortCleanup), shortCleanup } });
+        timings: combinedTimings(shortCleanup), shortCleanup } };
+    };
     if (!shortWindows.length) return retain({ status: 'not_needed', applied: false,
         planned: 0, checked: 0, repaired: 0, candidatesMeasured: 0, budgetExhausted: false });
     let cleanup;
@@ -582,6 +620,7 @@ async function reviewDrivingPhases(order, options = {}) {
     const baseline = major.baseline || cleanup.baseline;
     return { ...cleanup, baseline, diagnostics: { ...original, status: short.status, applied: true, validation: 'whole_route',
         planned: count(original.planned) + count(short.planned), checked: count(original.checked) + count(short.checked),
+        reused: count(original.reused) + count(short.reused),
         repaired: (original.applied ? count(original.repaired) : 0) + count(short.repaired),
         candidatesMeasured: count(original.candidatesMeasured) + count(short.candidatesMeasured),
         localMilesSaved: baseline ? baseline.distanceMiles - after.distanceMiles
@@ -597,25 +636,39 @@ async function reviewDrivingPhases(order, options = {}) {
 }
 
 export async function reviewLocalDrivingNeighborhoods(order, options = {}) {
-    const state = createRoadSearchCoverage(options.searchCoverage, LOCAL_DRIVING_REVIEW_VERSION);
+    const suppliedProof = options.roadSearchProof || options.searchProof;
+    if (suppliedProof && !isRoadSearchProof(suppliedProof)) throw new Error('Road search proof must be constructed by the authenticated endpoint.');
+    const proof = suppliedProof || null;
+    const state = createRoadSearchCoverage(options.searchCoverage, LOCAL_DRIVING_REVIEW_VERSION, { certified: Boolean(proof) });
     const unmatchedIds = new Set([...(options.unresolvedStopIds || []).map(String),
         ...order.filter(p => p.routing_access?.resolution_status === 'unresolved').map(id)]);
-    const configured = { ...options, _roadSearchCoverage: { state, unmatchedIds } };
+    const configured = { ...options, _roadSearchCoverage: { state, unmatchedIds, proof } };
     const result = await reviewDrivingPhases(order, configured);
     // Rebuild questions for the accepted order. A repair invalidates only the
     // sections whose ordered doors or fixed context changed; unrelated work
-    // survives. No measurement or inferred curb label is reused across calls.
+    // survives. Authenticated same-action receipts additionally bind effective
+    // curb evidence; unsigned history remains only a scheduling hint.
     const finalOptions = { ...configured, unresolvedStopIds: [...unmatchedIds] };
-    const keys = plannedDrivingWindows(result.properties, finalOptions, unmatchedIds, false)
-        .map(window => state.key(result.properties, window, finalOptions));
+    const keyFor = (window, settings) => proof
+        ? proof.key(result.properties, window, { ...settings, knownDrivingAccessFor: result.accessFor })
+        : state.key(result.properties, window, settings);
+    const keys = await Promise.all(plannedDrivingWindows(result.properties, finalOptions, unmatchedIds, false)
+        .map(window => keyFor(window, finalOptions)));
     if (options.shortDrivingCleanup === true) {
         const shortOptions = { ...finalOptions, knownDrivingAccessFor: result.accessFor,
-            inferStreetSides: false, requireNoDrivingIncrease: true,
+            inferStreetSides: false, requireNoDrivingIncrease: true, shortDrivingCleanup: false,
             reviewWindows: planShortDrivingWindows(result.properties, finalOptions) };
-        keys.push(...plannedDrivingWindows(result.properties, shortOptions, unmatchedIds, false)
-            .map(window => state.key(result.properties, window, shortOptions)));
+        keys.push(...await Promise.all(plannedDrivingWindows(result.properties, shortOptions, unmatchedIds, false)
+            .map(window => keyFor(window, shortOptions))));
+    }
+    if (proof) {
+        proof.prune(keys);
+        // Limits apply to fresh work. Valid unchanged questions outside that
+        // prefix can still be certified without another provider request.
+        for (const key of keys) if (proof.has(key) && !state.has(key)) state.reuse(key);
     }
     // This ephemeral field is lifted into routing_metadata by the endpoint;
     // keeping it outside diagnostics prevents nested personal-bound ledgers.
-    return { ...result, searchCoverage: state.report(keys) };
+    const searchCoverage = state.report(keys);
+    return { ...result, ...(proof ? { diagnostics: { ...result.diagnostics, reused: searchCoverage.reused_this_pass } } : {}), searchCoverage };
 }

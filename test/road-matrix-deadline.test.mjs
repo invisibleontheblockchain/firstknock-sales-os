@@ -200,8 +200,12 @@ test('a late fourth-pass response cannot cross the five-minute action deadline o
     const pending = action(route, { mode: 'route_only' }, { client: {
         functions: { invoke: (_name, payload) => {
             const pass = calls++;
-            return new Promise(resolve => setTimeout(() => resolve(remainingSearchResult(payload.properties, pass)),
-                observedPassTimes[pass] ?? remainingBudget + 1000));
+            assert.equal(payload.search_continuation, pass ? `private-deadline-token-${pass - 1}` : undefined);
+            return new Promise(resolve => setTimeout(() => {
+                const result = remainingSearchResult(payload.properties, pass);
+                result.data.search_continuation = `private-deadline-token-${pass}`;
+                resolve(result);
+            }, observedPassTimes[pass] ?? remainingBudget + 1000));
         } },
         entities: { SavedRoute: { update: async (_id, patch) => { saved.push(patch); return { ...route, ...patch }; } } },
     } }).then(() => { settled = true; });
@@ -215,6 +219,7 @@ test('a late fourth-pass response cannot cross the five-minute action deadline o
     assert.equal(saved[0].metadata.road_search_coverage.remaining_windows, 1);
     assert.equal(saved[0].metadata.road_search_stop_reason, 'deadline_exceeded');
     assert.equal(saved[0].metadata.road_verification.verified, true);
+    assert.doesNotMatch(JSON.stringify(saved), /private-deadline-token|search_continuation|searchContinuation/);
     const snapshot = structuredClone(saved[0]);
     t.mock.timers.tick(1000); await flush();
     assert.equal(calls, 4); assert.equal(saved.length, 1);
