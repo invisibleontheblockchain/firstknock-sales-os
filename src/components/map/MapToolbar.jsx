@@ -1,5 +1,5 @@
 import { createManagedRoute } from '@/lib/createManagedRoute';
-import React, { useCallback, useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect, useMemo } from 'react';
 import { Button } from "@/components/ui/button";
 import { Loader2, Navigation, Locate, List, X, Filter, MapPin, Zap, Eye, EyeOff, Save, Pencil, Check, RotateCcw, Download, MoreVertical, Scissors, Ghost, Flag, Trash2 } from 'lucide-react';
 import { LayoutDashboard, Settings } from 'lucide-react';
@@ -21,6 +21,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuCheckb
 import { OptimizeRouteChoices, OptimizeRouteTrigger } from './OptimizeRouteInline';
 import { routeBelongsToActingUser } from '@/lib/routeOptimizeUpdate';
 import { findHydratedSearchRoute, GLOBAL_ROUTE_SEARCH_EVENT } from '@/components/search/globalSearchBridge';
+import { verifiedRouteSegments } from '@/lib/roadAwareRouteGeometry';
+import RoutePathLegend from './RoutePathLegend';
 
 /**
  * MapToolbar — extracted from Home.jsx
@@ -93,6 +95,8 @@ export default function MapToolbar({
   hasMlsData,
   logs = []
 }) {
+  const hasDrivingGeometry = useMemo(() => !!verifiedRouteSegments(activeRoute?.metadata,
+    activeRoute?.property_hashes || activeRoute?.properties || [], activeRoute?.properties || []).length, [activeRoute]);
   const queryClient = useQueryClient();
   const hasDrawnArea = drawnPolygon && drawnPolygon.length > 2;
   const routeSelectClass = "h-6 md:h-7 text-[10px] md:text-[11px] font-extrabold rounded-lg px-2 md:px-2.5 outline-none cursor-pointer shrink-0 bg-[#050505]/95 border border-white/15 text-white shadow-[0_8px_24px_rgba(0,0,0,0.35)] hover:border-[#2EEB57]/50 hover:bg-[#0D0D0D] focus:border-[#2EEB57] focus:ring-2 focus:ring-[#2EEB57]/20 transition-all";
@@ -538,6 +542,7 @@ export default function MapToolbar({
                 {/* Active Route Banner */}
                 {mode === 'analyze' && activeRoute &&
         <div className="pointer-events-auto rounded-xl px-2 py-1.5 md:px-3 md:py-2 shadow-2xl border border-[#2EEB57]/30 animate-in slide-in-from-top-2 backdrop-blur-md" style={{ background: 'rgba(10,10,10,0.95)' }}>
+                        {showRouteLines && <div className="mb-1"><RoutePathLegend hasDrivingGeometry={hasDrivingGeometry} /></div>}
                         {/* Row 1: Name + Actions — always horizontal */}
                         <div className="flex items-center gap-1.5 min-w-0">
                             <div className="w-5 h-5 md:w-6 md:h-6 rounded-full flex items-center justify-center shrink-0" style={{ background: BRAND.gold }}>

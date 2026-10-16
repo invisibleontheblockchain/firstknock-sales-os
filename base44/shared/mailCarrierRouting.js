@@ -5,15 +5,18 @@ import { streetSideVariants, trustedAccess } from './streetSideRouting.js';
 const identity = p => String(p?.address_hash || p?.legacy_hash || p?.id || '');
 const street = p => roadNetworkRoutingInternals.normalizeStreetName(p?.street_name || '').replaceAll(' ', '');
 const coordinateKey = p => `${Number(p[0]).toFixed(6)},${Number(p[1]).toFixed(6)}`;
+// An internal graph label, never a claimed street name or driveway match.
+const unnamedRoad = '__observed_unnamed_road__';
 
 // These lines are observed road geometry, not house-to-house segments. They
 // supply side/position evidence only; OSRM still decides every legal car leg.
 function observedRoadNetwork(steps = []) {
     const roads = new Map(), locations = new Map();
     for (const step of steps) {
-        if (step.driving_side !== 'right' || !step.name) continue;
-        const key = street({ street_name: step.name });
-        const road = roads.get(key) || { name: step.name, edges: new Map() };
+        if (step.driving_side !== 'right' || typeof step.name !== 'string') continue;
+        const name = step.name || unnamedRoad;
+        const key = street({ street_name: name });
+        const road = roads.get(key) || { name, edges: new Map() };
         const points = step.geometry?.coordinates || [];
         for (let i = 1; i < points.length; i++) {
             const a = coordinateKey(points[i - 1]), b = coordinateKey(points[i]);
@@ -92,17 +95,38 @@ export function inferMailCarrierAccess(stops, evidence) {
     if (evidence?.waypoints?.length !== stops.length || !evidence.steps?.length) return accesses;
     const context = createRoadNetworkRoutingContext({ roadNetwork: observedRoadNetwork(evidence.steps),
         travelMode: 'driving', maxSnapDistanceMeters: 100, serviceSideOnly: true });
+    const unnamed = new Map();
     stops.forEach((stop, i) => {
         if (stop.locked || stop.order_locked || stop.routing_access?.resolution_status === 'unresolved') return;
         const waypoint = evidence.waypoints[i], matched = { lat: waypoint?.location?.[1], lng: waypoint?.location?.[0] };
-        if (!isValidRoutePoint(matched) || street({ street_name: waypoint.name }) !== street(stop)) return;
-        const access = context.accessFor(stop);
+        if (!isValidRoutePoint(matched) || !street(stop)) return;
+        const anonymous = waypoint.name === '';
+        if (!anonymous && street({ street_name: waypoint.name }) !== street(stop)) return;
+        const access = context.accessFor(anonymous ? { ...stop, street_name: unnamedRoad } : stop);
         if (!trustedAccess(access) || !Number.isFinite(access.serviceBearing)
             || haversineDistanceMiles(access.point, matched) * 1609.344 > 2) return;
-        accesses.set(identity(stop), { ...access, roadName: waypoint.name,
-            source: 'osrm-named-road-side', resolution_status: 'resolved', frontageVerified: false,
-            circular: String(access.roadId).startsWith('circuit:') });
+        const inferred = { ...access, roadName: waypoint.name || '',
+            source: anonymous ? 'osrm-unnamed-road-side' : 'osrm-named-road-side',
+            resolution_status: 'resolved', frontageVerified: false,
+            circular: String(access.roadId).startsWith('circuit:') };
+        if (anonymous) unnamed.set(identity(stop), { stop, matched, access: inferred });
+        else accesses.set(identity(stop), inferred);
     });
+    // Some residential streets have complete routable geometry but no name in
+    // the provider. Three distinct matches from one address street corroborate
+    // an unbranched service chain. Geometry establishes curb side only; it does
+    // not establish frontage or rename the provider's road. Conflicting address
+    // streets on a chain, corners and isolated matches remain uncertain.
+    const chains = new Map();
+    for (const item of unnamed.values()) {
+        const key = item.access.chainKey;
+        chains.set(key, [...(chains.get(key) || []), item]);
+    }
+    for (const items of chains.values()) {
+        if (items.length < 3 || new Set(items.map(item => street(item.stop))).size !== 1
+            || new Set(items.map(item => coordinateKey([item.matched.lng, item.matched.lat]))).size < 3) continue;
+        for (const { stop, access } of items) accesses.set(identity(stop), access);
+    }
     return accesses;
 }
 

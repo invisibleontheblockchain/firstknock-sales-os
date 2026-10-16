@@ -8,6 +8,7 @@
  */
 
 import { OPTIMIZE_MODES, routeOriginModeForOptimizeMode } from './routeOriginModes';
+import { clearRouteGeometry, verifiedRouteGeometry } from '../../base44/shared/routeDisplayGeometry.js';
 
 // Custom ANCHORS live in their own module (their coordinates ARE persisted), and
 // are re-exported here so callers keep a single route-update import.
@@ -104,9 +105,10 @@ export function buildRouteOptimizeUpdate({
     carCapture = null
 }) {
     const routeOriginMode = routeOriginModeForOptimizeMode(optimizeMode);
-    const metadata = { ...existingMetadata, ...routingMetadata };
-    delete metadata.road_geometry;
-    delete metadata.road_geometry_segments;
+    const metadata = clearRouteGeometry({ ...existingMetadata, ...routingMetadata });
+    if (optimizeMode === OPTIMIZE_MODES.ROUTE_ONLY) {
+        Object.assign(metadata, verifiedRouteGeometry(routingMetadata, order) || {});
+    }
 
     if (optimizeMode === OPTIMIZE_MODES.ROUTE_ONLY) {
         // Always clear, whatever the previous mode was — including car_round_trip

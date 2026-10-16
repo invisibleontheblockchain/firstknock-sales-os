@@ -10,6 +10,7 @@
  */
 
 import { ROUTE_ORIGIN_MODES } from './routeOriginModes';
+import { clearRouteGeometry, verifiedRouteGeometry } from '../../base44/shared/routeDisplayGeometry.js';
 
 const coordinate = (value, limit) => {
     const parsed = Number(value);
@@ -46,8 +47,8 @@ export function buildRouteAnchorsUpdate({
     const normalizedStart = normalizeRouteAnchor(start);
     const normalizedEnd = normalizeRouteAnchor(end);
     const anchored = Boolean(normalizedStart || normalizedEnd);
-    const metadata = { ...existingMetadata, ...routingMetadata };
-    delete metadata.road_geometry;
+    const metadata = clearRouteGeometry({ ...existingMetadata, ...routingMetadata });
+    if (!anchored) Object.assign(metadata, verifiedRouteGeometry(routingMetadata, order) || {});
 
     metadata.route_bounds = anchored
         ? { enabled: true, mode: ROUTE_ORIGIN_MODES.CUSTOM_BOUNDS, start_source: 'manual_address' }

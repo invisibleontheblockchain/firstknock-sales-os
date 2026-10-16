@@ -6,6 +6,7 @@ import ts from 'typescript';
 import * as continuity from '../base44/shared/routeContinuityOptimizer.js';
 import * as candidateSelection from '../base44/shared/routeCandidateSelection.js';
 import * as legDistribution from '../base44/shared/roadLegDistribution.js';
+import * as routeDisplayGeometry from '../base44/shared/routeDisplayGeometry.js';
 
 const source = fs.readFileSync(new URL('../base44/functions/optimizeRouteRoadMatrix/entry.ts', import.meta.url), 'utf8');
 const compiled = ts.transpileModule(source, { compilerOptions: {
@@ -22,6 +23,30 @@ const readyReport = () => ({ status: 'ready', attempted: 0, recovered: 0, reused
 
 const drivingMeasurement = (distanceMiles = 100, driveSeconds = 3000) => ({ distanceMiles, driveSeconds,
     directedLegs: [], geometry: [[-81, 35], [-80.99, 35]], graphIdentity: 'osrm-test-graph' });
+
+for (const planTier of ['door', 'cluster']) test(`${planTier} response reuses complete geometry and binds recovered entrances to original display pins`, async () => {
+    const properties = inputStops();
+    const { invoke } = endpoint({ planTier,
+        recover: submitted => ({ properties: submitted.map((stop, i) => i === 1 ? { ...stop, lat: 35.005 } : stop), report: readyReport() }),
+        verify: input => {
+            const order = input.baselineOrder;
+            const geometry = order.map(stop => ({ lat: stop.lat, lng: stop.lng }));
+            const measured = { ...drivingMeasurement(), geometry,
+                directedLegs: order.slice(1).map((stop, i) => ({ from: order[i].address_hash, to: stop.address_hash,
+                    distanceMiles: 1, geometry: [geometry[i], geometry[i + 1]] })) };
+            return { properties: order, measurement: measured, baseline: measured, applied: false, keptCurrent: true,
+                diagnostics: { applied: false, local_driving_review: { applied: false, validation: 'whole_route' } } };
+        },
+    });
+    const { body } = await invoke(properties);
+    assert.equal(body.success, true);
+    const meta = { ...body.routing_metadata, routing: { property_order_fingerprint: body.routing_metadata.property_order_fingerprint } };
+    const originalOrder = body.order.map(id => properties.find(stop => stop.address_hash === id));
+    assert.ok(routeDisplayGeometry.verifiedRouteGeometry(meta, body.order, originalOrder));
+    assert.equal(meta.road_geometry_segments[0].points.find(point => point.lat === 35.005)?.lat, 35.005);
+    const anchored = await invoke(properties, { start_location: { lat: 35.1, lng: -81.1 } });
+    assert.equal(anchored.body.routing_metadata.road_geometry_segments, undefined);
+});
 
 function endpoint({ recover, local, finalReview, verify, winner, planTier = 'door', failProvider = false, authenticated = true } = {}) {
     const calls = { events: [], recovery: [], plan: [], continuity: [], matrix: [], provider: [], local: [],
@@ -90,6 +115,7 @@ function endpoint({ recover, local, finalReview, verify, winner, planTier = 'doo
             calls.roadCosts.push(config); return { ...config, stats: () => ({}) };
         } },
         '../../shared/roadLegDistribution.js': legDistribution,
+        '../../shared/routeDisplayGeometry.js': routeDisplayGeometry,
         '../../shared/routeMetricMemo.js': { createMemoizedRouteMetrics: metrics => metrics },
         '../../shared/routeAccessRecovery.js': { recoverRouteVehicleAccess: async (properties, options) => {
             calls.events.push('recovery'); calls.recovery.push({ properties, options });

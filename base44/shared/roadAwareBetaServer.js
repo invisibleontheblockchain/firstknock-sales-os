@@ -87,6 +87,7 @@ export async function completeServerRoadAwareRoutes(routes, { client, user, read
                 comparison: result.comparison, decision: 'generated' });
             const metadata = { ...route.metadata, ...result.metadata, road_aware_comparison_id: row.id,
                 road_aware_legacy_order: result.comparison.beforeOrder };
+            delete metadata.road_geometry_provenance;
             if (['home_round_trip', 'current_to_home', 'car_round_trip', 'anchor_round_trip', 'private_anchor_round_trip'].includes(route.routeOriginMode || route.route_origin_mode)) {
                 delete metadata.road_geometry; delete metadata.road_geometry_segments;
             }

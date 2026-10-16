@@ -24,6 +24,7 @@ import { buildRoadOptimizationAttempt, describeAppliedRoadOptimization, describe
 import { countChangedRouteStops, persistOptimizedRoute, syncOptimizedRoute } from '@/lib/routeOptimizePersistence';
 import { ROAD_VERIFICATION, stampRoadVerification } from '@/lib/routeRoadVerification';
 import { OPTIMIZE_MODES, ROUTE_ORIGIN_MODES, resolveOptimizeMode, routeOriginModeForOptimizeMode } from '@/lib/routeOriginModes';
+import { clearRouteGeometry, verifiedRouteGeometry } from '../../base44/shared/routeDisplayGeometry.js';
 import {
     buildRouteAnchorsUpdate,
     buildRouteOptimizeUpdate,
@@ -230,7 +231,11 @@ export async function reoptimizeRoute(route, options = {}, deps = {}) {
         // check cannot fall through to an unverified reorder, even on a new route.
         if (!roadMatrixResult) {
             const outcome = describeRoadOptimizationOutcome(roadDeclineReason, roadMeasurement);
-            const metadata = { ...(route.metadata || {}),
+            const confirmedGeometry = !start && !end && roadDeclineReason === 'current_order_measured_best'
+                && roadMeasurement?.verifiedCurrentOrder === true
+                ? verifiedRouteGeometry(roadMeasurement.routingMetadata, hashes, routeProperties) : null;
+            const metadata = { ...(confirmedGeometry ? clearRouteGeometry(route.metadata) : route.metadata || {}),
+                ...(confirmedGeometry ? { ...clearRouteGeometry(roadMeasurement.routingMetadata), ...confirmedGeometry } : {}),
                 ...(roadMeasurement?.routingMetadata?.road_access_recovery
                     ? { road_access_recovery: roadMeasurement.routingMetadata.road_access_recovery } : {}),
                 ...(shareSearchCoverage && roadMeasurement?.routingMetadata?.road_search_coverage

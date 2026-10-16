@@ -74,7 +74,8 @@ function completeDrivingVerification(meta, measurement = null, applied = false) 
     return applied ? validDistance(meta.winning_route_distance) || validDistance(meta.road_aware_measured)
         : validDistance(measurement?.distanceMiles) || validDistance(meta.input_measured) || validDistance(meta.continuity_measured);
 }
-const countyRoadsIncluded = meta => typeof meta?.road_matrix_source === 'string' && meta.road_matrix_source.endsWith('+nc_ng911');
+const countyRoadsIncluded = meta => meta?.county_road_routing?.countyStopCount > 0
+    || (typeof meta?.road_matrix_source === 'string' && /\+(?:nc|county)_ng911$/.test(meta.road_matrix_source));
 const coverageSummary = meta => {
     const coverage = meta?.road_search_coverage;
     return coverage?.version === 1 && optionalCount(coverage.total_windows) !== null

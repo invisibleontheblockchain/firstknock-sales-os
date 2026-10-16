@@ -35,6 +35,7 @@ import { recoverRouteVehicleAccess } from '../../shared/routeAccessRecovery.js';
 import { reviewLocalDrivingNeighborhoods } from '../../shared/localDrivingNeighborhoods.js';
 import { createCountyRoadRoutingAdapter } from '../../shared/countyRoadRouting.js';
 import { verifyCompleteDrivingCandidate } from '../../shared/completeDrivingVerification.js';
+import { buildVerifiedRouteGeometry } from '../../shared/routeDisplayGeometry.js';
 import { summarizeLegMiles } from '../../shared/roadLegDistribution.js';
 import {
     DURATION_TIE_TOLERANCE_MINUTES,
@@ -45,7 +46,7 @@ import {
 
 // Bump when candidate generation or the objective changes, so a stored route can
 // be told apart from one produced by an older solver.
-const OPTIMIZER_VERSION = 'road_matrix_automatic_access_v17';
+const OPTIMIZER_VERSION = 'road_matrix_automatic_access_v18';
 
 function readSecret(name) {
     try {
@@ -136,6 +137,7 @@ export default async function (req: Request): Promise<Response> {
         };
         // Property pins identify the parcel. Driving access is a separate point:
         // recover it from a qualified full-address match before pricing any order.
+        const displayProperties = properties.map(stop => ({ ...stop }));
         const accessRecovery = profile === 'driving'
             ? await recoverRouteVehicleAccess(properties, { vehicleBaseUrl, vehicleProfile: profile,
                 vehicleFetch, geocodioApiKey: readSecret('GEOCODIO_API_KEY'),
@@ -158,7 +160,7 @@ export default async function (req: Request): Promise<Response> {
         const countyRouting = createCountyRoadRoutingAdapter(properties, {
             fetchJson: responseCache.fetchJson, baseUrl: vehicleBaseUrl, profile,
         });
-        const roadSource = source => countyRouting.graphIdentity ? `${source}+nc_ng911` : source;
+        const roadSource = source => countyRouting.stats().countyStopCount > 0 ? `${source}+county_ng911` : source;
 
         // Canonical input: candidate GENERATION never sees the caller's array
         // order, so a shuffled or reversed request cannot change the winner. The
@@ -409,6 +411,8 @@ export default async function (req: Request): Promise<Response> {
                     property_count: winningOrder.length,
                     routing_metadata: {
                         ...baseMetadata,
+                        ...buildVerifiedRouteGeometry({ measurement: complete?.measurement,
+                            properties: winningOrder, displayProperties, startLocation, endLocation }),
                         neighborhood_excursion_review: neighborhood.diagnostics,
                         road_cost_cache: roadCosts.stats(),
                         road_response_cache: responseCache.stats(),
@@ -676,6 +680,8 @@ export default async function (req: Request): Promise<Response> {
             property_count: winner.order.length,
             routing_metadata: {
                 ...baseMetadata,
+                ...(profile === 'driving' ? buildVerifiedRouteGeometry({ measurement: neighborhood.measurement,
+                    properties: winner.order, displayProperties, startLocation, endLocation }) : {}),
                 neighborhood_excursion_review: neighborhood.diagnostics,
                 road_cost_cache: roadCosts.stats(),
                 road_response_cache: responseCache.stats(),

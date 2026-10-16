@@ -78,7 +78,7 @@ test('wide zoom keeps all 17 saved route markers without drawing thousands of do
         savedRouteStyleKey: layer.savedRouteStyleKey, buildSavedRouteGroup: layer.buildSavedRouteGroup,
         isRenderableMapPoint, filterRoutesByStatus,
         getRouteColor: () => '#FFD700', getRouteLinePoints: (_route, properties) => properties,
-        verifiedBetaSegments: () => null,
+        verifiedRouteSegments: () => [],
     };
     vm.createContext(sandbox);
     vm.runInContext(ts.transpileModule(functionNode.getText(ast), { compilerOptions: { module: ts.ModuleKind.None } }).outputText, sandbox);

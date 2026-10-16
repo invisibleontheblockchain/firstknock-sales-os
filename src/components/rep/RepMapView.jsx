@@ -4,12 +4,12 @@ import { MapContainer, CircleMarker, Circle, Polyline, Tooltip, useMap } from 'r
 import RecoveringTileLayer from '@/components/map/RecoveringTileLayer';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { routePropertyOrderFingerprint } from '@/components/logic/routeRoadContext';
 import { createLabelCanvas } from '@/components/map/labelCanvas';
 import { reconcileMapPins } from '@/components/map/reconcileMapPins';
 import { DEFAULT_PIN_THEME } from '@/components/map/mapPinThemes';
 import { outcomeColor } from '@/components/logic/outcomeStatus';
-import { verifiedBetaSegments } from '@/lib/roadAwareRouteGeometry';
+import { verifiedRouteSegments } from '@/lib/roadAwareRouteGeometry';
+import RoutePathLegend from '@/components/map/RoutePathLegend';
 
 // Fix Leaflet unmount error during scroll wheel zoom
 const originalGetMapPanePos = L.Map.prototype._getMapPanePos;
@@ -264,20 +264,10 @@ export default function RepMapView({
     }, [position, properties]);
 
     const nearbyHashes = useMemo(() => new Set(nearbyProps.map(p => p.address_hash)), [nearbyProps]);
+    const roadSegments = useMemo(() => verifiedRouteSegments(roadMetadata || { road_geometry: roadGeometry,
+        routing: { property_order_fingerprint: roadGeometryFingerprint } }, properties, properties),
+        [roadMetadata, roadGeometry, roadGeometryFingerprint, properties]);
     const routePathPositions = useMemo(() => {
-        const currentFingerprint = routePropertyOrderFingerprint(properties);
-        if (
-            roadGeometryFingerprint
-            && currentFingerprint === roadGeometryFingerprint
-            && Array.isArray(roadGeometry)
-            && roadGeometry.length > 1
-            && roadGeometry.length <= 12000
-        ) {
-            const persisted = roadGeometry
-                .filter(isRoutePoint)
-                .map(point => [Number(point.lat), Number(point.lng)]);
-            if (persisted.length === roadGeometry.length) return persisted;
-        }
         const positions = (properties || []).filter(isRoutePoint).map(p => [Number(p.lat), Number(p.lng)]);
         const effectiveStart = isRoutePoint(startLocation)
             ? startLocation
@@ -287,7 +277,7 @@ export default function RepMapView({
         if (effectiveStart) positions.unshift([Number(effectiveStart.lat), Number(effectiveStart.lng)]);
         if (isRoutePoint(endLocation)) positions.push([Number(endLocation.lat), Number(endLocation.lng)]);
         return positions;
-    }, [endLocation, position, properties, roadGeometry, roadGeometryFingerprint, startLocation]);
+    }, [endLocation, position, properties, startLocation]);
     const endpointsMatch = isRoutePoint(startLocation) && isRoutePoint(endLocation)
         && Number(startLocation.lat) === Number(endLocation.lat)
         && Number(startLocation.lng) === Number(endLocation.lng);
@@ -341,6 +331,10 @@ export default function RepMapView({
                 </div>
             </div>
 
+            <div className="absolute top-[calc(env(safe-area-inset-top)+4.5rem)] left-3 z-[1200] pointer-events-none rounded-md bg-black/90 px-3 py-2 shadow-lg">
+                <RoutePathLegend hasDrivingGeometry={roadSegments.length > 0} />
+            </div>
+
             {/* Map */}
             <div className="flex-1">
                 <MapContainer
@@ -390,11 +384,11 @@ export default function RepMapView({
                     ))}
 
                     {/* Route Path (Mail Carrier Style) */}
-                    {roadMetadata?.routing?.road_aware_routing_beta
-                        ? (verifiedBetaSegments(roadMetadata, properties, properties) || []).map((points, index) =>
+                    {roadSegments.length > 0
+                        ? roadSegments.map((points, index) =>
                             <Polyline key={'road-beta-' + index} positions={points.map(p => [Number(p.lat), Number(p.lng)])}
                                 renderer={renderer} pathOptions={{ interactive: false, color: BRAND.gold, weight: 4, opacity: 0.85 }} />)
-                        : routePathPositions.length > 1 && (
+                        : !roadMetadata?.routing?.road_aware_routing_beta && routePathPositions.length > 1 && (
                         <Polyline
                             positions={routePathPositions}
                             renderer={renderer}
@@ -403,7 +397,7 @@ export default function RepMapView({
                                 interactive: false, color: BRAND.gold,
                                 weight: mapSettings.lineWidth ? mapSettings.lineWidth + 2 : 4, 
                                 opacity: mapSettings.lineOpacity ? Math.max(0.6, mapSettings.lineOpacity) : 0.8,
-                                dashArray: lineDashArray 
+                                dashArray: lineDashArray || '4,6'
                             }}
                         />
                     )}
