@@ -45,7 +45,7 @@ import {
 
 // Bump when candidate generation or the objective changes, so a stored route can
 // be told apart from one produced by an older solver.
-const OPTIMIZER_VERSION = 'road_matrix_search_continuation_v16';
+const OPTIMIZER_VERSION = 'road_matrix_automatic_access_v17';
 
 function readSecret(name) {
     try {
@@ -139,6 +139,7 @@ export default async function (req: Request): Promise<Response> {
         const accessRecovery = profile === 'driving'
             ? await recoverRouteVehicleAccess(properties, { vehicleBaseUrl, vehicleProfile: profile,
                 vehicleFetch, geocodioApiKey: readSecret('GEOCODIO_API_KEY'),
+                enableMappedDrivewayRecovery: true,
                 collectCountyDiagnostics: body.inspect_access_only === true })
             : { properties, report: null };
         properties = accessRecovery.properties;
@@ -254,6 +255,7 @@ export default async function (req: Request): Promise<Response> {
                     ...reviewNeighborhoodExcursions(properties).diagnostics,
                     applied, local_driving_review: local },
                     strategy: 'access_guarded_neighborhood_repair', road_network_used: applied,
+                    county_road_routing: countyRouting.stats(),
                     fallback: false, road_path_validated: false, distance_estimate: 'unavailable',
                     input_measured: null, winning_route_distance: null,
                     property_order_fingerprint: routePropertyOrderFingerprint(winningOrder), exact_once_verified: true,

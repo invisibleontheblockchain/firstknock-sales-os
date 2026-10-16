@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { COUNTY_ROAD_SERVICE, COUNTY_ADDRESS_SERVICE, discoverCountyRoadAccess, validateCountyRoadAccess } from '../base44/shared/countyRoadAccess.js';
+import { COUNTY_ROAD_SERVICE, COUNTY_ADDRESS_SERVICE, discoverCountyRoadAccess, validateCountyRoadAccess,
+    discoverCountyAddressReference, validateCountyAddressReference } from '../base44/shared/countyRoadAccess.js';
 
 const stop = { address_hash: '1135 STONEGATE DR|28147', house_number: '1135', street_name: 'Stonegate Dr',
     city: 'Salisbury', state: 'NC', zip_code: '28147', lat: 35.645, lng: -80.6115 };
@@ -68,6 +69,37 @@ test('exact official address corrects a parcel pin before selecting its road fro
     assert.deepEqual(access.point, { lat: stop.lat, lng: -80.612 });
     assert.deepEqual(access.evidence.displayPoint, { lat: property.lat, lng: property.lng });
     assert.equal(access.evidence.addressId, 'nc_address:77');
+});
+
+test('an exact county identity reference survives a parcel-centroid offset without proving a driveway', async () => {
+    const parcelPin = { ...stop, lat: stop.lat + 0.006 };
+    const p = providers();
+    const reference = await discoverCountyAddressReference(parcelPin, p);
+    assert.ok(reference);
+    assert.equal(reference.source, 'nc_address_point');
+    assert.deepEqual(reference.point, { lat: stop.lat, lng: stop.lng });
+    assert.equal(validateCountyAddressReference(parcelPin, reference), true);
+    assert.equal(reference.network, undefined, 'address identity alone cannot supply driving proof');
+    assert.equal(p.calls.length, 1, 'only the exact county address inventory is read');
+    assert.equal(p.calls[0].searchParams.get('where'), "add_number='1135' AND post_code='28147'");
+});
+
+test('county reference rejects ambiguous addresses, truncated inventory and distant exact matches', async () => {
+    assert.equal(await discoverCountyAddressReference(stop, providers({ addresses: [countyAddress(stop),
+        countyAddress({ ...stop, lat: stop.lat + 0.0001 })] })), null);
+    assert.equal(await discoverCountyAddressReference(stop, providers({ addressPayload: {
+        features: [countyAddress(stop)], exceededTransferLimit: true,
+    } })), null);
+    assert.equal(await discoverCountyAddressReference({ ...stop, lat: stop.lat + 0.01 }, providers()), null);
+});
+
+test('cached county identity references remain bound to exact house, ZIP and source record', async () => {
+    const reference = await discoverCountyAddressReference(stop, providers());
+    assert.ok(reference);
+    assert.equal(validateCountyAddressReference({ ...stop, house_number: '1137' }, reference), false);
+    assert.equal(validateCountyAddressReference({ ...stop, zip_code: '28148' }, reference), false);
+    assert.equal(validateCountyAddressReference(stop, { ...reference, id: 'nc_address:78' }), false);
+    assert.equal(validateCountyAddressReference(stop, { ...reference, source: 'property_pin' }), false);
 });
 
 test('missing county address uses a nearby pin only with exact street, ZIP and number range evidence', async () => {

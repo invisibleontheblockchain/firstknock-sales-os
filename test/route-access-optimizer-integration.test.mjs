@@ -161,6 +161,7 @@ test('recovered access points reach canonical generation and road matrices witho
     const { status, body } = await invoke(properties);
     assert.equal(status, 200); assert.equal(body.success, true);
     assert.equal(calls.recovery.length, 1);
+    assert.equal(calls.recovery[0].options.enableMappedDrivewayRecovery, true);
     assert.ok(calls.matrix.length > 0); assert.ok(calls.continuity.length > 0);
     for (const observed of [calls.plan[0].properties, calls.matrix[0].points, calls.continuity[0]]) {
         const recovered = observed.find(p => p.address_hash === recoveredId);
@@ -197,6 +198,18 @@ test('residual unresolved access applies only a verified local incumbent repair 
     assert.equal(body.routing_metadata.road_path_validated, false);
     assert.equal(body.routing_metadata.input_measured, null);
     assert.equal(body.routing_metadata.winning_route_distance, null);
+});
+
+test('partial responses bind continuation to the public graph observed during local review', async () => {
+    const properties = inputStops();
+    const f = endpoint({ recover: unresolvedRecovery, local: submitted => {
+        f.calls.county[0].adapter.stats = () => ({ networks: 0, localSpeedMph: 15,
+            graphIdentity: '', publicDataVersion: 'live-public-graph' });
+        return partialImprovement(submitted);
+    } });
+    const { body } = await f.invoke(properties);
+    assert.equal(body.routing_metadata.county_road_routing.publicDataVersion, 'live-public-graph');
+    assert.equal(body.routing_metadata.county_road_routing.graphIdentity, '');
 });
 
 test('a road-access inventory outage returns diagnostic failure before any solver or repeated provider work', async () => {

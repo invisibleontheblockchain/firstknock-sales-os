@@ -70,6 +70,16 @@ test('an empty county network delegates the exact public response and request op
     assert.equal(result, engine.responses[0]); assert.equal(engine.calls[0].options, options);
     assert.equal(engine.calls[0].url.toString(), url);
     assert.equal(adapter.stats().countyStopCount, 0);
+    assert.equal(adapter.stats().publicDataVersion, 'public-v1');
+});
+
+test('public-only driving observations detect a changed provider graph before chaining partial savings', async () => {
+    const engine = publicProvider({ version: count => count === 1 ? 'public-v1' : 'public-v2' });
+    const adapter = createCountyRoadRoutingAdapter([before, after], { fetchJson: engine.fetchJson });
+    const url = urlFor('route', [before, after]);
+    await adapter.fetchJson(url);
+    await assert.rejects(adapter.fetchJson(url), /graph identity changed/);
+    assert.equal(adapter.stats().publicDataVersion, 'public-v1');
 });
 
 test('same-component stops take the mapped county path directly and still verify their public gateway', async () => {

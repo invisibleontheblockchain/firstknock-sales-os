@@ -1,9 +1,104 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { recoverRouteVehicleAccess as recoverAccess } from '../base44/shared/routeAccessRecovery.js';
+import { discoverMappedDrivewayAccess } from '../base44/shared/mappedDrivewayAccess.js';
+import { createMappedDrivewayFixture } from './fixtures/mapped-driveway-fixture.mjs';
 
 // Isolate the geocoding stage; county topology has its own provider/graph tests.
 const recoverRouteVehicleAccess = (properties, options = {}) => recoverAccess(properties, { countyAccessLookup: false, ...options });
+
+test('automatic driveway recovery repairs only the failed street access and reuses its proof next time', async () => {
+    const fixture = createMappedDrivewayFixture();
+    const properties = [fixture.stop, stop(1)], original = structuredClone(properties);
+    const access = await discoverMappedDrivewayAccess(fixture.stop, fixture);
+    assert.ok(access);
+    const road = provider(properties, { bad: [0] });
+    const vehicleFetch = async (url, options) => {
+        const reply = await road.fetch(url, options), data = await reply.json();
+        for (const waypoint of data.waypoints || []) {
+            if (waypoint.location.join(',') === pointKey(access.point)) waypoint.name = 'Emma Lane';
+        }
+        return response(data);
+    };
+    let mappedCalls = 0;
+    const repaired = await recoverRouteVehicleAccess(properties, { vehicleFetch,
+        geocode: async () => ({ results: {} }),
+        countyAccessLookup: async (_stop, options) => { options.onAddressReference(fixture.referenceAddress); return null; },
+        mappedAccessLookup: async (home, options) => {
+            mappedCalls++;
+            assert.equal(home.address_hash, fixture.stop.address_hash);
+            assert.deepEqual(options.referenceAddress, fixture.referenceAddress, 'reuse the county identity lookup');
+            return access;
+        },
+    });
+    assert.equal(mappedCalls, 1);
+    assert.equal(repaired.report.mapped_recovered, 1);
+    assert.equal(repaired.report.recovered, 1);
+    assert.deepEqual(repaired.report.unresolved, []);
+    assert.deepEqual(repaired.properties.map(home => home.address_hash), properties.map(home => home.address_hash));
+    assert.deepEqual(properties, original, 'the parcel display pin and input inventory stay intact');
+    assert.deepEqual(repaired.properties[0].routing_access.displayPoint, { lat: original[0].lat, lng: original[0].lng });
+    assert.equal(repaired.properties[0].lat, access.point.lat);
+    const cached = properties.map((home, index) => index === 0 ? { ...home, routing_access: access } : home);
+    const reused = await recoverRouteVehicleAccess(cached, { vehicleFetch,
+        geocode: () => assert.fail('confirmed access must not be geocoded again'),
+        mappedAccessLookup: () => assert.fail('confirmed access must not rediscover the driveway'),
+    });
+    assert.equal(reused.report.reused, 1);
+    assert.equal(reused.report.attempted, 0);
+    assert.deepEqual(reused.report.unresolved, []);
+});
+
+test('invalid cached driveway identity never suppresses automatic access validation', async () => {
+    const fixture = createMappedDrivewayFixture();
+    const access = await discoverMappedDrivewayAccess(fixture.stop, fixture);
+    access.evidence.referenceAddress.attributes.add_number = '156';
+    const properties = [{ ...fixture.stop, routing_access: access }];
+    const road = provider(properties, { bad: [0] });
+    const result = await recoverRouteVehicleAccess(properties, { vehicleFetch: road.fetch,
+        geocode: async () => ({ results: {} }), mappedAccessLookup: false });
+    assert.equal(result.report.reused, 0);
+    assert.equal(result.report.recovered, 0);
+    assert.equal(result.report.unresolved.length, 1);
+    assert.equal(result.properties[0].lat, fixture.stop.lat);
+});
+
+test('a cached driveway entrance is rejected when the current provider moves its road match beyond five metres', async () => {
+    const fixture = createMappedDrivewayFixture();
+    const access = await discoverMappedDrivewayAccess(fixture.stop, fixture);
+    const properties = [{ ...fixture.stop, routing_access: access }];
+    const result = await recoverRouteVehicleAccess(properties, {
+        vehicleFetch: async () => response({ code: 'Ok', waypoints: [{ name: 'Emma Lane', distance: 6,
+            location: [access.point.lng, access.point.lat + 0.000054] }] }),
+        geocode: async () => ({ results: {} }), mappedAccessLookup: false,
+    });
+    assert.equal(result.report.unresolved.length, 1);
+    assert.equal(result.report.recovered, 0);
+    assert.equal(result.report.access_overrides[fixture.stop.address_hash], undefined);
+    assert.equal(result.properties[0].routing_access.resolution_status, 'unresolved');
+});
+
+test('an unavailable mapped source preserves the precise access issue and every route member', async () => {
+    const properties = [stop(0), stop(1)], road = provider(properties, { bad: [0] });
+    const result = await recoverRouteVehicleAccess(properties, { vehicleFetch: road.fetch,
+        geocode: async () => ({ results: {} }),
+        mappedAccessLookup: async () => { throw new Error('mapped source unavailable'); },
+    });
+    assert.equal(result.report.mapped_recovered, 0);
+    assert.equal(result.report.unresolved[0].reason, 'address_not_matched');
+    assert.deepEqual(result.properties.map(home => home.address_hash), properties.map(home => home.address_hash));
+});
+
+test('a non-cooperative mapped source remains bounded by the recovery deadline', async () => {
+    const properties = [stop(0)], road = provider(properties, { bad: [0] });
+    const started = Date.now();
+    const result = await recoverRouteVehicleAccess(properties, { vehicleFetch: road.fetch, budgetMs: 30,
+        geocode: async () => ({ results: {} }), mappedAccessLookup: () => new Promise(() => {}),
+    });
+    assert.ok(Date.now() - started < 500);
+    assert.equal(result.report.recovered, 0);
+    assert.equal(result.report.unresolved.length, 1);
+});
 
 const stop = index => ({ address_hash: `${6100 + index} LONG BRANCH RD|28147`, house_number: String(6100 + index),
     street_name: 'Long Branch Rd', city: 'Salisbury', state: 'NC', zip_code: '28147', lat: 35.7 + index / 10000, lng: -80.6 });

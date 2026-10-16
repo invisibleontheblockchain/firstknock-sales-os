@@ -381,3 +381,187 @@ test('an improvement can continue after invalidating old questions, but a later 
     assert.equal(result.objective.estimatedSavings, 2);
     assert.equal(result.routingMetadata.road_search_coverage.cycle_complete, false);
 });
+
+const ruralHomes = Array.from({ length: 626 }, (_, i) => ({ address_hash: `rural-${i}`,
+    lat: 35 + i / 100000, lng: -81, ...(i === 10 ? { order_locked: true } : {}) }));
+const ruralHashes = ruralHomes.map(p => p.address_hash);
+const swap = (order, left, right) => {
+    const next = [...order]; [next[left], next[right]] = [next[right], next[left]]; return next;
+};
+const ruralFirst = swap(ruralHashes, 0, 1), ruralSecond = swap(ruralFirst, 20, 21);
+function partialResponse({ order = ruralFirst, done = 16, savings = 29.98, unchanged = false, meta = {} } = {}) {
+    return { data: { success: true, selected: unchanged ? 'current' : 'road_aware', order: [...order],
+        routing_metadata: { strategy: 'access_guarded_neighborhood_repair', road_path_validated: false,
+            fallback: false, distance_estimate: 'unavailable', input_measured: null, winning_route_distance: null,
+            matrix_provider: 'test-driving-roads', road_matrix_version: 'v1', routing_profile: 'driving',
+            road_access_recovery: { status: 'partial', recovered: 5, inventory_complete: true, unverified_count: 0,
+                access_overrides: {}, unresolved: [{ property_id: ruralHashes[294], stop_number: 295,
+                    address: '154 Emma Ln, Statesville, 28625', reason: 'address_road_not_matched' }] },
+            neighborhood_excursion_review: { local_driving_review: { applied: !unchanged,
+                validation: unchanged ? 'unchanged' : 'overlapping_boundary_legs', localMilesSaved: unchanged ? 0 : savings,
+                planned: 181, checked: done, skipped: [], budgetExhausted: done < 181 } },
+            road_search_coverage: coverage(done, 181), ...meta } } };
+}
+
+test('626-door route automatically finishes local checks around unresolved Stop 295 and saves once', async () => {
+    messages.length = 0;
+    let calls = 0, saves = 0, saved;
+    const selected = { ...route, property_hashes: ruralHashes, properties: ruralHomes, allProperties: ruralHomes,
+        metrics: { distance: 543.21, house_count: 626 } };
+    await action(selected, { mode: 'route_only' }, { effectiveProperties: [], client: {
+        functions: { invoke: async (_name, payload) => {
+            const expected = [ruralHashes, ruralFirst, ruralSecond][calls];
+            assert.deepEqual(payload.properties.map(p => p.address_hash), expected);
+            assert.equal(payload.properties[10].order_locked, true);
+            if (calls) assert.deepEqual(payload.search_coverage, coverage(calls === 1 ? 16 : 100, 181));
+            return [partialResponse(), partialResponse({ order: ruralSecond, done: 100, savings: 1.02 }),
+                partialResponse({ order: ruralSecond, done: 181, unchanged: true })][calls++];
+        } }, entities: { SavedRoute: { update: async (_id, patch) => { saves++; saved = { ...selected, ...patch }; return saved; } } },
+    } });
+    assert.equal(calls, 3); assert.equal(saves, 1);
+    assert.deepEqual(saved.property_hashes, ruralSecond);
+    assert.equal(saved.property_hashes.length, 626);
+    assert.deepEqual(saved.property_hashes.slice(292, 297), ruralHashes.slice(292, 297));
+    assert.equal(saved.metrics.distance, 543.21, 'local savings cannot be subtracted from an unverified trip total');
+    assert.equal(saved.metadata.road_search_coverage.remaining_windows, 0);
+    assert.equal(saved.metadata.routing.road_access_recovery.unresolved[0].stop_number, 295);
+    assert.equal(saved.metadata.last_optimization_attempt.route_verification_complete, false);
+    assert.equal(saved.metadata.routing.neighborhood_excursion_review.local_driving_review.localMilesSaved, 31);
+    assert.ok(messages.some(message => /Whole-route distance remains unverified/.test(message.message)));
+});
+
+test('partial passes accumulate only independently verified local savings and never invent a whole-route baseline', async () => {
+    let calls = 0;
+    const result = await optimize(ruralHomes, { maxSearchPasses: 3, client: api(async () => [partialResponse(),
+        partialResponse({ order: ruralSecond, done: 100, savings: 1.02 }),
+        partialResponse({ order: ruralSecond, done: 181, unchanged: true })][calls++]) });
+    assert.equal(calls, 3);
+    assert.equal(result.objective.appliedDistance, null);
+    assert.equal(result.objective.estimatedSavings, 31);
+    assert.equal(result.routingMetadata.road_search_baseline_distance, undefined);
+    assert.equal(result.routingMetadata.winning_route_distance, null);
+    assert.equal(result.routingMetadata.road_path_validated, false);
+    assert.equal(result.routingMetadata.road_search_passes, 3);
+    assert.equal(result.routingMetadata.road_search_coverage.cycle_complete, true);
+    assert.equal(result.routingMetadata.neighborhood_excursion_review.local_driving_review.localMilesSaved, 31);
+});
+
+for (const unsafeIndex of [10, 292, 293, 294, 295, 296]) {
+    test(`partial proof cannot move protected position ${unsafeIndex + 1} on the first pass`, async () => {
+        let reason, calls = 0;
+        const result = await optimize(ruralHomes, { maxSearchPasses: 3,
+            onOutcome: value => { reason = value; }, client: api(async () => {
+                calls++; return partialResponse({ order: swap(ruralFirst, unsafeIndex, 40) });
+            }) });
+        assert.equal(result, null); assert.equal(calls, 1);
+        assert.equal(reason, 'partial_order_changed_protected_stops');
+    });
+}
+
+for (const failure of ['outage', 'invalid_proof', 'malformed_order', 'moved_unresolved', 'changed_unresolved',
+    'changed_provider', 'changed_county_graph', 'changed_public_graph', 'incomplete_inventory']) {
+    test(`a later partial ${failure} retains the last safe local winner and its coverage`, async () => {
+        let calls = 0;
+        const result = await optimize(ruralHomes, { maxSearchPasses: 3, client: api(async () => {
+            if (++calls === 1) return partialResponse();
+            if (failure === 'outage') throw new Error('offline');
+            const value = partialResponse({ order: ruralSecond, done: 181, savings: 1.02 });
+            const meta = value.data.routing_metadata;
+            if (failure === 'invalid_proof') meta.neighborhood_excursion_review.local_driving_review.validation = 'unchecked';
+            if (failure === 'malformed_order') value.data.order[1] = value.data.order[0];
+            if (failure === 'moved_unresolved') value.data.order = swap(ruralSecond, 294, 40);
+            if (failure === 'changed_unresolved') meta.road_access_recovery.unresolved = [
+                { property_id: ruralHashes[400], stop_number: 401, reason: 'road_not_matched' }];
+            if (failure === 'changed_provider') meta.matrix_provider = 'different-road-provider';
+            if (failure === 'changed_county_graph') meta.county_road_routing = { graphIdentity: 'changed' };
+            if (failure === 'changed_public_graph') meta.county_road_routing = { publicDataVersion: 'new' };
+            if (failure === 'incomplete_inventory') meta.road_access_recovery.inventory_complete = false;
+            return value;
+        }) });
+        assert.equal(calls, 2);
+        assert.deepEqual(result.order.map(p => p.address_hash), ruralFirst);
+        assert.equal(result.objective.appliedDistance, null);
+        assert.equal(result.objective.estimatedSavings, 29.98);
+        assert.deepEqual(result.routingMetadata.road_search_coverage, coverage(16, 181));
+        assert.equal(result.routingMetadata.road_search_passes, 2);
+        assert.ok(result.routingMetadata.road_search_stop_reason);
+    });
+}
+
+test('a whole-route proof after a partial improvement stops without mixing savings scopes', async () => {
+    let calls = 0;
+    const result = await optimize(ruralHomes, { maxSearchPasses: 3, client: api(async () => ++calls === 1
+        ? partialResponse() : response({ order: ruralSecond, selected: 'road_aware', ledger: coverage(181, 181) })) });
+    assert.equal(calls, 2);
+    assert.deepEqual(result.order.map(p => p.address_hash), ruralFirst);
+    assert.equal(result.objective.appliedDistance, null);
+    assert.equal(result.objective.estimatedSavings, 29.98);
+    assert.equal(result.routingMetadata.road_search_stop_reason, 'scope_changed');
+    assert.deepEqual(result.routingMetadata.road_search_coverage, coverage(16, 181));
+});
+
+test('a partial no-op with no coverage progress stops automatic requests', async () => {
+    let calls = 0;
+    const result = await optimize(ruralHomes, { maxSearchPasses: 3, client: api(async () => {
+        if (++calls === 1) return partialResponse();
+        return partialResponse({ unchanged: true,
+            meta: { road_search_coverage: { ...coverage(16, 181), progress_this_pass: 0 } } });
+    }) });
+    assert.equal(calls, 2);
+    assert.equal(result.objective.estimatedSavings, 29.98);
+    assert.equal(result.routingMetadata.road_search_coverage.remaining_windows, 165);
+});
+
+test('an incomplete first partial proof cannot be adopted or automatically continued', async () => {
+    for (const field of ['inventory_complete', 'matrix_provider', 'road_matrix_version', 'localMilesSaved']) {
+        let calls = 0, reason;
+        const result = await optimize(ruralHomes, { maxSearchPasses: 3, client: api(async () => {
+            calls++; const value = partialResponse();
+            if (field === 'inventory_complete') delete value.data.routing_metadata.road_access_recovery.inventory_complete;
+            else if (field === 'localMilesSaved') delete value.data.routing_metadata.neighborhood_excursion_review.local_driving_review.localMilesSaved;
+            else delete value.data.routing_metadata[field];
+            return value;
+        }), onOutcome: value => { reason = value; } });
+        assert.equal(calls, 1); assert.equal(result, null);
+        assert.equal(reason, 'unverified_partial_order');
+    }
+});
+
+test('a contradictory first partial result cannot normalize invalid proof into an accepted winner', async () => {
+    const cases = [
+        value => { value.road_access_recovery.inventory_complete = false; },
+        value => { value.road_access_recovery.unverified_count = 1; },
+        value => { value.road_path_validated = true; },
+        value => { value.distance_estimate = 'road'; },
+        value => { value.input_measured = 10; },
+        value => { value.winning_route_distance = 9; },
+        value => { value.road_aware_measured = -1; },
+        value => { value.continuity_measured = 'not-measured'; },
+        value => { value.neighborhood_excursion_review.local_driving_review.localMilesSaved = NaN; },
+        value => { value.neighborhood_excursion_review.local_driving_review.localMilesSaved = Infinity; },
+        value => { value.neighborhood_excursion_review.local_driving_review.localMilesSaved = -1; },
+    ];
+    for (const alter of cases) {
+        let calls = 0, reason;
+        const result = await optimize(ruralHomes, { maxSearchPasses: 3, client: api(async () => {
+            calls++; const value = partialResponse(); alter(value.data.routing_metadata); return value;
+        }), onOutcome: value => { reason = value; } });
+        assert.equal(calls, 1); assert.equal(result, null);
+        assert.equal(reason, 'unverified_partial_order');
+    }
+});
+
+test('an invalid first partial response cannot save a changed route', async () => {
+    let patch;
+    const selected = { ...route, property_hashes: ruralHashes, properties: ruralHomes, allProperties: ruralHomes,
+        metrics: { distance: 543.21, house_count: 626 } };
+    await action(selected, { mode: 'route_only' }, { client: {
+        functions: { invoke: async () => {
+            const value = partialResponse(); value.data.routing_metadata.road_access_recovery.inventory_complete = false;
+            return value;
+        } }, entities: { SavedRoute: { update: async (_id, update) => { patch = update; return { ...selected, ...update }; } } },
+    } });
+    assert.equal(patch.property_hashes, undefined);
+    assert.equal(patch.metrics, undefined);
+    assert.equal(patch.metadata.last_optimization_attempt.route_changed, false);
+});

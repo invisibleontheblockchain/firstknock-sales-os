@@ -192,10 +192,10 @@ export function createCountyRoadRoutingAdapter(properties, { fetchJson: rawFetch
     const counters = { providerRequests: 0, countyRouteLegs: 0, countyTableCells: 0 };
     let publicVersion = null;
     const stamp = data => {
-        if (!records.length) return data;
         const observedVersion = data.data_version || 'unversioned';
         if (publicVersion !== null && publicVersion !== observedVersion) throw new Error('Public driving provider graph identity changed.');
         publicVersion = observedVersion;
+        if (!records.length) return data;
         return { ...data, data_version: `public:${observedVersion}|county:${graphIdentity}` };
     };
     const raw = async (url, options) => {
@@ -275,7 +275,7 @@ export function createCountyRoadRoutingAdapter(properties, { fetchJson: rawFetch
         return { url, service, points, mapped: points.map(match) };
     };
     const fetchJson = async (value, options = {}) => {
-        if (!records.length) { counters.providerRequests++; return rawFetchJson(value, options); }
+        if (!records.length) { counters.providerRequests++; return stamp(await rawFetchJson(value, options)); }
         const { url, service, points, mapped } = parse(value);
         if (!mapped.some(Boolean) || !service) return stamp(await raw(url, options));
         if (service === 'nearest') {

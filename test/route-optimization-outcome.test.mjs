@@ -325,6 +325,97 @@ test('verified partial adoption identifies retained unresolved stops rather than
     assert.doesNotMatch(result.message, /kept unchanged/);
 });
 
+test('one unresolved stop does not hide the remaining search checks after automatic passes', () => {
+    const issue = { property_id: '154 EMMA LN|28625', stop_number: 295,
+        address: '154 Emma Ln, Statesville, 28625', reason: 'no_drivable_road' };
+    const measurement = withRecovery({ ...complete, applied: true, validation: 'overlapping_boundary_legs' }, {
+        attempted: 6, recovered: 5, unresolved: [issue], inventory_complete: true,
+    });
+    Object.assign(measurement.routingMetadata, {
+        road_search_coverage: { version: 1, total_windows: 217, remaining_windows: 165, cycle_complete: false },
+        road_search_passes: 3,
+    });
+    const result = outcomes.describeAppliedRoadOptimization(measurement.routingMetadata);
+    assert.equal(result.status, 'applied_partial');
+    assert.equal(result.tone, 'warning');
+    assert.ok(result.message.includes('the complete driving route remains unverified.'));
+    assert.ok(result.message.includes('Neighborhood search is incomplete: 165 of 217 checks remain after 3 passes.'));
+    assert.ok(result.message.includes(`Stop 295 (${issue.address})`));
+    assert.ok(result.message.includes('Road access recovered automatically for 5 stops.'));
+    assert.ok(result.message.includes('All stops are retained in the route.'));
+    assert.doesNotMatch(result.message, /search completed|complete driving route was verified|retrying|retry is active/i);
+    const attempt = outcomes.buildRoadOptimizationAttempt(null, measurement, { applied: true, mode: 'route_only', doorCount: 1000 });
+    assert.equal(attempt.message, result.message);
+    assert.equal(attempt.route_verification_complete, false);
+    assert.equal(attempt.route_changed, true);
+    assert.equal(attempt.neighborhoods_planned, 217);
+    assert.equal(attempt.neighborhoods_checked, 52);
+    assert.equal(attempt.search_passes, 3);
+});
+
+test('completed neighborhood coverage remains distinct from unresolved whole-route driving access', () => {
+    const measurement = withRecovery({ ...complete, applied: true, checked: 2, budgetExhausted: true,
+        skipped: [{ reason: 'https://provider/private' }], validation: 'overlapping_boundary_legs' });
+    Object.assign(measurement.routingMetadata, {
+        road_search_coverage: { version: 1, total_windows: 217, remaining_windows: 0, cycle_complete: true },
+        road_search_passes: 3,
+    });
+    const result = outcomes.describeAppliedRoadOptimization(measurement.routingMetadata);
+    assert.equal(result.status, 'applied_partial');
+    assert.equal(result.tone, 'warning');
+    assert.ok(result.message.includes('Neighborhood search completed: 217 checks finished after 3 passes.'));
+    assert.ok(result.message.includes('the complete driving route remains unverified.'));
+    assert.ok(result.message.includes(roadIssues[0].address));
+    assert.doesNotMatch(result.message, /search is incomplete|complete driving route was verified|optimal|best route|https:|private/i);
+    const attempt = outcomes.buildRoadOptimizationAttempt(null, measurement, { applied: true });
+    assert.equal(attempt.route_verification_complete, false);
+    assert.equal(attempt.budget_exhausted, false);
+    assert.equal(attempt.neighborhoods_checked, 217);
+});
+
+test('an unchanged route with unresolved access also reports current neighborhood coverage', () => {
+    const measurement = withRecovery(complete);
+    Object.assign(measurement.routingMetadata, {
+        road_search_coverage: { version: 1, total_windows: 123, remaining_windows: 45, cycle_complete: false },
+        road_search_passes: 2,
+    });
+    const result = outcomes.describeRoadOptimizationOutcome('current_order_measured_best', measurement);
+    assert.equal(result.status, 'road_access_unresolved');
+    assert.equal(result.tone, 'error');
+    assert.ok(result.message.includes('Your route was kept unchanged.'));
+    assert.ok(result.message.includes('Neighborhood search is incomplete: 45 of 123 checks remain after 2 passes.'));
+    assert.ok(result.message.includes('All stops are retained in the route.'));
+    assert.doesNotMatch(result.message, /improvements applied|complete driving route was verified/);
+    const attempt = outcomes.buildRoadOptimizationAttempt('current_order_measured_best', measurement);
+    assert.equal(attempt.message, result.message);
+    assert.equal(attempt.route_changed, false);
+    assert.equal(attempt.route_verification_complete, false);
+});
+
+test('partial access messages use review counts when the coverage ledger is absent or invalid', () => {
+    for (const coverage of [undefined, { version: 1, total_windows: 123, remaining_windows: 0, cycle_complete: false },
+        { version: 1, total_windows: '123', remaining_windows: 0, cycle_complete: true },
+        { version: 1, total_windows: 123, remaining_windows: -1, cycle_complete: false }]) {
+        const measurement = withRecovery({ ...complete, applied: true, checked: 2, validation: 'overlapping_boundary_legs' });
+        measurement.routingMetadata.road_search_coverage = coverage;
+        const result = outcomes.describeAppliedRoadOptimization(measurement.routingMetadata);
+        assert.ok(result.message.includes('Neighborhood search is incomplete: only 2 of 4 neighborhoods were checked.'));
+        assert.doesNotMatch(result.message, /search completed/);
+    }
+    const completeReview = outcomes.describeAppliedRoadOptimization(withRecovery({ ...complete, applied: true }).routingMetadata);
+    assert.ok(completeReview.message.includes('Neighborhood search completed: 4 checks finished.'));
+    assert.equal(completeReview.tone, 'warning');
+});
+
+test('missing search evidence cannot turn a road-access warning into a completed-search claim', () => {
+    const measurement = withRecovery(null);
+    const result = outcomes.describeAppliedRoadOptimization(measurement.routingMetadata);
+    assert.equal(result.tone, 'warning');
+    assert.ok(result.message.includes('the complete driving route remains unverified.'));
+    assert.ok(result.message.includes('All stops are retained in the route.'));
+    assert.doesNotMatch(result.message, /search completed|checks finished|complete driving route was verified/);
+});
+
 test('automatically recovered road access is reported for an applied and an unchanged result', () => {
     const measurement = withRecovery({ ...complete, validation: 'whole_route' }, roadRecovery());
     const unchanged = outcomes.describeRoadOptimizationOutcome('current_order_measured_best', measurement);

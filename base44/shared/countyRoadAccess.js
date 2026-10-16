@@ -220,6 +220,45 @@ function authoritativePoint(payload, stop, number, zip, now) {
         id: `nc_address:${feature.attributes.objectid}`, attributes: feature.attributes };
 }
 
+/** An exact county address can identify a house inside a large parcel even
+ * when the saved display pin is its centroid. It is an identity reference,
+ * not proof of a driveway or of a drivable connection to any nearby road. */
+export function validateCountyAddressReference(stop, reference, { now = Date.now() } = {}) {
+    const house = String(stop?.house_number || '').trim();
+    const zip = String(stop?.zip_code || '').slice(0, 5);
+    const attributes = reference?.attributes;
+    return isValidRoutePoint(stop) && isValidRoutePoint(reference?.point)
+        && reference.source === 'nc_address_point' && /^nc_address:\d+$/.test(reference.id || '')
+        && /^\d+$/.test(house) && /^\d{5}$/.test(zip)
+        && (!stop.state || String(stop.state).toUpperCase() === 'NC')
+        && stop.lat >= 33.7 && stop.lat <= 36.7 && stop.lng >= -84.4 && stop.lng <= -75.3
+        && distance(stop, reference.point) <= 1000
+        && !!attributes && reference.id === `nc_address:${attributes.objectid}` && active(attributes, now)
+        && String(attributes.state || '').toUpperCase() === 'NC'
+        && String(attributes.add_number || '') === house && !attributes.addnum_suf && !attributes.unit
+        && String(attributes.post_code || '').slice(0, 5) === zip
+        && streetKey(String(attributes.st_address || '').replace(/^\s*\S+\s+/, '')) === streetKey(stop.street_name);
+}
+
+export async function discoverCountyAddressReference(stop, options = {}) {
+    if (!isValidRoutePoint(stop)) return null;
+    const house = String(stop.house_number || '').trim();
+    const zip = String(stop.zip_code || '').slice(0, 5);
+    if (!/^\d+$/.test(house) || !/^\d{5}$/.test(zip) || !streetKey(stop.street_name)
+        || (stop.state && String(stop.state).toUpperCase() !== 'NC')
+        || stop.lat < 33.7 || stop.lat > 36.7 || stop.lng < -84.4 || stop.lng > -75.3) return null;
+    try {
+        const payload = await jsonRequest(queryUrl(COUNTY_ADDRESS_SERVICE, envelope(stop, 1200), ADDRESS_FIELDS,
+            `add_number='${house}' AND post_code='${zip}'`), options.fetchImpl || globalThis.fetch,
+        options.signal, options, 'county_addresses');
+        const reference = authoritativePoint(payload, stop, Number(house), zip, options.now ?? Date.now());
+        return validateCountyAddressReference(stop, reference, options) ? reference : null;
+    } catch (error) {
+        if (options.signal?.aborted || error?.name === 'AbortError') throw error;
+        return null;
+    }
+}
+
 async function discover(stop, options) {
     const zip = String(stop.zip_code || '').slice(0, 5);
     const house = String(stop.house_number || '').trim();
@@ -244,6 +283,10 @@ async function discover(stop, options) {
         return null;
     }
     diagnostic(options, 'county_addresses', 'countyAddress', { outcome: 'accepted', source: address.source });
+    if (validateCountyAddressReference(stop, address, options)) {
+        // Reuse identity evidence in the bounded mapped-driveway recovery stage.
+        try { options.onAddressReference?.(address); } catch { /* Evidence capture cannot change acceptance. */ }
+    }
     let allSegments = segmentsOf(roadPayload, now);
     if (!allSegments) {
         diagnostic(options, 'county_roads', 'component', { outcome: 'rejected', reason: 'incomplete_road_inventory' });
