@@ -5,6 +5,8 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 import ts from 'typescript';
+import { projectEntityFields } from './helpers/projectEntityFields.mjs';
+import { precisionTrialLimit } from '../base44/shared/precisionTrialLimit.js';
 
 import { normalizePrecisionUsageResponse } from '../src/lib/precisionUsage.js';
 import { UNLIMITED_PROPERTY_CAP, currentGrantPeriod, precisionGrantLabel, precisionGrantLimit } from '../base44/shared/privilegedAccounts.js';
@@ -44,6 +46,7 @@ function loadHandler({ base44, stripeApi, retryDelays = [] }) {
     precisionGrantLabel,
     precisionGrantLimit,
     loadAuthoritativeUser,
+    precisionTrialLimit,
     selectOwnedPrecisionJobs,
     Deno: {
       env: { get: (key) => key === 'STRIPE_SECRET_KEY' ? 'sk_test' : null },
@@ -97,7 +100,8 @@ function makeBase44(user, initialJobs, initialCredits = []) {
   const jobUpdates = [];
   const userUpdates = [];
   const matches = (job, filter) => Object.entries(filter).every(([key, value]) => job[key] === value);
-  const filterJobs = async (filter, _sort, limit = 500, skip = 0) => jobs.filter((job) => matches(job, filter)).slice(skip, skip + limit);
+  const filterJobs = async (filter, _sort, limit = 500, skip = 0, fields) => jobs.filter((job) => matches(job, filter))
+    .slice(skip, skip + limit).map(job => projectEntityFields(job, fields));
 
   return {
     jobs,

@@ -311,10 +311,20 @@ function jobMatchesMeteredEntitlement(job: any, entitlement: any) {
         && samePeriod(job.precision_usage_period_end, entitlement.periodEnd);
 }
 
+const USAGE_JOB_FIELDS = [
+    'id', 'status', 'provider', 'mode_tag', 'user_email', 'precision_usage_user_id',
+    'precision_usage_kind', 'precision_usage_reserved', 'precision_usage_count',
+    'precision_usage_recorded_at', 'precision_subscription_id', 'precision_invoice_id',
+    'precision_usage_period_start', 'precision_usage_period_end', 'created_date',
+    'started_at', 'completed_at', 'total_expected', 'estimated_record_count',
+    'total_inserted', 'total_existed', 'dry_run_metadata.batchdata_only_started_at',
+    'dry_run_metadata.batchdata_summary.active'
+];
+
 async function listAll(entity: any, filter: any, sort = 'created_date', pageSize = 500) {
     const records: any[] = [];
     for (let skip = 0; skip < 20000; skip += pageSize) {
-        const page = await withRateLimitRetry(() => entity.filter(filter, sort, pageSize, skip));
+        const page = await withRateLimitRetry(() => entity.filter(filter, sort, pageSize, skip, USAGE_JOB_FIELDS));
         const items = asArray(page);
         records.push(...items);
         if (items.length < pageSize) return records;

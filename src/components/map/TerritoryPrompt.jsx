@@ -73,6 +73,9 @@ function buildPrecisionShortfallMessage({
     return `This pull was capped at ${formatWholeNumber(requested)} homes because that is how many included single-family Precision route homes remain on this account. Upgrade to Precision for larger routes.`;
   }
 
+  // Max Available is bounded by allowance, not a promised provider match count.
+  if (diagnostics?.count_mode === 'max_available') return null;
+
   if (requested <= 0 || loaded >= requested) return null;
 
   const filters = [];
@@ -541,27 +544,25 @@ export default function TerritoryPrompt({
     pollSessionRef.current = session;
     activeJobIdRef.current = jobId;
 
-    let pollCount = 0;
-    const MAX_POLLS = 450; // ~30 minutes at slower intervals
     const pollStartTime = Date.now();
+    let pollIntervalMs = 5000;
+    const changePollInterval = (delayMs) => {
+      if (pollIntervalMs === delayMs) return;
+      clearInterval(pollRef.current);
+      pollIntervalMs = delayMs;
+      pollRef.current = setInterval(doPoll, delayMs);
+    };
 
     const doPoll = async () => {
       if (routeModeRef.current !== 'precision') return;
       if (pollSessionRef.current !== session || session.inFlight || session.terminal) return;
-      pollCount++;
-      if (pollCount > MAX_POLLS) {
+      if (Date.now() - pollStartTime > 30 * 60 * 1000) {
         clearInterval(pollRef.current);
         pollRef.current = null;
         pollSessionRef.current = null;
         setPulling(false);
         toast.info("Still running in the background — come back and your data will be here!");
         return;
-      }
-
-      // After first 30s, slow polling to reduce backend rate-limit pressure.
-      if (pollCount === 30) {
-        clearInterval(pollRef.current);
-        pollRef.current = setInterval(doPoll, 5000);
       }
 
       session.inFlight = true;
@@ -572,12 +573,14 @@ export default function TerritoryPrompt({
         const d = res.data;
 
         if (!d) return;
+        changePollInterval(5000);
 
         const pct = d.progress_pct || 0;
         setPullPct(pct);
         targetPctRef.current = pct;
         const phase = d.phase || '';
         const diagnostics = d.diagnostics || {};
+        const maxAvailable = diagnostics.count_mode === 'max_available';
         const processorRekickRequested = diagnostics.processor_rekick_requested === true;
         const fetched = d.total_fetched || 0;
         const expected = d.total_expected || 0;
@@ -600,12 +603,12 @@ export default function TerritoryPrompt({
             setEtaText('Restarting import...');
           } else if (phase === 'batchdata_requesting') {
             setEtaText('Contacting property provider...');
+          } else if (elapsedSec >= 120) {
+            setEtaText('Taking longer than usual — checking import status');
           } else if (pct < 8 || elapsedSec < 10) {
             setEtaText('Starting import...');
-          } else if (pct < 85) {
-            setEtaText('Usually under 2 minutes');
           } else {
-            setEtaText('Almost done');
+            setEtaText('Checking and saving property records...');
           }
         }
 
@@ -613,10 +616,10 @@ export default function TerritoryPrompt({
         if (processorRekickRequested && fetched === 0) {
           setPullProgress('Restarting data processor...');
         } else if (phase === 'batchdata_requesting' && fetched === 0) {
-          setPullProgress(expected > 0
+          setPullProgress(expected > 0 && !maxAvailable
             ? `Contacting property provider for up to ${expected.toLocaleString()} homes...`
             : 'Contacting property provider...');
-        } else if (expected > 0) {
+        } else if (expected > 0 && !maxAvailable) {
           setPullProgress(`${fetched.toLocaleString()} of ${expected.toLocaleString()} records checked • ${readyCount.toLocaleString()} ready for routes`);
         } else {
           setPullProgress(`${fetched.toLocaleString()} records checked • ${readyCount.toLocaleString()} ready for routes`);
@@ -729,16 +732,25 @@ export default function TerritoryPrompt({
           toast.error(d.error_message || 'Fetch job failed.');
         }
       } catch (e) {
-        // Silent — network hiccup, keep polling
         console.warn('Poll error:', e.message);
-        if (pollSessionRef.current === session && session.terminal) setPulling(false);
+        if (pollSessionRef.current !== session) return;
+        if (session.terminal) {
+          setPulling(false);
+        } else {
+          const rateLimited = Number(e?.status || e?.response?.status) === 429
+            || /traffic volume|rate limit/i.test(e?.message || '');
+          changePollInterval(rateLimited ? 30000 : 10000);
+          setEtaText(rateLimited
+            ? 'Service is busy — retrying automatically'
+            : 'Connection interrupted — retrying automatically');
+        }
       } finally {
         session.inFlight = false;
       }
     };
 
-    // Start fast — poll every 1s for first 30s, then 2s after
-    pollRef.current = setInterval(doPoll, 1000);
+    // Show status immediately, then leave capacity for the worker and other users.
+    pollRef.current = setInterval(doPoll, pollIntervalMs);
     // Also fire first poll immediately
     doPoll();
   };
@@ -1282,21 +1294,9 @@ export default function TerritoryPrompt({
           }
                         <div className="mt-2 bg-gray-900/80 rounded-lg p-2.5 border border-gray-800">
                             <p className="text-[10px] text-gray-300 leading-relaxed text-center">
-                                {isDeltaPull ?
-              displayPct < 30 ?
-              '⚡ Smart sync — only fetching what changed since your last pull.' :
-              displayPct < 80 ?
-              '🔄 Skipping unchanged records — writing only what is new.' :
-              '✅ Almost done! Only fresh leads are being added.' :
-              displayPct < 5 ?
-              '🗺️ Mapping every door in your territory — one-time setup.' :
-              displayPct < 30 ?
-              '📦 Fetching property records in batches. Bigger areas take a little longer.' :
-              displayPct < 70 ?
-              '⚡ Deduplicating leads. Feel free to close — this keeps running in the background.' :
-              displayPct < 95 ?
-              '🏁 Almost there! Writing your final records to the map.' :
-              '✅ Done! Your territory is ready to route.'}
+                                {isDeltaPull
+              ? 'Smart sync checks for changed records. The import finishes after available homes have been saved and checked.'
+              : 'The import finishes after available homes have been saved and checked. Larger areas can take longer.'}
                             </p>
                         </div>
                         <div className="mt-3 flex items-center justify-center">

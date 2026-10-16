@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 import ts from 'typescript';
+import { projectEntityFields } from './helpers/projectEntityFields.mjs';
 import { loadAuthoritativeUser } from '../base44/shared/accountIdentity.js';
 import { selectOwnedPrecisionJobs } from '../base44/shared/precisionOrderSafety.js';
 import { precisionTrialLimit } from '../base44/shared/precisionTrialLimit.js';
@@ -18,11 +19,12 @@ function recovery({ actor = user, jobs = [job], routes = [], fail = false } = {}
   const matches = (row, query) => Object.entries(query).every(([key, value]) => key.includes('.') || row[key] === value);
   const base44 = { auth: { me: async () => actor }, asServiceRole: { entities: {
     User: { get: async () => actor },
-    FetchJob: { filter: async (query, _, limit, offset) => {
+    FetchJob: { filter: async (query, _, limit, offset, fields) => {
       if (fail) throw new Error('Database unavailable');
-      return jobs.filter(row => matches(row, query)).slice(offset, offset + limit);
+      return jobs.filter(row => matches(row, query)).slice(offset, offset + limit).map(row => projectEntityFields(row, fields));
     } },
-    SavedRoute: { filter: async (query, _, limit, offset) => routes.filter(row => matches(row, query)).slice(offset, offset + limit) },
+    SavedRoute: { filter: async (query, _, limit, offset, fields) => routes.filter(row => matches(row, query))
+      .slice(offset, offset + limit).map(row => projectEntityFields(row, fields)) },
   } } };
   const source = readFileSync(new URL('../base44/functions/getPrecisionRecovery/entry.ts', import.meta.url), 'utf8');
   const compiled = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
