@@ -46,7 +46,7 @@ import {
 
 // Bump when candidate generation or the objective changes, so a stored route can
 // be told apart from one produced by an older solver.
-const OPTIMIZER_VERSION = 'road_matrix_neighborhood_continuation_v19';
+const OPTIMIZER_VERSION = 'road_matrix_parallel_neighborhoods_v20';
 
 function readSecret(name) {
     try {

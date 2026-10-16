@@ -75,13 +75,21 @@ function balanceDrivingWindows(windows) {
     return result;
 }
 
+function searchFingerprint(candidate) {
+    if (candidate.fingerprint === null) candidate.fingerprint = `${searchFingerprint(candidate.previous)}|${candidate.stopKey}`;
+    return candidate.fingerprint;
+}
+
 function compareSearch(a, b) {
     // Keep tolerances small and separate from the final continuous-drive guard.
     if (Math.abs(a.seconds - b.seconds) > 0.1) return a.seconds - b.seconds;
     if (Math.abs(a.miles - b.miles) > 0.0001) return a.miles - b.miles;
-    return a.crossings - b.crossings || a.passovers - b.passovers
+    const numeric = a.crossings - b.crossings || a.passovers - b.passovers
         || a.startSeconds - b.startSeconds || a.endSeconds - b.endSeconds
-        || a.entrySeconds - b.entrySeconds || (a.fingerprint < b.fingerprint ? -1 : a.fingerprint > b.fingerprint ? 1 : 0);
+        || a.entrySeconds - b.entrySeconds;
+    if (numeric) return numeric;
+    const first = searchFingerprint(a), second = searchFingerprint(b);
+    return first < second ? -1 : first > second ? 1 : 0;
 }
 
 function serviceTransition(a, b, unvisited, context) {
@@ -148,7 +156,7 @@ export function buildLocalDrivingCandidates(stops, context, start = null, end = 
     };
     for (let i = 0; i < size; i++) {
         const seconds = startSeconds[i];
-        insert(1 << i, i, { path: [i], seconds, miles: startMiles[i], startSeconds: seconds,
+        insert(1 << i, i, { previous: null, stopIndex: i, stopKey: keys[i], seconds, miles: startMiles[i], startSeconds: seconds,
             endSeconds: 0, entrySeconds: 0, crossings: 0, passovers: 0, fingerprint: keys[i] });
     }
     for (let mask = 1; mask <= full; mask++) {
@@ -158,11 +166,17 @@ export function buildLocalDrivingCandidates(stops, context, start = null, end = 
                     if (mask & (1 << next)) continue;
                     const pair = last * size + next, seconds = secondsByPair[pair];
                     const passovers = countBits[betweenByPair[pair] & (full ^ mask) & ~(1 << next)];
-                    insert(mask | (1 << next), next, { ...prior, path: [...prior.path, next],
+                    // Most DP transitions are immediately discarded. Keep a
+                    // predecessor link instead of copying the full path and
+                    // identity string; materialize those only for a tie or a
+                    // returned choice. Search order, quotas and sorting remain
+                    // identical, including the tolerant cost comparator.
+                    insert(mask | (1 << next), next, { previous: prior, stopIndex: next, stopKey: keys[next],
                         seconds: prior.seconds + seconds, miles: prior.miles + milesByPair[pair],
                         crossings: prior.crossings + crossingByPair[pair], passovers: prior.passovers + passovers,
+                        startSeconds: prior.startSeconds, endSeconds: prior.endSeconds,
                         entrySeconds: prior.entrySeconds + (streets[last] !== streets[next] ? seconds : 0),
-                        fingerprint: `${prior.fingerprint}|${keys[next]}` });
+                        fingerprint: null });
                 }
             }
         }
@@ -170,9 +184,13 @@ export function buildLocalDrivingCandidates(stops, context, start = null, end = 
     const candidates = [];
     for (let last = 0; last < size; last++) {
         for (const prior of states[full * size + last] || []) {
-            candidates.push({ ...prior, seconds: prior.seconds + endSeconds[last],
-                miles: prior.miles + endMiles[last], endSeconds: endSeconds[last],
-                order: prior.path.map(i => stops[i]) });
+            const path = [];
+            for (let state = prior; state; state = state.previous) path.push(state.stopIndex);
+            path.reverse();
+            candidates.push({ path, seconds: prior.seconds + endSeconds[last],
+                miles: prior.miles + endMiles[last], startSeconds: prior.startSeconds, endSeconds: endSeconds[last],
+                entrySeconds: prior.entrySeconds, crossings: prior.crossings, passovers: prior.passovers,
+                fingerprint: searchFingerprint(prior), order: path.map(i => stops[i]) });
         }
     }
     return candidates.filter(p => Number.isFinite(p.seconds) && Number.isFinite(p.miles)).sort(compareSearch);
@@ -235,6 +253,14 @@ function plannedDrivingWindows(order, options, unmatchedIds, rank = true) {
 }
 
 async function reviewDrivingWindows(order, options = {}) {
+    const reviewStarted = Date.now();
+    const timings = { curb_discovery_ms: 0, road_context_ms: 0, candidate_search_ms: 0, candidate_measurement_ms: 0 };
+    const timed = async (stage, run) => {
+        const started = Date.now();
+        try { return await run(); } finally { timings[stage] += Date.now() - started; }
+    };
+    const finish = result => ({ ...result, diagnostics: { ...result.diagnostics,
+        timings: { ...timings, total_ms: Date.now() - reviewStarted } } });
     const identities = order.map(id);
     if (identities.some(key => !key) || new Set(identities).size !== order.length) throw new Error('Local driving review requires unique stop membership.');
     const locks = new Set((options.lockedStopIds || []).map(String));
@@ -325,23 +351,24 @@ async function reviewDrivingWindows(order, options = {}) {
         try {
             if (mailCarrier && options.inferStreetSides !== false
                 && section.some(p => !trustedAccess(accessContext.accessFor(p)) && !discovered.has(id(p)))) {
-                const observation = await retryInferredHeading(section, async () => {
+                const observation = await timed('curb_discovery_ms', () => retryInferredHeading(section, async () => {
                     const discovery = await createContext(section, { ...contextOptions, sparseCosts: true,
                         routeOnly: true, discoverStreetSides: true });
                     return discovery.routeSequence(section);
-                });
+                }));
                 for (const [key, access] of inferMailCarrierAccess(section, observation.streetSideEvidence)) {
                     if (!discovered.has(key) && !trustedAccess(accessContext.accessFor(section.find(p => id(p) === key)))) inferredAccess.set(key, access);
                 }
                 section.forEach(p => discovered.add(id(p)));
             }
-            const { context, baseline } = await retryInferredHeading(section, async () => {
+            const { context, baseline } = await timed('road_context_ms', () => retryInferredHeading(section, async () => {
                 const context = await createContext(section, contextOptions);
                 return { context, baseline: await context.routeSequence(section) };
-            });
+            }));
             // Whole-run moves cannot repair a scrambled long street inside an
             // area. Ask bounded directed door questions as well; all proposals
             // still need the same continuous drive and unchanged boundary proof.
+            const searchStarted = Date.now();
             const exactCandidates = (!area || service || local) && stops.length <= 12
                 ? buildLocalDrivingCandidates(stops, context, left.at(-1), right[0], options) : [];
             const areaCandidates = area ? buildDrivingAreaCandidates(stops, context, left.at(-1), right[0], options) : [];
@@ -368,32 +395,50 @@ async function reviewDrivingWindows(order, options = {}) {
                 // Permit measured reductions without introducing a new one.
                 candidates = candidates.filter(candidate => acceptablePasses(candidate.order));
             }
+            timings.candidate_search_ms += Date.now() - searchStarted;
             fullyConsidered = true;
             if ((service || area || exactCandidates.length) && !candidates.length) continue;
             if (!candidates.length) { fullyConsidered = false; report.skipped.push({ start, end, reason: 'unreachable_local_roads' }); continue; }
             let selected = stops, selectedCandidate = null, best = baseline, bestPreference = preferenceFor(stops, context);
-            for (const candidate of candidates.slice(0, maxCandidates)) {
+            const considered = candidates.slice(0, maxCandidates);
+            for (let offset = 0; offset < considered.length; offset += 2) {
                 if (Date.now() >= deadline) { fullyConsidered = false; report.budgetExhausted = true; break; }
-                const proposed = [...left, ...candidate.order, ...right];
-                let measured;
-                try { measured = await context.routeSequence(proposed); }
-                catch (error) { fullyConsidered = false; fatal(error); report.skipped.push({ start, end, candidate: true, reason: error.message }); continue; }
-                report.candidatesMeasured++;
-                if (candidate.areaMove) report.areaReview.candidatesMeasured++;
-                // These unchanged overlapping legs keep the arrival and exit
-                // states consistent with the route outside this neighborhood.
-                if (left.length >= 2 && !sameBoundaryLeg(baseline.directedLegs?.[0], measured.directedLegs?.[0])) continue;
-                if (right.length >= 2 && !sameBoundaryLeg(baseline.directedLegs?.at(-1), measured.directedLegs?.at(-1))) continue;
-                const preference = preferenceFor(candidate.order, context);
-                // Mail-carrier service is the user's first objective. A legal
-                // coherent pass may drive farther than a zig-zag order. Once
-                // passes are coherent, real driving time/miles decide the win.
-                const candidatePasses = mailCarrier ? mailCarrierPassViolations([...left, ...candidate.order, ...right], context) : 0;
-                const selectedPasses = mailCarrier ? mailCarrierPassViolations([...left, ...selected, ...right], context) : 0;
-                if (candidatePasses > selectedPasses) continue;
-                const fixesPasses = candidatePasses < selectedPasses;
-                if ((!fixesPasses || options.requireNoDrivingIncrease) && !improves(measured, best, preference, bestPreference)) continue;
-                selected = candidate.order; selectedCandidate = candidate; best = measured; bestPreference = preference;
+                if (options.signal?.aborted) throw options.signal.reason || new DOMException('Cancelled', 'AbortError');
+                // These existing proposals share one fixed input/context. Price
+                // two at a time, then consume results in the original order so
+                // ties and adoption stay deterministic. The process-wide OSRM
+                // concurrency/spacing limits still govern every real request.
+                const batch = considered.slice(offset, offset + 2);
+                const outcomes = await timed('candidate_measurement_ms', () => Promise.all(batch.map(async candidate => {
+                    try {
+                        if (options.signal?.aborted) throw options.signal.reason || new DOMException('Cancelled', 'AbortError');
+                        return { measured: await context.routeSequence([...left, ...candidate.order, ...right]) };
+                    } catch (error) { return { error }; }
+                })));
+                // Drain both already-started requests before surfacing failure;
+                // cancellation or graph changes must never schedule a new batch.
+                if (options.signal?.aborted) throw options.signal.reason || new DOMException('Cancelled', 'AbortError');
+                for (const outcome of outcomes) if (outcome.error) fatal(outcome.error);
+                for (const [batchIndex, candidate] of batch.entries()) {
+                    const { measured, error } = outcomes[batchIndex];
+                    if (error) { fullyConsidered = false; report.skipped.push({ start, end, candidate: true, reason: error.message }); continue; }
+                    report.candidatesMeasured++;
+                    if (candidate.areaMove) report.areaReview.candidatesMeasured++;
+                    // These unchanged overlapping legs keep the arrival and exit
+                    // states consistent with the route outside this neighborhood.
+                    if (left.length >= 2 && !sameBoundaryLeg(baseline.directedLegs?.[0], measured.directedLegs?.[0])) continue;
+                    if (right.length >= 2 && !sameBoundaryLeg(baseline.directedLegs?.at(-1), measured.directedLegs?.at(-1))) continue;
+                    const preference = preferenceFor(candidate.order, context);
+                    // Mail-carrier service is the user's first objective. A legal
+                    // coherent pass may drive farther than a zig-zag order. Once
+                    // passes are coherent, real driving time/miles decide the win.
+                    const candidatePasses = mailCarrier ? mailCarrierPassViolations([...left, ...candidate.order, ...right], context) : 0;
+                    const selectedPasses = mailCarrier ? mailCarrierPassViolations([...left, ...selected, ...right], context) : 0;
+                    if (candidatePasses > selectedPasses) continue;
+                    const fixesPasses = candidatePasses < selectedPasses;
+                    if ((!fixesPasses || options.requireNoDrivingIncrease) && !improves(measured, best, preference, bestPreference)) continue;
+                    selected = candidate.order; selectedCandidate = candidate; best = measured; bestPreference = preference;
+                }
             }
             if (selected !== stops) {
                 order.splice(start, stops.length, ...selected);
@@ -439,7 +484,7 @@ async function reviewDrivingWindows(order, options = {}) {
         passViolationsBefore: mailCarrierPassViolations(original, accessContext),
         passViolationsAfter: mailCarrierPassViolations(order, accessContext),
     };
-    if (!report.repaired) return { properties: original, diagnostics: report, accessFor: accessContext.accessFor };
+    if (!report.repaired) return finish({ properties: original, diagnostics: report, accessFor: accessContext.accessFor });
     report.applied = true; report.validation = 'overlapping_boundary_legs';
     report.status = report.skipped.length || report.budgetExhausted || report.streetSideService?.unknownStops > 0
         ? 'partially_reviewed' : 'locally_verified';
@@ -459,32 +504,33 @@ async function reviewDrivingWindows(order, options = {}) {
                 && (after.driveSeconds > measurement.driveSeconds + 0.1 || after.distanceMiles > measurement.distanceMiles + 0.0001));
         };
         if (worseThan(before, original, options.requireNoDrivingIncrease) || worseThan(baseline, options.baselineOrder || original)) {
-            return { properties: original, accessFor: accessContext.accessFor,
-                diagnostics: { ...report, applied: false, status: 'whole_route_guard_retained', validation: 'whole_route' } };
+            return finish({ properties: original, accessFor: accessContext.accessFor,
+                diagnostics: { ...report, applied: false, status: 'whole_route_guard_retained', validation: 'whole_route' } });
         }
         report.validation = 'whole_route';
-        return { properties: order, diagnostics: report, measurement: after, baseline,
-            previousMeasurement: before, accessFor: accessContext.accessFor };
+        return finish({ properties: order, diagnostics: report, measurement: after, baseline,
+            previousMeasurement: before, accessFor: accessContext.accessFor });
     } catch (error) {
         fatal(error);
         // Outages, malformed geometry and changed turn continuity are not
         // access uncertainty. Only a named unmatched pin permits local proof.
         if (!/NoSegment|outside the fixed road-match radius|different service road/i.test(error.message)) {
-            return { properties: original, accessFor: accessContext.accessFor,
-                diagnostics: { ...report, applied: false, status: 'whole_route_guard_retained', reason: error.message } };
+            return finish({ properties: original, accessFor: accessContext.accessFor,
+                diagnostics: { ...report, applied: false, status: 'whole_route_guard_retained', reason: error.message } });
         }
         // A partial road proof cannot excuse a known curb-pass regression
         // involving another occurrence of this street outside the window.
         if (report.streetSideService?.passViolationsAfter > report.streetSideService?.passViolationsBefore) {
-            return { properties: original, accessFor: accessContext.accessFor, diagnostics: { ...report, applied: false,
-                status: 'whole_route_guard_retained', reason: 'Known curb-side passes would become less coherent.' } };
+            return finish({ properties: original, accessFor: accessContext.accessFor, diagnostics: { ...report, applied: false,
+                status: 'whole_route_guard_retained', reason: 'Known curb-side passes would become less coherent.' } });
         }
         report.wholeRouteUnavailableReason = error.message;
-        return { properties: order, diagnostics: report, accessFor: accessContext.accessFor };
+        return finish({ properties: order, diagnostics: report, accessFor: accessContext.accessFor });
     }
 }
 
 async function reviewDrivingPhases(order, options = {}) {
+    const phasesStarted = Date.now();
     const reviewed = await reviewDrivingWindows(order, options);
     if (options.shortDrivingCleanup !== true) return reviewed;
     const major = reviewed.diagnostics.applied ? reviewed : { ...reviewed, diagnostics: { ...reviewed.diagnostics,
@@ -494,12 +540,16 @@ async function reviewDrivingPhases(order, options = {}) {
             passViolationsAfter: reviewed.diagnostics.streetSideService.passViolationsBefore } } : {}) } };
     const shortWindows = planShortDrivingWindows(major.properties, options);
     const count = value => Number.isFinite(value) ? value : 0;
+    const combinedTimings = short => ({ ...Object.fromEntries(['curb_discovery_ms', 'road_context_ms',
+        'candidate_search_ms', 'candidate_measurement_ms'].map(key =>
+        [key, count(major.diagnostics.timings?.[key]) + count(short?.timings?.[key])])), total_ms: Date.now() - phasesStarted });
     const retain = shortCleanup => ({ ...major, diagnostics: { ...major.diagnostics,
         planned: count(major.diagnostics.planned) + count(shortCleanup.planned),
         checked: count(major.diagnostics.checked) + count(shortCleanup.checked),
         candidatesMeasured: count(major.diagnostics.candidatesMeasured) + count(shortCleanup.candidatesMeasured),
         budgetExhausted: major.diagnostics.budgetExhausted || shortCleanup.budgetExhausted === true,
-        skipped: [...(major.diagnostics.skipped || []), ...(shortCleanup.skipped || [])], shortCleanup } });
+        skipped: [...(major.diagnostics.skipped || []), ...(shortCleanup.skipped || [])],
+        timings: combinedTimings(shortCleanup), shortCleanup } });
     if (!shortWindows.length) return retain({ status: 'not_needed', applied: false,
         planned: 0, checked: 0, repaired: 0, candidatesMeasured: 0, budgetExhausted: false });
     let cleanup;
@@ -543,7 +593,7 @@ async function reviewDrivingPhases(order, options = {}) {
         ...(short.streetSideService ? { streetSideService: { ...short.streetSideService,
             inferredStops: count(original.streetSideService?.inferredStops),
             passViolationsBefore: original.streetSideService?.passViolationsBefore ?? short.streetSideService.passViolationsBefore } } : {}),
-        shortCleanup: short } };
+        timings: combinedTimings(short), shortCleanup: short } };
 }
 
 export async function reviewLocalDrivingNeighborhoods(order, options = {}) {

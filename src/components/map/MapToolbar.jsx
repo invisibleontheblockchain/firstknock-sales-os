@@ -4,7 +4,6 @@ import { Button } from "@/components/ui/button";
 import { Loader2, Navigation, Locate, List, X, Filter, MapPin, Zap, Eye, EyeOff, Save, Pencil, Check, RotateCcw, Download, MoreVertical, Scissors, Ghost, Flag, Trash2 } from 'lucide-react';
 import { LayoutDashboard, Settings } from 'lucide-react';
 import { toast } from "sonner";
-import DataStatusIndicator from './DataStatusIndicator';
 import SplitRouteModal from '@/components/routes/SplitRouteModal';
 import RouteAnchorsDialog from '@/components/routes/RouteAnchorsDialog';
 import HomeBaseDialog from '@/components/routes/HomeBaseDialog';
@@ -21,7 +20,6 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuCheckb
 import { OptimizeRouteChoices, OptimizeRouteTrigger } from './OptimizeRouteInline';
 import { routeBelongsToActingUser } from '@/lib/routeOptimizeUpdate';
 import { findHydratedSearchRoute, GLOBAL_ROUTE_SEARCH_EVENT } from '@/components/search/globalSearchBridge';
-import RoutePathLegend from './RoutePathLegend';
 
 /**
  * MapToolbar — extracted from Home.jsx
@@ -463,12 +461,9 @@ export default function MapToolbar({
                         </button>
                     </div>
 
-                    {/* DATA STATUS + FILTER BUTTON */}
+                    {/* ROUTE VISIBILITY + FILTER BUTTONS */}
                     <div className={`${customAreaControlsBlocked ? 'pointer-events-none' : 'pointer-events-auto'} shrink-0 flex items-center gap-1 sm:gap-2`}>
 
-                        <div className="hidden xl:block">
-                            <DataStatusIndicator user={user} />
-                        </div>
                         <Button
               onClick={() => {
                 const newVal = !showRouteDetails;
@@ -539,7 +534,6 @@ export default function MapToolbar({
                 {/* Active Route Banner */}
                 {mode === 'analyze' && activeRoute &&
         <div className="pointer-events-auto rounded-xl px-2 py-1.5 md:px-3 md:py-2 shadow-2xl border border-[#2EEB57]/30 animate-in slide-in-from-top-2 backdrop-blur-md" style={{ background: 'rgba(10,10,10,0.95)' }}>
-                        {showRouteLines && <div className="mb-1"><RoutePathLegend /></div>}
                         {/* Row 1: Name + Actions — always horizontal */}
                         <div className="flex items-center gap-1.5 min-w-0">
                             <div className="w-5 h-5 md:w-6 md:h-6 rounded-full flex items-center justify-center shrink-0" style={{ background: BRAND.gold }}>

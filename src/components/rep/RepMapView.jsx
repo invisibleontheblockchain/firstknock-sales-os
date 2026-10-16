@@ -8,7 +8,6 @@ import { createLabelCanvas } from '@/components/map/labelCanvas';
 import { reconcileMapPins } from '@/components/map/reconcileMapPins';
 import { DEFAULT_PIN_THEME } from '@/components/map/mapPinThemes';
 import { outcomeColor } from '@/components/logic/outcomeStatus';
-import RoutePathLegend from '@/components/map/RoutePathLegend';
 
 // Fix Leaflet unmount error during scroll wheel zoom
 const originalGetMapPanePos = L.Map.prototype._getMapPanePos;
@@ -322,10 +321,6 @@ export default function RepMapView({
                         <Locate className="w-5 h-5" />
                     </Button>
                 </div>
-            </div>
-
-            <div className="absolute top-[calc(env(safe-area-inset-top)+4.5rem)] left-3 z-[1200] pointer-events-none rounded-md bg-black/90 px-3 py-2 shadow-lg">
-                <RoutePathLegend />
             </div>
 
             {/* Map */}
