@@ -8,6 +8,7 @@ import * as origins from '../src/lib/routeOriginModes.js';
 import * as bounds from '../src/lib/routeBounds.js';
 import * as hydrationCore from '../src/components/logic/routeHydrationCore.js';
 import * as routeSelection from '../src/components/logic/routeMapSelection.js';
+import * as routeDisplayGeometry from '../base44/shared/routeDisplayGeometry.js';
 
 const updates = {};
 vm.runInNewContext(ts.transpileModule(fs.readFileSync(new URL('../src/lib/routeOptimizeUpdate.js', import.meta.url), 'utf8'), {
@@ -15,6 +16,7 @@ vm.runInNewContext(ts.transpileModule(fs.readFileSync(new URL('../src/lib/routeO
 }).outputText, { exports: updates, require: name => {
     if (name === './routeOriginModes') return origins;
     if (name === './routeAnchors') return {};
+    if (name === '../../base44/shared/routeDisplayGeometry.js') return routeDisplayGeometry;
     assert.fail(`Unexpected update helper dependency ${name}`);
 } });
 
@@ -249,6 +251,22 @@ test('county-mapped road evidence is disclosed in the saved full result without 
     const ordinary = outcomes.buildRoadOptimizationAttempt(null, measurement, { applied: true });
     assert.equal(ordinary.county_roads_included, false);
     assert.doesNotMatch(ordinary.message, /County-mapped/);
+});
+
+test('county-road disclosure works for every registered authority and excludes ordinary provider graphs', () => {
+    for (const metadata of [
+        { road_matrix_source: 'osrm:driving+county_ng911' },
+        { county_road_routing: { countyStopCount: 1, authoritySources: ['fl_lee_ng911_centerlines'] } },
+    ]) {
+        const measurement = verifiedWhole();
+        Object.assign(measurement.routingMetadata, metadata);
+        const saved = outcomes.buildRoadOptimizationAttempt(null, measurement, { applied: true });
+        assert.equal(saved.county_roads_included, true);
+        assert.match(saved.message, /local-road travel times are estimated/);
+    }
+    const measurement = verifiedWhole();
+    measurement.routingMetadata.county_road_routing = { countyStopCount: 0, graphIdentity: 'public-provider-graph' };
+    assert.equal(outcomes.buildRoadOptimizationAttempt(null, measurement, { applied: true }).county_roads_included, false);
 });
 
 test('attempt history contains evidence counts but never home/car anchors or raw provider URLs', () => {
@@ -563,6 +581,7 @@ function actionHarness(reason, measurement) {
         '@/lib/routeOptimizePersistence': { syncOptimizedRoute: async () => {} },
         '@/lib/routeOptimizationOutcome': outcomes, '@/lib/routeRoadVerification': {},
         '@/lib/routeContextGuard': {}, '@/lib/routeOriginModes': origins, '@/lib/routeOptimizeUpdate': updates,
+        '../../base44/shared/routeDisplayGeometry.js': routeDisplayGeometry,
     };
     const source = fs.readFileSync(new URL('../src/lib/reoptimizeRouteAction.js', import.meta.url), 'utf8');
     const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS,

@@ -84,7 +84,7 @@ export function buildSavedRouteGroup({ doors, linePoints, lineSegments, centerPo
     // Route lines are added before door pins so a route-colored line can never
     // cover a smaller outcome-colored pin at wide zoom levels.
     if (!style.overviewOnly && style.showRouteLines && (linePoints.length > 1 || lineSegments?.length)) {
-        const latLngs = lineSegments ? lineSegments.map(points => points.map(p => [Number(p.lat), Number(p.lng)]))
+        const latLngs = lineSegments?.length ? lineSegments.map(points => points.map(p => [Number(p.lat), Number(p.lng)]))
             : linePoints.map(p => [Number(p.lat), Number(p.lng)]);
 
         const hitLine = L.polyline(latLngs, { color: 'transparent', weight: 26, opacity: 0, interactive: true });
@@ -95,7 +95,7 @@ export function buildSavedRouteGroup({ doors, linePoints, lineSegments, centerPo
             color,
             weight: style.lineWidth || 3,
             opacity: style.lineOpacity || 0.7,
-            dashArray: style.lineDashArray || null,
+            dashArray: lineSegments?.length ? null : style.lineDashArray || '4,6',
         });
         line.on('click', selectRoute);
         group.addLayer(line);

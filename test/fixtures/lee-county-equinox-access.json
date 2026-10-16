@@ -1,0 +1,519 @@
+{
+  "addresses": [
+    {
+      "attributes": {
+        "OBJECTID": 40794,
+        "Full_Address": "6730 EQUINOX LN",
+        "LFull_St_Name": "EQUINOX LN",
+        "Add_Number": 6730,
+        "AddNum_Pre": null,
+        "AddNum_Suf": null,
+        "Unit": null,
+        "Post_Code": "33917",
+        "Country": "US",
+        "State": "FL",
+        "County": "LEE COUNTY",
+        "Placement": null,
+        "DateUpdate": 1762198523000,
+        "Effective": null,
+        "Expire": null,
+        "MSLINK_RCL": 90699
+      },
+      "geometry": {
+        "x": -81.84735500277874,
+        "y": 26.71518450747428
+      }
+    }
+  ],
+  "roads": [
+    {
+      "attributes": {
+        "OBJECTID": 39760,
+        "NGUID": "RCL90704@LEE.FL.US",
+        "St_PreDir": null,
+        "St_Name": "EQUINOX",
+        "St_PosTyp": "LANE",
+        "St_PosDir": null,
+        "St_PreMod": null,
+        "St_PreTyp": null,
+        "St_PreSep": null,
+        "St_PosMod": null,
+        "Country_L": "US",
+        "Country_R": "US",
+        "State_L": "FL",
+        "State_R": "FL",
+        "County_L": "LEE COUNTY",
+        "County_R": "LEE COUNTY",
+        "FromAddr_L": 6685,
+        "ToAddr_L": 6719,
+        "FromAddr_R": 6686,
+        "ToAddr_R": 6718,
+        "AdNumPre_L": null,
+        "AdNumPre_R": null,
+        "Parity_L": "O",
+        "Parity_R": "E",
+        "PostCode_L": "33917",
+        "PostCode_R": "33917",
+        "OneWay": null,
+        "RoadClass": "S",
+        "DateUpdate": 1784737051000,
+        "Effective": null,
+        "Expire": null,
+        "MSLINK_RCL": 90704,
+        "turn_mask": null,
+        "F_ELEV": 0,
+        "T_ELEV": 0,
+        "ErrorCode": null
+      },
+      "geometry": {
+        "paths": [
+          [
+            [
+              -81.8489595784759,
+              26.714949469589
+            ],
+            [
+              -81.8488810220807,
+              26.7149770592551
+            ],
+            [
+              -81.8487820677168,
+              26.7150469268473
+            ],
+            [
+              -81.8486531076255,
+              26.7151776093192
+            ],
+            [
+              -81.8485114420606,
+              26.7152721403635
+            ],
+            [
+              -81.8483094451727,
+              26.7153448039193
+            ],
+            [
+              -81.8481372107712,
+              26.7153642247924
+            ],
+            [
+              -81.8478460223801,
+              26.7153682552394
+            ],
+            [
+              -81.8476187661018,
+              26.7153714376246
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "attributes": {
+        "OBJECTID": 41571,
+        "NGUID": "RCL26741@LEE.FL.US",
+        "St_PreDir": null,
+        "St_Name": "SLATER",
+        "St_PosTyp": "ROAD",
+        "St_PosDir": null,
+        "St_PreMod": null,
+        "St_PreTyp": null,
+        "St_PreSep": null,
+        "St_PosMod": null,
+        "Country_L": "US",
+        "Country_R": "US",
+        "State_L": "FL",
+        "State_R": "FL",
+        "County_L": "LEE COUNTY",
+        "County_R": "LEE COUNTY",
+        "FromAddr_L": 17253,
+        "ToAddr_L": 17399,
+        "FromAddr_R": 17252,
+        "ToAddr_R": 17398,
+        "AdNumPre_L": null,
+        "AdNumPre_R": null,
+        "Parity_L": "O",
+        "Parity_R": "E",
+        "PostCode_L": "33917",
+        "PostCode_R": "33917",
+        "OneWay": null,
+        "RoadClass": "H",
+        "DateUpdate": 1777309474000,
+        "Effective": null,
+        "Expire": null,
+        "MSLINK_RCL": 26741,
+        "turn_mask": null,
+        "F_ELEV": 0,
+        "T_ELEV": 0,
+        "ErrorCode": null
+      },
+      "geometry": {
+        "paths": [
+          [
+            [
+              -81.85484731355,
+              26.7151212120713
+            ],
+            [
+              -81.8548502120115,
+              26.7153978694813
+            ],
+            [
+              -81.8548479560758,
+              26.7154910736521
+            ],
+            [
+              -81.8548432111391,
+              26.7156219158319
+            ],
+            [
+              -81.8548244874415,
+              26.7158553785993
+            ],
+            [
+              -81.8547831548074,
+              26.7161832567221
+            ],
+            [
+              -81.8547446563912,
+              26.716401693728
+            ],
+            [
+              -81.8546922766383,
+              26.7166829346947
+            ],
+            [
+              -81.8546431406531,
+              26.716882117628
+            ],
+            [
+              -81.8546051441397,
+              26.7170373578136
+            ],
+            [
+              -81.8544693595237,
+              26.7175201599429
+            ],
+            [
+              -81.8544321609635,
+              26.717656925852
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "attributes": {
+        "OBJECTID": 44849,
+        "NGUID": "RCL90707@LEE.FL.US",
+        "St_PreDir": null,
+        "St_Name": "EQUINOX",
+        "St_PosTyp": "LANE",
+        "St_PosDir": null,
+        "St_PreMod": null,
+        "St_PreTyp": null,
+        "St_PreSep": null,
+        "St_PosMod": null,
+        "Country_L": "US",
+        "Country_R": "US",
+        "State_L": "FL",
+        "State_R": "FL",
+        "County_L": "LEE COUNTY",
+        "County_R": "LEE COUNTY",
+        "FromAddr_L": 6495,
+        "ToAddr_L": 6683,
+        "FromAddr_R": 6496,
+        "ToAddr_R": 6684,
+        "AdNumPre_L": null,
+        "AdNumPre_R": null,
+        "Parity_L": "O",
+        "Parity_R": "E",
+        "PostCode_L": "33917",
+        "PostCode_R": "33917",
+        "OneWay": null,
+        "RoadClass": "S",
+        "DateUpdate": 1784737030000,
+        "Effective": null,
+        "Expire": null,
+        "MSLINK_RCL": 90707,
+        "turn_mask": null,
+        "F_ELEV": 0,
+        "T_ELEV": 0,
+        "ErrorCode": null
+      },
+      "geometry": {
+        "paths": [
+          [
+            [
+              -81.8528154465415,
+              26.7148749805714
+            ],
+            [
+              -81.8519922624931,
+              26.7148875982626
+            ],
+            [
+              -81.8490854053071,
+              26.7149277428094
+            ],
+            [
+              -81.8490692352776,
+              26.7149276669453
+            ],
+            [
+              -81.8489595784759,
+              26.714949469589
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "attributes": {
+        "OBJECTID": 58466,
+        "NGUID": "RCL90710@LEE.FL.US",
+        "St_PreDir": null,
+        "St_Name": "EQUINOX",
+        "St_PosTyp": "LANE",
+        "St_PosDir": null,
+        "St_PreMod": null,
+        "St_PreTyp": null,
+        "St_PreSep": null,
+        "St_PosMod": null,
+        "Country_L": "US",
+        "Country_R": "US",
+        "State_L": "FL",
+        "State_R": "FL",
+        "County_L": "LEE COUNTY",
+        "County_R": "LEE COUNTY",
+        "FromAddr_L": 6451,
+        "ToAddr_L": 6493,
+        "FromAddr_R": 6450,
+        "ToAddr_R": 6494,
+        "AdNumPre_L": null,
+        "AdNumPre_R": null,
+        "Parity_L": "O",
+        "Parity_R": "E",
+        "PostCode_L": "33917",
+        "PostCode_R": "33917",
+        "OneWay": null,
+        "RoadClass": "S",
+        "DateUpdate": 1784736969000,
+        "Effective": null,
+        "Expire": null,
+        "MSLINK_RCL": 90710,
+        "turn_mask": null,
+        "F_ELEV": 0,
+        "T_ELEV": 0,
+        "ErrorCode": null
+      },
+      "geometry": {
+        "paths": [
+          [
+            [
+              -81.85484731355,
+              26.7151212120713
+            ],
+            [
+              -81.8542499781382,
+              26.71512384827
+            ],
+            [
+              -81.8540565498572,
+              26.7151076484358
+            ],
+            [
+              -81.8539387044521,
+              26.7150682267842
+            ],
+            [
+              -81.8538487027996,
+              26.7150162552686
+            ],
+            [
+              -81.8536953647173,
+              26.7149011529024
+            ],
+            [
+              -81.8536328399886,
+              26.7148697416073
+            ],
+            [
+              -81.8535640803287,
+              26.7148600806956
+            ],
+            [
+              -81.8528154465415,
+              26.7148749805714
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "attributes": {
+        "OBJECTID": 75172,
+        "NGUID": "RCL90699@LEE.FL.US",
+        "St_PreDir": null,
+        "St_Name": "EQUINOX",
+        "St_PosTyp": "LANE",
+        "St_PosDir": null,
+        "St_PreMod": null,
+        "St_PreTyp": null,
+        "St_PreSep": null,
+        "St_PosMod": null,
+        "Country_L": "US",
+        "Country_R": "US",
+        "State_L": "FL",
+        "State_R": "FL",
+        "County_L": "LEE COUNTY",
+        "County_R": "LEE COUNTY",
+        "FromAddr_L": 6721,
+        "ToAddr_L": 6873,
+        "FromAddr_R": 6720,
+        "ToAddr_R": 6874,
+        "AdNumPre_L": null,
+        "AdNumPre_R": null,
+        "Parity_L": "O",
+        "Parity_R": "E",
+        "PostCode_L": "33917",
+        "PostCode_R": "33917",
+        "OneWay": null,
+        "RoadClass": "S",
+        "DateUpdate": 1782491444000,
+        "Effective": null,
+        "Expire": null,
+        "MSLINK_RCL": 90699,
+        "turn_mask": null,
+        "F_ELEV": 0,
+        "T_ELEV": 0,
+        "ErrorCode": null
+      },
+      "geometry": {
+        "paths": [
+          [
+            [
+              -81.8476187661018,
+              26.7153714376246
+            ],
+            [
+              -81.8448363817157,
+              26.7154121873898
+            ],
+            [
+              -81.8447763349291,
+              26.7154175760529
+            ],
+            [
+              -81.8447310047425,
+              26.7154298494724
+            ],
+            [
+              -81.8446896573836,
+              26.7154474281242
+            ],
+            [
+              -81.8446459045512,
+              26.7154741744049
+            ],
+            [
+              -81.8445069050506,
+              26.7155751289618
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "attributes": {
+        "OBJECTID": 79559,
+        "NGUID": "RCL109476@LEE.FL.US",
+        "St_PreDir": null,
+        "St_Name": "SLATER",
+        "St_PosTyp": "ROAD",
+        "St_PosDir": null,
+        "St_PreMod": null,
+        "St_PreTyp": null,
+        "St_PreSep": null,
+        "St_PosMod": null,
+        "Country_L": "US",
+        "Country_R": "US",
+        "State_L": "FL",
+        "State_R": "FL",
+        "County_L": "LEE COUNTY",
+        "County_R": "LEE COUNTY",
+        "FromAddr_L": 17143,
+        "ToAddr_L": 17251,
+        "FromAddr_R": 17142,
+        "ToAddr_R": 17250,
+        "AdNumPre_L": null,
+        "AdNumPre_R": null,
+        "Parity_L": "O",
+        "Parity_R": "E",
+        "PostCode_L": "33917",
+        "PostCode_R": "33917",
+        "OneWay": null,
+        "RoadClass": "H",
+        "DateUpdate": 1777309037000,
+        "Effective": null,
+        "Expire": null,
+        "MSLINK_RCL": 109476,
+        "turn_mask": null,
+        "F_ELEV": 0,
+        "T_ELEV": 0,
+        "ErrorCode": null
+      },
+      "geometry": {
+        "paths": [
+          [
+            [
+              -81.8546921646158,
+              26.7135309026671
+            ],
+            [
+              -81.8547309041248,
+              26.7138012552589
+            ],
+            [
+              -81.8547691915266,
+              26.7140439006703
+            ],
+            [
+              -81.854785788854,
+              26.7141665493711
+            ],
+            [
+              -81.8547971832981,
+              26.7142629283815
+            ],
+            [
+              -81.8548112120496,
+              26.7143798412185
+            ],
+            [
+              -81.8548231862992,
+              26.7145468563286
+            ],
+            [
+              -81.8548321639321,
+              26.7146588927331
+            ],
+            [
+              -81.8548412164404,
+              26.7147768862822
+            ],
+            [
+              -81.8548451834129,
+              26.7149178932878
+            ],
+            [
+              -81.85484731355,
+              26.7151212120713
+            ]
+          ]
+        ]
+      }
+    }
+  ],
+  "description": "Lee County public NG911 road and address fixture captured 2026-10-15; connected Equinox Lane centerlines and public Slater Road gateway."
+}

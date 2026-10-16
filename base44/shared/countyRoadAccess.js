@@ -2,17 +2,8 @@ import { haversineDistanceMiles, isValidRoutePoint } from './routeBounds.js';
 import { roadNetworkRoutingInternals } from './roadNetworkRouting.js';
 import { vehicleProviderConfig } from './vehicleProviderConfig.js';
 
-// The statewide service aggregates county-maintained NG911 roads and addresses.
-// A missing provider road is recovered from its real connected geometry, never
-// by snapping the property across a field to an unrelated nearby road.
-export const COUNTY_ROAD_SERVICE = 'https://services.gis.nc.gov/secure/rest/services/NC1Map_Transportation/FeatureServer/0/query';
-export const COUNTY_ADDRESS_SERVICE = 'https://services.gis.nc.gov/secure/rest/services/AddressNC/NC1Map_Addresses/FeatureServer/0/query';
-const ROAD_FIELDS = ['objectid', 'nguid', 'st_predir', 'st_name', 'st_postyp', 'st_posdir',
-    'county_l', 'county_r', 'fromaddr_l', 'toaddr_l', 'fromaddr_r', 'toaddr_r',
-    'parity_l', 'parity_r', 'postcode_l', 'postcode_r', 'oneway', 'roadclass',
-    'dateupdate', 'effective', 'expire', 'gc_exception'];
-const ADDRESS_FIELDS = ['objectid', 'st_address', 'full_address', 'add_number', 'addnum_suf',
-    'unit', 'post_code', 'state', 'county', 'source', 'placement', 'dateupdate', 'effective', 'expire'];
+import { countyAuthorityFor, validAuthorityAttributes, COUNTY_ROAD_SERVICE, COUNTY_ADDRESS_SERVICE } from './countyRoadAuthorities.js';
+export { COUNTY_ROAD_SERVICE, COUNTY_ADDRESS_SERVICE };
 const MAX_COMPONENT_VERTICES = 5000;
 const distance = (a, b) => haversineDistanceMiles(a, b) * 1609.344;
 const streetKey = value => roadNetworkRoutingInternals.normalizeStreetName(String(value || ''));
@@ -144,16 +135,17 @@ async function jsonRequest(url, fetchImpl, signal, options, service) {
     return payload;
 }
 
-function segmentsOf(payload, now) {
+function segmentsOf(payload, now, authority) {
     if (!Array.isArray(payload.features) || payload.exceededTransferLimit) return null;
     const segments = [];
     for (const feature of payload.features) {
-        const a = feature.attributes;
+        const a = feature.attributes && authority.normalizeRoad(feature.attributes);
         if (!a || a.objectid == null || !active(a, now) || !streetKey(roadName(a))) continue;
         for (const [index, path] of (feature.geometry?.paths || []).entries()) {
             const geometry = path.map(pair => ({ lat: pair[1], lng: pair[0] }));
             if (geometry.length < 2 || !geometry.every(isValidRoutePoint)) continue;
-            segments.push({ id: `nc911:${a.objectid}:${index}`, geometry, oneWay: oneWay(a.oneway),
+            segments.push({ id: `${authority.id}:${a.objectid}:${index}`, geometry,
+                oneWay: authority.validRoad(a) ? oneWay(a.oneway) : null,
                 roadName: roadName(a), attributes: a });
         }
     }
@@ -200,12 +192,13 @@ function incomplete(component, box) {
         || point.lat <= box.ymin + 0.00001 || point.lat >= box.ymax - 0.00001));
 }
 
-function authoritativePoint(payload, stop, number, zip, now) {
+function authoritativePoint(payload, stop, number, zip, now, authority) {
     if (!Array.isArray(payload?.features) || payload.exceededTransferLimit) return { invalid: true };
-    const candidates = payload.features.filter(feature => {
+    const candidates = payload.features.map(feature => ({ ...feature,
+        attributes: feature.attributes && authority.normalizeAddress(feature.attributes) })).filter(feature => {
         const a = feature.attributes;
         const addressStreet = String(a?.st_address || '').replace(/^\s*\S+\s+/, '');
-        return a && active(a, now) && String(a.state || '').toUpperCase() === 'NC'
+        return a && authority.validAddress(a) && active(a, now) && String(a.state || '').toUpperCase() === authority.state
             && String(a.add_number || '') === String(number) && !a.addnum_suf && !a.unit
             && String(a.post_code || '').slice(0, 5) === zip && streetKey(addressStreet) === streetKey(stop.street_name)
             && isValidRoutePoint({ lat: feature.geometry?.y, lng: feature.geometry?.x });
@@ -215,9 +208,9 @@ function authoritativePoint(payload, stop, number, zip, now) {
     ]));
     if (distinct.size > 1) return { invalid: true };
     const feature = distinct.values().next().value;
-    if (!feature) return { point: pointOf(stop), source: 'property_pin' };
-    return { point: { lat: feature.geometry.y, lng: feature.geometry.x }, source: 'nc_address_point',
-        id: `nc_address:${feature.attributes.objectid}`, attributes: feature.attributes };
+    if (!feature) return authority.requiresAddress ? { invalid: true } : { point: pointOf(stop), source: 'property_pin' };
+    return { point: { lat: feature.geometry.y, lng: feature.geometry.x }, source: authority.addressSource,
+        id: `${authority.addressId}:${feature.attributes.objectid}`, attributes: feature.attributes };
 }
 
 /** An exact county address can identify a house inside a large parcel even
@@ -227,14 +220,15 @@ export function validateCountyAddressReference(stop, reference, { now = Date.now
     const house = String(stop?.house_number || '').trim();
     const zip = String(stop?.zip_code || '').slice(0, 5);
     const attributes = reference?.attributes;
+    const authority = countyAuthorityFor(stop);
     return isValidRoutePoint(stop) && isValidRoutePoint(reference?.point)
-        && reference.source === 'nc_address_point' && /^nc_address:\d+$/.test(reference.id || '')
+        && !!authority && reference.source === authority.addressSource
+        && new RegExp(`^${authority.addressId}:\\d+$`).test(reference.id || '')
         && /^\d+$/.test(house) && /^\d{5}$/.test(zip)
-        && (!stop.state || String(stop.state).toUpperCase() === 'NC')
-        && stop.lat >= 33.7 && stop.lat <= 36.7 && stop.lng >= -84.4 && stop.lng <= -75.3
         && distance(stop, reference.point) <= 1000
-        && !!attributes && reference.id === `nc_address:${attributes.objectid}` && active(attributes, now)
-        && String(attributes.state || '').toUpperCase() === 'NC'
+        && !!attributes && reference.id === `${authority.addressId}:${attributes.objectid}` && active(attributes, now)
+        && validAuthorityAttributes(authority, attributes, 'address') && authority.validAddress(attributes)
+        && String(attributes.state || '').toUpperCase() === authority.state
         && String(attributes.add_number || '') === house && !attributes.addnum_suf && !attributes.unit
         && String(attributes.post_code || '').slice(0, 5) === zip
         && streetKey(String(attributes.st_address || '').replace(/^\s*\S+\s+/, '')) === streetKey(stop.street_name);
@@ -244,14 +238,14 @@ export async function discoverCountyAddressReference(stop, options = {}) {
     if (!isValidRoutePoint(stop)) return null;
     const house = String(stop.house_number || '').trim();
     const zip = String(stop.zip_code || '').slice(0, 5);
+    const authority = countyAuthorityFor(stop);
     if (!/^\d+$/.test(house) || !/^\d{5}$/.test(zip) || !streetKey(stop.street_name)
-        || (stop.state && String(stop.state).toUpperCase() !== 'NC')
-        || stop.lat < 33.7 || stop.lat > 36.7 || stop.lng < -84.4 || stop.lng > -75.3) return null;
+        || !authority) return null;
     try {
-        const payload = await jsonRequest(queryUrl(COUNTY_ADDRESS_SERVICE, envelope(stop, 1200), ADDRESS_FIELDS,
-            `add_number='${house}' AND post_code='${zip}'`), options.fetchImpl || globalThis.fetch,
+        const payload = await jsonRequest(queryUrl(authority.addressService, envelope(stop, 1200), authority.addressFields,
+            authority.addressWhere(house, zip)), options.fetchImpl || globalThis.fetch,
         options.signal, options, 'county_addresses');
-        const reference = authoritativePoint(payload, stop, Number(house), zip, options.now ?? Date.now());
+        const reference = authoritativePoint(payload, stop, Number(house), zip, options.now ?? Date.now(), authority);
         return validateCountyAddressReference(stop, reference, options) ? reference : null;
     } catch (error) {
         if (options.signal?.aborted || error?.name === 'AbortError') throw error;
@@ -262,21 +256,20 @@ export async function discoverCountyAddressReference(stop, options = {}) {
 async function discover(stop, options) {
     const zip = String(stop.zip_code || '').slice(0, 5);
     const house = String(stop.house_number || '').trim();
+    const authority = countyAuthorityFor(stop);
     if (!isValidRoutePoint(stop) || !/^\d+$/.test(house) || !/^\d{5}$/.test(zip)
-        || !streetKey(stop.street_name) || (stop.state && String(stop.state).toUpperCase() !== 'NC')
-        || stop.lat < 33.7 || stop.lat > 36.7 || stop.lng < -84.4 || stop.lng > -75.3) return null;
+        || !streetKey(stop.street_name) || !authority) return null;
     const number = Number(house);
     const fetchImpl = options.fetchImpl || globalThis.fetch;
     const vehicleFetch = options.vehicleFetch || globalThis.fetch;
     const now = options.now ?? Date.now();
     let box = envelope(stop, 1200);
-    const addressesUrl = queryUrl(COUNTY_ADDRESS_SERVICE, box, ADDRESS_FIELDS,
-        `add_number='${house}' AND post_code='${zip}'`);
+    const addressesUrl = queryUrl(authority.addressService, box, authority.addressFields, authority.addressWhere(house, zip));
     const [roadPayload, addressPayload] = await Promise.all([
-        jsonRequest(queryUrl(COUNTY_ROAD_SERVICE, box, ROAD_FIELDS), fetchImpl, options.signal, options, 'county_roads'),
+        jsonRequest(queryUrl(authority.roadService, box, authority.roadFields), fetchImpl, options.signal, options, 'county_roads'),
         jsonRequest(addressesUrl, fetchImpl, options.signal, options, 'county_addresses'),
     ]);
-    const address = authoritativePoint(addressPayload, stop, number, zip, now);
+    const address = authoritativePoint(addressPayload, stop, number, zip, now, authority);
     if (address.invalid || distance(stop, address.point) > 1000) {
         diagnostic(options, 'county_addresses', 'countyAddress', { outcome: 'rejected',
             reason: address.invalid ? 'ambiguous_or_incomplete_address_inventory' : 'address_too_far' });
@@ -287,14 +280,15 @@ async function discover(stop, options) {
         // Reuse identity evidence in the bounded mapped-driveway recovery stage.
         try { options.onAddressReference?.(address); } catch { /* Evidence capture cannot change acceptance. */ }
     }
-    let allSegments = segmentsOf(roadPayload, now);
+    let allSegments = segmentsOf(roadPayload, now, authority);
     if (!allSegments) {
         diagnostic(options, 'county_roads', 'component', { outcome: 'rejected', reason: 'incomplete_road_inventory' });
         return null;
     }
     const findTarget = segments => {
         const named = segments.filter(segment => streetKey(segment.roadName) === streetKey(stop.street_name));
-        const inRange = named.filter(segment => withinRange(segment.attributes, number, zip));
+        const inRange = named.filter(segment => withinRange(segment.attributes, number, zip)
+            && authority.targetMatchesAddress(segment.attributes, address.attributes));
         const candidates = inRange
             .map(segment => ({ segment, projection: project(address.point, segment.geometry) }))
             .filter(candidate => candidate.projection && candidate.projection.meters <= 100);
@@ -314,7 +308,7 @@ async function discover(stop, options) {
     if (!target) return null;
     if (incomplete(target.component, box)) {
         box = envelope(stop, 2400);
-        allSegments = segmentsOf(await jsonRequest(queryUrl(COUNTY_ROAD_SERVICE, box, ROAD_FIELDS), fetchImpl, options.signal, options, 'county_roads'), now);
+        allSegments = segmentsOf(await jsonRequest(queryUrl(authority.roadService, box, authority.roadFields), fetchImpl, options.signal, options, 'county_roads'), now, authority);
         if (!allSegments) return null;
         target = findTarget(allSegments);
         if (!target || incomplete(target.component, box)) {
@@ -331,7 +325,7 @@ async function discover(stop, options) {
     const componentIds = new Set(target.component.map(segment => segment.id));
     const gateways = [];
     for (const segment of target.component) for (const point of [segment.geometry[0], segment.geometry.at(-1)]) {
-        const joining = allSegments.filter(other => !componentIds.has(other.id)
+        const joining = allSegments.filter(other => !componentIds.has(other.id) && other.oneWay !== null
             && streetKey(other.roadName) !== streetKey(stop.street_name)
             && other.geometry.some(p => distance(point, p) <= 1));
         if (!joining.length || gateways.some(gateway => distance(point, gateway.point) <= 1)) continue;
@@ -375,13 +369,13 @@ async function discover(stop, options) {
         oneway: segment.oneWay, raw_oneway: segment.attributes.oneway ?? null,
         direction_source: String(segment.attributes.oneway || '').trim() ? 'recorded' : 'not_recorded',
         attributes: { ...segment.attributes } }));
-    const networkId = `nc911:${hash(JSON.stringify(segments.map(segment => ({ id: segment.id, geometry: segment.geometry }))))}`;
+    const networkId = `${authority.id}:${hash(JSON.stringify(segments.map(segment => ({ id: segment.id, geometry: segment.geometry }))))}`;
     return { point: target.projection.point, roadName: stop.street_name,
-        network: { id: networkId, version: `nc911:${hash(JSON.stringify(segments))}`, segments }, gateway: accepted[0],
-        address_match: { house_number: house, street_name: stop.street_name, zip_code: zip, state: 'NC',
+        network: { id: networkId, version: `${authority.id}:${hash(JSON.stringify(segments))}`, segments }, gateway: accepted[0],
+        address_match: { house_number: house, street_name: stop.street_name, zip_code: zip, state: authority.state,
             point: address.point, source: address.source },
-        evidence: { propertyIdentity: String(stop.address_hash || stop.id || ''), source: 'nc_ng911_centerlines',
-            sourceService: COUNTY_ROAD_SERVICE, addressSource: address.source, addressPoint: address.point,
+        evidence: { propertyIdentity: String(stop.address_hash || stop.id || ''), source: authority.source,
+            sourceService: authority.roadService, addressSource: address.source, addressPoint: address.point,
             addressId: address.id || null, addressAttributes: address.attributes || null,
             displayPoint: pointOf(stop), targetSegmentId: target.segment.id, projectionMeters: target.projection.meters,
             addressRangeVerified: true, connectedCountyGeometry: true, completeComponent: true,
@@ -392,15 +386,15 @@ async function discover(stop, options) {
  * adapter separately checks legal directed paths from the stop to its gateway. */
 export function validateCountyRoadAccess(stop, candidate, { now = Date.now() } = {}) {
     try {
+        const authority = countyAuthorityFor(stop);
         if (!isValidRoutePoint(stop) || !isValidRoutePoint(candidate?.point)
             || streetKey(candidate.roadName) !== streetKey(stop.street_name)
-            || (stop.state && String(stop.state).toUpperCase() !== 'NC')
-            || stop.lat < 33.7 || stop.lat > 36.7 || stop.lng < -84.4 || stop.lng > -75.3) return false;
+            || !authority) return false;
         const e = candidate.evidence; const match = candidate.address_match;
         const segments = candidate.network?.segments; const gateway = candidate.gateway;
         const zip = String(stop.zip_code || '').slice(0, 5); const house = String(stop.house_number || '').trim();
         if (!e || !/^\d+$/.test(house) || !/^\d{5}$/.test(zip)
-            || e.source !== 'nc_ng911_centerlines' || e.sourceService !== COUNTY_ROAD_SERVICE
+            || e.source !== authority.source || e.sourceService !== authority.roadService
             || e.propertyIdentity !== String(stop.address_hash || stop.id || '')
             || !isValidRoutePoint(e.displayPoint) || distance(stop, e.displayPoint) > 0.1
             || !isValidRoutePoint(e.addressPoint) || distance(stop, e.addressPoint) > 1000
@@ -408,34 +402,37 @@ export function validateCountyRoadAccess(stop, candidate, { now = Date.now() } =
             || e.addressRangeVerified !== true || e.connectedCountyGeometry !== true
             || e.completeComponent !== true || e.uniqueGateway !== true
             || String(match?.house_number || '') !== house || String(match.zip_code || '') !== zip
-            || streetKey(match.street_name) !== streetKey(stop.street_name) || match.state !== 'NC'
+            || streetKey(match.street_name) !== streetKey(stop.street_name) || match.state !== authority.state
             || !isValidRoutePoint(match.point) || distance(match.point, e.addressPoint) > 0.1
             || !Array.isArray(segments) || !segments.length || segments.length > 100
             || segments.reduce((sum, segment) => sum + (Array.isArray(segment.geometry) ? segment.geometry.length : MAX_COMPONENT_VERTICES + 1), 0) > MAX_COMPONENT_VERTICES) return false;
-        if (e.addressSource === 'nc_address_point') {
+        if (e.addressSource === authority.addressSource) {
             const a = e.addressAttributes;
-            if (!a || !active(a, now) || a.state !== 'NC' || !e.addressId
+            if (!a || !active(a, now) || a.state !== authority.state || e.addressId !== `${authority.addressId}:${a.objectid}`
+                || !validAuthorityAttributes(authority, a, 'address') || !authority.validAddress(a)
                 || String(a.add_number || '') !== house || a.addnum_suf || a.unit
                 || String(a.post_code || '').slice(0, 5) !== zip
                 || streetKey(String(a.st_address || '').replace(/^\s*\S+\s+/, '')) !== streetKey(stop.street_name)) return false;
-        } else if (e.addressSource !== 'property_pin' || distance(stop, e.addressPoint) > 0.1) return false;
+        } else if (authority.requiresAddress || e.addressSource !== 'property_pin' || distance(stop, e.addressPoint) > 0.1) return false;
         const seen = new Set();
         for (const segment of segments) {
-            if (!/^nc911:\d+:\d+$/.test(segment.id) || seen.has(segment.id)
+            if (!new RegExp(`^${authority.id}:\\d+:\\d+$`).test(segment.id) || seen.has(segment.id)
                 || !Array.isArray(segment.geometry) || segment.geometry.length < 2 || segment.geometry.length > 5000
                 || !segment.geometry.every(isValidRoutePoint)
                 || !segment.geometry.some((point, index) => index > 0 && distance(point, segment.geometry[index - 1]) > 0.01)
                 || !['both', 'forward', 'reverse'].includes(segment.oneway)
                 || oneWay(segment.attributes?.oneway) !== segment.oneway
+                || !validAuthorityAttributes(authority, segment.attributes, 'road') || !authority.validRoad(segment.attributes)
                 || !active(segment.attributes || {}, now)
                 || streetKey(roadName(segment.attributes || {})) !== streetKey(stop.street_name)) return false;
             seen.add(segment.id);
         }
         const canonical = [...segments].sort((a, b) => a.id.localeCompare(b.id));
-        if (candidate.network.id !== `nc911:${hash(JSON.stringify(canonical.map(segment => ({ id: segment.id, geometry: segment.geometry }))))}`
-            || candidate.network.version !== `nc911:${hash(JSON.stringify(canonical))}`) return false;
+        if (candidate.network.id !== `${authority.id}:${hash(JSON.stringify(canonical.map(segment => ({ id: segment.id, geometry: segment.geometry }))))}`
+            || candidate.network.version !== `${authority.id}:${hash(JSON.stringify(canonical))}`) return false;
         const target = segments.find(segment => segment.id === e.targetSegmentId);
         if (!target || !withinRange(target.attributes, Number(house), zip)
+            || !authority.targetMatchesAddress(target.attributes, e.addressAttributes)
             || project(candidate.point, target.geometry)?.meters > 0.5
             || componentOf(target, segments).length !== segments.length) return false;
         const box = e.queryBounds;
@@ -450,6 +447,7 @@ export function validateCountyRoadAccess(stop, candidate, { now = Date.now() } =
             || !Array.isArray(crossroad.geometry) || !crossroad.geometry.every(isValidRoutePoint)
             || !crossroad.geometry.some(point => distance(point, gateway.point) <= 1)
             || !active(crossroad.attributes || {}, now)
+            || !validAuthorityAttributes(authority, crossroad.attributes, 'road') || !authority.validRoad(crossroad.attributes)
             || oneWay(crossroad.attributes?.oneway) === null
             || streetKey(roadName(crossroad.attributes || {})) !== streetKey(gateway.roadName)
             || streetKey(gateway.roadName) === streetKey(stop.street_name)) return false;

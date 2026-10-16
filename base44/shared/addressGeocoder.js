@@ -8,7 +8,7 @@ export const GEOCODE_BATCH_LIMIT = CENSUS_MAX_BATCH;
 
 /**
  * @param {Array<{ id: string, address: string, city?: string, state?: string, zip?: string }>} items
- * @param {{ geocodioApiKey?: string, fetchImpl?: typeof fetch, acceptResult?: (hit: object, item: object) => boolean }} [options]
+ * @param {{ geocodioApiKey?: string, fetchImpl?: typeof fetch, acceptResult?: (hit: object, item: object) => boolean | Promise<boolean> }} [options]
  * @returns {Promise<{ results: Record<string, object>, counts: { census: number, geocodio: number }, warnings: string[] }>}
  * Each result carries `source`. Throws only when every configured source failed
  * and nothing was resolved, so the caller can fall back to its own lookup.
@@ -22,10 +22,10 @@ export async function geocodeAddressItems(items, { geocodioApiKey, fetchImpl = g
 
   try {
     const census = await geocodeWithCensus(items, { fetchImpl });
-    Object.entries(census).forEach(([id, hit]) => {
+    for (const [id, hit] of Object.entries(census)) {
       const candidate = { ...hit, source: 'census' };
-      if (acceptResult(candidate, itemById.get(String(id)))) results[id] = candidate;
-    });
+      if (itemById.has(String(id)) && await acceptResult(candidate, itemById.get(String(id)))) results[id] = candidate;
+    }
   } catch (error) {
     failures.push(error);
     warnings.push(`census: ${error?.message || error}`);
@@ -35,10 +35,10 @@ export async function geocodeAddressItems(items, { geocodioApiKey, fetchImpl = g
   if (missed.length > 0 && geocodioApiKey) {
     try {
       const geocodio = await geocodeWithGeocodio(missed, { apiKey: geocodioApiKey, fetchImpl });
-      Object.entries(geocodio).forEach(([id, hit]) => {
+      for (const [id, hit] of Object.entries(geocodio)) {
         const candidate = { ...hit, source: 'geocodio' };
-        if (acceptResult(candidate, itemById.get(String(id)))) results[id] = candidate;
-      });
+        if (itemById.has(String(id)) && await acceptResult(candidate, itemById.get(String(id)))) results[id] = candidate;
+      }
     } catch (error) {
       failures.push(error);
       warnings.push(`geocodio: ${error?.message || error}`);

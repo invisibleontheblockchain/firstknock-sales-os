@@ -172,6 +172,8 @@ export function createCountyRoadRoutingAdapter(properties, { fetchJson: rawFetch
         const county = normalizeCounty(property.routing_access.county_road);
         return { county, property, point: county.point, roadName: property.routing_access.roadName || property.street_name || '' };
     });
+    const authoritySources = [...new Set(records.map(record => record.property.routing_access.county_road.evidence?.source)
+        .filter(source => ['nc_ng911_centerlines', 'fl_lee_ng911_centerlines'].includes(source)))].sort();
     const byNetwork = new Map();
     for (const record of records) byNetwork.set(record.county.id, [...(byNetwork.get(record.county.id) || []), record]);
     for (const network of byNetwork.values()) {
@@ -357,7 +359,7 @@ export function createCountyRoadRoutingAdapter(properties, { fetchJson: rawFetch
     };
     return { fetchJson, graphIdentity,
         vehicleFetch: async (url, options) => { const data = await fetchJson(url, options); return { ok: true, status: 200, json: async () => data }; },
-        stats: () => ({ ...counters, countyStopCount: records.length, networkCount: byNetwork.size, graphIdentity,
+        stats: () => ({ ...counters, countyStopCount: records.length, networkCount: byNetwork.size, graphIdentity, authoritySources,
             localSpeedMph: 15, localDurationIsEstimate: records.length > 0, publicDataVersion: publicVersion }),
     };
 }

@@ -290,6 +290,20 @@ test('status outage after workspace ON cannot silently return to an unguarded sa
     assert.equal((await beta.applyRoadAwareBetaToGeneratedRoutes(routes, { client: mock.client })).routes, routes);
 });
 
+test('fresh beta geometry replaces stale complete-driving provenance on both generation paths', async () => {
+    const routes = [{ name: 'Replacement', properties: stops(), metadata: { road_geometry_provenance: { version: 1, source: 'old' } } }];
+    const clientMock = workspace();
+    const generated = await beta.applyRoadAwareBetaToGeneratedRoutes(routes, { client: clientMock.client });
+    assert.equal(generated.routes[0].metadata.road_geometry_provenance, undefined);
+    assert.ok(verifiedBetaSegments(generated.routes[0].metadata, generated.routes[0].properties).length);
+    const engine = roadEngine();
+    const serverMock = workspace({ engine });
+    const server = await completeServerRoadAwareRoutes(routes, { client: serverMock.sdk, user: await serverMock.sdk.auth.me(),
+        readSecret: key => serverMock.secrets[key] || '', entryPoint: 'backend_generation', fetchImpl: engine.fetch });
+    assert.equal(server[0].metadata.road_geometry_provenance, undefined);
+    assert.ok(verifiedBetaSegments(server[0].metadata, server[0].properties).length);
+});
+
 test('record completion preserves manifest aliases and never persists personal trip geometry', async () => {
     const mock = workspace(), properties = stops().map(p => ({ ...p, legacy_hash: 'legacy-' + p.address_hash }));
     const records = [{ property_hashes: properties.map(p => p.legacy_hash), metadata: { existing: true },

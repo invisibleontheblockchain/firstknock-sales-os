@@ -114,6 +114,9 @@ export async function applyRoadAwareBetaToGeneratedRoutes(routes, { entryPoint =
         if (accepted) { appliedCount++; savedMiles += result.comparison.milesSaved || 0; }
         const metadata = { ...route.metadata, ...result.metadata, road_aware_comparison_id: result.comparisonId,
             road_aware_legacy_order: result.comparison.beforeOrder };
+        // Beta supplies its own geometry proof. Never bind the replacement
+        // path to an older complete-driving measurement's provenance.
+        delete metadata.road_geometry_provenance;
         if (['home_round_trip', 'current_to_home', 'car_round_trip', 'private_anchor_round_trip', 'anchor_round_trip'].includes(route.routeOriginMode || route.route_origin_mode)) {
             delete metadata.road_geometry; delete metadata.road_geometry_segments;
         }

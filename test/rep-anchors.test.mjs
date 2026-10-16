@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import * as routeDisplayGeometry from '../base44/shared/routeDisplayGeometry.js';
 import vm from 'node:vm';
 import ts from 'typescript';
 import { isValidRoutePoint, calculateRouteDistanceMiles } from '../base44/shared/routeBounds.js';
@@ -229,6 +230,7 @@ test('reoptimization preserves a private anchor by default but explicit route-on
         const writes = [];
         const errors = [];
         const context = vm.createContext({
+            ...routeDisplayGeometry,
             hasCompleteRouteMapPoints, loadSavedRouteSelection,
             hydrateRouteForMap: () => assert.fail('anchor fixture homes are already loaded'),
             OPTIMIZE_MODES, ROUTE_ORIGIN_MODES, resolveOptimizeMode, routeOriginModeForOptimizeMode,

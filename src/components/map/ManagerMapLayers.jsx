@@ -6,8 +6,7 @@ import CanvasZoneOverlay from './CanvasZoneOverlay';
 import StateBoundariesLayer from './StateBoundariesLayer';
 import { getCompletedPinColor } from '@/components/routes/routeRerunUtils';
 import { isSoldDateInCustomOwnershipRange, normalizeOwnershipRangeDays } from '@/components/logic/soldDateRange';
-import { routePropertyOrderFingerprint } from '@/components/logic/routeRoadContext';
-import { verifiedBetaSegments } from '@/lib/roadAwareRouteGeometry';
+import { verifiedRouteSegments } from '@/lib/roadAwareRouteGeometry';
 import { resolvePinSize, zoomAdjustedPinSize } from './densePinSize';
 import { buildPinStyle, pinKey, pinPropertyStyleKey, pinStyleContextKey } from './pinStyle';
 import { buildSavedRouteGroup, savedRouteStyleKey } from './savedRouteLayer';
@@ -43,32 +42,8 @@ const getRouteColor = (route, routeNumber = 1) => {
     return DEFAULT_ROUTE_COLORS[(Math.max(1, routeNumber) - 1) % DEFAULT_ROUTE_COLORS.length];
 };
 
-const getPersistedRoadGeometry = (route, properties) => {
-    const geometry = route?.metadata?.road_geometry;
-    if (!Array.isArray(geometry) || geometry.length < 2 || geometry.length > 12000) return null;
-    const expectedFingerprint = route?.metadata?.routing?.property_order_fingerprint;
-    const manifestFingerprint = routePropertyOrderFingerprint(
-        route?.property_hashes?.length ? route.property_hashes : properties
-    );
-    const hydratedFingerprint = routePropertyOrderFingerprint(properties);
-    if (
-        !expectedFingerprint
-        || manifestFingerprint !== expectedFingerprint
-        || (Array.isArray(properties) && properties.length > 0 && hydratedFingerprint !== expectedFingerprint)
-    ) return null;
-    const points = geometry
-        .map(point => ({
-            lat: Number(point?.lat ?? point?.latitude),
-            lng: Number(point?.lng ?? point?.lon ?? point?.longitude)
-        }))
-        .filter(isRenderableMapPoint);
-    return points.length === geometry.length ? points : null;
-};
-
 const getRouteLinePoints = (route, properties) => {
     if (route?.metadata?.routing?.road_aware_routing_beta) return [];
-    const roadGeometry = getPersistedRoadGeometry(route, properties);
-    if (roadGeometry) return roadGeometry;
     const doors = (properties || []).filter(isRenderableMapPoint);
     const mode = route?.routeOriginMode || route?.route_origin_mode || route?.metadata?.route_bounds?.mode || 'none';
     if (!['home_round_trip', 'current_to_home', 'anchor_round_trip'].includes(mode)) return doors;
@@ -94,7 +69,7 @@ export function ActiveRouteLayer({ activeRoute, mapSettings, pinSize, lineDashAr
     const renderedBoxRef = useRef(null);
     const routePoints = useMemo(() => (activeRoute?.properties || []).filter(isRenderableMapPoint), [activeRoute?.properties]);
     const routeLinePoints = useMemo(() => getRouteLinePoints(activeRoute, routePoints), [activeRoute, routePoints]);
-    const betaSegments = useMemo(() => verifiedBetaSegments(activeRoute?.metadata, activeRoute?.property_hashes || routePoints, routePoints), [activeRoute, routePoints]);
+    const roadSegments = useMemo(() => verifiedRouteSegments(activeRoute?.metadata, activeRoute?.property_hashes || routePoints, routePoints), [activeRoute, routePoints]);
 
     useEffect(() => {
         let timeoutId;
@@ -166,22 +141,22 @@ export function ActiveRouteLayer({ activeRoute, mapSettings, pinSize, lineDashAr
     useEffect(() => {
         if (!groupRef.current) groupRef.current = L.layerGroup().addTo(map);
         const group = groupRef.current;
-        const visible = !decisionFilterActive && (routeLinePoints.length > 1 || betaSegments?.length);
+        const visible = !decisionFilterActive && (routeLinePoints.length > 1 || roadSegments.length);
         if (!visible) {
             if (lineRef.current) group.removeLayer(lineRef.current);
             lineRef.current = null;
             return;
         }
-        const points = betaSegments ? betaSegments.map(segment => segment.map(p => [Number(p.lat), Number(p.lng)]))
+        const points = roadSegments.length ? roadSegments.map(segment => segment.map(p => [Number(p.lat), Number(p.lng)]))
             : routeLinePoints.map(p => [Number(p.lat), Number(p.lng)]);
         const style = { color: getRouteColor(activeRoute, activeRoute?.route_number || 1), weight: 2.5,
-            opacity: Math.max(0.75, mapSettings.lineOpacity || 0), dashArray: lineDashArray || null, interactive: false };
+            opacity: Math.max(0.75, mapSettings.lineOpacity || 0), dashArray: roadSegments.length ? null : lineDashArray || '4,6', interactive: false };
         if (!lineRef.current) {
             lineRef.current = L.polyline(points, style);
             group.addLayer(lineRef.current);
         } else lineRef.current.setLatLngs(points).setStyle(style);
         lineRef.current.bringToBack();
-    }, [map, activeRoute, routeLinePoints, betaSegments, mapSettings.lineOpacity, lineDashArray, decisionFilterActive]);
+    }, [map, activeRoute, routeLinePoints, roadSegments, mapSettings.lineOpacity, lineDashArray, decisionFilterActive]);
 
     useEffect(() => () => {
         if (groupRef.current) map.removeLayer(groupRef.current);
@@ -589,7 +564,7 @@ function SavedRoutesLayer({
                     circleMarker: labelCanvas.circleMarker,
                     doors,
                     linePoints: getRouteLinePoints(route, route.properties),
-                    lineSegments: verifiedBetaSegments(route.metadata, route.property_hashes || route.properties, route.properties),
+                    lineSegments: verifiedRouteSegments(route.metadata, route.property_hashes || route.properties, route.properties),
                     centerPoint: isRenderableMapPoint(centerProp)
                         ? [Number(centerProp.lat), Number(centerProp.lng)]
                         : null,
@@ -843,10 +818,10 @@ const ManagerMapLayers = React.memo(function ManagerMapLayers({
 
             {/* Preview Route (hover/tap from list) */}
             {mode === 'analyze' && previewRoute && !activeRoute && (
-                previewRoute.metadata?.routing?.road_aware_routing_beta
-                ? (verifiedBetaSegments(previewRoute.metadata, previewRoute.property_hashes || previewRoute.properties, previewRoute.properties) || []).map((points, i) =>
+                verifiedRouteSegments(previewRoute.metadata, previewRoute.property_hashes || previewRoute.properties, previewRoute.properties).length
+                ? verifiedRouteSegments(previewRoute.metadata, previewRoute.property_hashes || previewRoute.properties, previewRoute.properties).map((points, i) =>
                     <Polyline key={i} positions={points.map(p => [Number(p.lat), Number(p.lng)])}
-                        pathOptions={{ color: BRAND.gold, weight: 3, opacity: 0.6, dashArray: '5,10' }} />)
+                        pathOptions={{ color: BRAND.gold, weight: 3, opacity: 0.6 }} />)
                 :
                 <Polyline
                     positions={getRouteLinePoints(previewRoute, previewRoute.properties)

@@ -1,0 +1,753 @@
+{
+  "description": "Public OSRM driving geometry observed for the reported Statesville stops on 2026-10-15. Road names are missing for the residential streets. No saved route was changed.",
+  "stops": [
+    {
+      "address_hash": "102 Red Cedar Ln",
+      "house_number": 102,
+      "street_name": "Red Cedar Ln",
+      "lat": 35.827307,
+      "lng": -80.913968
+    },
+    {
+      "address_hash": "103 Red Cedar Ln",
+      "house_number": 103,
+      "street_name": "Red Cedar Ln",
+      "lat": 35.827137,
+      "lng": -80.913031
+    },
+    {
+      "address_hash": "108 Red Cedar Ln",
+      "house_number": 108,
+      "street_name": "Red Cedar Ln",
+      "lat": 35.827018,
+      "lng": -80.913954
+    },
+    {
+      "address_hash": "111 Red Cedar Ln",
+      "house_number": 111,
+      "street_name": "Red Cedar Ln",
+      "lat": 35.826902,
+      "lng": -80.913104
+    },
+    {
+      "address_hash": "114 Red Cedar Ln",
+      "house_number": 114,
+      "street_name": "Red Cedar Ln",
+      "lat": 35.826759,
+      "lng": -80.913954
+    },
+    {
+      "address_hash": "119 Red Cedar Ln",
+      "house_number": 119,
+      "street_name": "Red Cedar Ln",
+      "lat": 35.826534,
+      "lng": -80.913091
+    },
+    {
+      "address_hash": "125 Red Cedar Ln",
+      "house_number": 125,
+      "street_name": "Red Cedar Ln",
+      "lat": 35.826181,
+      "lng": -80.913111
+    },
+    {
+      "address_hash": "132 Red Cedar Ln",
+      "house_number": 132,
+      "street_name": "Red Cedar Ln",
+      "lat": 35.825702,
+      "lng": -80.91393
+    },
+    {
+      "address_hash": "128 Sanders Way",
+      "house_number": 128,
+      "street_name": "Sanders Way",
+      "lat": 35.825102,
+      "lng": -80.914469
+    },
+    {
+      "address_hash": "142 Red Cedar Ln",
+      "house_number": 142,
+      "street_name": "Red Cedar Ln",
+      "lat": 35.825075,
+      "lng": -80.913906
+    },
+    {
+      "address_hash": "134 Peppervine Ln",
+      "house_number": 134,
+      "street_name": "Peppervine Ln",
+      "lat": 35.825438,
+      "lng": -80.912496
+    },
+    {
+      "address_hash": "116 Peppervine Ln",
+      "house_number": 116,
+      "street_name": "Peppervine Ln",
+      "lat": 35.826541,
+      "lng": -80.912513
+    },
+    {
+      "address_hash": "110 Peppervine Ln",
+      "house_number": 110,
+      "street_name": "Peppervine Ln",
+      "lat": 35.827002,
+      "lng": -80.912274
+    },
+    {
+      "address_hash": "104 Peppervine Ln",
+      "house_number": 104,
+      "street_name": "Peppervine Ln",
+      "lat": 35.827332,
+      "lng": -80.912362
+    }
+  ],
+  "evidence": {
+    "waypoints": [
+      {
+        "name": "Sullivan Farm Road",
+        "location": [
+          -80.913969,
+          35.827551
+        ]
+      },
+      {
+        "name": "",
+        "location": [
+          -80.913497,
+          35.827132
+        ]
+      },
+      {
+        "name": "",
+        "location": [
+          -80.913495,
+          35.827023
+        ]
+      },
+      {
+        "name": "",
+        "location": [
+          -80.913493,
+          35.826898
+        ]
+      },
+      {
+        "name": "",
+        "location": [
+          -80.913491,
+          35.826764
+        ]
+      },
+      {
+        "name": "",
+        "location": [
+          -80.913487,
+          35.82653
+        ]
+      },
+      {
+        "name": "",
+        "location": [
+          -80.913482,
+          35.826177
+        ]
+      },
+      {
+        "name": "",
+        "location": [
+          -80.913475,
+          35.825707
+        ]
+      },
+      {
+        "name": "",
+        "location": [
+          -80.914346,
+          35.824694
+        ]
+      },
+      {
+        "name": "",
+        "location": [
+          -80.913857,
+          35.824781
+        ]
+      },
+      {
+        "name": "",
+        "location": [
+          -80.912139,
+          35.825438
+        ]
+      },
+      {
+        "name": "",
+        "location": [
+          -80.91214,
+          35.826545
+        ]
+      },
+      {
+        "name": "",
+        "location": [
+          -80.912148,
+          35.827003
+        ]
+      },
+      {
+        "name": "",
+        "location": [
+          -80.912154,
+          35.827334
+        ]
+      }
+    ],
+    "steps": [
+      {
+        "name": "Sullivan Farm Road",
+        "driving_side": "right",
+        "geometry": {
+          "coordinates": [
+            [
+              -80.913969,
+              35.827551
+            ],
+            [
+              -80.913503,
+              35.827552
+            ]
+          ],
+          "type": "LineString"
+        }
+      },
+      {
+        "name": "",
+        "driving_side": "right",
+        "geometry": {
+          "coordinates": [
+            [
+              -80.913503,
+              35.827552
+            ],
+            [
+              -80.913497,
+              35.827132
+            ]
+          ],
+          "type": "LineString"
+        }
+      },
+      {
+        "name": "",
+        "driving_side": "right",
+        "geometry": {
+          "coordinates": [
+            [
+              -80.913497,
+              35.827132
+            ],
+            [
+              -80.913497,
+              35.827132
+            ]
+          ],
+          "type": "LineString"
+        }
+      },
+      {
+        "name": "",
+        "driving_side": "right",
+        "geometry": {
+          "coordinates": [
+            [
+              -80.913497,
+              35.827132
+            ],
+            [
+              -80.913495,
+              35.827023
+            ]
+          ],
+          "type": "LineString"
+        }
+      },
+      {
+        "name": "",
+        "driving_side": "right",
+        "geometry": {
+          "coordinates": [
+            [
+              -80.913495,
+              35.827023
+            ],
+            [
+              -80.913495,
+              35.827023
+            ]
+          ],
+          "type": "LineString"
+        }
+      },
+      {
+        "name": "",
+        "driving_side": "right",
+        "geometry": {
+          "coordinates": [
+            [
+              -80.913495,
+              35.827023
+            ],
+            [
+              -80.913493,
+              35.826898
+            ]
+          ],
+          "type": "LineString"
+        }
+      },
+      {
+        "name": "",
+        "driving_side": "right",
+        "geometry": {
+          "coordinates": [
+            [
+              -80.913493,
+              35.826898
+            ],
+            [
+              -80.913493,
+              35.826898
+            ]
+          ],
+          "type": "LineString"
+        }
+      },
+      {
+        "name": "",
+        "driving_side": "right",
+        "geometry": {
+          "coordinates": [
+            [
+              -80.913493,
+              35.826898
+            ],
+            [
+              -80.913491,
+              35.826764
+            ]
+          ],
+          "type": "LineString"
+        }
+      },
+      {
+        "name": "",
+        "driving_side": "right",
+        "geometry": {
+          "coordinates": [
+            [
+              -80.913491,
+              35.826764
+            ],
+            [
+              -80.913491,
+              35.826764
+            ]
+          ],
+          "type": "LineString"
+        }
+      },
+      {
+        "name": "",
+        "driving_side": "right",
+        "geometry": {
+          "coordinates": [
+            [
+              -80.913491,
+              35.826764
+            ],
+            [
+              -80.913487,
+              35.82653
+            ]
+          ],
+          "type": "LineString"
+        }
+      },
+      {
+        "name": "",
+        "driving_side": "right",
+        "geometry": {
+          "coordinates": [
+            [
+              -80.913487,
+              35.82653
+            ],
+            [
+              -80.913487,
+              35.82653
+            ]
+          ],
+          "type": "LineString"
+        }
+      },
+      {
+        "name": "",
+        "driving_side": "right",
+        "geometry": {
+          "coordinates": [
+            [
+              -80.913487,
+              35.82653
+            ],
+            [
+              -80.913482,
+              35.826177
+            ]
+          ],
+          "type": "LineString"
+        }
+      },
+      {
+        "name": "",
+        "driving_side": "right",
+        "geometry": {
+          "coordinates": [
+            [
+              -80.913482,
+              35.826177
+            ],
+            [
+              -80.913482,
+              35.826177
+            ]
+          ],
+          "type": "LineString"
+        }
+      },
+      {
+        "name": "",
+        "driving_side": "right",
+        "geometry": {
+          "coordinates": [
+            [
+              -80.913482,
+              35.826177
+            ],
+            [
+              -80.913475,
+              35.825707
+            ]
+          ],
+          "type": "LineString"
+        }
+      },
+      {
+        "name": "",
+        "driving_side": "right",
+        "geometry": {
+          "coordinates": [
+            [
+              -80.913475,
+              35.825707
+            ],
+            [
+              -80.913475,
+              35.825707
+            ]
+          ],
+          "type": "LineString"
+        }
+      },
+      {
+        "name": "",
+        "driving_side": "right",
+        "geometry": {
+          "coordinates": [
+            [
+              -80.913475,
+              35.825707
+            ],
+            [
+              -80.913461,
+              35.824824
+            ]
+          ],
+          "type": "LineString"
+        }
+      },
+      {
+        "name": "",
+        "driving_side": "right",
+        "geometry": {
+          "coordinates": [
+            [
+              -80.913461,
+              35.824824
+            ],
+            [
+              -80.913966,
+              35.824769
+            ],
+            [
+              -80.914442,
+              35.824675
+            ],
+            [
+              -80.915608,
+              35.824323
+            ],
+            [
+              -80.914957,
+              35.82288
+            ]
+          ],
+          "type": "LineString"
+        }
+      },
+      {
+        "name": "",
+        "driving_side": "right",
+        "geometry": {
+          "coordinates": [
+            [
+              -80.914957,
+              35.82288
+            ],
+            [
+              -80.915608,
+              35.824323
+            ],
+            [
+              -80.914442,
+              35.824675
+            ],
+            [
+              -80.914346,
+              35.824694
+            ]
+          ],
+          "type": "LineString"
+        }
+      },
+      {
+        "name": "",
+        "driving_side": "right",
+        "geometry": {
+          "coordinates": [
+            [
+              -80.914346,
+              35.824694
+            ],
+            [
+              -80.914346,
+              35.824694
+            ]
+          ],
+          "type": "LineString"
+        }
+      },
+      {
+        "name": "",
+        "driving_side": "right",
+        "geometry": {
+          "coordinates": [
+            [
+              -80.914346,
+              35.824694
+            ],
+            [
+              -80.913966,
+              35.824769
+            ],
+            [
+              -80.913857,
+              35.824781
+            ]
+          ],
+          "type": "LineString"
+        }
+      },
+      {
+        "name": "",
+        "driving_side": "right",
+        "geometry": {
+          "coordinates": [
+            [
+              -80.913857,
+              35.824781
+            ],
+            [
+              -80.913857,
+              35.824781
+            ]
+          ],
+          "type": "LineString"
+        }
+      },
+      {
+        "name": "",
+        "driving_side": "right",
+        "geometry": {
+          "coordinates": [
+            [
+              -80.913857,
+              35.824781
+            ],
+            [
+              -80.913461,
+              35.824824
+            ],
+            [
+              -80.912206,
+              35.824763
+            ]
+          ],
+          "type": "LineString"
+        }
+      },
+      {
+        "name": "",
+        "driving_side": "right",
+        "geometry": {
+          "coordinates": [
+            [
+              -80.912206,
+              35.824763
+            ],
+            [
+              -80.912139,
+              35.825263
+            ],
+            [
+              -80.912139,
+              35.825438
+            ]
+          ],
+          "type": "LineString"
+        }
+      },
+      {
+        "name": "",
+        "driving_side": "right",
+        "geometry": {
+          "coordinates": [
+            [
+              -80.912139,
+              35.825438
+            ],
+            [
+              -80.912139,
+              35.825438
+            ]
+          ],
+          "type": "LineString"
+        }
+      },
+      {
+        "name": "",
+        "driving_side": "right",
+        "geometry": {
+          "coordinates": [
+            [
+              -80.912139,
+              35.825438
+            ],
+            [
+              -80.912139,
+              35.826475
+            ],
+            [
+              -80.91214,
+              35.826545
+            ]
+          ],
+          "type": "LineString"
+        }
+      },
+      {
+        "name": "",
+        "driving_side": "right",
+        "geometry": {
+          "coordinates": [
+            [
+              -80.91214,
+              35.826545
+            ],
+            [
+              -80.91214,
+              35.826545
+            ]
+          ],
+          "type": "LineString"
+        }
+      },
+      {
+        "name": "",
+        "driving_side": "right",
+        "geometry": {
+          "coordinates": [
+            [
+              -80.91214,
+              35.826545
+            ],
+            [
+              -80.912148,
+              35.827003
+            ]
+          ],
+          "type": "LineString"
+        }
+      },
+      {
+        "name": "",
+        "driving_side": "right",
+        "geometry": {
+          "coordinates": [
+            [
+              -80.912148,
+              35.827003
+            ],
+            [
+              -80.912148,
+              35.827003
+            ]
+          ],
+          "type": "LineString"
+        }
+      },
+      {
+        "name": "",
+        "driving_side": "right",
+        "geometry": {
+          "coordinates": [
+            [
+              -80.912148,
+              35.827003
+            ],
+            [
+              -80.912154,
+              35.827334
+            ]
+          ],
+          "type": "LineString"
+        }
+      },
+      {
+        "name": "",
+        "driving_side": "right",
+        "geometry": {
+          "coordinates": [
+            [
+              -80.912154,
+              35.827334
+            ],
+            [
+              -80.912154,
+              35.827334
+            ]
+          ],
+          "type": "LineString"
+        }
+      }
+    ]
+  }
+}

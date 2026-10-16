@@ -4,6 +4,8 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
 import { mergeAnchoredRoute } from '../src/lib/routeAnchorState.js';
+import * as routeDisplayGeometry from '../base44/shared/routeDisplayGeometry.js';
+import { verifiedRouteSegments } from '../src/lib/roadAwareRouteGeometry.js';
 
 const read = path => readFileSync(new URL('../' + path, import.meta.url), 'utf8');
 const executable = source => ts.transpileModule(source, {
@@ -37,11 +39,12 @@ function toolbar(initialRoute = route, actor = manager) {
     };
     const context = vm.createContext({
         ...components,
+        ...routeDisplayGeometry, verifiedRouteSegments,
         React: {
             createElement: (type, props, ...children) => ({ type, props: { ...props, children } }),
             Fragment: 'Fragment', useMemo: fn => fn(), useRef: value => ({ current: value }),
         },
-        useState, useEffect() {}, useCallback: fn => fn,
+        useState, useEffect() {}, useCallback: fn => fn, useMemo: fn => fn(),
         useQueryClient: () => ({ invalidateQueries() {} }),
         getRouteOutcomeStats: () => ({ total: 0, byStatus: {}, routeHashes: [], latestByHash: new Map() }),
         FOLLOW_UP_STATUSES: [],
