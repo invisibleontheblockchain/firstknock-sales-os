@@ -1,6 +1,6 @@
-import test from 'node:test';
+import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
+import { createServer } from 'vite';
 import { optimizeImportedRoute, importOptimizationMessage } from '../src/components/import/optimizeImportedRoute.js';
 import { savePropertyImport } from '../src/components/import/savePropertyImport.js';
 import { calculateRouteDistanceMiles } from '../base44/shared/routeBounds.js';
@@ -168,13 +168,17 @@ test('all-duplicate imports never run optimization or write a route', async () =
   assert.equal(result.added, 0); assert.equal(mock.updates.length, 0);
 });
 
-const roadSource = fs.readFileSync(new URL('../src/lib/roadMatrixOptimize.js', import.meta.url), 'utf8').replace(/^import .*;$/m, '').replace(/export /g, '');
-const roadModule = new Function('base44', `${roadSource}; return { tryRoadMatrixOptimize };`);
+let vite, tryRoadMatrixOptimize;
+before(async () => {
+  vite = await createServer({ server: { middlewareMode: true }, appType: 'custom', logLevel: 'silent' });
+  ({ tryRoadMatrixOptimize } = await vite.ssrLoadModule('/src/lib/roadMatrixOptimize.js'));
+});
+after(async () => { await vite?.close(); });
 test('shared road helper exposes a confirmed measurement without changing its existing null return', async () => {
   for (const input_measured of [3.25, null, undefined, '']) {
-    const { tryRoadMatrixOptimize } = roadModule({ functions: { invoke: async () => ({ data: { success: true, selected: 'current', routing_metadata: { input_measured, road_network_used: true } } }) } });
+    const client = { functions: { invoke: async () => ({ data: { success: true, selected: 'current', routing_metadata: { input_measured, road_network_used: true } } }) } };
     let outcome;
-    const result = await tryRoadMatrixOptimize(properties, { deadlineMs: 100, onOutcome: (reason, measurement) => { outcome = { reason, measurement }; } });
+    const result = await tryRoadMatrixOptimize(properties, { client, deadlineMs: 100, onOutcome: (reason, measurement) => { outcome = { reason, measurement }; } });
     assert.equal(result, null);
     if (input_measured === 3.25) {
       assert.equal(outcome.reason, 'current_order_measured_best'); assert.equal(outcome.measurement.distanceMiles, 3.25);
@@ -185,9 +189,9 @@ test('shared road helper exposes a confirmed measurement without changing its ex
 
 test('shared road helper never accepts a missing measurement as zero miles', async () => {
   for (const winning_route_distance of [null, undefined, '', -1]) {
-    const { tryRoadMatrixOptimize } = roadModule({ functions: { invoke: async () => ({ data: { success: true, selected: 'road_aware', order: ['a', 'c', 'b'], routing_metadata: { winning_route_distance, input_measured: 3 } } }) } });
+    const client = { functions: { invoke: async () => ({ data: { success: true, selected: 'road_aware', order: ['a', 'c', 'b'], routing_metadata: { winning_route_distance, input_measured: 3 } } }) } };
     let reason;
-    assert.equal(await tryRoadMatrixOptimize(properties, { deadlineMs: 100, onOutcome: value => { reason = value; } }), null);
+    assert.equal(await tryRoadMatrixOptimize(properties, { client, deadlineMs: 100, onOutcome: value => { reason = value; } }), null);
     assert.equal(reason, 'backend_returned_no_measurement');
   }
 });
