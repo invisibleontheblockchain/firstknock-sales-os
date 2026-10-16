@@ -89,7 +89,13 @@ function incompleteSearchMessage(review, meta) {
     const coverage = coverageSummary(meta);
     if (coverage) {
         const passes = safeCount(meta?.road_search_passes);
-        return `Neighborhood search is incomplete: ${coverage.remaining_windows} of ${coverage.total_windows} checks remain${passes > 1 ? ` after ${passes} passes` : ''}.`;
+        const stopped = {
+            action_budget: ' The search time limit was reached.',
+            pass_limit: ' The search reached its limit for this run.',
+            no_progress: ' The remaining checks made no verified progress.',
+            measurement_changed: ' Road measurements changed; the last verified result was kept.',
+        }[meta?.road_search_stop_reason] || '';
+        return `Neighborhood search is incomplete: ${coverage.remaining_windows} of ${coverage.total_windows} checks remain${passes > 1 ? ` after ${passes} passes` : ''}.${stopped}`;
     }
     const reasons = [];
     const counts = optionalCount(review?.checked) !== null && optionalCount(review?.planned) !== null && review.planned > 0
@@ -265,6 +271,7 @@ export function buildRoadOptimizationAttempt(reason, measurement, {
         neighborhoods_skipped: Array.isArray(review?.skipped) ? review.skipped.length : null,
         budget_exhausted: review?.budgetExhausted === true && (!coverage || coverage.remaining_windows > 0),
         ...(safeCount(meta.road_search_passes) ? { search_passes: safeCount(meta.road_search_passes) } : {}),
+        ...(safeToken(meta.road_search_stop_reason) ? { search_stop_reason: safeToken(meta.road_search_stop_reason) } : {}),
         curb_sides_unconfirmed: unknownSides(review),
         county_roads_included: countyRoadsIncluded(meta),
         ...(recovery ? { road_access_recovery: recovery } : {}),

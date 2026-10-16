@@ -1,6 +1,8 @@
 import { createVehicleRoutingContext } from './vehicleRouting.js';
 import { neighborhoodStreetKey } from './neighborhoodExcursions.js';
 import { isValidRoutePoint } from './routeBounds.js';
+import { routePropertyOrderFingerprint } from './routeFingerprint.js';
+import { mailCarrierPassViolations } from './mailCarrierRouting.js';
 
 const identity = point => String(point?.address_hash || point?.legacy_hash || point?.id || `${point?.lat},${point?.lng}`);
 const nonnegative = value => Number.isFinite(value) && value >= 0;
@@ -120,7 +122,7 @@ export async function verifyCompleteDrivingCandidate({ baselineOrder, candidateO
     }
     if (!approvedLocal) {
         const factory = options.createDrivingContext || createVehicleRoutingContext;
-        const context = await factory(candidateOrder, { accessFor: stop => stop.routing_access || null,
+        const context = await factory(candidateOrder, { accessFor: stop => neighborhood?.accessFor?.(stop) || stop.routing_access || null,
             streetSegmentKey: neighborhoodStreetKey }, { ...options, ...bounds, routeOnly: true, sparseCosts: true,
             requireDirectedLegs: true, maxGeometryPoints: 100000,
             servicePolicy: { ...options.servicePolicy, enabled: false, parkingSecondsPerStop: 0 } });
@@ -134,4 +136,69 @@ export async function verifyCompleteDrivingCandidate({ baselineOrder, candidateO
     const applied = changed && !guarded;
     return { properties: applied ? candidateOrder : baselineOrder, measurement: applied ? after : before, baseline: before,
         diagnostics: diagnosticsFor(neighborhood, applied, guarded), applied, keptCurrent: !applied };
+}
+
+/** Compare a continued search with both the preceding winner and the original
+ * click using one freshly observed access policy. Curb evidence can grow between
+ * passes, so old mileage is not a valid denominator for the new measurement. */
+export async function verifyDrivingSearchContinuation({ originalOrder, inputOrder, candidateOrder, neighborhood = null, options = {} }) {
+    assertMembership(originalOrder, inputOrder, options);
+    assertMembership(inputOrder, candidateOrder, options);
+    assertMembership(originalOrder, candidateOrder, options);
+    const bounds = routeBounds(options);
+    const access = { accessFor: stop => neighborhood?.accessFor?.(stop) || stop.routing_access || null,
+        streetSegmentKey: neighborhoodStreetKey };
+    const factory = options.createDrivingContext || createVehicleRoutingContext;
+    const context = await factory(inputOrder, access, { ...options, ...bounds, routeOnly: true, sparseCosts: true,
+        requireDirectedLegs: true, maxGeometryPoints: 100000,
+        servicePolicy: { ...options.servicePolicy, enabled: false, parkingSecondsPerStop: 0 } });
+    if (!context?.routeSequence) throw new Error('Complete driving route costs are unavailable.');
+    const measured = new Map();
+    const measure = async order => {
+        const key = JSON.stringify(order.map(identity));
+        if (!measured.has(key)) measured.set(key, assertMeasurement(await context.routeSequence(order, bounds), order, bounds));
+        return measured.get(key);
+    };
+    const original = await measure(originalOrder);
+    const input = await measure(inputOrder);
+    const candidate = await measure(candidateOrder);
+    assertSameGraph(original, input);
+    assertSameGraph(input, candidate);
+    const violations = order => options.mailCarrierMode === true ? mailCarrierPassViolations(order, access) : 0;
+    const originalPasses = violations(originalOrder), inputPasses = violations(inputOrder), candidatePasses = violations(candidateOrder);
+    const noWorse = (next, nextPasses, prior, priorPasses) => nextPasses < priorPasses
+        || nextPasses === priorPasses && next.driveSeconds <= prior.driveSeconds + 0.1
+            && next.distanceMiles <= prior.distanceMiles + 0.0001;
+    const candidateAccepted = noWorse(candidate, candidatePasses, input, inputPasses)
+        && noWorse(candidate, candidatePasses, original, originalPasses);
+    const retainInput = noWorse(input, inputPasses, original, originalPasses);
+    const properties = candidateAccepted ? candidateOrder : retainInput ? inputOrder : originalOrder;
+    const measurement = candidateAccepted ? candidate : retainInput ? input : original;
+    const outputPasses = candidateAccepted ? candidatePasses : retainInput ? inputPasses : originalPasses;
+    if (!noWorse(measurement, outputPasses, input, inputPasses)
+        || !noWorse(measurement, outputPasses, original, originalPasses)) {
+        throw new Error('Complete driving comparison cannot retain both verified objectives.');
+    }
+    const applied = !sameOrder(properties, inputOrder);
+    // If the original click wins again, old candidate repair counters must not
+    // be credited to that different order. All costs below are freshly measured.
+    const diagnostics = diagnosticsFor(candidateAccepted ? neighborhood : null, applied, !candidateAccepted);
+    if (!candidateAccepted && neighborhood?.diagnostics?.local_driving_review) {
+        const review = neighborhood.diagnostics.local_driving_review;
+        Object.assign(diagnostics.local_driving_review, { planned: review.planned, checked: review.checked,
+            candidatesMeasured: review.candidatesMeasured, skipped: review.skipped || [], budgetExhausted: review.budgetExhausted === true });
+    }
+    const priorSides = neighborhood?.diagnostics?.local_driving_review?.streetSideService;
+    if (priorSides) diagnostics.local_driving_review.streetSideService = { ...priorSides,
+        passViolationsBefore: inputPasses, passViolationsAfter: outputPasses };
+    const round = value => Math.round(value * 1e6) / 1e6;
+    return { properties, measurement, baseline: input, applied, keptCurrent: !applied, diagnostics,
+        comparison: { version: 1, service_objective: 'coherent_side_passes_then_driving_cost',
+            original_order_fingerprint: routePropertyOrderFingerprint(originalOrder),
+            input_order_fingerprint: routePropertyOrderFingerprint(inputOrder),
+            output_order_fingerprint: routePropertyOrderFingerprint(properties),
+            original_miles: round(original.distanceMiles), input_miles: round(input.distanceMiles), output_miles: round(measurement.distanceMiles),
+            original_seconds: round(original.driveSeconds), input_seconds: round(input.driveSeconds), output_seconds: round(measurement.driveSeconds),
+            original_pass_violations: originalPasses, input_pass_violations: inputPasses, output_pass_violations: outputPasses,
+            graph_version: measurement.dataVersion || null } };
 }

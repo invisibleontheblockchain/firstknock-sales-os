@@ -54,7 +54,7 @@ function doorLabelText(property, style) {
  * @returns {{ group: L.LayerGroup, doorPins: L.CircleMarker[] }}
  * doorPins are returned so the caller can resize them on a zoom band change.
  */
-export function buildSavedRouteGroup({ doors, linePoints, lineSegments, centerPoint, number, color, style, dotSize, onSelect, circleMarker = L.circleMarker }) {
+export function buildSavedRouteGroup({ doors, linePoints, centerPoint, number, color, style, dotSize, onSelect, circleMarker = L.circleMarker }) {
     const group = L.layerGroup();
     const doorPins = [];
     const selectRoute = (event) => {
@@ -83,9 +83,8 @@ export function buildSavedRouteGroup({ doors, linePoints, lineSegments, centerPo
 
     // Route lines are added before door pins so a route-colored line can never
     // cover a smaller outcome-colored pin at wide zoom levels.
-    if (!style.overviewOnly && style.showRouteLines && (linePoints.length > 1 || lineSegments?.length)) {
-        const latLngs = lineSegments?.length ? lineSegments.map(points => points.map(p => [Number(p.lat), Number(p.lng)]))
-            : linePoints.map(p => [Number(p.lat), Number(p.lng)]);
+    if (!style.overviewOnly && style.showRouteLines && linePoints.length > 1) {
+        const latLngs = linePoints.map(p => [Number(p.lat), Number(p.lng)]);
 
         const hitLine = L.polyline(latLngs, { color: 'transparent', weight: 26, opacity: 0, interactive: true });
         hitLine.on('click', selectRoute);
@@ -95,7 +94,7 @@ export function buildSavedRouteGroup({ doors, linePoints, lineSegments, centerPo
             color,
             weight: style.lineWidth || 3,
             opacity: style.lineOpacity || 0.7,
-            dashArray: lineSegments?.length ? null : style.lineDashArray || '4,6',
+            dashArray: style.lineDashArray || '4,6',
         });
         line.on('click', selectRoute);
         group.addLayer(line);

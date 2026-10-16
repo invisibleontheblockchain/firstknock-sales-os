@@ -23,7 +23,7 @@ const metadata = (order = properties, geometry = points) => ({
     neighborhood_excursion_review: { local_driving_review: { validation: 'whole_route' } },
 });
 
-test('map geometry follows the measured road instead of connecting roof pins', () => {
+test('retained driving geometry follows the measured road independently of stop-line display', () => {
     const meta = metadata();
     assert.deepEqual(verifiedRouteSegments(meta, properties, properties), [points]);
     assert.notDeepEqual(points, properties.map(({ lat, lng }) => ({ lat, lng })));

@@ -34,7 +34,7 @@ import { createMemoizedRouteMetrics } from '../../shared/routeMetricMemo.js';
 import { recoverRouteVehicleAccess } from '../../shared/routeAccessRecovery.js';
 import { reviewLocalDrivingNeighborhoods } from '../../shared/localDrivingNeighborhoods.js';
 import { createCountyRoadRoutingAdapter } from '../../shared/countyRoadRouting.js';
-import { verifyCompleteDrivingCandidate } from '../../shared/completeDrivingVerification.js';
+import { verifyCompleteDrivingCandidate, verifyDrivingSearchContinuation } from '../../shared/completeDrivingVerification.js';
 import { buildVerifiedRouteGeometry } from '../../shared/routeDisplayGeometry.js';
 import { summarizeLegMiles } from '../../shared/roadLegDistribution.js';
 import {
@@ -46,7 +46,7 @@ import {
 
 // Bump when candidate generation or the objective changes, so a stored route can
 // be told apart from one produced by an older solver.
-const OPTIMIZER_VERSION = 'road_matrix_automatic_access_v18';
+const OPTIMIZER_VERSION = 'road_matrix_neighborhood_continuation_v19';
 
 function readSecret(name) {
     try {
@@ -95,6 +95,7 @@ export default async function (req: Request): Promise<Response> {
         const startLocation = isValidPoint(body.start_location) ? body.start_location : null;
         const endLocation = isValidPoint(body.end_location) ? body.end_location : null;
         const profile = body.profile === 'walking' ? 'walking' : 'driving';
+        const remainingNeighborhoods = body.search_phase === 'remaining_neighborhoods';
         const timeoutMs = Number.isFinite(Number(body.timeout_ms))
             ? Math.min(Math.max(Math.floor(Number(body.timeout_ms)), 50), 25000)
             : 20000;
@@ -124,6 +125,14 @@ export default async function (req: Request): Promise<Response> {
                 error: 'The submitted route contains duplicate or unidentified properties.',
                 code: 'DUPLICATE_PROPERTIES'
             }, { status: 400 });
+        }
+        if (remainingNeighborhoods && (profile !== 'driving' || !Array.isArray(body.comparison_order)
+            || body.comparison_order.length !== properties.length
+            || body.comparison_order.some(id => typeof id !== 'string' || !id)
+            || new Set(body.comparison_order).size !== properties.length
+            || body.comparison_order.some(id => !properties.some(stop => propertyIdentity(stop) === id)))) {
+            return Response.json({ error: 'Neighborhood continuation requires the exact original route membership.',
+                code: 'INVALID_SEARCH_COMPARISON' }, { status: 400 });
         }
 
         const solverStartedAt = Date.now();
@@ -162,6 +171,71 @@ export default async function (req: Request): Promise<Response> {
         });
         const roadSource = source => countyRouting.stats().countyStopCount > 0 ? `${source}+county_ng911` : source;
 
+        const neighborhoodOptions = {
+            startLocation, endLocation, baselineOrder: properties,
+            localDrivingReview: profile === 'driving',
+            shortDrivingCleanup: profile === 'driving',
+            mailCarrierMode: profile === 'driving',
+            searchCoverage: body.search_coverage,
+            vehicleBaseUrl,
+            vehicleProfile: profile,
+            vehicleFetch: countyRouting.vehicleFetch,
+            preferContiguousOnTie: body.neighborhood_review?.prefer_contiguous_on_tie === true,
+            tieSeconds: Math.min(10, Math.max(0, Number(body.neighborhood_review?.tie_seconds) || 0)),
+        };
+
+        if (remainingNeighborhoods && !accessRecovery.report?.unresolved?.length) {
+            // Continue the accepted incumbent's remaining local questions. A
+            // second global solve would repeat matrix work and invalidate the
+            // very neighborhood contexts this request is meant to finish.
+            const reviewStarted = Date.now();
+            const local = await reviewLocalDrivingNeighborhoods(properties, neighborhoodOptions);
+            stageTimings.neighborhood_review_ms = Date.now() - reviewStarted;
+            const neighborhood = { ...local, diagnostics: { applied: local.diagnostics.applied,
+                local_driving_review: local.diagnostics } };
+            const byIdentity = new Map(properties.map(stop => [propertyIdentity(stop), stop]));
+            const originalOrder = body.comparison_order.map(id => byIdentity.get(id));
+            const verificationStarted = Date.now();
+            const complete = await verifyDrivingSearchContinuation({ originalOrder, inputOrder: properties,
+                candidateOrder: local.properties, neighborhood, options: neighborhoodOptions });
+            stageTimings.final_validation_ms = Date.now() - verificationStarted;
+            stageTimings.total_ms = Date.now() - solverStartedAt;
+            const winningOrder = complete.properties;
+            const applied = winningOrder.some((stop, i) => propertyIdentity(stop) !== propertyIdentity(properties[i]));
+            const round = value => Number.isFinite(value) ? Math.round(value * 1000) / 1000 : null;
+            const metadata = {
+                optimizer_version: OPTIMIZER_VERSION, strategy: 'remaining_neighborhoods_verified',
+                property_set_fingerprint: propertySetFingerprint(properties),
+                property_order_fingerprint: routePropertyOrderFingerprint(winningOrder), exact_once_verified: true,
+                start_constraint: startLocation, end_constraint: endLocation,
+                anchor_legs_measured: Boolean(startLocation || endLocation), return_to_start: false,
+                routing_profile: profile, matrix_provider: roadSource('osrm'),
+                road_matrix_source: roadSource(`osrm:${profile}`), road_matrix_version: ROAD_MATRIX_VERSION,
+                global_candidate_verification: 'continuation_incumbent_retained',
+                road_network_used: true, road_path_validated: true, fallback: false, distance_estimate: 'road_measured',
+                objective: 'measured_road_miles', objective_version: OBJECTIVE_VERSION,
+                road_access_recovery: accessRecovery.report, county_road_routing: countyRouting.stats(),
+                neighborhood_excursion_review: complete.diagnostics,
+                road_search_comparison: complete.comparison,
+                input_measured: round(complete.baseline.distanceMiles),
+                current_route_distance: round(complete.baseline.distanceMiles),
+                current_route_duration: round(complete.baseline.driveSeconds / 60),
+                winning_route_distance: round(complete.measurement.distanceMiles),
+                winning_route_duration: round(complete.measurement.driveSeconds / 60),
+                road_aware_measured: round(complete.measurement.distanceMiles),
+                distance_improvement: round(complete.baseline.distanceMiles - complete.measurement.distanceMiles),
+                duration_improvement: round((complete.baseline.driveSeconds - complete.measurement.driveSeconds) / 60),
+                selected_candidate_type: applied ? 'road_aware' : 'current',
+                optimization_timings: stageTimings, road_response_cache: responseCache.stats(),
+                ...buildVerifiedRouteGeometry({ measurement: complete.measurement,
+                    properties: winningOrder, displayProperties, startLocation, endLocation }),
+                ...(winningOrder.every((stop, i) => propertyIdentity(stop) === propertyIdentity(local.properties[i]))
+                    ? { road_search_coverage: local.searchCoverage } : {}),
+            };
+            return Response.json({ success: true, selected: applied ? 'road_aware' : 'current',
+                order: winningOrder.map(propertyIdentity), property_count: winningOrder.length, routing_metadata: metadata });
+        }
+
         // Canonical input: candidate GENERATION never sees the caller's array
         // order, so a shuffled or reversed request cannot change the winner. The
         // request order is preserved separately as the current-route candidate.
@@ -196,19 +270,6 @@ export default async function (req: Request): Promise<Response> {
             fetchMatrix: (points, options) => fetchRoadMatrix(points, { ...options, fetchJson: countyRouting.fetchJson }),
             measurePath: (order, options) => measureRoadPath(order, { ...options, fetchJson: countyRouting.fetchJson }),
         });
-        const neighborhoodOptions = {
-            startLocation, endLocation, baselineOrder: properties,
-            localDrivingReview: profile === 'driving',
-            shortDrivingCleanup: profile === 'driving',
-            mailCarrierMode: profile === 'driving',
-            searchCoverage: body.search_coverage,
-            vehicleBaseUrl,
-            vehicleProfile: profile,
-            vehicleFetch: countyRouting.vehicleFetch,
-            preferContiguousOnTie: body.neighborhood_review?.prefer_contiguous_on_tie === true,
-            tieSeconds: Math.min(10, Math.max(0, Number(body.neighborhood_review?.tie_seconds) || 0)),
-        };
-
         const baseMetadata: Record<string, unknown> = {
             property_set_fingerprint: setFingerprint,
             start_constraint: startLocation,
@@ -693,7 +754,10 @@ export default async function (req: Request): Promise<Response> {
                 road_path_validated: profile === 'driving',
                 fallback: false,
                 objective: matrix.objective,
-                road_matrix_source: roadSource(matrix.source),
+                // Complete driving proof comes from the current OSRM graph.
+                // A matrix cache hit describes request reuse, not a different
+                // road provider; keep that detail in road_cost_cache telemetry.
+                road_matrix_source: roadSource(profile === 'driving' ? 'osrm:driving' : matrix.source),
                 county_road_routing: countyRouting.stats(),
                 road_matrix_ms: matrixMs,
                 road_matrix_snapped: matrix.snapped,

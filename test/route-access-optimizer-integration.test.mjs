@@ -48,7 +48,8 @@ for (const planTier of ['door', 'cluster']) test(`${planTier} response reuses co
     assert.equal(anchored.body.routing_metadata.road_geometry_segments, undefined);
 });
 
-function endpoint({ recover, local, finalReview, verify, winner, planTier = 'door', failProvider = false, authenticated = true } = {}) {
+function endpoint({ recover, local, finalReview, verify, winner, planTier = 'door', failProvider = false, authenticated = true,
+    matrixSource = 'osrm:driving', cacheStats = {} } = {}) {
     const calls = { events: [], recovery: [], plan: [], continuity: [], matrix: [], provider: [], local: [],
         globalReview: [], county: [], roadCosts: [], paths: [], completeVerification: [],
         sweep: 0, hierarchy: 0, candidateComparison: 0 };
@@ -69,7 +70,7 @@ function endpoint({ recover, local, finalReview, verify, winner, planTier = 'doo
             buildRoadMatrixCacheKey: async () => 'test-cache-key',
             fetchRoadMatrix: async (points, options) => {
                 calls.events.push('matrix'); calls.matrix.push({ points, options });
-                return { objective: 'road_miles', source: 'osrm:driving', snapped: points.length, pointCount: points.length };
+                return { objective: 'road_miles', source: matrixSource, snapped: points.length, pointCount: points.length };
             },
         },
         '../../shared/roadMatrixTiers.js': {
@@ -112,7 +113,7 @@ function endpoint({ recover, local, finalReview, verify, winner, planTier = 'doo
             }, stats: () => ({ requests: calls.provider.length }),
         }) },
         '../../shared/roadCostCache.js': { createRoadCostCache: config => {
-            calls.roadCosts.push(config); return { ...config, stats: () => ({}) };
+            calls.roadCosts.push(config); return { ...config, stats: () => cacheStats };
         } },
         '../../shared/roadLegDistribution.js': legDistribution,
         '../../shared/routeDisplayGeometry.js': routeDisplayGeometry,
@@ -158,6 +159,21 @@ function endpoint({ recover, local, finalReview, verify, winner, planTier = 'doo
         return { status: response.status, body: await response.json() };
     } };
 }
+
+for (const [profile, matrixSource, expected] of [
+    ['driving', 'osrm:driving', 'osrm:driving'],
+    ['driving', 'osrm:driving+cache', 'osrm:driving'],
+    ['walking', 'osrm:walking+cache', 'osrm:walking+cache'],
+]) test(`${profile} response keeps provider identity stable for ${matrixSource}`, async () => {
+    const cacheStats = { matrix_memo_hits: 3 };
+    const f = endpoint({ matrixSource, cacheStats });
+    const { status, body } = await f.invoke(inputStops(), { profile });
+    assert.equal(status, 200); assert.equal(body.success, true);
+    assert.equal(body.routing_metadata.road_matrix_source, expected);
+    assert.deepEqual(body.routing_metadata.road_cost_cache, cacheStats, 'cache telemetry remains independently available');
+    assert.equal(body.routing_metadata.road_path_validated, profile === 'driving');
+    assert.equal(f.calls.completeVerification.length > 0, profile === 'driving');
+});
 
 function unresolvedRecovery(properties) {
     return { properties: properties.map((p, i) => i === 6 ? { ...p,

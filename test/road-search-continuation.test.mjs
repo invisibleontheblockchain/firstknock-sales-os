@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createServer } from 'vite';
 import { QueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { routePropertyOrderFingerprint } from '../base44/shared/routeFingerprint.js';
 
 let vite, optimize, action, normalize;
 const messages = [], oldToasts = {};
@@ -35,6 +36,17 @@ function response({ ledger = coverage(), order = hashes, selected = 'current', m
 const api = invoke => ({ functions: { invoke } });
 const route = { id: 'route', properties, allProperties: properties, property_hashes: hashes,
     route_origin_mode: 'none', metrics: { distance: 10, house_count: 3 }, metadata: {} };
+function comparison({ original = hashes, input = candidate, output = candidate,
+    originalMiles = 11, inputMiles = 9, outputMiles = inputMiles,
+    originalSeconds = originalMiles * 60, inputSeconds = inputMiles * 60, outputSeconds = outputMiles * 60,
+    originalViolations = 0, inputViolations = 0, outputViolations = 0 } = {}) {
+    return { version: 1, service_objective: 'coherent_side_passes_then_driving_cost', graph_version: 'roads-2026',
+        original_order_fingerprint: routePropertyOrderFingerprint(original),
+        input_order_fingerprint: routePropertyOrderFingerprint(input), output_order_fingerprint: routePropertyOrderFingerprint(output),
+        original_miles: originalMiles, input_miles: inputMiles, output_miles: outputMiles,
+        original_seconds: originalSeconds, input_seconds: inputSeconds, output_seconds: outputSeconds,
+        original_pass_violations: originalViolations, input_pass_violations: inputViolations, output_pass_violations: outputViolations };
+}
 
 test('a verified no-op and improvement continue until the latest order has complete coverage', async () => {
     const requests = [], progress = [], start = { lat: 35.11111, lng: -81.22222 }, end = { lat: 35.33333, lng: -81.44444 };
@@ -47,7 +59,13 @@ test('a verified no-op and improvement continue until the latest order has compl
         }) });
     assert.equal(requests.length, 3);
     assert.equal(requests[0].search_coverage, undefined);
+    assert.equal(requests[0].search_phase, undefined);
+    assert.equal(requests[0].comparison_order, undefined);
     assert.deepEqual(requests[1].search_coverage, coverage());
+    for (const request of requests.slice(1)) {
+        assert.equal(request.search_phase, 'remaining_neighborhoods');
+        assert.deepEqual(request.comparison_order, hashes, 'the original click order remains the comparison baseline');
+    }
     for (const [index, request] of requests.entries()) {
         assert.deepEqual(request.properties.map(p => p.address_hash), index < 2 ? hashes : candidate);
         assert.deepEqual(request.start_location, start);
@@ -70,6 +88,7 @@ test('continuation stops at three passes and reports the remaining search honest
     assert.equal(outcome.reason, 'current_order_measured_best');
     assert.equal(outcome.measurement.routingMetadata.road_search_passes, 3);
     assert.equal(outcome.measurement.routingMetadata.road_search_coverage.remaining_windows, 2);
+    assert.equal(outcome.measurement.routingMetadata.road_search_stop_reason, 'pass_limit');
 });
 
 test('errors, incomplete path proof, invalid ledgers and exhausted progress never trigger another request', async () => {
@@ -121,6 +140,7 @@ test('a remaining budget smaller than a full request retains the last verified n
     assert.equal(outcome.reason, 'current_order_measured_best');
     assert.equal(outcome.measurement.distanceMiles, 10);
     assert.deepEqual(outcome.measurement.routingMetadata.road_search_coverage, coverage());
+    assert.equal(outcome.measurement.routingMetadata.road_search_stop_reason, 'action_budget');
 });
 
 test('a selected-current response with a different or malformed manifest cannot claim a complete unchanged check', async () => {
@@ -298,6 +318,51 @@ test('377-door route-only Optimize finishes the 45 remaining checks after reorde
     assert.doesNotMatch(completion.message, /incomplete|checks remain/);
 });
 
+test('377-door continuation completes 34 remaining checks after fresh curb measurements change', async () => {
+    messages.length = 0;
+    const homes = Array.from({ length: 377 }, (_, i) => ({ address_hash: `troutman-${i}`, lat: 35 + i / 100000, lng: -81 }));
+    const before = homes.map(property => property.address_hash), first = [...before];
+    first.splice(0, 33, ...first.slice(1, 33), first[0]);
+    const final = [...first]; [final[40], final[41]] = [final[41], final[40]];
+    const selected = { ...route, properties: homes, allProperties: homes, property_hashes: before,
+        metrics: { distance: 271.1, house_count: 377 } };
+    const ledgers = [coverage(88, 122), coverage(110, 122), coverage(122, 122)];
+    const realNow = Date.now;
+    let now = realNow(), calls = 0, saved, saves = 0;
+    Date.now = () => now;
+    try {
+        await action(selected, { mode: 'route_only' }, { client: {
+            functions: { invoke: async (_name, payload) => {
+                const pass = calls++;
+                now += [83470, 38000, 27000][pass];
+                if (pass) {
+                    assert.equal(payload.search_phase, 'remaining_neighborhoods');
+                    assert.deepEqual(payload.comparison_order, before);
+                    assert.deepEqual(payload.properties.map(property => property.address_hash), pass === 1 ? first : final);
+                }
+                return response({ selected: pass < 2 ? 'road_aware' : 'current', order: pass ? final : first,
+                    ledger: ledgers[pass], meta: { road_matrix_source: 'test-roads', road_matrix_version: 'v1',
+                        input_measured: [271.1, 271, 270.5][pass], winning_route_distance: pass ? 270.5 : 269.69,
+                        ...(pass ? { road_search_comparison: comparison({ original: before,
+                            input: pass === 1 ? first : final, output: final, originalMiles: 274.8,
+                            inputMiles: pass === 1 ? 271 : 270.5, outputMiles: 270.5 }) } : {}) } });
+            } },
+            entities: { SavedRoute: { update: async (_id, patch) => { saves++; saved = { ...selected, ...patch }; return saved; } } },
+        } });
+    } finally { Date.now = realNow; }
+    assert.equal(calls, 3);
+    assert.equal(saves, 1);
+    assert.deepEqual(saved.property_hashes, final);
+    assert.equal(new Set(saved.property_hashes).size, 377);
+    assert.equal(saved.metrics.distance, 270.5);
+    assert.equal(saved.metadata.road_search_baseline_distance, 274.8);
+    assert.equal(saved.metadata.road_search_coverage.remaining_windows, 0);
+    assert.equal(saved.metadata.road_search_stop_reason, undefined);
+    const completion = messages.find(message => message.tone === 'success');
+    assert.match(completion.message, /Saved ~4\.3 estimated miles/);
+    assert.doesNotMatch(completion.message, /incomplete|checks remain/);
+});
+
 test('successive improvements measure savings from the original click and finish on the latest order', async () => {
     const orders = [candidate, ['B', 'C', 'A'], ['B', 'C', 'A']];
     const inputs = [10, 8, 7], distances = [8, 7, 7];
@@ -315,6 +380,148 @@ test('successive improvements measure savings from the original click and finish
     assert.equal(result.objective.estimatedSavings, 3);
     assert.equal(result.routingMetadata.road_search_baseline_distance, 10);
     assert.equal(result.routingMetadata.road_search_coverage.cycle_complete, true);
+});
+
+test('fresh same-policy comparison continues after curb evidence changes the incumbent mileage', async () => {
+    const next = ['B', 'C', 'A'], requests = [];
+    const proof = comparison({ output: next, outputMiles: 7.5 });
+    const result = await optimize(properties, { maxSearchPasses: 3, client: api(async (_name, payload) => {
+        requests.push(payload);
+        if (requests.length === 1) return response({ selected: 'road_aware', order: candidate });
+        return response({ selected: 'road_aware', order: next, ledger: coverage(5),
+            meta: { input_measured: 9, winning_route_distance: 7.5,
+                road_search_comparison: { ...proof, private_anchor: { lat: 35, lng: -81 } } } });
+    }) });
+    assert.equal(requests.length, 2);
+    assert.deepEqual(result.order.map(property => property.address_hash), next);
+    assert.equal(result.objective.appliedDistance, 7.5);
+    assert.equal(result.objective.estimatedSavings, 3.5, 'original order is remeasured under the new curb policy');
+    assert.equal(result.routingMetadata.road_search_baseline_distance, 11);
+    assert.deepEqual(result.routingMetadata.road_search_comparison, proof, 'only the proof contract is retained');
+    assert.equal(result.routingMetadata.road_search_stop_reason, undefined);
+});
+
+test('a fresh no-op comparison retains the winner and completes coverage under the new curb policy', async () => {
+    let calls = 0;
+    const result = await optimize(properties, { maxSearchPasses: 3, client: api(async () => ++calls === 1
+        ? response({ selected: 'road_aware', order: candidate })
+        : response({ order: candidate, ledger: coverage(5), meta: { input_measured: 9, winning_route_distance: 9,
+            road_search_comparison: comparison() } })) });
+    assert.equal(calls, 2);
+    assert.deepEqual(result.order.map(property => property.address_hash), candidate);
+    assert.equal(result.objective.appliedDistance, 9);
+    assert.equal(result.objective.estimatedSavings, 2);
+    assert.equal(result.routingMetadata.road_search_coverage.remaining_windows, 0);
+});
+
+test('the fresh comparison preserves coherent-side service priority before driving cost', async () => {
+    let calls = 0;
+    const next = ['B', 'C', 'A'];
+    const proof = comparison({ output: next, outputMiles: 12, originalViolations: 4, inputViolations: 2, outputViolations: 0 });
+    const result = await optimize(properties, { maxSearchPasses: 3, client: api(async () => ++calls === 1
+        ? response({ selected: 'road_aware', order: candidate })
+        : response({ selected: 'road_aware', order: next, ledger: coverage(5), meta: { input_measured: 9,
+            winning_route_distance: 12, road_search_comparison: proof } })) });
+    assert.deepEqual(result.order.map(property => property.address_hash), next);
+    assert.equal(result.objective.appliedDistance, 12);
+    assert.equal(result.objective.estimatedSavings, 0, 'a service improvement cannot invent mileage savings');
+});
+
+test('a current-policy comparison can restore the original order when it is the verified winner', async () => {
+    let calls = 0;
+    const proof = comparison({ output: hashes, originalMiles: 7, outputMiles: 7 });
+    const result = await optimize(properties, { maxSearchPasses: 3, client: api(async () => ++calls === 1
+        ? response({ selected: 'road_aware', order: candidate })
+        : response({ selected: 'road_aware', order: hashes, ledger: coverage(5), meta: { input_measured: 9,
+            winning_route_distance: 7, road_search_comparison: proof } })) });
+    assert.deepEqual(result.order.map(property => property.address_hash), hashes);
+    assert.equal(result.objective.appliedDistance, 7);
+    assert.equal(result.objective.estimatedSavings, 0);
+});
+
+for (const [name, mutate] of [
+    ['original identity mismatch', proof => { proof.original_order_fingerprint = routePropertyOrderFingerprint(candidate); }],
+    ['input identity mismatch', proof => { proof.input_order_fingerprint = routePropertyOrderFingerprint(hashes); }],
+    ['output identity mismatch', proof => { proof.output_order_fingerprint = routePropertyOrderFingerprint(hashes); }],
+    ['negative miles', proof => { proof.original_miles = -1; }],
+    ['missing seconds', proof => { delete proof.input_seconds; }],
+    ['non-finite seconds', proof => { proof.output_seconds = Infinity; }],
+    ['fractional violations', proof => { proof.output_pass_violations = 0.5; }],
+    ['wrong service objective', proof => { proof.service_objective = 'straight_lines'; }],
+    ['invalid graph identity', proof => { proof.graph_version = {}; }],
+    ['input measurement mismatch', proof => { proof.input_miles = 10; }],
+    ['output measurement mismatch', proof => { proof.output_miles = 10; }],
+    ['worse than original', proof => { proof.original_miles = 7; proof.original_seconds = 420; }],
+    ['inconsistent identical order', proof => { proof.output_seconds = proof.input_seconds - 1; }],
+]) {
+    test(`a fresh comparison with ${name} cannot replace the last verified winner`, async () => {
+        let calls = 0;
+        const proof = comparison(); mutate(proof);
+        const result = await optimize(properties, { maxSearchPasses: 3, client: api(async () => ++calls === 1
+            ? response({ selected: 'road_aware', order: candidate })
+            : response({ order: candidate, ledger: coverage(5), meta: { input_measured: 9, winning_route_distance: 9,
+                road_search_comparison: proof } })) });
+        assert.equal(calls, 2);
+        assert.equal(result.objective.appliedDistance, 8);
+        assert.equal(result.objective.estimatedSavings, 2);
+        assert.deepEqual(result.routingMetadata.road_search_coverage, coverage());
+        assert.equal(result.routingMetadata.road_search_stop_reason, 'measurement_changed');
+    });
+}
+
+test('a contradictory fresh proof is rejected even if the old mileage happens to agree', async () => {
+    let calls = 0;
+    const proof = comparison({ inputMiles: 8 }); proof.output_miles = 7;
+    const result = await optimize(properties, { maxSearchPasses: 3, client: api(async () => ++calls === 1
+        ? response({ selected: 'road_aware', order: candidate })
+        : response({ order: candidate, ledger: coverage(5), meta: { input_measured: 8, winning_route_distance: 8,
+            road_search_comparison: proof } })) });
+    assert.equal(result.objective.appliedDistance, 8);
+    assert.deepEqual(result.routingMetadata.road_search_coverage, coverage());
+    assert.equal(result.routingMetadata.road_search_stop_reason, 'measurement_changed');
+});
+
+for (const [name, values] of [
+    ['distance', { outputMiles: 9.1, outputSeconds: 500 }],
+    ['duration', { outputMiles: 8, outputSeconds: 541 }],
+    ['curb pass violations', { outputMiles: 8, outputViolations: 1 }],
+]) {
+    test(`a fresh comparison cannot worsen incumbent ${name}`, async () => {
+        let calls = 0;
+        const next = ['B', 'C', 'A'], proof = comparison({ output: next, ...values });
+        const result = await optimize(properties, { maxSearchPasses: 3, client: api(async () => ++calls === 1
+            ? response({ selected: 'road_aware', order: candidate })
+            : response({ selected: 'road_aware', order: next, ledger: coverage(5), meta: { input_measured: 9,
+                winning_route_distance: proof.output_miles, road_search_comparison: proof } })) });
+        assert.deepEqual(result.order.map(property => property.address_hash), candidate);
+        assert.equal(result.objective.appliedDistance, 8);
+        assert.equal(result.routingMetadata.road_search_stop_reason, 'measurement_changed');
+    });
+}
+
+test('a fresh comparison cannot cross providers or optimizer versions between accepted passes', async () => {
+    for (const key of ['road_matrix_source', 'road_matrix_version']) {
+        let calls = 0;
+        const result = await optimize(properties, { maxSearchPasses: 3, client: api(async () => ++calls === 1
+            ? response({ selected: 'road_aware', order: candidate })
+            : response({ order: candidate, ledger: coverage(5), meta: { input_measured: 9, winning_route_distance: 9,
+                [key]: 'changed', road_search_comparison: comparison() } })) });
+        assert.equal(result.objective.appliedDistance, 8);
+        assert.equal(result.routingMetadata.road_search_stop_reason, 'measurement_changed');
+    }
+});
+
+test('fresh recovery from an unchanged pass is carried to the remaining-neighborhood request', async () => {
+    let calls = 0, outcome;
+    const access = { source: 'county-road', lat: 35.001, lng: -81.001, resolved_at: '2026-10-15T00:00:00Z' };
+    await optimize(properties, { maxSearchPasses: 3, client: api(async (_name, payload) => {
+        if (++calls === 2) assert.deepEqual(payload.properties[0].routing_access, access);
+        return response({ ledger: calls === 1 ? coverage() : coverage(5),
+            meta: { road_access_recovery: { inventory_complete: true, access_overrides: { A: access } } } });
+    }), onOutcome: (reason, measurement) => { outcome = { reason, measurement }; } });
+    assert.equal(calls, 2);
+    assert.equal(outcome.reason, 'current_order_measured_best');
+    assert.equal(outcome.measurement.routingMetadata.road_search_coverage.remaining_windows, 0);
 });
 
 test('no-ops before the first improvement do not pin savings to an older road measurement', async () => {
@@ -380,6 +587,7 @@ test('an improvement can continue after invalidating old questions, but a later 
     assert.equal(calls, 2);
     assert.equal(result.objective.estimatedSavings, 2);
     assert.equal(result.routingMetadata.road_search_coverage.cycle_complete, false);
+    assert.equal(result.routingMetadata.road_search_stop_reason, 'no_progress');
 });
 
 const ruralHomes = Array.from({ length: 626 }, (_, i) => ({ address_hash: `rural-${i}`,

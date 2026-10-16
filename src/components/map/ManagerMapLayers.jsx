@@ -6,7 +6,6 @@ import CanvasZoneOverlay from './CanvasZoneOverlay';
 import StateBoundariesLayer from './StateBoundariesLayer';
 import { getCompletedPinColor } from '@/components/routes/routeRerunUtils';
 import { isSoldDateInCustomOwnershipRange, normalizeOwnershipRangeDays } from '@/components/logic/soldDateRange';
-import { verifiedRouteSegments } from '@/lib/roadAwareRouteGeometry';
 import { resolvePinSize, zoomAdjustedPinSize } from './densePinSize';
 import { buildPinStyle, pinKey, pinPropertyStyleKey, pinStyleContextKey } from './pinStyle';
 import { buildSavedRouteGroup, savedRouteStyleKey } from './savedRouteLayer';
@@ -43,7 +42,6 @@ const getRouteColor = (route, routeNumber = 1) => {
 };
 
 const getRouteLinePoints = (route, properties) => {
-    if (route?.metadata?.routing?.road_aware_routing_beta) return [];
     const doors = (properties || []).filter(isRenderableMapPoint);
     const mode = route?.routeOriginMode || route?.route_origin_mode || route?.metadata?.route_bounds?.mode || 'none';
     if (!['home_round_trip', 'current_to_home', 'anchor_round_trip'].includes(mode)) return doors;
@@ -69,7 +67,6 @@ export function ActiveRouteLayer({ activeRoute, mapSettings, pinSize, lineDashAr
     const renderedBoxRef = useRef(null);
     const routePoints = useMemo(() => (activeRoute?.properties || []).filter(isRenderableMapPoint), [activeRoute?.properties]);
     const routeLinePoints = useMemo(() => getRouteLinePoints(activeRoute, routePoints), [activeRoute, routePoints]);
-    const roadSegments = useMemo(() => verifiedRouteSegments(activeRoute?.metadata, activeRoute?.property_hashes || routePoints, routePoints), [activeRoute, routePoints]);
 
     useEffect(() => {
         let timeoutId;
@@ -137,26 +134,26 @@ export function ActiveRouteLayer({ activeRoute, mapSettings, pinSize, lineDashAr
         });
     }, [map, viewBox, activeRoute, routePoints, zoom, pinSize, labelCanvas]);
 
-    // Viewport movement never replaces or reprojects the full road geometry.
+    // These straight connectors show stop order. Road verification and mileage
+    // are calculated separately and never change the map's display style.
     useEffect(() => {
         if (!groupRef.current) groupRef.current = L.layerGroup().addTo(map);
         const group = groupRef.current;
-        const visible = !decisionFilterActive && (routeLinePoints.length > 1 || roadSegments.length);
+        const visible = !decisionFilterActive && routeLinePoints.length > 1;
         if (!visible) {
             if (lineRef.current) group.removeLayer(lineRef.current);
             lineRef.current = null;
             return;
         }
-        const points = roadSegments.length ? roadSegments.map(segment => segment.map(p => [Number(p.lat), Number(p.lng)]))
-            : routeLinePoints.map(p => [Number(p.lat), Number(p.lng)]);
+        const points = routeLinePoints.map(p => [Number(p.lat), Number(p.lng)]);
         const style = { color: getRouteColor(activeRoute, activeRoute?.route_number || 1), weight: 2.5,
-            opacity: Math.max(0.75, mapSettings.lineOpacity || 0), dashArray: roadSegments.length ? null : lineDashArray || '4,6', interactive: false };
+            opacity: Math.max(0.75, mapSettings.lineOpacity || 0), dashArray: lineDashArray || '4,6', interactive: false };
         if (!lineRef.current) {
             lineRef.current = L.polyline(points, style);
             group.addLayer(lineRef.current);
         } else lineRef.current.setLatLngs(points).setStyle(style);
         lineRef.current.bringToBack();
-    }, [map, activeRoute, routeLinePoints, roadSegments, mapSettings.lineOpacity, lineDashArray, decisionFilterActive]);
+    }, [map, activeRoute, routeLinePoints, mapSettings.lineOpacity, lineDashArray, decisionFilterActive]);
 
     useEffect(() => () => {
         if (groupRef.current) map.removeLayer(groupRef.current);
@@ -564,7 +561,6 @@ function SavedRoutesLayer({
                     circleMarker: labelCanvas.circleMarker,
                     doors,
                     linePoints: getRouteLinePoints(route, route.properties),
-                    lineSegments: verifiedRouteSegments(route.metadata, route.property_hashes || route.properties, route.properties),
                     centerPoint: isRenderableMapPoint(centerProp)
                         ? [Number(centerProp.lat), Number(centerProp.lng)]
                         : null,
@@ -818,11 +814,6 @@ const ManagerMapLayers = React.memo(function ManagerMapLayers({
 
             {/* Preview Route (hover/tap from list) */}
             {mode === 'analyze' && previewRoute && !activeRoute && (
-                verifiedRouteSegments(previewRoute.metadata, previewRoute.property_hashes || previewRoute.properties, previewRoute.properties).length
-                ? verifiedRouteSegments(previewRoute.metadata, previewRoute.property_hashes || previewRoute.properties, previewRoute.properties).map((points, i) =>
-                    <Polyline key={i} positions={points.map(p => [Number(p.lat), Number(p.lng)])}
-                        pathOptions={{ color: BRAND.gold, weight: 3, opacity: 0.6 }} />)
-                :
                 <Polyline
                     positions={getRouteLinePoints(previewRoute, previewRoute.properties)
                         .map(p => [Number(p.lat), Number(p.lng)])}
