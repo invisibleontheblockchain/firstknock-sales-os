@@ -27,6 +27,8 @@ import vm from 'node:vm';
 import ts from 'typescript';
 import { UNLIMITED_PROPERTY_CAP, currentGrantPeriod, precisionGrantLabel, precisionGrantLimit } from '../../base44/shared/privilegedAccounts.js';
 import { loadAuthoritativeUser } from '../../base44/shared/accountIdentity.js';
+import { precisionTrialLimit } from '../../base44/shared/precisionTrialLimit.js';
+import { projectEntityFields } from './projectEntityFields.mjs';
 
 const testDir = dirname(fileURLToPath(import.meta.url));
 export const rootDir = resolve(testDir, '..', '..');
@@ -195,7 +197,7 @@ export class FakeEntityStore {
     return this.serviceRole ? `${this.name}(serviceRole)` : this.name;
   }
 
-  async filter(filter, sort = null, limit = null, skip = 0) {
+  async filter(filter, sort = null, limit = null, skip = 0, fields = undefined) {
     this.trace.record('entity_read', `${this.#tag()}.filter`, {
       filter,
       sort,
@@ -205,7 +207,7 @@ export class FakeEntityStore {
     });
     const matched = this.rows.filter((row) => matches(row, filter));
     const sliced = matched.slice(skip, limit === null ? undefined : skip + limit);
-    return sliced;
+    return fields ? sliced.map(row => projectEntityFields(row, fields)) : sliced;
   }
 
   async get(id) {
@@ -475,6 +477,7 @@ export function loadPrecisionHandler(path, {
     console: { log: () => {}, warn: () => {}, error: () => {} },
     createClientFromRequest: () => base44,
     loadAuthoritativeUser,
+    precisionTrialLimit,
     currentGrantPeriod: () => currentGrantPeriod(new Date(nowMs)),
     UNLIMITED_PROPERTY_CAP,
     precisionGrantLabel,

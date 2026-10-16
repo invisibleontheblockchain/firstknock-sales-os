@@ -705,7 +705,17 @@ export default function Home() {
     const { data: precisionFetchJobsRaw = [] } = useQuery({
         queryKey: ['precisionFetchJobs', user?.email],
         staleTime: 1000 * 60 * 2,
-        queryFn: () => user?.email ? base44.entities.FetchJob.filter({ user_email: user.email }, '-created_date', 50) : [],
+        queryFn: () => user?.email ? base44.entities.FetchJob.filter({ user_email: user.email }, '-created_date', 50, 0,
+            ['id', 'status', 'polygon', 'created_date', 'completed_at', 'started_at', 'updated_date',
+                'active_count', 'total_inserted', 'total_existed', 'requested_properties', 'ownership_range_mode',
+                'ownership_range_days', 'sold_months', 'fetch_months', 'total_expected', 'min_price', 'max_price', 'filters',
+                'metadata.polygon', 'request.polygon', 'request_payload.polygon', 'input.polygon',
+                'searchCriteria.address.geoLocationPolygon.geoPoints',
+                'request.searchCriteria.address.geoLocationPolygon.geoPoints',
+                'request_payload.searchCriteria.address.geoLocationPolygon.geoPoints',
+                'dry_run_metadata.filters', 'dry_run_metadata.route_filters',
+                'dry_run_metadata.ownership_range_mode', 'dry_run_metadata.ownership_range_days',
+                'dry_run_metadata.count_mode', 'dry_run_metadata.requested_properties']) : [],
         enabled: !!user?.email
     });
     const precisionFetchJobs = Array.isArray(precisionFetchJobsRaw) ? precisionFetchJobsRaw : (precisionFetchJobsRaw?.items || []);

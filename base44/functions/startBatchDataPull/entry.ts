@@ -402,10 +402,21 @@ function asArray(value) {
     return Array.isArray(value) ? value : (value?.items || []);
 }
 
-async function listAll(entity, filter, sort = '-created_date', pageSize = 500) {
+const ALLOWANCE_JOB_FIELDS = [
+    'id', 'status', 'provider', 'mode_tag', 'user_email', 'precision_usage_user_id',
+    'precision_usage_kind', 'precision_usage_reserved', 'precision_usage_count',
+    'precision_usage_recorded_at', 'precision_subscription_id', 'precision_invoice_id',
+    'precision_usage_period_start', 'precision_usage_period_end', 'created_date',
+    'started_at', 'completed_at', 'total_expected', 'estimated_record_count',
+    'total_inserted', 'total_existed', 'dry_run_metadata.batchdata_only_started_at',
+    'dry_run_metadata.batchdata_summary.active'
+];
+const ROUTE_HASH_FIELDS = ['id', 'route_mode', 'property_hashes', 'created_by', 'name', 'created_date'];
+
+async function listAll(entity, filter, sort = '-created_date', pageSize = 500, fields = undefined) {
     const records = [];
     for (let skip = 0; skip < 20000; skip += pageSize) {
-        const page = await withRateLimitRetry(() => entity.filter(filter, sort, pageSize, skip));
+        const page = await withRateLimitRetry(() => entity.filter(filter, sort, pageSize, skip, fields));
         const items = asArray(page);
         records.push(...items);
         if (items.length < pageSize) return records;
@@ -428,8 +439,8 @@ function precisionRouteHashStats(routes) {
 async function getPrecisionRouteHomeStats(base44, user) {
     const routesById = new Map();
     const routeQueries = [];
-    if (user?.id) routeQueries.push(listAll(base44.asServiceRole.entities.SavedRoute, { manager_id: user.id }));
-    if (user?.email) routeQueries.push(listAll(base44.asServiceRole.entities.SavedRoute, { created_by: user.email }));
+    if (user?.id) routeQueries.push(listAll(base44.asServiceRole.entities.SavedRoute, { manager_id: user.id }, '-created_date', 500, ROUTE_HASH_FIELDS));
+    if (user?.email) routeQueries.push(listAll(base44.asServiceRole.entities.SavedRoute, { created_by: user.email }, '-created_date', 500, ROUTE_HASH_FIELDS));
 
     const results = await Promise.all(routeQueries);
     for (const result of results) {
@@ -472,8 +483,8 @@ function jobUsage(job) {
 
 async function getPrecisionJobs(base44, user) {
     const jobsById = new Map();
-    const queries = [listAll(base44.asServiceRole.entities.FetchJob, { precision_usage_user_id: user.id })];
-    if (user?.email) queries.push(listAll(base44.asServiceRole.entities.FetchJob, { user_email: user.email }));
+    const queries = [listAll(base44.asServiceRole.entities.FetchJob, { precision_usage_user_id: user.id }, '-created_date', 500, ALLOWANCE_JOB_FIELDS)];
+    if (user?.email) queries.push(listAll(base44.asServiceRole.entities.FetchJob, { user_email: user.email }, '-created_date', 500, ALLOWANCE_JOB_FIELDS));
     for (const result of await Promise.all(queries)) {
         for (const job of result) {
             if (!job?.id) continue;

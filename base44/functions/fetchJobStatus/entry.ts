@@ -7,6 +7,25 @@ const PROCESSOR_REKICK_COOLDOWN_MS = 20 * 1000;
 const PROCESSOR_REKICK_WAIT_MS = 900;
 const INITIAL_STALE_LOCK_MS = 90 * 1000;
 
+// A job can carry tens of thousands of excluded route hashes. Progress polls
+// must not repeatedly read that payload and exhaust the app's byte quota.
+const STATUS_FIELDS = [
+    'id', 'status', 'user_email', 'precision_usage_user_id', 'created_date', 'updated_date',
+    'started_at', 'completed_at', 'phase', 'provider', 'mode_tag', 'progress_pct',
+    'total_expected', 'total_fetched', 'total_inserted', 'total_existed', 'total_updated',
+    'total_batchdata_calls', 'zip_codes_found', 'error_message', 'pull_mode',
+    'completed_sub_circles', 'total_sub_circles', 'current_offset', 'chunk_number',
+    'is_delta_pull', 'delta_savings', 'polygon', 'sold_months', 'area_sq_mi',
+    ...[
+        'requested_properties', 'requested_properties_before_cap', 'limited_by_free_home_cap',
+        'free_properties_remaining', 'free_property_cap', 'ownership_range_mode',
+        'ownership_range_days', 'count_mode', 'filters', 'route_filters', 'route_bounds',
+        'completion_reason', 'batchdata_summary', 'final_delivery', 'partial_delivery',
+        'pending_batchdata_pages', 'processor_token', 'processor_rekick_at',
+        'processor_rekick_reason', 'processor_rekick_count'
+    ].map(field => `dry_run_metadata.${field}`)
+];
+
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
@@ -97,14 +116,14 @@ Deno.serve(async (req) => {
         }
 
         // Use service role to ensure we can read the job regardless of who created/updated it
-        const jobs = await base44.asServiceRole.entities.FetchJob.filter({ id: job_id }, null, 1);
+        const jobs = await base44.asServiceRole.entities.FetchJob.filter({ id: job_id }, null, 1, 0, STATUS_FIELDS);
         const jobArr = Array.isArray(jobs) ? jobs : (jobs?.items || []);
 
         if (jobArr.length === 0) {
             return Response.json({ error: 'Job not found' }, { status: 404 });
         }
 
-        const job = jobArr[0];
+        let job = jobArr[0];
 
         // Security: only let the user see their own jobs
         const ownsJob = job.precision_usage_user_id
@@ -114,7 +133,7 @@ Deno.serve(async (req) => {
             return Response.json({ error: 'Not your job' }, { status: 403 });
         }
 
-        const metadata = job.dry_run_metadata || {};
+        let metadata = job.dry_run_metadata || {};
         const now = Date.now();
         let processorKick = null;
         let customOwnershipRange = null;
@@ -160,7 +179,14 @@ Deno.serve(async (req) => {
             console.warn('[fetchJobStatus] active count diagnostic failed:', e.message);
         }
 
-        const rekickReason = getProcessorRekickReason(job, metadata, now);
+        let rekickReason = getProcessorRekickReason(job, metadata, now);
+        if (rekickReason) {
+            // Metadata updates replace the object. Load it in full only for a
+            // real recovery so the projection cannot erase exclusions or criteria.
+            job = await base44.asServiceRole.entities.FetchJob.get(job.id);
+            metadata = job.dry_run_metadata || {};
+            rekickReason = getProcessorRekickReason(job, metadata, now);
+        }
         if (rekickReason && !metadata.processor_token) {
             const legacyMessage = 'This import predates the secured processor handoff. Retry the import to continue with the original criteria.';
             job.status = 'failed';

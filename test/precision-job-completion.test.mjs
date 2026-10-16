@@ -27,14 +27,15 @@ function deferred() {
 function pollHarness({ status = async () => ({ status: 'completed', active_count: 43 }), complete = async () => true,
     refetch = async () => {} } = {}) {
     const intervals = new Map();
-    const state = { requests: [], builds: [], cleared: [], modes: [] };
+    const state = { requests: [], builds: [], cleared: [], modes: [], delays: [], now: Date.now() };
     let nextTimer = 0;
     const sandbox = {
+        Date: class extends Date { static now() { return state.now; } },
         console: { warn() {} },
         pollRef: { current: null }, pollSessionRef: { current: null }, activeJobIdRef: { current: null },
         routeModeRef: { current: 'precision' }, pctHistoryRef: { current: [] }, targetPctRef: { current: 0 },
         pullIntentRef: { current: {} }, isDeltaPull: false, isPaid: true, fetchMonths: 12,
-        setInterval: callback => { const id = ++nextTimer; intervals.set(id, callback); return id; },
+        setInterval: (callback, delay) => { const id = ++nextTimer; state.delays.push(delay); intervals.set(id, callback); return id; },
         clearInterval: id => intervals.delete(id),
         base44: {
             functions: { invoke: async (_, { job_id }) => { state.requests.push(job_id); return { data: await status(job_id) }; } },
@@ -224,4 +225,78 @@ test('Builder never mounts route lines or pins even if a background callback sup
         const activeLayer = condition.includes('previewRoute') ? null : vm.runInNewContext(condition, sandbox);
         if (activeLayer) assert.equal(activeLayer.id, savedRoute.id);
     }
+});
+
+test('Max Available shows checked records without presenting the credit allowance as a provider total', async () => {
+    const status = { status: 'running', phase: 'batchdata_scanning', progress_pct: 80,
+        total_fetched: 184, total_expected: 997134, diagnostics: { count_mode: 'max_available' } };
+    const poll = pollHarness({ status: async () => status });
+    poll.start('max-available');
+    await flush();
+    assert.equal(poll.state.PullProgress, '184 records checked • 0 ready for routes');
+    assert.deepEqual(poll.state.delays, [5000]);
+    poll.state.now += 5 * 60 * 1000;
+    await [...poll.intervals.values()][0]();
+    assert.match(poll.state.EtaText, /Taking longer than usual/);
+    assert.doesNotMatch(poll.state.EtaText, /under 2 minutes|Almost done/);
+    status.diagnostics.count_mode = 'fixed';
+    status.total_expected = 200;
+    await [...poll.intervals.values()][0]();
+    assert.equal(poll.state.PullProgress, '184 of 200 records checked • 0 ready for routes');
+});
+
+test('throttled polls back off without overlapping or forgetting the job, then return to normal cadence', async () => {
+    let calls = 0;
+    const poll = pollHarness({ status: async () => {
+        if (++calls === 1) throw Object.assign(new Error('App entity read traffic volume limit exceeded'), { status: 429 });
+        return { status: 'running', progress_pct: 80, total_fetched: 184 };
+    } });
+    poll.start('busy-import');
+    await flush();
+    assert.deepEqual(poll.state.delays, [5000, 30000]);
+    assert.match(poll.state.EtaText, /Service is busy/);
+    assert.equal(poll.sandbox.activeJobIdRef.current, 'busy-import');
+    assert.equal(poll.intervals.size, 1);
+    assert.deepEqual(poll.state.cleared, []);
+    await [...poll.intervals.values()][0]();
+    assert.deepEqual(poll.state.delays, [5000, 30000, 5000]);
+    assert.equal(poll.intervals.size, 1);
+    assert.equal(poll.state.requests.length, 2);
+});
+
+test('a late failure from an older poll cannot change a newer job status or timers', async () => {
+    const old = deferred();
+    const poll = pollHarness({ status: id => id === 'old' ? old.promise.then(() => { throw new Error('Old network error'); })
+        : { status: 'running', progress_pct: 80, total_fetched: 184 } });
+    poll.start('old');
+    poll.start('new');
+    await flush();
+    const currentText = poll.state.EtaText;
+    old.resolve();
+    await flush();
+    assert.equal(poll.state.EtaText, currentText);
+    assert.deepEqual(poll.state.delays, [5000, 5000]);
+    assert.equal(poll.intervals.size, 1);
+});
+
+test('a backend 500 carrying a read-traffic error uses the throttling backoff', async () => {
+    const poll = pollHarness({ status: async () => {
+        throw Object.assign(new Error('Request failed with status code 500'), {
+            response: { status: 500, data: { error: 'App entity read traffic volume limit exceeded' } }
+        });
+    } });
+    poll.start('busy-backend');
+    await flush();
+    assert.deepEqual(poll.state.delays, [5000, 30000]);
+    assert.match(poll.state.EtaText, /Service is busy/);
+    assert.equal(poll.sandbox.activeJobIdRef.current, 'busy-backend');
+});
+
+test('Max Available does not claim an allowance shortfall but still warns when provider pages were lost', () => {
+    const ast = ts.createSourceFile('TerritoryPrompt.jsx', read('src/components/map/TerritoryPrompt.jsx'), ts.ScriptTarget.Latest, true, ts.ScriptKind.JSX);
+    const declaration = ast.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'buildPrecisionShortfallMessage');
+    const message = vm.runInNewContext(`(${declaration.getText(ast)})`);
+    const order = { loadedCount: 184, requestedCount: 997134, diagnostics: { count_mode: 'max_available' } };
+    assert.equal(message(order), null);
+    assert.match(message({ ...order, diagnostics: { ...order.diagnostics, partial_delivery: true } }), /could not be retrieved/);
 });
