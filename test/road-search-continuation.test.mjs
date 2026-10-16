@@ -79,16 +79,26 @@ test('a verified no-op and improvement continue until the latest order has compl
         { pass: 3, maxPasses: 3, remainingWindows: 3 }]);
 });
 
-test('continuation stops at three passes and reports the remaining search honestly', async () => {
+test('continuation has an eight-request safety fuse and reports unfinished search honestly', async () => {
     let calls = 0, outcome;
-    const result = await optimize(properties, { client: api(async () => response({ ledger: coverage(++calls) })),
+    const result = await optimize(properties, { client: api(async () => response({ ledger: coverage(++calls, 20) })),
         maxSearchPasses: 99, onOutcome: (reason, measurement) => { outcome = { reason, measurement }; } });
     assert.equal(result, null);
-    assert.equal(calls, 3);
+    assert.equal(calls, 8);
     assert.equal(outcome.reason, 'current_order_measured_best');
-    assert.equal(outcome.measurement.routingMetadata.road_search_passes, 3);
-    assert.equal(outcome.measurement.routingMetadata.road_search_coverage.remaining_windows, 2);
+    assert.equal(outcome.measurement.routingMetadata.road_search_passes, 8);
+    assert.equal(outcome.measurement.routingMetadata.road_search_coverage.remaining_windows, 12);
     assert.equal(outcome.measurement.routingMetadata.road_search_stop_reason, 'pass_limit');
+});
+
+test('callers can still request a smaller three-pass limit', async () => {
+    let calls = 0, outcome;
+    await optimize(properties, { maxSearchPasses: 3,
+        client: api(async () => response({ ledger: coverage(++calls, 20) })),
+        onOutcome: (_reason, measurement) => { outcome = measurement; } });
+    assert.equal(calls, 3);
+    assert.equal(outcome.routingMetadata.road_search_passes, 3);
+    assert.equal(outcome.routingMetadata.road_search_stop_reason, 'pass_limit');
 });
 
 test('errors, incomplete path proof, invalid ledgers and exhausted progress never trigger another request', async () => {
@@ -194,7 +204,7 @@ test('no-op then accepted continuation persists one verified order and reloads i
     assert.doesNotMatch(saved.metadata.last_optimization_attempt.message, /checks remain/);
     assert.equal(saved.metrics.distance, 8);
     assert.ok(messages.some(value => /Saved ~2 estimated miles/.test(value.message)));
-    assert.ok(messages.some(value => /remaining neighborhoods \(pass 2 of 3\)/.test(value.message)));
+    assert.ok(messages.some(value => /remaining neighborhoods \(pass 2; 4 checks left\)/.test(value.message)));
     const reopened = queries.getQueryData(['routeMap', 'manager', route.id]);
     await action(reopened, { mode: 'route_only' }, { client, setActiveRoute: updater => { active = updater(active); } });
     assert.equal(calls, 4);
@@ -205,20 +215,20 @@ test('no-op then accepted continuation persists one verified order and reloads i
     queries.clear();
 });
 
-test('an unchanged bounded action saves cumulative coverage and reports the three-pass limit', async () => {
+test('an unchanged bounded action saves cumulative coverage and reports the eight-request fuse', async () => {
     messages.length = 0;
     let calls = 0, patch;
-    const client = { functions: { invoke: async () => response({ ledger: coverage(++calls) }) },
+    const client = { functions: { invoke: async () => response({ ledger: coverage(++calls, 20) }) },
         entities: { SavedRoute: { update: async (_id, update) => { patch = update; return { ...route, ...update }; } } } };
     await action(route, { mode: 'route_only' }, { client });
-    assert.equal(calls, 3);
+    assert.equal(calls, 8);
     assert.equal(patch.property_hashes, undefined);
-    assert.deepEqual(patch.metadata.road_search_coverage, coverage(3));
+    assert.deepEqual(patch.metadata.road_search_coverage, coverage(8, 20));
     const attempt = patch.metadata.last_optimization_attempt;
     assert.equal(attempt.route_changed, false);
     assert.equal(attempt.route_verification_complete, true);
-    assert.equal(attempt.neighborhoods_checked, 3);
-    assert.match(attempt.message, /2 of 5 checks remain after 3 passes/);
+    assert.equal(attempt.neighborhoods_checked, 8);
+    assert.match(attempt.message, /12 of 20 checks remain after 8 passes/);
     assert.equal(messages.at(-1).tone, 'warning');
 });
 

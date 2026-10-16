@@ -30,7 +30,10 @@ const ROAD_MATRIX_DEADLINE_MS = 120000;
 const LARGE_ROAD_MATRIX_DEADLINE_MS = 180000;
 const LARGE_ROAD_MATRIX_THRESHOLD = 500;
 const OPTIMIZE_ACTION_DEADLINE_MS = 300000;
-const MAX_OPTIMIZE_PASSES = 3;
+// This is a request-count fuse, not a target. Real continuations are governed
+// by remaining work, proof, progress, and the five-minute action budget.
+const MAX_OPTIMIZE_PASSES = 8;
+const MIN_CONTINUATION_BUDGET_MS = 60000;
 const routeRequestDeadline = properties => properties?.length > LARGE_ROAD_MATRIX_THRESHOLD
     ? LARGE_ROAD_MATRIX_DEADLINE_MS : ROAD_MATRIX_DEADLINE_MS;
 
@@ -449,6 +452,7 @@ export async function tryRoadMatrixOptimize(routeProperties, {
     const budget = Number.isFinite(totalDeadlineMs) ? Math.max(1, Math.min(OPTIMIZE_ACTION_DEADLINE_MS, totalDeadlineMs)) : OPTIMIZE_ACTION_DEADLINE_MS;
     const defaultDeadline = routeRequestDeadline(routeProperties);
     const requestBudget = Number.isFinite(deadlineMs) ? Math.max(1, Math.min(defaultDeadline, deadlineMs)) : defaultDeadline;
+    const continuationBudget = Math.min(MIN_CONTINUATION_BUDGET_MS, requestBudget);
     const started = Date.now();
     let coverage = normalizeRoadSearchCoverage(searchCoverage), lastReason, lastMeasurement;
     let currentProperties = routeProperties, accepted = null, baselineMiles = null;
@@ -459,7 +463,7 @@ export async function tryRoadMatrixOptimize(routeProperties, {
             : !returnedCoverage ? 'invalid_search_coverage'
             : !result && returnedCoverage.progress_this_pass === 0 ? 'no_progress'
             : pass >= limit ? 'pass_limit'
-            : budget - (Date.now() - started) < requestBudget ? 'action_budget' : null;
+            : budget - (Date.now() - started) < continuationBudget ? 'action_budget' : null;
         if (stopReason) {
             const target = accepted?.routingMetadata || lastMeasurement?.routingMetadata;
             if (target) target.road_search_stop_reason = stopReason;

@@ -100,17 +100,21 @@ test('a late response after the 180-second deadline cannot save a route or dupli
     assert.equal(saved.length, 1); assert.equal(saved[0].metrics, undefined);
 });
 
-test('133 seconds used by a large pass leave too little budget for another full 180-second request', async t => {
+test('a 133-second first pass can continue within the remaining action budget', async t => {
     useClock(t);
     const properties = homes(626);
     let calls = 0;
-    const pending = optimize(properties, { maxSearchPasses: 3, client: api(() => {
-        calls++; return new Promise(resolve => setTimeout(() => resolve(verifiedResult(properties, { complete: false })), 133136));
+    const pending = optimize(properties, { maxSearchPasses: 3, client: api((_name, payload) => {
+        calls++;
+        const result = verifiedResult(payload.properties, { complete: calls > 1, current: calls > 1 });
+        if (calls > 1) result.data.routing_metadata.input_measured = 441.947;
+        return new Promise(resolve => setTimeout(() => resolve(result), calls === 1 ? 133136 : 60000));
     }) });
-    t.mock.timers.tick(133136); const result = await pending;
-    assert.equal(calls, 1);
-    assert.equal(result.routingMetadata.road_search_coverage.remaining_windows, 1);
-    assert.equal(result.routingMetadata.road_search_passes, 1);
+    t.mock.timers.tick(133136); await flush();
+    assert.equal(calls, 2, '166 seconds left can safely bound a continuation below its 180-second ceiling');
+    t.mock.timers.tick(60000); const result = await pending;
+    assert.equal(result.routingMetadata.road_search_coverage.remaining_windows, 0);
+    assert.equal(result.routingMetadata.road_search_passes, 2);
 });
 
 test('large-route continuation retains the hard five-minute action ceiling', async t => {
@@ -136,4 +140,99 @@ test('an explicitly shorter total action budget also bounds a large first reques
         client: api(() => new Promise(() => {})) }).then(result => { settled = true; return result; });
     t.mock.timers.tick(99999); await flush(); assert.equal(settled, false);
     t.mock.timers.tick(1); assert.equal(await pending, null);
+});
+
+const observedPassTimes = [75700, 60400, 61200];
+function remainingSearchResult(properties, pass) {
+    const result = verifiedResult(properties, { current: pass > 0 });
+    const meta = result.data.routing_metadata;
+    if (pass > 0) meta.input_measured = 441.947;
+    const total = pass === 1 ? 122 : 121, remaining = [15, 5, 1, 0][pass];
+    meta.road_search_coverage = { version: 1, policy: 'deadline_test', total_windows: total,
+        remaining_windows: remaining, completed_window_keys: Array.from({ length: total - remaining },
+            (_, i) => String(i + 1).padStart(32, '0')),
+        checked_this_pass: 64, progress_this_pass: [64, 11, 3, 1][pass], cycle_complete: remaining === 0 };
+    return result;
+}
+const deadlineRoute = properties => ({ id: 'remaining-search-deadline', properties, allProperties: properties,
+    property_hashes: properties.map(property => property.address_hash), route_origin_mode: 'none',
+    metrics: { distance: 449.796, house_count: properties.length } });
+
+test('the observed 377-stop timings leave time for a fourth pass that completes the final check', async t => {
+    useClock(t);
+    const properties = homes(377), route = deadlineRoute(properties), saved = [], requests = [];
+    const pending = action(route, { mode: 'route_only' }, { client: {
+        functions: { invoke: (_name, payload) => {
+            const pass = requests.length; requests.push(payload);
+            return new Promise(resolve => setTimeout(() => resolve(remainingSearchResult(payload.properties, pass)),
+                observedPassTimes[pass] ?? 61200));
+        } },
+        entities: { SavedRoute: { update: async (_id, patch) => { saved.push(patch); return { ...route, ...patch }; } } },
+    } });
+    await flush();
+    for (const [pass, duration] of observedPassTimes.entries()) {
+        t.mock.timers.tick(duration); await flush();
+        assert.equal(requests.length, pass + 2);
+        assert.equal(saved.length, 0, 'the action only saves after its bounded search finishes');
+    }
+    assert.equal(requests[3].search_phase, 'remaining_neighborhoods');
+    assert.equal(requests[3].search_coverage.remaining_windows, 1);
+    assert.deepEqual(requests[3].comparison_order, route.property_hashes);
+    t.mock.timers.tick(61200); await pending;
+    assert.equal(saved.length, 1);
+    const metadata = saved[0].metadata;
+    assert.equal(metadata.road_search_passes, 4);
+    assert.equal(metadata.road_search_coverage.remaining_windows, 0);
+    assert.equal(metadata.road_search_stop_reason, undefined);
+    assert.equal(metadata.road_verification.verified, true);
+    assert.equal(saved[0].property_hashes.length, 377);
+    assert.equal(new Set(saved[0].property_hashes).size, 377);
+    assert.deepEqual([...saved[0].property_hashes].sort(), [...route.property_hashes].sort());
+    t.mock.timers.tick(300000); await flush();
+    assert.equal(saved.length, 1);
+});
+
+test('a late fourth-pass response cannot cross the five-minute action deadline or save twice', async t => {
+    useClock(t);
+    const properties = homes(377), route = deadlineRoute(properties), saved = [];
+    let calls = 0, settled = false;
+    const remainingBudget = 300000 - observedPassTimes.reduce((sum, duration) => sum + duration, 0);
+    const pending = action(route, { mode: 'route_only' }, { client: {
+        functions: { invoke: (_name, payload) => {
+            const pass = calls++;
+            return new Promise(resolve => setTimeout(() => resolve(remainingSearchResult(payload.properties, pass)),
+                observedPassTimes[pass] ?? remainingBudget + 1000));
+        } },
+        entities: { SavedRoute: { update: async (_id, patch) => { saved.push(patch); return { ...route, ...patch }; } } },
+    } }).then(() => { settled = true; });
+    await flush();
+    for (const duration of observedPassTimes) { t.mock.timers.tick(duration); await flush(); }
+    assert.equal(calls, 4);
+    t.mock.timers.tick(remainingBudget - 1); await flush();
+    assert.equal(settled, false); assert.equal(saved.length, 0);
+    t.mock.timers.tick(1); await pending;
+    assert.equal(saved.length, 1);
+    assert.equal(saved[0].metadata.road_search_coverage.remaining_windows, 1);
+    assert.equal(saved[0].metadata.road_search_stop_reason, 'deadline_exceeded');
+    assert.equal(saved[0].metadata.road_verification.verified, true);
+    const snapshot = structuredClone(saved[0]);
+    t.mock.timers.tick(1000); await flush();
+    assert.equal(calls, 4); assert.equal(saved.length, 1);
+    assert.deepEqual(saved[0], snapshot, 'late completed coverage cannot alter the retained verified route');
+});
+
+test('a continuation is declined when less than its useful 60-second budget remains', async t => {
+    useClock(t);
+    let calls = 0;
+    const pending = optimize(homes(377), { maxSearchPasses: 8, totalDeadlineMs: 250000,
+        client: api((_name, payload) => {
+            const pass = calls++;
+            return new Promise(resolve => setTimeout(() => resolve(remainingSearchResult(payload.properties, pass)), observedPassTimes[pass]));
+        }) });
+    for (const duration of observedPassTimes) { t.mock.timers.tick(duration); await flush(); }
+    const result = await pending;
+    assert.equal(calls, 3, '52.7 seconds left does not start another provider request');
+    assert.equal(result.routingMetadata.road_search_stop_reason, 'action_budget');
+    assert.equal(result.routingMetadata.road_search_coverage.remaining_windows, 1);
+    assert.equal(result.routingMetadata.road_path_validated, true);
 });

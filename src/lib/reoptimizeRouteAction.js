@@ -222,8 +222,8 @@ export async function reoptimizeRoute(route, options = {}, deps = {}) {
             start: isValidRoutePoint(start) ? start : null,
             end: isValidRoutePoint(end) ? end : null,
             searchCoverage: shareSearchCoverage ? route.metadata?.road_search_coverage : null,
-            maxSearchPasses: 3,
-            onProgress: ({ pass, maxPasses }) => progress.update(`Checking remaining neighborhoods (pass ${pass} of ${maxPasses})...`),
+            maxSearchPasses: 8,
+            onProgress: ({ pass, remainingWindows }) => progress.update(`Checking remaining neighborhoods (pass ${pass}; ${remainingWindows} checks left)...`),
             onOutcome: (reason, measurement) => { roadDeclineReason = reason; roadMeasurement = measurement; }
         });
 
