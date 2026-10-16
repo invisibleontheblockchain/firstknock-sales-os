@@ -74,7 +74,11 @@ function buildPrecisionShortfallMessage({
   }
 
   // Max Available is bounded by allowance, not a promised provider match count.
-  if (diagnostics?.count_mode === 'max_available') return null;
+  if (diagnostics?.count_mode === 'max_available') {
+    return diagnostics.partial_delivery === true
+      ? 'Some property records could not be retrieved. Successfully imported homes were preserved.'
+      : null;
+  }
 
   if (requested <= 0 || loaded >= requested) return null;
 
@@ -738,7 +742,9 @@ export default function TerritoryPrompt({
           setPulling(false);
         } else {
           const rateLimited = Number(e?.status || e?.response?.status) === 429
-            || /traffic volume|rate limit/i.test(e?.message || '');
+            || /traffic volume|rate limit/i.test([
+              e?.message, e?.response?.data?.error, e?.response?.data?.message
+            ].filter(Boolean).join(' '));
           changePollInterval(rateLimited ? 30000 : 10000);
           setEtaText(rateLimited
             ? 'Service is busy — retrying automatically'

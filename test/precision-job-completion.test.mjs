@@ -278,3 +278,25 @@ test('a late failure from an older poll cannot change a newer job status or time
     assert.deepEqual(poll.state.delays, [5000, 5000]);
     assert.equal(poll.intervals.size, 1);
 });
+
+test('a backend 500 carrying a read-traffic error uses the throttling backoff', async () => {
+    const poll = pollHarness({ status: async () => {
+        throw Object.assign(new Error('Request failed with status code 500'), {
+            response: { status: 500, data: { error: 'App entity read traffic volume limit exceeded' } }
+        });
+    } });
+    poll.start('busy-backend');
+    await flush();
+    assert.deepEqual(poll.state.delays, [5000, 30000]);
+    assert.match(poll.state.EtaText, /Service is busy/);
+    assert.equal(poll.sandbox.activeJobIdRef.current, 'busy-backend');
+});
+
+test('Max Available does not claim an allowance shortfall but still warns when provider pages were lost', () => {
+    const ast = ts.createSourceFile('TerritoryPrompt.jsx', read('src/components/map/TerritoryPrompt.jsx'), ts.ScriptTarget.Latest, true, ts.ScriptKind.JSX);
+    const declaration = ast.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'buildPrecisionShortfallMessage');
+    const message = vm.runInNewContext(`(${declaration.getText(ast)})`);
+    const order = { loadedCount: 184, requestedCount: 997134, diagnostics: { count_mode: 'max_available' } };
+    assert.equal(message(order), null);
+    assert.match(message({ ...order, diagnostics: { ...order.diagnostics, partial_delivery: true } }), /could not be retrieved/);
+});
