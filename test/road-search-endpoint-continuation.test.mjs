@@ -118,7 +118,7 @@ test('continuation reviews the incumbent without restarting global matrix or hie
     assert.equal(body.order[2], original[2].address_hash, 'locked stop stays fixed');
     assert.deepEqual([...body.order].sort(), ids(original).sort());
     const meta = body.routing_metadata;
-    assert.equal(meta.optimizer_version, 'road_matrix_neighborhood_continuation_v19');
+    assert.equal(meta.optimizer_version, 'road_matrix_parallel_neighborhoods_v20');
     assert.equal(meta.strategy, 'remaining_neighborhoods_verified');
     assert.equal(meta.road_path_validated, true); assert.equal(meta.exact_once_verified, true);
     assert.equal(meta.input_measured, 12); assert.equal(meta.winning_route_distance, 10);

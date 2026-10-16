@@ -4,8 +4,6 @@ export const MAX_DRIVING_AREA_DOOR_SEARCH_STOPS = 40;
 const identity = stop => String(stop?.address_hash || stop?.legacy_hash || stop?.id || '');
 const validCost = value => Number.isFinite(value) && value >= 0 ? value : Infinity;
 const lexicographic = (a, b) => a < b ? -1 : a > b ? 1 : 0;
-const compare = (a, b) => Math.abs(a.seconds - b.seconds) > 0.1 ? a.seconds - b.seconds
-    : Math.abs(a.miles - b.miles) > 0.0001 ? a.miles - b.miles : lexicographic(a.fingerprint, b.fingerprint);
 const improves = (a, b) => a.seconds < b.seconds - 0.1
     || Math.abs(a.seconds - b.seconds) <= 0.1 && a.miles < b.miles - 0.0001;
 
@@ -35,6 +33,11 @@ export function buildDrivingAreaDoorCandidates(stops, context, start = null, end
         return stops.map((_, i) => locked[i] ? i + 1 : order[cursor++]);
     };
     const fingerprint = order => JSON.stringify(order.map(index => keys[index - 1]));
+    // The same directed sums and proposals are evaluated. Construct the long
+    // identity string only when a cost tie or retained candidate needs it.
+    const fingerprintOf = measured => measured.fingerprint ??= fingerprint(measured.indices);
+    const compare = (a, b) => Math.abs(a.seconds - b.seconds) > 0.1 ? a.seconds - b.seconds
+        : Math.abs(a.miles - b.miles) > 0.0001 ? a.miles - b.miles : lexicographic(fingerprintOf(a), fingerprintOf(b));
     const incumbentFingerprint = fingerprint(stops.map((_, i) => i + 1));
     const measure = order => {
         if (evaluations >= maxEvaluations) return null;
@@ -45,13 +48,13 @@ export function buildDrivingAreaDoorCandidates(stops, context, start = null, end
         }
         seconds += costs[previous][terminal]; distance += miles[previous][terminal];
         if (!Number.isFinite(seconds) || !Number.isFinite(distance)) return null;
-        return { seconds, miles: distance, fingerprint: fingerprint(order) };
+        return { seconds, miles: distance, indices: order };
     };
     const candidates = new Map();
     const retain = order => {
         const full = expand(order), measured = measure(full);
-        if (measured && measured.fingerprint !== incumbentFingerprint && !candidates.has(measured.fingerprint)) {
-            candidates.set(measured.fingerprint, { ...measured, indices: [...full] });
+        if (measured && fingerprintOf(measured) !== incumbentFingerprint && !candidates.has(fingerprintOf(measured))) {
+            candidates.set(fingerprintOf(measured), { ...measured, indices: [...full] });
         }
         return measured;
     };
@@ -142,8 +145,8 @@ export function buildDrivingAreaDoorCandidates(stops, context, start = null, end
             }
             if (!best) break;
             order = best.order; current = best.measured;
-            if (current.fingerprint !== incumbentFingerprint && !candidates.has(current.fingerprint)) {
-                candidates.set(current.fingerprint, { ...current, indices: expand(order) });
+            if (fingerprintOf(current) !== incumbentFingerprint && !candidates.has(fingerprintOf(current))) {
+                candidates.set(fingerprintOf(current), { ...current, indices: expand(order) });
             }
         }
     }

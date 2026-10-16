@@ -116,6 +116,7 @@ test('cached DP returns the same complete bounded choices as the original direct
         [7, { seed: 7, sides: true }, 4],
         [7, { seed: 11, sides: true, unreachable: true }, 8],
         [7, { seed: 13, sides: true, tied: true }, 4],
+        [8, { seed: 17, sides: true, tied: true, unreachable: true }, 8],
         [10, { seed: 17, sides: true, unreachable: true }, 4],
         [12, { seed: 19, sides: true }, 4],
     ];
@@ -125,6 +126,41 @@ test('cached DP returns the same complete bounded choices as the original direct
         const expected = referenceSearch(data.stops, data.context, data.start, data.end, options);
         assert.deepEqual(records(buildLocalDrivingCandidates(data.stops, data.context, data.start, data.end, options)),
             records(expected), `n=${n}, config=${JSON.stringify(config)}, width=${width}`);
+    }
+});
+
+test('lazy DP identities preserve completely tied candidate ordering and do not escape into returned choices', () => {
+    const data = fixture(8, { seed: 31, sides: false });
+    data.context.optimizationCostBetween = () => 1;
+    data.context.distanceBetween = () => 0.1;
+    const before = structuredClone(data.stops);
+    for (const width of [1, 4, 8]) {
+        const options = { localSearchWidth: width };
+        const actual = buildLocalDrivingCandidates(data.stops, data.context, data.start, data.end, options);
+        const expected = referenceSearch(data.stops, data.context, data.start, data.end, options);
+        assert.deepEqual(records(actual), records(expected));
+        for (const candidate of actual) {
+            assert.equal(candidate.previous, undefined);
+            assert.equal(candidate.stopKey, undefined);
+            assert.equal(candidate.fingerprint, candidate.order.map(id).join('|'));
+            assert.deepEqual(candidate.path.map(index => data.stops[index]), candidate.order);
+        }
+    }
+    assert.deepEqual(data.stops, before);
+});
+
+test('lazy DP preserves stable-sort behavior when tolerant comparisons are non-transitive', () => {
+    const tied = { seconds: 0, miles: 0, crossings: 0, passovers: 0, startSeconds: 0,
+        endSeconds: 0, entrySeconds: 0 };
+    const a = { ...tied, seconds: 1, fingerprint: 'c' };
+    const b = { ...tied, seconds: 1.08, fingerprint: 'b' };
+    const c = { ...tied, seconds: 1.16, fingerprint: 'a' };
+    assert.ok(compareSearch(a, b) > 0 && compareSearch(b, c) > 0 && compareSearch(a, c) < 0);
+    for (let seed = 1; seed <= 8; seed++) {
+        const data = fixture(6, { seed, sides: seed % 2 === 0, tied: true });
+        const options = { localSearchWidth: seed };
+        assert.deepEqual(records(buildLocalDrivingCandidates(data.stops, data.context, data.start, data.end, options)),
+            records(referenceSearch(data.stops, data.context, data.start, data.end, options)), `seed=${seed}`);
     }
 });
 

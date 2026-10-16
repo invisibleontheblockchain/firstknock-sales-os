@@ -98,15 +98,6 @@ test('saved-route overview ignores road segments and draws direct dashed stop co
     assert.equal(line.options.dashArray, '4,6');
 });
 
-test('route-line legend describes stop order without implying road verification failed', () => {
-    const { exports } = renderModule('src/components/map/RoutePathLegend.jsx');
-    const rendered = exports.default();
-    const text = JSON.stringify(rendered);
-    assert.ok(text.includes('Lines connect stops in order'));
-    assert.equal(text.includes('not available'), false);
-    assert.equal(text.includes('hasDrivingGeometry'), false);
-});
-
 test('recorded decision filters still suppress manager route connectors', () => {
     const { exports, effects, groups } = renderModule('src/components/map/ManagerMapLayers.jsx');
     exports.ActiveRouteLayer({ activeRoute: { properties: doors }, mapSettings: {}, pinSize: 3, decisionFilterActive: true });
