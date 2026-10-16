@@ -22,12 +22,16 @@ import { base44 } from '@/api/base44Client';
 // optimized (that is how a 183-door route shipped an unmeasured order).
 const MAX_ROAD_MATRIX_DOORS = 2500;
 
-// Keep the interactive wait bounded, with room for provider/network variation.
-// The complete 377-door area/curb review measured 88.4 seconds live; a 90-second
-// ceiling can discard a valid result before it reaches a field user's browser.
+// A fully verified 626-door production request took 133 seconds. Give larger
+// manifests three minutes while retaining the two-minute bound up to 500 doors.
+// The complete Optimize action still has a separate five-minute ceiling.
 const ROAD_MATRIX_DEADLINE_MS = 120000;
+const LARGE_ROAD_MATRIX_DEADLINE_MS = 180000;
+const LARGE_ROAD_MATRIX_THRESHOLD = 500;
 const OPTIMIZE_ACTION_DEADLINE_MS = 300000;
 const MAX_OPTIMIZE_PASSES = 3;
+const routeRequestDeadline = properties => properties?.length > LARGE_ROAD_MATRIX_THRESHOLD
+    ? LARGE_ROAD_MATRIX_DEADLINE_MS : ROAD_MATRIX_DEADLINE_MS;
 
 // Coverage is scheduling history, never reusable driving proof. Whitelist its
 // opaque identifiers and counters so private anchors/provider payloads cannot
@@ -146,7 +150,7 @@ export function buildRoadMatrixRoutingBlock(meta = {}) {
 async function tryRoadMatrixOptimizePass(routeProperties, {
     start = null,
     end = null,
-    deadlineMs = ROAD_MATRIX_DEADLINE_MS,
+    deadlineMs = routeRequestDeadline(routeProperties),
     onOutcome = null,
     neighborhoodReview = null,
     searchCoverage = null,
@@ -384,12 +388,13 @@ function appliedPartialMetadata(meta, localMilesSaved) {
  * original click's mileage baseline and save only once after the bounded action. */
 export async function tryRoadMatrixOptimize(routeProperties, {
     searchCoverage = null, maxSearchPasses = 1,
-    totalDeadlineMs = OPTIMIZE_ACTION_DEADLINE_MS, deadlineMs = ROAD_MATRIX_DEADLINE_MS,
+    totalDeadlineMs = OPTIMIZE_ACTION_DEADLINE_MS, deadlineMs,
     onOutcome = null, onProgress = null, ...options
 } = {}) {
     const limit = Number.isFinite(maxSearchPasses) ? Math.max(1, Math.min(MAX_OPTIMIZE_PASSES, Math.floor(maxSearchPasses))) : 1;
     const budget = Number.isFinite(totalDeadlineMs) ? Math.max(1, Math.min(OPTIMIZE_ACTION_DEADLINE_MS, totalDeadlineMs)) : OPTIMIZE_ACTION_DEADLINE_MS;
-    const requestBudget = Number.isFinite(deadlineMs) ? Math.max(1, Math.min(ROAD_MATRIX_DEADLINE_MS, deadlineMs)) : ROAD_MATRIX_DEADLINE_MS;
+    const defaultDeadline = routeRequestDeadline(routeProperties);
+    const requestBudget = Number.isFinite(deadlineMs) ? Math.max(1, Math.min(defaultDeadline, deadlineMs)) : defaultDeadline;
     const started = Date.now();
     let coverage = normalizeRoadSearchCoverage(searchCoverage), lastReason, lastMeasurement;
     let currentProperties = routeProperties, accepted = null, baselineMiles = null;
