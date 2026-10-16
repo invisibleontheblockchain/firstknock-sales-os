@@ -34,6 +34,7 @@ function response({ ledger = coverage(), order = hashes, selected = 'current', m
         road_search_coverage: ledger, ...meta } } };
 }
 const api = invoke => ({ functions: { invoke } });
+const withToken = (value, token) => ({ ...value, data: { ...value.data, search_continuation: token } });
 const route = { id: 'route', properties, allProperties: properties, property_hashes: hashes,
     route_origin_mode: 'none', metrics: { distance: 10, house_count: 3 }, metadata: {} };
 function comparison({ original = hashes, input = candidate, output = candidate,
@@ -67,6 +68,7 @@ test('a verified no-op and improvement continue until the latest order has compl
         assert.deepEqual(request.comparison_order, hashes, 'the original click order remains the comparison baseline');
     }
     for (const [index, request] of requests.entries()) {
+        assert.equal(request.search_continuation_version, 1);
         assert.deepEqual(request.properties.map(p => p.address_hash), index < 2 ? hashes : candidate);
         assert.deepEqual(request.start_location, start);
         assert.deepEqual(request.end_location, end);
@@ -77,6 +79,86 @@ test('a verified no-op and improvement continue until the latest order has compl
     assert.deepEqual(result.routingMetadata.road_search_coverage, coverage(5));
     assert.deepEqual(progress, [{ pass: 2, maxPasses: 3, remainingWindows: 4 },
         { pass: 3, maxPasses: 3, remainingWindows: 3 }]);
+});
+
+test('only validated preceding responses carry opaque continuation tokens within the same action', async () => {
+    const requests = [];
+    const certifiedCoverage = done => ({ ...coverage(done),
+        completed_window_keys: coverage(done).completed_window_keys.map(value => value.repeat(2)) });
+    const result = await optimize(properties, { maxSearchPasses: 3, searchContinuation: 'caller-supplied-token',
+        onSearchContinuation: () => assert.fail('tokens must not escape through caller options'),
+        client: api(async (_name, payload) => {
+            requests.push(payload);
+            if (requests.length === 1) return withToken(response({ ledger: certifiedCoverage(1) }), 'private-token-one');
+            if (requests.length === 2) return withToken(response({ ledger: certifiedCoverage(2), order: candidate,
+                selected: 'road_aware' }), 'private-token-two');
+            return withToken(response({ ledger: certifiedCoverage(5), order: candidate,
+                meta: { input_measured: 8 } }), 'private-token-final');
+        }) });
+    assert.deepEqual(requests.map(request => request.search_continuation), [undefined, 'private-token-one', 'private-token-two']);
+    assert.deepEqual(requests[1].search_coverage, certifiedCoverage(1));
+    assert.deepEqual(requests[2].search_coverage, certifiedCoverage(2));
+    for (const request of requests.slice(1)) {
+        assert.equal(request.search_phase, 'remaining_neighborhoods');
+        assert.deepEqual(request.comparison_order, hashes);
+    }
+    assert.deepEqual(result.order.map(p => p.address_hash), candidate);
+    assert.equal(result.routingMetadata.road_search_coverage.cycle_complete, true);
+    assert.doesNotMatch(JSON.stringify(result), /private-token|search_continuation|searchContinuation/);
+});
+
+for (const [label, token] of [['omitted', undefined], ['empty', ''], ['non-string', { private: true }],
+    ['oversized', 'x'.repeat(262145)]]) {
+    test(`continuation token ${label}: clear preceding proof transport without restarting the global solve`, async () => {
+        const requests = [];
+        let outcome;
+        await optimize(properties, { maxSearchPasses: 3, onOutcome: (reason, measurement) => { outcome = { reason, measurement }; },
+            client: api(async (_name, payload) => {
+                requests.push(payload);
+                return withToken(response({ ledger: coverage(requests.length === 3 ? 5 : requests.length) }),
+                    requests.length === 1 ? 'private-token-one' : token);
+            }) });
+        assert.deepEqual(requests.map(request => request.search_continuation), [undefined, 'private-token-one', undefined]);
+        assert.ok(requests.every(request => request.search_continuation_version === 1));
+        assert.equal(requests[2].search_phase, 'remaining_neighborhoods');
+        assert.equal(outcome.reason, 'current_order_measured_best');
+        assert.equal(outcome.measurement.routingMetadata.road_search_coverage.cycle_complete, true);
+        assert.doesNotMatch(JSON.stringify(outcome), /private-token|search_continuation|searchContinuation/);
+    });
+}
+
+test('the maximum bounded token is transported and separate concurrent actions cannot exchange tokens', async () => {
+    const firstToken = 'a'.repeat(262144), secondToken = 'private-second-action';
+    const requests = [[], []];
+    await Promise.all([firstToken, secondToken].map((token, index) => optimize(properties, {
+        maxSearchPasses: 2, client: api(async (_name, payload) => {
+            requests[index].push(payload);
+            await Promise.resolve();
+            return withToken(response({ ledger: coverage(requests[index].length === 1 ? 1 : 5) }), token);
+        }),
+    })));
+    assert.deepEqual(requests.map(actionRequests => actionRequests.map(request => request.search_continuation)),
+        [[undefined, firstToken], [undefined, secondToken]]);
+    await optimize(properties, { maxSearchPasses: 1, searchContinuation: firstToken, client: api(async (_name, payload) => {
+        assert.equal(payload.search_continuation, undefined, 'a new action cannot reuse an earlier action token');
+        return response({ ledger: coverage(5) });
+    }) });
+});
+
+test('a token accompanying a changed graph cannot bypass acceptance checks or start another pass', async () => {
+    let calls = 0;
+    const result = await optimize(properties, { maxSearchPasses: 3, client: api(async (_name, payload) => {
+        calls++;
+        assert.equal(payload.search_continuation, calls === 1 ? undefined : 'private-accepted-token');
+        return calls === 1 ? withToken(response({ selected: 'road_aware', order: candidate }), 'private-accepted-token')
+            : withToken(response({ order: candidate, ledger: coverage(2),
+                meta: { input_measured: 8, road_matrix_version: 'different-graph' } }), 'private-rejected-token');
+    }) });
+    assert.equal(calls, 2);
+    assert.deepEqual(result.order.map(p => p.address_hash), candidate);
+    assert.equal(result.routingMetadata.road_search_stop_reason, 'measurement_changed');
+    assert.deepEqual(result.routingMetadata.road_search_coverage, coverage());
+    assert.doesNotMatch(JSON.stringify(result), /private-.*token|search_continuation|searchContinuation/);
 });
 
 test('continuation has an eight-request safety fuse and reports unfinished search honestly', async () => {
@@ -113,7 +195,9 @@ test('errors, incomplete path proof, invalid ledgers and exhausted progress neve
     ];
     for (const fixture of cases) {
         let calls = 0;
-        await optimize(properties, { maxSearchPasses: 3, client: api(async () => { calls++; return response(fixture); }) });
+        await optimize(properties, { maxSearchPasses: 3, client: api(async () => {
+            calls++; return withToken(response(fixture), 'private-unusable-token');
+        }) });
         assert.equal(calls, 1, JSON.stringify(fixture));
     }
     let calls = 0, result;
@@ -172,7 +256,10 @@ test('a selected-current response with a different or malformed manifest cannot 
 test('coverage rejects private/raw identifiers and strips unrelated fields before reuse', () => {
     const safe = coverage();
     assert.deepEqual(normalize({ ...safe, start_location: { lat: 35.123456, lng: -81.234567 }, raw_error: 'provider' }), safe);
+    const certified = { ...safe, completed_window_keys: ['a'.repeat(64)] };
+    assert.deepEqual(normalize(certified), certified);
     for (const invalid of [{ ...safe, completed_window_keys: [key(1), key(1)] },
+        ...[31, 33, 63, 65].map(length => ({ ...safe, completed_window_keys: ['a'.repeat(length)] })),
         { ...safe, completed_window_keys: Array.from({ length: 8193 }, (_, i) => key(i + 1)) }, { ...safe, remaining_windows: 35.123456 },
         { ...safe, policy: 'https://provider/private' }, { ...safe, cycle_complete: true }]) {
         assert.equal(normalize(invalid), null);
@@ -187,11 +274,12 @@ test('no-op then accepted continuation persists one verified order and reloads i
     let calls = 0, saved, writes = 0, active = route;
     const client = { functions: { invoke: async (_name, payload) => {
         calls++;
+        assert.equal(payload.search_continuation, calls === 2 ? 'private-action-one' : calls === 3 ? 'private-action-two' : undefined);
         assert.deepEqual(payload.properties.map(p => p.address_hash), calls < 3 ? hashes : candidate);
-        if (calls === 1) return response();
-        if (calls === 2) return response({ ledger: coverage(2), order: candidate, selected: 'road_aware' });
+        if (calls === 1) return withToken(response(), 'private-action-one');
+        if (calls === 2) return withToken(response({ ledger: coverage(2), order: candidate, selected: 'road_aware' }), 'private-action-two');
         assert.deepEqual(payload.search_coverage, calls === 3 ? coverage(2) : coverage(5));
-        return response({ ledger: coverage(5), order: candidate, meta: { input_measured: 8 } });
+        return withToken(response({ ledger: coverage(5), order: candidate, meta: { input_measured: 8 } }), 'private-action-final');
     } }, entities: { SavedRoute: { update: async (_id, patch) => { writes++; saved = { ...(saved || route), ...patch }; return saved; } } } };
     await action(route, { mode: 'route_only' }, { client, queryClient: queries, setActiveRoute: updater => { active = updater(active); } });
     assert.equal(calls, 3);
@@ -203,6 +291,8 @@ test('no-op then accepted continuation persists one verified order and reloads i
     assert.equal(saved.metadata.last_optimization_attempt.status, 'applied');
     assert.doesNotMatch(saved.metadata.last_optimization_attempt.message, /checks remain/);
     assert.equal(saved.metrics.distance, 8);
+    assert.doesNotMatch(JSON.stringify({ saved, active, cached: queries.getQueryData(['savedRoutes', 'manager']),
+        map: queries.getQueryData(['routeMap', 'manager', route.id]), messages }), /private-action|search_continuation|searchContinuation/);
     assert.ok(messages.some(value => /Saved ~2 estimated miles/.test(value.message)));
     assert.ok(messages.some(value => /remaining neighborhoods \(pass 2; 4 checks left\)/.test(value.message)));
     const reopened = queries.getQueryData(['routeMap', 'manager', route.id]);
@@ -631,9 +721,11 @@ test('626-door route automatically finishes local checks around unresolved Stop 
             const expected = [ruralHashes, ruralFirst, ruralSecond][calls];
             assert.deepEqual(payload.properties.map(p => p.address_hash), expected);
             assert.equal(payload.properties[10].order_locked, true);
+            assert.equal(payload.search_continuation, calls ? `private-partial-${calls - 1}` : undefined);
             if (calls) assert.deepEqual(payload.search_coverage, coverage(calls === 1 ? 16 : 100, 181));
-            return [partialResponse(), partialResponse({ order: ruralSecond, done: 100, savings: 1.02 }),
-                partialResponse({ order: ruralSecond, done: 181, unchanged: true })][calls++];
+            const value = [partialResponse(), partialResponse({ order: ruralSecond, done: 100, savings: 1.02 }),
+                partialResponse({ order: ruralSecond, done: 181, unchanged: true })][calls];
+            return withToken(value, `private-partial-${calls++}`);
         } }, entities: { SavedRoute: { update: async (_id, patch) => { saves++; saved = { ...selected, ...patch }; return saved; } } },
     } });
     assert.equal(calls, 3); assert.equal(saves, 1);
@@ -645,6 +737,7 @@ test('626-door route automatically finishes local checks around unresolved Stop 
     assert.equal(saved.metadata.routing.road_access_recovery.unresolved[0].stop_number, 295);
     assert.equal(saved.metadata.last_optimization_attempt.route_verification_complete, false);
     assert.equal(saved.metadata.routing.neighborhood_excursion_review.local_driving_review.localMilesSaved, 31);
+    assert.doesNotMatch(JSON.stringify({ saved, messages }), /private-partial|search_continuation|searchContinuation/);
     assert.ok(messages.some(message => /Whole-route distance remains unverified/.test(message.message)));
 });
 

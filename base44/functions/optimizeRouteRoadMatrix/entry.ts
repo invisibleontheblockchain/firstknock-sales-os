@@ -29,6 +29,7 @@ import { reviewFinalNeighborhoodRoute } from '../../shared/finalNeighborhoodRevi
 import { reviewNeighborhoodExcursions } from '../../shared/neighborhoodExcursions.js';
 import { fetchOsrmJson } from '../../shared/osrmDispatcher.js';
 import { createOsrmRequestCache } from '../../shared/osrmRequestCache.js';
+import { createRoadSearchSession } from '../../shared/roadSearchSession.js';
 import { createRoadCostCache } from '../../shared/roadCostCache.js';
 import { createMemoizedRouteMetrics } from '../../shared/routeMetricMemo.js';
 import { recoverRouteVehicleAccess } from '../../shared/routeAccessRecovery.js';
@@ -46,7 +47,7 @@ import {
 
 // Bump when candidate generation or the objective changes, so a stored route can
 // be told apart from one produced by an older solver.
-const OPTIMIZER_VERSION = 'road_matrix_parallel_neighborhoods_v20';
+const OPTIMIZER_VERSION = 'road_matrix_verified_search_reuse_v21';
 
 function readSecret(name) {
     try {
@@ -171,7 +172,7 @@ export default async function (req: Request): Promise<Response> {
         });
         const roadSource = source => countyRouting.stats().countyStopCount > 0 ? `${source}+county_ng911` : source;
 
-        const neighborhoodOptions = {
+        const neighborhoodOptions: Record<string, any> = {
             startLocation, endLocation, baselineOrder: properties,
             localDrivingReview: profile === 'driving',
             shortDrivingCleanup: profile === 'driving',
@@ -182,6 +183,27 @@ export default async function (req: Request): Promise<Response> {
             vehicleFetch: countyRouting.vehicleFetch,
             preferContiguousOnTie: body.neighborhood_review?.prefer_contiguous_on_tie === true,
             tieSeconds: Math.min(10, Math.max(0, Number(body.neighborhood_review?.tie_seconds) || 0)),
+        };
+        const searchSession = await createRoadSearchSession({
+            secret: readSecret('ROUTE_SEARCH_CONTINUATION_SECRET'),
+            appId: readSecret('BASE44_APP_ID') || Deno.env.get('BASE44_APP_ID') || '',
+            userId: String(user.id || ''), optimizerVersion: OPTIMIZER_VERSION,
+            providerIdentity: [vehicleBaseUrl, profile, countyRouting.graphIdentity || ''].join('|'),
+            body, properties, displayProperties, startLocation, endLocation,
+            neighborhoodOptions, startedAt: solverStartedAt,
+            eligible: profile === 'driving' && !accessRecovery.report?.unresolved?.length,
+        });
+        if (searchSession.proof) neighborhoodOptions.roadSearchProof = searchSession.proof;
+        // New clients never promote unsigned scheduling history into proof of
+        // completion, including disabled/unresolved continuation fallbacks.
+        else if (body.search_continuation_version === 1) neighborhoodOptions.searchCoverage = undefined;
+        const finishSearch = async (winningOrder, eligible) => {
+            const started = Date.now();
+            const token = await searchSession.finish({ winningOrder, eligible,
+                accessOverrides: accessRecovery.report?.access_overrides });
+            stageTimings.search_continuation_ms = Date.now() - started;
+            stageTimings.total_ms = Date.now() - solverStartedAt;
+            return token ? { search_continuation: token } : {};
         };
 
         if (remainingNeighborhoods && !accessRecovery.report?.unresolved?.length) {
@@ -227,12 +249,16 @@ export default async function (req: Request): Promise<Response> {
                 duration_improvement: round((complete.baseline.driveSeconds - complete.measurement.driveSeconds) / 60),
                 selected_candidate_type: applied ? 'road_aware' : 'current',
                 optimization_timings: stageTimings, road_response_cache: responseCache.stats(),
+                road_search_session: searchSession.diagnostic,
                 ...buildVerifiedRouteGeometry({ measurement: complete.measurement,
                     properties: winningOrder, displayProperties, startLocation, endLocation }),
                 ...(winningOrder.every((stop, i) => propertyIdentity(stop) === propertyIdentity(local.properties[i]))
                     ? { road_search_coverage: local.searchCoverage } : {}),
             };
+            const continuation = await finishSearch(winningOrder, Boolean(metadata.road_search_coverage));
+            metadata.road_response_cache = responseCache.stats();
             return Response.json({ success: true, selected: applied ? 'road_aware' : 'current',
+                ...continuation,
                 order: winningOrder.map(propertyIdentity), property_count: winningOrder.length, routing_metadata: metadata });
         }
 
@@ -271,6 +297,7 @@ export default async function (req: Request): Promise<Response> {
             measurePath: (order, options) => measureRoadPath(order, { ...options, fetchJson: countyRouting.fetchJson }),
         });
         const baseMetadata: Record<string, unknown> = {
+            road_search_session: searchSession.diagnostic,
             property_set_fingerprint: setFingerprint,
             start_constraint: startLocation,
             end_constraint: endLocation,
@@ -466,6 +493,7 @@ export default async function (req: Request): Promise<Response> {
                 const degraded = telemetry.degraded;
 
                 if (validated) return Response.json({
+                    ...await finishSearch(winningOrder, Boolean(complete && baseMetadata.road_search_coverage)),
                     success: true,
                     selected: keepCurrent ? 'current' : 'road_aware',
                     order: winningOrder.map(propertyIdentity),
@@ -734,6 +762,7 @@ export default async function (req: Request): Promise<Response> {
             tier: plan.tier, timings: stageTimings, road_requests: responseCache.stats() }));
 
         return Response.json({
+            ...await finishSearch(winner.order, profile === 'driving' && Boolean(baseMetadata.road_search_coverage)),
             success: true,
             // 'current' tells the caller the saved order already won — leave it alone.
             selected: winner.is_current ? 'current' : winner.type,

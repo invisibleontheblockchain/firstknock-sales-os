@@ -34,6 +34,8 @@ const OPTIMIZE_ACTION_DEADLINE_MS = 300000;
 // by remaining work, proof, progress, and the five-minute action budget.
 const MAX_OPTIMIZE_PASSES = 8;
 const MIN_CONTINUATION_BUDGET_MS = 60000;
+const boundedSearchContinuation = value => typeof value === 'string' && value.length > 0 && value.length <= 262144
+    ? value : null;
 const routeRequestDeadline = properties => properties?.length > LARGE_ROAD_MATRIX_THRESHOLD
     ? LARGE_ROAD_MATRIX_DEADLINE_MS : ROAD_MATRIX_DEADLINE_MS;
 
@@ -44,7 +46,7 @@ export function normalizeRoadSearchCoverage(value) {
     const count = number => Number.isSafeInteger(number) && number >= 0 && number <= 1000000;
     if (value?.version !== 1 || typeof value.policy !== 'string' || !/^[a-z\d_-]{1,120}$/i.test(value.policy)
         || !Array.isArray(value.completed_window_keys) || value.completed_window_keys.length > 8192
-        || value.completed_window_keys.some(key => typeof key !== 'string' || !/^[a-f\d]{32}$/.test(key))
+        || value.completed_window_keys.some(key => typeof key !== 'string' || !/^(?:[a-f\d]{32}|[a-f\d]{64})$/.test(key))
         || new Set(value.completed_window_keys).size !== value.completed_window_keys.length
         || !['total_windows', 'remaining_windows', 'checked_this_pass', 'progress_this_pass'].every(key => count(value[key]))
         || value.remaining_windows > value.total_windows || value.progress_this_pass > value.checked_this_pass
@@ -160,6 +162,8 @@ async function tryRoadMatrixOptimizePass(routeProperties, {
     searchCoverage = null,
     comparisonOrder = null,
     searchPhase = null,
+    searchContinuation = null,
+    onSearchContinuation = null,
     client = base44
 } = {}) {
     const decline = (reason, measurement = null) => { onOutcome?.(reason, measurement); return null; };
@@ -188,11 +192,15 @@ async function tryRoadMatrixOptimizePass(routeProperties, {
                 routing_access: property.routing_access,
                 order_locked: property.order_locked === true || property.locked === true,
             })),
-            timeout_ms: 12000
+            timeout_ms: 12000,
+            search_continuation_version: 1
         };
         const coverage = normalizeRoadSearchCoverage(searchCoverage);
         if (coverage) payload.search_coverage = coverage;
         if (searchPhase === 'remaining_neighborhoods') payload.search_phase = searchPhase;
+        if (searchPhase === 'remaining_neighborhoods' && boundedSearchContinuation(searchContinuation)) {
+            payload.search_continuation = searchContinuation;
+        }
         if (Array.isArray(comparisonOrder)) payload.comparison_order = comparisonOrder.map(propertyKey);
         if (neighborhoodReview) payload.neighborhood_review = {
             prefer_contiguous_on_tie: neighborhoodReview.preferContiguousOnTie === true,
@@ -223,6 +231,10 @@ async function tryRoadMatrixOptimizePass(routeProperties, {
             if (data?.routing_metadata) measurement.routingMetadata = data.routing_metadata;
             return decline(failureReason(measurement, 'backend_reported_failure'), measurement);
         }
+        // This private transport channel never enters route metadata or a
+        // returned measurement. The action promotes it only after its existing
+        // proof and coverage checks accept another pass.
+        onSearchContinuation?.(boundedSearchContinuation(data.search_continuation));
         const responseMeta = data.routing_metadata || {};
         const routingMetadata = { ...responseMeta, source: 'optimizeRouteRoadMatrix',
             routing: buildRoadMatrixRoutingBlock(responseMeta) };
@@ -457,6 +469,9 @@ export async function tryRoadMatrixOptimize(routeProperties, {
     let coverage = normalizeRoadSearchCoverage(searchCoverage), lastReason, lastMeasurement;
     let currentProperties = routeProperties, accepted = null, baselineMiles = null;
     let acceptedPartialProof = null, localSavings = 0;
+    // Only the preceding accepted response in this click can supply a token.
+    // A saved route, a different action, or a caller option cannot seed it.
+    let searchContinuation = null;
     const shouldContinue = (proof, result, returnedCoverage, pass) => {
         if (returnedCoverage?.cycle_complete) return false;
         const stopReason = !proof ? 'incomplete_verification'
@@ -473,9 +488,11 @@ export async function tryRoadMatrixOptimize(routeProperties, {
     };
     for (let pass = 1; pass <= limit; pass++) {
         if (pass > 1) onProgress?.({ pass, maxPasses: limit, remainingWindows: coverage.remaining_windows });
-        let reason, measurement;
+        let reason, measurement, nextSearchContinuation = null;
         const result = await tryRoadMatrixOptimizePass(currentProperties, { ...options, searchCoverage: coverage,
             ...(pass > 1 ? { searchPhase: 'remaining_neighborhoods', comparisonOrder: routeProperties } : {}),
+            searchContinuation: pass > 1 ? searchContinuation : null,
+            onSearchContinuation: value => { nextSearchContinuation = value; },
             deadlineMs: Math.min(requestBudget, Math.max(1, budget - (Date.now() - started))),
             onOutcome: (value, details) => { reason = value; measurement = details; } });
         const meta = result?.routingMetadata || measurement?.routingMetadata;
@@ -521,6 +538,7 @@ export async function tryRoadMatrixOptimize(routeProperties, {
             }
             if (!shouldContinue(proof, result, returnedCoverage, pass)) break;
             if (!accepted) currentProperties = withRecoveredAccess(currentProperties, meta);
+            searchContinuation = nextSearchContinuation;
             continue;
         }
         const comparison = verified && pass > 1
@@ -565,6 +583,7 @@ export async function tryRoadMatrixOptimize(routeProperties, {
         }
         if (!shouldContinue(verified, result, returnedCoverage, pass)) break;
         if (!accepted) currentProperties = withRecoveredAccess(currentProperties, meta);
+        searchContinuation = nextSearchContinuation;
     }
     if (accepted) return accepted;
     onOutcome?.(lastReason, lastMeasurement);

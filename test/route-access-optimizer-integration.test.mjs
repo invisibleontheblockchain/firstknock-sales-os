@@ -7,6 +7,7 @@ import * as continuity from '../base44/shared/routeContinuityOptimizer.js';
 import * as candidateSelection from '../base44/shared/routeCandidateSelection.js';
 import * as legDistribution from '../base44/shared/roadLegDistribution.js';
 import * as routeDisplayGeometry from '../base44/shared/routeDisplayGeometry.js';
+import * as roadSearchSession from '../base44/shared/roadSearchSession.js';
 
 const source = fs.readFileSync(new URL('../base44/functions/optimizeRouteRoadMatrix/entry.ts', import.meta.url), 'utf8');
 const compiled = ts.transpileModule(source, { compilerOptions: {
@@ -49,10 +50,10 @@ for (const planTier of ['door', 'cluster']) test(`${planTier} response reuses co
 });
 
 function endpoint({ recover, local, finalReview, verify, winner, planTier = 'door', failProvider = false, authenticated = true,
-    matrixSource = 'osrm:driving', cacheStats = {} } = {}) {
+    matrixSource = 'osrm:driving', cacheStats = {}, session } = {}) {
     const calls = { events: [], recovery: [], plan: [], continuity: [], matrix: [], provider: [], local: [],
         globalReview: [], county: [], roadCosts: [], paths: [], completeVerification: [],
-        sweep: 0, hierarchy: 0, candidateComparison: 0 };
+        sweep: 0, hierarchy: 0, candidateComparison: 0, sessions: [], finalized: [] };
     const modules = {
         'npm:@base44/sdk@0.8.40': { createClientFromRequest: () => ({ auth: { me: async () => authenticated ? { id: 'manager' } : null } }) },
         'base44:runtime': { secrets: { get: key => key === 'OSRM_BASE_URL' ? 'https://roads.test' : 'test-geocoder-key' } },
@@ -112,6 +113,14 @@ function endpoint({ recover, local, finalReview, verify, winner, planTier = 'doo
                 return { code: 'Ok' };
             }, stats: () => ({ requests: calls.provider.length }),
         }) },
+        '../../shared/roadSearchSession.js': { createRoadSearchSession: async options => {
+            calls.sessions.push(options);
+            const configured = await (session || roadSearchSession.createRoadSearchSession)(options);
+            return { ...configured, finish: async input => {
+                calls.finalized.push(input);
+                return configured.finish(input);
+            } };
+        } },
         '../../shared/roadCostCache.js': { createRoadCostCache: config => {
             calls.roadCosts.push(config); return { ...config, stats: () => cacheStats };
         } },
@@ -152,7 +161,7 @@ function endpoint({ recover, local, finalReview, verify, winner, planTier = 'doo
         exports, require: name => {
             assert.ok(modules[name], `Unexpected optimizer module ${name}`);
             return modules[name];
-        }, Response, Request, URL, console: { info() {}, warn() {}, error() {} },
+        }, Response, Request, URL, Deno: { env: { get: () => '' } }, console: { info() {}, warn() {}, error() {} },
     }, { filename: 'optimizeRouteRoadMatrix/entry.ts' });
     return { calls, async invoke(properties, request = {}) {
         const response = await exports.default({ json: async () => ({ properties: structuredClone(properties), ...request }) });
@@ -614,6 +623,39 @@ for (const planTier of ['door', 'cluster']) {
         assert.equal(JSON.stringify(body.routing_metadata.neighborhood_excursion_review).includes('completed_window_keys'), false);
         assert.equal(f.calls.globalReview.length, 1);
         assert.equal(f.calls.completeVerification.length, 1);
+        assert.equal(f.calls.finalized.length, 1);
+        assert.equal(f.calls.finalized[0].eligible, true);
+        assert.deepEqual(ids(f.calls.finalized[0].winningOrder), body.order);
+        assert.equal(body.search_continuation, undefined, 'legacy requests do not receive a token');
+    });
+}
+
+for (const planTier of ['door', 'cluster']) {
+    test(`${planTier} final driving proof can issue a token only for its accepted neighborhood order`, async () => {
+        const properties = inputStops();
+        for (const reject of [false, true]) {
+            const f = endpoint({ planTier, winner: candidates => candidates.find(candidate => candidate.is_current),
+                session: () => ({ proof: {}, diagnostic: { status: 'fresh' },
+                    finish: async input => input.eligible ? 'private-final-token' : null }),
+                finalReview: submitted => {
+                    const proposed = [...submitted];
+                    if (reject) [proposed[1], proposed[2]] = [proposed[2], proposed[1]];
+                    return { properties: proposed, searchCoverage: coverageReport(),
+                        diagnostics: { applied: reject, local_driving_review: { applied: reject } } };
+                },
+                verify: input => ({ properties: input.baselineOrder, measurement: drivingMeasurement(), baseline: drivingMeasurement(),
+                    applied: false, keptCurrent: true, diagnostics: { applied: false,
+                        local_driving_review: { applied: false, validation: 'whole_route' } } }) });
+            const { status, body } = await f.invoke(properties, { search_continuation_version: 1 });
+            assert.equal(status, 200); assert.equal(body.success, true);
+            assert.equal(body.routing_metadata.road_path_validated, true);
+            assert.deepEqual(body.order, ids(properties));
+            assert.equal(f.calls.finalized.length, 1);
+            assert.equal(f.calls.finalized[0].eligible, !reject);
+            assert.deepEqual(ids(f.calls.finalized[0].winningOrder), body.order);
+            assert.equal(body.search_continuation, reject ? undefined : 'private-final-token');
+            assert.doesNotMatch(JSON.stringify(body.routing_metadata), /private-final-token/);
+        }
     });
 }
 
@@ -628,6 +670,9 @@ test('access-limited incumbent search forwards coverage and returns the ledger o
     assert.equal(status, 200);
     assert.deepEqual(body.routing_metadata.road_search_coverage, report);
     assert.equal(JSON.stringify(body.routing_metadata.neighborhood_excursion_review).includes('completed_window_keys'), false);
+    assert.equal(f.calls.sessions[0].eligible, false);
+    assert.equal(f.calls.finalized.length, 0);
+    assert.equal(body.search_continuation, undefined);
 });
 
 test('final driving rejection cannot attach completion history for a different proposed order', async () => {
@@ -646,6 +691,7 @@ test('final driving rejection cannot attach completion history for a different p
     assert.equal(status, 200);
     assert.deepEqual(body.order, ids(properties));
     assert.equal('road_search_coverage' in body.routing_metadata, false);
+    assert.equal(f.calls.finalized.length, 1); assert.equal(f.calls.finalized[0].eligible, false);
 });
 
 test('an unproved partial proposal cannot attach completion history for its discarded order', async () => {
