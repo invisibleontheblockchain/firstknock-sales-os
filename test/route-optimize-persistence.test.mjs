@@ -358,10 +358,12 @@ test('an access-limited applied repair preserves the prior distance and never cl
     [partialOrder[1], partialOrder[2]] = [partialOrder[2], partialOrder[1]];
     const unresolved = { property_id: originalHashes.at(-1), stop_number: properties.length,
         address: `${properties.at(-1).house_number} ${properties.at(-1).street_name}`, reason: 'road_not_matched' };
-    const accessReport = { ...recovery, status: 'partial', attempted: 2, unresolved: [unresolved] };
+    const accessReport = { ...recovery, status: 'partial', attempted: 2, inventory_complete: true,
+        unverified_count: 0, unresolved: [unresolved] };
     let written, active = route;
     const api = { functions: { invoke: async () => ({ data: { success: true, selected: 'road_aware', order: partialOrder,
         routing_metadata: { strategy: 'access_guarded_neighborhood_repair', road_network_used: true,
+            matrix_provider: 'test-driving-roads', road_matrix_version: 'v1', routing_profile: 'driving',
             road_path_validated: false, distance_estimate: 'unavailable', input_measured: null, winning_route_distance: null,
             road_access_recovery: accessReport, neighborhood_excursion_review: { local_driving_review: {
                 ...fullReview, applied: true, validation: 'overlapping_boundary_legs', localMilesSaved: 1.25,

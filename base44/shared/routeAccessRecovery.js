@@ -4,6 +4,7 @@ import { roadNetworkRoutingInternals } from './roadNetworkRouting.js';
 import { vehicleProviderConfig } from './vehicleProviderConfig.js';
 import { discoverCountyRoadAccess, validateCountyRoadAccess } from './countyRoadAccess.js';
 import { validateCountyRoadNetwork } from './countyRoadRouting.js';
+import { discoverMappedDrivewayAccess, validateMappedDrivewayAccess } from './mappedDrivewayAccess.js';
 
 const MATCH_RADIUS = 100;
 const MAX_FAILED_STOPS = 32;
@@ -62,11 +63,11 @@ function providerUrl(config, service, points) {
     return url;
 }
 
-function validSnap(waypoint, point) {
+function validSnap(waypoint, point, maximum = MATCH_RADIUS + 0.5) {
     const snapped = { lat: waypoint?.location?.[1], lng: waypoint?.location?.[0] };
     return isValidRoutePoint(snapped) && Number.isFinite(waypoint?.distance)
-        && waypoint.distance >= 0 && waypoint.distance <= MATCH_RADIUS + 0.5
-        && distance(snapped, point) <= MATCH_RADIUS + 0.5;
+        && waypoint.distance >= 0 && waypoint.distance <= maximum
+        && distance(snapped, point) <= maximum;
 }
 
 function addressItem(stop) {
@@ -111,6 +112,7 @@ function cachedAccess(stop) {
             || distance(access.point, access.county_road.point) > 0.1
             || streetKey(access.roadName) !== streetKey(stop.street_name)) return null;
     }
+    if (access.source === 'mapped_driveway_recovery' && !validateMappedDrivewayAccess(stop, access)) return null;
     // Existing manually supplied and mapped driveway/curb access was authorized
     // before recovery caches existed. Keep it, bind it to this display pin, and
     // still rematch it against the configured driving provider below.
@@ -132,7 +134,7 @@ export async function recoverRouteVehicleAccess(properties, options = {}) {
         profile: options.vehicleProfile || 'driving', production: options.production === true });
     const scope = deadline(options.signal, Math.max(1, Math.min(45000, Number(options.budgetMs) || 45000)));
     const report = { status: 'ready', attempted: 0, recovered: 0, reused: 0, unresolved: [], access_overrides: {},
-        inventory_complete: true, unverified_count: 0, failure_reason: null, county_recovered: 0 };
+        inventory_complete: true, unverified_count: 0, failure_reason: null, county_recovered: 0, mapped_recovered: 0 };
     const original = properties.map(stop => ({ ...stop }));
     const result = original.map(stop => {
         const access = cachedAccess(stop);
@@ -189,7 +191,7 @@ export async function recoverRouteVehicleAccess(properties, options = {}) {
                         const waypoint = waypoints[service === 'nearest' ? 0 : offset];
                         const access = result[index].routing_access;
                         const expectedName = probeRoadName(access);
-                        if (!validSnap(waypoint, probePoint(result[index]))
+                        if (!validSnap(waypoint, probePoint(result[index]), access?.source === 'mapped_driveway_recovery' ? 5 : MATCH_RADIUS + 0.5)
                             || (expectedName && streetKey(waypoint.name) !== streetKey(expectedName))) fail(index, 'road_not_matched');
                     });
                     indices = [];
@@ -259,6 +261,7 @@ export async function recoverRouteVehicleAccess(properties, options = {}) {
                 for (const index of recoverable) if (failed.has(index)) fail(index, 'address_provider_unavailable');
             } finally { geocodeScope.close(); }
         }
+        const countyReferences = new Map();
         const countyLookup = options.countyAccessLookup === false ? null : options.countyAccessLookup || discoverCountyRoadAccess;
         const countyCandidates = [...failed.keys()].filter(index => !['road_provider_unavailable',
             'recovery_limit_reached', 'invalid_coordinates'].includes(failed.get(index))).slice(0, 8);
@@ -271,6 +274,7 @@ export async function recoverRouteVehicleAccess(properties, options = {}) {
                     try {
                         const county = await bounded(countyLookup(stop, { fetchImpl: options.countyFetch || globalThis.fetch,
                             vehicleFetch: options.vehicleFetch, vehicleBaseUrl: config.baseUrl,
+                            onAddressReference: reference => countyReferences.set(index, reference),
                             onDiagnostic: options.collectCountyDiagnostics ? event => {
                                 report.county_diagnostics ||= [];
                                 report.county_diagnostics.push({ stop_number: index + 1, ...event });
@@ -292,6 +296,37 @@ export async function recoverRouteVehicleAccess(properties, options = {}) {
                     }
                 }
             } finally { countyScope.close(); }
+        }
+        // A parcel centroid or rooftop may be far from its street. Use an exact
+        // county address AND connected mapped driveway evidence to identify a
+        // public-street entrance; never widen the provider's matching radius.
+        const mappedLookup = options.mappedAccessLookup === false ? null : options.mappedAccessLookup
+            || (options.enableMappedDrivewayRecovery === true ? discoverMappedDrivewayAccess : null);
+        const mappedCandidates = [...failed.keys()].filter(index => !['road_provider_unavailable',
+            'recovery_limit_reached', 'invalid_coordinates'].includes(failed.get(index))).slice(0, 8);
+        if (mappedLookup && mappedCandidates.length && !scope.signal.aborted) {
+            const mappedScope = deadline(scope.signal, 10000);
+            try {
+                for (const index of mappedCandidates) {
+                    if (mappedScope.signal.aborted) break;
+                    const stop = original[index];
+                    try {
+                        const access = await bounded(mappedLookup(stop, {
+                            fetchImpl: options.mappedFetch || options.countyFetch || globalThis.fetch,
+                            vehicleFetch: options.vehicleFetch, vehicleBaseUrl: config.baseUrl,
+                            referenceAddress: countyReferences.get(index), signal: mappedScope.signal,
+                        }), mappedScope.signal);
+                        if (!validateMappedDrivewayAccess(stop, access)) continue;
+                        result[index] = { ...stop, ...pointOf(access.point), routing_access: access };
+                        report.access_overrides[identity(stop)] = access;
+                        report.recovered++; report.mapped_recovered++; failed.delete(index);
+                    } catch (error) {
+                        if (options.signal?.aborted) throw options.signal.reason || abortError();
+                        // Keep the original issue if independent driveway proof
+                        // is absent, ambiguous, unavailable, or over budget.
+                    }
+                }
+            } finally { mappedScope.close(); }
         }
         report.unresolved = [...failed].map(([index, reason]) => issue(index, reason));
         report.inventory_complete = inventoryComplete;

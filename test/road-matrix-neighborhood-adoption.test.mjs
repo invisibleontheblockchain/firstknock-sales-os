@@ -63,21 +63,26 @@ test('old applied-review diagnostics cannot claim savings when the returned stop
     assert.equal(outcome, 'current_order_measured_best');
 });
 
+const partialProperties = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
+    .map((address_hash, i) => ({ address_hash, lat: 35, lng: -81 + i / 10000 }));
+const partialHashes = partialProperties.map(p => p.address_hash);
+const partialCandidate = ['B', 'A', ...partialHashes.slice(2)];
 const unresolvedAccess = { status: 'partial', attempted: 2, recovered: 1, reused: 0,
-    unresolved: [{ property_id: 'C', stop_number: 3, address: '3 Lake Lane, Troutman, 28166', reason: 'road_not_matched' }],
-    access_overrides: {} };
+    unresolved: [{ property_id: 'F', stop_number: 6, address: '6 Lake Lane, Troutman, 28166', reason: 'road_not_matched' }],
+    inventory_complete: true, unverified_count: 0, access_overrides: {} };
 const accessLimitedClient = (review, extra = {}) => ({ functions: { invoke: async () => ({ data: {
-    success: true, selected: 'road_aware', order: ['B', 'A', 'C'], ...extra,
+    success: true, selected: 'road_aware', order: partialCandidate, ...extra,
     routing_metadata: { strategy: 'access_guarded_neighborhood_repair', distance_estimate: 'unavailable',
         input_measured: null, winning_route_distance: null, road_path_validated: false,
+        matrix_provider: 'test-driving-roads', road_matrix_version: 'v1',
         road_access_recovery: unresolvedAccess,
         neighborhood_excursion_review: { local_driving_review: review }, ...extra.routing_metadata },
 } }) } });
 
 test('access-limited optimization adopts verified healthy neighborhoods without inventing a whole-route total', async () => {
-    const result = await optimize(properties, { client: accessLimitedClient({ applied: true,
+    const result = await optimize(partialProperties, { client: accessLimitedClient({ applied: true,
         validation: 'overlapping_boundary_legs', localMilesSaved: 1.25 }) });
-    assert.deepEqual(result.order.map(p => p.address_hash), ['B', 'A', 'C']);
+    assert.deepEqual(result.order.map(p => p.address_hash), partialCandidate);
     assert.equal(result.objective.applyCandidate, true);
     assert.equal(result.objective.appliedDistance, null);
     assert.equal(result.objective.estimatedSavings, 1.25);
@@ -86,14 +91,14 @@ test('access-limited optimization adopts verified healthy neighborhoods without 
     assert.equal(result.routingMetadata.winning_route_distance, null);
     assert.equal(result.routingMetadata.road_path_validated, false);
     assert.deepEqual(result.routingMetadata.road_access_recovery, unresolvedAccess);
-    assert.equal(result.order.at(-1), properties.at(-1), 'the unresolved stop remains present in its original position');
+    assert.deepEqual(result.order.slice(3, 8), partialProperties.slice(3, 8), 'the unresolved stop and both protected boundaries stay fixed');
 });
 
 test('access-limited results need a verified applied neighborhood review before any order is adopted', async () => {
     for (const review of [null, { applied: false, validation: 'overlapping_boundary_legs' },
         { applied: true, validation: 'unchecked' }, { applied: true, validation: 'whole_route' }]) {
         let outcome;
-        const result = await optimize(properties, { client: accessLimitedClient(review),
+        const result = await optimize(partialProperties, { client: accessLimitedClient(review),
             onOutcome: (reason, measurement) => { outcome = { reason, measurement }; } });
         assert.equal(result, null);
         assert.equal(outcome.reason, 'unverified_partial_order');
@@ -104,8 +109,8 @@ test('access-limited results need a verified applied neighborhood review before 
 
 test('access-limited unchanged results retain per-stop diagnostics without using stale local savings', async () => {
     let outcome;
-    const result = await optimize(properties, { client: accessLimitedClient({ applied: true,
-        validation: 'overlapping_boundary_legs', localMilesSaved: 24.32 }, { order: ['A', 'B', 'C'] }),
+    const result = await optimize(partialProperties, { client: accessLimitedClient({ applied: true,
+        validation: 'overlapping_boundary_legs', localMilesSaved: 24.32 }, { order: partialHashes }),
     onOutcome: (reason, measurement) => { outcome = { reason, measurement }; } });
     assert.equal(result, null);
     assert.equal(outcome.reason, 'road_access_unresolved');
@@ -114,9 +119,10 @@ test('access-limited unchanged results retain per-stop diagnostics without using
 });
 
 test('an access-limited response cannot drop or duplicate any unresolved property', async () => {
-    for (const order of [['B', 'A'], ['B', 'A', 'A'], ['B', 'A', 'unknown'], ['B', 'A', 'C', 'C']]) {
+    for (const order of [partialCandidate.slice(1), [...partialHashes.slice(0, -1), 'A'],
+        [...partialHashes.slice(0, -1), 'unknown'], [...partialHashes, 'F']]) {
         let outcome;
-        const result = await optimize(properties, { client: accessLimitedClient({ applied: true,
+        const result = await optimize(partialProperties, { client: accessLimitedClient({ applied: true,
             validation: 'overlapping_boundary_legs', localMilesSaved: 1.25 }, { order }),
         onOutcome: (reason, measurement) => { outcome = { reason, measurement }; } });
         assert.equal(result, null);
@@ -126,10 +132,10 @@ test('an access-limited response cannot drop or duplicate any unresolved propert
 });
 
 test('road-access recovery sends the full address and cached access while retaining the property display coordinates', async () => {
-    const display = { ...properties[0], house_number: '1', street_name: 'Lake Lane', city: 'Troutman',
+    const display = { ...partialProperties[0], house_number: '1', street_name: 'Lake Lane', city: 'Troutman',
         state_code: 'NC', zip: '28166', routing_access: { resolution_status: 'resolved',
-            point: { lat: 35.001, lng: -81.001 }, displayPoint: { lat: properties[0].lat, lng: properties[0].lng } } };
-    const input = [display, ...properties.slice(1)];
+            point: { lat: 35.001, lng: -81.001 }, displayPoint: { lat: partialProperties[0].lat, lng: partialProperties[0].lng } } };
+    const input = [display, ...partialProperties.slice(1)];
     let payload;
     const api = accessLimitedClient({ applied: true, validation: 'overlapping_boundary_legs', localMilesSaved: 1 });
     const invoke = api.functions.invoke;

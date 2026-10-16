@@ -58,6 +58,29 @@ const measurementMiles = (value) => {
     return Number.isFinite(miles) && miles >= 0 ? miles : null;
 };
 
+// Match the backend's protected boundary: an unknown stop and two positions
+// on either side stay fixed, together with every explicitly locked position.
+function partialOrderGuard(input, order, recovery) {
+    if (!Array.isArray(recovery?.unresolved) || !recovery.unresolved.length) return null;
+    const protectedPositions = new Set(), unresolved = new Map();
+    for (const issue of recovery.unresolved) {
+        const index = issue?.stop_number - 1, id = String(issue?.property_id || '');
+        if (!Number.isInteger(issue?.stop_number) || index < 0 || index >= input.length || !id
+            || propertyKey(input[index]) !== id || unresolved.has(id)) return null;
+        unresolved.set(id, index);
+    }
+    input.forEach((property, index) => {
+        if (property.order_locked === true || property.locked === true) protectedPositions.add(index);
+        if (unresolved.has(propertyKey(property)) || property.routing_access?.resolution_status === 'unresolved') {
+            for (let neighbor = Math.max(0, index - 2); neighbor <= Math.min(input.length - 1, index + 2); neighbor++) {
+                protectedPositions.add(neighbor);
+            }
+        }
+    });
+    if ([...protectedPositions].some(index => propertyKey(input[index]) !== propertyKey(order[index]))) return null;
+    return [...unresolved].sort(([left], [right]) => left.localeCompare(right));
+}
+
 // Base44 wraps Axios failures, but keeps the response body in `data`. A 429
 // can mean a processing limit rather than throttling, so identify that exact
 // code before classifying the HTTP status. Keep raw messages and URLs out of
@@ -200,11 +223,22 @@ async function tryRoadMatrixOptimizePass(routeProperties, {
             if (order.length !== routeProperties.length || order.some(p => !p) || new Set(order).size !== routeProperties.length) {
                 return decline('order_failed_exact_once', { routingMetadata });
             }
+            if (!partialOrderGuard(routeProperties, order, responseMeta.road_access_recovery)) {
+                return decline('partial_order_changed_protected_stops', { routingMetadata });
+            }
             const review = responseMeta.neighborhood_excursion_review?.local_driving_review;
-            if (data.selected === 'current' || order.every((p, i) => p === routeProperties[i])) {
-                return decline('road_access_unresolved', { routingMetadata });
+            const unchanged = order.every((p, i) => p === routeProperties[i]);
+            if (data.selected === 'current' || unchanged) {
+                if (!unchanged) return decline('order_failed_exact_once', { routingMetadata });
+                return decline('road_access_unresolved', { routingMetadata, verifiedCurrentOrder: true });
             }
             if (review?.applied !== true || review.validation !== 'overlapping_boundary_legs') {
+                return decline('unverified_partial_order', { routingMetadata });
+            }
+            // The first winner needs the same complete proof as every later
+            // pass. Aggregation must not turn an incomplete or contradictory
+            // response into apparently verified local savings.
+            if (!partialSearchProof(responseMeta, routeProperties, order, false)) {
                 return decline('unverified_partial_order', { routingMetadata });
             }
             return { order: withRecoveredAccess(order, responseMeta), objective: { applyCandidate: true, appliedDistance: null,
@@ -306,6 +340,45 @@ function consistentDrivingPass(previous, meta, inputMiles) {
             (previous.routingMetadata[key] ?? null) === (meta[key] ?? null));
 }
 
+function partialSearchProof(meta, input, order, unchanged) {
+    const recovery = meta?.road_access_recovery;
+    const review = meta?.neighborhood_excursion_review?.local_driving_review;
+    const unresolved = partialOrderGuard(input, order, recovery);
+    const provider = meta?.road_matrix_source || meta?.matrix_provider;
+    if (meta?.strategy !== 'access_guarded_neighborhood_repair' || meta.fallback === true
+        || meta.road_path_validated !== false || meta.distance_estimate !== 'unavailable'
+        || recovery?.inventory_complete !== true || (recovery.unverified_count ?? 0) !== 0
+        || !unresolved || typeof provider !== 'string' || !provider
+        || typeof meta.road_matrix_version !== 'string' || !meta.road_matrix_version
+        || ['input_measured', 'continuity_measured', 'winning_route_distance', 'road_aware_measured']
+            .some(key => meta[key] !== null && meta[key] !== undefined)) return null;
+    if (unchanged) {
+        if (review?.applied !== false || review.validation !== 'unchanged'
+            || measurementMiles(review.localMilesSaved) !== 0) return null;
+    } else if (review?.applied !== true || review.validation !== 'overlapping_boundary_legs'
+        || measurementMiles(review.localMilesSaved) === null) return null;
+    return { unresolved };
+}
+
+function consistentPartialSearch(previous, meta, before, after) {
+    return JSON.stringify(before.unresolved) === JSON.stringify(after.unresolved)
+        && ['road_matrix_source', 'matrix_provider', 'road_matrix_version', 'routing_profile'].every(key =>
+            (previous[key] ?? null) === (meta[key] ?? null))
+        && ['graphIdentity', 'publicDataVersion'].every(key =>
+            (previous.county_road_routing?.[key] ?? null) === (meta.county_road_routing?.[key] ?? null));
+}
+
+function appliedPartialMetadata(meta, localMilesSaved) {
+    const neighborhood = { ...meta.neighborhood_excursion_review, local_driving_review: {
+        ...meta.neighborhood_excursion_review.local_driving_review,
+        applied: true, validation: 'overlapping_boundary_legs', localMilesSaved,
+    } };
+    return { ...meta, road_path_validated: false, road_network_used: true,
+        input_measured: null, winning_route_distance: null, distance_estimate: 'unavailable',
+        neighborhood_excursion_review: neighborhood,
+        routing: { ...meta.routing, neighborhood_excursion_review: neighborhood } };
+}
+
 /** Continue verified improvements AND no-op checks while fresh questions remain.
  * Every pass prices the latest accepted order under the same bounds. Keep the
  * original click's mileage baseline and save only once after the bounded action. */
@@ -320,6 +393,7 @@ export async function tryRoadMatrixOptimize(routeProperties, {
     const started = Date.now();
     let coverage = normalizeRoadSearchCoverage(searchCoverage), lastReason, lastMeasurement;
     let currentProperties = routeProperties, accepted = null, baselineMiles = null;
+    let acceptedPartialProof = null, localSavings = 0;
     for (let pass = 1; pass <= limit; pass++) {
         if (pass > 1) onProgress?.({ pass, maxPasses: limit, remainingWindows: coverage.remaining_windows });
         let reason, measurement;
@@ -342,6 +416,37 @@ export async function tryRoadMatrixOptimize(routeProperties, {
         const measuredMiles = result ? result.objective.appliedDistance : measurement?.distanceMiles;
         const verified = completeDrivingPass(meta, measuredMiles)
             && (Boolean(result) || reason === 'current_order_measured_best' && measurement?.verifiedCurrentOrder === true);
+        const partial = meta?.strategy === 'access_guarded_neighborhood_repair';
+        const acceptedPartial = accepted?.routingMetadata.strategy === 'access_guarded_neighborhood_repair';
+        if ((acceptedPartial && verified) || (accepted && !acceptedPartial && partial)) {
+            accepted.routingMetadata = { ...accepted.routingMetadata, road_search_passes: pass,
+                road_search_stop_reason: 'scope_changed' };
+            break;
+        }
+        if (partial || acceptedPartial) {
+            const unchanged = !result && reason === 'road_access_unresolved' && measurement?.verifiedCurrentOrder === true;
+            const proof = (result || unchanged) ? partialSearchProof(meta, currentProperties,
+                result?.order || currentProperties, unchanged) : null;
+            if (acceptedPartial && (!proof || !consistentPartialSearch(accepted.routingMetadata, meta, acceptedPartialProof, proof))) {
+                accepted.routingMetadata = { ...accepted.routingMetadata, road_search_passes: pass,
+                    road_search_stop_reason: !proof ? reason || 'incomplete_verification' : 'measurement_changed' };
+                break;
+            }
+            if (result || acceptedPartial) {
+                localSavings += result?.objective.estimatedSavings || 0;
+                accepted = { ...(result || accepted),
+                    ...(!result ? { order: withRecoveredAccess(currentProperties, meta) } : {}),
+                    objective: { applyCandidate: true, appliedDistance: null, estimatedSavings: localSavings },
+                    routingMetadata: appliedPartialMetadata(finalMeta, localSavings) };
+                currentProperties = accepted.order;
+                acceptedPartialProof = proof;
+            }
+            const canContinue = proof && returnedCoverage?.remaining_windows > 0
+                && (result || returnedCoverage.progress_this_pass > 0)
+                && !returnedCoverage.cycle_complete && pass < limit && budget - (Date.now() - started) >= requestBudget;
+            if (!canContinue) break;
+            continue;
+        }
         if (accepted && (!verified || !consistentDrivingPass(accepted, meta, inputMiles))) {
             // A later outage, incomplete proof or changed graph must not erase
             // the improvement already verified during this click.

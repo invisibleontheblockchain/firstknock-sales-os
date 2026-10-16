@@ -99,6 +99,14 @@ function incompleteSearchMessage(review, meta) {
     if (skipped) reasons.push(`${skipped} candidate ${skipped === 1 ? 'check was' : 'checks were'} skipped`);
     return `Neighborhood search is incomplete${reasons.length ? `: ${reasons.join('; ')}` : ''}.`;
 }
+function roadAccessSearchDetails(review, meta) {
+    if (searchIncomplete(review, meta)) return ` ${incompleteSearchMessage(review, meta)}`;
+    const coverage = coverageSummary(meta);
+    const total = coverage ? coverage.total_windows : optionalCount(review?.planned);
+    if (total === null || (!coverage && (optionalCount(review?.checked) === null || review.checked < total))) return '';
+    const passes = safeCount(meta?.road_search_passes);
+    return ` Neighborhood search completed: ${total} ${total === 1 ? 'check' : 'checks'} finished${passes > 1 ? ` after ${passes} passes` : ''}.`;
+}
 function completedRouteDetails(meta, recovery) {
     const review = meta?.neighborhood_excursion_review?.local_driving_review;
     return `${sideMessage(review)}${recoveryMessage(recovery)}${countyRoadsIncluded(meta)
@@ -111,6 +119,7 @@ function completedRouteDetails(meta, recovery) {
 export function describeRoadOptimizationOutcome(reason, measurement = null) {
     const meta = measurement?.routingMetadata || {};
     const recovery = roadAccessRecovery(meta);
+    const review = meta.neighborhood_excursion_review?.local_driving_review;
     const finish = outcome => withRecovery(outcome, recovery);
     if (reason === 'backend_cpu_limit') return finish({
         status: 'processing_limit', tone: 'error',
@@ -126,19 +135,18 @@ export function describeRoadOptimizationOutcome(reason, measurement = null) {
     });
     if (recovery?.status === 'provider_unavailable' && recovery.inventory_complete === false) return finish({
         status: 'road_provider_unavailable', tone: 'error',
-        message: 'The driving service could not load the road matches needed for optimization. Your route was kept unchanged.',
+        message: `The driving service could not load the road matches needed for optimization. Your route was kept unchanged.${roadAccessSearchDetails(review, meta)}`,
     });
     if (recovery?.unresolved.length || recovery?.inventory_complete === false) return finish({
         status: recovery.status === 'provider_unavailable' ? 'road_provider_unavailable' : 'road_access_unresolved', tone: 'error',
-        message: recovery.status === 'provider_unavailable'
+        message: `${recovery.status === 'provider_unavailable'
             ? 'The road or address data provider could not complete automatic road-access recovery. Your route was kept unchanged.'
-            : 'Automatic road-access recovery could not verify the complete driving route. Your route was kept unchanged.',
+            : 'Automatic road-access recovery could not verify the complete driving route. Your route was kept unchanged.'}${roadAccessSearchDetails(review, meta)}`,
     });
     if (reason !== 'current_order_measured_best' || !validDistance(measurement?.distanceMiles)) return finish({
         status: 'failed', tone: 'error',
         message: 'Could not complete the driving check. Your route was kept unchanged. Try again.',
     });
-    const review = meta.neighborhood_excursion_review?.local_driving_review;
     if (review?.repaired > 0 && review.applied === false && review.status === 'whole_route_guard_retained'
         && (review.reason || review.validation !== 'whole_route')) return finish({
         status: 'verification_failed', tone: 'error',
@@ -187,7 +195,7 @@ export function describeAppliedRoadOptimization(routingMetadata) {
     const finish = outcome => withRecovery(outcome, recovery);
     if (recovery?.unresolved.length || recovery?.inventory_complete === false) return finish({
         status: 'applied_partial', tone: 'warning',
-        message: 'Verified route improvements applied; the complete driving route remains unverified.',
+        message: `Verified route improvements applied; the complete driving route remains unverified.${roadAccessSearchDetails(review, routingMetadata)}`,
     });
     if (completeDrivingVerification(routingMetadata, null, true) && searchIncomplete(review, routingMetadata)) return {
         status: 'applied_partial', tone: 'warning',
