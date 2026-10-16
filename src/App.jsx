@@ -11,6 +11,7 @@ import ProtectedRoute from '@/components/ProtectedRoute';
 import AppRefreshManager from '@/components/AppRefreshManager';
 import Layout from './Layout.jsx';
 import { RepLocationProvider } from '@/components/team/RepLocationSharing';
+import { AutoDrivingProvider } from '@/components/team/AutoDrivingTracking';
 import RoadAwareComparisonHost from '@/components/routes/RoadAwareComparisonHost';
 import { isHqPath } from '@/admin/hqNavigation';
 
@@ -85,6 +86,7 @@ function App() {
         <AppRefreshManager />
         <RoadAwareComparisonHost />
         <Router>
+          <AutoDrivingProvider>
           <RepLocationProvider>
             <NavigationTracker />
             <React.Suspense fallback={
@@ -93,6 +95,7 @@ function App() {
               <RoutedApp />
             </React.Suspense>
           </RepLocationProvider>
+          </AutoDrivingProvider>
         </Router>
         <Toaster />
         {/* visibleToasts={1} keeps stacked/duplicate notifications from piling up —

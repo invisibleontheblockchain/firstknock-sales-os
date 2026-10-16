@@ -182,11 +182,11 @@ export default function TeamMemberCard({ member, routes, metrics, allRoutes, onA
             <div className="grid grid-cols-3 divide-x divide-gray-800 border-b border-gray-800 bg-[#0F0F0F]">
                 <div className="py-1.5 md:p-2 text-center">
                     <p className="text-sm md:text-lg font-bold text-white">{metricsLoading ? '…' : metricsFailed ? '—' : metrics.doorsKnocked}</p>
-                    <p className="text-[7px] md:text-[9px] font-bold text-gray-600 uppercase">Knocked</p>
+                    <p className="text-[7px] md:text-[9px] font-bold text-gray-600 uppercase">All-time Knocked</p>
                 </div>
                 <div className="py-1.5 md:p-2 text-center">
                     <p className="text-sm md:text-lg font-bold text-white">{metricsLoading ? '…' : metricsFailed ? '—' : metrics.talkedTo}</p>
-                    <p className="text-[7px] md:text-[9px] font-bold text-gray-600 uppercase">Talked</p>
+                    <p className="text-[7px] md:text-[9px] font-bold text-gray-600 uppercase">All-time Talked</p>
                 </div>
                 <div className="py-1.5 md:p-2 text-center">
                     <p className="text-sm md:text-lg font-bold text-blue-400">{routesLoading ? '…' : routes.length}</p>

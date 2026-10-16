@@ -1,24 +1,10 @@
 import React, { useMemo } from 'react';
 import { ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from 'recharts';
 import { ActivitySquare } from 'lucide-react';
-import { format, subDays } from 'date-fns';
-import { isKnockActivityLog } from '@/lib/interactionLogs';
+import { format, parseISO } from 'date-fns';
 
-const SALES = ['SOLD', 'QUALIFIED'];
-
-export default function TeamActivityTrend({ logs }) {
-  const data = useMemo(() => {
-    return Array.from({ length: 14 }, (_, index) => {
-      const day = subDays(new Date(), 13 - index);
-      const key = format(day, 'yyyy-MM-dd');
-      const dayLogs = logs.filter((log) => isKnockActivityLog(log) && log.created_date?.startsWith(key));
-      return {
-        date: format(day, 'MMM d'),
-        knocks: dayLogs.length,
-        sales: dayLogs.filter((log) => SALES.includes(log.parsed_status)).length,
-      };
-    });
-  }, [logs]);
+export default function TeamActivityTrend({ daily }) {
+  const data = useMemo(() => (daily || []).map((day) => ({ ...day, date: format(parseISO(day.date), 'MMM d') })), [daily]);
 
   return (
     <div className="rounded-xl md:rounded-2xl border border-white/5 bg-gradient-to-b from-[#151515] to-[#0A0A0A] p-3 md:p-5 shadow-2xl">
@@ -39,7 +25,7 @@ export default function TeamActivityTrend({ logs }) {
             <Tooltip contentStyle={{ background: '#050505', border: '1px solid #222', borderRadius: 12 }} />
             <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '12px' }} />
             <Bar yAxisId="left" dataKey="knocks" name="Knocks" fill="#2a2a2a" radius={[4, 4, 0, 0]} barSize={22} />
-            <Line yAxisId="right" type="monotone" dataKey="sales" name="Sales / Qualified" stroke="#22c55e" strokeWidth={3} dot={{ r: 3 }} />
+            <Line yAxisId="right" type="monotone" dataKey="sales" name="Sales" stroke="#22c55e" strokeWidth={3} dot={{ r: 3 }} />
           </ComposedChart>
         </ResponsiveContainer>
       </div>

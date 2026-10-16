@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { downloadDrivingCsv, drivingTotals, localDrivingDate, tripMiles, tripPayment } from '@/lib/drivingAccounting';
+import AutoDrivingReport from './AutoDrivingReport';
 
 const money = cents => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100);
 const panel = 'rounded-xl border border-gray-800 bg-[#111] p-4 md:p-5';
@@ -96,7 +97,7 @@ export default function DrivingTab({ members, currentUser, managerId, canManage,
     }
     return <div className="space-y-4 text-white">
         <div className={`${panel} flex flex-col md:flex-row gap-4 md:items-center md:justify-between`}>
-            <div><h2 className="flex items-center gap-2 text-lg font-bold"><Car className="h-5 w-5 text-yellow-500" />Driving accounting</h2><p className="mt-1 max-w-2xl text-xs leading-relaxed text-gray-400">Log completed business trips using the vehicle’s start and end odometer in miles. Mileage is rep-reported and reviewed by the manager. Planned route distances are estimates and are excluded.</p></div>
+            <div><h2 className="flex items-center gap-2 text-lg font-bold"><Car className="h-5 w-5 text-yellow-500" />Driving mileage and reimbursements</h2><p className="mt-1 max-w-2xl text-xs leading-relaxed text-gray-400">View measured GPS driving during work shifts and review separate odometer reimbursement claims. Planned route distances are excluded.</p></div>
             <Button onClick={openForm} disabled={teamLoading || eligiblePeople.length === 0} className="bg-yellow-500 text-black hover:bg-yellow-400 shrink-0"><Plus className="h-4 w-4 mr-2" />Log business trip</Button>
         </div>
         <div className={`${panel} grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-end`}>
@@ -105,9 +106,11 @@ export default function DrivingTab({ members, currentUser, managerId, canManage,
             <FormField label={canManage ? 'Rep breakdown' : 'Your trips'}><select aria-label="Rep breakdown" className={`${field} h-10 rounded-md border px-3 text-sm`} value={selected} onChange={e => setSelected(e.target.value)}><option value="all">{canManage ? 'All team members' : 'All my trips'}</option>{people.map(m => <option key={m.drivingId} value={m.drivingId}>{m.name}{m.status === 'inactive' ? ' (inactive / former)' : ''}</option>)}</select></FormField>
             <Button variant="outline" className="border-gray-700" disabled={!ready || !displayedTrips.length} onClick={() => downloadDrivingCsv(displayedTrips, start, end, chosenPerson?.name || (canManage ? 'team' : 'my_trips'))}><Download className="h-4 w-4 mr-2" />Download {selected === 'all' && canManage ? 'team' : 'rep'} CSV</Button>
         </div>
+        {validRange && !teamLoading && <AutoDrivingReport managerId={managerId} currentUser={currentUser} members={members} canManage={canManage} allTeams={allTeams} chosenPerson={chosenPerson} start={start} end={end} validRange={validRange} />}
         {!validRange ? <p role="alert" className="text-red-400 text-sm">Choose a valid date range with the start before the end.</p>
             : query.isError ? <div role="alert" className={panel}><p className="text-red-400 text-sm">{query.error?.response?.data?.error || query.error?.message || 'Unable to load driving records.'}</p><Button onClick={() => query.refetch()} variant="outline" className="mt-3">Retry</Button></div>
                 : query.isLoading || teamLoading ? <p className="text-gray-400 text-sm">Loading driving records…</p> : <>
+                    <h3 className="pt-2 text-sm font-bold">Odometer reimbursement claims</h3>
                     <Totals trips={displayedTrips} />
                     {canManage && selected === 'all' && <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">{people.map(person => {
                         const repTrips = trips.filter(t => matchesMember(t, person));

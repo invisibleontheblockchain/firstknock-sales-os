@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Trophy, Flame, Target, Clock } from 'lucide-react';
+import { Trophy, Flame, Target } from 'lucide-react';
 import { AreaChart, Area, ResponsiveContainer } from 'recharts';
 import { useTeamLeaderboard } from '@/lib/useTeamLeaderboard';
 
@@ -41,8 +41,10 @@ export default function TeamLeaderboard({ members, currentUser, onSelectRep }) {
                 <p className="text-base md:text-lg font-bold text-white">
                     {type === 'sales' && rep.metrics.sales}
                     {type === 'conversion' && `${rep.metrics.conversion.toFixed(1)}%`}
-                    {type === 'speed' && rep.metrics.doorsPerHour.toFixed(1)}
                 </p>
+                {type === 'conversion' && (
+                    <p className="text-[9px] md:text-[10px] text-gray-500">{rep.metrics.sales} sales / {rep.metrics.knocks} doors</p>
+                )}
                 <div className="h-5 w-16 md:h-6 md:w-20">
                     <ResponsiveContainer width="100%" height="100%">
                         <AreaChart data={rep.history}>
@@ -91,11 +93,8 @@ export default function TeamLeaderboard({ members, currentUser, onSelectRep }) {
                         <TabsTrigger value="sales" className="flex-1 text-xs">
                             <Flame className="w-3 h-3 mr-1" /> Sales
                         </TabsTrigger>
-                        <TabsTrigger value="conversion" className="flex-1 text-xs">
+                        <TabsTrigger value="conversion" className="flex-1 text-xs" title="Sales divided by doors knocked">
                             <Target className="w-3 h-3 mr-1" /> Conv. %
-                        </TabsTrigger>
-                        <TabsTrigger value="speed" className="flex-1 text-xs">
-                            <Clock className="w-3 h-3 mr-1" /> Speed
                         </TabsTrigger>
                     </TabsList>
 
@@ -111,11 +110,6 @@ export default function TeamLeaderboard({ members, currentUser, onSelectRep }) {
                         ))}
                     </TabsContent>
 
-                    <TabsContent value="speed">
-                         {[...leaderboardData].sort((a,b) => b.metrics.doorsPerHour - a.metrics.doorsPerHour).map((rep, idx) => (
-                            <MetricCard key={rep.id} rank={idx + 1} rep={rep} type="speed" />
-                        ))}
-                    </TabsContent>
                 </Tabs>
                 )}
             </CardContent>

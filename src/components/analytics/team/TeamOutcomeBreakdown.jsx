@@ -1,5 +1,4 @@
 import React, { useMemo } from 'react';
-import { isKnockActivityLog } from '@/lib/interactionLogs';
 
 const LABELS = {
   SOLD: { label: 'Sold', color: '#22c55e' },
@@ -7,22 +6,22 @@ const LABELS = {
   CALLBACK: { label: 'Callback', color: '#f59e0b' },
   NO_ANSWER: { label: 'No Answer', color: '#6b7280' },
   HARD_NO: { label: 'Hard No', color: '#ef4444' },
+  NOT_QUALIFIED: { label: 'Not Qualified', color: '#a855f7' },
+  DM_NOT_HOME: { label: 'Decision Maker Away', color: '#64748b' },
+  NOT_MOVED_IN: { label: 'Not Moved In', color: '#78716c' },
+  DNC: { label: 'Do Not Knock', color: '#991b1b' },
 };
 
-export default function TeamOutcomeBreakdown({ logs, historyLabel = 'All Time' }) {
+export default function TeamOutcomeBreakdown({ counts }) {
   const items = useMemo(() => {
-    const counts = logs.filter(isKnockActivityLog).reduce((acc, log) => {
-      acc[log.parsed_status] = (acc[log.parsed_status] || 0) + 1;
-      return acc;
-    }, {});
     return Object.entries(LABELS)
       .map(([key, config]) => ({
         ...config,
-        value: counts[key] || 0,
+        value: counts?.[key] || 0,
       }))
       .filter((item) => item.value > 0)
       .sort((a, b) => b.value - a.value);
-  }, [logs]);
+  }, [counts]);
 
   const max = items[0]?.value || 1;
 
@@ -30,7 +29,7 @@ export default function TeamOutcomeBreakdown({ logs, historyLabel = 'All Time' }
     <div className="rounded-xl md:rounded-2xl border border-white/5 bg-gradient-to-b from-[#151515] to-[#0A0A0A] p-3 md:p-5 shadow-2xl">
       <div className="mb-3 md:mb-4">
         <h3 className="text-sm md:text-lg font-black text-white tracking-tight">Outcome Mix</h3>
-        <p className="text-[10px] md:text-sm text-gray-500">{historyLabel} team outcomes</p>
+        <p className="text-[10px] md:text-sm text-gray-500">All-time door decisions</p>
       </div>
       <div className="space-y-2 md:space-y-3">
         {items.map((item) => (

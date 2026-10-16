@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { getManagerIdForAccount, isManagerAccount, isRepAccount } from '@/lib/roles';
-import { leaderboardDayKey } from '../../base44/shared/teamLeaderboard.js';
+import { leaderboardDayKey } from './teamLeaderboardDay.js';
 
 export function useTeamLeaderboard(user, period = 'today') {
     const managerId = getManagerIdForAccount(user);
@@ -14,7 +14,8 @@ export function useTeamLeaderboard(user, period = 'today') {
             return response.data.rows;
         },
         enabled: !!managerId && (isManagerAccount(user) || isRepAccount(user)),
-        staleTime: 60000,
+        staleTime: 30000,
+        refetchOnMount: 'always',
         refetchInterval: 60000,
     });
 }

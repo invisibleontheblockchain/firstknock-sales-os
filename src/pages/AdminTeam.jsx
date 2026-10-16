@@ -26,10 +26,8 @@ import TeamActivityTrend from '@/components/analytics/team/TeamActivityTrend';
 import TeamOutcomeBreakdown from '@/components/analytics/team/TeamOutcomeBreakdown';
 import UserActivityHeatmap from '@/components/analytics/team/UserActivityHeatmap';
 import { getManagerIdForAccount, hasUnlimitedTeamAccess, isManagerAccount, isOwnerAccount, isRepAccount } from '@/lib/roles';
-import { isKnockActivityLog } from '@/lib/interactionLogs';
-import { fetchAllAnalyticsPages } from '@/lib/analyticsDateFilter';
 import { withReadDeadline } from '@/lib/readRequest';
-import { getTeamPerformanceQueryPlan, subscribeToTeamUpdates, TEAM_LOG_FIELDS, TEAM_ROUTE_FIELDS } from '@/lib/teamQueryLoading';
+import { subscribeToTeamUpdates, TEAM_ROUTE_FIELDS } from '@/lib/teamQueryLoading';
 import { buildTeamRoster, getRepSeatCount } from '@/lib/teamRoster';
 import ActiveRepLocations from '@/components/team/ActiveRepLocations';
 import TimeClockTab from '@/components/team/TimeClockTab';
@@ -80,7 +78,6 @@ export default function AdminTeam() {
     const [newCode, setNewCode] = useState({ code: '', role: 'manager', label: '' });
     const [selectedRep, setSelectedRep] = useState(null); 
     const [activeTab, setActiveTab] = useState("analytics");
-    const [historyDays, setHistoryDays] = useState(30);
     const [createdCode, setCreatedCode] = useState(null); // For popup
     const [activeTeamCode, setActiveTeamCode] = useState('all'); // 'all' or specific code
     const [editingZips, setEditingZips] = useState(null); // { memberId, zips: string }
@@ -138,7 +135,6 @@ export default function AdminTeam() {
     const routeScope = useMemo(() => buildRepRouteScope(user, teamMembers), [user, teamMembers]);
 
     const needsRouteInventory = ['analytics', 'roster', 'logistics'].includes(activeTab);
-    const performancePlan = useMemo(() => getTeamPerformanceQueryPlan(activeTab, historyDays), [activeTab, historyDays]);
     const { data: routes = [], isSuccess: routesReady, isError: routesFailed, refetch: refetchRoutes } = useQuery({
         queryKey: ['allRoutes', managerId, user?.id, routeScope.assigneeIds.join(',')],
         staleTime: 1000 * 60 * 2,
@@ -164,27 +160,25 @@ export default function AdminTeam() {
         enabled: !!managerId && canManageTeam
     });
 
-    const { data: logs = [], isSuccess: performanceReady, isError: performanceFailed, refetch: refetchPerformance } = useQuery({
-        queryKey: ['teamLogs', managerId, performancePlan.start || 'all'],
-        staleTime: 1000 * 60 * 2,
+    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+    const { data: teamMetrics, isSuccess: performanceReady, isLoading: metricsLoading,
+        isError: performanceFailed, refetch: refetchPerformance } = useQuery({
+        queryKey: ['teamMetrics', managerId, user?.id, activeTeamCode, timeZone],
+        staleTime: 10_000,
+        refetchInterval: 60_000,
         queryFn: async () => {
-            if (!managerId) return [];
-            return fetchAllAnalyticsPages(
-                (limit, skip) => withReadDeadline(() => base44.entities.InteractionLog.filter(
-                    { manager_id: managerId, ...performancePlan.filter },
-                    '-created_date',
-                    limit,
-                    skip,
-                    TEAM_LOG_FIELDS
-                )),
-                { pageSize: 5000, maxPages: 100 }
-            );
+            const response = await withReadDeadline(() => base44.functions.invoke('getTeamMetrics', {
+                active_team_code: activeTeamCode, time_zone: timeZone,
+            }));
+            if (!response.data?.success || response.data.manager_id !== managerId) throw new Error('Unable to verify company activity.');
+            return response.data;
         },
-        enabled: !!managerId && !!teamRoster && performancePlan.enabled,
+        enabled: !!managerId && !!user?.id && !!teamRoster,
         refetchOnWindowFocus: true,
     });
-    const currentTeamRows = useRef({ routes, logs });
-    currentTeamRows.current = { routes, logs };
+    useEffect(() => { setSelectedRep(null); }, [activeTeamCode]);
+    const currentTeamRows = useRef({ routes, logs: [] });
+    currentTeamRows.current = { routes, logs: [] };
     useEffect(() => {
         if (!managerId) return undefined;
         return subscribeToTeamUpdates({
@@ -195,7 +189,7 @@ export default function AdminTeam() {
             getLogs: () => currentTeamRows.current.logs,
             onRoutesChanged: () => queryClient.invalidateQueries({ queryKey: ['allRoutes', managerId] }),
             onLogsChanged: () => {
-                queryClient.invalidateQueries({ queryKey: ['teamLogs', managerId] });
+                queryClient.invalidateQueries({ queryKey: ['teamMetrics', managerId] });
                 queryClient.invalidateQueries({ queryKey: ['teamLeaderboard', managerId] });
             },
         });
@@ -369,42 +363,20 @@ export default function AdminTeam() {
         return grouped;
     }, [routes, filteredTeamMembers]);
 
-    const metricsByRep = useMemo(() => {
-        const metrics = {};
-        filteredTeamMembers.forEach(m => {
-            metrics[m.email] = { doorsKnocked: 0, talkedTo: 0, sales: 0 };
-        });
-        logs.forEach(log => {
-            if (!isKnockActivityLog(log)) return;
-            const email = log.created_by;
-            if (!metrics[email]) return; // Skip logs for filtered-out reps
-            metrics[email].doorsKnocked++;
-            if (log.parsed_status !== 'NO_ANSWER' && log.parsed_status !== 'ELIGIBLE') {
-                metrics[email].talkedTo++;
-            }
-            if (log.parsed_status === 'SOLD' || log.parsed_status === 'QUALIFIED') {
-                metrics[email].sales++;
-            }
-        });
-        return metrics;
-    }, [logs, filteredTeamMembers]);
-
-    const teamTotals = useMemo(() => {
-        return Object.values(metricsByRep).reduce((acc, curr) => ({
-            doorsKnocked: acc.doorsKnocked + curr.doorsKnocked,
-            talkedTo: acc.talkedTo + curr.talkedTo,
-            sales: acc.sales + curr.sales
-        }), { doorsKnocked: 0, talkedTo: 0, sales: 0 });
-    }, [metricsByRep]);
-
+    const activityMembers = useMemo(() => activeTeamCode === 'all' ? filteredTeamMembers
+        : filteredTeamMembers.filter(member => !member.isManagerSelf && !member.isTeamManager), [filteredTeamMembers, activeTeamCode]);
+    const performanceByMemberId = useMemo(() => new globalThis.Map(
+        (teamMetrics?.all_time?.rows || []).map(row => [row.id, row])
+    ), [teamMetrics]);
+    const teamTotals = teamMetrics?.all_time?.totals || { doorsKnocked: 0, talkedTo: 0, sales: 0 };
     const teamAverage = useMemo(() => {
-        const activeReps = Object.keys(metricsByRep).length || 1;
+        const activeReps = performanceByMemberId.size || 1;
         return {
             knocks: teamTotals.doorsKnocked / activeReps,
             sales: teamTotals.sales / activeReps,
-            conversion: teamTotals.doorsKnocked > 0 ? (teamTotals.sales / teamTotals.doorsKnocked * 100) : 0
+            conversion: teamTotals.doorsKnocked > 0 ? teamTotals.sales / teamTotals.doorsKnocked * 100 : 0,
         };
-    }, [teamTotals, metricsByRep]);
+    }, [teamTotals, performanceByMemberId]);
 
     const roleSwitchCandidates = filteredTeamMembers.filter(member => !member.isManagerSelf && member.role !== 'manager');
     const selectedRoleSwitchMember = roleSwitchCandidates.find(member => member.id === roleSwitchMemberId);
@@ -854,12 +826,12 @@ export default function AdminTeam() {
                     <div className="py-2 px-1 md:p-4 flex flex-col items-center justify-center">
                         <TrendingUp className="w-3 h-3 md:w-4 md:h-4 text-yellow-500 mb-0.5 md:mb-1" />
                         <span aria-label={!performanceReady ? 'Knock totals unavailable' : undefined} className="text-sm md:text-2xl font-extrabold text-white">{performanceReady ? teamTotals.doorsKnocked.toLocaleString() : performanceFailed ? '—' : '…'}</span>
-                        <span className="text-[7px] md:text-[10px] font-bold text-gray-500 uppercase">{performancePlan.label} Knocks</span>
+                        <span className="text-[7px] md:text-[10px] font-bold text-gray-500 uppercase">All-time Knocks</span>
                     </div>
                     <div className="py-2 px-1 md:p-4 flex flex-col items-center justify-center">
                         <DollarSign className="w-3 h-3 md:w-4 md:h-4 text-green-500 mb-0.5 md:mb-1" />
                         <span aria-label={!performanceReady ? 'Sales totals unavailable' : undefined} className="text-sm md:text-2xl font-extrabold text-white">{performanceReady ? teamTotals.sales.toLocaleString() : performanceFailed ? '—' : '…'}</span>
-                        <span className="text-[7px] md:text-[10px] font-bold text-gray-500 uppercase">{performancePlan.label} Sales</span>
+                        <span className="text-[7px] md:text-[10px] font-bold text-gray-500 uppercase">All-time Sales</span>
                     </div>
                     {!isRepView && (
                     <div className="py-2 px-1 md:p-4 flex flex-col items-center justify-center cursor-pointer" onClick={() => navigate(createPageUrl('Billing'))}>
@@ -907,13 +879,9 @@ export default function AdminTeam() {
 
                     {/* ANALYTICS TAB */}
                     <TabsContent value="analytics" className="space-y-3 md:space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                        <label className="flex items-center justify-end gap-2 text-xs text-gray-400">Activity history
-                            <select aria-label="Team activity history" value={historyDays} onChange={(event) => setHistoryDays(Number(event.target.value))} className="min-h-10 rounded-lg border border-gray-700 bg-[#111] px-3 text-white">
-                                <option value={30}>Last 30 days</option><option value={90}>Last 90 days</option><option value={99999}>All Time</option>
-                            </select>
-                        </label>
+                        <p className="text-right text-xs text-gray-400">{teamMetrics?.scope?.label || 'All-time team activity'}</p>
                         {performanceReady && routesReady ? (
-                            <TeamAnalyticsSummary members={filteredTeamMembers} logs={logs} routes={routes} historyLabel={performancePlan.label} />
+                            <TeamAnalyticsSummary members={activityMembers} allTime={teamMetrics?.all_time} recent={teamMetrics?.recent} routes={routes} />
                         ) : (
                             <TeamDataState failed={performanceFailed || routesFailed} onRetry={() => { refetchPerformance(); refetchRoutes(); }} />
                         )}
@@ -925,13 +893,11 @@ export default function AdminTeam() {
                             />
                         )}
                         {performanceReady && <div className="grid grid-cols-1 xl:grid-cols-[1.15fr,0.85fr] gap-3 md:gap-6">
-                            <TeamActivityTrend logs={logs} />
-                            <TeamOutcomeBreakdown logs={logs} historyLabel={performancePlan.label} />
+                            <TeamActivityTrend daily={teamMetrics?.trend} />
+                            <TeamOutcomeBreakdown counts={teamMetrics?.all_time?.outcome_counts} />
                         </div>}
                         <TeamLeaderboard
-                            members={filteredTeamMembers} currentUser={user}
-                            logs={logs}
-                            routes={routes}
+                            members={activityMembers} currentUser={user}
                             onSelectRep={(member) => {
                                 if (!member) return;
                                 setSelectedRep(member);
@@ -945,16 +911,17 @@ export default function AdminTeam() {
                         {selectedRep ? (performanceReady && routesReady ? (
                              <RepPerformanceDetail 
                                 member={selectedRep}
-                                logs={logs}
+                                performance={performanceByMemberId.get(selectedRep.id)}
+                                metricsLoading={metricsLoading}
                                 teamAverage={teamAverage}
                                 onClose={() => setSelectedRep(null)}
                                 routes={routesByRep[selectedRep.id] || []}
                                 />
                         ) : <TeamDataState failed={performanceFailed || routesFailed} onRetry={() => { refetchPerformance(); refetchRoutes(); }} />) : (
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-6">
-                                {filteredTeamMembers.map(member => {
+                                {activityMembers.map(member => {
                                     const memberRoutes = routesByRep[member.id] || [];
-                                    const memberMetrics = metricsByRep[member.email] || { doorsKnocked: 0, talkedTo: 0, sales: 0 };
+                                    const memberMetrics = performanceByMemberId.get(member.id)?.metrics || { knocks: 0, doorsKnocked: 0, talkedTo: 0, sales: 0, conversion: 0 };
                                     const isEditing = editingZips?.memberId === member.id;
                                     
                                     // Prepare the Assign Zips Action Component

@@ -1,43 +1,33 @@
 import React, { useMemo } from 'react';
 import { Activity, Phone, Route, TrendingUp, Users, DollarSign } from 'lucide-react';
-import { subDays } from 'date-fns';
-import { isKnockActivityLog } from '@/lib/interactionLogs';
 import { getActiveTeamSize } from '@/lib/teamRoster';
 
-const SALES = ['SOLD', 'QUALIFIED'];
-const NON_CONTACT = ['NO_ANSWER', 'ELIGIBLE'];
-
-export default function TeamAnalyticsSummary({ members, logs, routes, historyLabel = 'All Time' }) {
+export default function TeamAnalyticsSummary({ members, allTime, recent, routes }) {
   const stats = useMemo(() => {
-    const cutoff = subDays(new Date(), 7);
-    const recentLogs = logs.filter((log) => isKnockActivityLog(log) && new Date(log.created_date) >= cutoff);
-    const sales = recentLogs.filter((log) => SALES.includes(log.parsed_status)).length;
-    const contacts = recentLogs.filter((log) => !NON_CONTACT.includes(log.parsed_status)).length;
-    const callbacks = recentLogs.filter((log) => log.parsed_status === 'CALLBACK').length;
-    const activeReps = new Set(recentLogs.map((log) => log.created_by).filter(Boolean)).size;
+    const totals = recent?.totals;
+    const activeReps = recent?.rows?.filter((row) => row.metrics.knocks > 0).length;
     const activeRoutes = routes.filter((route) => ['ACTIVE', 'IN_PROGRESS'].includes(route.status)).length;
-    const totalRevenue = logs.reduce((sum, log) => sum + (log.sale_amount || 0), 0);
     return {
       teamSize: getActiveTeamSize(members),
       activeReps,
-      knocks: recentLogs.length,
-      contactRate: recentLogs.length ? Math.round((contacts / recentLogs.length) * 100) : 0,
-      conversion: recentLogs.length ? Math.round((sales / recentLogs.length) * 100) : 0,
-      callbacks,
+      knocks: totals?.knocks,
+      contactRate: totals ? Math.round(totals.contactRate || 0) : undefined,
+      conversion: totals ? Math.round(totals.conversion || 0) : undefined,
       activeRoutes,
-      totalRevenue,
+      totalRevenue: allTime?.totals?.revenue,
     };
-  }, [members, logs, routes]);
+  }, [members, allTime, recent, routes]);
 
-  const revenueDisplay = stats.totalRevenue >= 1000 ? `$${(stats.totalRevenue / 1000).toFixed(1)}k` : `$${stats.totalRevenue}`;
+  const revenueDisplay = stats.totalRevenue === undefined ? '—' : stats.totalRevenue >= 1000
+    ? `$${(stats.totalRevenue / 1000).toFixed(1)}k` : `$${stats.totalRevenue}`;
 
   const cards = [
     { label: 'Team Size', value: stats.teamSize, sub: 'manager + reps', icon: Users, color: 'text-white' },
-    { label: 'Active Reps', value: stats.activeReps, sub: 'worked in last 7d', icon: Activity, color: 'text-cyan-400' },
-    { label: '7D Knocks', value: stats.knocks, sub: 'team activity', icon: TrendingUp, color: 'text-yellow-400' },
-    { label: 'Revenue', value: revenueDisplay, sub: `${historyLabel} generated`, icon: DollarSign, color: 'text-green-400' },
-    { label: 'Contact Rate', value: `${stats.contactRate}%`, sub: 'team average', icon: Phone, color: 'text-orange-400' },
-    { label: 'Active Routes', value: stats.activeRoutes, sub: `${stats.conversion}% conversion`, icon: Route, color: 'text-purple-400' },
+    { label: 'Active Reps', value: stats.activeReps ?? '—', sub: 'worked in last 7d', icon: Activity, color: 'text-cyan-400' },
+    { label: '7D Knocks', value: stats.knocks ?? '—', sub: 'last 7 calendar days', icon: TrendingUp, color: 'text-yellow-400' },
+    { label: 'Revenue', value: revenueDisplay, sub: 'all-time sales', icon: DollarSign, color: 'text-green-400' },
+    { label: '7D Contact Rate', value: stats.contactRate === undefined ? '—' : `${stats.contactRate}%`, sub: 'last 7 calendar days', icon: Phone, color: 'text-orange-400' },
+    { label: 'Active Routes', value: stats.activeRoutes, sub: stats.conversion === undefined ? 'activity loading' : `${stats.conversion}% 7d conversion`, icon: Route, color: 'text-purple-400' },
   ];
 
   return (

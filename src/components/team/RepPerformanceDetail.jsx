@@ -10,7 +10,6 @@ import { base44 } from '@/api/base44Client';
 import { Loader2, Lightbulb, TrendingUp, Target, Award, ChevronDown } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '../../utils';
-import { isKnockActivityLog } from '@/lib/interactionLogs';
 
 const BRAND = {
     gold: '#FFD700',
@@ -20,7 +19,7 @@ const BRAND = {
     blue: '#3b82f6'
 };
 
-export default function RepPerformanceDetail({ member, logs, teamAverage, onClose, routes = [] }) {
+export default function RepPerformanceDetail({ member, performance, metricsLoading, teamAverage, onClose, routes = [] }) {
     
     // 1. Coaching Tips Query
     const { data: coaching, isLoading: tipsLoading } = useQuery({
@@ -35,38 +34,10 @@ export default function RepPerformanceDetail({ member, logs, teamAverage, onClos
         staleTime: 1000 * 60 * 60 // 1 hour
     });
 
-    // 2. Process Logs for Charts
-    const chartData = useMemo(() => {
-        // Group logs by date
-        const grouped = {};
-        logs
-            .filter(l => l.created_by === member.email)
-            .forEach(log => {
-                const date = log.created_date.split('T')[0];
-                if (!grouped[date]) grouped[date] = { date, knocks: 0, sales: 0 };
-                grouped[date].knocks++;
-                if (['SOLD', 'QUALIFIED'].includes(log.parsed_status)) grouped[date].sales++;
-            });
-
-        return Object.values(grouped)
-            .sort((a, b) => new Date(a.date) - new Date(b.date))
-            .map(d => ({
-                ...d,
-                conversion: d.knocks > 0 ? Number(((d.sales / d.knocks) * 100).toFixed(1)) : 0
-            }));
-    }, [logs, member]);
-
-    // 3. Stats vs Team Average
-    const myStats = useMemo(() => {
-        const myLogs = logs.filter(l => isKnockActivityLog(l) && l.created_by === member.email);
-        const total = myLogs.length;
-        const sales = myLogs.filter(l => ['SOLD', 'QUALIFIED'].includes(l.parsed_status)).length;
-        return {
-            total,
-            sales,
-            conversion: total > 0 ? (sales / total * 100) : 0
-        };
-    }, [logs, member]);
+    // These are the same authorized all-time aggregates used by roster cards
+    // and company totals, including server-verified legacy identity links.
+    const chartData = performance?.history || [];
+    const myStats = performance?.metrics;
 
     const activeRoutes = useMemo(
         () => routes.filter(route => route.status === 'ACTIVE' || route.status === 'IN_PROGRESS'),
@@ -95,7 +66,8 @@ export default function RepPerformanceDetail({ member, logs, teamAverage, onClos
                             {member.role.toUpperCase()}
                         </Badge>
                     </h2>
-                    <p className="text-gray-400 text-xs md:text-sm">Performance Analysis</p>
+                    <p className="text-gray-400 text-xs md:text-sm">Performance Analysis · All time</p>
+                    {!myStats && <p className="mt-1 text-xs text-gray-500">{metricsLoading ? 'Loading activity…' : 'Activity is unavailable. Retry from the team summary.'}</p>}
                 </div>
                 <Button variant="ghost" onClick={onClose} className="text-gray-400 text-xs h-8">Close</Button>
             </div>
@@ -109,7 +81,7 @@ export default function RepPerformanceDetail({ member, logs, teamAverage, onClos
                         </div>
                         <div className="min-w-0">
                             <p className="text-[9px] md:text-sm text-gray-400 truncate">Knocks</p>
-                            <p className="text-lg md:text-2xl font-bold text-white">{myStats.total}</p>
+                            <p className="text-lg md:text-2xl font-bold text-white">{myStats?.knocks ?? '—'}</p>
                         </div>
                     </CardContent>
                 </Card>
@@ -120,7 +92,7 @@ export default function RepPerformanceDetail({ member, logs, teamAverage, onClos
                         </div>
                         <div className="min-w-0">
                             <p className="text-[9px] md:text-sm text-gray-400 truncate">Sales</p>
-                            <p className="text-lg md:text-2xl font-bold text-white">{myStats.sales}</p>
+                            <p className="text-lg md:text-2xl font-bold text-white">{myStats?.sales ?? '—'}</p>
                         </div>
                     </CardContent>
                 </Card>
@@ -132,10 +104,10 @@ export default function RepPerformanceDetail({ member, logs, teamAverage, onClos
                         <div className="min-w-0">
                             <p className="text-[9px] md:text-sm text-gray-400 truncate">Conv %</p>
                             <div className="flex items-baseline gap-1 md:gap-2 flex-wrap">
-                                <p className="text-lg md:text-2xl font-bold text-white">{myStats.conversion.toFixed(1)}%</p>
-                                <span className={`text-[8px] md:text-xs hidden md:inline ${myStats.conversion >= teamAverage.conversion ? 'text-green-500' : 'text-red-500'}`}>
+                                <p className="text-lg md:text-2xl font-bold text-white">{myStats ? `${myStats.conversion.toFixed(1)}%` : '—'}</p>
+                                {myStats && <span className={`text-[8px] md:text-xs hidden md:inline ${myStats.conversion >= teamAverage.conversion ? 'text-green-500' : 'text-red-500'}`}>
                                     {myStats.conversion >= teamAverage.conversion ? '↑' : '↓'} Avg ({teamAverage.conversion.toFixed(1)}%)
-                                </span>
+                                </span>}
                             </div>
                         </div>
                     </CardContent>
