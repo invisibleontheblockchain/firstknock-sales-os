@@ -388,7 +388,8 @@ async function loadTeamActivityContext(base44, { period = "all", now = /* @__PUR
   const identity = await base44.auth.me();
   if (!identity?.id) throw Object.assign(new Error("Sign in to view team activity."), { status: 401 });
   const context = await resolveOutcomeBillingContext(base44, identity);
-  if (!context.teamMember && !isCompanyManager(context.actor)) {
+  const managesTeam = !context.teamMember && isCompanyManager(context.actor);
+  if (!context.teamMember && !managesTeam) {
     throw Object.assign(new Error("Join a team before viewing its activity."), { status: 403 });
   }
   const managerId = identifier3(context.managerId);
@@ -445,7 +446,23 @@ async function loadTeamActivityContext(base44, { period = "all", now = /* @__PUR
   const candidates = [...unique.values()];
   const legacyScope = { ownedRouteIds: [...ownedRouteIds], managerEmail: manager.email || "" };
   const logs = candidates.filter((log) => isTeamActivityScopeLog(log, { managerId, ...legacyScope }, members));
-  return { managerId, manager, members, logs, legacyScope };
+  const visibleMembers = managesTeam ? members : members.filter(
+    (member) => member.isTeamManager || normalized6(member.status) === "active"
+  ).map((member) => Object.fromEntries([
+    "id",
+    "user_id",
+    "manager_id",
+    "name",
+    "email",
+    "role",
+    "status",
+    "color",
+    "profile_image_url",
+    "isTeamManager",
+    "isManagerSelf",
+    "activity_member_ids"
+  ].filter((key) => member[key] !== void 0).map((key) => [key, member[key]])));
+  return { managerId, manager, members: visibleMembers, logs, legacyScope };
 }
 
 // base44/functions/getTeamLeaderboard/entry.ts
