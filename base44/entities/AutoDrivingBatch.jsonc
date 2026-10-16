@@ -1,0 +1,108 @@
+{
+  "name": "AutoDrivingBatch",
+  "type": "object",
+  "properties": {
+    "manager_id": {
+      "type": "string"
+    },
+    "member_id": {
+      "type": "string"
+    },
+    "rep_user_id": {
+      "type": "string"
+    },
+    "shift_id": {
+      "type": "string"
+    },
+    "session_id": {
+      "type": "string"
+    },
+    "batch_id": {
+      "type": "string"
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "ended_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "received_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "dropped_points": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "points": {
+      "type": "array",
+      "maxItems": 60,
+      "items": {
+        "type": "object",
+        "properties": {
+          "observed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lat": {
+            "type": "number"
+          },
+          "lng": {
+            "type": "number"
+          },
+          "accuracy": {
+            "type": "number"
+          },
+          "speed": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "observed_at",
+          "lat",
+          "lng",
+          "accuracy"
+        ]
+      }
+    }
+  },
+  "required": [
+    "manager_id",
+    "member_id",
+    "rep_user_id",
+    "shift_id",
+    "session_id",
+    "batch_id",
+    "started_at",
+    "ended_at",
+    "received_at",
+    "points"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "id": "__service_role_only__"
+      }
+    },
+    "read": {
+      "user_condition": {
+        "id": "__service_role_only__"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "id": "__service_role_only__"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "id": "__service_role_only__"
+      }
+    }
+  }
+}
