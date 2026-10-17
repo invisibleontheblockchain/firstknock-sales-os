@@ -15,7 +15,7 @@ import { createPageUrl } from '../utils';
 import { toast } from "sonner";
 import TeamMemberCard from "@/components/team/TeamMemberCard";
 import RouteAssignmentDialog from '@/components/routes/RouteAssignmentDialog';
-import { buildRepRouteScope, buildSavedRouteQueryFilters, collectKnockRoutes, fetchAllSavedRoutePages } from '@/components/rep/repRouteCollection';
+import { buildRepRouteScope, collectKnockRoutes, fetchKnockRouteGroups } from '@/components/rep/repRouteCollection';
 import DrivingTab from "@/components/team/DrivingTab";
 import RepBasesTab from "@/components/team/RepBasesTab";
 import CreateTeamDialog from "@/components/team/CreateTeamDialog";
@@ -141,9 +141,9 @@ export default function AdminTeam() {
         refetchOnWindowFocus: true,
         queryFn: async () => {
             if (!managerId) return [];
-            const groups = await Promise.all(buildSavedRouteQueryFilters(routeScope).map(filter => (
-                fetchAllSavedRoutePages((limit, skip) => withReadDeadline(() => base44.entities.SavedRoute.filter(filter, '-created_date', limit, skip, TEAM_ROUTE_FIELDS)))
-            )));
+            const groups = await fetchKnockRouteGroups((filter, limit, skip, fields) => withReadDeadline(() => (
+                base44.entities.SavedRoute.filter(filter, '-created_date', limit, skip, fields || TEAM_ROUTE_FIELDS)
+            )), routeScope);
             const rows = collectKnockRoutes(groups, routeScope);
             return rows.filter((route) => route.status !== 'ARCHIVED');
         },

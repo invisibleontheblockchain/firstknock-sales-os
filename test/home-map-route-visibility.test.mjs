@@ -49,7 +49,7 @@ test('Home map has discovery, legacy-hash, visibility, and camera recovery paths
   const layers = source('src/components/map/ManagerMapLayers.jsx');
   const toolbar = source('src/components/map/MapToolbar.jsx');
 
-  assert.match(home, /buildSavedRouteQueryFilters\(savedRouteScope\)/);
+  assert.match(home, /fetchKnockRouteGroups\([\s\S]*?savedRouteScope\)/);
   assert.match(home, /filterRoutesByStatus\(allSavedRoutes, 'all'\)/);
   assert.match(home, /if \(p\.legacy_hash\) propsByHash\.set\(p\.legacy_hash, p\)/);
   assert.match(home, /savedRouteOverviewPoints/);

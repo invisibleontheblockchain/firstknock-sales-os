@@ -62,7 +62,7 @@ import { collectUnretiredOutcomes, confirmOutcomeRow } from '@/components/logic/
 import { isKnockActivityLog } from '@/lib/interactionLogs'; import { fetchAccountInteractionLogs, scopeInteractionLogsToAccount } from '@/lib/accountInteractionLogs'; import { buildLogsByAddress, withDerivedStatus } from '@/components/logic/routePropertyStatus';
 import {
     buildRepRouteScope,
-    buildSavedRouteQueryFilters,
+    fetchKnockRouteGroups,
     collectKnockRoutes,
     fetchAllSavedRoutePages,
 } from '@/components/rep/repRouteCollection';
@@ -684,12 +684,9 @@ export default function Home() {
         refetchOnWindowFocus: true,
         queryFn: async () => {
             if (!user?.id) return [];
-            const fetchRouteGroup = (filter) => fetchAllSavedRoutePages((limit, skip) => (
-                base44.entities.SavedRoute.filter(filter, '-created_date', limit, skip)
-            ));
-            const routeGroups = await Promise.all(
-                buildSavedRouteQueryFilters(savedRouteScope).map(fetchRouteGroup)
-            );
+            const routeGroups = await fetchKnockRouteGroups((filter, limit, skip, fields) => (
+                base44.entities.SavedRoute.filter(filter, '-created_date', limit, skip, fields)
+            ), savedRouteScope);
             return collectKnockRoutes(routeGroups, savedRouteScope);
         },
         enabled: !!user?.id
