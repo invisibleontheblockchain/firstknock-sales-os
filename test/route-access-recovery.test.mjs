@@ -507,3 +507,28 @@ test('the pin fallback never uses a differently named road or one beyond 250 m',
         assert.equal(result.properties[0].routing_access.resolution_status, 'unresolved');
     }
 });
+
+test('a stop this action already failed is not re-matched, re-geocoded or re-searched on a later pass', async () => {
+    const properties = [stop(0), stop(1), stop(2)];
+    const road = provider(properties, { bad: [1] });
+    let geocoded = 0, county = 0;
+    const result = await recoverRouteVehicleAccess(properties, { vehicleBaseUrl: 'https://roads.test', vehicleFetch: road.fetch,
+        knownUnresolved: new Map([[properties[1].address_hash, 'address_road_not_matched']]),
+        geocode: async items => { geocoded += items.length; return { results: {} }; },
+        countyAccessLookup: async () => { county += 1; return null; } });
+    assert.equal(result.report.unresolved.length, 1);
+    assert.equal(result.report.unresolved[0].reason, 'address_road_not_matched');
+    assert.equal(result.report.reused_failures, 1);
+    assert.equal(geocoded + county, 0, 'no geocoding or county search for a known failure');
+    assert.ok(road.calls.every(url => !url.pathname.includes(`${properties[1].lng},${properties[1].lat}`)),
+        'the known failure is left out of the road match');
+});
+
+test('outages and budget limits are never reused as known failures', async () => {
+    const properties = [stop(0), stop(1)];
+    const road = provider(properties);
+    const result = await recoverRouteVehicleAccess(properties, { vehicleBaseUrl: 'https://roads.test', vehicleFetch: road.fetch,
+        knownUnresolved: new Map([[properties[0].address_hash, 'road_provider_unavailable'], [properties[1].address_hash, 'recovery_limit_reached']]),
+        geocode: async () => ({ results: {} }) });
+    assert.equal(result.report.unresolved.length, 0, 'both are matched fresh');
+});

@@ -14,6 +14,12 @@ const MATCH_RADIUS = 100;
 // still be served from its OWN street, identified by name, within this distance.
 const PIN_STREET_RADIUS = 250;
 const MAX_FAILED_STOPS = 32;
+// Failures that depend only on the address and the road graph. Within one
+// Optimize action they will fail the same way again, so a later pass may reuse
+// them instead of re-matching, re-geocoding and re-searching county data.
+// Outages, timeouts and budget limits are never reused.
+export const REUSABLE_ACCESS_FAILURES = Object.freeze(new Set(['road_not_matched', 'address_not_matched',
+    'address_match_rejected', 'address_road_not_matched', 'address_road_mismatch', 'ambiguous_service_road']));
 const pointOf = value => ({ lat: Number(value?.lat), lng: Number(value?.lng) });
 const identity = value => String(value?.address_hash || value?.legacy_hash || value?.id || '');
 const distance = (a, b) => haversineDistanceMiles(a, b) * 1609.344;
@@ -231,6 +237,12 @@ export async function recoverRouteVehicleAccess(properties, options = {}) {
         return { ...stop, ...pointOf(access.point), routing_access: access };
     });
     const failed = new Map();
+    // Stops this action already proved unresolvable (sent back by the client
+    // for its later passes). Only for stops without usable cached access.
+    const known = new Map();
+    for (const [id, reason] of options.knownUnresolved instanceof Map ? options.knownUnresolved : []) {
+        if (REUSABLE_ACCESS_FAILURES.has(reason)) known.set(String(id), reason);
+    }
     const issue = (index, reason) => ({ property_id: identity(original[index]), stop_number: index + 1,
         address: [addressItem(original[index]).address, original[index].city, original[index].zip_code].filter(Boolean).join(', '), reason });
     const fail = (index, reason) => {
@@ -250,7 +262,8 @@ export async function recoverRouteVehicleAccess(properties, options = {}) {
             const firstRequests = new Map();
             for (let start = 0; start < result.length; start += 100) {
                 const indices = result.slice(start, start + 100).map((_, offset) => start + offset)
-                    .filter(index => isValidRoutePoint(result[index]));
+                    .filter(index => isValidRoutePoint(result[index])
+                        && !(!result[index].routing_access && known.has(identity(original[index]))));
                 if (!indices.length) continue;
                 const url = providerUrl(config, indices.length === 1 ? 'nearest' : 'route', indices.map(index => probePoint(result[index])));
                 const pending = request(url, options, preflight.signal);
@@ -265,6 +278,11 @@ export async function recoverRouteVehicleAccess(properties, options = {}) {
             for (let start = 0; start < result.length; start += 100) {
                 let indices = result.slice(start, start + 100).map((_, offset) => start + offset);
                 for (const index of indices) if (!isValidRoutePoint(result[index])) fail(index, 'invalid_coordinates');
+                for (const index of indices) {
+                    if (!failed.has(index) && !result[index].routing_access && known.has(identity(original[index]))) {
+                        fail(index, known.get(identity(original[index]))); report.reused_failures = (report.reused_failures || 0) + 1;
+                    }
+                }
                 indices = indices.filter(index => !failed.has(index));
                 while (indices.length > 0) {
                     if (failed.size >= failLimit) {
@@ -316,7 +334,8 @@ export async function recoverRouteVehicleAccess(properties, options = {}) {
             return { properties: original, report };
         } finally { preflight.close(); }
 
-        const recoverable = [...failed.keys()].slice(0, failLimit)
+        const fresh = index => !known.has(identity(original[index]));
+        const recoverable = [...failed.keys()].filter(fresh).slice(0, failLimit)
             .filter(index => isValidRoutePoint(original[index]) && addressItem(original[index]).address && addressItem(original[index]).zip);
         report.attempted = recoverable.length;
         if (recoverable.length > 0) {
@@ -386,7 +405,7 @@ export async function recoverRouteVehicleAccess(properties, options = {}) {
         }
         const countyReferences = new Map();
         const countyLookup = options.countyAccessLookup === false ? null : options.countyAccessLookup || discoverCountyRoadAccess;
-        const countyCandidates = [...failed.keys()].filter(index => !['road_provider_unavailable',
+        const countyCandidates = [...failed.keys()].filter(fresh).filter(index => !['road_provider_unavailable',
             'recovery_limit_reached', 'invalid_coordinates'].includes(failed.get(index))).slice(0, 8);
         if (countyLookup && countyCandidates.length && !scope.signal.aborted) {
             const countyScope = deadline(scope.signal, 15000);
@@ -425,7 +444,7 @@ export async function recoverRouteVehicleAccess(properties, options = {}) {
         // public-street entrance; never widen the provider's matching radius.
         const mappedLookup = options.mappedAccessLookup === false ? null : options.mappedAccessLookup
             || (options.enableMappedDrivewayRecovery === true ? discoverMappedDrivewayAccess : null);
-        const mappedCandidates = [...failed.keys()].filter(index => !['road_provider_unavailable',
+        const mappedCandidates = [...failed.keys()].filter(fresh).filter(index => !['road_provider_unavailable',
             'recovery_limit_reached', 'invalid_coordinates'].includes(failed.get(index))).slice(0, 8);
         if (mappedLookup && mappedCandidates.length && !scope.signal.aborted) {
             const mappedScope = deadline(scope.signal, 10000);

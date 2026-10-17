@@ -34,6 +34,9 @@ const OPTIMIZE_ACTION_DEADLINE_MS = 300000;
 // by remaining work, proof, progress, and the five-minute action budget.
 const MAX_OPTIMIZE_PASSES = 8;
 const MIN_CONTINUATION_BUDGET_MS = 60000;
+// Keep in step with REUSABLE_ACCESS_FAILURES in base44/shared/routeAccessRecovery.js.
+const REUSABLE_FAILURES = new Set(['road_not_matched', 'address_not_matched', 'address_match_rejected',
+    'address_road_not_matched', 'address_road_mismatch', 'ambiguous_service_road']);
 const boundedSearchContinuation = value => typeof value === 'string' && value.length > 0 && value.length <= 262144
     ? value : null;
 const routeRequestDeadline = properties => properties?.length > LARGE_ROAD_MATRIX_THRESHOLD
@@ -178,6 +181,7 @@ async function tryRoadMatrixOptimizePass(routeProperties, {
     searchPhase = null,
     searchContinuation = null,
     onSearchContinuation = null,
+    knownUnresolved = null,
     client = base44
 } = {}) {
     const decline = (reason, measurement = null) => { onOutcome?.(reason, measurement); return null; };
@@ -216,6 +220,7 @@ async function tryRoadMatrixOptimizePass(routeProperties, {
             payload.search_continuation = searchContinuation;
         }
         if (Array.isArray(comparisonOrder)) payload.comparison_order = comparisonOrder.map(propertyKey);
+        if (knownUnresolved?.size) payload.known_unresolved_stops = [...knownUnresolved].map(([property_id, reason]) => ({ property_id, reason }));
         if (neighborhoodReview) payload.neighborhood_review = {
             prefer_contiguous_on_tie: neighborhoodReview.preferContiguousOnTie === true,
             tie_seconds: Math.min(10, Math.max(0, Number(neighborhoodReview.tieSeconds) || 0)),
@@ -486,6 +491,7 @@ export async function tryRoadMatrixOptimize(routeProperties, {
     // Only the preceding accepted response in this click can supply a token.
     // A saved route, a different action, or a caller option cannot seed it.
     let searchContinuation = null;
+    const knownUnresolved = new Map();
     // Remaining checks after the previous pass. A pass that changed nothing and
     // left as many checks open is repeating questions that cannot complete
     // (for example next to an unresolved stop); another pass would do the same.
@@ -510,13 +516,18 @@ export async function tryRoadMatrixOptimize(routeProperties, {
         if (pass > 1) onProgress?.({ pass, maxPasses: limit, remainingWindows: coverage.remaining_windows });
         let reason, measurement, nextSearchContinuation = null;
         const result = await tryRoadMatrixOptimizePass(currentProperties, { ...options, searchCoverage: coverage,
-            ...(pass > 1 ? { searchPhase: 'remaining_neighborhoods', comparisonOrder: routeProperties } : {}),
+            ...(pass > 1 ? { searchPhase: 'remaining_neighborhoods', comparisonOrder: routeProperties, knownUnresolved } : {}),
             searchContinuation: pass > 1 ? searchContinuation : null,
             onSearchContinuation: value => { nextSearchContinuation = value; },
             deadlineMs: Math.min(requestBudget, Math.max(1, budget - (Date.now() - started))),
             onOutcome: (value, details) => { reason = value; measurement = details; } });
         const meta = result?.routingMetadata || measurement?.routingMetadata;
         const returnedCoverage = normalizeRoadSearchCoverage(meta?.road_search_coverage);
+        // Address/road failures repeat identically within this action; later
+        // passes skip re-matching them (outages and limits are never reused).
+        for (const issue of meta?.road_access_recovery?.unresolved || []) {
+            if (REUSABLE_FAILURES.has(issue?.reason) && typeof issue?.property_id === 'string') knownUnresolved.set(issue.property_id, issue.reason);
+        }
         if (returnedCoverage) coverage = returnedCoverage;
         const finalMeta = meta ? { ...meta, road_search_passes: pass } : null;
         if (finalMeta) {
