@@ -20,14 +20,14 @@ const PIN_STREET_RADIUS = 250;
 export const APPROXIMATE_ACCESS_RADIUS = 500;
 // Reasons an approximate stand-in may replace: the address or the road could
 // not be matched. Outages, limits and bad coordinates stay unresolved.
-const APPROXIMABLE = new Set(['road_not_matched', 'address_not_matched', 'address_match_rejected',
+const APPROXIMABLE = new Set(['road_disconnected', 'road_not_matched', 'address_not_matched', 'address_match_rejected',
     'address_road_not_matched', 'address_road_mismatch', 'ambiguous_service_road', 'no_drivable_road'])
 const MAX_FAILED_STOPS = 32;
 // Failures that depend only on the address and the road graph. Within one
 // Optimize action they will fail the same way again, so a later pass may reuse
 // them instead of re-matching, re-geocoding and re-searching county data.
 // Outages, timeouts and budget limits are never reused.
-export const REUSABLE_ACCESS_FAILURES = Object.freeze(new Set(['road_not_matched', 'address_not_matched',
+export const REUSABLE_ACCESS_FAILURES = Object.freeze(new Set(['road_disconnected', 'road_not_matched', 'address_not_matched',
     'address_match_rejected', 'address_road_not_matched', 'address_road_mismatch', 'ambiguous_service_road']));
 const pointOf = value => ({ lat: Number(value?.lat), lng: Number(value?.lng) });
 const identity = value => String(value?.address_hash || value?.legacy_hash || value?.id || '');
@@ -81,7 +81,7 @@ function providerUrl(config, service, points) {
         url.searchParams.set('bearings', points.map(() => '').join(';'));
         url.searchParams.set('overview', 'false');
         url.searchParams.set('steps', 'false');
-    } else url.searchParams.set('number', '3');
+    } else if (service === 'nearest') url.searchParams.set('number', '3');
     return url;
 }
 
@@ -166,19 +166,31 @@ async function pinStreetAccess(stop, config, options, signal) {
  * APPROXIMATE_ACCESS_RADIUS. The stop is routed and verified from there, and is
  * listed as approximate in the result and marked on the map.
  */
-async function approximateAccess(stop, reason, config, options, signal) {
-    const url = new URL(`${config.baseUrl}/nearest/v1/${config.profile}/${stop.lng},${stop.lat}`);
-    url.searchParams.set('number', '1'); url.searchParams.set('radiuses', String(APPROXIMATE_ACCESS_RADIUS));
+async function approximateAccess(stop, reason, config, options, signal, connectedTo = null) {
+    // With a connected reference, ask for a round trip through the stop: the
+    // road server then snaps it to the nearest road that connects, skipping a
+    // fragment that does not.
+    const there = connectedTo ? `${connectedTo.lng},${connectedTo.lat}` : null;
+    const referenceRadius = connectedTo?.radius || 5;
+    const url = connectedTo
+        ? new URL(`${config.baseUrl}/route/v1/${config.profile}/${there};${stop.lng},${stop.lat};${there}`)
+        : new URL(`${config.baseUrl}/nearest/v1/${config.profile}/${stop.lng},${stop.lat}`);
+    if (connectedTo) {
+        url.searchParams.set('radiuses', `${referenceRadius};${APPROXIMATE_ACCESS_RADIUS};${referenceRadius}`);
+        url.searchParams.set('overview', 'false'); url.searchParams.set('steps', 'false');
+    } else {
+        url.searchParams.set('number', '1'); url.searchParams.set('radiuses', String(APPROXIMATE_ACCESS_RADIUS));
+    }
     let payload;
     try { payload = await request(url, options, signal); }
     catch (error) { if (signal.aborted) throw signal.reason || abortError(); return null; }
-    const near = payload.waypoints?.[0];
-    if (!near || !validSnap(near, stop, APPROXIMATE_ACCESS_RADIUS + 0.5)) return null;
+    const snapped = payload.waypoints?.[connectedTo ? 1 : 0];
+    if (!snapped || !validSnap(snapped, stop, APPROXIMATE_ACCESS_RADIUS + 0.5)) return null;
     return { resolution_status: 'resolved', source: 'approximate_nearest_road', confidence: 'low', approximate: true,
-        side: 'unknown', serviceBearing: null, point: { lat: near.location[1], lng: near.location[0] },
-        displayPoint: pointOf(stop), roadName: near.name || '',
-        evidence: { propertyIdentity: identity(stop), displayPoint: pointOf(stop), snapMeters: Number(near.distance),
-            roadName: near.name || '', unresolvedReason: reason } };
+        side: 'unknown', serviceBearing: null, point: { lat: snapped.location[1], lng: snapped.location[0] },
+        displayPoint: pointOf(stop), roadName: snapped.name || '',
+        evidence: { propertyIdentity: identity(stop), displayPoint: pointOf(stop), snapMeters: Number(snapped.distance),
+            roadName: snapped.name || '', unresolvedReason: reason } };
 }
 
 async function verifyGeocodedAccess(stop, hit, config, options, signal, { lastResort = false } = {}) {
@@ -267,6 +279,9 @@ export async function recoverRouteVehicleAccess(properties, options = {}) {
         return { ...stop, ...pointOf(access.point), routing_access: access };
     });
     const failed = new Map();
+    // A road location every connected stop can reach, once a chunk had stops on
+    // disconnected road fragments; their approximate access must connect to it.
+    let connectedReference = null;
     // Stops this action already proved unresolvable (sent back by the client
     // for its later passes). Only for stops without usable cached access.
     const known = new Map();
@@ -300,6 +315,12 @@ export async function recoverRouteVehicleAccess(properties, options = {}) {
                 pending.catch(() => {}); // Surfaced when (and only if) the chunk uses it.
                 firstRequests.set(url.toString(), pending);
             }
+            const checkMatch = (index, waypoint) => {
+                const access = result[index].routing_access;
+                const expectedName = probeRoadName(access);
+                if (!validSnap(waypoint, probePoint(result[index]), access?.source === 'mapped_driveway_recovery' ? 5 : MATCH_RADIUS + 0.5)
+                    || (expectedName && !waypointOnRoad(waypoint.name, expectedName, streetKey))) fail(index, 'road_not_matched');
+            };
             const ask = url => {
                 const key = url.toString(), early = firstRequests.get(key);
                 if (early) { firstRequests.delete(key); return early; }
@@ -335,18 +356,46 @@ export async function recoverRouteVehicleAccess(properties, options = {}) {
                         if (service === 'nearest' && (error.code === 'NoSegment' || /NoSegment/.test(error.message))) {
                             fail(indices[0], 'road_not_matched'); indices = []; continue;
                         }
+                        // Two stops in this chunk sit on road pieces that do not
+                        // connect (an island, a gated or private network), so no
+                        // route passes through all of them. That says nothing
+                        // about the road server: match each stop on its own.
+                        if (service === 'route' && (error.code === 'NoRoute' || /NoRoute/.test(error.message))) {
+                            const answers = await Promise.all(indices.map(index =>
+                                ask(providerUrl(config, 'nearest', [probePoint(result[index])]))
+                                    .then(answer => ({ index, answer }), failure => ({ index, failure }))));
+                            for (const { index, answer, failure } of answers) {
+                                if (failure) {
+                                    if (failure.code === 'NoSegment' || /NoSegment/.test(failure.message)) { fail(index, 'road_not_matched'); continue; }
+                                    throw failure;
+                                }
+                                if (!Array.isArray(answer.waypoints) || answer.waypoints.length === 0) throw new Error('Driving provider returned incomplete road matches.');
+                                checkMatch(index, answer.waypoints[0]);
+                            }
+                            // The stops whose only nearby road is a fragment that does
+                            // not connect to the rest: one table over the chunk shows
+                            // which stops the best-connected stop cannot reach.
+                            const matched = indices.filter(index => !failed.has(index));
+                            if (matched.length > 1) {
+                                const table = await ask(providerUrl(config, 'table', matched.map(index => probePoint(result[index]))));
+                                const durations = table.durations;
+                                if (!Array.isArray(durations) || durations.length !== matched.length) throw new Error('Driving provider returned an incomplete road table.');
+                                const linked = (i, j) => durations[i][j] !== null && durations[j][i] !== null;
+                                const reach = matched.map((_, i) => matched.reduce((count, __, j) => count + (linked(i, j) ? 1 : 0), 0));
+                                const hub = reach.indexOf(Math.max(...reach));
+                                matched.forEach((index, i) => { if (!linked(hub, i)) fail(index, 'road_disconnected'); });
+                                const hubLocation = table.sources?.[hub]?.location;
+                                if (Array.isArray(hubLocation)) connectedReference ||= { lng: hubLocation[0], lat: hubLocation[1] };
+                            }
+                            report.disconnected_chunks = (report.disconnected_chunks || 0) + 1;
+                            indices = []; continue;
+                        }
                         throw error;
                     }
                     const waypoints = payload.waypoints;
                     if (!Array.isArray(waypoints) || (service === 'route' && waypoints.length !== indices.length)
                         || (service === 'nearest' && waypoints.length === 0)) throw new Error('Driving provider returned incomplete road matches.');
-                    indices.forEach((index, offset) => {
-                        const waypoint = waypoints[service === 'nearest' ? 0 : offset];
-                        const access = result[index].routing_access;
-                        const expectedName = probeRoadName(access);
-                        if (!validSnap(waypoint, probePoint(result[index]), access?.source === 'mapped_driveway_recovery' ? 5 : MATCH_RADIUS + 0.5)
-                            || (expectedName && !waypointOnRoad(waypoint.name, expectedName, streetKey))) fail(index, 'road_not_matched');
-                    });
+                    indices.forEach((index, offset) => checkMatch(index, waypoints[service === 'nearest' ? 0 : offset]));
                     indices = [];
                 }
                 if (!inventoryComplete) break;
@@ -364,7 +413,9 @@ export async function recoverRouteVehicleAccess(properties, options = {}) {
             return { properties: original, report };
         } finally { preflight.close(); }
 
-        const fresh = index => !known.has(identity(original[index]));
+        // Known failures and stops on a disconnected fragment skip recovery: a
+        // geocode would land on the same fragment.
+        const fresh = index => !known.has(identity(original[index])) && failed.get(index) !== 'road_disconnected';
         const recoverable = [...failed.keys()].filter(fresh).slice(0, failLimit)
             .filter(index => isValidRoutePoint(original[index]) && addressItem(original[index]).address && addressItem(original[index]).zip);
         report.attempted = recoverable.length;
@@ -504,9 +555,15 @@ export async function recoverRouteVehicleAccess(properties, options = {}) {
         // stand-in, so it no longer blocks global routing and verification.
         report.approximate = [];
         if (options.approximateAccess === true && inventoryComplete && !scope.signal.aborted) {
+            // A later pass skips matching a known disconnected stop, so no chunk
+            // supplied a reference: any stop that matched normally will do.
+            const matchedIndex = result.findIndex((stop, index) => !failed.has(index) && isValidRoutePoint(stop));
+            const reference = connectedReference || (matchedIndex >= 0
+                ? { lat: probePoint(result[matchedIndex]).lat, lng: probePoint(result[matchedIndex]).lng, radius: MATCH_RADIUS } : null);
             for (const [index, reason] of [...failed]) {
                 if (!APPROXIMABLE.has(reason) || !isValidRoutePoint(original[index])) continue;
-                const access = await approximateAccess(original[index], reason, config, options, scope.signal);
+                const access = await approximateAccess(original[index], reason, config, options, scope.signal,
+                    reason === 'road_disconnected' ? reference : null);
                 if (!access) continue;
                 result[index] = { ...original[index], ...access.point, routing_access: access };
                 report.access_overrides[identity(original[index])] = access;

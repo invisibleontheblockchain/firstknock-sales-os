@@ -575,3 +575,63 @@ test('a stop an earlier pass already failed goes straight to the approximate sta
     assert.equal(result.report.approximate[0].reason, 'address_not_matched');
     assert.equal(road.calls.length, 1, 'only the nearest-road lookup for the stand-in');
 });
+
+test('a stop on a road fragment that does not connect is routed from a connected road, labeled approximate', async () => {
+    // Live: SpringHill (211 stops). Stop 150's only road within 100 m was an
+    // unnamed fragment; /route said NoRoute and the whole route failed as
+    // "provider unavailable" in 0.9 s.
+    const properties = Array.from({ length: 120 }, (_, index) => stop(index));
+    const island = pointKey(properties[30]), noRoad = pointKey(properties[7]);
+    const fragment = [properties[30].lng + 0.0002, properties[30].lat];
+    const mainRoad = [properties[30].lng - 0.002, properties[30].lat];
+    const ok = (waypoints, extra = {}) => response({ code: 'Ok', waypoints, ...extra });
+    const calls = [];
+    const fetch = async rawUrl => {
+        const url = new URL(rawUrl); calls.push(url);
+        const points = url.pathname.split('/').at(-1).split(';').map(text => text.split(',').map(Number));
+        const key = ([lng, lat]) => `${lng},${lat}`;
+        if (url.pathname.includes('/table/')) {
+            const cut = points.map(p => key(p) === island);
+            return response({ code: 'Ok', sources: points.map(p => ({ location: p })),
+                durations: points.map((_, i) => points.map((__, j) => (cut[i] !== cut[j] ? null : 1))) });
+        }
+        if (url.pathname.includes('/route/')) {
+            // The stand-in's round trip from a connected stop snaps to the
+            // connected road, never the fragment.
+            if (points.length === 3 && key(points[1]) === island) {
+                return ok([{ location: points[0] }, { name: 'Long Branch Road', distance: 180, location: mainRoad }, { location: points[0] }]);
+            }
+            return points.some(p => key(p) === island) ? response({ code: 'NoRoute', message: 'Impossible route between points' }, 400)
+                : points.some(p => key(p) === noRoad) ? response({ code: 'NoSegment', message: `Could not find a matching segment for coordinate ${points.findIndex(p => key(p) === noRoad)}` }, 400)
+                    : ok(points.map(p => ({ name: 'Long Branch Road', distance: 0, location: p })));
+        }
+        const [p] = points;
+        if (key(p) === noRoad) return response({ code: 'NoSegment', message: 'Could not find a matching segment for coordinate 0' }, 400);
+        return ok([{ name: key(p) === island ? '' : 'Long Branch Road', distance: key(p) === island ? 20 : 0, location: key(p) === island ? fragment : p }]);
+    };
+    const result = await recoverRouteVehicleAccess(properties, { vehicleBaseUrl: 'https://roads.test', vehicleFetch: fetch,
+        geocode: async () => ({ results: {} }), approximateAccess: true });
+    assert.notEqual(result.report.status, 'provider_unavailable');
+    assert.equal(result.report.inventory_complete, true);
+    assert.equal(result.report.disconnected_chunks, 1);
+    assert.deepEqual(result.report.approximate.map(item => [item.stop_number, item.reason]), [[31, 'road_disconnected']]);
+    assert.deepEqual(result.report.unresolved.map(item => [item.stop_number, item.reason]), [[8, 'address_not_matched']], 'no road at all stays unresolved');
+    assert.deepEqual(result.properties[30].routing_access.point, { lat: mainRoad[1], lng: mainRoad[0] }, 'the connected road, not the fragment');
+    assert.equal(calls.filter(url => url.pathname.includes('/table/')).length, 1);
+
+    // A later pass skips matching it (known failure) and still finds the connected road.
+    const again = await recoverRouteVehicleAccess(properties, { vehicleBaseUrl: 'https://roads.test', vehicleFetch: fetch,
+        geocode: async () => ({ results: {} }), approximateAccess: true,
+        knownUnresolved: new Map([[properties[30].address_hash, 'road_disconnected']]) });
+    assert.deepEqual(again.report.approximate.map(item => [item.stop_number, item.reason]), [[31, 'road_disconnected']]);
+    assert.deepEqual(again.properties[30].routing_access.point, { lat: mainRoad[1], lng: mainRoad[0] });
+});
+
+test('a real outage while matching stops one by one is still reported as an outage', async () => {
+    const properties = Array.from({ length: 3 }, (_, index) => stop(index));
+    const road = provider(properties, { route: () => response({ code: 'NoRoute', message: 'Impossible route' }, 400),
+        nearest: () => response({ code: 'InternalError', message: 'down' }, 503) });
+    const result = await recoverRouteVehicleAccess(properties, { vehicleBaseUrl: 'https://roads.test', vehicleFetch: road.fetch,
+        geocode: async () => ({ results: {} }) });
+    assert.equal(result.report.status, 'provider_unavailable');
+});

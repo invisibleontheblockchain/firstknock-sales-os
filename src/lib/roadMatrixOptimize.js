@@ -35,7 +35,7 @@ const OPTIMIZE_ACTION_DEADLINE_MS = 300000;
 const MAX_OPTIMIZE_PASSES = 8;
 const MIN_CONTINUATION_BUDGET_MS = 60000;
 // Keep in step with REUSABLE_ACCESS_FAILURES in base44/shared/routeAccessRecovery.js.
-const REUSABLE_FAILURES = new Set(['road_not_matched', 'address_not_matched', 'address_match_rejected',
+const REUSABLE_FAILURES = new Set(['road_disconnected', 'road_not_matched', 'address_not_matched', 'address_match_rejected',
     'address_road_not_matched', 'address_road_mismatch', 'ambiguous_service_road']);
 const boundedSearchContinuation = value => typeof value === 'string' && value.length > 0 && value.length <= 262144
     ? value : null;
