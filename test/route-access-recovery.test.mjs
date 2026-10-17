@@ -369,3 +369,19 @@ test('default waterfall retries an unqualified Census match through Geocodio bef
     assert.equal(geocodeCalls.length, 2); assert.equal(result.report.recovered, 1);
     assert.equal(result.properties[0].routing_access.evidence.geocodeSource, 'geocodio');
 });
+
+test('a preflight outage records why no road match loaded, without URLs or coordinates', async () => {
+    const properties = [stop(0), stop(1), stop(2)];
+    const result = await recoverRouteVehicleAccess(properties, { vehicleBaseUrl: 'https://roads.test',
+        vehicleFetch: async () => {
+            throw Object.assign(new Error('OSRM request failed: fetch failed: ENOTFOUND: getaddrinfo ENOTFOUND roads.test'), { kind: 'network' });
+        } });
+    assert.equal(result.report.status, 'provider_unavailable');
+    assert.equal(result.report.failure_reason, 'road_provider_unavailable');
+    assert.deepEqual(result.report.failure_detail, { kind: 'network', status: null, osrm_code: null,
+        message: 'OSRM request failed: fetch failed: ENOTFOUND: getaddrinfo ENOTFOUND roads.test', host: 'roads.test' });
+    const refused = await recoverRouteVehicleAccess(properties, { vehicleBaseUrl: 'https://roads.test',
+        vehicleFetch: async () => ({ ok: false, status: 401, json: async () => ({ code: 'Unauthorized', message: 'A valid gateway key is required.' }) }) });
+    assert.equal(refused.report.failure_detail.kind, 'auth');
+    assert.equal(refused.report.failure_detail.status, 401);
+});

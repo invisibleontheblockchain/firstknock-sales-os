@@ -9,6 +9,7 @@ import * as legDistribution from '../base44/shared/roadLegDistribution.js';
 import * as routeDisplayGeometry from '../base44/shared/routeDisplayGeometry.js';
 import * as roadSearchSession from '../base44/shared/roadSearchSession.js';
 import * as osrmProvider from '../base44/shared/osrmProvider.js';
+import * as osrmDispatcher from '../base44/shared/osrmDispatcher.js';
 
 const source = fs.readFileSync(new URL('../base44/functions/optimizeRouteRoadMatrix/entry.ts', import.meta.url), 'utf8');
 const compiled = ts.transpileModule(source, { compilerOptions: {
@@ -73,7 +74,7 @@ function endpoint({ recover, local, finalReview, verify, winner, planTier = 'doo
             buildRoadMatrixCacheKey: async () => 'test-cache-key',
             fetchRoadMatrix: async (points, options) => {
                 calls.events.push('matrix'); calls.matrix.push({ points, options });
-                if (matrixFails) throw new Error('OSRM request failed with status 503.');
+                if (matrixFails) throw Object.assign(new Error('OSRM request failed with status 503.'), { status: 503, kind: 'http' });
                 return { objective: 'road_miles', source: matrixSource, snapped: points.length, pointCount: points.length };
             },
         },
@@ -109,7 +110,8 @@ function endpoint({ recover, local, finalReview, verify, winner, planTier = 'doo
         '../../shared/neighborhoodExcursions.js': { reviewNeighborhoodExcursions: properties => ({ properties,
             diagnostics: { detected: 0, remaining: 0, applied: false } }) },
         '../../shared/osrmDispatcher.js': { fetchOsrmJson: async () => assert.fail('unexpected unstubbed road request'),
-            osrmRoadBuildId: () => 'test-road-build' },
+            osrmRoadBuildId: () => 'test-road-build',
+            describeRoadFailure: osrmDispatcher.describeRoadFailure },
         '../../shared/osrmProvider.js': osrmProvider,
         '../../shared/osrmRequestCache.js': { createOsrmRequestCache: () => ({
             fetchJson: async url => {
@@ -719,6 +721,7 @@ test('an unset road engine returns the continuity fallback without contacting an
     assert.deepEqual([...body.order].sort(), ids(inputStops()).sort());
     assert.equal(body.routing_metadata.fallback, true);
     assert.equal(body.routing_metadata.fallback_reason, 'road_provider_not_configured');
+    assert.equal(body.routing_metadata.road_failure_detail.kind, 'config');
     assert.equal(body.routing_metadata.road_network_used, false);
     assert.equal(calls.recovery.length + calls.matrix.length + calls.provider.length + calls.paths.length, 0);
 });
@@ -733,6 +736,8 @@ test('an unavailable road engine returns the continuity fallback with its reason
     assert.equal(body.routing_metadata.fallback_status, 'continuity_fallback');
     assert.equal(body.routing_metadata.fallback_reason, 'road_matrix_unavailable');
     assert.match(body.routing_metadata.road_matrix_error, /503/);
+    assert.equal(body.routing_metadata.road_failure_detail.kind, 'http');
+    assert.equal(body.routing_metadata.road_failure_detail.host, 'roads.test');
     assert.equal(body.routing_metadata.road_build_id, 'test-road-build');
     assert.equal(calls.matrix.length, 1);
 });

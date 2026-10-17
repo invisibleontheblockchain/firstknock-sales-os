@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
     configureOsrmDispatcher,
+    describeRoadFailure,
     fetchOsrmJson,
     osrmCounters,
     osrmDispatcherState,
@@ -160,4 +161,37 @@ test('Retry-After accepts seconds and HTTP dates', () => {
     assert.equal(parseRetryAfterMs(new Date(10_000).toUTCString(), 4_000), 6000);
     assert.equal(parseRetryAfterMs(null), null);
     assert.equal(parseRetryAfterMs('soon'), null);
+});
+
+test('failures are classified so a manager can tell "never connected" from "refused"', async () => {
+    readOsrmProvider(name => ({ OSRM_BASE_URL: GATEWAY })[name]);
+    globalThis.fetch = async () => {
+        throw Object.assign(new TypeError('fetch failed'), { cause: Object.assign(new Error('getaddrinfo ENOTFOUND gateway.example'), { code: 'ENOTFOUND' }) });
+    };
+    const network = await fetchOsrmJson(`${GATEWAY}/table/v1/driving/-80.84,35.22;-80.85,35.23`, { timeoutMs: 200 }).catch(error => error);
+    const detail = describeRoadFailure(network, { baseUrl: GATEWAY });
+    assert.equal(detail.kind, 'network');
+    assert.equal(detail.host, 'gateway.example');
+    assert.match(detail.message, /fetch failed: ENOTFOUND/);
+    assert.doesNotMatch(detail.message, /https?:|35\.22/, 'no URL or coordinates are stored');
+
+    stubFetch(() => Response.json({ code: 'Unauthorized', message: 'A valid gateway key is required.' }, { status: 401 }));
+    const auth = describeRoadFailure(await fetchOsrmJson(`${GATEWAY}/t`).catch(error => error), { baseUrl: GATEWAY });
+    assert.deepEqual([auth.kind, auth.status], ['auth', 401]);
+
+    stubFetch(() => Response.json({ code: 'NoSegment', message: 'Could not find a matching segment for coordinate 1' }, { status: 400 }));
+    const osrm = describeRoadFailure(await fetchOsrmJson(`${GATEWAY}/t`).catch(error => error));
+    assert.deepEqual([osrm.kind, osrm.status, osrm.osrm_code], ['osrm', 400, 'NoSegment']);
+
+    stubFetch(() => ({ ok: true, status: 200, headers: new Headers(), json: () => new Promise(() => {}) }));
+    const slow = describeRoadFailure(await fetchOsrmJson(`${GATEWAY}/t`, { timeoutMs: 50 }).catch(error => error));
+    assert.equal(slow.kind, 'timeout');
+
+    assert.equal(describeRoadFailure({ code: 'ROAD_PROVIDER_NOT_CONFIGURED', message: 'unset' }).kind, 'config');
+});
+
+test('an unclassified error is "other", never mistaken for a connection failure', () => {
+    assert.equal(describeRoadFailure(new Error('Road matrix is incomplete: 3 unresolved cells.')).kind, 'other');
+    assert.equal(describeRoadFailure(new TypeError('fetch failed')).kind, 'network');
+    assert.equal(describeRoadFailure(new Error('error sending request: client error (Connect): dns error')).kind, 'network');
 });

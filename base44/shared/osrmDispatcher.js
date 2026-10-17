@@ -34,13 +34,68 @@ const settings = {
 
 /** Thrown for a response the dispatcher considers worth retrying. */
 class RetryableOsrmError extends Error {
-    constructor(message, { status = null, retryAfterMs = null } = {}) {
+    constructor(message, { status = null, retryAfterMs = null, kind = 'http' } = {}) {
         super(message);
         this.name = 'RetryableOsrmError';
         this.retryable = true;
         this.status = status;
         this.retryAfterMs = retryAfterMs;
+        this.kind = kind;
     }
+}
+
+const FAILURE_KINDS = new Set(['config', 'network', 'auth', 'timeout', 'http', 'osrm', 'cancelled', 'other']);
+
+/** Error text safe to store and show: no URLs, no coordinates, no control characters. */
+function safeFailureMessage(text) {
+    return String(text || '')
+        .replace(/[a-z][a-z\d+.-]*:\/\/[^\s)]+/gi, '<url>')
+        .replace(/-?\d{1,3}\.\d+\s*,\s*-?\d{1,3}\.\d+(?:\s*;\s*-?\d{1,3}\.\d+\s*,\s*-?\d{1,3}\.\d+)*/g, '<coordinates>')
+        .replace(/[\u0000-\u001f\u007f]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 160);
+}
+
+/** The underlying cause of a network failure (fetch wraps it: ENOTFOUND, ECONNREFUSED, DNS...). */
+function transportCause(error) {
+    const parts = [error?.message];
+    for (let cause = error?.cause, depth = 0; cause && depth < 3; cause = cause.cause, depth += 1) {
+        parts.push(cause.code, cause.message);
+    }
+    return [...new Set(parts.filter(Boolean).map(String))].join(': ');
+}
+
+/**
+ * Why a road request failed, as plain data a route can store and a manager can
+ * read: `{ kind, status, osrm_code, message, host }`. `kind` separates "could
+ * not connect at all" (network: DNS, TLS, a blocked host) from "connected and
+ * was refused" (auth / http / osrm) and from "too slow" (timeout).
+ */
+export function describeRoadFailure(error, { baseUrl = '' } = {}) {
+    let host = null;
+    try { host = baseUrl ? new URL(baseUrl).hostname : null; } catch { host = null; }
+    const status = Number.isInteger(error?.status) && error.status > 0 ? error.status : null;
+    const code = typeof error?.code === 'string' ? error.code : null;
+    let kind = FAILURE_KINDS.has(error?.kind) ? error.kind : null;
+    if (!kind) {
+        if (code === 'ROAD_PROVIDER_NOT_CONFIGURED') kind = 'config';
+        else if (code === 'OSRM_DEADLINE' || code === 'recovery_timeout' || error?.name === 'TimeoutError') kind = 'timeout';
+        else if (error?.name === 'AbortError') kind = 'cancelled';
+        else if (status === 401 || status === 403) kind = 'auth';
+        else if (code && /^[A-Z][A-Za-z]+$/.test(code) && code !== 'Ok') kind = 'osrm';
+        else if (status) kind = 'http';
+        else if (/fetch failed|ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ECONNRESET|ETIMEDOUT|dns error|error sending request|certificate|tls/i
+            .test(transportCause(error))) kind = 'network';
+        else kind = 'other';
+    }
+    return {
+        kind,
+        status,
+        osrm_code: code && /^[A-Z][A-Za-z]{1,40}$/.test(code) ? code : null,
+        message: safeFailureMessage(error?.message) || null,
+        host
+    };
 }
 
 function timeoutError(timeoutMs) {
@@ -243,7 +298,7 @@ async function attemptOnce(url, deadline) {
     } catch (error) {
         if (deadline.aborted) throw abortReason(deadline);
         counters.transportFailures += 1;
-        throw new RetryableOsrmError(`OSRM request failed: ${error.message}`);
+        throw new RetryableOsrmError(`OSRM request failed: ${transportCause(error)}`, { kind: 'network' });
     } finally {
         counters.headersMs += Date.now() - sentAt;
     }
@@ -274,6 +329,7 @@ async function attemptOnce(url, deadline) {
             });
             const error = new Error(`OSRM request failed with status ${response.status}${payload?.code ? ` (${payload.code})` : ''}. ${payload?.message || ''}`.trim());
             error.code = payload?.code;
+            error.kind = response.status === 401 || response.status === 403 ? 'auth' : payload?.code ? 'osrm' : 'http';
             error.status = response.status;
             throw error;
         }
@@ -281,6 +337,7 @@ async function attemptOnce(url, deadline) {
         if (payload?.code !== 'Ok') {
             const error = new Error(`OSRM request rejected: ${payload?.code || 'unknown'}.`);
             error.code = payload?.code;
+            error.kind = 'osrm';
             throw error;
         }
         return payload;
