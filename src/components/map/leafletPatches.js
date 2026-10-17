@@ -1,5 +1,6 @@
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import { isWithinTapTarget } from './mapTapTarget.js';
 
 // Default marker icons + two defensive patches for fast unmount / scroll-wheel
 // zoom races that otherwise throw inside Leaflet during navigation.
@@ -42,5 +43,11 @@ if (originalCanvasRedraw) {
 // Touch-friendly hit detection: give every canvas-rendered pin and route line
 // ~12px of extra tap slop so small markers are easy to tap on mobile.
 L.Canvas.mergeOptions({ tolerance: 12 });
+
+// Every other circle dot on these maps (territory pins, clusters, appointment
+// pins) accepts taps over the same slightly larger circle; drawing is unchanged.
+L.CircleMarker.prototype._containsPoint = function containsPointWithinTapTarget(point) {
+  return isWithinTapTarget(this, point);
+};
 
 export default L;

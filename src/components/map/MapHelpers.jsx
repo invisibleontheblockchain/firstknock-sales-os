@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { CircleMarker, Circle, useMap } from 'react-leaflet';
 import L from 'leaflet';
+import { fitBoundsToVisibleArea } from './mapInsets';
 
 if (typeof window !== 'undefined' && !window.__fkLeafletCameraGuardInstalled) {
     window.__fkLeafletCameraGuardInstalled = true;
@@ -191,8 +192,12 @@ export function MapController({ fitBounds, onZoomChange, onMoveEnd }) {
                     const ne = bounds.getNorthEast();
                     const boundsKey = `${sw.lat.toFixed(4)},${sw.lng.toFixed(4)},${ne.lat.toFixed(4)},${ne.lng.toFixed(4)}`;
                     if (lastBoundsRef.current !== boundsKey) {
-                        if (map._mapPane) map.fitBounds(bounds, { padding: [30, 30], maxZoom: 17, animate: false });
                         lastBoundsRef.current = boundsKey;
+                        // Wait two frames so a route header card that opens with the
+                        // selection has its final size before the visible area is measured.
+                        requestAnimationFrame(() => requestAnimationFrame(() => {
+                            try { fitBoundsToVisibleArea(map, bounds, { maxZoom: 17 }); } catch (e) { /* Map destroyed */ }
+                        }));
                     }
                 }
             } catch (e) { }

@@ -18,6 +18,7 @@ import { isManagerAccount } from '@/lib/roles';
 import { useQueryClient } from "@tanstack/react-query";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuCheckboxItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { OptimizeRouteChoices, OptimizeRouteTrigger } from './OptimizeRouteInline';
+import { fitBoundsToVisibleArea } from './mapInsets';
 import { routeBelongsToActingUser } from '@/lib/routeOptimizeUpdate';
 import { findHydratedSearchRoute, GLOBAL_ROUTE_SEARCH_EVENT } from '@/components/search/globalSearchBridge';
 
@@ -414,7 +415,7 @@ export default function MapToolbar({
   return (
     <>
             {/* Top Stats Bar */}
-            <div className="absolute top-1 left-1 right-1 sm:top-4 sm:left-4 sm:right-4 z-[1000] flex flex-col gap-1.5 sm:gap-2 pointer-events-none">
+            <div data-map-inset="top" className="absolute top-1 left-1 right-1 sm:top-4 sm:left-4 sm:right-4 z-[1000] flex flex-col gap-1.5 sm:gap-2 pointer-events-none">
                 <div className="relative flex flex-nowrap items-center justify-between gap-1 sm:gap-2 w-full">
                     {/* DASHBOARD & SETTINGS TOGGLES */}
                     <div className={`${customAreaControlsBlocked ? 'pointer-events-none' : 'pointer-events-auto'} shrink-0 flex gap-1 sm:gap-2`}>
@@ -834,7 +835,7 @@ export default function MapToolbar({
           onClick={(e) => {
             e.stopPropagation();
             if (mapRef.current && fitBounds && fitBounds.length > 0) {
-              try {if (mapRef.current._mapPane) mapRef.current.fitBounds(fitBounds, { padding: [30, 30], maxZoom: 17 });} catch (e) {}
+              try {fitBoundsToVisibleArea(mapRef.current, fitBounds, { maxZoom: 17, animate: true });} catch (e) {}
               toast.success("Centered on Territory");
             }
           }}
@@ -848,7 +849,7 @@ export default function MapToolbar({
             </div>
 
             {/* Bottom Action Bar */}
-            <div className="absolute bottom-4 sm:bottom-6 left-0 right-0 z-[1000] pointer-events-none flex justify-center px-2">
+            <div data-map-inset="bottom" className="absolute bottom-4 sm:bottom-6 left-0 right-0 z-[1000] pointer-events-none flex justify-center px-2">
                 {/* Canvas owns the bottom bar whenever it is the active mode, so the
                     planner is one tap away instead of only inside BUILDER. */}
                 <div className={`pointer-events-auto flex items-center justify-center gap-2 ${routeMode === 'canvas' && !activeRoute ? 'max-w-[calc(100vw-1rem)] overflow-x-auto' : ''}`}>

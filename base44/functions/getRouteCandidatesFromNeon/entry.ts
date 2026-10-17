@@ -286,6 +286,10 @@ Deno.serve(async (req) => {
             -- complete property row to JSON for subdivision fallback. Doing
             -- that work inside the sorted join made even a small map request
             -- process every eligible property's potentially large raw payload.
+            -- The to_jsonb fallback only matters on a schema with a real
+            -- subdivision_name column; checking the catalog once (an InitPlan)
+            -- avoids serializing every row, raw_payload included, to find a
+            -- key that is otherwise always absent.
             WITH candidate_keys AS MATERIALIZED (
                 SELECT p.id AS property_id, wp.route_active, wp.status,
                        wp.fetch_job_id, wp.assigned_route_id
@@ -308,6 +312,14 @@ Deno.serve(async (req) => {
                   AND (${!bounds?.maxLng} OR p.lng <= ${bounds?.maxLng || 0})
                 ORDER BY p.sold_date DESC NULLS LAST, p.updated_at DESC
                 LIMIT ${limit}
+            ), subdivision_column AS (
+                SELECT EXISTS (
+                    SELECT 1 FROM pg_attribute
+                    WHERE attrelid = 'properties'::regclass
+                      AND attname = 'subdivision_name'
+                      AND attnum > 0
+                      AND NOT attisdropped
+                ) AS present
             )
             SELECT
                 p.id,
@@ -320,7 +332,7 @@ Deno.serve(async (req) => {
                     p.raw_payload -> 'property' ->> 'subdivision_name',
                     p.raw_payload ->> 'subdivision_name',
                     p.raw_payload ->> 'subdivisionName',
-                    to_jsonb(p) ->> 'subdivision_name'
+                    CASE WHEN (SELECT present FROM subdivision_column) THEN to_jsonb(p) ->> 'subdivision_name' END
                 ) AS subdivision_name,
                 p.city,
                 p.state,

@@ -1,6 +1,8 @@
 // Leaflet 1.9 Canvas draws paths in one pass. Draw labels in a second pass so
 // later dots never cover earlier numbers. Visual bounds include the text;
 // CircleMarker's original hit testing still uses only the circle/touch radius.
+import { isWithinTapTarget } from './mapTapTarget.js';
+
 const classes = new WeakMap();
 
 export function labelGeometry(point, label, measure) {
@@ -56,8 +58,7 @@ export function createLabelCanvas(L) {
         });
         const Marker = L.CircleMarker.extend({
             _containsPoint(point) {
-                return L.CircleMarker.prototype._containsPoint.call(this, point)
-                    || point.distanceTo(this._point) <= (this.options.touchRadius || 0);
+                return isWithinTapTarget(this, point);
             },
             _updateBounds() {
                 L.CircleMarker.prototype._updateBounds.call(this);
