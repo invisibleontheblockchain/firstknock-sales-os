@@ -24,7 +24,7 @@ function roadEngine({ fail = false, worse = false, unmatched = new Set() } = {})
         const index = p => Math.round((p[0] + 81) * 100000);
         const cost = (a, b) => index(a) + 1 === index(b) ? 40 : worse ? 80 : 10;
         const waypoints = coordinates.map(location => ({ location, distance: 0 }));
-        const data = { code: 'Ok', data_version: version };
+        const data = { code: 'Ok', data_version: version, build_fingerprint: graph };
         if (url.pathname.includes('/nearest/')) {
             if (unmatched.has(String(index(coordinates[0])))) return Response.json({ code: 'NoSegment' }, { status: 422 });
             data.waypoints = waypoints;
@@ -147,7 +147,7 @@ test('unsupported coverage, provider failure, and unknown graph cannot fabricate
     assert.deepEqual(failed.properties, properties); assert.equal(failed.comparison.before, null);
     assert.equal(failed.comparison.guard, 'legacy_fallback');
     const engine = roadEngine();
-    const outside = await runKernel(properties.map(p => ({ ...p, lat: 36 })), engine);
+    const outside = await runKernel(properties.map(p => ({ ...p, lat: 0 })), engine);
     assert.equal(outside.comparison.reason, 'OUTSIDE_GRAPH_COVERAGE'); assert.equal(engine.requests.length, 0);
 });
 test('preview and Keep Current never write SavedRoute; accepting persists exact order and matching geometry', async () => {
@@ -196,14 +196,14 @@ test('geometry consumers reject stale order and never join unknown gaps', async 
     const metadata = { ...result.metadata, road_geometry: null, road_geometry_segments: [{ points: stops().slice(0, 2) }, { points: stops().slice(2) }] };
     assert.equal(verifiedBetaSegments(metadata, result.comparison.afterOrder).length, 2);
 });
-test('proxy enforces 100 m, regional coordinates, bounded table size, and no invented approaches', () => {
+test('proxy enforces 100 m, national coverage, bounded table size, and no invented approaches', () => {
     const valid = { radiuses: '100;100', continue_straight: 'true', geometries: 'geojson' };
     assert.equal(assertRoadBetaProxyRequest('route', '-81,35;-80.99,35', valid).length, 2);
     for (const query of [{ ...valid, radiuses: '101;101' }, { ...valid, approaches: 'curb;curb' },
         { ...valid, bearings: '90,45;90,45' }, { ...valid, url: 'https://attacker.example' }]) {
         assert.throws(() => assertRoadBetaProxyRequest('route', '-81,35;-80.99,35', query));
     }
-    assert.throws(() => assertRoadBetaProxyRequest('nearest', '-112,33', { radiuses: '100' }));
+    assert.throws(() => assertRoadBetaProxyRequest('nearest', '-79.3832,43.6532', { radiuses: '100' }));
 });
 test('server completion OFF preserves generation partitions and records the shared excursion review', async () => {
     const mock = workspace({ enabled: false }), routes = [{ properties: stops(), totalDistance: 5 }];
@@ -265,7 +265,7 @@ test('generated telemetry binds only to the saved route with its exact guarded m
     assert.equal((await mock.call({ action: 'bind_generated', comparison_id: row.id, route_id: 'route' })).status, 409);
 });
 test('one outside-coverage stop is preserved while nearby windows remain eligible', async () => {
-    const properties = stops(12); properties[6] = { ...properties[6], lat: 36 };
+    const properties = stops(12); properties[6] = { ...properties[6], lat: 0 };
     const result = await runKernel(properties);
     assert.equal(result.properties[6], properties[6]); assert.equal(result.comparison.unresolvedCount, 1);
     assert.equal(result.comparison.optimizationWindows, 1); assert.equal(result.comparison.fullMeasurement, false);
