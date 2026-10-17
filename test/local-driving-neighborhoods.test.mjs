@@ -465,3 +465,51 @@ test('prefetching later windows changes timing only: same order, same diagnostic
     assert.equal(sequential.peak, 1);
     assert.ok(prefetched.peak > 1, 'later independent neighborhoods are fetched while one is reviewed');
 });
+
+test('mail-carrier curb discovery and whole windows run ahead without changing any decision', async () => {
+    // Twelve separate four-door neighborhoods, each with one profitable swap.
+    const input = Array.from({ length: 48 }, (_, i) => ({ id: `door-${i}`, street_name: `Street ${Math.floor(i / 4)}`,
+        lat: 35, lng: -81 + Math.floor(i / 4) * 0.02 + (i % 4) / 100000 }));
+    const desired = [...input];
+    for (let cluster = 0; cluster < 12; cluster++) {
+        const at = cluster * 4 + 1;
+        [desired[at], desired[at + 1]] = [desired[at + 1], desired[at]];
+    }
+    const preferred = new Set(desired.slice(1).map((p, i) => `${desired[i].id}>${p.id}`));
+    const duration = (a, b) => preferred.has(`${a.id}>${b.id}`) ? 1 : 40;
+    const run = async contextLookahead => {
+        let inFlight = 0, peak = 0, discoveries = 0;
+        const createLocalDrivingContext = async (_section, config) => {
+            if (config.discoverStreetSides) discoveries++;
+            inFlight++; peak = Math.max(peak, inFlight);
+            await new Promise(resolve => setTimeout(resolve, 5));
+            inFlight--;
+            return {
+                optimizationCostBetween: duration, distanceBetween: (a, b) => duration(a, b) / 1000,
+                async routeSequence(sequence) {
+                    const directedLegs = sequence.slice(1).map((p, i) => ({ from: sequence[i].id, to: p.id,
+                        pathKey: `${sequence[i].id}>${p.id}`, driveSeconds: duration(sequence[i], p),
+                        distanceMiles: duration(sequence[i], p) / 1000 }));
+                    return { directedLegs, driveSeconds: directedLegs.reduce((s, leg) => s + leg.driveSeconds, 0),
+                        distanceMiles: directedLegs.reduce((s, leg) => s + leg.distanceMiles, 0), geometry: [],
+                        ...(config.discoverStreetSides ? { streetSideEvidence: { waypoints: [], steps: [] } } : {}) };
+                },
+            };
+        };
+        // A priority-ordered schedule is scattered along the route, like live
+        // ones: consecutive entries are not neighbors.
+        const reviewWindows = [0, 6, 2, 8, 4, 10, 1, 7, 3, 9, 5, 11].map((cluster, rank) => ({
+            start: cluster * 4, end: cluster * 4 + 4, short: true, priority: 100 - rank }));
+        const result = await reviewLocalDrivingNeighborhoods(input, { areaDrivingReview: false, mailCarrierMode: true,
+            reviewWindows, maxLocalWindows: 100, localReviewBudgetMs: 30000, createLocalDrivingContext, contextLookahead });
+        return { result, peak, discoveries };
+    };
+    const sequential = await run(0), ahead = await run(8);
+    assert.deepEqual(ahead.result.properties.map(p => p.id), sequential.result.properties.map(p => p.id));
+    for (const key of ['planned', 'checked', 'repaired', 'candidatesMeasured', 'localSecondsSaved', 'localMilesSaved', 'skipped']) {
+        assert.deepEqual(ahead.result.diagnostics[key], sequential.result.diagnostics[key], key);
+    }
+    assert.equal(ahead.discoveries, sequential.discoveries, 'each section is discovered exactly once either way');
+    assert.equal(sequential.peak, 1);
+    assert.ok(ahead.peak > 1, 'independent neighborhoods, including their curb discovery, run ahead');
+});

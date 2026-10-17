@@ -19,7 +19,7 @@ const protectedStop = (p, locks) => locks.has(id(p)) || p.order_locked || p.lock
 // How many upcoming windows have their road context fetched while the current
 // one is reviewed. Each costs one table and one route request; the dispatcher's
 // concurrency cap still bounds the engine load.
-const CONTEXT_LOOKAHEAD = 4;
+const CONTEXT_LOOKAHEAD = 8;
 // Candidate orders for one window priced at once: the default candidate count.
 // The private gateway serves 16 requests at once, so a window's proposals no
 // longer need to queue behind each other.
@@ -349,27 +349,44 @@ async function reviewDrivingWindows(order, options = {}) {
     const prefetchFrom = (index, currentSection) => {
         const claimed = new Set(currentSection.map(id));
         for (const entry of prefetched.values()) for (const key of entry.ids) claimed.add(key);
+        const scheduledBefore = new Set(claimed);
         // Never fetch past the remaining window budget or the time budget.
         const lookahead = Date.now() >= deadline ? 0 : Math.min(maxWindows - report.checked,
-            Math.max(0, Math.min(8, options.contextLookahead ?? CONTEXT_LOOKAHEAD)));
+            Math.max(0, Math.min(16, options.contextLookahead ?? CONTEXT_LOOKAHEAD)));
         const orderNow = [...order];
         for (let next = index + 1; next < Math.min(windows.length, index + 1 + lookahead); next++) {
             const window = windows[next];
             const key = `${window.start}:${window.end}`;
             if (prefetched.has(key)) continue;
-            const { section } = sectionFor(window);
+            const parts = sectionFor(window), { section } = parts;
             const ids = section.map(id);
-            if (ids.some(stopId => claimed.has(stopId)) || needsCurbDiscovery(section)) continue;
+            const touchesPending = ids.some(stopId => claimed.has(stopId));
+            const touchesEarlier = ids.some(stopId => scheduledBefore.has(stopId));
+            // Every window scheduled before a candidate claims its stops for
+            // discovery purposes, whether or not it is evaluated ahead itself.
+            ids.forEach(stopId => scheduledBefore.add(stopId));
+            // Plain evaluation is revalidated at commit (snapshot), so it only
+            // needs to avoid the current window and pending look-aheads. Curb
+            // discovery writes shared inferred access, so it may run early only
+            // when no earlier-scheduled window could touch those stops first.
+            const discovers = needsCurbDiscovery(section);
+            if (touchesPending || (discovers && touchesEarlier)) continue;
             ids.forEach(stopId => claimed.add(stopId));
-            const fetched = (async () => {
+            const entry = { snapshot: null, ids, discovers, discovery: null, fetched: null };
+            entry.discovery = discovers ? discoverCurbs(section).then(() => null, error => ({ error })) : Promise.resolve(null);
+            entry.fetched = (async () => {
+                if ((await entry.discovery)?.error) return null;
+                entry.snapshot = sectionSnapshot(section);
                 // A question the search proof already certifies is reused
                 // without any road request; prefetch must not spend one on it.
                 if (proof && proof.has(await proof.key(orderNow, window, { ...options,
                     unresolvedStopIds: [...unmatchedIds], knownDrivingAccessFor: accessContext.accessFor }))) return null;
                 const context = await createContext(section, contextOptions);
-                return { context, baseline: await context.routeSequence(section) };
+                const baseline = await context.routeSequence(section);
+                // The whole window is evaluated ahead; only its commit waits.
+                return { context, baseline, evaluation: await evaluateWindow(window, parts, context, baseline) };
             })().catch(error => ({ error }));
-            prefetched.set(key, { snapshot: sectionSnapshot(section), ids, fetched });
+            prefetched.set(key, entry);
         }
     };
     // The prefetch result for this exact section, or null to fetch fresh. A
@@ -377,8 +394,89 @@ async function reviewDrivingWindows(order, options = {}) {
     const takePrefetched = async (window, section) => {
         const key = `${window.start}:${window.end}`, entry = prefetched.get(key);
         prefetched.delete(key);
-        if (!entry || entry.snapshot !== sectionSnapshot(section)) return null;
-        return entry.fetched;
+        if (!entry) return null;
+        const fetched = await entry.fetched;
+        return entry.snapshot !== null && entry.snapshot === sectionSnapshot(section) ? fetched : null;
+    };
+    // Everything a window decides depends only on its own section: the road
+    // context, its candidate orders and their measured drives. This computes
+    // that, without touching shared state, so it can run ahead of the commit.
+    const evaluateWindow = async (window, { left, right, stops, section }, context, baseline) => {
+        const { service, area, local } = window;
+        const searchStarted = Date.now();
+        const exactCandidates = (!area || service || local) && stops.length <= 12
+            ? buildLocalDrivingCandidates(stops, context, left.at(-1), right[0], options) : [];
+        const areaCandidates = area ? buildDrivingAreaCandidates(stops, context, left.at(-1), right[0], options) : [];
+        const serviceCandidates = service || (area && mailCarrier)
+            ? buildMailCarrierCandidates(stops, context, left.at(-1), right[0]) : [];
+        const priorViolations = mailCarrier ? mailCarrierPassViolations(section, context) : 0;
+        const acceptablePasses = candidateOrder => !mailCarrier
+            || mailCarrierPassViolations([...left, ...candidateOrder, ...right], context) <= priorViolations;
+        let candidates = [
+            ...areaCandidates,
+            ...serviceCandidates,
+            ...(area ? buildDrivingAreaDoorCandidates(stops, context, left.at(-1), right[0], {
+                lockedStopIds: options.lockedStopIds,
+                seedOrders: [...serviceCandidates, ...areaCandidates].map(candidate => candidate.order),
+                acceptOrder: acceptablePasses,
+            }).map(candidate => ({ ...candidate, areaMove: true })) : []),
+            ...exactCandidates,
+        ];
+        if (service || area) candidates.sort((a, b) => a.seconds - b.seconds || a.miles - b.miles);
+        candidates = [...new Map(candidates.filter(candidate => candidate.order.some((p, i) => id(p) !== id(stops[i])))
+            .map(c => [JSON.stringify(c.order.map(id)), c])).values()];
+        if (mailCarrier) {
+            // Fixed context may already contain an unavoidable violation.
+            // Permit measured reductions without introducing a new one.
+            candidates = candidates.filter(candidate => acceptablePasses(candidate.order));
+        }
+        const searchMs = Date.now() - searchStarted;
+        const considered = candidates.slice(0, maxCandidates);
+        // At most CANDIDATE_POOL proposals are priced at once, and the next one
+        // starts as soon as a slot frees rather than when the batch returns. Results
+        // are consumed in the original order, so ties and adoption stay
+        // deterministic. Once a cancellation, a graph change or the deadline is
+        // seen, nothing new starts; already-started work is drained first.
+        const outcomes = new Array(considered.length);
+        let launched = 0, deadlineHit = false;
+        const measureStarted = Date.now();
+        if (considered.length) await new Promise(resolveAll => {
+            let active = 0, halted = false;
+            const launch = () => {
+                while (!halted && active < CANDIDATE_POOL && launched < considered.length) {
+                    if (options.signal?.aborted) { halted = true; break; }
+                    if (Date.now() >= deadline) { deadlineHit = true; halted = true; break; }
+                    const index = launched++, candidate = considered[index];
+                    active++;
+                    context.routeSequence([...left, ...candidate.order, ...right])
+                        .then(measured => ({ measured }), error => ({ error }))
+                        .then(outcome => {
+                            outcomes[index] = outcome; active--;
+                            if (outcome.error) { try { fatal(outcome.error); } catch { halted = true; } }
+                            launch();
+                            if (active === 0) resolveAll();
+                        });
+                }
+                if (active === 0) resolveAll();
+            };
+            launch();
+        });
+        return { candidates, exactCount: exactCandidates.length, considered, outcomes, launched, deadlineHit,
+            searchMs, measureMs: Date.now() - measureStarted };
+    };
+    // Mail-carrier curb discovery for one section. It writes inferred access
+    // only for that section's own stops.
+    const discoverCurbs = async section => {
+        const observation = await retryInferredHeading(section, async () => {
+            const discovery = await createContext(section, { ...contextOptions, sparseCosts: true,
+                routeOnly: true, discoverStreetSides: true });
+            return discovery.routeSequence(section);
+        });
+        for (const [key, access] of inferMailCarrierAccess(section, observation.streetSideEvidence)) {
+            if ((!proof || routeIdentities.has(key)) && !discovered.has(key)
+                && !trustedAccess(accessContext.accessFor(section.find(p => id(p) === key)))) inferredAccess.set(key, access);
+        }
+        section.forEach(p => { if (!proof || routeIdentities.has(id(p))) discovered.add(id(p)); });
     };
     const retryInferredHeading = async (section, run) => {
         for (let retry = 0; retry < 9; retry++) {
@@ -399,6 +497,7 @@ async function reviewDrivingWindows(order, options = {}) {
         if (options.signal?.aborted) throw options.signal.reason || new DOMException('Cancelled', 'AbortError');
         const safeRanges = rangesAwayFromUnmatched(windows[index], unmatchedIndexes());
         if (safeRanges.length !== 1 || safeRanges[0].start !== windows[index].start || safeRanges[0].end !== windows[index].end) {
+            prefetched.delete(`${windows[index].start}:${windows[index].end}`);
             windows.splice(index, 1, ...unscheduled(safeRanges));
             report.planned = windows.length;
             index--;
@@ -415,21 +514,15 @@ async function reviewDrivingWindows(order, options = {}) {
         };
         const currentProofKey = () => proof.key(order, windows[index], { ...options,
             unresolvedStopIds: [...unmatchedIds], knownDrivingAccessFor: accessContext.accessFor });
+        const advance = prefetched.get(`${start}:${end}`);
         try {
-            if (mailCarrier && options.inferStreetSides !== false
-                && section.some(p => (!proof || routeIdentities.has(id(p)))
-                    && !trustedAccess(accessContext.accessFor(p)) && !discovered.has(id(p)))) {
+            if (advance?.discovers) {
                 markAttempt();
-                const observation = await timed('curb_discovery_ms', () => retryInferredHeading(section, async () => {
-                    const discovery = await createContext(section, { ...contextOptions, sparseCosts: true,
-                        routeOnly: true, discoverStreetSides: true });
-                    return discovery.routeSequence(section);
-                }));
-                for (const [key, access] of inferMailCarrierAccess(section, observation.streetSideEvidence)) {
-                    if ((!proof || routeIdentities.has(key)) && !discovered.has(key)
-                        && !trustedAccess(accessContext.accessFor(section.find(p => id(p) === key)))) inferredAccess.set(key, access);
-                }
-                section.forEach(p => { if (!proof || routeIdentities.has(id(p))) discovered.add(id(p)); });
+                const outcome = await timed('curb_discovery_ms', () => advance.discovery);
+                if (outcome?.error) { prefetched.delete(`${start}:${end}`); throw outcome.error; }
+            } else if (needsCurbDiscovery(section)) {
+                markAttempt();
+                await timed('curb_discovery_ms', () => discoverCurbs(section));
             }
             if (proof) {
                 certifiedKey = await currentProofKey();
@@ -439,9 +532,14 @@ async function reviewDrivingWindows(order, options = {}) {
                 }
             }
             markAttempt();
+            let evaluation = null;
             const { context, baseline } = await timed('road_context_ms', async () => {
                 const early = await takePrefetched(windows[index], section);
-                if (early?.context) { prefetchFrom(index, section); return early; }
+                if (early?.context) {
+                    prefetchFrom(index, section);
+                    evaluation = early.evaluation || null;
+                    return early;
+                }
                 let firstError = early?.error || null;
                 // This window's own request starts first; later windows are
                 // fetched behind it, never ahead of it.
@@ -459,67 +557,15 @@ async function reviewDrivingWindows(order, options = {}) {
             // Whole-run moves cannot repair a scrambled long street inside an
             // area. Ask bounded directed door questions as well; all proposals
             // still need the same continuous drive and unchanged boundary proof.
-            const searchStarted = Date.now();
-            const exactCandidates = (!area || service || local) && stops.length <= 12
-                ? buildLocalDrivingCandidates(stops, context, left.at(-1), right[0], options) : [];
-            const areaCandidates = area ? buildDrivingAreaCandidates(stops, context, left.at(-1), right[0], options) : [];
-            const serviceCandidates = service || (area && mailCarrier)
-                ? buildMailCarrierCandidates(stops, context, left.at(-1), right[0]) : [];
-            const priorViolations = mailCarrier ? mailCarrierPassViolations(section, context) : 0;
-            const acceptablePasses = candidateOrder => !mailCarrier
-                || mailCarrierPassViolations([...left, ...candidateOrder, ...right], context) <= priorViolations;
-            let candidates = [
-                ...areaCandidates,
-                ...serviceCandidates,
-                ...(area ? buildDrivingAreaDoorCandidates(stops, context, left.at(-1), right[0], {
-                    lockedStopIds: options.lockedStopIds,
-                    seedOrders: [...serviceCandidates, ...areaCandidates].map(candidate => candidate.order),
-                    acceptOrder: acceptablePasses,
-                }).map(candidate => ({ ...candidate, areaMove: true })) : []),
-                ...exactCandidates,
-            ];
-            if (service || area) candidates.sort((a, b) => a.seconds - b.seconds || a.miles - b.miles);
-            candidates = [...new Map(candidates.filter(candidate => candidate.order.some((p, i) => id(p) !== id(stops[i])))
-                .map(c => [JSON.stringify(c.order.map(id)), c])).values()];
-            if (mailCarrier) {
-                // Fixed context may already contain an unavoidable violation.
-                // Permit measured reductions without introducing a new one.
-                candidates = candidates.filter(candidate => acceptablePasses(candidate.order));
-            }
-            timings.candidate_search_ms += Date.now() - searchStarted;
+            if (!evaluation) evaluation = await evaluateWindow(windows[index], { left, right, stops, section }, context, baseline);
+            const { candidates, exactCount, considered, outcomes, launched, deadlineHit } = evaluation;
+            timings.candidate_search_ms += evaluation.searchMs;
+            timings.candidate_measurement_ms += evaluation.measureMs;
             fullyConsidered = true;
-            if ((service || area || exactCandidates.length) && !candidates.length) continue;
+            if ((service || area || exactCount) && !candidates.length) continue;
             if (!candidates.length) { fullyConsidered = false; report.skipped.push({ start, end, reason: 'unreachable_local_roads' }); continue; }
+            if (deadlineHit) { fullyConsidered = false; report.budgetExhausted = true; }
             let selected = stops, selectedCandidate = null, best = baseline, bestPreference = preferenceFor(stops, context);
-            const considered = candidates.slice(0, maxCandidates);
-            // At most CANDIDATE_POOL proposals are priced at once, and the next one
-            // starts as soon as a slot frees rather than when the batch returns. Results
-            // are consumed in the original order, so ties and adoption stay
-            // deterministic. Once a cancellation, a graph change or the deadline is
-            // seen, nothing new starts; already-started work is drained first.
-            const outcomes = new Array(considered.length);
-            let launched = 0;
-            await timed('candidate_measurement_ms', () => new Promise(resolveAll => {
-                let active = 0, halted = false;
-                const launch = () => {
-                    while (!halted && active < CANDIDATE_POOL && launched < considered.length) {
-                        if (options.signal?.aborted) { halted = true; break; }
-                        if (Date.now() >= deadline) { fullyConsidered = false; report.budgetExhausted = true; halted = true; break; }
-                        const index = launched++, candidate = considered[index];
-                        active++;
-                        context.routeSequence([...left, ...candidate.order, ...right])
-                            .then(measured => ({ measured }), error => ({ error }))
-                            .then(outcome => {
-                                outcomes[index] = outcome; active--;
-                                if (outcome.error) { try { fatal(outcome.error); } catch { halted = true; } }
-                                launch();
-                                if (active === 0) resolveAll();
-                            });
-                    }
-                    if (active === 0) resolveAll();
-                };
-                launch();
-            }));
             if (options.signal?.aborted) throw options.signal.reason || new DOMException('Cancelled', 'AbortError');
             for (const outcome of outcomes) if (outcome?.error) fatal(outcome.error);
             for (let index = 0; index < launched; index++) {
@@ -569,6 +615,8 @@ async function reviewDrivingWindows(order, options = {}) {
                 }
             }
         } finally {
+            // A window is decided once; its look-ahead entry no longer claims stops.
+            prefetched.delete(`${start}:${end}`);
             if (fullyConsidered) {
                 coverage?.complete(proof ? certifiedKey : coverageKey);
                 if (proof && unchanged && certifiedKey && Date.now() < deadline && !options.signal?.aborted) proof.complete(certifiedKey);
