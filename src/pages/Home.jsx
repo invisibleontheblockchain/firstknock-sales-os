@@ -41,7 +41,7 @@ const MapSettingsPanel = React.lazy(() => import('../components/map/MapSettingsP
 import RouteBuilderSettings, { preloadCanvasBuilderSettings } from '../components/map/RouteBuilderSettings';
 const TerritorySetupWizard = React.lazy(() => import('../components/manager/TerritorySetupWizard'));
 import { hydrateRouteForMap, hydrateRoutesForMap } from '@/components/logic/routeHydration';
-import { hasCompleteRouteMapPoints, orderRouteProperties } from '@/components/logic/routeHydrationCore';
+import { hasCompleteRouteMapPoints, orderRouteProperties, selectRoutesToHydrate } from '@/components/logic/routeHydrationCore';
 import { getReadyRouteMapPoints, loadSavedRouteSelection } from '@/components/logic/routeMapSelection';
 import { mergeAnchoredRoute } from '@/lib/routeAnchorState';
 import { GpsMapLayer as GpsTrackerMapLayers, GpsHud as GpsTrackerHud } from '../components/map/GpsTracker';
@@ -639,6 +639,7 @@ export default function Home() {
         baseProperties: userProperties,
         viewportProperties,
         isOverviewReady: territoryOverviewReady,
+        isLoadingOverview: territoryOverviewLoading,
         error: territoryLoadError,
         retry: retryTerritory,
         onMapMoveEnd
@@ -1370,12 +1371,16 @@ export default function Home() {
         `${route.id}:${route.updated_date || ''}:${(route.property_hashes || []).join(',')}`
     )).join('|');
     const { data: cachedHydratedSavedRoutes, isFetching: savedRoutePinsLoading, error: savedRoutePinsError, refetch: retrySavedRoutePins } = useQuery({
-        queryKey: ['savedRouteMapProperties', user?.id, user?.email, savedRouteMapManifestKey, effectiveProperties.length],
+        queryKey: ['savedRouteMapProperties', user?.id, user?.email, savedRouteMapManifestKey, effectiveProperties.length, territoryOverviewLoading],
         enabled: !!user?.email && savedRoutes.length > 0,
         staleTime: 60_000,
         refetchOnWindowFocus: true,
         queryFn: async ({ signal }) => {
-            const hydrated = await hydrateRoutesForMap(savedRoutes, user.email, effectivePropertiesRef.current, {
+            // Most route homes arrive with the territory overview. Until it
+            // settles, only the routes acted on first are looked up; the rest
+            // render from territory homes, then request only what it lacks.
+            const routesToHydrate = selectRoutesToHydrate(savedRoutes, { overviewLoading: territoryOverviewLoading });
+            const hydrated = await hydrateRoutesForMap(routesToHydrate, user.email, effectivePropertiesRef.current, {
                 shouldContinue: () => !signal.aborted,
                 onRouteHydrated: route => {
                     setServerHydratedSavedRoutes(current => {
@@ -1388,7 +1393,8 @@ export default function Home() {
                 },
             });
             const incompleteCount = hydrated.filter(route => !hasCompleteRouteMapPoints(route)).length;
-            if (incompleteCount) {
+            // Incomplete routes are reported only once every route was looked up.
+            if (incompleteCount && !territoryOverviewLoading) {
                 throw new Error(`${incompleteCount} route${incompleteCount === 1 ? '' : 's'} could not load all homes.`);
             }
             return hydrated;
@@ -1564,7 +1570,7 @@ export default function Home() {
     useEffect(() => {
         if (!activeRoute || !user?.email || hasCompleteRouteMapPoints(activeRoute)) return;
         let cancelled = false;
-        loadSavedRouteSelection(activeRoute, [], route => hydrateRouteForMap(route, user.email))
+        loadSavedRouteSelection(activeRoute, effectivePropertiesRef.current, route => hydrateRouteForMap(route, user.email))
             .then(selected => {
                 if (!cancelled) setActiveRoute(selected);
             }).catch(error => {

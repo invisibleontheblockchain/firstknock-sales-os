@@ -221,6 +221,8 @@ test('Home retries incomplete collections while keeping loaded map pins', async 
         useQuery: config => config,
         user: { id: 'manager', email: 'manager@example.com' }, savedRoutes: routes,
         savedRouteMapManifestKey: 'healthy|missing', effectiveProperties: [], effectivePropertiesRef: { current: [] },
+        // Overview settled: every route is looked up in this pass.
+        territoryOverviewLoading: false,
         setServerHydratedSavedRoutes: update => { displayed = update(displayed); },
         ...core,
         hydrateRoutesForMap: async (_routes, _email, _properties, { onRouteHydrated }) => {

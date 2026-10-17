@@ -15,6 +15,58 @@ export const ANALYTICS_ROUTE_FIELDS = [
   'status', 'assigned_to', 'assigned_to_name', 'property_hashes', 'metrics',
 ];
 
+// Fields the analytics route visibility rule reads.
+export const ANALYTICS_ROUTE_SCOPE_FIELDS = ['id', 'manager_id', 'assigned_to', 'created_by'];
+const ANALYTICS_ROUTE_LIMIT = 500;
+const ANALYTICS_ROUTE_ID_BATCH = 100;
+
+const routeRows = (result) => (Array.isArray(result) ? result : (result?.items || []));
+
+/**
+ * Reads the same SavedRoute rows as one full read per filter, in the same
+ * order, without downloading overlapping groups at full size. A manager's
+ * own-tenant read already holds nearly every visible route; the assignee and
+ * creator reads repeated those rows with their whole door manifests. They now
+ * read only the scope fields, and any visible route the tenant read missed is
+ * then read in full by id. Without a tenant filter every group is read in full.
+ *
+ * @param {(filter: object, limit: number, fields: string[]) => Promise<unknown>} readRoutes
+ * @param {{ filters?: object[], tenantFilter?: object | null, isVisible?: (route: any) => boolean }} options
+ */
+export async function fetchAnalyticsRouteRows(readRoutes, { filters = [], tenantFilter = null, isVisible = () => true } = {}) {
+  const read = async (filter, fields, limit = ANALYTICS_ROUTE_LIMIT) => routeRows(await readRoutes(filter, limit, fields));
+  const tenantIndex = tenantFilter ? filters.indexOf(tenantFilter) : -1;
+  if (tenantIndex < 0) return (await Promise.all(filters.map((filter) => read(filter, ANALYTICS_ROUTE_FIELDS)))).flat();
+
+  const groups = await Promise.all(filters.map((filter, index) => (
+    read(filter, index === tenantIndex ? ANALYTICS_ROUTE_FIELDS : ANALYTICS_ROUTE_SCOPE_FIELDS)
+  )));
+  const fullGroups = new Set([tenantIndex]);
+  const fullById = new Map(groups[tenantIndex].filter((route) => route?.id).map((route) => [String(route.id), route]));
+  const missingIds = new Set();
+  for (const [index, rows] of groups.entries()) {
+    if (fullGroups.has(index)) continue;
+    const visible = rows.filter(isVisible);
+    if (visible.some((route) => !route?.id)) {
+      // A visible row without an id cannot be re-read by id; keep its group whole.
+      groups[index] = await read(filters[index], ANALYTICS_ROUTE_FIELDS);
+      fullGroups.add(index);
+      continue;
+    }
+    visible.forEach((route) => { if (!fullById.has(String(route.id))) missingIds.add(String(route.id)); });
+  }
+  const ids = [...missingIds];
+  for (let start = 0; start < ids.length; start += ANALYTICS_ROUTE_ID_BATCH) {
+    const batch = ids.slice(start, start + ANALYTICS_ROUTE_ID_BATCH);
+    (await read({ id: { $in: batch } }, ANALYTICS_ROUTE_FIELDS, batch.length))
+      .forEach((route) => { if (route?.id) fullById.set(String(route.id), route); });
+  }
+  // Rows the visibility rule rejects are dropped by the caller anyway.
+  return groups.flatMap((rows, index) => (fullGroups.has(index)
+    ? rows
+    : rows.filter(isVisible).map((route) => fullById.get(String(route.id))).filter(Boolean)));
+}
+
 export const ANALYTICS_APPOINTMENT_FIELDS = [
   'id', 'created_date', 'created_by', 'manager_id', 'scheduled_date', 'status',
   'assigned_rep', 'assigned_rep_name', 'industry', 'address_hash', 'full_address',
