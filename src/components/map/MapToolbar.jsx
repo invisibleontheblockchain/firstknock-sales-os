@@ -549,7 +549,7 @@ export default function MapToolbar({
                                 </div> :
 
             <button onClick={handleStartRename} className="group/name flex items-center gap-1 min-w-0 flex-1 md:flex-none" title="Rename">
-                                    <span className="block text-[11px] md:text-xs font-bold text-white truncate w-full md:w-auto md:max-w-[160px]">{activeRoute.route_number && (!activeRoute.name || /^Route\s+\d+$/i.test(activeRoute.name)) ? `Route ${activeRoute.route_number}` : activeRoute.name}</span>
+                                    <span className="block text-left text-[11px] md:text-xs font-bold text-white truncate w-full md:w-auto md:max-w-[160px]">{activeRoute.route_number && (!activeRoute.name || /^Route\s+\d+$/i.test(activeRoute.name)) ? `Route ${activeRoute.route_number}` : activeRoute.name}</span>
                                     <Pencil className="w-2.5 h-2.5 text-gray-600 opacity-0 group-hover/name:opacity-100 shrink-0" />
                                 </button>
             }
