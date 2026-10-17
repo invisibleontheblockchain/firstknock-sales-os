@@ -100,7 +100,7 @@ async function measure(stops, settings = {}, bounds = {}, options = {}) {
     return { ordered, engine, context, run: () => context.routeSequence(stops, bounds) };
 }
 
-function assertComplete(result, ordered, engine, { maxRequests = Math.ceil(ordered.length / 90), allowFinalRetries = false } = {}) {
+function assertComplete(result, ordered, engine, { maxRequests = Math.ceil(ordered.length / 90) } = {}) {
     assert.deepEqual(result.directedLegs.map(leg => [leg.from, leg.to]),
         ordered.slice(1).map((stop, i) => [ordered[i].id, stop.id]),
         'every submitted consecutive directed leg must occur once and in order');
@@ -111,9 +111,10 @@ function assertComplete(result, ordered, engine, { maxRequests = Math.ceil(order
     assert.ok(result.geometry.length >= 2);
     assert.ok(result.geometry.every(p => Number.isFinite(p.lat) && Number.isFinite(p.lng)));
     assert.ok(engine.calls.every(call => call.points.length >= 2 && call.points.length <= 100));
-    assert.ok(engine.calls.length <= maxRequests, 'route requests must remain bounded and must stop at the final stop');
-    assert.ok(allowFinalRetries || engine.calls.every((call, i) => call.start + call.points.length < ordered.length || i === engine.calls.length - 1),
-        'a request that reaches the final stop must be the final request');
+    assert.ok(engine.calls.length <= maxRequests, 'route requests must remain bounded');
+    // Chunks whose seams join on the first try are requested together up front;
+    // no chunk start is ever requested twice.
+    assert.equal(new Set(engine.calls.map(call => call.start)).size, engine.calls.length, 'each chunk is requested once');
     assert.equal(result.objectiveSeconds, result.driveSeconds + result.walkingAccessSeconds + result.parkingSeconds);
 }
 
@@ -165,20 +166,21 @@ for (const inconsistentInterior of ['path', 'time', 'distance']) {
     test(`a real shared interior ${inconsistentInterior} disagreement rejects the assembled drive`, async () => {
         const { run, engine } = await measure(makeStops(316), { inconsistentInterior });
         await assert.rejects(run(), /inconsistent turn continuity/);
-        assert.equal(engine.calls.length, 8, 'one original chunk, four shared-context attempts and three bounded backtracks');
+        assert.equal(engine.calls.length, 10, 'four up-front chunks, three wider-context attempts and three bounded backtracks');
     });
 }
 
 test('a road-graph change between successful chunks prevents a completed route measurement', async () => {
     const { run, engine } = await measure(makeStops(316), { changedGraph: true });
     await assert.rejects(run(), /graph identity changed/);
-    assert.equal(engine.calls.length, 2, 'a changed graph must never be retried with broader context');
+    // The up-front chunks may already be in flight; nothing beyond them is asked.
+    assert.ok(engine.calls.every(call => [0, 96, 192, 288].includes(call.start)), 'a changed graph is never retried with broader context');
 });
 
 test('a final seam dependent on earlier arrival waypoints retries with enough context and retains each leg once', async () => {
     const { run, ordered, engine } = await measure(makeStops(377), { arrivalContext: { legIndex: 289, predecessorLegs: 5 } });
     const result = await run();
-    assertComplete(result, ordered, engine, { maxRequests: 5, allowFinalRetries: true });
+    assertComplete(result, ordered, engine, { maxRequests: 5 });
     const matching = engine.calls.filter(call => call.start <= 289 && call.start + call.points.length > 290);
     assert.ok(matching.some(call => call.data.routes[0].legs[289 - call.start].duration === 60));
     assert.ok(matching.some(call => call.start > 0 && call.data.routes[0].legs[289 - call.start].duration === 10));
@@ -189,7 +191,7 @@ for (const predecessorLegs of [5, 13, 29]) {
     test(`an interior seam needing ${predecessorLegs} predecessors can shorten chunk coverage without omitting or double-counting stops`, async () => {
         const { run, ordered, engine } = await measure(makeStops(277), { loops: true, arrivalContext: { legIndex: 97, predecessorLegs } });
         const result = await run();
-        assertComplete(result, ordered, engine, { maxRequests: 7 });
+        assertComplete(result, ordered, engine, { maxRequests: 9 });
         assert.deepEqual(result.geometry.map(p => [p.lng, p.lat]), deduplicateAdjacent(ordered.slice(1).flatMap((_, i) => engine.legPath(i))));
         assert.ok(engine.calls.some(call => call.start > 0 && call.start <= 97 - predecessorLegs));
         assert.equal(engine.calls.at(-1).start + engine.calls.at(-1).points.length, ordered.length);
