@@ -423,3 +423,45 @@ test('discovery retries an infeasible previously inferred heading before classif
     assert.equal(JSON.stringify(input), original);
     assert.ok(calls.every(url => url.searchParams.get('radiuses').split(';').every(radius => ['40', '100'].includes(radius))));
 });
+
+test('prefetching later windows changes timing only: same order, same diagnostics, fewer sequential waits', async () => {
+    // Four separate twelve-door neighborhoods, each with one profitable swap.
+    const input = Array.from({ length: 48 }, (_, i) => ({ id: `door-${i}`, street_name: `Street ${Math.floor(i / 12)}`,
+        lat: 35, lng: -81 + Math.floor(i / 12) * 0.02 + (i % 12) / 100000 }));
+    const desired = [...input];
+    for (let cluster = 0; cluster < 4; cluster++) {
+        const at = cluster * 12 + 4;
+        [desired[at], desired[at + 1]] = [desired[at + 1], desired[at]];
+    }
+    const preferred = new Set(desired.slice(1).map((p, i) => `${desired[i].id}>${p.id}`));
+    const duration = (a, b) => preferred.has(`${a.id}>${b.id}`) ? 1 : 40;
+    const run = async contextLookahead => {
+        let inFlight = 0, peak = 0;
+        const createLocalDrivingContext = async () => {
+            inFlight++; peak = Math.max(peak, inFlight);
+            await new Promise(resolve => setTimeout(resolve, 5));
+            inFlight--;
+            return {
+                optimizationCostBetween: duration, distanceBetween: (a, b) => duration(a, b) / 1000,
+                async routeSequence(sequence) {
+                    const directedLegs = sequence.slice(1).map((p, i) => ({ from: sequence[i].id, to: p.id,
+                        pathKey: `${sequence[i].id}>${p.id}`, driveSeconds: duration(sequence[i], p),
+                        distanceMiles: duration(sequence[i], p) / 1000 }));
+                    return { directedLegs, driveSeconds: directedLegs.reduce((s, leg) => s + leg.driveSeconds, 0),
+                        distanceMiles: directedLegs.reduce((s, leg) => s + leg.distanceMiles, 0), geometry: [] };
+                },
+            };
+        };
+        const result = await reviewLocalDrivingNeighborhoods(input, { areaDrivingReview: false, maxLocalStops: 12,
+            maxLocalWindows: 100, localReviewBudgetMs: 30000, createLocalDrivingContext, contextLookahead });
+        return { result, peak };
+    };
+    const sequential = await run(0), prefetched = await run(4);
+    assert.deepEqual(prefetched.result.properties.map(p => p.id), sequential.result.properties.map(p => p.id));
+    assert.deepEqual(prefetched.result.properties.map(p => p.id), desired.map(p => p.id));
+    for (const key of ['planned', 'checked', 'repaired', 'candidatesMeasured', 'localSecondsSaved', 'localMilesSaved', 'skipped']) {
+        assert.deepEqual(prefetched.result.diagnostics[key], sequential.result.diagnostics[key], key);
+    }
+    assert.equal(sequential.peak, 1);
+    assert.ok(prefetched.peak > 1, 'later independent neighborhoods are fetched while one is reviewed');
+});
