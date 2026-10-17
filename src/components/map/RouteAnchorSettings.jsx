@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
+import { noteServerRouteOptimization } from '@/lib/serverRouteOptimizationJobs';
 
 export default function RouteAnchorSettings({ route, requesterId, onSaved, open, onOpenChange: setOpen }) {
     const queryClient = useQueryClient();
@@ -31,6 +32,7 @@ export default function RouteAnchorSettings({ route, requesterId, onSaved, open,
                 action: 'set_route', route_id: route.id, source, ...(source === 'custom' ? { location: resolved } : {}),
             });
             onSaved(response.data.route);
+            noteServerRouteOptimization(response.data);
             await Promise.all(['savedRoutes', 'allRoutes', 'myRoutes', 'routeAnchor'].map(key => queryClient.invalidateQueries({ queryKey: [key] })));
             toast.success(source === 'none' ? 'Route anchor removed' : 'Route optimized from its anchor');
             setOpen(false);

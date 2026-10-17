@@ -6,6 +6,7 @@ import {
     LONG_OPTIMIZATION_STOPS,
     subscribeRoadOptimizationJobs
 } from '@/lib/roadOptimizationProgress';
+import { watchServerRouteOptimizations } from '@/lib/serverRouteOptimizationJobs';
 
 const GOLD = '#D4AF37';
 
@@ -50,6 +51,13 @@ export default function RoadOptimizationProgressHost() {
     // Jobs finishing in the background start as the pill; tapping it opens them.
     const [opened, setOpened] = useState(() => new Set());
     useEffect(() => subscribeRoadOptimizationJobs(setJobs), []);
+    // Server-side background searches: check at start and when the tab returns.
+    useEffect(() => {
+        const check = () => { if (document.visibilityState !== 'hidden') watchServerRouteOptimizations(); };
+        check();
+        document.addEventListener('visibilitychange', check);
+        return () => document.removeEventListener('visibilitychange', check);
+    }, []);
     useEffect(() => {
         if (!jobs.length) return undefined;
         const timer = setInterval(() => setNow(Date.now()), 1000);

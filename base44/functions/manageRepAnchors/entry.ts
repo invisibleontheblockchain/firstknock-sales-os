@@ -3,6 +3,7 @@ import { isValidRoutePoint, calculateRouteDistanceMiles } from '../../shared/rou
 import { optimizeAnchoredStreetRoute } from '../../shared/routeAnchorRouting.js';
 import { secrets } from 'base44:runtime';
 import { completeServerRoadAwareRoutes } from '../../shared/roadAwareBetaServer.js';
+import { enqueueRouteOptimizationJob } from '../../shared/routeOptimizationJobs.js';
 
 const rows = (value) => Array.isArray(value) ? value : value?.items || [];
 const normalized = (value) => String(value || '').trim().toLowerCase();
@@ -90,6 +91,8 @@ async function optimize(base44, route, anchor, user) {
         property_hashes: ordered.map(property => property.anchor_hash),
         metrics: { ...route.metrics, distance: Math.round(completed.totalDistance * 100) / 100, house_count: hashes.length },
         ...(completed.metadata ? { metadata: completed.metadata } : {}),
+        // For the background road search that follows (never saved on the route).
+        jobProperties: ordered.map(property => ({ ...property, address_hash: property.anchor_hash })),
     };
 }
 
@@ -176,7 +179,7 @@ Deno.serve(async (req) => {
             else throw new HttpError(409, 'Assign a rep with a configured base first.');
         }
         if (source === 'custom') anchor = location(body.location);
-        const optimized = await optimize(base44, route, anchor, user);
+        const { jobProperties, ...optimized } = await optimize(base44, route, anchor, user);
         const latest = await service.entities.SavedRoute.get(route.id);
         if (!latest || latest.assigned_to !== route.assigned_to || latest.status !== route.status
             || latest.updated_date !== route.updated_date
@@ -208,7 +211,19 @@ Deno.serve(async (req) => {
         if (optimized.metadata?.road_aware_comparison_id) await service.entities.RoadAwareRoutingComparison.update(
             optimized.metadata.road_aware_comparison_id, { route_id: route.id }).catch(() => {});
         for (const record of oldRecords) await service.entities.RouteAnchor.delete(record.id).catch(() => {});
-        return Response.json({ success: true, route: { ...route, ...update }, anchor, notice });
+        // The anchored order above is a quick street sweep. The full road search
+        // runs in the background and saves a shorter order only onto an
+        // untouched route; the anchor change never waits for it.
+        let optimizationJobId = null;
+        if (jobProperties?.length > 1) {
+            try {
+                const job = await enqueueRouteOptimizationJob(service, { route: { ...route, ...update, id: route.id },
+                    properties: jobProperties, start: anchor, end: anchor, source: 'rep_anchor_change',
+                    ownerUserId: String(user.id), managerId: route.manager_id });
+                optimizationJobId = job?.id || null;
+            } catch (error) { console.warn('[manageRepAnchors] background road search not queued', error); }
+        }
+        return Response.json({ success: true, route: { ...route, ...update }, anchor, notice, optimization_job_id: optimizationJobId });
     } catch (error) {
         const status = error instanceof HttpError ? error.status : 500;
         if (status === 500) console.error('[manageRepAnchors]', error);

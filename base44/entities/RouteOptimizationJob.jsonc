@@ -1,0 +1,47 @@
+{
+  "name": "RouteOptimizationJob",
+  "type": "object",
+  "description": "A background road search for one saved route, created by a server-side generator (rep anchor change, backend generation, recent-sales routes). advanceRouteOptimizationJob runs it a pass at a time under a lease; the app reads progress through routeOptimizationJobStatus, never this record (it can hold a rep's private anchor and a search continuation).",
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["awaiting_route", "queued", "running", "improved", "kept", "discarded", "failed", "cancelled"],
+      "default": "queued"
+    },
+    "source": {
+      "type": "string",
+      "enum": ["rep_anchor_change", "backend_generation", "auto_recent_sales"],
+      "description": "Which server-side generator created the job"
+    },
+    "route_id": { "type": "string", "description": "SavedRoute being improved; empty while awaiting_route" },
+    "manager_id": { "type": "string", "description": "Workspace manager, for status reads" },
+    "owner_user_id": { "type": "string", "description": "User the search acts for; binds search continuations" },
+    "order_fingerprint": { "type": "string", "description": "Stop order an awaiting_route job binds to once saved" },
+    "properties_json": { "type": "string", "description": "Route stops (coordinates, address, access) the search runs over" },
+    "start_location": { "type": "object", "description": "Trip start for anchored routes (private)" },
+    "end_location": { "type": "object", "description": "Trip end for anchored routes (private)" },
+    "guard": {
+      "type": "object",
+      "description": "What the route must still look like for the job to write: stop order, status, assignee, bounds, and the time after which a knocked door stops it"
+    },
+    "state_json": { "type": "string", "description": "Saved search state between passes (order, coverage, continuation, proofs)" },
+    "passes_done": { "type": "number", "default": 0 },
+    "checks_done": { "type": "number" },
+    "checks_total": { "type": "number" },
+    "saved_savings_miles": { "type": "number", "default": 0, "description": "Savings already written to the route" },
+    "improved_miles": { "type": "number", "default": 0, "description": "Miles the job shortened the route by" },
+    "lease_token": { "type": "string" },
+    "lease_until": { "type": "string", "format": "date-time" },
+    "attempts": { "type": "number", "default": 0 },
+    "reason": { "type": "string", "description": "Why the job ended (edited, started, no_improvement, ...)" },
+    "error": { "type": "string" },
+    "finished_at": { "type": "string", "format": "date-time" }
+  },
+  "required": ["status", "source"],
+  "rls": {
+    "create": { "user_condition": { "id": "__service_role_only__" } },
+    "read": { "user_condition": { "id": "__service_role_only__" } },
+    "update": { "user_condition": { "id": "__service_role_only__" } },
+    "delete": { "user_condition": { "id": "__service_role_only__" } }
+  }
+}

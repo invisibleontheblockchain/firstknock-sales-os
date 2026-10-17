@@ -1,6 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import { secrets } from 'base44:runtime';
 import { completeServerRoadAwareRoutes } from '../../shared/roadAwareBetaServer.js';
+import { enqueueRouteOptimizationJob } from '../../shared/routeOptimizationJobs.js';
 
 function distanceMiles(a, b) {
     if (!isValidPoint(a) || !isValidPoint(b)) return 9999;
@@ -697,10 +698,26 @@ Deno.serve(async (req) => {
 
         const readSecret = name => { try { return String(secrets.get(name) || '').trim(); } catch { return ''; } };
         const completedRoutes = await completeServerRoadAwareRoutes(routes, { client: base44, user, entryPoint: 'backend_generation', readSecret });
+        // These routes are returned, not saved. Each gets a background road
+        // search that binds to the route once it is saved with exactly this
+        // stop order (checked by the 5-minute sweep for up to an hour).
+        const managerId = String(user.team_manager_id || user.data?.team_manager_id || user.id);
+        const queued = [];
+        for (const route of completedRoutes) {
+            try {
+                const job = await enqueueRouteOptimizationJob(base44.asServiceRole, { properties: route.properties,
+                    start: route.startLocation || null, end: route.endLocation || null, source: 'backend_generation',
+                    ownerUserId: String(user.id), managerId, kick: false });
+                queued.push(job ? { ...route, background_optimization_job_id: job.id } : route);
+            } catch (error) {
+                console.warn('[generateRoutesBackend] background road search not queued', error);
+                queued.push(route);
+            }
+        }
         return Response.json({
             success: true,
             count: routes.length,
-            routes: completedRoutes,
+            routes: queued,
             routing_metadata: responseRoutingMetadata
         });
     } catch (error) {

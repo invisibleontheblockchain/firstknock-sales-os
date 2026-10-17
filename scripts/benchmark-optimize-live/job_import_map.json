@@ -1,0 +1,6 @@
+{
+    "imports": {
+        "npm:@base44/sdk@0.8.40": "./base44-sdk-stub-worker.js",
+        "base44:runtime": "./base44-runtime-stub.js"
+    }
+}
