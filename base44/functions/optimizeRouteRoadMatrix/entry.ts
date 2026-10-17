@@ -244,7 +244,11 @@ export default async function (req: Request): Promise<Response> {
             providerIdentity: [vehicleBaseUrl, profile, countyRouting.graphIdentity || ''].join('|'),
             body, properties, displayProperties, startLocation, endLocation,
             neighborhoodOptions, startedAt: solverStartedAt,
-            eligible: profile === 'driving' && !accessRecovery.report?.unresolved?.length,
+            // Unresolved stops stay in their exact slots and are part of every
+            // proof key, so continuation proof also covers access-guarded
+            // routes. Without it, every later pass re-asked every question.
+            eligible: profile === 'driving',
+            unresolvedStopIds: (accessRecovery.report?.unresolved || []).map(issue => String(issue.property_id)),
         });
         if (searchSession.proof) neighborhoodOptions.roadSearchProof = searchSession.proof;
         // New clients never promote unsigned scheduling history into proof of
@@ -396,7 +400,8 @@ export default async function (req: Request): Promise<Response> {
             const applied = proof && winningOrder.some((stop, i) => propertyIdentity(stop) !== propertyIdentity(properties[i]));
             if (proof && !applied) local = { ...local, applied: false, repaired: 0,
                 localMilesSaved: 0, localSecondsSaved: 0, validation: 'unchanged' };
-            return Response.json({ success: true, selected: applied ? 'road_aware' : 'current',
+            const continuation = await finishSearch(winningOrder, Boolean(baseMetadata.road_search_coverage));
+            return Response.json({ success: true, selected: applied ? 'road_aware' : 'current', ...continuation,
                 order: winningOrder.map(propertyIdentity), property_count: properties.length,
                 routing_metadata: { ...baseMetadata, neighborhood_excursion_review: {
                     ...reviewNeighborhoodExcursions(properties).diagnostics,

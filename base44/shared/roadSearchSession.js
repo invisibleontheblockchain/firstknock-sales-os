@@ -24,7 +24,7 @@ const boundary = stop => stop ? Object.fromEntries(['lat', 'lng', 'id', 'address
 // graph certificate. The endpoint must still freshly verify the final order.
 export async function createRoadSearchSession({ secret, appId, userId, optimizerVersion, providerIdentity,
     body = {}, properties = [], displayProperties = [], startLocation = null, endLocation = null,
-    neighborhoodOptions = {}, startedAt, now = Date.now, createDrivingContext, eligible = true } = {}) {
+    neighborhoodOptions = {}, startedAt, now = Date.now, createDrivingContext, eligible = true, unresolvedStopIds = [] } = {}) {
     const diagnostic = { version: 1, status: 'disabled', reason: 'unsupported', restored_windows: 0, issued: false };
     const disabled = reason => { diagnostic.reason = reason; return { proof: null, diagnostic, finish: async () => null }; };
     if (!eligible) return disabled('ineligible');
@@ -50,6 +50,12 @@ export async function createRoadSearchSession({ secret, appId, userId, optimizer
         || new Set(comparisonIds).size !== properties.length || comparisonIds.some(id => typeof id !== 'string' || !idsSet.has(id))) return disabled('invalid_membership');
     const byId = new Map(properties.map(stop => [identity(stop), stop]));
     const originalOrder = comparisonIds.map(id => byId.get(id));
+    // Stops without road access cannot be routed. They never move, and every
+    // proof key already names them, so the witness drives around them; the
+    // skipped set is part of the witness, so a change discards the proof.
+    const unresolved = [...new Set(unresolvedStopIds.map(String))].filter(id => idsSet.has(id)).sort();
+    const unresolvedSet = new Set(unresolved);
+    const witnessOrder = originalOrder.filter(stop => !unresolvedSet.has(identity(stop)));
     const settings = Object.fromEntries(settingsFields.map(key => [key, neighborhoodOptions[key] ?? null]));
     settings.lockedStopIds = [...(neighborhoodOptions.lockedStopIds || [])].map(String).sort();
     const inputFingerprint = rawOrder => sha256RoadSearch({ properties: rawOrder.map(project), comparisonIds,
@@ -63,11 +69,11 @@ export async function createRoadSearchSession({ secret, appId, userId, optimizer
             : currentProof.inferredAccess.get(identity(stop)) || stop.routing_access || null,
         streetSegmentKey: neighborhoodStreetKey };
         const factory = createDrivingContext || neighborhoodOptions.createDrivingContext || createVehicleRoutingContext;
-        const context = await factory(originalOrder, access, { ...neighborhoodOptions, startLocation, endLocation,
+        const context = await factory(witnessOrder, access, { ...neighborhoodOptions, startLocation, endLocation,
             routeOnly: true, sparseCosts: true, requireDirectedLegs: true, maxGeometryPoints: 100000,
             servicePolicy: { enabled: false, parkingSecondsPerStop: 0 } });
-        const measured = await context.routeSequence(originalOrder, { startLocation, endLocation });
-        const ordered = [startLocation, ...originalOrder, endLocation].filter(isValidRoutePoint);
+        const measured = await context.routeSequence(witnessOrder, { startLocation, endLocation });
+        const ordered = [startLocation, ...witnessOrder, endLocation].filter(isValidRoutePoint);
         if (!Array.isArray(measured?.directedLegs) || measured.directedLegs.length !== ordered.length - 1
             || !Number.isFinite(measured.driveSeconds) || measured.driveSeconds < 0
             || !Number.isFinite(measured.distanceMiles) || measured.distanceMiles < 0
@@ -90,7 +96,7 @@ export async function createRoadSearchSession({ secret, appId, userId, optimizer
             throw new Error('Road search witness totals disagree.');
         }
         return sha256RoadSearch({ dataVersion: measured.dataVersion || null, legs,
-            seconds: measured.driveSeconds, miles: measured.distanceMiles });
+            seconds: measured.driveSeconds, miles: measured.distanceMiles, ...(unresolved.length ? { unresolved } : {}) });
     };
     diagnostic.status = 'new'; diagnostic.reason = 'fresh_action';
     if (body.search_continuation) {

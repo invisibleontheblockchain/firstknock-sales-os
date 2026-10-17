@@ -3,6 +3,7 @@ import { streetSidePolicy } from './streetSideRouting.js';
 import { vehicleProviderConfig } from './vehicleProviderConfig.js';
 import { vehicleServicePoint, VEHICLE_MATCH_RADIUS_METERS } from './serviceAccess.js';
 import { roadNetworkRoutingInternals } from './roadNetworkRouting.js';
+import { waypointOnRoad } from './roadNameMatch.js';
 
 const METERS_PER_MILE = 1609.344;
 // Keep the coordinate path plus per-waypoint query arrays comfortably below
@@ -92,7 +93,7 @@ function validateSnaps(waypoints, points) {
         }
         if (expected?.resolution_status === 'resolved' && expected.roadName) {
             const key = value => roadNetworkRoutingInternals.normalizeStreetName(value).replaceAll(' ', '');
-            if (key(waypoint.name) !== key(expected.roadName)) throw new Error('Vehicle provider matched a different service road.');
+            if (!waypointOnRoad(waypoint.name, expected.roadName, key)) throw new Error('Vehicle provider matched a different service road.');
         }
     });
 }

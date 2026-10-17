@@ -3,6 +3,7 @@ import { haversineDistanceMiles, isValidRoutePoint } from './routeBounds.js';
 import { roadNetworkRoutingInternals } from './roadNetworkRouting.js';
 import { vehicleProviderConfig } from './vehicleProviderConfig.js';
 import { describeRoadFailure } from './osrmDispatcher.js';
+import { waypointOnRoad } from './roadNameMatch.js';
 import { discoverCountyRoadAccess, validateCountyRoadAccess } from './countyRoadAccess.js';
 import { validateCountyRoadNetwork } from './countyRoadRouting.js';
 import { discoverMappedDrivewayAccess, validateMappedDrivewayAccess } from './mappedDrivewayAccess.js';
@@ -219,7 +220,7 @@ export async function recoverRouteVehicleAccess(properties, options = {}) {
                         const access = result[index].routing_access;
                         const expectedName = probeRoadName(access);
                         if (!validSnap(waypoint, probePoint(result[index]), access?.source === 'mapped_driveway_recovery' ? 5 : MATCH_RADIUS + 0.5)
-                            || (expectedName && streetKey(waypoint.name) !== streetKey(expectedName))) fail(index, 'road_not_matched');
+                            || (expectedName && !waypointOnRoad(waypoint.name, expectedName, streetKey))) fail(index, 'road_not_matched');
                     });
                     indices = [];
                 }

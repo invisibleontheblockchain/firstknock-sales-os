@@ -677,9 +677,15 @@ test('access-limited incumbent search forwards coverage and returns the ledger o
     assert.equal(status, 200);
     assert.deepEqual(body.routing_metadata.road_search_coverage, report);
     assert.equal(JSON.stringify(body.routing_metadata.neighborhood_excursion_review).includes('completed_window_keys'), false);
-    assert.equal(f.calls.sessions[0].eligible, false);
-    assert.equal(f.calls.finalized.length, 0);
-    assert.equal(body.search_continuation, undefined);
+    // Unresolved stops keep their slots and are named in every proof key, so the
+    // access-guarded path is eligible for continuation proof like any other.
+    assert.equal(f.calls.sessions[0].eligible, true);
+    assert.deepEqual(f.calls.sessions[0].unresolvedStopIds,
+        (body.routing_metadata.road_access_recovery.unresolved || []).map(issue => issue.property_id));
+    assert.ok(f.calls.sessions[0].unresolvedStopIds.length > 0);
+    assert.equal(f.calls.finalized.length, 1);
+    assert.deepEqual(f.calls.finalized[0].winningOrder.map(stop => stop.address_hash), ids(inputStops()));
+    assert.equal(body.search_continuation, undefined, 'this request did not ask for continuation');
 });
 
 test('final driving rejection cannot attach completion history for a different proposed order', async () => {
