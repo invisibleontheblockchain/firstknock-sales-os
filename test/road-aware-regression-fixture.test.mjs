@@ -39,9 +39,13 @@ test('neighborhood v5 explicitly versions the driving review while preserving fr
     // Reviewed: a resolved stop's service-road check accepts a /route junction
     // label ("A / B") that names the expected road; the snap-distance checks are
     // unchanged. Live, /nearest and /route disagreed on exactly that label.
+    // Reviewed: long routes request every chunk whose seam joins on the first
+    // try together, then join them in order exactly as before; a chunk request
+    // depends only on its start, so the answers and the seam checks are
+    // unchanged. Retries and backtracks still fetch their new starts on demand.
     const frozen = { 'coreDrivingPilot.js': '44ecbfad3d3578258d4d4a19d5ce7f1a43e345f61e5f0f362a71118a5e5d8f90',
         'guardedDrivingWindows.js': baseline.sourceHashes['base44/shared/guardedDrivingWindows.js'],
-        'vehicleRouting.js': '39baf2c3afcdedb22af46159b8da62bd47541b3d5387c24cc82bc701480c41c9' };
+        'vehicleRouting.js': '6223cc865f1ceef3a83915cd419a15c5e6ea684f7bcd4443b2e8f00832712d82' };
     for (const [file, hash] of Object.entries(frozen)) {
         const source = readFileSync(new URL('../base44/shared/' + file, import.meta.url), 'utf8').replace(/\r\n/g, '\n');
         assert.equal(createHash('sha256').update(source).digest('hex'), hash, file + ' needs explicit regression review');

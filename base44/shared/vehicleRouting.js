@@ -221,6 +221,30 @@ export async function createVehicleRoutingContext(properties, accessContext, opt
                 // Legs retained before the latest part. Backtracking never
                 // reaches into them: their seam was already proven.
                 let provenLegs = 0, seamBacktracks = 0;
+                // One chunk request per start. A chunk's request depends only on
+                // its start, so the starts every seam takes when it joins on the
+                // first try are requested together up front and consumed in
+                // order. A retry or backtrack asks for a new start, fetched then.
+                const chunkRequests = new Map();
+                const measureChunk = start => {
+                    if (!chunkRequests.has(start)) {
+                        const chunk = ordered.slice(start, start + MAX_VEHICLE_ROUTE_POINTS);
+                        const finalChunk = start + MAX_VEHICLE_ROUTE_POINTS >= ordered.length;
+                        const startLocation = start === 0 ? bounds.startLocation : null;
+                        const endLocation = finalChunk ? bounds.endLocation : null;
+                        const chunkStops = chunk.filter(p => p !== startLocation && p !== endLocation);
+                        const request = createVehicleRoutingContext(chunkStops, accessContext, { ...options, sparseCosts: false,
+                            routeOnly: true, requireDirectedLegs: true, startLocation, endLocation })
+                            .then(context => context.routeSequence(chunkStops, { startLocation, endLocation }));
+                        request.catch(() => {}); // Surfaced when (and only if) the chunk is used.
+                        chunkRequests.set(start, request);
+                    }
+                    return chunkRequests.get(start);
+                };
+                for (let start = 0; ; start += MAX_VEHICLE_ROUTE_POINTS - 4) {
+                    measureChunk(start);
+                    if (start + MAX_VEHICLE_ROUTE_POINTS >= ordered.length) break;
+                }
                 while (retainedEnd < ordered.length - 1) {
                     let accepted = false;
                     const contexts = !parts.length ? [0] : seamBacktracks ? [4] : [4, 8, 16, 32];
@@ -228,12 +252,7 @@ export async function createVehicleRoutingContext(properties, accessContext, opt
                         const start = parts.length ? Math.max(0, retainedEnd - (sharedStops - 2)) : 0;
                         const chunk = ordered.slice(start, start + MAX_VEHICLE_ROUTE_POINTS);
                         const finalChunk = start + MAX_VEHICLE_ROUTE_POINTS >= ordered.length;
-                        const startLocation = start === 0 ? bounds.startLocation : null;
-                        const endLocation = finalChunk ? bounds.endLocation : null;
-                        const chunkStops = chunk.filter(p => p !== startLocation && p !== endLocation);
-                        const context = await createVehicleRoutingContext(chunkStops, accessContext, { ...options, sparseCosts: false,
-                            routeOnly: true, requireDirectedLegs: true, startLocation, endLocation });
-                        const part = await context.routeSequence(chunkStops, { startLocation, endLocation });
+                        const part = await measureChunk(start);
                         // A graph change or provider failure is fatal. Earlier
                         // arrival context cannot make a different graph valid.
                         if (options.expectedDataVersion && part.dataVersion !== options.expectedDataVersion) throw new Error('Vehicle provider graph identity changed.');

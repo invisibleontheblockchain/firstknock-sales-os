@@ -185,6 +185,24 @@ export async function recoverRouteVehicleAccess(properties, options = {}) {
     try {
         const preflight = deadline(scope.signal, Math.max(1, Math.min(20000, Number(options.preflightBudgetMs) || 15000)));
         try {
+            // Each chunk's first request is fixed before any answer arrives, so
+            // they go out together and are consumed in order below. Retries after
+            // a NoSegment depend on that answer and are still asked one by one.
+            const firstRequests = new Map();
+            for (let start = 0; start < result.length; start += 100) {
+                const indices = result.slice(start, start + 100).map((_, offset) => start + offset)
+                    .filter(index => isValidRoutePoint(result[index]));
+                if (!indices.length) continue;
+                const url = providerUrl(config, indices.length === 1 ? 'nearest' : 'route', indices.map(index => probePoint(result[index])));
+                const pending = request(url, options, preflight.signal);
+                pending.catch(() => {}); // Surfaced when (and only if) the chunk uses it.
+                firstRequests.set(url.toString(), pending);
+            }
+            const ask = url => {
+                const key = url.toString(), early = firstRequests.get(key);
+                if (early) { firstRequests.delete(key); return early; }
+                return request(url, options, preflight.signal);
+            };
             for (let start = 0; start < result.length; start += 100) {
                 let indices = result.slice(start, start + 100).map((_, offset) => start + offset);
                 for (const index of indices) if (!isValidRoutePoint(result[index])) fail(index, 'invalid_coordinates');
@@ -197,7 +215,7 @@ export async function recoverRouteVehicleAccess(properties, options = {}) {
                     const service = indices.length === 1 ? 'nearest' : 'route';
                     let payload;
                     try {
-                        payload = await request(providerUrl(config, service, indices.map(index => probePoint(result[index]))), options, preflight.signal);
+                        payload = await ask(providerUrl(config, service, indices.map(index => probePoint(result[index]))));
                     } catch (error) {
                         const coordinate = /coordinate\s+(\d+)/i.exec(String(error?.message || ''));
                         if ((error.code === 'NoSegment' || /NoSegment/.test(error.message)) && coordinate
