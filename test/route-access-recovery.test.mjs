@@ -336,7 +336,8 @@ test('failed-stop inventory and geocoding work are bounded with explicit remaini
     let requested = 0;
     const result = await recoverRouteVehicleAccess(properties, { vehicleBaseUrl: 'https://roads.test', vehicleFetch: road.fetch, maxFailedStops: 3,
         geocode: async items => { requested += items.length; return { results: {} }; } });
-    assert.equal(requested, 3); assert.ok(road.calls.length <= 3);
+    // Three geocoded stops, plus at most one own-street lookup for each.
+    assert.equal(requested, 3); assert.ok(road.calls.length <= 6);
     assert.equal(result.properties.length, 40); assert.equal(result.report.unresolved.length, 40);
     assert.ok(result.report.unresolved.some(item => item.reason === 'recovery_limit_reached'));
 });
@@ -466,5 +467,43 @@ test('a near-exact Census match is still rejected for a different road, number, 
             geocodeFetch: censusBatch(`"${highwayStop.address_hash}","x","Match","Non_Exact","${matched}","${coordinates}"`) });
         assert.equal(result.report.recovered, 0, label);
         assert.equal(result.properties[0].routing_access.resolution_status, 'unresolved', label);
+    }
+});
+
+// Live: the pins of 1680 Mecklenburg Hwy and 124 Wellcraft Ct sit 158 m and
+// 120 m from their own named street, beyond the 100 m match radius, while the
+// geocoded address was 3 km away or on an unnamed driveway.
+function streetBehindPin({ name, distance }) {
+    const calls = [];
+    const fetch = async rawUrl => {
+        const url = new URL(rawUrl); calls.push(url);
+        const [lng, lat] = url.pathname.split('/').at(-1).split(';')[0].split(',').map(Number);
+        const radius = Number((url.searchParams.get('radiuses') || '100').split(';')[0]);
+        if (radius < distance) return response({ code: 'NoSegment', message: 'Could not find a matching segment for coordinate 0' }, 400);
+        const location = [lng, lat + distance / 111320];
+        return response({ code: 'Ok', waypoints: [{ name, distance, location }] });
+    };
+    return { fetch, calls };
+}
+const mecklenburg = { address_hash: '1680 MECKLENBURG HWY|28115', house_number: '1680', street_name: 'Mecklenburg Hwy',
+    city: 'Mooresville', state: 'NC', zip_code: '28115', lat: 35.532392, lng: -80.847665 };
+const noGeocode = async () => ({ results: {} });
+
+test('a pin behind its own named street is served from that street when geocoding cannot place it', async () => {
+    const road = streetBehindPin({ name: 'Mecklenburg Highway', distance: 158 });
+    const result = await recoverRouteVehicleAccess([mecklenburg], { vehicleBaseUrl: 'https://roads.test', vehicleFetch: road.fetch, geocode: noGeocode });
+    assert.equal(result.report.recovered, 1, JSON.stringify(result.report.unresolved));
+    const access = result.properties[0].routing_access;
+    assert.equal(access.source, 'pin_street_recovery');
+    assert.equal(access.roadName, 'Mecklenburg Highway');
+    assert.ok(road.calls.some(url => url.searchParams.get('radiuses') === '250'));
+});
+
+test('the pin fallback never uses a differently named road or one beyond 250 m', async () => {
+    for (const [name, distance] of [['Pauls Lane', 150], ['Mecklenburg Highway', 260]]) {
+        const road = streetBehindPin({ name, distance });
+        const result = await recoverRouteVehicleAccess([mecklenburg], { vehicleBaseUrl: 'https://roads.test', vehicleFetch: road.fetch, geocode: noGeocode });
+        assert.equal(result.report.recovered, 0, `${name} at ${distance} m`);
+        assert.equal(result.properties[0].routing_access.resolution_status, 'unresolved');
     }
 });
