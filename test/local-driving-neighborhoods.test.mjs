@@ -414,7 +414,7 @@ test('discovery retries an infeasible previously inferred heading before classif
             geometry: { coordinates: waypoints.map(p => p.location) }, legs }] });
     };
     const result = await reviewLocalDrivingNeighborhoods(input, { mailCarrierMode: true, areaDrivingReview: false,
-        maxServiceWindowStops: 10, vehicleFetch, localReviewBudgetMs: 10000 });
+        maxServiceWindowStops: 10, vehicleBaseUrl: 'https://roads.test', vehicleFetch, localReviewBudgetMs: 10000 });
     assert.equal(rejectedDiscoveryHeadings, 1);
     assert.ok(result.diagnostics.skipped.every(row => !/NoSegment/.test(row.reason)),
         `inferred heading failure must not quarantine the raw pin: ${JSON.stringify(result.diagnostics.skipped)}`);

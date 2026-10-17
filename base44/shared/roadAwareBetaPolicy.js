@@ -1,10 +1,10 @@
 // Workspace-scoped beta configuration. Never accept an enable flag from a client.
-export const CHARLOTTE_BETA_COVERAGE = Object.freeze([34.65, -81.35, 35.48, -80.22]);
+import { insideRoadCoverage, OSRM_DEFAULT_COVERAGE } from './osrmProvider.js';
 
-export function insideRoadBetaCoverage(point, bounds = CHARLOTTE_BETA_COVERAGE) {
-    const lat = Number(point?.lat), lng = Number(point?.lng);
-    return point?.lat != null && point?.lng != null && Number.isFinite(lat) && Number.isFinite(lng)
-        && lat >= bounds[0] && lat <= bounds[2] && lng >= bounds[1] && lng <= bounds[3];
+// Coverage is the configured engine's (OSRM_COVERAGE_BOUNDS, default the US car
+// graph), not a fixed city box: the beta reps work in Florida.
+export function insideRoadBetaCoverage(point, coverage = OSRM_DEFAULT_COVERAGE) {
+    return insideRoadCoverage(point, coverage);
 }
 
 export function roadBetaEligibleOwner(user, workspaceId, configuredIds = '') {
@@ -16,11 +16,11 @@ export function roadBetaEligibleOwner(user, workspaceId, configuredIds = '') {
         && String(user?.email || '').toLowerCase() === 'invisibleontheblockchain@gmail.com';
 }
 
-export function assertRoadBetaProxyRequest(service, coordinates, query = {}) {
+export function assertRoadBetaProxyRequest(service, coordinates, query = {}, coverage = OSRM_DEFAULT_COVERAGE) {
     if (!['route', 'table', 'nearest'].includes(service)) throw new Error('Unsupported road service.');
     const points = String(coordinates).split(';').map(pair => {
         const [lng, lat, ...extra] = pair.split(',').map(Number);
-        if (extra.length || !insideRoadBetaCoverage({ lat, lng })) throw new Error('OUTSIDE_GRAPH_COVERAGE');
+        if (extra.length || !insideRoadBetaCoverage({ lat, lng }, coverage)) throw new Error('OUTSIDE_GRAPH_COVERAGE');
         return { lat, lng };
     });
     const limit = service === 'nearest' ? 1 : service === 'table' ? 100 : 502;

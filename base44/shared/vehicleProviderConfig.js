@@ -1,11 +1,9 @@
-export const PUBLIC_OSRM_DEMO = 'https://router.project-osrm.org';
-
-// Production must explicitly select its authority; a URL label cannot change
-// the Lua profile baked into an OSRM graph.
+// Every caller must explicitly select its authority — there is no public-demo
+// default — and a URL label cannot change the Lua profile baked into an OSRM graph.
 export function vehicleProviderConfig({ baseUrl, profile = 'driving', production = false } = {}) {
-    if (production && !baseUrl?.trim()) throw new Error('Configure a private driving OSRM provider before enabling curbside routing.');
+    if (!baseUrl?.trim()) throw new Error('Configure a private driving OSRM provider before enabling curbside routing.');
     let url;
-    try { url = new URL(baseUrl || PUBLIC_OSRM_DEMO); } catch { throw new Error('Invalid vehicle provider URL.'); }
+    try { url = new URL(baseUrl); } catch { throw new Error('Invalid vehicle provider URL.'); }
     const hostname = url.hostname.toLowerCase().replace(/\.+$/, '');
     if (url.username || url.password || url.search || url.hash || !['http:', 'https:'].includes(url.protocol)) {
         throw new Error('Vehicle provider URL must contain only the service origin and optional path.');

@@ -22,7 +22,7 @@ import { secrets } from 'base44:runtime';
 import { partitionRouteTerritories } from '../../shared/routeTerritoryPartitioner.js';
 import { sequenceFrozenRoute } from '../../shared/frozenRouteSequencer.js';
 import { measureRoadPath } from '../../shared/roadPathMeasure.js';
-import { DEFAULT_OSRM_BASE_URL } from '../../shared/roadMatrix.js';
+import { readOsrmProvider } from '../../shared/osrmProvider.js';
 import { MAX_HOMES_PER_ROUTE } from '../../shared/routingBudgets.js';
 import { isValidPoint } from '../../shared/routeContinuityOptimizer.js';
 
@@ -99,7 +99,14 @@ export default async function (req: Request): Promise<Response> {
             }, { status: 400 });
         }
 
-        const baseUrl = readSecret('OSRM_BASE_URL') || DEFAULT_OSRM_BASE_URL;
+        const { baseUrl } = readOsrmProvider(readSecret);
+        if (!baseUrl) {
+            // Splitting is road-priced or not at all; the caller keeps its route.
+            return Response.json({
+                error: 'FirstKnock could not divide this territory on the road network. Nothing was changed.',
+                code: 'ROAD_PROVIDER_NOT_CONFIGURED'
+            }, { status: 422 });
+        }
         const roadOptions = { baseUrl, profile, timeoutMs, measurePath: measureRoadPath };
 
         const optimizeRoute = async (doors) => {

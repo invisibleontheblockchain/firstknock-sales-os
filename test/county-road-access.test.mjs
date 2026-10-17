@@ -34,7 +34,7 @@ function providers({ roads = defaultRoads(), addresses = [countyAddress(stop)], 
         return response(nearest || { code: 'Ok', waypoints: [{ name: 'Coppergate Drive', distance: 0,
             location: [gateway.lng, gateway.lat] }] });
     };
-    return { fetchImpl, vehicleFetch, calls };
+    return { fetchImpl, vehicleBaseUrl: 'https://roads.test', vehicleFetch, calls };
 }
 
 test('authoritative road discovery binds exact address ranges, connected geometry and real provider junction', async () => {
@@ -326,7 +326,7 @@ test('county discovery uses edge-supported manual redirect mode for every source
         redirects.push(options.redirect);
         return fetchImpl(url, options);
     };
-    const access = await discoverCountyRoadAccess(stop, { fetchImpl: edge(p.fetchImpl), vehicleFetch: edge(p.vehicleFetch) });
+    const access = await discoverCountyRoadAccess(stop, { fetchImpl: edge(p.fetchImpl), vehicleBaseUrl: 'https://roads.test', vehicleFetch: edge(p.vehicleFetch) });
     assert.ok(access);
     assert.equal(redirects.length, 3);
     assert.ok(redirects.every(value => value === 'manual'));

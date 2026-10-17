@@ -37,7 +37,7 @@ const expectedMiles = (from, to) => (from * 1000 + to) * METERS_TO_MILES;
 
 test('CACHE-01 the same coordinate set is bought once and reused exactly', async () => {
     const calls = stubOsrm();
-    const cache = createRoadCostCache({ fetchMatrix: fetchRoadMatrix });
+    const cache = createRoadCostCache({ fetchMatrix: (set, options) => fetchRoadMatrix(set, { baseUrl: 'https://roads.test', ...options }) });
     const set = points(92);
 
     const cold = await cache.fetchMatrix(set);
@@ -53,7 +53,7 @@ test('CACHE-01 the same coordinate set is bought once and reused exactly', async
 
 test('CACHE-02 a reused matrix is re-indexed onto the caller\'s point order', async () => {
     stubOsrm();
-    const cache = createRoadCostCache({ fetchMatrix: fetchRoadMatrix });
+    const cache = createRoadCostCache({ fetchMatrix: (set, options) => fetchRoadMatrix(set, { baseUrl: 'https://roads.test', ...options }) });
     const set = points(46);
     await cache.fetchMatrix(set);
 
@@ -74,7 +74,7 @@ test('CACHE-02 a reused matrix is re-indexed onto the caller\'s point order', as
 
 test('CACHE-03 a block whose pairs are all known is answered without an engine call', async () => {
     const calls = stubOsrm();
-    const cache = createRoadCostCache({ fetchMatrix: fetchRoadMatrix });
+    const cache = createRoadCostCache({ fetchMatrix: (set, options) => fetchRoadMatrix(set, { baseUrl: 'https://roads.test', ...options }) });
 
     await cache.fetchMatrix(points(92));
     const afterFirst = calls.length;
@@ -152,7 +152,7 @@ test('CACHE-06 A->B and B->A are cached and served as separate directed costs', 
         return { ok: true, json: async () => ({ code: 'Ok', distances, durations }) };
     };
 
-    const cache = createRoadCostCache({ fetchMatrix: fetchRoadMatrix });
+    const cache = createRoadCostCache({ fetchMatrix: (set, options) => fetchRoadMatrix(set, { baseUrl: 'https://roads.test', ...options }) });
     const cold = await cache.fetchMatrix(points(92));
     const coldCalls = calls.length;
 
@@ -177,7 +177,7 @@ test('CACHE-06 A->B and B->A are cached and served as separate directed costs', 
 // coordinate it actually belongs to.
 test('CACHE-07 duplicate coordinates keep their identity through memo reuse', async () => {
     const calls = stubOsrm();
-    const cache = createRoadCostCache({ fetchMatrix: fetchRoadMatrix });
+    const cache = createRoadCostCache({ fetchMatrix: (set, options) => fetchRoadMatrix(set, { baseUrl: 'https://roads.test', ...options }) });
 
     // point(1) appears twice, as two distinct objects at one coordinate.
     const withDuplicate = [point(0), point(1), { ...point(1) }, point(2), point(3)];
@@ -215,7 +215,7 @@ test('CACHE-07 duplicate coordinates keep their identity through memo reuse', as
 // be part of the identity, or a technically valid hit answers a different question.
 test('CACHE-08 cache identity covers profile, engine endpoint and annotation mode', async () => {
     const calls = stubOsrm();
-    const cache = createRoadCostCache({ fetchMatrix: fetchRoadMatrix });
+    const cache = createRoadCostCache({ fetchMatrix: (set, options) => fetchRoadMatrix(set, { baseUrl: 'https://roads.test', ...options }) });
     const set = points(46);
 
     await cache.fetchMatrix(set, { profile: 'driving' });
@@ -256,7 +256,7 @@ test('CACHE-08 cache identity covers profile, engine endpoint and annotation mod
 
 test('CACHE-05 at the pair ceiling the cache stops storing and keeps returning engine truth', async () => {
     const calls = stubOsrm();
-    const cache = createRoadCostCache({ fetchMatrix: fetchRoadMatrix, maxPairs: 10 });
+    const cache = createRoadCostCache({ fetchMatrix: (set, options) => fetchRoadMatrix(set, { baseUrl: 'https://roads.test', ...options }), maxPairs: 10 });
 
     await cache.fetchMatrix(points(46));
     const afterFirst = calls.length;

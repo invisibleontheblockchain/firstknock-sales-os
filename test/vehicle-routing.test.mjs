@@ -58,7 +58,7 @@ function engine(options = {}) {
     };
     return { fetchImpl, calls };
 }
-const context = (stops, mock, options = {}) => createVehicleRoutingContext(stops, accessContext, { vehicleFetch: mock.fetchImpl, ...options });
+const context = (stops, mock, options = {}) => createVehicleRoutingContext(stops, accessContext, { vehicleBaseUrl: 'https://roads.test', vehicleFetch: mock.fetchImpl, ...options });
 
 test('synthetic six-house driving comparison keeps 173/178 fixed and takes the legal return pass', async t => {
     const mock = engine(); const ctx = await context(six, mock);

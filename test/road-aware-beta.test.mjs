@@ -4,6 +4,7 @@ import { createServer } from 'vite';
 import { compareRoadAwareBeta } from '../base44/shared/roadAwareBetaOptimizer.js';
 import { createRoadAwareBetaHandler } from '../base44/shared/roadAwareBetaService.js';
 import { assertRoadBetaProxyRequest } from '../base44/shared/roadAwareBetaPolicy.js';
+import { parseRoadCoverage } from '../base44/shared/osrmProvider.js';
 import { routePropertyOrderFingerprint } from '../base44/shared/routeFingerprint.js';
 import { verifiedBetaSegments } from '../src/lib/roadAwareRouteGeometry.js';
 import { completeServerRoadAwareRoutes } from '../base44/shared/roadAwareBetaServer.js';
@@ -147,7 +148,8 @@ test('unsupported coverage, provider failure, and unknown graph cannot fabricate
     assert.deepEqual(failed.properties, properties); assert.equal(failed.comparison.before, null);
     assert.equal(failed.comparison.guard, 'legacy_fallback');
     const engine = roadEngine();
-    const outside = await runKernel(properties.map(p => ({ ...p, lat: 36 })), engine);
+    // Puerto Rico is outside the US car graph.
+    const outside = await runKernel(properties.map(p => ({ ...p, lat: 18.4, lng: -66.1 })), engine);
     assert.equal(outside.comparison.reason, 'OUTSIDE_GRAPH_COVERAGE'); assert.equal(engine.requests.length, 0);
 });
 test('preview and Keep Current never write SavedRoute; accepting persists exact order and matching geometry', async () => {
@@ -203,7 +205,15 @@ test('proxy enforces 100 m, regional coordinates, bounded table size, and no inv
         { ...valid, bearings: '90,45;90,45' }, { ...valid, url: 'https://attacker.example' }]) {
         assert.throws(() => assertRoadBetaProxyRequest('route', '-81,35;-80.99,35', query));
     }
-    assert.throws(() => assertRoadBetaProxyRequest('nearest', '-112,33', { radiuses: '100' }));
+    assert.throws(() => assertRoadBetaProxyRequest('nearest', '-66.1,18.4', { radiuses: '100' }), /OUTSIDE_GRAPH_COVERAGE/);
+});
+test('beta coverage comes from the engine config: Florida reps are covered, a configured box narrows it', () => {
+    const tampa = '-82.46,27.95;-82.45,27.96';
+    const valid = { radiuses: '100;100', continue_straight: 'true' };
+    assert.equal(assertRoadBetaProxyRequest('route', tampa, valid).length, 2);
+    const charlotteOnly = parseRoadCoverage('34.65,-81.35,35.48,-80.22');
+    assert.throws(() => assertRoadBetaProxyRequest('route', tampa, valid, charlotteOnly), /OUTSIDE_GRAPH_COVERAGE/);
+    assert.equal(parseRoadCoverage('not,a,box'), parseRoadCoverage(''));
 });
 test('server completion OFF preserves generation partitions and records the shared excursion review', async () => {
     const mock = workspace({ enabled: false }), routes = [{ properties: stops(), totalDistance: 5 }];
@@ -265,7 +275,7 @@ test('generated telemetry binds only to the saved route with its exact guarded m
     assert.equal((await mock.call({ action: 'bind_generated', comparison_id: row.id, route_id: 'route' })).status, 409);
 });
 test('one outside-coverage stop is preserved while nearby windows remain eligible', async () => {
-    const properties = stops(12); properties[6] = { ...properties[6], lat: 36 };
+    const properties = stops(12); properties[6] = { ...properties[6], lat: 18.4, lng: -66.1 };
     const result = await runKernel(properties);
     assert.equal(result.properties[6], properties[6]); assert.equal(result.comparison.unresolvedCount, 1);
     assert.equal(result.comparison.optimizationWindows, 1); assert.equal(result.comparison.fullMeasurement, false);

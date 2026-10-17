@@ -28,11 +28,13 @@ import { sequenceBestDecomposition, DEFAULT_DECOMPOSITION_PORTFOLIO } from '../b
 import { measureRoadPath } from '../base44/shared/roadPathMeasure.js';
 import { planTieredRoadMatrix } from '../base44/shared/roadMatrixTiers.js';
 import { buildStreetBlocks } from '../base44/shared/roadAwareStreetSweep.js';
-import { DEFAULT_OSRM_BASE_URL } from '../base44/shared/roadMatrix.js';
+import { readOsrmProvider } from '../base44/shared/osrmProvider.js';
 
 const CSV = process.argv[2];
 const VARIANTS = process.argv.slice(3).length > 0 ? process.argv.slice(3) : ['baseline'];
-const BASE_URL = process.env.OSRM_BASE_URL || DEFAULT_OSRM_BASE_URL;
+// The private gateway only: OSRM_BASE_URL and OSRM_GATEWAY_KEY from the environment.
+const BASE_URL = readOsrmProvider(name => process.env[name]).baseUrl;
+if (!BASE_URL) throw new Error('Set OSRM_BASE_URL (and OSRM_GATEWAY_KEY) to an HTTPS road engine.');
 const RESULTS = path.join(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')), 'route-1h-bench-results.json');
 
 function parseCsv(src) {

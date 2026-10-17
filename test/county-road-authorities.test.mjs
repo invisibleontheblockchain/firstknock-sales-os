@@ -21,7 +21,7 @@ function providers(alter = () => {}) {
         if (url.origin + url.pathname === LEE_ROAD_SERVICE) return response({ features: data.roads, ...data.roadResponse });
         if (url.origin + url.pathname === LEE_ADDRESS_SERVICE) return response({ features: data.addresses, ...data.addressResponse });
         throw new Error('An unregistered authority was queried');
-    }, vehicleFetch: async raw => {
+    }, vehicleBaseUrl: 'https://roads.test', vehicleFetch: async raw => {
         const url = new URL(raw); calls.push(url);
         assert.equal(url.searchParams.get('radiuses'), '10');
         return response({ code: 'Ok', waypoints: [{ name: 'Slater Road', distance: 0.3979807514,
@@ -148,12 +148,12 @@ test('automatic recovery uses the Lee authority and freshly rematches the cached
         if (Math.abs(coords[0] - gateway.lng) > 0.0001) throw Object.assign(new Error('NoSegment coordinate 0'), { code: 'NoSegment' });
         return p.vehicleFetch(raw);
     };
-    const recovered = await recoverRouteVehicleAccess([stop], { countyFetch: p.fetchImpl, vehicleFetch,
+    const recovered = await recoverRouteVehicleAccess([stop], { countyFetch: p.fetchImpl, vehicleBaseUrl: 'https://roads.test', vehicleFetch,
         geocode: async () => ({ results: {} }), mappedAccessLookup: false });
     assert.equal(recovered.report.county_recovered, 1);
     assert.equal(recovered.report.unresolved.length, 0);
     const cached = { ...stop, routing_access: recovered.report.access_overrides[stop.address_hash] };
-    const reused = await recoverRouteVehicleAccess([cached], { vehicleFetch,
+    const reused = await recoverRouteVehicleAccess([cached], { vehicleBaseUrl: 'https://roads.test', vehicleFetch,
         geocode: async () => assert.fail('cached access should not geocode'),
         countyFetch: async () => assert.fail('cached proof should not query the county'), mappedAccessLookup: false });
     assert.equal(reused.report.reused, 1);
@@ -166,7 +166,7 @@ test('a Lee provider outage does not certify the cached road or remove its stop'
     const cached = { ...stop, routing_access: { source: 'county_road_recovery', resolution_status: 'resolved',
         resolved_at: new Date().toISOString(), point: county.point, displayPoint: { lat: stop.lat, lng: stop.lng },
         roadName: stop.street_name, county_road: county, evidence: county.evidence } };
-    const result = await recoverRouteVehicleAccess([cached], { vehicleFetch: async () => { throw new Error('offline'); },
+    const result = await recoverRouteVehicleAccess([cached], { vehicleBaseUrl: 'https://roads.test', vehicleFetch: async () => { throw new Error('offline'); },
         countyAccessLookup: false, mappedAccessLookup: false });
     assert.equal(result.report.status, 'provider_unavailable');
     assert.equal(result.report.inventory_complete, false);

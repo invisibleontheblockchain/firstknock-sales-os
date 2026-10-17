@@ -1,13 +1,13 @@
 import { compareRoadAwareBeta } from './roadAwareBetaOptimizer.js';
 import { tenantManagerId, isRepAccount, toEntityArray } from './accountTenancy.js';
 import { roadBetaEligibleOwner, assertRoadBetaProxyRequest } from './roadAwareBetaPolicy.js';
-import { vehicleProviderConfig } from './vehicleProviderConfig.js';
 import { roadAwareStreetSweep } from './roadAwareStreetSweep.js';
 import { buildCanonicalStreetBlocks, haversineMiles } from './routeContinuityOptimizer.js';
-import { fetchRoadBetaProxy } from './roadAwareBetaService.js';
+import { fetchRoadBetaProxy, readRoadBetaProvider } from './roadAwareBetaService.js';
 import { reviewFinalNeighborhoodRoute } from './finalNeighborhoodReview.js';
 import { reviewNeighborhoodExcursions } from './neighborhoodExcursions.js';
 import { fetchOsrmJson } from './osrmDispatcher.js';
+import { readOsrmProvider } from './osrmProvider.js';
 import { routePropertyOrderFingerprint } from './routeFingerprint.js';
 
 /** Server generation uses its current sweep and boundaries, then the same frozen
@@ -15,7 +15,7 @@ import { routePropertyOrderFingerprint } from './routeFingerprint.js';
 export async function completeServerRoadAwareRoutes(routes, { client, user, readSecret, entryPoint, fetchImpl = fetch }) {
     const finishStandard = async () => {
         const out = [];
-        const baseUrl = readSecret('OSRM_BASE_URL');
+        const { baseUrl } = readOsrmProvider(readSecret);
         for (const route of routes) {
             const bounds = { startLocation: route.startLocation, endLocation: route.endLocation };
             const review = baseUrl ? await reviewFinalNeighborhoodRoute(route.properties, { ...bounds,
@@ -46,17 +46,14 @@ export async function completeServerRoadAwareRoutes(routes, { client, user, read
     try { settings = toEntityArray(await service.entities.RoadAwareRoutingBetaSettings.filter({ manager_id: workspace }, '-updated_date', 10)); }
     catch { return finishStandard(); } // An undeployed OFF resource cannot break generation.
     if (settings.find(s => s.manager_id === workspace)?.enabled !== true) return finishStandard();
-    const fingerprint = readSecret('ROAD_AWARE_OSRM_BUILD_FINGERPRINT'), dataVersion = readSecret('ROAD_AWARE_OSRM_DATA_VERSION');
-    let config;
-    try { config = vehicleProviderConfig({ baseUrl: readSecret('ROAD_AWARE_OSRM_BASE_URL'), profile: 'car', production: true }); } catch { /* Frozen fallback. */ }
-    const available = Boolean(config && /^[a-f0-9]{64}$/.test(fingerprint) && dataVersion && readSecret('ROAD_AWARE_OSRM_GATEWAY_TOKEN'));
+    const { provider: config, token, fingerprint, dataVersion, coverage, available } = readRoadBetaProvider(readSecret);
     const providerFetch = async input => {
         const url = new URL(input), match = url.pathname.match(/^\/(route|table|nearest)\/v1\/car\/(.+)$/);
         if (!match || url.origin !== 'https://firstknock-routing.invalid') throw new Error('Invalid internal provider request.');
         const query = Object.fromEntries(url.searchParams), coordinates = decodeURIComponent(match[2]);
-        assertRoadBetaProxyRequest(match[1], coordinates, query);
+        assertRoadBetaProxyRequest(match[1], coordinates, query, coverage);
         return fetchRoadBetaProxy({ provider: config, service: match[1], coordinates, query, dataVersion,
-            token: readSecret('ROAD_AWARE_OSRM_GATEWAY_TOKEN'), fetchImpl });
+            token, coverage, fetchImpl });
     };
     const partitionRun = (stops, limit) => {
         const membership = new Map(buildCanonicalStreetBlocks(stops).flatMap(block => block.doors.map(door =>
@@ -75,7 +72,7 @@ export async function completeServerRoadAwareRoutes(routes, { client, user, read
     const out = [];
     for (const route of routes) {
         const result = await compareRoadAwareBeta(route.properties, {
-            provider: { available, fingerprint, dataVersion, baseUrl: 'https://firstknock-routing.invalid', fetch: providerFetch },
+            provider: { available, fingerprint, dataVersion, coverage, baseUrl: 'https://firstknock-routing.invalid', fetch: providerFetch },
             continuityFor: () => ({ distanceBetween: haversineMiles }), partitionRun,
             bounds: { startLocation: route.startLocation, endLocation: route.endLocation },
             propose: (stops, context, bounds) => roadAwareStreetSweep(stops, { distanceBetween: context.distanceBetween, routingContext: context, ...bounds }),
