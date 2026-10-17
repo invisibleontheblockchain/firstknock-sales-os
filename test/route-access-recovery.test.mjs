@@ -532,3 +532,46 @@ test('outages and budget limits are never reused as known failures', async () =>
         geocode: async () => ({ results: {} }) });
     assert.equal(result.report.unresolved.length, 0, 'both are matched fresh');
 });
+
+test('with approximate access on, an unplaceable stop is routed from the nearest road and listed as approximate', async () => {
+    const road = streetBehindPin({ name: 'Pauls Lane', distance: 150 });
+    const result = await recoverRouteVehicleAccess([mecklenburg], { vehicleBaseUrl: 'https://roads.test', vehicleFetch: road.fetch,
+        geocode: noGeocode, approximateAccess: true });
+    assert.equal(result.report.unresolved.length, 0);
+    assert.equal(result.report.approximate.length, 1);
+    assert.equal(result.report.approximate[0].stop_number, 1);
+    assert.equal(result.report.approximate[0].snap_meters, 150);
+    const access = result.properties[0].routing_access;
+    assert.equal(access.source, 'approximate_nearest_road'); assert.equal(access.approximate, true);
+    assert.equal(access.evidence.unresolvedReason, 'address_not_matched');
+    // A stand-in is never reused as cached access: the next action retries.
+    const again = await recoverRouteVehicleAccess(result.properties, { vehicleBaseUrl: 'https://roads.test', vehicleFetch: road.fetch, geocode: noGeocode });
+    assert.equal(again.report.reused, 0);
+    assert.equal(again.report.unresolved.length, 1);
+});
+
+test('approximate access stays off unless asked for, and never replaces an outage or a stop beyond 500 m', async () => {
+    const off = await recoverRouteVehicleAccess([mecklenburg], { vehicleBaseUrl: 'https://roads.test',
+        vehicleFetch: streetBehindPin({ name: 'Pauls Lane', distance: 150 }).fetch, geocode: noGeocode });
+    assert.equal(off.report.unresolved.length, 1); assert.deepEqual(off.report.approximate, []);
+    const far = await recoverRouteVehicleAccess([mecklenburg], { vehicleBaseUrl: 'https://roads.test',
+        vehicleFetch: streetBehindPin({ name: 'Pauls Lane', distance: 600 }).fetch, geocode: noGeocode, approximateAccess: true });
+    assert.equal(far.report.unresolved.length, 1); assert.deepEqual(far.report.approximate, []);
+    const outage = await recoverRouteVehicleAccess([mecklenburg], { vehicleBaseUrl: 'https://roads.test', approximateAccess: true,
+        vehicleFetch: async () => response({ code: 'InternalError' }, 503), geocode: noGeocode });
+    assert.equal(outage.report.status, 'provider_unavailable');
+    assert.equal(outage.report.approximate, undefined);
+});
+
+test('a stop an earlier pass already failed goes straight to the approximate stand-in', async () => {
+    const road = streetBehindPin({ name: 'Pauls Lane', distance: 150 });
+    let geocoded = 0;
+    const result = await recoverRouteVehicleAccess([mecklenburg], { vehicleBaseUrl: 'https://roads.test', vehicleFetch: road.fetch,
+        geocode: async items => { geocoded += items.length; return { results: {} }; }, approximateAccess: true,
+        knownUnresolved: new Map([[mecklenburg.address_hash, 'address_not_matched']]) });
+    assert.equal(geocoded, 0);
+    assert.equal(result.report.reused_failures, 1);
+    assert.equal(result.report.approximate.length, 1);
+    assert.equal(result.report.approximate[0].reason, 'address_not_matched');
+    assert.equal(road.calls.length, 1, 'only the nearest-road lookup for the stand-in');
+});

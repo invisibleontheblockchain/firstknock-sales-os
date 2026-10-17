@@ -905,3 +905,18 @@ test('later passes send the stops that failed for address or road reasons, never
     assert.equal(bodies[0].known_unresolved_stops, undefined);
     assert.deepEqual(bodies[1].known_unresolved_stops, [{ property_id: ruralHashes[294], reason: 'address_road_not_matched' }]);
 });
+
+test('later passes also send approximate stops with their original reason, so they skip straight to the stand-in', async () => {
+    const bodies = [];
+    let calls = 0;
+    await optimize(ruralHomes, { maxSearchPasses: 3, client: api(async (_name, body) => {
+        bodies.push(structuredClone(body));
+        calls++;
+        const value = partialResponse({ done: calls === 1 ? 16 : 100 });
+        value.data.routing_metadata.road_access_recovery.approximate = [{ property_id: ruralHashes[12], stop_number: 13,
+            address: '0 Alcove Rd', reason: 'address_not_matched', snap_meters: 150 }];
+        return value;
+    }) });
+    assert.deepEqual(bodies[1].known_unresolved_stops.find(item => item.property_id === ruralHashes[12]),
+        { property_id: ruralHashes[12], reason: 'address_not_matched' });
+});

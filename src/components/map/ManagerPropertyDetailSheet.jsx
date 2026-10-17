@@ -12,6 +12,7 @@ import { parseOptionalSaleAmount } from '@/components/analytics/salesManagement'
 import PropertyNoteSection from './PropertyNoteSection';
 import RemoveRouteStopButton from '@/components/routes/RemoveRouteStopButton';
 import { outcomeBorder, outcomeColor, outcomeLabel, outcomeTint, withoutHouseNotes } from '@/components/logic/outcomeStatus';
+import { APPROXIMATE_ACCESS_COLOR, approximateAccessStops } from '@/lib/approximateAccess';
 
 // The badge under the address reflects the most recent logged decision, so a
 // callback reads purple and a not-moved-in reads orange exactly as it does in
@@ -64,6 +65,8 @@ export default function ManagerPropertyDetailSheet({
     onRouteUpdated,
     toast
 }) {
+    const approximateAccess = React.useMemo(() => (selectedProperty?.address_hash
+        ? approximateAccessStops(route).get(selectedProperty.address_hash) || null : null), [route, selectedProperty?.address_hash]);
     const [showCallbackPrompt, setShowCallbackPrompt] = React.useState(false);
     const [callbackName, setCallbackName] = React.useState('');
     const [callbackPhone, setCallbackPhone] = React.useState('');
@@ -192,6 +195,13 @@ export default function ManagerPropertyDetailSheet({
                                 <HomeIcon className="w-3 h-3" />
                                 {outcomeLabel(displayStatus)}
                             </span>
+                            {approximateAccess && (
+                                <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-bold"
+                                    style={{ background: `${APPROXIMATE_ACCESS_COLOR}26`, border: `1px solid ${APPROXIMATE_ACCESS_COLOR}70`, color: APPROXIMATE_ACCESS_COLOR }}
+                                    title="No road matched this address, so the route reaches it from the nearest road.">
+                                    Approximate road access{Number.isFinite(approximateAccess.snapMeters) ? ` · ${approximateAccess.snapMeters} m` : ''}
+                                </span>
+                            )}
                             {selectedProperty.next_eligible_date && (
                                 <span className="text-[10px] font-bold text-gray-400">
                                     Eligible {format(new Date(selectedProperty.next_eligible_date), 'MMM d')}

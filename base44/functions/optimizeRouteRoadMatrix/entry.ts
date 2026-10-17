@@ -209,6 +209,9 @@ export default async function (req: Request): Promise<Response> {
                     .filter(item => typeof item?.property_id === 'string' && typeof item?.reason === 'string'
                         && properties.some(stop => propertyIdentity(stop) === item.property_id))
                     .map(item => [item.property_id, item.reason])),
+                // A stop nothing could place is routed from the nearest road and
+                // labeled, so it no longer holds the whole route to local repairs.
+                approximateAccess: true,
                 enableMappedDrivewayRecovery: true,
                 collectCountyDiagnostics: body.inspect_access_only === true })
             : { properties, report: null };

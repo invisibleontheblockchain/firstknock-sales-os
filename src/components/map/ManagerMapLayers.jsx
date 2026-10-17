@@ -17,6 +17,7 @@ import {
     isRenderableMapPoint,
     shouldRenderPrecisionMapLayers,
 } from './mapLayerVisibility.js';
+import { APPROXIMATE_ACCESS_COLOR, approximateAccessStops } from '@/lib/approximateAccess';
 
 /**
  * ActiveRouteLayer — High-performance active route renderer.
@@ -66,6 +67,7 @@ export function ActiveRouteLayer({ activeRoute, mapSettings, pinSize, lineDashAr
     const [viewBox, setViewBox] = React.useState(null);
     const renderedBoxRef = useRef(null);
     const routePoints = useMemo(() => (activeRoute?.properties || []).filter(isRenderableMapPoint), [activeRoute?.properties]);
+    const approximateStops = useMemo(() => approximateAccessStops(activeRoute), [activeRoute]);
     const routeLinePoints = useMemo(() => getRouteLinePoints(activeRoute, routePoints), [activeRoute, routePoints]);
 
     useEffect(() => {
@@ -112,12 +114,15 @@ export function ActiveRouteLayer({ activeRoute, mapSettings, pinSize, lineDashAr
                 : completed ? getCompletedPinColor(status, routeColor) : routeColor;
             const emphasized = sold || (completed && p.effective_status === 'QUALIFIED');
             const showLabel = (showNumbers || sold) && labelsDrawn < 1000;
+            // Approximate road access: an amber outline marks the stop.
+            const approximate = approximateStops.has(pinKey(p));
             if (showLabel) labelsDrawn++;
             entries.push({
                 key: `${pinKey(p)}:${idx}`, point, payload: { ...p, route_position: idx + 1 },
                 style: {
                     radius: emphasized ? dotSize + 1.5 : dotSize, fillColor: color, fillOpacity: 1,
-                    color: '#fff', weight: emphasized ? 1.5 : wideView ? 0.4 : 1,
+                    color: approximate ? APPROXIMATE_ACCESS_COLOR : '#fff',
+                    weight: approximate ? (wideView ? 1.5 : 2.5) : emphasized ? 1.5 : wideView ? 0.4 : 1,
                     stopLabel: showLabel ? { text: idx + 1, color: hasDecision ? outcomeColor(status) : 'rgba(255,255,255,0.9)',
                         size: sold ? Math.max(11, numberFontSize) : numberFontSize, weight: sold ? 800 : 600, offsetY: -5 } : null,
                 },
@@ -132,7 +137,7 @@ export function ActiveRouteLayer({ activeRoute, mapSettings, pinSize, lineDashAr
             },
             remove: marker => group.removeLayer(marker),
         });
-    }, [map, viewBox, activeRoute, routePoints, zoom, pinSize, labelCanvas]);
+    }, [map, viewBox, activeRoute, routePoints, approximateStops, zoom, pinSize, labelCanvas]);
 
     // These straight connectors show stop order. Road verification and mileage
     // are calculated separately and never change the map's display style.

@@ -702,3 +702,15 @@ test('a failed driving check shows the server reason, never its URLs or coordina
     assert.equal(failed('see https://roads.example/route at 35.12, -80.84').message,
         'Could not complete the driving check. Your route was kept unchanged. Try again.', 'unsafe text is dropped');
 });
+
+test('a verified result says how many stops used approximate road access, and names them', () => {
+    const meta = { road_access_recovery: { status: 'ready', recovered: 0, unresolved: [], approximate: [
+        { property_id: 'ALCOVE RD|28117', stop_number: 170, address: '0 Alcove Rd, Mooresville, 28117', snap_meters: 150 },
+        { property_id: '116 HUNT CAMP TRL|28036', stop_number: 353, address: '116 Hunt Camp Trl, Davidson, 28036', snap_meters: 180 },
+    ] } };
+    const message = outcomes.approximateAccessMessage({ approximate: [
+        { stop_number: 170, address: '0 Alcove Rd, Mooresville, 28117' }, { stop_number: 353, address: '116 Hunt Camp Trl, Davidson, 28036' }] });
+    assert.equal(message, ' Approximate road access for 2 stops, routed from the nearest road: Stop 170 (0 Alcove Rd, Mooresville, 28117); Stop 353 (116 Hunt Camp Trl, Davidson, 28036).');
+    const failed = outcomes.describeRoadOptimizationOutcome('backend_unavailable', { routingMetadata: meta });
+    assert.match(failed.message, /Approximate road access for 2 stops/);
+});

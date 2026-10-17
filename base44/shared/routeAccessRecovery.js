@@ -13,6 +13,15 @@ const MATCH_RADIUS = 100;
 // subdivisions). When the address cannot be geocoded onto a road, the pin may
 // still be served from its OWN street, identified by name, within this distance.
 const PIN_STREET_RADIUS = 250;
+// Last resort for a stop no recovery could place: route it from the nearest
+// road within this distance of its pin, and say so. Without it, one such stop
+// held a whole 1,000-stop route to local repairs only (no global reordering,
+// no whole-route verification); with it, Charlotte 1H went 486 -> 398 miles.
+export const APPROXIMATE_ACCESS_RADIUS = 500;
+// Reasons an approximate stand-in may replace: the address or the road could
+// not be matched. Outages, limits and bad coordinates stay unresolved.
+const APPROXIMABLE = new Set(['road_not_matched', 'address_not_matched', 'address_match_rejected',
+    'address_road_not_matched', 'address_road_mismatch', 'ambiguous_service_road', 'no_drivable_road'])
 const MAX_FAILED_STOPS = 32;
 // Failures that depend only on the address and the road graph. Within one
 // Optimize action they will fail the same way again, so a later pass may reuse
@@ -152,6 +161,26 @@ async function pinStreetAccess(stop, config, options, signal) {
         evidence: { propertyIdentity: identity(stop), displayPoint: pointOf(stop), snapMeters: Number(own.distance), roadName: own.name } };
 }
 
+/**
+ * The labeled stand-in: the nearest drivable road to the pin, any name, within
+ * APPROXIMATE_ACCESS_RADIUS. The stop is routed and verified from there, and is
+ * listed as approximate in the result and marked on the map.
+ */
+async function approximateAccess(stop, reason, config, options, signal) {
+    const url = new URL(`${config.baseUrl}/nearest/v1/${config.profile}/${stop.lng},${stop.lat}`);
+    url.searchParams.set('number', '1'); url.searchParams.set('radiuses', String(APPROXIMATE_ACCESS_RADIUS));
+    let payload;
+    try { payload = await request(url, options, signal); }
+    catch (error) { if (signal.aborted) throw signal.reason || abortError(); return null; }
+    const near = payload.waypoints?.[0];
+    if (!near || !validSnap(near, stop, APPROXIMATE_ACCESS_RADIUS + 0.5)) return null;
+    return { resolution_status: 'resolved', source: 'approximate_nearest_road', confidence: 'low', approximate: true,
+        side: 'unknown', serviceBearing: null, point: { lat: near.location[1], lng: near.location[0] },
+        displayPoint: pointOf(stop), roadName: near.name || '',
+        evidence: { propertyIdentity: identity(stop), displayPoint: pointOf(stop), snapMeters: Number(near.distance),
+            roadName: near.name || '', unresolvedReason: reason } };
+}
+
 async function verifyGeocodedAccess(stop, hit, config, options, signal, { lastResort = false } = {}) {
     if (!qualifiedAddressMatch(stop, hit, { lastResort })) return { reason: 'address_match_rejected' };
     try {
@@ -188,6 +217,7 @@ async function verifyGeocodedAccess(stop, hit, config, options, signal, { lastRe
 function cachedAccess(stop) {
     const access = stop.routing_access;
     if (access?.resolution_status !== 'resolved' || !isValidRoutePoint(access.point) || !isValidRoutePoint(stop)) return null;
+    if (access.source === 'approximate_nearest_road' || access.approximate) return null;
     const boundIdentity = access.evidence?.propertyIdentity || access.propertyIdentity;
     if ((boundIdentity && String(boundIdentity) !== identity(stop))
         || (access.displayPoint && (!isValidRoutePoint(access.displayPoint) || distance(stop, access.displayPoint) > 0.1))) return null;
@@ -469,6 +499,21 @@ export async function recoverRouteVehicleAccess(properties, options = {}) {
                     }
                 }
             } finally { mappedScope.close(); }
+        }
+        // Every stop still unplaced for an address/road reason gets the labeled
+        // stand-in, so it no longer blocks global routing and verification.
+        report.approximate = [];
+        if (options.approximateAccess === true && inventoryComplete && !scope.signal.aborted) {
+            for (const [index, reason] of [...failed]) {
+                if (!APPROXIMABLE.has(reason) || !isValidRoutePoint(original[index])) continue;
+                const access = await approximateAccess(original[index], reason, config, options, scope.signal);
+                if (!access) continue;
+                result[index] = { ...original[index], ...access.point, routing_access: access };
+                report.access_overrides[identity(original[index])] = access;
+                report.approximate.push({ ...issue(index, reason),
+                    snap_meters: Math.round(access.evidence.snapMeters), road_name: access.roadName });
+                failed.delete(index);
+            }
         }
         report.unresolved = [...failed].map(([index, reason]) => issue(index, reason));
         report.inventory_complete = inventoryComplete;
