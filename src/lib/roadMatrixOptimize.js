@@ -475,9 +475,9 @@ function appliedPartialMetadata(meta, localMilesSaved) {
  * Every pass prices the latest accepted order under the same bounds. Keep the
  * original click's mileage baseline and save only once after the bounded action. */
 export async function tryRoadMatrixOptimize(routeProperties, {
-    searchCoverage = null, maxSearchPasses = 1,
+    searchCoverage = null, maxSearchPasses = MAX_OPTIMIZE_PASSES,
     totalDeadlineMs = OPTIMIZE_ACTION_DEADLINE_MS, deadlineMs,
-    onOutcome = null, onProgress = null, ...options
+    onOutcome = null, onProgress = null, onSearchProgress = null, ...options
 } = {}) {
     const limit = Number.isFinite(maxSearchPasses) ? Math.max(1, Math.min(MAX_OPTIMIZE_PASSES, Math.floor(maxSearchPasses))) : 1;
     const budget = Number.isFinite(totalDeadlineMs) ? Math.max(1, Math.min(OPTIMIZE_ACTION_DEADLINE_MS, totalDeadlineMs)) : OPTIMIZE_ACTION_DEADLINE_MS;
@@ -512,8 +512,21 @@ export async function tryRoadMatrixOptimize(routeProperties, {
         }
         return returnedCoverage.remaining_windows > 0;
     };
+    // Live progress for the progress screen: after each finished pass, the
+    // checks done so far and the best verified result.
+    const reportProgress = (passesDone, done) => {
+        if (!onSearchProgress) return;
+        const total = coverage ? coverage.total_windows : null;
+        onSearchProgress({ passesDone, maxPasses: limit, done,
+            checksTotal: total, checksDone: total === null ? null : total - coverage.remaining_windows,
+            savedMiles: accepted ? Math.max(0, Number(accepted.objective?.estimatedSavings) || 0) : 0,
+            bestMiles: Number.isFinite(accepted?.objective?.appliedDistance) ? accepted.objective.appliedDistance : null });
+    };
+    let passesDone = 0;
     for (let pass = 1; pass <= limit; pass++) {
+        if (pass > 1) reportProgress(passesDone, false);
         if (pass > 1) onProgress?.({ pass, maxPasses: limit, remainingWindows: coverage.remaining_windows });
+        passesDone = pass;
         let reason, measurement, nextSearchContinuation = null;
         const result = await tryRoadMatrixOptimizePass(currentProperties, { ...options, searchCoverage: coverage,
             ...(pass > 1 ? { searchPhase: 'remaining_neighborhoods', comparisonOrder: routeProperties, knownUnresolved } : {}),
@@ -619,6 +632,7 @@ export async function tryRoadMatrixOptimize(routeProperties, {
         if (!accepted) currentProperties = withRecoveredAccess(currentProperties, meta);
         searchContinuation = nextSearchContinuation;
     }
+    reportProgress(passesDone, true);
     if (accepted) return accepted;
     onOutcome?.(lastReason, lastMeasurement);
     return null;

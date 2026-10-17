@@ -241,6 +241,7 @@ test('reoptimization preserves a private anchor by default but explicit route-on
             },
             toast: { loading() {}, success() {}, info() {}, error: message => errors.push(message) },
             startOptimizeProgress: () => ({ update() {}, stop() {} }),
+            LONG_OPTIMIZATION_STOPS: 150, startRoadOptimizationJob: () => ({ startRoute() {}, progress() {}, finish() {} }),
             ROAD_VERIFICATION: { ADOPTED: 'adopted' }, stampRoadVerification: () => ({ metadata: {} }),
             tryRoadMatrixOptimize: async (order, bounds) => {
                 assert.equal(bounds.start?.address || null, explicit ? null : home.address);

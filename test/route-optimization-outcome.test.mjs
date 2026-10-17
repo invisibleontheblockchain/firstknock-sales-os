@@ -595,6 +595,7 @@ function actionHarness(reason, measurement) {
         '@/components/logic/routeRoadContext': { createRouteRoadContext: noFallback, buildPersistedRoadRoutingMetadata: noFallback },
         '@/lib/routeBounds': bounds, '@/lib/parkedCarLocation': {},
         '@/lib/optimizeProgressToast': { startOptimizeProgress: () => ({ update() {}, stop() {} }) },
+        '@/lib/roadOptimizationProgress': { LONG_OPTIMIZATION_STOPS: 150, startRoadOptimizationJob: () => ({ startRoute() {}, progress() {}, finish() {} }) },
         '@/lib/roadMatrixOptimize': { tryRoadMatrixOptimize: async (_, options) => { options.onOutcome(reason, measurement); return null; } },
         '@/lib/routeOptimizePersistence': { syncOptimizedRoute: async () => {} },
         '@/lib/routeOptimizationOutcome': outcomes, '@/lib/routeRoadVerification': {},

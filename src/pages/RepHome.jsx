@@ -20,6 +20,7 @@ import { hydrateRouteForMap } from '@/components/logic/routeHydration';
 import { indexRouteLogs, logsForRouteProperty } from '@/components/logic/routeLogIndex';
 import { optimizeRouteByStreetSweep } from '@/components/logic/routeOptimizer';
 import { tryRoadMatrixOptimize } from '@/lib/roadMatrixOptimize';
+import { LONG_OPTIMIZATION_STOPS, startRoadOptimizationJob } from '@/lib/roadOptimizationProgress';
 import {
   buildPersistedRoadRoutingMetadata,
   createRouteContinuityContext,
@@ -1665,6 +1666,7 @@ export default function RepHome() {
     setHomeRouteOptimizing(true);
     setHomeRouteError('');
     toast.loading(routeToOptimize.route_origin_mode === 'anchor_round_trip' ? 'Optimizing from your route anchor...' : 'Optimizing the selected route from home...', { id: 'rep-home-route' });
+    let job = null;
 
     try {
       let freshUser = null;
@@ -1721,8 +1723,13 @@ export default function RepHome() {
       const routingContext = createRouteContinuityContext(routeProperties);
       requireUsableRouteContext(routingContext);
       let roadMeasurement = null;
+      // The same full search as the Optimize button, with the progress screen.
+      job = startRoadOptimizationJob({ routes: [{ name: routeToOptimize.name, stops: routeProperties.length }], background: true });
+      job.startRoute(0);
+      if (routeProperties.length >= LONG_OPTIMIZATION_STOPS) toast.dismiss('rep-home-route');
       const roadResult = await tryRoadMatrixOptimize(routeProperties, {
         start: exactHomeBase, end: exactHomeBase,
+        onSearchProgress: (value) => job.progress(0, value),
         onOutcome: (reason, measurement) => { if (reason === 'current_order_measured_best') roadMeasurement = measurement; },
       });
       const optimized = roadResult?.order || (roadMeasurement ? routeProperties : optimizeRouteByStreetSweep(
@@ -1798,6 +1805,7 @@ export default function RepHome() {
       setHomeRouteError(message);
       toast.error(message, { id: 'rep-home-route', duration: 6000 });
     } finally {
+      job?.finish();
       setHomeRouteOptimizing(false);
     }
   };

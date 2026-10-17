@@ -13,6 +13,7 @@ import Layout from './Layout.jsx';
 import { RepLocationProvider } from '@/components/team/RepLocationSharing';
 import { AutoDrivingProvider } from '@/components/team/AutoDrivingTracking';
 import RoadAwareComparisonHost from '@/components/routes/RoadAwareComparisonHost';
+import RoadOptimizationProgressHost from '@/components/routes/RoadOptimizationProgressHost';
 import { isHqPath } from '@/admin/hqNavigation';
 import { pageNameForPath, preloadPage, registerPageLoaders } from '@/lib/pagePreload';
 import { appParams } from '@/lib/app-params';
@@ -95,6 +96,7 @@ function App() {
       <QueryClientProvider client={queryClientInstance}>
         <AppRefreshManager />
         <RoadAwareComparisonHost />
+        <RoadOptimizationProgressHost />
         <Router>
           <AutoDrivingProvider>
           <RepLocationProvider>
