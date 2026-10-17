@@ -3024,6 +3024,7 @@ export default function Home() {
                                 route={filteredActiveRoute}
                                 logs={checklistLogs}
                                 onLogResult={handleLogResult}
+                                onDeleteOutcome={handleDeleteInteraction}
                                 onNoteSaved={() => {
                                     queryClient.invalidateQueries({ queryKey: ['routeChecklistLogs'] });
                                     queryClient.invalidateQueries({ queryKey: ['selectedPropertyHistory'] });
