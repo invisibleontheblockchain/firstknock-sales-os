@@ -78,3 +78,21 @@ test('resolved non-success responses forward the same sanitized failure diagnost
     assert.equal(outcome.measurement.diagnostic.httpStatus, null);
     assert.equal(outcome.measurement.diagnostic.errorCode, null);
 });
+
+test('a server-marked public reason reaches the outcome, sanitized; the private error never does', async () => {
+    let outcome;
+    await optimize(properties, {
+        client: { functions: { invoke: async () => { throw { response: { status: 500, data: {
+            error: 'private provider URL https://provider/33.45,-112.01',
+            public_error: 'Vehicle route has inconsistent turn continuity at a chunk seam.' } } }; } } },
+        onOutcome: (reason, measurement) => { outcome = { reason, measurement }; },
+    });
+    assert.equal(outcome.measurement.diagnostic.serverMessage, 'Vehicle route has inconsistent turn continuity at a chunk seam.');
+    assert.doesNotMatch(JSON.stringify(outcome), /https:|33\.45|private/);
+    await optimize(properties, {
+        client: { functions: { invoke: async () => { throw { response: { status: 500, data: {
+            error: 'x', public_error: 'near 33.45, -112.01 via https://provider/' } } }; } } },
+        onOutcome: (reason, measurement) => { outcome = { reason, measurement }; },
+    });
+    assert.doesNotMatch(JSON.stringify(outcome), /https:|33\.45|-112\.01/);
+});

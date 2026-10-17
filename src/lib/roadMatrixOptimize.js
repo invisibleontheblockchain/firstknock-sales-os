@@ -95,6 +95,17 @@ function partialOrderGuard(input, order, recovery) {
 // can mean a processing limit rather than throttling, so identify that exact
 // code before classifying the HTTP status. Keep raw messages and URLs out of
 // the outcome callback and its saved attempt history.
+// The server's own reason, made safe to show and store: no URLs, coordinates
+// or control characters, and short. "Could not complete the driving check"
+// alone gave a manager nothing to act on.
+const safeServerMessage = value => {
+    if (typeof value !== 'string') return null;
+    const text = value
+        .replace(/[a-z][a-z\d+.-]*:\/\/[^\s)]+/gi, '<url>')
+        .replace(/-?\d{1,3}\.\d+\s*,\s*-?\d{1,3}\.\d+/g, '<coordinates>')
+        .replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160);
+    return text || null;
+};
 const failureMeasurement = (failure, elapsedMs) => {
     const response = failure?.response || failure?.originalError?.response;
     const data = response?.data ?? failure?.data ?? failure;
@@ -102,7 +113,10 @@ const failureMeasurement = (failure, elapsedMs) => {
     const httpStatus = Number.isInteger(rawStatus) && rawStatus >= 100 && rawStatus <= 599 ? rawStatus : null;
     const rawCode = typeof data?.error === 'string' ? data.error : data?.error?.code ?? data?.code;
     const errorCode = rawCode === 'cpu-exceeded' ? 'cpu-exceeded' : httpStatus === 429 ? 'rate-limited' : null;
-    return { diagnostic: { httpStatus, errorCode, elapsedMs: Math.max(0, Math.round(elapsedMs)) },
+    // Only the field the server marks public is shown; `error` stays private.
+    const serverMessage = errorCode ? null : safeServerMessage(data?.public_error);
+    return { diagnostic: { httpStatus, errorCode, elapsedMs: Math.max(0, Math.round(elapsedMs)),
+        ...(serverMessage ? { serverMessage } : {}) },
         ...(data?.routing_metadata ? { routingMetadata: data.routing_metadata } : {}) };
 };
 const failureReason = (measurement, fallback) => measurement.diagnostic.errorCode === 'cpu-exceeded'

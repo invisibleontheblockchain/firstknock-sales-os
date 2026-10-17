@@ -54,6 +54,12 @@ function provider(ordered, settings = {}) {
                 if (settings.inconsistentInterior === 'distance') distance += 1;
                 if (settings.inconsistentInterior === 'path') path[1][1] += 0.00001;
             }
+            if (settings.departureContext?.legIndex === index && i === points.length - 3) {
+                // With continue_straight, a leg with only ONE following leg of
+                // context can reach its stop from the other side. More
+                // predecessors cannot change that; more successors do.
+                path[1][1] += 0.0001; duration += 50; distance += 500;
+            }
             if (settings.arrivalContext?.legIndex === index && index - start < settings.arrivalContext.predecessorLegs) {
                 // OSRM can choose the opposite departure along the same road
                 // when several earlier waypoints are absent. A longer request
@@ -159,7 +165,7 @@ for (const inconsistentInterior of ['path', 'time', 'distance']) {
     test(`a real shared interior ${inconsistentInterior} disagreement rejects the assembled drive`, async () => {
         const { run, engine } = await measure(makeStops(316), { inconsistentInterior });
         await assert.rejects(run(), /inconsistent turn continuity/);
-        assert.equal(engine.calls.length, 5, 'one original chunk and at most four shared-context attempts');
+        assert.equal(engine.calls.length, 8, 'one original chunk, four shared-context attempts and three bounded backtracks');
     });
 }
 
@@ -205,4 +211,14 @@ test('personal start and destination retain their directed legs and heading whil
     assert.ok(Math.abs(result.walkingAccessSeconds - walkingSeconds) < 1e-8);
     assert.equal(engine.calls[0].url.searchParams.get('bearings').split(';')[0], '85,45');
     assert.equal(engine.calls[0].url.searchParams.get('approaches').split(';')[0], 'unrestricted');
+});
+
+test('a seam leg that depends on its departure context backtracks one leg and joins on an exact match', async () => {
+    // Leg 97 is the last leg the first 100-point chunk retains, so it has one
+    // departure leg of context there and a full chunk of it in the next request.
+    const { run, ordered, engine } = await measure(makeStops(277), { departureContext: { legIndex: 97 } });
+    const result = await run();
+    assertComplete(result, ordered, engine, { maxRequests: 9 });
+    assert.equal(result.directedLegs[97].driveSeconds, 10, 'the leg is taken from the request with full departure context');
+    assert.ok(engine.calls.some(call => call.start === 95), 'the seam moved one leg earlier');
 });

@@ -183,10 +183,14 @@ export function describeRoadOptimizationOutcome(reason, measurement = null) {
         status: 'road_provider_unavailable', tone: 'error',
         message: `Road distances were unavailable, so your route was kept unchanged: ${roadFailureCause(meta.road_failure_detail)}.`,
     });
-    if (reason !== 'current_order_measured_best' || !validDistance(measurement?.distanceMiles)) return finish({
-        status: 'failed', tone: 'error',
-        message: 'Could not complete the driving check. Your route was kept unchanged. Try again.',
-    });
+    if (reason !== 'current_order_measured_best' || !validDistance(measurement?.distanceMiles)) {
+        const serverMessage = safeAddress(typeof measurement?.diagnostic?.serverMessage === 'string'
+            ? measurement.diagnostic.serverMessage.slice(0, 160) : null);
+        return finish({
+            status: 'failed', tone: 'error',
+            message: `Could not complete the driving check${serverMessage ? `: ${serverMessage.replace(/\.$/, '')}` : ''}. Your route was kept unchanged. Try again.`,
+        });
+    }
     if (review?.repaired > 0 && review.applied === false && review.status === 'whole_route_guard_retained'
         && (review.reason || review.validation !== 'whole_route')) return finish({
         status: 'verification_failed', tone: 'error',

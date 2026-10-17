@@ -9,6 +9,13 @@ const METERS_PER_MILE = 1609.344;
 // gateway URL limits. Start with four shared stops and expand predecessor
 // context only when the provider disagrees on the shared interior leg.
 export const MAX_VEHICLE_ROUTE_POINTS = 100;
+// With continue_straight, how a stop is LEFT can change how it is reached, so
+// the last leg a nonfinal chunk retains (one departure leg of context) may
+// legitimately differ from the same leg inside the next chunk. Extra
+// predecessor stops cannot fix that. Each backtrack drops that leg and moves the
+// seam one leg earlier, where the earlier chunk had one more leg of departure
+// context; the shared leg must still match exactly before anything is joined.
+export const MAX_SEAM_BACKTRACKS = 3;
 
 function timedSignal(source, milliseconds) {
     const controller = new AbortController();
@@ -210,9 +217,13 @@ export async function createVehicleRoutingContext(properties, accessContext, opt
                 const parts = [];
                 const directedLegs = [];
                 let retainedEnd = 0;
+                // Legs retained before the latest part. Backtracking never
+                // reaches into them: their seam was already proven.
+                let provenLegs = 0, seamBacktracks = 0;
                 while (retainedEnd < ordered.length - 1) {
                     let accepted = false;
-                    for (const sharedStops of parts.length ? [4, 8, 16, 32] : [0]) {
+                    const contexts = !parts.length ? [0] : seamBacktracks ? [4] : [4, 8, 16, 32];
+                    for (const sharedStops of contexts) {
                         const start = parts.length ? Math.max(0, retainedEnd - (sharedStops - 2)) : 0;
                         const chunk = ordered.slice(start, start + MAX_VEHICLE_ROUTE_POINTS);
                         const finalChunk = start + MAX_VEHICLE_ROUTE_POINTS >= ordered.length;
@@ -240,11 +251,19 @@ export async function createVehicleRoutingContext(properties, accessContext, opt
                         const freshLegs = part.directedLegs.slice(parts.length ? retainedEnd - start : 0,
                             finalChunk ? undefined : -1);
                         if (!freshLegs.length) throw new Error('Vehicle route made no progress across chunks.');
+                        provenLegs = directedLegs.length;
+                        seamBacktracks = 0;
                         directedLegs.push(...freshLegs);
                         parts.push(part);
                         retainedEnd = start + chunk.length - (finalChunk ? 1 : 2);
                         accepted = true;
                         break;
+                    }
+                    if (!accepted && seamBacktracks < MAX_SEAM_BACKTRACKS && directedLegs.length - 1 > provenLegs) {
+                        directedLegs.pop();
+                        retainedEnd -= 1;
+                        seamBacktracks += 1;
+                        continue;
                     }
                     if (!accepted) throw new Error('Vehicle route has inconsistent turn continuity at a chunk seam.');
                 }
