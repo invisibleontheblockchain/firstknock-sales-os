@@ -4,6 +4,7 @@ import { appParams } from '@/lib/app-params';
 import { createAxiosClient } from '@base44/sdk/dist/utils/axios-client';
 import { retryRead } from './readRequest.js';
 import { queryClientInstance } from './query-client.js';
+import { startLandingPrefetch } from './startupPrefetch.js';
 
 const AuthContext = createContext();
 
@@ -54,13 +55,20 @@ export const AuthProvider = ({ children }) => {
         interceptResponses: true
       });
 
+      // A signed-in device asks for its account alongside the public settings
+      // instead of after them; on cellular that was a full extra round trip
+      // before any page could start loading. The account is still applied
+      // only once the settings confirm the app is reachable.
+      const accountRequest = appParams.token ? readCurrentUser() : null;
+      accountRequest?.catch(() => {});
+
       try {
         const publicSettings = await retryRead(() => appClient.get(`/prod/public-settings/by-id/${appParams.appId}`, { timeout: 15_000 }));
         setAppPublicSettings(publicSettings);
 
         // If we got the app public settings successfully, check if user is authenticated
         if (appParams.token) {
-          await checkUserAuth();
+          await checkUserAuth(accountRequest);
         } else {
           setIsLoadingAuth(false);
           setIsAuthenticated(false);
@@ -108,15 +116,18 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const checkUserAuth = async () => {
+  const readCurrentUser = () => retryRead(() => base44.auth.me());
+
+  const checkUserAuth = async (accountRequest = null) => {
     try {
       // Now check if the user is authenticated
       setIsLoadingAuth(true);
-      const currentUser = await retryRead(() => base44.auth.me());
+      const currentUser = await (accountRequest || readCurrentUser());
       setUser(currentUser);
       // The layout and every page share this identity query. Seeding it avoids
       // a second auth request before route/team data can start loading.
       queryClientInstance.setQueryData(['user'], currentUser);
+      startLandingPrefetch(queryClientInstance, currentUser);
       setIsAuthenticated(true);
       setIsLoadingAuth(false);
     } catch (error) {

@@ -2,7 +2,7 @@ import { useRef, useState, useCallback, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { withReadDeadline } from '@/lib/readRequest';
-import { fetchMapTerritory, mapTerritoryQueryKey, mapTerritoryZipCodes, MAP_BOOTSTRAP_LIMIT, MAP_OVERVIEW_LIMIT } from './mapTerritoryLoading';
+import { fetchMapTerritory, mapTerritoryBootstrapOptions, mapTerritoryQueryKey, mapTerritoryZipCodes, MAP_OVERVIEW_LIMIT } from './mapTerritoryLoading';
 
 // Phase 4 — viewport-based property fetching + payload reduction.
 // Stage 1: a lightweight bootstrap so pins can arrive on slow connections.
@@ -41,12 +41,9 @@ export default function useViewportMapProperties(user) {
     const bootstrap = useQuery({
         // Keeps the legacy 'masterProperties' key so existing invalidations
         // (post-pull refresh, force sync, wizard complete) still refresh this data.
-        queryKey: mapTerritoryQueryKey(user, 'bootstrap'),
-        staleTime: 1000 * 60 * 15,
-        gcTime: 1000 * 60 * 30,
+        ...mapTerritoryBootstrapOptions(user, (...args) => base44.functions.invoke(...args), withReadDeadline),
         refetchOnWindowFocus: false,
         refetchOnMount: false,
-        queryFn: () => withReadDeadline(() => fetchMapTerritory((...args) => base44.functions.invoke(...args), user, MAP_BOOTSTRAP_LIMIT)),
         enabled: !!user
     });
     // Small territories finish with one request. Larger ones show their first
