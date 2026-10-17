@@ -66,7 +66,7 @@ const formatNumber = (value) => {
     return Number.isFinite(n) && n > 0 ? n.toLocaleString() : null;
 };
 
-export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, onClose, navigationApp = 'apple', activeRouteSoldFilter, setActiveRouteSoldFilter }) {
+export default function RouteChecklist({ route, logs, onLogResult, onDeleteOutcome, onNoteSaved, onClose, navigationApp = 'apple', activeRouteSoldFilter, setActiveRouteSoldFilter }) {
     const [latestRoute, setLatestRoute] = useState(route);
     const [expandedId, setExpandedId] = useState(null);
     const [filter, setFilter] = useState('all');
@@ -994,7 +994,7 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
                                                         id={`checklist-history-${prop.address_hash}`}
                                                         className="max-h-[40vh] overflow-y-auto pr-0.5"
                                                     >
-                                                        <PropertyHistory logs={houseLogs} />
+                                                        <PropertyHistory logs={houseLogs} onClearDecision={onDeleteOutcome} allowDeleteAll />
                                                     </div>
                                                 )}
                                             </div>
