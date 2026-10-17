@@ -41,7 +41,7 @@ const MapSettingsPanel = React.lazy(() => import('../components/map/MapSettingsP
 import RouteBuilderSettings, { preloadCanvasBuilderSettings } from '../components/map/RouteBuilderSettings';
 const TerritorySetupWizard = React.lazy(() => import('../components/manager/TerritorySetupWizard'));
 import { hydrateRouteForMap, hydrateRoutesForMap } from '@/components/logic/routeHydration';
-import { hasCompleteRouteMapPoints, orderRouteProperties } from '@/components/logic/routeHydrationCore';
+import { hasCompleteRouteMapPoints, orderRouteProperties, selectRoutesToHydrate } from '@/components/logic/routeHydrationCore';
 import { getReadyRouteMapPoints, loadSavedRouteSelection } from '@/components/logic/routeMapSelection';
 import { mergeAnchoredRoute } from '@/lib/routeAnchorState';
 import { GpsMapLayer as GpsTrackerMapLayers, GpsHud as GpsTrackerHud } from '../components/map/GpsTracker';
@@ -639,6 +639,7 @@ export default function Home() {
         baseProperties: userProperties,
         viewportProperties,
         isOverviewReady: territoryOverviewReady,
+        isLoadingOverview: territoryOverviewLoading,
         error: territoryLoadError,
         retry: retryTerritory,
         onMapMoveEnd
@@ -1284,7 +1285,11 @@ export default function Home() {
     });
 
     // Process ALL properties with territory filter
-    const effectiveProperties = useMemo(() => {
+    // Every loaded home that passes the territory filter, before the address
+    // dedupe below. Saved routes reference homes by hash, and that dedupe keeps
+    // only one hash per number|street|zip (it ignores units and drops the other
+    // hash of a Phase1/Phase2 duplicate), so route hydration reads these rows.
+    const territoryMapRows = useMemo(() => {
         const propsArray = Array.isArray(properties) ? properties : (properties?.items || []);
         const territoryZips = [...(user?.territory_zip_codes || []), ...(user?.generated_zip_codes || [])];
         const hasActivePolygon = !!(drawnPolygon && drawnPolygon.length > 2);
@@ -1334,7 +1339,11 @@ export default function Home() {
                     effective_status: p.is_dark_room ? (p.effective_status || 'ELIGIBLE') : determineEffectiveStatus(p, propLogs)
                 };
             });
+        return mapped;
+    }, [properties, logs, user?.territory_zip_codes, user?.generated_zip_codes, zipCodeFilter, drawnPolygon]);
 
+    const effectiveProperties = useMemo(() => {
+        const mapped = territoryMapRows;
         // Deduplicate by normalized address (catches Phase1/Phase2 hash mismatch duplicates)
         const dedupMap = new Map();
         mapped.forEach(p => {
@@ -1359,23 +1368,27 @@ export default function Home() {
             console.log(`[Home] Deduped properties: ${mapped.length} → ${deduped.length} (removed ${mapped.length - deduped.length} duplicates)`);
         }
         return deduped;
-    }, [properties, logs, user?.territory_zip_codes, user?.generated_zip_codes, zipCodeFilter, drawnPolygon]);
+    }, [territoryMapRows]);
 
-    // A log write changes effectiveProperties' identity but not its length. Keying this
+    // A log write changes the rows' identity but not their length. Keying this
     // effect on identity re-ran hydration (a network round trip) and rebuilt the whole
     // saved-route layer on every outcome logged, so it reads properties through a ref.
-    const effectivePropertiesRef = useRef(effectiveProperties);
-    effectivePropertiesRef.current = effectiveProperties;
+    const routeHomeRowsRef = useRef(territoryMapRows);
+    routeHomeRowsRef.current = territoryMapRows;
     const savedRouteMapManifestKey = savedRoutes.map(route => (
         `${route.id}:${route.updated_date || ''}:${(route.property_hashes || []).join(',')}`
     )).join('|');
     const { data: cachedHydratedSavedRoutes, isFetching: savedRoutePinsLoading, error: savedRoutePinsError, refetch: retrySavedRoutePins } = useQuery({
-        queryKey: ['savedRouteMapProperties', user?.id, user?.email, savedRouteMapManifestKey, effectiveProperties.length],
+        queryKey: ['savedRouteMapProperties', user?.id, user?.email, savedRouteMapManifestKey, territoryMapRows.length, territoryOverviewLoading],
         enabled: !!user?.email && savedRoutes.length > 0,
         staleTime: 60_000,
         refetchOnWindowFocus: true,
         queryFn: async ({ signal }) => {
-            const hydrated = await hydrateRoutesForMap(savedRoutes, user.email, effectivePropertiesRef.current, {
+            // Most route homes arrive with the territory overview. Until it
+            // settles, only the routes acted on first are looked up; the rest
+            // render from territory homes, then request only what it lacks.
+            const routesToHydrate = selectRoutesToHydrate(savedRoutes, { overviewLoading: territoryOverviewLoading });
+            const hydrated = await hydrateRoutesForMap(routesToHydrate, user.email, routeHomeRowsRef.current, {
                 shouldContinue: () => !signal.aborted,
                 onRouteHydrated: route => {
                     setServerHydratedSavedRoutes(current => {
@@ -1388,7 +1401,8 @@ export default function Home() {
                 },
             });
             const incompleteCount = hydrated.filter(route => !hasCompleteRouteMapPoints(route)).length;
-            if (incompleteCount) {
+            // Incomplete routes are reported only once every route was looked up.
+            if (incompleteCount && !territoryOverviewLoading) {
                 throw new Error(`${incompleteCount} route${incompleteCount === 1 ? '' : 's'} could not load all homes.`);
             }
             return hydrated;
@@ -1544,7 +1558,7 @@ export default function Home() {
                 const cached = queryClient.getQueryData(['routeMap', user.email, saved.id]);
                 loadSavedRouteSelection(saved, [
                     ...(cached?.allProperties || cached?.properties || []),
-                    ...effectivePropertiesRef.current,
+                    ...routeHomeRowsRef.current,
                 ], route => hydrateRouteForMap(route, user.email)).then(selected => {
                     if (cancelled) return;
                     setModeRaw('analyze');
@@ -1558,13 +1572,13 @@ export default function Home() {
             }
         }
         return () => { cancelled = true; };
-    }, [savedRoutes, activeRoute, user?.email, queryClient, effectiveProperties.length, routeLocation.search]);
+    }, [savedRoutes, activeRoute, user?.email, queryClient, territoryMapRows.length, routeLocation.search]);
 
     // Overview selection can also start with only a subset of cached pins.
     useEffect(() => {
         if (!activeRoute || !user?.email || hasCompleteRouteMapPoints(activeRoute)) return;
         let cancelled = false;
-        loadSavedRouteSelection(activeRoute, [], route => hydrateRouteForMap(route, user.email))
+        loadSavedRouteSelection(activeRoute, routeHomeRowsRef.current, route => hydrateRouteForMap(route, user.email))
             .then(selected => {
                 if (!cancelled) setActiveRoute(selected);
             }).catch(error => {
@@ -1678,7 +1692,7 @@ export default function Home() {
             const restoreCompletedRoute = async (candidates = []) => {
                 const completed = getCompletedPrecisionRoutes(precisionJob, savedPrecisionRoutes, candidates);
                 if (!completed.length) return false;
-                const selected = await loadSavedRouteSelection(completed[0], effectivePropertiesRef.current,
+                const selected = await loadSavedRouteSelection(completed[0], routeHomeRowsRef.current,
                     route => hydrateRouteForMap(route, user.email));
                 // This is an existing successful delivery, not another attempt.
                 deliveryAttempt = null;
