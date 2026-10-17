@@ -159,6 +159,36 @@ export function isRouteHydrationCacheable(route) {
     return !routeSourceProperties(route).some(isRecoveryLimitedProperty);
 }
 
+// CSV/Redfin imports keep their homes outside the territory overview, so
+// waiting for that overview never saves them a lookup.
+export function isImportedRoute(route) {
+    return ['csv_import', 'redfin_csv'].includes(route?.metadata?.source)
+        || route?.metadata?.imports?.length > 0
+        || !!route?.property_hashes?.some(hash => String(hash).startsWith('import_'));
+}
+
+export const EARLY_ROUTE_HYDRATION_COUNT = 3;
+
+/**
+ * Saved routes to look up while the territory overview is still loading.
+ * Most route homes arrive with that overview, so looking every route up before
+ * it lands downloads them twice (on one production manager account, ~33 calls
+ * and 7 MB of JSON per map open). Until it settles, only the newest routes, any
+ * route in progress and imports are looked up; the rest render from territory
+ * homes and are completed afterwards, when only homes the overview lacks are
+ * requested.
+ */
+export function selectRoutesToHydrate(routes = [], {
+    overviewLoading = false,
+    earlyCount = EARLY_ROUTE_HYDRATION_COUNT,
+} = {}) {
+    if (!Array.isArray(routes)) return [];
+    if (!overviewLoading) return routes;
+    return routes.filter((route, index) => (
+        index < earlyCount || route?.status === 'IN_PROGRESS' || isImportedRoute(route)
+    ));
+}
+
 function missingRouteHashes(route) {
     const hashes = Array.isArray(route?.property_hashes)
         ? route.property_hashes.map(String)

@@ -168,7 +168,7 @@ test('reopening a saved generation hydrates pins and exits Builder without savin
     const state = {};
     const sandbox = {
         getCompletedPrecisionRoutes, precisionJob: job, savedPrecisionRoutes: [savedRoute],
-        effectivePropertiesRef: { current: [] }, user: { email: 'manager@example.com' },
+        routeHomeRowsRef: { current: [] }, user: { email: 'manager@example.com' },
         deliveryAttempt: { status: 'failed' },
         loadSavedRouteSelection: async (route, _, hydrate) => hydrate(route),
         hydrateRouteForMap: async route => ({ ...route, properties: candidates }),
