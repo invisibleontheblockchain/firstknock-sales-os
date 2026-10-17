@@ -188,5 +188,164 @@
         }
       }
     ]
+  },
+  {
+    "measured_at": "2026-08-17T22:12:27.932Z",
+    "doors": 1000,
+    "street_blocks": 560,
+    "matrix_tier": "cluster",
+    "shipped": {
+      "layer1": {
+        "ok": true,
+        "miles": 627.57,
+        "longestLeg": 27.44,
+        "p95": 2.46,
+        "p99": 4.62
+      },
+      "layer2": {
+        "pockets": 41,
+        "pocket_visits": 79,
+        "pocket_reentries": 38,
+        "direction_reversals": 301,
+        "direction_reversal_pct": 30.2,
+        "progression_efficiency_pct": 14.1
+      }
+    },
+    "variants": [
+      {
+        "name": "barrier-budget",
+        "ok": true,
+        "runtime_s": 37,
+        "decomposition": "barrier_repaired_geometric_windows",
+        "window_grouping_road_priced": false,
+        "cluster_count": 19,
+        "street_block_count": 560,
+        "degraded": false,
+        "order_affecting_aerial_decisions": 0,
+        "matrix_requests": 85,
+        "osrm_requests": 235,
+        "layer1": {
+          "ok": true,
+          "miles": 394.13,
+          "longestLeg": 14.48,
+          "p95": 1.26,
+          "p99": 2.83
+        },
+        "layer2": {
+          "pockets": 41,
+          "pocket_visits": 59,
+          "pocket_reentries": 18,
+          "direction_reversals": 252,
+          "direction_reversal_pct": 25.3,
+          "progression_efficiency_pct": 18.2
+        }
+      }
+    ]
+  },
+  {
+    "measured_at": "2026-08-17T22:56:16.938Z",
+    "doors": 1000,
+    "street_blocks": 560,
+    "matrix_tier": "cluster",
+    "shipped": {
+      "layer1": {
+        "ok": true,
+        "miles": 627.57,
+        "longestLeg": 27.44,
+        "p95": 2.46,
+        "p99": 4.62
+      },
+      "layer2": {
+        "pockets": 41,
+        "pocket_visits": 79,
+        "pocket_reentries": 38,
+        "direction_reversals": 301,
+        "direction_reversal_pct": 30.2,
+        "progression_efficiency_pct": 14.1
+      }
+    },
+    "variants": [
+      {
+        "name": "branch",
+        "ok": true,
+        "runtime_s": 105,
+        "decomposition": "barrier_repaired_geometric_windows",
+        "window_grouping_road_priced": false,
+        "cluster_count": 19,
+        "street_block_count": 560,
+        "degraded": false,
+        "order_affecting_aerial_decisions": 0,
+        "matrix_requests": 168,
+        "osrm_requests": 597,
+        "layer1": {
+          "ok": true,
+          "miles": 392.3,
+          "longestLeg": 14.48,
+          "p95": 1.23,
+          "p99": 2.81
+        },
+        "layer2": {
+          "pockets": 41,
+          "pocket_visits": 56,
+          "pocket_reentries": 15,
+          "direction_reversals": 255,
+          "direction_reversal_pct": 25.6,
+          "progression_efficiency_pct": 18.2
+        }
+      }
+    ]
+  },
+  {
+    "measured_at": "2026-08-17T22:59:34.019Z",
+    "doors": 1000,
+    "street_blocks": 560,
+    "matrix_tier": "cluster",
+    "shipped": {
+      "layer1": {
+        "ok": true,
+        "miles": 627.57,
+        "longestLeg": 27.44,
+        "p95": 2.46,
+        "p99": 4.62
+      },
+      "layer2": {
+        "pockets": 41,
+        "pocket_visits": 79,
+        "pocket_reentries": 38,
+        "direction_reversals": 301,
+        "direction_reversal_pct": 30.2,
+        "progression_efficiency_pct": 14.1
+      }
+    },
+    "variants": [
+      {
+        "name": "branch-strict",
+        "ok": true,
+        "runtime_s": 138,
+        "decomposition": "barrier_repaired_geometric_windows",
+        "window_grouping_road_priced": false,
+        "cluster_count": 19,
+        "street_block_count": 560,
+        "degraded": false,
+        "order_affecting_aerial_decisions": 0,
+        "matrix_requests": 177,
+        "osrm_requests": 795,
+        "layer1": {
+          "ok": true,
+          "miles": 399.43,
+          "longestLeg": 14.48,
+          "p95": 1.41,
+          "p99": 3.3
+        },
+        "layer2": {
+          "pockets": 41,
+          "pocket_visits": 52,
+          "pocket_reentries": 11,
+          "direction_reversals": 266,
+          "direction_reversal_pct": 26.7,
+          "progression_efficiency_pct": 18.2
+        }
+      }
+    ]
   }
 ]
