@@ -186,7 +186,8 @@ test('the road matrix represents the 1,000-door route with blocks, never 1,000 d
 
 test('generation and the Optimize action share one road/topology pipeline, with no silent aerial route', async () => {
     const generationSource = await readFile(
-        new URL('../src/lib/roadMatrixRouteGeneration.js', import.meta.url),
+        // Generation's road pass lives in the shared all-routes core.
+        new URL('../src/lib/roadOptimizeRoutes.js', import.meta.url),
         'utf8',
     );
     const optimizeActionSource = await readFile(

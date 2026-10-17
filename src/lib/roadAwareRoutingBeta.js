@@ -2,8 +2,7 @@ import { base44 } from '@/api/base44Client';
 import { compareRoadAwareBeta } from '../../base44/shared/roadAwareBetaOptimizer.js';
 import { routePropertyOrderFingerprint } from '../../base44/shared/routeFingerprint.js';
 import { ROAD_VERIFICATION, stampRoadVerification, summarizeRoadVerification } from './routeRoadVerification';
-import { reviewNeighborhoodExcursions } from '../../base44/shared/neighborhoodExcursions.js';
-import { tryRoadMatrixOptimize } from './roadMatrixOptimize';
+import { optimizeRoutesOnRoads } from './roadOptimizeRoutes';
 
 const invoke = async (body, client = base44) => (await client.functions.invoke('roadAwareRoutingBeta', body)).data;
 const lastStatus = new WeakMap();
@@ -134,27 +133,14 @@ export async function applyRoadAwareBetaToGeneratedRoutes(routes, { entryPoint =
 export async function completeBetaGeneratedRoutes(routes, options = {}) {
     const beta = await applyRoadAwareBetaToGeneratedRoutes(routes, options);
     if (beta) return beta.routes;
-    // Merge, split, ZIP, campaign and import flows use this shared completion
-    // tail too. Outside the beta, a flagged excursion still reaches the same
-    // real-road optimizer used by Home and Optimize before any route is saved.
-    const out = [], started = Date.now();
-    let changed = false;
-    for (const route of routes) {
-        const initial = reviewNeighborhoodExcursions(route.properties);
-        if (!initial.diagnostics.detected) { out.push(route); continue; }
-        let measured = null;
-        const road = Date.now() - started < 20 * 60 * 1000 ? await tryRoadMatrixOptimize(route.properties, {
-            client: options.client || base44, start: route.startLocation,
-            end: route.returnToFirstStop ? route.properties[0] : route.endLocation,
-            onOutcome: (reason, measurement) => { if (reason === 'current_order_measured_best') measured = measurement; },
-        }) : null;
-        out.push({ ...route, properties: road?.order || route.properties,
-            totalDistance: road?.objective.appliedDistance ?? measured?.distanceMiles ?? route.totalDistance,
-            metadata: { ...route.metadata, neighborhood_excursion_review: initial.diagnostics,
-                ...(road?.routingMetadata || measured?.routingMetadata || {}) } });
-        changed = true;
-    }
-    return changed ? out : routes;
+    // Merge, split, ZIP, campaign, import and territory-wizard flows end here.
+    // Every route gets the Optimize button's full road search (not only routes
+    // with a detected neighborhood excursion) and adopts the road order only
+    // when it measured shorter.
+    if (!Array.isArray(routes) || routes.length === 0) return routes;
+    const result = await optimizeRoutesOnRoads(routes, { client: options.client || base44, title: options.title
+        || (routes.length > 1 ? `Optimizing ${routes.length} routes` : 'Optimizing your route') });
+    return result.routes;
 }
 
 /** Tail for workflows that already assembled SavedRoute payloads. It preserves
