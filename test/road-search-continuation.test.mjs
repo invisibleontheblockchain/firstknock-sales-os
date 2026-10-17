@@ -876,3 +876,17 @@ test('an invalid first partial response cannot save a changed route', async () =
     assert.equal(patch.metrics, undefined);
     assert.equal(patch.metadata.last_optimization_attempt.route_changed, false);
 });
+
+test('a partial no-op that leaves as many checks open as before stops instead of repeating to the fuse', async () => {
+    // Live: two checks beside an unresolved stop never complete; each extra pass
+    // re-asked them, changed nothing and still reported progress of one.
+    let calls = 0;
+    const stuck = { ...coverage(179, 181), progress_this_pass: 1 };
+    const result = await optimize(ruralHomes, { maxSearchPasses: 8, client: api(async () => {
+        if (++calls === 1) return partialResponse({ done: 179 });
+        return partialResponse({ unchanged: true, meta: { road_search_coverage: stuck } });
+    }) });
+    assert.equal(calls, 2, 'the first unchanged pass with no fewer open checks ends the action');
+    assert.equal(result.objective.estimatedSavings, 29.98);
+    assert.equal(result.routingMetadata.road_search_stop_reason, 'no_progress');
+});

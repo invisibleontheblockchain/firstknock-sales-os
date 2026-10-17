@@ -1,4 +1,5 @@
 import { haversineDistanceMiles, isValidRoutePoint } from './routeBounds.js';
+import { waypointOnRoad } from './roadNameMatch.js';
 import { roadNetworkRoutingInternals } from './roadNetworkRouting.js';
 
 const METERS_PER_MILE = 1609.344;
@@ -252,7 +253,7 @@ export function createCountyRoadRoutingAdapter(properties, { fetchJson: rawFetch
     const gatewayOK = (waypoint, record) => {
         if (!waypoint || !isValidRoutePoint(pointOf(waypoint.location || []))
             || distance(pointOf(waypoint.location), record.county.gateway.providerPoint) > 5.5
-            || streetKey(waypoint.name) !== streetKey(record.county.gateway.roadName)) {
+            || !waypointOnRoad(waypoint.name, record.county.gateway.roadName, streetKey)) {
             throw new Error('Public provider matched a different county gateway road.');
         }
     };

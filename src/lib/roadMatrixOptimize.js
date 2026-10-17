@@ -486,11 +486,17 @@ export async function tryRoadMatrixOptimize(routeProperties, {
     // Only the preceding accepted response in this click can supply a token.
     // A saved route, a different action, or a caller option cannot seed it.
     let searchContinuation = null;
+    // Remaining checks after the previous pass. A pass that changed nothing and
+    // left as many checks open is repeating questions that cannot complete
+    // (for example next to an unresolved stop); another pass would do the same.
+    let previousRemaining = Infinity;
     const shouldContinue = (proof, result, returnedCoverage, pass) => {
         if (returnedCoverage?.cycle_complete) return false;
+        const stalled = !result && returnedCoverage && returnedCoverage.remaining_windows >= previousRemaining;
+        if (returnedCoverage) previousRemaining = returnedCoverage.remaining_windows;
         const stopReason = !proof ? 'incomplete_verification'
             : !returnedCoverage ? 'invalid_search_coverage'
-            : !result && returnedCoverage.progress_this_pass === 0 ? 'no_progress'
+            : !result && (returnedCoverage.progress_this_pass === 0 || stalled) ? 'no_progress'
             : pass >= limit ? 'pass_limit'
             : budget - (Date.now() - started) < continuationBudget ? 'action_budget' : null;
         if (stopReason) {

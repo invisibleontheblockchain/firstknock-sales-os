@@ -223,3 +223,17 @@ test('trusted property access takes precedence over restored inferred curb state
     await session.finish({ winningOrder: properties, eligible: true });
     assert.equal(f.contexts.at(-1).access.accessFor(properties[0]), supplied);
 });
+
+test('an unresolved stop is driven around by the witness and binds the proof to the same unresolved set', async () => {
+    const f = fixture();
+    const session = await f.create({ unresolvedStopIds: ['c'] });
+    session.proof.complete(receipt);
+    const token = await session.finish({ winningOrder: f.properties, eligible: true });
+    assert.equal(typeof token, 'string', 'access-guarded routes can issue continuation proof');
+    assert.ok(f.calls.every(call => !call.includes('c')), 'the unroutable stop is never sent to the witness');
+    const body = { ...f.configuration.body, search_continuation: token };
+    const resumed = await f.create({ body, unresolvedStopIds: ['c'] });
+    assert.equal(resumed.diagnostic.status, 'restored');
+    const changed = await f.create({ body, unresolvedStopIds: [] });
+    assert.equal(changed.diagnostic.status, 'discarded', 'a different unresolved set cannot reuse the proof');
+});
