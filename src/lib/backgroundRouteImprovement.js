@@ -148,6 +148,7 @@ export function awaitSavedGeneratedRoute(order) {
     let settle;
     const saved = new Promise(resolve => { settle = resolve; });
     const timer = setTimeout(() => { pendingByOrder.delete(key); settle(null); }, PENDING_BIND_MS);
+    timer?.unref?.(); // A wait for a save never keeps a test or server process alive.
     pendingByOrder.set(key, savedRoute => { clearTimeout(timer); pendingByOrder.delete(key); settle(savedRoute); });
     return saved;
 }

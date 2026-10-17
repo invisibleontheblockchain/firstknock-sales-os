@@ -30,6 +30,7 @@ import { describeRoadFailure, fetchOsrmJson, osrmRoadBuildId } from '../../share
 import { readOsrmProvider } from '../../shared/osrmProvider.js';
 import { createOsrmRequestCache } from '../../shared/osrmRequestCache.js';
 import { createRoadSearchSession } from '../../shared/roadSearchSession.js';
+import { verifyWorkerCredential } from '../../shared/routeOptimizationWorkerAuth.js';
 import { createRoadCostCache } from '../../shared/roadCostCache.js';
 import { createMemoizedRouteMetrics } from '../../shared/routeMetricMemo.js';
 import { recoverRouteVehicleAccess } from '../../shared/routeAccessRecovery.js';
@@ -132,10 +133,16 @@ export default async function (req: Request): Promise<Response> {
     let recoveryReport = null;
     try {
         const base44 = createClientFromRequest(req);
-        const user = await base44.auth.me();
+        let user = null;
+        try { user = await base44.auth.me(); } catch { user = null; }
+        const body = await req.json().catch(() => ({}));
+        // FirstKnock's background worker acts for the route's owner with a
+        // short-lived signed credential instead of a session.
+        if (!user && body.worker_credential) {
+            user = await verifyWorkerCredential(readSecret('ROUTE_SEARCH_CONTINUATION_SECRET'), body.worker_credential);
+        }
         if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
-        const body = await req.json().catch(() => ({}));
         let properties = Array.isArray(body.properties) ? body.properties : [];
         const startLocation = isValidPoint(body.start_location) ? body.start_location : null;
         const endLocation = isValidPoint(body.end_location) ? body.end_location : null;

@@ -291,7 +291,8 @@ test('new generation and Optimize both reach the same enabled driving review', (
     const backend = fs.readFileSync(new URL('../base44/functions/optimizeRouteRoadMatrix/entry.ts', import.meta.url), 'utf8');
     // Generation's road pass lives in the shared all-routes core.
     const generation = fs.readFileSync(new URL('../src/lib/roadOptimizeRoutes.js', import.meta.url), 'utf8');
-    const optimize = fs.readFileSync(new URL('../src/lib/roadMatrixOptimize.js', import.meta.url), 'utf8');
+    // The app's search loop lives in base44/shared so the server worker shares it.
+    const optimize = fs.readFileSync(new URL('../base44/shared/roadMatrixSearch.js', import.meta.url), 'utf8');
     assert.match(backend, /localDrivingReview: profile === 'driving'/);
     assert.match(generation, /tryRoadMatrixOptimize/); assert.match(optimize, /invoke\('optimizeRouteRoadMatrix'/);
 });

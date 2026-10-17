@@ -10,6 +10,7 @@ import * as routeDisplayGeometry from '../base44/shared/routeDisplayGeometry.js'
 import * as roadSearchSession from '../base44/shared/roadSearchSession.js';
 import * as osrmProvider from '../base44/shared/osrmProvider.js';
 import * as osrmDispatcher from '../base44/shared/osrmDispatcher.js';
+import * as workerAuth from '../base44/shared/routeOptimizationWorkerAuth.js';
 
 const source = fs.readFileSync(new URL('../base44/functions/optimizeRouteRoadMatrix/entry.ts', import.meta.url), 'utf8');
 const compiled = ts.transpileModule(source, { compilerOptions: {
@@ -52,14 +53,16 @@ for (const planTier of ['door', 'cluster']) test(`${planTier} response reuses co
 });
 
 function endpoint({ recover, local, finalReview, verify, winner, planTier = 'door', failProvider = false, authenticated = true,
-    matrixSource = 'osrm:driving', cacheStats = {}, session, osrmBaseUrl = 'https://roads.test', matrixFails = false } = {}) {
+    matrixSource = 'osrm:driving', cacheStats = {}, session, osrmBaseUrl = 'https://roads.test', matrixFails = false,
+    workerSecret = null } = {}) {
     const calls = { events: [], recovery: [], plan: [], continuity: [], matrix: [], provider: [], local: [],
         globalReview: [], county: [], roadCosts: [], paths: [], completeVerification: [],
         sweep: 0, hierarchy: 0, candidateComparison: 0, sessions: [], finalized: [] };
     const modules = {
         'npm:@base44/sdk@0.8.40': { createClientFromRequest: () => ({ auth: { me: async () => authenticated ? { id: 'manager' } : null } }) },
         'base44:runtime': { secrets: { get: key => key === 'OSRM_BASE_URL' ? osrmBaseUrl
-            : key === 'OSRM_GATEWAY_KEY' ? 'test-gateway-key' : 'test-geocoder-key' } },
+            : key === 'OSRM_GATEWAY_KEY' ? 'test-gateway-key'
+                : key === 'ROUTE_SEARCH_CONTINUATION_SECRET' && workerSecret ? workerSecret : 'test-geocoder-key' } },
         '../../shared/routeContinuityOptimizer.js': { ...continuity,
             createContinuityOptimizer: metric => {
                 const original = continuity.createContinuityOptimizer(metric);
@@ -133,6 +136,7 @@ function endpoint({ recover, local, finalReview, verify, winner, planTier = 'doo
         } },
         '../../shared/roadLegDistribution.js': legDistribution,
         '../../shared/routeDisplayGeometry.js': routeDisplayGeometry,
+        '../../shared/routeOptimizationWorkerAuth.js': workerAuth,
         '../../shared/routeMetricMemo.js': { createMemoizedRouteMetrics: metrics => metrics },
         '../../shared/routeAccessRecovery.js': { recoverRouteVehicleAccess: async (properties, options) => {
             calls.events.push('recovery'); calls.recovery.push({ properties, options });
@@ -746,4 +750,33 @@ test('an unavailable road engine returns the continuity fallback with its reason
     assert.equal(body.routing_metadata.road_failure_detail.host, 'roads.test');
     assert.equal(body.routing_metadata.road_build_id, 'test-road-build');
     assert.equal(calls.matrix.length, 1);
+});
+
+test('the background worker reaches the optimizer with a signed credential, never without one', async () => {
+    const secret = 'worker-test-secret-0123456789abcdefghij';
+    const properties = inputStops();
+    const credential = await workerAuth.signWorkerCredential(secret, { ownerUserId: 'manager-7', jobId: 'job-1' });
+    const worker = endpoint({ authenticated: false, workerSecret: secret });
+    const accepted = await worker.invoke(properties, { worker_credential: credential, inspect_access_only: true });
+    assert.notEqual(accepted.status, 401);
+    assert.equal(worker.calls.recovery.length, 1);
+    for (const forged of [{ ...credential, owner_user_id: 'manager-8' }, { ...credential, signature: '0'.repeat(64) },
+        { ...credential, issued_at: Date.now() - 16 * 60 * 1000 }, undefined]) {
+        const refused = endpoint({ authenticated: false, workerSecret: secret });
+        const response = await refused.invoke(properties, { worker_credential: forged, inspect_access_only: true });
+        assert.equal(response.status, 401);
+        assert.equal(refused.calls.recovery.length, 0);
+    }
+});
+
+test('worker credentials expire, reject tampering and need a configured secret', async () => {
+    const secret = 'worker-test-secret-0123456789abcdefghij', now = Date.now();
+    const credential = await workerAuth.signWorkerCredential(secret, { ownerUserId: 'u1', jobId: 'j1', now });
+    assert.deepEqual(await workerAuth.verifyWorkerCredential(secret, credential, { now }), { id: 'u1', worker_job_id: 'j1' });
+    assert.equal(await workerAuth.verifyWorkerCredential(secret, credential, { now: now + 15 * 60 * 1000 + 1 }), null);
+    assert.equal(await workerAuth.verifyWorkerCredential(secret, credential, { now: now - 2 * 60 * 1000 }), null, 'not from the future');
+    assert.equal(await workerAuth.verifyWorkerCredential(secret, { ...credential, job_id: 'j2' }, { now }), null);
+    assert.equal(await workerAuth.verifyWorkerCredential(`${secret}x`, credential, { now }), null);
+    assert.equal(await workerAuth.verifyWorkerCredential('short', credential, { now }), null);
+    await assert.rejects(workerAuth.signWorkerCredential('short', { ownerUserId: 'u1', jobId: 'j1' }), /not configured/);
 });
