@@ -890,3 +890,18 @@ test('a partial no-op that leaves as many checks open as before stops instead of
     assert.equal(result.objective.estimatedSavings, 29.98);
     assert.equal(result.routingMetadata.road_search_stop_reason, 'no_progress');
 });
+
+test('later passes send the stops that failed for address or road reasons, never outages', async () => {
+    const bodies = [];
+    let calls = 0;
+    await optimize(ruralHomes, { maxSearchPasses: 3, client: api(async (_name, body) => {
+        bodies.push(structuredClone(body));
+        calls++;
+        const value = partialResponse({ done: calls === 1 ? 16 : 100 });
+        value.data.routing_metadata.road_access_recovery.unresolved.push({ property_id: ruralHashes[400], stop_number: 401,
+            address: '1 Outage Rd', reason: 'road_provider_unavailable' });
+        return value;
+    }) });
+    assert.equal(bodies[0].known_unresolved_stops, undefined);
+    assert.deepEqual(bodies[1].known_unresolved_stops, [{ property_id: ruralHashes[294], reason: 'address_road_not_matched' }]);
+});

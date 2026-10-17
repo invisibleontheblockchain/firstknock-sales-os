@@ -202,6 +202,13 @@ export default async function (req: Request): Promise<Response> {
         const accessRecovery = profile === 'driving'
             ? await recoverRouteVehicleAccess(properties, { vehicleBaseUrl, vehicleProfile: profile,
                 vehicleFetch, geocodioApiKey: readSecret('GEOCODIO_API_KEY'),
+                // Stops an earlier pass of this action could not resolve: skip
+                // re-matching them. Bounded, and only for route members.
+                knownUnresolved: new Map((Array.isArray(body.known_unresolved_stops) ? body.known_unresolved_stops : [])
+                    .slice(0, 256)
+                    .filter(item => typeof item?.property_id === 'string' && typeof item?.reason === 'string'
+                        && properties.some(stop => propertyIdentity(stop) === item.property_id))
+                    .map(item => [item.property_id, item.reason])),
                 enableMappedDrivewayRecovery: true,
                 collectCountyDiagnostics: body.inspect_access_only === true })
             : { properties, report: null };
