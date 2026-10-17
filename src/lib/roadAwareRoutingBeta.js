@@ -3,6 +3,7 @@ import { compareRoadAwareBeta } from '../../base44/shared/roadAwareBetaOptimizer
 import { routePropertyOrderFingerprint } from '../../base44/shared/routeFingerprint.js';
 import { ROAD_VERIFICATION, stampRoadVerification, summarizeRoadVerification } from './routeRoadVerification';
 import { optimizeRoutesOnRoads } from './roadOptimizeRoutes';
+import { bindSavedGeneratedRoutes } from './backgroundRouteImprovement';
 
 const invoke = async (body, client = base44) => (await client.functions.invoke('roadAwareRoutingBeta', body)).data;
 const lastStatus = new WeakMap();
@@ -26,6 +27,9 @@ export const getRoadAwareBetaHistory = (client = base44) => invoke({ action: 'hi
 export const restoreRoadAwareBetaComparison = (comparisonId, client = base44) => invoke({ action: 'restore', comparison_id: comparisonId }, client);
 export async function bindBetaGeneratedRoutes(response, client = base44) {
     const routes = Array.isArray(response) ? response : response?.items || response?.data || (response?.id ? [response] : []);
+    // Every generation flow calls this right after its save: hand the saved
+    // records to their background road search (first result fast).
+    bindSavedGeneratedRoutes(routes);
     await Promise.all(routes.map(async route => {
         if (!route.metadata?.road_aware_comparison_id || !route.id || String(route.id).startsWith('local_')) return;
         try { await invoke({ action: 'bind_generated', comparison_id: route.metadata.road_aware_comparison_id, route_id: route.id }, client); }

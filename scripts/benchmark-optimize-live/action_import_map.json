@@ -2,6 +2,7 @@
     "imports": {
         "npm:@base44/sdk@0.8.40": "./base44-sdk-stub.js",
         "base44:runtime": "./base44-runtime-stub.js",
-        "@/api/base44Client": "./base44-client-stub.js"
+        "@/api/base44Client": "./base44-client-stub.js",
+        "@/lib/roadMatrixOptimize": "../../src/lib/roadMatrixOptimize.js"
     }
 }

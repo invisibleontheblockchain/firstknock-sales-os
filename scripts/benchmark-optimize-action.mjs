@@ -38,7 +38,8 @@ globalThis.fetch = async (input, init) => {
 };
 
 const handler = (await import(new URL('base44/functions/optimizeRouteRoadMatrix/entry.ts', root).href)).default;
-const { tryRoadMatrixOptimize } = await import(new URL('src/lib/roadMatrixOptimize.js', root).href);
+// The same first-result-fast wrapper every optimizer path uses.
+const { optimizeFirstThenFinish } = await import(new URL('src/lib/backgroundRouteImprovement.js', root).href);
 const { measureRoadPath } = await import(new URL('base44/shared/roadPathMeasure.js', root).href);
 const { readOsrmProvider } = await import(new URL('base44/shared/osrmProvider.js', root).href);
 const doors = JSON.parse(await Deno.readTextFile(String(args.route))).doors;
@@ -73,9 +74,14 @@ async function runOnce() {
         if (!response.ok) throw Object.assign(new Error(data.error || 'Optimize failed'), { response: { status: response.status, data } });
         return { data };
     } } };
-    let outcome = null;
-    const result = await tryRoadMatrixOptimize(doors, { client, maxSearchPasses: PASSES,
-        onOutcome: (reason, measurement) => { outcome = { reason, meta: measurement?.routingMetadata || null }; } });
+    const search = optimizeFirstThenFinish(doors, { client, maxSearchPasses: PASSES });
+    const first = await search.first;
+    // The moment the app saves and shows a result.
+    const firstSavedMs = performance.now() - started;
+    const firstOrder = first.result?.order?.map(entry => byHash.get(entry.address_hash || entry) || entry) || doors;
+    const finalValue = await search.final;
+    const result = finalValue.result;
+    const outcome = { reason: finalValue.reason, meta: finalValue.measurement?.routingMetadata || null };
     const totalMs = performance.now() - started;
     const meta = result?.routingMetadata || outcome?.meta || {};
     const finalOrder = result?.order?.map(entry => byHash.get(entry.address_hash || entry) || entry) || doors;
@@ -84,7 +90,9 @@ async function runOnce() {
     const active = busy.filter(Boolean);
     const last = passes.at(-1) || {};
     return {
-        total_ms: Math.round(totalMs), first_result_ms: Math.round(firstResultMs ?? totalMs), passes: passes.length,
+        total_ms: Math.round(totalMs), first_result_ms: Math.round(firstResultMs ?? totalMs),
+        first_saved_ms: Math.round(firstSavedMs), more_in_background: first.more,
+        first_miles: first.more ? await measure(firstOrder) : null, passes: passes.length,
         stop_reason: meta.road_search_stop_reason || null, outcome: result ? 'applied' : outcome?.reason || null,
         whole_route_verified: Boolean(result && meta.strategy && meta.strategy !== 'access_guarded_neighborhood_repair' && meta.fallback !== true),
         checks: last.coverage ? { completed: last.coverage.total - last.coverage.remaining, total: last.coverage.total } : null,

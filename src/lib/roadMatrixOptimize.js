@@ -477,7 +477,7 @@ function appliedPartialMetadata(meta, localMilesSaved) {
 export async function tryRoadMatrixOptimize(routeProperties, {
     searchCoverage = null, maxSearchPasses = MAX_OPTIMIZE_PASSES,
     totalDeadlineMs = OPTIMIZE_ACTION_DEADLINE_MS, deadlineMs,
-    onOutcome = null, onProgress = null, onSearchProgress = null, ...options
+    onOutcome = null, onProgress = null, onSearchProgress = null, onFirstResult = null, ...options
 } = {}) {
     const limit = Number.isFinite(maxSearchPasses) ? Math.max(1, Math.min(MAX_OPTIMIZE_PASSES, Math.floor(maxSearchPasses))) : 1;
     const budget = Number.isFinite(totalDeadlineMs) ? Math.max(1, Math.min(OPTIMIZE_ACTION_DEADLINE_MS, totalDeadlineMs)) : OPTIMIZE_ACTION_DEADLINE_MS;
@@ -525,6 +525,15 @@ export async function tryRoadMatrixOptimize(routeProperties, {
     let passesDone = 0;
     for (let pass = 1; pass <= limit; pass++) {
         if (pass > 1) reportProgress(passesDone, false);
+        // More passes are coming: hand the caller what one pass found, so it
+        // can save and show that now while the search continues.
+        if (pass === 2 && onFirstResult) {
+            await onFirstResult({
+                result: accepted ? { ...accepted, objective: { ...accepted.objective },
+                    routingMetadata: { ...accepted.routingMetadata } } : null,
+                reason: lastReason, measurement: lastMeasurement,
+            });
+        }
         if (pass > 1) onProgress?.({ pass, maxPasses: limit, remainingWindows: coverage.remaining_windows });
         passesDone = pass;
         let reason, measurement, nextSearchContinuation = null;

@@ -47,6 +47,8 @@ export default function RoadOptimizationProgressHost() {
     const [jobs, setJobs] = useState([]);
     const [now, setNow] = useState(() => Date.now());
     const [hidden, setHidden] = useState(() => new Set());
+    // Jobs finishing in the background start as the pill; tapping it opens them.
+    const [opened, setOpened] = useState(() => new Set());
     useEffect(() => subscribeRoadOptimizationJobs(setJobs), []);
     useEffect(() => {
         if (!jobs.length) return undefined;
@@ -62,14 +64,17 @@ export default function RoadOptimizationProgressHost() {
     const stops = job.routes.reduce((sum, route) => sum + route.stops, 0);
     const percent = Math.round(jobFraction(job) * 100);
 
-    if (hidden.has(job.id)) {
+    if (hidden.has(job.id) || (job.finishing && !opened.has(job.id))) {
         return (
-            <button type="button" onClick={() => setHidden(prev => { const next = new Set(prev); next.delete(job.id); return next; })}
+            <button type="button" onClick={() => {
+                setHidden(prev => { const next = new Set(prev); next.delete(job.id); return next; });
+                setOpened(prev => new Set(prev).add(job.id));
+            }}
                 className="fixed bottom-4 left-4 z-[10000] flex items-center gap-2 rounded-full border px-4 py-2 text-xs font-semibold text-white shadow-xl"
                 style={{ background: '#111111', borderColor: 'rgba(212,175,55,0.4)' }}
                 aria-label="Show optimization progress">
                 <Loader2 className="h-4 w-4 animate-spin" style={{ color: GOLD }} />
-                Optimizing · {percent}% · {elapsed}
+                {job.finishing ? 'Saved · improving in the background' : `Optimizing · ${percent}%`} · {elapsed}
                 <ChevronUp className="h-4 w-4 text-white/60" />
             </button>
         );
@@ -86,11 +91,13 @@ export default function RoadOptimizationProgressHost() {
                     <Loader2 className="mt-0.5 h-6 w-6 shrink-0 animate-spin" style={{ color: GOLD }} />
                     <div className="min-w-0 flex-1">
                         <div className="text-[11px] font-bold uppercase tracking-[0.2em]" style={{ color: GOLD }}>
-                            {job.title || (multi ? `Optimizing ${job.routes.length} routes` : 'Optimizing your route')}
+                            {job.finishing ? (multi ? 'Routes saved' : 'Route saved')
+                                : job.title || (multi ? `Optimizing ${job.routes.length} routes` : 'Optimizing your route')}
                         </div>
                         <p className="mt-1 text-sm text-white/85">
-                            Finding the shortest drive on real roads for {stops.toLocaleString()} stops. This usually
-                            takes {describeEstimate(job.estimate)}.
+                            {job.finishing
+                                ? 'Checking the remaining neighborhoods for an even shorter drive.'
+                                : `Finding the shortest drive on real roads for ${stops.toLocaleString()} stops. This usually takes ${describeEstimate(job.estimate)}.`}
                         </p>
                     </div>
                 </div>
@@ -127,8 +134,13 @@ export default function RoadOptimizationProgressHost() {
 
                 {job.background && (
                     <div className="mt-4 flex items-center justify-between gap-3">
-                        <span className="text-xs text-white/55">Your route saves automatically when it’s done.</span>
-                        <button type="button" onClick={() => setHidden(prev => new Set(prev).add(job.id))}
+                        <span className="text-xs text-white/55">{job.finishing
+                            ? 'A shorter order is saved only if nobody changes the route meanwhile.'
+                            : 'Your route saves automatically when it’s done.'}</span>
+                        <button type="button" onClick={() => {
+                            setHidden(prev => new Set(prev).add(job.id));
+                            setOpened(prev => { const next = new Set(prev); next.delete(job.id); return next; });
+                        }}
                             className="shrink-0 rounded-lg px-3 py-2 text-xs font-bold uppercase tracking-wider"
                             style={{ background: GOLD, color: '#000' }}>
                             Keep working

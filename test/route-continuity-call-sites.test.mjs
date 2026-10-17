@@ -267,7 +267,7 @@ test('Home and RepHome interactive optimizers never depend on live road loading'
   );
   assert.doesNotMatch(optimizeActionSource, /\b(?:createRouteRoadContext|optimizeRouteByStreetSweep)\b/,
     'explicit saved-route Optimize must not silently reorder after the driving check declines');
-  assert.match(optimizeActionSource, /await tryRoadMatrixOptimize\(routeProperties,/,
+  assert.match(optimizeActionSource, /const search = optimizeFirstThenFinish\(routeProperties,/,
     'explicit Optimize must use the address recovery and driving verification pipeline');
 
   const largeRouteSource = await readFile(
@@ -332,12 +332,12 @@ test('initial generation and reorder use Optimize route-only semantics and the s
   );
   assert.match(
     generationSource,
-    /const endOf = route => \(route\.returnToFirstStop \? route\.properties\?\.\[0\] : route\.endLocation\);[\s\S]*?tryRoadMatrixOptimize\(properties,\s*\{[\s\S]*?start:\s*isValidRoutePoint\(route\.startLocation\)\s*\?\s*route\.startLocation\s*:\s*null,[\s\S]*?end:\s*isValidRoutePoint\(end\)\s*\?\s*end\s*:\s*null/,
+    /const endOf = route => \(route\.returnToFirstStop \? route\.properties\?\.\[0\] : route\.endLocation\);[\s\S]*?optimizeFirstThenFinish\(properties,\s*\{[\s\S]*?start:\s*isValidRoutePoint\(route\.startLocation\)\s*\?\s*route\.startLocation\s*:\s*null,[\s\S]*?end:\s*isValidRoutePoint\(end\)\s*\?\s*end\s*:\s*null/,
     'generated routes must call the shared optimizer without inferred anchors',
   );
   assert.match(
     optimizeSource,
-    /const start = optimizeFromCar[\s\S]*?: null;[\s\S]*?const end = optimizeFromCar[\s\S]*?: null;[\s\S]*?tryRoadMatrixOptimize\(routeProperties/,
+    /const start = optimizeFromCar[\s\S]*?: null;[\s\S]*?const end = optimizeFromCar[\s\S]*?: null;[\s\S]*?optimizeFirstThenFinish\(routeProperties/,
     'Optimize route-only must stay unanchored and use the same shared optimizer',
   );
 });

@@ -205,14 +205,19 @@ test('generation and the Optimize action share one road/topology pipeline, with 
 
     // Requirement 7 + 10: initial generation and the later Optimize action both
     // price the route through the same backend road matrix.
+    // Both reach it through the first-result-fast wrapper, which runs the
+    // shared optimizer itself.
     for (const [label, source] of [['generation', generationSource], ['optimize', optimizeActionSource]]) {
         assert.match(
             source,
-            /import \{ tryRoadMatrixOptimize \} from '@\/lib\/roadMatrixOptimize'/,
+            /import \{[^}]*\boptimizeFirstThenFinish\b[^}]*\} from '@\/lib\/backgroundRouteImprovement'/,
             `${label} must run the shared road-matrix optimizer`,
         );
-        assert.match(source, /tryRoadMatrixOptimize\(/, `${label} must call the shared road optimizer`);
+        assert.match(source, /optimizeFirstThenFinish\(/, `${label} must call the shared road optimizer`);
     }
+    const wrapperSource = await readFile(new URL('../src/lib/backgroundRouteImprovement.js', import.meta.url), 'utf8');
+    assert.match(wrapperSource, /import \{ tryRoadMatrixOptimize \} from '@\/lib\/roadMatrixOptimize'/);
+    assert.match(wrapperSource, /const final = tryRoadMatrixOptimize\(properties, \{/);
 
     // Requirement 8: an unmeasured aerial fallback order is never adopted.
     assert.match(
