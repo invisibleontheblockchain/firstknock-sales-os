@@ -935,6 +935,9 @@ export default async function (req: Request): Promise<Response> {
         });
     } catch (error) {
         return Response.json({ error: error.message,
+            // Deliberately public: the same reason without URLs or coordinates,
+            // so a manager sees why instead of "Could not complete the driving check".
+            public_error: describeRoadFailure(error).message,
             ...(recoveryReport ? { routing_metadata: { optimizer_version: OPTIMIZER_VERSION,
                 road_access_recovery: recoveryReport } } : {}) }, { status: 500 });
     }

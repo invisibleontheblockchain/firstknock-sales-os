@@ -30,9 +30,15 @@ test('neighborhood v5 explicitly versions the driving review while preserving fr
     // Reviewed: vehicleRouting.js now requests redirect 'manual' instead of
     // 'error', which the Base44 edge runtime rejects before connecting. A
     // redirect is still !ok and fails the request; no routing logic changed.
+    // Reviewed: chunk seams may backtrack up to MAX_SEAM_BACKTRACKS legs when
+    // the retained leg depends on departure (successor) context, which extra
+    // predecessors cannot supply. The shared leg must still match exactly in
+    // path, time and distance; a persistent disagreement still rejects. Live
+    // 377-stop Charlotte route: previously rejected at a seam on both the
+    // private gateway and the public demo, now joins and validates.
     const frozen = { 'coreDrivingPilot.js': '44ecbfad3d3578258d4d4a19d5ce7f1a43e345f61e5f0f362a71118a5e5d8f90',
         'guardedDrivingWindows.js': baseline.sourceHashes['base44/shared/guardedDrivingWindows.js'],
-        'vehicleRouting.js': '50ac988606f1e88cd680e79966f2952758837aae8dea0e19645e907e32930649' };
+        'vehicleRouting.js': '12b1a67dfd1ecc3ab35236e99df5c05a4728327a515706f6388f2178104592df' };
     for (const [file, hash] of Object.entries(frozen)) {
         const source = readFileSync(new URL('../base44/shared/' + file, import.meta.url), 'utf8').replace(/\r\n/g, '\n');
         assert.equal(createHash('sha256').update(source).digest('hex'), hash, file + ' needs explicit regression review');

@@ -692,3 +692,13 @@ test('the continuity fallback names its cause', () => {
         /the road server returned an error \(HTTP 503\)/);
     assert.equal(outcomes.describeRoadOptimizationOutcome('aerial_fallback', fallback(null)).status, 'failed');
 });
+
+test('a failed driving check shows the server reason, never its URLs or coordinates', () => {
+    const failed = serverMessage => outcomes.describeRoadOptimizationOutcome('backend_unavailable',
+        { diagnostic: { httpStatus: 500, errorCode: null, elapsedMs: 13000, serverMessage } });
+    assert.equal(failed('Vehicle route has inconsistent turn continuity at a chunk seam.').message,
+        'Could not complete the driving check: Vehicle route has inconsistent turn continuity at a chunk seam. Your route was kept unchanged. Try again.');
+    assert.equal(failed(undefined).message, 'Could not complete the driving check. Your route was kept unchanged. Try again.');
+    assert.equal(failed('see https://roads.example/route at 35.12, -80.84').message,
+        'Could not complete the driving check. Your route was kept unchanged. Try again.', 'unsafe text is dropped');
+});
