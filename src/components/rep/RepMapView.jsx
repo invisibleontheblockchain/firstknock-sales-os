@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { MapContainer, CircleMarker, Circle, Polyline, Tooltip, useMap } from 'react-leaflet';
 import RecoveringTileLayer from '@/components/map/RecoveringTileLayer';
+import ZoomOutBackdrop from '@/components/map/ZoomOutBackdrop';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { createLabelCanvas } from '@/components/map/labelCanvas';
@@ -91,6 +92,8 @@ function FlyToProperty({ focusProperty }) {
     }, [focusProperty, map]);
     return null;
 }
+
+const REP_IMAGERY_URL = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
 
 const GpsLayer = React.memo(function GpsLayer({ position, accuracy, renderer }) {
     if (!position) return null;
@@ -193,6 +196,13 @@ export default function RepMapView({
     const [position, setPosition] = useState(null);
     const [accuracy, setAccuracy] = useState(50);
     const [hudExpanded, setHudExpanded] = useState(true);
+    // The zoom-out backdrop waits for the first full view of real imagery.
+    const [imageryLoaded, setImageryLoaded] = useState(false);
+    const imageryEvents = useMemo(() => ({ load: () => setImageryLoaded(true) }), []);
+    useEffect(() => {
+        const timer = setTimeout(() => setImageryLoaded(true), 6000);
+        return () => clearTimeout(timer);
+    }, []);
 
     const [mapSettings] = useState(() => {
         try {
@@ -348,8 +358,10 @@ export default function RepMapView({
                 >
                     <MapRefCapture mapRef={mapRef} />
                     {focusProperty && <FlyToProperty focusProperty={focusProperty} />}
+                    {imageryLoaded && <ZoomOutBackdrop url={REP_IMAGERY_URL} />}
                     <RecoveringTileLayer
-                        url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+                        url={REP_IMAGERY_URL}
+                        eventHandlers={imageryEvents}
                         attribution=""
                         maxNativeZoom={19}
                         maxZoom={22}
