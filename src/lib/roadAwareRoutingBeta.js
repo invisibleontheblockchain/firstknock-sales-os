@@ -69,7 +69,7 @@ export async function prepareRoadAwareBetaComparison(properties, { bounds = {}, 
     try { if (typeof localStorage !== 'undefined') resume = JSON.parse(localStorage.getItem(cacheKey) || 'null'); } catch { /* Optional checkpoint. */ }
     const result = await compareRoadAwareBeta(properties, { bounds, propose: proposal, partitionRun: partition, continuityFor: continuity,
         provider: { available: config.available, fingerprint: config.fingerprint, dataVersion: config.dataVersion,
-            baseUrl: 'https://firstknock-routing.invalid', fetch: proxyFetch }, signal, resume,
+            coverage: Array.isArray(config.coverage) ? config.coverage : undefined, baseUrl: 'https://firstknock-routing.invalid', fetch: proxyFetch }, signal, resume,
         onCheckpoint(state) { try { if (typeof localStorage !== 'undefined') localStorage.setItem(cacheKey, JSON.stringify(state)); } catch { /* Quota keeps the old checkpoint. */ } } });
     // History must persist before presenting an adoptable comparison. If that
     // write fails, no saved route is changed and generation retains its baseline.

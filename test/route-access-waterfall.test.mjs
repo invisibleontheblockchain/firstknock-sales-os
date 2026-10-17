@@ -33,7 +33,7 @@ function fixture(homes, { rejectFallback = false, hangFallback = false, acceptCe
                 formatted_address: `${p.house_number} Oak Ln, Tampa, FL 33617`, address_components: { state_province: 'FL' } }] },
         }])) });
     };
-    return { calls, roadCalls, options: { vehicleFetch, geocodeFetch, geocodioApiKey: 'test-only', countyAccessLookup: false,
+    return { calls, roadCalls, options: { vehicleBaseUrl: 'https://roads.test', vehicleFetch, geocodeFetch, geocodioApiKey: 'test-only', countyAccessLookup: false,
         mappedAccessLookup: false } };
 }
 

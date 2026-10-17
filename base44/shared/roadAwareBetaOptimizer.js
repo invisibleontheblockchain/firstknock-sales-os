@@ -74,9 +74,10 @@ export async function compareRoadAwareBeta(legacyOrder, { propose, partitionRun,
                     guard_policy: 'strictly-lower-complete-driving-time-and-no-more-road-miles; real-window-connectors' } } };
     };
     if (!provider.available) return result(legacyOrder, null, null, { guard: 'legacy_fallback', reason: 'PROVIDER_NOT_CONFIGURED' });
-    const outside = legacyOrder.filter(point => !insideRoadBetaCoverage(point));
+    const covered = point => insideRoadBetaCoverage(point, provider.coverage || undefined);
+    const outside = legacyOrder.filter(point => !covered(point));
     if (outside.length === legacyOrder.length || [bounds.startLocation, bounds.endLocation].filter(Boolean)
-        .some(point => !insideRoadBetaCoverage(point))) return result(legacyOrder, null, null, { guard: 'legacy_fallback', reason: 'OUTSIDE_GRAPH_COVERAGE' });
+        .some(point => !covered(point))) return result(legacyOrder, null, null, { guard: 'legacy_fallback', reason: 'OUTSIDE_GRAPH_COVERAGE' });
     const options = { vehicleBaseUrl: provider.baseUrl, vehicleProfile: 'car',
         vehicleFetch: async (url, fetchOptions) => Response.json(await responseCache.fetchJson(url, { timeoutMs: 15000, fetchOptions })),
         production: true, expectedDataVersion: provider.dataVersion, requireDirectedLegs: true,
@@ -95,7 +96,7 @@ export async function compareRoadAwareBeta(legacyOrder, { propose, partitionRun,
     };
     const unknown = new Set([...outside, ...legacyOrder.filter(p => p.routing_access?.resolution_status === 'unresolved')].map(id));
     const matchStarted = Date.now();
-    try { for (const key of await identifyUnmatchedVehicleStops(legacyOrder.filter(p => insideRoadBetaCoverage(p)), options)) unknown.add(key); }
+    try { for (const key of await identifyUnmatchedVehicleStops(legacyOrder.filter(covered), options)) unknown.add(key); }
     catch (error) { fatal(error); return result(legacyOrder, null, null, { guard: 'legacy_fallback', reason: 'ROAD_EVIDENCE_UNAVAILABLE' }); }
     timings.access_matching_ms = Date.now() - matchStarted;
     if (legacyOrder.length <= 500 && !unknown.size) {

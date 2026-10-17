@@ -12,7 +12,8 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 import { secrets } from 'base44:runtime';
 import { isValidPoint } from '../../shared/routeContinuityOptimizer.js';
-import { DEFAULT_OSRM_BASE_URL } from '../../shared/roadMatrix.js';
+import { readOsrmProvider } from '../../shared/osrmProvider.js';
+import { osrmRoadBuildId } from '../../shared/osrmDispatcher.js';
 import { measureRoadPath } from '../../shared/roadPathMeasure.js';
 
 // A measurement is one request per 49 legs, so this is bounded by how much work
@@ -61,8 +62,9 @@ export default async function (req: Request): Promise<Response> {
         }
 
         const startedAt = Date.now();
+        // Unconfigured engine: an honest "unmeasured", never a public-demo call.
         const measured = await measureRoadPath(stops, {
-            baseUrl: readSecret('OSRM_BASE_URL') || DEFAULT_OSRM_BASE_URL,
+            baseUrl: readOsrmProvider(readSecret).baseUrl,
             profile,
             timeoutMs: 25000
         });
@@ -70,6 +72,7 @@ export default async function (req: Request): Promise<Response> {
             return Response.json({
                 success: false,
                 code: 'ROAD_PATH_UNMEASURED',
+                reason: measured.code || null,
                 error: measured.error,
                 measure_ms: Date.now() - startedAt
             });
@@ -93,6 +96,11 @@ export default async function (req: Request): Promise<Response> {
             leg_miles: measured.legMiles.map(round),
             routing_profile: profile,
             osrm_request_count: measured.requestCount,
+            road_build_id: osrmRoadBuildId(),
+            // Stops matched only within 500 m, and stops with no road within
+            // 500 m that the measurement drove past (1-based for humans).
+            widened_stops: measured.widenedStops.map((index: number) => index + 1),
+            unmatched_stops: measured.unmatchedStops.map((index: number) => index + 1),
             geometry_point_count: measured.geometry.length,
             ...(includeGeometry ? { geometry: measured.geometry } : {}),
             measure_ms: Date.now() - startedAt

@@ -8,7 +8,12 @@
 import { fetchOsrmJson } from './osrmDispatcher.js';
 
 export const ROAD_MATRIX_VERSION = 'osrm_table_v2_packed';
-export const DEFAULT_OSRM_BASE_URL = 'https://router.project-osrm.org';
+// Widest snap any table request may make, in meters (the gateway's own cap).
+// Every table request names it per coordinate: without `radiuses` OSRM snaps a
+// stop to the nearest road at ANY distance — a Puerto Rico door was priced from
+// the Florida Keys, 1,650 km away. With it, an out-of-coverage stop fails the
+// request (NoSegment) and the caller takes its labelled fallback.
+export const ROAD_MATCH_MAX_RADIUS_METERS = 500;
 // How many coordinates one OSRM table request accepts. An IMPLEMENTATION limit:
 // larger routes are assembled from overlapping, fully directed square tables.
 export const MAX_MATRIX_COORDINATES = 100;
@@ -55,6 +60,22 @@ function coordinateParam(point) {
     return `${Number(point.lng).toFixed(6)},${Number(point.lat).toFixed(6)}`;
 }
 
+/** `&radiuses=...` for `count` coordinates — present on every table request. */
+export function tableRadiusesParam(count) {
+    return `&radiuses=${Array.from({ length: count }, () => ROAD_MATCH_MAX_RADIUS_METERS).join(';')}`;
+}
+
+/** The engine origin, or a thrown error the caller turns into its fallback. */
+export function requireRoadEngineUrl(baseUrl) {
+    const url = String(baseUrl || '').trim().replace(/\/+$/, '');
+    if (!url) {
+        const error = new Error('No road engine is configured (OSRM_BASE_URL is unset).');
+        error.code = 'ROAD_PROVIDER_NOT_CONFIGURED';
+        throw error;
+    }
+    return url;
+}
+
 /** Index ranges of one chunked dimension, e.g. 183 -> [0..45][46..91][...]. */
 function chunkRanges(count, size) {
     const ranges = [];
@@ -83,9 +104,10 @@ async function fetchMatrixTile(points, indexes, { baseUrl, profile, timeoutMs, p
     const cached = pairCache?.readBlock(profile, tilePoints, tilePoints);
     if (cached) return { indexes, ...cached, servedFromCache: true };
     const positions = tilePoints.map((_, i) => i).join(';');
-    const url = `${String(baseUrl).replace(/\/+$/, '')}/table/v1/${profile}/`
+    const url = `${requireRoadEngineUrl(baseUrl)}/table/v1/${profile}/`
         + `${tilePoints.map(coordinateParam).join(';')}`
-        + `?annotations=distance,duration&sources=${positions}&destinations=${positions}`;
+        + `?annotations=distance,duration&sources=${positions}&destinations=${positions}`
+        + tableRadiusesParam(tilePoints.length);
     const payload = await fetchJson(url, { timeoutMs });
     const distances = Array.isArray(payload.distances) ? payload.distances : null;
     const durations = Array.isArray(payload.durations) ? payload.durations : null;
@@ -111,7 +133,7 @@ async function fetchMatrixTile(points, indexes, { baseUrl, profile, timeoutMs, p
  */
 export async function fetchRoadMatrix(points, options = {}) {
     const {
-        baseUrl = DEFAULT_OSRM_BASE_URL,
+        baseUrl = '',
         profile = 'driving',
         timeoutMs = 20000,
         // Optional generation-scoped store of pairs already bought from the engine
@@ -215,7 +237,7 @@ export async function fetchRoadMatrix(points, options = {}) {
  */
 export async function fetchRoadCostRows(sources, destinations, options = {}) {
     const {
-        baseUrl = DEFAULT_OSRM_BASE_URL,
+        baseUrl = '',
         profile = 'driving',
         timeoutMs = 20000
     } = options;
@@ -238,9 +260,10 @@ export async function fetchRoadCostRows(sources, destinations, options = {}) {
         const blockPoints = [...sourcePoints, ...destinationPoints];
         const sourceIndexes = sourcePoints.map((_, index) => index);
         const destinationIndexes = destinationPoints.map((_, index) => index + sourcePoints.length);
-        const url = `${String(baseUrl).replace(/\/+$/, '')}/table/v1/${profile}/`
+        const url = `${requireRoadEngineUrl(baseUrl)}/table/v1/${profile}/`
             + `${blockPoints.map(coordinateParam).join(';')}`
-            + `?annotations=distance&sources=${sourceIndexes.join(';')}&destinations=${destinationIndexes.join(';')}`;
+            + `?annotations=distance&sources=${sourceIndexes.join(';')}&destinations=${destinationIndexes.join(';')}`
+            + tableRadiusesParam(blockPoints.length);
 
         const payload = await fetchOsrmJson(url, { timeoutMs });
         const distances = Array.isArray(payload.distances) ? payload.distances : null;

@@ -1,6 +1,7 @@
 import { tenantManagerId, isRepAccount, toEntityArray } from './accountTenancy.js';
-import { roadBetaEligibleOwner, assertRoadBetaProxyRequest, CHARLOTTE_BETA_COVERAGE } from './roadAwareBetaPolicy.js';
+import { roadBetaEligibleOwner, assertRoadBetaProxyRequest } from './roadAwareBetaPolicy.js';
 import { vehicleProviderConfig } from './vehicleProviderConfig.js';
+import { parseRoadCoverage } from './osrmProvider.js';
 import { routePropertyOrderFingerprint } from './routeFingerprint.js';
 
 export class RoadBetaError extends Error {
@@ -33,8 +34,26 @@ export function validateBetaComparison(c, fingerprint, dataVersion) {
     for (const id of c.unresolvedIds || []) if (!c.beforeOrder.includes(id) || c.beforeOrder.indexOf(id) !== c.afterOrder.indexOf(id)) throw new RoadBetaError(409, 'Unresolved access moved.');
 }
 
-export async function fetchRoadBetaProxy({ provider, service, coordinates, query, dataVersion, token, fetchImpl = fetch }) {
-    assertRoadBetaProxyRequest(service, coordinates, query);
+/**
+ * The beta's road engine: the same private gateway and key as every other road
+ * request (OSRM_BASE_URL / OSRM_GATEWAY_KEY). The ROAD_AWARE_* names remain as
+ * overrides for a dedicated beta graph. `provider` is null when unconfigured.
+ */
+export function readRoadBetaProvider(readSecret) {
+    let provider = null;
+    try {
+        provider = vehicleProviderConfig({ baseUrl: readSecret('ROAD_AWARE_OSRM_BASE_URL') || readSecret('OSRM_BASE_URL'),
+            profile: 'car', production: true });
+    } catch { /* Explicit availability. */ }
+    const token = readSecret('ROAD_AWARE_OSRM_GATEWAY_TOKEN') || readSecret('OSRM_GATEWAY_KEY');
+    const fingerprint = readSecret('ROAD_AWARE_OSRM_BUILD_FINGERPRINT'), dataVersion = readSecret('ROAD_AWARE_OSRM_DATA_VERSION');
+    const coverage = parseRoadCoverage(readSecret('OSRM_COVERAGE_BOUNDS'));
+    const available = Boolean(provider && /^[a-f0-9]{64}$/.test(fingerprint) && dataVersion && token);
+    return { provider, token, fingerprint, dataVersion, coverage, available };
+}
+
+export async function fetchRoadBetaProxy({ provider, service, coordinates, query, dataVersion, token, coverage, fetchImpl = fetch }) {
+    assertRoadBetaProxyRequest(service, coordinates, query, coverage);
     const url = new URL(`${provider.baseUrl}/${service}/v1/car/${coordinates}`);
     for (const [key, value] of Object.entries(query)) url.searchParams.set(key, value);
     const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 15000);
@@ -78,12 +97,9 @@ export function createRoadAwareBetaHandler({ createClient, readSecret, fetchImpl
             const setting = settings.find(row => row.manager_id === workspace);
             const killed = readSecret('ROAD_AWARE_ROUTING_BETA_DISABLED') === 'true';
             const enabled = eligible && !killed && setting?.enabled === true;
-            const fingerprint = readSecret('ROAD_AWARE_OSRM_BUILD_FINGERPRINT'), dataVersion = readSecret('ROAD_AWARE_OSRM_DATA_VERSION');
-            let provider = null;
-            try { provider = vehicleProviderConfig({ baseUrl: readSecret('ROAD_AWARE_OSRM_BASE_URL'), profile: 'car', production: true }); } catch { /* Explicit availability. */ }
-            const available = Boolean(provider && /^[a-f0-9]{64}$/.test(fingerprint) && dataVersion && readSecret('ROAD_AWARE_OSRM_GATEWAY_TOKEN'));
+            const { provider, token, fingerprint, dataVersion, coverage, available } = readRoadBetaProvider(readSecret);
             const config = { eligible, enabled, available, workspaceId: workspace, fingerprint: available ? fingerprint : null,
-                dataVersion: available ? dataVersion : null, coverage: CHARLOTTE_BETA_COVERAGE,
+                dataVersion: available ? dataVersion : null, coverage,
                 canToggle: eligible && user.id === workspace, reason: killed ? 'BETA_DISABLED' : !available ? 'PROVIDER_NOT_CONFIGURED' : null };
             if (body.action === 'status') return Response.json(config);
             if (body.action === 'set_enabled') {
@@ -97,7 +113,7 @@ export function createRoadAwareBetaHandler({ createClient, readSecret, fetchImpl
             if (body.action === 'proxy') {
                 if (!enabled || !available) throw new RoadBetaError(409, 'Regional routing beta is unavailable.');
                 return await fetchRoadBetaProxy({ provider, service: body.service, coordinates: body.coordinates,
-                    query: body.query, dataVersion, token: readSecret('ROAD_AWARE_OSRM_GATEWAY_TOKEN'), fetchImpl });
+                    query: body.query, dataVersion, token, coverage, fetchImpl });
             }
             if (body.action === 'history') {
                 const rows = toEntityArray(await service.entities.RoadAwareRoutingComparison.filter({ manager_id: workspace }, '-created_date', 100));

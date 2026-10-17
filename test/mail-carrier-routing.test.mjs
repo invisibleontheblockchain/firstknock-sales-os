@@ -148,7 +148,7 @@ test('infeasible inferred one-way headings are removed while original pins and m
             distance: legs.length * 100, geometry: { coordinates: waypoints.map(p => p.location) }, legs }] });
     };
     const before = JSON.stringify(pins);
-    const result = await reviewLocalDrivingNeighborhoods(pins, { mailCarrierMode: true, vehicleFetch });
+    const result = await reviewLocalDrivingNeighborhoods(pins, { mailCarrierMode: true, vehicleBaseUrl: 'https://roads.test', vehicleFetch });
     assert.equal(JSON.stringify(pins), before);
     assert.equal(result.diagnostics.streetSideService.knownStops, 2);
     assert.equal(result.diagnostics.streetSideService.unknownStops, 2);

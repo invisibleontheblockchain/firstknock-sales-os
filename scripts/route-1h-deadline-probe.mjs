@@ -18,14 +18,16 @@
 import fs from 'node:fs';
 import { sequenceRoadHierarchy } from '../base44/shared/roadHierarchySequencer.js';
 import { measureRoadPath } from '../base44/shared/roadPathMeasure.js';
-import { DEFAULT_OSRM_BASE_URL } from '../base44/shared/roadMatrix.js';
+import { readOsrmProvider } from '../base44/shared/osrmProvider.js';
 import { osrmCounters } from '../base44/shared/osrmDispatcher.js';
 
 const CSV = process.argv[2];
 // Production sends timeout_ms: 12000 (roadMatrixOptimize.js payload).
 const TIMEOUT_MS = Number(process.env.PROBE_TIMEOUT_MS || 12000);
 const FRONTEND_DEADLINE_MS = 45000;
-const BASE_URL = process.env.OSRM_BASE_URL || DEFAULT_OSRM_BASE_URL;
+// The private gateway only: OSRM_BASE_URL and OSRM_GATEWAY_KEY from the environment.
+const BASE_URL = readOsrmProvider(name => process.env[name]).baseUrl;
+if (!BASE_URL) throw new Error('Set OSRM_BASE_URL (and OSRM_GATEWAY_KEY) to an HTTPS road engine.');
 
 function parseCsv(src) {
     const rows = []; let row = [], field = '', q = false;

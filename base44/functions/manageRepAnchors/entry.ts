@@ -82,7 +82,7 @@ async function optimize(base44, route, anchor, user) {
     const baselineRoutes = [{ properties: legacy.map(p => ({ ...p, address_hash: p.anchor_hash })),
         totalDistance: calculateRouteDistanceMiles(legacy, bounds), ...bounds, routeOriginMode: anchor ? 'anchor_round_trip' : 'none' }];
     const readSecret = name => { try { return String(secrets.get(name) || '').trim(); } catch { return ''; } };
-    const [completed] = readSecret('ROAD_AWARE_OSRM_BASE_URL')
+    const [completed] = readSecret('ROAD_AWARE_OSRM_BASE_URL') || readSecret('OSRM_BASE_URL')
         ? await completeServerRoadAwareRoutes(baselineRoutes, { client: base44, user, entryPoint: 'rep_anchor_change', readSecret })
         : baselineRoutes;
     const ordered = completed.properties;

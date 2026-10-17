@@ -8,6 +8,7 @@ import * as candidateSelection from '../base44/shared/routeCandidateSelection.js
 import * as legDistribution from '../base44/shared/roadLegDistribution.js';
 import * as routeDisplayGeometry from '../base44/shared/routeDisplayGeometry.js';
 import * as roadSearchSession from '../base44/shared/roadSearchSession.js';
+import * as osrmProvider from '../base44/shared/osrmProvider.js';
 
 const source = fs.readFileSync(new URL('../base44/functions/optimizeRouteRoadMatrix/entry.ts', import.meta.url), 'utf8');
 const compiled = ts.transpileModule(source, { compilerOptions: {
@@ -50,13 +51,14 @@ for (const planTier of ['door', 'cluster']) test(`${planTier} response reuses co
 });
 
 function endpoint({ recover, local, finalReview, verify, winner, planTier = 'door', failProvider = false, authenticated = true,
-    matrixSource = 'osrm:driving', cacheStats = {}, session } = {}) {
+    matrixSource = 'osrm:driving', cacheStats = {}, session, osrmBaseUrl = 'https://roads.test', matrixFails = false } = {}) {
     const calls = { events: [], recovery: [], plan: [], continuity: [], matrix: [], provider: [], local: [],
         globalReview: [], county: [], roadCosts: [], paths: [], completeVerification: [],
         sweep: 0, hierarchy: 0, candidateComparison: 0, sessions: [], finalized: [] };
     const modules = {
         'npm:@base44/sdk@0.8.40': { createClientFromRequest: () => ({ auth: { me: async () => authenticated ? { id: 'manager' } : null } }) },
-        'base44:runtime': { secrets: { get: key => key === 'OSRM_BASE_URL' ? 'https://roads.test' : 'test-geocoder-key' } },
+        'base44:runtime': { secrets: { get: key => key === 'OSRM_BASE_URL' ? osrmBaseUrl
+            : key === 'OSRM_GATEWAY_KEY' ? 'test-gateway-key' : 'test-geocoder-key' } },
         '../../shared/routeContinuityOptimizer.js': { ...continuity,
             createContinuityOptimizer: metric => {
                 const original = continuity.createContinuityOptimizer(metric);
@@ -67,10 +69,11 @@ function endpoint({ recover, local, finalReview, verify, winner, planTier = 'doo
             } },
         '../../shared/roadAwareStreetSweep.js': { roadAwareStreetSweep: properties => { calls.sweep++; return [...properties].reverse(); } },
         '../../shared/roadMatrix.js': {
-            DEFAULT_OSRM_BASE_URL: 'https://roads.test', ROAD_MATRIX_VERSION: 'test-matrix',
+            ROAD_MATRIX_VERSION: 'test-matrix',
             buildRoadMatrixCacheKey: async () => 'test-cache-key',
             fetchRoadMatrix: async (points, options) => {
                 calls.events.push('matrix'); calls.matrix.push({ points, options });
+                if (matrixFails) throw new Error('OSRM request failed with status 503.');
                 return { objective: 'road_miles', source: matrixSource, snapped: points.length, pointCount: points.length };
             },
         },
@@ -105,7 +108,9 @@ function endpoint({ recover, local, finalReview, verify, winner, planTier = 'doo
         } },
         '../../shared/neighborhoodExcursions.js': { reviewNeighborhoodExcursions: properties => ({ properties,
             diagnostics: { detected: 0, remaining: 0, applied: false } }) },
-        '../../shared/osrmDispatcher.js': { fetchOsrmJson: async () => assert.fail('unexpected unstubbed road request') },
+        '../../shared/osrmDispatcher.js': { fetchOsrmJson: async () => assert.fail('unexpected unstubbed road request'),
+            osrmRoadBuildId: () => 'test-road-build' },
+        '../../shared/osrmProvider.js': osrmProvider,
         '../../shared/osrmRequestCache.js': { createOsrmRequestCache: () => ({
             fetchJson: async url => {
                 calls.provider.push(url);
@@ -703,4 +708,31 @@ test('an unproved partial proposal cannot attach completion history for its disc
     assert.equal(status, 200);
     assert.deepEqual(body.order, ids(properties));
     assert.equal('road_search_coverage' in body.routing_metadata, false);
+});
+
+test('an unset road engine returns the continuity fallback without contacting any engine', async () => {
+    const { calls, invoke } = endpoint({ osrmBaseUrl: '' });
+    const { status, body } = await invoke(inputStops());
+    assert.equal(status, 200);
+    assert.equal(body.success, true);
+    assert.equal(body.selected, 'continuity');
+    assert.deepEqual([...body.order].sort(), ids(inputStops()).sort());
+    assert.equal(body.routing_metadata.fallback, true);
+    assert.equal(body.routing_metadata.fallback_reason, 'road_provider_not_configured');
+    assert.equal(body.routing_metadata.road_network_used, false);
+    assert.equal(calls.recovery.length + calls.matrix.length + calls.provider.length + calls.paths.length, 0);
+});
+
+test('an unavailable road engine returns the continuity fallback with its reason and build id', async () => {
+    const { calls, invoke } = endpoint({ matrixFails: true });
+    const { status, body } = await invoke(inputStops());
+    assert.equal(status, 200);
+    assert.equal(body.success, true);
+    assert.equal(body.selected, 'continuity');
+    assert.deepEqual([...body.order].sort(), ids(inputStops()).sort());
+    assert.equal(body.routing_metadata.fallback_status, 'continuity_fallback');
+    assert.equal(body.routing_metadata.fallback_reason, 'road_matrix_unavailable');
+    assert.match(body.routing_metadata.road_matrix_error, /503/);
+    assert.equal(body.routing_metadata.road_build_id, 'test-road-build');
+    assert.equal(calls.matrix.length, 1);
 });

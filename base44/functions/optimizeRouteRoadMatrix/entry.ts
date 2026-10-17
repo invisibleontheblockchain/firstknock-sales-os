@@ -10,7 +10,6 @@ import {
 import { roadAwareStreetSweep } from '../../shared/roadAwareStreetSweep.js';
 import {
     buildRoadMatrixCacheKey,
-    DEFAULT_OSRM_BASE_URL,
     fetchRoadMatrix,
     ROAD_MATRIX_VERSION
 } from '../../shared/roadMatrix.js';
@@ -27,7 +26,8 @@ import { HIERARCHY_REFINEMENT_STEP_BUDGET, sequenceRoadHierarchy } from '../../s
 import { measureRoadPath } from '../../shared/roadPathMeasure.js';
 import { reviewFinalNeighborhoodRoute } from '../../shared/finalNeighborhoodReview.js';
 import { reviewNeighborhoodExcursions } from '../../shared/neighborhoodExcursions.js';
-import { fetchOsrmJson } from '../../shared/osrmDispatcher.js';
+import { fetchOsrmJson, osrmRoadBuildId } from '../../shared/osrmDispatcher.js';
+import { readOsrmProvider } from '../../shared/osrmProvider.js';
 import { createOsrmRequestCache } from '../../shared/osrmRequestCache.js';
 import { createRoadSearchSession } from '../../shared/roadSearchSession.js';
 import { createRoadCostCache } from '../../shared/roadCostCache.js';
@@ -75,6 +75,49 @@ function propertySetFingerprint(properties) {
 function exactOnce(order, expectedCount) {
     return order.length === expectedCount
         && new Set(order.map(propertyIdentity)).size === expectedCount;
+}
+
+/**
+ * The order to keep when no road engine is configured. OSRM must never block
+ * route creation, so an unset OSRM_BASE_URL answers with the same labelled
+ * continuity fallback a failed matrix does — without contacting any engine.
+ */
+function continuityFallbackResponse(properties, { startLocation, endLocation, profile, reason, error }) {
+    const canonical = [...properties].sort((first, second) => (
+        propertyIdentity(first) < propertyIdentity(second) ? -1 : 1
+    ));
+    const chunks = createContinuityOptimizer(haversineMiles).buildRouteChunks(
+        canonical, canonical.length, startLocation, endLocation
+    );
+    if (!verifyExactOnceDoors(chunks.doorChunks, properties.length)) {
+        throw new Error('Continuity candidate failed its exact-once property invariant.');
+    }
+    const order = chunks.doorChunks.flat().map((door) => door.property);
+    return Response.json({
+        success: true,
+        selected: 'continuity',
+        order: order.map(propertyIdentity),
+        property_count: order.length,
+        routing_metadata: {
+            optimizer_version: OPTIMIZER_VERSION,
+            property_set_fingerprint: propertySetFingerprint(properties),
+            start_constraint: startLocation,
+            end_constraint: endLocation,
+            routing_profile: profile,
+            strategy: 'canonical_street_subdivision_continuity',
+            road_network_used: false,
+            road_build_id: null,
+            fallback: true,
+            fallback_status: 'continuity_fallback',
+            fallback_reason: reason,
+            road_matrix_error: error,
+            optimality_status: 'unmeasured_fallback',
+            selected_candidate_type: 'continuity',
+            neighborhood_excursion_review: reviewNeighborhoodExcursions(order).diagnostics,
+            property_order_fingerprint: routePropertyOrderFingerprint(order),
+            exact_once_verified: true
+        }
+    });
 }
 
 const measuredPathView = measurement => {
@@ -136,10 +179,16 @@ export default async function (req: Request): Promise<Response> {
                 code: 'INVALID_SEARCH_COMPARISON' }, { status: 400 });
         }
 
+        const osrmProvider = readOsrmProvider(readSecret);
+        if (!osrmProvider.configured) {
+            return continuityFallbackResponse(properties, { startLocation, endLocation, profile,
+                reason: 'road_provider_not_configured',
+                error: 'No road engine is configured (OSRM_BASE_URL is unset).' });
+        }
         const solverStartedAt = Date.now();
         const stageTimings: Record<string, number> = {};
         const responseCache = createOsrmRequestCache(fetchOsrmJson);
-        const vehicleBaseUrl = readSecret('OSRM_BASE_URL') || DEFAULT_OSRM_BASE_URL;
+        const vehicleBaseUrl = osrmProvider.baseUrl;
         const vehicleFetch = async (url, options) => {
             if (options?.signal?.aborted) throw options.signal.reason;
             const payload = await responseCache.fetchJson(url, { timeoutMs });
@@ -164,7 +213,8 @@ export default async function (req: Request): Promise<Response> {
             && (accessRecovery.report?.inventory_complete === false
                 || accessRecovery.report?.unresolved?.some(issue => issue.reason === 'road_provider_unavailable'))) {
             return Response.json({ success: false, code: 'ROAD_ACCESS_PROVIDER_UNAVAILABLE',
-                routing_metadata: { optimizer_version: OPTIMIZER_VERSION, road_access_recovery: accessRecovery.report,
+                routing_metadata: { optimizer_version: OPTIMIZER_VERSION, road_build_id: osrmRoadBuildId(),
+                    road_access_recovery: accessRecovery.report,
                     optimization_timings: stageTimings } });
         }
         const countyRouting = createCountyRoadRoutingAdapter(properties, {
@@ -227,6 +277,7 @@ export default async function (req: Request): Promise<Response> {
             const round = value => Number.isFinite(value) ? Math.round(value * 1000) / 1000 : null;
             const metadata = {
                 optimizer_version: OPTIMIZER_VERSION, strategy: 'remaining_neighborhoods_verified',
+                road_build_id: osrmRoadBuildId(),
                 property_set_fingerprint: propertySetFingerprint(properties),
                 property_order_fingerprint: routePropertyOrderFingerprint(winningOrder), exact_once_verified: true,
                 start_constraint: startLocation, end_constraint: endLocation,
@@ -319,6 +370,9 @@ export default async function (req: Request): Promise<Response> {
             duration_tie_tolerance_minutes: DURATION_TIE_TOLERANCE_MINUTES,
             neighborhood_excursion_review: reviewNeighborhoodExcursions(properties).diagnostics
         };
+        // The graph build that priced this route (gateway X-Road-Build). Read when
+        // the metadata is spread into a response, i.e. after the road work ran.
+        Object.defineProperty(baseMetadata, 'road_build_id', { enumerable: true, get: osrmRoadBuildId });
 
         if (accessRecovery.report?.unresolved?.length) {
             // Unknown access cannot justify a global reshuffle. Repair only the
@@ -374,7 +428,7 @@ export default async function (req: Request): Promise<Response> {
         let hierarchyValidationFailed = false;
         if (plan.ok && plan.tier === TIER_CLUSTER) {
             const hierarchyStartedAt = Date.now();
-            const osrmBaseUrl = readSecret('OSRM_BASE_URL') || DEFAULT_OSRM_BASE_URL;
+            const osrmBaseUrl = vehicleBaseUrl;
             const hierarchy = await sequenceRoadHierarchy(canonicalProperties, {
                 startLocation,
                 endLocation,
@@ -433,6 +487,13 @@ export default async function (req: Request): Promise<Response> {
                     roadCosts.measurePath(withAnchors(hierarchy.order), measureOptions),
                     roadCosts.measurePath(withAnchors(properties), measureOptions)
                 ]);
+                // Stops the measurement had to widen to 500 m, or drive past with
+                // no road within 500 m — reported, never silently discarded.
+                // Indexes are into the current order including any start anchor.
+                const pathMatching = {
+                    widened: currentPath.widenedStops || [],
+                    unmatched: currentPath.unmatchedStops || proposedPath.unmatchedStops || []
+                };
                 // A matrix winner is a proposal. Measure its complete drive
                 // before spending the neighborhood budget on it; otherwise a
                 // worse global reshuffle can erase every useful local repair
@@ -518,6 +579,8 @@ export default async function (req: Request): Promise<Response> {
                         // Product truth: what the route actually drives.
                         road_path_validated: validated,
                         road_path_error: proposedPath.ok ? (currentPath.error || null) : proposedPath.error,
+                        road_path_widened_stop_count: pathMatching.widened.length,
+                        road_path_unmatched_stops: pathMatching.unmatched,
                         validated_road_miles: round(proposedPath.ok ? proposedPath.totalMiles : null),
                         current_validated_road_miles: round(currentPath.ok ? currentPath.totalMiles : null),
                         validated_longest_leg_miles: round(proposedPath.ok ? proposedPath.longestLegMiles : null),
@@ -581,7 +644,7 @@ export default async function (req: Request): Promise<Response> {
         if (plan.ok) {
             try {
                 matrix = await roadCosts.fetchMatrix(matrixPoints, {
-                    baseUrl: readSecret('OSRM_BASE_URL') || DEFAULT_OSRM_BASE_URL,
+                    baseUrl: vehicleBaseUrl,
                     profile,
                     timeoutMs
                 });

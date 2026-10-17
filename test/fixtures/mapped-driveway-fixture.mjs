@@ -43,5 +43,5 @@ export function createMappedDrivewayFixture() {
         return response({code:'Ok',waypoints:[south,frontage,south].map(location=>({location,name:'Emma Lane',distance:0})),
             routes:[{legs:[{distance:65,duration:9.4},{distance:65,duration:9.4}],geometry:{type:'LineString',coordinates:[south,frontage,south]}}]});
     };
-    return {stop,referenceAddress,mapData,fetchImpl,vehicleFetch,providerCalls,mapCalls};
+    return {stop,referenceAddress,mapData,fetchImpl,vehicleBaseUrl:'https://roads.test',vehicleFetch,providerCalls,mapCalls};
 }

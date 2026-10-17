@@ -148,23 +148,23 @@ function provider({ slower = false, wrongSnap = false, unreachable = false, tied
 
 test('final assembled review uses bounded sparse road tables and whole-route turn validation', async () => {
     const engine = provider();
-    const result = await reviewFinalNeighborhoodRoute(doors, { vehicleFetch: engine.fetch });
+    const result = await reviewFinalNeighborhoodRoute(doors, { vehicleBaseUrl: 'https://roads.test', vehicleFetch: engine.fetch });
     assert.equal(result.diagnostics.applied, true);
     assert.ok(result.measurement.driveSeconds < total(doors));
     assert.equal(engine.calls.filter(u => u.pathname.includes('/route/')).length, 2);
     assert.ok(engine.calls.every(u => u.pathname.split('/').at(-1).split(';').length <= 100));
     assert.ok(engine.calls.filter(u => u.pathname.includes('/route/')).every(u => u.searchParams.get('continue_straight') === 'true'));
-    const slower = await reviewFinalNeighborhoodRoute(doors, { vehicleFetch: provider({ slower: true }).fetch });
+    const slower = await reviewFinalNeighborhoodRoute(doors, { vehicleBaseUrl: 'https://roads.test', vehicleFetch: provider({ slower: true }).fetch });
     assert.equal(slower.properties, doors); assert.equal(slower.diagnostics.status, 'whole_route_guard_retained');
-    const bad = await reviewFinalNeighborhoodRoute(doors, { vehicleFetch: provider({ wrongSnap: true }).fetch });
+    const bad = await reviewFinalNeighborhoodRoute(doors, { vehicleBaseUrl: 'https://roads.test', vehicleFetch: provider({ wrongSnap: true }).fetch });
     assert.equal(bad.properties, doors); assert.equal(bad.diagnostics.status, 'road_evidence_unavailable');
-    const tied = await reviewFinalNeighborhoodRoute(doors, { vehicleFetch: provider({ tied: true }).fetch });
+    const tied = await reviewFinalNeighborhoodRoute(doors, { vehicleBaseUrl: 'https://roads.test', vehicleFetch: provider({ tied: true }).fetch });
     assert.equal(tied.properties, doors); assert.equal(tied.diagnostics.status, 'whole_route_guard_retained');
 });
 
 test('sparse contexts avoid all-door matrices, cache pairs and retain unreachable directions', async () => {
     const engine = provider();
-    const context = await createVehicleRoutingContext(doors, { accessFor: () => null }, { sparseCosts: true, vehicleFetch: engine.fetch });
+    const context = await createVehicleRoutingContext(doors, { accessFor: () => null }, { sparseCosts: true, vehicleBaseUrl: 'https://roads.test', vehicleFetch: engine.fetch });
     assert.equal(engine.calls.length, 0);
     assert.equal(context.optimizationCostBetween(doors[0], doors[1]), Infinity);
     await context.prepareCosts([[doors[0], doors[1]]]);
@@ -172,7 +172,7 @@ test('sparse contexts avoid all-door matrices, cache pairs and retain unreachabl
     const count = engine.calls.length;
     await context.prepareCosts([[doors[0], doors[1]]]); assert.equal(engine.calls.length, count);
     const unreachable = await createVehicleRoutingContext(doors, { accessFor: () => null }, {
-        sparseCosts: true, vehicleFetch: provider({ unreachable: true }).fetch });
+        sparseCosts: true, vehicleBaseUrl: 'https://roads.test', vehicleFetch: provider({ unreachable: true }).fetch });
     await unreachable.prepareCosts([[doors[0], doors[1]]]);
     assert.equal(unreachable.optimizationCostBetween(doors[0], doors[1]), Infinity);
 });
@@ -183,7 +183,7 @@ test('a 377-stop continuous drive uses four bounded requests with matching overl
     const bounds = { startLocation: { ...stop(999, 'Y', 'Main'), vehicle_heading_degrees: 85 },
         endLocation: stop(1377, 'Y', 'Main') };
     const context = await createVehicleRoutingContext(input, { accessFor: p => ({ point: { lat: p.lat + 0.00001, lng: p.lng } }) }, {
-        sparseCosts: true, vehicleFetch: engine.fetch, ...bounds, servicePolicy: { parkingSecondsPerStop: 15 },
+        sparseCosts: true, vehicleBaseUrl: 'https://roads.test', vehicleFetch: engine.fetch, ...bounds, servicePolicy: { parkingSecondsPerStop: 15 },
     });
     const result = await context.routeSequence(input, bounds);
     const routes = engine.calls.filter(u => u.pathname.includes('/route/'));
@@ -210,7 +210,7 @@ test('the assembled review catches an excursion across the 500-stop window bound
     const filler = Array.from({ length: 600 }, (_, i) => stop(1000 + i, 'Y', 'Main'));
     const input = [...filler.slice(0, 498), ...doors.slice(0, 3), ...filler.slice(498)];
     const engine = provider();
-    const result = await reviewFinalNeighborhoodRoute(input, { vehicleFetch: engine.fetch });
+    const result = await reviewFinalNeighborhoodRoute(input, { vehicleBaseUrl: 'https://roads.test', vehicleFetch: engine.fetch });
     assert.equal(result.diagnostics.applied, true);
     assert.deepEqual(new Set(result.properties), new Set(input));
     assert.equal(result.measurement.driveSeconds, total(result.properties));
@@ -218,7 +218,7 @@ test('the assembled review catches an excursion across the 500-stop window bound
     const routes = engine.calls.filter(u => u.pathname.includes('/route/'));
     assert.ok(routes.length >= 4);
     assert.ok(routes.every(u => u.pathname.split('/').at(-1).split(';').length <= 500));
-    const inconsistent = await reviewFinalNeighborhoodRoute(input, { vehicleFetch: provider({ badSeam: true }).fetch });
+    const inconsistent = await reviewFinalNeighborhoodRoute(input, { vehicleBaseUrl: 'https://roads.test', vehicleFetch: provider({ badSeam: true }).fetch });
     assert.equal(inconsistent.properties, input);
     assert.match(inconsistent.diagnostics.reason, /turn continuity/);
 });
@@ -226,7 +226,7 @@ test('the assembled review catches an excursion across the 500-stop window bound
 test('resolved access roads are used for costs and a mismatched road name preserves the input', async () => {
     const input = doors.map(p => ({ ...p, routing_access: { resolution_status: 'resolved', confidence: 'high',
         point: { lat: p.lat, lng: p.lng }, roadName: 'Expected Road' } }));
-    const result = await reviewFinalNeighborhoodRoute(input, { vehicleFetch: provider().fetch });
+    const result = await reviewFinalNeighborhoodRoute(input, { vehicleBaseUrl: 'https://roads.test', vehicleFetch: provider().fetch });
     assert.equal(result.properties, input);
     assert.match(result.diagnostics.reason, /different service road/);
 });

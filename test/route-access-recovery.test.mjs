@@ -5,7 +5,7 @@ import { discoverMappedDrivewayAccess } from '../base44/shared/mappedDrivewayAcc
 import { createMappedDrivewayFixture } from './fixtures/mapped-driveway-fixture.mjs';
 
 // Isolate the geocoding stage; county topology has its own provider/graph tests.
-const recoverRouteVehicleAccess = (properties, options = {}) => recoverAccess(properties, { countyAccessLookup: false, ...options });
+const recoverRouteVehicleAccess = (properties, options = {}) => recoverAccess(properties, { countyAccessLookup: false, vehicleBaseUrl: 'https://roads.test', ...options });
 
 test('automatic driveway recovery repairs only the failed street access and reuses its proof next time', async () => {
     const fixture = createMappedDrivewayFixture();
@@ -21,7 +21,7 @@ test('automatic driveway recovery repairs only the failed street access and reus
         return response(data);
     };
     let mappedCalls = 0;
-    const repaired = await recoverRouteVehicleAccess(properties, { vehicleFetch,
+    const repaired = await recoverRouteVehicleAccess(properties, { vehicleBaseUrl: 'https://roads.test', vehicleFetch,
         geocode: async () => ({ results: {} }),
         countyAccessLookup: async (_stop, options) => { options.onAddressReference(fixture.referenceAddress); return null; },
         mappedAccessLookup: async (home, options) => {
@@ -40,7 +40,7 @@ test('automatic driveway recovery repairs only the failed street access and reus
     assert.deepEqual(repaired.properties[0].routing_access.displayPoint, { lat: original[0].lat, lng: original[0].lng });
     assert.equal(repaired.properties[0].lat, access.point.lat);
     const cached = properties.map((home, index) => index === 0 ? { ...home, routing_access: access } : home);
-    const reused = await recoverRouteVehicleAccess(cached, { vehicleFetch,
+    const reused = await recoverRouteVehicleAccess(cached, { vehicleBaseUrl: 'https://roads.test', vehicleFetch,
         geocode: () => assert.fail('confirmed access must not be geocoded again'),
         mappedAccessLookup: () => assert.fail('confirmed access must not rediscover the driveway'),
     });
@@ -55,7 +55,7 @@ test('invalid cached driveway identity never suppresses automatic access validat
     access.evidence.referenceAddress.attributes.add_number = '156';
     const properties = [{ ...fixture.stop, routing_access: access }];
     const road = provider(properties, { bad: [0] });
-    const result = await recoverRouteVehicleAccess(properties, { vehicleFetch: road.fetch,
+    const result = await recoverRouteVehicleAccess(properties, { vehicleBaseUrl: 'https://roads.test', vehicleFetch: road.fetch,
         geocode: async () => ({ results: {} }), mappedAccessLookup: false });
     assert.equal(result.report.reused, 0);
     assert.equal(result.report.recovered, 0);
@@ -80,7 +80,7 @@ test('a cached driveway entrance is rejected when the current provider moves its
 
 test('an unavailable mapped source preserves the precise access issue and every route member', async () => {
     const properties = [stop(0), stop(1)], road = provider(properties, { bad: [0] });
-    const result = await recoverRouteVehicleAccess(properties, { vehicleFetch: road.fetch,
+    const result = await recoverRouteVehicleAccess(properties, { vehicleBaseUrl: 'https://roads.test', vehicleFetch: road.fetch,
         geocode: async () => ({ results: {} }),
         mappedAccessLookup: async () => { throw new Error('mapped source unavailable'); },
     });
@@ -92,7 +92,7 @@ test('an unavailable mapped source preserves the precise access issue and every 
 test('a non-cooperative mapped source remains bounded by the recovery deadline', async () => {
     const properties = [stop(0)], road = provider(properties, { bad: [0] });
     const started = Date.now();
-    const result = await recoverRouteVehicleAccess(properties, { vehicleFetch: road.fetch, budgetMs: 30,
+    const result = await recoverRouteVehicleAccess(properties, { vehicleBaseUrl: 'https://roads.test', vehicleFetch: road.fetch, budgetMs: 30,
         geocode: async () => ({ results: {} }), mappedAccessLookup: () => new Promise(() => {}),
     });
     assert.ok(Date.now() - started < 500);
@@ -132,7 +132,7 @@ test('377-stop preflight isolates failures without dropping or reordering any ro
     const before = structuredClone(properties);
     const road = provider(properties, { bad: [23, 24, 109, 322] });
     const requested = [];
-    const result = await recoverRouteVehicleAccess(properties, { vehicleFetch: road.fetch,
+    const result = await recoverRouteVehicleAccess(properties, { vehicleBaseUrl: 'https://roads.test', vehicleFetch: road.fetch,
         geocode: async items => { requested.push(...items); return { results: Object.fromEntries(
             items.map(item => [item.id, hit(properties.find(p => p.address_hash === item.id))])) }; } });
     assert.equal(result.report.status, 'recovered');
@@ -163,7 +163,7 @@ test('377-stop preflight isolates failures without dropping or reordering any ro
 
 test('healthy routes need no geocoder requests or access overrides', async () => {
     const properties = [stop(0), stop(1)]; const road = provider(properties);
-    const result = await recoverRouteVehicleAccess(properties, { vehicleFetch: road.fetch,
+    const result = await recoverRouteVehicleAccess(properties, { vehicleBaseUrl: 'https://roads.test', vehicleFetch: road.fetch,
         geocode: () => { throw new Error('must not geocode healthy stops'); } });
     assert.equal(result.report.status, 'ready'); assert.equal(result.report.attempted, 0);
     assert.deepEqual(result.report.access_overrides, {});
@@ -172,7 +172,7 @@ test('healthy routes need no geocoder requests or access overrides', async () =>
 
 test('a one-stop failure is recovered using nearest rather than an invalid one-point route request', async () => {
     const properties = [stop(0)]; const road = provider(properties, { bad: [0] });
-    const result = await recoverRouteVehicleAccess(properties, { vehicleFetch: road.fetch,
+    const result = await recoverRouteVehicleAccess(properties, { vehicleBaseUrl: 'https://roads.test', vehicleFetch: road.fetch,
         geocode: async () => ({ results: { [properties[0].address_hash]: hit(properties[0]) } }) });
     assert.equal(result.report.recovered, 1);
     assert.ok(road.calls.every(url => url.pathname.includes('/nearest/')));
@@ -180,7 +180,7 @@ test('a one-stop failure is recovered using nearest rather than an invalid one-p
 
 test('a failed address does not prevent another stop from recovering', async () => {
     const properties = [stop(0), stop(1), stop(2)]; const road = provider(properties, { bad: [0, 1] });
-    const result = await recoverRouteVehicleAccess(properties, { vehicleFetch: road.fetch,
+    const result = await recoverRouteVehicleAccess(properties, { vehicleBaseUrl: 'https://roads.test', vehicleFetch: road.fetch,
         geocode: async () => ({ results: { [properties[1].address_hash]: hit(properties[1]) } }) });
     assert.equal(result.report.status, 'partial'); assert.equal(result.report.recovered, 1);
     assert.deepEqual(result.report.unresolved, [{ property_id: properties[0].address_hash, stop_number: 1,
@@ -201,7 +201,7 @@ for (const [name, change] of [
     ['geocode farther than one kilometre', value => ({ ...value, lat: value.lat + 0.02 })],
 ]) test(`recovery rejects ${name}`, async () => {
     const properties = [stop(0)]; const road = provider(properties, { bad: [0] });
-    const result = await recoverRouteVehicleAccess(properties, { vehicleFetch: road.fetch,
+    const result = await recoverRouteVehicleAccess(properties, { vehicleBaseUrl: 'https://roads.test', vehicleFetch: road.fetch,
         geocode: async () => ({ results: { [properties[0].address_hash]: change(hit(properties[0])) } }) });
     assert.equal(result.report.status, 'unresolved');
     assert.equal(result.report.unresolved[0].reason, 'address_match_rejected');
@@ -215,7 +215,7 @@ test('exact Census address may omit a unit while retaining the correct base hous
     const road = provider(properties, { bad: [0], nearest: point => pointKey(point) === pointKey(p)
         ? response({ code: 'NoSegment' }, 400)
         : response({ code: 'Ok', waypoints: [{ name: 'Fern Hill Road', distance: 0, location: [point.lng, point.lat] }] }) });
-    const result = await recoverRouteVehicleAccess(properties, { vehicleFetch: road.fetch,
+    const result = await recoverRouteVehicleAccess(properties, { vehicleBaseUrl: 'https://roads.test', vehicleFetch: road.fetch,
         geocode: async () => ({ results: { [p.address_hash]: { ...hit(p), source: 'census', matchType: 'Exact',
             matchedAddress: '311 FERN HILL RD, SALISBURY, NC, 28147' } } }) });
     assert.equal(result.report.recovered, 1);
@@ -231,7 +231,7 @@ for (const [name, waypoint, reason] of [
     const road = provider(properties, { nearest: point => pointKey(point) === pointKey(properties[0])
         ? response({ code: 'NoSegment' }, 400)
         : response({ code: 'Ok', waypoints: [{ location: [point.lng, point.lat], ...waypoint }] }) });
-    const result = await recoverRouteVehicleAccess(properties, { vehicleFetch: road.fetch,
+    const result = await recoverRouteVehicleAccess(properties, { vehicleBaseUrl: 'https://roads.test', vehicleFetch: road.fetch,
         geocode: async () => ({ results: { [properties[0].address_hash]: hit(properties[0]) } }) });
     assert.equal(result.report.recovered, 0); assert.equal(result.report.unresolved[0].reason, reason);
 });
@@ -243,7 +243,7 @@ test('competing named street within five metres is retained as an explicit unres
         : response({ code: 'Ok', waypoints: ['Long Branch Road', 'Richard Road'].map(name => ({
             name, distance: 0, location: [point.lng, point.lat],
         })) }) });
-    const result = await recoverRouteVehicleAccess(properties, { vehicleFetch: road.fetch,
+    const result = await recoverRouteVehicleAccess(properties, { vehicleBaseUrl: 'https://roads.test', vehicleFetch: road.fetch,
         geocode: async () => ({ results: { [properties[0].address_hash]: hit(properties[0]) } }) });
     assert.equal(result.report.unresolved[0].reason, 'ambiguous_service_road');
 });
@@ -254,7 +254,7 @@ test('cached recovery is reused only for the same identity/display pin and is re
         point: { lat: recovered.lat, lng: recovered.lng }, displayPoint: { lat: p.lat, lng: p.lng },
         evidence: { propertyIdentity: p.address_hash } };
     const road = provider([p], { bad: [0] });
-    const result = await recoverRouteVehicleAccess([p], { vehicleFetch: road.fetch });
+    const result = await recoverRouteVehicleAccess([p], { vehicleBaseUrl: 'https://roads.test', vehicleFetch: road.fetch });
     assert.equal(result.report.reused, 1); assert.equal(result.report.attempted, 0);
     assert.equal(road.calls.length, 1); assert.equal(result.properties[0].lat, recovered.lat);
     assert.equal(result.report.access_overrides[p.address_hash].displayPoint.lat, p.lat);
@@ -270,7 +270,7 @@ for (const [name, mutate] of [
         displayPoint: { lat: p.lat, lng: p.lng }, evidence: { propertyIdentity: p.address_hash } };
     mutate(p.routing_access);
     const road = provider([p]);
-    const result = await recoverRouteVehicleAccess([p], { vehicleFetch: road.fetch });
+    const result = await recoverRouteVehicleAccess([p], { vehicleBaseUrl: 'https://roads.test', vehicleFetch: road.fetch });
     assert.equal(result.report.reused, 0); assert.equal(result.properties[0].lat, p.lat);
     assert.equal(result.properties[0].routing_access, undefined);
 });
@@ -280,7 +280,7 @@ test('existing supplied curb access survives recovery preflight without requirin
     p.routing_access = { resolution_status: 'resolved', source: 'mapped-driveway-frontage', confidence: 'high',
         side: 'right', serviceBearing: 90, point: { lat: accessPoint.lat, lng: accessPoint.lng } };
     const road = provider([p], { bad: [0] });
-    const result = await recoverRouteVehicleAccess([p], { vehicleFetch: road.fetch });
+    const result = await recoverRouteVehicleAccess([p], { vehicleBaseUrl: 'https://roads.test', vehicleFetch: road.fetch });
     assert.equal(result.report.attempted, 0); assert.equal(result.report.reused, 1);
     assert.equal(result.properties[0].lat, accessPoint.lat);
     assert.equal(result.properties[0].routing_access.side, 'right');
@@ -293,7 +293,7 @@ test('existing supplied curb access survives recovery preflight without requirin
 test('preflight isolates NoSegment coordinate from a throwing cached dispatcher without an error code', async () => {
     const properties = [stop(0), stop(1), stop(2)]; const road = provider(properties);
     let first = true;
-    const result = await recoverRouteVehicleAccess(properties, { vehicleFetch: (url, options) => {
+    const result = await recoverRouteVehicleAccess(properties, { vehicleBaseUrl: 'https://roads.test', vehicleFetch: (url, options) => {
         if (first) { first = false; throw new Error('OSRM request failed with status 400 (NoSegment). Could not find a matching segment for coordinate 1'); }
         return road.fetch(url, options);
     }, geocode: async () => ({ results: { [properties[1].address_hash]: hit(properties[1]) } }) });
@@ -306,13 +306,13 @@ test('preflight rejects provider snap geometry outside radius even if claimed di
     const road = provider(properties, { route: points => response({ code: 'Ok', waypoints: points.map(p => ({
         name: 'Long Branch Road', distance: 0, location: [p.lng, p.lat + 0.02],
     })) }) });
-    const result = await recoverRouteVehicleAccess(properties, { vehicleFetch: road.fetch, geocode: async () => ({ results: {} }) });
+    const result = await recoverRouteVehicleAccess(properties, { vehicleBaseUrl: 'https://roads.test', vehicleFetch: road.fetch, geocode: async () => ({ results: {} }) });
     assert.equal(result.report.attempted, 2); assert.equal(result.report.unresolved.length, 2);
 });
 
 test('provider outage returns an explicit failure inventory without geocoding or marking addresses invalid', async () => {
     const properties = [stop(0), stop(1)]; const road = provider(properties, { unavailable: true });
-    const result = await recoverRouteVehicleAccess(properties, { vehicleFetch: road.fetch,
+    const result = await recoverRouteVehicleAccess(properties, { vehicleBaseUrl: 'https://roads.test', vehicleFetch: road.fetch,
         geocode: () => { throw new Error('must not geocode during road outage'); } });
     assert.equal(result.report.status, 'provider_unavailable'); assert.equal(result.report.attempted, 0);
     assert.equal(road.calls.length, 1);
@@ -324,7 +324,7 @@ test('provider outage returns an explicit failure inventory without geocoding or
 
 test('geocoder outage is an explicit provider failure and preserves every original stop', async () => {
     const properties = [stop(0), stop(1)]; const road = provider(properties, { bad: [0] });
-    const result = await recoverRouteVehicleAccess(properties, { vehicleFetch: road.fetch,
+    const result = await recoverRouteVehicleAccess(properties, { vehicleBaseUrl: 'https://roads.test', vehicleFetch: road.fetch,
         geocode: async () => { throw new Error('geocoder unavailable'); } });
     assert.equal(result.report.status, 'provider_unavailable'); assert.equal(result.report.unresolved[0].reason, 'address_provider_unavailable');
     assert.equal(result.properties[0].lat, properties[0].lat); assert.equal(result.properties.length, 2);
@@ -334,7 +334,7 @@ test('failed-stop inventory and geocoding work are bounded with explicit remaini
     const properties = Array.from({ length: 40 }, (_, index) => stop(index));
     const road = provider(properties, { bad: properties.map((_, index) => index) });
     let requested = 0;
-    const result = await recoverRouteVehicleAccess(properties, { vehicleFetch: road.fetch, maxFailedStops: 3,
+    const result = await recoverRouteVehicleAccess(properties, { vehicleBaseUrl: 'https://roads.test', vehicleFetch: road.fetch, maxFailedStops: 3,
         geocode: async items => { requested += items.length; return { results: {} }; } });
     assert.equal(requested, 3); assert.ok(road.calls.length <= 3);
     assert.equal(result.properties.length, 40); assert.equal(result.report.unresolved.length, 40);
@@ -343,7 +343,7 @@ test('failed-stop inventory and geocoding work are bounded with explicit remaini
 
 test('global recovery budget ends a provider adapter that ignores cancellation', async () => {
     const started = Date.now();
-    const result = await recoverRouteVehicleAccess([stop(0)], { budgetMs: 25, vehicleFetch: () => new Promise(() => {}) });
+    const result = await recoverRouteVehicleAccess([stop(0)], { budgetMs: 25, vehicleBaseUrl: 'https://roads.test', vehicleFetch: () => new Promise(() => {}) });
     assert.ok(Date.now() - started < 500); assert.equal(result.report.status, 'provider_unavailable');
 });
 
@@ -357,7 +357,7 @@ test('explicit user cancellation propagates instead of reporting bad addresses',
 test('default waterfall retries an unqualified Census match through Geocodio before accepting recovery', async () => {
     const properties = [stop(0)]; const road = provider(properties, { bad: [0] }); const p = properties[0];
     const geocodeCalls = [];
-    const result = await recoverRouteVehicleAccess(properties, { vehicleFetch: road.fetch, geocodioApiKey: 'test-key',
+    const result = await recoverRouteVehicleAccess(properties, { vehicleBaseUrl: 'https://roads.test', vehicleFetch: road.fetch, geocodioApiKey: 'test-key',
         geocodeFetch: async rawUrl => {
             geocodeCalls.push(String(rawUrl));
             if (String(rawUrl).includes('census.gov')) return { ok: true, text: async () =>

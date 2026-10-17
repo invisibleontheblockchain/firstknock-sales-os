@@ -28,8 +28,7 @@
 import {
     fetchRoadMatrix,
     roadPointKey,
-    ROAD_MATRIX_VERSION,
-    DEFAULT_OSRM_BASE_URL
+    ROAD_MATRIX_VERSION
 } from './roadMatrix.js';
 import { vehicleServicePoint } from './serviceAccess.js';
 
@@ -53,7 +52,7 @@ const questionIdentity = (options = {}) => [
     ROAD_COST_CACHE_SCHEMA,
     ROAD_MATRIX_VERSION,
     options.profile || 'driving',
-    String(options.baseUrl || DEFAULT_OSRM_BASE_URL).replace(/\/+$/, ''),
+    String(options.baseUrl || '').replace(/\/+$/, ''),
     // fetchRoadMatrix asks for distance AND duration, and readBlock only serves a
     // block when both are known. A caller narrowing the annotation set is asking a
     // different question, so it is keyed as one.

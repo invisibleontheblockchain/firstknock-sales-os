@@ -52,7 +52,7 @@ function stubOsrm({ holeAt = null, shapeBreak = false } = {}) {
 
 test('MTX-01 a 183-door route assembles one complete directed matrix from six packed tables', async () => {
     const calls = stubOsrm();
-    const matrix = await fetchRoadMatrix(points(183));
+    const matrix = await fetchRoadMatrix(points(183), { baseUrl: 'https://roads.test' });
 
     assert.equal(matrix.pointCount, 183);
     assert.equal(matrix.blocks, 6);
@@ -66,7 +66,7 @@ test('MTX-01 a 183-door route assembles one complete directed matrix from six pa
 
 test('a 215-door route needs ten tables instead of twenty-five, with every cell unchanged', async () => {
     const calls = stubOsrm();
-    const matrix = await fetchRoadMatrix(points(215));
+    const matrix = await fetchRoadMatrix(points(215), { baseUrl: 'https://roads.test' });
     assert.equal(calls.length, 10);
     for (let from = 0; from < 215; from++) for (let to = 0; to < 215; to++) {
         assert.equal(matrix.distances[from][to], (from * 1000 + to) * 0.000621371);
@@ -77,7 +77,7 @@ test('a 215-door route needs ten tables instead of twenty-five, with every cell 
 test('all points that fit the provider limit use one complete table, including directed reverse cells', async () => {
     for (const count of [58, 95, 100]) {
         const calls = stubOsrm();
-        const matrix = await fetchRoadMatrix(points(count));
+        const matrix = await fetchRoadMatrix(points(count), { baseUrl: 'https://roads.test' });
         assert.equal(calls.length, 1);
         assert.equal(matrix.distances[1][count - 1], (1000 + count - 1) * 0.000621371);
         assert.equal(matrix.distances[count - 1][1], ((count - 1) * 1000 + 1) * 0.000621371);
@@ -95,12 +95,12 @@ test('overlapping tiles fail closed when the engine gives contradictory costs fo
         if (index(coordinates[0]) === 0 && coordinates.some(c => index(c) === 92)) payload.distances[0][0] += 1;
         return { ok: true, json: async () => payload };
     };
-    await assert.rejects(fetchRoadMatrix(points(138)), /inconsistent overlapping costs/);
+    await assert.rejects(fetchRoadMatrix(points(138), { baseUrl: 'https://roads.test' }), /inconsistent overlapping costs/);
 });
 
 test('MTX-02 every cell lands on its canonical source and destination index', async () => {
     stubOsrm();
-    const matrix = await fetchRoadMatrix(points(183));
+    const matrix = await fetchRoadMatrix(points(183), { baseUrl: 'https://roads.test' });
     const metersToMiles = 0.000621371;
 
     // Cells from the far corners of the block grid, where a transposed or
@@ -116,7 +116,7 @@ test('MTX-02 every cell lands on its canonical source and destination index', as
 
 test('MTX-03 a route inside one request still uses a single block', async () => {
     const calls = stubOsrm();
-    const matrix = await fetchRoadMatrix(points(MATRIX_CHUNK_SIZE));
+    const matrix = await fetchRoadMatrix(points(MATRIX_CHUNK_SIZE), { baseUrl: 'https://roads.test' });
     assert.equal(matrix.blocks, 1);
     assert.equal(calls.length, 1);
     assert.equal(calls[0].coordinates, MATRIX_CHUNK_SIZE);
@@ -124,12 +124,12 @@ test('MTX-03 a route inside one request still uses a single block', async () => 
 
 test('MTX-04 an unresolved cell fails the whole matrix instead of returning a hole', async () => {
     stubOsrm({ holeAt: { from: 7, to: 120 } });
-    await assert.rejects(fetchRoadMatrix(points(183)), /incomplete: 1 unresolved cells/);
+    await assert.rejects(fetchRoadMatrix(points(183), { baseUrl: 'https://roads.test' }), /incomplete: 1 unresolved cells/);
 });
 
 test('MTX-05 a block whose shape does not match its request is rejected', async () => {
     stubOsrm({ shapeBreak: true });
-    await assert.rejects(fetchRoadMatrix(points(183)), /did not match its requested source\/destination shape/);
+    await assert.rejects(fetchRoadMatrix(points(183), { baseUrl: 'https://roads.test' }), /did not match its requested source\/destination shape/);
 });
 
 // A window can decompose onto a boundary that leaves ONE coordinate in a chunk.
@@ -138,7 +138,7 @@ test('MTX-05 a block whose shape does not match its request is rejected', async 
 // point is trivially zero cost from itself, so it must be answered locally.
 test('MTX-07 a single-point matrix is answered locally instead of calling the road service', async () => {
     const calls = stubOsrm();
-    const matrix = await fetchRoadMatrix(points(1));
+    const matrix = await fetchRoadMatrix(points(1), { baseUrl: 'https://roads.test' });
     assert.equal(calls.length, 0, 'a one-point matrix must not hit the road service');
     assert.equal(matrix.pointCount, 1);
     assert.deepEqual(matrix.distances, [[0]]);
@@ -149,7 +149,7 @@ test('MTX-06 the product size limit is stated in route terms, not request terms'
     stubOsrm();
     assert.ok(MAX_ROUTE_MATRIX_POINTS > MAX_MATRIX_COORDINATES);
     await assert.rejects(
-        fetchRoadMatrix(points(MAX_ROUTE_MATRIX_POINTS + 1)),
+        fetchRoadMatrix(points(MAX_ROUTE_MATRIX_POINTS + 1), { baseUrl: 'https://roads.test' }),
         new RegExp(`limit is ${MAX_ROUTE_MATRIX_POINTS} coordinates per route`)
     );
 });
