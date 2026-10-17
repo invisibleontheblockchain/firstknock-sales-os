@@ -3,7 +3,7 @@ import { haversineDistanceMiles, isValidRoutePoint } from './routeBounds.js';
 import { roadNetworkRoutingInternals } from './roadNetworkRouting.js';
 import { vehicleProviderConfig } from './vehicleProviderConfig.js';
 import { describeRoadFailure } from './osrmDispatcher.js';
-import { waypointOnRoad } from './roadNameMatch.js';
+import { sameStreet, waypointOnRoad } from './roadNameMatch.js';
 import { discoverCountyRoadAccess, validateCountyRoadAccess } from './countyRoadAccess.js';
 import { validateCountyRoadNetwork } from './countyRoadRouting.js';
 import { discoverMappedDrivewayAccess, validateMappedDrivewayAccess } from './mappedDrivewayAccess.js';
@@ -78,10 +78,14 @@ function addressItem(stop) {
         city: String(stop.city || ''), state: String(stop.state || ''), zip: String(stop.zip_code || '').slice(0, 5) };
 }
 
-function qualifiedAddressMatch(stop, hit) {
+function qualifiedAddressMatch(stop, hit, { lastResort = false } = {}) {
     if (!isValidRoutePoint(hit) || !hit?.matchedAddress) return false;
     if (hit.source === 'census') {
-        if (hit.matchType !== 'Exact') return false;
+        // Census reports Non_Exact for cosmetic differences (a dropped "W" on
+        // "Nc Highway 90 W") and Tie when two spellings match. Those are used
+        // only after every other geocoder failed, and every check below still
+        // binds house number, ZIP, street and distance.
+        if (hit.matchType !== 'Exact' && !(lastResort && ['Non_Exact', 'Tie'].includes(hit.matchType))) return false;
     } else if (hit.source === 'geocodio') {
         if (!['rooftop', 'point', 'range_interpolation', 'nearest_rooftop_match'].includes(hit.matchType)
             || !(Number(hit.accuracy) >= 0.8)) return false;
@@ -94,30 +98,51 @@ function qualifiedAddressMatch(stop, hit) {
     const item = addressItem(stop);
     return !!house && !!item.zip && zip === item.zip
         && house[1].toUpperCase() === String(stop.house_number || '').trim().toUpperCase()
-        && !!streetKey(stop.street_name) && streetKey(house[2]) === streetKey(stop.street_name)
+        && !!streetKey(stop.street_name) && sameStreet(house[2], stop.street_name, streetKey)
         && (!item.state || !state || item.state.toUpperCase() === state.toUpperCase())
         && isValidRoutePoint(stop) && distance(stop, hit) <= 1000;
 }
 
-async function verifyGeocodedAccess(stop, hit, config, options, signal) {
-    if (!qualifiedAddressMatch(stop, hit)) return { reason: 'address_match_rejected' };
+// The route number of an unnamed road ("NC 90"): highways in OSM often carry
+// only a ref, which /nearest does not report but a /route step does.
+async function roadReference(location, config, options, signal) {
+    const point = `${location[0]},${location[1]}`;
+    const url = new URL(`${config.baseUrl}/route/v1/${config.profile}/${point};${point}`);
+    url.searchParams.set('steps', 'true'); url.searchParams.set('overview', 'false');
+    url.searchParams.set('radiuses', '5;5');
+    const payload = await request(url, options, signal);
+    return payload.routes?.[0]?.legs?.[0]?.steps?.find(step => step.ref)?.ref || null;
+}
+
+const lastResortCandidate = hit => hit?.source === 'census' && ['Non_Exact', 'Tie'].includes(hit.matchType);
+
+async function verifyGeocodedAccess(stop, hit, config, options, signal, { lastResort = false } = {}) {
+    if (!qualifiedAddressMatch(stop, hit, { lastResort })) return { reason: 'address_match_rejected' };
     try {
         const payload = await request(providerUrl(config, 'nearest', [hit]), options, signal);
         const nearest = payload.waypoints?.[0];
-        if (!validSnap(nearest, hit) || streetKey(nearest?.name) !== streetKey(stop.street_name)) {
-            return { reason: 'address_road_mismatch' };
+        if (!validSnap(nearest, hit)) return { reason: 'address_road_mismatch' };
+        let roadRef = null;
+        if (!sameStreet(nearest.name, stop.street_name, streetKey)) {
+            // A named road that is not the address's street is a mismatch. An
+            // unnamed one is confirmed by its route number instead.
+            if (nearest.name) return { reason: 'address_road_mismatch' };
+            roadRef = await roadReference(nearest.location, config, options, signal);
+            if (!roadRef || !sameStreet(roadRef, stop.street_name, streetKey)) return { reason: 'address_road_mismatch' };
         }
         const competing = payload.waypoints.slice(1).some(candidate => candidate.name
-            && streetKey(candidate.name) !== streetKey(stop.street_name)
+            && !sameStreet(candidate.name, stop.street_name, streetKey)
             && Number(candidate.distance) <= Number(nearest.distance) + 5);
         if (competing) return { reason: 'ambiguous_service_road' };
         const point = { lat: nearest.location[1], lng: nearest.location[0] };
         return { access: { resolution_status: 'resolved', source: 'address_geocode_recovery', confidence: 'medium',
             side: 'unknown', serviceBearing: null, point, displayPoint: pointOf(stop), roadName: nearest.name,
+            ...(roadRef ? { roadRef } : {}),
             evidence: { propertyIdentity: identity(stop), displayPoint: pointOf(stop), geocodePoint: pointOf(hit),
                 geocodeSource: hit.source, matchedAddress: hit.matchedAddress, matchType: hit.matchType,
                 ...(Number.isFinite(hit.accuracy) ? { accuracy: hit.accuracy } : {}),
-                displacementMeters: distance(stop, hit), snapMeters: Number(nearest.distance), roadName: nearest.name } } };
+                displacementMeters: distance(stop, hit), snapMeters: Number(nearest.distance), roadName: nearest.name,
+                ...(roadRef ? { roadRef } : {}) } } };
     } catch (error) {
         if (signal.aborted) throw signal.reason || abortError();
         return { reason: error.code === 'NoSegment' ? 'address_road_not_matched' : 'road_provider_unavailable' };
@@ -132,7 +157,8 @@ function cachedAccess(stop) {
         || (access.displayPoint && (!isValidRoutePoint(access.displayPoint) || distance(stop, access.displayPoint) > 0.1))) return null;
     if (access.source === 'address_geocode_recovery'
         && (!isValidRoutePoint(access.displayPoint) || String(boundIdentity || '') !== identity(stop)
-            || !streetKey(access.roadName) || streetKey(access.roadName) !== streetKey(stop.street_name))) return null;
+            || !streetKey(access.roadName || access.roadRef)
+            || !sameStreet(access.roadName || access.roadRef, stop.street_name, streetKey))) return null;
     if (access.source === 'county_road_recovery') {
         const resolvedAt = Date.parse(access.resolved_at || '');
         if (!Number.isFinite(resolvedAt) || Date.now() - resolvedAt > 86400000 || resolvedAt > Date.now() + 300000
@@ -262,7 +288,7 @@ export async function recoverRouteVehicleAccess(properties, options = {}) {
         report.attempted = recoverable.length;
         if (recoverable.length > 0) {
             const geocodeScope = deadline(scope.signal, Math.min(15000, Number(options.geocodeBudgetMs) || 15000));
-            const verified = new Map(), rejected = new Map();
+            const verified = new Map(), rejected = new Map(), lastResort = new Map();
             try {
                 const geocode = options.geocode || geocodeAddressItems;
                 const originalById = new Map(recoverable.map(index => [identity(original[index]), original[index]]));
@@ -276,6 +302,11 @@ export async function recoverRouteVehicleAccess(properties, options = {}) {
                         if (!stop || geocodeScope.signal.aborted) return false;
                         const check = await verifyGeocodedAccess(stop, candidate, config, options, geocodeScope.signal);
                         if (geocodeScope.signal.aborted) return false;
+                        // Remember the first near-exact Census candidate in case
+                        // no other geocoder resolves this address.
+                        if (!check.access && lastResortCandidate(candidate) && !lastResort.has(identity(stop))) {
+                            lastResort.set(identity(stop), candidate);
+                        }
                         if (check.access) verified.set(identity(stop), check.access);
                         else rejected.set(identity(stop), check.reason);
                         return !!check.access;
@@ -288,13 +319,20 @@ export async function recoverRouteVehicleAccess(properties, options = {}) {
                 const hits = geocoded?.results || geocoded || {};
                 // Keep these independent: one bad address must not abort recovery
                 // of the other verified addresses in the route.
+                const tryLastResort = async stop => {
+                    const candidate = lastResort.get(identity(stop));
+                    if (!candidate || geocodeScope.signal.aborted) return null;
+                    const check = await verifyGeocodedAccess(stop, candidate, config, options, geocodeScope.signal, { lastResort: true });
+                    return check.access || null;
+                };
                 for (const index of recoverable) {
                     const stop = original[index], hit = hits[identity(stop)];
-                    if (!hit) { fail(index, rejected.get(identity(stop)) || 'address_not_matched'); continue; }
-                    const check = verified.has(identity(stop)) ? { access: verified.get(identity(stop)) }
-                        : await verifyGeocodedAccess(stop, hit, config, options, geocodeScope.signal);
-                    if (!check.access) { fail(index, check.reason); continue; }
-                    verified.set(identity(stop), check.access);
+                    const check = !hit ? { reason: rejected.get(identity(stop)) || 'address_not_matched' }
+                        : verified.has(identity(stop)) ? { access: verified.get(identity(stop)) }
+                            : await verifyGeocodedAccess(stop, hit, config, options, geocodeScope.signal);
+                    const access = check.access || await tryLastResort(stop);
+                    if (!access) { fail(index, check.reason); continue; }
+                    verified.set(identity(stop), access);
                 }
             } catch (error) {
                 if (options.signal?.aborted) throw options.signal.reason || abortError();
