@@ -195,7 +195,8 @@ test('generation and the Optimize action share one road/topology pipeline, with 
         'utf8',
     );
     const roadMatrixSource = await readFile(
-        new URL('../src/lib/roadMatrixOptimize.js', import.meta.url),
+        // The app's search loop lives in base44/shared so the server worker shares it.
+        new URL('../base44/shared/roadMatrixSearch.js', import.meta.url),
         'utf8',
     );
     const optimizerSource = await readFile(
