@@ -19,6 +19,7 @@ import { loadSavedRouteSelection } from '@/components/logic/routeMapSelection';
 import { isValidRoutePoint } from '@/lib/routeBounds';
 import { captureParkedCarLocation, isLowAccuracyCapture, lowAccuracyConfirmationMessage } from '@/lib/parkedCarLocation';
 import { startOptimizeProgress } from '@/lib/optimizeProgressToast';
+import { LONG_OPTIMIZATION_STOPS, startRoadOptimizationJob } from '@/lib/roadOptimizationProgress';
 import { tryRoadMatrixOptimize } from '@/lib/roadMatrixOptimize';
 import { buildRoadOptimizationAttempt, describeAppliedRoadOptimization, describeRoadOptimizationOutcome } from '@/lib/routeOptimizationOutcome';
 import { countChangedRouteStops, persistOptimizedRoute, syncOptimizedRoute } from '@/lib/routeOptimizePersistence';
@@ -99,6 +100,7 @@ export async function reoptimizeRoute(route, options = {}, deps = {}) {
     // Ticks the elapsed seconds through the long road phases so the wait never
     // looks like a hang. Stopped in `finally`, so no path leaves it running.
     let progress = null;
+    let job = null;
     try {
         const hashes = (route.property_hashes || (route.properties || []).map(propertyKey)).filter(Boolean);
         if (!hashes.length) { toast.error('No properties found for this route.', { id: TOAST_ID }); return; }
@@ -207,10 +209,19 @@ export async function reoptimizeRoute(route, options = {}, deps = {}) {
         }
         // Address recovery and real driving checks run on the backend. Every
         // decline is saved and displayed before this action finishes.
-        progress = startOptimizeProgress({
-            id: TOAST_ID,
-            label: `Checking real road distances for ${routeProperties.length} doors...`
-        });
+        // A big route shows the progress screen (estimate, passes, checks,
+        // miles saved) instead of the one-line toast, and can run in the
+        // background while the user keeps working.
+        if (routeProperties.length >= LONG_OPTIMIZATION_STOPS) {
+            job = startRoadOptimizationJob({ routes: [{ name: route.name, stops: routeProperties.length }], background: true });
+            job.startRoute(0);
+            progress = { update() {}, stop() {} };
+        } else {
+            progress = startOptimizeProgress({
+                id: TOAST_ID,
+                label: `Checking real road distances for ${routeProperties.length} doors...`
+            });
+        }
         // Why the road pass declined decides what the saved route may claim about
         // itself. "The road engine measured your order and found nothing better"
         // is a verification; "the road engine was unreachable" is not, and the two
@@ -224,6 +235,7 @@ export async function reoptimizeRoute(route, options = {}, deps = {}) {
             searchCoverage: shareSearchCoverage ? route.metadata?.road_search_coverage : null,
             maxSearchPasses: 8,
             onProgress: ({ pass, remainingWindows }) => progress.update(`Checking remaining neighborhoods (pass ${pass}; ${remainingWindows} checks left)...`),
+            onSearchProgress: value => job?.progress(0, value),
             onOutcome: (reason, measurement) => { roadDeclineReason = reason; roadMeasurement = measurement; }
         });
 
@@ -359,5 +371,6 @@ export async function reoptimizeRoute(route, options = {}, deps = {}) {
         );
     } finally {
         progress?.stop();
+        job?.finish();
     }
 }

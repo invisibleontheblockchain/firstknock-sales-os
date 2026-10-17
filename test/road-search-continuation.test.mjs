@@ -215,10 +215,14 @@ test('the whole action has a deadline even when a backend promise never settles'
     assert.equal(reason, 'deadline_exceeded');
 });
 
-test('shared road optimization stays one pass unless the explicit Optimize action opts in', async () => {
+test('every caller gets the full multi-pass search by default, like the Optimize button', async () => {
+    // Generation, splits and base-to-base routes used to stop after one pass.
     let calls = 0;
-    await optimize(properties, { client: api(async () => { calls++; return response(); }) });
-    assert.equal(calls, 1);
+    await optimize(properties, { client: api(async () => response({ ledger: coverage(++calls, 20) })) });
+    assert.equal(calls, 8);
+    calls = 0;
+    await optimize(properties, { maxSearchPasses: 1, client: api(async () => response({ ledger: coverage(++calls, 20) })) });
+    assert.equal(calls, 1, 'a caller can still ask for one pass');
 });
 
 test('a remaining budget smaller than a full request retains the last verified no-op and its progress', async () => {
