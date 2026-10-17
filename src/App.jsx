@@ -14,17 +14,27 @@ import { RepLocationProvider } from '@/components/team/RepLocationSharing';
 import { AutoDrivingProvider } from '@/components/team/AutoDrivingTracking';
 import RoadAwareComparisonHost from '@/components/routes/RoadAwareComparisonHost';
 import { isHqPath } from '@/admin/hqNavigation';
+import { pageNameForPath, preloadPage, registerPageLoaders } from '@/lib/pagePreload';
+import { appParams } from '@/lib/app-params';
 
 // Phase 5 — code-splitting: every page in ./pages is its own lazy-loaded chunk.
 // import.meta.glob bypasses the stale auto-generated pages.config.js — any new
 // page file is auto-registered as a route and only downloaded when visited.
 const pageModules = import.meta.glob('./pages/*.{jsx,js}');
-const Pages = Object.fromEntries(
+const pageLoaders = Object.fromEntries(
   Object.entries(pageModules).map(([path, loader]) => [
     path.replace(/^\.\/pages\//, '').replace(/\.(jsx|js)$/, ''),
-    React.lazy(loader),
+    loader,
   ])
 );
+const Pages = Object.fromEntries(
+  Object.entries(pageLoaders).map(([name, loader]) => [name, React.lazy(loader)])
+);
+registerPageLoaders(pageLoaders);
+// Only a signed-in device will render this page; others are sent to sign in.
+if (typeof window !== 'undefined' && appParams.token && !isHqPath(window.location.pathname)) {
+  preloadPage(pageNameForPath(window.location.pathname));
+}
 
 const AppEntry = React.lazy(() => import('@/components/AppEntry'));
 const AdminApp = React.lazy(() => import('@/admin/AdminApp'));

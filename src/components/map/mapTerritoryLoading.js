@@ -27,3 +27,14 @@ export async function fetchMapTerritory(invoke, user, limit) {
     }
     return { properties: data.properties, capped: data.capped ?? data.properties.length >= limit };
 }
+
+// Shared by the map hook and the startup prefetch so both resolve to the same
+// cached query; a prefetch started during sign-in is reused, never repeated.
+export function mapTerritoryBootstrapOptions(user, invoke, withDeadline) {
+    return {
+        queryKey: mapTerritoryQueryKey(user, 'bootstrap'),
+        staleTime: 1000 * 60 * 15,
+        gcTime: 1000 * 60 * 30,
+        queryFn: () => withDeadline(() => fetchMapTerritory(invoke, user, MAP_BOOTSTRAP_LIMIT)),
+    };
+}
