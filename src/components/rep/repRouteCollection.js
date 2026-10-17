@@ -146,6 +146,57 @@ export function routeIsVisibleInKnock(route, scope) {
   return assignedToCurrentUser && (belongsToKnownTenant || !routeManagerId);
 }
 
+// Fields routeIsVisibleInKnock needs to decide whether a route belongs here.
+export const KNOCK_ROUTE_SCOPE_FIELDS = ['id', 'manager_id', 'assigned_to', 'created_by', 'created_date', 'updated_date'];
+const ROUTE_ID_BATCH = 100;
+
+/**
+ * Reads the same route groups collectKnockRoutes has always received, without
+ * downloading overlapping groups at full size. A manager's own-tenant query
+ * already returns nearly every visible route; the assignee and creator
+ * fallbacks repeated those same rows (each carrying its full door manifest and
+ * road metadata), roughly tripling the map's route download. Those fallbacks
+ * now read only the scope fields, and any visible route the tenant query
+ * missed is then read in full by id. Reps keep their single assignee reads.
+ *
+ * @param {(filter: object, limit: number, skip: number, fields?: string[]) => Promise<unknown>} fetchFilterPage
+ */
+export async function fetchKnockRouteGroups(fetchFilterPage, scope) {
+  const filters = buildSavedRouteQueryFilters(scope);
+  const readAll = (filter, fields) => fetchAllSavedRoutePages((limit, skip) => fetchFilterPage(filter, limit, skip, fields));
+  const tenantFilter = scope?.managerAccount && scope.managerId
+    ? filters.find((filter) => Object.keys(filter).length === 1 && filter.manager_id === scope.managerId)
+    : null;
+  if (!tenantFilter) return Promise.all(filters.map((filter) => readAll(filter)));
+
+  const fallbackFilters = filters.filter((filter) => filter !== tenantFilter);
+  const [tenantRows, ...fallbackGroups] = await Promise.all([
+    readAll(tenantFilter),
+    ...fallbackFilters.map((filter) => readAll(filter, KNOCK_ROUTE_SCOPE_FIELDS)),
+  ]);
+
+  const loadedIds = new Set(tenantRows.map((route) => normalizeId(route?.id)).filter(Boolean));
+  const groups = [tenantRows];
+  const missingIds = new Set();
+  for (const [index, rows] of fallbackGroups.entries()) {
+    const visible = rows.filter((route) => routeIsVisibleInKnock(route, scope));
+    if (visible.some((route) => !normalizeId(route?.id))) {
+      // A visible row without an id cannot be re-read by id; keep its group whole.
+      groups.push(await readAll(fallbackFilters[index]));
+      continue;
+    }
+    visible.forEach((route) => {
+      const id = normalizeId(route.id);
+      if (!loadedIds.has(id)) missingIds.add(id);
+    });
+  }
+  const ids = [...missingIds];
+  for (let start = 0; start < ids.length; start += ROUTE_ID_BATCH) {
+    groups.push(await readAll({ id: { $in: ids.slice(start, start + ROUTE_ID_BATCH) } }));
+  }
+  return groups;
+}
+
 export function collectKnockRoutes(routeGroups = [], scope) {
   const routesByKey = new Map();
 
