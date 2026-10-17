@@ -94,10 +94,20 @@ before(async () => {
 });
 after(async () => { await vite?.close(); delete process.env.VITE_BASE44_APP_ID; });
 
-test('beta OFF preserves the exact production route object and makes no road calls', async () => {
-    const mock = workspace({ enabled: false });
+// The shared road optimizer is offline in these mocks: a route keeps its order.
+const roadOffline = (client, calls = []) => ({ ...client, functions: { invoke: async (name, body) => {
+    if (name === 'optimizeRouteRoadMatrix') { calls.push(body); throw new Error('road engine offline'); }
+    return client.functions.invoke(name, body);
+} } });
+
+test('beta OFF sends every route to the shared road optimizer, writes no beta records, and keeps an order it cannot verify', async () => {
+    const mock = workspace({ enabled: false }), roadCalls = [];
     const routes = [{ properties: stops(), metadata: { existing: true } }];
-    assert.equal(await beta.completeBetaGeneratedRoutes(routes, { client: mock.client }), routes);
+    const completed = await beta.completeBetaGeneratedRoutes(routes, { client: roadOffline(mock.client, roadCalls) });
+    assert.equal(roadCalls.length, 1, 'every route, not only one with a detected excursion');
+    assert.equal(completed[0].properties, routes[0].properties);
+    assert.equal(completed[0].metadata.existing, true);
+    assert.equal(completed[0].metadata.road_verification.verified, false);
     assert.equal(await beta.prepareRoadAwareBetaComparison(stops(), { client: mock.client }), null);
     assert.equal(mock.writes.length, 0); assert.equal(mock.comparisons.length, 0);
 });
@@ -109,7 +119,9 @@ test('another workspace cannot opt in, proxy, record, apply, or read cohort hist
         assert.equal((await mock.call({ action, enabled: true, workspace_id: 'owner' })).status, 403);
     }
     const routes = [{ properties: stops() }];
-    assert.equal(await beta.completeBetaGeneratedRoutes(routes, { client: mock.client }), routes);
+    const completed = await beta.completeBetaGeneratedRoutes(routes, { client: roadOffline(mock.client) });
+    assert.equal(completed[0].properties, routes[0].properties);
+    assert.equal(mock.writes.length, 0);
 });
 test('beta ON uses directed road evidence and persists complete comparison telemetry', async () => {
     const mock = workspace();
@@ -319,7 +331,9 @@ test('record completion preserves manifest aliases and never persists personal t
     const records = [{ property_hashes: properties.map(p => p.legacy_hash), metadata: { existing: true },
         route_origin_mode: 'current_to_home', assigned_to: 'rep', name: 'Keep me', metrics: { house_count: 4 } }];
     const off = workspace({ enabled: false });
-    assert.equal(await beta.completeBetaRouteRecords(records, properties, { client: off.client }), records);
+    const kept = await beta.completeBetaRouteRecords(records, properties, { client: roadOffline(off.client) });
+    assert.deepEqual(kept[0].property_hashes, records[0].property_hashes);
+    assert.equal(kept[0].assigned_to, 'rep'); assert.equal(kept[0].name, 'Keep me');
     const completed = await beta.completeBetaRouteRecords(records, properties, { client: mock.client });
     assert.deepEqual([...completed[0].property_hashes].sort(), [...records[0].property_hashes].sort());
     assert.equal(completed[0].metadata.routing.road_aware_routing_beta, true);
@@ -352,4 +366,31 @@ test('a failed decision write after apply reports the saved route accurately and
     assert.deepEqual(response.route.property_hashes, result.comparison.afterOrder);
     assert.match(response.history_warning, /New order saved/); assert.equal(mock.writes.length, 1);
     assert.deepEqual(mock.comparisons[0].original_route.property_hashes, result.comparison.beforeOrder);
+});
+
+test('every generated route gets the full road search, three at a time, and adopts only a shorter order', async () => {
+    const routes = [0, 1, 2, 3, 4].map(n => ({ name: `R${n}`, properties: stops(5).map(p => ({ ...p, address_hash: `${p.address_hash}-${n}` })), totalDistance: 9 }));
+    let running = 0, peak = 0;
+    const perRoute = new Map();
+    const client = { auth: { me: async () => ({ id: 'owner' }) }, functions: { invoke: async (name, payload) => {
+        if (name === 'roadAwareRoutingBeta') return { data: { enabled: false } };
+        const route = payload.properties[0].address_hash.split('-').at(-1);
+        perRoute.set(route, (perRoute.get(route) || 0) + 1);
+        running++; peak = Math.max(peak, running);
+        await new Promise(resolve => setTimeout(resolve, 20));
+        running--;
+        const shorter = Number(route) % 2 === 0;
+        return { data: { success: true, selected: shorter ? 'road_aware' : 'current',
+            order: [...payload.properties].reverse().map(p => p.address_hash),
+            routing_metadata: { input_measured: 5, winning_route_distance: shorter ? 4 : 5, duration_improvement: shorter ? 1 : 0,
+                road_path_validated: true, road_network_used: true } } };
+    } } };
+    const result = await generation.applyRoadMatrixToGeneratedRoutes(routes, { client });
+    assert.equal(perRoute.size, 5, 'every route, not only one with a detected excursion');
+    assert.ok(peak <= 3 && peak >= 2, `at most three routes at once (peak ${peak})`);
+    for (const [index, route] of result.routes.entries()) {
+        if (index % 2 === 0) assert.notEqual(route.properties, routes[index].properties, `route ${index} adopted the shorter order`);
+        else assert.equal(route.properties, routes[index].properties, `route ${index} kept its order`);
+    }
+    assert.equal(result.appliedCount, 3);
 });

@@ -312,11 +312,13 @@ test('intentional synchronous continuity is silent instead of reporting unavaila
 });
 
 test('initial generation and reorder use Optimize route-only semantics and the same road backend', async () => {
-  const [homeSource, generationSource, optimizeSource] = await Promise.all([
+  const [homeSource, generationTail, generationSource, optimizeSource] = await Promise.all([
     readFile(new URL('../src/pages/Home.jsx', import.meta.url), 'utf8'),
     readFile(new URL('../src/lib/roadMatrixRouteGeneration.js', import.meta.url), 'utf8'),
+    readFile(new URL('../src/lib/roadOptimizeRoutes.js', import.meta.url), 'utf8'),
     readFile(new URL('../src/lib/reoptimizeRouteAction.js', import.meta.url), 'utf8'),
   ]);
+  assert.match(generationTail, /return optimizeRoutesOnRoads\(routes,/, 'generation runs the shared all-routes optimizer');
 
   assert.doesNotMatch(
     homeSource,
@@ -330,7 +332,7 @@ test('initial generation and reorder use Optimize route-only semantics and the s
   );
   assert.match(
     generationSource,
-    /tryRoadMatrixOptimize\(properties,\s*\{[\s\S]*?start:\s*isValidRoutePoint\(route\.startLocation\)\s*\?\s*route\.startLocation\s*:\s*null,[\s\S]*?end:\s*isValidRoutePoint\(route\.endLocation\)\s*\?\s*route\.endLocation\s*:\s*null/,
+    /const endOf = route => \(route\.returnToFirstStop \? route\.properties\?\.\[0\] : route\.endLocation\);[\s\S]*?tryRoadMatrixOptimize\(properties,\s*\{[\s\S]*?start:\s*isValidRoutePoint\(route\.startLocation\)\s*\?\s*route\.startLocation\s*:\s*null,[\s\S]*?end:\s*isValidRoutePoint\(end\)\s*\?\s*end\s*:\s*null/,
     'generated routes must call the shared optimizer without inferred anchors',
   );
   assert.match(
