@@ -397,3 +397,74 @@ test('access recovery asks for an edge-supported redirect mode', async () => {
     assert.ok(seen.length > 0);
     assert.ok(seen.every(mode => mode === 'manual'));
 });
+
+// The two live stops this was built from: a pin 122 m from an unnamed state
+// highway, and a pin 137 m from a road Census spells two ways.
+const highwayStop = { address_hash: '1770 NC HWY 90 W|28681', house_number: '1770', street_name: 'Nc Highway 90 W',
+    city: 'Taylorsville', state: 'NC', zip_code: '28681', lat: 35.92061, lng: -81.206043 };
+const saddleStop = { address_hash: '109 SADDLE TREE RD|28092', house_number: '109', street_name: 'Saddle Tree Rd',
+    city: 'Lincolnton', state: 'NC', zip_code: '28092', lat: 35.462278, lng: -81.235464 };
+function roads({ name, ref = null }) {
+    const calls = [];
+    const fetch = async rawUrl => {
+        const url = new URL(rawUrl); calls.push(url);
+        const points = url.pathname.split('/').at(-1).split(';').map(text => text.split(',').map(Number));
+        const [lng, lat] = points[0];
+        // The pin itself is farther than 100 m from any road.
+        if (Math.abs(lat - highwayStop.lat) < 1e-6 || Math.abs(lat - saddleStop.lat) < 1e-6) {
+            return response({ code: 'NoSegment', message: 'Could not find a matching segment for coordinate 0' }, 400);
+        }
+        const location = [lng + 0.00005, lat];
+        if (url.pathname.includes('/nearest/')) return response({ code: 'Ok', waypoints: [{ name, distance: 6, location }] });
+        return response({ code: 'Ok', waypoints: points.map(() => ({ name, location })),
+            routes: [{ legs: [{ steps: [{ name, ref }] }] }] });
+    };
+    return { fetch, calls };
+}
+const censusBatch = row => async rawUrl => String(rawUrl).includes('addressbatch')
+    ? { ok: true, text: async () => row } : null;
+
+test('an unnamed state highway is confirmed by its route number after a near-exact Census match', async () => {
+    const road = roads({ name: '', ref: 'NC 90' });
+    const result = await recoverRouteVehicleAccess([highwayStop], { vehicleBaseUrl: 'https://roads.test', vehicleFetch: road.fetch,
+        geocodeFetch: censusBatch(`"${highwayStop.address_hash}","1770 Nc Highway 90 W, Taylorsville, NC, 28681","Match","Non_Exact","1770 STATE HWY 90, TAYLORSVILLE, NC, 28681","-81.205936804448,35.919422664137"`) });
+    assert.equal(result.report.recovered, 1, JSON.stringify(result.report.unresolved));
+    const access = result.properties[0].routing_access;
+    assert.equal(access.roadRef, 'NC 90');
+    assert.equal(access.evidence.matchType, 'Non_Exact');
+    assert.ok(road.calls.some(url => url.pathname.includes('/route/') && url.searchParams.get('steps') === 'true'),
+        'the unnamed road is identified by a /route step ref');
+});
+
+test('a Census tie between two spellings of the same road recovers through the single-address candidates', async () => {
+    const road = roads({ name: 'Saddletree Road' });
+    const geocodeFetch = async rawUrl => {
+        if (String(rawUrl).includes('addressbatch')) {
+            return { ok: true, text: async () => `"${saddleStop.address_hash}","109 Saddle Tree Rd, Lincolnton, NC, 28092","Tie"` };
+        }
+        return response({ result: { addressMatches: [
+            { matchedAddress: '109 SADDLETREE RD, LINCOLNTON, NC, 28092', coordinates: { x: -81.234476365175, y: 35.461079957415 } },
+            { matchedAddress: '109 SADDLE TREE RD, LINCOLNTON, NC, 28092', coordinates: { x: -81.234232464978, y: 35.461718205258 } },
+        ] } });
+    };
+    const result = await recoverRouteVehicleAccess([saddleStop], { vehicleBaseUrl: 'https://roads.test', vehicleFetch: road.fetch, geocodeFetch });
+    assert.equal(result.report.recovered, 1, JSON.stringify(result.report.unresolved));
+    assert.equal(result.properties[0].routing_access.roadName, 'Saddletree Road');
+    assert.equal(result.properties[0].routing_access.evidence.matchedAddress, '109 SADDLETREE RD, LINCOLNTON, NC, 28092');
+});
+
+test('a near-exact Census match is still rejected for a different road, number, ZIP or distance', async () => {
+    for (const [label, matched, coordinates, roadName, ref] of [
+        ['road', '1770 STATE HWY 16, TAYLORSVILLE, NC, 28681', '-81.205936804448,35.919422664137', '', 'NC 16'],
+        ['house number', '1771 STATE HWY 90, TAYLORSVILLE, NC, 28681', '-81.205936804448,35.919422664137', '', 'NC 90'],
+        ['ZIP', '1770 STATE HWY 90, TAYLORSVILLE, NC, 28682', '-81.205936804448,35.919422664137', '', 'NC 90'],
+        ['distance', '1770 STATE HWY 90, TAYLORSVILLE, NC, 28681', '-81.145628991217,35.91653031475', '', 'NC 90'],
+        ['unnamed road with the wrong route number', '1770 STATE HWY 90, TAYLORSVILLE, NC, 28681', '-81.205936804448,35.919422664137', '', 'US 421'],
+    ]) {
+        const road = roads({ name: roadName, ref });
+        const result = await recoverRouteVehicleAccess([highwayStop], { vehicleBaseUrl: 'https://roads.test', vehicleFetch: road.fetch,
+            geocodeFetch: censusBatch(`"${highwayStop.address_hash}","x","Match","Non_Exact","${matched}","${coordinates}"`) });
+        assert.equal(result.report.recovered, 0, label);
+        assert.equal(result.properties[0].routing_access.resolution_status, 'unresolved', label);
+    }
+});

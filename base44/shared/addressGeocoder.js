@@ -1,10 +1,12 @@
 // Server-side geocoding waterfall: free Census first, then Geocodio for
 // whatever Census missed (or for everything if Census is down).
 
-import { CENSUS_MAX_BATCH, geocodeWithCensus } from './censusGeocode.js';
+import { CENSUS_MAX_BATCH, geocodeCensusCandidates, geocodeWithCensus } from './censusGeocode.js';
 import { geocodeWithGeocodio } from './geocodioGeocode.js';
 
 export const GEOCODE_BATCH_LIMIT = CENSUS_MAX_BATCH;
+// Tied addresses are re-asked one at a time; bound that extra work.
+const MAX_CENSUS_TIE_LOOKUPS = 25;
 
 /**
  * @param {Array<{ id: string, address: string, city?: string, state?: string, zip?: string }>} items
@@ -21,10 +23,25 @@ export async function geocodeAddressItems(items, { geocodioApiKey, fetchImpl = g
   const itemById = new Map(items.map(item => [String(item.id), item]));
 
   try {
-    const census = await geocodeWithCensus(items, { fetchImpl });
+    const tiedIds = [];
+    const census = await geocodeWithCensus(items, { fetchImpl, tiedIds });
     for (const [id, hit] of Object.entries(census)) {
       const candidate = { ...hit, source: 'census' };
       if (itemById.has(String(id)) && await acceptResult(candidate, itemById.get(String(id)))) results[id] = candidate;
+    }
+    // A tie returns no point. Ask for the candidates and keep the first one
+    // the caller accepts; an unaccepted tie falls through to Geocodio.
+    for (const id of tiedIds.slice(0, MAX_CENSUS_TIE_LOOKUPS)) {
+      const item = itemById.get(String(id));
+      if (!item || results[id]) continue;
+      try {
+        for (const hit of await geocodeCensusCandidates(item, { fetchImpl })) {
+          const candidate = { ...hit, source: 'census' };
+          if (await acceptResult(candidate, item)) { results[id] = candidate; break; }
+        }
+      } catch (error) {
+        warnings.push(`census tie: ${error?.message || error}`);
+      }
     }
   } catch (error) {
     failures.push(error);

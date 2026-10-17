@@ -19,3 +19,23 @@ test('a different road, an empty label or an unnamed expectation is still reject
     // A slash inside a name without spaces is not a junction separator.
     assert.equal(waypointOnRoad('NC 16/Business', 'Business', key), false);
 });
+
+test('spelling variants of one road match; different roads and highway systems do not', async () => {
+    const { sameStreet } = await import('../base44/shared/roadNameMatch.js');
+    for (const [left, right, same] of [
+        ['Saddle Tree Rd', 'SADDLETREE RD', true],
+        ['Saddle Tree Rd', 'Saddletree Road', true],
+        ['Nc Highway 90 W', 'STATE HWY 90', true],
+        ['Nc Highway 90 W', 'NC 90', true],
+        ['Highway 90', 'NC 90', true],
+        ['US Highway 421', 'US 421', true],
+        ['State Road 1102', 'SR 1102', true],
+        ['Nc Highway 90 W', 'NC 16', false],
+        ['Nc Highway 90 W', 'US 90', false],
+        ['US 421', 'NC 421', false],
+        ['SR 1102', 'NC 1102', false],
+        ['Main St', 'Maine St', false],
+        ['N Main St', 'Main St', false],
+        ['Rd 90', 'NC 90', false],
+    ]) assert.equal(sameStreet(left, right, key), same, `${left} | ${right}`);
+});
