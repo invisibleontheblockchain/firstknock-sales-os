@@ -182,7 +182,7 @@ test('an import link replaces an already-open route on the same mounted page', a
         user: { email: 'manager@example.com' }, savedRoutes: [route],
         window: { location: { search: '?savedRoute=tampa-route' } }, URLSearchParams,
         queryClient: { getQueryData: () => ({ properties }) },
-        effectivePropertiesRef: { current: [] }, loadSavedRouteSelection,
+        routeHomeRowsRef: { current: [] }, loadSavedRouteSelection,
         hydrateRouteForMap: () => assert.fail('Import already has all 39 pins'),
         setLoadingSavedRouteId: id => loading.push(id),
         setModeRaw() {}, setActiveRoute: selected => opened.push(selected),
@@ -205,7 +205,7 @@ test('a cancelled route link cannot restore its route after the user navigates a
     const context = {
         activeRoute: null, user: { email: 'manager@example.com' }, savedRoutes: [route],
         window: { location: { search: '?savedRoute=tampa-route' } }, URLSearchParams,
-        queryClient: { getQueryData: () => null }, effectivePropertiesRef: { current: [] },
+        queryClient: { getQueryData: () => null }, routeHomeRowsRef: { current: [] },
         loadSavedRouteSelection: () => pending,
         setLoadingSavedRouteId() {}, setModeRaw: value => updates.push(value),
         setActiveRoute: selected => updates.push(selected), setShowDashboard: value => updates.push(value),
