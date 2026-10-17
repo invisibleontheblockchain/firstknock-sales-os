@@ -385,3 +385,15 @@ test('a preflight outage records why no road match loaded, without URLs or coord
     assert.equal(refused.report.failure_detail.kind, 'auth');
     assert.equal(refused.report.failure_detail.status, 401);
 });
+
+test('access recovery asks for an edge-supported redirect mode', async () => {
+    const seen = [];
+    await recoverRouteVehicleAccess([stop(0), stop(1)], { vehicleBaseUrl: 'https://roads.test',
+        vehicleFetch: async (_url, options) => {
+            seen.push(options.redirect);
+            if (options.redirect === 'error') throw new TypeError('Invalid redirect value, must be one of "follow" or "manual"');
+            return { ok: true, status: 200, json: async () => ({ code: 'Ok', waypoints: [] }) };
+        } });
+    assert.ok(seen.length > 0);
+    assert.ok(seen.every(mode => mode === 'manual'));
+});

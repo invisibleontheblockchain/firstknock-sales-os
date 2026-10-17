@@ -40,7 +40,8 @@ function bounded(promise, signal) {
 
 async function request(url, options, signal) {
     const response = await bounded((options.vehicleFetch || globalThis.fetch)(url.toString(), {
-        signal, redirect: 'error',
+        // Not 'error': the Base44 edge runtime rejects it. A 3xx is !ok and fails below.
+        signal, redirect: 'manual',
     }), signal);
     const payload = await bounded(response.json(), signal);
     if (!response.ok || payload?.code !== 'Ok') {

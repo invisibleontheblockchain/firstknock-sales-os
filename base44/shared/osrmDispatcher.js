@@ -285,6 +285,17 @@ export async function fetchOsrmJson(url, { timeoutMs = 20000, signal = null } = 
     }
 }
 
+/**
+ * Redirects are never followed: the key must not travel to another origin. The
+ * Base44 edge runtime rejects `redirect: 'error'` outright ("does not make sense
+ * at the edge"), which failed every request before it connected, so requests use
+ * `manual` and any redirect answer is refused here instead.
+ */
+export const OSRM_REDIRECT_MODE = 'manual';
+export function isRedirectResponse(response) {
+    return response?.type === 'opaqueredirect' || (response?.status >= 300 && response?.status < 400);
+}
+
 async function attemptOnce(url, deadline) {
     counters.requests += 1;
     const headers = { 'Accept': 'application/json', 'User-Agent': 'FirstKnock-Routing/1.0' };
@@ -294,7 +305,7 @@ async function attemptOnce(url, deadline) {
     const sentAt = Date.now();
     let response;
     try {
-        response = await untilAborted(fetch(url, { signal: deadline, redirect: 'error', headers }), deadline);
+        response = await untilAborted(fetch(url, { signal: deadline, redirect: OSRM_REDIRECT_MODE, headers }), deadline);
     } catch (error) {
         if (deadline.aborted) throw abortReason(deadline);
         counters.transportFailures += 1;
@@ -309,6 +320,14 @@ async function attemptOnce(url, deadline) {
     const bodyStartedAt = Date.now();
     const readJson = () => untilAborted(response.json(), deadline);
     try {
+        if (isRedirectResponse(response)) {
+            counters.rejected += 1;
+            await response.body?.cancel?.().catch(() => {});
+            const error = new Error(`OSRM gateway answered with a redirect (${response.status || 'opaque'}); redirects are not followed.`);
+            error.status = response.status || null;
+            error.kind = 'http';
+            throw error;
+        }
         if (response.status === 429 || response.status === 503) {
             counters.rateLimited += 1;
             await response.body?.cancel?.().catch(() => {});
