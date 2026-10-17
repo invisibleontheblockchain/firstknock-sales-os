@@ -23,6 +23,9 @@ export const MAX_MATRIX_COORDINATES = 100;
 export const MATRIX_CHUNK_SIZE = 46;
 // PRODUCT limit for one optimization request. Bounded because block count grows
 // quadratically (ceil(N/46)^2), not because of the per-request coordinate cap.
+// Tested and kept on purpose: an exact door table up to 1,000 stops on the custom
+// road server made Charlotte 1H worse (413.1 vs 397.9 miles) than the cluster
+// hierarchy used above this size, for about the same time.
 export const MAX_ROUTE_MATRIX_POINTS = 250;
 // Concurrency is no longer this module's business: every OSRM request in the
 // codebase — matrix blocks, per-cluster matrices, final route geometry — is

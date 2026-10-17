@@ -312,8 +312,12 @@ async function reviewDrivingWindows(order, options = {}) {
         return coverage ? coverage.prioritize(additions, questionKey) : additions;
     };
     report.planned = windows.length;
-    const maxWindows = Math.max(0, Math.min(100, options.maxLocalWindows ?? 64));
-    const deadline = Date.now() + Math.max(1, Math.min(60000, options.localReviewBudgetMs ?? 45000));
+    // Checks per pass and their time budget, from the 1,000-stop sweep on the
+    // custom road server (Hickory and Charlotte 1H): 150 checks in 60 s finish a
+    // big route's review in fewer passes (1H: every check done in 6 passes,
+    // where 64 per pass left checks open after 8).
+    const maxWindows = Math.max(0, Math.min(200, options.maxLocalWindows ?? 150));
+    const deadline = Date.now() + Math.max(1, Math.min(60000, options.localReviewBudgetMs ?? 60000));
     const maxCandidates = Math.max(1, Math.min(8, options.maxLocalCandidates || 3));
     const contextOptions = { ...options, startLocation: null, endLocation: null, maxGeometryPoints: 100000,
         requireDirectedLegs: true, servicePolicy: { enabled: false, parkingSecondsPerStop: 0 } };
