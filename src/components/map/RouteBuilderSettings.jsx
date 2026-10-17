@@ -8,7 +8,11 @@ import {
     Shuffle, Compass, Pencil, Lock, ScanLine, Ghost, Building2
 } from 'lucide-react';
 import { toast } from "sonner";
-import CanvasBuilderSettings from './CanvasBuilderSettings.jsx';
+// Canvas planning code is a large share of the map's download and only Canvas
+// accounts open it, so it loads on demand (or early, once Canvas mode is on).
+const loadCanvasBuilderSettings = () => import('./CanvasBuilderSettings.jsx');
+const CanvasBuilderSettings = React.lazy(loadCanvasBuilderSettings);
+export const preloadCanvasBuilderSettings = () => { loadCanvasBuilderSettings().catch(() => {}); };
 import { hasCanvasAccess } from '@/lib/canvasAccess';
 
 const BRAND = {
@@ -123,6 +127,7 @@ export default function RouteBuilderSettings({
 
     if (routeMode === 'canvas' && hasCanvasAccess(user)) {
         return (
+            <React.Suspense fallback={<div role="status" className="p-4 text-sm text-slate-400">Loading Canvas builder…</div>}>
             <CanvasBuilderSettings
                 drawnPolygon={drawnPolygon}
                 hasDrawnArea={hasDrawnArea}
@@ -137,6 +142,7 @@ export default function RouteBuilderSettings({
                 onDraftDirtyChange={onCanvasDraftDirtyChange}
                 onPreviewChange={onCanvasPreviewChange}
             />
+            </React.Suspense>
         );
     };
 

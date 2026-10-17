@@ -9,9 +9,7 @@ import { Button } from "@/components/ui/button";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from
 "@/components/ui/dropdown-menu";
-import AiAssistant from '@/components/help/AiAssistant';
-import OnboardingWizard from '@/components/onboarding/OnboardingWizard';
-import MarketOnboarding from '@/components/onboarding/MarketOnboarding'; import FirstAreaWalkthrough from '@/components/onboarding/FirstAreaWalkthrough';
+import FirstAreaWalkthrough from '@/components/onboarding/FirstAreaWalkthrough';
 import { ThemeProvider, useTheme } from '@/components/theme/ThemeProvider';
 import { getAppRole, isManagerAccount, isRepAccount } from '@/lib/roles';
 import { clearFieldRoutesInspectionQueue } from '@/components/fieldroutes/fieldRoutesInspectionQueue';
@@ -39,6 +37,19 @@ class ErrorBoundary extends React.Component {
     return this.props.children;
   }
 }
+
+// These overlays pulled the assistant's markdown renderer and the animation
+// library into the first download of every page. They now load only for an
+// account and page where they can actually appear; each still applies its own
+// full visibility rules after loading.
+const AiAssistant = React.lazy(() => import('@/components/help/AiAssistant'));
+const OnboardingWizard = React.lazy(() => import('@/components/onboarding/OnboardingWizard'));
+const MarketOnboarding = React.lazy(() => import('@/components/onboarding/MarketOnboarding'));
+
+const isAssistantHiddenPath = (path) => path.endsWith('Home') || path === '/' || path.endsWith('RepHome');
+const mayShowOnboardingWizard = (user) => !!user && !user.has_seen_onboarding && !!user.app_role && user.app_role !== 'manager';
+const mayShowMarketOnboarding = (user) => user?.app_role === 'manager'
+  && !(user.has_pulled_data || user.has_defined_market || user.territory_zip_codes?.length > 0 || user.area_pulls_count > 0);
 
 function LayoutInner({ children }) {
   const { accent } = useTheme();
@@ -366,9 +377,10 @@ function LayoutInner({ children }) {
             {!isRoleSelectPage && <AutoDrivingStatus />}
             <main className="flex-1 relative overflow-hidden">
                 <ErrorBoundary>{children}</ErrorBoundary>
-                <AiAssistant />
-                <OnboardingWizard user={user} />
-                <MarketOnboarding
+                <React.Suspense fallback={null}>
+                {!isAssistantHiddenPath(window.location.pathname) && <AiAssistant />}
+                {mayShowOnboardingWizard(user) && <OnboardingWizard user={user} />}
+                {mayShowMarketOnboarding(user) && <MarketOnboarding
           user={user}
           onComplete={({ method, shape }) => {
             if (method === 'draw') {
@@ -376,7 +388,8 @@ function LayoutInner({ children }) {
               // Navigate to Home and trigger drawing mode with chosen shape
               window.location.href = createPageUrl('Home') + '?startDraw=true&onboarding=precision' + (shape ? `&drawShape=${shape}` : '');
             }
-          }} />
+          }} />}
+                </React.Suspense>
                 <FirstAreaWalkthrough user={user} />
             </main>
 

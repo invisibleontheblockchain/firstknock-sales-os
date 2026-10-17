@@ -44,8 +44,13 @@ import {
   toggleVisiblePropertySelection,
 } from '@/components/logic/routeBulkActions';
 import RepMapView from '@/components/rep/RepMapView';
-import CanvasFieldView from '@/components/rep/CanvasFieldView';
-import CanvasResidentialFieldView from '@/components/rep/CanvasResidentialFieldView';
+// Canvas field views carry the vector basemap and only Canvas assignments open
+// them, so route-only reps no longer download them with Run Route.
+const LazyCanvasFieldView = React.lazy(() => import('@/components/rep/CanvasFieldView'));
+const LazyCanvasResidentialFieldView = React.lazy(() => import('@/components/rep/CanvasResidentialFieldView'));
+const fieldViewFallback = <div className="h-screen bg-black" aria-hidden="true" />;
+const CanvasFieldView = (props) => <React.Suspense fallback={fieldViewFallback}><LazyCanvasFieldView {...props} /></React.Suspense>;
+const CanvasResidentialFieldView = (props) => <React.Suspense fallback={fieldViewFallback}><LazyCanvasResidentialFieldView {...props} /></React.Suspense>;
 import { createCanvasOfflineStore } from '@/components/canvas/canvasOfflineStore';
 import { getAllCanvasAssignmentIndex, getMyCanvasAssignments } from '@/components/canvas/canvasProductionClient';
 import RepHeader from '@/components/rep/RepHeader';
