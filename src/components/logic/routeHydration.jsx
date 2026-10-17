@@ -5,6 +5,7 @@ import {
     hasCompleteRouteMapPoints,
     hydrateRouteWithLookup,
     indexRouteProperties,
+    isImportedRoute,
     isRouteHydrationCacheable,
     lookupRoutePropertiesInBatches,
     orderRouteProperties,
@@ -163,11 +164,7 @@ export async function hydrateRoutesForMap(routes = [], userEmail = null, existin
             ...hashes.map(hash => existingByHash.get(String(hash))).filter(Boolean),
         ]);
     });
-    const imported = prepared.filter(route => !hasCompleteRouteMapPoints(route) && route.id && (
-        ['csv_import', 'redfin_csv'].includes(route.metadata?.source)
-        || route.metadata?.imports?.length > 0
-        || route.property_hashes?.some(hash => String(hash).startsWith('import_'))
-    ));
+    const imported = prepared.filter(route => !hasCompleteRouteMapPoints(route) && route.id && isImportedRoute(route));
     const batchedIds = new Set();
     // Imported collections need one authorized read per group, rather than a
     // function/auth/manifest read for every route whenever the map mounts.

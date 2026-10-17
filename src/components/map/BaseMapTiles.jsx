@@ -1,6 +1,7 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useMap } from 'react-leaflet';
 import RecoveringTileLayer from '@/components/map/RecoveringTileLayer';
+import ZoomOutBackdrop from '@/components/map/ZoomOutBackdrop';
 import MapAttributionControl from '@/components/map/MapAttributionControl';
 import { CARTO_ATTRIBUTION, ESRI_IMAGERY_ATTRIBUTION } from '@/components/map/mapAttribution';
 
@@ -80,14 +81,29 @@ export default function BaseMapTiles({ mapTheme, routeMode = 'precision' }) {
         </>
     );
 
+    return <PrecisionBaseMap mapTheme={mapTheme} precisionTheme={precisionTheme} showLabels={showLabels} />;
+}
+
+function PrecisionBaseMap({ mapTheme, precisionTheme, showLabels }) {
+    const url = BASEMAP_URLS[precisionTheme] || BASEMAP_URLS.dark;
+    // The zoom-out backdrop waits for the first full view of real tiles.
+    const [firstViewLoaded, setFirstViewLoaded] = useState(false);
+    const basemapEvents = useMemo(() => ({ load: () => setFirstViewLoaded(true) }), []);
+    useEffect(() => {
+        // A tile that never settles must not leave zoom-outs without a backdrop.
+        const timer = setTimeout(() => setFirstViewLoaded(true), 6000);
+        return () => clearTimeout(timer);
+    }, []);
     return (
         <>
             <MapAttributionControl />
             <MapBackdrop mapTheme={mapTheme} />
+            {firstViewLoaded && <ZoomOutBackdrop url={url} />}
             <RecoveringTileLayer
-                key={BASEMAP_URLS[precisionTheme] || BASEMAP_URLS.dark}
-                url={BASEMAP_URLS[precisionTheme] || BASEMAP_URLS.dark}
+                key={url}
+                url={url}
                 attribution={['satellite', 'hybrid', 'terrain'].includes(precisionTheme) ? ESRI_IMAGERY_ATTRIBUTION : CARTO_ATTRIBUTION}
+                eventHandlers={basemapEvents}
                 {...TILE_PERF}
             />
             {showLabels && (
