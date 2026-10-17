@@ -498,6 +498,14 @@ export async function tryRoadMatrixOptimize(routeProperties, {
     // left as many checks open is repeating questions that cannot complete
     // (for example next to an unresolved stop); another pass would do the same.
     let previousRemaining = Infinity;
+    // Orders this search already accepted, with the checks left open then, and
+    // the best of them (savings against the original, measured within each
+    // pass). A pass that returns one of those orders with no fewer checks open
+    // has started flipping between orders; more passes would only repeat it.
+    const acceptedOrders = new Map();
+    let bestAccepted = null;
+    const orderKey = order => order.map(propertyKey).join('|');
+    const savingsOf = result => Number(result?.objective?.estimatedSavings) || 0;
     const shouldContinue = (proof, result, returnedCoverage, pass) => {
         if (returnedCoverage?.cycle_complete) return false;
         const stalled = !result && returnedCoverage && returnedCoverage.remaining_windows >= previousRemaining;
@@ -546,6 +554,9 @@ export async function tryRoadMatrixOptimize(routeProperties, {
         accepted: accepted ? { ...accepted, order: compact(accepted.order), routingMetadata: withoutGeometry(accepted.routingMetadata) } : null,
         baselineMiles, acceptedPartialProof, localSavings, searchContinuation,
         previousRemaining: Number.isFinite(previousRemaining) ? previousRemaining : null,
+        acceptedOrders: [...acceptedOrders].map(([key, remaining]) => [key, Number.isFinite(remaining) ? remaining : null]),
+        bestAccepted: bestAccepted ? { ...bestAccepted, order: compact(bestAccepted.order),
+            routingMetadata: withoutGeometry(bestAccepted.routingMetadata) } : null,
         knownUnresolved: [...knownUnresolved], lastReason,
         lastMeasurement: lastMeasurement ? { ...lastMeasurement, routingMetadata: withoutGeometry(lastMeasurement.routingMetadata) } : null });
     let startPass = 1;
@@ -557,6 +568,8 @@ export async function tryRoadMatrixOptimize(routeProperties, {
         baselineMiles = resume.baselineMiles ?? null; acceptedPartialProof = resume.acceptedPartialProof ?? null;
         localSavings = resume.localSavings || 0; searchContinuation = resume.searchContinuation ?? null;
         previousRemaining = resume.previousRemaining ?? Infinity;
+        for (const [key, remaining] of resume.acceptedOrders || []) acceptedOrders.set(key, remaining ?? Infinity);
+        bestAccepted = resume.bestAccepted ? { ...resume.bestAccepted, order: restore(resume.bestAccepted.order) } : null;
         for (const [id, reason] of resume.knownUnresolved || []) knownUnresolved.set(id, reason);
         lastReason = resume.lastReason; lastMeasurement = resume.lastMeasurement;
     }
@@ -677,6 +690,18 @@ export async function tryRoadMatrixOptimize(routeProperties, {
                     ...(baselineMiles !== null ? { road_search_baseline_distance: baselineMiles } : {}) },
             };
             currentProperties = accepted.order;
+        }
+        if (result && accepted) {
+            const key = orderKey(accepted.order);
+            const remaining = returnedCoverage ? returnedCoverage.remaining_windows : Infinity;
+            const earlier = acceptedOrders.get(key);
+            if (!bestAccepted || savingsOf(accepted) > savingsOf(bestAccepted)) bestAccepted = accepted;
+            if (earlier !== undefined && remaining >= earlier) {
+                accepted = { ...bestAccepted, routingMetadata: { ...bestAccepted.routingMetadata,
+                    road_search_passes: pass, road_search_stop_reason: 'repeated_order' } };
+                break;
+            }
+            acceptedOrders.set(key, remaining);
         }
         if (!shouldContinue(verified, result, returnedCoverage, pass)) break;
         if (!accepted) currentProperties = withRecoveredAccess(currentProperties, meta);
