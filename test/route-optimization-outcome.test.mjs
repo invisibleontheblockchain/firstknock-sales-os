@@ -596,7 +596,13 @@ function actionHarness(reason, measurement) {
         '@/lib/routeBounds': bounds, '@/lib/parkedCarLocation': {},
         '@/lib/optimizeProgressToast': { startOptimizeProgress: () => ({ update() {}, stop() {} }) },
         '@/lib/roadOptimizationProgress': { LONG_OPTIMIZATION_STOPS: 150, startRoadOptimizationJob: () => ({ startRoute() {}, progress() {}, finish() {} }) },
-        '@/lib/roadMatrixOptimize': { tryRoadMatrixOptimize: async (_, options) => { options.onOutcome(reason, measurement); return null; } },
+        // One pass that declines is the whole search here.
+        '@/lib/backgroundRouteImprovement': { claimRouteOptimization: () => 1, routeGuardSnapshot: () => ({}),
+            finishInBackground: async () => ({ saved: false }),
+            optimizeFirstThenFinish: () => {
+                const first = Promise.resolve({ result: null, reason, measurement, more: false });
+                return { first, final: first };
+            } },
         '@/lib/routeOptimizePersistence': { syncOptimizedRoute: async () => {} },
         '@/lib/routeOptimizationOutcome': outcomes, '@/lib/routeRoadVerification': {},
         '@/lib/routeContextGuard': {}, '@/lib/routeOriginModes': origins, '@/lib/routeOptimizeUpdate': updates,

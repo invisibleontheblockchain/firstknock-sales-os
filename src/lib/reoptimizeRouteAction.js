@@ -20,7 +20,7 @@ import { isValidRoutePoint } from '@/lib/routeBounds';
 import { captureParkedCarLocation, isLowAccuracyCapture, lowAccuracyConfirmationMessage } from '@/lib/parkedCarLocation';
 import { startOptimizeProgress } from '@/lib/optimizeProgressToast';
 import { LONG_OPTIMIZATION_STOPS, startRoadOptimizationJob } from '@/lib/roadOptimizationProgress';
-import { tryRoadMatrixOptimize } from '@/lib/roadMatrixOptimize';
+import { claimRouteOptimization, finishInBackground, optimizeFirstThenFinish, routeGuardSnapshot } from '@/lib/backgroundRouteImprovement';
 import { buildRoadOptimizationAttempt, describeAppliedRoadOptimization, describeRoadOptimizationOutcome } from '@/lib/routeOptimizationOutcome';
 import { countChangedRouteStops, persistOptimizedRoute, syncOptimizedRoute } from '@/lib/routeOptimizePersistence';
 import { ROAD_VERIFICATION, stampRoadVerification } from '@/lib/routeRoadVerification';
@@ -35,6 +35,8 @@ import {
 } from '@/lib/routeOptimizeUpdate';
 
 const TOAST_ID = 'reoptimize-route';
+// Pass 1 is saved; the remaining passes save only a shorter order onto an untouched route.
+const BACKGROUND_NOTE = ' Still checking the remaining neighborhoods in the background.';
 
 const propertyKey = (property) => property.address_hash || property.legacy_hash || property.id;
 
@@ -101,6 +103,10 @@ export async function reoptimizeRoute(route, options = {}, deps = {}) {
     // looks like a hang. Stopped in `finally`, so no path leaves it running.
     let progress = null;
     let job = null;
+    // Set once pass 1 is saved and the rest of the search runs on its own;
+    // `background` settles when it ends ({ saved, miles, reason }).
+    let backgrounded = false;
+    const run = { background: null };
     try {
         const hashes = (route.property_hashes || (route.properties || []).map(propertyKey)).filter(Boolean);
         if (!hashes.length) { toast.error('No properties found for this route.', { id: TOAST_ID }); return; }
@@ -226,18 +232,63 @@ export async function reoptimizeRoute(route, options = {}, deps = {}) {
         // itself. "The road engine measured your order and found nothing better"
         // is a verification; "the road engine was unreachable" is not, and the two
         // used to be the same anonymous null.
-        let roadDeclineReason = null;
-        let roadMeasurement = null;
-        const roadMatrixResult = await tryRoadMatrixOptimize(routeProperties, {
+        // First result fast: pass 1 is saved and shown as soon as it is done;
+        // the remaining passes continue in the background and save only a
+        // measurably shorter order onto an untouched route.
+        const optimizeRun = claimRouteOptimization(route.id);
+        const search = optimizeFirstThenFinish(routeProperties, {
             client,
             start: isValidRoutePoint(start) ? start : null,
             end: isValidRoutePoint(end) ? end : null,
             searchCoverage: shareSearchCoverage ? route.metadata?.road_search_coverage : null,
             maxSearchPasses: 8,
-            onProgress: ({ pass, remainingWindows }) => progress.update(`Checking remaining neighborhoods (pass ${pass}; ${remainingWindows} checks left)...`),
+            // Passes after the first run in the background: their progress goes to
+            // the progress pill, never over the saved result's message.
             onSearchProgress: value => job?.progress(0, value),
-            onOutcome: (reason, measurement) => { roadDeclineReason = reason; roadMeasurement = measurement; }
         });
+        const firstPhase = await search.first;
+        const roadMatrixResult = firstPhase.result;
+        const roadDeclineReason = firstPhase.reason;
+        const roadMeasurement = firstPhase.measurement;
+        const session = {
+            startLocation: routeOriginMode !== ROUTE_ORIGIN_MODES.NONE ? start : null,
+            endLocation: routeOriginMode !== ROUTE_ORIGIN_MODES.NONE ? end : null,
+            routeOriginMode,
+        };
+        const continueInBackground = (savedRoute, firstResult) => {
+            if (!firstPhase.more) return;
+            backgrounded = true;
+            job?.finishInBackground();
+            run.background = finishInBackground({
+                final: search.final, firstResult, client,
+                snapshot: routeGuardSnapshot(savedRoute, { run: optimizeRun }),
+                save: async (finalResult, current, miles) => {
+                    const currentHashes = (current.property_hashes || []).map(String);
+                    const built = buildAppliedUpdate(finalResult, current, currentHashes);
+                    await persistOptimizedRoute({ route: { ...route, ...current }, update: built.routeUpdate,
+                        properties: built.appliedProperties, client, queryClient, setActiveRoute, session });
+                    toast.success(`Route improved by ${miles} mi while you worked.`, { duration: 6000 });
+                },
+                // Nothing shorter: keep the saved record accurate (coverage, verdict).
+                quiet: async (finalValue, current) => {
+                    const meta = finalValue.result?.routingMetadata || finalValue.measurement?.routingMetadata;
+                    if (!meta) return;
+                    const metadata = { ...(current.metadata || {}) };
+                    if (shareSearchCoverage && meta.road_search_coverage) metadata.road_search_coverage = meta.road_search_coverage;
+                    if (!finalValue.result) {
+                        metadata.last_optimization_attempt = buildRoadOptimizationAttempt(finalValue.reason, finalValue.measurement, {
+                            mode: optimizeMode, doorCount: routeProperties.length,
+                        });
+                    }
+                    const saved = await client.entities.SavedRoute.update(current.id, { metadata });
+                    await syncOptimizedRoute({ saved: { ...route, ...current, ...saved, metadata }, properties: routeProperties,
+                        queryClient, setActiveRoute, metadataOnly: true });
+                },
+            }).catch(error => {
+                console.warn('[reoptimizeRoute] background improvement was not saved', error);
+                return { saved: false, reason: 'save_failed' };
+            }).finally(() => job?.finish());
+        };
 
         // Every explicit Optimize click needs a visible driving verdict. A failed
         // check cannot fall through to an unverified reorder, even on a new route.
@@ -259,84 +310,86 @@ export async function reoptimizeRoute(route, options = {}, deps = {}) {
             const saved = await client.entities.SavedRoute.update(route.id, { metadata });
             await syncOptimizedRoute({ saved: { ...route, ...saved, metadata }, properties: routeProperties,
                 queryClient, setActiveRoute, metadataOnly: true });
-            toast[outcome.tone](outcome.message, {
+            toast[outcome.tone](`${outcome.message}${firstPhase.more ? BACKGROUND_NOTE : ''}`, {
                 id: TOAST_ID,
                 duration: outcome.tone === 'info' ? 6000 : 12000
             });
-            return;
+            continueInBackground({ ...route, ...saved, property_hashes: hashes }, null);
+            return run;
         }
 
-        const optimized = roadMatrixResult.order;
-        if (!optimized || optimized.length === 0) { toast.error('Optimization produced no results.', { id: TOAST_ID }); return; }
-        const optimizedHashes = optimized.map(propertyKey).filter(Boolean);
-        const expectedHashes = new Set(hashes);
-        if (
-            optimizedHashes.length !== hashes.length
-            || new Set(optimizedHashes).size !== expectedHashes.size
-            || optimizedHashes.some(hash => !expectedHashes.has(hash))
-        ) {
-            throw new Error('Route integrity verification failed, so the existing route was left unchanged.');
+        function buildAppliedUpdate(result, baseRoute, baseHashes, baseProperties = routeProperties) {
+            const optimized = result.order;
+            if (!optimized || optimized.length === 0) throw new Error('Optimization produced no results.');
+            const optimizedHashes = optimized.map(propertyKey).filter(Boolean);
+            const expectedHashes = new Set(hashes);
+            if (
+                optimizedHashes.length !== hashes.length
+                || new Set(optimizedHashes).size !== expectedHashes.size
+                || optimizedHashes.some(hash => !expectedHashes.has(hash))
+            ) {
+                throw new Error('Route integrity verification failed, so the existing route was left unchanged.');
+            }
+            const objective = result.objective;
+            const appliedProperties = objective.applyCandidate ? optimized : baseProperties;
+            const appliedHashes = appliedProperties.map(propertyKey).filter(Boolean);
+            const hasWholeRouteDistance = Number.isFinite(objective.appliedDistance);
+            const newDistanceRounded = hasWholeRouteDistance ? Math.round(objective.appliedDistance * 100) / 100
+                : baseRoute.metrics?.distance ?? null;
+            const existingMetadata = { ...(baseRoute.metadata || {}) };
+            if (!shareSearchCoverage) delete existingMetadata.road_search_coverage;
+            // The same verdict contract generation writes, so a route's provenance
+            // means one thing regardless of which entry point last touched it.
+            const routingMetadata = {
+                ...result.routingMetadata,
+                ...stampRoadVerification({}, hasWholeRouteDistance ? ROAD_VERIFICATION.ADOPTED : ROAD_VERIFICATION.PARTIAL, {
+                    reason: hasWholeRouteDistance ? null : 'verified_neighborhoods_only',
+                    measuredMiles: hasWholeRouteDistance ? newDistanceRounded : null
+                }).metadata
+            };
+            if (!shareSearchCoverage) delete routingMetadata.road_search_coverage;
+            const routeUpdate = usingCustomAnchors
+                ? buildRouteAnchorsUpdate({
+                    start,
+                    end,
+                    order: appliedHashes,
+                    distanceMiles: newDistanceRounded,
+                    existingMetrics: baseRoute.metrics,
+                    existingMetadata,
+                    routingMetadata
+                })
+                : buildRouteOptimizeUpdate({
+                    optimizeMode,
+                    order: appliedHashes,
+                    distanceMiles: newDistanceRounded,
+                    existingMetrics: baseRoute.metrics,
+                    existingMetadata,
+                    routingMetadata,
+                    carCapture: carAnchor
+                });
+            if (usingPrivateAnchor) {
+                routeUpdate.route_origin_mode = ROUTE_ORIGIN_MODES.PRIVATE_ANCHOR_ROUND_TRIP;
+                routeUpdate.metadata.route_bounds = { enabled: true, mode: ROUTE_ORIGIN_MODES.PRIVATE_ANCHOR_ROUND_TRIP };
+            } else {
+                delete routeUpdate.metadata.anchor;
+            }
+            routeUpdate.metadata.last_optimization_attempt = buildRoadOptimizationAttempt(null, {
+                routingMetadata: result.routingMetadata,
+            }, { mode: optimizeMode, doorCount: routeProperties.length, applied: true });
+            routeUpdate.metadata.last_optimization_attempt.stops_reordered = countChangedRouteStops(baseHashes, appliedHashes);
+            if (!hasWholeRouteDistance) {
+                // Preserve the prior estimate; independently checked local savings
+                // cannot be subtracted from an unverified whole-trip total.
+                routeUpdate.metrics = { ...(baseRoute.metrics || {}), house_count: appliedHashes.length };
+            }
+            return { routeUpdate, appliedProperties, appliedHashes, objective, hasWholeRouteDistance, newDistanceRounded };
         }
-        const objective = roadMatrixResult.objective;
-        const appliedProperties = objective.applyCandidate ? optimized : routeProperties;
-        const appliedHashes = appliedProperties.map(propertyKey).filter(Boolean);
-        const hasWholeRouteDistance = Number.isFinite(objective.appliedDistance);
-        const newDistanceRounded = hasWholeRouteDistance ? Math.round(objective.appliedDistance * 100) / 100
-            : route.metrics?.distance ?? null;
-        const existingMetadata = { ...(route.metadata || {}) };
-        if (!shareSearchCoverage) delete existingMetadata.road_search_coverage;
-        // The same verdict contract generation writes, so a route's provenance
-        // means one thing regardless of which entry point last touched it.
-        const routingMetadata = {
-            ...roadMatrixResult.routingMetadata,
-            ...stampRoadVerification({}, hasWholeRouteDistance ? ROAD_VERIFICATION.ADOPTED : ROAD_VERIFICATION.PARTIAL, {
-                reason: hasWholeRouteDistance ? null : 'verified_neighborhoods_only',
-                measuredMiles: hasWholeRouteDistance ? newDistanceRounded : null
-            }).metadata
-        };
-        if (!shareSearchCoverage) delete routingMetadata.road_search_coverage;
-        const routeUpdate = usingCustomAnchors
-            ? buildRouteAnchorsUpdate({
-                start,
-                end,
-                order: appliedHashes,
-                distanceMiles: newDistanceRounded,
-                existingMetrics: route.metrics,
-                existingMetadata,
-                routingMetadata
-            })
-            : buildRouteOptimizeUpdate({
-                optimizeMode,
-                order: appliedHashes,
-                distanceMiles: newDistanceRounded,
-                existingMetrics: route.metrics,
-                existingMetadata,
-                routingMetadata,
-                carCapture: carAnchor
-            });
-        if (usingPrivateAnchor) {
-            routeUpdate.route_origin_mode = ROUTE_ORIGIN_MODES.PRIVATE_ANCHOR_ROUND_TRIP;
-            routeUpdate.metadata.route_bounds = { enabled: true, mode: ROUTE_ORIGIN_MODES.PRIVATE_ANCHOR_ROUND_TRIP };
-        } else {
-            delete routeUpdate.metadata.anchor;
-        }
-        routeUpdate.metadata.last_optimization_attempt = buildRoadOptimizationAttempt(null, {
-            routingMetadata: roadMatrixResult.routingMetadata,
-        }, { mode: optimizeMode, doorCount: routeProperties.length, applied: true });
-        routeUpdate.metadata.last_optimization_attempt.stops_reordered = countChangedRouteStops(hashes, appliedHashes);
-        if (!hasWholeRouteDistance) {
-            // Preserve the prior estimate; independently checked local savings
-            // cannot be subtracted from an unverified whole-trip total.
-            routeUpdate.metrics = { ...(route.metrics || {}), house_count: appliedHashes.length };
-        }
-        await persistOptimizedRoute({
+        const { routeUpdate, appliedProperties, appliedHashes, objective, hasWholeRouteDistance, newDistanceRounded }
+            = buildAppliedUpdate(roadMatrixResult, route, hashes);
+        const savedRoute = await persistOptimizedRoute({
             route, update: routeUpdate, properties: appliedProperties, client, queryClient, setActiveRoute,
             // Personal anchors belong only to the current map session.
-            session: {
-                startLocation: routeOriginMode !== ROUTE_ORIGIN_MODES.NONE ? start : null,
-                endLocation: routeOriginMode !== ROUTE_ORIGIN_MODES.NONE ? end : null,
-                routeOriginMode,
-            },
+            session,
         });
         // Restore the map view so fitBounds cannot zoom out on a reorder.
         if (savedView && mapRef?.current) { try { mapRef.current.setView(savedView.center, savedView.zoom, { animate: false }); } catch { /* map already gone */ } }
@@ -360,9 +413,10 @@ export async function reoptimizeRoute(route, options = {}, deps = {}) {
             ? `${base} ${savingsLabel} (${newDistanceRounded} mi ${estimateLabel}).`
             : `${base} (${newDistanceRounded} mi ${estimateLabel})`;
         toast[changedStops > 0 ? partialOutcome?.tone || 'success' : usingCustomAnchors ? 'success' : 'info'](
-            msg,
+            `${msg}${firstPhase.more ? BACKGROUND_NOTE : ''}`,
             { id: TOAST_ID, duration: partialOutcome?.tone === 'warning' ? 12000 : 6000 }
         );
+        continueInBackground(savedRoute, roadMatrixResult);
     } catch (e) {
         console.error('Re-optimize error:', e);
         toast.error(
@@ -371,6 +425,7 @@ export async function reoptimizeRoute(route, options = {}, deps = {}) {
         );
     } finally {
         progress?.stop();
-        job?.finish();
+        if (!backgrounded) job?.finish();
     }
+    return run;
 }

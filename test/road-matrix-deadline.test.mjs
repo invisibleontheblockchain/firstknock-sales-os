@@ -158,72 +158,88 @@ const deadlineRoute = properties => ({ id: 'remaining-search-deadline', properti
     property_hashes: properties.map(property => property.address_hash), route_origin_mode: 'none',
     metrics: { distance: 449.796, house_count: properties.length } });
 
-test('the observed 377-stop timings leave time for a fourth pass that completes the final check', async t => {
+// The saved route as the mock last wrote it, readable by the background
+// save-time check; no door has been knocked.
+function savingClient(route, saved, invoke) {
+    let latest = route;
+    return { functions: { invoke }, entities: {
+        SavedRoute: {
+            update: async (_id, patch) => { saved.push(patch); latest = { ...latest, ...patch }; return latest; },
+            get: async () => latest,
+        },
+        InteractionLog: { filter: async () => [] },
+    } };
+}
+
+test('the observed 377-stop timings save pass 1 at once and finish the final check in the background', async t => {
     useClock(t);
     const properties = homes(377), route = deadlineRoute(properties), saved = [], requests = [];
-    const pending = action(route, { mode: 'route_only' }, { client: {
-        functions: { invoke: (_name, payload) => {
-            const pass = requests.length; requests.push(payload);
-            return new Promise(resolve => setTimeout(() => resolve(remainingSearchResult(payload.properties, pass)),
-                observedPassTimes[pass] ?? 61200));
-        } },
-        entities: { SavedRoute: { update: async (_id, patch) => { saved.push(patch); return { ...route, ...patch }; } } },
-    } });
+    const pending = action(route, { mode: 'route_only' }, { client: savingClient(route, saved, (_name, payload) => {
+        const pass = requests.length; requests.push(payload);
+        return new Promise(resolve => setTimeout(() => resolve(remainingSearchResult(payload.properties, pass)),
+            observedPassTimes[pass] ?? 61200));
+    }) });
     await flush();
-    for (const [pass, duration] of observedPassTimes.entries()) {
+    t.mock.timers.tick(observedPassTimes[0]); await flush();
+    const run = await pending;
+    assert.equal(saved.length, 1, 'pass 1 is saved as soon as it is done');
+    assert.equal(saved[0].metadata.road_search_passes, 1);
+    assert.equal(saved[0].property_hashes.length, 377);
+    assert.equal(new Set(saved[0].property_hashes).size, 377);
+    assert.deepEqual([...saved[0].property_hashes].sort(), [...route.property_hashes].sort());
+    for (const [index, duration] of observedPassTimes.slice(1).entries()) {
         t.mock.timers.tick(duration); await flush();
-        assert.equal(requests.length, pass + 2);
-        assert.equal(saved.length, 0, 'the action only saves after its bounded search finishes');
+        assert.equal(requests.length, index + 3);
+        assert.equal(saved.length, 1, 'background passes save nothing until the search ends');
     }
     assert.equal(requests[3].search_phase, 'remaining_neighborhoods');
     assert.equal(requests[3].search_coverage.remaining_windows, 1);
     assert.deepEqual(requests[3].comparison_order, route.property_hashes);
-    t.mock.timers.tick(61200); await pending;
-    assert.equal(saved.length, 1);
-    const metadata = saved[0].metadata;
-    assert.equal(metadata.road_search_passes, 4);
-    assert.equal(metadata.road_search_coverage.remaining_windows, 0);
-    assert.equal(metadata.road_search_stop_reason, undefined);
-    assert.equal(metadata.road_verification.verified, true);
-    assert.equal(saved[0].property_hashes.length, 377);
-    assert.equal(new Set(saved[0].property_hashes).size, 377);
-    assert.deepEqual([...saved[0].property_hashes].sort(), [...route.property_hashes].sort());
+    t.mock.timers.tick(61200); await run.background;
+    // Nothing shorter: the finished search is recorded on the untouched route, no reorder.
+    assert.equal(saved.length, 2);
+    assert.equal(saved[1].property_hashes, undefined);
+    assert.equal(saved[1].metadata.road_search_coverage.remaining_windows, 0);
+    assert.equal(saved[1].metadata.road_verification.verified, true);
     t.mock.timers.tick(300000); await flush();
-    assert.equal(saved.length, 1);
+    assert.equal(saved.length, 2);
 });
 
 test('a late fourth-pass response cannot cross the five-minute action deadline or save twice', async t => {
     useClock(t);
     const properties = homes(377), route = deadlineRoute(properties), saved = [];
-    let calls = 0, settled = false;
+    let calls = 0;
     const remainingBudget = 300000 - observedPassTimes.reduce((sum, duration) => sum + duration, 0);
-    const pending = action(route, { mode: 'route_only' }, { client: {
-        functions: { invoke: (_name, payload) => {
-            const pass = calls++;
-            assert.equal(payload.search_continuation, pass ? `private-deadline-token-${pass - 1}` : undefined);
-            return new Promise(resolve => setTimeout(() => {
-                const result = remainingSearchResult(payload.properties, pass);
-                result.data.search_continuation = `private-deadline-token-${pass}`;
-                resolve(result);
-            }, observedPassTimes[pass] ?? remainingBudget + 1000));
-        } },
-        entities: { SavedRoute: { update: async (_id, patch) => { saved.push(patch); return { ...route, ...patch }; } } },
-    } }).then(() => { settled = true; });
+    const pending = action(route, { mode: 'route_only' }, { client: savingClient(route, saved, (_name, payload) => {
+        const pass = calls++;
+        assert.equal(payload.search_continuation, pass ? `private-deadline-token-${pass - 1}` : undefined);
+        return new Promise(resolve => setTimeout(() => {
+            const result = remainingSearchResult(payload.properties, pass);
+            result.data.search_continuation = `private-deadline-token-${pass}`;
+            resolve(result);
+        }, observedPassTimes[pass] ?? remainingBudget + 1000));
+    }) });
     await flush();
-    for (const duration of observedPassTimes) { t.mock.timers.tick(duration); await flush(); }
+    t.mock.timers.tick(observedPassTimes[0]); await flush();
+    const run = await pending;
+    assert.equal(saved.length, 1, 'pass 1 is saved as soon as it is done');
+    let settled = false;
+    run.background.then(() => { settled = true; });
+    for (const duration of observedPassTimes.slice(1)) { t.mock.timers.tick(duration); await flush(); }
     assert.equal(calls, 4);
     t.mock.timers.tick(remainingBudget - 1); await flush();
-    assert.equal(settled, false); assert.equal(saved.length, 0);
-    t.mock.timers.tick(1); await pending;
-    assert.equal(saved.length, 1);
-    assert.equal(saved[0].metadata.road_search_coverage.remaining_windows, 1);
-    assert.equal(saved[0].metadata.road_search_stop_reason, 'deadline_exceeded');
-    assert.equal(saved[0].metadata.road_verification.verified, true);
+    assert.equal(settled, false); assert.equal(saved.length, 1);
+    t.mock.timers.tick(1); await run.background;
+    // The deadline ends the search with the pass-1 order still best: its
+    // coverage is recorded, the order is not touched.
+    assert.equal(saved.length, 2);
+    assert.equal(saved[1].property_hashes, undefined);
+    assert.equal(saved[1].metadata.road_search_coverage.remaining_windows, 1);
     assert.doesNotMatch(JSON.stringify(saved), /private-deadline-token|search_continuation|searchContinuation/);
-    const snapshot = structuredClone(saved[0]);
+    const snapshot = structuredClone(saved);
     t.mock.timers.tick(1000); await flush();
-    assert.equal(calls, 4); assert.equal(saved.length, 1);
-    assert.deepEqual(saved[0], snapshot, 'late completed coverage cannot alter the retained verified route');
+    assert.equal(calls, 4);
+    assert.deepEqual(saved, snapshot, 'a late response cannot alter the retained verified route');
 });
 
 test('a continuation is declined when less than its useful 60-second budget remains', async t => {

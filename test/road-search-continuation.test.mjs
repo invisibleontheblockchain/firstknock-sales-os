@@ -20,6 +20,26 @@ before(async () => {
 });
 after(async () => { Object.assign(toast, oldToasts); await vite?.close(); });
 
+// Optimize saves pass 1 and finishes in the background. Give the mock client
+// the reads the background save-time check needs (the route as last saved, no
+// door knocked) and wait for the background to settle.
+async function run(selected, options, deps = {}) {
+    const client = deps.client;
+    let latest = null;
+    const wrapped = client?.entities?.SavedRoute ? { ...client, entities: { ...client.entities,
+        SavedRoute: { ...client.entities.SavedRoute,
+            update: async (id, patch) => {
+                const value = await client.entities.SavedRoute.update(id, patch);
+                latest = { ...(latest || selected), ...(value || {}), ...patch };
+                return value;
+            },
+            get: client.entities.SavedRoute.get || (async () => latest || selected) },
+        InteractionLog: client.entities.InteractionLog || { filter: async () => [] } } } : client;
+    const result = await action(selected, options, { ...deps, client: wrapped });
+    await result?.background;
+    return result;
+}
+
 const properties = ['A', 'B', 'C'].map((address_hash, i) => ({ address_hash, lat: 35, lng: -81 + i / 10000 }));
 const hashes = properties.map(p => p.address_hash), candidate = ['B', 'A', 'C'];
 const key = i => String(i).padStart(32, '0');
@@ -285,9 +305,11 @@ test('no-op then accepted continuation persists one verified order and reloads i
         assert.deepEqual(payload.search_coverage, calls === 3 ? coverage(2) : coverage(5));
         return withToken(response({ ledger: coverage(5), order: candidate, meta: { input_measured: 8 } }), 'private-action-final');
     } }, entities: { SavedRoute: { update: async (_id, patch) => { writes++; saved = { ...(saved || route), ...patch }; return saved; } } } };
-    await action(route, { mode: 'route_only' }, { client, queryClient: queries, setActiveRoute: updater => { active = updater(active); } });
+    await run(route, { mode: 'route_only' }, { client, queryClient: queries, setActiveRoute: updater => { active = updater(active); } });
     assert.equal(calls, 3);
-    assert.equal(writes, 1, 'intermediate no-op must not publish a competing route update');
+    // Pass 1 (a no-op) records its verdict at once; the background saves the
+    // shorter order it found later, onto the untouched route.
+    assert.equal(writes, 2);
     assert.deepEqual(active.properties.map(p => p.address_hash), candidate);
     assert.deepEqual(queries.getQueryData(['savedRoutes', 'manager'])[0].property_hashes, candidate);
     assert.deepEqual(saved.metadata.road_search_coverage, coverage(5));
@@ -297,10 +319,10 @@ test('no-op then accepted continuation persists one verified order and reloads i
     assert.equal(saved.metrics.distance, 8);
     assert.doesNotMatch(JSON.stringify({ saved, active, cached: queries.getQueryData(['savedRoutes', 'manager']),
         map: queries.getQueryData(['routeMap', 'manager', route.id]), messages }), /private-action|search_continuation|searchContinuation/);
-    assert.ok(messages.some(value => /Saved ~2 estimated miles/.test(value.message)));
-    assert.ok(messages.some(value => /remaining neighborhoods \(pass 2; 4 checks left\)/.test(value.message)));
+    assert.ok(messages.some(value => /Still checking the remaining neighborhoods in the background/.test(value.message)));
+    assert.ok(messages.some(value => /Route improved by 2 mi while you worked/.test(value.message)));
     const reopened = queries.getQueryData(['routeMap', 'manager', route.id]);
-    await action(reopened, { mode: 'route_only' }, { client, setActiveRoute: updater => { active = updater(active); } });
+    await run(reopened, { mode: 'route_only' }, { client, setActiveRoute: updater => { active = updater(active); } });
     assert.equal(calls, 4);
     assert.deepEqual(saved.property_hashes, candidate);
     assert.equal(saved.metadata.last_optimization_attempt.route_changed, false);
@@ -314,7 +336,7 @@ test('an unchanged bounded action saves cumulative coverage and reports the eigh
     let calls = 0, patch;
     const client = { functions: { invoke: async () => response({ ledger: coverage(++calls, 20) }) },
         entities: { SavedRoute: { update: async (_id, update) => { patch = update; return { ...route, ...update }; } } } };
-    await action(route, { mode: 'route_only' }, { client });
+    await run(route, { mode: 'route_only' }, { client });
     assert.equal(calls, 8);
     assert.equal(patch.property_hashes, undefined);
     assert.deepEqual(patch.metadata.road_search_coverage, coverage(8, 20));
@@ -346,7 +368,7 @@ test('personal home, car and private anchors continue only in memory and never s
                     return calls === 1 ? response() : response({ ledger: coverage(5),
                         ...(applied ? { selected: 'road_aware', order: candidate } : {}) });
                 } }, entities: { SavedRoute: { update: async (_id, update) => { patch = update; return { ...initial, ...update }; } } } };
-                await action(initial, mode === 'anchor_round_trip' ? {} : { mode, homeBase: anchor },
+                await run(initial, mode === 'anchor_round_trip' ? {} : { mode, homeBase: anchor },
                     { client, user: { id: 'manager' } });
                 assert.equal(calls, 2);
                 assert.equal(patch.metadata.road_search_coverage, undefined);
@@ -374,7 +396,7 @@ test('shared custom bounds pass saved coverage and retain only its safe scheduli
         return response({ ledger: { ...coverage(5), provider_error: 'private', start_location: start },
             selected: 'road_aware', order: candidate });
     } }, entities: { SavedRoute: { update: async (_id, update) => { patch = update; return { ...initial, ...update }; } } } };
-    await action(initial, { anchors: { start, end } }, { client });
+    await run(initial, { anchors: { start, end } }, { client });
     assert.equal(calls, 1);
     assert.deepEqual(patch.metadata.road_search_coverage, coverage(5));
     assert.deepEqual(patch.start_location, start);
@@ -393,7 +415,7 @@ test('377-door route-only Optimize finishes the 45 remaining checks after reorde
     const selected = { ...route, property_hashes: before, properties: homes, allProperties: homes,
         metrics: { distance: 273.77, house_count: 377 } };
     let calls = 0, saves = 0, saved;
-    await action(selected, { mode: 'route_only' }, {
+    await run(selected, { mode: 'route_only' }, {
         // Neither territory homes nor account-wide history have loaded.
         effectiveProperties: [],
         client: { functions: { invoke: async (name, payload) => {
@@ -407,19 +429,20 @@ test('377-door route-only Optimize finishes the 45 remaining checks after reorde
                 meta: { input_measured: calls === 1 ? 273.77 : 270.43,
                     winning_route_distance: 270.43, road_matrix_source: 'test-roads', road_matrix_version: 'v1' } });
         } }, entities: { SavedRoute: { update: async (_id, patch) => {
-            saves++; saved = { ...selected, ...patch }; return saved;
+            saves++; saved = { ...(saved || selected), ...patch }; return saved;
         } } } },
     });
     assert.equal(calls, 2);
-    assert.equal(saves, 1);
+    assert.equal(saves, 2, 'pass 1 saves the reorder; the background records the finished checks');
     assert.deepEqual(saved.property_hashes, after);
     assert.equal(saved.property_hashes.length, 377);
     assert.equal(saved.metrics.distance, 270.43);
     assert.equal(saved.metadata.road_search_coverage.remaining_windows, 0);
-    const completion = messages.find(message => message.tone === 'success');
-    assert.match(completion.message, /24 stops reordered/);
-    assert.match(completion.message, /Saved ~3\.34 estimated miles/);
-    assert.doesNotMatch(completion.message, /incomplete|checks remain/);
+    // Pass 1 is announced at once; the background found nothing shorter, so it ends quietly.
+    const firstResult = messages.find(message => /24 stops reordered/.test(message.message));
+    assert.match(firstResult.message, /Saved ~3\.34 estimated miles/);
+    assert.match(firstResult.message, /Still checking the remaining neighborhoods in the background/);
+    assert.ok(!messages.some(message => /Route improved by/.test(message.message)));
 });
 
 test('377-door continuation completes 34 remaining checks after fresh curb measurements change', async () => {
@@ -435,7 +458,7 @@ test('377-door continuation completes 34 remaining checks after fresh curb measu
     let now = realNow(), calls = 0, saved, saves = 0;
     Date.now = () => now;
     try {
-        await action(selected, { mode: 'route_only' }, { client: {
+        await run(selected, { mode: 'route_only' }, { client: {
             functions: { invoke: async (_name, payload) => {
                 const pass = calls++;
                 now += [83470, 38000, 27000][pass];
@@ -451,20 +474,21 @@ test('377-door continuation completes 34 remaining checks after fresh curb measu
                             input: pass === 1 ? first : final, output: final, originalMiles: 274.8,
                             inputMiles: pass === 1 ? 271 : 270.5, outputMiles: 270.5 }) } : {}) } });
             } },
-            entities: { SavedRoute: { update: async (_id, patch) => { saves++; saved = { ...selected, ...patch }; return saved; } } },
+            entities: { SavedRoute: { update: async (_id, patch) => { saves++; saved = { ...(saved || selected), ...patch }; return saved; } } },
         } });
     } finally { Date.now = realNow; }
     assert.equal(calls, 3);
-    assert.equal(saves, 1);
+    assert.equal(saves, 2, 'pass 1 saves its order; the background saves the shorter final order');
     assert.deepEqual(saved.property_hashes, final);
     assert.equal(new Set(saved.property_hashes).size, 377);
     assert.equal(saved.metrics.distance, 270.5);
     assert.equal(saved.metadata.road_search_baseline_distance, 274.8);
     assert.equal(saved.metadata.road_search_coverage.remaining_windows, 0);
     assert.equal(saved.metadata.road_search_stop_reason, undefined);
-    const completion = messages.find(message => message.tone === 'success');
-    assert.match(completion.message, /Saved ~4\.3 estimated miles/);
-    assert.doesNotMatch(completion.message, /incomplete|checks remain/);
+    // Pass 1 saved 1.41 mi; the background's order saves 4.3 mi against the
+    // same original, so it is saved and announced as 2.89 mi more.
+    assert.ok(messages.some(message => /Still checking the remaining neighborhoods in the background/.test(message.message)));
+    assert.ok(messages.some(message => /Route improved by 2\.89 mi while you worked/.test(message.message)));
 });
 
 test('successive improvements measure savings from the original click and finish on the latest order', async () => {
@@ -715,12 +739,12 @@ function partialResponse({ order = ruralFirst, done = 16, savings = 29.98, uncha
             road_search_coverage: coverage(done, 181), ...meta } } };
 }
 
-test('626-door route automatically finishes local checks around unresolved Stop 295 and saves once', async () => {
+test('626-door route saves pass 1, then finishes local checks around unresolved Stop 295 in the background', async () => {
     messages.length = 0;
     let calls = 0, saves = 0, saved;
     const selected = { ...route, property_hashes: ruralHashes, properties: ruralHomes, allProperties: ruralHomes,
         metrics: { distance: 543.21, house_count: 626 } };
-    await action(selected, { mode: 'route_only' }, { effectiveProperties: [], client: {
+    await run(selected, { mode: 'route_only' }, { effectiveProperties: [], client: {
         functions: { invoke: async (_name, payload) => {
             const expected = [ruralHashes, ruralFirst, ruralSecond][calls];
             assert.deepEqual(payload.properties.map(p => p.address_hash), expected);
@@ -730,9 +754,9 @@ test('626-door route automatically finishes local checks around unresolved Stop 
             const value = [partialResponse(), partialResponse({ order: ruralSecond, done: 100, savings: 1.02 }),
                 partialResponse({ order: ruralSecond, done: 181, unchanged: true })][calls];
             return withToken(value, `private-partial-${calls++}`);
-        } }, entities: { SavedRoute: { update: async (_id, patch) => { saves++; saved = { ...selected, ...patch }; return saved; } } },
+        } }, entities: { SavedRoute: { update: async (_id, patch) => { saves++; saved = { ...(saved || selected), ...patch }; return saved; } } },
     } });
-    assert.equal(calls, 3); assert.equal(saves, 1);
+    assert.equal(calls, 3); assert.equal(saves, 2, 'pass 1, then the shorter local order found in the background');
     assert.deepEqual(saved.property_hashes, ruralSecond);
     assert.equal(saved.property_hashes.length, 626);
     assert.deepEqual(saved.property_hashes.slice(292, 297), ruralHashes.slice(292, 297));
@@ -870,7 +894,7 @@ test('an invalid first partial response cannot save a changed route', async () =
     let patch;
     const selected = { ...route, property_hashes: ruralHashes, properties: ruralHomes, allProperties: ruralHomes,
         metrics: { distance: 543.21, house_count: 626 } };
-    await action(selected, { mode: 'route_only' }, { client: {
+    await run(selected, { mode: 'route_only' }, { client: {
         functions: { invoke: async () => {
             const value = partialResponse(); value.data.routing_metadata.road_access_recovery.inventory_complete = false;
             return value;
@@ -923,4 +947,26 @@ test('later passes also send approximate stops with their original reason, so th
     }) });
     assert.deepEqual(bodies[1].known_unresolved_stops.find(item => item.property_id === ruralHashes[12]),
         { property_id: ruralHashes[12], reason: 'address_not_matched' });
+});
+
+test('a background improvement never overwrites a route the rep reordered after pass 1', async () => {
+    messages.length = 0;
+    let calls = 0, writes = 0, saved = route;
+    const client = { functions: { invoke: async () => {
+        calls++;
+        if (calls === 1) return withToken(response(), 'private-action-one');
+        if (calls === 2) return withToken(response({ ledger: coverage(2), order: candidate, selected: 'road_aware' }), 'private-action-two');
+        return withToken(response({ ledger: coverage(5), order: candidate, meta: { input_measured: 8 } }), 'private-action-final');
+    } }, entities: {
+        SavedRoute: { update: async (_id, patch) => { writes++; saved = { ...saved, ...patch }; return saved; },
+            // The rep dragged a stop while the background passes ran.
+            get: async () => ({ ...saved, property_hashes: ['C', 'B', 'A'] }) },
+        InteractionLog: { filter: async () => [] },
+    } };
+    const result = await action(route, { mode: 'route_only' }, { client });
+    const outcome = await result.background;
+    assert.equal(calls, 3);
+    assert.equal(writes, 1, 'only pass 1 was saved');
+    assert.deepEqual(outcome, { saved: false, reason: 'edited', miles: 2 });
+    assert.ok(!messages.some(message => /Route improved by/.test(message.message)));
 });

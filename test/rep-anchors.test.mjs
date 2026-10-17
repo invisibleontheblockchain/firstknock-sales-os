@@ -243,10 +243,14 @@ test('reoptimization preserves a private anchor by default but explicit route-on
             startOptimizeProgress: () => ({ update() {}, stop() {} }),
             LONG_OPTIMIZATION_STOPS: 150, startRoadOptimizationJob: () => ({ startRoute() {}, progress() {}, finish() {} }),
             ROAD_VERIFICATION: { ADOPTED: 'adopted' }, stampRoadVerification: () => ({ metadata: {} }),
-            tryRoadMatrixOptimize: async (order, bounds) => {
+            // One pass is the whole search here: nothing continues in the background.
+            claimRouteOptimization: () => 1, routeGuardSnapshot: () => ({}), finishInBackground: async () => ({ saved: false }),
+            optimizeFirstThenFinish: (order, bounds) => {
                 assert.equal(bounds.start?.address || null, explicit ? null : home.address);
                 assert.equal(bounds.end?.address || null, explicit ? null : home.address);
-                return { order, objective: { applyCandidate: true, appliedDistance: 3, estimatedSavings: 1 }, routingMetadata: {} };
+                const first = Promise.resolve({ more: false,
+                    result: { order, objective: { applyCandidate: true, appliedDistance: 3, estimatedSavings: 1 }, routingMetadata: {} } });
+                return { first, final: first };
             },
             countChangedRouteStops: (before, after) => after.filter((hash, i) => hash !== before[i]).length,
             persistOptimizedRoute: async ({ route, update, client }) => client.entities.SavedRoute.update(route.id, update),

@@ -19,7 +19,7 @@ import {
 import { hydrateRouteForMap } from '@/components/logic/routeHydration';
 import { indexRouteLogs, logsForRouteProperty } from '@/components/logic/routeLogIndex';
 import { optimizeRouteByStreetSweep } from '@/components/logic/routeOptimizer';
-import { tryRoadMatrixOptimize } from '@/lib/roadMatrixOptimize';
+import { claimRouteOptimization, finishInBackground, optimizeFirstThenFinish, routeGuardSnapshot } from '@/lib/backgroundRouteImprovement';
 import { LONG_OPTIMIZATION_STOPS, startRoadOptimizationJob } from '@/lib/roadOptimizationProgress';
 import {
   buildPersistedRoadRoutingMetadata,
@@ -1667,6 +1667,7 @@ export default function RepHome() {
     setHomeRouteError('');
     toast.loading(routeToOptimize.route_origin_mode === 'anchor_round_trip' ? 'Optimizing from your route anchor...' : 'Optimizing the selected route from home...', { id: 'rep-home-route' });
     let job = null;
+    let backgrounded = false;
 
     try {
       let freshUser = null;
@@ -1722,90 +1723,117 @@ export default function RepHome() {
       }
       const routingContext = createRouteContinuityContext(routeProperties);
       requireUsableRouteContext(routingContext);
-      let roadMeasurement = null;
       // The same full search as the Optimize button, with the progress screen.
       job = startRoadOptimizationJob({ routes: [{ name: routeToOptimize.name, stops: routeProperties.length }], background: true });
       job.startRoute(0);
       if (routeProperties.length >= LONG_OPTIMIZATION_STOPS) toast.dismiss('rep-home-route');
-      const roadResult = await tryRoadMatrixOptimize(routeProperties, {
+      // First result fast: save pass 1 now, finish the search in the background.
+      const optimizeRun = claimRouteOptimization(routeToOptimize.id);
+      const search = optimizeFirstThenFinish(routeProperties, {
         start: exactHomeBase, end: exactHomeBase,
         onSearchProgress: (value) => job.progress(0, value),
-        onOutcome: (reason, measurement) => { if (reason === 'current_order_measured_best') roadMeasurement = measurement; },
       });
-      const optimized = roadResult?.order || (roadMeasurement ? routeProperties : optimizeRouteByStreetSweep(
-        routeProperties,
-        exactHomeBase,
-        exactHomeBase,
-        routingContext,
-      ));
-      if (optimized.length !== routeProperties.length) {
-        throw new Error('The optimizer could not preserve every property in this route.');
-      }
+      const firstPhase = await search.first;
+      const roadResult = firstPhase.result;
+      const roadMeasurement = firstPhase.reason === 'current_order_measured_best' ? firstPhase.measurement : null;
 
-      const propertyHashes = optimized.map((property) => property.address_hash || property.legacy_hash || property.id);
-      if (propertyHashes.some((hash) => !hash)) {
-        throw new Error('A route property is missing its address identifier. Ask your manager to repair this route.');
-      }
-      const expectedHashes = new Set(routeProperties.map(
-        (property) => property.address_hash || property.legacy_hash || property.id,
-      ));
-      if (
-        new Set(propertyHashes).size !== expectedHashes.size
-        || propertyHashes.some((hash) => !expectedHashes.has(hash))
-      ) {
-        throw new Error('Route integrity verification failed, so the existing route was left unchanged.');
-      }
-
-      const distance = Math.round((roadResult?.objective.appliedDistance ?? roadMeasurement?.distanceMiles ?? calculateRouteDistanceMiles(optimized, {
-        startLocation: exactHomeBase,
-        endLocation: exactHomeBase,
-      })) * 100) / 100;
-      const existingMetadata = { ...(routeToOptimize.metadata || {}) };
-      delete existingMetadata.road_geometry;
-      const roadMetadata = { ...(roadResult?.routingMetadata || roadMeasurement?.routingMetadata || {}) };
-      // Home/anchor coordinates are an in-memory trip boundary. Persist the
-      // measured order and review counts without the private boundary or path.
-      for (const field of ['start_constraint', 'end_constraint', 'start_location', 'end_location', 'road_geometry', 'road_geometry_segments']) {
-        delete roadMetadata[field];
-      }
-      const routeUpdate = {
-        property_hashes: propertyHashes,
-        metrics: {
-          ...(routeToOptimize.metrics || {}),
-          distance,
-          house_count: optimized.length
-        },
-        start_location: null,
-        end_location: null,
-        route_origin_mode: usesAnchor ? 'anchor_round_trip' : 'home_round_trip',
-        metadata: {
-          ...existingMetadata,
-          ...buildPersistedRoadRoutingMetadata(routingContext, null, propertyHashes),
-          ...roadMetadata,
-          route_bounds: { enabled: true, mode: usesAnchor ? 'anchor_round_trip' : 'home_round_trip' }
+      const buildHomeRouteUpdate = (result, measurement, baseRoute) => {
+        const optimized = result?.order || (measurement ? routeProperties : optimizeRouteByStreetSweep(
+          routeProperties,
+          exactHomeBase,
+          exactHomeBase,
+          routingContext,
+        ));
+        if (optimized.length !== routeProperties.length) {
+          throw new Error('The optimizer could not preserve every property in this route.');
         }
+
+        const propertyHashes = optimized.map((property) => property.address_hash || property.legacy_hash || property.id);
+        if (propertyHashes.some((hash) => !hash)) {
+          throw new Error('A route property is missing its address identifier. Ask your manager to repair this route.');
+        }
+        const expectedHashes = new Set(routeProperties.map(
+          (property) => property.address_hash || property.legacy_hash || property.id,
+        ));
+        if (
+          new Set(propertyHashes).size !== expectedHashes.size
+          || propertyHashes.some((hash) => !expectedHashes.has(hash))
+        ) {
+          throw new Error('Route integrity verification failed, so the existing route was left unchanged.');
+        }
+
+        const distance = Math.round((result?.objective.appliedDistance ?? measurement?.distanceMiles ?? calculateRouteDistanceMiles(optimized, {
+          startLocation: exactHomeBase,
+          endLocation: exactHomeBase,
+        })) * 100) / 100;
+        const existingMetadata = { ...(baseRoute.metadata || {}) };
+        delete existingMetadata.road_geometry;
+        const roadMetadata = { ...(result?.routingMetadata || measurement?.routingMetadata || {}) };
+        // Home/anchor coordinates are an in-memory trip boundary. Persist the
+        // measured order and review counts without the private boundary or path.
+        for (const field of ['start_constraint', 'end_constraint', 'start_location', 'end_location', 'road_geometry', 'road_geometry_segments']) {
+          delete roadMetadata[field];
+        }
+        return {
+          distance,
+          routeUpdate: {
+            property_hashes: propertyHashes,
+            metrics: {
+              ...(baseRoute.metrics || {}),
+              distance,
+              house_count: optimized.length
+            },
+            start_location: null,
+            end_location: null,
+            route_origin_mode: usesAnchor ? 'anchor_round_trip' : 'home_round_trip',
+            metadata: {
+              ...existingMetadata,
+              ...buildPersistedRoadRoutingMetadata(routingContext, null, propertyHashes),
+              ...roadMetadata,
+              route_bounds: { enabled: true, mode: usesAnchor ? 'anchor_round_trip' : 'home_round_trip' }
+            }
+          },
+        };
+      };
+      const saveHomeRoute = async (routeUpdate) => {
+        await base44.entities.SavedRoute.update(routeToOptimize.id, routeUpdate);
+        queryClient.setQueryData(myRoutesQueryKey, (currentRoutes) =>
+          Array.isArray(currentRoutes)
+            ? currentRoutes.map((route) => route.id === routeToOptimize.id ? { ...route, ...routeUpdate } : route)
+            : currentRoutes
+        );
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ['myRoutes'] }),
+          queryClient.invalidateQueries({ queryKey: ['routeProperties'] })
+        ]);
       };
 
-      await base44.entities.SavedRoute.update(routeToOptimize.id, routeUpdate);
-      queryClient.setQueryData(myRoutesQueryKey, (currentRoutes) =>
-        Array.isArray(currentRoutes)
-          ? currentRoutes.map((route) => route.id === routeToOptimize.id ? { ...route, ...routeUpdate } : route)
-          : currentRoutes
-      );
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['myRoutes'] }),
-        queryClient.invalidateQueries({ queryKey: ['routeProperties'] })
-      ]);
+      const { distance, routeUpdate } = buildHomeRouteUpdate(roadResult, roadMeasurement, routeToOptimize);
+      await saveHomeRoute(routeUpdate);
       toast.success(`${usesAnchor ? 'Anchored round trip' : 'Home round trip'} optimized (${distance} mi ${roadResult || roadMeasurement ? 'road measured' : 'street-continuity estimate'}).`, {
         id: 'rep-home-route',
         duration: 5000
       });
+      if (firstPhase.more) {
+        backgrounded = true;
+        job.finishInBackground();
+        const backgroundJob = job;
+        finishInBackground({
+          final: search.final, firstResult: roadResult, client: base44,
+          snapshot: routeGuardSnapshot({ ...routeToOptimize, ...routeUpdate }, { run: optimizeRun }),
+          save: async (finalResult, current, miles) => {
+            await saveHomeRoute(buildHomeRouteUpdate(finalResult, null, current).routeUpdate);
+            toast.success(`Route improved by ${miles} mi while you worked.`, { duration: 6000 });
+          },
+        }).catch((error) => console.warn('[RepHome] background improvement was not saved', error))
+          .finally(() => backgroundJob.finish());
+      }
     } catch (error) {
       const message = error?.message || 'Could not optimize this route from home. Please try again.';
       setHomeRouteError(message);
       toast.error(message, { id: 'rep-home-route', duration: 6000 });
     } finally {
-      job?.finish();
+      if (!backgrounded) job?.finish();
       setHomeRouteOptimizing(false);
     }
   };
