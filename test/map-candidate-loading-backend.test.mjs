@@ -50,6 +50,14 @@ test('map requests keep tenant/ZIP/status filters and limit narrow keys before p
     assert.match(query.text, /p.zip_code = ANY\(\?\)/);
 });
 
+test('map requests only serialize the whole property row when a subdivision_name column exists', async () => {
+    const harness = handlerFor({ rows: [] });
+    await harness.run({ sold_months: 'all', fields: 'map', limit: 20000 });
+    const query = harness.queries[0];
+    assert.match(query.text, /\), subdivision_column AS \(\s*SELECT EXISTS \(\s*SELECT 1 FROM pg_attribute\s+WHERE attrelid = 'properties'::regclass\s+AND attname = 'subdivision_name'/);
+    assert.match(query.text, /p\.raw_payload ->> 'subdivisionName',\s*CASE WHEN \(SELECT present FROM subdivision_column\) THEN to_jsonb\(p\) ->> 'subdivision_name' END\s*\) AS subdivision_name/);
+});
+
 test('analytics summary returns totals and only matching lightweight doors without raw payload work', async () => {
     const properties = [{ id: '1', address_hash: 'door', original_status: 'ELIGIBLE', lat: 33.4, lng: -112.1 }];
     const status_counts = { ELIGIBLE: 1999, HARD_NO: 1, DO_NOT_KNOCK: 0, UNVERIFIED: 0 };
