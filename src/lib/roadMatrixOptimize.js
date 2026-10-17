@@ -525,7 +525,10 @@ export async function tryRoadMatrixOptimize(routeProperties, {
         const returnedCoverage = normalizeRoadSearchCoverage(meta?.road_search_coverage);
         // Address/road failures repeat identically within this action; later
         // passes skip re-matching them (outages and limits are never reused).
-        for (const issue of meta?.road_access_recovery?.unresolved || []) {
+        // An approximate stand-in keeps its original reason, so a later pass goes
+        // straight to the stand-in instead of re-matching the address.
+        const recovery = meta?.road_access_recovery;
+        for (const issue of [...(recovery?.unresolved || []), ...(recovery?.approximate || [])]) {
             if (REUSABLE_FAILURES.has(issue?.reason) && typeof issue?.property_id === 'string') knownUnresolved.set(issue.property_id, issue.reason);
         }
         if (returnedCoverage) coverage = returnedCoverage;

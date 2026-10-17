@@ -57,21 +57,37 @@ function roadAccessRecovery(meta) {
             : Object.hasOwn(ACCESS_REASON_ALIASES, issue?.reason) ? ACCESS_REASON_ALIASES[issue.reason] : 'unmatched_stop',
     }));
     const recovered = safeCount(recovery.recovered);
+    // Stops routed from the nearest road because nothing better matched.
+    const approximate = (Array.isArray(recovery.approximate) ? recovery.approximate : []).slice(0, 100).map(item => ({
+        property_id: safeAddress(item?.property_id),
+        stop_number: Number.isInteger(item?.stop_number) && item.stop_number > 0 ? item.stop_number : null,
+        address: safeAddress(item?.address),
+        snap_meters: optionalCount(item?.snap_meters),
+    })).filter(item => item.property_id);
     return {
         status: recovery.status === 'provider_unavailable' || unresolved.some(issue => issue.reason === 'provider_unavailable') ? 'provider_unavailable'
             : unresolved.length ? recovered > 0 ? 'partial' : 'unresolved'
             : recovered > 0 ? 'recovered' : 'not_needed',
         attempted: safeCount(recovery.attempted), recovered, unresolved,
+        ...(approximate.length ? { approximate } : {}),
         ...(typeof recovery.inventory_complete === 'boolean' ? { inventory_complete: recovery.inventory_complete } : {}),
         ...(optionalCount(recovery.unverified_count) !== null ? { unverified_count: recovery.unverified_count } : {}),
         ...(roadFailureDetail(recovery.failure_detail) ? { failure_detail: roadFailureDetail(recovery.failure_detail) } : {}),
     };
 }
 
+export function approximateAccessMessage(recovery) {
+    const approximate = recovery?.approximate || [];
+    if (!approximate.length) return '';
+    const stops = approximate.slice(0, 5).map(item => `${item.stop_number ? `Stop ${item.stop_number}` : 'Stop'}${item.address ? ` (${item.address})` : ''}`);
+    const more = approximate.length > 5 ? `; ${approximate.length - 5} more` : '';
+    return ` Approximate road access for ${approximate.length} ${approximate.length === 1 ? 'stop' : 'stops'}, routed from the nearest road: ${stops.join('; ')}${more}.`;
+}
+
 function recoveryMessage(recovery) {
     if (!recovery) return '';
-    const recovered = recovery.recovered > 0
-        ? ` Road access recovered automatically for ${recovery.recovered} ${recovery.recovered === 1 ? 'stop' : 'stops'}.` : '';
+    const recovered = `${recovery.recovered > 0
+        ? ` Road access recovered automatically for ${recovery.recovered} ${recovery.recovered === 1 ? 'stop' : 'stops'}.` : ''}${approximateAccessMessage(recovery)}`;
     const cause = roadFailureCause(recovery.failure_detail);
     if (!recovery.unresolved.length) return `${recovered}${recovery.inventory_complete === false && recovery.unverified_count > 0
         ? ` Road access could not be checked for ${recovery.unverified_count} stops${cause ? `: ${cause}` : ''}.` : ''}`;
@@ -200,11 +216,11 @@ export function describeRoadOptimizationOutcome(reason, measurement = null) {
     // the separate continuous driving check for the returned complete route.
     if (completeDrivingVerification(meta, measurement) && searchIncomplete(review, meta)) return {
         status: 'incomplete', tone: 'warning',
-        message: `Your route was kept unchanged. ${incompleteSearchMessage(review, meta)} The complete driving route was verified.`,
+        message: `Your route was kept unchanged. ${incompleteSearchMessage(review, meta)} The complete driving route was verified.${approximateAccessMessage(recovery)}`,
     };
     if (completeDrivingVerification(meta, measurement)) return {
         status: 'no_improvement', tone: 'info',
-        message: 'Complete driving route verified. No better order found among the orders checked. Your route was kept unchanged.',
+        message: `Complete driving route verified. No better order found among the orders checked. Your route was kept unchanged.${approximateAccessMessage(recovery)}`,
     };
     if (review?.budgetExhausted) return finish({
         status: 'incomplete', tone: 'warning',

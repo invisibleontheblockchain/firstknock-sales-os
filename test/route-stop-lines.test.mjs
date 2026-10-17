@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
 import * as visibility from '../src/components/map/mapLayerVisibility.js';
+import * as approximateAccess from '../src/lib/approximateAccess.js';
 
 const doors = [{ address_hash: 'west', lat: 35.8, lng: -80.9 },
     { address_hash: 'east', lat: 35.8, lng: -80.89 }, { address_hash: 'south', lat: 35.79, lng: -80.9 }];
@@ -40,6 +41,7 @@ function renderModule(path) {
     imports.leaflet = { default: leaflet };
     imports['react-leaflet'] = { ...imports['react-leaflet'], useMap: () => map };
     imports['./mapLayerVisibility.js'] = visibility;
+    imports['@/lib/approximateAccess'] = approximateAccess;
     imports['./labelCanvas'] = { createLabelCanvas: () => ({}) };
     imports['./densePinSize'] = { resolvePinSize: () => 3, zoomAdjustedPinSize: () => 3 };
     imports['@/components/map/mapPinThemes'] = { DEFAULT_PIN_THEME: { settings: { lineStyle: 'dashed' } } };
