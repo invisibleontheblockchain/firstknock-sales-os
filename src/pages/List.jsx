@@ -9,7 +9,7 @@ import { isManagerAccount } from '@/lib/roles';
 import { withReadDeadline } from '@/lib/readRequest';
 import {
     ANALYTICS_APPOINTMENT_FIELDS,
-    ANALYTICS_ROUTE_FIELDS,
+    fetchAnalyticsRouteRows,
     adjustAnalyticsStatusCounts,
     collectAnalyticsRouteProperties,
     countAnalyticsWorkedDoors,
@@ -162,20 +162,24 @@ export default function ListPage() {
         queryKey: ['savedRoutes', 'analytics', user?.id, userEmail, tenantManagerId, myRepIdsKey],
         queryFn: async () => {
             if (!userReady) return [];
-            const queries = [];
-            if (myRepIds.length > 0) {
-                queries.push(withReadDeadline(() => base44.entities.SavedRoute.filter({ assigned_to: myRepIds }, '-created_date', 500, 0, ANALYTICS_ROUTE_FIELDS)));
-            }
+            const filters = [];
+            let tenantFilter = null;
+            if (myRepIds.length > 0) filters.push({ assigned_to: myRepIds });
             if (isManagerAccount(user)) {
-                if (tenantManagerId) queries.push(withReadDeadline(() => base44.entities.SavedRoute.filter({ manager_id: tenantManagerId }, '-created_date', 500, 0, ANALYTICS_ROUTE_FIELDS)));
-                if (user?.email) queries.push(withReadDeadline(() => base44.entities.SavedRoute.filter({ created_by: user.email }, '-created_date', 500, 0, ANALYTICS_ROUTE_FIELDS)));
+                if (tenantManagerId) filters.push(tenantFilter = { manager_id: tenantManagerId });
+                if (user?.email) filters.push({ created_by: user.email });
             }
-            const results = await Promise.all(queries);
-            return dedupeEntities(results.flatMap(toEntityArray)).filter((route) => {
+            const isVisible = (route) => {
                 const assignedToMe = route.assigned_to && myRepIds.includes(route.assigned_to);
                 if (assignedToMe && (!route.manager_id || recordBelongsToCurrentAccount(route, user))) return true;
                 return isManagerAccount(user) && recordBelongsToCurrentAccount(route, user);
-            });
+            };
+            // The tenant read holds nearly every route; the overlapping reads
+            // ask only for scope fields and fill in what it missed by id.
+            const rows = await fetchAnalyticsRouteRows((filter, limit, fields) => withReadDeadline(() => (
+                base44.entities.SavedRoute.filter(filter, '-created_date', limit, 0, fields)
+            )), { filters, tenantFilter, isVisible });
+            return dedupeEntities(rows).filter(isVisible);
         },
         enabled: userReady && !identityLoading && !identityError,
         staleTime: 1000 * 60 * 2,
