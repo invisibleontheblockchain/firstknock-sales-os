@@ -93,8 +93,10 @@ test('MapController fits after hydration, stays put on status updates, and fits 
     const exports = {};
     vm.runInNewContext(compiled, {
         exports,
-        require: name => ({ react, 'react-leaflet': { useMap: () => map }, leaflet: { default: leaflet } })[name],
-        setTimeout, clearTimeout,
+        require: name => ({ react, 'react-leaflet': { useMap: () => map }, leaflet: { default: leaflet },
+            // Fits measure the visible map area; here every fit lands on map.fitBounds.
+            './mapInsets': { fitBoundsToVisibleArea: (target, bounds) => target.fitBounds(bounds) } })[name],
+        setTimeout, clearTimeout, requestAnimationFrame: callback => callback(),
     });
     const render = selected => {
         hookIndex = 0;
