@@ -9,6 +9,10 @@ import { validateCountyRoadNetwork } from './countyRoadRouting.js';
 import { discoverMappedDrivewayAccess, validateMappedDrivewayAccess } from './mappedDrivewayAccess.js';
 
 const MATCH_RADIUS = 100;
+// A parcel pin can sit well back from its street (long rural lots, deep
+// subdivisions). When the address cannot be geocoded onto a road, the pin may
+// still be served from its OWN street, identified by name, within this distance.
+const PIN_STREET_RADIUS = 250;
 const MAX_FAILED_STOPS = 32;
 const pointOf = value => ({ lat: Number(value?.lat), lng: Number(value?.lng) });
 const identity = value => String(value?.address_hash || value?.legacy_hash || value?.id || '');
@@ -116,6 +120,32 @@ async function roadReference(location, config, options, signal) {
 
 const lastResortCandidate = hit => hit?.source === 'census' && ['Non_Exact', 'Tie'].includes(hit.matchType);
 
+/**
+ * Last fallback after geocoding: the nearest road to the pin that carries the
+ * stop's own street name, within PIN_STREET_RADIUS. Live, 1680 Mecklenburg Hwy
+ * sat 158 m from "Mecklenburg Highway" while Census placed the address 3 km
+ * away, and 124 Wellcraft Ct sat 120 m from "Wellcraft Court" while Census
+ * snapped onto an unnamed driveway. A road with a different name is never used.
+ */
+async function pinStreetAccess(stop, config, options, signal) {
+    if (!streetKey(stop.street_name)) return null;
+    const url = new URL(`${config.baseUrl}/nearest/v1/${config.profile}/${stop.lng},${stop.lat}`);
+    url.searchParams.set('number', '5'); url.searchParams.set('radiuses', String(PIN_STREET_RADIUS));
+    let payload;
+    try { payload = await request(url, options, signal); }
+    catch (error) { if (signal.aborted) throw signal.reason || abortError(); return null; }
+    // Only a pin genuinely set back beyond the normal match radius qualifies:
+    // a street within 100 m that still failed did so for another reason.
+    const own = (payload.waypoints || []).find(waypoint => waypoint?.name
+        && sameStreet(waypoint.name, stop.street_name, streetKey) && validSnap(waypoint, stop, PIN_STREET_RADIUS + 0.5)
+        && Number(waypoint.distance) > MATCH_RADIUS);
+    if (!own) return null;
+    const point = { lat: own.location[1], lng: own.location[0] };
+    return { resolution_status: 'resolved', source: 'pin_street_recovery', confidence: 'medium', side: 'unknown',
+        serviceBearing: null, point, displayPoint: pointOf(stop), roadName: own.name,
+        evidence: { propertyIdentity: identity(stop), displayPoint: pointOf(stop), snapMeters: Number(own.distance), roadName: own.name } };
+}
+
 async function verifyGeocodedAccess(stop, hit, config, options, signal, { lastResort = false } = {}) {
     if (!qualifiedAddressMatch(stop, hit, { lastResort })) return { reason: 'address_match_rejected' };
     try {
@@ -167,6 +197,9 @@ function cachedAccess(stop) {
             || streetKey(access.roadName) !== streetKey(stop.street_name)) return null;
     }
     if (access.source === 'mapped_driveway_recovery' && !validateMappedDrivewayAccess(stop, access)) return null;
+    if (access.source === 'pin_street_recovery'
+        && (String(boundIdentity || '') !== identity(stop) || !sameStreet(access.roadName, stop.street_name, streetKey)
+            || distance(access.point, stop) > PIN_STREET_RADIUS + 0.5)) return null;
     // Existing manually supplied and mapped driveway/curb access was authorized
     // before recovery caches existed. Keep it, bind it to this display pin, and
     // still rematch it against the configured driving provider below.
@@ -330,7 +363,8 @@ export async function recoverRouteVehicleAccess(properties, options = {}) {
                     const check = !hit ? { reason: rejected.get(identity(stop)) || 'address_not_matched' }
                         : verified.has(identity(stop)) ? { access: verified.get(identity(stop)) }
                             : await verifyGeocodedAccess(stop, hit, config, options, geocodeScope.signal);
-                    const access = check.access || await tryLastResort(stop);
+                    const access = check.access || await tryLastResort(stop)
+                        || (geocodeScope.signal.aborted ? null : await pinStreetAccess(stop, config, options, geocodeScope.signal));
                     if (!access) { fail(index, check.reason); continue; }
                     verified.set(identity(stop), access);
                 }
