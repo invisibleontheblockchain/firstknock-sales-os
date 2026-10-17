@@ -7,6 +7,7 @@ import * as continuity from '../base44/shared/routeContinuityOptimizer.js';
 import * as verification from '../base44/shared/completeDrivingVerification.js';
 import * as geometry from '../base44/shared/routeDisplayGeometry.js';
 import * as osrmProvider from '../base44/shared/osrmProvider.js';
+import * as osrmDispatcher from '../base44/shared/osrmDispatcher.js';
 
 const source = fs.readFileSync(new URL('../base44/functions/optimizeRouteRoadMatrix/entry.ts', import.meta.url), 'utf8');
 const compiled = ts.transpileModule(source, { compilerOptions: {
@@ -53,7 +54,8 @@ function endpoint({ recover, local, costs, authenticated = true, failMeasure = f
         '../../shared/roadMatrix.js': { ROAD_MATRIX_VERSION: 'test-matrix',
             buildRoadMatrixCacheKey: forbidden('matrix cache key'), fetchRoadMatrix: forbidden('road matrix') },
         '../../shared/roadMatrixTiers.js': { MAX_TIERED_ROUTE_DOORS: 2500, planTieredRoadMatrix: forbidden('matrix plan') },
-        '../../shared/osrmDispatcher.js': { fetchOsrmJson: forbidden('unstubbed provider'), osrmRoadBuildId: () => 'test-road-build' },
+        '../../shared/osrmDispatcher.js': { fetchOsrmJson: forbidden('unstubbed provider'), osrmRoadBuildId: () => 'test-road-build',
+            describeRoadFailure: osrmDispatcher.describeRoadFailure },
         '../../shared/osrmProvider.js': osrmProvider,
         '../../shared/osrmRequestCache.js': { createOsrmRequestCache: () => ({
             fetchJson: forbidden('unstubbed cached provider'), stats: () => ({ requests: 0 }),

@@ -2,6 +2,7 @@ import { geocodeAddressItems } from './addressGeocoder.js';
 import { haversineDistanceMiles, isValidRoutePoint } from './routeBounds.js';
 import { roadNetworkRoutingInternals } from './roadNetworkRouting.js';
 import { vehicleProviderConfig } from './vehicleProviderConfig.js';
+import { describeRoadFailure } from './osrmDispatcher.js';
 import { discoverCountyRoadAccess, validateCountyRoadAccess } from './countyRoadAccess.js';
 import { validateCountyRoadNetwork } from './countyRoadRouting.js';
 import { discoverMappedDrivewayAccess, validateMappedDrivewayAccess } from './mappedDrivewayAccess.js';
@@ -229,6 +230,9 @@ export async function recoverRouteVehicleAccess(properties, options = {}) {
             // Do not mistake a provider outage for hundreds of bad addresses.
             report.inventory_complete = false; report.unverified_count = original.length;
             report.failure_reason = error?.code === 'recovery_timeout' ? 'road_provider_timeout' : 'road_provider_unavailable';
+            // WHY no road match could be loaded: could not connect, key refused,
+            // too slow, or the engine said no. Without it every cause reads alike.
+            report.failure_detail = describeRoadFailure(error, { baseUrl: config.baseUrl });
             report.unresolved = [...failed].map(([index, reason]) => issue(index, reason));
             return { properties: original, report };
         } finally { preflight.close(); }

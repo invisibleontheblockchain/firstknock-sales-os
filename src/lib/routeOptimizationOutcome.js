@@ -18,6 +18,32 @@ const safeAddress = value => {
     return value.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 240) || null;
 };
 
+// Why the road server could not be used, as a short phrase. The backend already
+// strips URLs and coordinates; this re-checks every field before display.
+const FAILURE_KINDS = new Set(['config', 'network', 'auth', 'timeout', 'http', 'osrm', 'cancelled', 'other']);
+function roadFailureDetail(detail) {
+    if (!detail || typeof detail !== 'object' || !FAILURE_KINDS.has(detail.kind)) return null;
+    const status = Number.isInteger(detail.status) && detail.status >= 100 && detail.status <= 599 ? detail.status : null;
+    const osrmCode = typeof detail.osrm_code === 'string' && /^[A-Z][A-Za-z]{1,40}$/.test(detail.osrm_code) ? detail.osrm_code : null;
+    const host = typeof detail.host === 'string' && /^[a-z\d.-]{1,253}$/i.test(detail.host) ? detail.host : null;
+    const message = safeAddress(typeof detail.message === 'string'
+        ? detail.message.replace(/^OSRM request (failed|rejected):\s*/i, '').slice(0, 160) : null);
+    return { kind: detail.kind, status, osrm_code: osrmCode, message, host };
+}
+export function roadFailureCause(detail) {
+    const failure = roadFailureDetail(detail);
+    if (!failure) return '';
+    const { kind, status, osrm_code: osrmCode, message, host } = failure;
+    if (kind === 'network') return `couldn't connect to the road server${host ? ` ${host}` : ''}${message ? ` (${message})` : ''}`;
+    if (kind === 'auth') return `the road server rejected the key (${status || 'refused'})`;
+    if (kind === 'timeout') return 'the road server did not answer in time';
+    if (kind === 'config') return 'no road server is configured';
+    if (kind === 'cancelled') return 'the request was cancelled';
+    if (kind === 'osrm') return `the road server refused the request (${osrmCode || status || 'error'})`;
+    if (kind === 'http') return `the road server returned an error${status ? ` (HTTP ${status})` : ''}`;
+    return `the road request failed${message ? ` (${message})` : ''}`;
+}
+
 // Road access is a separate concern from an unknown curb side. Only copy the
 // public property identity/address and controlled reason codes into shared data.
 function roadAccessRecovery(meta) {
@@ -38,6 +64,7 @@ function roadAccessRecovery(meta) {
         attempted: safeCount(recovery.attempted), recovered, unresolved,
         ...(typeof recovery.inventory_complete === 'boolean' ? { inventory_complete: recovery.inventory_complete } : {}),
         ...(optionalCount(recovery.unverified_count) !== null ? { unverified_count: recovery.unverified_count } : {}),
+        ...(roadFailureDetail(recovery.failure_detail) ? { failure_detail: roadFailureDetail(recovery.failure_detail) } : {}),
     };
 }
 
@@ -45,10 +72,11 @@ function recoveryMessage(recovery) {
     if (!recovery) return '';
     const recovered = recovery.recovered > 0
         ? ` Road access recovered automatically for ${recovery.recovered} ${recovery.recovered === 1 ? 'stop' : 'stops'}.` : '';
+    const cause = roadFailureCause(recovery.failure_detail);
     if (!recovery.unresolved.length) return `${recovered}${recovery.inventory_complete === false && recovery.unverified_count > 0
-        ? ` Road access could not be checked for ${recovery.unverified_count} stops.` : ''}`;
+        ? ` Road access could not be checked for ${recovery.unverified_count} stops${cause ? `: ${cause}` : ''}.` : ''}`;
     const stops = recovery.unresolved.map(issue => `${issue.stop_number ? `Stop ${issue.stop_number}` : 'Stop'}${issue.address ? ` (${issue.address})` : ''}`);
-    return `${recovered} Road access ${recovery.status === 'provider_unavailable' ? 'could not be checked' : 'is still unresolved'} for ${stops.join('; ')}. All stops are retained in the route.`;
+    return `${recovered} Road access ${recovery.status === 'provider_unavailable' ? 'could not be checked' : 'is still unresolved'} for ${stops.join('; ')}${cause ? ` (${cause})` : ''}. All stops are retained in the route.`;
 }
 
 function withRecovery(outcome, recovery) {
@@ -149,6 +177,11 @@ export function describeRoadOptimizationOutcome(reason, measurement = null) {
         message: `${recovery.status === 'provider_unavailable'
             ? 'The road or address data provider could not complete automatic road-access recovery. Your route was kept unchanged.'
             : 'Automatic road-access recovery could not verify the complete driving route. Your route was kept unchanged.'}${roadAccessSearchDetails(review, meta)}`,
+    });
+    // The continuity fallback: no road distances at all, and now the reason.
+    if (reason === 'aerial_fallback' && roadFailureCause(meta.road_failure_detail)) return finish({
+        status: 'road_provider_unavailable', tone: 'error',
+        message: `Road distances were unavailable, so your route was kept unchanged: ${roadFailureCause(meta.road_failure_detail)}.`,
     });
     if (reason !== 'current_order_measured_best' || !validDistance(measurement?.distanceMiles)) return finish({
         status: 'failed', tone: 'error',

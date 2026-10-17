@@ -664,3 +664,31 @@ test('the real Optimize action distinguishes completed, incomplete, and failed c
         }
     }
 });
+
+test('a road-access outage says why: could not connect, key refused, or too slow', () => {
+    const outage = detail => ({ routingMetadata: { road_access_recovery: { status: 'provider_unavailable',
+        inventory_complete: false, unverified_count: 184, unresolved: [], failure_detail: detail } } });
+    const network = outcomes.describeRoadOptimizationOutcome('backend_reported_failure', outage({ kind: 'network', status: null,
+        osrm_code: null, host: '131-153-164-35.sslip.io',
+        message: 'OSRM request failed: fetch failed: ENOTFOUND: getaddrinfo ENOTFOUND 131-153-164-35.sslip.io' }));
+    assert.equal(network.status, 'road_provider_unavailable');
+    assert.match(network.message, /could not be checked for 184 stops: couldn't connect to the road server 131-153-164-35\.sslip\.io \(fetch failed: ENOTFOUND/);
+    const auth = outcomes.describeRoadOptimizationOutcome('backend_reported_failure', outage({ kind: 'auth', status: 401, message: 'Unauthorized' }));
+    assert.match(auth.message, /184 stops: the road server rejected the key \(401\)\./);
+    const timeout = outcomes.describeRoadOptimizationOutcome('backend_reported_failure', outage({ kind: 'timeout' }));
+    assert.match(timeout.message, /184 stops: the road server did not answer in time\./);
+    // Unknown or unsafe details are dropped rather than displayed.
+    const unsafe = outcomes.describeRoadOptimizationOutcome('backend_reported_failure', outage({ kind: 'shell', message: 'x' }));
+    assert.match(unsafe.message, /could not be checked for 184 stops\./);
+    const coordinates = outcomes.describeRoadOptimizationOutcome('backend_reported_failure', outage({ kind: 'network', message: 'near 35.1234, -80.5678' }));
+    assert.doesNotMatch(coordinates.message, /35\.1234/);
+});
+
+test('the continuity fallback names its cause', () => {
+    const fallback = detail => ({ routingMetadata: { fallback: true, road_failure_detail: detail } });
+    assert.match(outcomes.describeRoadOptimizationOutcome('aerial_fallback', fallback({ kind: 'config' })).message,
+        /Road distances were unavailable, so your route was kept unchanged: no road server is configured\./);
+    assert.match(outcomes.describeRoadOptimizationOutcome('aerial_fallback', fallback({ kind: 'http', status: 503 })).message,
+        /the road server returned an error \(HTTP 503\)/);
+    assert.equal(outcomes.describeRoadOptimizationOutcome('aerial_fallback', fallback(null)).status, 'failed');
+});

@@ -26,7 +26,7 @@ import { HIERARCHY_REFINEMENT_STEP_BUDGET, sequenceRoadHierarchy } from '../../s
 import { measureRoadPath } from '../../shared/roadPathMeasure.js';
 import { reviewFinalNeighborhoodRoute } from '../../shared/finalNeighborhoodReview.js';
 import { reviewNeighborhoodExcursions } from '../../shared/neighborhoodExcursions.js';
-import { fetchOsrmJson, osrmRoadBuildId } from '../../shared/osrmDispatcher.js';
+import { describeRoadFailure, fetchOsrmJson, osrmRoadBuildId } from '../../shared/osrmDispatcher.js';
 import { readOsrmProvider } from '../../shared/osrmProvider.js';
 import { createOsrmRequestCache } from '../../shared/osrmRequestCache.js';
 import { createRoadSearchSession } from '../../shared/roadSearchSession.js';
@@ -82,7 +82,7 @@ function exactOnce(order, expectedCount) {
  * route creation, so an unset OSRM_BASE_URL answers with the same labelled
  * continuity fallback a failed matrix does — without contacting any engine.
  */
-function continuityFallbackResponse(properties, { startLocation, endLocation, profile, reason, error }) {
+function continuityFallbackResponse(properties, { startLocation, endLocation, profile, reason, error, failure }) {
     const canonical = [...properties].sort((first, second) => (
         propertyIdentity(first) < propertyIdentity(second) ? -1 : 1
     ));
@@ -111,6 +111,7 @@ function continuityFallbackResponse(properties, { startLocation, endLocation, pr
             fallback_status: 'continuity_fallback',
             fallback_reason: reason,
             road_matrix_error: error,
+            road_failure_detail: failure,
             optimality_status: 'unmeasured_fallback',
             selected_candidate_type: 'continuity',
             neighborhood_excursion_review: reviewNeighborhoodExcursions(order).diagnostics,
@@ -181,9 +182,10 @@ export default async function (req: Request): Promise<Response> {
 
         const osrmProvider = readOsrmProvider(readSecret);
         if (!osrmProvider.configured) {
+            const error = 'No road engine is configured (OSRM_BASE_URL is unset).';
             return continuityFallbackResponse(properties, { startLocation, endLocation, profile,
-                reason: 'road_provider_not_configured',
-                error: 'No road engine is configured (OSRM_BASE_URL is unset).' });
+                reason: 'road_provider_not_configured', error,
+                failure: describeRoadFailure({ code: 'ROAD_PROVIDER_NOT_CONFIGURED', message: error }) });
         }
         const solverStartedAt = Date.now();
         const stageTimings: Record<string, number> = {};
@@ -214,6 +216,7 @@ export default async function (req: Request): Promise<Response> {
                 || accessRecovery.report?.unresolved?.some(issue => issue.reason === 'road_provider_unavailable'))) {
             return Response.json({ success: false, code: 'ROAD_ACCESS_PROVIDER_UNAVAILABLE',
                 routing_metadata: { optimizer_version: OPTIMIZER_VERSION, road_build_id: osrmRoadBuildId(),
+                    road_failure_detail: accessRecovery.report?.failure_detail || null,
                     road_access_recovery: accessRecovery.report,
                     optimization_timings: stageTimings } });
         }
@@ -640,6 +643,7 @@ export default async function (req: Request): Promise<Response> {
 
         let matrix = null;
         let matrixError = plan.ok ? '' : `Road matrix could not be bounded: ${plan.code}.`;
+        let matrixFailure = null;
         const matrixStartedAt = Date.now();
         if (plan.ok) {
             try {
@@ -650,6 +654,7 @@ export default async function (req: Request): Promise<Response> {
                 });
             } catch (error) {
                 matrixError = error.message;
+                matrixFailure = describeRoadFailure(error, { baseUrl: vehicleBaseUrl });
             }
         }
         const matrixMs = Date.now() - matrixStartedAt;
@@ -681,6 +686,7 @@ export default async function (req: Request): Promise<Response> {
                     matrix_point_count: properties.length,
                     matrix_block_count: 0,
                     road_matrix_error: matrixError,
+                    road_failure_detail: matrixFailure,
                     road_matrix_ms: matrixMs,
                     optimality_status: 'unmeasured_fallback',
                     selected_candidate_type: 'continuity',
