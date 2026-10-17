@@ -38,7 +38,7 @@ import TerritoryPrompt from '../components/map/TerritoryPrompt';
 import { darkRoom } from '@/components/logic/neonClient';
 const CommandCenterDashboard = React.lazy(() => import('../components/dashboard/CommandCenterDashboard'));
 const MapSettingsPanel = React.lazy(() => import('../components/map/MapSettingsPanel'));
-import RouteBuilderSettings from '../components/map/RouteBuilderSettings';
+import RouteBuilderSettings, { preloadCanvasBuilderSettings } from '../components/map/RouteBuilderSettings';
 const TerritorySetupWizard = React.lazy(() => import('../components/manager/TerritorySetupWizard'));
 import { hydrateRouteForMap, hydrateRoutesForMap } from '@/components/logic/routeHydration';
 import { hasCompleteRouteMapPoints, orderRouteProperties } from '@/components/logic/routeHydrationCore';
@@ -243,6 +243,7 @@ export default function Home() {
     });
     const [routeMode, setRouteMode] = useState('precision');
     const routeModeRef = useRef(routeMode); routeModeRef.current = routeMode;
+    useEffect(() => { if (routeMode === 'canvas') preloadCanvasBuilderSettings(); }, [routeMode]);
     useEffect(() => { const isCanvas = routeMode === 'canvas', modeTheme = isCanvas ? 'terrain' : 'hybrid', pinTheme = isCanvas ? DEFAULT_PIN_THEME : DEFAULT_PRECISION_PIN_THEME; setMapTheme(modeTheme); try { const savedSettings = localStorage.getItem(isCanvas ? 'fk_mapSettings_v4' : 'fk_mapSettings_precision_v1'), savedPinSize = localStorage.getItem(isCanvas ? 'fk_pinSize_v3' : 'fk_pinSize_precision_v1'); setMapSettings(savedSettings ? JSON.parse(savedSettings) : { pinShape:'circle', showLabels:false, labelType:'number', ...pinTheme.settings }); setPinSize(savedPinSize ? JSON.parse(savedPinSize) : pinTheme.pinSize); localStorage.setItem(isCanvas ? 'fk_mapTheme_canvas_v2' : 'fk_mapTheme_v3', modeTheme); } catch {} }, [routeMode]);
     const [canvasDraftDirty, setCanvasDraftDirty] = useState(false);
     useEffect(() => {

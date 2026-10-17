@@ -1,9 +1,12 @@
 import React, { useEffect } from 'react';
 import { useMap } from 'react-leaflet';
 import RecoveringTileLayer from '@/components/map/RecoveringTileLayer';
-import CanvasBaseMapTiles from '@/components/canvas/CanvasBaseMapTiles';
 import MapAttributionControl from '@/components/map/MapAttributionControl';
 import { CARTO_ATTRIBUTION, ESRI_IMAGERY_ATTRIBUTION } from '@/components/map/mapAttribution';
+
+// Canvas's vector basemap is ~40 KB gzipped and only
+// Canvas mode draws it, so Precision maps no longer download it.
+const CanvasBaseMapTiles = React.lazy(() => import('@/components/canvas/CanvasBaseMapTiles'));
 
 const BASEMAP_URLS = {
     satellite: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
@@ -63,7 +66,7 @@ export default function BaseMapTiles({ mapTheme, routeMode = 'precision' }) {
         <>
             <MapAttributionControl />
             <MapBackdrop mapTheme={mapTheme} />
-            <CanvasBaseMapTiles theme={mapTheme} />
+            <React.Suspense fallback={null}><CanvasBaseMapTiles theme={mapTheme} /></React.Suspense>
             {showLabels && (
                 <RecoveringTileLayer
                     key="canvas-basemap-labels"

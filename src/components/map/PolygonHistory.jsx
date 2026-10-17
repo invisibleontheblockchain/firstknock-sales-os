@@ -2,7 +2,6 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Marker, Polygon, Tooltip } from 'react-leaflet';
 import L from 'leaflet';
 import { calculatePolygonAreaSqMiles, formatSqMiles } from '@/components/logic/geoArea';
-import { mergePulledAreas } from '@/components/map/mergePulledAreas';
 
 const STORAGE_KEY = 'fk_polygonHistory';
 const HIDDEN_KEY = 'fk_polygonHistoryHidden';
@@ -118,7 +117,22 @@ export default function PolygonHistory({ currentPolygon, mode, serverHistory = [
 
     // Overlapping pulls are dissolved into one coverage shape so repeated pulls
     // over the same neighborhood stay readable and tappable.
-    const mergedAreas = useMemo(() => mergePulledAreas(visibleHistory), [visibleHistory]);
+    // The polygon library behind the merge is large, so it loads only once
+    // past areas are actually shown in the builder instead of with the map.
+    const showAreas = isBuilder && ghostVisible && visibleHistory.length > 0;
+    const [mergeAreas, setMergeAreas] = useState(null);
+    useEffect(() => {
+        if (!showAreas || mergeAreas) return undefined;
+        let cancelled = false;
+        import('@/components/map/mergePulledAreas')
+            .then((module) => { if (!cancelled) setMergeAreas(() => module.mergePulledAreas); })
+            .catch(() => {});
+        return () => { cancelled = true; };
+    }, [showAreas, mergeAreas]);
+    const mergedAreas = useMemo(
+        () => (showAreas && mergeAreas ? mergeAreas(visibleHistory) : []),
+        [showAreas, mergeAreas, visibleHistory]
+    );
 
     // Server-sourced pulls cannot be deleted remotely, so a cleared area is also
     // remembered locally as hidden to keep the map view clean.

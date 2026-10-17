@@ -1,6 +1,6 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
-import { RoadAwareComparisonView } from '../../src/components/routes/RoadAwareComparisonHost';
+import { RoadAwareComparisonView } from '../../src/components/routes/RoadAwareComparisonView';
 import '../../src/index.css';
 import 'leaflet/dist/leaflet.css';
 
