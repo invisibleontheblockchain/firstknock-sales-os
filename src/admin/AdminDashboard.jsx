@@ -729,7 +729,7 @@ export default function AdminDashboard() {
                 <div className="grid grid-cols-2 gap-3 sm:col-span-2">
                   <MetricTile icon={UserCheck} label="Paying customers" value={formatNumber(stripeMetrics?.paying_customers)} helper={`${formatNumber(stripeMetrics?.paid_seats)} paid seats · verified by Stripe`} color="#39FF6E" />
                   <MetricTile icon={Sparkles} label="Trials & beta" value={formatNumber(stripeMetrics?.active_trials_and_beta)} helper={`${formatNumber(stripeMetrics?.active_trials)} Stripe · ${formatNumber(stripeMetrics?.active_beta_accounts)} beta`} color="#A78BFA" />
-                  <MetricTile icon={CircleDollarSign} label="Net collected" value={formatMoney(stripeMetrics?.net_collected, true)} helper={`${formatMoney(stripeMetrics?.net_collected_30d, true)} last 30 days · ${formatMoney(stripeMetrics?.total_refunded, true)} refunded`} color="#67E8F9" />
+                  <MetricTile icon={CircleDollarSign} label="Net collected" value={preciseMoney.format(stripeMetrics?.net_collected || 0)} helper={`${preciseMoney.format(stripeMetrics?.net_collected_30d || 0)} last 30 days · ${preciseMoney.format(stripeMetrics?.total_refunded || 0)} refunded`} color="#67E8F9" />
                   <MetricTile icon={AlertTriangle} label="At-risk accounts" value={formatNumber(stripeMetrics?.past_due_customers)} helper={`${formatNumber(stripeMetrics?.confirmed_payments)} confirmed payments`} color="#FB923C" />
                 </div>
               </div>
@@ -799,7 +799,7 @@ export default function AdminDashboard() {
               {stripeLive && (
                 <div className="text-right">
                   <p className="text-[8px] font-black uppercase tracking-[0.18em] text-violet-200/45">Net collected · 30 days</p>
-                  <p className="mt-1 font-mono text-2xl font-black text-violet-100">{formatMoney(stripeMetrics?.net_collected_30d, true)}</p>
+                  <p className="mt-1 font-mono text-2xl font-black text-violet-100">{preciseMoney.format(stripeMetrics?.net_collected_30d || 0)}</p>
                 </div>
               )}
             </div>
@@ -822,8 +822,8 @@ export default function AdminDashboard() {
                 />
                 <div className="mt-3 grid grid-cols-3 divide-x divide-white/[0.06] rounded-2xl border border-white/[0.06] bg-black/25 py-3 text-center">
                   <div className="px-2"><p className="font-mono text-base font-black text-violet-100">{formatNumber(stripeCashDays)}</p><p className="mt-1 text-[8px] font-black uppercase tracking-[0.13em] text-white/30">Cash days</p></div>
-                  <div className="px-2"><p className="font-mono text-base font-black text-violet-100">{formatMoney(stripeDailyAverage, true)}</p><p className="mt-1 text-[8px] font-black uppercase tracking-[0.13em] text-white/30">Daily average</p></div>
-                  <div className="px-2"><p className="font-mono text-base font-black text-violet-100">{formatMoney(stripeBestDay?.stripe_revenue, true)}</p><p className="mt-1 text-[8px] font-black uppercase tracking-[0.13em] text-white/30">Best day</p></div>
+                  <div className="px-2"><p className="font-mono text-base font-black text-violet-100">{preciseMoney.format(stripeDailyAverage || 0)}</p><p className="mt-1 text-[8px] font-black uppercase tracking-[0.13em] text-white/30">Daily average</p></div>
+                  <div className="px-2"><p className="font-mono text-base font-black text-violet-100">{preciseMoney.format(stripeBestDay?.stripe_revenue || 0)}</p><p className="mt-1 text-[8px] font-black uppercase tracking-[0.13em] text-white/30">Best day</p></div>
                 </div>
               </>
             ) : (
