@@ -740,13 +740,13 @@ export default function RouteChecklist({ route, logs, onLogResult, onNoteSaved, 
                                     if (node) stopRefs.current[key] = node;
                                     else delete stopRefs.current[key];
                                 }}
-                                className={`group rounded-xl overflow-hidden transition-all duration-300 border ${isExpanded ? 'shadow-[0_0_18px_rgba(46,235,87,0.12)]' : ''}`}
+                                className="group rounded-xl overflow-hidden transition-all duration-300 border"
                                 style={currentStatus ? {
                                     background: `linear-gradient(135deg, ${outcomeTint(STATUS_COLORS[currentStatus], '28')}, ${outcomeTint(STATUS_COLORS[currentStatus], '0D')})`,
                                     borderColor: outcomeBorder(STATUS_COLORS[currentStatus], '70'),
                                 } : {
-                                    background: isExpanded ? '#0E1510' : 'rgba(255,255,255,0.03)',
-                                    borderColor: isExpanded ? 'rgba(46,235,87,0.35)' : 'rgba(255,255,255,0.10)',
+                                    background: 'rgba(255,255,255,0.03)',
+                                    borderColor: 'rgba(255,255,255,0.10)',
                                 }}
                             >
                                 {/* Property Row */}
