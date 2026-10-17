@@ -156,6 +156,7 @@ function assignmentHandler() {
         queryClient: { invalidateQueries() {} },
         toast: { success() {}, info() {}, error: message => errors.push(message) }, console: { error() {} },
         mergeAnchoredRoute,
+        noteServerRouteOptimization: () => null,
         setActiveRoute: updater => { selected = updater(selected); },
     });
     const handler = vm.runInContext(executable('const ' + declaration + ';') + '\nsaveRouteAssignment;', context);

@@ -98,6 +98,7 @@ import {
     readPersistedPrecisionJobContext,
 } from '../components/map/homeMapHelpers';
 import { matchesDecisionFilter } from '../components/map/routeDecisionFilters'; import { deriveRouteName as buildRouteName } from '../components/map/routeNaming';
+import { noteServerRouteOptimization } from '@/lib/serverRouteOptimizationJobs';
 
 
 
@@ -611,6 +612,7 @@ export default function Home() {
                 action: 'assign', route_id: routeId, member_id: memberId, use_rep_base: useRepBase,
             });
             const saved = response.data.route;
+            noteServerRouteOptimization(response.data);
             queryClient.invalidateQueries({ queryKey: ['savedRoutes'] });
             queryClient.invalidateQueries({ queryKey: ['allRoutes'] });
             queryClient.invalidateQueries({ queryKey: ['myRoutes'] });
@@ -990,6 +992,7 @@ export default function Home() {
                 const response = await base44.functions.invoke('manageRepAnchors', {
                     action: 'assign', route_id: saved.id, member_id: assignedRepId,
                 });
+                noteServerRouteOptimization(response.data);
                 queryClient.invalidateQueries({ queryKey: ['savedRoutes'] });
                 if (response.data.notice && !silent) toast.info(response.data.notice);
                 return response.data.route;

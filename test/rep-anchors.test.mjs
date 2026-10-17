@@ -34,6 +34,7 @@ function setup({ actor = 'manager', base = home, auto = true, verified = true, p
     const route = { id: 'route', name: 'Excel imported route', manager_id: 'manager', assigned_to: 'member', status: 'ACTIVE', route_origin_mode: 'none', property_hashes: ['b', 'a', 'c'], metadata: { source: 'import', road_geometry: [[0, 0]], routing: {} }, metrics: { house_count: 3, distance: 2 } };
     const records = [];
     const writes = [];
+    const queued = [];
     let failUpdate = false;
     const service = { entities: {
         User: { get: async id => users[id], update: async (id, value) => { writes.push(['user', id, value]); Object.assign(users[id], value); } },
@@ -56,12 +57,15 @@ function setup({ actor = 'manager', base = home, auto = true, verified = true, p
     } } };
     const source = ts.transpileModule(read('base44/functions/manageRepAnchors/entry.ts'), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText.replace(/^import .*;\s*$/gm, '');
     let handler;
-    vm.runInNewContext(source, { createClientFromRequest: () => client, isValidRoutePoint, optimizeAnchoredStreetRoute, calculateRouteDistanceMiles, console: { error() {} }, Request, Response, Deno: { serve: fn => { handler = fn; } } });
+    vm.runInNewContext(source, { createClientFromRequest: () => client, isValidRoutePoint, optimizeAnchoredStreetRoute, calculateRouteDistanceMiles,
+        // The background road search the anchor change queues.
+        enqueueRouteOptimizationJob: async (_service, job) => { queued.push(job); return { id: `job${queued.length}` }; },
+        console: { error() {}, warn() {} }, Request, Response, Deno: { serve: fn => { handler = fn; } } });
     async function call(body) {
         const response = await handler(new Request('https://app.example.test', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }));
         return { status: response.status, data: await response.json() };
     }
-    return { call, route, records, writes, users, members, setFailUpdate: () => { failUpdate = true; } };
+    return { call, route, records, writes, users, members, queued, setFailUpdate: () => { failUpdate = true; } };
 }
 
 test('only managers can list and edit rep bases; other teams cannot assign routes', async () => {
@@ -111,6 +115,15 @@ test('assignment automatically anchors and optimizes every imported door without
     assert.equal(state.route.metadata.road_network_used, false);
     assert.equal(state.route.metadata.road_verification.verdict, 'unverified_local_fallback');
     assert.equal(state.route.metrics.distance, Math.round(calculateRouteDistanceMiles(state.route.property_hashes.map(hash => properties.find(property => property.address_hash === hash)), { startLocation: home, endLocation: home }) * 100) / 100);
+    // The full road search follows in the background, from the anchor, over the saved order.
+    assert.equal(state.queued.length, 1);
+    const [job] = state.queued;
+    assert.equal(job.source, 'rep_anchor_change');
+    assert.equal(job.start.lat, home.lat); assert.equal(job.end.lng, home.lng);
+    assert.deepEqual(job.properties.map(property => property.address_hash), state.route.property_hashes);
+    assert.deepEqual(job.route.property_hashes, state.route.property_hashes);
+    assert.equal(result.data.optimization_job_id, 'job1');
+    assert.equal(JSON.stringify(result.data.route).includes(String(home.lng)), false);
 });
 test('rep preferences, explicit opt-out and absent bases keep assignment unanchored', async () => {
     for (const options of [{ auto: false }, { base: null }, { pending: true }, {}]) {

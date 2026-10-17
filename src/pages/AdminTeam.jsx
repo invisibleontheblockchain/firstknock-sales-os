@@ -31,6 +31,7 @@ import { subscribeToTeamUpdates, TEAM_ROUTE_FIELDS } from '@/lib/teamQueryLoadin
 import { buildTeamRoster, getRepSeatCount } from '@/lib/teamRoster';
 import ActiveRepLocations from '@/components/team/ActiveRepLocations';
 import TimeClockTab from '@/components/team/TimeClockTab';
+import { noteServerRouteOptimization } from '@/lib/serverRouteOptimizationJobs';
 
 
 const BRAND = {
@@ -211,6 +212,7 @@ export default function AdminTeam() {
             action: 'assign', route_id: routeId, member_id: memberId,
         })).data,
         onSuccess: (data) => {
+            noteServerRouteOptimization(data);
             queryClient.invalidateQueries({ queryKey: ['allRoutes'] });
             queryClient.invalidateQueries({ queryKey: ['savedRoutes'] });
             queryClient.invalidateQueries({ queryKey: ['myRoutes'] });

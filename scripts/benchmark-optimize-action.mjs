@@ -39,7 +39,7 @@ globalThis.fetch = async (input, init) => {
 
 const handler = (await import(new URL('base44/functions/optimizeRouteRoadMatrix/entry.ts', root).href)).default;
 // The same first-result-fast wrapper every optimizer path uses.
-const { optimizeFirstThenFinish } = await import(new URL('src/lib/backgroundRouteImprovement.js', root).href);
+const { optimizeFirstThenFinish, backgroundImprovementMiles } = await import(new URL('src/lib/backgroundRouteImprovement.js', root).href);
 const { measureRoadPath } = await import(new URL('base44/shared/roadPathMeasure.js', root).href);
 const { readOsrmProvider } = await import(new URL('base44/shared/osrmProvider.js', root).href);
 const doors = JSON.parse(await Deno.readTextFile(String(args.route))).doors;
@@ -92,7 +92,11 @@ async function runOnce() {
     return {
         total_ms: Math.round(totalMs), first_result_ms: Math.round(firstResultMs ?? totalMs),
         first_saved_ms: Math.round(firstSavedMs), more_in_background: first.more,
-        first_miles: first.more ? await measure(firstOrder) : null, passes: passes.length,
+        first_miles: first.more ? await measure(firstOrder) : null,
+        // What the app would save after the background passes (its own rule).
+        background_save_miles: first.more ? backgroundImprovementMiles(first.result, result) : null,
+        first_objective: first.result?.objective || null, final_objective: result?.objective || null,
+        passes: passes.length,
         stop_reason: meta.road_search_stop_reason || null, outcome: result ? 'applied' : outcome?.reason || null,
         whole_route_verified: Boolean(result && meta.strategy && meta.strategy !== 'access_guarded_neighborhood_repair' && meta.fallback !== true),
         checks: last.coverage ? { completed: last.coverage.total - last.coverage.remaining, total: last.coverage.total } : null,

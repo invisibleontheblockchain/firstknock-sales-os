@@ -1,6 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 import { secrets } from 'base44:runtime';
 import { completeServerRoadAwareRoutes } from '../../shared/roadAwareBetaServer.js';
+import { enqueueRouteOptimizationJob } from '../../shared/routeOptimizationJobs.js';
 
 // Helper: Haversine Distance (Miles)
 const calcDist = (lat1, lng1, lat2, lng2) => {
@@ -95,7 +96,7 @@ Deno.serve(async (req) => {
                     }];
                     const readSecret = name => { try { return String(secrets.get(name) || '').trim(); } catch { return ''; } };
                     const [completed] = await completeServerRoadAwareRoutes(baselineRoutes, { client: base44, user, entryPoint: 'auto_recent_sales', readSecret });
-                    const created = await base44.asServiceRole.entities.SavedRoute.create({
+                    const record = {
                         name: routeName,
                         description: `Auto-generated route for ${cluster.properties.length} recent sales within 5 miles.`,
                         status: 'ACTIVE',
@@ -110,7 +111,15 @@ Deno.serve(async (req) => {
                             distance: completed.totalDistance
                         },
                         start_location: cluster.center
-                    });
+                    };
+                    const created = await base44.asServiceRole.entities.SavedRoute.create(record);
+                    // The full road search runs in the background and saves a
+                    // shorter order only onto an untouched route.
+                    try {
+                        await enqueueRouteOptimizationJob(base44.asServiceRole, { route: { ...record, ...created },
+                            properties: completed.properties, start: cluster.center, source: 'auto_recent_sales',
+                            ownerUserId: String(user.id), managerId: String(user.id) });
+                    } catch (error) { console.warn('[autoGenerateSoldRoutes] background road search not queued', error); }
                     if (completed.metadata?.road_aware_comparison_id) await base44.asServiceRole.entities.RoadAwareRoutingComparison.update(
                         completed.metadata.road_aware_comparison_id, { route_id: created.id }).catch(() => {});
                     
