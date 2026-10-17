@@ -11,10 +11,15 @@
 //     scripts/benchmark-route-job.mjs --route route.json [--out result.json]
 
 const args = {};
-for (let i = 0; i < Deno.args.length; i += 1) if (Deno.args[i].startsWith('--')) args[Deno.args[i].slice(2)] = Deno.args[++i];
+for (let i = 0; i < Deno.args.length; i += 1) {
+    if (!Deno.args[i].startsWith('--')) continue;
+    args[Deno.args[i].slice(2)] = Deno.args[i + 1]?.startsWith('--') || i + 1 >= Deno.args.length ? true : Deno.args[++i];
+}
 const root = new URL('../', import.meta.url);
 // Search continuations are bound to the app id, as in production.
-Deno.env.set('BASE44_APP_ID', Deno.env.get('BASE44_APP_ID') || 'benchmark-app');
+// --no-continuations reproduces a deployment where they are unavailable.
+if (args['no-continuations']) Deno.env.delete('BASE44_APP_ID');
+else Deno.env.set('BASE44_APP_ID', Deno.env.get('BASE44_APP_ID') || 'benchmark-app');
 const handler = (await import(new URL('base44/functions/optimizeRouteRoadMatrix/entry.ts', root).href)).default;
 const jobs = await import(new URL('base44/shared/routeOptimizationJobs.js', root).href);
 const { reviewFinalNeighborhoodRoute } = await import(new URL('base44/shared/finalNeighborhoodReview.js', root).href);
