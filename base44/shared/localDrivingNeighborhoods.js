@@ -16,6 +16,14 @@ export const LOCAL_DRIVING_REVIEW_VERSION = 'entry_branch_return_v7_search_cover
 const id = p => String(p?.address_hash || p?.legacy_hash || p?.id || '');
 const protectedStop = (p, locks) => locks.has(id(p)) || p.order_locked || p.locked
     || p.routing_access?.resolution_status === 'unresolved';
+// How many upcoming windows have their road context fetched while the current
+// one is reviewed. Each costs one table and one route request; the dispatcher's
+// concurrency cap still bounds the engine load.
+const CONTEXT_LOOKAHEAD = 4;
+// Candidate orders for one window priced at once: the default candidate count.
+// The private gateway serves 16 requests at once, so a window's proposals no
+// longer need to queue behind each other.
+const CANDIDATE_POOL = 3;
 const fatal = error => {
     if (error?.name === 'AbortError' || /membership|locked stop|graph identity|cancelled/i.test(error?.message || '')) throw error;
 };
@@ -316,6 +324,62 @@ async function reviewDrivingWindows(order, options = {}) {
             : inferredAccess.get(id(p)) || p.routing_access || known || null;
     }, streetSegmentKey: neighborhoodStreetKey };
     const createContext = options.createLocalDrivingContext || ((points, config) => createVehicleRoutingContext(points, accessContext, config));
+    // Section geometry for a window, exactly as the review loop builds it.
+    const sectionFor = ({ start, end }) => {
+        const left = order.slice(Math.max(0, start - 2), start);
+        const right = order.slice(end, end + 2);
+        if (!left.length && options.startLocation) left.push(options.startLocation);
+        if (!right.length && options.endLocation) right.push(options.endLocation);
+        const stops = order.slice(start, end);
+        return { left, right, stops, section: [...left, ...stops, ...right] };
+    };
+    // Prefetched road context is reused only when the section's stops AND the
+    // road access each stop would be routed with are exactly what the review
+    // would request now. A repair upstream or new curb evidence changes the
+    // snapshot, and the window is then fetched fresh. Same requests, same graph,
+    // same answers: prefetching changes timing, never a decision.
+    const sectionSnapshot = section => JSON.stringify(section.map(p => [id(p) || `${p.lat},${p.lng}`, accessContext.accessFor(p) || null]));
+    const needsCurbDiscovery = section => mailCarrier && options.inferStreetSides !== false
+        && section.some(p => (!proof || routeIdentities.has(id(p))) && !trustedAccess(accessContext.accessFor(p)) && !discovered.has(id(p)));
+    // A prefetched section never shares a stop with the current section or with
+    // another pending prefetch, so an unmatched pin costs one provider request,
+    // exactly as in a one-window-at-a-time review: no two in-flight requests can
+    // discover the same bad pin.
+    const prefetched = new Map();
+    const prefetchFrom = (index, currentSection) => {
+        const claimed = new Set(currentSection.map(id));
+        for (const entry of prefetched.values()) for (const key of entry.ids) claimed.add(key);
+        // Never fetch past the remaining window budget or the time budget.
+        const lookahead = Date.now() >= deadline ? 0 : Math.min(maxWindows - report.checked,
+            Math.max(0, Math.min(8, options.contextLookahead ?? CONTEXT_LOOKAHEAD)));
+        const orderNow = [...order];
+        for (let next = index + 1; next < Math.min(windows.length, index + 1 + lookahead); next++) {
+            const window = windows[next];
+            const key = `${window.start}:${window.end}`;
+            if (prefetched.has(key)) continue;
+            const { section } = sectionFor(window);
+            const ids = section.map(id);
+            if (ids.some(stopId => claimed.has(stopId)) || needsCurbDiscovery(section)) continue;
+            ids.forEach(stopId => claimed.add(stopId));
+            const fetched = (async () => {
+                // A question the search proof already certifies is reused
+                // without any road request; prefetch must not spend one on it.
+                if (proof && proof.has(await proof.key(orderNow, window, { ...options,
+                    unresolvedStopIds: [...unmatchedIds], knownDrivingAccessFor: accessContext.accessFor }))) return null;
+                const context = await createContext(section, contextOptions);
+                return { context, baseline: await context.routeSequence(section) };
+            })().catch(error => ({ error }));
+            prefetched.set(key, { snapshot: sectionSnapshot(section), ids, fetched });
+        }
+    };
+    // The prefetch result for this exact section, or null to fetch fresh. A
+    // failed prefetch is this window's first attempt, not an extra one.
+    const takePrefetched = async (window, section) => {
+        const key = `${window.start}:${window.end}`, entry = prefetched.get(key);
+        prefetched.delete(key);
+        if (!entry || entry.snapshot !== sectionSnapshot(section)) return null;
+        return entry.fetched;
+    };
     const retryInferredHeading = async (section, run) => {
         for (let retry = 0; retry < 9; retry++) {
             try { return await run(); }
@@ -341,11 +405,7 @@ async function reviewDrivingWindows(order, options = {}) {
             continue;
         }
         const { start, end, service, area, local } = windows[index];
-        const left = order.slice(Math.max(0, start - 2), start);
-        const right = order.slice(end, end + 2);
-        if (!left.length && options.startLocation) left.push(options.startLocation);
-        if (!right.length && options.endLocation) right.push(options.endLocation);
-        const stops = order.slice(start, end), section = [...left, ...stops, ...right];
+        const { left, right, stops, section } = sectionFor(windows[index]);
         const coverageKey = questionKey(windows[index]);
         let fullyConsidered = false, unchanged = true, certifiedKey = null, attempted = false;
         const markAttempt = () => {
@@ -379,10 +439,20 @@ async function reviewDrivingWindows(order, options = {}) {
                 }
             }
             markAttempt();
-            const { context, baseline } = await timed('road_context_ms', () => retryInferredHeading(section, async () => {
-                const context = await createContext(section, contextOptions);
-                return { context, baseline: await context.routeSequence(section) };
-            }));
+            const { context, baseline } = await timed('road_context_ms', async () => {
+                const early = await takePrefetched(windows[index], section);
+                if (early?.context) { prefetchFrom(index, section); return early; }
+                let firstError = early?.error || null;
+                // This window's own request starts first; later windows are
+                // fetched behind it, never ahead of it.
+                const own = retryInferredHeading(section, async () => {
+                    if (firstError) { const error = firstError; firstError = null; throw error; }
+                    const context = await createContext(section, contextOptions);
+                    return { context, baseline: await context.routeSequence(section) };
+                });
+                prefetchFrom(index, section);
+                return own;
+            });
             // A failed inferred heading can be removed while building the
             // baseline. Certify the policy actually used by the candidates.
             if (proof) certifiedKey = await currentProofKey();
@@ -422,44 +492,56 @@ async function reviewDrivingWindows(order, options = {}) {
             if (!candidates.length) { fullyConsidered = false; report.skipped.push({ start, end, reason: 'unreachable_local_roads' }); continue; }
             let selected = stops, selectedCandidate = null, best = baseline, bestPreference = preferenceFor(stops, context);
             const considered = candidates.slice(0, maxCandidates);
-            for (let offset = 0; offset < considered.length; offset += 2) {
-                if (Date.now() >= deadline) { fullyConsidered = false; report.budgetExhausted = true; break; }
-                if (options.signal?.aborted) throw options.signal.reason || new DOMException('Cancelled', 'AbortError');
-                // These existing proposals share one fixed input/context. Price
-                // two at a time, then consume results in the original order so
-                // ties and adoption stay deterministic. The process-wide OSRM
-                // concurrency/spacing limits still govern every real request.
-                const batch = considered.slice(offset, offset + 2);
-                const outcomes = await timed('candidate_measurement_ms', () => Promise.all(batch.map(async candidate => {
-                    try {
-                        if (options.signal?.aborted) throw options.signal.reason || new DOMException('Cancelled', 'AbortError');
-                        return { measured: await context.routeSequence([...left, ...candidate.order, ...right]) };
-                    } catch (error) { return { error }; }
-                })));
-                // Drain both already-started requests before surfacing failure;
-                // cancellation or graph changes must never schedule a new batch.
-                if (options.signal?.aborted) throw options.signal.reason || new DOMException('Cancelled', 'AbortError');
-                for (const outcome of outcomes) if (outcome.error) fatal(outcome.error);
-                for (const [batchIndex, candidate] of batch.entries()) {
-                    const { measured, error } = outcomes[batchIndex];
-                    if (error) { fullyConsidered = false; report.skipped.push({ start, end, candidate: true, reason: error.message }); continue; }
-                    report.candidatesMeasured++;
-                    if (candidate.areaMove) report.areaReview.candidatesMeasured++;
-                    // These unchanged overlapping legs keep the arrival and exit
-                    // states consistent with the route outside this neighborhood.
-                    if (left.length >= 2 && !sameBoundaryLeg(baseline.directedLegs?.[0], measured.directedLegs?.[0])) continue;
-                    if (right.length >= 2 && !sameBoundaryLeg(baseline.directedLegs?.at(-1), measured.directedLegs?.at(-1))) continue;
-                    const preference = preferenceFor(candidate.order, context);
-                    // Mail-carrier service is the user's first objective. A legal
-                    // coherent pass may drive farther than a zig-zag order. Once
-                    // passes are coherent, real driving time/miles decide the win.
-                    const candidatePasses = mailCarrier ? mailCarrierPassViolations([...left, ...candidate.order, ...right], context) : 0;
-                    const selectedPasses = mailCarrier ? mailCarrierPassViolations([...left, ...selected, ...right], context) : 0;
-                    if (candidatePasses > selectedPasses) continue;
-                    const fixesPasses = candidatePasses < selectedPasses;
-                    if ((!fixesPasses || options.requireNoDrivingIncrease) && !improves(measured, best, preference, bestPreference)) continue;
-                    selected = candidate.order; selectedCandidate = candidate; best = measured; bestPreference = preference;
-                }
+            // At most CANDIDATE_POOL proposals are priced at once, and the next one
+            // starts as soon as a slot frees rather than when the batch returns. Results
+            // are consumed in the original order, so ties and adoption stay
+            // deterministic. Once a cancellation, a graph change or the deadline is
+            // seen, nothing new starts; already-started work is drained first.
+            const outcomes = new Array(considered.length);
+            let launched = 0;
+            await timed('candidate_measurement_ms', () => new Promise(resolveAll => {
+                let active = 0, halted = false;
+                const launch = () => {
+                    while (!halted && active < CANDIDATE_POOL && launched < considered.length) {
+                        if (options.signal?.aborted) { halted = true; break; }
+                        if (Date.now() >= deadline) { fullyConsidered = false; report.budgetExhausted = true; halted = true; break; }
+                        const index = launched++, candidate = considered[index];
+                        active++;
+                        context.routeSequence([...left, ...candidate.order, ...right])
+                            .then(measured => ({ measured }), error => ({ error }))
+                            .then(outcome => {
+                                outcomes[index] = outcome; active--;
+                                if (outcome.error) { try { fatal(outcome.error); } catch { halted = true; } }
+                                launch();
+                                if (active === 0) resolveAll();
+                            });
+                    }
+                    if (active === 0) resolveAll();
+                };
+                launch();
+            }));
+            if (options.signal?.aborted) throw options.signal.reason || new DOMException('Cancelled', 'AbortError');
+            for (const outcome of outcomes) if (outcome?.error) fatal(outcome.error);
+            for (let index = 0; index < launched; index++) {
+                const candidate = considered[index];
+                const { measured, error } = outcomes[index];
+                if (error) { fullyConsidered = false; report.skipped.push({ start, end, candidate: true, reason: error.message }); continue; }
+                report.candidatesMeasured++;
+                if (candidate.areaMove) report.areaReview.candidatesMeasured++;
+                // These unchanged overlapping legs keep the arrival and exit
+                // states consistent with the route outside this neighborhood.
+                if (left.length >= 2 && !sameBoundaryLeg(baseline.directedLegs?.[0], measured.directedLegs?.[0])) continue;
+                if (right.length >= 2 && !sameBoundaryLeg(baseline.directedLegs?.at(-1), measured.directedLegs?.at(-1))) continue;
+                const preference = preferenceFor(candidate.order, context);
+                // Mail-carrier service is the user's first objective. A legal
+                // coherent pass may drive farther than a zig-zag order. Once
+                // passes are coherent, real driving time/miles decide the win.
+                const candidatePasses = mailCarrier ? mailCarrierPassViolations([...left, ...candidate.order, ...right], context) : 0;
+                const selectedPasses = mailCarrier ? mailCarrierPassViolations([...left, ...selected, ...right], context) : 0;
+                if (candidatePasses > selectedPasses) continue;
+                const fixesPasses = candidatePasses < selectedPasses;
+                if ((!fixesPasses || options.requireNoDrivingIncrease) && !improves(measured, best, preference, bestPreference)) continue;
+                selected = candidate.order; selectedCandidate = candidate; best = measured; bestPreference = preference;
             }
             if (selected !== stops) {
                 unchanged = false;
