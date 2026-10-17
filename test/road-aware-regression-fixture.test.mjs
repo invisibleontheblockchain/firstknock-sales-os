@@ -27,9 +27,12 @@ test('neighborhood v5 explicitly versions the driving review while preserving fr
     // Match radii, headings, parking and frozen connector scoring stay fixed.
     // This does not remeasure
     // the private export or change its historical source hashes.
+    // Reviewed: vehicleRouting.js now requests redirect 'manual' instead of
+    // 'error', which the Base44 edge runtime rejects before connecting. A
+    // redirect is still !ok and fails the request; no routing logic changed.
     const frozen = { 'coreDrivingPilot.js': '44ecbfad3d3578258d4d4a19d5ce7f1a43e345f61e5f0f362a71118a5e5d8f90',
         'guardedDrivingWindows.js': baseline.sourceHashes['base44/shared/guardedDrivingWindows.js'],
-        'vehicleRouting.js': '94168f09c8be3a7c15459509f5b6b5c93f33cae00b83df89146c3b8a58b20261' };
+        'vehicleRouting.js': '50ac988606f1e88cd680e79966f2952758837aae8dea0e19645e907e32930649' };
     for (const [file, hash] of Object.entries(frozen)) {
         const source = readFileSync(new URL('../base44/shared/' + file, import.meta.url), 'utf8').replace(/\r\n/g, '\n');
         assert.equal(createHash('sha256').update(source).digest('hex'), hash, file + ' needs explicit regression review');

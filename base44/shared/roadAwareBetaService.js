@@ -58,7 +58,7 @@ export async function fetchRoadBetaProxy({ provider, service, coordinates, query
     for (const [key, value] of Object.entries(query)) url.searchParams.set(key, value);
     const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 15000);
     try {
-        const response = await fetchImpl(url, { signal: controller.signal, redirect: 'error',
+        const response = await fetchImpl(url, { signal: controller.signal, redirect: 'manual',
             headers: { Accept: 'application/json', Authorization: `Bearer ${token}` } });
         if (!response.ok) return Response.json({ code: 'ProviderUnavailable' }, { status: response.status >= 500 ? 503 : 422 });
         if (Number(response.headers.get('content-length')) > 8000000) throw new RoadBetaError(502, 'Road response exceeds its size limit.');

@@ -195,3 +195,19 @@ test('an unclassified error is "other", never mistaken for a connection failure'
     assert.equal(describeRoadFailure(new TypeError('fetch failed')).kind, 'network');
     assert.equal(describeRoadFailure(new Error('error sending request: client error (Connect): dns error')).kind, 'network');
 });
+
+test('requests use an edge-supported redirect mode and refuse any redirect', async () => {
+    // The Base44 edge runtime throws on redirect: 'error' before connecting.
+    const calls = stubFetch((_n, _url, options) => {
+        if (options.redirect === 'error') throw new TypeError('Invalid redirect value, must be one of "follow" or "manual"');
+        assert.equal(options.redirect, 'manual');
+        return Response.json(okPayload);
+    });
+    assert.deepEqual(await fetchOsrmJson(`${GATEWAY}/table`), okPayload);
+    assert.equal(calls.length, 1);
+
+    stubFetch(() => new Response(null, { status: 302, headers: { Location: 'https://elsewhere.example/' } }));
+    const redirected = await fetchOsrmJson(`${GATEWAY}/table`).catch(error => error);
+    assert.match(redirected.message, /redirect/);
+    assert.equal(describeRoadFailure(redirected).kind, 'http');
+});
