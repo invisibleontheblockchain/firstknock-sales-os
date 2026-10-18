@@ -1810,20 +1810,25 @@ export default function RepHome() {
 
       const { distance, routeUpdate } = buildHomeRouteUpdate(roadResult, roadMeasurement, routeToOptimize);
       await saveHomeRoute(routeUpdate);
-      toast.success(`${usesAnchor ? 'Anchored round trip' : 'Home round trip'} optimized (${distance} mi ${roadResult || roadMeasurement ? 'road measured' : 'street-continuity estimate'}).`, {
-        id: 'rep-home-route',
-        duration: 5000
-      });
+      // One plain line. Without road distances the order is a street sweep,
+      // which is worth saying; nothing else (search coverage, estimates) is.
+      if (roadResult || roadMeasurement) {
+        toast.success(`${usesAnchor ? 'Anchored round trip' : 'Home round trip'} optimized · ${distance} mi`, { id: 'rep-home-route', duration: 5000 });
+      } else {
+        toast.warning(`${usesAnchor ? 'Anchored round trip' : 'Home round trip'} saved in street order. Driving distances could not be checked.`, {
+          id: 'rep-home-route', duration: 8000,
+        });
+      }
       if (firstPhase.more) {
         backgrounded = true;
-        job.finishInBackground();
+        // The first result is the result; the remaining passes run silently.
+        job.finish();
         const backgroundJob = job;
         finishInBackground({
           final: search.final, firstResult: roadResult, client: base44,
           snapshot: routeGuardSnapshot({ ...routeToOptimize, ...routeUpdate }, { run: optimizeRun }),
-          save: async (finalResult, current, miles) => {
+          save: async (finalResult, current) => {
             await saveHomeRoute(buildHomeRouteUpdate(finalResult, null, current).routeUpdate);
-            toast.success(`Route improved by ${miles} mi while you worked.`, { duration: 6000 });
           },
         }).catch((error) => console.warn('[RepHome] background improvement was not saved', error))
           .finally(() => backgroundJob.finish());

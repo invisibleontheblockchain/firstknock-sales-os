@@ -319,8 +319,9 @@ test('no-op then accepted continuation persists one verified order and reloads i
     assert.equal(saved.metrics.distance, 8);
     assert.doesNotMatch(JSON.stringify({ saved, active, cached: queries.getQueryData(['savedRoutes', 'manager']),
         map: queries.getQueryData(['routeMap', 'manager', route.id]), messages }), /private-action|search_continuation|searchContinuation/);
-    assert.ok(messages.some(value => /Still checking the remaining neighborhoods in the background/.test(value.message)));
-    assert.ok(messages.some(value => /Route improved by 2 mi while you worked/.test(value.message)));
+    // Pass 1 found nothing shorter; the background's shorter order is saved silently.
+    assert.equal(messages.filter(value => value.tone !== 'loading').length, 1);
+    assert.ok(!messages.some(value => /incomplete|checks? remain|estimat|background|improved by/i.test(value.message)), 'one plain message; background passes are silent');
     const reopened = queries.getQueryData(['routeMap', 'manager', route.id]);
     await run(reopened, { mode: 'route_only' }, { client, setActiveRoute: updater => { active = updater(active); } });
     assert.equal(calls, 4);
@@ -345,7 +346,9 @@ test('an unchanged bounded action saves cumulative coverage and reports the eigh
     assert.equal(attempt.route_verification_complete, true);
     assert.equal(attempt.neighborhoods_checked, 8);
     assert.match(attempt.message, /12 of 20 checks remain after 8 passes/);
-    assert.equal(messages.at(-1).tone, 'warning');
+    // A partial search is a result, not a problem: success, plain wording.
+    assert.equal(messages.at(-1).tone, 'success');
+    assert.equal(messages.at(-1).message, 'Route checked · already the shortest order found');
 });
 
 test('personal home, car and private anchors continue only in memory and never save anchor-derived coverage', async () => {
@@ -440,9 +443,9 @@ test('377-door route-only Optimize finishes the 45 remaining checks after reorde
     assert.equal(saved.metadata.road_search_coverage.remaining_windows, 0);
     // Pass 1 is announced at once; the background found nothing shorter, so it ends quietly.
     const firstResult = messages.find(message => /24 stops reordered/.test(message.message));
-    assert.match(firstResult.message, /Saved ~3\.34 estimated miles/);
-    assert.match(firstResult.message, /Still checking the remaining neighborhoods in the background/);
-    assert.ok(!messages.some(message => /Route improved by/.test(message.message)));
+    assert.equal(firstResult.tone, 'success');
+    assert.equal(firstResult.message, 'Route optimized · 24 stops reordered · ~3.3 mi shorter');
+    assert.ok(!messages.some(message => /incomplete|checks? remain|estimat|background|improved by/i.test(message.message)), 'one plain message; background passes are silent');
 });
 
 test('377-door continuation completes 34 remaining checks after fresh curb measurements change', async () => {
@@ -487,8 +490,8 @@ test('377-door continuation completes 34 remaining checks after fresh curb measu
     assert.equal(saved.metadata.road_search_stop_reason, undefined);
     // Pass 1 saved 1.41 mi; the background's order saves 4.3 mi against the
     // same original, so it is saved and announced as 2.89 mi more.
-    assert.ok(messages.some(message => /Still checking the remaining neighborhoods in the background/.test(message.message)));
-    assert.ok(messages.some(message => /Route improved by 2\.89 mi while you worked/.test(message.message)));
+    // The background's shorter order is saved silently.
+    assert.ok(!messages.some(message => /incomplete|checks? remain|estimat|background|improved by/i.test(message.message)), 'one plain message; background passes are silent');
 });
 
 test('successive improvements measure savings from the original click and finish on the latest order', async () => {
@@ -766,7 +769,11 @@ test('626-door route saves pass 1, then finishes local checks around unresolved 
     assert.equal(saved.metadata.last_optimization_attempt.route_verification_complete, false);
     assert.equal(saved.metadata.routing.neighborhood_excursion_review.local_driving_review.localMilesSaved, 31);
     assert.doesNotMatch(JSON.stringify({ saved, messages }), /private-partial|search_continuation|searchContinuation/);
-    assert.ok(messages.some(message => /Whole-route distance remains unverified/.test(message.message)));
+    // An unresolved stop is a real problem: a warning that names it, no diagnostics wording.
+    const warning = messages.find(message => message.tone === 'warning');
+    assert.match(warning.message, /^Route optimized · \d+ stops reordered/);
+    assert.match(warning.message, /Stop 295/);
+    assert.doesNotMatch(warning.message, /unverified|incomplete|estimat/i);
 });
 
 test('partial passes accumulate only independently verified local savings and never invent a whole-route baseline', async () => {

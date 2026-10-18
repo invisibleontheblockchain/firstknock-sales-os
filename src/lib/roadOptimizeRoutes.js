@@ -12,7 +12,6 @@
  * the flow has saved the route and only if nobody has touched it since.
  */
 
-import { toast } from 'sonner';
 import { isValidRoutePoint } from '@/lib/routeBounds';
 import {
     awaitSavedGeneratedRoute,
@@ -75,16 +74,14 @@ function backgroundRouteUpdate(current, finalResult, miles) {
     };
 }
 
-async function settleBackgrounds(backgrounds, job) {
+// Background passes are silent: a shorter order is saved quietly and the
+// routes and map refresh; no notice, no progress pill.
+async function settleBackgrounds(backgrounds) {
     const results = await Promise.all(backgrounds);
-    job?.finish();
     const improved = results.filter(item => item?.saved);
     const miles = Math.round(improved.reduce((sum, item) => sum + item.miles, 0) * 100) / 100;
     if (improved.length) {
-        await Promise.allSettled(['savedRoutes', 'myRoutes'].map(root => queryClientInstance.invalidateQueries({ queryKey: [root] })));
-        toast.success(improved.length === 1
-            ? `Route improved by ${miles} mi while you worked.`
-            : `${improved.length} routes improved by ${miles} mi while you worked.`, { duration: 6000 });
+        await Promise.allSettled(['savedRoutes', 'myRoutes', 'allRoutes'].map(root => queryClientInstance.invalidateQueries({ queryKey: [root] })));
     }
     return { improved: improved.length, miles };
 }
@@ -103,7 +100,6 @@ export async function optimizeRoutesOnRoads(routes, {
     let ceilingHit = false;
     const slots = backgroundSlots(concurrency);
     const backgrounds = [];
-    let firstResultsDone = false;
 
     try {
         const out = await runWithConcurrency(list, concurrency, async (route, index) => {
@@ -176,7 +172,6 @@ export async function optimizeRoutesOnRoads(routes, {
                 metadata: { ...(route.metadata || {}), ...result.routingMetadata }
             }, ROAD_VERIFICATION.ADOPTED, { measuredMiles: result.objective.appliedDistance, savedMiles: saved }) };
         });
-        firstResultsDone = true;
 
         const routesOut = out.map(item => item.route);
         const verification = summarizeRoadVerification(routesOut);
@@ -194,12 +189,12 @@ export async function optimizeRoutesOnRoads(routes, {
             verification,
             unverifiedMessage: describeUnverifiedRoutes(routesOut),
             // Settles when the background passes end (they save on their own).
-            backgroundDone: backgrounds.length ? settleBackgrounds(backgrounds, job) : Promise.resolve({ improved: 0, miles: 0 }),
+            backgroundDone: backgrounds.length ? settleBackgrounds(backgrounds) : Promise.resolve({ improved: 0, miles: 0 }),
         };
     } finally {
         // Every first result is in (or the batch failed): background passes may start.
         slots.open();
-        if (!firstResultsDone || !backgrounds.length) job?.finish();
-        else job?.finishInBackground();
+        // The first results are the results: close the progress screen.
+        job?.finish();
     }
 }

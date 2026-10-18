@@ -21,7 +21,7 @@ import { captureParkedCarLocation, isLowAccuracyCapture, lowAccuracyConfirmation
 import { startOptimizeProgress } from '@/lib/optimizeProgressToast';
 import { LONG_OPTIMIZATION_STOPS, startRoadOptimizationJob } from '@/lib/roadOptimizationProgress';
 import { claimRouteOptimization, finishInBackground, optimizeFirstThenFinish, routeGuardSnapshot } from '@/lib/backgroundRouteImprovement';
-import { buildRoadOptimizationAttempt, describeAppliedRoadOptimization, describeRoadOptimizationOutcome } from '@/lib/routeOptimizationOutcome';
+import { buildRoadOptimizationAttempt, describeRoadOptimizationOutcome, plainOptimizeMessage } from '@/lib/routeOptimizationOutcome';
 import { countChangedRouteStops, persistOptimizedRoute, syncOptimizedRoute } from '@/lib/routeOptimizePersistence';
 import { ROAD_VERIFICATION, stampRoadVerification } from '@/lib/routeRoadVerification';
 import { OPTIMIZE_MODES, ROUTE_ORIGIN_MODES, resolveOptimizeMode, routeOriginModeForOptimizeMode } from '@/lib/routeOriginModes';
@@ -30,13 +30,10 @@ import {
     buildRouteAnchorsUpdate,
     buildRouteOptimizeUpdate,
     normalizeRouteAnchor,
-    optimizeSuccessMessage,
     routeBelongsToActingUser,
 } from '@/lib/routeOptimizeUpdate';
 
 const TOAST_ID = 'reoptimize-route';
-// Pass 1 is saved; the remaining passes save only a shorter order onto an untouched route.
-const BACKGROUND_NOTE = ' Still checking the remaining neighborhoods in the background.';
 
 const propertyKey = (property) => property.address_hash || property.legacy_hash || property.id;
 
@@ -258,16 +255,17 @@ export async function reoptimizeRoute(route, options = {}, deps = {}) {
         const continueInBackground = (savedRoute, firstResult) => {
             if (!firstPhase.more) return;
             backgrounded = true;
-            job?.finishInBackground();
+            // The first result is the result: close the progress screen. The
+            // remaining passes run silently and may quietly save a shorter order.
+            job?.finish();
             run.background = finishInBackground({
                 final: search.final, firstResult, client,
                 snapshot: routeGuardSnapshot(savedRoute, { run: optimizeRun }),
-                save: async (finalResult, current, miles) => {
+                save: async (finalResult, current) => {
                     const currentHashes = (current.property_hashes || []).map(String);
                     const built = buildAppliedUpdate(finalResult, current, currentHashes);
                     await persistOptimizedRoute({ route: { ...route, ...current }, update: built.routeUpdate,
                         properties: built.appliedProperties, client, queryClient, setActiveRoute, session });
-                    toast.success(`Route improved by ${miles} mi while you worked.`, { duration: 6000 });
                 },
                 // Nothing shorter: keep the saved record accurate (coverage, verdict).
                 quiet: async (finalValue, current) => {
@@ -310,9 +308,11 @@ export async function reoptimizeRoute(route, options = {}, deps = {}) {
             const saved = await client.entities.SavedRoute.update(route.id, { metadata });
             await syncOptimizedRoute({ saved: { ...route, ...saved, metadata }, properties: routeProperties,
                 queryClient, setActiveRoute, metadataOnly: true });
-            toast[outcome.tone](`${outcome.message}${firstPhase.more ? BACKGROUND_NOTE : ''}`, {
+            // The saved attempt keeps the full diagnostics; the person sees one plain line.
+            const shown = plainOptimizeMessage({ outcome, routingMetadata: roadMeasurement?.routingMetadata });
+            toast[shown.tone](shown.message, {
                 id: TOAST_ID,
-                duration: outcome.tone === 'info' ? 6000 : 12000
+                duration: shown.tone === 'success' ? 5000 : 12000
             });
             continueInBackground({ ...route, ...saved, property_hashes: hashes }, null);
             return run;
@@ -384,8 +384,7 @@ export async function reoptimizeRoute(route, options = {}, deps = {}) {
             }
             return { routeUpdate, appliedProperties, appliedHashes, objective, hasWholeRouteDistance, newDistanceRounded };
         }
-        const { routeUpdate, appliedProperties, appliedHashes, objective, hasWholeRouteDistance, newDistanceRounded }
-            = buildAppliedUpdate(roadMatrixResult, route, hashes);
+        const { routeUpdate, appliedProperties, appliedHashes, objective } = buildAppliedUpdate(roadMatrixResult, route, hashes);
         const savedRoute = await persistOptimizedRoute({
             route, update: routeUpdate, properties: appliedProperties, client, queryClient, setActiveRoute,
             // Personal anchors belong only to the current map session.
@@ -394,28 +393,14 @@ export async function reoptimizeRoute(route, options = {}, deps = {}) {
         // Restore the map view so fitBounds cannot zoom out on a reorder.
         if (savedView && mapRef?.current) { try { mapRef.current.setView(savedView.center, savedView.zoom, { animate: false }); } catch { /* map already gone */ } }
         const savedMiles = Math.round(objective.estimatedSavings * 100) / 100;
-        const partialOutcome = roadMatrixResult && describeAppliedRoadOptimization(roadMatrixResult.routingMetadata);
         const changedStops = countChangedRouteStops(hashes, appliedHashes);
-        const localReview = roadMatrixResult?.routingMetadata?.neighborhood_excursion_review?.local_driving_review;
-        const base = usingCustomAnchors
-            ? (routeOriginMode === ROUTE_ORIGIN_MODES.CUSTOM_BOUNDS
-                ? 'Route anchors set. The door order was rebuilt around your start and finish.'
-                : 'Route anchors cleared.')
-            : changedStops > 0
-                ? `${partialOutcome?.message || optimizeSuccessMessage(optimizeMode)} ${changedStops} stops reordered.`
-                : 'The stop order is unchanged.';
-        const estimateLabel = 'road-distance estimate';
-        const savingsLabel = localReview?.validation === 'overlapping_boundary_legs'
-            ? `Verified neighborhood savings: ~${savedMiles} mi` : `Saved ~${savedMiles} estimated miles`;
-        const msg = !hasWholeRouteDistance
-            ? `${base}${savedMiles > 0 ? ` Verified neighborhood savings: ~${savedMiles} mi.` : ''} Whole-route distance remains unverified.`
-            : changedStops > 0 && objective.applyCandidate && savedMiles > 0
-            ? `${base} ${savingsLabel} (${newDistanceRounded} mi ${estimateLabel}).`
-            : `${base} (${newDistanceRounded} mi ${estimateLabel})`;
-        toast[changedStops > 0 ? partialOutcome?.tone || 'success' : usingCustomAnchors ? 'success' : 'info'](
-            `${msg}${firstPhase.more ? BACKGROUND_NOTE : ''}`,
-            { id: TOAST_ID, duration: partialOutcome?.tone === 'warning' ? 12000 : 6000 }
-        );
+        // One plain line; search coverage and estimates stay in the saved attempt.
+        const shown = usingCustomAnchors
+            ? { tone: 'success', message: routeOriginMode === ROUTE_ORIGIN_MODES.CUSTOM_BOUNDS
+                ? 'Route anchors set. The door order was rebuilt around your start and finish.' : 'Route anchors cleared.' }
+            : plainOptimizeMessage({ applied: objective.applyCandidate, changedStops, savedMiles,
+                routingMetadata: roadMatrixResult.routingMetadata });
+        toast[shown.tone](shown.message, { id: TOAST_ID, duration: shown.tone === 'success' ? 5000 : 12000 });
         continueInBackground(savedRoute, roadMatrixResult);
     } catch (e) {
         console.error('Re-optimize error:', e);
