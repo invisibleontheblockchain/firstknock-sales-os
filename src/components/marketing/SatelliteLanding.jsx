@@ -43,8 +43,7 @@ export default function SatelliteLanding() {
 <nav>
   <a className="brand" href="/"><img src="https://media.base44.com/images/public/695eb764b077190880be21de/147abd69b_image.png" alt="" />FirstKnock</a>
   <span className="sp"></span>
-  <Link className="link" to={signInUrl}>Sign in</Link>
-  <Link className="btn primary small" to={appEntry}>Launch FirstKnock &#8599;</Link>
+  <Link className="btn ghost small" to={signInUrl}>Sign in</Link>
 </nav>
 <div className="steps" id="steps"><i></i><i></i><i></i><i></i><i></i><i></i></div>
 
@@ -56,7 +55,6 @@ export default function SatelliteLanding() {
     <div className="cta">
       <Link className="btn primary" to={appEntry}>Launch FirstKnock &#8599;</Link>
       <a className="btn ghost" href={CONTACT_URL} target="_blank" rel="noopener noreferrer" aria-label="Contact FirstKnock (opens in a new tab)">Contact us <span aria-hidden="true">&#8599;</span></a>
-      <Link className="btn ghost" to={signInUrl}>Sign in</Link>
     </div>
   </div>
 </section>
@@ -103,7 +101,6 @@ export default function SatelliteLanding() {
     <div className="cta">
       <Link className="btn primary" to={appEntry}>Launch FirstKnock &#8599;</Link>
       <a className="btn ghost" href={CONTACT_URL} target="_blank" rel="noopener noreferrer" aria-label="Contact FirstKnock (opens in a new tab)">Contact us <span aria-hidden="true">&#8599;</span></a>
-      <Link className="btn ghost" to={signInUrl}>Sign in</Link>
     </div>
   </div>
 </section>
