@@ -181,12 +181,66 @@ export const EARLY_ROUTE_HYDRATION_COUNT = 3;
 export function selectRoutesToHydrate(routes = [], {
     overviewLoading = false,
     earlyCount = EARLY_ROUTE_HYDRATION_COUNT,
+    center = null,
+    homesByHash = null,
+    nearViewCount = EARLY_ROUTE_HYDRATION_COUNT,
 } = {}) {
     if (!Array.isArray(routes)) return [];
-    if (!overviewLoading) return routes;
-    return routes.filter((route, index) => (
+    // Viewport first: the routes where the map is looking load before the rest.
+    const ordered = orderRoutesNearView(routes, center, homesByHash);
+    if (!overviewLoading) return ordered;
+    const nearView = new Set(center ? ordered.filter(route => routeLocationHint(route, homesByHash)).slice(0, nearViewCount) : []);
+    const early = new Set(routes.filter((route, index) => (
         index < earlyCount || route?.status === 'IN_PROGRESS' || isImportedRoute(route)
-    ));
+    )));
+    return ordered.filter(route => nearView.has(route) || early.has(route));
+}
+
+const pointOf = value => (Array.isArray(value) ? { lat: Number(value[0]), lng: Number(value[1]) }
+    : value ? { lat: Number(value.lat), lng: Number(value.lng) } : null);
+const usablePoint = point => point && Number.isFinite(point.lat) && Number.isFinite(point.lng) && (point.lat !== 0 || point.lng !== 0);
+
+/**
+ * A point where a route is, before its homes are looked up: any of its homes
+ * already on the device (territory overview, an earlier lookup), else its saved
+ * driving path, the area it was pulled from, or its start. Null when unknown.
+ */
+export function routeLocationHint(route, homesByHash = null) {
+    for (const property of [...(route?.properties || []), ...(route?.allProperties || [])]) {
+        const point = pointOf(property);
+        if (usablePoint(point)) return point;
+    }
+    if (homesByHash) {
+        for (const hash of route?.property_hashes || []) {
+            const point = pointOf(homesByHash.get(String(hash)));
+            if (usablePoint(point)) return point;
+        }
+    }
+    const metadata = route?.metadata || {};
+    const candidates = [metadata.road_geometry_segments?.[0]?.points?.[0], metadata.road_geometry?.[0],
+        (metadata.precision_area?.polygon || metadata.drawn_polygon || metadata.polygon)?.[0],
+        route?.start_location, route?.startLocation];
+    for (const candidate of candidates) {
+        const point = pointOf(candidate);
+        if (usablePoint(point)) return point;
+    }
+    return null;
+}
+
+/** Routes nearest `center` first; routes with no known location keep their order, last. */
+export function orderRoutesNearView(routes = [], center = null, homesByHash = null) {
+    const origin = pointOf(center);
+    if (!Array.isArray(routes) || !usablePoint(origin)) return Array.isArray(routes) ? routes : [];
+    const scale = Math.cos(origin.lat * Math.PI / 180);
+    const distance = route => {
+        const point = routeLocationHint(route, homesByHash);
+        if (!point) return Infinity;
+        const dLat = point.lat - origin.lat, dLng = (point.lng - origin.lng) * scale;
+        return dLat * dLat + dLng * dLng;
+    };
+    return routes.map((route, index) => ({ route, index, distance: distance(route) }))
+        .sort((a, b) => (a.distance - b.distance) || (a.index - b.index))
+        .map(item => item.route);
 }
 
 function missingRouteHashes(route) {

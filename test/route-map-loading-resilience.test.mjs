@@ -220,7 +220,7 @@ test('Home retries incomplete collections while keeping loaded map pins', async 
     const sandbox = {
         useQuery: config => config,
         user: { id: 'manager', email: 'manager@example.com' }, savedRoutes: routes,
-        savedRouteMapManifestKey: 'healthy|missing', territoryMapRows: [], routeHomeRowsRef: { current: [] },
+        savedRouteMapManifestKey: 'healthy|missing', territoryMapRows: [], routeHomeRowsRef: { current: [] }, mapRef: { current: null }, readStoredMapView: () => null,
         // Overview settled: every route is looked up in this pass.
         territoryOverviewLoading: false,
         setServerHydratedSavedRoutes: update => { displayed = update(displayed); },
