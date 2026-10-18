@@ -6,6 +6,7 @@ import ZoomOutBackdrop from '@/components/map/ZoomOutBackdrop';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { createLabelCanvas } from '@/components/map/labelCanvas';
+import { liveZoomCanvas } from '@/components/map/liveZoomCanvas';
 import { reconcileMapPins } from '@/components/map/reconcileMapPins';
 import { DEFAULT_PIN_THEME } from '@/components/map/mapPinThemes';
 import { outcomeColor } from '@/components/logic/outcomeStatus';
@@ -192,7 +193,8 @@ export default function RepMapView({
     anchorLabel = 'Home',
 }) {
     const mapRef = useRef(null);
-    const renderer = useMemo(() => L.canvas({ padding: 0.25 }), []);
+    // Redraws mid-pinch so dots and lines keep their size (liveZoomCanvas.js).
+    const renderer = useMemo(() => liveZoomCanvas(L, { padding: 0.25 }), []);
     const [position, setPosition] = useState(null);
     const [accuracy, setAccuracy] = useState(50);
     const [hudExpanded, setHudExpanded] = useState(true);
@@ -347,6 +349,7 @@ export default function RepMapView({
                     zoomControl={false}
                     attributionControl
                     preferCanvas={true}
+                    renderer={renderer}
                     zoomAnimation={true}
                     fadeAnimation={false}
                     markerZoomAnimation={false}

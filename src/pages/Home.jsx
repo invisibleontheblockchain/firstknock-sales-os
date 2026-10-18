@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useLocation } from 'react-router-dom';
 import { MapContainer } from 'react-leaflet'; import BaseMapTiles from '@/components/map/BaseMapTiles';
 // Leaflet icon defaults and the unmount/scroll-zoom patches live in one module.
-import L from '../components/map/leafletPatches';
+import L from '../components/map/leafletPatches'; import { liveZoomCanvas } from '../components/map/liveZoomCanvas';
 import AnalyzeFiltersPanel from '../components/map/AnalyzeFiltersPanel';
 import HomeUnifiedSearch from '@/components/search/HomeUnifiedSearch';
 import useAppointmentMapFocus from '@/hooks/useAppointmentMapFocus'; import AppointmentFocusMarker from '@/components/map/AppointmentFocusMarker';
@@ -327,6 +327,9 @@ export default function Home() {
         includeUnverifiedSales: false,
     });
     const mapRef = useRef(null);
+    // Route lines and territory pins redraw at the live zoom mid-pinch instead
+    // of stretching (liveZoomCanvas.js); Leaflet's default is L.canvas({ padding: 0.1 }).
+    const mapRenderer = useMemo(() => liveZoomCanvas(L, { padding: 0.1 }), []);
     const outcomeQueueRef = useRef(Promise.resolve());
     const pendingOutcomesRef = useRef(new Map());
     const showChecklistRef = useRef(false);
@@ -2533,6 +2536,7 @@ export default function Home() {
                 zoomControl={false}
                 attributionControl
                 preferCanvas={true}
+                renderer={mapRenderer}
                 wheelPxPerZoomLevel={120} zoomSnap={0.25} zoomDelta={0.5} wheelDebounceTime={20} maxZoom={20}
                 zoomAnimation={true}
                 markerZoomAnimation={true}
