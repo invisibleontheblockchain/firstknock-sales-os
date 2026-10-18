@@ -178,8 +178,15 @@
   .fk-satellite #stage { position: fixed; inset: 0; overflow: hidden; z-index: 0; background: #0d0d0d; }
   .fk-satellite .layer { position: absolute; left: 0; top: 0; width: 2688px; height: 1520px; transform-origin: 0 0; visibility: hidden; }
   .fk-satellite #lTight { visibility: visible; will-change: transform, opacity; }
-  .fk-satellite .layer > img, .fk-satellite .layer > video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .fk-satellite .layer > img, .fk-satellite .layer > video, .fk-satellite .layer > picture > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
   .fk-satellite #sat { opacity: 0; }
+  /* The house photo appears whole: transparent until downloaded and decoded, then faded in over
+     its blurred stand-in. The video stays hidden over it until the first scroll seeks a frame. */
+  .fk-satellite .hero-placeholder { position: absolute; inset: 0; background-size: 100% 100%; }
+  .fk-satellite #housePhoto { opacity: 0; transition: opacity .45s ease-out; }
+  .fk-satellite #housePhoto[data-ready] { opacity: 1; }
+  .fk-satellite #fly { visibility: hidden; }
+  .fk-satellite #fly[data-shown] { visibility: inherit; }
   /* Hold the same roof through the independently rendered neighborhood views. */
   .fk-satellite #lHouse { pointer-events: none; mask-image: radial-gradient(ellipse 190px 130px at 1329px 695px, #000 76%, transparent 100%); }
   .fk-satellite #ov { overflow: visible; pointer-events: none; }
@@ -240,7 +247,7 @@
     .fk-satellite .steps { display: none; }
     .fk-satellite #shadeL { background: linear-gradient(0deg, rgba(10, 12, 11, .85) 0%, rgba(10, 12, 11, .4) 45%, rgba(10, 12, 11, 0) 70%); }
   }
-  @media (prefers-reduced-motion: reduce) { .fk-satellite .col { opacity: 1; transform: none; transition: none; } }
+  @media (prefers-reduced-motion: reduce) { .fk-satellite .col { opacity: 1; transform: none; transition: none; } .fk-satellite #housePhoto { transition: none; } }
 
 
 .fk-satellite { height: 100%; width: 100%; overflow-y: auto; overflow-x: hidden; position: relative; isolation: isolate; scroll-behavior: smooth; }

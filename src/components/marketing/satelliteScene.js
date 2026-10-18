@@ -1,5 +1,6 @@
 // Satellite presentation adapted from the original FirstKnock prototype.
 // All DOM access, listeners, and animation resources belong to this landing page.
+import { revealWhenDecoded } from './heroImage';
 import { advanceSatelliteProgress } from './satelliteMotion';
 
 export function startSatelliteScene(root) {
@@ -161,13 +162,37 @@ export function startSatelliteScene(root) {
   let target = 0, cur = 0, leadsAt = null, runAt = null, teamAt = null, last = performance.now(), dur = 8;
   const onMetadata = () => { dur = Number.isFinite(fly.duration) && fly.duration > 0 ? fly.duration : 8; };
   fly.addEventListener('loadedmetadata', onMetadata);
-  // Let the browser buffer immediately and seek using range requests. Waiting for
-  // a complete 30 MB blob after the first scroll left the poster frozen mid-move.
-  if (!reduce) {
-    fly.src = '/landing/flyover-roof-consistent.mp4';
-    fly.load();
-  }
-  const onScroll = () => { target = root.scrollTop / Math.max(1, innerHeight); hint.classList.toggle('gone', root.scrollTop > 40); };
+  // The video stays hidden over the house photo until the first scroll seeks it,
+  // as its poster used to: at rest the opening frame is the photo.
+  const onSeeked = () => fly.setAttribute('data-shown', '');
+  fly.addEventListener('seeked', onSeeked);
+
+  // The house photo gets the connection to itself; the 30 MB flyover and the five
+  // satellite views start once it is in, or at the first scroll if that comes sooner.
+  let extrasStarted = false;
+  const startExtras = () => {
+    if (extrasStarted) return;
+    extrasStarted = true;
+    root.querySelectorAll('img[data-src]').forEach((img) => { img.src = img.dataset.src; img.removeAttribute('data-src'); });
+    // Let the browser buffer right away and seek using range requests. Waiting for
+    // a complete 30 MB blob after the first scroll left the opening frame frozen mid-move.
+    if (!reduce) {
+      fly.src = '/landing/flyover-roof-consistent.mp4';
+      fly.load();
+    }
+  };
+  const housePhoto = $('housePhoto'), housePlaceholder = $('housePlaceholder');
+  let placeholderTimer;
+  const stopHouseReveal = housePhoto ? revealWhenDecoded(housePhoto, (ok) => {
+    // drop the blurred stand-in once the photo has faded in over it
+    if (ok && housePlaceholder) placeholderTimer = setTimeout(() => { housePlaceholder.hidden = true; }, 800);
+    startExtras();
+  }) : (startExtras(), () => {});
+  const onScroll = () => {
+    target = root.scrollTop / Math.max(1, innerHeight);
+    hint.classList.toggle('gone', root.scrollTop > 40);
+    if (root.scrollTop > 0) startExtras();
+  };
   root.addEventListener('scroll', onScroll, { passive: true }); onScroll();
   const cT = center(RTs), cW = center(RWs), cR = center(RRs), cM = center(RMs), cS = center(RS);
 
@@ -278,9 +303,12 @@ export function startSatelliteScene(root) {
 
   return () => {
     cancelAnimationFrame(frameId);
+    stopHouseReveal();
+    clearTimeout(placeholderTimer);
     window.removeEventListener('resize', layout);
     root.removeEventListener('scroll', onScroll);
     fly.removeEventListener('loadedmetadata', onMetadata);
+    fly.removeEventListener('seeked', onSeeked);
     fly.pause();
     fly.removeAttribute('src');
     fly.load();

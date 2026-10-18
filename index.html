@@ -4,6 +4,33 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content" />
     <meta name="theme-color" content="#000000" />
+    <script id="fk-hero-preload">
+      // Landing hero: request the house photo now, not after the app bundle and two
+      // lazy chunks. Only on / in a browser tab (installed apps skip the landing; see
+      // installedAppLaunch.js). Browsers without AVIF ignore this and load the WebP.
+      // Default (low) priority on purpose: nothing renders until the app's scripts
+      // arrive, and HTTP/2 serves equal priorities first come, first served. The
+      // on-screen <img fetchpriority="high"> raises it once the landing renders.
+      // Must match src/components/marketing/heroImage.js (test/landing-hero-image.test.mjs).
+      (function () {
+        try {
+          if (window.location.pathname !== '/' || window.navigator.standalone === true) return;
+          if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) return;
+          if (['standalone', 'fullscreen', 'minimal-ui', 'window-controls-overlay'].some(function (mode) {
+            return window.matchMedia('(display-mode: ' + mode + ')').matches;
+          })) return;
+          var link = document.createElement('link');
+          link.rel = 'preload';
+          link.as = 'image';
+          link.type = 'image/avif';
+          link.setAttribute('imagesrcset', '/landing/house-lux-1440.avif 1440w, /landing/house-lux-1920.avif 1920w, /landing/house-lux-2688.avif 2688w');
+          link.setAttribute('imagesizes', '(max-aspect-ratio: 2688/1520) 177vh, 100vw');
+          document.head.appendChild(link);
+        } catch (error) {
+          // A missed preload only means the photo starts when the landing renders.
+        }
+      })();
+    </script>
     <meta name="background-color" content="#000000" />
     <meta name="application-name" content="FirstKnock" />
     <meta name="apple-mobile-web-app-title" content="FirstKnock" />
