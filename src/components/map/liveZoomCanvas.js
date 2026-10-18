@@ -10,44 +10,74 @@
 // ends, when Leaflet re-projects and redraws everything as before. If a frame
 // costs too much (a phone with thousands of stops on screen), live redraws
 // back off so the gesture itself stays smooth.
-
-// Dashed lines: a dash pattern is fixed in screen pixels and restarts where
-// Leaflet clips a line to the screen, so redrawing mid-zoom made the dashes
-// race along route lines ("accelerating"). Mid-gesture, dashes scale with the
-// zoom since the gesture began and lines are drawn unclipped, so every dash
-// stays on the same spot of the ground and moves with the dots. Both are
-// restored when the zoom ends.
 //
+// Dashed lines (route lines) are drawn so their dashes stay on the ground:
+//  - unclipped and unsimplified, so the dash pattern always starts at the
+//    line's first point (Leaflet restarts it wherever it clips a line to the
+//    screen, which moves on every frame and on every pinch start and end);
+//  - projected without rounding (Leaflet rounds each vertex to a whole pixel;
+//    along a long route those errors add up to several pixels, enough to
+//    shift every dash from one frame to the next);
+//  - with dash lengths that scale with the map, like paint on the road. After
+//    a zoom the dash size is re-gridded by a factor of 2 only once it has
+//    drifted more than half a zoom level, keeping the pattern in place at the
+//    screen centre, so small pinches in and out change nothing at all.
+// The owner saw the dashes "accelerating" along route lines while zooming.
+
 // Offscreen bounds for paths left out of a mid-zoom frame: they fail every
 // visibility test (Canvas._draw, CircleMarker._empty, the stop-number pass).
 const HIDDEN = Symbol('liveZoomHidden');
-const RESTING = Symbol('liveZoomRestingLineStyle');
+const DASHED = Symbol('liveZoomDashedLine');
+const DASH_OFFSET = Symbol('liveZoomDashOffset');
 const OFFSCREEN_MIN = -1e9;
 
 export const LIVE_ZOOM_FRAME_BUDGET_MS = 12;
+export const DASH_REGRID_ZOOM = 0.5;
 
-/** A dash pattern scaled by `scale` (null for a solid line). */
+/** A dash pattern scaled by `scale` (unchanged for a solid line). */
 export function scaledDashArray(dashArray, scale) {
     if (!Array.isArray(dashArray) || !dashArray.length || !(scale > 0)) return dashArray;
     return dashArray.map(value => value * scale);
 }
 
-// Mid-gesture line style: scaled dashes, no clipping. The resting style is
-// kept on the layer so zoomend (or removal) can put it back exactly.
-function applyGestureLineStyle(layer, scale) {
-    if (!layer._latlngs) return;
-    if (!layer[RESTING]) layer[RESTING] = { dash: layer.options._dashArray, noClip: layer.options.noClip };
-    layer.options.noClip = true;
-    layer.options._dashArray = scaledDashArray(layer[RESTING].dash, scale);
+/** How much longer dashes are drawn at `zoom` than at the renderer's dash zoom: their length on the ground stays fixed. */
+export function dashScaleAt(zoom, dashZoom) {
+    return 2 ** (zoom - dashZoom);
 }
 
-function restoreLineStyle(layer) {
-    const resting = layer[RESTING];
-    if (!resting) return;
-    layer.options._dashArray = resting.dash;
-    layer.options.noClip = resting.noClip;
-    delete layer[RESTING];
+/** The dash zoom after a zoom ends: re-gridded by whole levels once the dashes drifted more than half a level. */
+export function regriddedDashZoom(zoom, dashZoom, limit = DASH_REGRID_ZOOM) {
+    const drift = zoom - dashZoom;
+    return Math.abs(drift) > limit ? dashZoom + Math.round(drift) : dashZoom;
 }
+
+/**
+ * The dash offset (px) that keeps the pattern's phase at `along` px from the
+ * line's start unchanged when its period changes from oldPeriod to newPeriod.
+ */
+export function pivotDashOffset(along, oldOffset, oldPeriod, newPeriod) {
+    const turns = (along + oldOffset) / oldPeriod;
+    const phase = turns - Math.floor(turns);
+    const offset = phase * newPeriod - along;
+    return ((offset % newPeriod) + newPeriod) % newPeriod;
+}
+
+/** Distance along a ring of points (px) to the point of the ring nearest `p`. */
+export function alongNearestPoint(ring, p) {
+    let best = Infinity, bestAlong = 0, along = 0;
+    for (let i = 0; i + 1 < ring.length; i++) {
+        const a = ring[i], b = ring[i + 1];
+        const dx = b.x - a.x, dy = b.y - a.y;
+        const length = Math.hypot(dx, dy);
+        const t = length ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / (length * length))) : 0;
+        const distance = Math.hypot(a.x + dx * t - p.x, a.y + dy * t - p.y);
+        if (distance < best) { best = distance; bestAlong = along + length * t; }
+        along += length;
+    }
+    return bestAlong;
+}
+
+const isDashedLine = layer => Boolean(layer?._latlngs) && Array.isArray(layer.options?._dashArray) && layer.options._dashArray.length > 0;
 
 /** Whether a path is on or near the given LatLngBounds. */
 export function pathNearView(layer, view) {
@@ -81,10 +111,96 @@ export function liveZoomCanvasClass(L, Base = L.Canvas) {
     if (!byBase) classes.set(L, (byBase = new Map()));
     if (byBase.has(Base)) return byBase.get(Base);
     const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+
+    // Leaflet's Polyline._projectLatlngs without the rounding to whole pixels.
+    function unroundedProjectLatlngs(latlngs, result, projectedBounds) {
+        const map = this._map;
+        if (latlngs[0] instanceof L.LatLng) {
+            const origin = map.getPixelOrigin();
+            const ring = latlngs.map(latlng => map.project(latlng)._subtract(origin));
+            ring.forEach(point => projectedBounds.extend(point));
+            result.push(ring);
+        } else {
+            latlngs.forEach(inner => this._projectLatlngs(inner, result, projectedBounds));
+        }
+    }
+
+    // Dashed lines: unclipped, unsimplified, unrounded (see the top of the file).
+    // Undone when the line stops being dashed or leaves this renderer.
+    function prepareLine(layer) {
+        if (isDashedLine(layer)) {
+            if (layer[DASHED]) return;
+            layer[DASHED] = { noClip: layer.options.noClip, smoothFactor: layer.options.smoothFactor,
+                ownProject: Object.prototype.hasOwnProperty.call(layer, '_projectLatlngs') ? layer._projectLatlngs : null };
+            layer.options.noClip = true;
+            layer.options.smoothFactor = 0;
+            layer._projectLatlngs = unroundedProjectLatlngs;
+        } else if (layer[DASHED]) {
+            releaseLine(layer);
+        }
+    }
+    function releaseLine(layer) {
+        const original = layer[DASHED];
+        if (!original) return;
+        layer.options.noClip = original.noClip;
+        layer.options.smoothFactor = original.smoothFactor;
+        if (original.ownProject) layer._projectLatlngs = original.ownProject;
+        else delete layer._projectLatlngs;
+        delete layer[DASHED];
+        delete layer[DASH_OFFSET];
+    }
+
     const Live = Base.extend({
+        onAdd(map) {
+            Base.prototype.onAdd.call(this, map);
+            if (this._dashZoom === undefined) this._dashZoom = this._map.getZoom();
+        },
+
+        _initPath(layer) {
+            Base.prototype._initPath.call(this, layer);
+            prepareLine(layer);
+        },
+
+        _updateStyle(layer) {
+            Base.prototype._updateStyle.call(this, layer);
+            const wasDashed = Boolean(layer[DASHED]);
+            prepareLine(layer);
+            // Became dashed (or solid): re-project with the matching rules.
+            if (wasDashed !== Boolean(layer[DASHED]) && layer._map) { layer._project(); layer._update(); }
+        },
+
+        _removePath(layer) {
+            releaseLine(layer);
+            delete layer[HIDDEN];
+            return Base.prototype._removePath.call(this, layer);
+        },
+
+        // The dash pattern a dashed line is drawn with now: { dashArray, offset } in px.
+        _dashState(layer) {
+            if (!layer[DASHED] || !isDashedLine(layer) || !this._map) return null;
+            const scale = dashScaleAt(this._map.getZoom(), this._dashZoom ?? this._map.getZoom());
+            return { dashArray: scaledDashArray(layer.options._dashArray, scale), offset: (layer[DASH_OFFSET] || 0) * scale };
+        },
+
+        _fillStroke(ctx, layer) {
+            if (!layer[DASHED] || !isDashedLine(layer) || !this._map) {
+                Base.prototype._fillStroke.call(this, ctx, layer);
+                return;
+            }
+            if (this._dashZoom === undefined) this._dashZoom = this._map.getZoom();
+            const scale = dashScaleAt(this._map.getZoom(), this._dashZoom);
+            const resting = layer.options._dashArray;
+            layer.options._dashArray = scaledDashArray(resting, scale);
+            ctx.lineDashOffset = (layer[DASH_OFFSET] || 0) * scale;
+            try {
+                Base.prototype._fillStroke.call(this, ctx, layer);
+            } finally {
+                layer.options._dashArray = resting;
+                ctx.lineDashOffset = 0;
+            }
+        },
+
         _onZoom() {
-            // The zoom the canvas was last fully drawn at: dashes scale from here.
-            if (this._liveGestureZoom === undefined) this._liveGestureZoom = this._zoom;
             Base.prototype._onZoom.call(this);
             if (this._liveZoomFrame || this._liveZoomWait) return;
             this._liveZoomFrame = L.Util.requestAnimFrame(this._redrawAtLiveZoom, this);
@@ -111,12 +227,10 @@ export function liveZoomCanvasClass(L, Base = L.Canvas) {
             this._ctx.translate(-b.min.x, -b.min.y);
 
             const view = map.getBounds().pad(Math.max(0.1, this.options.padding || 0));
-            const dashScale = map.getZoomScale(map.getZoom(), this._liveGestureZoom ?? map.getZoom());
             for (const id in this._layers) {
                 const layer = this._layers[id];
                 if (pathNearView(layer, view)) {
                     if (layer[HIDDEN]) delete layer[HIDDEN];
-                    applyGestureLineStyle(layer, dashScale);
                     layer._project();
                     layer._update();
                 } else {
@@ -140,25 +254,31 @@ export function liveZoomCanvasClass(L, Base = L.Canvas) {
             this._liveZoomWait = null;
             // Leaflet re-projects every path here (hidden ones included), then
             // its moveend redraws the whole canvas, exactly as before.
-            for (const id in this._layers) {
-                delete this._layers[id][HIDDEN];
-                restoreLineStyle(this._layers[id]);
-            }
-            this._liveGestureZoom = undefined;
+            for (const id in this._layers) delete this._layers[id][HIDDEN];
             Base.prototype._onZoomEnd.call(this);
+            this._regridDashes();
         },
 
-        _removePath(layer) {
-            restoreLineStyle(layer);
-            delete layer[HIDDEN];
-            return Base.prototype._removePath.call(this, layer);
-        },
-
-        _updateStyle(layer) {
-            // A style change mid-gesture (setStyle) recomputes the resting dashes.
-            const resting = layer[RESTING];
-            if (resting) restoreLineStyle(layer);
-            Base.prototype._updateStyle.call(this, layer);
+        // Dashes drifted more than half a zoom level from their resting size:
+        // halve or double them, keeping the pattern in place at the screen centre.
+        _regridDashes() {
+            const map = this._map;
+            if (!map || this._dashZoom === undefined) return;
+            const zoom = map.getZoom();
+            const next = regriddedDashZoom(zoom, this._dashZoom);
+            if (next === this._dashZoom) return;
+            const oldScale = dashScaleAt(zoom, this._dashZoom);
+            const newScale = dashScaleAt(zoom, next);
+            const centre = map.project(map.getCenter())._subtract(map.getPixelOrigin());
+            for (const id in this._layers) {
+                const layer = this._layers[id];
+                if (!layer[DASHED] || !isDashedLine(layer) || !layer._rings?.length) continue;
+                const period = layer.options._dashArray.reduce((sum, value) => sum + value, 0);
+                const along = alongNearestPoint(layer._rings[0], centre);
+                const offset = pivotDashOffset(along, (layer[DASH_OFFSET] || 0) * oldScale, period * oldScale, period * newScale);
+                layer[DASH_OFFSET] = offset / newScale;
+            }
+            this._dashZoom = next;
         },
 
         onRemove(map) {
