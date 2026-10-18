@@ -650,10 +650,11 @@ test('the real Optimize action saves exact unresolved stops and displays them wi
     assert.ok(harness.calls.every(call => call.tone !== 'success'));
 });
 
-test('the real Optimize action distinguishes completed, incomplete, and failed checks', async () => {
+test('the real Optimize action shows a plain result for completed or partial searches and warns only on failures', async () => {
     for (const [reason, measurement, expected] of [
-        ['current_order_measured_best', measured(complete), 'info'],
-        ['current_order_measured_best', measured({ ...complete, budgetExhausted: true }), 'warning'],
+        // Nothing shorter found is a result, not a problem — even with checks left.
+        ['current_order_measured_best', measured(complete), 'success'],
+        ['current_order_measured_best', measured({ ...complete, budgetExhausted: true }), 'success'],
         ['backend_unavailable: failed', null, 'error'],
         ['backend_cpu_limit', { diagnostic: { httpStatus: 429, errorCode: 'cpu-exceeded', elapsedMs: 71000 } }, 'error'],
         ['backend_rate_limited', { diagnostic: { httpStatus: 429, errorCode: 'rate-limited', elapsedMs: 500 } }, 'warning'],
@@ -664,6 +665,8 @@ test('the real Optimize action distinguishes completed, incomplete, and failed c
             metadata: { routing: { road_aware: true, fallback: false } } }, { mode: 'route_only' },
         { user: { id: 'manager' }, effectiveProperties: properties });
         assert.equal(harness.calls.at(-1).tone, expected); assert.equal(harness.writes.length, 1);
+        assert.doesNotMatch(harness.calls.at(-1).message, /incomplete|checks? remain|estimat|background/i);
+        if (expected === 'success') assert.equal(harness.calls.at(-1).message, 'Route checked · already the shortest order found');
         if (measurement?.diagnostic) {
             assert.equal(harness.writes[0].patch.metadata.last_optimization_attempt.http_status, 429);
             assert.equal(harness.writes[0].patch.metadata.last_optimization_attempt.elapsed_ms, measurement.diagnostic.elapsedMs);

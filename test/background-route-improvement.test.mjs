@@ -147,7 +147,7 @@ test('generated routes return pass 1 for saving, then save a shorter order once 
     assert.equal(store.updates.length, 1);
     assert.deepEqual(store.updates[0].property_hashes, ['B', 'A', 'D', 'C']);
     assert.equal(store.updates[0].metrics.distance, 7);
-    assert.ok(messages.some(message => /Route improved by 2 mi while you worked/.test(message.message)));
+    assert.equal(messages.length, 0, 'the background save is silent');
 });
 
 test('a generated route that is never saved, or edited before the background ends, is left alone', async () => {

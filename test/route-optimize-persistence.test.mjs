@@ -73,11 +73,10 @@ test('confirmed optimization updates map, checklist and every cached route order
         assert.deepEqual(reopened.allProperties.map(hash), candidateHashes);
         if (Array.isArray(data)) assert.equal(data[1].id, 'other');
     }
-    const completion = messages.find(message => message.type === 'warning');
-    assert.match(completion.message, /stops reordered/);
-    assert.match(completion.message, /Verified neighborhood savings/);
-    assert.match(completion.message, /still need checking/);
-    assert.equal(messages.some(message => message.type === 'error'), false);
+    // One plain success line; search coverage stays in the saved attempt.
+    const completion = messages.find(message => message.type === 'success');
+    assert.match(completion.message, /^Route optimized · \d+ stops reordered · ~2 mi shorter$/);
+    assert.equal(messages.some(message => message.type === 'error' || message.type === 'warning'), false);
     queries.clear();
 });
 
@@ -171,9 +170,8 @@ test('a backend returning the same order with old savings reports an unchanged r
         return { ...verified, ...body };
     } } } };
     await optimize(verified, { mode: 'route_only' }, { client: api });
-    assert.equal(messages.some(message => message.type === 'success'), false);
-    assert.match(messages.find(message => message.type === 'info').message, /route was kept unchanged/);
-    assert.equal(messages.some(message => /24\.32|improvements applied/.test(message.message)), false);
+    assert.equal(messages.find(message => message.type === 'success').message, 'Route checked · already the shortest order found');
+    assert.equal(messages.some(message => /24\.32|improvements applied|reordered/.test(message.message)), false);
 });
 
 test('a map display filter does not omit stops from route-only optimization', async () => {
@@ -316,7 +314,7 @@ test('recovered road access is reused on the next invocation and retained after 
     assert.equal(active.properties[0].lat, properties[0].lat);
     assert.equal(active.properties[0].lng, properties[0].lng);
     assert.equal(properties[0].routing_access, undefined, 'the caller-owned display property is never mutated');
-    assert.equal(messages.some(message => message.type === 'success'), false);
+    assert.equal(messages.find(message => message.type === 'success').message, 'Route checked · already the shortest order found');
 });
 
 test('a recovered successful optimization replaces stale failures in saved routes and keeps property pins unchanged', async () => {
@@ -348,7 +346,8 @@ test('a recovered successful optimization replaces stale failures in saved route
         }
     }
     assert.equal(messages.some(message => message.type === 'error'), false);
-    assert.match(messages.find(message => message.type === 'success').message, /recovered automatically/);
+    // Recovery is in the saved attempt; the person sees the plain result.
+    assert.match(messages.find(message => message.type === 'success').message, /^Route optimized · /);
     queries.clear();
 });
 
@@ -382,12 +381,11 @@ test('an access-limited applied repair preserves the prior distance and never cl
     assert.equal(written.metadata.last_optimization_attempt.route_changed, true);
     assert.equal(written.metadata.last_optimization_attempt.stops_reordered, 2);
     assert.equal(written.metadata.last_optimization_attempt.road_access_recovery.unresolved[0].property_id, unresolved.property_id);
+    // A stop without road access is a real problem: a warning that names it.
     const message = messages.find(entry => entry.type === 'warning').message;
-    assert.match(message, /2 stops reordered/);
-    assert.match(message, /Verified neighborhood savings: ~1.25 mi/);
-    assert.match(message, /Whole-route distance remains unverified/);
+    assert.match(message, /^Route optimized · 2 stops reordered · ~1\.3 mi shorter\./);
     assert.ok(message.includes(unresolved.address));
-    assert.doesNotMatch(message, /8\.75|0 mi road-distance|Saved ~1\.25 estimated miles/);
+    assert.doesNotMatch(message, /8\.75|road-distance|estimat|unverified|incomplete/);
     assert.equal(messages.some(entry => entry.type === 'success' || entry.type === 'error'), false);
 });
 

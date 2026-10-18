@@ -2090,7 +2090,7 @@ export default function Home() {
                 : toastMsg;
 
             if (persistenceComplete) {
-                toast.success(finalToastMsg + (roadMatrixPass.appliedCount > 0 ? ` — real road distances saved ~${roadMatrixPass.savedMiles} mi` : ''), { id: 'build-routes', duration: 5000 });
+                toast.success(finalToastMsg + (roadMatrixPass.savedMiles >= 0.1 ? ` · ~${Math.round(roadMatrixPass.savedMiles * 10) / 10} mi shorter` : ''), { id: 'build-routes', duration: 5000 });
             } else {
                 setGenerationError('Your route was generated, but some homes could not be saved to your account. The route is still available on this device. Retry saving it; the completed import is retained so you do not need to spend credits on another pull.');
                 toast.error('Route generated, but not fully saved to your account.', { id: 'build-routes', duration: 10000 });

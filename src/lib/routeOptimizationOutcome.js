@@ -294,6 +294,44 @@ export function describeAppliedRoadOptimization(routingMetadata) {
 
 // Store enough evidence to diagnose the last click even when the stop order
 // does not change. Whitelist fields: home/car anchors stay out of shared data.
+// What a person sees after Optimize, generation or a split: one short,
+// plain message. Search coverage, verification and estimate details belong to
+// the saved attempt and diagnostics, not the toast. A warning or error only
+// for something actually wrong: stops without road access, or a failed check.
+const PROBLEM_STATUSES = new Set(['processing_limit', 'rate_limited', 'timed_out', 'road_provider_unavailable',
+    'road_access_unresolved', 'failed', 'verification_failed']);
+const DIAGNOSTIC_SENTENCE = /incomplete|checks? remain|estimat|background|still need checking|time limit was reached|neighborhoods were checked|complete driving route (?:was|remains)|limited comparison|curb-side|does not mean/i;
+const stopsWord = count => `${count} ${count === 1 ? 'stop' : 'stops'}`;
+
+/** Drop diagnostic sentences (search coverage, estimates, verification) from a message. */
+export function plainMessageText(message) {
+    return String(message || '').split(/(?<=\.)\s+/).filter(sentence => sentence && !DIAGNOSTIC_SENTENCE.test(sentence)).join(' ').trim();
+}
+
+/**
+ * { tone, message } for the one notice after an optimization.
+ * Applied: "Route optimized · 14 stops reordered · ~0.3 mi shorter".
+ * Nothing shorter: "Route checked · already the shortest order found".
+ */
+export function plainOptimizeMessage({ applied = false, changedStops = 0, savedMiles = 0, routingMetadata = null, outcome = null } = {}) {
+    const recovery = roadAccessRecovery(routingMetadata);
+    const approximate = recovery?.approximate?.length || 0;
+    const approximateNote = approximate ? ` · ${stopsWord(approximate)} on approximate road access` : '';
+    const accessProblem = Boolean(recovery?.unresolved?.length || recovery?.inventory_complete === false);
+    if (!applied && outcome && (PROBLEM_STATUSES.has(outcome.status) || outcome.tone === 'error')) {
+        return { tone: outcome.tone === 'info' || outcome.tone === 'success' ? 'warning' : outcome.tone,
+            message: plainMessageText(outcome.message) || 'Optimization could not finish. Your route was kept unchanged.' };
+    }
+    if (!applied || changedStops <= 0) {
+        return { tone: 'success', message: `Route checked · already the shortest order found${approximateNote}` };
+    }
+    const miles = Math.round((Number(savedMiles) || 0) * 10) / 10;
+    const parts = ['Route optimized', `${stopsWord(changedStops)} reordered`, ...(miles >= 0.1 ? [`~${miles} mi shorter`] : [])];
+    const message = `${parts.join(' · ')}${approximateNote}`;
+    if (!accessProblem) return { tone: 'success', message };
+    return { tone: 'warning', message: `${message}. ${plainMessageText(recoveryMessage(recovery))}`.trim() };
+}
+
 export function buildRoadOptimizationAttempt(reason, measurement, {
     mode, doorCount, finishedAt = new Date().toISOString(), applied = false,
 } = {}) {

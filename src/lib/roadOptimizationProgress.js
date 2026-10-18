@@ -72,7 +72,7 @@ export function getRoadOptimizationJobs() {
 export function startRoadOptimizationJob({ title, routes, concurrency = 1, background = false }) {
     const id = nextId++;
     const job = {
-        id, title, background, startedAt: Date.now(), finishedAt: null, finishing: false,
+        id, title, background, startedAt: Date.now(), finishedAt: null,
         estimate: estimateJobSeconds(routes.map(route => route.stops), concurrency),
         routes: routes.map(route => ({ name: route.name || null, stops: route.stops, status: 'waiting',
             passesDone: 0, maxPasses: null, checksDone: null, checksTotal: null, savedMiles: 0, bestMiles: null })),
@@ -94,11 +94,6 @@ export function startRoadOptimizationJob({ title, routes, concurrency = 1, backg
             passesDone, maxPasses, checksDone, checksTotal, savedMiles, bestMiles }),
         /** outcome: 'improved' | 'kept' | 'failed'. */
         finishRoute: (index, outcome, patch = {}) => patchRoute(index, { status: outcome, ...patch }),
-        /** The first result is saved; the rest runs behind the "Keep working" pill. */
-        finishInBackground: () => {
-            jobs = jobs.map(item => (item.id !== id ? item : { ...item, finishing: true, background: true }));
-            publish();
-        },
         finish: () => {
             jobs = jobs.filter(item => item.id !== id);
             publish();
