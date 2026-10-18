@@ -92,13 +92,15 @@ test('leaving the landing before the photo arrives cancels the reveal', async ()
 test('index.html preloads exactly the AVIF the landing picks, early, only on the landing, without outranking the app scripts', () => {
   const html = read('index.html');
   const head = html.slice(0, html.indexOf('</head>'));
-  const preload = head.match(/<script>\s*\/\/ Landing hero:[\s\S]*?<\/script>/)?.[0];
+  const preload = head.match(/<script id=\"fk-hero-preload\">\s*\/\/ Landing hero:[\s\S]*?<\/script>/)?.[0];
   assert.ok(preload, 'the preload runs from <head>, before the app bundle');
   assert.ok(head.indexOf(preload) < head.indexOf('<link rel="icon"'), 'it comes first in <head>');
   assert.equal(preload.match(/'imagesrcset', '([^']+)'/)[1], HERO_AVIF_SRCSET);
   assert.equal(preload.match(/'imagesizes', '([^']+)'/)[1], HERO_SIZES);
   assert.match(preload, /link\.rel = 'preload';\s*link\.as = 'image';\s*link\.type = 'image\/avif';/);
   assert.doesNotMatch(preload, /setAttribute\('fetchpriority'|\.fetchPriority =/, 'a high-priority preload would queue the app scripts behind the photo');
+  // pwa-refresh-resilience.test.mjs runs the first plain <script> as the PWA script.
+  assert.match(html.match(/<script>\s*([\s\S]*?)<\/script>/)[1], /FK_PWA_RELEASE/);
   assert.match(preload, /window\.location\.pathname !== '\/'/);
   assert.match(preload, /display-mode/);
   assert.doesNotMatch(preload, /setAttribute\('href'|link\.href/, 'no href: browsers without imagesrcset fetch nothing');
