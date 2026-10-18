@@ -1,20 +1,22 @@
-// The opening move: one continuous flyover of the hero house, from the hero photo (its
-// first frame) up to the overhead and on to the dusk neighbourhood, whose last frame is
-// satellite-hero-dusk (the #sat still the scene crossfades to). Built from two approved
-// generated clips: joined on their shared overhead frame, the still stretches trimmed and
-// frames picked so each step carries about the same motion, 24 fps, every frame a
-// keyframe so scroll can seek anywhere at once.
+// The opening move: one continuous flyover of the hero house in golden-hour daylight, from
+// the hero photo (its first frame) up to the overhead and on to the neighbourhood, whose
+// last frame is satellite-hero-day (the #sat still the scene crossfades to; the region,
+// metro and state views after it are daylight too). Built from two approved generated
+// clips: joined on their shared overhead frame, the still stretches trimmed, the zoom-out's
+// blended stretch (two layouts of the street at ~3 s) replaced by a zoom on its next clean
+// frame lined up on the house, and frames picked so each step carries about the same
+// motion; 24 fps, every frame a keyframe so scroll can seek anywhere at once.
 export const FLYOVER_SRC = {
-  wide: '/landing/flyover-hero-desktop.mp4', // 1920 x 1080
-  portrait: '/landing/flyover-hero-phone.mp4', // the middle 864 x 1080 of the same frames
+  wide: '/landing/flyover-golden-desktop.mp4', // 1920 x 1080
+  portrait: '/landing/flyover-golden-phone.mp4', // the middle 864 x 1080 of the same frames
 };
 // Screens this narrow see only the middle of the frame until #sat covers it, even as
 // the camera starts to pull back (SatelliteLanding.css places the crop).
 export const PORTRAIT_QUERY = '(max-aspect-ratio: 3/5)';
 
-export const DUSK_STILLS = {
-  tight: { avif: '/landing/satellite-hero-dusk.avif', webp: '/landing/satellite-hero-dusk.webp', jpg: '/landing/satellite-hero-dusk.jpg' },
-  wide: { avif: '/landing/satellite-zoom-hero-dusk.avif', webp: '/landing/satellite-zoom-hero-dusk.webp', jpg: '/landing/satellite-zoom-hero-dusk.jpg' },
+export const SATELLITE_STILLS = {
+  tight: { avif: '/landing/satellite-hero-day.avif', webp: '/landing/satellite-hero-day.webp', jpg: '/landing/satellite-hero-day.jpg' },
+  wide: { avif: '/landing/satellite-zoom-hero-day.avif', webp: '/landing/satellite-zoom-hero-day.webp', jpg: '/landing/satellite-zoom-hero-day.jpg' },
 };
 
 const MOVE_START = 0.08; // scroll (screens) where the flyover starts (satelliteScene.js)

@@ -5,16 +5,16 @@
 // fully downloaded and decoded, over a tiny blurred copy of itself.
 
 // Must match the preload in index.html (test/landing-hero-image.test.mjs checks).
-export const HERO_AVIF_SRCSET = '/landing/house-lux-1440.avif 1440w, /landing/house-lux-1920.avif 1920w, /landing/house-lux-2688.avif 2688w';
-export const HERO_WEBP_SRCSET = '/landing/house-lux-1440.webp 1440w, /landing/house-lux-1920.webp 1920w, /landing/house-lux-2688.webp 2688w';
-export const HERO_JPEG_SRC = '/landing/house-lux.jpg';
+export const HERO_AVIF_SRCSET = '/landing/hero-golden-1440.avif 1440w, /landing/hero-golden-1920.avif 1920w, /landing/hero-golden-2688.avif 2688w';
+export const HERO_WEBP_SRCSET = '/landing/hero-golden-1440.webp 1440w, /landing/hero-golden-1920.webp 1920w, /landing/hero-golden-2688.webp 2688w';
+export const HERO_JPEG_SRC = '/landing/hero-golden.jpg';
 // The photo always covers the screen: its width is the viewport width, or 2688/1520
 // of the viewport height on screens narrower than the photo (every phone held upright).
 export const HERO_SIZES = '(max-aspect-ratio: 2688/1520) 177vh, 100vw';
 
-// The photo at 32 × 18 (198 bytes of WebP), blurred, so the hero shows the house's
+// The photo at 32 × 18 (216 bytes of WebP), blurred, so the hero shows the house's
 // colours from the first frame. Blurring inside the SVG keeps the edges opaque.
-const PLACEHOLDER_WEBP = 'UklGRr4AAABXRUJQVlA4ILIAAADwBACdASogABIAPuVepE2pJSOiMAwBIByJaAC7AB5gECWuPQe6gn+AfN2r14qlasAA/swfTAZGFDpZDuoBmTEcmY5nh9mh0LcJjMO0ZjumR5us/dXgudo6Cw4ZKfUolQ/EQBBkToDien1Lh9pDf2De8iIWJLy78gb4eh/q/Eq56VArkQBXCWORzUU1jp1JVfRHzBtc1xlhYWZoSmGXftd5OVa4FGfrwgE3174lwJt70wAA';
+const PLACEHOLDER_WEBP = 'UklGRtAAAABXRUJQVlA4IMQAAAAwBQCdASogABIAPu1gp02ppaMiMAgBMB2JZACdMwzqEDd5y3OUJm78lRmNeyn9WPhVMADvzuxwnQkPAuS/WWBsi6zszeRDwDFHeVdPB/HvRJW4RuQw58WjaucBd5+z2JTRrqyUj+m7j9pVeN3hS0AR+GdKhWYnr16hcmszexmyrWE+IUPzXAiCn+nKrUZSUTWJaijJDRAZc2PWWhFrAS88Hp4PTwdXpnTy2KheCrhaYsKrvqflmJD8ROeOsgt4J8jMAAAA';
 const PLACEHOLDER_SVG = "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 18' preserveAspectRatio='none'>"
   + "<filter id='b' color-interpolation-filters='sRGB'><feGaussianBlur stdDeviation='.8'/>"
   + "<feComponentTransfer><feFuncA type='discrete' tableValues='1 1'/></feComponentTransfer></filter>"
