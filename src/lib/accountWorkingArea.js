@@ -1,6 +1,5 @@
 import L from '@/components/map/leafletPatches';
 import { isRenderableMapPoint } from '@/components/map/mapLayerVisibility.js';
-import { hasCompleteRouteMapPoints } from '@/components/logic/routeHydrationCore.js';
 
 function toLatLngPoints(points = []) {
     return points
@@ -12,32 +11,55 @@ function routePinPoints(route) {
     return toLatLngPoints((route?.properties || []).filter(isRenderableMapPoint));
 }
 
+// Where the person last looked at the map, written only by their own moves
+// (never by an automatic fit), per user and device.
+export const mapViewStorageKey = user => ((user?.id || user?.email) ? `fk_map_view_v2_${user.id || user.email}` : null);
+
+export function readStoredMapView(user) {
+    const key = mapViewStorageKey(user);
+    if (!key || typeof localStorage === 'undefined') return null;
+    try {
+        const stored = JSON.parse(localStorage.getItem(key));
+        if (stored && Number.isFinite(stored.lat) && Number.isFinite(stored.lng) && (stored.lat !== 0 || stored.lng !== 0)) {
+            return { center: [stored.lat, stored.lng], zoom: Number.isFinite(stored.zoom) ? stored.zoom : 15 };
+        }
+    } catch { /* unreadable storage: no stored view */ }
+    return null;
+}
+
+export function storeMapView(user, center, zoom) {
+    const key = mapViewStorageKey(user);
+    if (!key || typeof localStorage === 'undefined' || !center) return;
+    if (!Number.isFinite(center.lat) || !Number.isFinite(center.lng) || (center.lat === 0 && center.lng === 0)) return;
+    try { localStorage.setItem(key, JSON.stringify({ lat: center.lat, lng: center.lng, zoom })); } catch { /* storage full or blocked */ }
+}
+
 /**
- * Resolves where the map should open for this account.
- * Order: drawn boundary → saved routes (the real working area) → last map
- * position → most recent Precision pull area → loaded properties.
- * Returns null when nothing is known yet, or while saved routes are still
- * hydrating, so the map never jumps to an unrelated area first.
+ * Where the map opens: the person's working area, never "everything".
+ * 1. The last view they moved to on this device (instant, needs no data).
+ * 2. A drawn Precision boundary.
+ * 3. One route: their active (not completed) route, else the most recent —
+ *    a rep's assigned route, or a manager's latest. Only that route's pins
+ *    are needed, so it resolves as soon as that route loads.
+ * 4. The most recent Precision pull area, then loaded properties, then GPS.
+ * Seeing all routes is an explicit action ("Show all routes"), never automatic.
+ * Returns null while the data a step needs is still loading.
  */
 export function computeAccountWorkingArea({
     drawnPolygon,
     user,
     savedRoutes = [],
+    savedRoutesReady = true,
     hydratedSavedRoutes = [],
     precisionFetchJobs = [],
     availableProperties = [],
-    preferSavedRoutes = false,
+    gpsLocation = null,
 } = {}) {
-    // Routes overview must wait for every displayed manifest before locking
-    // its initial camera. The first completed request may cover only one city.
-    if (preferSavedRoutes && savedRoutes.length > 0) {
-        const byId = new Map(hydratedSavedRoutes.map(route => [route.id, route]));
-        const complete = savedRoutes.map(route => byId.get(route.id));
-        if (complete.some(route => !route || !hasCompleteRouteMapPoints(route))) return null;
-        const points = complete.flatMap(routePinPoints);
-        return points.length ? { type: 'bounds', bounds: L.latLngBounds(points) } : null;
-    }
-    // 1. Precision drawn boundary (state or persisted)
+    // 1. The last view this person moved to on this device.
+    const stored = readStoredMapView(user);
+    if (stored) return { type: 'center', ...stored };
+
+    // 2. Precision drawn boundary (state or persisted)
     let polygonToUse = drawnPolygon;
     if (!Array.isArray(polygonToUse) || polygonToUse.length < 3) {
         try {
@@ -51,27 +73,14 @@ export function computeAccountWorkingArea({
         if (pts.length >= 3) return { type: 'bounds', bounds: L.latLngBounds(pts) };
     }
 
-    // 2. Active or most recent saved route — routes are the account's working
-    // area, so they take priority over any stale last-map-position.
-    const routesWithPins = (hydratedSavedRoutes || []).filter(r => routePinPoints(r).length > 0);
-    if (routesWithPins.length > 0) {
-        const activeOrRecent = routesWithPins.find(r => r.status !== 'COMPLETED') || routesWithPins[0];
-        return { type: 'bounds', bounds: L.latLngBounds(routePinPoints(activeOrRecent)) };
-    }
-    // Routes exist but their pins have not hydrated yet — wait rather than
-    // dropping the user in an unrelated area for a moment.
-    if (Array.isArray(savedRoutes) && savedRoutes.length > 0) return null;
-
-    // 3. Last map position for this account
-    const storageKey = (user?.id || user?.email) ? `fk_last_map_position_${user.id || user.email}` : 'fk_last_map_position';
-    if (typeof localStorage !== 'undefined') {
-        try {
-            const rawStored = localStorage.getItem(storageKey) || localStorage.getItem('fk_last_map_position');
-            const stored = rawStored ? JSON.parse(rawStored) : null;
-            if (stored && Number.isFinite(stored.lat) && Number.isFinite(stored.lng) && (stored.lat !== 0 || stored.lng !== 0)) {
-                return { type: 'center', center: [stored.lat, stored.lng], zoom: stored.zoom || 15 };
-            }
-        } catch (e) {}
+    // 3. One route: the active one, else the most recent. Wait for the list,
+    // then for that one route's pins only.
+    if (!savedRoutesReady) return null;
+    if (Array.isArray(savedRoutes) && savedRoutes.length > 0) {
+        const target = savedRoutes.find(route => route.status !== 'COMPLETED' && route.status !== 'ARCHIVED') || savedRoutes[0];
+        const hydrated = (hydratedSavedRoutes || []).find(route => route.id === target.id);
+        const points = routePinPoints(hydrated);
+        return points.length ? { type: 'bounds', bounds: L.latLngBounds(points) } : null;
     }
 
     // 4. Most recent Precision fetch job boundary
@@ -90,6 +99,10 @@ export function computeAccountWorkingArea({
         if (pts.length > 0) return { type: 'bounds', bounds: L.latLngBounds(pts) };
     }
 
+    // 6. Where the person is, when the browser shares it.
+    if (gpsLocation && Number.isFinite(gpsLocation.lat) && Number.isFinite(gpsLocation.lng)) {
+        return { type: 'center', center: [gpsLocation.lat, gpsLocation.lng], zoom: 15 };
+    }
     return null;
 }
 

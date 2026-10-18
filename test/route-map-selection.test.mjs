@@ -132,7 +132,7 @@ test('initial account viewport cannot overwrite an imported route or a pending r
         activeRoute: null,
         mode: 'analyze', savedRoutesReady: true,
         window: { location: { search: '' } }, URLSearchParams,
-        hasCenteredAccountWorkingAreaRef: { current: false },
+        hasCenteredAccountWorkingAreaRef: { current: false }, userMovedMapRef: { current: false },
         mapRef: { current: { _mapPane: {}, setView: () => { cameraMoves++; } } },
         resolveAccountWorkingArea: () => {
             defaultLookups++;

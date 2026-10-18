@@ -836,9 +836,12 @@ export default function MapToolbar({
             e.stopPropagation();
             if (mapRef.current && fitBounds && fitBounds.length > 0) {
               try {fitBoundsToVisibleArea(mapRef.current, fitBounds, { maxZoom: 17, animate: true });} catch (e) {}
-              toast.success("Centered on Territory");
+              toast.success(activeRoute ? "Showing the whole route" : "Showing all routes");
             }
           }}
+          // Seeing every route is this explicit action; the map never zooms out on its own.
+          title={activeRoute ? "Show the whole route" : "Show all routes"}
+          aria-label={activeRoute ? "Show the whole route" : "Show all routes"}
           size="icon"
           className="rounded-full w-9 h-9 sm:w-10 sm:h-10 shadow-2xl backdrop-blur-md"
           style={{ background: 'rgba(31, 31, 31, 0.9)', color: BRAND.gold, border: `1px solid ${BRAND.gold}40` }}>

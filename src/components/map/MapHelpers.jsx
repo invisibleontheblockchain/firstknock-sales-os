@@ -127,6 +127,20 @@ export function MapRefHandler({ mapRef }) {
     return null;
 }
 
+/** Calls `onIntent` the first time the person touches, drags, zooms or keys the map. */
+export function MapUserIntent({ onIntent }) {
+    const map = useMap();
+    useEffect(() => {
+        const container = map?.getContainer?.();
+        if (!container) return undefined;
+        const events = ['pointerdown', 'touchstart', 'wheel', 'keydown'];
+        const handle = () => onIntent();
+        events.forEach(name => container.addEventListener(name, handle, { passive: true }));
+        return () => events.forEach(name => container.removeEventListener(name, handle));
+    }, [map, onIntent]);
+    return null;
+}
+
 export function MapController({ fitBounds, onZoomChange, onMoveEnd }) {
     const map = useMap();
     

@@ -25,10 +25,12 @@ const leaflet = {
     polyline: (points, options) => ({ points, options, on() {} }),
     DomEvent: { stopPropagation() {} },
 };
+const storage = new Map();
+const localStorage = { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, String(value)) };
 function moduleAt(path, imports) {
     const exports = {};
     vm.runInNewContext(ts.transpileModule(read(path), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText, {
-        exports, require: name => imports[name], localStorage: { getItem: () => null },
+        exports, require: name => imports[name], localStorage,
     });
     return exports;
 }
@@ -45,17 +47,43 @@ const routes = Array.from({ length: 17 }, (_, index) => ({
     properties: [{ address_hash: `house-${index}`, lat: 25 + index / 2, lng: -82 }],
 }));
 
-test('route overview waits for all 17 manifests instead of centering on the first seven', () => {
-    const resolve = hydratedSavedRoutes => workingArea.computeAccountWorkingArea({
-        savedRoutes: routes, hydratedSavedRoutes, preferSavedRoutes: true,
-        drawnPolygon: [[0, 1], [1, 1], [1, 2]],
+test('the map opens on the working area, never zoomed out to every route', () => {
+    storage.clear();
+    const user = { id: 'owner' };
+    const resolve = (hydratedSavedRoutes, extra = {}) => workingArea.computeAccountWorkingArea({
+        user, savedRoutes: routes, hydratedSavedRoutes, savedRoutesReady: true, ...extra,
     });
-    assert.equal(resolve(routes.slice(0, 7)), null);
-    const complete = resolve(routes);
-    assert.equal(complete.type, 'bounds');
-    assert.equal(complete.bounds.points.length, 17);
-    assert.ok(complete.bounds.points.some(point => point[0] === 25));
-    assert.ok(complete.bounds.points.some(point => point[0] === 33));
+    // No stored view: one route — the first active one — as soon as its pins load.
+    assert.equal(resolve([]), null, 'waits for that route, not for all 17');
+    const first = resolve(routes.slice(0, 1));
+    assert.equal(first.type, 'bounds');
+    assert.equal(JSON.stringify(first.bounds.points), '[[25,-82]]', 'one route, not the 17-route overview');
+    assert.equal(workingArea.computeAccountWorkingArea({ user, savedRoutes: routes, savedRoutesReady: false, hydratedSavedRoutes: routes }), null,
+        'waits for the route list');
+    // A completed route is skipped for the active one.
+    const withDone = [{ ...routes[0], status: 'COMPLETED' }, ...routes.slice(1)];
+    assert.equal(JSON.stringify(workingArea.computeAccountWorkingArea({ user, savedRoutes: withDone, savedRoutesReady: true,
+        hydratedSavedRoutes: withDone }).bounds.points), '[[25.5,-82]]');
+    // The last view the person moved to wins, instantly, with no data loaded.
+    workingArea.storeMapView(user, { lat: 35.4, lng: -80.8 }, 16);
+    assert.equal(JSON.stringify(workingArea.computeAccountWorkingArea({ user, savedRoutesReady: false })),
+        JSON.stringify({ type: 'center', center: [35.4, -80.8], zoom: 16 }));
+    assert.deepEqual(workingArea.readStoredMapView({ id: 'someone-else' }), null, 'per user');
+    // Nothing known at all: where the person is, when shared.
+    storage.clear();
+    assert.equal(JSON.stringify(workingArea.computeAccountWorkingArea({ user, savedRoutes: [], savedRoutesReady: true, gpsLocation: { lat: 35, lng: -81 } })),
+        JSON.stringify({ type: 'center', center: [35, -81], zoom: 15 }));
+});
+
+test('the camera follows the person: only their own moves are remembered, and nothing moves it after they touch the map', () => {
+    const home = read('src/pages/Home.jsx');
+    assert.doesNotMatch(home, /preferSavedRoutes/, 'no automatic fit to every saved route');
+    assert.match(home, /if \(hasCenteredAccountWorkingAreaRef\.current \|\| userMovedMapRef\.current \|\| !mapRef\.current\) return;/);
+    assert.match(home, /<MapUserIntent onIntent=\{markUserMovedMap\} \/>/);
+    assert.match(home, /if \(userMovedMapRef\.current\) storeMapView\(user, c, z\);/);
+    assert.match(home, /center=\{initialMapView\.center\}[\s\S]{0,40}zoom=\{initialMapView\.zoom\}/);
+    const toolbar = read('src/components/map/MapToolbar.jsx');
+    assert.match(toolbar, /"Show all routes"/, 'seeing every route is an explicit button');
 });
 
 test('wide zoom keeps all 17 saved route markers without drawing thousands of door details', () => {
@@ -94,7 +122,7 @@ test('wide zoom keeps all 17 saved route markers without drawing thousands of do
     assert.ok(routeMarkers.some(marker => marker.options.icon.html.includes('#17')));
 });
 
-test('Home does not lock its camera to stale history before the saved-route list arrives', () => {
+test('Home places the camera once, only when the working area is known, and never after the person moves the map', () => {
     const source = read('src/pages/Home.jsx');
     const ast = ts.createSourceFile('Home.jsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JSX);
     let effect;
@@ -106,20 +134,28 @@ test('Home does not lock its camera to stale history before the saved-route list
         ts.forEachChild(node, visit);
     }
     visit(ast);
-    let fits = 0;
-    const ref = { current: false };
+    let fits = 0, known = false;
+    const ref = { current: false }, moved = { current: false };
     const context = {
         activeRoute: null, window: { location: { search: '' } }, URLSearchParams,
-        mode: 'analyze', savedRoutesReady: false, hasCenteredAccountWorkingAreaRef: ref,
+        hasCenteredAccountWorkingAreaRef: ref, userMovedMapRef: moved,
         mapRef: { current: { _mapPane: {}, fitBounds() { fits++; } } },
-        resolveAccountWorkingArea: () => ({ type: 'bounds', bounds: { isValid: () => true } }),
+        // The resolver returns null until the data it needs (the route list,
+        // then that one route's pins) has loaded.
+        resolveAccountWorkingArea: () => (known ? { type: 'bounds', bounds: { isValid: () => true } } : null),
     };
     vm.createContext(context);
     vm.runInContext(`(${effect})()`, context);
     assert.equal(fits, 0);
     assert.equal(ref.current, false);
-    context.savedRoutesReady = true;
+    known = true;
     vm.runInContext(`(${effect})()`, context);
     assert.equal(fits, 1);
     assert.equal(ref.current, true);
+    vm.runInContext(`(${effect})()`, context);
+    assert.equal(fits, 1, 'once');
+    // Someone who has already dragged or zoomed is never moved by a late load.
+    ref.current = false; moved.current = true;
+    vm.runInContext(`(${effect})()`, context);
+    assert.equal(fits, 1);
 });
