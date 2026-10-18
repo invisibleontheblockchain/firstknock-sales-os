@@ -549,8 +549,12 @@ test('a succeeded refund nets out of gross collected, the 30-day window, and the
     expose: 'globalThis.__buildStripeAnalytics = buildStripeAnalytics;',
   });
   const nowSeconds = Math.floor(Date.now() / 1000);
-  const paidAtSeconds = nowSeconds - 3600;
-  const refundedAtSeconds = nowSeconds - 1800;
+  // The payment and its refund must fall on the same UTC day for the daily
+  // trend check: pin both to a past noon UTC (today's, or yesterday's before noon).
+  // "An hour ago" crossed midnight when the suite ran between 00:00 and 01:00 UTC.
+  const noonToday = Math.floor(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate(), 12) / 1000);
+  const paidAtSeconds = noonToday <= nowSeconds - 1800 ? noonToday : noonToday - 86400;
+  const refundedAtSeconds = paidAtSeconds + 900;
   const paidDateKey = new Date(paidAtSeconds * 1000).toISOString().slice(0, 10);
   const monthlyItem = { quantity: 1, price: { unit_amount: 15000, recurring: { interval: 'month', interval_count: 1 } } };
   const stripeData = {
