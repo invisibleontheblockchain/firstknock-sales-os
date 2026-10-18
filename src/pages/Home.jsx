@@ -70,13 +70,13 @@ import {
 
 import { BRAND, DEFAULT_STATUS_COLORS, COLOR_SCHEME_MAP, LINE_DASH_MAP, ROUTE_COLORS } from '../components/map/homeMapConstants';
 
-import { LocationMarker, MapRefHandler, MapController } from '../components/map/MapHelpers';
+import { LocationMarker, MapRefHandler, MapController, MapUserIntent } from '../components/map/MapHelpers';
 import useViewportMapProperties from '../components/map/useViewportMapProperties';
 import { reoptimizeRoute } from '@/lib/reoptimizeRouteAction'; import { deleteSavedRoute } from '@/lib/deleteRouteAction';
 import { previewSavedRoadAwareBeta } from '@/lib/previewSavedRoadAwareBeta';
 import { applyRouteStopRemoval } from '@/lib/routeStopRemoval';
 import { buildRoadAwareGeneratedRoutes } from '@/lib/roadMatrixRouteGeneration'; import { requireUsableRouteContext } from '@/lib/routeContextGuard';
-import { computeAccountWorkingArea } from '@/lib/accountWorkingArea';
+import { computeAccountWorkingArea, readStoredMapView, storeMapView } from '@/lib/accountWorkingArea';
 import { getInitialMapMode, claimFirstAreaRouteHandoff } from '@/components/onboarding/firstAreaNavigation';
 
 // Pure polygon/precision-context helpers live in components/map/homeMapHelpers.js
@@ -2311,12 +2311,17 @@ export default function Home() {
     const resolveAccountWorkingArea = useCallback(() => computeAccountWorkingArea({
         drawnPolygon, user,
         savedRoutes: savedRoutes.filter(route => repFilter === 'all' || route.assigned_to_name?.includes(repFilter)),
-        hydratedSavedRoutes, precisionFetchJobs, availableProperties,
-        preferSavedRoutes: mode === 'analyze',
-    }), [drawnPolygon, user, savedRoutes, hydratedSavedRoutes, precisionFetchJobs, availableProperties, repFilter, mode]);
+        savedRoutesReady, hydratedSavedRoutes, precisionFetchJobs, availableProperties,
+        gpsLocation: gpsInitialLocation ? { lat: gpsInitialLocation[0], lng: gpsInitialLocation[1] } : null,
+    }), [drawnPolygon, user, savedRoutes, savedRoutesReady, hydratedSavedRoutes, precisionFetchJobs, availableProperties, repFilter, gpsInitialLocation]);
 
-    // Initial Account Working Area Map Load Effect
+    // Initial Account Working Area Map Load Effect: the map opens on the
+    // working area once, and never moves on its own after that — in
+    // particular never out to every route, and never after the person has
+    // touched, dragged, zoomed or keyed the map.
     const hasCenteredAccountWorkingAreaRef = useRef(false);
+    const userMovedMapRef = useRef(false);
+    const markUserMovedMap = useCallback(() => { userMovedMapRef.current = true; }, []);
     useEffect(() => {
         // Explicit route navigation owns the camera, including while its pins load.
         // Child map effects run first, so a late account default must not undo their fit.
@@ -2324,8 +2329,7 @@ export default function Home() {
             hasCenteredAccountWorkingAreaRef.current = true;
             return;
         }
-        if (mode === 'analyze' && !savedRoutesReady) return;
-        if (hasCenteredAccountWorkingAreaRef.current || !mapRef.current) return;
+        if (hasCenteredAccountWorkingAreaRef.current || userMovedMapRef.current || !mapRef.current) return;
 
         const workingArea = resolveAccountWorkingArea();
         if (!workingArea) return;
@@ -2346,21 +2350,11 @@ export default function Home() {
                 }
             } catch (e) {}
         }
-    }, [resolveAccountWorkingArea, activeRoute, mode, savedRoutesReady]);
+    }, [resolveAccountWorkingArea, activeRoute]);
 
-    // Determine Initial Map Center
-    const [mapCenter, setMapCenter] = useState(() => {
-        const storageKey = (user?.id || user?.email) ? `fk_last_map_position_${user?.id || user?.email}` : null;
-        if (storageKey && typeof localStorage !== 'undefined') {
-            try {
-                const stored = JSON.parse(localStorage.getItem(storageKey));
-                if (stored && Number.isFinite(stored.lat) && Number.isFinite(stored.lng) && (stored.lat !== 0 || stored.lng !== 0)) {
-                    return [stored.lat, stored.lng];
-                }
-            } catch (e) {}
-        }
-        return [34.0522, -118.2437];
-    });
+    // Initial map view: the last view this person moved to on this device,
+    // so the map opens on the working area at once, before any data loads.
+    const [initialMapView] = useState(() => readStoredMapView(user) || { center: [34.0522, -118.2437], zoom: 15 });
 
     // On first load, get user's GPS location if no explicit account working area is stored
     useEffect(() => {
@@ -2368,11 +2362,9 @@ export default function Home() {
         navigator.geolocation.getCurrentPosition(
             (pos) => {
                 const loc = [pos.coords.latitude, pos.coords.longitude];
+                // Only a fallback working area (see computeAccountWorkingArea).
                 setGpsInitialLocation(loc);
                 setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-                if (!hasCenteredAccountWorkingAreaRef.current) {
-                    setMapCenter(loc);
-                }
             },
             () => { /* GPS denied/unavailable, keep default */ },
             { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
@@ -2385,18 +2377,11 @@ export default function Home() {
         try {
             const c = mapRef.current.getCenter();
             const z = mapRef.current.getZoom();
-            if (c && Number.isFinite(c.lat) && Number.isFinite(c.lng) && (c.lat !== 0 || c.lng !== 0)) {
-                const storageKey = (user?.id || user?.email) ? `fk_last_map_position_${user.id || user.email}` : null;
-                if (storageKey && typeof localStorage !== 'undefined') {
-                    localStorage.setItem(storageKey, JSON.stringify({ lat: c.lat, lng: c.lng, zoom: z }));
-                }
-            }
+            // Remember only views the person moved to, never an automatic fit.
+            if (userMovedMapRef.current) storeMapView(user, c, z);
         } catch (e) {}
     }, [onMapMoveEnd, user?.id, user?.email]);
 
-    const center = availableProperties[0] && availableProperties[0].lat
-        ? [availableProperties[0].lat, availableProperties[0].lng]
-        : (gpsInitialLocation || mapCenter);
 
     // Fetch full history for selected property (manager view)
     const { data: selectedPropertyLogs = [], isSuccess: selectedPropertyHistoryReady, error: selectedPropertyHistoryError, refetch: retrySelectedPropertyHistory } = useQuery({
@@ -2534,8 +2519,8 @@ export default function Home() {
 
             {/* Map */}
             <MapContainer
-                center={center}
-                zoom={15}
+                center={initialMapView.center}
+                zoom={initialMapView.zoom}
                 style={{ height: '100%', width: '100%' }}
                 zoomControl={false}
                 attributionControl
@@ -2546,6 +2531,7 @@ export default function Home() {
                 fadeAnimation={true}
             >
                 <MapRefHandler mapRef={mapRef} />
+                <MapUserIntent onIntent={markUserMovedMap} />
                 <BaseMapTiles mapTheme={mapTheme} routeMode={routeMode} />
                 <LocationMarker autoCenter={false} userLocation={userLocation} /><AppointmentFocusMarker property={appointmentPin} onSelect={setSelectedProperty} />
                 <DarkRoomManager />
