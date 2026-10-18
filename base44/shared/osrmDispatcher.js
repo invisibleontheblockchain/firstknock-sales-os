@@ -15,6 +15,12 @@
 // Every call carries ONE end-to-end deadline that covers the queue wait, retry
 // sleeps, the fetch and the body read. A slow body can no longer outlive its
 // timeout, and a cancelled optimization stops spending engine capacity.
+//
+// One attempt that gets no complete answer within ATTEMPT_STALL_MS of being
+// sent (queue wait excluded) is abandoned and sent again at once. The gateway
+// answers every request in under a second; a request that stays silent for
+// 8 s is a lost connection, not a slow answer. Without this, one lost request
+// waited out the caller's whole deadline and failed the optimization.
 
 const DEFAULT_MAX_CONCURRENT_REQUESTS = 16;
 const DEFAULT_DISPATCH_SPACING_MS = 0;
@@ -24,10 +30,12 @@ const MAX_ATTEMPTS = 3;
 const RETRY_BASE_DELAY_MS = 1000;
 // A Retry-After longer than this is treated as "not within this request".
 const MAX_RETRY_AFTER_MS = 30000;
+const DEFAULT_ATTEMPT_STALL_MS = 8000;
 
 const settings = {
     maxConcurrent: DEFAULT_MAX_CONCURRENT_REQUESTS,
     spacingMs: DEFAULT_DISPATCH_SPACING_MS,
+    attemptStallMs: DEFAULT_ATTEMPT_STALL_MS,
     gatewayOrigin: '',
     gatewayKey: ''
 };
@@ -156,7 +164,7 @@ let lastRoadBuildId = null;
 // bill instead of it being guessed at. Counted here because this is the only
 // place OSRM is reached from. Stage times say where a slow request spent it.
 const counters = {
-    requests: 0, retries: 0, rateLimited: 0, transportFailures: 0, timeouts: 0, cancelled: 0,
+    requests: 0, retries: 0, rateLimited: 0, transportFailures: 0, stalls: 0, timeouts: 0, cancelled: 0,
     rejected: 0, peakInFlight: 0, queuedMs: 0, headersMs: 0, bodyMs: 0
 };
 
@@ -211,7 +219,7 @@ export function dispatchOsrm(run, { signal = null } = {}) {
  * Configure the process-wide gateway. Only requests to `baseUrl`'s origin carry
  * the key, so a test server or any other host can never receive it.
  */
-export function configureOsrmDispatcher({ maxConcurrent, spacingMs, baseUrl, gatewayKey } = {}) {
+export function configureOsrmDispatcher({ maxConcurrent, spacingMs, attemptStallMs, baseUrl, gatewayKey } = {}) {
     if (maxConcurrent !== undefined) {
         const value = Math.floor(Number(maxConcurrent));
         settings.maxConcurrent = Number.isFinite(value) && value >= 1 ? Math.min(value, 64) : DEFAULT_MAX_CONCURRENT_REQUESTS;
@@ -219,6 +227,10 @@ export function configureOsrmDispatcher({ maxConcurrent, spacingMs, baseUrl, gat
     if (spacingMs !== undefined) {
         const value = Number(spacingMs);
         settings.spacingMs = Number.isFinite(value) && value >= 0 ? Math.min(value, 5000) : DEFAULT_DISPATCH_SPACING_MS;
+    }
+    if (attemptStallMs !== undefined) {
+        const value = Number(attemptStallMs);
+        settings.attemptStallMs = Number.isFinite(value) && value >= 1 ? Math.min(value, 60000) : DEFAULT_ATTEMPT_STALL_MS;
     }
     if (baseUrl !== undefined) {
         try { settings.gatewayOrigin = baseUrl ? new URL(baseUrl).origin : ''; } catch { settings.gatewayOrigin = ''; }
@@ -240,7 +252,8 @@ function authorizationFor(url) {
  * every retry sleep and the body read all share it. `signal` cancels the call
  * from outside (an abandoned optimization).
  *
- * Transport failures and 5xx are retried with backoff. 429 and 503 are retried
+ * Transport failures and 5xx are retried with backoff, and an attempt that
+ * stalls (see ATTEMPT_STALL_MS above) is retried at once. 429 and 503 are retried
  * only after waiting the server's Retry-After, and not at all when that wait
  * would outlive the deadline. 400/401/403 and any other 4xx fail immediately.
  * An OSRM payload whose `code` is not `Ok` is a definitive answer about the
@@ -296,7 +309,30 @@ export function isRedirectResponse(response) {
     return response?.type === 'opaqueredirect' || (response?.status >= 300 && response?.status < 400);
 }
 
+function stalledError(ms) {
+    return new RetryableOsrmError(`OSRM request got no answer within ${ms} ms.`, { kind: 'stall', retryAfterMs: 0 });
+}
+
 async function attemptOnce(url, deadline) {
+    // This attempt's own signal: the call's deadline, or this attempt stalling.
+    const attempt = new AbortController();
+    const onDeadline = () => attempt.abort(abortReason(deadline));
+    if (deadline.aborted) onDeadline();
+    else deadline.addEventListener('abort', onDeadline, { once: true });
+    const stallMs = settings.attemptStallMs;
+    const stallTimer = setTimeout(() => {
+        counters.stalls += 1;
+        attempt.abort(stalledError(stallMs));
+    }, stallMs);
+    try {
+        return await sendAttempt(url, attempt.signal);
+    } finally {
+        clearTimeout(stallTimer);
+        deadline.removeEventListener('abort', onDeadline);
+    }
+}
+
+async function sendAttempt(url, signal) {
     counters.requests += 1;
     const headers = { 'Accept': 'application/json', 'User-Agent': 'FirstKnock-Routing/1.0' };
     const authorization = authorizationFor(url);
@@ -305,9 +341,9 @@ async function attemptOnce(url, deadline) {
     const sentAt = Date.now();
     let response;
     try {
-        response = await untilAborted(fetch(url, { signal: deadline, redirect: OSRM_REDIRECT_MODE, headers }), deadline);
+        response = await untilAborted(fetch(url, { signal, redirect: OSRM_REDIRECT_MODE, headers }), signal);
     } catch (error) {
-        if (deadline.aborted) throw abortReason(deadline);
+        if (signal.aborted) throw abortReason(signal);
         counters.transportFailures += 1;
         throw new RetryableOsrmError(`OSRM request failed: ${transportCause(error)}`, { kind: 'network' });
     } finally {
@@ -318,7 +354,7 @@ async function attemptOnce(url, deadline) {
     if (build) lastRoadBuildId = build;
 
     const bodyStartedAt = Date.now();
-    const readJson = () => untilAborted(response.json(), deadline);
+    const readJson = () => untilAborted(response.json(), signal);
     try {
         if (isRedirectResponse(response)) {
             counters.rejected += 1;
@@ -343,7 +379,7 @@ async function attemptOnce(url, deadline) {
         if (!response.ok) {
             counters.rejected += 1;
             const payload = await readJson().catch((error) => {
-                if (deadline.aborted) throw error;
+                if (signal.aborted) throw error;
                 return null;
             });
             const error = new Error(`OSRM request failed with status ${response.status}${payload?.code ? ` (${payload.code})` : ''}. ${payload?.message || ''}`.trim());

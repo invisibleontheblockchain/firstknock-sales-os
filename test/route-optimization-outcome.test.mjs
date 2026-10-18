@@ -346,7 +346,7 @@ test('road-access diagnostics survive a failed measurement without a distance es
 test('a backend timeout preserves both the timeout reason and known road-access issues', () => {
     const result = outcomes.describeRoadOptimizationOutcome('deadline_exceeded', withRecovery(null));
     assert.equal(result.status, 'timed_out');
-    assert.match(result.message, /timed out/);
+    assert.match(result.message, /took too long to finish/);
     assert.ok(result.message.includes(roadIssues[1].address));
 });
 
@@ -629,7 +629,7 @@ test('the real Optimize action keeps the stop order and records a timeout instea
     assert.equal('property_hashes' in harness.writes[0].patch, false);
     assert.deepEqual(route.property_hashes, ['A', 'B', 'C']);
     assert.equal(harness.calls.at(-1).tone, 'warning');
-    assert.match(harness.calls.at(-1).message, /timed out/);
+    assert.match(harness.calls.at(-1).message, /took too long to finish/);
     assert.ok(harness.calls.every(call => call.tone !== 'success'));
 });
 
@@ -711,6 +711,26 @@ test('a failed driving check shows the server reason, never its URLs or coordina
     assert.equal(failed(undefined).message, 'Could not complete the driving check. Your route was kept unchanged. Try again.');
     assert.equal(failed('see https://roads.example/route at 35.12, -80.84').message,
         'Could not complete the driving check. Your route was kept unchanged. Try again.', 'unsafe text is dropped');
+    assert.equal(failed('Vehicle routing failed (NoRoute). The existing route was left unchanged.').message,
+        'Could not complete the driving check: Vehicle routing failed (NoRoute). Your route was kept unchanged. Try again.',
+        'the route is said to be kept once');
+});
+
+test('a driving check that ran out of time says so plainly, as a warning', () => {
+    const tooSlow = 'The driving check took too long to finish. Your route was kept unchanged. Try Optimize again.';
+    const failed = serverMessage => outcomes.describeRoadOptimizationOutcome('backend_unavailable',
+        { diagnostic: { httpStatus: 500, errorCode: null, elapsedMs: 24935, serverMessage } });
+    // The Lincolnton report: the server's own timeout text, once doubled.
+    for (const serverMessage of ['Vehicle routing timed out. The existing route was left unchanged.',
+        'OSRM request exceeded its 20000 ms deadline.', 'OSRM request got no answer within 8000 ms.']) {
+        const outcome = failed(serverMessage);
+        assert.equal(outcome.status, 'timed_out');
+        assert.equal(outcome.tone, 'warning');
+        assert.equal(outcome.message, tooSlow);
+    }
+    assert.equal(outcomes.describeRoadOptimizationOutcome('deadline_exceeded').message, tooSlow);
+    assert.deepEqual(outcomes.plainOptimizeMessage({ outcome: failed('Vehicle routing timed out. The existing route was left unchanged.') }),
+        { tone: 'warning', message: tooSlow });
 });
 
 test('a verified result says how many stops used approximate road access, and names them', () => {

@@ -164,6 +164,14 @@ function completedRouteDetails(meta, recovery) {
         ? ' County-mapped local roads included; local-road travel times are estimated.' : ''}`;
 }
 
+// A check that ran out of time, from the action or from one road request on
+// the server. One plain sentence, not the server's own wording.
+const TIMED_OUT_TEXT = /timed out|exceeded its \d+ ms deadline|no answer within/i;
+const TOO_SLOW = { status: 'timed_out', tone: 'warning',
+    message: 'The driving check took too long to finish. Your route was kept unchanged. Try Optimize again.' };
+// The server's reason already says the route was kept; say it once.
+const withoutKeptSentence = text => text?.replace(/\s*The existing route was left unchanged\.?$/i, '').replace(/\.$/, '') || null;
+
 // A retained route is an outcome, not proof of optimality. In particular, a
 // previously verified route must survive a failed attempt without that failure
 // being turned into a success message or fresh verification.
@@ -180,10 +188,7 @@ export function describeRoadOptimizationOutcome(reason, measurement = null) {
         status: 'rate_limited', tone: 'warning',
         message: 'The driving optimizer is busy. Your route was kept unchanged. Wait a moment and try again.',
     });
-    if (reason === 'deadline_exceeded') return finish({
-        status: 'timed_out', tone: 'warning',
-        message: 'Optimization timed out. Your route was kept unchanged. Try again.',
-    });
+    if (reason === 'deadline_exceeded') return finish({ ...TOO_SLOW });
     if (recovery?.status === 'provider_unavailable' && recovery.inventory_complete === false) return finish({
         status: 'road_provider_unavailable', tone: 'error',
         message: `The driving service could not load the road matches needed for optimization. Your route was kept unchanged.${roadAccessSearchDetails(review, meta)}`,
@@ -200,11 +205,12 @@ export function describeRoadOptimizationOutcome(reason, measurement = null) {
         message: `Road distances were unavailable, so your route was kept unchanged: ${roadFailureCause(meta.road_failure_detail)}.`,
     });
     if (reason !== 'current_order_measured_best' || !validDistance(measurement?.distanceMiles)) {
-        const serverMessage = safeAddress(typeof measurement?.diagnostic?.serverMessage === 'string'
-            ? measurement.diagnostic.serverMessage.slice(0, 160) : null);
+        const serverMessage = withoutKeptSentence(safeAddress(typeof measurement?.diagnostic?.serverMessage === 'string'
+            ? measurement.diagnostic.serverMessage.slice(0, 160) : null));
+        if (TIMED_OUT_TEXT.test(serverMessage || '')) return finish({ ...TOO_SLOW });
         return finish({
             status: 'failed', tone: 'error',
-            message: `Could not complete the driving check${serverMessage ? `: ${serverMessage.replace(/\.$/, '')}` : ''}. Your route was kept unchanged. Try again.`,
+            message: `Could not complete the driving check${serverMessage ? `: ${serverMessage}` : ''}. Your route was kept unchanged. Try again.`,
         });
     }
     if (review?.repaired > 0 && review.applied === false && review.status === 'whole_route_guard_retained'
