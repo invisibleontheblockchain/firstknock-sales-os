@@ -41,7 +41,7 @@ const MapSettingsPanel = React.lazy(() => import('../components/map/MapSettingsP
 import RouteBuilderSettings, { preloadCanvasBuilderSettings } from '../components/map/RouteBuilderSettings';
 const TerritorySetupWizard = React.lazy(() => import('../components/manager/TerritorySetupWizard'));
 import { hydrateRouteForMap, hydrateRoutesForMap } from '@/components/logic/routeHydration';
-import { hasCompleteRouteMapPoints, orderRouteProperties, selectRoutesToHydrate } from '@/components/logic/routeHydrationCore';
+import { hasCompleteRouteMapPoints, indexRouteProperties, orderRouteProperties, selectRoutesToHydrate } from '@/components/logic/routeHydrationCore';
 import { getReadyRouteMapPoints, loadSavedRouteSelection } from '@/components/logic/routeMapSelection';
 import { mergeAnchoredRoute } from '@/lib/routeAnchorState';
 import { GpsMapLayer as GpsTrackerMapLayers, GpsHud as GpsTrackerHud } from '../components/map/GpsTracker';
@@ -1388,9 +1388,14 @@ export default function Home() {
         refetchOnWindowFocus: true,
         queryFn: async ({ signal }) => {
             // Most route homes arrive with the territory overview. Until it
-            // settles, only the routes acted on first are looked up; the rest
-            // render from territory homes, then request only what it lacks.
-            const routesToHydrate = selectRoutesToHydrate(savedRoutes, { overviewLoading: territoryOverviewLoading });
+            // settles, only the routes acted on first — and the ones where the
+            // map is looking — are looked up; the rest render from territory
+            // homes, then request only what it lacks. Nearest the view first.
+            let viewCenter = null;
+            try { const c = mapRef.current?.getCenter?.(); if (c) viewCenter = { lat: c.lat, lng: c.lng }; } catch { /* map not ready */ }
+            if (!viewCenter) { const stored = readStoredMapView(user); if (stored) viewCenter = { lat: stored.center[0], lng: stored.center[1] }; }
+            const routesToHydrate = selectRoutesToHydrate(savedRoutes, { overviewLoading: territoryOverviewLoading,
+                center: viewCenter, homesByHash: indexRouteProperties(routeHomeRowsRef.current) });
             const hydrated = await hydrateRoutesForMap(routesToHydrate, user.email, routeHomeRowsRef.current, {
                 shouldContinue: () => !signal.aborted,
                 onRouteHydrated: route => {

@@ -68,7 +68,7 @@ async function openMap({ invoke, deferUntilOverview = true }) {
         useQuery: config => config,
         user: { id: 'manager', email: 'manager@example.com' },
         savedRoutes: savedRoutes(), savedRouteMapManifestKey: 'manifest', territoryMapRows: [],
-        routeHomeRowsRef: { current: [] },
+        routeHomeRowsRef: { current: [] }, mapRef: { current: null }, readStoredMapView: () => null,
         territoryOverviewLoading: true,
         setServerHydratedSavedRoutes: update => { displayed = update(displayed); },
         ...core,
@@ -153,7 +153,7 @@ test('the early pass does not report routes it has not looked up yet', async () 
     const sandbox = {
         useQuery: config => config, user: { id: 'manager', email: 'early@example.com' },
         savedRoutes: savedRoutes(), savedRouteMapManifestKey: 'manifest', territoryMapRows: [],
-        routeHomeRowsRef: { current: [] }, territoryOverviewLoading: true,
+        routeHomeRowsRef: { current: [] }, mapRef: { current: null }, readStoredMapView: () => null, territoryOverviewLoading: true,
         setServerHydratedSavedRoutes: () => {}, ...core, hydrateRoutesForMap: module.hydrateRoutesForMap,
     };
     vm.runInNewContext('globalThis.query = ' + homeRouteQuery(), sandbox);
@@ -205,7 +205,7 @@ test('route hydration sees homes the map display dedupes by address', async () =
 test('Home wires the overview state into saved-route hydration', () => {
     const source = read('src/pages/Home.jsx');
     assert.match(source, /isLoadingOverview: territoryOverviewLoading/);
-    assert.match(source, /selectRoutesToHydrate\(savedRoutes, \{ overviewLoading: territoryOverviewLoading \}\)/);
+    assert.match(source, /selectRoutesToHydrate\(savedRoutes, \{ overviewLoading: territoryOverviewLoading,\s*center: viewCenter, homesByHash: indexRouteProperties\(routeHomeRowsRef\.current\) \}\)/);
     assert.match(source, /if \(incompleteCount && !territoryOverviewLoading\)/);
     // Hydration reads the territory rows from before the address dedupe.
     assert.match(source, /hydrateRoutesForMap\(routesToHydrate, user\.email, routeHomeRowsRef\.current/);
