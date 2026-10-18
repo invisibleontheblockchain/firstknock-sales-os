@@ -256,8 +256,7 @@ test('all three raster map paths retain their providers, attribution and existin
   // Desktop keeps its tile settings; phones and tablets use Leaflet's mobile budget.
   assert.match(shared, /const TILE_PERF = basemapTileOptions\(\{ phone: Boolean\(L\.Browser\.mobile \|\| L\.Browser\.touch\) \}\);/);
   const urls = read('src/components/map/basemapUrls.js');
-  assert.match(urls, /\{ keepBuffer: 3, updateWhenZooming: true, updateWhenIdle: false,/);
-  assert.match(urls, /\{ keepBuffer: 1, updateWhenZooming: false, updateWhenIdle: true,/);
+  assert.match(urls, /\{ keepBuffer: phone \? 1 : 3, updateWhenZooming: true, updateWhenIdle: false,/);
   assert.match(shared, /ESRI_IMAGERY_ATTRIBUTION : CARTO_ATTRIBUTION/);
   // The URL table moved to basemapUrls.js so the startup tile warm-up shares it.
   assert.match(shared, /from '@\/components\/map\/basemapUrls'/);

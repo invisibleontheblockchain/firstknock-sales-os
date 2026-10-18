@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
 import { useMap } from 'react-leaflet';
 import RecoveringTileLayer from '@/components/map/RecoveringTileLayer';
@@ -6,6 +6,7 @@ import ZoomOutBackdrop from '@/components/map/ZoomOutBackdrop';
 import MapAttributionControl from '@/components/map/MapAttributionControl';
 import { CARTO_ATTRIBUTION, ESRI_IMAGERY_ATTRIBUTION } from '@/components/map/mapAttribution';
 import { BASEMAP_URLS, LABEL_URL, basemapTileOptions, precisionThemeFor, showsLabelsFor } from '@/components/map/basemapUrls';
+import { attachZoomSmoothing } from '@/components/map/mapZoomSmoothing';
 
 // Canvas's vector basemap is ~40 KB gzipped and only
 // Canvas mode draws it, so Precision maps no longer download it.
@@ -83,13 +84,23 @@ export default function BaseMapTiles({ mapTheme, routeMode = 'precision' }) {
 }
 
 function PrecisionBaseMap({ mapTheme, precisionTheme, showLabels }) {
+    const map = useMap();
     const url = BASEMAP_URLS[precisionTheme] || BASEMAP_URLS.dark;
     // The zoom-out backdrop waits for the first full view of real tiles.
     const [firstViewLoaded, setFirstViewLoaded] = useState(false);
     const [firstTileShown, setFirstTileShown] = useState(false);
+    // Smooth (not blocky) stretched tiles from a zoom's start until the new
+    // view's imagery has loaded (mapZoomSmoothing.js).
+    const smoothingRef = useRef(null);
+    useEffect(() => {
+        const smoothing = attachZoomSmoothing(map);
+        smoothingRef.current = smoothing;
+        return () => { smoothing.detach(); smoothingRef.current = null; };
+    }, [map]);
     const basemapEvents = useMemo(() => ({
+        loading: () => smoothingRef.current?.tilesLoading(),
         tileload: () => setFirstTileShown(true),
-        load: () => { setFirstTileShown(true); setFirstViewLoaded(true); },
+        load: () => { setFirstTileShown(true); setFirstViewLoaded(true); smoothingRef.current?.tilesLoaded(); },
     }), []);
     useEffect(() => {
         // A tile that never settles must not leave zoom-outs without a backdrop.
