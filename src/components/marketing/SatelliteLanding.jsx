@@ -25,20 +25,34 @@ export default function SatelliteLanding() {
   <div className="layer" id="lRegion"><img id="region" alt="" data-src="/landing/satellite-region.jpg" decoding="async" /></div>
   <div className="layer" id="lWide"><img alt="" data-src="/landing/satellite-zoom-roof-consistent.jpg" decoding="async" /></div>
   <div className="layer" id="lTight">
-    <div className="hero-placeholder" id="housePlaceholder" style={{ backgroundImage: HERO_PLACEHOLDER }}></div>
-    <picture>
-      <source type="image/avif" srcSet={HERO_AVIF_SRCSET} sizes={HERO_SIZES} />
-      <source type="image/webp" srcSet={HERO_WEBP_SRCSET} sizes={HERO_SIZES} />
-      {/* eslint-disable-next-line react/no-unknown-property -- React 18 passes the lowercase attribute through; 19 names it fetchPriority */}
-      <img id="housePhoto" alt="" src={HERO_JPEG_SRC} fetchpriority="high" decoding="async" />
-    </picture>
+    {/* The hero photo on a camera: it pushes toward the door and tilts up into the sky above it (skyTransition.js). */}
+    <div id="heroCam">
+      <div className="hero-sky"></div>
+      <div className="hero-placeholder" id="housePlaceholder" style={{ backgroundImage: HERO_PLACEHOLDER }}></div>
+      <picture>
+        <source type="image/avif" srcSet={HERO_AVIF_SRCSET} sizes={HERO_SIZES} />
+        <source type="image/webp" srcSet={HERO_WEBP_SRCSET} sizes={HERO_SIZES} />
+        {/* eslint-disable-next-line react/no-unknown-property -- React 18 passes the lowercase attribute through; 19 names it fetchPriority */}
+        <img id="housePhoto" alt="" src={HERO_JPEG_SRC} fetchpriority="high" decoding="async" />
+      </picture>
+      <div className="hero-feather" id="heroFeather"></div>
+    </div>
     <video id="fly" muted playsInline preload="auto"></video>
-    {/* The flyover's first settled aerial frame; dissolves in where the clip would redraw the house (flyoverMorph.js). */}
+    {/* The flyover's first settled aerial frame: the ground the clouds part onto until the video is there (skyTransition.js). */}
     <picture>
       <source type="image/avif" data-srcset="/landing/flyover-roof-consistent-3500ms.avif" />
       <img id="flyAerial" alt="" data-src="/landing/flyover-roof-consistent-3500ms.webp" decoding="async" />
     </picture>
     <img id="sat" alt="" data-src="/landing/satellite-roof-consistent.jpg" decoding="async" />
+  </div>
+  {/* Clouds between the hero and the aerial, drawn in code: the house changes only while they cover the screen (skyTransition.js). */}
+  <div id="clouds" aria-hidden="true">
+    <div className="bank"></div>
+    <div className="fog-day"></div>
+    <div className="ring"></div>
+    <div className="puff"></div>
+    <div className="puff"></div>
+    <div className="puff"></div>
   </div>
   <div className="layer" id="lHouse"><img alt="" data-src="/landing/satellite-roof-consistent.jpg" decoding="async" /></div>
   <svg className="layer" id="ov" viewBox="0 0 2688 1520"></svg>

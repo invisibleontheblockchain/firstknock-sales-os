@@ -180,11 +180,24 @@
   /* The house photo appears whole: transparent until downloaded and decoded, then faded in over
      its blurred stand-in. The video stays hidden over it until the first scroll seeks a frame. */
   .fk-satellite .hero-placeholder { position: absolute; inset: 0; background-size: 100% 100%; }
+  /* The opening move (skyTransition.js): the hero photo on its own camera, scaled about the door. */
+  .fk-satellite #heroCam { position: absolute; inset: 0; transform-origin: 45.5% 52.6%; will-change: transform; }
+  .fk-satellite #heroCam > picture > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  /* The photo's dusk sky continued above it (sampled from its top edge), and a band that dissolves the treetops into it. */
+  .fk-satellite .hero-sky { position: absolute; left: 0; right: 0; bottom: 100%; height: 130%; background: linear-gradient(to top, #3a77c8 0%, #2c63b4 30%, #1f4a92 65%, #163672 100%); }
+  .fk-satellite .hero-feather { position: absolute; left: 0; right: 0; top: 0; height: 24%; background: linear-gradient(#3a77c8 0%, rgba(58, 119, 200, .75) 35%, rgba(58, 119, 200, 0) 100%); opacity: 0; will-change: opacity; }
+  /* Clouds: a dusk bank that rises over the screen, daylight fog, a ring that parts outward, three soft cloud layers. */
+  .fk-satellite #clouds { position: absolute; inset: 0; overflow: hidden; pointer-events: none; visibility: hidden; }
+  .fk-satellite #clouds > * { position: absolute; will-change: transform, opacity; }
+  .fk-satellite #clouds .bank { left: 0; right: 0; top: 0; height: 200%; background: linear-gradient(rgba(92, 100, 146, 0) 0%, rgba(92, 100, 146, .7) 22%, #5c6492 45%, #6c6a95 72%, #86789a 100%); transform: translate3d(0, 50%, 0); }
+  .fk-satellite #clouds .fog-day { inset: 0; background: linear-gradient(#b3c1ce, #93a5b6); opacity: 0; }
+  .fk-satellite #clouds .ring { left: 50%; top: 50%; width: 150vmax; height: 150vmax; margin: -75vmax 0 0 -75vmax; background: radial-gradient(circle, rgba(170, 185, 199, 0) 0%, rgba(170, 185, 199, 0) 22%, #a6b6c4 48%); opacity: 0; }
+  /* Each puff layer repeats a small tileable cloud texture drawn in code (square, so it never stretches). */
+  .fk-satellite #clouds .puff { left: -60%; top: -60%; width: 220%; height: 220%; background-repeat: repeat; opacity: 0; }
   .fk-satellite #housePhoto { opacity: 0; transition: opacity .45s ease-out; }
   .fk-satellite #housePhoto[data-ready] { opacity: 1; }
   .fk-satellite #fly { visibility: hidden; }
-  .fk-satellite #fly[data-shown] { visibility: inherit; }
-  .fk-satellite #flyAerial { opacity: 0; transform-origin: 51% 39%; } /* the house in the still */
+  .fk-satellite #flyAerial { opacity: 0; will-change: opacity; }
   /* Hold the same roof through the independently rendered neighborhood views. */
   .fk-satellite #lHouse { pointer-events: none; mask-image: radial-gradient(ellipse 190px 130px at 1329px 695px, #000 76%, transparent 100%); }
   .fk-satellite #ov { overflow: visible; pointer-events: none; }

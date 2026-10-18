@@ -1,6 +1,6 @@
 // Satellite presentation adapted from the original FirstKnock prototype.
 // All DOM access, listeners, and animation resources belong to this landing page.
-import { aerialStillOpacity, aerialStillScale, flyoverVideoTime } from './flyoverMorph';
+import { AERIAL_VIDEO_TIME, aerialVideoTime, cloudAlpha, skyFrame } from './skyTransition';
 import { revealWhenDecoded } from './heroImage';
 import { advanceSatelliteProgress } from './satelliteMotion';
 
@@ -11,6 +11,9 @@ export function startSatelliteScene(root) {
   const NS = 'http://www.w3.org/2000/svg', IW = 2688, IH = 1520;
   const $ = (id) => root.querySelector(`#${id}`);
   const fly = $('fly'), flyAerial = $('flyAerial'), sat = $('sat'), ov = $('ov'), hint = $('hint');
+  const heroCam = $('heroCam'), heroFeather = $('heroFeather'), clouds = $('clouds');
+  const bank = clouds.querySelector('.bank'), fogDay = clouds.querySelector('.fog-day'), ring = clouds.querySelector('.ring');
+  const puffs = [...clouds.querySelectorAll('.puff')];
   const state = $('state'), shadeL = $('shadeL'), shadeB = $('shadeB'), legend = $('legend');
   const L = { state: $('lState'), metro: $('lMetro'), region: $('lRegion'), wide: $('lWide'), tight: $('lTight'), house: $('lHouse'), ov };
   const dots = [...root.querySelectorAll('#steps i')];
@@ -163,12 +166,29 @@ export function startSatelliteScene(root) {
   let target = 0, cur = 0, leadsAt = null, runAt = null, teamAt = null, last = performance.now(), dur = 8;
   const onMetadata = () => { dur = Number.isFinite(fly.duration) && fly.duration > 0 ? fly.duration : 8; };
   fly.addEventListener('loadedmetadata', onMetadata);
-  // The video stays hidden over the house photo until the first scroll seeks it,
-  // as its poster used to: at rest the opening frame is the photo.
-  // shownTime is the frame the video is actually showing (flyoverMorph.js).
+  // The video only ever shows the aerial (from 3.5 s, skyTransition.js); shownTime is the
+  // frame it is actually showing, so it stays hidden until it gets there.
   let shownTime = 0;
-  const onSeeked = () => { shownTime = fly.currentTime; fly.setAttribute('data-shown', ''); };
+  const onSeeked = () => { shownTime = fly.currentTime; };
   fly.addEventListener('seeked', onSeeked);
+
+  // Soft cloud layers: a small tileable texture per layer, drawn once in code and
+  // repeated as a background the browser scales up (no images, never stretched).
+  let puffsDrawn = false;
+  const drawPuffs = () => {
+    if (puffsDrawn) return;
+    puffsDrawn = true;
+    puffs.forEach((puff, i) => {
+      const size = 128, alpha = cloudAlpha(size, 11 + 7 * i, 3 + i);
+      const canvas = document.createElement('canvas');
+      canvas.width = size; canvas.height = size;
+      const ctx = canvas.getContext('2d'), image = ctx.createImageData(size, size);
+      for (let p = 0; p < alpha.length; p++) { image.data.fill(255, p * 4, p * 4 + 3); image.data[p * 4 + 3] = alpha[p]; }
+      ctx.putImageData(image, 0, 0);
+      puff.style.backgroundImage = `url(${canvas.toDataURL()})`;
+      puff.style.backgroundSize = `${54 + 20 * i}vmax ${54 + 20 * i}vmax`;
+    });
+  };
 
   // The house photo gets the connection to itself; the 30 MB flyover and the five
   // satellite views start once it is in, or at the first scroll if that comes sooner.
@@ -178,6 +198,7 @@ export function startSatelliteScene(root) {
     extrasStarted = true;
     root.querySelectorAll('source[data-srcset]').forEach((source) => { source.srcset = source.dataset.srcset; source.removeAttribute('data-srcset'); });
     root.querySelectorAll('img[data-src]').forEach((img) => { img.src = img.dataset.src; img.removeAttribute('data-src'); });
+    drawPuffs();
     // Let the browser buffer right away and seek using range requests. Waiting for
     // a complete 30 MB blob after the first scroll left the opening frame frozen mid-move.
     if (!reduce) {
@@ -211,11 +232,32 @@ export function startSatelliteScene(root) {
     const videoFrame = 1 / 24;
     const flyTime = band(0.08, 1.7, cur) * dur;
     const want = Math.min(Math.max(0, dur - videoFrame), Math.round(flyTime / videoFrame) * videoFrame);
-    // The clip redraws the house mid-rise; skip those frames behind a dissolve (flyoverMorph.js).
-    const videoWant = flyoverVideoTime(want);
+    // The opening move: push to the door, tilt into the sky, through the clouds, down
+    // onto the aerial (skyTransition.js). The video waits on its 3.5 s frame until then.
+    const sky = skyFrame(cur, { dur, reduce });
+    const videoWant = aerialVideoTime(want);
     if (!reduce && fly.readyState >= 2 && Math.abs(fly.currentTime - videoWant) >= videoFrame / 2 && !fly.seeking) fly.currentTime = videoWant;
-    flyAerial.style.opacity = aerialStillOpacity(flyTime, shownTime, videoFrame);
-    flyAerial.style.transform = `scale(${aerialStillScale(flyTime)})`;
+    const videoOnAerial = shownTime > AERIAL_VIDEO_TIME - videoFrame / 2;
+    const stillReady = flyAerial.complete && flyAerial.naturalWidth > 0;
+    // Until the video or the still can show the aerial, the clouds stay closed rather than part onto nothing.
+    const hold = sky.aerial && !videoOnAerial && !stillReady && cur < 1.6;
+    if (sky.clouds || hold) drawPuffs();
+    heroCam.style.visibility = sky.aerial ? 'hidden' : '';
+    heroCam.style.transform = `translate3d(${sky.dx * 100}%, ${sky.ty * 100}%, 0) scale(${sky.scale})`;
+    heroFeather.style.opacity = sky.feather;
+    fly.style.visibility = sky.aerial && videoOnAerial ? 'inherit' : 'hidden';
+    flyAerial.style.opacity = sky.aerial && !videoOnAerial ? 1 : 0;
+    clouds.style.visibility = sky.clouds || hold ? 'inherit' : 'hidden';
+    bank.style.transform = `translate3d(0, ${sky.bankY}%, 0)`;
+    bank.style.opacity = sky.bank;
+    fogDay.style.opacity = hold ? 1 : sky.day;
+    ring.style.opacity = sky.ring;
+    ring.style.transform = `scale(${sky.ringScale})`;
+    puffs.forEach((puff, i) => {
+      const p = sky.puffs[i];
+      puff.style.opacity = p ? p.opacity : 0;
+      if (p) puff.style.transform = `translate3d(0, ${p.y}vh, 0) scale(${p.scale})`;
+    });
     sat.style.opacity = band(1.55, 1.75, cur);
 
     // pull back twice: the street -> the subdivision -> the whole side of town (zoom is relative to the region filling the screen)
