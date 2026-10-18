@@ -2,6 +2,7 @@ import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { getLandingDestinations } from '@/lib/landingNavigation';
 import { startSatelliteScene } from './satelliteScene';
+import { HERO_AVIF_SRCSET, HERO_JPEG_SRC, HERO_PLACEHOLDER, HERO_SIZES, HERO_WEBP_SRCSET } from './heroImage';
 import './SatelliteLanding.css';
 
 const CONTACT_URL = 'https://calendly.com/firstknockhelp/30min';
@@ -18,15 +19,23 @@ export default function SatelliteLanding() {
   return <main className="fk-satellite" ref={rootRef} aria-label="FirstKnock">
 
 <div id="stage">
-  <div className="layer" id="lState"><img id="state" alt="" src="/landing/satellite-state.jpg" /></div>
-  <div className="layer" id="lMetro"><img id="metro" alt="" src="/landing/satellite-metro.jpg" /></div>
-  <div className="layer" id="lRegion"><img id="region" alt="" src="/landing/satellite-region.jpg" /></div>
-  <div className="layer" id="lWide"><img alt="" src="/landing/satellite-zoom-roof-consistent.jpg" /></div>
+  {/* The house photo loads first; the scene gives these their src (data-src) once it is in. */}
+  <div className="layer" id="lState"><img id="state" alt="" data-src="/landing/satellite-state.jpg" decoding="async" /></div>
+  <div className="layer" id="lMetro"><img id="metro" alt="" data-src="/landing/satellite-metro.jpg" decoding="async" /></div>
+  <div className="layer" id="lRegion"><img id="region" alt="" data-src="/landing/satellite-region.jpg" decoding="async" /></div>
+  <div className="layer" id="lWide"><img alt="" data-src="/landing/satellite-zoom-roof-consistent.jpg" decoding="async" /></div>
   <div className="layer" id="lTight">
-    <video id="fly" muted playsInline preload="auto" poster="/landing/house-lux.jpg"></video>
-    <img id="sat" alt="" src="/landing/satellite-roof-consistent.jpg" />
+    <div className="hero-placeholder" id="housePlaceholder" style={{ backgroundImage: HERO_PLACEHOLDER }}></div>
+    <picture>
+      <source type="image/avif" srcSet={HERO_AVIF_SRCSET} sizes={HERO_SIZES} />
+      <source type="image/webp" srcSet={HERO_WEBP_SRCSET} sizes={HERO_SIZES} />
+      {/* eslint-disable-next-line react/no-unknown-property -- React 18 passes the lowercase attribute through; 19 names it fetchPriority */}
+      <img id="housePhoto" alt="" src={HERO_JPEG_SRC} fetchpriority="high" decoding="async" />
+    </picture>
+    <video id="fly" muted playsInline preload="auto"></video>
+    <img id="sat" alt="" data-src="/landing/satellite-roof-consistent.jpg" decoding="async" />
   </div>
-  <div className="layer" id="lHouse"><img alt="" src="/landing/satellite-roof-consistent.jpg" /></div>
+  <div className="layer" id="lHouse"><img alt="" data-src="/landing/satellite-roof-consistent.jpg" decoding="async" /></div>
   <svg className="layer" id="ov" viewBox="0 0 2688 1520"></svg>
 </div>
 <div className="shade" id="shadeL"></div><div className="shade" id="shadeB"></div>
