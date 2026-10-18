@@ -2,6 +2,7 @@
 // later dots never cover earlier numbers. Visual bounds include the text;
 // CircleMarker's original hit testing still uses only the circle/touch radius.
 import { isWithinTapTarget } from './mapTapTarget.js';
+import { liveZoomCanvasClass } from './liveZoomCanvas.js';
 
 const classes = new WeakMap();
 
@@ -19,7 +20,8 @@ export function labelGeometry(point, label, measure) {
 
 export function createLabelCanvas(L) {
     if (!classes.has(L)) {
-        const Renderer = L.Canvas.extend({
+        // Redraws at the live zoom mid-pinch, so dots and numbers keep their size.
+        const Renderer = liveZoomCanvasClass(L).extend({
             measureLabel(text, font) {
                 this._ctx.save();
                 this._ctx.font = font;
