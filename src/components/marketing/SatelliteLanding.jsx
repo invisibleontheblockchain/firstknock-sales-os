@@ -2,14 +2,14 @@ import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { getLandingDestinations } from '@/lib/landingNavigation';
 import { startSatelliteScene } from './satelliteScene';
-import { DUSK_STILLS } from './flyover';
+import { SATELLITE_STILLS } from './flyover';
 import { HERO_AVIF_SRCSET, HERO_JPEG_SRC, HERO_PLACEHOLDER, HERO_SIZES, HERO_WEBP_SRCSET } from './heroImage';
 import './SatelliteLanding.css';
 
 const CONTACT_URL = 'https://calendly.com/firstknockhelp/30min';
 
-// A dusk satellite still, loaded after the hero photo (the scene moves data-srcset/data-src across).
-function DuskStill({ still, id }) {
+// A satellite still of the hero house, loaded after the hero photo (the scene moves data-srcset/data-src across).
+function SatelliteStill({ still, id }) {
   return <picture>
     <source type="image/avif" data-srcset={still.avif} />
     <source type="image/webp" data-srcset={still.webp} />
@@ -33,7 +33,7 @@ export default function SatelliteLanding() {
   <div className="layer" id="lState"><img id="state" alt="" data-src="/landing/satellite-state.jpg" decoding="async" /></div>
   <div className="layer" id="lMetro"><img id="metro" alt="" data-src="/landing/satellite-metro.jpg" decoding="async" /></div>
   <div className="layer" id="lRegion"><img id="region" alt="" data-src="/landing/satellite-region.jpg" decoding="async" /></div>
-  <div className="layer" id="lWide"><DuskStill still={DUSK_STILLS.wide} /></div>
+  <div className="layer" id="lWide"><SatelliteStill still={SATELLITE_STILLS.wide} /></div>
   <div className="layer" id="lTight">
     <div className="hero-placeholder" id="housePlaceholder" style={{ backgroundImage: HERO_PLACEHOLDER }}></div>
     <picture>
@@ -44,9 +44,9 @@ export default function SatelliteLanding() {
     </picture>
     {/* One continuous flyover of the same house: its first frame is the photo above, its last the still below (flyover.js). */}
     <video id="fly" muted playsInline preload="auto"></video>
-    <DuskStill still={DUSK_STILLS.tight} id="sat" />
+    <SatelliteStill still={SATELLITE_STILLS.tight} id="sat" />
   </div>
-  <div className="layer" id="lHouse"><DuskStill still={DUSK_STILLS.tight} /></div>
+  <div className="layer" id="lHouse"><SatelliteStill still={SATELLITE_STILLS.tight} /></div>
   <svg className="layer" id="ov" viewBox="0 0 2688 1520"></svg>
 </div>
 <div className="shade" id="shadeL"></div><div className="shade" id="shadeB"></div>

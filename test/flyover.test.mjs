@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import test from 'node:test';
-import { DUSK_STILLS, FLYOVER_SRC, PORTRAIT_QUERY, flyoverOpacity } from '../src/components/marketing/flyover.js';
+import { SATELLITE_STILLS, FLYOVER_SRC, PORTRAIT_QUERY, flyoverOpacity } from '../src/components/marketing/flyover.js';
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url));
 const pub = (url) => read(`public${url}`);
@@ -63,8 +63,8 @@ test('upright phones get the middle of the frame, placed exactly where it sits i
   assert.ok(seen < cropWidth, `sees ${seen.toFixed(3)} of the layer, crop is ${cropWidth.toFixed(3)}`);
 });
 
-test('the dusk satellite stills are full size in AVIF, WebP and JPEG', () => {
-  for (const still of Object.values(DUSK_STILLS)) {
+test('the daylight satellite stills are full size in AVIF, WebP and JPEG', () => {
+  for (const still of Object.values(SATELLITE_STILLS)) {
     const avif = pub(still.avif), ispe = avif.indexOf('ispe');
     assert.deepEqual([avif.readUInt32BE(ispe + 8), avif.readUInt32BE(ispe + 12)], [2688, 1520], still.avif);
     assert.ok(avif.length < 600_000);
@@ -73,20 +73,22 @@ test('the dusk satellite stills are full size in AVIF, WebP and JPEG', () => {
   }
 });
 
-test('the cloud move, the dissolve still and the old daylight flyover assets are gone', () => {
-  for (const old of ['flyover-roof-consistent.mp4', 'flyover-roof-consistent-3500ms.avif', 'flyover-roof-consistent-3500ms.webp', 'satellite-roof-consistent.jpg', 'satellite-zoom-roof-consistent.jpg', 'flyover-lux.mp4', 'satellite-lux.jpg', 'satellite-zoom-lux.jpg']) {
+test('the cloud move, the dissolve still, the dusk set and the older flyover assets are gone', () => {
+  for (const old of ['flyover-hero-desktop.mp4', 'flyover-hero-phone.mp4', 'satellite-hero-dusk.avif', 'satellite-zoom-hero-dusk.avif', 'house-lux.jpg', 'house-lux-2688.avif', 'flyover-roof-consistent.mp4', 'flyover-roof-consistent-3500ms.avif', 'flyover-roof-consistent-3500ms.webp', 'satellite-roof-consistent.jpg', 'satellite-zoom-roof-consistent.jpg', 'flyover-lux.mp4', 'satellite-lux.jpg', 'satellite-zoom-lux.jpg']) {
     assert.equal(existsSync(new URL(`../public/landing/${old}`, import.meta.url)), false, old);
   }
   assert.equal(existsSync(new URL('../src/components/marketing/skyTransition.js', import.meta.url)), false);
   const jsx = read('src/components/marketing/SatelliteLanding.jsx').toString();
   const css = read('src/components/marketing/SatelliteLanding.css').toString();
   const scene = read('src/components/marketing/satelliteScene.js').toString();
-  for (const source of [jsx, css, scene]) assert.doesNotMatch(source, /heroCam|clouds|flyAerial|skyTransition|roof-consistent/);
+  for (const source of [jsx, css, scene, read('src/components/marketing/flyover.js').toString(), read('src/components/marketing/heroImage.js').toString(), read('index.html').toString()]) {
+    assert.doesNotMatch(source, /heroCam|clouds|flyAerial|skyTransition|roof-consistent|-dusk|house-lux/);
+  }
 });
 
 test('the scene scrubs the flyover from the photo and loads the right size after the photo', () => {
   const jsx = read('src/components/marketing/SatelliteLanding.jsx').toString();
-  assert.match(jsx, /<img id="housePhoto"[^>]*\/>\s*<\/picture>\s*\{\/\*[^}]*\*\/\}\s*<video id="fly" muted playsInline preload="auto"><\/video>\s*<DuskStill still=\{DUSK_STILLS\.tight\} id="sat" \/>/);
+  assert.match(jsx, /<img id="housePhoto"[^>]*\/>\s*<\/picture>\s*\{\/\*[^}]*\*\/\}\s*<video id="fly" muted playsInline preload="auto"><\/video>\s*<SatelliteStill still=\{SATELLITE_STILLS\.tight\} id="sat" \/>/);
   const scene = read('src/components/marketing/satelliteScene.js').toString();
   assert.match(scene, /const src = portrait \? FLYOVER_SRC\.portrait : FLYOVER_SRC\.wide;/);
   assert.match(scene, /if \(!reduce\) loadFlyover\(\);/, 'reduced motion: the photo, then the fade to the final still');

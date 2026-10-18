@@ -215,7 +215,7 @@ export function startSatelliteScene(root) {
     cur = advanceSatelliteProgress(cur, target, dt, reduce);
 
     // flyover: scroll scrubs one continuous move of the hero house, from the photo up to
-    // the dusk neighbourhood, then the crisp satellite still of that frame takes over.
+    // the neighbourhood, then the crisp satellite still of that frame takes over.
     // The clip is 24 fps: coalesce scroll updates to actual frames instead of
     // asking the decoder for sub-frame seeks on every display refresh.
     const videoFrame = 1 / 24;
