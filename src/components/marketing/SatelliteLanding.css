@@ -51,8 +51,6 @@
 .fk-satellite nav .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; letter-spacing: -0.02em; font-size: 17px; color: var(--ink); text-decoration: none; }
 .fk-satellite nav .brand img { width: 30px; height: 30px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.12); object-fit: cover; }
 .fk-satellite nav .sp { flex: 1; }
-.fk-satellite nav a.link { color: var(--mut); text-decoration: none; font-size: 13px; font-weight: 600; transition: color 0.15s; }
-.fk-satellite nav a.link:hover { color: var(--ink); }
 .fk-satellite .btn {
   display: inline-flex;
   align-items: center;
@@ -161,7 +159,6 @@
 .fk-satellite .nogl { position: fixed; inset: 0; z-index: 0; display: none; background: radial-gradient(circle at 50% 40%, rgba(57, 255, 74, 0.18), transparent 60%), var(--bg); }
 .fk-satellite .nogl.on { display: block; }
 @media (max-width: 640px) {
-  .fk-satellite nav a.link { display: none; }
   .fk-satellite section { align-items: flex-end; padding-bottom: 14vh; }
   .fk-satellite section.center { align-items: center; }
   .fk-satellite .proto-tag { display: none; }
@@ -257,8 +254,7 @@
   .fk-satellite nav { gap: 8px; padding-left: 12px; padding-right: 12px; }
   .fk-satellite nav .brand { gap: 6px; font-size: 14px; }
   .fk-satellite nav .brand img { width: 24px; height: 24px; }
-  .fk-satellite nav a.link { display: inline-flex; white-space: nowrap; font-size: 12px; }
-  .fk-satellite nav .btn.small { padding: 9px 10px; font-size: 11px; gap: 4px; white-space: nowrap; }
+  .fk-satellite nav .btn.small { white-space: nowrap; }
 }
 @media (prefers-reduced-motion: reduce) {
   .fk-satellite { scroll-behavior: auto; }
