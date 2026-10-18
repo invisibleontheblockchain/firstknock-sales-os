@@ -118,7 +118,8 @@ test('the landing shows the photo through <picture>, never as the video poster',
   const css = read('src/components/marketing/SatelliteLanding.css');
   assert.match(css, /#housePhoto \{ opacity: 0; transition: opacity \.45s ease-out; \}/);
   assert.match(css, /#housePhoto\[data-ready\] \{ opacity: 1; \}/);
-  assert.match(css, /#fly \{ visibility: hidden; \}\s*\.fk-satellite #fly\[data-shown\] \{ visibility: inherit; \}/);
+  // The video starts hidden; the scene shows it only once it is on an aerial frame (skyTransition.js).
+  assert.match(css, /#fly \{ visibility: hidden; \}/);
 
   const scene = read('src/components/marketing/satelliteScene.js');
   const startExtras = scene.match(/const startExtras = \(\) => \{[\s\S]*?\n {2}\};/)[0];
@@ -128,6 +129,7 @@ test('the landing shows the photo through <picture>, never as the video poster',
   assert.match(scene, /revealWhenDecoded\(housePhoto, \(ok\) => \{[\s\S]*?startExtras\(\);\s*\}\)/);
   assert.match(scene, /if \(root\.scrollTop > 0\) startExtras\(\);/);
   assert.match(scene, /fly\.addEventListener\('seeked', onSeeked\)/);
+  assert.match(scene, /fly\.style\.visibility = sky\.aerial && videoOnAerial \? 'inherit' : 'hidden';/);
 });
 
 // Width of an AVIF (its 'ispe' box) or lossy WebP ('VP8 ' frame header).
