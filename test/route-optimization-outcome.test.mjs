@@ -607,6 +607,8 @@ function actionHarness(reason, measurement) {
         '@/lib/routeOptimizationOutcome': outcomes, '@/lib/routeRoadVerification': {},
         '@/lib/routeContextGuard': {}, '@/lib/routeOriginModes': origins, '@/lib/routeOptimizeUpdate': updates,
         '../../base44/shared/routeDisplayGeometry.js': routeDisplayGeometry,
+        // The stored record is the route under test (see src/lib/mapRouteFields.js).
+        '@/lib/mapRouteFields': { readStoredRouteMetadata: async (_client, route) => route?.metadata || {} },
     };
     const source = fs.readFileSync(new URL('../src/lib/reoptimizeRouteAction.js', import.meta.url), 'utf8');
     const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS,

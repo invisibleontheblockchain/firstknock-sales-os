@@ -88,11 +88,21 @@ test('legacy and beta geometry still require the exact manifest and reject inval
 
 let vite, buildUpdate, buildAnchors, optimize;
 const originalToast = {};
+
+// Optimize saves onto the stored record (src/lib/mapRouteFields.js). In these
+// tests the stored record is the route under test, so a stub client without
+// SavedRoute.get answers with that route.
+const withStoredRoute = run => (route, options, deps = {}) => {
+    const entities = deps.client?.entities;
+    if (!entities?.SavedRoute || entities.SavedRoute.get) return run(route, options, deps);
+    const client = { ...deps.client, entities: { ...entities, SavedRoute: { ...entities.SavedRoute, get: async id => ({ ...route, id }) } } };
+    return run(route, options, { ...deps, client });
+};
 before(async () => {
     vite = await createServer({ server: { middlewareMode: true }, appType: 'custom', logLevel: 'silent' });
     ({ buildRouteOptimizeUpdate: buildUpdate } = await vite.ssrLoadModule('/src/lib/routeOptimizeUpdate.js'));
     ({ buildRouteAnchorsUpdate: buildAnchors } = await vite.ssrLoadModule('/src/lib/routeAnchors.js'));
-    ({ reoptimizeRoute: optimize } = await vite.ssrLoadModule('/src/lib/reoptimizeRouteAction.js'));
+    optimize = withStoredRoute((await vite.ssrLoadModule('/src/lib/reoptimizeRouteAction.js')).reoptimizeRoute);
     for (const key of ['loading', 'success', 'error', 'info', 'warning']) { originalToast[key] = toast[key]; toast[key] = () => {}; }
 });
 after(async () => { Object.assign(toast, originalToast); await vite?.close(); });
