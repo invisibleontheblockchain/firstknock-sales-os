@@ -26,6 +26,7 @@ import { countChangedRouteStops, persistOptimizedRoute, syncOptimizedRoute } fro
 import { ROAD_VERIFICATION, stampRoadVerification } from '@/lib/routeRoadVerification';
 import { OPTIMIZE_MODES, ROUTE_ORIGIN_MODES, resolveOptimizeMode, routeOriginModeForOptimizeMode } from '@/lib/routeOriginModes';
 import { clearRouteGeometry, verifiedRouteGeometry } from '../../base44/shared/routeDisplayGeometry.js';
+import { readStoredRouteMetadata } from '@/lib/mapRouteFields';
 import {
     buildRouteAnchorsUpdate,
     buildRouteOptimizeUpdate,
@@ -104,6 +105,11 @@ export async function reoptimizeRoute(route, options = {}, deps = {}) {
     // `background` settles when it ends ({ saved, miles, reason }).
     let backgrounded = false;
     const run = { background: null };
+    // The map holds routes without their saved road path (mapRouteFields.js).
+    // Every save below rebuilds metadata, so it starts from the stored record,
+    // read while the homes load; a route that cannot be read is left unchanged.
+    const storedMetadata = readStoredRouteMetadata(client, route);
+    storedMetadata.catch(() => {});
     try {
         const hashes = (route.property_hashes || (route.properties || []).map(propertyKey)).filter(Boolean);
         if (!hashes.length) { toast.error('No properties found for this route.', { id: TOAST_ID }); return; }
@@ -113,6 +119,7 @@ export async function reoptimizeRoute(route, options = {}, deps = {}) {
                 toast.loading('Loading homes for this route...', { id: TOAST_ID });
                 return hydrateRoute(selected, user?.email);
             });
+        route = { ...route, metadata: await storedMetadata };
         const cachedAccess = route.metadata?.road_access_recovery?.access_overrides || {};
         const routeProperties = selectedRoute.properties
             .map(property => cachedAccess[propertyKey(property)]

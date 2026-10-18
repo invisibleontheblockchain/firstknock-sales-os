@@ -10,6 +10,7 @@ import { normalizeRouteOriginMode, isRoundTripRouteOriginMode, routeAnchorMarker
 import { mergeAnchoredRoute } from '../src/lib/routeAnchorState.js';
 import { hasCompleteRouteMapPoints } from '../src/components/logic/routeHydrationCore.js';
 import { loadSavedRouteSelection } from '../src/components/logic/routeMapSelection.js';
+import { readStoredRouteMetadata } from '../src/lib/mapRouteFields.js';
 
 const read = path => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 const home = { address: '123 Private Base, Phoenix, AZ', lat: 33.45, lng: -112.075 };
@@ -244,13 +245,17 @@ test('reoptimization preserves a private anchor by default but explicit route-on
         const errors = [];
         const context = vm.createContext({
             ...routeDisplayGeometry,
-            hasCompleteRouteMapPoints, loadSavedRouteSelection,
+            hasCompleteRouteMapPoints, loadSavedRouteSelection, readStoredRouteMetadata,
             hydrateRouteForMap: () => assert.fail('anchor fixture homes are already loaded'),
             OPTIMIZE_MODES, ROUTE_ORIGIN_MODES, resolveOptimizeMode, routeOriginModeForOptimizeMode,
             isValidRoutePoint, console,
             base44: {
                 functions: { invoke: async (name, body) => { requests.push({ name, body }); return { data: { anchor: home } }; } },
-                entities: { SavedRoute: { update: async (id, update) => writes.push(update) } },
+                entities: { SavedRoute: {
+                    // Optimize saves onto the stored record (mapRouteFields.js).
+                    get: async id => ({ id, metadata: { anchor: { source: 'rep_base' } } }),
+                    update: async (id, update) => writes.push(update),
+                } },
             },
             toast: { loading() {}, success() {}, info() {}, error: message => errors.push(message) },
             startOptimizeProgress: () => ({ update() {}, stop() {} }),

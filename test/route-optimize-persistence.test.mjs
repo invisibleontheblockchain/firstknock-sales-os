@@ -8,10 +8,20 @@ import { toast as appToast } from 'sonner';
 let vite, persist, optimize, toast;
 const originalToasts = {};
 const messages = [];
+
+// Optimize saves onto the stored record (src/lib/mapRouteFields.js). In these
+// tests the stored record is the route under test, so a stub client without
+// SavedRoute.get answers with that route.
+const withStoredRoute = run => (route, options, deps = {}) => {
+    const entities = deps.client?.entities;
+    if (!entities?.SavedRoute || entities.SavedRoute.get) return run(route, options, deps);
+    const client = { ...deps.client, entities: { ...entities, SavedRoute: { ...entities.SavedRoute, get: async id => ({ ...route, id }) } } };
+    return run(route, options, { ...deps, client });
+};
 before(async () => {
     vite = await createServer({ server: { middlewareMode: true }, appType: 'custom', logLevel: 'silent' });
     persist = (await vite.ssrLoadModule('/src/lib/routeOptimizePersistence.js')).persistOptimizedRoute;
-    optimize = (await vite.ssrLoadModule('/src/lib/reoptimizeRouteAction.js')).reoptimizeRoute;
+    optimize = withStoredRoute((await vite.ssrLoadModule('/src/lib/reoptimizeRouteAction.js')).reoptimizeRoute);
     toast = appToast;
     for (const type of ['loading', 'success', 'error', 'info', 'warning']) {
         originalToasts[type] = toast[type];
