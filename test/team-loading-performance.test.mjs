@@ -25,7 +25,8 @@ test('team projections retain metric and assignment metadata while excluding lar
   for (const field of ['raw_input_text', 'description', 'image_url', 'gps_proof_lat', 'property_address']) {
     assert.ok(!TEAM_LOG_FIELDS.includes(field));
   }
-  assert.ok(TEAM_ROUTE_FIELDS.includes('metadata'), 'assignment clearing must retain unrelated route metadata');
+  // Saved road paths in metadata made the Team tab download ~4 MB for 42 routes.
+  assert.ok(!TEAM_ROUTE_FIELDS.includes('metadata'));
   assert.ok(!TEAM_ROUTE_FIELDS.includes('property_hashes'));
   assert.ok(!TEAM_ROUTE_FIELDS.includes('geometry'));
 });
@@ -99,4 +100,13 @@ test('Time Clock lowers read polling to4/min while local elapsed time and immedi
   assert.doesNotMatch(source, /refetchInterval: 5000/);
   assert.match(source, /setInterval\(\(\) => setNow\(Date\.now\(\)\), 1000\)/);
   assert.match(source, /onSettled: \(\) => queryClient\.invalidateQueries\(\{ queryKey: \['timeClock'\] \}\)/);
+});
+
+test("clearing a route assignment re-reads that route's metadata before writing it", () => {
+  const team = readFileSync(new URL('../src/pages/AdminTeam.jsx', import.meta.url), 'utf8');
+  assert.match(team, /SavedRoute\.filter\(\{ id: routeId \}, '-created_date', 1, 0, \['id', 'metadata'\]\)/);
+  assert.match(team, /if \(!current\?\.id\) throw new Error/);
+  // Every bounds-clearing write goes through the re-read; none uses a list row.
+  assert.doesNotMatch(team, /SavedRoute\.update\([^)]*assignmentWithoutRouteBounds\((route|r),/);
+  assert.equal((team.match(/updateRouteWithoutBounds\(/g) || []).length, 3);
 });

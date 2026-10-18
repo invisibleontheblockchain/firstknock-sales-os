@@ -5,10 +5,12 @@ export const TEAM_LOG_FIELDS = [
   'id', 'created_date', 'created_by', 'manager_id', 'parsed_status', 'sale_amount', 'counts_as_knock',
 ];
 
+// No `metadata`: saved road paths made the Team tab download ~4 MB for 42
+// routes. Unassigning re-reads one route's metadata before it writes.
 export const TEAM_ROUTE_FIELDS = [
   'id', 'name', 'created_by', 'manager_id', 'created_date', 'updated_date',
   'assigned_to', 'assigned_to_name', 'status', 'metrics', 'start_location',
-  'end_location', 'metadata', 'route_origin_mode', 'route_mode', 'priority',
+  'end_location', 'route_origin_mode', 'route_mode', 'priority',
 ];
 
 export function getTeamPerformanceQueryPlan(activeTab, historyDays = 30, now = new Date()) {

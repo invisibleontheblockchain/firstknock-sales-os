@@ -54,6 +54,16 @@ function assignmentWithoutRouteBounds(route, assignment) {
     };
 }
 
+// The team route list leaves out metadata (saved road paths made it ~4 MB for
+// 42 routes). Clearing bounds rewrites metadata, so read this one route's
+// current metadata first, and never write metadata that was not read.
+async function updateRouteWithoutBounds(routeId, assignment) {
+    const rows = await base44.entities.SavedRoute.filter({ id: routeId }, '-created_date', 1, 0, ['id', 'metadata']);
+    const current = Array.isArray(rows) ? rows[0] : rows?.items?.[0];
+    if (!current?.id) throw new Error('This route could not be re-read, so its assignment was left unchanged.');
+    return base44.entities.SavedRoute.update(routeId, assignmentWithoutRouteBounds(current, assignment));
+}
+
 function TeamDataState({ failed, onRetry, label = 'team performance' }) {
     return (
         <div role={failed ? 'alert' : 'status'} className="rounded-xl border border-white/10 bg-[#111] px-4 py-5 text-center text-sm text-gray-400">
@@ -243,13 +253,11 @@ export default function AdminTeam() {
             if (memberRoutes.length === 0) return;
 
             // Update each route to remove assignment
-            const promises = memberRoutes.map(route => 
-                base44.entities.SavedRoute.update(route.id, assignmentWithoutRouteBounds(route, {
-                    assigned_to: null,
-                    assigned_to_name: null,
-                    status: 'PENDING'
-                }))
-            );
+            const promises = memberRoutes.map(route => updateRouteWithoutBounds(route.id, {
+                assigned_to: null,
+                assigned_to_name: null,
+                status: 'PENDING'
+            }));
             
             await Promise.all(promises);
         },
@@ -299,7 +307,7 @@ export default function AdminTeam() {
             const memberRoutes = routes.filter(r => r.assigned_to === member.id);
             if (memberRoutes.length > 0) {
                 await Promise.all(memberRoutes.map(r =>
-                    base44.entities.SavedRoute.update(r.id, assignmentWithoutRouteBounds(r, { assigned_to: null, assigned_to_name: null, status: 'PENDING' }))
+                    updateRouteWithoutBounds(r.id, { assigned_to: null, assigned_to_name: null, status: 'PENDING' })
                 ));
             }
             // 2. Delete the TeamMember record
