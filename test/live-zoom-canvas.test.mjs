@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { liveZoomBackoffMs, liveZoomCanvasClass, pathNearView, scaledDashArray, LIVE_ZOOM_FRAME_BUDGET_MS } from '../src/components/map/liveZoomCanvas.js';
+import { alongNearestPoint, dashScaleAt, liveZoomBackoffMs, liveZoomCanvasClass, pathNearView, pivotDashOffset, regriddedDashZoom,
+  scaledDashArray, LIVE_ZOOM_FRAME_BUDGET_MS } from '../src/components/map/liveZoomCanvas.js';
 
 // The owner's iPhone: zooming in fast made route dots and stop numbers "super
 // big and out of focus" until release, because Leaflet CSS-scales its canvas
@@ -120,73 +121,139 @@ test('route dots, stop numbers, route lines and territory pins all use the live 
   assert.match(rep, /preferCanvas=\{true\}\s*renderer=\{renderer\}/);
 });
 
-function gestureRenderer() {
-  const { L, frames, calls } = fakeLeaflet();
-  const Live = liveZoomCanvasClass(L);
-  const renderer = new Live({ padding: 0.1 });
-  renderer._container = { width: 0, height: 0, style: {} };
-  renderer._ctx = { setTransform() {}, translate() {} };
-  let zoom = 13;
-  renderer._zoom = 13; // the zoom the canvas was last fully drawn at
-  renderer._map = { _animatingZoom: false, getBounds: () => ({ pad: () => view }),
-    getZoom: () => zoom, getZoomScale: (to, from) => 2 ** (to - from) };
-  return { renderer, frames, calls, setZoom: z => { zoom = z; } };
-}
+// ---- Dashed route lines ("the route lines between the dots are accelerating") ----
 
-test('mid-pinch, dashes scale with the zoom and lines are not clipped, so dashes stay on the ground', () => {
-  // The owner: route lines between the dots looked like they were accelerating.
-  const { renderer, frames, setZoom } = gestureRenderer();
-  const line = fakeLayer(true, 'line');
-  line.options = { dashArray: '4,6', _dashArray: [4, 6] };
-  const dot = fakeLayer(true);
-  dot.options = { radius: 4 };
-  renderer._layers = { line, dot };
-
-  setZoom(14);
-  renderer._onZoom();
-  frames.shift()();
-  assert.deepEqual(line.options._dashArray, [8, 12], 'one level in: dashes twice as long, pinned to the ground');
-  assert.equal(line.options.noClip, true, 'drawn from its first point, so clipping cannot restart the pattern');
-
-  setZoom(15);
-  renderer._onZoom();
-  frames.shift()();
-  assert.deepEqual(line.options._dashArray, [16, 24], 'scaled from the gesture start, not compounded');
-  assert.deepEqual(dot.options, { radius: 4 }, 'dots are untouched');
-
-  renderer._onZoomEnd();
-  assert.deepEqual(line.options._dashArray, [4, 6], 'at rest the line looks exactly as before');
-  assert.equal(line.options.noClip, undefined);
-
-  // The next gesture starts from the new resting zoom.
-  renderer._zoom = 15;
-  setZoom(14);
-  renderer._onZoom();
-  frames.shift()();
-  assert.deepEqual(line.options._dashArray, [2, 3], 'zooming out shrinks dashes with the ground');
-  renderer._onZoomEnd();
-});
-
-test('a line removed or restyled mid-gesture gets its resting style back', () => {
-  const { renderer, frames, calls, setZoom } = gestureRenderer();
-  const line = fakeLayer(true, 'line');
-  line.options = { dashArray: '4,6', _dashArray: [4, 6] };
-  renderer._layers = { line };
-  setZoom(15);
-  renderer._onZoom();
-  frames.shift()();
-  renderer._removePath(line);
-  assert.equal(calls.removed, 1);
-  assert.deepEqual(line.options._dashArray, [4, 6]);
-  assert.equal(line.options.noClip, undefined);
-
-  renderer._onZoom();
-  frames.shift()();
-  line.options.dashArray = '2,2';
-  renderer._updateStyle(line);
-  assert.equal(calls.styled, 1);
-  assert.equal(line.options._dashArray, '2,2', 'the new style becomes the resting style');
-  assert.equal(line.options.noClip, undefined);
+test('dash lengths follow the ground and re-grid by a factor of 2 only past half a zoom level', () => {
+  assert.equal(dashScaleAt(14, 13), 2);
+  assert.equal(dashScaleAt(12, 13), 0.5);
+  assert.equal(regriddedDashZoom(13.3, 13), 13, 'small pinch: nothing changes at rest');
+  assert.equal(regriddedDashZoom(12.6, 13), 13);
+  assert.equal(regriddedDashZoom(14.2, 13), 14);
+  assert.equal(regriddedDashZoom(11.4, 13), 11);
   assert.deepEqual(scaledDashArray([4, 6], 0.5), [2, 3]);
   assert.equal(scaledDashArray(undefined, 2), undefined, 'solid lines stay solid');
+});
+
+test('a re-grid keeps the dash pattern in place where the screen centre crosses the line', () => {
+  const phase = (along, offset, period) => { const t = (along + offset) / period; return t - Math.floor(t); };
+  for (const [along, offset, oldPeriod, newPeriod] of [[1234.5, 3, 20, 10], [87.25, 0, 10, 20], [4000, 7.5, 28.3, 7.07]]) {
+    const next = pivotDashOffset(along, offset, oldPeriod, newPeriod);
+    assert.ok(next >= 0 && next < newPeriod);
+    assert.ok(Math.abs(phase(along, next, newPeriod) - phase(along, offset, oldPeriod)) < 1e-9);
+  }
+  const ring = [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 50 }];
+  assert.equal(alongNearestPoint(ring, { x: 40, y: 7 }), 40);
+  assert.equal(alongNearestPoint(ring, { x: 130, y: 20 }), 120);
+});
+
+// Enough Leaflet for the dashed-line paths of the renderer.
+function dashedLineHarness() {
+  const strokes = [];
+  function LatLng(lat, lng) { this.lat = lat; this.lng = lng; }
+  const point = (x, y) => ({ x, y, _subtract(o) { return point(this.x - o.x, this.y - o.y); } });
+  let zoom = 13;
+  function Canvas() {}
+  Canvas.prototype = {
+    options: {},
+    onAdd() {},
+    _initPath(layer) { layer.initialized = true; },
+    _updateStyle(layer) { layer.options._dashArray = layer.options.dashArray ? layer.options.dashArray.split(',').map(Number) : null; },
+    _removePath() {},
+    _onZoomEnd() { for (const id in this._layers) this._layers[id]._project(); },
+    _fillStroke(ctx, layer) { strokes.push({ dash: layer.options._dashArray, offset: ctx.lineDashOffset }); },
+  };
+  Canvas.extend = function (props) {
+    const Parent = this;
+    function Child(options) { this.options = { ...options }; this._layers = {}; }
+    Child.prototype = Object.create(Parent.prototype);
+    Object.assign(Child.prototype, props);
+    Child.extend = Canvas.extend;
+    return Child;
+  };
+  const L = { Canvas, LatLng, Renderer: { prototype: { _update() {} } }, Util: { requestAnimFrame() {}, cancelAnimFrame() {} },
+    DomUtil: { setPosition() {} }, Browser: { retina: false }, bounds: () => ({}) };
+  // A straight line along x; zoom z puts 100 * 2^(z - 13) px between its points (+0.4 px, so rounding shows).
+  const map = {
+    getZoom: () => zoom, getCenter: () => new LatLng(0, 1.5),
+    getPixelOrigin: () => point(0, 0),
+    project: latlng => point(latlng.lng * 100 * 2 ** (zoom - 13) + 0.4, 0),
+  };
+  const Live = liveZoomCanvasClass(L);
+  const renderer = new Live({});
+  renderer._map = map;
+  renderer.onAdd(map);
+  const line = (dashArray) => {
+    const layer = { _latlngs: [new LatLng(0, 0), new LatLng(0, 1), new LatLng(0, 2), new LatLng(0, 3)], _map: map,
+      options: { dashArray, _dashArray: dashArray ? dashArray.split(',').map(Number) : null, smoothFactor: 1 } };
+    layer._project = () => { layer._rings = []; layer._projectLatlngs(layer._latlngs, layer._rings, { extend() {} }); };
+    // Leaflet's own projection rounds every vertex to a whole pixel.
+    layer._projectLatlngs = function (latlngs, result) { result.push(latlngs.map(ll => { const p = map.project(ll); return point(Math.round(p.x), p.y); })); };
+    layer._update = () => {};
+    return layer;
+  };
+  return { renderer, strokes, line, setZoom: z => { zoom = z; }, ctx: { lineDashOffset: 0 } };
+}
+
+test('dashed lines are drawn unclipped, unsimplified and unrounded; solid lines and dots keep Leaflet\'s rules', () => {
+  const { renderer, line } = dashedLineHarness();
+  const dashed = line('4,6');
+  const solid = line(null);
+  const dot = { options: { radius: 4 }, getLatLng() {} };
+  renderer._initPath(dashed);
+  renderer._initPath(solid);
+  renderer._initPath(dot);
+  assert.equal(dashed.options.noClip, true);
+  assert.equal(dashed.options.smoothFactor, 0);
+  dashed._project();
+  assert.equal(dashed._rings[0][1].x, 100.4, 'not rounded to a whole pixel');
+  assert.equal(solid.options.noClip, undefined);
+  assert.equal(solid.options.smoothFactor, 1);
+  solid._project();
+  assert.equal(solid._rings[0][1].x, 100, 'solid lines keep Leaflet\'s rounding');
+  assert.deepEqual(dot.options, { radius: 4 }, 'dots are untouched');
+
+  // Becoming solid restores Leaflet's rules.
+  dashed.options.dashArray = null;
+  renderer._updateStyle(dashed);
+  assert.equal(dashed.options.noClip, undefined);
+  assert.equal(dashed.options.smoothFactor, 1);
+  dashed._project();
+  assert.equal(dashed._rings[0][1].x, 100);
+});
+
+test('mid-zoom the dashes scale with the map (pinned to the ground) and only re-grid at rest past half a level', () => {
+  const { renderer, strokes, line, setZoom, ctx } = dashedLineHarness();
+  const dashed = line('4,6');
+  renderer._initPath(dashed);
+  renderer._layers = { dashed };
+  const draw = () => { renderer._fillStroke(ctx, dashed); return strokes.at(-1); };
+
+  assert.deepEqual(draw().dash, [4, 6], 'at rest: today\'s dashes');
+  setZoom(13.5);
+  assert.deepEqual(draw().dash, [4 * 2 ** 0.5, 6 * 2 ** 0.5], 'mid-pinch: dashes grow with the ground');
+  assert.deepEqual(dashed.options._dashArray, [4, 6], 'the resting style is restored after drawing');
+  assert.equal(ctx.lineDashOffset, 0);
+
+  // A 0.3-level pinch: nothing changes at rest.
+  setZoom(13.3);
+  dashed._project();
+  renderer._onZoomEnd();
+  assert.ok(Math.abs(draw().dash[0] - 4 * 2 ** 0.3) < 1e-9);
+
+  // A 1.2-level pinch: halve the dashes, keeping the pattern still at the screen centre.
+  setZoom(14.2);
+  const phaseAtCentre = () => {
+    const centre = 150 * 2 ** (14.2 - 13) + 0.4;
+    const along = alongNearestPoint(dashed._rings[0], { x: centre, y: 0 });
+    const stroke = draw();
+    const period = stroke.dash[0] + stroke.dash[1];
+    const turns = (along + stroke.offset) / period;
+    return { period, phase: turns - Math.floor(turns) };
+  };
+  dashed._project();
+  const before = phaseAtCentre();
+  renderer._onZoomEnd();
+  const after = phaseAtCentre();
+  assert.ok(Math.abs(after.period - before.period / 2) < 1e-9, 're-gridded by a factor of 2');
+  assert.ok(Math.abs(after.phase - before.phase) < 1e-9, 'the dash under the screen centre does not move');
 });
