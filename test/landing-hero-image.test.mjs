@@ -113,23 +113,25 @@ test('the landing shows the photo through <picture>, never as the video poster',
   assert.match(jsx, /id="housePlaceholder" style=\{\{ backgroundImage: HERO_PLACEHOLDER \}\}/);
   // Everything else on the landing waits for the photo (or the first scroll).
   assert.doesNotMatch(jsx, /<img[^>]* src="\/landing\//);
-  assert.equal(jsx.match(/data-src="\/landing\/satellite-[\w-]+\.jpg"/g).length, 6);
+  assert.equal(jsx.match(/data-src="\/landing\/satellite-[\w-]+\.jpg"/g).length, 3);
+  assert.match(jsx, /function DuskStill\(\{ still, id \}\) \{[\s\S]*?data-srcset=\{still\.avif\}[\s\S]*?data-srcset=\{still\.webp\}[\s\S]*?<img id=\{id\} alt="" data-src=\{still\.jpg\}/);
+  assert.equal(jsx.match(/<DuskStill still=\{DUSK_STILLS\.(wide|tight)\}/g).length, 3, 'lWide, #sat and lHouse load after the photo too');
 
   const css = read('src/components/marketing/SatelliteLanding.css');
   assert.match(css, /#housePhoto \{ opacity: 0; transition: opacity \.45s ease-out; \}/);
   assert.match(css, /#housePhoto\[data-ready\] \{ opacity: 1; \}/);
-  // The video starts hidden; the scene shows it only once it is on an aerial frame (skyTransition.js).
-  assert.match(css, /#fly \{ visibility: hidden; \}/);
+  // The video starts transparent over the photo; the scene fades it in on its first frame (flyover.js).
+  assert.match(css, /#fly \{ opacity: 0; will-change: opacity; \}/);
 
   const scene = read('src/components/marketing/satelliteScene.js');
   const startExtras = scene.match(/const startExtras = \(\) => \{[\s\S]*?\n {2}\};/)[0];
   assert.match(startExtras, /img\.src = img\.dataset\.src/);
-  assert.match(startExtras, /fly\.src = '\/landing\/flyover-roof-consistent\.mp4'/);
-  assert.equal(scene.match(/fly\.src =/g).length, 1, 'the flyover starts only from startExtras');
+  assert.match(startExtras, /if \(!reduce\) loadFlyover\(\);/);
+  assert.equal(scene.match(/fly\.src =/g).length, 1, 'the flyover loads only through loadFlyover');
   assert.match(scene, /revealWhenDecoded\(housePhoto, \(ok\) => \{[\s\S]*?startExtras\(\);\s*\}\)/);
   assert.match(scene, /if \(root\.scrollTop > 0\) startExtras\(\);/);
-  assert.match(scene, /fly\.addEventListener\('seeked', onSeeked\)/);
-  assert.match(scene, /fly\.style\.visibility = sky\.aerial && videoOnAerial \? 'inherit' : 'hidden';/);
+  assert.match(scene, /fly\.addEventListener\('seeked', onFrame\)/);
+  assert.match(scene, /fly\.style\.opacity = flyoverOpacity\(cur, hasFrame, shownTime < videoFrame \/ 2\);/);
 });
 
 // Width of an AVIF (its 'ispe' box) or lossy WebP ('VP8 ' frame header).

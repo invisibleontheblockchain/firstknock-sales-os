@@ -1,6 +1,6 @@
 // Satellite presentation adapted from the original FirstKnock prototype.
 // All DOM access, listeners, and animation resources belong to this landing page.
-import { AERIAL_VIDEO_TIME, aerialVideoTime, cloudAlpha, skyFrame } from './skyTransition';
+import { FLYOVER_SRC, PORTRAIT_QUERY, flyoverOpacity } from './flyover';
 import { revealWhenDecoded } from './heroImage';
 import { advanceSatelliteProgress } from './satelliteMotion';
 
@@ -10,10 +10,7 @@ export function startSatelliteScene(root) {
 
   const NS = 'http://www.w3.org/2000/svg', IW = 2688, IH = 1520;
   const $ = (id) => root.querySelector(`#${id}`);
-  const fly = $('fly'), flyAerial = $('flyAerial'), sat = $('sat'), ov = $('ov'), hint = $('hint');
-  const heroCam = $('heroCam'), heroFeather = $('heroFeather'), clouds = $('clouds');
-  const bank = clouds.querySelector('.bank'), fogDay = clouds.querySelector('.fog-day'), ring = clouds.querySelector('.ring');
-  const puffs = [...clouds.querySelectorAll('.puff')];
+  const fly = $('fly'), sat = $('sat'), ov = $('ov'), hint = $('hint');
   const state = $('state'), shadeL = $('shadeL'), shadeB = $('shadeB'), legend = $('legend');
   const L = { state: $('lState'), metro: $('lMetro'), region: $('lRegion'), wide: $('lWide'), tight: $('lTight'), house: $('lHouse'), ov };
   const dots = [...root.querySelectorAll('#steps i')];
@@ -166,31 +163,26 @@ export function startSatelliteScene(root) {
   let target = 0, cur = 0, leadsAt = null, runAt = null, teamAt = null, last = performance.now(), dur = 8;
   const onMetadata = () => { dur = Number.isFinite(fly.duration) && fly.duration > 0 ? fly.duration : 8; };
   fly.addEventListener('loadedmetadata', onMetadata);
-  // The video only ever shows the aerial (from 3.5 s, skyTransition.js); shownTime is the
-  // frame it is actually showing, so it stays hidden until it gets there.
-  let shownTime = 0;
-  const onSeeked = () => { shownTime = fly.currentTime; };
-  fly.addEventListener('seeked', onSeeked);
-
-  // Soft cloud layers: a small tileable texture per layer, drawn once in code and
-  // repeated as a background the browser scales up (no images, never stretched).
-  let puffsDrawn = false;
-  const drawPuffs = () => {
-    if (puffsDrawn) return;
-    puffsDrawn = true;
-    puffs.forEach((puff, i) => {
-      const size = 128, alpha = cloudAlpha(size, 11 + 7 * i, 3 + i);
-      const canvas = document.createElement('canvas');
-      canvas.width = size; canvas.height = size;
-      const ctx = canvas.getContext('2d'), image = ctx.createImageData(size, size);
-      for (let p = 0; p < alpha.length; p++) { image.data.fill(255, p * 4, p * 4 + 3); image.data[p * 4 + 3] = alpha[p]; }
-      ctx.putImageData(image, 0, 0);
-      puff.style.backgroundImage = `url(${canvas.toDataURL()})`;
-      puff.style.backgroundSize = `${54 + 20 * i}vmax ${54 + 20 * i}vmax`;
-    });
+  // Once the video has a frame it keeps showing one while it seeks (readyState can dip meanwhile).
+  let hasFrame = false, shownTime = 0;
+  const onFrame = () => { hasFrame = true; shownTime = fly.currentTime; };
+  fly.addEventListener('loadeddata', onFrame);
+  fly.addEventListener('seeked', onFrame);
+  // Upright phones get the middle of the frame (flyover.js); re-pick if the screen turns.
+  const portraitQuery = matchMedia(PORTRAIT_QUERY);
+  const loadFlyover = () => {
+    const portrait = portraitQuery.matches;
+    const src = portrait ? FLYOVER_SRC.portrait : FLYOVER_SRC.wide;
+    if (fly.getAttribute('src') === src) return;
+    fly.classList.toggle('portrait', portrait);
+    hasFrame = false;
+    fly.src = src;
+    fly.load();
   };
+  const onTurn = () => { if (fly.getAttribute('src')) loadFlyover(); };
+  portraitQuery.addEventListener('change', onTurn);
 
-  // The house photo gets the connection to itself; the 30 MB flyover and the five
+  // The house photo gets the connection to itself; the flyover (2.5-5.5 MB) and the
   // satellite views start once it is in, or at the first scroll if that comes sooner.
   let extrasStarted = false;
   const startExtras = () => {
@@ -198,13 +190,9 @@ export function startSatelliteScene(root) {
     extrasStarted = true;
     root.querySelectorAll('source[data-srcset]').forEach((source) => { source.srcset = source.dataset.srcset; source.removeAttribute('data-srcset'); });
     root.querySelectorAll('img[data-src]').forEach((img) => { img.src = img.dataset.src; img.removeAttribute('data-src'); });
-    drawPuffs();
-    // Let the browser buffer right away and seek using range requests. Waiting for
-    // a complete 30 MB blob after the first scroll left the opening frame frozen mid-move.
-    if (!reduce) {
-      fly.src = '/landing/flyover-roof-consistent.mp4';
-      fly.load();
-    }
+    // Let the browser buffer right away and seek using range requests, so the move
+    // never waits on the whole file after the first scroll.
+    if (!reduce) loadFlyover();
   };
   const housePhoto = $('housePhoto'), housePlaceholder = $('housePlaceholder');
   let placeholderTimer;
@@ -226,38 +214,14 @@ export function startSatelliteScene(root) {
     const now = t / 1000;
     cur = advanceSatelliteProgress(cur, target, dt, reduce);
 
-    // flyover: scroll scrubs the drone shot, then the crisp satellite still takes over
+    // flyover: scroll scrubs one continuous move of the hero house, from the photo up to
+    // the dusk neighbourhood, then the crisp satellite still of that frame takes over.
     // The clip is 24 fps: coalesce scroll updates to actual frames instead of
     // asking the decoder for sub-frame seeks on every display refresh.
     const videoFrame = 1 / 24;
-    const flyTime = band(0.08, 1.7, cur) * dur;
-    const want = Math.min(Math.max(0, dur - videoFrame), Math.round(flyTime / videoFrame) * videoFrame);
-    // The opening move: push to the door, tilt into the sky, through the clouds, down
-    // onto the aerial (skyTransition.js). The video waits on its 3.5 s frame until then.
-    const sky = skyFrame(cur, { dur, reduce });
-    const videoWant = aerialVideoTime(want);
-    if (!reduce && fly.readyState >= 2 && Math.abs(fly.currentTime - videoWant) >= videoFrame / 2 && !fly.seeking) fly.currentTime = videoWant;
-    const videoOnAerial = shownTime > AERIAL_VIDEO_TIME - videoFrame / 2;
-    const stillReady = flyAerial.complete && flyAerial.naturalWidth > 0;
-    // Until the video or the still can show the aerial, the clouds stay closed rather than part onto nothing.
-    const hold = sky.aerial && !videoOnAerial && !stillReady && cur < 1.6;
-    if (sky.clouds || hold) drawPuffs();
-    heroCam.style.visibility = sky.aerial ? 'hidden' : '';
-    heroCam.style.transform = `translate3d(${sky.dx * 100}%, ${sky.ty * 100}%, 0) scale(${sky.scale})`;
-    heroFeather.style.opacity = sky.feather;
-    fly.style.visibility = sky.aerial && videoOnAerial ? 'inherit' : 'hidden';
-    flyAerial.style.opacity = sky.aerial && !videoOnAerial ? 1 : 0;
-    clouds.style.visibility = sky.clouds || hold ? 'inherit' : 'hidden';
-    bank.style.transform = `translate3d(0, ${sky.bankY}%, 0)`;
-    bank.style.opacity = sky.bank;
-    fogDay.style.opacity = hold ? 1 : sky.day;
-    ring.style.opacity = sky.ring;
-    ring.style.transform = `scale(${sky.ringScale})`;
-    puffs.forEach((puff, i) => {
-      const p = sky.puffs[i];
-      puff.style.opacity = p ? p.opacity : 0;
-      if (p) puff.style.transform = `translate3d(0, ${p.y}vh, 0) scale(${p.scale})`;
-    });
+    const want = Math.min(Math.max(0, dur - videoFrame), Math.round(band(0.08, 1.7, cur) * dur / videoFrame) * videoFrame);
+    if (!reduce && fly.readyState >= 2 && Math.abs(fly.currentTime - want) >= videoFrame / 2 && !fly.seeking) fly.currentTime = want;
+    fly.style.opacity = flyoverOpacity(cur, hasFrame, shownTime < videoFrame / 2);
     sat.style.opacity = band(1.55, 1.75, cur);
 
     // pull back twice: the street -> the subdivision -> the whole side of town (zoom is relative to the region filling the screen)
@@ -359,7 +323,9 @@ export function startSatelliteScene(root) {
     window.removeEventListener('resize', layout);
     root.removeEventListener('scroll', onScroll);
     fly.removeEventListener('loadedmetadata', onMetadata);
-    fly.removeEventListener('seeked', onSeeked);
+    fly.removeEventListener('loadeddata', onFrame);
+    fly.removeEventListener('seeked', onFrame);
+    portraitQuery.removeEventListener('change', onTurn);
     fly.pause();
     fly.removeAttribute('src');
     fly.load();
