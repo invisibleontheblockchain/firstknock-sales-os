@@ -397,9 +397,23 @@ The manager map shows every home in the account's territory ZIPs (`src/component
 | Knocks (`InteractionLog`), roster (`TeamMember`), shifts (`TimeShift`), jobs (`FetchJob`, `RouteOptimizationJob`), billing ledgers | **Base44 entities** | These drive realtime updates and access rules. Jobs use service-only rules. |
 | Canvas campaigns, zones, decisions | **Canvas operational store** (PostGIS, own role) | Kept apart from Precision by design. |
 
-A route on the map joins the two stores: `SavedRoute.property_hashes` → `getRoutePropertiesByHashes` (authorized against that route) → Neon rows. The measured costs that shaped this layout:
+A route on the map joins the two stores: `SavedRoute.property_hashes` → `getRoutePropertiesByHashes` (authorized against that route) → Neon rows.
+
+**Why `SavedRoute` stays in Base44.** This was measured read-only on the 1,000-stop Hickory and Charlotte 1H routes:
+
+| Read | Time | Size |
+|---|---|---|
+| `SavedRoute` record from Base44 | 0.13–0.48 s | 40–87 KB per route |
+| One `getRoutePropertiesByHashes` call, 1,000 stops (Neon) | 1.1 s warm, 2.8 s cold | 925 KB, 1,000 rows |
+
+- No Base44 429s were seen during the loads.
+- Storage is about **1–3% of Optimize time**.
+
+That share doesn't justify a hybrid move, which would keep the record and its access rules in Base44 and put the stop list in Neon next to the homes. On a phone the larger cost is the ~925 KB of home data, not where the route record lives. The owner decided to keep `SavedRoute` in Base44 and revisit only if route open time becomes significant.
+
+Related measurements:
 - A cold map made **23 home lookups (583 KB)**. After #182 it makes **5 (110 KB)**, because homes come from the territory overview.
-- The overview read is about 6.6 s of server time (§3.6).
+- The overview read was about 6.6 s of server time before #185 (§3.6).
 
 ### 3.8 Canvas: territory generation
 
