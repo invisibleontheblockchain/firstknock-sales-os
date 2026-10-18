@@ -15,7 +15,8 @@
 // Reported per run: wall time and time to the first pass's result, each pass's
 // stage timings and search coverage, OSRM request count and concurrency, road
 // miles of the original and final order (both measured the same way, through
-// the engine), whether the whole route was verified, and unresolved stops.
+// the engine), whether the whole route was verified, and unresolved stops,
+// plus the slowest road request and any left unanswered.
 const args = {};
 for (let i = 0; i < Deno.args.length; i += 1) {
     if (Deno.args[i].startsWith('--')) args[Deno.args[i].slice(2)] = Deno.args[i + 1]?.startsWith('--') ? true : Deno.args[++i] ?? true;
@@ -32,9 +33,15 @@ globalThis.fetch = async (input, init) => {
     const url = new URL(String(input));
     const service = url.pathname.match(/\/(table|route|nearest)\/v1\//)?.[1] || 'other';
     const startedAt = performance.now();
-    const response = await realFetch(input, init);
-    log.push({ service, startedAt, ms: performance.now() - startedAt });
-    return response;
+    try {
+        const response = await realFetch(input, init);
+        log.push({ service, startedAt, ms: performance.now() - startedAt });
+        return response;
+    } catch (error) {
+        // A request abandoned unanswered (stalled, timed out or cancelled).
+        log.push({ service, startedAt, ms: performance.now() - startedAt, unanswered: true });
+        throw error;
+    }
 };
 
 const handler = (await import(new URL('base44/functions/optimizeRouteRoadMatrix/entry.ts', root).href)).default;
@@ -103,7 +110,9 @@ async function runOnce() {
         unresolved_stops: last.unresolved ?? null,
         original_miles: await measure(doors), final_miles: await measure(finalOrder),
         reported_savings_miles: round(result?.objective?.estimatedSavings ?? null),
-        osrm: { requests: log.length, peak_in_flight: Math.max(0, ...busy),
+        retried_pass: meta.road_search_retried_pass ?? null,
+        osrm: { requests: log.length, unanswered: log.filter(e => e.unanswered).length,
+            slowest_ms: Math.round(Math.max(0, ...log.map(e => e.ms))), peak_in_flight: Math.max(0, ...busy),
             avg_in_flight_when_busy: active.length ? round(active.reduce((a, b) => a + b, 0) / active.length, 2) : 0 },
         per_pass: passes,
     };

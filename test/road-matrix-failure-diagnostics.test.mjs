@@ -10,13 +10,13 @@ before(async () => {
 after(async () => { await vite?.close(); });
 const properties = ['A', 'B', 'C'].map((address_hash, i) => ({ address_hash, lat: 35, lng: -81 + i / 10000 }));
 
-async function rejectedOutcome(error) {
+async function rejectedOutcome(error, expectedCalls = 1) {
     let calls = 0, outcome;
     const result = await optimize(properties, {
         client: { functions: { invoke: async () => { calls++; throw error; } } },
         onOutcome: (reason, measurement) => { outcome = { reason, measurement }; },
     });
-    assert.equal(result, null); assert.equal(calls, 1, 'a failed request must not start a duplicate optimization');
+    assert.equal(result, null); assert.equal(calls, expectedCalls, 'a failed request must not start a duplicate optimization');
     assert.ok(Number.isFinite(outcome.measurement.diagnostic.elapsedMs));
     assert.ok(outcome.measurement.diagnostic.elapsedMs >= 0);
     assert.deepEqual(Object.keys(outcome.measurement.diagnostic).sort(), ['elapsedMs', 'errorCode', 'httpStatus']);
@@ -53,7 +53,8 @@ test('ordinary HTTP 429 is reported as busy and other failures remain errors', a
     const busy = await rejectedOutcome({ response: { status: 429, data: { error: 'Too many requests' } } });
     assert.equal(busy.reason, 'backend_rate_limited');
     assert.equal(busy.measurement.diagnostic.errorCode, 'rate-limited');
-    const unavailable = await rejectedOutcome({ status: 503, data: { error: 'private provider URL https://provider' } });
+    // A finished server error is sent once more, after the first request ended.
+    const unavailable = await rejectedOutcome({ status: 503, data: { error: 'private provider URL https://provider' } }, 2);
     assert.equal(unavailable.reason, 'backend_unavailable');
     assert.equal(unavailable.measurement.diagnostic.httpStatus, 503);
     assert.equal(unavailable.measurement.diagnostic.errorCode, null);

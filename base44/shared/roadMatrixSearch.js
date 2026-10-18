@@ -121,6 +121,11 @@ const failureMeasurement = (failure, elapsedMs) => {
         ...(serverMessage ? { serverMessage } : {}) },
         ...(data?.routing_metadata ? { routingMetadata: data.routing_metadata } : {}) };
 };
+// A server error, not an answer about this route: worth sending the same pass
+// once more. 4xx, CPU and rate limits are answers. A request lost with no
+// status may still be running on the server, so it is never sent twice.
+const transientPassFailure = (reason, measurement) => reason === 'backend_unavailable'
+    && measurement?.diagnostic?.httpStatus >= 500;
 const failureReason = (measurement, fallback) => measurement.diagnostic.errorCode === 'cpu-exceeded'
     ? 'backend_cpu_limit' : measurement.diagnostic.httpStatus === 429 ? 'backend_rate_limited' : fallback;
 
@@ -479,7 +484,7 @@ export async function tryRoadMatrixOptimize(routeProperties, {
     searchCoverage = null, maxSearchPasses = MAX_OPTIMIZE_PASSES,
     totalDeadlineMs = OPTIMIZE_ACTION_DEADLINE_MS, deadlineMs,
     onOutcome = null, onProgress = null, onSearchProgress = null, onFirstResult = null,
-    resume = null, suspendAfterPasses = null, onSuspend = null, ...options
+    resume = null, suspendAfterPasses = null, onSuspend = null, retryTransientPass = true, ...options
 } = {}) {
     const limit = Number.isFinite(maxSearchPasses) ? Math.max(1, Math.min(MAX_OPTIMIZE_PASSES, Math.floor(maxSearchPasses))) : 1;
     const budget = Number.isFinite(totalDeadlineMs) ? Math.max(1, Math.min(OPTIMIZE_ACTION_DEADLINE_MS, totalDeadlineMs)) : OPTIMIZE_ACTION_DEADLINE_MS;
@@ -591,12 +596,24 @@ export async function tryRoadMatrixOptimize(routeProperties, {
         if (pass > 1) onProgress?.({ pass, maxPasses: limit, remainingWindows: coverage.remaining_windows });
         passesDone = pass;
         let reason, measurement, nextSearchContinuation = null;
-        const result = await tryRoadMatrixOptimizePass(currentProperties, { ...options, searchCoverage: coverage,
+        const runPass = () => tryRoadMatrixOptimizePass(currentProperties, { ...options, searchCoverage: coverage,
             ...(pass > 1 ? { searchPhase: 'remaining_neighborhoods', comparisonOrder: routeProperties, knownUnresolved } : {}),
             searchContinuation: pass > 1 ? searchContinuation : null,
             onSearchContinuation: value => { nextSearchContinuation = value; },
             deadlineMs: Math.min(requestBudget, Math.max(1, budget - (Date.now() - started))),
             onOutcome: (value, details) => { reason = value; measurement = details; } });
+        let result = await runPass();
+        // One server error must not end the click: send the
+        // same pass once more while the action still has time for a pass.
+        // (The server worker retries a pass itself, from its saved state.)
+        let retried = false;
+        if (!result && retryTransientPass && transientPassFailure(reason, measurement)
+            && budget - (Date.now() - started) >= continuationBudget) {
+            retried = true;
+            console.warn('[roadMatrixOptimize] Retrying pass after a server failure', measurement?.diagnostic);
+            reason = undefined; measurement = undefined; nextSearchContinuation = null;
+            result = await runPass();
+        }
         const meta = result?.routingMetadata || measurement?.routingMetadata;
         const returnedCoverage = normalizeRoadSearchCoverage(meta?.road_search_coverage);
         // Address/road failures repeat identically within this action; later
@@ -608,7 +625,7 @@ export async function tryRoadMatrixOptimize(routeProperties, {
             if (REUSABLE_FAILURES.has(issue?.reason) && typeof issue?.property_id === 'string') knownUnresolved.set(issue.property_id, issue.reason);
         }
         if (returnedCoverage) coverage = returnedCoverage;
-        const finalMeta = meta ? { ...meta, road_search_passes: pass } : null;
+        const finalMeta = meta ? { ...meta, road_search_passes: pass, ...(retried ? { road_search_retried_pass: pass } : {}) } : null;
         if (finalMeta) {
             delete finalMeta.road_search_coverage;
             if (returnedCoverage) finalMeta.road_search_coverage = returnedCoverage;

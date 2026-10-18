@@ -185,6 +185,8 @@ export async function advanceRouteOptimizationJob(service, jobId, { readSecret, 
             start: job.start_location || null, end: job.end_location || null,
             resume: job.state_json ? JSON.parse(job.state_json) : null,
             suspendAfterPasses: passesPerCall, onSuspend: state => { suspended = state; },
+            // A transient failure goes back to the queue; the sweep retries it from the saved state.
+            retryTransientPass: false,
             onSearchProgress: value => { progress = value; },
             onOutcome: (reason, measurement) => { outcome = { reason, measurement }; } });
     } catch (error) {
