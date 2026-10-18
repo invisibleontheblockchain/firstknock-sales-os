@@ -5,10 +5,20 @@ import { toast } from 'sonner';
 
 let vite, optimize, action;
 const oldToasts = {};
+
+// Optimize saves onto the stored record (src/lib/mapRouteFields.js). In these
+// tests the stored record is the route under test, so a stub client without
+// SavedRoute.get answers with that route.
+const withStoredRoute = run => (route, options, deps = {}) => {
+    const entities = deps.client?.entities;
+    if (!entities?.SavedRoute || entities.SavedRoute.get) return run(route, options, deps);
+    const client = { ...deps.client, entities: { ...entities, SavedRoute: { ...entities.SavedRoute, get: async id => ({ ...route, id }) } } };
+    return run(route, options, { ...deps, client });
+};
 before(async () => {
     vite = await createServer({ server: { middlewareMode: true }, appType: 'custom', logLevel: 'silent' });
     optimize = (await vite.ssrLoadModule('/src/lib/roadMatrixOptimize.js')).tryRoadMatrixOptimize;
-    action = (await vite.ssrLoadModule('/src/lib/reoptimizeRouteAction.js')).reoptimizeRoute;
+    action = withStoredRoute((await vite.ssrLoadModule('/src/lib/reoptimizeRouteAction.js')).reoptimizeRoute);
     for (const tone of ['loading', 'success', 'warning', 'error', 'info']) {
         oldToasts[tone] = toast[tone]; toast[tone] = () => {};
     }

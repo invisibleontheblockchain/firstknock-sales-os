@@ -99,6 +99,7 @@ import {
 } from '../components/map/homeMapHelpers';
 import { matchesDecisionFilter } from '../components/map/routeDecisionFilters'; import { deriveRouteName as buildRouteName } from '../components/map/routeNaming';
 import { noteServerRouteOptimization } from '@/lib/serverRouteOptimizationJobs';
+import { MAP_ROUTE_FIELDS } from '@/lib/mapRouteFields';
 
 
 
@@ -690,8 +691,10 @@ export default function Home() {
         refetchOnWindowFocus: true,
         queryFn: async () => {
             if (!user?.id) return [];
+            // Without each route's saved road path, which the map never draws
+            // (~4 MB of the owner's 5.2 MB list): see mapRouteFields.js.
             const routeGroups = await fetchKnockRouteGroups((filter, limit, skip, fields) => (
-                base44.entities.SavedRoute.filter(filter, '-created_date', limit, skip, fields)
+                base44.entities.SavedRoute.filter(filter, '-created_date', limit, skip, fields || MAP_ROUTE_FIELDS)
             ), savedRouteScope);
             return collectKnockRoutes(routeGroups, savedRouteScope);
         },
