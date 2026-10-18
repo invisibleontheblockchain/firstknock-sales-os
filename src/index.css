@@ -149,6 +149,12 @@ textarea,
     @apply bg-background text-foreground;
   }
 }
+/* While zooming (mapZoomSmoothing.js), scale the stretched previous-level
+   tiles smoothly. Leaflet's .leaflet-safari .leaflet-tile rule uses
+   -webkit-optimize-contrast, which Safari draws as hard square blocks. */
+.leaflet-container.fk-map-zooming .leaflet-tile {
+  image-rendering: auto;
+}
 /* Map loading skeleton: shown on the map container until the first basemap
    tile paints (BaseMapTiles). Tiles and controls sit above it. */
 /* Layout sets .leaflet-container { background: #000 !important }, so the

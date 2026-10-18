@@ -21,7 +21,7 @@ test('zoom-out backdrop covers every zoom band below the real basemap', () => {
 test('the manager and rep maps mount the backdrop once their first view of real tiles loads', () => {
   const shared = read('src/components/map/BaseMapTiles.jsx');
   assert.match(shared, /\{firstViewLoaded && <ZoomOutBackdrop url=\{url\} \/>\}/);
-  assert.match(shared, /load: \(\) => \{ setFirstTileShown\(true\); setFirstViewLoaded\(true\); \}/);
+  assert.match(shared, /load: \(\) => \{ setFirstTileShown\(true\); setFirstViewLoaded\(true\);/);
   assert.match(shared, /eventHandlers=\{basemapEvents\}/);
   assert.match(shared, /setTimeout\(\(\) => setFirstViewLoaded\(true\), 6000\)/);
   const rep = read('src/components/rep/RepMapView.jsx');
@@ -34,7 +34,9 @@ test('the manager and rep maps mount the backdrop once their first view of real 
 test('phones keep a smaller tile budget so Safari does not paint the map black', async () => {
   const { basemapTileOptions } = await import('../src/components/map/basemapUrls.js');
   assert.deepEqual(basemapTileOptions(), { keepBuffer: 3, updateWhenZooming: true, updateWhenIdle: false, maxNativeZoom: 19, maxZoom: 20 });
-  assert.deepEqual(basemapTileOptions({ phone: true }), { keepBuffer: 1, updateWhenZooming: false, updateWhenIdle: true, maxNativeZoom: 19, maxZoom: 20 });
+  // Phones keep a one-tile ring but still load the next level mid-pinch and
+  // tiles mid-pan; waiting for the finger to lift left the map blocky.
+  assert.deepEqual(basemapTileOptions({ phone: true }), { keepBuffer: 1, updateWhenZooming: true, updateWhenIdle: false, maxNativeZoom: 19, maxZoom: 20 });
   // Desktop backdrop unchanged: both levels up to zoom 20, whole-session buffer.
   for (const level of BACKDROP_LEVELS) {
     const desktop = backdropLayerOptions(level);
