@@ -253,9 +253,11 @@ test('all three raster map paths retain their providers, attribution and existin
   const rep = read('src/components/rep/RepMapView.jsx');
   const wrapper = read('src/components/map/RecoveringTileLayer.jsx');
   for (const source of [shared, canvas, rep]) assert.match(source, /<RecoveringTileLayer/);
-  assert.match(shared, /keepBuffer: 3/);
-  assert.match(shared, /updateWhenZooming: true/);
-  assert.match(shared, /updateWhenIdle: false/);
+  // Desktop keeps its tile settings; phones and tablets use Leaflet's mobile budget.
+  assert.match(shared, /const TILE_PERF = basemapTileOptions\(\{ phone: Boolean\(L\.Browser\.mobile \|\| L\.Browser\.touch\) \}\);/);
+  const urls = read('src/components/map/basemapUrls.js');
+  assert.match(urls, /\{ keepBuffer: 3, updateWhenZooming: true, updateWhenIdle: false,/);
+  assert.match(urls, /\{ keepBuffer: 1, updateWhenZooming: false, updateWhenIdle: true,/);
   assert.match(shared, /ESRI_IMAGERY_ATTRIBUTION : CARTO_ATTRIBUTION/);
   // The URL table moved to basemapUrls.js so the startup tile warm-up shares it.
   assert.match(shared, /from '@\/components\/map\/basemapUrls'/);

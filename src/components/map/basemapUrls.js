@@ -18,6 +18,18 @@ const SUBDOMAINS = ['a', 'b', 'c'];
 const TILE_SIZE = 256;
 export const MAX_NATIVE_ZOOM = 19;
 
+// Phones and tablets (WebKit) cap the GPU memory for composited layers, and
+// past that cap Safari paints tiles black: the owner's iPhone map went black
+// except for the labels after zooming around routes. Leaflet places every tile
+// with a 3D transform, which Safari composites as its own layer (~2.4 MB per
+// tile at 3x), so on touch devices keep only a one-tile ring and load when a
+// pan or zoom settles, as Leaflet's own mobile defaults do. Desktop is unchanged.
+export function basemapTileOptions({ phone = false } = {}) {
+    return phone
+        ? { keepBuffer: 1, updateWhenZooming: false, updateWhenIdle: true, maxNativeZoom: MAX_NATIVE_ZOOM, maxZoom: 20 }
+        : { keepBuffer: 3, updateWhenZooming: true, updateWhenIdle: false, maxNativeZoom: MAX_NATIVE_ZOOM, maxZoom: 20 };
+}
+
 export const precisionThemeFor = (mapTheme = 'hybrid') => (mapTheme.startsWith('light_') ? 'light' : mapTheme);
 export const showsLabelsFor = (mapTheme = 'hybrid') => mapTheme === 'hybrid' || mapTheme === 'satellite';
 

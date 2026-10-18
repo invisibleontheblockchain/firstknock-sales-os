@@ -84,7 +84,7 @@ test('tile hosts are preconnected only for pages that open on the map', () => {
 
 test('the map shows a loading skeleton, not a flat panel, until imagery paints; labels follow imagery', () => {
   const tiles = read('src/components/map/BaseMapTiles.jsx');
-  assert.match(tiles, /import \{ BASEMAP_URLS, LABEL_URL, precisionThemeFor, showsLabelsFor \} from '@\/components\/map\/basemapUrls'/);
+  assert.match(tiles, /import \{ BASEMAP_URLS, LABEL_URL, basemapTileOptions, precisionThemeFor, showsLabelsFor \} from '@\/components\/map\/basemapUrls'/);
   assert.match(tiles, /<MapBackdrop mapTheme=\{mapTheme\} waiting=\{!firstTileShown\} \/>/);
   assert.match(tiles, /tileload: \(\) => setFirstTileShown\(true\)/);
   assert.match(tiles, /\{showLabels && firstTileShown && \(/);

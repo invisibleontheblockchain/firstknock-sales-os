@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import L from 'leaflet';
 import { useMap } from 'react-leaflet';
 import RecoveringTileLayer from '@/components/map/RecoveringTileLayer';
 import ZoomOutBackdrop from '@/components/map/ZoomOutBackdrop';
 import MapAttributionControl from '@/components/map/MapAttributionControl';
 import { CARTO_ATTRIBUTION, ESRI_IMAGERY_ATTRIBUTION } from '@/components/map/mapAttribution';
-import { BASEMAP_URLS, LABEL_URL, precisionThemeFor, showsLabelsFor } from '@/components/map/basemapUrls';
+import { BASEMAP_URLS, LABEL_URL, basemapTileOptions, precisionThemeFor, showsLabelsFor } from '@/components/map/basemapUrls';
 
 // Canvas's vector basemap is ~40 KB gzipped and only
 // Canvas mode draws it, so Precision maps no longer download it.
@@ -24,19 +25,13 @@ const BASEMAP_BACKDROP = {
     minimal: '#f8f4f0',
 };
 
-// Retain visited tiles for reverse pans; load the new grid during zoom while
-// the previous imagery stays visible. Deep zoom scales the provider's highest
-// native level. These settings apply to desktop and installed PWAs.
-const TILE_PERF = {
-    keepBuffer: 3,
-    // Zooming out used to leave the whole screen black until the animation
-    // landed, because Leaflet waited for idle before requesting the new grid.
-    // Requesting while zooming keeps imagery on screen the whole way.
-    updateWhenZooming: true,
-    updateWhenIdle: false,
-    maxNativeZoom: 19,
-    maxZoom: 20,
-};
+// Desktop retains visited tiles for reverse pans (keepBuffer: 3) and loads the
+// new grid during zoom while the previous imagery stays visible
+// (updateWhenZooming: true, updateWhenIdle: false); zooming out used to leave
+// the screen black until the animation landed. Phones and tablets use a
+// smaller budget so Safari does not run out of layer memory and paint tiles
+// black; the zoom-out backdrop covers their gaps (basemapTileOptions).
+const TILE_PERF = basemapTileOptions({ phone: Boolean(L.Browser.mobile || L.Browser.touch) });
 
 const LIGHT_BACKDROPS = new Set(['light', 'streets', 'terrain', 'minimal']);
 
