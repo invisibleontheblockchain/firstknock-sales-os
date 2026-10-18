@@ -4,6 +4,7 @@ import { fetchAccountInteractionLogs } from '@/lib/accountInteractionLogs';
 import { withReadDeadline } from '@/lib/readRequest';
 import { isManagerAccount, landingPageForAccount } from '@/lib/roles';
 import { pageNameForPath, preloadPage } from '@/lib/pagePreload';
+import { warmMapTiles } from '@/lib/mapTileWarmup';
 
 // Pages that only route the account onward. Their destination is known as soon
 // as the account loads, so its chunk and first reads can start right away.
@@ -25,6 +26,8 @@ export function startLandingPrefetch(queryClient, user, pathname = globalThis.lo
   const page = destinationPage(user, pathname);
   preloadPage(page);
   if (page !== 'Home' || !isManagerAccount(user)) return;
+  // The saved view's basemap tiles download while the map chunk does.
+  warmMapTiles(user);
   const invoke = (...args) => base44.functions.invoke(...args);
   queryClient.prefetchQuery(mapTerritoryBootstrapOptions(user, invoke, withReadDeadline));
   // Same key and read as Home's account outcomes query. Nothing is pending at

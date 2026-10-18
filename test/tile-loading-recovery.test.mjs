@@ -257,7 +257,9 @@ test('all three raster map paths retain their providers, attribution and existin
   assert.match(shared, /updateWhenZooming: true/);
   assert.match(shared, /updateWhenIdle: false/);
   assert.match(shared, /ESRI_IMAGERY_ATTRIBUTION : CARTO_ATTRIBUTION/);
-  assert.match(shared, /World_Imagery\/MapServer\/tile\/\{z\}\/\{y\}\/\{x\}/);
+  // The URL table moved to basemapUrls.js so the startup tile warm-up shares it.
+  assert.match(shared, /from '@\/components\/map\/basemapUrls'/);
+  assert.match(read('src/components/map/basemapUrls.js'), /World_Imagery\/MapServer\/tile\/\{z\}\/\{y\}\/\{x\}/);
   assert.match(canvas, /config\.mode === 'pmtiles'.*CanvasPmtilesLayer/);
   assert.match(canvas, /url=\{config\.url\}[\s\S]*attribution=\{config\.attribution\}/);
   assert.match(rep, /maxNativeZoom=\{19\}[\s\S]*maxZoom=\{22\}[\s\S]*updateWhenZooming=\{false\}/);

@@ -62,7 +62,7 @@ test('sign-in starts the account read with public settings and prefetches the la
   const home = read('src/pages/Home.jsx');
   assert.match(auth, /const accountRequest = appParams\.token \? readCurrentUser\(\) : null;[\s\S]*public-settings[\s\S]*checkUserAuth\(accountRequest\)/);
   assert.match(auth, /setQueryData\(\['user'\], currentUser\);\s*startLandingPrefetch\(queryClientInstance, currentUser\)/);
-  assert.match(app, /appParams\.token && !isHqPath[\s\S]*preloadPage\(pageNameForPath\(window\.location\.pathname\)\)/);
+  assert.match(app, /appParams\.token && !isHqPath[\s\S]*const initialPage = pageNameForPath\(window\.location\.pathname\);\s*preloadPage\(initialPage\);\s*preconnectMapHosts\(initialPage\);/);
   assert.match(hook, /mapTerritoryBootstrapOptions\(user, \(\.\.\.args\) => base44\.functions\.invoke\(\.\.\.args\), withReadDeadline\)/);
   // Prefetched outcomes must use Home's exact key and account read.
   assert.match(home, /queryKey: \['interactionLogs', user\?\.email\][\s\S]*?fetchAccountInteractionLogs\(user\)/);

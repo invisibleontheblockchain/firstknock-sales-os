@@ -149,3 +149,50 @@ textarea,
     @apply bg-background text-foreground;
   }
 }
+/* Map loading skeleton: shown on the map container until the first basemap
+   tile paints (BaseMapTiles). Tiles and controls sit above it. */
+/* Layout sets .leaflet-container { background: #000 !important }, so the
+   skeleton's image layers need !important and the higher specificity. */
+.leaflet-container.fk-map-skeleton {
+  background-image:
+    linear-gradient(100deg, transparent 30%, var(--fk-map-skeleton-sheen) 50%, transparent 70%),
+    repeating-linear-gradient(0deg, var(--fk-map-skeleton-line) 0 1px, transparent 1px 64px),
+    repeating-linear-gradient(90deg, var(--fk-map-skeleton-line) 0 1px, transparent 1px 64px) !important;
+  background-size: 250% 100%, auto, auto !important;
+  background-repeat: no-repeat, repeat, repeat !important;
+  animation: fk-map-skeleton-sheen 1.6s ease-in-out infinite;
+}
+.leaflet-container.fk-map-skeleton-dark {
+  --fk-map-skeleton-sheen: rgba(255, 255, 255, 0.09);
+  --fk-map-skeleton-line: rgba(255, 255, 255, 0.06);
+  --fk-map-skeleton-text: rgba(255, 255, 255, 0.7);
+  --fk-map-skeleton-pill: rgba(0, 0, 0, 0.45);
+}
+.leaflet-container.fk-map-skeleton-light {
+  --fk-map-skeleton-sheen: rgba(255, 255, 255, 0.55);
+  --fk-map-skeleton-line: rgba(0, 0, 0, 0.04);
+  --fk-map-skeleton-text: rgba(0, 0, 0, 0.6);
+  --fk-map-skeleton-pill: rgba(255, 255, 255, 0.7);
+}
+.leaflet-container.fk-map-skeleton::after {
+  content: 'Loading map…';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1; /* below the tile pane (200), so imagery covers it */
+  padding: 6px 12px;
+  border-radius: 999px;
+  font: 600 12px/1.2 system-ui, -apple-system, sans-serif;
+  letter-spacing: 0.02em;
+  color: var(--fk-map-skeleton-text);
+  background: var(--fk-map-skeleton-pill);
+  pointer-events: none;
+}
+@keyframes fk-map-skeleton-sheen {
+  from { background-position: 125% 0, 0 0, 0 0; }
+  to { background-position: -125% 0, 0 0, 0 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .leaflet-container.fk-map-skeleton { animation: none; }
+}

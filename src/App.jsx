@@ -17,6 +17,7 @@ import RoadOptimizationProgressHost from '@/components/routes/RoadOptimizationPr
 import { isHqPath } from '@/admin/hqNavigation';
 import { pageNameForPath, preloadPage, registerPageLoaders } from '@/lib/pagePreload';
 import { appParams } from '@/lib/app-params';
+import { preconnectMapHosts } from '@/lib/mapTileWarmup';
 
 // Phase 5 — code-splitting: every page in ./pages is its own lazy-loaded chunk.
 // import.meta.glob bypasses the stale auto-generated pages.config.js — any new
@@ -34,7 +35,9 @@ const Pages = Object.fromEntries(
 registerPageLoaders(pageLoaders);
 // Only a signed-in device will render this page; others are sent to sign in.
 if (typeof window !== 'undefined' && appParams.token && !isHqPath(window.location.pathname)) {
-  preloadPage(pageNameForPath(window.location.pathname));
+  const initialPage = pageNameForPath(window.location.pathname);
+  preloadPage(initialPage);
+  preconnectMapHosts(initialPage);
 }
 
 const AppEntry = React.lazy(() => import('@/components/AppEntry'));
