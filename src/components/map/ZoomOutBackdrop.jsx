@@ -38,7 +38,8 @@ export default function ZoomOutBackdrop({ url }) {
     useEffect(() => {
         if (!url) return undefined;
         const Layer = backdropLayerClass();
-        const layers = BACKDROP_LEVELS.map((level) => new Layer(url, backdropLayerOptions(level)));
+        const phone = Boolean(L.Browser.mobile || L.Browser.touch);
+        const layers = BACKDROP_LEVELS.map((level) => new Layer(url, backdropLayerOptions(level, { phone })));
         layers.forEach((layer) => layer.addTo(map));
         return () => layers.forEach((layer) => layer.remove());
     }, [map, url]);

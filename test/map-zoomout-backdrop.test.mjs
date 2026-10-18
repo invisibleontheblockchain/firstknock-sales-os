@@ -30,3 +30,22 @@ test('the manager and rep maps mount the backdrop once their first view of real 
   const backdrop = read('src/components/map/ZoomOutBackdrop.jsx');
   assert.match(backdrop, /multiplyBy\(this\.options\.ringTiles \|\| 0\)/);
 });
+
+test('phones keep a smaller tile budget so Safari does not paint the map black', async () => {
+  const { basemapTileOptions } = await import('../src/components/map/basemapUrls.js');
+  assert.deepEqual(basemapTileOptions(), { keepBuffer: 3, updateWhenZooming: true, updateWhenIdle: false, maxNativeZoom: 19, maxZoom: 20 });
+  assert.deepEqual(basemapTileOptions({ phone: true }), { keepBuffer: 1, updateWhenZooming: false, updateWhenIdle: true, maxNativeZoom: 19, maxZoom: 20 });
+  // Desktop backdrop unchanged: both levels up to zoom 20, whole-session buffer.
+  for (const level of BACKDROP_LEVELS) {
+    const desktop = backdropLayerOptions(level);
+    assert.equal(desktop.maxZoom, 20);
+    assert.equal(desktop.keepBuffer, 6);
+  }
+  // Phones: one backdrop level per zoom band, and only the ring around the view.
+  const [fine, coarse] = BACKDROP_LEVELS.map((level) => backdropLayerOptions(level, { phone: true }));
+  assert.deepEqual([fine.minZoom, fine.maxZoom], [12, 20]);
+  assert.deepEqual([coarse.minZoom, coarse.maxZoom], [9, 11]);
+  for (const options of [fine, coarse]) assert.equal(options.keepBuffer, 1);
+  const backdrop = read('src/components/map/ZoomOutBackdrop.jsx');
+  assert.match(backdrop, /backdropLayerOptions\(level, \{ phone \}\)/);
+});
