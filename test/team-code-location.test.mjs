@@ -23,3 +23,11 @@ test('team codes stay reachable, with copy, under the Codes tab for everyone who
     assert.match(codesTab, /navigator\.clipboard\.writeText\(code\.code\)/);
     assert.match(codesTab, /Copy Code/);
 });
+
+test('the Team header has no Active Rep Locations button; the same view stays a Team tab', () => {
+    assert.doesNotMatch(header, /Active Rep Locations/);
+    assert.doesNotMatch(header, /setActiveTab\('locations'\)/);
+    // The button showed only when canManageTeam; the tab and its content use the same gate.
+    assert.match(page, /\{canManageTeam && <TabsTrigger value="locations"[^>]*>Active Rep Locations<\/TabsTrigger>\}/);
+    assert.match(page, /\{canManageTeam && <TabsContent value="locations">\s*<ActiveRepLocations /);
+});

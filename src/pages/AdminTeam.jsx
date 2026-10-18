@@ -648,10 +648,6 @@ export default function AdminTeam() {
                             <Shield className="w-5 h-5 lg:w-8 lg:h-8 text-yellow-500 shrink-0" />
                             <span className="truncate">{canManageTeam ? 'Team Command Center' : 'Team'}</span>
                             </h1>
-                            {canManageTeam && <button type="button" onClick={() => setActiveTab('locations')}
-                                className="mt-2 flex min-h-9 items-center gap-1.5 self-start rounded-lg border border-green-500/30 bg-green-500/10 px-3 text-[10px] font-bold text-green-400 hover:bg-green-500/20">
-                                <Map className="h-3.5 w-3.5" />Active Rep Locations
-                            </button>}
                             <p className="hidden lg:block text-gray-400 text-sm mt-1">
                                 {canManageTeam
                                     ? 'See adoption, field activity, routes, and team performance.'
