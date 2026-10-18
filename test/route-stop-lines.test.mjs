@@ -43,6 +43,7 @@ function renderModule(path) {
     imports['./mapLayerVisibility.js'] = visibility;
     imports['@/lib/approximateAccess'] = approximateAccess;
     imports['./labelCanvas'] = { createLabelCanvas: () => ({}) };
+    imports['@/components/map/liveZoomCanvas'] = { liveZoomCanvas: () => ({}) };
     imports['./densePinSize'] = { resolvePinSize: () => 3, zoomAdjustedPinSize: () => 3 };
     imports['@/components/map/mapPinThemes'] = { DEFAULT_PIN_THEME: { settings: { lineStyle: 'dashed' } } };
     const exports = {};
