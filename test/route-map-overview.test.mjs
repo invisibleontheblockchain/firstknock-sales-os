@@ -35,6 +35,7 @@ function moduleAt(path, imports) {
     return exports;
 }
 const workingArea = moduleAt('src/lib/accountWorkingArea.js', {
+    '@/lib/mapViewStorage': moduleAt('src/lib/mapViewStorage.js', {}),
     '@/components/map/leafletPatches': { default: leaflet },
     '@/components/map/mapLayerVisibility.js': { isRenderableMapPoint },
     '@/components/logic/routeHydrationCore.js': core,
