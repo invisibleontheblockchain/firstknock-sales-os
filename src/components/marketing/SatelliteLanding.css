@@ -184,6 +184,7 @@
   .fk-satellite #housePhoto[data-ready] { opacity: 1; }
   .fk-satellite #fly { visibility: hidden; }
   .fk-satellite #fly[data-shown] { visibility: inherit; }
+  .fk-satellite #flyAerial { opacity: 0; transform-origin: 51% 39%; } /* the house in the still */
   /* Hold the same roof through the independently rendered neighborhood views. */
   .fk-satellite #lHouse { pointer-events: none; mask-image: radial-gradient(ellipse 190px 130px at 1329px 695px, #000 76%, transparent 100%); }
   .fk-satellite #ov { overflow: visible; pointer-events: none; }

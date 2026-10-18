@@ -33,6 +33,11 @@ export default function SatelliteLanding() {
       <img id="housePhoto" alt="" src={HERO_JPEG_SRC} fetchpriority="high" decoding="async" />
     </picture>
     <video id="fly" muted playsInline preload="auto"></video>
+    {/* The flyover's first settled aerial frame; dissolves in where the clip would redraw the house (flyoverMorph.js). */}
+    <picture>
+      <source type="image/avif" data-srcset="/landing/flyover-roof-consistent-3500ms.avif" />
+      <img id="flyAerial" alt="" data-src="/landing/flyover-roof-consistent-3500ms.webp" decoding="async" />
+    </picture>
     <img id="sat" alt="" data-src="/landing/satellite-roof-consistent.jpg" decoding="async" />
   </div>
   <div className="layer" id="lHouse"><img alt="" data-src="/landing/satellite-roof-consistent.jpg" decoding="async" /></div>

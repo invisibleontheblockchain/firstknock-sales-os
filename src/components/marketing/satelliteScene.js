@@ -1,5 +1,6 @@
 // Satellite presentation adapted from the original FirstKnock prototype.
 // All DOM access, listeners, and animation resources belong to this landing page.
+import { aerialStillOpacity, aerialStillScale, flyoverVideoTime } from './flyoverMorph';
 import { revealWhenDecoded } from './heroImage';
 import { advanceSatelliteProgress } from './satelliteMotion';
 
@@ -9,7 +10,7 @@ export function startSatelliteScene(root) {
 
   const NS = 'http://www.w3.org/2000/svg', IW = 2688, IH = 1520;
   const $ = (id) => root.querySelector(`#${id}`);
-  const fly = $('fly'), sat = $('sat'), ov = $('ov'), hint = $('hint');
+  const fly = $('fly'), flyAerial = $('flyAerial'), sat = $('sat'), ov = $('ov'), hint = $('hint');
   const state = $('state'), shadeL = $('shadeL'), shadeB = $('shadeB'), legend = $('legend');
   const L = { state: $('lState'), metro: $('lMetro'), region: $('lRegion'), wide: $('lWide'), tight: $('lTight'), house: $('lHouse'), ov };
   const dots = [...root.querySelectorAll('#steps i')];
@@ -164,7 +165,9 @@ export function startSatelliteScene(root) {
   fly.addEventListener('loadedmetadata', onMetadata);
   // The video stays hidden over the house photo until the first scroll seeks it,
   // as its poster used to: at rest the opening frame is the photo.
-  const onSeeked = () => fly.setAttribute('data-shown', '');
+  // shownTime is the frame the video is actually showing (flyoverMorph.js).
+  let shownTime = 0;
+  const onSeeked = () => { shownTime = fly.currentTime; fly.setAttribute('data-shown', ''); };
   fly.addEventListener('seeked', onSeeked);
 
   // The house photo gets the connection to itself; the 30 MB flyover and the five
@@ -173,6 +176,7 @@ export function startSatelliteScene(root) {
   const startExtras = () => {
     if (extrasStarted) return;
     extrasStarted = true;
+    root.querySelectorAll('source[data-srcset]').forEach((source) => { source.srcset = source.dataset.srcset; source.removeAttribute('data-srcset'); });
     root.querySelectorAll('img[data-src]').forEach((img) => { img.src = img.dataset.src; img.removeAttribute('data-src'); });
     // Let the browser buffer right away and seek using range requests. Waiting for
     // a complete 30 MB blob after the first scroll left the opening frame frozen mid-move.
@@ -205,8 +209,13 @@ export function startSatelliteScene(root) {
     // The clip is 24 fps: coalesce scroll updates to actual frames instead of
     // asking the decoder for sub-frame seeks on every display refresh.
     const videoFrame = 1 / 24;
-    const want = Math.min(Math.max(0, dur - videoFrame), Math.round(band(0.08, 1.7, cur) * dur / videoFrame) * videoFrame);
-    if (!reduce && fly.readyState >= 2 && Math.abs(fly.currentTime - want) >= videoFrame / 2 && !fly.seeking) fly.currentTime = want;
+    const flyTime = band(0.08, 1.7, cur) * dur;
+    const want = Math.min(Math.max(0, dur - videoFrame), Math.round(flyTime / videoFrame) * videoFrame);
+    // The clip redraws the house mid-rise; skip those frames behind a dissolve (flyoverMorph.js).
+    const videoWant = flyoverVideoTime(want);
+    if (!reduce && fly.readyState >= 2 && Math.abs(fly.currentTime - videoWant) >= videoFrame / 2 && !fly.seeking) fly.currentTime = videoWant;
+    flyAerial.style.opacity = aerialStillOpacity(flyTime, shownTime, videoFrame);
+    flyAerial.style.transform = `scale(${aerialStillScale(flyTime)})`;
     sat.style.opacity = band(1.55, 1.75, cur);
 
     // pull back twice: the street -> the subdivision -> the whole side of town (zoom is relative to the region filling the screen)
