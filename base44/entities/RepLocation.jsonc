@@ -6,6 +6,7 @@
     "member_id": { "type": "string" },
     "rep_user_id": { "type": "string" },
     "session_id": { "type": "string" },
+    "shift_id": { "type": "string" },
     "sharing": { "type": "boolean", "default": false },
     "lat": { "type": "number", "minimum": -90, "maximum": 90 },
     "lng": { "type": "number", "minimum": -180, "maximum": 180 },

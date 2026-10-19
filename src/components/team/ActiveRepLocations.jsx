@@ -8,6 +8,8 @@ import BaseMapTiles from '@/components/map/BaseMapTiles';
 import { locationStatus, locationAgeLabel, LOCATION_REPORT_MS, LOCATION_RETRY_MAX_MS } from '../../../base44/shared/repLocations';
 
 const COLORS = ['#FFD700', '#38bdf8', '#a78bfa', '#fb923c', '#f472b6', '#2dd4bf'];
+const STATUS_ORDER = { live: 0, stale: 1, paused: 2, offline: 3 };
+const STATUS_LABEL = { live: 'LIVE', stale: 'DELAYED', paused: 'PAUSED' };
 const markerColor = (rep, index) => /^#[\da-f]{6}$/i.test(rep.color || '') ? rep.color : COLORS[index % COLORS.length];
 
 function MapFocus({ reps, selectedId, fitVersion }) {
@@ -63,20 +65,22 @@ export default function ActiveRepLocations({ managerId, activeTeamCode = 'all' }
   const serverOffset = data?.server_time ? Date.parse(data.server_time) - dataUpdatedAt : 0;
   const reps = useMemo(() => (data?.reps || [])
     .filter(rep => activeTeamCode === 'all' || rep.invite_code === activeTeamCode)
-    .map((rep, index) => ({ ...rep, status: locationStatus(rep.location, now + serverOffset), markerColor: markerColor(rep, index) }))
-    .sort((a, b) => ({ live: 0, stale: 1, offline: 2 }[a.status] - { live: 0, stale: 1, offline: 2 }[b.status]) || a.name.localeCompare(b.name)),
+    .map((rep, index) => ({ ...rep, status: locationStatus(rep.location, now + serverOffset, rep.on_shift), markerColor: markerColor(rep, index) }))
+    .sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status] || a.name.localeCompare(b.name)),
   [data, activeTeamCode, now, serverOffset]);
-  const visibleReps = useMemo(() => reps.filter(rep => rep.status === 'live' || (showStale && rep.status === 'stale')), [reps, showStale]);
+  const visibleReps = useMemo(() => reps.filter(rep => rep.status === 'live' || (showStale && ['stale', 'paused'].includes(rep.status))), [reps, showStale]);
   const liveCount = reps.filter(rep => rep.status === 'live').length;
   const staleCount = reps.filter(rep => rep.status === 'stale').length;
+  const pausedCount = reps.filter(rep => rep.status === 'paused').length;
+  const offShiftCount = reps.filter(rep => !rep.on_shift).length;
 
   return (
     <section className="space-y-4 rounded-2xl border border-gray-800 bg-[#111] p-3 text-white md:p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="flex items-center gap-2 text-lg font-bold"><Radio className="h-5 w-5 text-green-400" />Active Rep Locations</h2>
-          <p className="mt-1 text-xs text-gray-400">{liveCount} live · {staleCount} signal delayed · {reps.length - liveCount - staleCount} offline</p>
-          <p className="mt-1 text-xs text-gray-500">Refreshes every 30 seconds. Reps share location from their app while in the field.</p>
+          <p className="mt-1 text-xs text-gray-400">{liveCount} live · {staleCount} delayed · {pausedCount} paused · {offShiftCount} off the clock</p>
+          <p className="mt-1 text-xs text-gray-500">Refreshes every 30 seconds. Reps share their location automatically while they are clocked in.</p>
         </div>
         <div className="flex gap-2">
           <button type="button" onClick={() => { setSelectedId(null); setFitVersion(value => value + 1); }}
@@ -88,7 +92,7 @@ export default function ActiveRepLocations({ managerId, activeTeamCode = 'all' }
       {error && <p role="alert" className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200">
         {error?.response?.data?.error || error.message || 'Unable to refresh rep locations.'} Use refresh to retry. Displayed locations may be out of date.
       </p>}
-      <label className="flex items-center gap-2 text-xs text-gray-400"><input type="checkbox" checked={showStale} onChange={event => setShowStale(event.target.checked)} />Show last known locations for delayed signals</label>
+      <label className="flex items-center gap-2 text-xs text-gray-400"><input type="checkbox" checked={showStale} onChange={event => setShowStale(event.target.checked)} />Show last known locations for delayed and paused reps</label>
       <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_280px]">
         <div className="relative isolate h-[380px] overflow-hidden rounded-xl border border-gray-800 md:h-[520px]">
           <MapContainer center={[39.5, -98.35]} zoom={4} className="h-full w-full" attributionControl zoomControl>
@@ -99,10 +103,10 @@ export default function ActiveRepLocations({ managerId, activeTeamCode = 'all' }
                 <Circle center={[rep.location.lat, rep.location.lng]} radius={Math.min(rep.location.accuracy || 0, 2000)}
                   pathOptions={{ color: rep.markerColor, weight: 1, fillOpacity: 0.06, opacity: rep.status === 'live' ? 0.5 : 0.2 }} />
                 <CircleMarker center={[rep.location.lat, rep.location.lng]} radius={selectedId === rep.member_id ? 11 : 8}
-                  pathOptions={{ color: '#fff', weight: 2, fillColor: rep.markerColor, fillOpacity: rep.status === 'live' ? 1 : 0.35, dashArray: rep.status === 'stale' ? '3 3' : undefined }}
+                  pathOptions={{ color: '#fff', weight: 2, fillColor: rep.markerColor, fillOpacity: rep.status === 'live' ? 1 : rep.status === 'stale' ? 0.35 : 0.2, dashArray: rep.status === 'live' ? undefined : rep.status === 'stale' ? '3 3' : '2 4' }}
                   eventHandlers={{ click: () => setSelectedId(rep.member_id) }}>
-                  <Tooltip permanent direction="top">{rep.name}{rep.status === 'stale' ? ' · delayed' : ''}</Tooltip>
-                  <Popup><strong>{rep.name}</strong><br />{rep.status === 'live' ? 'Live' : 'Last known location'} · {locationAgeLabel(rep.location, now + serverOffset)}<br />GPS accuracy: ±{Math.round(rep.location.accuracy || 0)}m</Popup>
+                  <Tooltip permanent direction="top">{rep.name}{rep.status === 'stale' ? ' · delayed' : rep.status === 'paused' ? ' · paused' : ''}</Tooltip>
+                  <Popup><strong>{rep.name}</strong><br />{rep.status === 'live' ? 'Live' : rep.status === 'paused' ? 'Paused: phone locked or app closed. Last seen' : 'Last known location'} · {locationAgeLabel(rep.location, now + serverOffset)}<br />GPS accuracy: ±{Math.round(rep.location.accuracy || 0)}m</Popup>
                 </CircleMarker>
               </React.Fragment>
             ))}
@@ -111,24 +115,25 @@ export default function ActiveRepLocations({ managerId, activeTeamCode = 'all' }
             <div className="max-w-sm rounded-xl border border-gray-700 bg-[#111]/95 p-5">
               <MapPin className="mx-auto mb-2 h-7 w-7 text-yellow-500" />
               <p className="font-bold">{isPending ? 'Loading rep locations…' : error && !data ? 'Rep locations unavailable' : 'No active locations yet'}</p>
-              <p className="mt-2 text-xs text-gray-400">Reps appear here after tapping Share location and allowing GPS access. Keep the app open for live updates.</p>
+              <p className="mt-2 text-xs text-gray-400">Reps appear here when they clock in and allow location access. They update live while FirstKnock is open on their phone.</p>
             </div>
           </div>}
         </div>
         <div className="max-h-[520px] space-y-2 overflow-y-auto">
           {reps.map(rep => <button type="button" key={rep.member_id}
-            disabled={rep.status === 'offline' || (rep.status === 'stale' && !showStale)}
+            disabled={rep.status === 'offline' || (['stale', 'paused'].includes(rep.status) && !showStale)}
             aria-pressed={selectedId === rep.member_id} onClick={() => setSelectedId(rep.member_id)}
             className={`w-full rounded-xl border p-3 text-left transition ${selectedId === rep.member_id ? 'border-yellow-500 bg-yellow-500/10' : 'border-gray-800 bg-black/30'} disabled:cursor-default`}>
             <div className="flex items-center justify-between gap-2"><span className="truncate text-sm font-semibold">{rep.name}</span>
-              <span className={`shrink-0 text-[10px] font-bold ${rep.status === 'live' ? 'text-green-400' : rep.status === 'stale' ? 'text-amber-400' : 'text-gray-500'}`}>{rep.status === 'stale' ? 'DELAYED' : rep.status.toUpperCase()}</span></div>
-            <p className="mt-1 text-xs text-gray-400">{rep.location ? `${locationAgeLabel(rep.location, now + serverOffset)} · ±${Math.round(rep.location.accuracy || 0)}m` : 'Location sharing off or signal unavailable'}</p>
+              <span className={`shrink-0 text-[10px] font-bold ${rep.status === 'live' ? 'text-green-400' : rep.status === 'stale' ? 'text-amber-400' : rep.status === 'paused' ? 'text-orange-300' : 'text-gray-500'}`}>{STATUS_LABEL[rep.status] || (rep.on_shift ? 'NO SIGNAL' : 'OFF THE CLOCK')}</span></div>
+            <p className="mt-1 text-xs text-gray-400">{rep.location ? `${rep.status === 'paused' ? 'Phone locked or app closed · last seen ' : ''}${locationAgeLabel(rep.location, now + serverOffset)} · ±${Math.round(rep.location.accuracy || 0)}m`
+              : rep.on_shift ? 'Clocked in · waiting for GPS from their phone' : 'Not clocked in'}</p>
             {selectedId === rep.member_id && <p className="mt-1 text-[10px] text-yellow-400">Following this rep on the map</p>}
           </button>)}
           {!isPending && !error && !reps.length && <p className="p-3 text-xs text-gray-500">No active reps in this team. Add reps from the Roster tab.</p>}
         </div>
       </div>
-      <p className="text-[11px] text-gray-500">A signal becomes delayed after 1 minute and leaves the map after 5 minutes. Closing the app, losing GPS, or going offline can interrupt updates.</p>
+      <p className="text-[11px] text-gray-500">A signal becomes delayed after 1 minute. After 5 minutes a clocked-in rep shows as paused at their last spot: their phone is locked or the app is closed. Reps leave the map when they clock out.</p>
     </section>
   );
 }

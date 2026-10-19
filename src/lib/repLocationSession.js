@@ -59,6 +59,13 @@ export function startRepLocationSession({ geolocation, invoke, sessionId, onStat
     } catch { gpsError({ code: 1 }); }
   }
   return {
+    // Ask for a fix now, for when the app comes back to the foreground after the
+    // phone was locked: the browser paused GPS and timers while it was hidden.
+    refresh() {
+      if (!stopped && !inFlight && !permissionBlocked && geolocation && now() >= retryAt) {
+        try { geolocation.getCurrentPosition(onPosition, gpsError, options); } catch { gpsError({ code: 1 }); }
+      }
+    },
     stop() {
       if (stopPromise) return stopPromise;
       stopped = true;

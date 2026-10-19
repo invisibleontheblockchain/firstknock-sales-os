@@ -8,19 +8,22 @@ import { startRepLocationSession } from '../src/lib/repLocationSession.js';
 
 const manager = { id: 'manager-a', app_role: 'manager', role: 'user' };
 const rep = { id: 'rep-a', app_role: 'rep', role: 'user', team_manager_id: manager.id };
-const member = { id: 'member-a', manager_id: manager.id, user_id: rep.id, role: 'rep', status: 'active', name: 'Alex' };
+const member = { id: 'member-a', manager_id: manager.id, user_id: rep.id, role: 'rep', status: 'active', name: 'Alex',
+  time_clock_active_shift_id: 'shift-a' };
+const shift = { id: 'shift-a', manager_id: manager.id, member_id: member.id, rep_user_id: rep.id, status: 'active',
+  clock_in_at: new Date(Date.now() - 3600_000).toISOString() };
 const fresh = (overrides = {}) => ({ id: 'location-a', manager_id: manager.id, member_id: member.id, rep_user_id: rep.id,
   session_id: 'session-a', sharing: true, lat: 33.4, lng: -112, accuracy: 12,
   observed_at: new Date().toISOString(), received_at: new Date().toISOString(), ...overrides });
 
-function harness({ caller = manager, savedUser = caller, members = [member], locations = [], ignoreScope = false } = {}) {
+function harness({ caller = manager, savedUser = caller, members = [member], locations = [], shifts = [shift], ignoreScope = false } = {}) {
   const writes = [];
   const queries = [];
   const reads = [];
   let handler;
-  const filter = (records) => async (query, sort, limit, skip) => {
+  const filter = (records, entity) => async (query, sort, limit, skip) => {
     queries.push(query);
-    reads.push({ query, sort, limit, skip });
+    reads.push({ entity, query, sort, limit, skip });
     const rows = (ignoreScope ? records : records.filter(row => Object.entries(query).every(([k, v]) => row[k] === v)))
       .sort((a, b) => sort === '-received_at' ? Date.parse(b.received_at) - Date.parse(a.received_at) : 0);
     return { items: rows.slice(skip, skip + limit) };
@@ -30,9 +33,10 @@ function harness({ caller = manager, savedUser = caller, members = [member], loc
       get: async id => { reads.push({ userId: id }); return id === savedUser?.id ? savedUser : id === manager.id ? manager : null; },
       filter: async () => assert.fail('Built-in User records must use the production-compatible get path'),
     },
-    TeamMember: { filter: filter(members) },
+    TeamMember: { filter: filter(members, 'TeamMember') },
+    TimeShift: { filter: filter(shifts, 'TimeShift') },
     RepLocation: {
-      filter: filter(locations),
+      filter: filter(locations, 'RepLocation'),
       create: async data => { writes.push(data); locations.push({ id: `new-${locations.length}`, ...data }); },
       update: async (id, data) => { writes.push({ id, ...data }); Object.assign(locations.find(row => row.id === id), data); },
       updateMany: async (query, update) => {
@@ -91,7 +95,7 @@ test('publish verifies caller and manager with supported account reads and only 
   const { invoke, reads, writes } = harness({ caller: rep, locations });
   assert.equal((await invoke({ ...fresh(), action: 'publish' })).status, 200);
   assert.deepEqual(reads.filter(read => read.userId).map(read => read.userId), [rep.id, manager.id]);
-  const locationReads = reads.filter(read => read.query?.rep_user_id);
+  const locationReads = reads.filter(read => read.entity === 'RepLocation' && read.query?.rep_user_id);
   assert.equal(locationReads.length, 1);
   assert.equal(locationReads[0].limit, 1);
   assert.equal(writes.length, 1);
@@ -159,14 +163,14 @@ test('a delayed GPS update cannot move a rep back to an older position', async (
   assert.equal(latest.lat, 33.4);
 });
 
-test('live signals age into delayed and then offline; expired coordinates are suppressed', async () => {
+test('off the clock, live signals age into delayed and then offline; expired coordinates are suppressed', async () => {
   const now = Date.now();
   const location = fresh({ observed_at: new Date(now).toISOString() });
   assert.equal(locationStatus(location, now + 60_000), 'live');
   assert.equal(locationStatus(location, now + 60_001), 'stale');
   assert.equal(locationStatus(location, now + 300_001), 'offline');
   assert.equal(locationAgeLabel(location, now + 90_000), '1m ago');
-  const { invoke } = harness({ locations: [fresh({ observed_at: new Date(now - 301_000).toISOString() })] });
+  const { invoke } = harness({ locations: [fresh({ observed_at: new Date(now - 301_000).toISOString() })], shifts: [] });
   assert.equal((await invoke()).data.reps[0].location, null);
 });
 
@@ -280,4 +284,64 @@ test('healthy polling returns to 30 seconds after an error and expiry thresholds
   assert.equal(interval({ state: { status: 'error', errorUpdateCount: 1 } }), 60_000);
   assert.equal(interval({ state: { status: 'error', errorUpdateCount: 4 } }), 120_000);
   assert.equal(interval({ state: { status: 'success', errorUpdateCount: 4 } }), 30_000);
+});
+
+test('reps can publish only while clocked in, and each point records its shift', async () => {
+  for (const shifts of [[], [{ ...shift, status: 'closed' }], [{ ...shift, id: 'other-shift' }],
+    [{ ...shift, clock_in_at: new Date(Date.now() + 60_000).toISOString() }], [shift, { ...shift }]]) {
+    const { invoke, writes } = harness({ caller: rep, shifts });
+    const { status, data } = await invoke({ ...fresh(), action: 'publish' });
+    assert.equal(status, 409);
+    assert.match(data.error, /Clock in/);
+    assert.equal(writes.length, 0);
+  }
+  const { invoke, writes } = harness({ caller: rep });
+  assert.equal((await invoke({ ...fresh(), action: 'publish' })).status, 200);
+  assert.equal(writes[0].shift_id, shift.id);
+});
+
+test('managers see a rep only while clocked in; a locked phone shows paused at the last spot from this shift', async () => {
+  const now = Date.now();
+  const paused = fresh({ observed_at: new Date(now - 20 * 60_000).toISOString() });
+  let { data } = await harness({ locations: [paused] }).invoke();
+  assert.equal(data.reps[0].on_shift, true);
+  assert.equal(data.reps[0].status, 'paused');
+  assert.equal(data.reps[0].location.lat, 33.4);
+  assert.equal(data.reps[0].clock_in_at, shift.clock_in_at);
+  // A point from before this clock-in belongs to an earlier shift.
+  ({ data } = await harness({ locations: [fresh({ observed_at: new Date(now - 2 * 3600_000).toISOString() })] }).invoke());
+  assert.equal(data.reps[0].location, null);
+  assert.equal(data.reps[0].status, 'offline');
+  // Clocked out: even a fresh point is hidden at once.
+  ({ data } = await harness({ locations: [fresh()], shifts: [] }).invoke());
+  assert.deepEqual([data.reps[0].on_shift, data.reps[0].status, data.reps[0].location], [false, 'offline', null]);
+});
+
+test('past five minutes a signal is paused for a clocked-in rep and offline otherwise', () => {
+  const now = Date.now();
+  const location = fresh({ observed_at: new Date(now).toISOString() });
+  assert.equal(locationStatus(location, now + 300_000, true), 'stale');
+  assert.equal(locationStatus(location, now + 300_001, true), 'paused');
+  assert.equal(locationStatus(location, now + 300_001, false), 'offline');
+  assert.equal(locationStatus({ ...location, sharing: false }, now + 300_001, true), 'offline');
+  assert.equal(locationAgeLabel(location, now + 135 * 60_000), '2h 15m ago');
+});
+
+test('returning to the app sends a fresh position at once, and never after stop', async () => {
+  const gps = gpsHarness();
+  gps.emit(); await flush();
+  gps.advance(20 * 60_000);
+  gps.session.refresh(); await flush();
+  assert.equal(gps.calls.length, 2);
+  await gps.session.stop();
+  gps.session.refresh(); await flush();
+  assert.deepEqual(gps.calls.map(body => body.action), ['publish', 'publish', 'stop']);
+});
+
+test('sharing follows the time clock: no manual switch, started only by an active shift', () => {
+  const source = fs.readFileSync('src/components/team/RepLocationSharing.jsx', 'utf8');
+  assert.match(source, /activeShiftFor\(status, user\)/);
+  assert.match(source, /const sharing = !!shift;/);
+  assert.doesNotMatch(source, /<button/);
+  assert.doesNotMatch(source, /Share location/);
 });

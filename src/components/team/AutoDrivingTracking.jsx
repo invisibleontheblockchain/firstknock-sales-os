@@ -4,6 +4,7 @@ import { Car } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
 import { readAutoDrivingConsent, writeAutoDrivingConsent, autoDrivingStorageKey, startAutoDrivingTracker, startExclusiveAutoDrivingTracker } from '@/lib/autoDrivingTracker';
+import { useShiftStatus } from '@/lib/useShiftStatus';
 
 const AutoDrivingContext = createContext(null);
 const readConsent = userId => { try { return readAutoDrivingConsent(localStorage, userId); } catch { return false; } };
@@ -13,17 +14,7 @@ export function AutoDrivingProvider({ children }) {
     const { isAuthenticated } = useAuth();
     const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me(), enabled: isAuthenticated, retry: false });
     const signedIn = isAuthenticated && !!user?.id;
-    const status = useQuery({
-        queryKey: ['timeClock', 'autoDriving', user?.id, 'status'],
-        enabled: !!signedIn,
-        queryFn: async () => {
-            const response = await base44.functions.invoke('autoDriving', { action: 'status' });
-            if (!response.data?.success || typeof response.data.manager_id !== 'string') throw new Error('Your work shift could not be verified.');
-            return response.data;
-        },
-        refetchInterval: query => query.state.data?.eligible === true && !query.state.error ? 30000 : false,
-        refetchIntervalInBackground: false, refetchOnWindowFocus: true, refetchOnReconnect: true, retry: false,
-    });
+    const status = useShiftStatus(user, signedIn);
     const eligible = signedIn && !status.isError && status.data?.eligible === true;
     const managerId = eligible ? status.data.manager_id : null;
     const [consentFor, setConsentFor] = useState(null);
