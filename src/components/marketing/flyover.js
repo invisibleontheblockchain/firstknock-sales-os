@@ -3,19 +3,28 @@
 // last frame is satellite-hero-day (the #sat still the scene crossfades to; the region,
 // metro and state views after it are daylight too). Built from two approved generated
 // clips: joined on their shared overhead frame, the still stretches trimmed, the zoom-out's
-// blended stretch (two layouts of the street at ~3 s) left out with a cut between the clean
-// frames either side, and frames picked so each step carries about the same motion; 24 fps,
-// every frame a keyframe so scroll can seek anywhere at once.
+// blended stretch (two layouts of the street from ~2.9 s) left out: after its last clean
+// frame, one cut onto the sharp 4K satellite still at the same framing (the house matched
+// in position and scale), then a digital zoom-out on that still to the #sat framing, which
+// can't morph, with the light eased from golden to daylight. Frames are picked so each step
+// carries about the same motion; 24 fps, every frame a keyframe so scroll can seek anywhere.
 export const FLYOVER_SRC = {
-  wide: '/landing/flyover-golden-v2-desktop.mp4', // 1920 x 1080
-  portrait: '/landing/flyover-golden-v2-phone.mp4', // the middle 864 x 1080 of the same frames, at higher quality for 3x screens
+  wide: '/landing/flyover-golden-v3-desktop.mp4', // 1920 x 1080
+  portrait: '/landing/flyover-golden-v3-phone.mp4', // the middle 864 x 1080 of the same frames, at higher quality for 3x screens
 };
 // Screens this narrow see only the middle of the frame until #sat covers it, even as
 // the camera starts to pull back (SatelliteLanding.css places the crop).
 export const PORTRAIT_QUERY = '(max-aspect-ratio: 3/5)';
 
 export const SATELLITE_STILLS = {
-  tight: { avif: '/landing/satellite-hero-day.avif', webp: '/landing/satellite-hero-day.webp', jpg: '/landing/satellite-hero-day.jpg' },
+  // #sat and the roof hold: the 4K re-render in the layer's aspect, so close zooms stay sharp
+  // on 3x phones. It fills the same layer as the hero photo, hence the same sizes rule.
+  tight: {
+    avif: '/landing/satellite-hero-day-2688.avif 2688w, /landing/satellite-hero-day-3820.avif 3820w',
+    webp: '/landing/satellite-hero-day-2688.webp 2688w, /landing/satellite-hero-day-3820.webp 3820w',
+    jpg: '/landing/satellite-hero-day-2688.jpg',
+    sizes: '(max-aspect-ratio: 2688/1520) 177vh, 100vw',
+  },
   wide: { avif: '/landing/satellite-zoom-hero-day.avif', webp: '/landing/satellite-zoom-hero-day.webp', jpg: '/landing/satellite-zoom-hero-day.jpg' },
 };
 

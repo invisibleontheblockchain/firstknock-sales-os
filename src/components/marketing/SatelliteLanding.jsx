@@ -11,8 +11,8 @@ const CONTACT_URL = 'https://calendly.com/firstknockhelp/30min';
 // A satellite still of the hero house, loaded after the hero photo (the scene moves data-srcset/data-src across).
 function SatelliteStill({ still, id }) {
   return <picture>
-    <source type="image/avif" data-srcset={still.avif} />
-    <source type="image/webp" data-srcset={still.webp} />
+    <source type="image/avif" data-srcset={still.avif} sizes={still.sizes} />
+    <source type="image/webp" data-srcset={still.webp} sizes={still.sizes} />
     <img id={id} alt="" data-src={still.jpg} decoding="async" />
   </picture>;
 }
