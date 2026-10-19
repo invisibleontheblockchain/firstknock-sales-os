@@ -69,18 +69,27 @@ test('upright phones get the middle of the frame, placed exactly where it sits i
   assert.ok(seen < cropWidth, `sees ${seen.toFixed(3)} of the layer, crop is ${cropWidth.toFixed(3)}`);
 });
 
-test('the daylight satellite stills are full size in AVIF, WebP and JPEG', () => {
-  for (const still of Object.values(SATELLITE_STILLS)) {
-    const avif = pub(still.avif), ispe = avif.indexOf('ispe');
-    assert.deepEqual([avif.readUInt32BE(ispe + 8), avif.readUInt32BE(ispe + 12)], [2688, 1520], still.avif);
-    assert.ok(avif.length < 600_000);
-    assert.equal(pub(still.webp).toString('latin1', 8, 12), 'WEBP');
+test('the daylight satellite stills are full size in AVIF, WebP and JPEG; #sat has the sharp 4K re-render', () => {
+  const candidates = (srcset) => srcset.split(', ').map((entry) => { const [url, w] = entry.split(' '); return { url, w: w ? Number.parseInt(w, 10) : 2688 }; });
+  for (const [name, still] of Object.entries(SATELLITE_STILLS)) {
+    for (const { url, w } of candidates(still.avif)) {
+      const avif = pub(url), ispe = avif.indexOf('ispe');
+      const [width, height] = [avif.readUInt32BE(ispe + 8), avif.readUInt32BE(ispe + 12)];
+      assert.equal(width, w, url);
+      assert.ok(Math.abs(width / height - 2688 / 1520) < 0.002, `${url} keeps the layer's aspect`);
+      assert.ok(avif.length < 1_500_000, url);
+    }
+    for (const { url } of candidates(still.webp)) assert.equal(pub(url).toString('latin1', 8, 12), 'WEBP');
     assert.equal(pub(still.jpg).readUInt16BE(0), 0xffd8);
+    if (name === 'tight') {
+      assert.deepEqual(candidates(still.avif).map((c) => c.w), [2688, 3820], '3x phones get the 3820-wide still');
+      assert.equal(still.sizes, '(max-aspect-ratio: 2688/1520) 177vh, 100vw');
+    }
   }
 });
 
 test('the cloud move, the dissolve still, the dusk set and the older flyover assets are gone', () => {
-  for (const old of ['flyover-golden-desktop.mp4', 'flyover-golden-phone.mp4', 'flyover-hero-desktop.mp4', 'flyover-hero-phone.mp4', 'satellite-hero-dusk.avif', 'satellite-zoom-hero-dusk.avif', 'house-lux.jpg', 'house-lux-2688.avif', 'flyover-roof-consistent.mp4', 'flyover-roof-consistent-3500ms.avif', 'flyover-roof-consistent-3500ms.webp', 'satellite-roof-consistent.jpg', 'satellite-zoom-roof-consistent.jpg', 'flyover-lux.mp4', 'satellite-lux.jpg', 'satellite-zoom-lux.jpg']) {
+  for (const old of ['flyover-golden-v2-desktop.mp4', 'flyover-golden-v2-phone.mp4', 'satellite-hero-day.avif', 'satellite-hero-day.jpg', 'flyover-golden-desktop.mp4', 'flyover-golden-phone.mp4', 'flyover-hero-desktop.mp4', 'flyover-hero-phone.mp4', 'satellite-hero-dusk.avif', 'satellite-zoom-hero-dusk.avif', 'house-lux.jpg', 'house-lux-2688.avif', 'flyover-roof-consistent.mp4', 'flyover-roof-consistent-3500ms.avif', 'flyover-roof-consistent-3500ms.webp', 'satellite-roof-consistent.jpg', 'satellite-zoom-roof-consistent.jpg', 'flyover-lux.mp4', 'satellite-lux.jpg', 'satellite-zoom-lux.jpg']) {
     assert.equal(existsSync(new URL(`../public/landing/${old}`, import.meta.url)), false, old);
   }
   assert.equal(existsSync(new URL('../src/components/marketing/skyTransition.js', import.meta.url)), false);

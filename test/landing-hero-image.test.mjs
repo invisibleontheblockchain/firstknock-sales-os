@@ -114,7 +114,7 @@ test('the landing shows the photo through <picture>, never as the video poster',
   // Everything else on the landing waits for the photo (or the first scroll).
   assert.doesNotMatch(jsx, /<img[^>]* src="\/landing\//);
   assert.equal(jsx.match(/data-src="\/landing\/satellite-[\w-]+\.jpg"/g).length, 3);
-  assert.match(jsx, /function SatelliteStill\(\{ still, id \}\) \{[\s\S]*?data-srcset=\{still\.avif\}[\s\S]*?data-srcset=\{still\.webp\}[\s\S]*?<img id=\{id\} alt="" data-src=\{still\.jpg\}/);
+  assert.match(jsx, /function SatelliteStill\(\{ still, id \}\) \{[\s\S]*?data-srcset=\{still\.avif\} sizes=\{still\.sizes\}[\s\S]*?data-srcset=\{still\.webp\} sizes=\{still\.sizes\}[\s\S]*?<img id=\{id\} alt="" data-src=\{still\.jpg\}/);
   assert.equal(jsx.match(/<SatelliteStill still=\{SATELLITE_STILLS\.(wide|tight)\}/g).length, 3, 'lWide, #sat and lHouse load after the photo too');
 
   const css = read('src/components/marketing/SatelliteLanding.css');
