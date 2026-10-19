@@ -1,11 +1,11 @@
 // The opening move: one continuous crane move over the hero house, from the hero photo (its
-// first frame) rising and tilting to nearly straight down, steep by the time section 01
+// first frame) rising and tilting to straight down, steep by the time section 01
 // ("It starts with one front door") is on screen, then pulling back over the neighbourhood.
 // Built from the approved Kling rise (frames picked so each step carries about the same
-// motion, easing out as it settles overhead) and a digital zoom-out on the sharp 4K
-// satellite still, easing in: the rise's last frame is that still at the same framing
-// (edge-matched to within 2 px), joined by a 4-frame crossfade of the two aligned images,
-// and the zoom ends on exactly the image #sat shows. 1912 x 1080 (the rise's
+// motion) cut onto a digital zoom-out of the sharp 4K satellite still. The rise ends looking
+// straight down at that still's framing (matched to under a pixel), its last frames graded
+// to the still's colour, and the zoom-out starts at the rise's own speed, so at the cut only
+// the sharpness changes; it eases out onto exactly the image #sat shows. 1912 x 1080 (the rise's
 // own size, the layer's aspect to within 0.1%), 24 fps, every frame a keyframe so scroll can
 // seek anywhere at once.
 export const FLYOVER_SRC = {
@@ -44,7 +44,7 @@ export function flyoverOpacity(cur, ready, onFirstFrame = true) {
 }
 
 // #sat, the 4K still the move ends on, fades in over the video's last frames, which are that
-// same view (the last 5 are within 1.1% of its zoom). The camera follows a flick at once, so
+// same view (the last 5 are within 0.4% of its zoom). The camera follows a flick at once, so
 // the video can still be on an earlier frame when the fade starts (its seeks haven't caught
 // up, or it hasn't loaded): then #sat covers it at once instead, so a different frame never
 // shows through the part-transparent still.
