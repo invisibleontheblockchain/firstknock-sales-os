@@ -119,18 +119,23 @@ test('#sat is the last frame in the layer\'s aspect in AVIF, WebP and JPEG; the 
   assert.ok(avif.length < 1_500_000);
   assert.equal(pub(still.webp).toString('latin1', 8, 12), 'WEBP');
   assert.equal(pub(still.jpg).readUInt16BE(0), 0xffd8);
-  const region = pub('/landing/satellite-region-house.jpg');
+  const region = pub('/landing/satellite-region-day.jpg');
   assert.equal(region.readUInt16BE(0), 0xffd8);
-  // the scene places the subdivision where the map has it, and masks the video layer with the map's ellipse
+  // the scene places the subdivision where the map has it, and masks the video layer with the map's edge
   assert.deepEqual(END_PATCH, { k: 0.12, cx: 1284.86, cy: 762.6 });
-  assert.equal(END_MASK, 'radial-gradient(closest-side, #000 60%, rgba(0, 0, 0, .844) 70%, rgba(0, 0, 0, .5) 80%, rgba(0, 0, 0, .156) 90%, transparent 100%)');
+  assert.equal(END_MASK, '/landing/satellite-house-end-mask.png');
+  const mask = pub(END_MASK);
+  assert.equal(mask.toString('latin1', 1, 4), 'PNG');
+  assert.ok(Math.abs(mask.readUInt32BE(16) / mask.readUInt32BE(20) - 2688 / 1520) < 0.01, 'the layer\'s aspect');
   const scene = read('src/components/marketing/satelliteScene.js').toString();
   assert.match(scene, /const RT = \{ x: END_PATCH\.cx - IW \* KT \/ 2, y: END_PATCH\.cy - IH \* KT \/ 2, w: IW \* KT, h: IH \* KT \};/);
-  assert.match(scene, /L\.tight\.style\.maskImage = L\.tight\.style\.webkitMaskImage = soften > 0 \? END_MASK : '';/);
+  assert.match(scene, /L\.tight\.style\.maskImage = L\.tight\.style\.webkitMaskImage = soften > 0 \? `url\(\$\{END_MASK\}\)` : '';/);
+  // the mask is used only once loaded: a mask image still loading would hide the layer
+  assert.match(scene, /const soften = maskReady \? band\(pA, lerp\(pA, pB, 0\.12\), cur\) : 0,/);
 });
 
 test('the other house is gone: its stills, the roof hold, the wide layer and every older flyover', () => {
-  for (const old of ['flyover-rise-desktop.mp4', 'flyover-rise-phone.mp4', 'satellite-hero-day-2688.avif', 'satellite-hero-day-2688.webp', 'satellite-hero-day-2688.jpg', 'satellite-hero-day-3820.avif', 'satellite-hero-day-3820.webp', 'satellite-zoom-hero-day.avif', 'satellite-zoom-hero-day.webp', 'satellite-zoom-hero-day.jpg', 'satellite-region.jpg', 'flyover-golden-v3-desktop.mp4', 'flyover-golden-v3-phone.mp4', 'flyover-golden-v2-desktop.mp4', 'flyover-golden-v2-phone.mp4', 'satellite-hero-day.avif', 'satellite-hero-day.jpg', 'flyover-golden-desktop.mp4', 'flyover-golden-phone.mp4', 'flyover-hero-desktop.mp4', 'flyover-hero-phone.mp4', 'satellite-hero-dusk.avif', 'satellite-zoom-hero-dusk.avif', 'house-lux.jpg', 'house-lux-2688.avif', 'flyover-roof-consistent.mp4', 'flyover-roof-consistent-3500ms.avif', 'flyover-roof-consistent-3500ms.webp', 'satellite-roof-consistent.jpg', 'satellite-zoom-roof-consistent.jpg', 'flyover-lux.mp4', 'satellite-lux.jpg', 'satellite-zoom-lux.jpg']) {
+  for (const old of ['flyover-house-desktop.mp4', 'flyover-house-phone.mp4', 'satellite-house-end.avif', 'satellite-house-end.webp', 'satellite-house-end.jpg', 'satellite-region-house.jpg', 'flyover-rise-desktop.mp4', 'flyover-rise-phone.mp4', 'satellite-hero-day-2688.avif', 'satellite-hero-day-2688.webp', 'satellite-hero-day-2688.jpg', 'satellite-hero-day-3820.avif', 'satellite-hero-day-3820.webp', 'satellite-zoom-hero-day.avif', 'satellite-zoom-hero-day.webp', 'satellite-zoom-hero-day.jpg', 'satellite-region.jpg', 'flyover-golden-v3-desktop.mp4', 'flyover-golden-v3-phone.mp4', 'flyover-golden-v2-desktop.mp4', 'flyover-golden-v2-phone.mp4', 'satellite-hero-day.avif', 'satellite-hero-day.jpg', 'flyover-golden-desktop.mp4', 'flyover-golden-phone.mp4', 'flyover-hero-desktop.mp4', 'flyover-hero-phone.mp4', 'satellite-hero-dusk.avif', 'satellite-zoom-hero-dusk.avif', 'house-lux.jpg', 'house-lux-2688.avif', 'flyover-roof-consistent.mp4', 'flyover-roof-consistent-3500ms.avif', 'flyover-roof-consistent-3500ms.webp', 'satellite-roof-consistent.jpg', 'satellite-zoom-roof-consistent.jpg', 'flyover-lux.mp4', 'satellite-lux.jpg', 'satellite-zoom-lux.jpg']) {
     assert.equal(existsSync(new URL(`../public/landing/${old}`, import.meta.url)), false, old);
   }
   assert.equal(existsSync(new URL('../src/components/marketing/skyTransition.js', import.meta.url)), false);
