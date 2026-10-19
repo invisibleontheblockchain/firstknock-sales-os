@@ -163,10 +163,17 @@ export function startSatelliteScene(root) {
   let target = 0, cur = 0, leadsAt = null, runAt = null, teamAt = null, last = performance.now(), dur = 8;
   const onMetadata = () => { dur = Number.isFinite(fly.duration) && fly.duration > 0 ? fly.duration : 8; };
   fly.addEventListener('loadedmetadata', onMetadata);
-  // Once the video has a frame it keeps showing one while it seeks (readyState can dip meanwhile).
-  let hasFrame = false, shownTime = 0;
-  const onFrame = () => { hasFrame = true; shownTime = fly.currentTime; };
-  fly.addEventListener('loadeddata', onFrame);
+  // The video counts as ready once a seek has landed and been drawn (two frames later);
+  // after that it keeps showing a frame while it seeks (readyState can dip meanwhile).
+  // iOS Safari shows a later frame after loading until something seeks it, so seek to
+  // the first frame explicitly: it is the hero photo the video takes over from.
+  let hasFrame = false, shownTime = 0, readyFrame = 0;
+  const onLoaded = () => { fly.currentTime = 0.001; };
+  const onFrame = () => {
+    shownTime = fly.currentTime;
+    if (!hasFrame) readyFrame = requestAnimationFrame(() => { readyFrame = requestAnimationFrame(() => { hasFrame = true; }); });
+  };
+  fly.addEventListener('loadeddata', onLoaded);
   fly.addEventListener('seeked', onFrame);
   // Upright phones get the middle of the frame (flyover.js); re-pick if the screen turns.
   const portraitQuery = matchMedia(PORTRAIT_QUERY);
@@ -176,6 +183,7 @@ export function startSatelliteScene(root) {
     if (fly.getAttribute('src') === src) return;
     fly.classList.toggle('portrait', portrait);
     hasFrame = false;
+    cancelAnimationFrame(readyFrame);
     fly.src = src;
     fly.load();
   };
@@ -323,7 +331,8 @@ export function startSatelliteScene(root) {
     window.removeEventListener('resize', layout);
     root.removeEventListener('scroll', onScroll);
     fly.removeEventListener('loadedmetadata', onMetadata);
-    fly.removeEventListener('loadeddata', onFrame);
+    cancelAnimationFrame(readyFrame);
+    fly.removeEventListener('loadeddata', onLoaded);
     fly.removeEventListener('seeked', onFrame);
     portraitQuery.removeEventListener('change', onTurn);
     fly.pause();
