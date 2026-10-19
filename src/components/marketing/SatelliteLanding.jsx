@@ -8,7 +8,7 @@ import './SatelliteLanding.css';
 
 const CONTACT_URL = 'https://calendly.com/firstknockhelp/30min';
 
-// A satellite still of the hero house, loaded after the hero photo (the scene moves data-srcset/data-src across).
+// A still of the flyover's last frame, loaded after the hero photo (the scene moves data-srcset/data-src across).
 function SatelliteStill({ still, id }) {
   return <picture>
     <source type="image/avif" data-srcset={still.avif} sizes={still.sizes} />
@@ -32,8 +32,8 @@ export default function SatelliteLanding() {
   {/* The house photo loads first; the scene gives these their src (data-src) once it is in. */}
   <div className="layer" id="lState"><img id="state" alt="" data-src="/landing/satellite-state.jpg" decoding="async" /></div>
   <div className="layer" id="lMetro"><img id="metro" alt="" data-src="/landing/satellite-metro.jpg" decoding="async" /></div>
-  <div className="layer" id="lRegion"><img id="region" alt="" data-src="/landing/satellite-region.jpg" decoding="async" /></div>
-  <div className="layer" id="lWide"><SatelliteStill still={SATELLITE_STILLS.wide} /></div>
+  {/* The region map has the subdivision the flyover ends on pasted in where the camera pulls back to it (flyover.js). */}
+  <div className="layer" id="lRegion"><img id="region" alt="" data-src="/landing/satellite-region-house.jpg" decoding="async" /></div>
   <div className="layer" id="lTight">
     <div className="hero-placeholder" id="housePlaceholder" style={{ backgroundImage: HERO_PLACEHOLDER }}></div>
     <picture>
@@ -44,9 +44,8 @@ export default function SatelliteLanding() {
     </picture>
     {/* One continuous flyover of the same house: its first frame is the photo above, its last the still below (flyover.js). */}
     <video id="fly" muted playsInline preload="auto"></video>
-    <SatelliteStill still={SATELLITE_STILLS.tight} id="sat" />
+    <SatelliteStill still={SATELLITE_STILLS.end} id="sat" />
   </div>
-  <div className="layer" id="lHouse"><SatelliteStill still={SATELLITE_STILLS.tight} /></div>
   <svg className="layer" id="ov" viewBox="0 0 2688 1520"></svg>
 </div>
 <div className="shade" id="shadeL"></div><div className="shade" id="shadeB"></div>
