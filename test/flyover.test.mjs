@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import test from 'node:test';
-import { SATELLITE_STILLS, FLYOVER_SRC, FLYOVER_FRAMES, DOOR_FRAME, END_PATCH, END_MASK, MOVE_START, HANDOFF_AT, PORTRAIT_QUERY, SAT_MATCH_FRAMES, flyoverFrame, flyoverOpacity, satelliteOpacity } from '../src/components/marketing/flyover.js';
+import { SATELLITE_STILLS, FLYOVER_SRC, FLYOVER_FRAMES, DOOR_FRAME, END_PATCH, END_WIDE, MOVE_START, HANDOFF_AT, PORTRAIT_QUERY, SAT_MATCH_FRAMES, flyoverFrame, flyoverOpacity, satelliteOpacity } from '../src/components/marketing/flyover.js';
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url));
 const pub = (url) => read(`public${url}`);
@@ -93,7 +93,7 @@ test('#sat, the still of the last frame, fades in only over that frame and cover
   assert.match(scene, /const satFade = reduce \? band\(end - 0\.2, end, cur\) : band\(end, end \+ 0\.05, cur\);/);
   assert.match(scene, /sat\.style\.opacity = reduce \? satFade : satelliteOpacity\(satFade, hasFrame, frames - 1 - Math\.round\(shownTime \/ videoFrame\)\);/);
   // and only pulls back once #sat is fully up
-  assert.match(scene, /const pA = end \+ 0\.06, pB = Math\.max\(2\.12, pA \+ 0\.25\);/);
+  assert.match(scene, /const pA = end \+ 0\.06, qAe = pA \+ 0\.14, qBa = pA \+ 0\.12, qBb = Math\.max\(2\.24, pA \+ 0\.4\);/);
 });
 
 test('upright phones get the middle of the frame, placed exactly where it sits in the full frame', () => {
@@ -119,18 +119,36 @@ test('#sat is the last frame in the layer\'s aspect in AVIF, WebP and JPEG; the 
   assert.ok(avif.length < 1_500_000);
   assert.equal(pub(still.webp).toString('latin1', 8, 12), 'WEBP');
   assert.equal(pub(still.jpg).readUInt16BE(0), 0xffd8);
-  const region = pub('/landing/satellite-region-house.jpg');
-  assert.equal(region.readUInt16BE(0), 0xffd8);
-  // the scene places the subdivision where the map has it, and masks the video layer with the map's ellipse
+});
+
+test('the pull-back starts inside a 2x composite of the same subdivision, then hands over to a map that holds it', () => {
+  const css = read('src/components/marketing/SatelliteLanding.css').toString();
+  const wide = SATELLITE_STILLS.wide, avif = pub(wide.avif), ispe = avif.indexOf('ispe');
+  assert.deepEqual([avif.readUInt32BE(ispe + 8), avif.readUInt32BE(ispe + 12)], [END_WIDE.width, END_WIDE.height]);
+  assert.ok(avif.length < 1_000_000, `${avif.length} bytes`);
+  assert.equal(pub(wide.webp).toString('latin1', 8, 12), 'WEBP');
+  assert.equal(pub(wide.jpg).readUInt16BE(0), 0xffd8);
+  assert.equal(pub(END_WIDE.mask).toString('latin1', 1, 4), 'PNG');
+  // the layer is 2688 px wide like every layer, so its height carries the composite's aspect
+  const [, h] = css.match(/#lEnd \{ height: ([\d.]+)px;/);
+  assert.ok(Math.abs(Number(h) - 2688 * END_WIDE.height / END_WIDE.width) < 0.01);
+  // the frame sits in the composite exactly where the video sits in the tight layer
+  assert.deepEqual([END_WIDE.frameX, END_WIDE.frameY], [941, 517]);
   assert.deepEqual(END_PATCH, { k: 0.12, cx: 1284.86, cy: 762.6 });
-  assert.equal(END_MASK, 'radial-gradient(closest-side, #000 60%, rgba(0, 0, 0, .844) 70%, rgba(0, 0, 0, .5) 80%, rgba(0, 0, 0, .156) 90%, transparent 100%)');
+  assert.equal(pub('/landing/satellite-region-house2.jpg').readUInt16BE(0), 0xffd8);
   const scene = read('src/components/marketing/satelliteScene.js').toString();
   assert.match(scene, /const RT = \{ x: END_PATCH\.cx - IW \* KT \/ 2, y: END_PATCH\.cy - IH \* KT \/ 2, w: IW \* KT, h: IH \* KT \};/);
-  assert.match(scene, /L\.tight\.style\.maskImage = L\.tight\.style\.webkitMaskImage = soften > 0 \? END_MASK : '';/);
+  assert.match(scene, /const RE = \{ x: RT\.x \+ \(\(IW - 1912 \* sF\) \/ 2 - END_WIDE\.frameX \* sF\) \* KT, y: RT\.y - END_WIDE\.frameY \* sF \* KT, w: END_WIDE\.width \* sF \* KT, h: END_WIDE\.height \* sF \* KT \};/);
+  // first a pure zoom-out about the frame (the centre stays on it until the second stage)
+  assert.match(scene, /const zT = 1 \/ \(KT \* K3 \* K4\), zE = zT \/ 1\.95,/);
+  assert.match(scene, /const cx = lerp\(lerp\(lerp\(cT\[0\], cR\[0\], qB\)/);
+  // the composite is used only once decoded; until then the frame itself stays up
+  assert.match(scene, /if \(endImg\) stopEndReveal = revealWhenDecoded\(endImg, \(ok\) => \{ endReady = ok; \}\);/);
+  assert.match(scene, /L\.end\.style\.visibility = endReady && cur > pA - 0\.01 && cur < endGone \? 'visible' : 'hidden';/);
 });
 
 test('the other house is gone: its stills, the roof hold, the wide layer and every older flyover', () => {
-  for (const old of ['flyover-rise-desktop.mp4', 'flyover-rise-phone.mp4', 'satellite-hero-day-2688.avif', 'satellite-hero-day-2688.webp', 'satellite-hero-day-2688.jpg', 'satellite-hero-day-3820.avif', 'satellite-hero-day-3820.webp', 'satellite-zoom-hero-day.avif', 'satellite-zoom-hero-day.webp', 'satellite-zoom-hero-day.jpg', 'satellite-region.jpg', 'flyover-golden-v3-desktop.mp4', 'flyover-golden-v3-phone.mp4', 'flyover-golden-v2-desktop.mp4', 'flyover-golden-v2-phone.mp4', 'satellite-hero-day.avif', 'satellite-hero-day.jpg', 'flyover-golden-desktop.mp4', 'flyover-golden-phone.mp4', 'flyover-hero-desktop.mp4', 'flyover-hero-phone.mp4', 'satellite-hero-dusk.avif', 'satellite-zoom-hero-dusk.avif', 'house-lux.jpg', 'house-lux-2688.avif', 'flyover-roof-consistent.mp4', 'flyover-roof-consistent-3500ms.avif', 'flyover-roof-consistent-3500ms.webp', 'satellite-roof-consistent.jpg', 'satellite-zoom-roof-consistent.jpg', 'flyover-lux.mp4', 'satellite-lux.jpg', 'satellite-zoom-lux.jpg']) {
+  for (const old of ['satellite-region-house.jpg', 'flyover-rise-desktop.mp4', 'flyover-rise-phone.mp4', 'satellite-hero-day-2688.avif', 'satellite-hero-day-2688.webp', 'satellite-hero-day-2688.jpg', 'satellite-hero-day-3820.avif', 'satellite-hero-day-3820.webp', 'satellite-zoom-hero-day.avif', 'satellite-zoom-hero-day.webp', 'satellite-zoom-hero-day.jpg', 'satellite-region.jpg', 'flyover-golden-v3-desktop.mp4', 'flyover-golden-v3-phone.mp4', 'flyover-golden-v2-desktop.mp4', 'flyover-golden-v2-phone.mp4', 'satellite-hero-day.avif', 'satellite-hero-day.jpg', 'flyover-golden-desktop.mp4', 'flyover-golden-phone.mp4', 'flyover-hero-desktop.mp4', 'flyover-hero-phone.mp4', 'satellite-hero-dusk.avif', 'satellite-zoom-hero-dusk.avif', 'house-lux.jpg', 'house-lux-2688.avif', 'flyover-roof-consistent.mp4', 'flyover-roof-consistent-3500ms.avif', 'flyover-roof-consistent-3500ms.webp', 'satellite-roof-consistent.jpg', 'satellite-zoom-roof-consistent.jpg', 'flyover-lux.mp4', 'satellite-lux.jpg', 'satellite-zoom-lux.jpg']) {
     assert.equal(existsSync(new URL(`../public/landing/${old}`, import.meta.url)), false, old);
   }
   assert.equal(existsSync(new URL('../src/components/marketing/skyTransition.js', import.meta.url)), false);

@@ -33,7 +33,9 @@ export default function SatelliteLanding() {
   <div className="layer" id="lState"><img id="state" alt="" data-src="/landing/satellite-state.jpg" decoding="async" /></div>
   <div className="layer" id="lMetro"><img id="metro" alt="" data-src="/landing/satellite-metro.jpg" decoding="async" /></div>
   {/* The region map has the subdivision the flyover ends on pasted in where the camera pulls back to it (flyover.js). */}
-  <div className="layer" id="lRegion"><img id="region" alt="" data-src="/landing/satellite-region-house.jpg" decoding="async" /></div>
+  <div className="layer" id="lRegion"><img id="region" alt="" data-src="/landing/satellite-region-house2.jpg" decoding="async" /></div>
+  {/* The flyover's last frame inside a 2x outpaint of the same subdivision: the pull-back starts inside it. */}
+  <div className="layer" id="lEnd"><SatelliteStill still={SATELLITE_STILLS.wide} id="endWide" /></div>
   <div className="layer" id="lTight">
     <div className="hero-placeholder" id="housePlaceholder" style={{ backgroundImage: HERO_PLACEHOLDER }}></div>
     <picture>

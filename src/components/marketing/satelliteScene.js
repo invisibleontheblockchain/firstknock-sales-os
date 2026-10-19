@@ -1,6 +1,6 @@
 // Satellite presentation adapted from the original FirstKnock prototype.
 // All DOM access, listeners, and animation resources belong to this landing page.
-import { END_MASK, END_PATCH, FLYOVER_SRC, PORTRAIT_QUERY, flyoverFrame, flyoverOpacity, satelliteOpacity } from './flyover';
+import { END_PATCH, END_WIDE, FLYOVER_SRC, PORTRAIT_QUERY, flyoverFrame, flyoverOpacity, satelliteOpacity } from './flyover';
 import { revealWhenDecoded } from './heroImage';
 import { advanceSatelliteProgress } from './satelliteMotion';
 
@@ -12,7 +12,7 @@ export function startSatelliteScene(root) {
   const $ = (id) => root.querySelector(`#${id}`);
   const fly = $('fly'), sat = $('sat'), ov = $('ov'), hint = $('hint');
   const state = $('state'), shadeL = $('shadeL'), shadeB = $('shadeB'), legend = $('legend');
-  const L = { state: $('lState'), metro: $('lMetro'), region: $('lRegion'), tight: $('lTight'), ov };
+  const L = { state: $('lState'), metro: $('lMetro'), region: $('lRegion'), end: $('lEnd'), tight: $('lTight'), ov };
   const dots = [...root.querySelectorAll('#steps i')];
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const clamp01 = (v) => Math.min(1, Math.max(0, v));
@@ -30,14 +30,17 @@ export function startSatelliteScene(root) {
      where the region map has the same subdivision pasted in (flyover.js) */
   const KT = END_PATCH.k;
   const RT = { x: END_PATCH.cx - IW * KT / 2, y: END_PATCH.cy - IH * KT / 2, w: IW * KT, h: IH * KT };
+  // the 2x composite round that frame: the video covers the tight layer at IH / 1080 layer px per frame px
+  const sF = IH / 1080;
+  const RE = { x: RT.x + ((IW - 1912 * sF) / 2 - END_WIDE.frameX * sF) * KT, y: RT.y - END_WIDE.frameY * sF * KT, w: END_WIDE.width * sF * KT, h: END_WIDE.height * sF * KT };
   // the region sits in the market view at 0.31 scale (river, interchange and the oval subdivision line up)
   const K3 = 0.31, RR = { x: 681 * 1.344, y: 398 * 1.344, w: IW * K3, h: IH * K3 };
   const inM = (r) => ({ x: RR.x + r.x * K3, y: RR.y + r.y * K3, w: r.w * K3, h: r.h * K3 });
-  const RTm = inM(RT);
+  const RTm = inM(RT), REm = inM(RE);
   // and the market sits in the wider regional view at 0.43 scale (airport, lake and interchange line up): ~5x the area
   const K4 = 0.43, RS = { x: 0, y: 0, w: IW, h: IH }, RMs = { x: 567 * 1.344, y: 305 * 1.344, w: IW * K4, h: IH * K4 };
   const inS = (r) => ({ x: RMs.x + r.x * K4, y: RMs.y + r.y * K4, w: r.w * K4, h: r.h * K4 });
-  const RRs = inS(RR), RTs = inS(RTm);
+  const RRs = inS(RR), RTs = inS(RTm), REs = inS(REm);
   const center = (r) => [r.x + r.w / 2, r.y + r.h / 2];
 
   /* ---- the region map (region px) ---- */
@@ -206,7 +209,12 @@ export function startSatelliteScene(root) {
   const onTurn = () => { if (fly.getAttribute('src')) loadFlyover(); };
   portraitQuery.addEventListener('change', onTurn);
 
-  // The house photo gets the connection to itself; the flyover (5.3-6.6 MB) and the
+  // The composite the pull-back starts in: used once downloaded and decoded (a 3816 x 2130 image decoded
+  // mid-scroll would stall a frame); it and its soft edge (a mask image) load with the rest, after the photo.
+  let endReady = false, stopEndReveal = () => {};
+  const endImg = $('endWide');
+
+  // The house photo gets the connection to itself; the flyover (5.5-5.8 MB) and the
   // satellite views start once it is in, or at the first scroll if that comes sooner.
   let extrasStarted = false;
   const startExtras = () => {
@@ -214,6 +222,8 @@ export function startSatelliteScene(root) {
     extrasStarted = true;
     root.querySelectorAll('source[data-srcset]').forEach((source) => { source.srcset = source.dataset.srcset; source.removeAttribute('data-srcset'); });
     root.querySelectorAll('img[data-src]').forEach((img) => { img.src = img.dataset.src; img.removeAttribute('data-src'); });
+    L.end.style.maskImage = L.end.style.webkitMaskImage = `url(${END_WIDE.mask})`;
+    if (endImg) stopEndReveal = revealWhenDecoded(endImg, (ok) => { endReady = ok; });
     // Let the browser buffer right away and seek using range requests, so the move
     // never waits on the whole file after the first scroll.
     if (!reduce) loadFlyover();
@@ -249,26 +259,28 @@ export function startSatelliteScene(root) {
     const satFade = reduce ? band(end - 0.2, end, cur) : band(end, end + 0.05, cur);
     sat.style.opacity = reduce ? satFade : satelliteOpacity(satFade, hasFrame, frames - 1 - Math.round(shownTime / videoFrame));
 
-    // pull back: the subdivision -> the region -> the whole side of town (zoom is relative to the region filling the screen)
-    const pA = end + 0.06, pB = Math.max(2.12, pA + 0.25);
-    const p2 = band(pA, pB, cur), p3 = band(2.08, 2.38, cur), p4 = band(2.33, 2.68, cur);
-    const zT = 1 / (KT * K3 * K4), zR = 1 / (K3 * K4), zM = 1 / K4;
-    const lz = lerp(lerp(lerp(Math.log(zT), Math.log(zR), p2), Math.log(zM), p3), 0, p4);
+    // pull back in two stages (zoom is relative to the region filling the screen):
+    //   first a pure 1.95x zoom-out about the frame inside the composite (all one subdivision, one light),
+    //   then out to the region, which takes over late, when it is shown near its own resolution
+    const pA = end + 0.06, qAe = pA + 0.14, qBa = pA + 0.12, qBb = Math.max(2.24, pA + 0.4);
+    const qA = band(pA, qAe, cur), qB = band(qBa, qBb, cur), p3 = band(2.08, 2.38, cur), p4 = band(2.33, 2.68, cur);
+    const zT = 1 / (KT * K3 * K4), zE = zT / 1.95, zR = 1 / (K3 * K4), zM = 1 / K4;
+    const lz = lerp(lerp(lerp(lerp(Math.log(zT), Math.log(zE), qA), Math.log(zR), qB), Math.log(zM), p3), 0, p4);
     const zoom = Math.exp(lz); // log-space so the climb feels constant
-    const cx = lerp(lerp(lerp(cT[0], cR[0], p2), cM[0], p3), cS[0], p4), cy = lerp(lerp(lerp(cT[1], cR[1], p2), cM[1], p3), cS[1], p4);
-    place(L.tight, RTs, cx, cy, zoom); place(L.region, RRs, cx, cy, zoom); place(L.metro, RMs, cx, cy, zoom); place(L.state, RS, cx, cy, zoom); place(L.ov, RS, cx, cy, zoom);
-    // On the way out the subdivision's edge softens into the map (which has it in the same soft
-    // ellipse, graded to the map), then it fades into the map: the golden light settles to the
-    // map's and nothing is swapped. The mask starts oversized (no visible effect) and closes in.
-    const soften = band(pA, lerp(pA, pB, 0.35), cur), maskSize = lerp(250, 100, soften).toFixed(1) + '%';
-    L.tight.style.maskImage = L.tight.style.webkitMaskImage = soften > 0 ? END_MASK : '';
-    L.tight.style.maskSize = L.tight.style.webkitMaskSize = soften > 0 ? `${maskSize} ${maskSize}` : '';
-    const tightGone = lerp(pA, pB, 0.75);
-    L.tight.style.opacity = 1 - band(lerp(pA, pB, 0.3), tightGone, cur);
+    const cx = lerp(lerp(lerp(cT[0], cR[0], qB), cM[0], p3), cS[0], p4), cy = lerp(lerp(lerp(cT[1], cR[1], qB), cM[1], p3), cS[1], p4);
+    place(L.tight, RTs, cx, cy, zoom); place(L.end, REs, cx, cy, zoom); place(L.region, RRs, cx, cy, zoom); place(L.metro, RMs, cx, cy, zoom); place(L.state, RS, cx, cy, zoom); place(L.ov, RS, cx, cy, zoom);
+    // #sat hands over to the composite while the zoom-out is moving (they are the same pixels but for the
+    // composite's feathered outer band); the composite then fades into the map, which has it pasted in.
+    // Until the composite has loaded, the frame itself stays up and fades into the map instead.
+    const mapIn = lerp(qBa, qBb, 0.45), endGone = lerp(qBa, qBb, 0.8);
+    const tightGone = endReady ? pA + 0.07 : endGone;
+    L.tight.style.opacity = endReady ? 1 - band(pA, tightGone, cur) : 1 - band(mapIn, endGone, cur);
+    L.end.style.opacity = endReady ? 1 - band(mapIn, endGone, cur) : 0;
     L.region.style.opacity = 1 - band(2.3, 2.47, cur);
     L.metro.style.opacity = 1 - band(2.55, 2.72, cur);
     // only paint what is on stage, so the browser never has to hold a hugely magnified layer
     L.tight.style.visibility = cur < tightGone ? 'visible' : 'hidden';
+    L.end.style.visibility = endReady && cur > pA - 0.01 && cur < endGone ? 'visible' : 'hidden';
     L.region.style.visibility = cur > end && cur < 2.52 ? 'visible' : 'hidden';
     L.metro.style.visibility = cur > 2.0 && cur < 2.77 ? 'visible' : 'hidden';
     L.state.style.visibility = cur > 2.25 ? 'visible' : 'hidden';
@@ -345,6 +357,7 @@ export function startSatelliteScene(root) {
   return () => {
     cancelAnimationFrame(frameId);
     stopHouseReveal();
+    stopEndReveal();
     clearTimeout(placeholderTimer);
     window.removeEventListener('resize', layout);
     stopped = true;

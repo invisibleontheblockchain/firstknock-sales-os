@@ -174,7 +174,10 @@
      Each layer is 2688 × 1520 CSS px and gets its own transform, so it stays crisp at any zoom. */
   .fk-satellite #stage { position: fixed; inset: 0; overflow: hidden; z-index: 0; background: #0d0d0d; }
   .fk-satellite .layer { position: absolute; left: 0; top: 0; width: 2688px; height: 1520px; transform-origin: 0 0; visibility: hidden; }
-  .fk-satellite #lTight { visibility: visible; will-change: transform, opacity; mask-position: center; mask-repeat: no-repeat; -webkit-mask-position: center; -webkit-mask-repeat: no-repeat; }
+  .fk-satellite #lTight { visibility: visible; will-change: transform, opacity; }
+  /* the 3816 x 2130 composite round the last frame: the layer keeps its 2688 px width, so its height follows that aspect;
+     its soft, irregular edge (an alpha mask image) is set by the scene once the house photo is in */
+  .fk-satellite #lEnd { height: 1500.377px; will-change: transform, opacity; mask-size: 100% 100%; mask-repeat: no-repeat; -webkit-mask-size: 100% 100%; -webkit-mask-repeat: no-repeat; }
   .fk-satellite .layer > img, .fk-satellite .layer > video, .fk-satellite .layer > picture > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
   .fk-satellite #sat { opacity: 0; }
   /* The house photo appears whole: transparent until downloaded and decoded, then faded in over

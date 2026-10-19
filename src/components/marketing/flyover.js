@@ -19,13 +19,17 @@ export const SATELLITE_STILLS = {
   // #sat: the video's last frame (the subdivision) as a still, in the layer's aspect (1910 x 1080:
   // the frame less the ~1 px the video's cover crop trims each side), so the switch is invisible.
   end: { avif: '/landing/satellite-house-end.avif', webp: '/landing/satellite-house-end.webp', jpg: '/landing/satellite-house-end.jpg' },
+  // The same frame inside a 2x outpaint of the same subdivision in the same light (3816 x 2130, the
+  // frame at END_WIDE.frameX/Y, the same pixels beyond its 140 px inner feather): the camera pulls
+  // back inside it first, so for the first 2x everything on screen is that one subdivision.
+  wide: { avif: '/landing/satellite-house-wide.avif', webp: '/landing/satellite-house-wide.webp', jpg: '/landing/satellite-house-wide.jpg' },
 };
-// Where that subdivision sits in the region map (region px): the camera pulls back from it into the
-// map, which has the same subdivision pasted there (graded toward the map's colour) inside the same
-// soft ellipse the scene masks the video layer with on the way out, so the map takes over from
-// the same place instead of swapping it for another.
+export const END_WIDE = { frameX: 941, frameY: 517, width: 3816, height: 2130, mask: '/landing/satellite-house-wide-mask.png' };
+// Where the frame sits in the region map (region px). The map has the whole composite pasted there
+// under the same soft, irregular edge as the wide layer's mask, graded toward the terrain around it
+// (more toward the edge) and with the map around it warmed toward it a little, so it takes over
+// from the same place with no patch of a different colour.
 export const END_PATCH = { k: 0.12, cx: 1284.86, cy: 762.6 };
-export const END_MASK = 'radial-gradient(closest-side, #000 60%, rgba(0, 0, 0, .844) 70%, rgba(0, 0, 0, .5) 80%, rgba(0, 0, 0, .156) 90%, transparent 100%)';
 
 export const MOVE_START = 0.08; // scroll (screens) where the flyover starts
 export const HANDOFF_AT = MOVE_START + 0.01; // the video takes over here, on its first frame
