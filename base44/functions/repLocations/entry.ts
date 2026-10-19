@@ -51,9 +51,19 @@ Deno.serve(async (req) => {
         if (!manager || manager.id !== managerId || !isManager(manager)) throw new LocationError(403, 'Team manager could not be verified.');
         const members = (await allPages(service.TeamMember, { manager_id: managerId,
             ...(action !== 'report' ? { user_id: user.id } : {}) }, '-created_date',
-            ['id', 'manager_id', 'user_id', 'name', 'color', 'invite_code', 'status', 'role']))
+            ['id', 'manager_id', 'user_id', 'name', 'color', 'invite_code', 'status', 'role', 'time_clock_active_shift_id']))
             .filter(m => m.manager_id === managerId && activeRep(m));
         const now = Date.now();
+        // Location is shared only while the rep is clocked in: the same active-shift
+        // rule the time clock and mileage use (the member's pointer to one active shift).
+        const shifts = action === 'stop' ? [] : await allPages(service.TimeShift, { manager_id: managerId, status: 'active',
+            ...(action !== 'report' ? { rep_user_id: user.id } : {}) }, '-clock_in_at',
+            ['id', 'manager_id', 'member_id', 'rep_user_id', 'status', 'clock_in_at']);
+        const activeShift = (member) => {
+            const open = shifts.filter(s => s.manager_id === managerId && s.rep_user_id === member.user_id && s.member_id === member.id
+                && s.id === member.time_clock_active_shift_id && s.status === 'active' && Date.parse(s.clock_in_at) <= now);
+            return open.length === 1 ? open[0] : null;
+        };
 
         if (action === 'report') {
             const locations = (await allPages(service.RepLocation, { manager_id: managerId }, '-received_at',
@@ -66,14 +76,18 @@ Deno.serve(async (req) => {
                 if (!latestByRep.has(key)) latestByRep.set(key, location);
             }
             const reps = members.map(member => {
-                const latest = latestByRep.get(`${member.id}:${member.user_id}`);
-                const status = locationStatus(latest, now);
+                const shift = activeShift(member);
+                const found = latestByRep.get(`${member.id}:${member.user_id}`);
+                // Only a point from the current shift counts: off the clock, or before
+                // this clock-in, a rep has no location to show.
+                const latest = shift && Date.parse(found?.observed_at) >= Date.parse(shift.clock_in_at) ? found : null;
+                const status = locationStatus(latest, now, !!shift);
                 // Expired or stopped locations never expose coordinates to the UI.
                 const location = status === 'offline' ? null : {
                     lat: latest.lat, lng: latest.lng, accuracy: latest.accuracy, observed_at: latest.observed_at, sharing: true,
                 };
                 return { member_id: member.id, user_id: member.user_id, name: member.name || 'Rep', color: member.color,
-                    invite_code: member.invite_code, status, location };
+                    invite_code: member.invite_code, status, location, on_shift: !!shift, clock_in_at: shift?.clock_in_at || null };
             });
             return Response.json({ success: true, manager_id: managerId, reps, server_time: new Date(now).toISOString() });
         }
@@ -94,6 +108,8 @@ Deno.serve(async (req) => {
             || !Number.isFinite(observed) || observed > now + 10_000 || now - observed > LOCATION_FIX_MAX_AGE_MS) {
             throw new LocationError(400, 'A fresh, valid GPS location is required.');
         }
+        const shift = activeShift(member);
+        if (!shift) throw new LocationError(409, 'Clock in to share your location.');
         // Publishing overwrites the latest record; historical sessions are not
         // needed to validate or persist the next point.
         const records = asArray(await service.RepLocation.filter({ manager_id: managerId, member_id: member.id,
@@ -101,7 +117,7 @@ Deno.serve(async (req) => {
         const latest = records.find(l => l.manager_id === managerId && l.member_id === member.id && l.rep_user_id === user.id);
         if (latest?.sharing && Date.parse(latest.observed_at) > observed) return Response.json({ success: true, ignored: true });
         const data = { manager_id: managerId, member_id: member.id, rep_user_id: user.id, session_id: body.session_id,
-            sharing: true, lat: body.lat, lng: body.lng, accuracy: body.accuracy,
+            shift_id: shift.id, sharing: true, lat: body.lat, lng: body.lng, accuracy: body.accuracy,
             observed_at: new Date(observed).toISOString(), received_at: new Date(now).toISOString() };
         if (latest) await service.RepLocation.update(latest.id, data);
         else await service.RepLocation.create(data);
