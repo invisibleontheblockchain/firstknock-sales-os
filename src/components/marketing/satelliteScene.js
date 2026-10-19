@@ -209,9 +209,15 @@ export function startSatelliteScene(root) {
   // The house photo gets the connection to itself; the flyover (5.3-6.6 MB) and the
   // satellite views start once it is in, or at the first scroll if that comes sooner.
   let extrasStarted = false;
+  // The flyover layer's soft edge on the way out is an image: fetched with the rest, used once it is in
+  // (a mask image still loading would hide the layer).
+  let maskReady = false;
+  const maskImg = new Image();
+  maskImg.onload = () => { maskReady = true; };
   const startExtras = () => {
     if (extrasStarted) return;
     extrasStarted = true;
+    maskImg.src = END_MASK;
     root.querySelectorAll('source[data-srcset]').forEach((source) => { source.srcset = source.dataset.srcset; source.removeAttribute('data-srcset'); });
     root.querySelectorAll('img[data-src]').forEach((img) => { img.src = img.dataset.src; img.removeAttribute('data-src'); });
     // Let the browser buffer right away and seek using range requests, so the move
@@ -257,11 +263,12 @@ export function startSatelliteScene(root) {
     const zoom = Math.exp(lz); // log-space so the climb feels constant
     const cx = lerp(lerp(lerp(cT[0], cR[0], p2), cM[0], p3), cS[0], p4), cy = lerp(lerp(lerp(cT[1], cR[1], p2), cM[1], p3), cS[1], p4);
     place(L.tight, RTs, cx, cy, zoom); place(L.region, RRs, cx, cy, zoom); place(L.metro, RMs, cx, cy, zoom); place(L.state, RS, cx, cy, zoom); place(L.ov, RS, cx, cy, zoom);
-    // On the way out the subdivision's edge softens into the map (which has it in the same soft
-    // ellipse, graded to the map), then it fades into the map: the golden light settles to the
-    // map's and nothing is swapped. The mask starts oversized (no visible effect) and closes in.
-    const soften = band(pA, lerp(pA, pB, 0.35), cur), maskSize = lerp(250, 100, soften).toFixed(1) + '%';
-    L.tight.style.maskImage = L.tight.style.webkitMaskImage = soften > 0 ? END_MASK : '';
+    // On the way out the subdivision's edge softens into the map along the map's own roads and tree
+    // lines (the map has the same graded frame under the same edge), then it fades into the map:
+    // one landscape, nothing swapped. The mask starts oversized (no visible effect) and closes in
+    // early, before the layer's own edge comes on screen, so no straight edge ever shows.
+    const soften = maskReady ? band(pA, lerp(pA, pB, 0.12), cur) : 0, maskSize = lerp(250, 100, soften).toFixed(1) + '%';
+    L.tight.style.maskImage = L.tight.style.webkitMaskImage = soften > 0 ? `url(${END_MASK})` : '';
     L.tight.style.maskSize = L.tight.style.webkitMaskSize = soften > 0 ? `${maskSize} ${maskSize}` : '';
     const tightGone = lerp(pA, pB, 0.75);
     L.tight.style.opacity = 1 - band(lerp(pA, pB, 0.3), tightGone, cur);

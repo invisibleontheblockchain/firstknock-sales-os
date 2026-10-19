@@ -3,11 +3,14 @@
 // one front door") is on screen, then turning straight down and climbing until the whole
 // subdivision is in view by section 02 ("Draw your territory"). Built from the one-house master
 // (four start-frame Kling clips, each starting on the previous one's last frame, so the house
-// never changes), frames picked so each step carries about the same motion. 1912 x 1080 (the
-// layer's aspect to within 0.1%), 24 fps, every frame a keyframe so scroll can seek anywhere at once.
+// never changes), frames picked so each step carries about the same motion. The house and the
+// rise keep their golden light; over the straight-down climb (from the master's frame 305) the
+// picture is graded, gradually, to the region map's daylight greens, so the subdivision arrives
+// in the same landscape as the map around it. 1912 x 1080 (the layer's aspect to within 0.1%),
+// 24 fps, every frame a keyframe so scroll can seek anywhere at once.
 export const FLYOVER_SRC = {
-  wide: '/landing/flyover-house-desktop.mp4', // 1912 x 1080
-  portrait: '/landing/flyover-house-phone.mp4', // the middle 864 x 1080 of the same frames, at higher quality for 3x screens
+  wide: '/landing/flyover-house-day-desktop.mp4', // 1912 x 1080
+  portrait: '/landing/flyover-house-day-phone.mp4', // the middle 864 x 1080 of the same frames, at higher quality for 3x screens
 };
 export const FLYOVER_FRAMES = 180;
 export const DOOR_FRAME = 39; // the master's frame 304: the ~80 degree view for section 01
@@ -18,14 +21,14 @@ export const PORTRAIT_QUERY = '(max-aspect-ratio: 3/5)';
 export const SATELLITE_STILLS = {
   // #sat: the video's last frame (the subdivision) as a still, in the layer's aspect (1910 x 1080:
   // the frame less the ~1 px the video's cover crop trims each side), so the switch is invisible.
-  end: { avif: '/landing/satellite-house-end.avif', webp: '/landing/satellite-house-end.webp', jpg: '/landing/satellite-house-end.jpg' },
+  end: { avif: '/landing/satellite-house-end-day.avif', webp: '/landing/satellite-house-end-day.webp', jpg: '/landing/satellite-house-end-day.jpg' },
 };
 // Where that subdivision sits in the region map (region px): the camera pulls back from it into the
-// map, which has the same subdivision pasted there (graded toward the map's colour) inside the same
-// soft ellipse the scene masks the video layer with on the way out, so the map takes over from
-// the same place instead of swapping it for another.
+// map, which has the same graded frame pasted there under a soft, irregular edge that follows the
+// map's own roads and tree lines; the scene masks the flyover layer with that same edge on the way
+// out, so the map takes over from the same place in the same light.
 export const END_PATCH = { k: 0.12, cx: 1284.86, cy: 762.6 };
-export const END_MASK = 'radial-gradient(closest-side, #000 60%, rgba(0, 0, 0, .844) 70%, rgba(0, 0, 0, .5) 80%, rgba(0, 0, 0, .156) 90%, transparent 100%)';
+export const END_MASK = '/landing/satellite-house-end-mask.png';
 
 export const MOVE_START = 0.08; // scroll (screens) where the flyover starts
 export const HANDOFF_AT = MOVE_START + 0.01; // the video takes over here, on its first frame
