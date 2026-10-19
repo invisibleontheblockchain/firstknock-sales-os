@@ -170,11 +170,11 @@
 
 
   .fk-satellite { background: #0d0d0d; }
-  /* three nested views of one place: the drone shot (tight), the subdivision (wide) and the region.
+  /* nested views of one place: the flyover (tight: the house photo, the video, then its last frame), the region and wider.
      Each layer is 2688 × 1520 CSS px and gets its own transform, so it stays crisp at any zoom. */
   .fk-satellite #stage { position: fixed; inset: 0; overflow: hidden; z-index: 0; background: #0d0d0d; }
   .fk-satellite .layer { position: absolute; left: 0; top: 0; width: 2688px; height: 1520px; transform-origin: 0 0; visibility: hidden; }
-  .fk-satellite #lTight { visibility: visible; will-change: transform, opacity; }
+  .fk-satellite #lTight { visibility: visible; will-change: transform, opacity; mask-position: center; mask-repeat: no-repeat; -webkit-mask-position: center; -webkit-mask-repeat: no-repeat; }
   .fk-satellite .layer > img, .fk-satellite .layer > video, .fk-satellite .layer > picture > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
   .fk-satellite #sat { opacity: 0; }
   /* The house photo appears whole: transparent until downloaded and decoded, then faded in over
@@ -184,11 +184,9 @@
   .fk-satellite #housePhoto[data-ready] { opacity: 1; }
   /* The flyover fades in over the hero photo on its first frame, which is the photo (flyover.js). */
   .fk-satellite #fly { opacity: 0; will-change: opacity; }
-  /* Upright phones get the middle 864 of the 1920 x 1080 frames, placed where they sit in the full frame
+  /* Upright phones get the middle 864 of the 1912 x 1080 frames, placed where they sit in the full frame
      (the frame covers the 2688 x 1520 layer at 1520/1080: 864 px -> 1216 of 2688, from 736). */
   .fk-satellite #fly.portrait { left: 27.381%; width: 45.238%; object-fit: fill; }
-  /* Hold the same roof through the independently rendered neighborhood views. */
-  .fk-satellite #lHouse { pointer-events: none; mask-image: radial-gradient(ellipse 190px 130px at 1329px 695px, #000 76%, transparent 100%); }
   .fk-satellite #ov { overflow: visible; pointer-events: none; }
   .fk-satellite #ov { overflow: visible; pointer-events: none; }
   .fk-satellite .shade { position: fixed; inset: 0; z-index: 0; pointer-events: none; }

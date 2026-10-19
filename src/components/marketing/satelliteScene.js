@@ -1,6 +1,6 @@
 // Satellite presentation adapted from the original FirstKnock prototype.
 // All DOM access, listeners, and animation resources belong to this landing page.
-import { FLYOVER_SRC, PORTRAIT_QUERY, flyoverOpacity, satelliteOpacity } from './flyover';
+import { END_MASK, END_PATCH, FLYOVER_SRC, PORTRAIT_QUERY, flyoverFrame, flyoverOpacity, satelliteOpacity } from './flyover';
 import { revealWhenDecoded } from './heroImage';
 import { advanceSatelliteProgress } from './satelliteMotion';
 
@@ -12,7 +12,7 @@ export function startSatelliteScene(root) {
   const $ = (id) => root.querySelector(`#${id}`);
   const fly = $('fly'), sat = $('sat'), ov = $('ov'), hint = $('hint');
   const state = $('state'), shadeL = $('shadeL'), shadeB = $('shadeB'), legend = $('legend');
-  const L = { state: $('lState'), metro: $('lMetro'), region: $('lRegion'), wide: $('lWide'), tight: $('lTight'), house: $('lHouse'), ov };
+  const L = { state: $('lState'), metro: $('lMetro'), region: $('lRegion'), tight: $('lTight'), ov };
   const dots = [...root.querySelectorAll('#steps i')];
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const clamp01 = (v) => Math.min(1, Math.max(0, v));
@@ -25,20 +25,19 @@ export function startSatelliteScene(root) {
   const io = new IntersectionObserver((es) => es.forEach((e) => e.target.classList.toggle('in', e.isIntersecting)), { root, threshold: 0.35 });
   root.querySelectorAll('section .col').forEach((c) => io.observe(c));
 
-  /* ---- how the three views nest, measured on the images (all in region px) ----
-     wide sits in the region at 0.19 scale (the fountain pond lines up); tight sits in wide at 0.596 (the house lines up) */
-  const K2 = 0.19, K1 = 0.596;
-  const RW = { x: 766 * 1.344 - 0, y: 460 * 1.344, w: IW * K2, h: IH * K2 };
-  const TW = { x: 535, y: 286, w: IW * K1, h: IH * K1 }; // tight inside wide, wide px
-  const RT = { x: RW.x + TW.x * K2, y: RW.y + TW.y * K2, w: TW.w * K2, h: TW.h * K2 };
+  /* ---- how the views nest (all in region px) ----
+     the subdivision the flyover ends on sits in the region at END_PATCH.k scale, on the oval subdivision,
+     where the region map has the same subdivision pasted in (flyover.js) */
+  const KT = END_PATCH.k;
+  const RT = { x: END_PATCH.cx - IW * KT / 2, y: END_PATCH.cy - IH * KT / 2, w: IW * KT, h: IH * KT };
   // the region sits in the market view at 0.31 scale (river, interchange and the oval subdivision line up)
   const K3 = 0.31, RR = { x: 681 * 1.344, y: 398 * 1.344, w: IW * K3, h: IH * K3 };
   const inM = (r) => ({ x: RR.x + r.x * K3, y: RR.y + r.y * K3, w: r.w * K3, h: r.h * K3 });
-  const RWm = inM(RW), RTm = inM(RT);
+  const RTm = inM(RT);
   // and the market sits in the wider regional view at 0.43 scale (airport, lake and interchange line up): ~5x the area
   const K4 = 0.43, RS = { x: 0, y: 0, w: IW, h: IH }, RMs = { x: 567 * 1.344, y: 305 * 1.344, w: IW * K4, h: IH * K4 };
   const inS = (r) => ({ x: RMs.x + r.x * K4, y: RMs.y + r.y * K4, w: r.w * K4, h: r.h * K4 });
-  const RRs = inS(RR), RWs = inS(RWm), RTs = inS(RTm);
+  const RRs = inS(RR), RTs = inS(RTm);
   const center = (r) => [r.x + r.w / 2, r.y + r.h / 2];
 
   /* ---- the region map (region px) ---- */
@@ -153,8 +152,25 @@ export function startSatelliteScene(root) {
 
   /* ---- camera: a view rect in region px, applied to every layer ---- */
   let vw = 0, vh = 0, base = 1;
-  function layout() { vw = innerWidth; vh = innerHeight; base = Math.max(vw / IW, vh / IH); }
+  // Section 01's and 02's headings set where the flyover shows its ~80 degree view and where it
+  // ends (flyoverFrame): the scroll, in screens, at which each heading is fully on screen (its
+  // bottom at 85% of the height), measured without the headings' reveal slide.
+  let door = 0.8, end = 1.8;
+  function measureAnchors() {
+    const [h1, h2] = root.querySelectorAll('section h2');
+    if (!h1 || !h2) return;
+    const at = (h) => {
+      const col = h.closest('.col'), slide = col ? new DOMMatrixReadOnly(getComputedStyle(col).transform).m42 : 0;
+      return (h.getBoundingClientRect().bottom - slide - root.getBoundingClientRect().top + root.scrollTop - innerHeight * 0.85) / innerHeight;
+    };
+    const d = at(h1), e = at(h2);
+    if (!Number.isFinite(d) || !Number.isFinite(e)) return;
+    door = Math.min(1.4, Math.max(0.3, d)); end = Math.min(2.3, Math.max(door + 0.4, e));
+  }
+  function layout() { vw = innerWidth; vh = innerHeight; base = Math.max(vw / IW, vh / IH); measureAnchors(); }
   window.addEventListener('resize', layout); layout();
+  let stopped = false;
+  document.fonts?.ready.then(() => { if (!stopped) measureAnchors(); });
   function place(layer, rect, cx, cy, zoom) { // rect: where this layer's 2688×1520 image lives, in region px
     const sc = base * zoom, k = (rect.w / IW) * sc;
     layer.style.transform = `translate3d(${vw / 2 + (rect.x - cx) * sc}px, ${vh / 2 + (rect.y - cy) * sc}px, 0) scale(${k})`;
@@ -215,44 +231,45 @@ export function startSatelliteScene(root) {
     if (root.scrollTop > 0) startExtras();
   };
   root.addEventListener('scroll', onScroll, { passive: true }); onScroll();
-  const cT = center(RTs), cW = center(RWs), cR = center(RRs), cM = center(RMs), cS = center(RS);
+  const cT = center(RTs), cR = center(RRs), cM = center(RMs), cS = center(RS);
 
   function frame(t) {
     const dt = Math.min(0.05, (t - last) / 1000); last = t;
     const now = t / 1000;
     cur = advanceSatelliteProgress(cur, target, dt, reduce);
 
-    // flyover: scroll scrubs one continuous move of the hero house, from the photo up to
-    // the neighbourhood, then the crisp satellite still of that frame takes over.
+    // flyover: scroll scrubs one continuous move of the hero house, from the photo up to the
+    // whole subdivision (by section 02), then the still of its last frame takes over.
     // The clip is 24 fps: coalesce scroll updates to actual frames instead of
     // asking the decoder for sub-frame seeks on every display refresh.
-    const videoFrame = 1 / 24;
-    const want = Math.min(Math.max(0, dur - videoFrame), Math.round(band(0.08, 1.7, cur) * dur / videoFrame) * videoFrame);
+    const videoFrame = 1 / 24, frames = Math.round(dur / videoFrame);
+    const want = Math.min(Math.max(0, dur - videoFrame), Math.round(flyoverFrame(cur, door, end, frames)) * videoFrame);
     if (!reduce && fly.readyState >= 2 && Math.abs(fly.currentTime - want) >= videoFrame / 2 && !fly.seeking) fly.currentTime = want;
     fly.style.opacity = flyoverOpacity(cur, hasFrame, shownTime < videoFrame / 2);
-    const satFade = band(1.55, 1.75, cur);
-    sat.style.opacity = reduce ? satFade : satelliteOpacity(satFade, hasFrame, Math.round(dur / videoFrame) - 1 - Math.round(shownTime / videoFrame));
+    const satFade = reduce ? band(end - 0.2, end, cur) : band(end, end + 0.05, cur);
+    sat.style.opacity = reduce ? satFade : satelliteOpacity(satFade, hasFrame, frames - 1 - Math.round(shownTime / videoFrame));
 
-    // pull back twice: the street -> the subdivision -> the whole side of town (zoom is relative to the region filling the screen)
-    const p1 = band(1.65, 1.9, cur), p2 = band(1.85, 2.12, cur), p3 = band(2.08, 2.38, cur), p4 = band(2.33, 2.68, cur);
-    const zT = 1 / (K1 * K2 * K3 * K4), zW = 1 / (K2 * K3 * K4), zR = 1 / (K3 * K4), zM = 1 / K4;
-    const lz = lerp(lerp(lerp(lerp(Math.log(zT), Math.log(zW), p1), Math.log(zR), p2), Math.log(zM), p3), 0, p4);
+    // pull back: the subdivision -> the region -> the whole side of town (zoom is relative to the region filling the screen)
+    const pA = end + 0.06, pB = Math.max(2.12, pA + 0.25);
+    const p2 = band(pA, pB, cur), p3 = band(2.08, 2.38, cur), p4 = band(2.33, 2.68, cur);
+    const zT = 1 / (KT * K3 * K4), zR = 1 / (K3 * K4), zM = 1 / K4;
+    const lz = lerp(lerp(lerp(Math.log(zT), Math.log(zR), p2), Math.log(zM), p3), 0, p4);
     const zoom = Math.exp(lz); // log-space so the climb feels constant
-    const cx = lerp(lerp(lerp(lerp(cT[0], cW[0], p1), cR[0], p2), cM[0], p3), cS[0], p4), cy = lerp(lerp(lerp(lerp(cT[1], cW[1], p1), cR[1], p2), cM[1], p3), cS[1], p4);
-    place(L.tight, RTs, cx, cy, zoom); place(L.wide, RWs, cx, cy, zoom); place(L.region, RRs, cx, cy, zoom); place(L.metro, RMs, cx, cy, zoom); place(L.state, RS, cx, cy, zoom); place(L.ov, RS, cx, cy, zoom);
-    // Keep one photographic roof registered to the camera while the wider
-    // backgrounds crossfade. Independently generated views can shift its edges.
-    place(L.house, RTs, cx, cy, zoom);
-    L.house.style.opacity = band(1.65, 1.75, cur) * (1 - band(2.3, 2.52, cur));
-    L.tight.style.opacity = 1 - band(1.7, 1.9, cur);
-    L.wide.style.opacity = 1 - band(2.03, 2.22, cur);
+    const cx = lerp(lerp(lerp(cT[0], cR[0], p2), cM[0], p3), cS[0], p4), cy = lerp(lerp(lerp(cT[1], cR[1], p2), cM[1], p3), cS[1], p4);
+    place(L.tight, RTs, cx, cy, zoom); place(L.region, RRs, cx, cy, zoom); place(L.metro, RMs, cx, cy, zoom); place(L.state, RS, cx, cy, zoom); place(L.ov, RS, cx, cy, zoom);
+    // On the way out the subdivision's edge softens into the map (which has it in the same soft
+    // ellipse, graded to the map), then it fades into the map: the golden light settles to the
+    // map's and nothing is swapped. The mask starts oversized (no visible effect) and closes in.
+    const soften = band(pA, lerp(pA, pB, 0.35), cur), maskSize = lerp(250, 100, soften).toFixed(1) + '%';
+    L.tight.style.maskImage = L.tight.style.webkitMaskImage = soften > 0 ? END_MASK : '';
+    L.tight.style.maskSize = L.tight.style.webkitMaskSize = soften > 0 ? `${maskSize} ${maskSize}` : '';
+    const tightGone = lerp(pA, pB, 0.75);
+    L.tight.style.opacity = 1 - band(lerp(pA, pB, 0.3), tightGone, cur);
     L.region.style.opacity = 1 - band(2.3, 2.47, cur);
     L.metro.style.opacity = 1 - band(2.55, 2.72, cur);
     // only paint what is on stage, so the browser never has to hold a hugely magnified layer
-    L.tight.style.visibility = cur < 1.95 ? 'visible' : 'hidden';
-    L.house.style.visibility = cur > 1.65 && cur < 2.52 ? 'visible' : 'hidden';
-    L.wide.style.visibility = cur > 1.6 && cur < 2.27 ? 'visible' : 'hidden';
-    L.region.style.visibility = cur > 1.8 && cur < 2.52 ? 'visible' : 'hidden';
+    L.tight.style.visibility = cur < tightGone ? 'visible' : 'hidden';
+    L.region.style.visibility = cur > end && cur < 2.52 ? 'visible' : 'hidden';
     L.metro.style.visibility = cur > 2.0 && cur < 2.77 ? 'visible' : 'hidden';
     L.state.style.visibility = cur > 2.25 ? 'visible' : 'hidden';
     L.ov.style.visibility = cur > 2.7 ? 'visible' : 'hidden';
@@ -330,6 +347,7 @@ export function startSatelliteScene(root) {
     stopHouseReveal();
     clearTimeout(placeholderTimer);
     window.removeEventListener('resize', layout);
+    stopped = true;
     root.removeEventListener('scroll', onScroll);
     fly.removeEventListener('loadedmetadata', onMetadata);
     cancelAnimationFrame(readyFrame);
