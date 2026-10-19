@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import test from 'node:test';
-import { SATELLITE_STILLS, FLYOVER_SRC, HANDOFF_AT, PORTRAIT_QUERY, flyoverOpacity } from '../src/components/marketing/flyover.js';
+import { SATELLITE_STILLS, FLYOVER_SRC, HANDOFF_AT, PORTRAIT_QUERY, SAT_MATCH_FRAMES, flyoverOpacity, satelliteOpacity } from '../src/components/marketing/flyover.js';
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url));
 const pub = (url) => read(`public${url}`);
@@ -23,7 +23,7 @@ function mp4(bytes) {
 
 test('the flyover is H.264 with every frame a keyframe, a few MB, and both sizes carry the same frames', () => {
   const wide = mp4(pub(FLYOVER_SRC.wide)), portrait = mp4(pub(FLYOVER_SRC.portrait));
-  assert.deepEqual([wide.h264, wide.width, wide.height], [true, 1920, 1080]);
+  assert.deepEqual([wide.h264, wide.width, wide.height], [true, 1912, 1080]);
   assert.deepEqual([portrait.h264, portrait.width, portrait.height], [true, 864, 1080]);
   assert.equal(wide.keyframes, wide.frames, 'scroll can seek to any frame without decoding others');
   assert.equal(portrait.keyframes, portrait.frames);
@@ -54,10 +54,25 @@ test('the video takes over from the photo on its first frame, which is the photo
   assert.equal(flyoverOpacity(cur, true), 1, `fully faded in before the camera moves (frame 1 at ${cur.toFixed(3)} screens)`);
 });
 
+test('#sat fades in over the video only while it shows its last frames, and covers any other frame at once', () => {
+  assert.equal(satelliteOpacity(0, true, 60), 0);
+  assert.equal(satelliteOpacity(0.5, true, 0), 0.5);
+  assert.equal(satelliteOpacity(0.5, true, SAT_MATCH_FRAMES - 1), 0.5);
+  assert.equal(satelliteOpacity(0.5, true, SAT_MATCH_FRAMES), 1, 'a flick outran the seeks: no earlier frame shows through the still');
+  assert.equal(satelliteOpacity(0.01, false, 0), 1, 'not loaded yet: the still, not the photo under it');
+  // While #sat fades (1.55-1.75 screens) the scene asks for frames well inside that window,
+  // so a steady scroll keeps the fade even with a seek or two still landing.
+  const frames = mp4(pub(FLYOVER_SRC.wide)).frames;
+  for (let cur = 1.55; cur <= 1.75; cur += 0.001) {
+    const want = Math.min(frames - 1, Math.round(smooth((cur - 0.08) / 1.62) * frames));
+    assert.ok(frames - 1 - want <= SAT_MATCH_FRAMES - 3, `${cur.toFixed(3)} screens wants frame ${want}`);
+  }
+});
+
 test('upright phones get the middle of the frame, placed exactly where it sits in the full frame', () => {
   const css = read('src/components/marketing/SatelliteLanding.css').toString();
   const [, left, width] = css.match(/#fly\.portrait \{ left: ([\d.]+)%; width: ([\d.]+)%; object-fit: fill; \}/);
-  const scale = Math.max(2688 / 1920, 1520 / 1080); // the 16:9 frame covering the 2688 x 1520 layer
+  const scale = Math.max(2688 / 1912, 1520 / 1080); // the 1912 x 1080 frame covering the 2688 x 1520 layer
   const cropWidth = (864 * scale) / 2688;
   assert.ok(Math.abs(Number(width) / 100 - cropWidth) < 1e-4);
   assert.ok(Math.abs(Number(left) / 100 - (1 - cropWidth) / 2) < 1e-4);
@@ -88,8 +103,8 @@ test('the daylight satellite stills are full size in AVIF, WebP and JPEG; #sat h
   }
 });
 
-test('the cloud move, the dissolve still, the dusk set and the older flyover assets are gone', () => {
-  for (const old of ['flyover-golden-v2-desktop.mp4', 'flyover-golden-v2-phone.mp4', 'satellite-hero-day.avif', 'satellite-hero-day.jpg', 'flyover-golden-desktop.mp4', 'flyover-golden-phone.mp4', 'flyover-hero-desktop.mp4', 'flyover-hero-phone.mp4', 'satellite-hero-dusk.avif', 'satellite-zoom-hero-dusk.avif', 'house-lux.jpg', 'house-lux-2688.avif', 'flyover-roof-consistent.mp4', 'flyover-roof-consistent-3500ms.avif', 'flyover-roof-consistent-3500ms.webp', 'satellite-roof-consistent.jpg', 'satellite-zoom-roof-consistent.jpg', 'flyover-lux.mp4', 'satellite-lux.jpg', 'satellite-zoom-lux.jpg']) {
+test('the cloud move, the dissolve still, the dusk set, the tilt and the older flyover assets are gone', () => {
+  for (const old of ['flyover-golden-v3-desktop.mp4', 'flyover-golden-v3-phone.mp4', 'flyover-golden-v2-desktop.mp4', 'flyover-golden-v2-phone.mp4', 'satellite-hero-day.avif', 'satellite-hero-day.jpg', 'flyover-golden-desktop.mp4', 'flyover-golden-phone.mp4', 'flyover-hero-desktop.mp4', 'flyover-hero-phone.mp4', 'satellite-hero-dusk.avif', 'satellite-zoom-hero-dusk.avif', 'house-lux.jpg', 'house-lux-2688.avif', 'flyover-roof-consistent.mp4', 'flyover-roof-consistent-3500ms.avif', 'flyover-roof-consistent-3500ms.webp', 'satellite-roof-consistent.jpg', 'satellite-zoom-roof-consistent.jpg', 'flyover-lux.mp4', 'satellite-lux.jpg', 'satellite-zoom-lux.jpg']) {
     assert.equal(existsSync(new URL(`../public/landing/${old}`, import.meta.url)), false, old);
   }
   assert.equal(existsSync(new URL('../src/components/marketing/skyTransition.js', import.meta.url)), false);
@@ -111,5 +126,6 @@ test('the scene scrubs the flyover from the photo and loads the right size after
   // iOS Safari shows a later frame after loading until something seeks it.
   assert.match(scene, /const onLoaded = \(\) => \{ fly\.currentTime = 0\.001; \};/);
   assert.match(scene, /fly\.addEventListener\('loadeddata', onLoaded\);/);
-  assert.match(scene, /sat\.style\.opacity = band\(1\.55, 1\.75, cur\);/);
+  assert.match(scene, /const satFade = band\(1\.55, 1\.75, cur\);/);
+  assert.match(scene, /sat\.style\.opacity = reduce \? satFade : satelliteOpacity\(satFade, hasFrame, /);
 });
