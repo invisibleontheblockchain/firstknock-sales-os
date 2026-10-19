@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import test from 'node:test';
-import { SATELLITE_STILLS, FLYOVER_SRC, PORTRAIT_QUERY, flyoverOpacity } from '../src/components/marketing/flyover.js';
+import { SATELLITE_STILLS, FLYOVER_SRC, HANDOFF_AT, PORTRAIT_QUERY, flyoverOpacity } from '../src/components/marketing/flyover.js';
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url));
 const pub = (url) => read(`public${url}`);
@@ -29,7 +29,8 @@ test('the flyover is H.264 with every frame a keyframe, a few MB, and both sizes
   assert.equal(portrait.keyframes, portrait.frames);
   assert.equal(wide.frames, portrait.frames);
   assert.ok(wide.frames >= 96 && wide.frames <= 160, `${wide.frames} frames`);
-  assert.ok(pub(FLYOVER_SRC.wide).length < 6_000_000 && pub(FLYOVER_SRC.portrait).length < 3_000_000);
+  // The phone file is the larger one: it is shown on 3x screens, so it is encoded at much higher quality.
+  assert.ok(pub(FLYOVER_SRC.wide).length < 6_000_000 && pub(FLYOVER_SRC.portrait).length < 8_000_000);
 });
 
 test('the video takes over from the photo on its first frame, which is the photo', () => {
@@ -37,6 +38,11 @@ test('the video takes over from the photo on its first frame, which is the photo
   assert.equal(flyoverOpacity(0, true), 0, 'the photo at rest');
   assert.equal(flyoverOpacity(0.08, true), 0);
   assert.equal(flyoverOpacity(0.1, true), 1);
+  for (let cur = 0; cur <= 2; cur += 0.001) {
+    assert.ok([0, 1].includes(flyoverOpacity(cur, true)), 'a swap, never a fade: no frame shows two copies of the house');
+  }
+  assert.equal(flyoverOpacity(HANDOFF_AT - 0.001, true), 0);
+  assert.equal(flyoverOpacity(HANDOFF_AT, true), 1);
   assert.equal(flyoverOpacity(0.085, true, false), 1, 'a later frame is never blended over the photo');
   assert.equal(flyoverOpacity(0.085, false, false), 0);
   let last = 0;
@@ -74,7 +80,7 @@ test('the daylight satellite stills are full size in AVIF, WebP and JPEG', () =>
 });
 
 test('the cloud move, the dissolve still, the dusk set and the older flyover assets are gone', () => {
-  for (const old of ['flyover-hero-desktop.mp4', 'flyover-hero-phone.mp4', 'satellite-hero-dusk.avif', 'satellite-zoom-hero-dusk.avif', 'house-lux.jpg', 'house-lux-2688.avif', 'flyover-roof-consistent.mp4', 'flyover-roof-consistent-3500ms.avif', 'flyover-roof-consistent-3500ms.webp', 'satellite-roof-consistent.jpg', 'satellite-zoom-roof-consistent.jpg', 'flyover-lux.mp4', 'satellite-lux.jpg', 'satellite-zoom-lux.jpg']) {
+  for (const old of ['flyover-golden-desktop.mp4', 'flyover-golden-phone.mp4', 'flyover-hero-desktop.mp4', 'flyover-hero-phone.mp4', 'satellite-hero-dusk.avif', 'satellite-zoom-hero-dusk.avif', 'house-lux.jpg', 'house-lux-2688.avif', 'flyover-roof-consistent.mp4', 'flyover-roof-consistent-3500ms.avif', 'flyover-roof-consistent-3500ms.webp', 'satellite-roof-consistent.jpg', 'satellite-zoom-roof-consistent.jpg', 'flyover-lux.mp4', 'satellite-lux.jpg', 'satellite-zoom-lux.jpg']) {
     assert.equal(existsSync(new URL(`../public/landing/${old}`, import.meta.url)), false, old);
   }
   assert.equal(existsSync(new URL('../src/components/marketing/skyTransition.js', import.meta.url)), false);
@@ -93,5 +99,8 @@ test('the scene scrubs the flyover from the photo and loads the right size after
   assert.match(scene, /const src = portrait \? FLYOVER_SRC\.portrait : FLYOVER_SRC\.wide;/);
   assert.match(scene, /if \(!reduce\) loadFlyover\(\);/, 'reduced motion: the photo, then the fade to the final still');
   assert.match(scene, /fly\.currentTime = want;/);
+  // iOS Safari shows a later frame after loading until something seeks it.
+  assert.match(scene, /const onLoaded = \(\) => \{ fly\.currentTime = 0\.001; \};/);
+  assert.match(scene, /fly\.addEventListener\('loadeddata', onLoaded\);/);
   assert.match(scene, /sat\.style\.opacity = band\(1\.55, 1\.75, cur\);/);
 });
