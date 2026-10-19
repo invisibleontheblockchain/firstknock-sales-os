@@ -1,16 +1,16 @@
-// The opening move: one continuous flyover of the hero house in golden-hour daylight, from
-// the hero photo (its first frame) up to the overhead and on to the neighbourhood, whose
-// last frame is satellite-hero-day (the #sat still the scene crossfades to; the region,
-// metro and state views after it are daylight too). Built from two approved generated
-// clips: joined on their shared overhead frame, the still stretches trimmed, the zoom-out's
-// blended stretch (two layouts of the street from ~2.9 s) left out: after its last clean
-// frame, one cut onto the sharp 4K satellite still at the same framing (the house matched
-// in position and scale), then a digital zoom-out on that still to the #sat framing, which
-// can't morph, with the light eased from golden to daylight. Frames are picked so each step
-// carries about the same motion; 24 fps, every frame a keyframe so scroll can seek anywhere.
+// The opening move: one continuous crane move over the hero house, from the hero photo (its
+// first frame) rising and tilting to straight down, steep by the time section 01
+// ("It starts with one front door") is on screen, then pulling back over the neighbourhood.
+// Built from the approved Kling rise (frames picked so each step carries about the same
+// motion) cut onto a digital zoom-out of the sharp 4K satellite still. The rise ends looking
+// straight down at that still's framing (matched to under a pixel), its last frames graded
+// to the still's colour, and the zoom-out starts at the rise's own speed, so at the cut only
+// the sharpness changes; it eases out onto exactly the image #sat shows. 1912 x 1080 (the rise's
+// own size, the layer's aspect to within 0.1%), 24 fps, every frame a keyframe so scroll can
+// seek anywhere at once.
 export const FLYOVER_SRC = {
-  wide: '/landing/flyover-golden-v3-desktop.mp4', // 1920 x 1080
-  portrait: '/landing/flyover-golden-v3-phone.mp4', // the middle 864 x 1080 of the same frames, at higher quality for 3x screens
+  wide: '/landing/flyover-rise-desktop.mp4', // 1912 x 1080
+  portrait: '/landing/flyover-rise-phone.mp4', // the middle 864 x 1080 of the same frames, at higher quality for 3x screens
 };
 // Screens this narrow see only the middle of the frame until #sat covers it, even as
 // the camera starts to pull back (SatelliteLanding.css places the crop).
@@ -41,4 +41,15 @@ export function flyoverOpacity(cur, ready, onFirstFrame = true) {
   if (!ready) return 0;
   if (!onFirstFrame) return 1;
   return cur >= HANDOFF_AT ? 1 : 0;
+}
+
+// #sat, the 4K still the move ends on, fades in over the video's last frames, which are that
+// same view (the last 5 are within 0.4% of its zoom). The camera follows a flick at once, so
+// the video can still be on an earlier frame when the fade starts (its seeks haven't caught
+// up, or it hasn't loaded): then #sat covers it at once instead, so a different frame never
+// shows through the part-transparent still.
+export const SAT_MATCH_FRAMES = 5;
+export function satelliteOpacity(fade, ready, framesFromEnd) {
+  if (!(fade > 0)) return 0;
+  return ready && framesFromEnd < SAT_MATCH_FRAMES ? fade : 1;
 }

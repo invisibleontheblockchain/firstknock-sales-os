@@ -1,6 +1,6 @@
 // Satellite presentation adapted from the original FirstKnock prototype.
 // All DOM access, listeners, and animation resources belong to this landing page.
-import { FLYOVER_SRC, PORTRAIT_QUERY, flyoverOpacity } from './flyover';
+import { FLYOVER_SRC, PORTRAIT_QUERY, flyoverOpacity, satelliteOpacity } from './flyover';
 import { revealWhenDecoded } from './heroImage';
 import { advanceSatelliteProgress } from './satelliteMotion';
 
@@ -190,7 +190,7 @@ export function startSatelliteScene(root) {
   const onTurn = () => { if (fly.getAttribute('src')) loadFlyover(); };
   portraitQuery.addEventListener('change', onTurn);
 
-  // The house photo gets the connection to itself; the flyover (2.5-5.5 MB) and the
+  // The house photo gets the connection to itself; the flyover (5.3-6.6 MB) and the
   // satellite views start once it is in, or at the first scroll if that comes sooner.
   let extrasStarted = false;
   const startExtras = () => {
@@ -230,7 +230,8 @@ export function startSatelliteScene(root) {
     const want = Math.min(Math.max(0, dur - videoFrame), Math.round(band(0.08, 1.7, cur) * dur / videoFrame) * videoFrame);
     if (!reduce && fly.readyState >= 2 && Math.abs(fly.currentTime - want) >= videoFrame / 2 && !fly.seeking) fly.currentTime = want;
     fly.style.opacity = flyoverOpacity(cur, hasFrame, shownTime < videoFrame / 2);
-    sat.style.opacity = band(1.55, 1.75, cur);
+    const satFade = band(1.55, 1.75, cur);
+    sat.style.opacity = reduce ? satFade : satelliteOpacity(satFade, hasFrame, Math.round(dur / videoFrame) - 1 - Math.round(shownTime / videoFrame));
 
     // pull back twice: the street -> the subdivision -> the whole side of town (zoom is relative to the region filling the screen)
     const p1 = band(1.65, 1.9, cur), p2 = band(1.85, 2.12, cur), p3 = band(2.08, 2.38, cur), p4 = band(2.33, 2.68, cur);
