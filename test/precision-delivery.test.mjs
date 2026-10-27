@@ -5,6 +5,8 @@ import vm from 'node:vm';
 import { loadPrecisionJob, loadPrecisionGenerationJob, limitPrecisionCandidates, precisionAreaForJob, precisionReferenceDateForJob, savePrecisionRoutes } from '../src/lib/precisionDelivery.js';
 import { isPrecisionJob, precisionJobBelongsToSubject } from '../base44/shared/precisionOrderSafety.js';
 import { normalizeOwnershipRangeDays } from '../src/components/logic/soldDateRange.js';
+import { tenantManagerId } from '../base44/shared/accountTenancy.js';
+import { shouldOfferRecoveryInsteadOfResuming } from '../src/lib/precisionDelivery.js';
 
 const completedStatus = {
     job_id: 'completed-job', status: 'completed', provider: 'batchdata', mode_tag: 'PRECISION_TARGET',
@@ -256,7 +258,7 @@ function endpoint({ actor = user, fetchJob = job, routes = [ownedRoute()], impor
         } }
     } } };
     vm.runInNewContext(source, { createClientFromRequest: () => client,
-        isPrecisionJob, precisionJobBelongsToSubject, Response, console,
+        isPrecisionJob, precisionJobBelongsToSubject, tenantManagerId, Response, console,
         Deno: { env: { get: () => 'test-db' }, serve: value => { handler = value; } },
         neon: () => async (strings, ...values) => {
             sqlCalls.push({ query: strings.join(' '), values });
@@ -340,4 +342,23 @@ test('a failed route save records its first error so a stuck delivery can be rea
         assert.equal(result.status, 200);
         assert.equal(result.body.final_delivery.save_error_reported, null);
     }
+});
+
+test('a rep import counts the homes saved in the team workspace, never another team', async () => {
+    const rep = { id: 'rep-1', email: 'rep@example.test', app_role: 'rep', team_manager_id: user.id };
+    const repJob = { ...job, precision_usage_user_id: rep.id, user_email: rep.email };
+    const api = endpoint({ actor: rep, fetchJob: repJob, routes: [
+        ownedRoute({ manager_id: user.id, property_hashes: ['a', 'b'] }),
+        ownedRoute({ id: 'route-other', manager_id: 'other-team', property_hashes: ['c'] }),
+    ] });
+    const result = await api.invoke();
+    assert.equal(result.status, 200);
+    assert.equal(result.body.final_delivery.saved_route_homes_verified, 2);
+    assert.deepEqual([...new Set(api.queries.map(entry => entry.query.manager_id))].sort(), [rep.id, user.id].sort());
+});
+
+test('opening the app offers a finished import instead of rebuilding it unasked', () => {
+    assert.equal(shouldOfferRecoveryInsteadOfResuming({ status: 'completed' }), true);
+    for (const status of ['running', 'pending']) assert.equal(shouldOfferRecoveryInsteadOfResuming({ status }), false);
+    assert.equal(shouldOfferRecoveryInsteadOfResuming(null), false);
 });

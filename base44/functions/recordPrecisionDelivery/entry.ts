@@ -1,6 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 import { neon } from 'npm:@neondatabase/serverless@0.9.0';
 import { isPrecisionJob, precisionJobBelongsToSubject } from '../../shared/precisionOrderSafety.js';
+import { tenantManagerId } from '../../shared/accountTenancy.js';
 
 const DATABASE_URL = Deno.env.get('DATABASE_URL');
 const MAX_COUNT = 1000000;
@@ -67,20 +68,23 @@ Deno.serve(async req => {
         const deliveredHashes = new Set();
         let savedRouteCount = 0;
         // Saved counts come from owned, job-associated routes, never client claims.
+        // A rep's routes are saved in the team manager's workspace.
+        for (const workspace of [...new Set([tenantManagerId(user), user.id].filter(Boolean).map(String))]) {
         for (let offset = 0; ; offset += 500) {
             const response = await service.SavedRoute.filter({
-                manager_id: user.id, 'metadata.precision_area.job_id': job.id
+                manager_id: workspace, 'metadata.precision_area.job_id': job.id
             }, '-created_date', 500, offset);
             const routes = Array.isArray(response) ? response : response?.items;
             if (!Array.isArray(routes)) throw new Error('Invalid saved route verification response.');
             for (const route of routes) {
-                if (route.manager_id !== user.id || route.metadata?.precision_area?.job_id !== job.id || route.status === 'ARCHIVED') continue;
+                if (route.manager_id !== workspace || route.metadata?.precision_area?.job_id !== job.id || route.status === 'ARCHIVED') continue;
                 savedRouteCount++;
                 for (const hash of route.property_hashes || []) {
                     if (importedHashes.has(String(hash))) deliveredHashes.add(String(hash));
                 }
             }
             if (routes.length < 500) break;
+        }
         }
         const providerRecords = Math.max(0, Number(job.total_fetched) || 0);
         const finalDelivery = {

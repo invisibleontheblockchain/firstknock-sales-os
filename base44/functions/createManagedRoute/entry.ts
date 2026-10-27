@@ -96,9 +96,10 @@ Deno.serve(async req => {
             // Recovery after a lost response or reload must not duplicate the same
             // imported homes. Preserve their original persisted order on replay.
             for (let offset = 0; metadata.newly_generated && !metadata.rerun_from_route_id && !route.parent_route_id; offset += 500) {
-                const existing = rows(await service.SavedRoute.filter({ manager_id: user.id, 'metadata.precision_area.job_id': jobId }, '-created_date', 500, offset));
+                // Routes live in the tenant workspace: the team manager's for a rep.
+                const existing = rows(await service.SavedRoute.filter({ manager_id: managerId, 'metadata.precision_area.job_id': jobId }, '-created_date', 500, offset));
                 const hashSet = new Set(hashes);
-                const match = existing.find(saved => saved.manager_id === user.id && saved.metadata?.precision_area?.job_id === jobId
+                const match = existing.find(saved => saved.manager_id === managerId && saved.metadata?.precision_area?.job_id === jobId
                     && saved.status !== 'ARCHIVED' && saved.property_hashes?.length === hashes.length
                     && new Set(saved.property_hashes).size === hashes.length && saved.property_hashes.every(hash => hashSet.has(hash)));
                 if (match) return Response.json({ route: match, already_saved: true });

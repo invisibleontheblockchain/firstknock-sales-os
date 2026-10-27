@@ -55,6 +55,16 @@ export function limitPrecisionCandidates(properties, { countMode, requestedCount
 // A recovered import can already have finished saving before the tab closed.
 // Only reuse this job's remote routes, with complete delivery or full candidate
 // coverage as evidence; a partial save must still build the remaining homes.
+/**
+ * Whether opening the app should offer this import instead of resuming it.
+ * A running or pending import keeps resuming on its own so its progress shows.
+ * A finished one only needs its routes built and saved; doing that unasked on
+ * every open, with no way out, is what trapped reps whose saves were failing.
+ */
+export function shouldOfferRecoveryInsteadOfResuming(job) {
+    return job?.status === 'completed';
+}
+
 export function getCompletedPrecisionRoutes(job, routes, candidates = []) {
     if (!job?.id) return [];
     const saved = routes.filter(route => route?.id && !String(route.id).startsWith('local_')

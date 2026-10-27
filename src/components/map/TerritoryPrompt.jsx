@@ -13,7 +13,7 @@ import { FREE_PRECISION_PROPERTY_LIMIT, precisionAllowanceMessage } from '@/lib/
 import { usePrecisionUsage } from '@/hooks/usePrecisionUsage';
 import { normalizeOwnershipRangeDays as normalizeStrictOwnershipRangeDays } from '@/components/logic/soldDateRange';
 import { validateCanvasBoundary } from '@/components/canvas/canvasPlannerUtils';
-import { loadPrecisionJob } from '@/lib/precisionDelivery';
+import { loadPrecisionJob, shouldOfferRecoveryInsteadOfResuming } from '@/lib/precisionDelivery';
 import {
   classifyStatusPollError,
   nextPollDelayMs,
@@ -178,6 +178,9 @@ export default function TerritoryPrompt({
   const [repullMode, setRepullMode] = useState('fill_gaps');
   const [includeUnresolvedFollowUps, setIncludeUnresolvedFollowUps] = useState(true);
   const [recoverableJob, setRecoverableJob] = useState(null);
+  // A finished import whose routes were not saved, waiting for the rep to build or dismiss it.
+  const [pendingRecovery, setPendingRecovery] = useState(null);
+  const [dismissingRecovery, setDismissingRecovery] = useState(false);
   const [requestedPropertyCount, setRequestedPropertyCount] = useState(50);
   const [propertyCountMode, setPropertyCountMode] = useState('max_available');
   const [minHomeValue, setMinHomeValue] = useState(100000);
@@ -252,6 +255,74 @@ export default function TerritoryPrompt({
     setPulling(false);
   }, [routeMode]);
 
+  // Pick an import back up: polling a running one, or building routes for a
+  // finished one. Shared by the automatic resume and the recovery prompt.
+  const resumePrecisionJob = async (job, isCancelled = () => false) => {
+    if (!job?.id) return;
+    console.log('[TerritoryPrompt] Resuming precision job:', job.id, job.status);
+    const jobMetadata = job.dry_run_metadata || {};
+    const resumedOwnershipRangeDays = normalizeOwnershipRangeDays(
+      job.ownership_range_days ?? jobMetadata.ownership_range_days
+    );
+    const resumedOwnershipRangeMode = (
+      job.ownership_range_mode ?? jobMetadata.ownership_range_mode
+    ) === 'custom' && resumedOwnershipRangeDays ? 'custom' : 'quick';
+    const resumedRouteBounds = jobMetadata.route_bounds || { enabled: false };
+    pullIntentRef.current[job.id] = {
+      polygon: job.polygon || [],
+      requestedCount: Number(jobMetadata.requested_properties ?? job.total_expected ?? 0) || null,
+      soldMonths: Number(job.sold_months || 12),
+      ownershipRangeMode: resumedOwnershipRangeMode,
+      ownershipRangeDays: resumedOwnershipRangeDays,
+      minHomeValue: jobMetadata.filters?.min_price ?? null,
+      maxHomeValue: jobMetadata.filters?.max_price ?? null,
+      routeBounds: resumedRouteBounds
+    };
+    await onRouteBoundsPrepared?.(resumedRouteBounds);
+    if (isCancelled()) return;
+    rememberActivePrecisionJob(job.id);
+    if (Array.isArray(job.polygon) && job.polygon.length >= 3) {
+      try { localStorage.setItem('fk_drawnPolygonQueried', 'true'); } catch {}
+      setDrawnPolygon(job.polygon, true);
+    }
+    setFetchMonths(Number(job.sold_months || 12));
+    setOwnershipRangeMode(resumedOwnershipRangeMode);
+    if (resumedOwnershipRangeDays) setOwnershipRangeDays(resumedOwnershipRangeDays);
+    setPulling(true);
+    setPullProgress(job.status === 'completed' ? 'Building routes from your import...' : 'Resuming data import...');
+    const pct = job.progress_pct || 0;
+    setPullPct(pct);
+    setDisplayPct(Math.max(pct - 5, 0)); // Start close to real progress instead of 0
+    targetPctRef.current = pct;
+    setEtaText('Resuming...');
+    pctHistoryRef.current = [];
+    startPolling(job.id);
+  };
+
+  const buildPendingRecovery = () => {
+    const job = pendingRecovery;
+    if (!job || pulling) return;
+    setPendingRecovery(null);
+    resumePrecisionJob(job);
+  };
+
+  const dismissPendingRecovery = async () => {
+    const job = pendingRecovery;
+    if (!job || dismissingRecovery) return;
+    setDismissingRecovery(true);
+    try {
+      await base44.functions.invoke('getPrecisionRecovery', { action: 'dismiss', job_id: job.id });
+      clearActivePrecisionJob(job.id);
+      setPendingRecovery(null);
+      toast.info('Dismissed. That import will not be rebuilt again; its homes stay in your account.');
+    } catch (error) {
+      const reason = error?.response?.data?.error || error?.message || 'Please try again.';
+      toast.error(`Could not dismiss the import: ${reason}`);
+    } finally {
+      setDismissingRecovery(false);
+    }
+  };
+
   // Auto-resume: check for running/pending fetch jobs on mount
   useEffect(() => {
     if (routeMode !== 'precision') return;
@@ -300,46 +371,13 @@ export default function TerritoryPrompt({
 
         if (cancelled || pollSessionRef.current) return;
         setRecoverableJob(null);
-        if (job && !cancelled && !pulling) {
-          console.log('[TerritoryPrompt] Resuming running job:', job.id);
-          const jobMetadata = job.dry_run_metadata || {};
-          const resumedOwnershipRangeDays = normalizeOwnershipRangeDays(
-            job.ownership_range_days ?? jobMetadata.ownership_range_days
-          );
-          const resumedOwnershipRangeMode = (
-            job.ownership_range_mode ?? jobMetadata.ownership_range_mode
-          ) === 'custom' && resumedOwnershipRangeDays ? 'custom' : 'quick';
-          const resumedRouteBounds = jobMetadata.route_bounds || { enabled: false };
-          pullIntentRef.current[job.id] = {
-            polygon: job.polygon || [],
-            requestedCount: Number(jobMetadata.requested_properties ?? job.total_expected ?? 0) || null,
-            soldMonths: Number(job.sold_months || 12),
-            ownershipRangeMode: resumedOwnershipRangeMode,
-            ownershipRangeDays: resumedOwnershipRangeDays,
-            minHomeValue: jobMetadata.filters?.min_price ?? null,
-            maxHomeValue: jobMetadata.filters?.max_price ?? null,
-            routeBounds: resumedRouteBounds
-          };
-          await onRouteBoundsPrepared?.(resumedRouteBounds);
-          if (cancelled) return;
-          rememberActivePrecisionJob(job.id);
-          if (Array.isArray(job.polygon) && job.polygon.length >= 3) {
-            try { localStorage.setItem('fk_drawnPolygonQueried', 'true'); } catch {}
-            setDrawnPolygon(job.polygon, true);
-          }
-          setFetchMonths(Number(job.sold_months || 12));
-          setOwnershipRangeMode(resumedOwnershipRangeMode);
-          if (resumedOwnershipRangeDays) setOwnershipRangeDays(resumedOwnershipRangeDays);
-          setPulling(true);
-          setPullProgress('Resuming data import...');
-          const pct = job.progress_pct || 0;
-          setPullPct(pct);
-          setDisplayPct(Math.max(pct - 5, 0)); // Start close to real progress instead of 0
-          targetPctRef.current = pct;
-          setEtaText('Resuming...');
-          pctHistoryRef.current = [];
-          startPolling(job.id);
+        // A finished import whose routes were never saved is offered, not forced:
+        // opening the app must not drop the rep into a build they cannot stop.
+        if (shouldOfferRecoveryInsteadOfResuming(job)) {
+          setPendingRecovery(job);
+          return;
         }
+        if (!pulling) await resumePrecisionJob(job, () => cancelled);
       } catch (e) {
         console.warn('[TerritoryPrompt] Error checking running/completed jobs:', e);
       }
@@ -1303,6 +1341,22 @@ export default function TerritoryPrompt({
               className="h-8 text-xs">
               
                                 Dismiss
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+      }
+
+            {/* A finished import whose routes were not saved: the rep decides */}
+            {routeMode === 'precision' && !pulling && pendingRecovery &&
+      <div role="dialog" aria-labelledby="precision-recovery-title" className="absolute top-14 left-1/2 -translate-x-1/2 z-[2000] w-11/12 max-w-sm animate-in fade-in">
+                    <div className="bg-black/90 backdrop-blur-md border border-[#2EEB57]/50 rounded-xl p-4 shadow-2xl">
+                        <p id="precision-recovery-title" className="text-xs font-bold text-white mb-1">Unsaved routes from your last import</p>
+                        <p className="text-[10px] text-gray-400 mb-3">Your last Precision import finished, but its routes were not saved. Build them now, or dismiss it so it stops coming back. Dismissing keeps the imported homes and does not refund or charge anything.</p>
+                        <div className="flex gap-2">
+                            <Button onClick={buildPendingRecovery} disabled={dismissingRecovery} className="h-8 flex-1 text-xs bg-[#2EEB57] text-black hover:bg-[#39FF4A]">Build routes</Button>
+                            <Button onClick={dismissPendingRecovery} disabled={dismissingRecovery} variant="outline" className="h-8 text-xs">
+                                {dismissingRecovery ? 'Dismissing…' : 'Dismiss'}
                             </Button>
                         </div>
                     </div>
