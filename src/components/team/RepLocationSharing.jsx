@@ -7,6 +7,9 @@ import { isRepAccount, getManagerIdForAccount } from '@/lib/roles';
 import { startRepLocationSession } from '@/lib/repLocationSession';
 import { useShiftStatus, activeShiftFor } from '@/lib/useShiftStatus';
 import { LOCATION_LIVE_MS } from '../../../base44/shared/repLocations';
+import { locationBannerScope, locationBannerTitle } from '@/lib/fieldBannerDismissal';
+import { useFieldBannerDismissal } from '@/components/team/useFieldBannerDismissal';
+import FieldBannerClose from '@/components/team/FieldBannerClose';
 
 const SharingContext = createContext(null);
 
@@ -54,23 +57,28 @@ export function RepLocationProvider({ children }) {
   }, [sharing, shift?.id, user?.id, user?.team_manager_id, user?.data?.team_manager_id]);
 
   const live = sharing && !state.error && state.lastPublished && now - state.lastPublished <= LOCATION_LIVE_MS;
-  return <SharingContext.Provider value={{ eligible, sharing, live, state, verificationError: status.isError }}>{children}</SharingContext.Provider>;
+  return <SharingContext.Provider value={{ eligible, sharing, live, state, verificationError: status.isError,
+    userId: user?.id || null, shiftId: shift?.id || null }}>{children}</SharingContext.Provider>;
 }
 
 export default function RepLocationSharing() {
   const context = useContext(SharingContext);
-  if (!context?.eligible) return null;
-  const { sharing, live, state, verificationError } = context;
-  const title = verificationError ? 'Location sharing paused: your shift could not be verified'
-    : !sharing ? 'Location sharing starts when you clock in'
-      : live ? 'On the clock · location live with your manager' : 'On the clock · connecting your location…';
+  const { eligible, sharing, live, state, verificationError, userId, shiftId } = context || {};
+  // Closing the notice hides it, never the sharing itself: that still follows the time clock.
+  const [dismissed, dismiss] = useFieldBannerDismissal('location', userId,
+    locationBannerScope({ sharing, shiftId, verificationError }));
+  if (!eligible || dismissed) return null;
+  const title = locationBannerTitle({ sharing, live, error: state?.error, verificationError });
   const detail = verificationError ? 'Check your connection. Sharing resumes once your shift is confirmed.'
     : !sharing ? 'Your manager sees where you are only while you are clocked in. Clocking out stops it.'
       : state.error || 'Keep FirstKnock open while you canvass. Updates pause while your phone is locked or the app is closed, and resume when you come back.';
   return (
-    <div className="border-b border-white/10 bg-[#111] px-4 py-2 text-white">
-      <p className="flex items-center gap-2 text-xs font-semibold"><MapPin className={`h-3.5 w-3.5 ${live ? 'text-green-400' : 'text-gray-400'}`} />{title}</p>
-      <p className={`mt-1 text-[10px] ${sharing && state.error ? 'text-amber-300' : 'text-gray-400'}`} role={sharing && state.error ? 'alert' : undefined}>{detail}</p>
+    <div className="flex items-start gap-3 border-b border-white/10 bg-[#111] px-4 py-2 text-white">
+      <div className="min-w-0 flex-1">
+        <p className="flex items-center gap-2 text-xs font-semibold"><MapPin className={`h-3.5 w-3.5 ${live ? 'text-green-400' : 'text-gray-400'}`} />{title}</p>
+        <p className={`mt-1 text-[10px] ${sharing && state.error ? 'text-amber-300' : 'text-gray-400'}`} role={sharing && state.error ? 'alert' : undefined}>{detail}</p>
+      </div>
+      <FieldBannerClose label="Hide location notice" onClose={dismiss} />
     </div>
   );
 }

@@ -15,7 +15,8 @@ export function startRepLocationSession({ geolocation, invoke, sessionId, onStat
   let stopPromise;
   const gpsError = (error) => {
     if (stopped) return;
-    onState({ error: error?.code === 1 ? 'Location permission is blocked. Allow location access, then restart sharing.'
+    // Coming back to the app asks for a fix again, so allowing access is all it takes.
+    onState({ error: error?.code === 1 ? 'Location permission is blocked. Allow location access for FirstKnock in your phone settings, then return to the app.'
       : 'Waiting for GPS. Keep the app open with location access enabled.' });
   };
   const onPosition = (position) => {

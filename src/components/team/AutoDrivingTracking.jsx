@@ -5,6 +5,9 @@ import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
 import { readAutoDrivingConsent, writeAutoDrivingConsent, autoDrivingStorageKey, startAutoDrivingTracker, startExclusiveAutoDrivingTracker } from '@/lib/autoDrivingTracker';
 import { useShiftStatus } from '@/lib/useShiftStatus';
+import { mileageBannerScope } from '@/lib/fieldBannerDismissal';
+import { useFieldBannerDismissal } from '@/components/team/useFieldBannerDismissal';
+import FieldBannerClose from '@/components/team/FieldBannerClose';
 
 const AutoDrivingContext = createContext(null);
 const readConsent = userId => { try { return readAutoDrivingConsent(localStorage, userId); } catch { return false; } };
@@ -74,12 +77,16 @@ export function AutoDrivingProvider({ children }) {
     }
     const verifiedEligible = signedIn && status.data?.eligible === true;
     return <AutoDrivingContext.Provider value={{ eligible: verifiedEligible, consent, visible, state, setEnabled,
-        clockedIn: !!verifiedShift, verifying: status.isFetching, verificationError: status.isError }}>{children}</AutoDrivingContext.Provider>;
+        clockedIn: !!verifiedShift, verifying: status.isFetching, verificationError: status.isError,
+        userId: user?.id || null, shiftId: shift?.status === 'active' ? shift.id : null }}>{children}</AutoDrivingContext.Provider>;
 }
 
 export function AutoDrivingStatus() {
     const context = useContext(AutoDrivingContext);
-    if (!context?.eligible) return null;
+    // Closing the notice only hides it; mileage stays on or off exactly as chosen.
+    const [dismissed, dismiss] = useFieldBannerDismissal('mileage', context?.userId,
+        mileageBannerScope({ consent: context?.consent, shiftId: context?.shiftId }));
+    if (!context?.eligible || dismissed) return null;
     const { consent, visible, state, setEnabled, clockedIn, verificationError } = context;
     const label = !consent ? 'Enable automatic work mileage' : !visible ? 'Mileage paused while the app is hidden'
         : verificationError ? 'Mileage paused: work shift could not be verified' : !clockedIn ? 'Automatic mileage ready for your next clock-in'
@@ -93,5 +100,6 @@ export function AutoDrivingStatus() {
         </div>
         <button type="button" className="min-h-10 rounded-lg border border-white/20 px-3 text-xs font-bold hover:bg-white/10"
             aria-pressed={consent} onClick={() => setEnabled(!consent)}>{consent ? 'Turn off mileage' : 'Enable GPS mileage'}</button>
+        <FieldBannerClose label="Hide mileage notice" onClose={dismiss} />
     </div>;
 }

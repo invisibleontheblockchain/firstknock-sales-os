@@ -342,6 +342,9 @@ test('sharing follows the time clock: no manual switch, started only by an activ
   const source = fs.readFileSync('src/components/team/RepLocationSharing.jsx', 'utf8');
   assert.match(source, /activeShiftFor\(status, user\)/);
   assert.match(source, /const sharing = !!shift;/);
+  // The only control is the X that hides the notice; sharing itself has no switch.
   assert.doesNotMatch(source, /<button/);
-  assert.doesNotMatch(source, /Share location/);
+  assert.doesNotMatch(source, /Share location|Stop sharing|Start sharing/);
+  assert.match(source, /<FieldBannerClose label="Hide location notice" onClose=\{dismiss\} \/>/);
+  assert.doesNotMatch(source, /dismiss[\s\S]{0,80}session\.stop|setSharing/);
 });
