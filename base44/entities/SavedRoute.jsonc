@@ -566,6 +566,39 @@
           ]
         },
         {
+          "$and": [
+            {
+              "data.manager_id": {
+                "$nin": [
+                  null,
+                  ""
+                ]
+              }
+            },
+            {
+              "data.assigned_to": {
+                "$nin": [
+                  null,
+                  ""
+                ]
+              }
+            },
+            {
+              "data.manager_id": "{{user.data.team_manager_id}}"
+            },
+            {
+              "$or": [
+                {
+                  "data.assigned_to": "{{user.id}}"
+                },
+                {
+                  "data.assigned_to": "{{user.data.team_member_id}}"
+                }
+              ]
+            }
+          ]
+        },
+        {
           "user_condition": {
             "role": "admin"
           }

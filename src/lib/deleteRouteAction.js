@@ -22,7 +22,10 @@ export async function deleteSavedRoute({ route, queryClient, activeRoute, setAct
         toast.success('Route deleted');
         return true;
     } catch (error) {
-        toast.error('Failed to delete route');
+        // Keep the server's reason visible; a bare toast hid a permission denial for reps.
+        console.error('Route delete failed', error);
+        const reason = error?.response?.data?.message || error?.response?.data?.error || error?.message;
+        toast.error(reason ? `Failed to delete route: ${reason}` : 'Failed to delete route');
         return false;
     }
 }
