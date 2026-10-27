@@ -1,6 +1,6 @@
 import { createManagedRoute } from '../../lib/createManagedRoute.js';
 import { optimizeImportedRoute } from './optimizeImportedRoute.js';
-import { mergeImportedStops, validCoordinates } from './propertyImportData.js';
+import { importHashAliases, mergeImportedStops, validCoordinates } from './propertyImportData.js';
 import { orderRouteProperties } from '../logic/routeHydrationCore.js';
 
 function assertUser(user) {
@@ -62,27 +62,31 @@ export async function savePropertyImport(importBatch, {
   if (!route && optimize) additions = await optimize(additions, null);
   const persisted = [];
   // Reuse records on retries rather than creating the same imported hash twice.
+  // A record saved under the previous import hash (legacy_hash) is the same
+  // house: it is reused, and the route then points at the hash it already has.
+  const savedFor = (saved, wanted) => importHashAliases(wanted).includes(String(saved?.address_hash || ''));
   for (let i = 0; i < additions.length; i += 100) {
     const batch = additions.slice(i, i + 100);
     onProgress(`Saving properties ${i + 1}–${Math.min(i + 100, additions.length)} of ${additions.length}...`);
     if (persistProperties) {
       const saved = await persistProperties(batch, route?.id || null);
-      if (!Array.isArray(saved) || saved.length !== batch.length || saved.some((property, index) => property?.address_hash !== batch[index].address_hash)) {
+      if (!Array.isArray(saved) || saved.length !== batch.length || saved.some((property, index) => !savedFor(property, batch[index]))) {
         throw new Error('Some properties could not be saved. Retry the import before updating the route.');
       }
       persisted.push(...saved);
       continue;
     }
     const response = await client.entities.MasterProperty.filter({
-      created_by: user.email, address_hash: { $in: batch.map(property => property.address_hash) },
+      created_by: user.email, address_hash: { $in: batch.flatMap(importHashAliases) },
     }, '-created_date', 500);
     const existing = Array.isArray(response) ? response : response?.items || [];
     const byHash = new Map(existing.map(property => [property.address_hash, property]));
-    const newProperties = batch.filter(property => !byHash.has(property.address_hash))
+    const existingFor = property => importHashAliases(property).map(hash => byHash.get(hash)).find(Boolean);
+    const newProperties = batch.filter(property => !existingFor(property))
       .map(property => ({ ...property, created_by: user.email }));
     if (newProperties.length) await client.entities.MasterProperty.bulkCreate(newProperties);
     // Existing records carry their statuses and IDs. Never overwrite knock history on reimport.
-    persisted.push(...batch.map(property => byHash.get(property.address_hash) || { ...property, created_by: user.email }));
+    persisted.push(...batch.map(property => existingFor(property) || { ...property, created_by: user.email }));
   }
 
   let propertyHashes = [...(route?.property_hashes || []), ...persisted.map(property => property.address_hash)];

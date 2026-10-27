@@ -271,7 +271,7 @@ export async function prepareAddressListImport(rows, fileName = 'Imported List.x
     const state = cleanState(columns.state ? row[columns.state] : '');
     const zip = cleanZip(columns.zip ? row[columns.zip] : '');
     const displayStreet = tidyCase(street);
-    const key = addressDedupeKey({ address: rawAddress, zip });
+    const key = addressDedupeKey({ address: rawAddress, city, state, zip });
     const ownerName = tidyCase(composeOwnerName(row, columns));
     const county = columns.county ? resolveCounty(row[columns.county]) : '';
 

@@ -3,10 +3,17 @@ import Papa from 'papaparse';
 import { FileSpreadsheet, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
-export default function PropertyImportSummary({ importBatch, route, preview, isSaving, progress, isLoading, error, onSave, onCancel, onNameChange }) {
+export default function PropertyImportSummary({
+  importBatch, route, preview, isSaving, progress, isLoading, error, onSave, onCancel, onNameChange,
+  otherRouteMatches = null, otherRoutesChecking = false, otherRoutesUnavailable = false,
+  skipOtherRouteStops = true, onSkipOtherRouteStopsChange, readyCount = null,
+}) {
   if (!importBatch) return null;
   const adding = !!importBatch.routeId;
   const { summary, skippedRows } = importBatch;
+  const onOtherRoutes = otherRouteMatches?.count || 0;
+  const otherRouteNames = (otherRouteMatches?.routes || []).map(match => match.name);
+  const stopsToImport = readyCount ?? summary.ready;
   const downloadSkipped = () => {
     const url = URL.createObjectURL(new Blob([Papa.unparse(skippedRows, { escapeFormulae: true })], { type: 'text/csv;charset=utf-8' }));
     const link = document.createElement('a');
@@ -42,8 +49,27 @@ export default function PropertyImportSummary({ importBatch, route, preview, isS
               <p className="text-gray-400">{preview.duplicatesRemoved.toLocaleString()} {preview.duplicatesRemoved === 1 ? 'property' : 'properties'} already on this route</p>
               <p className="font-semibold">{preview.additions.length.toLocaleString()} new stops · {preview.propertyHashes.length.toLocaleString()} total stops</p>
             </>}
+            {!adding && stopsToImport !== summary.ready && <p className="font-semibold">{stopsToImport.toLocaleString()} new stops</p>}
             {isLoading && <p className="text-yellow-400">Checking existing route stops...</p>}
+            {otherRoutesChecking && <p className="text-yellow-400">Checking other active routes for the same addresses...</p>}
+            {otherRoutesUnavailable && <p className="text-yellow-400">Other active routes could not be checked for the same addresses.</p>}
           </div>
+          {onOtherRoutes > 0 && (
+            <label className="flex items-start gap-3 rounded-xl border border-yellow-500/20 bg-yellow-500/5 p-3 text-xs text-yellow-200">
+              <input
+                type="checkbox"
+                checked={skipOtherRouteStops}
+                disabled={isSaving}
+                onChange={event => onSkipOtherRouteStopsChange?.(event.target.checked)}
+                className="mt-0.5 h-4 w-4 shrink-0 accent-green-400"
+              />
+              <span>
+                <span className="font-semibold">{onOtherRoutes.toLocaleString()} {onOtherRoutes === 1 ? 'address is' : 'addresses are'} already on {otherRouteNames.length === 1 ? otherRouteNames[0] : `${otherRouteNames.length} other active routes`}.</span>
+                {' '}Skip {onOtherRoutes === 1 ? 'it' : 'them'} so the same door is not on two routes. Untick to import {onOtherRoutes === 1 ? 'it' : 'them'} anyway.
+                {otherRouteNames.length > 1 && <span className="mt-1 block text-yellow-200/70">{otherRouteNames.slice(0, 5).join(', ')}{otherRouteNames.length > 5 ? ` and ${otherRouteNames.length - 5} more` : ''}</span>}
+              </span>
+            </label>
+          )}
           {!!skippedRows.length && <div className="rounded-xl border border-yellow-500/20 p-3 text-xs text-yellow-300">
             <p className="font-semibold">Review skipped addresses</p>
             <ul className="mt-2 space-y-2">
@@ -56,7 +82,7 @@ export default function PropertyImportSummary({ importBatch, route, preview, isS
         </div>
         <div className="flex gap-2 border-t border-white/10 p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))]">
           <Button variant="outline" onClick={onCancel} disabled={isSaving} className="h-11 rounded-xl">Cancel</Button>
-          <Button onClick={onSave} disabled={isSaving || isLoading || (adding && !preview) || (!adding && !importBatch.routeName.trim())} className="h-11 flex-1 rounded-xl bg-green-500 font-bold text-black hover:bg-green-400">
+          <Button onClick={onSave} disabled={isSaving || isLoading || otherRoutesChecking || (adding && !preview) || (!adding && (!importBatch.routeName.trim() || stopsToImport === 0))} className="h-11 flex-1 rounded-xl bg-green-500 font-bold text-black hover:bg-green-400">
             {isSaving ? 'Saving...' : adding ? (preview?.additions.length === 0 ? 'Open Existing Route' : 'Add to Route') : 'Create Route'}
           </Button>
         </div>

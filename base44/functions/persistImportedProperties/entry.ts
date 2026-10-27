@@ -39,10 +39,15 @@ export async function persistProperties(client, user, body) {
 
   const clean = [];
   const hashes = new Set();
+  // Every hash a record may already be stored under: its own, plus the hash
+  // the previous import scheme gave the same address (legacy_hash).
+  const lookupHashes = new Set();
+  const validHash = value => typeof value === 'string' && value.trim() && value.length <= 160;
   for (const property of properties) {
     if (!property || typeof property !== 'object' || Array.isArray(property)
-      || typeof property.address_hash !== 'string' || !property.address_hash.trim() || property.address_hash.length > 160
+      || !validHash(property.address_hash)
       || hashes.has(property.address_hash)
+      || (property.legacy_hash !== undefined && !validHash(property.legacy_hash))
       || !Number.isInteger(property.house_number) || typeof property.street_name !== 'string'
       || typeof property.lat !== 'number' || typeof property.lng !== 'number'
       || !Number.isFinite(property.lat) || !Number.isFinite(property.lng)
@@ -52,7 +57,11 @@ export async function persistProperties(client, user, body) {
       return { status: 400, error: 'Invalid imported property fields.' };
     }
     hashes.add(property.address_hash);
-    clean.push({ ...Object.fromEntries(FIELDS.filter(field => property[field] !== undefined).map(field => [field, property[field]])), manager_id: managerId });
+    lookupHashes.add(property.address_hash);
+    const record = { ...Object.fromEntries(FIELDS.filter(field => property[field] !== undefined).map(field => [field, property[field]])), manager_id: managerId };
+    if (record.legacy_hash === record.address_hash) delete record.legacy_hash;
+    if (record.legacy_hash) lookupHashes.add(record.legacy_hash);
+    clean.push(record);
   }
   const entity = client.asServiceRole.entities.MasterProperty;
   const belongsToWorkspace = property => (
@@ -62,23 +71,25 @@ export async function persistProperties(client, user, body) {
     && (!property.manager_id || property.manager_id === managerId)
   );
   const readExisting = async () => [
-    ...rows(await entity.filter({ manager_id: managerId, address_hash: { $in: [...hashes] } }, '-created_date', 500)),
-    ...rows(await entity.filter({ created_by: ownerEmail, address_hash: { $in: [...hashes] } }, '-created_date', 500)),
+    ...rows(await entity.filter({ manager_id: managerId, address_hash: { $in: [...lookupHashes] } }, '-created_date', 500)),
+    ...rows(await entity.filter({ created_by: ownerEmail, address_hash: { $in: [...lookupHashes] } }, '-created_date', 500)),
   ].filter(belongsToWorkspace);
   const byHash = new Map();
   for (const property of await readExisting()) {
     if (!byHash.has(property.address_hash)) byHash.set(property.address_hash, property);
   }
-  const missing = clean.filter(property => !byHash.has(property.address_hash));
+  // The record already saved for this door, whichever import scheme hashed it.
+  const existingFor = property => byHash.get(property.address_hash) || (property.legacy_hash ? byHash.get(property.legacy_hash) : undefined);
+  const missing = clean.filter(property => !existingFor(property));
   if (missing.length) {
     const created = rows(await entity.bulkCreate(missing));
     created.forEach(property => byHash.set(property.address_hash, property));
   }
   // Read back if the runtime bulk-create response doesn't include the records.
-  if (clean.some(property => !byHash.has(property.address_hash))) {
+  if (clean.some(property => !existingFor(property))) {
     (await readExisting()).forEach(property => byHash.set(property.address_hash, property));
   }
-  const saved = clean.map(property => byHash.get(property.address_hash));
+  const saved = clean.map(existingFor);
   if (saved.some(property => !property || !belongsToWorkspace(property))) return { status: 502, error: 'Some imported properties could not be saved. Retry the import.' };
   return { status: 200, properties: saved };
 }
