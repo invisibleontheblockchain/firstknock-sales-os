@@ -43,7 +43,8 @@ const cases=[
  ['platform admin',{id:'admin',role:'admin'},{manager_id:'manager',assigned_to:'peer'},true],
 ];
 for(const [name,user,route,expected] of cases) test(name,()=>{
-  for(const op of ['read','update']) assert.equal(allows(policy[op],route,user),expected,op);
+  // Reps can save their own routes, so a route they can see and edit must be one they can delete.
+  for(const op of ['read','update','delete']) assert.equal(allows(policy[op],route,user),expected,op);
 });
 test('reassignment immediately removes previous rep access',()=>{
  const route={manager_id:'manager',assigned_to:'member'};
@@ -51,9 +52,12 @@ test('reassignment immediately removes previous rep access',()=>{
  route.assigned_to='peer';
  assert.equal(allows(policy.read,route,rep),false);
 });
-test('rep cannot create or delete routes',()=>{
+test('rep cannot create routes directly',()=>{
  assert.equal(allows(policy.create,{},rep),false);
- assert.equal(allows(policy.delete,{manager_id:'manager',assigned_to:'member'},rep),false);
+});
+test('rep can delete a route assigned to them but not a teammate\'s',()=>{
+ assert.equal(allows(policy.delete,{manager_id:'manager',assigned_to:'member'},rep),true);
+ assert.equal(allows(policy.delete,{manager_id:'manager',assigned_to:'peer'},rep),false);
 });
 
 test('rep cannot edit the route tenant or assignment fields',()=>{
