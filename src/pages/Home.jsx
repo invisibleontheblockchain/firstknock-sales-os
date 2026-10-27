@@ -28,6 +28,7 @@ import { calculateRouteDistanceMiles, isValidRoutePoint } from '@/lib/routeBound
 import { applyRouteFilters, formatStageCounts } from '../components/logic/routeFilterPipeline';
 import { loadPrecisionGenerationJob, limitPrecisionCandidates, precisionAreaForJob, precisionReferenceDateForJob, savePrecisionRoutes, getCompletedPrecisionRoutes } from '@/lib/precisionDelivery';
 import { markRoadCompleted, needsRoadCompletionBeforeSave } from '@/lib/generatedRouteRoadCompletion';
+import { getManagerIdForAccount } from '@/lib/roles';
 import { normalizeOwnershipRangeDays as normalizeStrictOwnershipRangeDays } from '../components/logic/soldDateRange';
 import RouteGenerationOverlay from '../components/routes/RouteGenerationOverlay';
 import RouteAssignmentDialog from '@/components/routes/RouteAssignmentDialog';
@@ -988,7 +989,9 @@ export default function Home() {
             route_origin_mode: routeOriginMode,
             assigned_to: defaultAssigneeId,
             assigned_to_name: defaultAssigneeName,
-            manager_id: user.id,
+            // A rep saves into the team manager's workspace; the server rejects
+            // any other workspace, which left every rep's precision route unsaved.
+            manager_id: getManagerIdForAccount(user) || user.id,
             metadata: isGeneratedRoute ? { ...safeRouteMetadata, ...precisionAreaMetadata, newly_generated: true, generated_at: generatedAt } : safeRouteMetadata,
             silent // Pass silent flag to mutation
         });
@@ -1701,7 +1704,7 @@ export default function Home() {
             // local numeric target must never truncate a Max Available drain.
             const precisionJob = isCurrentBatchDataRun ? await loadPrecisionGenerationJob(base44, activeFetchJobId) : null;
             const savedPrecisionRoutes = precisionJob ? await fetchAllSavedRoutePages((limit, skip) => (
-                base44.entities.SavedRoute.filter({ manager_id: user.id, 'metadata.precision_area.job_id': precisionJob.id }, '-created_date', limit, skip)
+                base44.entities.SavedRoute.filter({ manager_id: getManagerIdForAccount(user) || user.id, 'metadata.precision_area.job_id': precisionJob.id }, '-created_date', limit, skip)
             )) : [];
             const restoreCompletedRoute = async (candidates = []) => {
                 const completed = getCompletedPrecisionRoutes(precisionJob, savedPrecisionRoutes, candidates);
@@ -2222,7 +2225,7 @@ export default function Home() {
             // Go straight to the map: activate the first generated route instead of opening the command panel
             if (generated.length > 0) {
                 const firstSaved = savedRecords[0];
-                setActiveRoute(firstSaved?.id ? { ...generated[0], id: firstSaved.id, isSaved: true, status: firstSaved.status || 'ACTIVE' } : generated[0]);
+                setActiveRoute(firstSaved?.id ? { ...generated[0], id: firstSaved.id, isSaved: true, status: firstSaved.status || 'ACTIVE' } : { ...generated[0], isSaved: false });
                 finishRouteBuild();
             }
             setShowRoutePanel(false); setShowCompare(false);
@@ -2698,7 +2701,7 @@ export default function Home() {
                 routeStatusView={routeStatusView}
                 setRouteStatusView={setRouteStatusView}
                 onSaveFilteredRoute={handleSaveFilteredRoute}
-                onReoptimizeRoute={handleReoptimizeRoute} onDeleteRoute={(route) => deleteSavedRoute({ route, queryClient, activeRoute, setActiveRoute })}
+                onReoptimizeRoute={handleReoptimizeRoute} onDeleteRoute={(route) => deleteSavedRoute({ route, queryClient, activeRoute, setActiveRoute, onDiscardUnsaved: (unsaved) => setRoutes(current => current.filter(candidate => candidate.id !== unsaved.id)) })}
                 startLocation={startLocation} onSaveHomeBase={handleSaveHomeBase}
                 hasMlsData={hasMlsData}
                 logs={logs}
@@ -2887,7 +2890,7 @@ export default function Home() {
                                 toast.error("Failed to delete routes");
                             }
                         }}
-                        onDeleteRoute={(route) => deleteSavedRoute({ route, queryClient, activeRoute, setActiveRoute })}
+                        onDeleteRoute={(route) => deleteSavedRoute({ route, queryClient, activeRoute, setActiveRoute, onDiscardUnsaved: (unsaved) => setRoutes(current => current.filter(candidate => candidate.id !== unsaved.id)) })}
                         onReplaceRoutes={(newRoutes) => setRoutes(newRoutes)}
                         onClose={() => setShowRoutePanel(false)}
                         activeRouteId={activeRoute?.id}

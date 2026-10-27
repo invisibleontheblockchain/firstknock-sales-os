@@ -101,6 +101,28 @@ test('job ownership is immutable and a completed-job retry reuses an existing sa
   assert.equal(result.data.route.id, existing.id); assert.equal(result.data.already_saved, true); assert.equal(h.writes.length, 0);
 });
 
+test('a rep saves a precision route into the team workspace and a retry reuses it there', async () => {
+  const rep = { id: 'rep-1', role: 'user', app_role: 'rep', team_manager_id: manager.id, full_name: 'Rep', email: 'rep@example.com' };
+  const member = { id: 'member-1', manager_id: manager.id, user_id: rep.id, status: 'active', email: rep.email };
+  const job = { id: 'job-rep', status: 'completed', mode_tag: 'PRECISION_TARGET', precision_usage_user_id: rep.id, polygon: [] };
+  const route = { ...payload, assigned_to: rep.id, metadata: { newly_generated: true, precision_area: { job_id: job.id, polygon: [] } } };
+  // What the app used to send: the rep's own id as the workspace. Always refused.
+  const refused = await harness({ actor: rep, member, job }).run({ ...route, manager_id: rep.id });
+  assert.equal(refused.status, 403);
+  assert.match(refused.data.message, /your own workspace/);
+  const h = harness({ actor: rep, member, job });
+  const saved = await h.run({ ...route, manager_id: manager.id });
+  assert.equal(saved.status, 200);
+  assert.equal(h.writes[0].manager_id, manager.id);
+  assert.equal(h.writes[0].assigned_to, rep.id);
+  const existing = { ...route, manager_id: manager.id, id: 'team-route', status: 'ACTIVE' };
+  const retry = harness({ actor: rep, member, job, routes: [existing] });
+  const replay = await retry.run({ ...route, manager_id: manager.id });
+  assert.equal(replay.data.route.id, 'team-route');
+  assert.equal(replay.data.already_saved, true);
+  assert.equal(retry.writes.length, 0);
+});
+
 test('personal anchors and their road geometry never reach a shared route', async () => {
   const h = harness(); const result = await h.run({ ...payload, route_origin_mode: 'home_round_trip',
     start_location: { lat: 33, lng: -112 }, end_location: { lat: 33, lng: -112 },
