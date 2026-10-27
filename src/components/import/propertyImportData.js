@@ -1,4 +1,5 @@
 import { cleanState, geocodeCandidates } from '../../lib/addressListImport.js';
+import { canonicalStreetLine, normalizeName } from '../../../base44/shared/addressNormalize.js';
 
 const normalizeHeader = value => String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 const text = value => value == null ? '' : String(value).trim();
@@ -37,25 +38,100 @@ export function validCoordinates(property) {
     && !(Number(lat) === 0 && Number(lng) === 0);
 }
 
-// Normalize street suffixes without discarding apartment/unit identifiers.
-const STREET_WORDS = { street: 'st', avenue: 'ave', road: 'rd', drive: 'dr', boulevard: 'blvd',
+// The street line a record was imported with. Provider records sometimes carry
+// only the parsed parts, so those are joined back rather than treated as blank.
+function importedStreetLine(property) {
+  const raw = text(property.address || property.full_address);
+  if (raw) return raw;
+  const houseNumber = Number(property.house_number);
+  const streetName = text(property.street_name);
+  if (Number.isFinite(houseNumber) && houseNumber > 0 && streetName && !/^unknown street$/i.test(streetName)) {
+    return `${houseNumber} ${streetName}`;
+  }
+  return '';
+}
+
+/**
+ * The keys under which this record counts as the same door: the canonical
+ * street line (shared USPS normalization, so "Water Street", "Water St" and
+ * "WATER STR" agree) with the ZIP, and with the city and state.
+ */
+export function addressKeyParts(property) {
+  const raw = importedStreetLine(property || {});
+  if (!raw) return { zipKey: '', areaKey: '' };
+  const city = text(property.city);
+  const state = text(property.state);
+  const { line, zip } = canonicalStreetLine(raw, { city, state, zip: property.zip_code || property.zip });
+  if (!line) return { zipKey: '', areaKey: '' };
+  const area = normalizeName(city) && normalizeName(state) ? `${normalizeName(city)}|${normalizeName(state)}` : '';
+  // An address without a locality must not collide with the same street in another city.
+  return { zipKey: zip ? `${line}|${zip}` : '', areaKey: area ? `${line}|${area}` : '' };
+}
+
+export function propertyAddressKey(property) {
+  const { zipKey, areaKey } = addressKeyParts(property);
+  return zipKey || areaKey || '';
+}
+
+/**
+ * Same-door lookup across records that describe the locality differently.
+ * When both records carry a ZIP the ZIP decides, so the same street number in
+ * two ZIPs stays two houses. A record without a ZIP (a file with only City and
+ * State columns) matches on street + city + state instead, in either direction.
+ */
+export function createAddressIndex() {
+  const byZipKey = new Map();
+  const byAreaKeyWithZip = new Map();
+  const byAreaKeyNoZip = new Map();
+  return {
+    find(property) {
+      const { zipKey, areaKey } = addressKeyParts(property);
+      if (zipKey) {
+        if (byZipKey.has(zipKey)) return byZipKey.get(zipKey);
+        return areaKey ? byAreaKeyNoZip.get(areaKey) : undefined;
+      }
+      if (!areaKey) return undefined;
+      return byAreaKeyWithZip.has(areaKey) ? byAreaKeyWithZip.get(areaKey) : byAreaKeyNoZip.get(areaKey);
+    },
+    add(property, value = true) {
+      const { zipKey, areaKey } = addressKeyParts(property);
+      if (zipKey) {
+        byZipKey.set(zipKey, value);
+        if (areaKey) byAreaKeyWithZip.set(areaKey, value);
+      } else if (areaKey) {
+        byAreaKeyNoZip.set(areaKey, value);
+      }
+      return Boolean(zipKey || areaKey);
+    },
+  };
+}
+
+export function sameImportedAddress(a, b) {
+  const index = createAddressIndex();
+  return index.add(a) && index.find(b) === true;
+}
+
+// The key imports used before the shared normalization, frozen exactly as it
+// was. Records already saved carry hashes built from it, so a re-import also
+// computes this hash (as legacy_hash) and reuses those records instead of
+// creating a second copy of the same house.
+const LEGACY_STREET_WORDS = { street: 'st', avenue: 'ave', road: 'rd', drive: 'dr', boulevard: 'blvd',
   court: 'ct', lane: 'ln', place: 'pl', terrace: 'ter', circle: 'cir', highway: 'hwy',
   north: 'n', south: 's', east: 'e', west: 'w', apartment: 'unit', apt: 'unit', suite: 'unit', ste: 'unit' };
-export function propertyAddressKey(property) {
+export function legacyPropertyAddressKey(property) {
   const segments = text(property.address || property.full_address).split(',');
   const street = [segments[0], ...segments.slice(1).filter(segment => /^\s*(?:apt\b|apartment\b|unit\b|suite\b|ste\b|#)/i.test(segment))].join(' ');
   const address = street.toLowerCase()
     .replace(/#/g, ' unit ').replace(/\./g, ' ').replace(/\s+/g, ' ').trim()
-    .split(' ').map(word => STREET_WORDS[word] || word).join(' ');
+    .split(' ').map(word => LEGACY_STREET_WORDS[word] || word).join(' ');
   if (!address) return '';
   const zip = text(property.zip_code || property.zip).slice(0, 5);
   const area = zip || `${text(property.city).toLowerCase()}|${text(property.state).toLowerCase()}`;
-  // An address without a locality must not collide with the same street in another city.
   return area.replace(/\|/g, '') ? `${address}|${area}` : '';
 }
 
-function makeHash(property) {
-  const identity = propertyAddressKey(property)
+function hashIdentity(property, key) {
+  const identity = key
     || (property.address ? `${text(property.address).toLowerCase()}|${text(property.city).toLowerCase()}|${text(property.state).toLowerCase()}` : `${property.lat}|${property.lng}`);
   let first = 2166136261;
   let second = 2246822507;
@@ -64,6 +140,19 @@ function makeHash(property) {
     second = Math.imul(second ^ identity.charCodeAt(i), 3266489909);
   }
   return `import_${(first >>> 0).toString(16).padStart(8, '0')}${(second >>> 0).toString(16).padStart(8, '0')}`;
+}
+
+function makeHash(property) {
+  return hashIdentity(property, propertyAddressKey(property));
+}
+
+export function legacyImportHash(property) {
+  return hashIdentity(property, legacyPropertyAddressKey(property));
+}
+
+/** Hashes under which an imported record may already exist. */
+export function importHashAliases(property) {
+  return [...new Set([property?.address_hash, property?.legacy_hash].map(value => text(value)).filter(Boolean))];
 }
 
 function number(value) {
@@ -78,6 +167,14 @@ function saleDate(value) {
   return Number.isFinite(date.getTime()) ? date.toISOString().slice(0, 10) : null;
 }
 
+// Of two rows for one door, keep the one that already has usable coordinates
+// (no lookup needed), then the one that names its ZIP, then the newer sale.
+function betterDuplicate(next, current) {
+  if (validCoordinates(next) !== validCoordinates(current)) return validCoordinates(next);
+  if (Boolean(text(next.zip_code)) !== Boolean(text(current.zip_code))) return Boolean(text(next.zip_code));
+  return (next.sale_date || '') > (current.sale_date || '');
+}
+
 export async function preparePropertyImport(rows, fileName, { geocodeBatch, onProgress = () => {} } = {}) {
   if (!Array.isArray(rows) || !rows.length) throw new Error('The file has no data rows.');
   const headers = [...new Set(rows.flatMap(row => Object.keys(row || {})))];
@@ -85,6 +182,8 @@ export async function preparePropertyImport(rows, fileName, { geocodeBatch, onPr
   const mapping = buildPropertyColumnMapping(headers);
   const read = (row, field) => mapping[field] ? row[mapping[field]] : null;
   const candidates = new Map();
+  // Which kept row a later row is the same door as, however its locality is written.
+  const addressIndex = createAddressIndex();
   const skippedRows = [];
   let duplicatesRemoved = 0;
   rows.forEach((row, index) => {
@@ -121,15 +220,18 @@ export async function preparePropertyImport(rows, fileName, { geocodeBatch, onPr
       skippedRows.push({ ...source, reason: 'Missing address and coordinates' });
       return;
     }
-    property.address_hash = text(read(row, 'address_hash')) || makeHash(property);
-    const key = propertyAddressKey(property) || property.address_hash;
+    const fileHash = text(read(row, 'address_hash'));
+    property.address_hash = fileHash || makeHash(property);
+    if (!fileHash) {
+      const legacyHash = legacyImportHash(property);
+      if (legacyHash !== property.address_hash) property.legacy_hash = legacyHash;
+    }
+    const key = addressIndex.find(property) || propertyAddressKey(property) || property.address_hash;
     if (candidates.has(key)) {
       duplicatesRemoved++;
-      // Keep a row that already has usable coordinates to avoid an unnecessary lookup.
-      const existing = candidates.get(key).property;
-      if ((!validCoordinates(existing) && validCoordinates(property))
-        || (validCoordinates(existing) === validCoordinates(property) && (property.sale_date || '') > (existing.sale_date || ''))) candidates.set(key, { property, source });
+      if (betterDuplicate(property, candidates.get(key).property)) candidates.set(key, { property, source });
     } else candidates.set(key, { property, source });
+    addressIndex.add(property, key);
   });
 
   const missing = [...candidates.values()].filter(({ property }) => !validCoordinates(property));
@@ -163,21 +265,47 @@ export function mergeImportedStops(route, existingProperties, importedProperties
   const knownHashes = new Set(hashes.map(String));
   existingProperties.forEach(property => [property.address_hash, property.legacy_hash, property.id]
     .filter(Boolean).forEach(hash => knownHashes.add(String(hash))));
-  const knownAddresses = new Set(existingProperties.map(propertyAddressKey).filter(Boolean));
+  const knownAddresses = createAddressIndex();
+  existingProperties.forEach(property => knownAddresses.add(property));
   const additions = [];
   let duplicatesRemoved = 0;
   for (const property of importedProperties) {
-    const key = propertyAddressKey(property);
     const aliases = [property.address_hash, property.legacy_hash, property.id].filter(Boolean).map(String);
-    if (aliases.some(hash => knownHashes.has(hash)) || (key && knownAddresses.has(key))) {
+    if (aliases.some(hash => knownHashes.has(hash)) || knownAddresses.find(property)) {
       duplicatesRemoved++;
       continue;
     }
     additions.push(property);
     knownHashes.add(String(property.address_hash));
-    if (key) knownAddresses.add(key);
+    knownAddresses.add(property);
   }
   return { additions, duplicatesRemoved, propertyHashes: [...hashes, ...additions.map(property => property.address_hash)] };
+}
+
+/**
+ * Imported stops that are already on another active route of the account, so
+ * a second file for the same neighborhood does not send two reps to one door.
+ * Matching is by stored hash (current or legacy import scheme); routes that are
+ * finished or archived, and the destination route itself, are not counted.
+ */
+export function findImportedStopsOnOtherRoutes(importedProperties = [], routes = [], { excludeRouteId = null } = {}) {
+  const hashes = new Set();
+  const matchedRoutes = [];
+  for (const route of routes || []) {
+    if (!route || (excludeRouteId && String(route.id) === String(excludeRouteId))) continue;
+    if (['COMPLETED', 'ARCHIVED'].includes(String(route.status || '').toUpperCase())) continue;
+    const routeHashes = new Set((route.property_hashes || []).map(String));
+    if (!routeHashes.size) continue;
+    let count = 0;
+    for (const property of importedProperties || []) {
+      if (importHashAliases(property).some(hash => routeHashes.has(hash))) {
+        hashes.add(text(property.address_hash));
+        count++;
+      }
+    }
+    if (count) matchedRoutes.push({ id: route.id, name: route.name || 'Unnamed route', count });
+  }
+  return { hashes, count: hashes.size, routes: matchedRoutes };
 }
 
 export async function geocodePropertyImportBatch(addresses, deps) {

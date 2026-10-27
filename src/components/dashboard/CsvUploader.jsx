@@ -2,7 +2,7 @@ import { createManagedRoute } from '@/lib/createManagedRoute';
 import { toast } from 'sonner';
 import { tryRoadMatrixOptimize } from '@/lib/roadMatrixOptimize';
 import { importOptimizationMessage } from '@/components/import/optimizeImportedRoute';
-import React, { useId, useRef, useState } from 'react';
+import React, { useId, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Upload, History, FilePlus, AlertCircle } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { createPageUrl } from '@/utils';
 import PropertyImportSummary from '@/components/import/PropertyImportSummary';
 import { parsePropertyImportFile } from '@/components/import/propertyImportFile';
-import { preparePropertyImport, mergeImportedStops, geocodePropertyImportBatch } from '@/components/import/propertyImportData';
+import { preparePropertyImport, mergeImportedStops, geocodePropertyImportBatch, findImportedStopsOnOtherRoutes } from '@/components/import/propertyImportData';
 import { savePropertyImport, canAppendToRoute } from '@/components/import/savePropertyImport';
 import { hydrateRouteForMap } from '@/components/logic/routeHydration';
 import { fetchAllSavedRoutePages } from '@/components/rep/repRouteCollection';
@@ -30,6 +30,9 @@ export default function CsvUploader() {
     const [isSaving, setIsSaving] = useState(false);
     const [routeDestination, setRouteDestination] = useState('new');
     const [selectedRouteId, setSelectedRouteId] = useState('');
+    // Addresses the file shares with another active route are left out by
+    // default, so two files for one neighborhood never send two reps to one door.
+    const [skipOtherRouteStops, setSkipOtherRouteStops] = useState(true);
     const inputId = useId();
     const inputRef = useRef(null);
     const busy = isUploading || isSaving || !!pendingImport;
@@ -38,7 +41,8 @@ export default function CsvUploader() {
     const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me() });
     const routesQuery = useQuery({
         queryKey: ['savedRoutes', 'import-destinations', user?.id],
-        enabled: !!user?.id && importMode === 'create' && routeDestination === 'existing',
+        // Also loaded for a reviewed file so its stops can be checked against every active route.
+        enabled: !!user?.id && importMode === 'create' && (routeDestination === 'existing' || !!pendingImport),
         queryFn: async () => {
             // List only RLS-visible routes, with pagination so older routes remain selectable.
             const routes = await fetchAllSavedRoutePages((limit, skip) => base44.entities.SavedRoute.list('-updated_date', limit, skip));
@@ -47,6 +51,15 @@ export default function CsvUploader() {
     });
     const routes = routesQuery.data || [];
     const selectedRoute = routes.find(route => route.id === selectedRouteId);
+    const otherRouteMatches = useMemo(
+        () => (pendingImport ? findImportedStopsOnOtherRoutes(pendingImport.properties, routes, { excludeRouteId: pendingImport.routeId }) : null),
+        [pendingImport, routes],
+    );
+    const importProperties = useMemo(() => {
+        if (!pendingImport) return [];
+        if (!skipOtherRouteStops || !otherRouteMatches?.count) return pendingImport.properties;
+        return pendingImport.properties.filter(property => !otherRouteMatches.hashes.has(String(property.address_hash)));
+    }, [otherRouteMatches, pendingImport, skipOtherRouteStops]);
     const existingStopsQuery = useQuery({
         queryKey: ['importRoutePreview', pendingImport?.routeId, pendingImport?.fileName],
         enabled: !!pendingImport?.routeId,
@@ -57,9 +70,13 @@ export default function CsvUploader() {
             const hydrated = await hydrateRouteForMap(route, user?.email);
             const properties = hydrated?.allProperties || hydrated?.properties || [];
             if (properties.length < (route.property_hashes || []).length) throw new Error('Some route stops could not be loaded. Cancel and retry the import.');
-            return { route, preview: mergeImportedStops(route, properties, pendingImport.properties) };
+            return { route, properties };
         },
     });
+    const existingRoutePreview = useMemo(() => {
+        const loaded = existingStopsQuery.data;
+        return loaded ? mergeImportedStops(loaded.route, loaded.properties, importProperties) : null;
+    }, [existingStopsQuery.data, importProperties]);
 
     const handleFileUpload = async event => {
         const file = event.target.files?.[0];
@@ -89,6 +106,7 @@ export default function CsvUploader() {
                     geocodeOne: geocodeAddress,
                 }),
             });
+            setSkipOtherRouteStops(true);
             setPendingImport({ ...prepared, routeId: routeDestination === 'existing' ? selectedRouteId : null });
             setUploadStatus(null);
         } catch (error) {
@@ -100,11 +118,16 @@ export default function CsvUploader() {
 
     const handleSaveImport = async () => {
         if (!pendingImport || isSaving) return;
+        if (!importProperties.length) {
+            setUploadStatus({ success: false, message: 'Every address in this file is already on an active route. Untick the skip option to import them anyway.' });
+            return;
+        }
+        const skippedOnOtherRoutes = pendingImport.properties.length - importProperties.length;
         setIsSaving(true);
         setUploadStatus(null);
         try {
             const currentUser = await base44.auth.me();
-            const result = await savePropertyImport(pendingImport, {
+            const result = await savePropertyImport({ ...pendingImport, properties: importProperties }, {
                 client: base44, user: currentUser, routeId: pendingImport.routeId,
                 optimize: optimizeRouteByDistance,
                 optimizeRoad: tryRoadMatrixOptimize,
@@ -134,7 +157,8 @@ export default function CsvUploader() {
                 queryClient.invalidateQueries({ queryKey: ['importRoutePreview'] }),
             ]);
             setPendingImport(null);
-            const message = `${result.added} properties ${pendingImport.routeId ? 'added to' : 'imported into'} ${result.route.name}. ${result.duplicatesRemoved} existing stops skipped. ${importOptimizationMessage(result.optimization)}`.trim();
+            const otherRoutesNote = skippedOnOtherRoutes > 0 ? ` ${skippedOnOtherRoutes} already on other active routes skipped.` : '';
+            const message = `${result.added} properties ${pendingImport.routeId ? 'added to' : 'imported into'} ${result.route.name}. ${result.duplicatesRemoved} existing stops skipped.${otherRoutesNote} ${importOptimizationMessage(result.optimization)}`.trim();
             setUploadStatus({ success: true, message });
             toast.success(message, { duration: 8000 });
             navigate(`${createPageUrl('Home')}?savedRoute=${encodeURIComponent(result.route.id)}`);
@@ -460,7 +484,13 @@ export default function CsvUploader() {
             <PropertyImportSummary
                 importBatch={pendingImport}
                 route={existingStopsQuery.data?.route || selectedRoute}
-                preview={existingStopsQuery.data?.preview}
+                preview={existingRoutePreview}
+                otherRouteMatches={otherRouteMatches}
+                otherRoutesChecking={!!pendingImport && routesQuery.isPending}
+                otherRoutesUnavailable={!!pendingImport && routesQuery.isError}
+                skipOtherRouteStops={skipOtherRouteStops}
+                onSkipOtherRouteStopsChange={setSkipOtherRouteStops}
+                readyCount={importProperties.length}
                 isSaving={isSaving}
                 progress={isSaving ? uploadStatus?.message : null}
                 isLoading={!!pendingImport?.routeId && existingStopsQuery.isPending}

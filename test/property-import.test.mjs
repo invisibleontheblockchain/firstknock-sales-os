@@ -4,7 +4,7 @@ import test from 'node:test';
 import ExcelJS from 'exceljs';
 import ts from 'typescript';
 import { parsePropertyImportFile, workbookToRows } from '../src/components/import/propertyImportFile.js';
-import { preparePropertyImport, propertyAddressKey, mergeImportedStops, geocodePropertyImportBatch } from '../src/components/import/propertyImportData.js';
+import { preparePropertyImport, propertyAddressKey, mergeImportedStops, geocodePropertyImportBatch, legacyImportHash, findImportedStopsOnOtherRoutes, sameImportedAddress } from '../src/components/import/propertyImportData.js';
 import { savePropertyImport, canAppendToRoute } from '../src/components/import/savePropertyImport.js';
 import { buildRouteNavigationPlan } from '../src/components/logic/routeNavigation.js';
 
@@ -307,4 +307,117 @@ test('service imports read back by manager id when bulk create returns no record
   assert.equal(result.status, 200);
   assert.equal(result.properties[0].manager_id, user.id);
   assert.equal(result.properties[0].created_by, 'service+test-runtime@no-reply.base44.com');
+});
+
+test('addresses spelled differently across sources are one door inside a file', async () => {
+  let requested;
+  const batch = await prepare([
+    sourceRow({ Address: '123 Water Street' }),
+    sourceRow({ Address: '123 WATER ST.' }),
+    sourceRow({ Address: '123 Water Str' }),
+    sourceRow({ Address: '5 Oak Trail' }),
+    sourceRow({ Address: '5 Oak Trl' }),
+    // One source has no ZIP column; the other has it. Same city and state, same door.
+    sourceRow({ Address: '77 Bay Pkwy', Zip: '' }),
+    sourceRow({ Address: '77 Bay Parkway' }),
+    // One source puts the whole address in a single column with no locality columns.
+    sourceRow({ Address: '9 Elm St, Tampa, FL 33605', Zip: '', City: '', State: '' }),
+    sourceRow({ Address: '9 Elm Street' }),
+    // Same street number in another ZIP stays a different house.
+    sourceRow({ Address: '9 Elm Street', Zip: '33606' }),
+  ], { geocodeBatch: async addresses => { requested = addresses; return locate(addresses); } });
+  // The row that names its ZIP is the one kept for a door that another row left without one.
+  assert.deepEqual(batch.properties.map(p => p.full_address), ['123 Water Street', '5 Oak Trail', '77 Bay Parkway', '9 Elm Street', '9 Elm Street']);
+  assert.deepEqual(batch.properties.map(p => p.zip_code), ['33605', '33605', '33605', '33605', '33606']);
+  assert.equal(batch.summary.duplicatesRemoved, 5);
+  assert.equal(requested.length, 5);
+  // The saved hash is the same whichever spelling a later file uses.
+  const again = await prepare([sourceRow({ Address: '123 water st' }), sourceRow({ Address: '5 OAK TRL' })]);
+  assert.equal(again.properties[0].address_hash, batch.properties[0].address_hash);
+  assert.equal(again.properties[1].address_hash, batch.properties[1].address_hash);
+  assert.ok(sameImportedAddress({ address: '123 Water Street', zip_code: '33605' }, { address: '123 Water St', zip_code: '33605-1234' }));
+  assert.equal(sameImportedAddress({ address: '123 Water Street', zip_code: '33605' }, { address: '123 Water St', zip_code: '33606' }), false);
+  assert.equal(sameImportedAddress({ address: '123 Water Street' }, { address: '123 Water St' }), false, 'no locality at all never matches');
+});
+
+test('merge recognizes the same door when a route stop lacks a ZIP or a street line', () => {
+  const route = { property_hashes: ['legacy-a', 'prov-b'] };
+  const existing = [
+    { address_hash: 'legacy-a', full_address: '123 Water Street', city: 'Toms River', state: 'NJ', lat: 40, lng: -74 },
+    { address_hash: 'prov-b', house_number: 44, street_name: 'Bay Pkwy', zip_code: '08753', lat: 40, lng: -74 },
+  ];
+  const merged = mergeImportedStops(route, existing, [
+    { address_hash: 'n1', address: '123 Water St', city: 'Toms River', state: 'NJ', zip_code: '08753', lat: 40, lng: -74 },
+    { address_hash: 'n2', address: '44 Bay Parkway', zip_code: '08753', lat: 40, lng: -74 },
+    { address_hash: 'n3', address: '44 Bay Parkway', zip_code: '08754', lat: 40, lng: -74 },
+    { address_hash: 'n4', address: '123 Water St Apt 2', city: 'Toms River', state: 'NJ', zip_code: '08753', lat: 40, lng: -74 },
+  ]);
+  assert.equal(merged.duplicatesRemoved, 2);
+  assert.deepEqual(merged.propertyHashes, ['legacy-a', 'prov-b', 'n3', 'n4']);
+});
+
+test('re-imports reuse records saved under the previous import hash and keep that hash on the route', async () => {
+  const batch = await prepare([sourceRow({ Address: '5 Oak Trail' }), sourceRow({ Address: '3103 E 23rd Ave' })]);
+  const [trail, ave] = batch.properties;
+  // Only addresses whose normalization changed carry the old hash alongside the new one.
+  assert.equal(trail.legacy_hash, legacyImportHash(trail));
+  assert.notEqual(trail.legacy_hash, trail.address_hash);
+  assert.equal(ave.legacy_hash, undefined);
+
+  const old = { ...trail, address_hash: trail.legacy_hash, legacy_hash: undefined, created_by: user.email, id: 'old-trail', original_status: 'HARD_NO' };
+  const mock = mockClient(null, [old]);
+  const result = await savePropertyImport({ ...batch, properties: [trail] }, { client: mock.client, user, createRoute: async route => ({ id: 'new-route', ...route }) });
+  assert.equal(mock.writes.propertyBatches.length, 0);
+  assert.deepEqual(result.route.property_hashes, [trail.legacy_hash]);
+  assert.equal(result.route.properties[0].original_status, 'HARD_NO');
+
+  const serviceOld = { ...old, manager_id: user.id, created_by: 'service+test-runtime@no-reply.base44.com' };
+  const reused = mockClient(existingRoute, [serviceOld]);
+  reused.client.asServiceRole = { entities: { MasterProperty: serviceImportEntity(reused) } };
+  const persisted = await persistProperties(reused.client, user, { route_id: existingRoute.id, properties: [trail, ave] });
+  assert.equal(persisted.status, 200);
+  assert.equal(persisted.properties[0].id, 'old-trail');
+  assert.equal(persisted.properties[0].address_hash, trail.legacy_hash);
+  assert.equal(persisted.properties[1].address_hash, ave.address_hash);
+  assert.equal(reused.writes.propertyBatches.length, 1);
+  assert.deepEqual(reused.writes.propertyBatches[0].map(property => property.address_hash), [ave.address_hash]);
+
+  // A brand new record keeps the old hash too, so an older route's hash still finds it.
+  const fresh = mockClient(existingRoute);
+  fresh.client.asServiceRole = { entities: { MasterProperty: serviceImportEntity(fresh) } };
+  const created = await persistProperties(fresh.client, user, { route_id: existingRoute.id, properties: [trail] });
+  assert.equal(created.properties[0].legacy_hash, trail.legacy_hash);
+  assert.equal((await persistProperties(fresh.client, user, { properties: [{ ...trail, legacy_hash: 42 }] })).status, 400);
+  assert.equal((await persistProperties(fresh.client, user, { properties: [{ ...trail, legacy_hash: '' }] })).status, 400);
+});
+
+test('a file whose addresses are already on other active routes is flagged, skipping finished routes and the destination', async () => {
+  const batch = await prepare([sourceRow(), sourceRow({ Address: '5 Oak Trail' }), sourceRow({ Address: '9 Elm St' })]);
+  const [ave, trail, elm] = batch.properties;
+  const routes = [
+    { id: 'r1', name: 'North', status: 'ACTIVE', property_hashes: [ave.address_hash] },
+    { id: 'r2', name: 'South', status: 'IN_PROGRESS', property_hashes: [trail.legacy_hash] },
+    { id: 'r3', name: 'Old', status: 'COMPLETED', property_hashes: [elm.address_hash] },
+    { id: 'r4', name: 'Destination', status: 'ACTIVE', property_hashes: [elm.address_hash] },
+  ];
+  const matches = findImportedStopsOnOtherRoutes(batch.properties, routes, { excludeRouteId: 'r4' });
+  assert.equal(matches.count, 2);
+  assert.deepEqual([...matches.hashes].sort(), [ave.address_hash, trail.address_hash].sort());
+  assert.deepEqual(matches.routes, [{ id: 'r1', name: 'North', count: 1 }, { id: 'r2', name: 'South', count: 1 }]);
+  assert.equal(findImportedStopsOnOtherRoutes(batch.properties, routes).count, 3);
+  assert.equal(findImportedStopsOnOtherRoutes(batch.properties, []).count, 0);
+  assert.equal(findImportedStopsOnOtherRoutes([], routes).count, 0);
+});
+
+test('the uploader checks the file against every active route and leaves shared doors out by default', () => {
+  const uploader = fs.readFileSync(new URL('../src/components/dashboard/CsvUploader.jsx', import.meta.url), 'utf8');
+  const summary = fs.readFileSync(new URL('../src/components/import/PropertyImportSummary.jsx', import.meta.url), 'utf8');
+  assert.match(uploader, /const \[skipOtherRouteStops, setSkipOtherRouteStops\] = useState\(true\)/);
+  assert.match(uploader, /\(routeDestination === 'existing' \|\| !!pendingImport\)/);
+  assert.match(uploader, /findImportedStopsOnOtherRoutes\(pendingImport\.properties, routes, \{ excludeRouteId: pendingImport\.routeId \}\)/);
+  assert.match(uploader, /mergeImportedStops\(loaded\.route, loaded\.properties, importProperties\)/);
+  assert.match(uploader, /savePropertyImport\(\{ \.\.\.pendingImport, properties: importProperties \}/);
+  assert.match(uploader, /setSkipOtherRouteStops\(true\);\s*\n\s*setPendingImport\(/);
+  assert.match(summary, /onChange=\{event => onSkipOtherRouteStopsChange\?\.\(event\.target\.checked\)\}/);
+  assert.match(summary, /\(!adding && \(!importBatch\.routeName\.trim\(\) \|\| stopsToImport === 0\)\)/);
 });
