@@ -14,6 +14,13 @@ import { usePrecisionUsage } from '@/hooks/usePrecisionUsage';
 import { normalizeOwnershipRangeDays as normalizeStrictOwnershipRangeDays } from '@/components/logic/soldDateRange';
 import { validateCanvasBoundary } from '@/components/canvas/canvasPlannerUtils';
 import { loadPrecisionJob } from '@/lib/precisionDelivery';
+import {
+  classifyStatusPollError,
+  nextPollDelayMs,
+  POLL_BASE_DELAY_MS,
+  retryingStatusText,
+  shouldPausePolling
+} from '@/lib/precisionStatusPolling';
 
 function formatWholeNumber(value) {
   const number = Math.max(0, Math.round(Number(value) || 0));
@@ -161,6 +168,9 @@ export default function TerritoryPrompt({
   const [pullPct, setPullPct] = useState(0);
   const [displayPct, setDisplayPct] = useState(0);
   const [etaText, setEtaText] = useState('');
+  // Set when the import status could not be read for long enough that polling
+  // stopped. The job stays remembered; the rep can check again.
+  const [statusCheckPaused, setStatusCheckPaused] = useState(null);
   const [totalExpected, setTotalExpected] = useState(0);
   const [isDeltaPull, setIsDeltaPull] = useState(false);
   const [forceFullRefresh, setForceFullRefresh] = useState(false);
@@ -544,12 +554,13 @@ export default function TerritoryPrompt({
     // deliver this job again while its first completion is still being handled.
     if (pollSessionRef.current?.jobId === jobId) return;
     if (pollRef.current) clearInterval(pollRef.current);
-    const session = { jobId, inFlight: false, terminal: false };
+    const session = { jobId, inFlight: false, terminal: false, failures: 0, firstFailureAt: 0 };
     pollSessionRef.current = session;
     activeJobIdRef.current = jobId;
+    setStatusCheckPaused(null);
 
     const pollStartTime = Date.now();
-    let pollIntervalMs = 5000;
+    let pollIntervalMs = POLL_BASE_DELAY_MS;
     const changePollInterval = (delayMs) => {
       if (pollIntervalMs === delayMs) return;
       clearInterval(pollRef.current);
@@ -577,7 +588,9 @@ export default function TerritoryPrompt({
         const d = res.data;
 
         if (!d) return;
-        changePollInterval(5000);
+        session.failures = 0;
+        session.firstFailureAt = 0;
+        changePollInterval(POLL_BASE_DELAY_MS);
 
         const pct = d.progress_pct || 0;
         setPullPct(pct);
@@ -736,19 +749,42 @@ export default function TerritoryPrompt({
           toast.error(d.error_message || 'Fetch job failed.');
         }
       } catch (e) {
-        console.warn('Poll error:', e.message);
+        const failure = classifyStatusPollError(e);
+        console.warn(`[TerritoryPrompt] Import status read failed (${failure.kind}, ${failure.status || 'no status'}): ${failure.message}`);
         if (pollSessionRef.current !== session) return;
         if (session.terminal) {
           setPulling(false);
+        } else if (failure.kind === 'gone' || failure.kind === 'auth') {
+          // Retrying cannot fix either of these, so stop instead of looping.
+          session.terminal = true;
+          clearInterval(pollRef.current);
+          pollRef.current = null;
+          pollSessionRef.current = null;
+          activeJobIdRef.current = null;
+          setPulling(false);
+          setEtaText('');
+          if (failure.kind === 'gone') {
+            clearActivePrecisionJob(jobId);
+            toast.error(`This import can no longer be checked: ${failure.message}. Draw the area again to start a new pull.`, { duration: 12000 });
+          } else {
+            // The job stays remembered, so it resumes after signing back in.
+            toast.error('Your sign-in expired while the import was running. Sign in again; the import will resume.', { duration: 12000 });
+          }
         } else {
-          const rateLimited = Number(e?.status || e?.response?.status) === 429
-            || /traffic volume|rate limit/i.test([
-              e?.message, e?.response?.data?.error, e?.response?.data?.message
-            ].filter(Boolean).join(' '));
-          changePollInterval(rateLimited ? 30000 : 10000);
-          setEtaText(rateLimited
-            ? 'Service is busy — retrying automatically'
-            : 'Connection interrupted — retrying automatically');
+          session.failures += 1;
+          if (!session.firstFailureAt) session.firstFailureAt = Date.now();
+          if (shouldPausePolling(session.firstFailureAt, Date.now())) {
+            // Keep the job remembered; it resumes on the next visit or "Check again".
+            clearInterval(pollRef.current);
+            pollRef.current = null;
+            pollSessionRef.current = null;
+            setPulling(false);
+            setEtaText('');
+            setStatusCheckPaused({ jobId, message: failure.message });
+          } else {
+            changePollInterval(nextPollDelayMs(session.failures, { rateLimited: failure.kind === 'rate_limited' }));
+            setEtaText(retryingStatusText(failure, session.failures));
+          }
         }
       } finally {
         session.inFlight = false;
@@ -1268,6 +1304,28 @@ export default function TerritoryPrompt({
               
                                 Dismiss
                             </Button>
+                        </div>
+                    </div>
+                </div>
+      }
+
+            {/* Import status could not be read for several minutes: stopped, not looping */}
+            {routeMode === 'precision' && !pulling && statusCheckPaused &&
+      <div role="alert" className="absolute top-14 left-1/2 -translate-x-1/2 z-[2000] w-11/12 max-w-sm animate-in fade-in">
+                    <div className="bg-black/90 backdrop-blur-md border border-amber-400/50 rounded-xl p-4 shadow-2xl">
+                        <p className="text-xs font-bold text-white mb-1">Import status unavailable</p>
+                        <p className="text-[10px] text-gray-400 mb-1">Your import is saved and keeps running on our side. We stopped checking after several minutes without an answer.</p>
+                        <p className="text-[10px] text-amber-200 mb-3 break-words">Last error: {statusCheckPaused.message}</p>
+                        <div className="flex gap-2">
+                            <Button onClick={() => {
+              const { jobId } = statusCheckPaused;
+              setStatusCheckPaused(null);
+              setPulling(true);
+              setPullProgress('Checking import status...');
+              setEtaText('Checking again...');
+              startPolling(jobId);
+            }} className="h-8 flex-1 text-xs bg-[#2EEB57] text-black hover:bg-[#39FF4A]">Check again</Button>
+                            <Button onClick={() => setStatusCheckPaused(null)} variant="outline" className="h-8 text-xs">Dismiss</Button>
                         </div>
                     </div>
                 </div>

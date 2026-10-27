@@ -30,6 +30,10 @@ function deliveryReport(body) {
         generated_homes_reported: count(body.generated_homes),
         in_memory_homes_reported: count(body.in_memory_homes),
         failed_route_saves_reported: count(body.failed_route_saves),
+        // The first route-save error the app saw, so a stuck delivery can be
+        // diagnosed from the job record instead of guessed at.
+        save_error_reported: typeof body.save_error === 'string' && body.save_error.trim()
+            ? body.save_error.replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, 300) : null,
         filter_stages_reported: stages
     };
 }

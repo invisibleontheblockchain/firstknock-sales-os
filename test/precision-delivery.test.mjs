@@ -325,3 +325,19 @@ test('failed saved-route verification does not record a false zero-delivery resu
     assert.equal((await api.invoke()).status, 500);
     assert.equal(api.updates.length, 0);
 });
+
+test('a failed route save records its first error so a stuck delivery can be read, and only as plain text', async () => {
+    const api = endpoint();
+    const withError = await api.invoke({ ...report, status: 'partial', failure_stage: 'saving',
+        save_error: '  The route was generated but could not be saved to your account:\nChoose an active member of your team.  ' });
+    assert.equal(withError.status, 200);
+    assert.equal(withError.body.final_delivery.save_error_reported,
+        'The route was generated but could not be saved to your account: Choose an active member of your team.');
+    const long = await api.invoke({ ...report, save_error: 'x'.repeat(1000) });
+    assert.equal(long.body.final_delivery.save_error_reported.length, 300);
+    for (const save_error of [undefined, '', '   ', 42, { message: 'nope' }]) {
+        const result = await api.invoke({ ...report, save_error });
+        assert.equal(result.status, 200);
+        assert.equal(result.body.final_delivery.save_error_reported, null);
+    }
+});
