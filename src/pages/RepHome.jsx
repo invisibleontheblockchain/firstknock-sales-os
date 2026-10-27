@@ -81,6 +81,14 @@ import { geocodeAddress } from '@/lib/geocoding';
 import { calculateRouteDistanceMiles, isValidRoutePoint } from '@/lib/routeBounds';
 import { getFieldRoutesCapability } from '@/api/fieldRoutes';
 import { useFieldRoutesInspectionQueue } from '@/components/fieldroutes/useFieldRoutesInspectionQueue';
+import {
+  clearRunRoutePosition,
+  findRestoreStopKey,
+  firstVisibleStopKey,
+  getRouteStopKey,
+  readRunRoutePosition,
+  writeRunRoutePosition,
+} from '@/lib/runRoutePosition';
 
 // Assignment packages are immutable and versioned. Window focus and online
 // events handle normal refreshes; this is only a low-frequency recovery poll.
@@ -163,6 +171,13 @@ export default function RepHome() {
   const routeSwitcherRef = React.useRef(null);
   const routeSwitcherCloseButtonRef = React.useRef(null);
   const routeSwitcherReturnFocusRef = React.useRef(null);
+  // Run Route position memory: which route has been restored on this mount,
+  // the stop still waiting to be scrolled into view, the last stop the rep
+  // worked, and the rendered list (for the top visible stop on background).
+  const restoredPositionRouteIdRef = React.useRef(null);
+  const pendingScrollStopKeyRef = React.useRef(null);
+  const lastStopKeyRef = React.useRef(null);
+  const routeStopListRef = React.useRef(null);
   const canvasOfflineStore = useMemo(() => createCanvasOfflineStore(), []);
 
   // Offline Listener
@@ -557,9 +572,17 @@ export default function RepHome() {
   );
 
   // 2. Fetch Route Properties - batch filter by address_hash
-  const { data: properties = [], isLoading: propsLoading, isLoadingError: propertiesLoadFailed, refetch: retryProperties } = useQuery({
+  const { data: properties = [], isLoading: propsLoading, isLoadingError: propertiesLoadFailed, isPlaceholderData: propertiesPlaceholder, refetch: retryProperties } = useQuery({
     queryKey: ['routeProperties', activeRoute?.id, activeRoute?.updated_date, activeRouteOrderKey],
     refetchOnWindowFocus: true,
+    // The route record changes under the rep (a manager edit, an optimization,
+    // or just coming back from Maps and refetching). That changes this key, and
+    // an empty cache for the new key would blank the page and remount the list
+    // at stop #1. Keep showing the same route's homes while the new key loads;
+    // switching to a different route still starts from a clean load.
+    placeholderData: (previousData, previousQuery) => (
+      previousQuery?.queryKey?.[1] === activeRoute?.id ? previousData : undefined
+    ),
     queryFn: async () => {
       if (!activeRoute?.property_hashes?.length) return [];
       const hashes = activeRoute.property_hashes;
@@ -870,6 +893,8 @@ export default function RepHome() {
       )));
       setManualRouteId(null);
       try { localStorage.removeItem('fk_selectedKnockRouteId'); } catch {}
+      // A finished route has no place to come back to.
+      try { clearRunRoutePosition(localStorage, routeId); } catch {}
       const nextUrl = new URL(window.location.href);
       nextUrl.searchParams.delete('route');
       window.history.replaceState({}, '', `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`);
@@ -977,6 +1002,83 @@ export default function RepHome() {
     }
   }, [routeProperties, activeRoute?.id]);
 
+  // Put the rep back where they were on this route after the page reloaded
+  // behind an app switch: the same tab, the house card they had open, and the
+  // list scrolled to the stop they were working. Runs once per route per mount,
+  // after the homes are loaded, and yields to an appointment deep link.
+  React.useEffect(() => {
+    const routeId = activeRoute?.id;
+    if (!routeId || !routeProperties.length || restoredPositionRouteIdRef.current === routeId) return;
+    restoredPositionRouteIdRef.current = routeId;
+    pendingScrollStopKeyRef.current = null;
+    if (appointmentRunFocusHandledRef.current) return;
+    let saved = null;
+    try { saved = readRunRoutePosition(localStorage, routeId); } catch {}
+    if (!saved) return;
+    if (saved.filterStatus) setFilterStatus(saved.filterStatus);
+    if (saved.todoRouteTypes?.length) setTodoRouteTypes(saved.todoRouteTypes);
+    if (saved.openStopKey) {
+      const index = routeProperties.findIndex((property) => getRouteStopKey(property) === saved.openStopKey);
+      if (index >= 0) {
+        setSelectedProperty(routeProperties[index]);
+        setSelectedPropertyIndex(index);
+      }
+    }
+    lastStopKeyRef.current = saved.openStopKey || saved.stopKey || null;
+    pendingScrollStopKeyRef.current = saved.openStopKey || saved.stopKey || null;
+  }, [routeProperties, activeRoute?.id]);
+
+  // The remembered position follows the rep: the card they open, the tab they
+  // pick, the Todo filters. Nothing is written until the restore above has had
+  // its turn, so a fresh mount cannot overwrite the saved place with defaults.
+  const selectedStopKey = selectedProperty ? getRouteStopKey(selectedProperty) : '';
+  React.useEffect(() => {
+    if (selectedStopKey) lastStopKeyRef.current = selectedStopKey;
+  }, [selectedStopKey]);
+  React.useEffect(() => {
+    const routeId = activeRoute?.id;
+    if (!routeId || restoredPositionRouteIdRef.current !== routeId) return;
+    try {
+      writeRunRoutePosition(localStorage, {
+        routeId,
+        stopKey: lastStopKeyRef.current,
+        openStopKey: selectedStopKey || null,
+        filterStatus,
+        todoRouteTypes,
+      });
+    } catch {}
+  }, [activeRoute?.id, selectedStopKey, filterStatus, todoRouteTypes]);
+
+  // Going to the background with no card open: remember the first stop still
+  // on screen, so plain scrolling survives a reload too.
+  React.useEffect(() => {
+    const rememberVisibleStop = () => {
+      if (document.visibilityState !== 'hidden') return;
+      const routeId = activeRoute?.id;
+      if (!routeId || restoredPositionRouteIdRef.current !== routeId || selectedStopKey) return;
+      const list = routeStopListRef.current;
+      const scroller = list?.parentElement;
+      if (!list || !scroller) return;
+      const listTop = scroller.getBoundingClientRect().top;
+      const stops = [...list.querySelectorAll('[data-route-stop-hash]')].map((node) => {
+        const rect = node.getBoundingClientRect();
+        return { key: node.dataset.routeStopHash, top: rect.top, bottom: rect.bottom };
+      });
+      const visibleKey = firstVisibleStopKey(stops, listTop);
+      if (!visibleKey) return;
+      lastStopKeyRef.current = visibleKey;
+      try {
+        writeRunRoutePosition(localStorage, { routeId, stopKey: visibleKey, openStopKey: null, filterStatus, todoRouteTypes });
+      } catch {}
+    };
+    document.addEventListener('visibilitychange', rememberVisibleStop);
+    window.addEventListener('pagehide', rememberVisibleStop);
+    return () => {
+      document.removeEventListener('visibilitychange', rememberVisibleStop);
+      window.removeEventListener('pagehide', rememberVisibleStop);
+    };
+  }, [activeRoute?.id, selectedStopKey, filterStatus, todoRouteTypes]);
+
   // Funnel counts are views of the route, not mutually exclusive workflow stages.
   // Todo intentionally keeps every opportunity except closed-won and closed-lost.
   const stats = useMemo(() => {
@@ -1041,6 +1143,27 @@ export default function RepHome() {
     () => getVisiblePropertyKeys(filteredProperties),
     [filteredProperties]
   );
+
+  // Scroll the remembered stop into view once the restored tab has rendered.
+  // A stop that left the current tab (it was just knocked) hands over to the
+  // next visible stop in route order, which is where the rep was heading.
+  React.useEffect(() => {
+    const stopKey = pendingScrollStopKeyRef.current;
+    if (!stopKey || !filteredProperties.length) return undefined;
+    pendingScrollStopKeyRef.current = null;
+    const targetKey = findRestoreStopKey(
+      routeProperties.map(getRouteStopKey),
+      filteredProperties.map(getRouteStopKey),
+      stopKey
+    );
+    if (!targetKey) return undefined;
+    const frame = window.requestAnimationFrame(() => {
+      const node = [...(routeStopListRef.current?.querySelectorAll('[data-route-stop-hash]') || [])]
+        .find((candidate) => candidate.dataset.routeStopHash === targetKey);
+      node?.scrollIntoView({ block: 'center' });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [filteredProperties, routeProperties]);
   const selectedProperties = useMemo(
     () => routeProperties.filter((property) => selectedPropertyKeys.has(getPropertySelectionKey(property))),
     [routeProperties, selectedPropertyKeys]
@@ -1872,7 +1995,10 @@ export default function RepHome() {
 
             {showLimitBanner && <KnockLimitBanner mode={gateMode} />}
 
-            {!routeHydrationComplete &&
+            {/* Placeholder homes from the previous route record can be a stop
+                short for a moment while the refreshed list loads; that is not a
+                recovery problem, so the warning waits for the real result. */}
+            {!routeHydrationComplete && !propertiesPlaceholder &&
       <div className="mx-3 mt-2 rounded-xl border border-amber-400/35 bg-amber-400/10 px-3 py-2 text-[11px] leading-relaxed text-amber-100" role="alert">
                     Recovering this saved route: {routeProperties.length}/{expectedRoutePropertyCount} homes loaded. Pins already recovered remain visible, but navigation, bulk changes, optimization, and completion stay locked until every home is restored.
                     <button type="button" onClick={handleRouteRefresh} className="ml-2 font-black underline underline-offset-2">
@@ -1973,7 +2099,7 @@ export default function RepHome() {
                         </p>
                     </div> :
 
-        <div className="space-y-1.5">
+        <div ref={routeStopListRef} className="space-y-1.5">
                         {filteredProperties.map((prop) =>
           <PropertyCard
             key={getPropertySelectionKey(prop)}

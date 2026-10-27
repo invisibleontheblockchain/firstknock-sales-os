@@ -81,6 +81,17 @@ test('complete offline properties remain usable during an outage but a partial c
   }
 });
 
+test('a refreshed route record keeps the same route\'s homes on screen instead of blanking the list', () => {
+  const descriptor = query('propsLoading', { base44: { functions: { invoke: async () => ({ data: { properties: [property] } }) } } });
+  assert.equal(typeof descriptor.placeholderData, 'function');
+  const previous = [property];
+  // Same route, new updated_date or order: the previous homes stand in while the new key loads.
+  assert.equal(descriptor.placeholderData(previous, { queryKey: ['routeProperties', route.id, '2026-10-27T15:00:00Z', 'house-1'] }), previous);
+  // A different route starts from a clean load, as before.
+  assert.equal(descriptor.placeholderData(previous, { queryKey: ['routeProperties', 'route-2', '2026-10-27T15:00:00Z', 'house-9'] }), undefined);
+  assert.equal(descriptor.placeholderData(previous, undefined), undefined);
+});
+
 test('rep maps hydrate routes larger than the backend limit in authorized batches', async () => {
   const hashes = Array.from({ length: 5001 }, (_, index) => `house-${index}`);
   const activeRoute = { ...route, property_hashes: hashes };
