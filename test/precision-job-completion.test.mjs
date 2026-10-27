@@ -4,6 +4,7 @@ import test from 'node:test';
 import vm from 'node:vm';
 import ts from 'typescript';
 import { getCompletedPrecisionRoutes, loadPrecisionGenerationJob } from '../src/lib/precisionDelivery.js';
+import * as statusPolling from '../src/lib/precisionStatusPolling.js';
 
 const read = path => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 function declaration(path, name) {
@@ -50,9 +51,10 @@ function pollHarness({ status = async () => ({ status: 'completed', active_count
         clearActivePrecisionJob: id => state.cleared.push(id), refetchPrecisionUsage: refetch,
         onRouteBoundsPrepared: async () => {},
         queryClient: { invalidateQueries() {} },
+        ...statusPolling,
     };
     for (const name of ['Pulling', 'PullPct', 'DisplayPct', 'EtaText', 'PullProgress', 'TotalExpected',
-        'IsDeltaPull', 'ShowRoutePanel', 'ShowCompare']) {
+        'IsDeltaPull', 'ShowRoutePanel', 'ShowCompare', 'StatusCheckPaused']) {
         sandbox[`set${name}`] = value => { state[name] = value; };
     }
     sandbox.setMode = value => state.modes.push(value);
@@ -121,6 +123,61 @@ test('usage refresh failure cannot leave a successful build marked as pending re
     await flush();
     assert.deepEqual(poll.state.cleared, ['saved']);
     assert.equal(poll.state.Pulling, false);
+});
+
+test('a job the server no longer has stops polling at once and is forgotten', async () => {
+    for (const [status, error] of [[404, 'Job not found'], [403, 'Not your job']]) {
+        const toasts = [];
+        const poll = pollHarness({ status: async () => {
+            throw Object.assign(new Error(`Request failed with status code ${status}`), { response: { status, data: { error } } });
+        } });
+        poll.sandbox.toast.error = message => toasts.push(message);
+        poll.start('gone-job');
+        await flush();
+        assert.equal(poll.intervals.size, 0, 'no retry loop');
+        assert.deepEqual(poll.state.cleared, ['gone-job']);
+        assert.equal(poll.state.Pulling, false);
+        assert.match(toasts[0], new RegExp(error));
+        assert.doesNotMatch(poll.state.EtaText || '', /retrying|Connection interrupted/);
+    }
+});
+
+test('an expired sign-in stops polling but keeps the import for after signing back in', async () => {
+    const poll = pollHarness({ status: async () => {
+        throw Object.assign(new Error('Request failed with status code 401'), { response: { status: 401, data: { error: 'Unauthorized' } } });
+    } });
+    poll.start('auth-job');
+    await flush();
+    assert.equal(poll.intervals.size, 0);
+    assert.deepEqual(poll.state.cleared, []);
+    assert.equal(poll.state.Pulling, false);
+});
+
+test('an outage backs off, then pauses with the real error instead of retrying for half an hour', async () => {
+    const poll = pollHarness({ status: async () => {
+        throw Object.assign(new Error('Request failed with status code 500'), { response: { status: 500, data: { error: 'FetchJob read failed' } } });
+    } });
+    poll.start('stuck-job');
+    await flush();
+    assert.deepEqual(poll.state.delays, [5000, 10000]);
+    assert.match(poll.state.EtaText, /did not answer/);
+    for (const delay of [20000, 40000, 60000]) {
+        poll.state.now += 30_000;
+        await [...poll.intervals.values()][0]();
+        assert.equal(poll.state.delays.at(-1), delay);
+    }
+    poll.state.now += statusPolling.POLL_GIVE_UP_AFTER_MS;
+    await [...poll.intervals.values()][0]();
+    assert.equal(poll.intervals.size, 0, 'polling paused');
+    assert.equal(poll.state.Pulling, false);
+    assert.deepEqual(poll.state.cleared, [], 'the paid import is still remembered');
+    // The object comes from the sandbox realm, so compare its fields.
+    assert.equal(poll.state.StatusCheckPaused?.jobId, 'stuck-job');
+    assert.equal(poll.state.StatusCheckPaused?.message, 'FetchJob read failed');
+    // Checking again starts a fresh poll for the same job.
+    poll.start('stuck-job');
+    assert.equal(poll.state.StatusCheckPaused, null);
+    assert.equal(poll.intervals.size, 1);
 });
 
 test('a failed or cancelled import can be explicitly restarted with the same job id', async () => {

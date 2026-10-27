@@ -6,6 +6,7 @@ import ts from 'typescript';
 import { claimFirstAreaRouteHandoff } from '../src/components/onboarding/firstAreaNavigation.js';
 import { savePrecisionRoutes } from '../src/lib/precisionDelivery.js';
 import { getReadyRouteMapPoints } from '../src/components/logic/routeMapSelection.js';
+import { markRoadCompleted } from '../src/lib/generatedRouteRoadCompletion.js';
 
 const home = readFileSync(new URL('../src/pages/Home.jsx', import.meta.url), 'utf8');
 const ast = ts.createSourceFile('Home.jsx', home, ts.ScriptTarget.Latest, true, ts.ScriptKind.JSX);
@@ -44,7 +45,7 @@ function buildSandbox({ roadPass, save = async () => ({ id: 'saved-route', statu
     ShowCompare: true, ShowRoutePanel: true, ShowChecklist: true, ShowMapSettings: true, RoutesGenerating: true };
   const rawGenerated = [{ ...route, houseCount }];
   const sandbox = {
-    URLSearchParams, claimFirstAreaRouteHandoff, savePrecisionRoutes, performance, t0: performance.now(),
+    URLSearchParams, claimFirstAreaRouteHandoff, savePrecisionRoutes, markRoadCompleted, performance, t0: performance.now(),
     console: { log() {}, error() {}, warn() {} },
     toast: Object.fromEntries(['loading', 'dismiss', 'success', 'error', 'info', 'warning'].map(name => [name, () => {}])),
     localStorage: { getItem: key => memory.get(key) ?? null, setItem: (key, value) => memory.set(key, value), removeItem: key => memory.delete(key) },

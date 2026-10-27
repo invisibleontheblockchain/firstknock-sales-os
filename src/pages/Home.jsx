@@ -27,6 +27,7 @@ import {
 import { calculateRouteDistanceMiles, isValidRoutePoint } from '@/lib/routeBounds';
 import { applyRouteFilters, formatStageCounts } from '../components/logic/routeFilterPipeline';
 import { loadPrecisionGenerationJob, limitPrecisionCandidates, precisionAreaForJob, precisionReferenceDateForJob, savePrecisionRoutes, getCompletedPrecisionRoutes } from '@/lib/precisionDelivery';
+import { markRoadCompleted, needsRoadCompletionBeforeSave } from '@/lib/generatedRouteRoadCompletion';
 import { normalizeOwnershipRangeDays as normalizeStrictOwnershipRangeDays } from '../components/logic/soldDateRange';
 import RouteGenerationOverlay from '../components/routes/RouteGenerationOverlay';
 import RouteAssignmentDialog from '@/components/routes/RouteAssignmentDialog';
@@ -834,11 +835,10 @@ export default function Home() {
 
     const handleSaveRoute = async (route, assignedRepId = null, assignedRepName = null, silent = false) => {
         // Filtered/copy/imported generated routes reach the same completion tail.
-        // A fingerprint prevents re-running an already completed generation.
-        const { completeBetaGeneratedRoutes } = await import('@/lib/roadAwareRoutingBeta');
-        if (!route?.isSaved && route?.properties?.length
-            && (!route.metadata?.routing?.road_aware_routing_beta
-                || route.metadata.routing.property_order_fingerprint !== routePropertyOrderFingerprint(route.properties))) {
+        // Routes Create Route or Reorder just ran through the road pass (beta or
+        // not) are already complete; optimizing them again doubled every save.
+        if (needsRoadCompletionBeforeSave(route)) {
+            const { completeBetaGeneratedRoutes } = await import('@/lib/roadAwareRoutingBeta');
             [route] = await completeBetaGeneratedRoutes([route], { entryPoint: 'home_filtered_or_generated_save' });
         }
         const defaultAssigneeId = assignedRepId || user?.id;
@@ -2024,11 +2024,13 @@ export default function Home() {
                 const precisionArea = precisionAreaForJob(precisionJob);
                 for (const route of generated) route.metadata = { ...(route.metadata || {}), precision_area: precisionArea };
             }
+            markRoadCompleted(generated);
             if (generated['_cooldownInfo']) setCooldownInfo(generated['_cooldownInfo']);
             setRoutes(generated);
             // AUTO-SAVE (skip routes >10K properties — payload too large)
             const saveable = generated.filter(r => r.houseCount <= 10000);
             let savedByGeneratedRoute = new Map();
+            let firstSaveError = null;
             if (saveable.length > 0) {
                 setGenerationStage(`Saving ${saveable.length} routes...`);
                 const bulkId = toast.loading(`Auto-saving ${saveable.length} routes...`);
@@ -2044,9 +2046,13 @@ export default function Home() {
                         && result.value?.id && !String(result.value.id).startsWith('local_'));
                     const savedRouteObjects = new Set(remotelySaved.map(result => result.route));
                     const unsaved = generated.filter(route => !savedRouteObjects.has(route));
-                    const failedSaves = saveResults.filter(result => result.status === 'rejected').length;
+                    const rejectedSaves = saveResults.filter(result => result.status === 'rejected');
+                    const failedSaves = rejectedSaves.length;
+                    firstSaveError = rejectedSaves[0]?.error?.message || null;
+                    rejectedSaves.forEach(result => console.error('[Home] Route auto-save failed:', result.error));
                     if (deliveryAttempt) {
                         deliveryAttempt.failed_route_saves = failedSaves;
+                        if (firstSaveError) deliveryAttempt.save_error = firstSaveError.slice(0, 300);
                         deliveryAttempt.in_memory_homes = unsaved.reduce((sum, route) => sum + (route.properties?.length || route.houseCount || 0), 0);
                     }
                     if (unsaved.length > 0) toast.warning(`${remotelySaved.length} routes saved; ${unsaved.length} remain available on this device.`, { id: bulkId });
@@ -2054,7 +2060,12 @@ export default function Home() {
                     // Remove only confirmed remote saves. Offline, failed, and
                     // oversized routes remain available instead of disappearing.
                     setRoutes(unsaved);
-                } catch (error) { console.error('[Home] Auto-save failed:', error); toast.error('Auto-save failed.', { id: bulkId }); }
+                } catch (error) {
+                    console.error('[Home] Auto-save failed:', error);
+                    firstSaveError = error?.message || null;
+                    if (deliveryAttempt && firstSaveError) deliveryAttempt.save_error = firstSaveError.slice(0, 300);
+                    toast.error('Auto-save failed.', { id: bulkId });
+                }
             } else if (generated.length > 0) {
                 toast.info(`Route has ${generated[0].houseCount} properties — too large to auto-save. View on map.`, { id: 'build-routes', duration: 5000 });
             }
@@ -2103,7 +2114,7 @@ export default function Home() {
             if (persistenceComplete) {
                 toast.success(finalToastMsg + (roadMatrixPass.savedMiles >= 0.1 ? ` · ~${Math.round(roadMatrixPass.savedMiles * 10) / 10} mi shorter` : ''), { id: 'build-routes', duration: 5000 });
             } else {
-                setGenerationError('Your route was generated, but some homes could not be saved to your account. The route is still available on this device. Retry saving it; the completed import is retained so you do not need to spend credits on another pull.');
+                setGenerationError(`Your route was generated, but some homes could not be saved to your account.${firstSaveError ? ` Reason: ${firstSaveError}` : ''} The route is still available on this device. Retry saving it; the completed import is retained so you do not need to spend credits on another pull.`);
                 toast.error('Route generated, but not fully saved to your account.', { id: 'build-routes', duration: 10000 });
             }
             lastGeneratedRouteBoundsRef.current = preparedRouteBounds.enabled ? preparedRouteBounds : null;
@@ -2193,7 +2204,7 @@ export default function Home() {
                 : generateOptimizedRoutes(workingSet, housesPerRoute, start, logs, { streetCooldownDays, useStreetSweep: routeConfig.walkingPattern === 'street_sweep', minimizeTurns: routeConfig.minimizeTurns, use2Opt: effectiveUse2Opt, walkingPattern: routeConfig.walkingPattern, returnToStart: !reorderBounds.enabled && routeConfig.returnToStart, endLocation: end, routeOriginMode, excludeTerminal: routeConfig.excludeTerminal, routingContext }, learnedWeights);
             // Reorder runs the identical road-aware pipeline as Create Route.
             const roadMatrixPass = await buildRoadAwareGeneratedRoutes({ rawGenerated, routingContext, onStage: setGenerationStage });
-            const generated = roadMatrixPass.routes;
+            const generated = markRoadCompleted(roadMatrixPass.routes);
             setRoutes(generated);
             let savedRecords = [];
             if (generated.length > 0) {
