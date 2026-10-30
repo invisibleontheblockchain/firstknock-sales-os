@@ -1,12 +1,23 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Navigation, Camera, Loader2, ChevronUp, ChevronLeft, MapPin, History } from 'lucide-react';
 import { format } from 'date-fns';
+import { base44 } from '@/api/base44Client';
 import PropertyHistory from './PropertyHistory';
 import RemoveRouteStopButton from '@/components/routes/RemoveRouteStopButton';
 import { buildFullAddress, openInMaps } from '@/components/logic/navigation';
 import { parseOptionalSaleAmount } from '@/components/analytics/salesManagement';
 
-import { OUTCOME_OPTIONS as STATUS_OPTIONS } from '@/components/logic/outcomeStatus';
+import { OUTCOME_OPTIONS as STATUS_OPTIONS, latestOutcomeNote } from '@/components/logic/outcomeStatus';
+
+const NOTE_AUTOSAVE_MS = 800;
+
+// The server checks a note's route against the house, so only name the route
+// when this house is actually one of its stops.
+const noteRouteId = (route, property) => {
+    const hashes = Array.isArray(route?.property_hashes) ? route.property_hashes : [];
+    const onRoute = [property?.address_hash, property?.legacy_hash].some((hash) => hash && hashes.includes(hash));
+    return onRoute ? route.id || null : null;
+};
 
 export default function PropertyDetailSheet({
     property,
@@ -23,10 +34,25 @@ export default function PropertyDetailSheet({
     totalStops,
     route,
     onRouteUpdated,
+    onNoteSaved,
     navigationApp = 'apple',
 }) {
     const [showMore, setShowMore] = useState(false);
-    const [logNote, setLogNote] = useState('');
+    // Add Details is the house note: it opens on whatever note the house already
+    // has, and it saves on its own. It used to start blank and only travel with
+    // the next outcome tap, so a note typed after the tap, or a door reopened
+    // later, read as a note that never saved.
+    const savedNote = latestOutcomeNote(logs);
+    const [noteDraft, setNoteDraft] = useState(undefined);
+    const [noteState, setNoteState] = useState(null);
+    const [noteError, setNoteError] = useState('');
+    const noteTimerRef = useRef(null);
+    const noteDraftRef = useRef(undefined);
+    const mountedRef = useRef(true);
+    const logNote = noteDraft ?? savedNote;
+    // Only a note the rep edited on this visit rides along with the outcome, so
+    // a prefilled note from an earlier visit is not stamped onto every tap.
+    const visitNote = noteDraft === undefined ? '' : noteDraft.trim();
     const [callbackTime, setCallbackTime] = useState('');
     const [callbackName, setCallbackName] = useState('');
     const [callbackPhone, setCallbackPhone] = useState('');
@@ -38,6 +64,63 @@ export default function PropertyDetailSheet({
     const [savingStatus, setSavingStatus] = useState(null);
     const [showHistory, setShowHistory] = useState(false);
     const isSavingOutcome = savingStatus !== null;
+
+    const persistNote = useCallback(async (value) => {
+        if (mountedRef.current) setNoteState('saving');
+        try {
+            await base44.functions.invoke('recordKnockOutcome', {
+                action: 'save_house_note',
+                address_hash: property.address_hash,
+                note: value,
+                route_id: noteRouteId(route, property)
+            });
+            onNoteSaved?.(property.address_hash);
+            if (!mountedRef.current) return;
+            setNoteState('saved');
+            setNoteError('');
+        } catch (error) {
+            // Show what the server said; never imply a rejected note was stored.
+            const reason = error?.response?.data?.error
+                || error?.response?.data?.code
+                || error?.message
+                || 'Unknown error';
+            console.error('[PropertyDetailSheet] House note save failed', error);
+            if (!mountedRef.current) return;
+            setNoteState('error');
+            setNoteError(String(reason));
+        }
+    }, [onNoteSaved, property, route]);
+
+    const handleNoteChange = (value) => {
+        noteDraftRef.current = value;
+        setNoteDraft(value);
+        setNoteState('saving');
+        clearTimeout(noteTimerRef.current);
+        noteTimerRef.current = setTimeout(() => {
+            noteTimerRef.current = null;
+            persistNote(value);
+        }, NOTE_AUTOSAVE_MS);
+    };
+
+    // A pending keystroke still commits when the field blurs or collapses.
+    const flushNote = useCallback(() => {
+        if (!noteTimerRef.current) return;
+        clearTimeout(noteTimerRef.current);
+        noteTimerRef.current = null;
+        if (noteDraftRef.current !== undefined) persistNote(noteDraftRef.current);
+    }, [persistNote]);
+
+    // The sheet closes the moment an outcome is tapped or Back is pressed, so a
+    // note still waiting on its pause is sent on the way out, not dropped.
+    const flushNoteRef = useRef(flushNote);
+    flushNoteRef.current = flushNote;
+    useEffect(() => {
+        mountedRef.current = true;
+        return () => {
+            mountedRef.current = false;
+            flushNoteRef.current();
+        };
+    }, []);
 
     const handleMark = async (status, { skipSaleAmount = false, skipCallbackDetails = false } = {}) => {
         if (isSavingOutcome) return;
@@ -82,7 +165,7 @@ export default function PropertyDetailSheet({
         }
 
         let noteText = `Marked as ${status}`;
-        if (logNote.trim()) noteText += ` | Note: ${logNote.trim()}`;
+        if (visitNote) noteText += ` | Note: ${visitNote}`;
         if (status === 'CALLBACK' && !skipCallbackDetails && callbackName.trim()) noteText += ` | Contact: ${callbackName.trim()}`;
         if (status === 'CALLBACK' && !skipCallbackDetails && callbackPhone) noteText += ` | Phone: ${callbackPhone}`;
         if (status === 'CALLBACK' && !skipCallbackDetails && callbackTime) noteText += ` | Callback: ${callbackTime}`;
@@ -103,7 +186,7 @@ export default function PropertyDetailSheet({
         const logData = {
             address_hash: property.address_hash,
             raw_input_text: noteText,
-            description: logNote.trim() || null,
+            description: visitNote || null,
             parsed_status: status,
             next_eligible_date: nextDate,
             callback_contact_name: status === 'CALLBACK' && !skipCallbackDetails ? callbackName.trim() : null,
@@ -284,22 +367,59 @@ export default function PropertyDetailSheet({
 
                 {/* Add Details */}
                 <div className="px-5 pb-3">
-                    <button 
-                        onClick={() => setShowMore(!showMore)}
+                    <button
+                        type="button"
+                        onClick={() => {
+                            if (showMore) flushNote();
+                            setShowMore(!showMore);
+                        }}
+                        aria-expanded={showMore}
                         className="w-full flex items-center justify-between rounded-2xl border border-[#2EEB57]/35 bg-[#2EEB57]/10 px-4 py-3 text-left shadow-[0_10px_30px_rgba(46,235,87,0.10)] active:scale-[0.99] transition-all"
                     >
-                        <span className="block text-[11px] font-black uppercase tracking-[0.18em] text-white">Add Details</span>
+                        <span className="flex items-center gap-2">
+                            <span className="block text-[11px] font-black uppercase tracking-[0.18em] text-white">Add Details</span>
+                            {/* Named, not just tinted, so the state never rests on colour. */}
+                            {(noteState || savedNote) && (
+                                <span
+                                    className="rounded-full px-1.5 py-0.5 text-[9px] font-bold"
+                                    style={noteState === 'error'
+                                        ? { background: 'rgba(255,107,107,0.15)', color: '#FF6B6B' }
+                                        : { background: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.7)' }}
+                                >
+                                    {noteState === 'error' ? 'Not saved' : noteState === 'saving' ? 'Saving' : 'Saved'}
+                                </span>
+                            )}
+                        </span>
                         <ChevronUp className={`w-4 h-4 text-white transition-transform ${showMore ? '' : 'rotate-180'}`} />
                     </button>
 
+                    {!showMore && savedNote && (
+                        <p className="selectable-text mt-1.5 truncate px-1 text-[11px] italic text-white/50">"{savedNote}"</p>
+                    )}
+
                     {showMore && (
                         <div className="mt-3 space-y-3 animate-in slide-in-from-top-2 duration-200">
-                            <textarea
-                                value={logNote}
-                                onChange={(e) => setLogNote(e.target.value)}
-                                placeholder="Quick note..."
-                                className="selectable-text w-full bg-black/70 border border-[#2EEB57]/25 rounded-xl p-3 text-sm text-white resize-none h-16 focus:border-[#39FF4A] focus:outline-none"
-                            />
+                            <div className="space-y-1">
+                                <textarea
+                                    value={logNote}
+                                    onChange={(e) => handleNoteChange(e.target.value)}
+                                    onBlur={flushNote}
+                                    readOnly={outcomeDisabled}
+                                    placeholder="Quick note..."
+                                    className="selectable-text w-full bg-black/70 border border-[#2EEB57]/25 rounded-xl p-3 text-sm text-white resize-none h-16 focus:border-[#39FF4A] focus:outline-none"
+                                />
+                                <p
+                                    className="px-1 text-[9px]"
+                                    role={noteState === 'error' ? 'alert' : undefined}
+                                    style={{ color: noteState === 'error' ? '#FF6B6B' : 'rgba(255,255,255,0.4)' }}
+                                >
+                                    {noteState === 'error'
+                                        ? `Not saved — ${noteError || 'the server rejected this note'}`
+                                        : noteState === 'saving'
+                                            ? 'Saving...'
+                                            : 'Saved automatically to this house.'}
+                                </p>
+                            </div>
                             <div className="flex gap-2">
                                 <div className="flex-1">
                                     <label className="text-[9px] font-bold text-white/45 uppercase mb-1 block">Phone</label>

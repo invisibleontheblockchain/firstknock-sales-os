@@ -112,18 +112,75 @@ test('the checklist keys note drafts and history by address_hash', () => {
 // to an outcome still show, so nothing saved before house notes existed is lost.
 test('the dedicated note row wins over a note attached to an old outcome', () => {
   const logs = [
-    log({ description: 'legacy note on an outcome', created_date: '2026-07-25T18:00:00.000Z' }),
+    log({ description: 'legacy note on an outcome', created_date: '2026-07-25T17:00:00.000Z' }),
     log({
       id: 'note-1',
       source: 'house_note',
       description: 'gate code 4412',
-      created_date: '2026-07-25T17:00:00.000Z'
+      created_date: '2026-07-25T18:00:00.000Z'
     })
   ];
 
   assert.equal(findHouseNoteLog(logs)?.id, 'note-1');
   assert.equal(latestOutcomeNote(logs), 'gate code 4412');
   assert.equal(latestOutcomeNote([log({ description: 'legacy only' })]), 'legacy only');
+});
+
+// Field report (Flotilla, Oct 2026): a rep's note logged with today's outcome
+// was hidden behind another rep's older shared note on the same house.
+test('a newer note logged with an outcome shows over an older shared house note', () => {
+  const logs = [
+    log({
+      source: 'house_note',
+      description: 'Dh',
+      created_date: '2026-10-20T15:00:00.000Z',
+      updated_date: '2026-10-20T15:00:00.000Z'
+    }),
+    log({ description: 'Closed door in my face', created_date: '2026-10-30T15:44:00.000Z' })
+  ];
+  assert.equal(latestOutcomeNote(logs), 'Closed door in my face');
+});
+
+// The note row is updated in place, so its last edit is updated_date.
+test('an edited house note beats an outcome note logged before the edit', () => {
+  const logs = [
+    log({
+      source: 'house_note',
+      description: 'gate code 9911',
+      created_date: '2026-10-01T15:00:00.000Z',
+      updated_date: '2026-10-30T17:00:00.000Z'
+    }),
+    log({ description: 'Dh', created_date: '2026-10-29T15:00:00.000Z' })
+  ];
+  assert.equal(latestOutcomeNote(logs), 'gate code 9911');
+});
+
+// Run Route's Add Details is the same durable house note as the checklist's:
+// it opens on the house's note, saves on its own, and is sent before the sheet
+// closes. It used to start blank and only travel with the next outcome tap.
+test('Run Route Add Details opens on the saved note and saves on its own', () => {
+  const sheet = readSource('src/components/rep/PropertyDetailSheet.jsx');
+  const repHome = readSource('src/pages/RepHome.jsx');
+
+  assert.match(sheet, /const savedNote = latestOutcomeNote\(logs\)/);
+  assert.match(sheet, /const logNote = noteDraft \?\? savedNote/);
+  assert.match(sheet, /action: 'save_house_note'/);
+  assert.match(sheet, /noteTimerRef\.current = setTimeout\(/);
+  assert.match(sheet, /onBlur=\{flushNote\}/);
+  assert.match(sheet, /if \(showMore\) flushNote\(\);/);
+  // The sheet unmounts on an outcome tap or Back; a pending note is sent then.
+  assert.match(sheet, /mountedRef\.current = false;\s*\n\s*flushNoteRef\.current\(\);/);
+  // A failed save is named and shows the server's reason.
+  assert.match(sheet, /setNoteState\('error'\)/);
+  assert.match(sheet, /error\?\.response\?\.data\?\.error/);
+  assert.match(sheet, /Not saved — \$\{noteError \|\|/);
+  // Only a note edited on this visit rides with the outcome.
+  assert.match(sheet, /const visitNote = noteDraft === undefined \? '' : noteDraft\.trim\(\)/);
+  assert.match(sheet, /description: visitNote \|\| null/);
+  // A collapsed field still shows that the house has a note.
+  assert.match(sheet, /\{!showMore && savedNote &&/);
+  // The next open of the door reads the saved row back.
+  assert.match(repHome, /onNoteSaved=\{\(addressHash\) => \{[\s\S]{0,200}?queryKey: \['propertyHistory', addressHash\]/);
 });
 
 test('clearing a house note empties it rather than falling back to an old outcome note', () => {

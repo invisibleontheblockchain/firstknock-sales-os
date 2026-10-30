@@ -93,19 +93,35 @@ export const withoutHouseNotes = (logs) =>
 export const countPropertyVisits = (logs = []) =>
     withoutHouseNotes(logs).filter((log) => log?.parsed_status && log.counts_as_knock !== false).length;
 
+const logTime = (log, field) => {
+    const time = new Date(log?.[field] || 0).getTime();
+    return Number.isFinite(time) ? time : 0;
+};
+
+// The note row is edited in place, so its latest edit is updated_date, not the
+// created_date of the first note anyone ever wrote on the house.
+const houseNoteTime = (row) => Math.max(logTime(row, 'updated_date'), logTime(row, 'created_date'));
+
 export const findHouseNoteLog = (logs = []) =>
     (Array.isArray(logs) ? logs : [])
         .filter((log) => log?.source === HOUSE_NOTE_SOURCE)
-        .sort((a, b) => new Date(b.created_date || 0) - new Date(a.created_date || 0))[0] || null;
+        .sort((a, b) => houseNoteTime(b) - houseNoteTime(a))[0] || null;
 
 export const latestOutcomeNote = (logs = []) => {
-    // The dedicated note row wins. Notes attached to older outcomes are still
-    // honoured so anything saved before house notes existed keeps showing.
-    const noteRow = findHouseNoteLog(logs);
-    if (noteRow) return typeof noteRow.description === 'string' ? noteRow.description.trim() : '';
+    // The newest note on the house wins, wherever it was written. The house
+    // note row is shared by every rep on the team, so letting it always win hid
+    // a newer note a rep logged with an outcome behind an older one from
+    // someone else ("Dh" over "Closed door in my face").
+    const list = Array.isArray(logs) ? logs : [];
+    const noteRow = findHouseNoteLog(list);
+    const outcomeNote = list
+        .filter((log) => log?.source !== HOUSE_NOTE_SOURCE
+            && typeof log?.description === 'string' && log.description.trim())
+        .sort((a, b) => logTime(b, 'created_date') - logTime(a, 'created_date'))[0] || null;
 
-    const withNotes = (Array.isArray(logs) ? logs : [])
-        .filter((log) => typeof log?.description === 'string' && log.description.trim())
-        .sort((a, b) => new Date(b.created_date || 0) - new Date(a.created_date || 0));
-    return withNotes[0]?.description?.trim() || '';
+    // A cleared note row (empty description) that is newest still clears.
+    if (noteRow && (!outcomeNote || houseNoteTime(noteRow) >= logTime(outcomeNote, 'created_date'))) {
+        return typeof noteRow.description === 'string' ? noteRow.description.trim() : '';
+    }
+    return outcomeNote?.description?.trim() || '';
 };
