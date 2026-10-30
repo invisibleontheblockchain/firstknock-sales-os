@@ -162,7 +162,7 @@ test('both Precision Sold entry points persist blank Save and Skip with mobile n
     assert.match(source, />\s*Save\s*</);
     assert.match(source, />\s*Skip\s*</);
   }
-  assert.match(repSheet, /description: logNote\.trim\(\) \|\| null/);
+  assert.match(repSheet, /description: visitNote \|\| null/);
   assert.match(history, /hasOwnProperty\.call\(log, 'description'\)/);
 });
 

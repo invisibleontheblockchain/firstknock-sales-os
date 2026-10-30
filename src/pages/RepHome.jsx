@@ -2354,6 +2354,11 @@ export default function RepHome() {
         routePosition={selectedPropertyIndex !== null ? selectedPropertyIndex + 1 : null}
         totalStops={routeProperties.length}
         navigationApp={navigationApp}
+        onNoteSaved={(addressHash) => {
+          // The saved note row is what the next open of this door reads back.
+          queryClient.invalidateQueries({ queryKey: ['propertyHistory', addressHash] });
+          queryClient.invalidateQueries({ queryKey: ['routeLogs'] });
+        }}
         onViewOnMap={() => {
           const prop = selectedProperty;
           setSelectedProperty(null);
