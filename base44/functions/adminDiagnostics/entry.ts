@@ -1017,7 +1017,41 @@ function buildStripeFeed(events: any[], customerById: Map<string, any>, userById
     });
 }
 
-function buildStripeAnalytics(stripeData: any, users: any[], trend: any[], betaGrants: any[] = []) {
+// Milecraft bills through this same Stripe account. Its customers and invoices carry `milecraft_company_id` in their
+// metadata, and its refunds and events are matched through them, so none of Milecraft's money, customers or payment
+// events count toward FirstKnock's figures.
+function isMilecraftRecord(record: any) {
+    return Boolean(String(record?.metadata?.milecraft_company_id || '').trim());
+}
+
+function withoutMilecraft(stripeData: any) {
+    const customerIds = new Set(asArray(stripeData?.customers).filter(isMilecraftRecord).map((customer: any) => String(customer.id)));
+    const fromMilecraftCustomer = (record: any) => customerIds.has(String(stripeResourceId(record?.customer) || ''));
+    const milecraftInvoices = asArray(stripeData?.invoices).filter((invoice: any) => isMilecraftRecord(invoice) || fromMilecraftCustomer(invoice));
+    const invoiceIds = new Set(milecraftInvoices.map((invoice: any) => String(invoice?.id || '')).filter(Boolean));
+    const paymentIds = new Set(milecraftInvoices
+        .flatMap((invoice: any) => [stripeResourceId(invoice?.charge), stripeResourceId(invoice?.payment_intent)])
+        .filter(Boolean)
+        .map(String));
+    const fromMilecraftPayment = (record: any) => paymentIds.has(String(stripeResourceId(record?.charge) || ''))
+        || paymentIds.has(String(stripeResourceId(record?.payment_intent) || ''));
+    const milecraftEvent = (event: any) => {
+        const object = event?.data?.object || {};
+        return isMilecraftRecord(object) || fromMilecraftCustomer(object) || fromMilecraftPayment(object)
+            || invoiceIds.has(String(stripeResourceId(object?.invoice) || ''));
+    };
+    return {
+        ...stripeData,
+        customers: asArray(stripeData?.customers).filter((customer: any) => !isMilecraftRecord(customer)),
+        invoices: asArray(stripeData?.invoices).filter((invoice: any) => !invoiceIds.has(String(invoice?.id || ''))),
+        refunds: asArray(stripeData?.refunds).filter((refund: any) => !fromMilecraftPayment(refund)),
+        events: asArray(stripeData?.events).filter((event: any) => !milecraftEvent(event)),
+        milecraft_payments_excluded: milecraftInvoices.filter((invoice: any) => finiteNonNegative(invoice?.amount_paid) > 0).length
+    };
+}
+
+function buildStripeAnalytics(liveStripeData: any, users: any[], trend: any[], betaGrants: any[] = []) {
+    const stripeData = liveStripeData?.status === 'live' ? withoutMilecraft(liveStripeData) : liveStripeData;
     if (stripeData?.status !== 'live') {
         return {
             source: { status: stripeData?.status || 'unavailable', message: stripeData?.message || 'Stripe is unavailable.' },
@@ -1224,7 +1258,8 @@ function buildStripeAnalytics(stripeData: any, users: any[], trend: any[], betaG
             past_due_customers: new Set(rows.filter((row: any) => ['past_due', 'unpaid'].includes(row.status)).map((row: any) => row.customer_key)).size,
             canceled_subscriptions: rows.filter((row: any) => row.status === 'canceled').length,
             confirmed_payments: paidInvoices.length,
-            non_usd_payments_excluded: paidInvoices.length - usdPaidInvoices.length
+            non_usd_payments_excluded: paidInvoices.length - usdPaidInvoices.length,
+            milecraft_payments_excluded: stripeData.milecraft_payments_excluded || 0
         },
         customer_count: customerRows.length,
         customers_truncated: customerRows.length > customers.length,
