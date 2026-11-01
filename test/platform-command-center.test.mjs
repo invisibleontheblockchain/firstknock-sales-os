@@ -639,6 +639,65 @@ test('Milecraft customers, invoices, refunds and events in the shared Stripe acc
   assert.deepEqual(result.feed.map((item) => item.amount), [99]);
 });
 
+test('a refund whose charge belongs to a Milecraft customer is left out even when no fetched invoice names that charge', () => {
+  const base44 = { auth: { me: async () => null } };
+  const { sandbox } = loadFunction({
+    base44,
+    expose: 'globalThis.__buildStripeAnalytics = buildStripeAnalytics;',
+  });
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const stripeData = {
+    status: 'live',
+    livemode: true,
+    subscriptions: [],
+    invoices: [],
+    refunds: [
+      // Refunds are listed with their charge expanded.
+      { id: 're_fk', status: 'succeeded', amount: 900, currency: 'usd', created: nowSeconds - 60, charge: { id: 'ch_fk', customer: 'cus_fk' } },
+      { id: 're_mc', status: 'succeeded', amount: 100000, currency: 'usd', created: nowSeconds - 60, charge: { id: 'ch_mc_old', customer: 'cus_mc' } },
+    ],
+    customers: [
+      { id: 'cus_fk', metadata: { base44_user_id: 'u1' } },
+      { id: 'cus_mc', metadata: { milecraft_company_id: 'co_nativa' } },
+    ],
+    events: [],
+  };
+  const result = plain(sandbox.__buildStripeAnalytics(stripeData, [], []));
+
+  assert.equal(result.metrics.total_refunded, 9);
+  assert.equal(result.metrics.refunded_payments, 1);
+});
+
+test('the Stripe sweep pins its API version, expands refund charges, and asks only for the event types the feed shows', async () => {
+  const { sandbox } = loadFunction({
+    base44: { auth: { me: async () => null } },
+    env: { STRIPE_SECRET_KEY: 'sk_test_x' },
+    expose: 'globalThis.__loadStripeLiveData = loadStripeLiveData;',
+  });
+  const seen = {};
+  sandbox.Stripe = class {
+    constructor(_key, options) {
+      seen.options = options;
+      const page = (name) => async (params) => { seen[name] = params; return { data: [], has_more: false }; };
+      for (const name of ['customers', 'subscriptions', 'invoices', 'refunds', 'events']) this[name] = { list: page(name) };
+    }
+  };
+  const data = plain(await sandbox.__loadStripeLiveData());
+
+  assert.equal(data.status, 'live');
+  assert.equal(seen.options.apiVersion, '2023-10-16');
+  assert.deepEqual([...seen.refunds.expand], ['data.charge']);
+  assert.deepEqual([...seen.events.types].sort(), [
+    'charge.refunded',
+    'customer.subscription.created',
+    'customer.subscription.deleted',
+    'customer.subscription.trial_will_end',
+    'customer.subscription.updated',
+    'invoice.paid',
+    'invoice.payment_failed',
+  ]);
+});
+
 test('active immutable beta grants appear separately from Stripe trials and expire closed', () => {
   const now = Date.now();
   const base44 = { auth: { me: async () => null } };

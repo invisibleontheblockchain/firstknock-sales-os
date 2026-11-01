@@ -803,7 +803,9 @@ async function loadStripeLiveData() {
         return { status: 'unavailable', message: 'Stripe is not configured for the deployed environment.' };
     }
 
-    const stripe = new Stripe(secretKey);
+    // Pinned to the version this SDK sends by default: Milecraft's refunds are matched through invoice.charge and
+    // invoice.payment_intent, which later API versions remove.
+    const stripe = new Stripe(secretKey, { apiVersion: '2023-10-16' });
     try {
         const [customers, subscriptions, invoices, refunds, eventsPage] = await Promise.all([
             listAllStripeRecords(
@@ -836,12 +838,15 @@ async function loadStripeLiveData() {
             listAllStripeRecords(
                 (startingAfter) => stripe.refunds.list({
                     limit: 100,
+                    // The charge's customer tells a Milecraft refund apart even when its charge is not on a fetched invoice.
+                    expand: ['data.charge'],
                     ...(startingAfter ? { starting_after: startingAfter } : {})
                 }),
                 'Stripe refunds',
                 MAX_STRIPE_REFUNDS
             ),
-            stripe.events.list({ limit: 100 })
+            // Only the kinds the feed shows, so a burst of other events (a Milecraft billing day) cannot crowd them out.
+            stripe.events.list({ limit: 100, types: [...STRIPE_FEED_EVENT_TYPES] })
         ]);
 
         return {
@@ -953,16 +958,18 @@ function eventCustomerEmail(object: any, customerById: Map<string, any>, userByI
     );
 }
 
+const STRIPE_FEED_EVENT_TYPES = [
+    'invoice.paid',
+    'invoice.payment_failed',
+    'customer.subscription.created',
+    'customer.subscription.updated',
+    'customer.subscription.deleted',
+    'customer.subscription.trial_will_end',
+    'charge.refunded'
+];
+
 function buildStripeFeed(events: any[], customerById: Map<string, any>, userById: Map<string, any>) {
-    const supported = new Set([
-        'invoice.paid',
-        'invoice.payment_failed',
-        'customer.subscription.created',
-        'customer.subscription.updated',
-        'customer.subscription.deleted',
-        'customer.subscription.trial_will_end',
-        'charge.refunded'
-    ]);
+    const supported = new Set(STRIPE_FEED_EVENT_TYPES);
 
     return events.flatMap((event) => {
         if (!supported.has(event?.type)) return [];
@@ -1044,7 +1051,8 @@ function withoutMilecraft(stripeData: any) {
         ...stripeData,
         customers: asArray(stripeData?.customers).filter((customer: any) => !isMilecraftRecord(customer)),
         invoices: asArray(stripeData?.invoices).filter((invoice: any) => !invoiceIds.has(String(invoice?.id || ''))),
-        refunds: asArray(stripeData?.refunds).filter((refund: any) => !fromMilecraftPayment(refund)),
+        refunds: asArray(stripeData?.refunds).filter((refund: any) => !fromMilecraftPayment(refund)
+            && !(typeof refund?.charge === 'object' && fromMilecraftCustomer(refund.charge))),
         events: asArray(stripeData?.events).filter((event: any) => !milecraftEvent(event)),
         milecraft_payments_excluded: milecraftInvoices.filter((invoice: any) => finiteNonNegative(invoice?.amount_paid) > 0).length
     };
