@@ -586,6 +586,59 @@ test('a succeeded refund nets out of gross collected, the 30-day window, and the
   assert.equal(result.trend[0].stripe_revenue, 100);
 });
 
+test('Milecraft customers, invoices, refunds and events in the shared Stripe account stay out of FirstKnock figures', () => {
+  const base44 = { auth: { me: async () => null } };
+  const { sandbox } = loadFunction({
+    base44,
+    expose: 'globalThis.__buildStripeAnalytics = buildStripeAnalytics;',
+  });
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const noonToday = Math.floor(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate(), 12) / 1000);
+  const paidAtSeconds = noonToday <= nowSeconds - 1800 ? noonToday : noonToday - 86400;
+  const paidDateKey = new Date(paidAtSeconds * 1000).toISOString().slice(0, 10);
+  const monthlyItem = { quantity: 1, price: { unit_amount: 9900, recurring: { interval: 'month', interval_count: 1 } } };
+  const paid = (extra) => ({ status: 'paid', currency: 'usd', created: paidAtSeconds, status_transitions: { paid_at: paidAtSeconds }, lines: { data: [] }, ...extra });
+  const stripeData = {
+    status: 'live',
+    livemode: true,
+    subscriptions: [
+      { id: 'sub_fk', status: 'active', current_period_start: nowSeconds - 100, current_period_end: nowSeconds + 2500000, created: nowSeconds - 5000, customer: { id: 'cus_fk', email: 'rep@example.com' }, items: { data: [monthlyItem] }, metadata: { subscription_tier: 'precision' } },
+    ],
+    invoices: [
+      paid({ id: 'in_fk', amount_paid: 9900, customer: 'cus_fk', subscription: 'sub_fk', charge: 'ch_fk', period_start: nowSeconds - 200, period_end: nowSeconds + 2500000 }),
+      // A Milecraft monthly invoice: tagged itself, and its customer is tagged.
+      paid({ id: 'in_mc', amount_paid: 7262343, customer: 'cus_mc', charge: 'ch_mc', payment_intent: 'pi_mc', metadata: { milecraft_company_id: 'co_nativa', month: '2026-10' } }),
+      // An untagged invoice made by hand in Stripe for a Milecraft customer.
+      paid({ id: 'in_mc_manual', amount_paid: 50000, customer: 'cus_mc', charge: 'ch_mc_manual' }),
+    ],
+    refunds: [
+      { id: 're_fk', status: 'succeeded', amount: 900, currency: 'usd', created: paidAtSeconds + 60, charge: 'ch_fk' },
+      { id: 're_mc', status: 'succeeded', amount: 100000, currency: 'usd', created: paidAtSeconds + 60, charge: 'ch_mc', payment_intent: 'pi_mc' },
+    ],
+    customers: [
+      { id: 'cus_fk', email: 'rep@example.com', metadata: { base44_user_id: 'u1' } },
+      { id: 'cus_mc', email: 'ops@nativa.example', metadata: { milecraft_company_id: 'co_nativa' } },
+    ],
+    events: [
+      { id: 'evt_fk', type: 'invoice.paid', created: paidAtSeconds, data: { object: { id: 'in_fk', customer: 'cus_fk', amount_paid: 9900, status: 'paid' } } },
+      { id: 'evt_mc', type: 'invoice.paid', created: paidAtSeconds, data: { object: { id: 'in_mc', customer: 'cus_mc', amount_paid: 7262343, status: 'paid', metadata: { milecraft_company_id: 'co_nativa' } } } },
+      { id: 'evt_mc_refund', type: 'charge.refunded', created: paidAtSeconds, data: { object: { id: 'ch_mc', customer: 'cus_mc', invoice: 'in_mc', amount_refunded: 100000 } } },
+    ],
+  };
+  const trend = [{ date: paidDateKey, stripe_revenue: 0 }];
+  const result = plain(sandbox.__buildStripeAnalytics(stripeData, [], trend));
+
+  assert.equal(result.metrics.gross_collected, 99);
+  assert.equal(result.metrics.total_refunded, 9);
+  assert.equal(result.metrics.net_collected, 90);
+  assert.equal(result.metrics.refunded_payments, 1);
+  assert.equal(result.metrics.confirmed_payments, 1);
+  assert.equal(result.metrics.total_stripe_customers, 1);
+  assert.equal(result.metrics.milecraft_payments_excluded, 2);
+  assert.equal(result.trend[0].stripe_revenue, 90);
+  assert.deepEqual(result.feed.map((item) => item.amount), [99]);
+});
+
 test('active immutable beta grants appear separately from Stripe trials and expire closed', () => {
   const now = Date.now();
   const base44 = { auth: { me: async () => null } };
