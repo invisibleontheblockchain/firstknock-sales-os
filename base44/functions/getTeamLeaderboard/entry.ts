@@ -420,7 +420,6 @@ async function loadTeamActivityContext(base44, { period = "all", now = /* @__PUR
   }
   const identities = {
     logged_by_user_id: /* @__PURE__ */ new Set(),
-    actor_user_id: /* @__PURE__ */ new Set(),
     created_by_id: /* @__PURE__ */ new Set(),
     rep_id: /* @__PURE__ */ new Set(),
     created_by: /* @__PURE__ */ new Set(),
@@ -428,7 +427,7 @@ async function loadTeamActivityContext(base44, { period = "all", now = /* @__PUR
   };
   for (const member of members) {
     const userId = identifier3(member.user_id || (member.isTeamManager ? managerId : ""));
-    for (const field of ["logged_by_user_id", "actor_user_id", "created_by_id"]) if (userId) identities[field].add(userId);
+    for (const field of ["logged_by_user_id", "created_by_id"]) if (userId) identities[field].add(userId);
     for (const id of [member.id, userId, ...member.activity_member_ids || []]) if (id) identities.rep_id.add(identifier3(id));
     for (const email of [identifier3(member.email), normalized6(member.email)]) if (email) identities.created_by.add(email);
   }
