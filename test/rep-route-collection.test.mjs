@@ -186,8 +186,9 @@ test('Knock UI uses the complete scoped collection and compact accessible Home B
   assert.match(header, /\{routes\.length\} route/);
   assert.match(header, /aria-controls="rep-route-switcher"/);
   // Home reads without each route's saved road path (src/lib/mapRouteFields.js).
-  assert.match(home, /fetchKnockRouteGroups\([\s\S]*?SavedRoute\.filter\(filter, '-created_date', limit, skip, fields \|\| MAP_ROUTE_FIELDS\)[\s\S]*?savedRouteScope\)/);
-  assert.match(home, /collectKnockRoutes\(routeGroups, savedRouteScope\)/);
+  assert.match(home, /loadRunRouteList\(\{[\s\S]*?SavedRoute\.filter\(filter, '-created_date', limit, skip, fields \|\| MAP_ROUTE_FIELDS\)[\s\S]*?scope: savedRouteScope,[\s\S]*?cache: localforage/);
+  // Tenant scoping of the list now lives in the loader; test/run-route-list.test.mjs runs it.
+  assert.match(readSource('src/lib/runRouteList.js'), /collectKnockRoutes\(groups, scope\)/);
   assert.match(home, /fetchAllSavedRoutePages/);
 });
 
