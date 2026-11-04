@@ -4,7 +4,7 @@ import SplitRouteModal from './SplitRouteModal';
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
-    Navigation, X, User, Clock, Search
+    Navigation, X, User, Clock, Search, Loader2, WifiOff
 } from 'lucide-react';
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
@@ -41,7 +41,11 @@ export default function RouteCommandPanel({
     activeRouteId,
     logs = [],
     onReoptimizeRoute,
-    routeConfig
+    routeConfig,
+    savedRoutesLoading = false,
+    savedRoutesFailed = false,
+    savedRoutesFromCache = false,
+    onRetrySavedRoutes,
 }) {
     const selectRouteForMapAndKnock = async (route) => {
         try {
@@ -65,6 +69,9 @@ export default function RouteCommandPanel({
         () => savedRoutes.filter(route => isOperationalRoute(route) && matchesRouteSearch(route)),
         [savedRoutes, normalizedRouteSearch]
     );
+    // Nothing to show yet because the list is loading or failed, not because
+    // the account has no routes.
+    const routeListUnavailable = (savedRoutesLoading || savedRoutesFailed) && savedRoutes.length === 0;
     const pendingGeneratedRoutes = useMemo(() => {
         const savedIds = new Set(savedRoutes.map(route => route.id));
         return generatedRoutes.filter(route => !savedIds.has(route.id) && matchesRouteSearch(route));
@@ -201,6 +208,29 @@ export default function RouteCommandPanel({
                             <div className="py-12 text-center text-sm font-bold text-white/40">No routes match “{routeSearch.trim()}”.</div>
                         )}
 
+                        {/* An empty list must never stand in for "still loading" or "could not load". */}
+                        {savedRoutesFromCache && (
+                            <div role="status" className="flex items-center gap-2 rounded-xl border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-xs font-semibold text-amber-200">
+                                <WifiOff className="h-4 w-4 shrink-0" />
+                                <span className="min-w-0 flex-1">Weak connection. Showing your last saved routes while we reconnect.</span>
+                                {onRetrySavedRoutes && <button type="button" onClick={onRetrySavedRoutes} className="shrink-0 rounded-lg bg-amber-400/20 px-2 py-1 font-bold text-amber-100">Retry</button>}
+                            </div>
+                        )}
+                        {routeListUnavailable && savedRoutesFailed && (
+                            <div role="alert" className="py-10 text-center">
+                                <WifiOff className="mx-auto h-8 w-8 text-white/40" />
+                                <p className="mt-3 text-sm font-bold text-white">Couldn&apos;t load your routes</p>
+                                <p className="mt-1 text-xs text-white/50">Check your connection and try again.</p>
+                                {onRetrySavedRoutes && <button type="button" onClick={onRetrySavedRoutes} className="mt-4 rounded-xl bg-[#2EEB57] px-4 py-2 text-sm font-bold text-black">Try Again</button>}
+                            </div>
+                        )}
+                        {routeListUnavailable && !savedRoutesFailed && (
+                            <div role="status" className="flex items-center justify-center gap-2 py-12 text-sm font-bold text-white/50">
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                                Loading your routes…
+                            </div>
+                        )}
+
                         {/* ACTIVE ROUTES TAB */}
                         {activeTab === 'active' && (
                             <>
@@ -218,7 +248,7 @@ export default function RouteCommandPanel({
                                         logs={logs}
                                     />
                                 ))}
-                                {(operationalSavedRoutes.length > 0 || pendingGeneratedRoutes.length === 0) && (
+                                {!routeListUnavailable && (operationalSavedRoutes.length > 0 || pendingGeneratedRoutes.length === 0) && (
                                     <ActiveRoutesTab
                                         savedRoutes={operationalSavedRoutes}
                                         routesByStatus={routesByStatus}

@@ -10,7 +10,7 @@ import useAppointmentMapFocus from '@/hooks/useAppointmentMapFocus'; import Appo
 import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { storage } from '@/lib/storage';
-import { retryRead, withReadDeadline } from '@/lib/readRequest'; import useRemoveInteraction from '@/components/map/useRemoveInteraction';
+import { readRetryDelay, retryRead, shouldRetryRead, withReadDeadline } from '@/lib/readRequest'; import localforage from 'localforage'; import { loadRunRouteList } from '@/lib/runRouteList'; import useRemoveInteraction from '@/components/map/useRemoveInteraction';
 
 import { toast } from "sonner";
 import { determineEffectiveStatus, isPointInPolygon } from '../components/logic/territoryLogic';
@@ -64,8 +64,6 @@ import { collectUnretiredOutcomes, confirmOutcomeRow } from '@/components/logic/
 import { isKnockActivityLog } from '@/lib/interactionLogs'; import { fetchAccountInteractionLogs, scopeInteractionLogsToAccount } from '@/lib/accountInteractionLogs'; import { buildLogsByAddress, withDerivedStatus } from '@/components/logic/routePropertyStatus';
 import {
     buildRepRouteScope,
-    fetchKnockRouteGroups,
-    collectKnockRoutes,
     fetchAllSavedRoutePages,
 } from '@/components/rep/repRouteCollection';
 
@@ -681,7 +679,7 @@ export default function Home() {
     }, [userProperties, viewportProperties, localProperties, darkRoomProperties, fetchedProperties]);
 
     const savedRouteScope = useMemo(() => buildRepRouteScope(user), [user]);
-    const { data: savedRoutesRaw, isSuccess: savedRoutesReady } = useQuery({
+    const { data: savedRoutesRaw, isSuccess: savedRoutesReady, isPending: savedRoutesPending, isError: savedRoutesFailed, refetch: retrySavedRoutes } = useQuery({
         queryKey: [
             'savedRoutes',
             savedRouteScope.userId,
@@ -691,14 +689,22 @@ export default function Home() {
         ],
         staleTime: 1000 * 60 * 2,
         refetchOnWindowFocus: true,
+        retry: shouldRetryRead,
+        retryDelay: readRetryDelay,
+        // A device snapshot is shown while the network is down; keep trying
+        // to replace it instead of waiting for the next focus.
+        refetchInterval: query => (query.state.data?.fromCache ? 30_000 : false),
         queryFn: async () => {
             if (!user?.id) return [];
             // Without each route's saved road path, which the map never draws
             // (~4 MB of the owner's 5.2 MB list): see mapRouteFields.js.
-            const routeGroups = await fetchKnockRouteGroups((filter, limit, skip, fields) => (
-                base44.entities.SavedRoute.filter(filter, '-created_date', limit, skip, fields || MAP_ROUTE_FIELDS)
-            ), savedRouteScope);
-            return collectKnockRoutes(routeGroups, savedRouteScope);
+            return loadRunRouteList({
+                fetchFilterPage: (filter, limit, skip, fields) => (
+                    base44.entities.SavedRoute.filter(filter, '-created_date', limit, skip, fields || MAP_ROUTE_FIELDS)
+                ),
+                scope: savedRouteScope,
+                cache: localforage,
+            });
         },
         enabled: !!user?.id
     });
@@ -2856,6 +2862,10 @@ export default function Home() {
                     <RouteCommandPanel
                         generatedRoutes={routes}
                         savedRoutes={hydratedSavedRoutes}
+                        savedRoutesLoading={savedRoutesPending}
+                        savedRoutesFailed={savedRoutesFailed && !savedRoutesRaw}
+                        savedRoutesFromCache={savedRoutesRaw?.fromCache === true}
+                        onRetrySavedRoutes={() => retrySavedRoutes()}
                         repColors={repColors}
                         teamMembers={teamMembers}
                         viewerEmail={user?.email}
