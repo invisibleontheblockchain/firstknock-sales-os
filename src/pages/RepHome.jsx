@@ -2131,7 +2131,7 @@ export default function RepHome() {
               aria-expanded={keptOnFileOpen}
               aria-controls="kept-on-file-stops"
               className="flex w-full items-center justify-between rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2.5 text-left active:scale-[0.99] transition-all">
-              
+
                                     <span className="min-w-0">
                                         <span className="block text-[10px] font-black uppercase tracking-[0.16em] text-white/70">
                                             Not Qualified — kept on file ({listedStops.keptOnFile.length})
