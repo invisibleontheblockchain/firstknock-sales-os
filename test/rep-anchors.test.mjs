@@ -20,7 +20,7 @@ const properties = [
     { address_hash: 'b', lat: 33.471, lng: -112.064 },
     { address_hash: 'c', lat: 33.461, lng: -112.074 },
 ];
-function setup({ actor = 'manager', base = home, auto = true, verified = true, pending = false, missingDoor = false, missingAnchorEntity = false } = {}) {
+function setup({ actor = 'manager', base = home, auto = true, verified = true, pending = false, missingDoor = false, missingAnchorEntity = false, failLoad = null } = {}) {
     const users = {
         manager: { id: 'manager', app_role: 'manager', full_name: 'Manager' },
         rep: { id: 'rep', app_role: 'rep', team_manager_id: verified ? 'manager' : 'other', email: 'rep@example.com', home_base: base, home_base_auto_assign: auto },
@@ -54,6 +54,8 @@ function setup({ actor = 'manager', base = home, auto = true, verified = true, p
     }
     const client = { auth: { me: async () => users[actor] }, asServiceRole: service, functions: { invoke: async (name, body) => {
         assert.equal(name, 'getRoutePropertiesByHashes'); assert.equal(body.route_id, 'route');
+        // A failed function call rejects the way the SDK does: an error carrying the response.
+        if (failLoad) throw Object.assign(new Error(`Request failed with status code ${failLoad.status}`), { response: failLoad });
         return { data: { properties: properties.filter(property => body.address_hashes.includes(property.address_hash) && (!missingDoor || property.address_hash !== 'c')) } };
     } } };
     const source = ts.transpileModule(read('base44/functions/manageRepAnchors/entry.ts'), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText.replace(/^import .*;\s*$/gm, '');
@@ -371,4 +373,42 @@ test('rep loses both base and custom anchor access after manager reassignment', 
         Object.assign(nextRep.route, manager.route);
         assert.equal((await nextRep.call({ action: 'get_route', route_id: 'route' })).status, 200);
     }
+});
+
+// Field report (Flotilla, Nov 2026): assigning a route to a rep failed outright
+// with "Could not update anchors. Please retry." because loading the route's
+// homes for the optional anchor sweep failed. The assignment must still save.
+test('an assignment still saves when the anchor sweep cannot load the route homes', async () => {
+    for (const failLoad of [
+        { status: 500, data: { error: 'Database read timed out' } },
+        { status: 403, data: { error: 'This route is not visible to the authenticated account.' } },
+    ]) {
+        const state = setup({ failLoad });
+        const before = JSON.parse(JSON.stringify(state.route));
+        const result = await state.call({ action: 'assign', route_id: 'route', member_id: 'peerMember' });
+        assert.equal(result.status, 200, JSON.stringify(result.data));
+        assert.equal(result.data.anchor_applied, false);
+        assert.equal(state.route.assigned_to, 'peerMember');
+        assert.equal(state.route.assigned_to_name, 'Peer');
+        assert.equal(state.route.status, 'ACTIVE');
+        // The order and anchor are left exactly as they were.
+        assert.deepEqual(state.route.property_hashes, before.property_hashes);
+        assert.equal(state.route.route_origin_mode, before.route_origin_mode);
+        assert.deepEqual(state.route.metadata, before.metadata);
+        assert.equal(state.queued.length, 0);
+        // The manager is told what happened and why, never a bare generic error.
+        assert.match(result.data.notice, /^Assigned\. The route could not be re-anchored to Peer's base/);
+        assert.ok(result.data.notice.includes(failLoad.data.error));
+        assert.equal(JSON.stringify(result.data).includes('Peer secret'), false);
+    }
+});
+
+test('the Anchor control names why the route homes could not be loaded', async () => {
+    const state = setup({ failLoad: { status: 403, data: { error: 'This route is not visible to the authenticated account.' } } });
+    const before = JSON.stringify(state.route);
+    const result = await state.call({ action: 'set_route', route_id: 'route', source: 'custom', location: custom });
+    assert.equal(result.status, 409);
+    assert.equal(result.data.error, "This route's homes could not be loaded: This route is not visible to the authenticated account.");
+    assert.equal(JSON.stringify(state.route), before);
+    assert.equal(state.records.length, 0);
 });
