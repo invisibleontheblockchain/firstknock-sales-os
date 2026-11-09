@@ -33,6 +33,7 @@ if (originalSetPosition && !L.DomUtil.setPosition.isPatched) {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Navigation, X, Locate, ChevronUp, ChevronDown } from 'lucide-react';
+import { walkingStops } from '@/components/logic/routeWalkingOrder';
 
 const BRAND = { gold: '#2EEB57', voidBlack: '#0A0A0F' };
 
@@ -272,7 +273,8 @@ export default function RepMapView({
 
     const nearbyHashes = useMemo(() => new Set(nearbyProps.map(p => p.address_hash)), [nearbyProps]);
     const routePathPositions = useMemo(() => {
-        const positions = (properties || []).filter(isRoutePoint).map(p => [Number(p.lat), Number(p.lng)]);
+        // Kept-on-file doors (Not Qualified) are pinned but never on the line.
+        const positions = walkingStops(properties || []).filter(isRoutePoint).map(p => [Number(p.lat), Number(p.lng)]);
         const effectiveStart = isRoutePoint(startLocation)
             ? startLocation
             : isRoutePoint(endLocation) && isRoutePoint(position)

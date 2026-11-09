@@ -4,7 +4,7 @@ import { formatPropertyAge } from '@/utils';
 import { buildFullAddress, openInMaps } from '@/components/logic/navigation';
 import { isNewConstruction } from '@/lib/newConstruction';
 import NewBuildBadge from '@/components/rep/NewBuildBadge';
-import { formatRunRouteAge, outcomeBorder, outcomeColor, outcomeLabel, outcomeTint } from '@/components/logic/outcomeStatus';
+import { formatRunRouteAge, outcomeBorder, outcomeColor, outcomeLabel, outcomeShortLabel, outcomeTint } from '@/components/logic/outcomeStatus';
 
 const formatMoney = (value) => {
   const n = Number(value);
@@ -51,6 +51,7 @@ function PropertyCard({
   const addressLabel = `${property.house_number || ''} ${property.street_name || ''}`.trim() || 'route stop';
   const isReKnock = property.workflow_bucket === 'RE_KNOCK' && !hasOutcome;
   const isNewBuild = isNewConstruction(property);
+  const hasStopNumber = Number.isInteger(index) && index >= 0;
 
   return (
     <div
@@ -92,7 +93,10 @@ function PropertyCard({
                     className="flex h-7 w-7 shrink-0 items-center justify-center gap-1 transition-all duration-300"
                     style={{ color: hasOutcome ? statusColor : '#FFFFFF' }}
                 >
-                    <span className="text-[18px] font-black leading-none tracking-[-0.08em]">{index + 1}</span>
+                    {hasStopNumber
+                      ? <span className="text-[18px] font-black leading-none tracking-[-0.08em]">{index + 1}</span>
+                      // Kept on file: on the route, but not a numbered stop in the walking order.
+                      : <span className="text-[10px] font-black leading-none tracking-[0.04em]">{outcomeShortLabel(property.effective_status)}</span>}
                 </div>
 
                 {/* Address */}
