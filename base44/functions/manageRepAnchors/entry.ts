@@ -13,6 +13,22 @@ const isManager = (user) => user?.is_owner === true || user?.data?.is_owner === 
 class HttpError extends Error {
     constructor(status, message) { super(message); this.status = status; }
 }
+// The reason a step failed, worded for the manager. A call to another function
+// fails with that function's own message, which used to be swallowed into the
+// generic "Could not update anchors" and left nobody knowing what broke.
+function failureReason(error) {
+    if (error instanceof HttpError) return error.message;
+    const data = error?.response?.data;
+    const upstream = typeof data === 'string' ? data : data?.error || data?.message;
+    return typeof upstream === 'string' && upstream.trim() ? upstream.trim().slice(0, 200) : null;
+}
+function loadFailure(error) {
+    if (error instanceof HttpError) return error;
+    const status = Number(error?.response?.status);
+    const reason = failureReason(error);
+    if (status >= 400 && status < 500 && reason) return new HttpError(409, `This route's homes could not be loaded: ${reason}`);
+    return error;
+}
 function location(value) {
     if (!isValidRoutePoint(value)) throw new HttpError(400, 'Choose a valid anchor address.');
     const address = String(value.address || '').trim();
@@ -179,13 +195,35 @@ Deno.serve(async (req) => {
             else throw new HttpError(409, 'Assign a rep with a configured base first.');
         }
         if (source === 'custom') anchor = location(body.location);
-        const { jobProperties, ...optimized } = await optimize(base44, route, anchor, user);
+        // Loading the doors and sweeping them from the anchor is the step that
+        // reaches other services. For an assignment it is a convenience: when it
+        // fails, the rep is still assigned and the route keeps its current order
+        // and anchor, instead of the whole assignment failing.
+        let optimizeResult = {};
+        let anchorFailure = null;
+        try {
+            optimizeResult = await optimize(base44, route, anchor, user);
+        } catch (error) {
+            if (action !== 'assign') throw loadFailure(error);
+            anchorFailure = error;
+            console.error('[manageRepAnchors] anchor sweep failed; saving the assignment only',
+                error?.response?.status || '', error?.response?.data || error);
+        }
+        const { jobProperties, ...optimized } = optimizeResult;
         const latest = await service.entities.SavedRoute.get(route.id);
         if (!latest || latest.assigned_to !== route.assigned_to || latest.status !== route.status
             || latest.updated_date !== route.updated_date
             || JSON.stringify(latest.property_hashes) !== JSON.stringify(route.property_hashes)
             || JSON.stringify(latest.metadata?.anchor) !== JSON.stringify(route.metadata?.anchor)) {
             throw new HttpError(409, 'This route changed while the anchor was being applied. Reload and retry.');
+        }
+        if (anchorFailure) {
+            const update = { assigned_to: memberId || null, assigned_to_name: assignee?.member.name || null, status: memberId ? 'ACTIVE' : 'PENDING' };
+            await service.entities.SavedRoute.update(route.id, update);
+            const reason = failureReason(anchorFailure);
+            const who = assignee?.member.name || 'the new rep';
+            return Response.json({ success: true, route: { ...route, ...update }, anchor: null, anchor_applied: false,
+                notice: `Assigned. The route could not be re-anchored to ${who}'s base${reason ? ` (${reason})` : ''}. Its stop order is unchanged; use the Anchor control to retry.` });
         }
         const oldRecords = await privateRows(service, route);
         // Publish the private record first; readers select its ID from the route.
@@ -226,7 +264,7 @@ Deno.serve(async (req) => {
         return Response.json({ success: true, route: { ...route, ...update }, anchor, notice, optimization_job_id: optimizationJobId });
     } catch (error) {
         const status = error instanceof HttpError ? error.status : 500;
-        if (status === 500) console.error('[manageRepAnchors]', error);
+        if (status === 500) console.error('[manageRepAnchors]', error?.response?.status || '', error?.response?.data || error);
         return Response.json({ error: status === 500 ? 'Could not update anchors. Please retry.' : error.message }, { status });
     }
 });
