@@ -61,6 +61,7 @@ import PropertyDetailSheet from '@/components/rep/PropertyDetailSheet';
 import RouteFunnelTabs from '@/components/rep/RouteFunnelTabs';
 import TodoRouteFilters from '@/components/rep/TodoRouteFilters';
 import { countTodoRouteFilters, DEFAULT_TODO_ROUTE_FILTERS, matchesTodoRouteFilters } from '@/components/logic/todoRouteFilters';
+import { splitWalkingOrder, walkingStopNumbers } from '@/components/logic/routeWalkingOrder';
 import {
   buildRepRouteScope,
   buildSavedRouteQueryFilters,
@@ -133,8 +134,9 @@ function requireUsableRouteContext(routingContext) {
 export default function RepHome() {
   const queryClient = useQueryClient();
   const [selectedProperty, setSelectedProperty] = useState(null);
-  const [selectedPropertyIndex, setSelectedPropertyIndex] = useState(null);
+  const [, setSelectedPropertyIndex] = useState(null);
   const [filterStatus, setFilterStatus] = useState('all');
+  const [showKeptOnFile, setShowKeptOnFile] = useState(false);
   const [todoRouteTypes, setTodoRouteTypes] = useState([...DEFAULT_TODO_ROUTE_FILTERS]);
   const [searchQuery, setSearchQuery] = useState('');
   const [uploading, setUploading] = useState(false);
@@ -1144,6 +1146,17 @@ export default function RepHome() {
     [filteredProperties]
   );
 
+  // Not Qualified doors stay on the route for the record but leave the walking
+  // order: no stop number, no place in the middle of the list, off the line.
+  const walkingStopNumberByKey = useMemo(
+    () => walkingStopNumbers(routeProperties, getPropertySelectionKey),
+    [routeProperties]
+  );
+  const walkingStopCount = walkingStopNumberByKey.size;
+  const listedStops = useMemo(() => splitWalkingOrder(filteredProperties), [filteredProperties]);
+  // The Done tab is where a rep looks for closed doors, so it shows them open.
+  const keptOnFileOpen = showKeptOnFile || filterStatus === 'done';
+
   // Scroll the remembered stop into view once the restored tab has rendered.
   // A stop that left the current tab (it was just knocked) hands over to the
   // next visible stop in route order, which is where the rep was heading.
@@ -1480,6 +1493,7 @@ export default function RepHome() {
     window.setTimeout(() => {
       const renderedStops = [...document.querySelectorAll('[data-route-stop-hash]')];
       for (let index = currentIndex + 1; index < routeProperties.length; index += 1) {
+        if (!walkingStopNumberByKey.has(getPropertySelectionKey(routeProperties[index]))) continue;
         const nextHash = routeProperties[index].address_hash || routeProperties[index].id;
         const nextStop = renderedStops.find((node) => node.dataset.routeStopHash === String(nextHash));
         if (!nextStop) continue;
@@ -1487,7 +1501,7 @@ export default function RepHome() {
         break;
       }
     }, 80);
-  }, [routeProperties]);
+  }, [routeProperties, walkingStopNumberByKey]);
 
   const handleTogglePropertySelection = React.useCallback((property) => {
     if (activeRouteArchived || bulkActionMutation.isPending) return;
@@ -2100,15 +2114,47 @@ export default function RepHome() {
                     </div> :
 
         <div ref={routeStopListRef} className="space-y-1.5">
-                        {filteredProperties.map((prop) =>
+                        {listedStops.walking.map((prop) =>
           <PropertyCard
             key={getPropertySelectionKey(prop)}
             property={prop}
-            index={routeProperties.findIndex((routeProperty) => getPropertySelectionKey(routeProperty) === getPropertySelectionKey(prop))}
+            index={(walkingStopNumberByKey.get(getPropertySelectionKey(prop)) || 0) - 1}
             navigationApp={navigationApp}
             onSelect={handleSelectProperty} />
 
           )}
+                        {listedStops.keptOnFile.length > 0 &&
+          <div className="pt-2">
+                                <button
+              type="button"
+              onClick={() => setShowKeptOnFile((open) => !open)}
+              aria-expanded={keptOnFileOpen}
+              aria-controls="kept-on-file-stops"
+              className="flex w-full items-center justify-between rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2.5 text-left active:scale-[0.99] transition-all">
+
+                                    <span className="min-w-0">
+                                        <span className="block text-[10px] font-black uppercase tracking-[0.16em] text-white/70">
+                                            Not Qualified — kept on file ({listedStops.keptOnFile.length})
+                                        </span>
+                                        <span className="block text-[9px] text-white/40">On the route for the record. Not part of the walking order.</span>
+                                    </span>
+                                    <ChevronDown className={`h-4 w-4 shrink-0 text-white/45 transition-transform ${keptOnFileOpen ? 'rotate-180' : ''}`} />
+                                </button>
+                                {keptOnFileOpen &&
+            <div id="kept-on-file-stops" className="mt-1.5 space-y-1.5">
+                                        {listedStops.keptOnFile.map((prop) =>
+              <PropertyCard
+                key={getPropertySelectionKey(prop)}
+                property={prop}
+                index={null}
+                navigationApp={navigationApp}
+                onSelect={handleSelectProperty} />
+
+              )}
+                                    </div>
+            }
+                            </div>
+          }
                     </div>
         }
             </PullToRefresh>
@@ -2351,8 +2397,8 @@ export default function RepHome() {
         onPhotoUpload={activeRouteArchived ? undefined : handlePhotoUpload}
         uploading={uploading}
         onClose={() => {setSelectedProperty(null);setSelectedPropertyIndex(null);}}
-        routePosition={selectedPropertyIndex !== null ? selectedPropertyIndex + 1 : null}
-        totalStops={routeProperties.length}
+        routePosition={selectedProperty ? walkingStopNumberByKey.get(getPropertySelectionKey(selectedProperty)) || null : null}
+        totalStops={walkingStopCount}
         navigationApp={navigationApp}
         onNoteSaved={(addressHash) => {
           // The saved note row is what the next open of this door reads back.

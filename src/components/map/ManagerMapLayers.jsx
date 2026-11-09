@@ -18,6 +18,7 @@ import {
     shouldRenderPrecisionMapLayers,
 } from './mapLayerVisibility.js';
 import { APPROXIMATE_ACCESS_COLOR, approximateAccessStops } from '@/lib/approximateAccess';
+import { walkingStopNumbers, walkingStops } from '@/components/logic/routeWalkingOrder';
 
 /**
  * ActiveRouteLayer — High-performance active route renderer.
@@ -43,7 +44,8 @@ const getRouteColor = (route, routeNumber = 1) => {
 };
 
 const getRouteLinePoints = (route, properties) => {
-    const doors = (properties || []).filter(isRenderableMapPoint);
+    // Kept-on-file doors (Not Qualified) are pinned but never on the line.
+    const doors = walkingStops(properties || []).filter(isRenderableMapPoint);
     const mode = route?.routeOriginMode || route?.route_origin_mode || route?.metadata?.route_bounds?.mode || 'none';
     if (!['home_round_trip', 'current_to_home', 'anchor_round_trip'].includes(mode)) return doors;
     const start = route?.startLocation || route?.start_location;
@@ -103,6 +105,8 @@ export function ActiveRouteLayer({ activeRoute, mapSettings, pinSize, lineDashAr
             : Math.max(2.5, zoomAdjustedPinSize(pinSize, zoom) * 0.8);
         let labelsDrawn = 0;
         const entries = [];
+        // Stop numbers follow the walking order; kept-on-file doors get none.
+        const walkingNumbers = walkingStopNumbers(routePoints, pinKey);
         routePoints.forEach((p, idx) => {
             const point = [Number(p.lat), Number(p.lng)];
             if (point[0] < viewBox.south || point[0] > viewBox.north || point[1] < viewBox.west || point[1] > viewBox.east) return;
@@ -113,17 +117,18 @@ export function ActiveRouteLayer({ activeRoute, mapSettings, pinSize, lineDashAr
             const color = hasDecision ? outcomeColor(status) : idx === 0 && !completed ? '#FFFFFF'
                 : completed ? getCompletedPinColor(status, routeColor) : routeColor;
             const emphasized = sold || (completed && p.effective_status === 'QUALIFIED');
-            const showLabel = (showNumbers || sold) && labelsDrawn < 1000;
+            const stopNumber = walkingNumbers.get(pinKey(p)) || null;
+            const showLabel = (showNumbers || sold) && stopNumber !== null && labelsDrawn < 1000;
             // Approximate road access: an amber outline marks the stop.
             const approximate = approximateStops.has(pinKey(p));
             if (showLabel) labelsDrawn++;
             entries.push({
-                key: `${pinKey(p)}:${idx}`, point, payload: { ...p, route_position: idx + 1 },
+                key: `${pinKey(p)}:${idx}`, point, payload: { ...p, route_position: stopNumber },
                 style: {
                     radius: emphasized ? dotSize + 1.5 : dotSize, fillColor: color, fillOpacity: 1,
                     color: approximate ? APPROXIMATE_ACCESS_COLOR : '#fff',
                     weight: approximate ? (wideView ? 1.5 : 2.5) : emphasized ? 1.5 : wideView ? 0.4 : 1,
-                    stopLabel: showLabel ? { text: idx + 1, color: hasDecision ? outcomeColor(status) : 'rgba(255,255,255,0.9)',
+                    stopLabel: showLabel ? { text: stopNumber, color: hasDecision ? outcomeColor(status) : 'rgba(255,255,255,0.9)',
                         size: sold ? Math.max(11, numberFontSize) : numberFontSize, weight: sold ? 800 : 600, offsetY: -5 } : null,
                 },
             });

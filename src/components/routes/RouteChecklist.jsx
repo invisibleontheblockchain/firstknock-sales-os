@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { X, Navigation, Mic, MapPin, User, DollarSign, Ruler, ChevronUp, History, Loader2 } from 'lucide-react';
+import { X, Navigation, Mic, MapPin, User, DollarSign, Ruler, ChevronUp, ChevronDown, History, Loader2 } from 'lucide-react';
 import { getPropertyResultSummary } from '../logic/territoryLogic';
 import PropertyHistory from '@/components/rep/PropertyHistory';
 import HouseNoteField from '@/components/routes/HouseNoteField';
@@ -13,8 +13,10 @@ import {
     outcomeTint,
     countPropertyVisits,
     formatRunRouteAge,
-    latestOutcomeNote
+    latestOutcomeNote,
+    outcomeShortLabel
 } from '../logic/outcomeStatus';
+import { splitWalkingOrder, walkingStopNumbers } from '../logic/routeWalkingOrder';
 import {
     CHECKLIST_STAGES,
     STAGE_DECISION_OPTIONS,
@@ -66,6 +68,9 @@ const formatNumber = (value) => {
     return Number.isFinite(n) && n > 0 ? n.toLocaleString() : null;
 };
 
+// Marks where the kept-on-file group starts in the rendered stop list.
+const KEPT_ON_FILE_HEADER = Object.freeze({ keptOnFileHeader: true });
+
 export default function RouteChecklist({ route, logs, onLogResult, onDeleteOutcome, onNoteSaved, onClose, navigationApp = 'apple', activeRouteSoldFilter, setActiveRouteSoldFilter }) {
     const [latestRoute, setLatestRoute] = useState(route);
     const [expandedId, setExpandedId] = useState(null);
@@ -94,6 +99,7 @@ export default function RouteChecklist({ route, logs, onLogResult, onDeleteOutco
     const [navigationError, setNavigationError] = useState('');
     const [hideBusinessOwned, setHideBusinessOwned] = useState(false);
     const [newBuildsOnly, setNewBuildsOnly] = useState(false);
+    const [showKeptOnFile, setShowKeptOnFile] = useState(false);
 
     useEffect(() => {
         setLatestRoute(route);
@@ -142,9 +148,6 @@ export default function RouteChecklist({ route, logs, onLogResult, onDeleteOutco
     }, [route]);
 
     const displayRoute = latestRoute || route;
-    const routePositionByHash = useMemo(() => new Map(
-        displayRoute.properties.map((property, index) => [property.address_hash || property.id, index + 1])
-    ), [displayRoute.properties]);
     // Counts come from the whole route so a toggle's badge never moves as the
     // other toggle is flipped.
     const scopeCounts = useMemo(
@@ -192,6 +195,14 @@ export default function RouteChecklist({ route, logs, onLogResult, onDeleteOutco
         });
         return statusMap;
     }, [propertyData]);
+
+    // Not Qualified doors stay on the route for the record but leave the
+    // walking order: no stop number, listed together at the bottom.
+    const routePositionByHash = useMemo(() => walkingStopNumbers(
+        displayRoute.properties,
+        (property) => property.address_hash || property.id,
+        (property) => propertyStatuses[property.address_hash]
+    ), [displayRoute.properties, propertyStatuses]);
 
     // A stop's stage comes from its outcome and, when a manager has explicitly
     // moved it, from the workflow bucket on its newest log.
@@ -246,6 +257,16 @@ export default function RouteChecklist({ route, logs, onLogResult, onDeleteOutco
             return decisionFilter === 'all' || status === decisionFilter;
         });
     }, [visibleRouteProperties, propertyStages, propertyStatuses, logsByProperty, filter, decisionFilter, todoRouteTypes]);
+
+    const listedStops = useMemo(
+        () => splitWalkingOrder(filteredProperties, (property) => propertyStatuses[property.address_hash]),
+        [filteredProperties, propertyStatuses]
+    );
+    // The Done tab is where closed doors are looked up, so it shows them open.
+    const keptOnFileOpen = showKeptOnFile || filter === 'done';
+    const stopsForList = listedStops.keptOnFile.length > 0
+        ? [...listedStops.walking, KEPT_ON_FILE_HEADER, ...(keptOnFileOpen ? listedStops.keptOnFile : [])]
+        : listedStops.walking;
 
     const todoRouteTypeCounts = useMemo(
         () => countTodoRouteFilters(
@@ -405,12 +426,15 @@ export default function RouteChecklist({ route, logs, onLogResult, onDeleteOutco
     };
 
     const scrollToNextRouteStop = (property) => {
-        const currentPosition = routePositionByHash.get(property.address_hash || property.id);
-        if (!currentPosition) return;
+        const propertyKey = property.address_hash || property.id;
+        const currentIndex = displayRoute.properties.findIndex((stop) => (stop.address_hash || stop.id) === propertyKey);
+        if (currentIndex < 0) return;
         window.setTimeout(() => {
             window.requestAnimationFrame(() => {
-                for (let index = currentPosition; index < displayRoute.properties.length; index += 1) {
+                for (let index = currentIndex + 1; index < displayRoute.properties.length; index += 1) {
                     const nextProperty = displayRoute.properties[index];
+                    // Kept-on-file doors are not the next stop.
+                    if (!routePositionByHash.has(nextProperty.address_hash || nextProperty.id)) continue;
                     const nextRef = stopRefs.current[nextProperty.address_hash || nextProperty.id];
                     const viewport = scrollAreaRef.current?.querySelector('[data-radix-scroll-area-viewport]');
                     if (!nextRef || !viewport) continue;
@@ -691,8 +715,28 @@ export default function RouteChecklist({ route, logs, onLogResult, onDeleteOutco
                                         : 'No stops match this filter.'}
                         </p>
                     )}
-                    {filteredProperties.map((prop, idx) => {
-                        const routePosition = routePositionByHash.get(prop.address_hash || prop.id) || idx + 1;
+                    {stopsForList.map((prop) => {
+                        if (prop === KEPT_ON_FILE_HEADER) {
+                            return (
+                                <button
+                                    key="kept-on-file-header"
+                                    type="button"
+                                    onClick={() => setShowKeptOnFile((open) => !open)}
+                                    aria-expanded={keptOnFileOpen}
+                                    className="mt-2 flex w-full items-center justify-between rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2.5 text-left active:scale-[0.99] transition-all"
+                                >
+                                    <span className="min-w-0">
+                                        <span className="block text-[10px] font-black uppercase tracking-[0.16em] text-white/70">
+                                            Not Qualified — kept on file ({listedStops.keptOnFile.length})
+                                        </span>
+                                        <span className="block text-[9px] text-white/40">On the route for the record. Not part of the walking order.</span>
+                                    </span>
+                                    <ChevronDown className={`h-4 w-4 shrink-0 text-white/45 transition-transform ${keptOnFileOpen ? 'rotate-180' : ''}`} />
+                                </button>
+                            );
+                        }
+                        // Kept-on-file stops have no number in the walking order.
+                        const routePosition = routePositionByHash.get(prop.address_hash || prop.id) || null;
                         const propData = propertyData[prop.address_hash] || {};
                         const currentStatus = propertyStatuses[prop.address_hash];
                         const isExpanded = expandedId === prop.address_hash;
@@ -776,7 +820,7 @@ export default function RouteChecklist({ route, logs, onLogResult, onDeleteOutco
                                                 ? { background: 'rgba(255,215,0,0.12)', color: BRAND.gold, border: '1px solid rgba(255,215,0,0.35)' }
                                                 : { background: 'rgba(255,255,255,0.08)', color: '#FFFFFF', border: '1px solid rgba(255,255,255,0.25)' }}
                                     >
-                                        {routePosition}
+                                        {routePosition ?? outcomeShortLabel(currentStatus)}
                                     </div>
 
                                     <div className="flex-1 min-w-0">

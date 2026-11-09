@@ -5,6 +5,7 @@ import vm from 'node:vm';
 import ts from 'typescript';
 import * as visibility from '../src/components/map/mapLayerVisibility.js';
 import * as approximateAccess from '../src/lib/approximateAccess.js';
+import * as walkingOrder from '../src/components/logic/routeWalkingOrder.js';
 
 const doors = [{ address_hash: 'west', lat: 35.8, lng: -80.9 },
     { address_hash: 'east', lat: 35.8, lng: -80.89 }, { address_hash: 'south', lat: 35.79, lng: -80.9 }];
@@ -42,6 +43,7 @@ function renderModule(path) {
     imports['react-leaflet'] = { ...imports['react-leaflet'], useMap: () => map };
     imports['./mapLayerVisibility.js'] = visibility;
     imports['@/lib/approximateAccess'] = approximateAccess;
+    imports['@/components/logic/routeWalkingOrder'] = walkingOrder;
     imports['./labelCanvas'] = { createLabelCanvas: () => ({}) };
     imports['@/components/map/liveZoomCanvas'] = { liveZoomCanvas: () => ({}) };
     imports['./densePinSize'] = { resolvePinSize: () => 3, zoomAdjustedPinSize: () => 3 };
@@ -106,4 +108,24 @@ test('recorded decision filters still suppress manager route connectors', () => 
     exports.ActiveRouteLayer({ activeRoute: { properties: doors }, mapSettings: {}, pinSize: 3, decisionFilterActive: true });
     effects.forEach(effect => effect());
     assert.equal(groups.flatMap(group => group.layers).filter(item => item.type === 'line').length, 0);
+});
+
+// Not Qualified doors stay pinned on the route but leave the walking order, so
+// no connector runs to them and they carry no stop number.
+const withKeptOnFile = [doors[0], { address_hash: 'nq', lat: 35.81, lng: -80.88, effective_status: 'NOT_QUALIFIED' }, doors[1], doors[2]];
+
+test('manager active route line and stop numbers skip a kept-on-file door', () => {
+    const { exports, effects, groups } = renderModule('src/components/map/ManagerMapLayers.jsx');
+    exports.ActiveRouteLayer({ activeRoute: { properties: withKeptOnFile }, mapSettings: {}, pinSize: 3 });
+    effects.forEach(effect => effect());
+    const line = groups.flatMap(group => group.layers).find(item => item.type === 'line');
+    assert.deepEqual(plain(line.points), positions);
+});
+
+test('rep map line skips a kept-on-file door', () => {
+    const { exports } = renderModule('src/components/rep/RepMapView.jsx');
+    const tree = exports.default({ properties: withKeptOnFile });
+    const lines = flatten(tree).filter(element => element.type === 'Polyline');
+    assert.equal(lines.length, 1);
+    assert.deepEqual(plain(lines[0].props.positions), positions);
 });
