@@ -4,12 +4,13 @@ import { dismissFieldBanner, isFieldBannerDismissed } from '@/lib/fieldBannerDis
 const deviceStorage = () => { try { return localStorage; } catch { return null; } };
 
 /** [dismissed, dismiss] for one top-of-app notice in its current scope. */
-export function useFieldBannerDismissal(bannerId, userId, scope) {
-  const read = () => isFieldBannerDismissed(deviceStorage(), { bannerId, userId, scope });
+export function useFieldBannerDismissal(bannerId, userId, scope, { maxAgeMs } = {}) {
+  const read = () => isFieldBannerDismissed(deviceStorage(), { bannerId, userId, scope },
+    maxAgeMs ? { maxAgeMs } : undefined);
   const [dismissed, setDismissed] = useState(read);
   // A new shift or a change of account brings the notice back.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { setDismissed(read()); }, [bannerId, userId, scope]);
+  useEffect(() => { setDismissed(read()); }, [bannerId, userId, scope, maxAgeMs]);
   const dismiss = () => {
     dismissFieldBanner(deviceStorage(), { bannerId, userId, scope });
     setDismissed(true);

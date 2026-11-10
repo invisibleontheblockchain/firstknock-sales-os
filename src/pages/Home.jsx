@@ -1,6 +1,7 @@
 import { createManagedRoute } from '@/lib/createManagedRoute';
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
+import { X } from 'lucide-react';
 import { MapContainer } from 'react-leaflet'; import BaseMapTiles from '@/components/map/BaseMapTiles';
 // Leaflet icon defaults and the unmount/scroll-zoom patches live in one module.
 import L from '../components/map/leafletPatches'; import { liveZoomCanvas } from '../components/map/liveZoomCanvas';
@@ -77,6 +78,8 @@ import { previewSavedRoadAwareBeta } from '@/lib/previewSavedRoadAwareBeta';
 import { applyRouteStopRemoval } from '@/lib/routeStopRemoval';
 import { buildRoadAwareGeneratedRoutes } from '@/lib/roadMatrixRouteGeneration'; import { requireUsableRouteContext } from '@/lib/routeContextGuard';
 import { computeAccountWorkingArea, readStoredMapView, storeMapView } from '@/lib/accountWorkingArea';
+import { ROUTE_HOMES_NOTICE_MAX_AGE_MS, routeHomesNoticeScope } from '@/lib/fieldBannerDismissal';
+import { useFieldBannerDismissal } from '@/components/team/useFieldBannerDismissal';
 import { getInitialMapMode, claimFirstAreaRouteHandoff } from '@/components/onboarding/firstAreaNavigation';
 
 // Pure polygon/precision-context helpers live in components/map/homeMapHelpers.js
@@ -1423,14 +1426,34 @@ export default function Home() {
                     });
                 },
             });
-            const incompleteCount = hydrated.filter(route => !hasCompleteRouteMapPoints(route)).length;
+            const incompleteRoutes = hydrated.filter(route => !hasCompleteRouteMapPoints(route));
+            const incompleteCount = incompleteRoutes.length;
             // Incomplete routes are reported only once every route was looked up.
             if (incompleteCount && !territoryOverviewLoading) {
-                throw new Error(`${incompleteCount} route${incompleteCount === 1 ? '' : 's'} could not load all homes.`);
+                throw Object.assign(
+                    new Error(`${incompleteCount} route${incompleteCount === 1 ? '' : 's'} could not load all homes.`),
+                    // Which routes, so closing the notice hides it only for them.
+                    { noticeScope: routeHomesNoticeScope(incompleteRoutes) }
+                );
             }
             return hydrated;
         },
     });
+
+    // The notice can be closed. For incomplete routes it stays closed for those
+    // exact routes on this device; any other failure stays closed until it changes.
+    const routeHomesScope = savedRoutePinsError?.noticeScope || '';
+    const [routeHomesNoticeDismissed, dismissRouteHomesNotice] = useFieldBannerDismissal(
+        'route-homes', user?.id, routeHomesScope, { maxAgeMs: ROUTE_HOMES_NOTICE_MAX_AGE_MS }
+    );
+    const [closedRoutePinsMessage, setClosedRoutePinsMessage] = useState(null);
+    const routePinsNoticeClosed = routeHomesScope
+        ? routeHomesNoticeDismissed
+        : !!savedRoutePinsError?.message && closedRoutePinsMessage === savedRoutePinsError.message;
+    const closeRoutePinsNotice = () => {
+        if (routeHomesScope) dismissRouteHomesNotice();
+        else setClosedRoutePinsMessage(savedRoutePinsError?.message || null);
+    };
 
     // Smart Auto-Open/Close for Generate Mode
     useEffect(() => {
@@ -2534,10 +2557,13 @@ export default function Home() {
                 </div>
             )}
             {pendingAssignment && <RouteAssignmentDialog assignment={pendingAssignment} onCancel={cancelRouteAssignment} onConfirm={confirmRouteAssignment} />}
-            {!loadingSavedRouteId && savedRoutes.length > 0 && !savedRoutePinsLoading && savedRoutePinsError && (
+            {!loadingSavedRouteId && savedRoutes.length > 0 && !savedRoutePinsLoading && savedRoutePinsError && !routePinsNoticeClosed && (
                 <div role="alert" className="absolute top-20 left-1/2 -translate-x-1/2 z-[2000] flex items-center gap-2 rounded-xl border border-white/10 bg-[#111] px-4 py-3 text-sm text-white shadow-xl">
                     <span>{savedRoutePinsError.message}</span>
                     <button type="button" className="rounded-lg bg-white/10 px-3 py-2" onClick={() => retrySavedRoutePins()}>Retry</button>
+                    <button type="button" aria-label="Close" title="Close" className="rounded-lg p-2 text-white/60 hover:bg-white/10 hover:text-white" onClick={closeRoutePinsNotice}>
+                        <X className="h-4 w-4" />
+                    </button>
                 </div>
             )}
             {/* Generation Overlay — immediate visual feedback */}
