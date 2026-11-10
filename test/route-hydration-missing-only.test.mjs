@@ -5,6 +5,7 @@ import vm from 'node:vm';
 import ts from 'typescript';
 import * as core from '../src/components/logic/routeHydrationCore.js';
 import { mapWithConcurrency } from '../src/lib/mapWithConcurrency.js';
+import { routeHomesNoticeScope } from '../src/lib/fieldBannerDismissal.js';
 
 const read = path => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 const home = (hash, extra = {}) => ({ address_hash: hash, lat: 28.7, lng: -81.3, ...extra });
@@ -73,6 +74,7 @@ async function openMap({ invoke, deferUntilOverview = true }) {
         setServerHydratedSavedRoutes: update => { displayed = update(displayed); },
         ...core,
         hydrateRoutesForMap: module.hydrateRoutesForMap,
+        routeHomesNoticeScope,
     };
     if (!deferUntilOverview) sandbox.selectRoutesToHydrate = routes => routes;
     vm.runInNewContext('globalThis.query = () => (' + homeRouteQuery() + ')', sandbox);
@@ -135,6 +137,8 @@ test('a partial lookup still surfaces as an incomplete route and is retried for 
     const first = backend({ omit: new Set([lost]) });
     const result = await openMap({ invoke: first.invoke });
     assert.match(result.error?.message || '', /1 route could not load all homes/);
+    // The notice names the route it is about, so closing it hides only that one.
+    assert.equal(result.error?.noticeScope, 'r3:10');
     // The route-scoped read and its workspace fallback ask for r3's two outside homes only.
     const r3Calls = first.calls.filter(call => call.address_hashes.some(hash => hash.startsWith('r3-')));
     assert.deepEqual(r3Calls.map(call => [call.route_id ?? null, call.address_hashes]), [

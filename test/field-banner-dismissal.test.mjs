@@ -9,6 +9,8 @@ import {
   locationBannerScope,
   locationBannerTitle,
   mileageBannerScope,
+  ROUTE_HOMES_NOTICE_MAX_AGE_MS,
+  routeHomesNoticeScope,
 } from '../src/lib/fieldBannerDismissal.js';
 
 function memoryStorage() {
@@ -88,4 +90,39 @@ test('both top notices offer an X that only hides them', () => {
   assert.match(mileage, /<FieldBannerClose label="Hide mileage notice" onClose=\{dismiss\} \/>/);
   assert.match(mileage, /if \(!context\?\.eligible \|\| dismissed\) return null;/);
   assert.doesNotMatch(session, /restart sharing/, 'there is no restart control to point at');
+});
+
+// Field request (Flotilla, Nov 2026): the map's "1 route could not load all
+// homes" notice could not be closed. Closing it now hides it for those routes
+// only, so a different or changed route still brings it back.
+test('a closed route-homes notice stays closed for the same routes and returns for new ones', () => {
+  const storage = memoryStorage();
+  const lehigh = { id: 'route-lehigh', property_hashes: new Array(14).fill('h') };
+  const lakeWest = { id: 'route-lakewest', property_hashes: new Array(88).fill('h') };
+  const scope = routeHomesNoticeScope([lehigh]);
+  const notice = { bannerId: 'route-homes', userId: 'kevin', scope };
+  const options = { now: NOW, maxAgeMs: ROUTE_HOMES_NOTICE_MAX_AGE_MS };
+
+  assert.equal(isFieldBannerDismissed(storage, notice, options), false);
+  dismissFieldBanner(storage, notice, { now: NOW });
+  // Still closed well past a working day, for the same route.
+  assert.equal(isFieldBannerDismissed(storage, notice, { ...options, now: NOW + 7 * 24 * 60 * 60 * 1000 }), true);
+  // Order of routes never matters.
+  assert.equal(routeHomesNoticeScope([lakeWest, lehigh]), routeHomesNoticeScope([lehigh, lakeWest]));
+  // Another route failing, or this route gaining stops, is a new notice.
+  assert.equal(isFieldBannerDismissed(storage, { ...notice, scope: routeHomesNoticeScope([lehigh, lakeWest]) }, options), false);
+  const grown = { ...lehigh, property_hashes: new Array(20).fill('h') };
+  assert.equal(isFieldBannerDismissed(storage, { ...notice, scope: routeHomesNoticeScope([grown]) }, options), false);
+  // Another account on the same device still sees it.
+  assert.equal(isFieldBannerDismissed(storage, { ...notice, userId: 'jr' }, options), false);
+  assert.equal(routeHomesNoticeScope([]), '');
+  assert.equal(routeHomesNoticeScope([{ property_hashes: ['a'] }]), '');
+});
+
+test('the map notice can be closed and remembers which routes it was about', () => {
+  const home = readFileSync(new URL('../src/pages/Home.jsx', import.meta.url), 'utf8');
+  assert.match(home, /\{ noticeScope: routeHomesNoticeScope\(incompleteRoutes\) \}/);
+  assert.match(home, /useFieldBannerDismissal\(\s*'route-homes', user\?\.id, routeHomesScope, \{ maxAgeMs: ROUTE_HOMES_NOTICE_MAX_AGE_MS \}/);
+  assert.match(home, /savedRoutePinsError && !routePinsNoticeClosed && \(/);
+  assert.match(home, /aria-label="Close"[^>]*onClick=\{closeRoutePinsNotice\}/);
 });

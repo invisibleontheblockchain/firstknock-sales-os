@@ -39,6 +39,21 @@ export function dismissFieldBanner(storage, { bannerId, userId, scope }, { now =
   }
 }
 
+/**
+ * The map's "could not load all homes" notice is scoped to the routes it is
+ * about. Closing it hides it for those routes; a different route, or a route
+ * whose stop count changes, brings it back, so a new problem is never hidden.
+ */
+export const ROUTE_HOMES_NOTICE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+
+export function routeHomesNoticeScope(routes = []) {
+  return (Array.isArray(routes) ? routes : [])
+    .filter(route => text(route?.id))
+    .map(route => `${text(route.id)}:${Array.isArray(route.property_hashes) ? route.property_hashes.length : 0}`)
+    .sort()
+    .join('|');
+}
+
 /** The location notice's scope: one shift, or the off-the-clock period. */
 export function locationBannerScope({ sharing, shiftId, verificationError }) {
   if (verificationError) return 'verification';
