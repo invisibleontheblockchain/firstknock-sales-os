@@ -35,6 +35,8 @@ function loadHandler({
   databaseUrl = 'postgres://test',
   routeGet,
   managerGet,
+  fetchJobs = {},
+  teamMembers = [],
 } = {}) {
   let handler;
   const sqlCalls = [];
@@ -92,6 +94,11 @@ function loadHandler({
     asServiceRole: {
       entities: {
         MasterProperty: { filter: filterMasterProperty },
+        FetchJob: { get: async (id) => fetchJobs[id] || null },
+        TeamMember: {
+          filter: async (query) => teamMembers.filter(member => Object.entries(query)
+            .every(([field, value]) => member[field] === value)),
+        },
         User: {
           get: async (id) => {
             if (managerGet) return managerGet(id);
@@ -1333,4 +1340,81 @@ test('bulk import reads reject oversized requests and preserve persistent rate l
   assert.equal(response.status, 429);
   assert.equal(throttled.masterPropertyQueries.length, 1);
   assert.equal(response.headers.get('retry-after'), '30');
+});
+
+// Field report (Flotilla, Nov 2026): a rep's Precision route saved in the team
+// workspace showed "1 route could not load all homes" for the manager, because
+// the pulled homes are linked to the rep who ran the pull, not to the manager.
+function repPrecisionRoute() {
+  return {
+    id: 'route_rep_precision',
+    manager_id: 'manager_1',
+    created_by: 'service+abc@no-reply.base44.com',
+    created_date: '2026-11-09T13:44:41.000Z',
+    property_hashes: ['412 FITCH AVE|33972'],
+    metadata: { precision_area: { job_id: 'job_rep' } },
+  };
+}
+const pulledHome = { id: 7, address_hash: '412 FITCH AVE|33972', lat: 26.6, lng: -81.6 };
+const repPull = { id: 'job_rep', user_email: 'jr@example.com', precision_usage_user_id: 'rep_jr' };
+const workspaceEmailsQueried = sqlValueCalls => sqlValueCalls
+  .filter(call => call.query.includes('FROM workspace_properties'))
+  .map(call => call.values[0]);
+
+test('a rep-pulled Precision route in the team workspace hydrates for the manager and teammates', async () => {
+  for (const user of [
+    { id: 'manager_1', email: 'manager@example.com', role: 'user' },
+    { id: 'rep_other', email: 'other@example.com', role: 'user', data: { team_manager_id: 'manager_1' } },
+  ]) {
+    const route = repPrecisionRoute();
+    const { handler, sqlValueCalls } = loadHandler({
+      user,
+      route,
+      fetchJobs: { job_rep: repPull },
+      teamMembers: [{ id: 'tm_jr', manager_id: 'manager_1', user_id: 'rep_jr', email: 'JR@example.com', status: 'active' }],
+      workspaceRows: ({ values }) => (values.includes('jr@example.com') ? [pulledHome] : []),
+    });
+    const { response, result } = await invoke(handler, { address_hashes: route.property_hashes, route_id: route.id });
+    assert.equal(response.status, 200);
+    assert.equal(result.count, 1, user.email);
+    assert.equal(result.properties[0].address_hash, '412 FITCH AVE|33972');
+    assert.ok(workspaceEmailsQueried(sqlValueCalls).includes('jr@example.com'));
+  }
+});
+
+test('a Precision pull outside the route team never opens its workspace', async () => {
+  const user = { id: 'manager_1', email: 'manager@example.com', role: 'user' };
+  for (const teamMembers of [
+    [],
+    // Same person, another team.
+    [{ id: 'tm_x', manager_id: 'manager_2', user_id: 'rep_jr', email: 'jr@example.com', status: 'active' }],
+    // Right team row, but it names a different login than the pull.
+    [{ id: 'tm_y', manager_id: 'manager_1', user_id: 'rep_jr', email: 'someone@example.com', status: 'active' }],
+  ]) {
+    const route = repPrecisionRoute();
+    const { handler, sqlValueCalls } = loadHandler({
+      user,
+      route,
+      fetchJobs: { job_rep: repPull },
+      teamMembers,
+      workspaceRows: ({ values }) => (values.includes('jr@example.com') ? [pulledHome] : []),
+    });
+    const { response, result } = await invoke(handler, { address_hashes: route.property_hashes, route_id: route.id });
+    assert.equal(response.status, 200);
+    assert.equal(result.count, 0);
+    assert.equal(workspaceEmailsQueried(sqlValueCalls).includes('jr@example.com'), false);
+  }
+});
+
+test('a rep who left the team still has their past pull searched for the team route', async () => {
+  const route = repPrecisionRoute();
+  const { handler } = loadHandler({
+    user: { id: 'manager_1', email: 'manager@example.com', role: 'user' },
+    route,
+    fetchJobs: { job_rep: repPull },
+    teamMembers: [{ id: 'tm_jr', manager_id: 'manager_1', user_id: 'rep_jr', email: 'jr@example.com', status: 'inactive' }],
+    workspaceRows: ({ values }) => (values.includes('jr@example.com') ? [pulledHome] : []),
+  });
+  const { result } = await invoke(handler, { address_hashes: route.property_hashes, route_id: route.id });
+  assert.equal(result.count, 1);
 });
