@@ -256,6 +256,42 @@ async function resolveRouteTenantEmail(base44, user, route, requestedOwner) {
     return { email: userEmail, repairEmail: null };
 }
 
+// A Precision pull links its homes to the workspace of whoever ran it. Since
+// rep-built Precision routes are saved in the team workspace (#236), the
+// route's tenant is the manager while its homes stay linked to the rep, so the
+// manager and every other teammate searched the wrong workspace and the map
+// reported "1 route could not load all homes". The pull's owner is searched
+// too, but only when the route is caller-visible and the pull belongs to the
+// manager or to someone with a membership row on that same team. Editable route
+// metadata names the pull; it never grants another team's workspace.
+async function routePrecisionPullerEmail(base44, route) {
+    const jobId = String(route?.metadata?.precision_area?.job_id || '').trim();
+    const managerId = String(route?.manager_id || '').trim();
+    const service = base44.asServiceRole?.entities;
+    if (!jobId || !managerId || !service?.FetchJob?.get) return null;
+    const job = await retryDataRead(() => service.FetchJob.get(jobId)).catch(error => {
+        if (isTransientDataRead(error)) throw error;
+        return null;
+    });
+    const pullerId = String(job?.precision_usage_user_id || '').trim();
+    const pullerEmail = String(job?.user_email || '').trim();
+    if (!pullerId || !pullerEmail) return null;
+    if (pullerId === managerId) return pullerEmail;
+    if (!service.TeamMember?.filter) return null;
+    // Any status: a rep who later left the team still pulled these homes for it.
+    const members = asArray(await retryDataRead(() => service.TeamMember.filter(
+        { manager_id: managerId, user_id: pullerId }, '-created_date', 20
+    )).catch(error => {
+        if (isTransientDataRead(error)) throw error;
+        return [];
+    }));
+    return members.some(member => String(member?.manager_id || '') === managerId
+        && String(member?.user_id || '') === pullerId
+        && normalized(member?.email) === normalized(pullerEmail))
+        ? pullerEmail
+        : null;
+}
+
 // Editable route metadata cannot grant access to another workspace's imports.
 function verifiedImportManagerId(user, route) {
     const managerId = String(route?.manager_id || '').trim();
@@ -526,10 +562,14 @@ Deno.serve(async (req) => {
         for (const owners of interactionOwnersByHash.values()) {
             interactionWorkspaceEmails.push(...owners);
         }
+        const precisionPullerEmail = authorizedRoute
+            ? await routePrecisionPullerEmail(base44, authorizedRoute)
+            : null;
         const workspaceEmails = [...new Set([
             targetEmail,
             authorizedRoute?.created_by,
             user.email,
+            precisionPullerEmail,
             ...interactionWorkspaceEmails
         ].map(value => String(value || '').trim()).filter(Boolean))];
         const rowsById = new Map();
