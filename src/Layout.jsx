@@ -13,6 +13,7 @@ import FirstAreaWalkthrough from '@/components/onboarding/FirstAreaWalkthrough';
 import { ThemeProvider, useTheme } from '@/components/theme/ThemeProvider';
 import { getAppRole, isManagerAccount, isRepAccount } from '@/lib/roles';
 import { clearFieldRoutesInspectionQueue } from '@/components/fieldroutes/fieldRoutesInspectionQueue';
+import { claimDeviceAreaStorage, clearDeviceAreaStorage, deviceAreaAccountId } from '@/lib/deviceAreaStorage';
 import RepLocationSharing from '@/components/team/RepLocationSharing';
 import { AutoDrivingStatus } from '@/components/team/AutoDrivingTracking';
 import GlobalSearchLauncher from '@/components/search/GlobalSearchLauncher';
@@ -59,6 +60,7 @@ function LayoutInner({ children }) {
   const restoringCanvasHistoryRef = React.useRef(false);
   const queryClient = useQueryClient();
   const { data: user, isLoading } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me(), retry: false });
+  const deviceAreaAccountRef = React.useRef(null);
   usePendingRouteSaves(user, queryClient);
 
   React.useEffect(() => {
@@ -126,6 +128,8 @@ function LayoutInner({ children }) {
     // FieldRoutes offline requests contain resident contact details. They must
     // never remain available to the next account using a shared device.
     await clearFieldRoutesInspectionQueue().catch(() => {});
+    // Precision areas drawn or pulled on this device are this account's.
+    try {clearDeviceAreaStorage(window.localStorage);} catch {}
     try {await base44.auth.logout(window.location.origin);} catch {window.location.reload();}
     queryClient.clear();
   }, [confirmCanvasNavigation, queryClient]);
@@ -216,6 +220,14 @@ function LayoutInner({ children }) {
                 </div>
             </div>);
 
+  }
+
+  // Precision areas kept on this device must belong to the signed-in account
+  // before any page reads them; another account's are cleared here.
+  const deviceAreaAccount = deviceAreaAccountId(user);
+  if (deviceAreaAccountRef.current !== deviceAreaAccount) {
+    deviceAreaAccountRef.current = deviceAreaAccount;
+    try {claimDeviceAreaStorage(window.localStorage, user);} catch {}
   }
 
   const currentPath = window.location.pathname;
