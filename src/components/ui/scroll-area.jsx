@@ -8,7 +8,13 @@ const ScrollArea = React.forwardRef(({ className, children, ...props }, ref) => 
     ref={ref}
     className={cn("relative overflow-hidden", className)}
     {...props}>
-    <ScrollAreaPrimitive.Viewport className="h-full w-full rounded-[inherit]">
+    {/* Radix wraps children in a `display: table` div, which grows to the widest
+        unbreakable line inside it (one long address on a route card stretched
+        every card off the screen). This wrapper only renders a vertical
+        scrollbar, so Radix hides horizontal overflow and that extra width could
+        never be scrolled to; it was only ever clipped. Lay content out at the
+        viewport's width instead so `truncate` and `min-w-0` work. */}
+    <ScrollAreaPrimitive.Viewport className="h-full w-full rounded-[inherit] [&>div]:!block [&>div]:!w-full [&>div]:!min-w-0">
       {children}
     </ScrollAreaPrimitive.Viewport>
     <ScrollBar />
